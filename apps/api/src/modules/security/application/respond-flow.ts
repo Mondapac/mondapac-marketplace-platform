@@ -82,6 +82,8 @@ export interface AlertSummaryView {
   readonly lastEventAt: Temporal.Instant;
   readonly openedAt: Temporal.Instant;
   readonly acknowledgedAt: Temporal.Instant | null;
+  /** The display name of who acknowledged, or null (not acknowledged, or not nameable). */
+  readonly acknowledgedByName: string | null;
   readonly resolvedAt: Temporal.Instant | null;
   readonly nextNotifyAt: Temporal.Instant | null;
   readonly version: number;
@@ -93,6 +95,14 @@ export interface AlertDetailView extends AlertSummaryView {
   readonly notifyStep: number;
   readonly acknowledgedBy: string | null;
   readonly resolvedBy: string | null;
+  /** The display name of who resolved, or null. */
+  readonly resolvedByName: string | null;
+  /**
+   * Whether the caller is one of the s1 resolvers of the roster (the incident commander or the
+   * security owner), so the page can say who may resolve a critical alert before the act is refused.
+   * False without a roster. The permission to respond is the panel's own check.
+   */
+  readonly viewerResolvesCritical: boolean;
   readonly resolution: AlertResolution | null;
   readonly resolutionNote: string | null;
   readonly deliveries: readonly AlertDeliveryRecord[];
@@ -118,7 +128,25 @@ export function maskAddress(value: string): string {
   return `${address.split('.').slice(0, 3).join('.')}.…`;
 }
 
-function summaryOf(alert: SecurityAlert): AlertSummaryView {
+type Names = ReadonlyMap<string, string>;
+const NO_NAMES: Names = new Map();
+
+const nameOf = (names: Names, accountId: string | null): string | null =>
+  accountId === null ? null : (names.get(accountId) ?? null);
+
+/** The names of the accounts that acknowledged or resolved these alerts; outside any transaction. */
+function namesFor(
+  deps: SecurityDependencies,
+  context: CallContext,
+  alerts: readonly SecurityAlert[],
+): Promise<Names> {
+  const ids = alerts.flatMap((alert) =>
+    [alert.acknowledgedBy, alert.resolvedBy].filter((id): id is string => id !== null),
+  );
+  return ids.length === 0 ? Promise.resolve(NO_NAMES) : deps.names.namesOf(context, ids);
+}
+
+function summaryOf(alert: SecurityAlert, names: Names = NO_NAMES): AlertSummaryView {
   return {
     id: alert.id,
     rule: alert.rule,
@@ -132,6 +160,7 @@ function summaryOf(alert: SecurityAlert): AlertSummaryView {
     lastEventAt: alert.lastEventAt,
     openedAt: alert.openedAt,
     acknowledgedAt: alert.acknowledgedAt,
+    acknowledgedByName: nameOf(names, alert.acknowledgedBy),
     resolvedAt: alert.resolvedAt,
     nextNotifyAt: alert.nextNotifyAt,
     version: alert.version,
@@ -223,23 +252,19 @@ export async function listAlerts(
     }
   }
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
-  return deps.unitOfWork.run<AlertPage, SecurityFailure>(
+  const rows = await deps.unitOfWork.run<readonly SecurityAlert[], SecurityFailure>(
     context.market,
-    async () => {
-      const rows = await deps.alerts.list(context.market, {
-        states,
-        severities,
-        after,
-        limit: limit + 1,
-      });
-      const page = rows.slice(0, limit);
-      return ok({
-        alerts: page.map(summaryOf),
-        next: rows.length > limit ? encodeCursor(page[page.length - 1]!) : null,
-      });
-    },
+    async () =>
+      ok(await deps.alerts.list(context.market, { states, severities, after, limit: limit + 1 })),
     { readOnly: true },
   );
+  if (!rows.ok) return rows;
+  const page = rows.value.slice(0, limit);
+  const names = await namesFor(deps, context, page);
+  return ok({
+    alerts: page.map((alert) => summaryOf(alert, names)),
+    next: rows.value.length > limit ? encodeCursor(page[page.length - 1]!) : null,
+  });
 }
 
 function alertIdOf(value: unknown): string | null {
@@ -253,31 +278,59 @@ export async function viewAlert(
 ): Promise<Result<AlertDetailView, SecurityFailure>> {
   const alertId = alertIdOf(input.alertId);
   if (alertId === null) return err({ code: 'security.alert-not-found' });
-  return deps.unitOfWork.run<AlertDetailView, SecurityFailure>(
+  const stored = await deps.unitOfWork.run<StoredAlert, SecurityFailure>(
     context.market,
     async () => {
       const alert = await deps.alerts.get(context.market, alertId);
       if (alert === null) return err({ code: 'security.alert-not-found' });
-      return ok(await detailOf(deps, context, alert));
+      return ok(await storedOf(deps, context, alert));
     },
     { readOnly: true },
   );
+  return stored.ok ? ok(await detailOf(deps, context, stored.value)) : stored;
+}
+
+/** An alert and its deliveries, as read in the transaction; named after it. */
+interface StoredAlert {
+  readonly alert: SecurityAlert;
+  readonly deliveries: readonly AlertDeliveryRecord[];
+}
+
+async function storedOf(
+  deps: SecurityDependencies,
+  context: CallContext,
+  alert: SecurityAlert,
+): Promise<StoredAlert> {
+  return { alert, deliveries: await deps.alerts.deliveriesOf(context.market, alert.id) };
+}
+
+/** The s1 resolvers of the roster: the admin accounts of the commander and the owner (D2). */
+function s1ResolversOf(roster: OnCallRoster | null): readonly string[] {
+  return roster === null
+    ? []
+    : [roster.incidentCommander, roster.securityOwner].flatMap(
+        (code) => memberOf(roster, code)?.accountId ?? [],
+      );
 }
 
 async function detailOf(
   deps: SecurityDependencies,
   context: CallContext,
-  alert: SecurityAlert,
+  { alert, deliveries }: StoredAlert,
 ): Promise<AlertDetailView> {
+  const names = await namesFor(deps, context, [alert]);
+  const viewer = adminAccountId(context);
   return {
-    ...summaryOf(alert),
+    ...summaryOf(alert, names),
     keyValue: alert.keyValue,
     notifyStep: alert.notifyStep,
     acknowledgedBy: alert.acknowledgedBy,
     resolvedBy: alert.resolvedBy,
+    resolvedByName: nameOf(names, alert.resolvedBy),
+    viewerResolvesCritical: viewer !== null && s1ResolversOf(deps.roster.roster()).includes(viewer),
     resolution: alert.resolution,
     resolutionNote: alert.resolutionNote,
-    deliveries: await deps.alerts.deliveriesOf(context.market, alert.id),
+    deliveries,
   };
 }
 
@@ -412,23 +465,27 @@ export async function acknowledge(
   const expected = versionIssue(input.expectedVersion, fields);
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
   const now = deps.clock.now();
-  return deps.unitOfWork.run<AlertDetailView, SecurityFailure>(context.market, async () => {
-    const alert = await deps.alerts.get(context.market, alertId);
-    if (alert === null) return err({ code: 'security.alert-not-found' });
-    if (alert.version !== expected) return err({ code: 'security.conflict' });
-    const next = acknowledgeAlert(alert, by, now);
-    if (typeof next === 'string') return err({ code: next });
-    if (!(await deps.alerts.saveTransition(context.market, next))) {
-      return err({ code: 'security.conflict' });
-    }
-    await deps.audit.record(
-      context,
-      AlertAcknowledged.entry(next.id as never, {
-        after: { severity: next.severity, version: next.version },
-      }),
-    );
-    return ok(await detailOf(deps, context, next));
-  });
+  const stored = await deps.unitOfWork.run<StoredAlert, SecurityFailure>(
+    context.market,
+    async () => {
+      const alert = await deps.alerts.get(context.market, alertId);
+      if (alert === null) return err({ code: 'security.alert-not-found' });
+      if (alert.version !== expected) return err({ code: 'security.conflict' });
+      const next = acknowledgeAlert(alert, by, now);
+      if (typeof next === 'string') return err({ code: next });
+      if (!(await deps.alerts.saveTransition(context.market, next))) {
+        return err({ code: 'security.conflict' });
+      }
+      await deps.audit.record(
+        context,
+        AlertAcknowledged.entry(next.id as never, {
+          after: { severity: next.severity, version: next.version },
+        }),
+      );
+      return ok(await storedOf(deps, context, next));
+    },
+  );
+  return stored.ok ? ok(await detailOf(deps, context, stored.value)) : stored;
 }
 
 export async function resolve(
@@ -456,29 +513,27 @@ export async function resolve(
   if (fields.length > 0 || resolution === null || note === null) {
     return err({ code: 'validation.failed', fields });
   }
-  const roster = deps.roster.roster();
-  const s1Resolvers =
-    roster === null
-      ? []
-      : [roster.incidentCommander, roster.securityOwner].flatMap(
-          (code) => memberOf(roster, code)?.accountId ?? [],
-        );
+  const s1Resolvers = s1ResolversOf(deps.roster.roster());
   const now = deps.clock.now();
-  return deps.unitOfWork.run<AlertDetailView, SecurityFailure>(context.market, async () => {
-    const alert = await deps.alerts.get(context.market, alertId);
-    if (alert === null) return err({ code: 'security.alert-not-found' });
-    if (alert.version !== expected) return err({ code: 'security.conflict' });
-    const next = resolveAlert(alert, { by, at: now, resolution, note, s1Resolvers });
-    if (typeof next === 'string') return err({ code: next });
-    if (!(await deps.alerts.saveTransition(context.market, next))) {
-      return err({ code: 'security.conflict' });
-    }
-    await deps.audit.record(
-      context,
-      AlertResolved.entry(next.id as never, {
-        after: { severity: next.severity, resolution, version: next.version },
-      }),
-    );
-    return ok(await detailOf(deps, context, next));
-  });
+  const stored = await deps.unitOfWork.run<StoredAlert, SecurityFailure>(
+    context.market,
+    async () => {
+      const alert = await deps.alerts.get(context.market, alertId);
+      if (alert === null) return err({ code: 'security.alert-not-found' });
+      if (alert.version !== expected) return err({ code: 'security.conflict' });
+      const next = resolveAlert(alert, { by, at: now, resolution, note, s1Resolvers });
+      if (typeof next === 'string') return err({ code: next });
+      if (!(await deps.alerts.saveTransition(context.market, next))) {
+        return err({ code: 'security.conflict' });
+      }
+      await deps.audit.record(
+        context,
+        AlertResolved.entry(next.id as never, {
+          after: { severity: next.severity, resolution, version: next.version },
+        }),
+      );
+      return ok(await storedOf(deps, context, next));
+    },
+  );
+  return stored.ok ? ok(await detailOf(deps, context, stored.value)) : stored;
 }

@@ -6,7 +6,11 @@ import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { BatchCodeCrypto } from './ports/batch-code-crypto';
 import type { CreditRepository, ReferralRepository } from './ports/credit.repository';
-import type { CustomerOrderHistory, StoreFollows } from './ports/customer-facts';
+import type {
+  CustomerGroupMembership,
+  CustomerOrderHistory,
+  StoreFollows,
+} from './ports/customer-facts';
 import type { DeliveredOrderFacts } from './ports/order-facts';
 import type { ReferralSignals } from './ports/referral-signals';
 import type { WalletCredit } from './ports/wallet-credit';
@@ -48,6 +52,8 @@ export interface PromotionsDependencies {
   /** When a customer last ordered (customer-group segment; "new customer" of a referral). */
   readonly orderHistory: CustomerOrderHistory;
   readonly storeFollows: StoreFollows;
+  /** Whether a customer is in a manual customer group (customer-group segment MANUAL_GROUP). */
+  readonly groupMembership: CustomerGroupMembership;
   readonly orderFacts: DeliveredOrderFacts;
   readonly referralSignals: ReferralSignals;
   readonly walletCredit: WalletCredit;
