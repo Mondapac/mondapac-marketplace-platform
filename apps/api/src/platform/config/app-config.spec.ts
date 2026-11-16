@@ -91,6 +91,49 @@ describe('loadAppConfig', () => {
     });
   });
 
+  describe('the key of the assistant preview token', () => {
+    const KEY = 'preview_0123456789abcdefghijABCDEFGHIJ';
+
+    it('is null when unset and read when set', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).assistantPreviewTokenKey).toBeNull();
+      expect(
+        loadAppConfig({ HOSTED_MARKETS: 'AU', ASSISTANT_PREVIEW_TOKEN_KEY: KEY })
+          .assistantPreviewTokenKey,
+      ).toBe(KEY);
+    });
+
+    it('refuses a short key and never echoes it', () => {
+      let message = '';
+      try {
+        loadAppConfig({ HOSTED_MARKETS: 'AU', ASSISTANT_PREVIEW_TOKEN_KEY: 'short-secret' });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toMatch(/ASSISTANT_PREVIEW_TOKEN_KEY: must be 32 to 200/);
+      expect(message).not.toContain('short-secret');
+    });
+
+    it('refuses the dev-only placeholder in production only', () => {
+      const placeholder = 'dev-only-assistant-preview-0123456789';
+      const production = { HOSTED_MARKETS: 'AU', NODE_ENV: 'production', CLAMD_HOST: 'clamav' };
+      expect(
+        loadAppConfig({ HOSTED_MARKETS: 'AU', ASSISTANT_PREVIEW_TOKEN_KEY: placeholder })
+          .assistantPreviewTokenKey,
+      ).toBe(placeholder);
+      let message = '';
+      try {
+        loadAppConfig({ ...production, ASSISTANT_PREVIEW_TOKEN_KEY: placeholder });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toMatch(/ASSISTANT_PREVIEW_TOKEN_KEY: a dev-only placeholder is refused/);
+      expect(message).not.toContain(placeholder);
+      expect(
+        loadAppConfig({ ...production, ASSISTANT_PREVIEW_TOKEN_KEY: KEY }).assistantPreviewTokenKey,
+      ).toBe(KEY);
+    });
+  });
+
   describe('the external account hash keys (payments, package 6c)', () => {
     const K1 = 'k1_0123456789abcdefghijABCDEFGHIJ-xyz';
     const K2 = 'k2_0123456789abcdefghijABCDEFGHIJ-xyz';

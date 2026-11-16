@@ -935,6 +935,15 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       'CLAMD_HOST: required when NODE_ENV is production (every uploaded certificate file must be scanned, so none is ever stored unscanned)',
     );
   }
+  if (
+    parsed.success &&
+    parsed.data.NODE_ENV === 'production' &&
+    parsed.data.ASSISTANT_PREVIEW_TOKEN_KEY?.startsWith('dev-only-') === true
+  ) {
+    issues.push(
+      'ASSISTANT_PREVIEW_TOKEN_KEY: a dev-only placeholder is refused when NODE_ENV is production (each environment has its own key)',
+    );
+  }
   if (!parsed.success || issues.length > 0 || assistant.config === null) {
     throw new InvalidConfigError(issues);
   }

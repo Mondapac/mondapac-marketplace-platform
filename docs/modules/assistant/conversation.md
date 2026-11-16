@@ -108,7 +108,10 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
   expiry past the lifetime is refused even with a valid MAC. The token names no account.
 - Replay: a token is a bearer token for its 30 minutes and is not bound to a browser. Accepted
   because it unlocks only what any visitor gets with `audience: all`, under the same limits and
-  caps. Changing the key revokes every token at once. The panel should pass it to the storefront
+  caps. Changing the key revokes every token at once; after a rotation admins take a new token
+  from the panel. Each environment (testbed, staging, production) has its own key, so a token
+  never crosses between them; a `dev-only-` key is refused when `NODE_ENV` is production. The
+  panel should pass it to the storefront
   in the URL fragment (never a query string) and keep it in the tab's session storage only (F1/F3).
 - `?visitor=` stays a rollout aid, never a control.
 
