@@ -28,12 +28,6 @@ export interface NewPayoutChange extends PayoutChangeRecord {
   readonly externalAccountHmac?: string;
 }
 
-/** A page of the admin list: newest created first, `after` is the last row of the page before. */
-export interface AccountPage {
-  readonly limit: number;
-  readonly after: { readonly createdAt: Temporal.Instant; readonly sellerId: string } | null;
-}
-
 /** A seller's connected account as stored. */
 export interface ConnectedAccountRecord {
   readonly sellerId: string;
@@ -184,13 +178,6 @@ export interface ConnectedAccountStore {
     expectedRevision: number,
     at: Temporal.Instant,
   ): Promise<boolean>;
-
-  /** The Market's accounts, newest created first, optionally of one status. */
-  list(
-    market: MarketContext,
-    status: AccountStatus | null,
-    page: AccountPage,
-  ): Promise<readonly ConnectedAccountRecord[]>;
 }
 
 export const CONNECTED_ACCOUNT_STORE = Symbol('CONNECTED_ACCOUNT_STORE');
