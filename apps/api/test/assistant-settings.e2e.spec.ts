@@ -64,6 +64,8 @@ const STOREFRONT = {
   guestsAllowed: true,
   replyLanguage: 'buyer',
   welcomeText: 'Hi',
+  retentionDays: { customer: 30, guest: 30 },
+  quickPrompts: ['What is on special?'],
 };
 
 it('maps every refusal code of the assistant routes to its exact status', () => {
@@ -254,18 +256,20 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     expect(calls).toEqual([]);
   });
 
-  it('answers the storefront read with no session, passing only the visitor key', async () => {
+  it('answers the storefront read with no session, passing only the visitor key and the language', async () => {
     await boot();
     next = ok(STOREFRONT);
     const read = await http()
       .get(PUBLIC)
-      .query({ visitor: 'visitor-key-0123456789' })
+      .query({ visitor: 'visitor-key-0123456789', lang: 'en-AU' })
       .set({ 'x-market-id': code, cookie: sessionOf('admin', 3).cookie });
     expect(read.status).toBe(200);
     expect(read.headers['cache-control']).toBe('no-store');
     expect(read.headers['set-cookie']).toBeUndefined();
     expect(read.body).toEqual(STOREFRONT);
-    expect(calls).toEqual([{ name: 'public', input: { visitor: 'visitor-key-0123456789' } }]);
+    expect(calls).toEqual([
+      { name: 'public', input: { visitor: 'visitor-key-0123456789', lang: 'en-AU' } },
+    ]);
     expect(actorKinds).toEqual(['anonymous']);
   });
 

@@ -15,6 +15,7 @@ import type {
 import type { GuestTokens } from '../ports/guest-tokens';
 import type { MarketCalendar } from '../ports/market-calendar';
 import type { MessageLimits } from '../ports/message-limits';
+import type { QuickPrompts } from '../ports/quick-prompts';
 import type { SpendRepository, SpendTotals } from '../ports/spend.repository';
 
 // In-memory ports of the assistant for the use-case specs: the fake model answers from a script
@@ -262,6 +263,15 @@ export class SequenceGuestTokens implements GuestTokens {
     return /^[A-Za-z0-9_-]{43}$/.test(token)
       ? createHash('sha256').update(token).digest('hex')
       : null;
+  }
+}
+
+/** Fixed prompts: Japanese for a `ja` tag, else one English prompt; records each tag asked. */
+export class FixedQuickPrompts implements QuickPrompts {
+  readonly asked: (string | null)[] = [];
+  forBuyer(_market: MarketContext, lang: string | null) {
+    this.asked.push(lang);
+    return lang?.startsWith('ja') ? ['今週の特売は？'] : ['What is on special?'];
   }
 }
 
