@@ -1823,10 +1823,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'decided_by_account_id',
         'decision',
         'decision_reason',
+        'last_reminded_at',
         'status',
         'superseded_by_request_id',
       ],
     },
+    // The reminder event the in-app notice follows (as every module's outbox).
+    'system_requests.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'system_requests.request_activity': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'system_requests.request_counters': {
       table: ['INSERT', 'SELECT'],

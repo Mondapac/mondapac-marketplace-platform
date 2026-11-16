@@ -44,6 +44,9 @@ model SystemRequestsRequest {
   /// A later request on the same subject: this one can no longer be reverted.
   supersededByRequestId String?   @map("superseded_by_request_id") @db.Uuid
   commentCount          Int       @default(0) @map("comment_count")
+  /// When the overdue reminder of this request was last sent (null: never). It makes the reminder
+  /// job send at most one per Market day and survive a restart without a second send.
+  lastRemindedAt        DateTime? @map("last_reminded_at") @db.Timestamptz(6)
 
   activity SystemRequestsActivity[]
 
@@ -119,5 +122,35 @@ model SystemRequestsPolicySetting {
   updatedByAccountId String   @map("updated_by_account_id") @db.Uuid
 
   @@map("policy_settings")
+  @@schema("system_requests")
+}
+
+/// System requests' outbox: the overdue-reminder event (ids, the SR number, the area and an age in
+/// days; never the note or the values). Every outbox of every module has exactly these fields.
+model SystemRequestsOutbox {
+  /// UUIDv7 stamped by the outbox writer.
+  eventId          String    @id @map("event_id") @db.Uuid
+  /// "system-requests.<subject>-<verb>.v<N>"; the CHECK refuses another module's type.
+  type             String
+  /// The instant the use case took from Clock (UTC).
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  /// Market of the unit that wrote the event (ADR-0003); stamped by the writer.
+  marketId         String    @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); stamped by the writer, no database default.
+  tenantId         String    @map("tenant_id")
+  aggregateType    String    @map("aggregate_type")
+  aggregateId      String    @map("aggregate_id") @db.Uuid
+  /// The aggregate's version after the change; unique per aggregate (P 10).
+  aggregateVersion Int       @map("aggregate_version")
+  correlationId    String    @map("correlation_id")
+  /// The consumed event that caused this one, or null.
+  causationId      String?   @map("causation_id") @db.Uuid
+  payload          Json      @db.JsonB
+  /// Set by the relay when the event was handed to the bus; the only column that changes.
+  publishedAt      DateTime? @map("published_at") @db.Timestamptz(6)
+
+  /// No two events of one aggregate share a version (I7); led by market_id (data design C7).
+  @@unique([marketId, aggregateId, aggregateVersion])
+  @@map("outbox")
   @@schema("system_requests")
 }

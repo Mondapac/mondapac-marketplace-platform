@@ -26,10 +26,20 @@ import {
 } from '../../commission-payouts';
 import { REVIEWS_MODERATION_QUEUE, REVIEWS_SELLER_VIEW } from '../../reviews';
 import { PRICING_PRICE_HOLD_DECIDE, PRICING_PRICE_VIEW } from '../../pricing';
+import {
+  SYSTEM_REQUESTS_CATALOGUE_REVIEW,
+  SYSTEM_REQUESTS_CERTIFICATION_REVIEW,
+  SYSTEM_REQUESTS_CONTENT_REVIEW,
+  SYSTEM_REQUESTS_DELIVERY_REVIEW,
+  SYSTEM_REQUESTS_MARKETPLACE_REVIEW,
+  SYSTEM_REQUESTS_MONEY_REVIEW,
+  SYSTEM_REQUESTS_PEOPLE_REVIEW,
+} from '../../system-requests';
 import { SHIPPING_DELIVERY_SETTINGS_VIEW } from '../../shipping';
 import { SELLERS_SELLER_FILE_REVIEW } from '../../sellers';
 import {
   ADMIN_NOTICE_KINDS,
+  ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS,
   ADMIN_PLATFORM_IMPORT_FINISHED,
   ADMIN_REVIEW_HELD,
   ADMIN_REVIEW_REPORTED,
@@ -165,7 +175,48 @@ const ADMIN_REVIEW_QUEUE_ACCESS: AccessDeclaration = {
   rule: { kind: 'permissions', allOf: [REVIEWS_MODERATION_QUEUE.key] },
 };
 
+/**
+ * A reminder for an overdue system request is shown to the admins who hold the request's area
+ * review key (the review policy's own requests go to the people reviewers, as their decision does).
+ */
+const overdueAccess = (area: string, key: PermissionKey): AccessDeclaration => ({
+  name: `notifications.see-admin-system-request-overdue-${area}-notices`,
+  rule: { kind: 'permissions', allOf: [key] },
+});
+
 const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = {
+  [ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS.people]: overdueAccess(
+    'people',
+    SYSTEM_REQUESTS_PEOPLE_REVIEW.key,
+  ),
+  [ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS.money]: overdueAccess(
+    'money',
+    SYSTEM_REQUESTS_MONEY_REVIEW.key,
+  ),
+  [ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS.delivery]: overdueAccess(
+    'delivery',
+    SYSTEM_REQUESTS_DELIVERY_REVIEW.key,
+  ),
+  [ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS.catalogue]: overdueAccess(
+    'catalogue',
+    SYSTEM_REQUESTS_CATALOGUE_REVIEW.key,
+  ),
+  [ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS.certification]: overdueAccess(
+    'certification',
+    SYSTEM_REQUESTS_CERTIFICATION_REVIEW.key,
+  ),
+  [ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS.marketplace]: overdueAccess(
+    'marketplace',
+    SYSTEM_REQUESTS_MARKETPLACE_REVIEW.key,
+  ),
+  [ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS.content]: overdueAccess(
+    'content',
+    SYSTEM_REQUESTS_CONTENT_REVIEW.key,
+  ),
+  [ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS['review-policy']]: overdueAccess(
+    'review-policy',
+    SYSTEM_REQUESTS_PEOPLE_REVIEW.key,
+  ),
   [ADMIN_SELLER_CERTIFICATE_SUBMITTED]: {
     name: 'notifications.see-admin-certificate-notices',
     rule: { kind: 'permissions', allOf: [CERTIFICATION_SELLER_CERTIFICATE_REVIEW.key] },
