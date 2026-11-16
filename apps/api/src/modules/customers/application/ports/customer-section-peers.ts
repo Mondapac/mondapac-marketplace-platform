@@ -55,6 +55,11 @@ export interface SectionSavedItem {
 export interface SectionReminderSent {
   readonly cartChangedAt: string;
   readonly stage: 1 | 2;
+  /**
+   * When notifications took the stage for sending (`cart_reminders.taken_at`), not proof of
+   * delivery: the claim stays when the send then failed or was skipped (no consent, no address,
+   * unsubscribe or contact not configured), so the stage is never retried.
+   */
   readonly sentAt: string;
 }
 

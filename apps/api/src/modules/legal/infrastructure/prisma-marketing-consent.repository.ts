@@ -58,6 +58,14 @@ export class PrismaMarketingConsentRepository implements MarketingConsentReposit
   ): Promise<MarketingConsentChange[]> {
     const rows = await this.prisma.tx(market).legalMarketingConsentChange.findMany({
       where: changesWhere(market, accountId, channels),
+      select: {
+        id: true,
+        accountId: true,
+        channel: true,
+        granted: true,
+        source: true,
+        occurredAt: true,
+      },
       orderBy: [{ occurredAt: direction }, { id: direction }],
       skip: window.offset,
       take: window.limit,

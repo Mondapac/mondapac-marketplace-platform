@@ -9,6 +9,7 @@ import type {
 } from '../contracts/cart-admin.facade';
 import type { CartRepository } from './ports/cart.repository';
 import type { SavedItemRepository } from './ports/saved-item.repository';
+import { MAX_SAVED_ITEMS } from './saved-operations';
 
 // The admin's reads of one customer's cart (customers management phase 2b): the current cart and
 // the saved-for-later list, ids and quantities only. Only a platform admin that is not acting as
@@ -20,8 +21,11 @@ export interface AdminCartDependencies {
   readonly saved: Pick<SavedItemRepository, 'list' | 'count'>;
 }
 
-/** The saved items one account can hold is capped at 100 by the use case; read a margin over it. */
-const SAVED_READ_CAP = 200;
+/**
+ * The saved items one account can hold are capped at {@link MAX_SAVED_ITEMS} by the save use
+ * case; the admin read allows twice that as a margin, so it follows the cap if the cap changes.
+ */
+export const SAVED_READ_CAP = MAX_SAVED_ITEMS * 2;
 
 export function isPlatformAdmin(context: CallContext): boolean {
   const { actor } = context;

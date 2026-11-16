@@ -219,6 +219,29 @@ describe.each(['AU', 'ZZ'] as const)('customer page sections in market %s', (cod
       expect(identity.requests).toEqual([]);
     });
 
+    it('takes ISO instants only: refuses a bare day, junk and an empty range before asking identity', async () => {
+      const identity = identityPeer();
+      const { deps, gate, admin, customer } = setup({ identity: identity.peer });
+      const useCase = new AdminCustomerSignIns(gate, deps);
+      const from = NOW.subtract({ hours: 48 }).toString();
+      for (const [filters, path, fieldCode] of [
+        [{ from: '2026-11-14' }, 'filters.from', 'format'],
+        [{ to: '2026-11-14' }, 'filters.to', 'format'],
+        [{ from: 'yesterday' }, 'filters.from', 'format'],
+        [{ from: 42 }, 'filters.from', 'format'],
+        [{ from, to: from }, 'filters.to', 'range'],
+        [{ from, to: NOW.subtract({ hours: 72 }).toString() }, 'filters.to', 'range'],
+      ] as const) {
+        await expect(
+          useCase.execute(admin(), { accountId: customer.accountId, filters }),
+        ).resolves.toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path, code: fieldCode }] },
+        });
+      }
+      expect(identity.requests).toEqual([]);
+    });
+
     it('fails closed while identity is not bound', async () => {
       const { deps, gate, admin, customer } = setup();
       const useCase = new AdminCustomerSignIns(gate, {

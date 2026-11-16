@@ -506,6 +506,12 @@ Every list here is a super list (`customer-section-lists.ts`): POST with `filter
 protected `customers.customers.export` and a fresh step-up, spent in the unit that writes
 `customers.customer-section.exported` (section, format, count).
 
+The date filters of `sign-ins` and `cart-additions` (`filters.from`, `filters.to`) take ISO 8601
+instants with an offset or `Z` (`platform/list-query/instant-range.ts`), not days: the panel turns
+the days the admin picked into instants in the admin's zone, or the Market's (ADR-0005). `from` is
+inclusive, `to` exclusive; a bare day, junk, or `to` at or before `from` answers 400
+`validation.failed`. (The timeline's filter, from part 1, still takes local days.)
+
 - **Security (identity).** `POST sign-ins` (+ `/export`): the last 90 days; time, result
   (success, failure, credential-change), identity's outcome code and the coarse device. No
   address and no city: `city` is always null (seam for a geo lookup the owner has not decided).
@@ -523,12 +529,19 @@ protected `customers.customers.export` and a fresh step-up, spent in the unit th
   identity's: if it fails the action stands and a warning is logged (ids only).
 - **Cart (cart.customer-cart.view).** `GET cart` (lines by ids, quantity, the price when added as
   `{ amount: string, currency }`, `savedCount`) and `POST saved-items` (+ export). Saved items
-  are paged in cart's memory: an account holds at most 100.
+  are paged in cart's memory: an account holds at most `MAX_SAVED_ITEMS` (100) and the read
+  loads at most `SAVED_READ_CAP` (twice that, pinned by a test).
 - **Reminders sent (notifications.customer-cart-reminder.view).** `POST cart-reminders`
-  (+ export): sent at, stage, the cart change; kept 30 days.
+  (+ export): `sentAt`, stage, the cart change; kept 30 days. `sentAt` is
+  `cart_reminders.taken_at`, when notifications claimed the stage for sending, not proof of
+  delivery: the claim stays when the send then fails or is skipped (no consent, no address,
+  unsubscribe or contact not configured), and the stage is not retried. The export column is
+  "Taken for sending at".
 - **Behaviour (engagement.customer-behaviour.view).** `GET behaviour`: the personalization
   switch, counts by kind and the ten most viewed categories over the 12 months kept; never the
-  search text. `POST cart-additions` (+ export, date range): the add-to-cart history.
+  search text. `POST cart-additions` (+ export, date range): the add-to-cart history. A DB CHECK
+  (`behaviour_events_shape_check`) gives every addition its offer and variant, so the page and
+  its total count the same rows.
 - **Consent (legal.customer-consent.view).** `GET consent` (each channel; not granted until the
   customer agreed) and `POST consent-history` (+ export, channel filter) with the source. Read
   only.

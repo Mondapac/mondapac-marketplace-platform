@@ -97,7 +97,7 @@ export const CART_REMINDERS_SECTION: SectionListSpec<NoFilters, 'sent', SectionR
   sheet: {
     baseName: 'customer-cart-reminders',
     name: 'Cart reminders',
-    header: ['Sent at', 'Stage', 'Cart changed at'],
+    header: ['Taken for sending at', 'Stage', 'Cart changed at'],
     cells: (row) => [row.sentAt, row.stage, row.cartChangedAt],
   },
 };

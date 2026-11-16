@@ -354,6 +354,7 @@ column added by that mini-review, not now.
 | `origin` | `inet` | no | **Personal, plain**: the client address. The only place in the database that stores one |
 | `session_id` | `uuid` | yes | Plain id; set on success |
 | `correlation_id` | `text` | no | CHECK as on `audit_log` |
+| `device` | `varchar(32)` | yes | Coarse device of the request, `<browser>.<system>` from fixed lists (as on `sessions.device`); CHECK `device IS NULL OR device ~ '^[a-z]+\.[a-z]+$'`. **Never the raw User-Agent.** NULL when the request sent none and on every record written before migration `20261116110000_identity_sign_in_record_device` (customers phase 2b: the customer page's logins list) |
 
 - Append-only for the application by privilege: `INSERT`, `SELECT` and `DELETE`, no `UPDATE`
   (section 7; H6). No trigger and no hash chain: unlike `audit_log` it has a retention, and the
@@ -361,8 +362,9 @@ column added by that mini-review, not now.
 - **Retention: 90 days, with the full address** (H3). `identity.purge-expired` deletes `WHERE
   market_id = $1 AND occurred_at < $now − 90 days`, one day of `occurred_at` per statement, on the
   index `(market_id, occurred_at)`. Safe to run twice and concurrently.
-- Not added: `(market_id, account_id, occurred_at)`. No screen reads the records in Phase 2 (D
-  5.3); it arrives with that screen or with erasure, whichever is first.
+- Index `(market_id, account_id, occurred_at)` (migration
+  `20261016210000_identity_sign_in_records_account_index`): one account's records, newest first.
+  It serves the customer page's logins list (customers phase 2b) and erasure.
 - Volume: attacker-driven but bounded by the throttles; section 9.
 
 ### 3.7 `identity.one_time_links` (slice 3; D 3.7, 6.6)
@@ -649,7 +651,7 @@ holds it). Only verified customer accounts get a row.
 | A second-factor secret or a recovery code in clear | Ciphertext under the subject key; keyed hashes (`SubjectKeyService.hmac`, H2) |
 | An unwrapped data key, or the wrapping key | `subject_keys.wrapped_key` only (PF 4 row 1) |
 | The email typed at a failed sign-in for an unknown address | A keyed hash in `sign_in_throttles`; `sign_in_records.account_id` is NULL |
-| A client address anywhere but `sign_in_records.origin` (full address, 90 days: H3) | Keyed hashes in throttle keys (the IPv4 address or the IPv6 /64, HF3). No address on sessions, links, invitations or audit rows; no user agent and no device label anywhere |
+| A client address anywhere but `sign_in_records.origin` (full address, 90 days: H3) | Keyed hashes in throttle keys (the IPv4 address or the IPv6 /64, HF3). No address on sessions, links, invitations or audit rows. No raw User-Agent anywhere; the only device data is the coarse `<browser>.<system>` label on `sessions.device` and `sign_in_records.device` (fixed lists, pattern CHECK) |
 | The throttle secret | Stack configuration: 32 random bytes, required at boot, never logged (H4) |
 | Roles, permission keys or seller state on a session | Read on every request (R4) |
 | The reject or suspend reason in clear, or outside `access_decisions` | Ciphertext; the decision id in audit rows and events |
