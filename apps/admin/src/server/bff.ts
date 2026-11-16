@@ -743,8 +743,6 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
 const SEARCH_TEXT = /^[\s\S]{1,80}$/;
 /** An instant as the API takes it: ISO 8601 date and time with a zone (`Z` or an offset). */
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
-/** Query values that must have a shape to cross; a value of another shape is dropped. */
-const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/;
 /** The Seller accounts list's filters and sort (payments validates every value again). */
 const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
   status: /^(not-started|pending|enabled|restricted|rejected)$/,
