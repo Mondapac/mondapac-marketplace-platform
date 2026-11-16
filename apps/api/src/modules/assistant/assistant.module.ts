@@ -15,6 +15,7 @@ import { CatalogModule } from '../catalog';
 import { SellersModule } from '../sellers';
 import { NotificationsModule } from '../notifications';
 import { SearchModule } from '../search';
+import { SettingsModule } from '../settings';
 import type { AssistantDependencies } from './application/assistant-dependencies';
 import { ASSISTANT_RUNTIME } from './application/ports/assistant-runtime';
 import { ASSISTANT_SETTINGS_REPOSITORY } from './application/ports/assistant-settings.repository';
@@ -93,7 +94,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * settings.
  */
 @Module({
-  imports: [SearchModule, CatalogModule, SellersModule, NotificationsModule, IdentityModule],
+  imports: [
+    SearchModule,
+    CatalogModule,
+    SellersModule,
+    NotificationsModule,
+    IdentityModule,
+    SettingsModule,
+  ],
   controllers: [
     AdminAssistantSettingsController,
     AdminPreviewTokenController,
