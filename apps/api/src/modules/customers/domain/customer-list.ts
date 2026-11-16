@@ -49,6 +49,8 @@ export const CUSTOMER_FILTER_KEYS = [
   'ordersMax',
   'spentMin',
   'spentMax',
+  // Phase 2: a manual group's id (its members; the group's members page is this filter).
+  'group',
 ] as const;
 export type CustomerFilterKey = (typeof CUSTOMER_FILTER_KEYS)[number];
 
@@ -73,6 +75,8 @@ export interface CustomerSelector {
   /** Minor units of the Market's currency. */
   readonly spentMin: bigint | null;
   readonly spentMax: bigint | null;
+  /** A manual group's id: only its members. */
+  readonly group: string | null;
 }
 
 export interface CustomerFieldFailure {
@@ -112,6 +116,8 @@ function bool(value: unknown, path: string): Result<boolean, CustomerFieldFailur
   if (value === false || value === 'false') return ok(false);
   return fail(path, 'value');
 }
+
+const GROUP_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const present = (value: unknown): boolean => value !== undefined && value !== null && value !== '';
 
@@ -163,6 +169,7 @@ export function parseCustomerSelector(
     ordersMax: null as number | null,
     spentMin: null as bigint | null,
     spentMax: null as bigint | null,
+    group: null as string | null,
   };
 
   if (present(filters['status'])) {
@@ -192,6 +199,12 @@ export function parseCustomerSelector(
     const value = minor(filters[key], path(key));
     if (!value.ok) return value;
     selector[key] = value.value;
+  }
+
+  if (present(filters['group'])) {
+    const group = filters['group'];
+    if (typeof group !== 'string' || !GROUP_ID.test(group)) return fail(path('group'), 'format');
+    selector.group = group;
   }
 
   // A range that cannot match anything is a request error, not an empty list.
@@ -243,6 +256,7 @@ export function filtersOf(selector: CustomerSelector): Record<string, string | b
     const value = selector[key];
     if (value !== null) filters[key] = Number(value);
   }
+  if (selector.group !== null) filters['group'] = selector.group;
   return filters;
 }
 
@@ -277,4 +291,13 @@ export interface CustomerListRow {
   readonly currency: string | null;
   readonly refundCount: number;
   readonly refundedMinor: bigint;
+  /** The manual groups the customer is in (phase 2), oldest membership first. */
+  readonly groups: readonly CustomerGroupRef[];
+}
+
+/** A group a customer is in, as a list row names it. */
+export interface CustomerGroupRef {
+  readonly groupId: string;
+  readonly name: string;
+  readonly archived: boolean;
 }

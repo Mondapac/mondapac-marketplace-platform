@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 export interface TabItem {
   readonly id: string;
   readonly label: string;
+  /** A longer explanation of the tab, as a pointer hint. */
+  readonly title?: string;
   /** A link tab (a page of its own). Without it the tab is a button and calls `onSelect`. */
   readonly href?: string;
 }
@@ -82,6 +84,7 @@ export function Tabs({ label, items, activeId, onSelect }: TabsProps) {
             key={item.id}
             type="button"
             aria-pressed={active}
+            {...(item.title === undefined ? {} : { title: item.title })}
             onClick={() => onSelect?.(item.id)}
             className={className}
           >
@@ -92,6 +95,7 @@ export function Tabs({ label, items, activeId, onSelect }: TabsProps) {
             key={item.id}
             href={item.href}
             aria-current={active ? 'page' : undefined}
+            {...(item.title === undefined ? {} : { title: item.title })}
             className={className}
           >
             {item.label}

@@ -5,7 +5,10 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { COMMISSION_PAYOUTS_FACADE, type CommissionPayoutsFacade } from '../../commission-payouts';
 import { CUSTOMERS_READ_FACADE, type CustomersReadFacade } from '../../customers';
-import { FacadeCustomerOrderHistory } from './facade-customer-order-history';
+import {
+  FacadeCustomerGroupMembership,
+  FacadeCustomerOrderHistory,
+} from './facade-customer-order-history';
 import { PRICING_FACADE, type PricingFacade } from '../../pricing';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { WALLET_FACADE, type WalletFacade } from '../../wallet';
@@ -22,8 +25,10 @@ import {
   type ReferralRepository,
 } from '../application/ports/credit.repository';
 import {
+  CUSTOMER_GROUP_MEMBERSHIP,
   CUSTOMER_ORDER_HISTORY,
   STORE_FOLLOWS,
+  type CustomerGroupMembership,
   type CustomerOrderHistory,
   type StoreFollows,
 } from '../application/ports/customer-facts';
@@ -76,7 +81,13 @@ import {
 } from './prisma-settings.repository';
 import { CryptoBatchCodeCrypto } from './crypto-batch-code-crypto';
 import { PrismaBatchCodeRepository } from './prisma-batch-code.repository';
-import { UnknownFlashSales } from './unknown-flash-sales';
+import { RedemptionFlashSales } from './redemption-flash-sales';
+import { PrismaRedemptionRepository } from './prisma-redemption.repository';
+import {
+  REDEMPTION_REPOSITORY,
+  type RedemptionRepository,
+} from '../application/ports/redemption.repository';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 
 /** Binds the ports of promotions. Only this layer may reach `PrismaService`. */
 export const promotionsProviders: readonly FactoryProvider[] = [
@@ -133,8 +144,16 @@ export const promotionsProviders: readonly FactoryProvider[] = [
       new CryptoBatchCodeCrypto(config.promotionsCodePepper),
   },
   {
+    provide: REDEMPTION_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): RedemptionRepository =>
+      new PrismaRedemptionRepository(prisma),
+  },
+  {
     provide: FLASH_SALES,
-    useFactory: (): FlashSales => new UnknownFlashSales(),
+    inject: [UNIT_OF_WORK, REDEMPTION_REPOSITORY],
+    useFactory: (units: UnitOfWork, redemptions: RedemptionRepository): FlashSales =>
+      new RedemptionFlashSales(units, redemptions),
   },
   {
     provide: SELLER_ACTIVITY,
@@ -164,6 +183,12 @@ export const promotionsProviders: readonly FactoryProvider[] = [
     inject: [CUSTOMERS_READ_FACADE],
     useFactory: (customers: CustomersReadFacade): CustomerOrderHistory =>
       new FacadeCustomerOrderHistory(customers),
+  },
+  {
+    provide: CUSTOMER_GROUP_MEMBERSHIP,
+    inject: [CUSTOMERS_READ_FACADE],
+    useFactory: (customers: CustomersReadFacade): CustomerGroupMembership =>
+      new FacadeCustomerGroupMembership(customers),
   },
   { provide: STORE_FOLLOWS, useFactory: (): StoreFollows => new UnknownStoreFollows() },
   {

@@ -15,6 +15,7 @@ vi.mock('../step-up/step-up.tsx', async () => {
 });
 
 import { callApi } from '../api/client.ts';
+import { expectToast } from '../../test/toast-spy.ts';
 import { AiSettingsPanel } from './ai-settings-panel.tsx';
 import { aiProblemOf } from './errors.ts';
 import { modelSetupOf, settingOf, settingsAnswerOf, type AiSettingsAnswer } from './types.ts';
@@ -99,6 +100,72 @@ describe('Settings › AI', () => {
       'tok',
     );
     expect(screen.getByText(/Last changed/)).toBeTruthy();
+  });
+
+  describe('where a change is reviewed', () => {
+    const review = { reviewed: true, risk: 'medium' };
+    const REVIEWED: AiSettingsAnswer = {
+      settings: [
+        { ...row('ai-description-writer', 'off', 0), review },
+        { ...row('ai-description-writer-tier', 'fast', 0), review },
+      ],
+    };
+
+    it('asks for no note when the view does not say reviewed', () => {
+      view();
+      expect(screen.queryByLabelText('Note for reviewers')).toBeNull();
+    });
+
+    it('does not save without a note', () => {
+      view({ initial: REVIEWED });
+      fireEvent.click(screen.getByRole('switch'));
+      expect(screen.getByText(/Write a note for the reviewers/)).toBeTruthy();
+      expect(call).not.toHaveBeenCalled();
+    });
+
+    it('sends the note with the change and says it was sent for review', async () => {
+      call.mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: {
+          ...row('ai-description-writer', 'on', 1),
+          review,
+          request: { id: 'r1', number: 5 },
+        },
+      });
+      view({ initial: REVIEWED });
+      fireEvent.change(screen.getByLabelText('Note for reviewers'), {
+        target: { value: 'Pilot with sellers' },
+      });
+      fireEvent.click(screen.getByRole('switch'));
+      await expectToast('Sent for review as SR-5', 'info');
+      expect(call).toHaveBeenCalledWith(
+        'PUT',
+        'settings/admin/ai',
+        {
+          code: 'ai-description-writer',
+          value: 'on',
+          expectedVersion: 0,
+          note: 'Pilot with sellers',
+        },
+        'tok',
+      );
+    });
+
+    it('shows a 400 on note on the note field', async () => {
+      call.mockResolvedValue({
+        ok: false,
+        failure: {
+          status: 400,
+          code: 'validation.failed',
+          details: { fields: [{ path: 'note', code: 'required' }] },
+        },
+      });
+      view({ initial: REVIEWED });
+      fireEvent.change(screen.getByLabelText('Note for reviewers'), { target: { value: 'x' } });
+      fireEvent.click(screen.getByRole('switch'));
+      expect(await screen.findByText(/The note was refused/)).toBeTruthy();
+    });
   });
 
   it('changes the tier on its own version', async () => {

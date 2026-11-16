@@ -34,6 +34,10 @@ function show(target: RowTarget) {
     </NextIntlClientProvider>,
   );
 }
+const typeName = () =>
+  fireEvent.change(screen.getByLabelText('Type the name to confirm'), {
+    target: { value: 'Ada Admin' },
+  });
 const openMenu = () =>
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Ada Admin' }));
 
@@ -124,6 +128,7 @@ describe('team row actions', () => {
     show(account());
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Reset two-step verification…' }));
+    typeName();
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
     expect(await screen.findByText("This person has permissions you don't have.")).toBeTruthy();
     expect(screen.getByRole('dialog')).toBeTruthy();
@@ -254,22 +259,63 @@ describe('team row actions', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
-  it('labels the confirmation and uses the destructive button for deactivate only', () => {
+  it('labels the confirmation; every confirmation has a red button and focus on Cancel', () => {
     show(account());
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Reset two-step verification…' }));
     expect(
       screen.getByRole('dialog', { name: 'Reset two-step verification for Ada Admin?' }),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Reset' }).className).not.toContain(
-      'text-critical-fg',
-    );
+    expect(screen.getByRole('button', { name: 'Reset' }).className).toContain('bg-critical-solid');
     fireEvent.click(screen.getByRole('button', { name: 'Keep as it is' }));
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate account…' }));
     expect(screen.getByRole('button', { name: 'Deactivate account' }).className).toContain(
-      'text-critical-fg',
+      'bg-critical-solid',
     );
+  });
+
+  it('asks to type the name before resetting two-step, and sends nothing until it matches', () => {
+    show(account());
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reset two-step verification…' }));
+    const reset = screen.getByRole<HTMLButtonElement>('button', { name: 'Reset' });
+    expect(reset.disabled).toBe(true);
+    fireEvent.click(reset);
+    expect(call).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Type the name to confirm'), {
+      target: { value: 'Ada' },
+    });
+    expect(reset.disabled).toBe(true);
+    typeName();
+    expect(reset.disabled).toBe(false);
+  });
+
+  it('shows the step-up note at level 3 only', () => {
+    show(account());
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reset two-step verification…' }));
+    expect(screen.getByText("We'll ask for your two-step code next.")).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep as it is' }));
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate account…' }));
+    expect(screen.queryByText("We'll ask for your two-step code next.")).toBeNull();
+  });
+
+  it('stays quiet and keeps the dialog open when the code dialog is cancelled', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 0, code: 'step-up.cancelled' } });
+    show(account());
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reset two-step verification…' }));
+    typeName();
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Reset' }).disabled).toBe(false),
+    );
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(router.refresh).not.toHaveBeenCalled();
   });
 
   it('sends an immediate action once even if it is selected twice before the answer', async () => {

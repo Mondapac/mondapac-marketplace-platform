@@ -130,6 +130,16 @@ describe('TaxPanel', () => {
     await waitFor(() => expect(call).toHaveBeenCalledWith('GET', 'tax/admin/strategies'));
   });
 
+  it('asks before Cancel throws away a typed strategy', () => {
+    mount(data({ strategies: [] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add strategy' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Reduced' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByLabelText('Name')).toBeNull();
+    expect(call).not.toHaveBeenCalled();
+  });
+
   it('refuses a bad rate on the screen and sends nothing', () => {
     mount(data({ strategies: [] }));
     fireEvent.click(screen.getByRole('button', { name: 'Add strategy' }));

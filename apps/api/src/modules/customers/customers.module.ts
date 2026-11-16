@@ -89,6 +89,34 @@ import { AdminSavedFilterDelete } from './application/use-cases/admin-saved-filt
 import { AdminSavedFilterUpdate } from './application/use-cases/admin-saved-filter-update.use-case';
 import { AdminSavedFiltersList } from './application/use-cases/admin-saved-filters-list.use-case';
 import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
+import type { CustomerManagementDependencies } from './application/customer-management-dependencies';
+import { CUSTOMER_GROUP_REPOSITORY } from './application/ports/customer-groups.repository';
+import {
+  CUSTOMER_MANAGEMENT_PEERS,
+  type CustomerManagementPeers,
+} from './application/ports/customer-management-peers';
+import {
+  CUSTOMER_NOTE_CIPHER,
+  CUSTOMER_NOTE_REPOSITORY,
+} from './application/ports/customer-notes.repository';
+import { CUSTOMER_TIMELINE_REPOSITORY } from './application/ports/customer-timeline.repository';
+import { AdminCustomerGroupCreate } from './application/use-cases/admin-customer-group-create.use-case';
+import { AdminCustomerGroupMembersAdd } from './application/use-cases/admin-customer-group-members-add.use-case';
+import { AdminCustomerGroupMembersRemove } from './application/use-cases/admin-customer-group-members-remove.use-case';
+import { AdminCustomerGroupUpdate } from './application/use-cases/admin-customer-group-update.use-case';
+import { AdminCustomerGroupView } from './application/use-cases/admin-customer-group-view.use-case';
+import { AdminCustomerGroupsList } from './application/use-cases/admin-customer-groups-list.use-case';
+import { AdminCustomerNoteAdd } from './application/use-cases/admin-customer-note-add.use-case';
+import { AdminCustomerNotesList } from './application/use-cases/admin-customer-notes-list.use-case';
+import { AdminCustomerRename } from './application/use-cases/admin-customer-rename.use-case';
+import { AdminCustomerTimelineExport } from './application/use-cases/admin-customer-timeline-export.use-case';
+import { AdminCustomerTimeline } from './application/use-cases/admin-customer-timeline.use-case';
+import {
+  RecordCustomerTimeline,
+  type TimelineRecordDependencies,
+} from './application/use-cases/record-customer-timeline.use-case';
+import { ReadCustomerGroupMembership } from './application/use-cases/read-customer-group-membership.use-case';
+import { AdminCustomerManagementController } from './presentation/admin-customer-management.controller';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: CustomersDependencies) => U;
 
@@ -185,14 +213,24 @@ type PageUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerPageDependencie
 function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
-    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_LIST_READER, CLOCK, AUDIT_WRITER],
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      CUSTOMER_LIST_READER,
+      CLOCK,
+      AUDIT_WRITER,
+      CUSTOMER_TIMELINE_REPOSITORY,
+      ID_GENERATOR,
+    ],
     useFactory: (
       gate: UseCaseGate,
       unitOfWork: CustomerPageDependencies['unitOfWork'],
       listReader: CustomerPageDependencies['listReader'],
       clock: CustomerPageDependencies['clock'],
       audit: CustomerPageDependencies['audit'],
-    ) => new type(gate, { unitOfWork, listReader, clock, audit }),
+      timeline: CustomerPageDependencies['timeline'],
+      ids: CustomerPageDependencies['ids'],
+    ) => new type(gate, { unitOfWork, listReader, clock, audit, timeline, ids }),
   };
 }
 
@@ -220,6 +258,42 @@ function savedViewProvider<U>(type: SavedViewUseCaseClass<U>): FactoryProvider<U
       ids: SavedViewDependencies['ids'],
       shareCheck: SavedFilterShareCheck,
     ) => new type(gate, { unitOfWork, savedFilters, audit, clock, ids, shareCheck }),
+  };
+}
+
+type ManagementUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerManagementDependencies) => U;
+
+const MANAGEMENT_PORTS: readonly [
+  Exclude<keyof CustomerManagementDependencies, 'identity'>,
+  InjectionToken,
+][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['groups', CUSTOMER_GROUP_REPOSITORY],
+  ['notes', CUSTOMER_NOTE_REPOSITORY],
+  ['noteCipher', CUSTOMER_NOTE_CIPHER],
+  ['timeline', CUSTOMER_TIMELINE_REPOSITORY],
+  ['listReader', CUSTOMER_LIST_READER],
+  ['audit', AUDIT_WRITER],
+  ['clock', CLOCK],
+  ['ids', ID_GENERATOR],
+  ['stepUp', STEP_UP_CONSUMER],
+  ['sheetWriter', SHEET_WRITER],
+];
+
+/** The admin's management of customers (phase 2): its ports, plus identity bound at start. */
+function managementUseCaseProvider<U>(type: ManagementUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      CUSTOMER_MANAGEMENT_PEERS,
+      ...MANAGEMENT_PORTS.map(([, token]) => token),
+    ],
+    useFactory: (gate: UseCaseGate, peers: CustomerManagementPeers, ...values: unknown[]) =>
+      new type(gate, {
+        ...Object.fromEntries(MANAGEMENT_PORTS.map(([name], index) => [name, values[index]])),
+        identity: peers.identity,
+      } as unknown as CustomerManagementDependencies),
   };
 }
 
@@ -257,6 +331,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminAccountDeletionSettingsController,
     AdminAccountDeletionRequestsController,
     AdminCustomersController,
+    AdminCustomerManagementController,
   ],
   providers: [
     PersistenceModule.auditWriterFor('customers'),
@@ -295,6 +370,55 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ...[AdminCustomerOverview, AdminCustomerTabOpened].map((type) =>
       pageUseCaseProvider(type as PageUseCaseClass<unknown>),
     ),
+    ...[
+      AdminCustomerGroupsList,
+      AdminCustomerGroupView,
+      AdminCustomerGroupCreate,
+      AdminCustomerGroupUpdate,
+      AdminCustomerGroupMembersAdd,
+      AdminCustomerGroupMembersRemove,
+      AdminCustomerNotesList,
+      AdminCustomerNoteAdd,
+      AdminCustomerTimeline,
+      AdminCustomerTimelineExport,
+      AdminCustomerRename,
+    ].map((type) => managementUseCaseProvider(type as ManagementUseCaseClass<unknown>)),
+    {
+      provide: RecordCustomerTimeline,
+      inject: [
+        USE_CASE_GATE,
+        CUSTOMER_READ_MODEL_PEERS,
+        UNIT_OF_WORK,
+        CUSTOMER_TIMELINE_REPOSITORY,
+        ID_GENERATOR,
+        CLOCK,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        peers: CustomerReadModelPeers,
+        unitOfWork: TimelineRecordDependencies['unitOfWork'],
+        timeline: TimelineRecordDependencies['timeline'],
+        ids: TimelineRecordDependencies['ids'],
+        clock: TimelineRecordDependencies['clock'],
+      ) =>
+        new RecordCustomerTimeline(gate, {
+          identity: peers.identity,
+          ordering: peers.ordering,
+          unitOfWork,
+          timeline,
+          ids,
+          clock,
+        }),
+    },
+    {
+      provide: ReadCustomerGroupMembership,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_GROUP_REPOSITORY],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: CustomerManagementDependencies['unitOfWork'],
+        groups: CustomerManagementDependencies['groups'],
+      ) => new ReadCustomerGroupMembership(gate, { unitOfWork, groups }),
+    },
     ...[AdminCustomersList, AdminCustomersIds].map((type) =>
       listUseCaseProvider(type as ListUseCaseClass<unknown>),
     ),
@@ -340,9 +464,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => savedViewProvider(type as SavedViewUseCaseClass<unknown>)),
     {
       provide: CUSTOMERS_READ_FACADE,
-      inject: [ReadCustomerLastOrder, ReadOwnLastOrder],
-      useFactory: (read: ReadCustomerLastOrder, own: ReadOwnLastOrder) =>
-        new CustomersReadFacadeImplementation(read, own),
+      inject: [ReadCustomerLastOrder, ReadOwnLastOrder, ReadCustomerGroupMembership],
+      useFactory: (
+        read: ReadCustomerLastOrder,
+        own: ReadOwnLastOrder,
+        membership: ReadCustomerGroupMembership,
+      ) => new CustomersReadFacadeImplementation(read, own, membership),
     },
     {
       provide: CUSTOMERS_ACCOUNT_DELETION_FACADE,
@@ -367,6 +494,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     CUSTOMER_READ_MODEL_PEERS,
     SyncCustomerReadModel,
     ReconcileCustomerReadModels,
+    CUSTOMER_MANAGEMENT_PEERS,
+    RecordCustomerTimeline,
   ],
 })
 export class CustomersModule {}

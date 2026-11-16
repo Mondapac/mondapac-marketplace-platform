@@ -1,4 +1,5 @@
 import { unusedChangeTrail } from '../../../../test/support/change-trail-fakes';
+import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -94,6 +95,7 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
   let customers: FakeCustomerDirectory;
   let audit: RecordingAudit;
   let deps: AdminCreditDependencies;
+  let review = new RecordingReview();
   let seq = 0;
   let stepUpAnswer: Awaited<ReturnType<AdminCreditDependencies['stepUp']['consume']>> | null;
   let stepUpAsked: string[];
@@ -140,11 +142,13 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
     audit = new RecordingAudit();
     stepUpAnswer = null;
     stepUpAsked = [];
+    review = new RecordingReview();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       wallet,
       settings: setting,
       policy: new ConfigWalletPolicy(markets),
+      review,
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,

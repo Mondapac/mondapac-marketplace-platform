@@ -2,19 +2,25 @@ import type { CallContext } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { PAYMENTS_CONNECTED_ACCOUNT_VIEW } from '../../contracts/permissions';
 import {
-  listConnectedAccounts,
-  type AdminAccountFailure,
-  type ConnectedAccountPage,
-} from '../admin-account-flow';
-import type { PaymentsDependencies } from '../payments-dependencies';
+  listAccountPage,
+  type AccountListFailure,
+  type AccountListPage,
+  type AdminAccountListDependencies,
+} from '../admin-account-list-flow';
 
-export type { ConnectedAccountPage, ConnectedAccountRow } from '../admin-account-flow';
+export type { AccountListPage, AccountListRow } from '../admin-account-list-flow';
+export type { ConnectedAccountRow } from '../admin-account-flow';
 
-/** The Market's connected accounts, newest first (rule `permissions [payments.connected-account.view]`). */
+type Input = Readonly<Record<string, unknown>>;
+
+/**
+ * The admin Seller accounts list (super list 22): the Market's connected accounts with tabs,
+ * search, filters, sort and paging (rule `permissions [payments.connected-account.view]`).
+ */
 export class AdminListConnectedAccounts extends UseCase<
-  { readonly status?: unknown; readonly cursor?: unknown },
-  ConnectedAccountPage,
-  AdminAccountFailure
+  Input,
+  AccountListPage,
+  AccountListFailure
 > {
   static override readonly access: AccessDeclaration = {
     name: 'payments.admin-list-connected-accounts',
@@ -23,15 +29,12 @@ export class AdminListConnectedAccounts extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: PaymentsDependencies,
+    private readonly deps: AdminAccountListDependencies,
   ) {
     super(gate);
   }
 
-  protected handle(
-    context: CallContext,
-    input: { readonly status?: unknown; readonly cursor?: unknown },
-  ) {
-    return listConnectedAccounts(this.deps, context, input);
+  protected handle(context: CallContext, input: Input) {
+    return listAccountPage(this.deps, context, input);
   }
 }
