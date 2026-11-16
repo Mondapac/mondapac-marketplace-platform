@@ -25,8 +25,10 @@ import type {
 } from './ports/assistant-settings.repository';
 import {
   answer,
+  FakePreviewTokens,
   FakeRuntime,
   FakeTools,
+  FixedQuickPrompts,
   MemoryConversations,
   MemoryLimits,
   MemorySpend,
@@ -149,6 +151,8 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
       limits: new MemoryLimits(),
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
+      quickPrompts: new FixedQuickPrompts(),
+      previewTokens: new FakePreviewTokens(),
       trail: unusedChangeTrail,
     };
   });
