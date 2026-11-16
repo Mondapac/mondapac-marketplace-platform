@@ -222,7 +222,7 @@ export class ConversationController {
       'id is a new or existing conversation id (a canonical UUID v7 the widget generates); a ' +
       "guest's conversation answers only the guest cookie that started it, a customer's only " +
       'its account. The stream carries events conversation, card, text, notice and done. Prices ' +
-      'and stock appear only on cards; certification only on the product page.',
+      'and stock appear only on cards; certification only as the badge of a product card.',
   })
   @ApiParam({ name: 'id', type: String })
   @ApiHeader({
