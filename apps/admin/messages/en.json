@@ -104,6 +104,7 @@
     "sellers": "Sellers",
     "orders": "Orders",
     "shipments": "Shipments",
+    "invoices": "Invoices",
     "price-holds": "Pricing",
     "review-queue": "Catalogue requests",
     "certificates": "Certification",
@@ -9727,6 +9728,112 @@
       "refunded": {
         "title": "No cancelled shipments",
         "body": "Seller orders refunded in full before shipping show here."
+      }
+    }
+  },
+  "invoices": {
+    "title": "Invoices",
+    "page-title": "Invoices",
+    "intro": "Order confirmations and credit notes issued in this Market. These are not tax invoices.",
+    "no-access": "You don't have access to invoices.",
+    "back-home": "Back to home",
+    "tabs": "Invoice views",
+    "tab": {
+      "order-confirmation": "Order confirmations",
+      "credit-note": "Credit notes"
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Customer, store, or order, credit note or refund ID",
+      "too-short": "Type at least 2 characters."
+    },
+    "chip-search": "Search: \"{text}\"",
+    "chip-seller": "Seller is {name}",
+    "filter": {
+      "title": "Filter invoices",
+      "name": {
+        "issued": "Issued"
+      }
+    },
+    "sort": {
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "issued": "Issued",
+        "amount": "Amount"
+      },
+      "date": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      },
+      "amount": {
+        "first": "Highest first",
+        "second": "Lowest first"
+      }
+    },
+    "sorted": "Sorted by {field}: {order}",
+    "sorted-newest": "Newest first",
+    "match": "{count, plural, one {# document matches} other {# documents match}}",
+    "col": {
+      "order": "Order",
+      "issued": "Issued",
+      "store": "Store",
+      "customer": "Customer",
+      "total": "Total (incl. tax)",
+      "tax": "Tax",
+      "reason": "Reason",
+      "shipping": "Delivery (incl. tax)",
+      "sellerOrderId": "Seller order ID",
+      "documentId": "Credit note ID",
+      "refundId": "Refund ID"
+    },
+    "col-credit-only": "{column} (credit notes only)",
+    "not-recorded": "Not recorded",
+    "tax-not-recorded-title": "An item was placed before its tax was recorded.",
+    "row-name": "order {id}",
+    "select": {
+      "page": "Select all documents on this page",
+      "page-short": "Select all on this page",
+      "row": "Select {name}"
+    },
+    "selection": {
+      "selected": "{count, plural, one {# document selected} other {# documents selected}}",
+      "all": "{count, plural, one {The # matching document is selected} other {All # matching documents are selected}}",
+      "all-open": "All matching documents are selected",
+      "select-all": "Select all {count, number} matching",
+      "select-all-open": "Select all matching",
+      "clear": "Clear selection"
+    },
+    "bulk": {
+      "button": "Bulk action",
+      "selected": "{count, plural, one {# document selected} other {# documents selected}}",
+      "all-open": "All matching documents selected",
+      "none-yet": "No bulk actions are available for invoices yet."
+    },
+    "actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "view-order": "View order",
+      "open-confirmation": "Open order confirmation"
+    },
+    "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
+    "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name.",
+    "too-many": "Page numbers stop at the first {limit} documents. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
+    "loading": "Loading invoices...",
+    "error": {
+      "unavailable": "Invoices couldn't be loaded.",
+      "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
+    },
+    "empty": {
+      "no-match": "No invoices match",
+      "no-match-help": "Try other filters or clear them.",
+      "order-confirmation": {
+        "title": "No order confirmations yet",
+        "body": "One is issued for each seller when an order is paid."
+      },
+      "credit-note": {
+        "title": "No credit notes yet",
+        "body": "One is issued for each completed refund."
       }
     }
   }

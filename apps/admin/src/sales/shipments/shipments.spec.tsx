@@ -1105,7 +1105,8 @@ describe('Shipments nav', () => {
     expect(ids([])).not.toContain('shipments');
     expect(ids(['ordering.order.view'])).toContain('shipments');
     const sales = adminNav.items.filter((item) => item.group === 'sales').map((item) => item.id);
-    expect(sales).toEqual(['orders', 'shipments']);
+    // Later Sales pages (Refunds, Invoices) follow; Shipments is right after Orders.
+    expect(sales.slice(0, 2)).toEqual(['orders', 'shipments']);
     expect(adminNav.items.find((item) => item.id === 'shipments')).toMatchObject({
       icon: 'package',
       href: '/shipments',
