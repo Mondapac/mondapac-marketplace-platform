@@ -9681,7 +9681,8 @@
       "result": {
         "title": "Approved {approved} of {total}",
         "done": "Done",
-        "stopped": "The approval stopped before every matching request was handled. The ones below could not be approved; the list shows what is still open."
+        "stopped": "The approval stopped before every matching request was handled. The ones below could not be approved; the list shows what is still open.",
+        "unknown": "The number of requests left could not be counted. Run \"Approve all matching\" again to check."
       },
       "reason": {
         "not-low-risk": "Needs a one-by-one review (not low risk).",
@@ -9694,7 +9695,8 @@
       "error": {
         "network": "Could not reach the server. Nothing more was changed.",
         "unavailable": "The requests could not be approved. Try again."
-      }
+      },
+      "none": "No matching low-risk requests could be approved."
     },
     "decide": {
       "cancel": "Cancel",
@@ -9893,6 +9895,10 @@
         "stay": "Stay",
         "leave": "Leave"
       }
+    },
+    "export": {
+      "button": "Export",
+      "hint": "Export comes with saved filters"
     }
   }
 }

@@ -46,6 +46,13 @@ function route(put: unknown = ok({})) {
     if (method === 'GET' && String(path).includes('review-policy')) {
       return Promise.resolve(ok(policy()));
     }
+    if (method === 'GET' && String(path).includes('review-due-days')) {
+      return Promise.resolve(
+        ok({
+          rows: [{ id: '0190a000-0000-7000-8000-000000000556', number: 56, subjectRef: 'market' }],
+        }),
+      );
+    }
     if (method === 'GET') return Promise.resolve(ok(pendingPage));
     return Promise.resolve(put as never);
   });
@@ -90,6 +97,7 @@ describe('ReviewPolicyPanel', () => {
     expect((await screen.findAllByRole('switch')).length).toBe(POLICY_AREAS.length);
     expect(screen.getByText(/by Sara K\./)).toBeTruthy();
     expect(await screen.findByText('Awaiting review SR-55')).toBeTruthy();
+    expect(await screen.findByText('Awaiting review SR-56')).toBeTruthy();
   });
 
   it('asks for the open requests only when the admin may see requests', async () => {

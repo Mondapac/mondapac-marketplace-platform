@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
@@ -8,7 +9,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { expectToast } from '../../test/toast-spy.ts';
-import { STEP_UP_CANCELLED } from '../step-up/step-up.tsx';
+import { STEP_UP_CANCELLED, StepUpProvider } from '../step-up/step-up.tsx';
 import { RequestDetail } from './request-detail.tsx';
 import type { SystemRequestDetail } from './types.ts';
 
@@ -68,16 +69,21 @@ const detail = (over: Partial<SystemRequestDetail> = {}): SystemRequestDetail =>
   ...over,
 });
 
-function mount() {
+function Wrap({ on, children }: { on: boolean; children: ReactNode }) {
+  return on ? <StepUpProvider>{children}</StepUpProvider> : <>{children}</>;
+}
+function mount(withStepUp = false) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <RequestDetail
-        requestId={ID}
-        accountId={ME}
-        csrfToken="csrf"
-        zone="Australia/Brisbane"
-        marketId="AU"
-      />
+      <Wrap on={withStepUp}>
+        <RequestDetail
+          requestId={ID}
+          accountId={ME}
+          csrfToken="csrf"
+          zone="Australia/Brisbane"
+          marketId="AU"
+        />
+      </Wrap>
     </NextIntlClientProvider>,
   );
 }
@@ -578,5 +584,76 @@ describe('RequestDetail comments', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Comment' }));
     expect(await screen.findByText('Could not post the comment. Try again.')).toBeTruthy();
     expect(screen.getByLabelText<HTMLTextAreaElement>('Add a comment').value).toBe('Hello');
+  });
+});
+
+describe('RequestDetail high-risk step-up', () => {
+  const required = refused(403, 'second-factor.required', {
+    actionKey: 'system-requests.request.decide-high',
+  });
+  const verified = ok({ code: 'step-up-verified' });
+  const enter = async () => {
+    await screen.findByRole('dialog', { name: 'Confirm it is you' });
+    const boxes = screen.getAllByRole('textbox', { name: /Digit \d of 6/ });
+    fireEvent.paste(boxes[0] as HTMLElement, { clipboardData: { getData: () => '123456' } });
+  };
+
+  it('approves after the code is entered and the call is repeated', async () => {
+    call.mockResolvedValueOnce(ok(detail({ risk: 'high' })));
+    mount(true);
+    await screen.findByRole('heading', { level: 1 });
+    open('Approve');
+    const dialog = (await screen.findByRole('heading', { name: 'Approve SR-1042?' })).closest(
+      'dialog',
+    ) as HTMLElement;
+    call.mockResolvedValueOnce(required);
+    call.mockResolvedValueOnce(verified);
+    call.mockResolvedValueOnce(ok(detail({ risk: 'high', status: 'approved' })));
+    call.mockResolvedValueOnce(ok(detail({ risk: 'high', status: 'approved', actions: [] })));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve' }));
+    await enter();
+    await expectToast('SR-1042 approved. The change stays live.');
+    const posts = call.mock.calls.filter(([method]) => method === 'POST');
+    expect(posts.map(([, path]) => path)).toEqual([
+      `system-requests/admin/requests/${ID}/approve`,
+      'identity/admin/step-up/verify',
+      `system-requests/admin/requests/${ID}/approve`,
+    ]);
+    expect(posts[1]?.[2]).toEqual({
+      actionKey: 'system-requests.request.decide-high',
+      code: '123456',
+    });
+  });
+
+  it('rejects with the reason after the code is entered and the call is repeated', async () => {
+    call.mockResolvedValueOnce(ok(detail({ risk: 'high' })));
+    mount(true);
+    await screen.findByRole('heading', { level: 1 });
+    open('Reject and revert');
+    const dialog = (
+      await screen.findByRole('heading', {
+        name: 'Reject SR-1042 and put the previous value back?',
+      })
+    ).closest('dialog') as HTMLElement;
+    fireEvent.change(within(dialog).getByLabelText('Reason (shown to the author)'), {
+      target: { value: 'Too low' },
+    });
+    call.mockResolvedValueOnce(required);
+    call.mockResolvedValueOnce(verified);
+    call.mockResolvedValueOnce(ok(detail({ risk: 'high', status: 'reverted' })));
+    call.mockResolvedValueOnce(ok(detail({ risk: 'high', status: 'reverted', actions: [] })));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reject and revert' }));
+    await enter();
+    await waitFor(() =>
+      expect(call.mock.calls.filter(([method]) => method === 'POST')).toHaveLength(3),
+    );
+    const posts = call.mock.calls.filter(([method]) => method === 'POST');
+    expect(posts[0]).toEqual([
+      'POST',
+      `system-requests/admin/requests/${ID}/reject`,
+      { reason: 'Too low' },
+      'csrf',
+    ]);
+    expect(posts[2]).toEqual(posts[0]);
   });
 });

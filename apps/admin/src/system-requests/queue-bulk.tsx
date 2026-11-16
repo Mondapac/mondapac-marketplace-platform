@@ -24,6 +24,8 @@ const MAX_ROUNDS = 100;
 interface Failure {
   readonly id: string;
   readonly code: string;
+  /** The request number, when the server's answer has it. */
+  readonly number?: number;
 }
 
 interface Outcome {
@@ -32,6 +34,8 @@ interface Outcome {
   readonly failed: readonly Failure[];
   /** The loop stopped before the filter was used up (an error, or nothing could be approved). */
   readonly stopped: boolean;
+  /** The server could not count what is left; the admin can run it again. */
+  readonly unknown: boolean;
 }
 
 /**
@@ -93,7 +97,10 @@ export function QueueBulk({
   const count = allMatching ? matchingTotal : ids.length;
   const countLabel = countText(count, number);
   const approvable = allMatching || (ids.length > 0 && blocked.length === 0);
-  const labelOf = (id: string) => rowOf(id)?.displayNumber ?? shortRef(id);
+  const labelOf = (entry: Failure) =>
+    entry.number === undefined
+      ? (rowOf(entry.id)?.displayNumber ?? shortRef(entry.id))
+      : `SR-${entry.number}`;
 
   // The dialogs outlive the selection: a finished approval clears it and still shows its result.
   const showBar = ids.length > 0 || allMatching;
@@ -117,6 +124,7 @@ export function QueueBulk({
         total: sent.length,
         failed,
         stopped: false,
+        unknown: false,
       },
     };
   }
@@ -125,6 +133,7 @@ export function QueueBulk({
     let approved = 0;
     const failed: Failure[] = [];
     let stopped = false;
+    let unknown = false;
     for (let round = 0; round < MAX_ROUNDS; round += 1) {
       const result = await guarded<BulkMatchingAnswer>(
         'POST',
@@ -137,14 +146,19 @@ export function QueueBulk({
         stopped = true;
         break;
       }
-      approved += result.body.approved;
+      const done = result.body.approved.length;
+      approved += done;
       for (const entry of result.body.failed) {
         if (!failed.some((known) => known.id === entry.id)) failed.push(entry);
       }
       setProgress(approved);
+      if (result.body.remaining === null) {
+        unknown = true;
+        break;
+      }
       if (result.body.remaining <= 0) break;
       // Nothing was approved this round: the rest cannot be, and another call would repeat it.
-      if (result.body.approved === 0) {
+      if (done === 0) {
         stopped = true;
         break;
       }
@@ -152,7 +166,7 @@ export function QueueBulk({
     }
     return {
       ok: true as const,
-      outcome: { approved, total: approved + failed.length, failed, stopped },
+      outcome: { approved, total: approved + failed.length, failed, stopped, unknown },
     };
   }
 
@@ -179,7 +193,14 @@ export function QueueBulk({
       notifyChanged();
       onChanged();
     }
-    if (done.failed.length === 0 && !done.stopped) {
+    // Nothing matched, or nothing could be approved: say so, never "Approved 0 of 0".
+    if (done.approved === 0 && done.failed.length === 0 && !done.unknown) {
+      setDialog(null);
+      toast.info(t('none'));
+      onClear();
+      return;
+    }
+    if (done.failed.length === 0 && !done.stopped && !done.unknown) {
       setDialog(null);
       toast.success(t('done', { count: done.approved }));
       onClear();
@@ -277,10 +298,11 @@ export function QueueBulk({
         >
           <div className="flex flex-col gap-3">
             {outcome.stopped ? <p>{t('result.stopped')}</p> : null}
+            {outcome.unknown ? <p>{t('result.unknown')}</p> : null}
             <ul className="flex flex-col gap-2">
               {outcome.failed.map((entry) => (
                 <li key={entry.id}>
-                  <span className="font-medium text-fg">{labelOf(entry.id)}</span>{' '}
+                  <span className="font-medium text-fg">{labelOf(entry)}</span>{' '}
                   <span>{reasonOf(entry.code)}</span>
                 </li>
               ))}

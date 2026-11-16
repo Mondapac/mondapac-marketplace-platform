@@ -483,6 +483,14 @@ export function QueueList({
               />
             </>
           )}
+          <span title={t('export.hint')} className="inline-flex">
+            <Button variant="secondary" disabled aria-describedby="sr-export-hint">
+              {t('export.button')}
+            </Button>
+            <span id="sr-export-hint" className="sr-only">
+              {t('export.hint')}
+            </span>
+          </span>
         </fieldset>
         <p className="text-sm text-fg-muted sm:ms-auto">
           {t('sorted', {

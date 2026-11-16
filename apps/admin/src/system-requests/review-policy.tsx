@@ -40,6 +40,10 @@ import {
 
 /** The subject kind of a policy area's requests (confirmed against the API's recorder). */
 export const POLICY_AREA_KIND = 'system-requests.policy-area';
+/** The subject kind and reference of the review-period request. */
+export const DAYS_KIND = 'system-requests.review-due-days';
+const DAYS_REF = 'market';
+const DAYS_KEY = 'days';
 
 interface AreaDraft {
   readonly enabled: boolean;
@@ -125,6 +129,12 @@ export function ReviewPolicyPanel({
         next[row.subjectRef] = { id: row.id, number: row.number };
       }
     }
+    const days = await callApi<RequestPage>(
+      'GET',
+      `${BASE}/requests?view=all&status=open&subjectKind=${DAYS_KIND}&subjectRef=${DAYS_REF}&pageSize=1&sort=number&direction=desc`,
+    );
+    const first = days.ok ? days.body.rows[0] : undefined;
+    if (first !== undefined) next[DAYS_KEY] = { id: first.id, number: first.number };
     setPending(next);
   }, [canSeeRequests]);
 
@@ -350,7 +360,15 @@ export function ReviewPolicyPanel({
           [item.area]: { id: request.id, number: request.number },
         }));
       }
-    } else setDays(null);
+    } else {
+      setDays(null);
+      if (request !== null) {
+        setPending((current) => ({
+          ...current,
+          [DAYS_KEY]: { id: request.id, number: request.number },
+        }));
+      }
+    }
     setNote('');
     // The next change waits for its own note and code.
     const rest = items.filter((entry) => JSON.stringify(entry) !== JSON.stringify(item));
@@ -540,6 +558,13 @@ export function ReviewPolicyPanel({
               policy.reviewDueDays.updatedByName,
             )}
           </p>
+          {pending[DAYS_KEY] === undefined ? null : (
+            <a href={requestPath(pending[DAYS_KEY].id)} className="w-fit no-underline">
+              <Badge tone="info">
+                {t('awaiting', { number: `SR-${pending[DAYS_KEY].number}` })}
+              </Badge>
+            </a>
+          )}
         </div>
       </SettingsSection>
       {current === null ? null : (

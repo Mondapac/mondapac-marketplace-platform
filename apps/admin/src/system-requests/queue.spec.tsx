@@ -99,6 +99,13 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+const made = (count: number) =>
+  Array.from({ length: count }, (_, index) => ({
+    id: id(index + 100),
+    number: index + 1,
+    displayNumber: `SR-${index + 1}`,
+  }));
+
 describe('QueueList', () => {
   it('opens Needs my review, shows each view with its count and the rows', async () => {
     call.mockResolvedValue(ok(page([row(1, { risk: 'high', overdue: true }), row(2)])));
@@ -491,11 +498,11 @@ describe('QueueList bulk approve', () => {
     const bar = screen.getByRole('region', { name: 'Bulk actions' });
     expect(within(bar).getByText('All 250 matching selected')).toBeTruthy();
     fireEvent.click(within(bar).getByRole('button', { name: 'Approve all matching' }));
-    call.mockResolvedValueOnce(ok({ approved: 100, failed: [], remaining: 150 }));
-    call.mockResolvedValueOnce(ok({ approved: 100, failed: [], remaining: 50 }));
+    call.mockResolvedValueOnce(ok({ approved: made(100), failed: [], remaining: 150 }));
+    call.mockResolvedValueOnce(ok({ approved: made(100), failed: [], remaining: 50 }));
     call.mockResolvedValueOnce(
       ok({
-        approved: 40,
+        approved: made(40),
         failed: [{ id: id(9), code: 'system-requests.not-low-risk' }],
         remaining: 0,
       }),
@@ -527,9 +534,62 @@ describe('QueueList bulk approve', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all on this page' }));
     fireEvent.click(screen.getByRole('button', { name: 'Select all 150 matching' }));
     fireEvent.click(screen.getByRole('button', { name: 'Approve all matching' }));
-    call.mockResolvedValueOnce(ok({ approved: 0, failed: [], remaining: 150 }));
+    call.mockResolvedValueOnce(ok({ approved: [], failed: [], remaining: 150 }));
     fireEvent.click(await screen.findByRole('button', { name: 'Approve matching requests' }));
-    expect(await screen.findByRole('heading', { name: 'Approved 0 of 0' })).toBeTruthy();
+    await expectToast('No matching low-risk requests could be approved.', 'info');
+    expect(screen.queryByRole('heading', { name: /Approved 0 of 0/ })).toBeNull();
     expect(call.mock.calls.filter(([method]) => method === 'POST')).toHaveLength(1);
+  });
+
+  it('shows the number of a failed row that the answer names, or its short id', async () => {
+    call.mockResolvedValueOnce(
+      ok(page([row(1)], { total: 150, counts: counts({ 'needs-my-review': 150 }) })),
+    );
+    mount();
+    await screen.findByRole('link', { name: 'SR-1041' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all 150 matching' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve all matching' }));
+    call.mockResolvedValueOnce(
+      ok({
+        approved: made(2),
+        failed: [{ id: id(9), code: 'system-requests.decided' }],
+        remaining: 0,
+      }),
+    );
+    call.mockResolvedValueOnce(ok(page([])));
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve matching requests' }));
+    const result = await screen.findByRole('heading', { name: 'Approved 2 of 3' });
+    expect(
+      within(result.closest('dialog') as HTMLElement).getByText('Already decided by someone else.'),
+    ).toBeTruthy();
+  });
+
+  it('stops when the server cannot count what is left, and says it can be run again', async () => {
+    call.mockResolvedValueOnce(
+      ok(page([row(1)], { total: 150, counts: counts({ 'needs-my-review': 150 }) })),
+    );
+    mount();
+    await screen.findByRole('link', { name: 'SR-1041' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all 150 matching' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve all matching' }));
+    call.mockResolvedValueOnce(ok({ approved: made(100), failed: [], remaining: null }));
+    call.mockResolvedValueOnce(ok(page([])));
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve matching requests' }));
+    const result = await screen.findByRole('heading', { name: 'Approved 100 of 100' });
+    expect(
+      within(result.closest('dialog') as HTMLElement).getByText(/could not be counted/),
+    ).toBeTruthy();
+    expect(call.mock.calls.filter(([method]) => method === 'POST')).toHaveLength(1);
+  });
+
+  it('shows Export disabled, with the reason, instead of hiding it', async () => {
+    call.mockResolvedValueOnce(ok(page([row(1)])));
+    mount();
+    await screen.findByRole('link', { name: 'SR-1041' });
+    const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Export' });
+    expect(button.disabled).toBe(true);
+    expect(screen.getByTitle('Export comes with saved filters')).toBeTruthy();
   });
 });

@@ -119,3 +119,13 @@ reject, withdraw, `review-policy`, and the two policy writes.
   2026: creating, deleting, merging, moving and importing get their own design later).
 - Notifications and reminders for overdue requests, and an impact count per request.
 - The admin panel pages (frontend package).
+
+## Panel: not yet
+
+The admin panel pages (queue, detail, review policy, menu badge) are built. Left out for now:
+
+- Saved filters and CSV/XLSX export: the queue shows Export disabled with the hint "Export comes
+  with saved filters" until the shared kit has System requests routes for them.
+- Requested by and Decided by pickers: the team list is not relayed to the browser and needs a
+  different permission, so those two filters work from ids in the address only.
+- Phone layout: built (bottom sheets, sticky action bar) but not yet checked by hand on a phone.

@@ -143,9 +143,14 @@ export interface BulkAnswer {
 }
 
 export interface BulkMatchingAnswer {
-  readonly approved: number;
+  readonly approved: readonly {
+    readonly id: string;
+    readonly number: number;
+    readonly displayNumber: string;
+  }[];
   readonly failed: readonly { readonly id: string; readonly code: string }[];
-  readonly remaining: number;
+  /** How many matching requests are left; null when counting failed after approvals committed. */
+  readonly remaining: number | null;
 }
 
 export interface RecordedRequest {
