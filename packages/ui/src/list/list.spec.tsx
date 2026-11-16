@@ -82,6 +82,15 @@ describe('ListPagination', () => {
     expect(html).not.toMatch(/aria-label="Next"[^>]*disabled=""/);
   });
 
+  it('shows the rows per page select only when there is more than one size', () => {
+    expect(pagination({ pageSizes: [25] })).not.toContain('Rows per page');
+    expect(pagination({ pageSizes: [25] })).not.toContain('<select');
+    expect(pagination({ pageSizes: [25, 50] })).toContain('Rows per page');
+    // The range line and the page numbers stay.
+    expect(pagination({ pageSizes: [25] })).toContain('aria-live="polite"');
+    expect(pagination({ pageSizes: [25] })).toContain('aria-label="Pages"');
+  });
+
   it('shows only Previous and Next in that mode, with no page numbers', () => {
     const html = pagination({ mode: 'prev-next', page: 2 });
     expect(html).not.toContain('aria-label="Pages"');

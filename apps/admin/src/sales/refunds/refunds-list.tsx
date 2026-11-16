@@ -56,10 +56,12 @@ import { SEARCH_MAX } from '../search-route.ts';
 const SELECTION_MAX = 200;
 const OPEN_ENDED = Number.MAX_SAFE_INTEGER;
 
-type Failure = 'denied' | 'search-unavailable' | 'unavailable';
+type Failure = 'denied' | 'search-unavailable' | 'refused' | 'unavailable';
 
 function failureOf(status: number, code: string): Failure {
   if (status === 403) return 'denied';
+  // The API refused the query itself: asking again can never work.
+  if (code === 'validation.failed') return 'refused';
   if (status === 503 && code === 'ordering.search-unavailable') return 'search-unavailable';
   return 'unavailable';
 }
@@ -146,6 +148,7 @@ export function RefundsList({
   const [counts, setCounts] = useState<RefundCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<Failure | null>(null);
+  const [hinted, setHinted] = useState(false);
   const [columns, setColumns] = useState<readonly OptionalColumn[]>(DEFAULT_COLUMNS);
   const latest = useRef(0);
   const storageKey = prefsKey('admin', marketId, accountId, 'refunds-columns');
@@ -166,39 +169,43 @@ export function RefundsList({
     }
   }, [saved, savedId, forgetSaved]);
 
-  // The date presets are read once per query, on the clock of the list's zone.
-  const text = useMemo(
-    () => queryString(query, { paging, zone, now: new Date() }),
-    [query, paging, zone],
-  );
-
-  const load = useCallback(async (request: string) => {
-    const ticket = ++latest.current;
-    setLoading(true);
-    setFailure(null);
-    const result = await callApi<RefundsPage>('GET', `ordering/admin/refunds?${request}`);
-    if (ticket !== latest.current) return;
-    setLoading(false);
-    if (!result.ok) {
-      const { status, code, details } = result.failure;
-      if (status === 401) {
-        window.location.assign('/session-ended');
+  // The date presets are read at each load (and each Try again), on the clock of the list's zone,
+  // so a tab left open past midnight does not keep asking for yesterday's "Today".
+  const load = useCallback(
+    async (asked: Query) => {
+      const request = queryString(asked, { paging, zone, now: new Date() });
+      const ticket = ++latest.current;
+      setLoading(true);
+      setFailure(null);
+      const result = await callApi<RefundsPage>('GET', `ordering/admin/refunds?${request}`);
+      if (ticket !== latest.current) return;
+      setLoading(false);
+      if (!result.ok) {
+        const { status, code, details } = result.failure;
+        if (status === 401) {
+          window.location.assign('/session-ended');
+          return;
+        }
+        if (code === 'validation.failed') {
+          // The panel never builds an invalid query: say what the API refused, once, for support.
+          console.warn('refunds.list-refused', details?.fields ?? []);
+        }
+        setFailure(failureOf(status, code));
         return;
       }
-      if (code === 'validation.failed') {
-        // The panel never builds an invalid query: say what the API refused, once, for support.
-        console.warn('refunds.list-refused', details?.fields ?? []);
-      }
-      setFailure(failureOf(status, code));
-      return;
-    }
-    setAnswer(result.body);
-    setCounts(result.body.counts);
-  }, []);
+      setAnswer(result.body);
+      setCounts(result.body.counts);
+    },
+    [paging, zone],
+  );
 
+  // A query that is equal in content is not a new list: load again only when it changed.
+  const queryNow = useRef(query);
+  queryNow.current = query;
+  const queryKey = JSON.stringify(query);
   useEffect(() => {
-    void load(text);
-  }, [load, text]);
+    void load(queryNow.current);
+  }, [load, queryKey]);
 
   // A new tab, search, filter or sort is another list: the selection does not follow it. Paging
   // keeps it, so rows can be ticked on several pages.
@@ -249,6 +256,9 @@ export function RefundsList({
   const number = (value: number) => numberFormat(locale, {}).format(value);
   const route = refundSearchRoute(query.q);
   const draftRoute = refundSearchRoute(draft);
+  // The hint about the typed text waits for the box to lose focus or Enter, so it is not read out
+  // at the first keystroke of every search.
+  const showHint = hinted && draftRoute.kind === 'too-short';
 
   const saveColumns = (next: readonly OptionalColumn[]) => {
     setColumns(next);
@@ -378,13 +388,16 @@ export function RefundsList({
     <Banner tone="critical">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span>{t('error.search-unavailable')}</span>
-        <Button variant="secondary" onClick={() => void load(text)}>
+        <Button variant="secondary" onClick={() => void load(query)}>
           {tl('retry')}
         </Button>
       </div>
     </Banner>
   ) : (
     <div className="flex flex-col gap-4">
+      {mode === 'pages' && (answer?.total ?? 0) > MAX_PAGED_ROWS ? (
+        <Banner tone="info">{t('too-many', { limit: number(MAX_PAGED_ROWS) })}</Banner>
+      ) : null}
       {answer?.searchScope === 'stores' && failure === null ? (
         <Banner tone="info">{t('search-stores')}</Banner>
       ) : null}
@@ -419,9 +432,6 @@ export function RefundsList({
           selection={selection}
         />
       </div>
-      {mode === 'pages' && (answer?.total ?? 0) > MAX_PAGED_ROWS ? (
-        <Banner tone="info">{t('too-many', { limit: number(MAX_PAGED_ROWS) })}</Banner>
-      ) : null}
     </div>
   );
 
@@ -464,17 +474,21 @@ export function RefundsList({
         placeholder: t('search.placeholder'),
         value: draft,
         maxLength: SEARCH_MAX,
-        onChange: setDraft,
+        onChange: (value) => {
+          setHinted(false);
+          setDraft(value);
+        },
+        onBlur: () => setHinted(true),
         onSubmit: (value) => {
+          setHinted(true);
           if (refundSearchRoute(value).kind === 'too-short') return;
           change({ q: value });
         },
-        extra:
-          draftRoute.kind === 'too-short' ? (
-            <p role="status" className="w-full text-sm text-fg-muted">
-              {t('search.too-short')}
-            </p>
-          ) : null,
+        extra: showHint ? (
+          <p role="status" className="w-full text-sm text-fg-muted">
+            {t('search.too-short')}
+          </p>
+        ) : null,
       }}
       filter={{
         label: ts('filter.button'),
@@ -525,10 +539,13 @@ export function RefundsList({
       failure={
         failure === null || searchDown
           ? null
-          : {
-              message: t('error.unavailable'),
-              retry: { label: tl('retry'), onClick: () => void load(text) },
-            }
+          : failure === 'refused'
+            ? // Asking again cannot work: no Try again, the words say what to change.
+              { message: t('error.refused') }
+            : {
+                message: t('error.unavailable'),
+                retry: { label: tl('retry'), onClick: () => void load(query) },
+              }
       }
       firstLoadError={firstLoadError}
       loading={loading}
@@ -546,7 +563,7 @@ export function RefundsList({
               // No page size picker in this round: one size.
               pageSizes: [PAGE_SIZE],
               // The footer is never offered a page past row 10,000: a total above it is cut here
-              // (the banner under the rows says why).
+              // (the banner above the rows says why).
               total:
                 mode === 'pages'
                   ? Math.min(answer.total ?? 0, MAX_PAGED_ROWS)

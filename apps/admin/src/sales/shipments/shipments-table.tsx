@@ -83,11 +83,11 @@ function CarrierCell({ row }: { readonly row: ShipmentRow }) {
   const tracking = row.trackingRef?.trim() ?? '';
   if (carrier === '' && tracking === '') {
     if (row.deliveryMethod === 'pickup') return <EmptyWord>{t('carrier.pickup')}</EmptyWord>;
-    return (
-      <EmptyWord>
-        {row.fulfilment === 'to-ship' ? t('carrier.not-shipped') : t('not-recorded')}
-      </EmptyWord>
-    );
+    // Nothing was shipped (a row refunded before shipping included): "Not shipped yet", whatever
+    // its fulfilment value says. A shipped or delivered row without a carrier was not recorded.
+    const neverShipped =
+      row.shippedAt === null && row.stage !== 'shipped' && row.stage !== 'delivered';
+    return <EmptyWord>{neverShipped ? t('carrier.not-shipped') : t('not-recorded')}</EmptyWord>;
   }
   return (
     <div className="min-w-0 [overflow-wrap:anywhere]">

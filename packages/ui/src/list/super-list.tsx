@@ -39,6 +39,8 @@ export interface SuperListProps {
     readonly onChange: (value: string) => void;
     /** Enter searches at once, without the typing pause. */
     readonly onSubmit: (value: string) => void;
+    /** The box lost focus (a page can then show a hint about what was typed). */
+    readonly onBlur?: () => void;
     /** Sits right after the search box (a scope select, a hint line); the page owns its words. */
     readonly extra?: ReactNode;
   };
@@ -149,6 +151,7 @@ export function SuperList({
           maxLength={search.maxLength}
           className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
           onChange={(event) => search.onChange(event.target.value)}
+          onBlur={search.onBlur}
           onKeyDown={(event) => {
             if (event.key === 'Enter') search.onSubmit(search.value.trim());
           }}

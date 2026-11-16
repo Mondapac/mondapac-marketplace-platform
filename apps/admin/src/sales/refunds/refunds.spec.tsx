@@ -105,10 +105,11 @@ function mount(
     zone?: string;
     marketId?: string;
     sellerId?: string | null;
+    locale?: string;
   } = {},
 ) {
   return render(
-    <NextIntlClientProvider locale="en-AU" messages={messages}>
+    <NextIntlClientProvider locale={options.locale ?? 'en-AU'} messages={messages}>
       <RefundsList
         paging={options.paging ?? 'pages'}
         accountId="acc-1"
@@ -207,6 +208,11 @@ describe('Refunds page numbers', () => {
       screen.getByText(/Page numbers stop at the first 10,000 refunds\. Narrow the filters/),
     ).toBeTruthy();
     expect(screen.getByText('1 to 1 of 12,345')).toBeTruthy();
+    // The banner sits above the table, with the other banners.
+    const banner = screen.getByText(/Page numbers stop at the first 10,000 refunds/);
+    expect(
+      banner.compareDocumentPosition(screen.getByRole('table')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Page 400' }));
     await waitFor(() => expect(lastUrl()).toContain('page=400'));
     await waitFor(() =>
@@ -337,6 +343,33 @@ describe('Refunds search', () => {
     expect(screen.getByText('Search: "Cedar"')).toBeTruthy();
   });
 
+  it('sends an upper-case v7 id lower-cased, and a v4 UUID as search (the API knows v7 ids only)', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.change(box(), { target: { value: ID.toUpperCase() } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(paramsOf(lastUrl())['q']).toBe(ID));
+    const v4 = '3f2b8c1e-5d4a-4b6f-9a7e-1c2d3e4f5a6b';
+    fireEvent.change(box(), { target: { value: v4 } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(paramsOf(lastUrl())['search']).toBe(v4));
+    expect(paramsOf(lastUrl())).not.toHaveProperty('q');
+  });
+
+  it('shows the one-character hint only after Enter or leaving the box, not at the first keystroke', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.change(box(), { target: { value: 'a' } });
+    expect(screen.queryByText('Type at least 2 characters.')).toBeNull();
+    fireEvent.blur(box());
+    expect(screen.getByRole('status').textContent).toBe('Type at least 2 characters.');
+    // Typing again takes it away until the box is left again.
+    fireEvent.change(box(), { target: { value: 'b' } });
+    expect(screen.queryByText('Type at least 2 characters.')).toBeNull();
+  });
+
   it('asks for nothing from one character and shows the hint under the box', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     serve(() => pageOf([row()]));
@@ -401,6 +434,92 @@ describe('Refunds search', () => {
     expect(lastUrl()).toContain('search=Cedar');
     fireEvent.click(screen.getByRole('button', { name: 'Remove filter Search: "Cedar"' }));
     expect(await screen.findByText(STORE)).toBeTruthy();
+  });
+});
+
+describe('Refunds out-of-order answers', () => {
+  type Reply = { ok: true; status: 200; body: RefundsPage } | { ok: false; failure: object };
+  /** Answers the requests of the tabs by hand: the first one (All) at once, the others later. */
+  function held() {
+    const waiting = new Map<string, (reply: Reply) => void>();
+    call.mockImplementation((_method, path) => {
+      if (!path.includes('state=')) {
+        return Promise.resolve({ ok: true, status: 200, body: pageOf([row()]) } as never);
+      }
+      return new Promise((resolve) => {
+        waiting.set(path.match(/state=([a-z]+)/)![1]!, resolve);
+      }) as never;
+    });
+    return waiting;
+  }
+  const body = (storeName: string, total: number, counts = COUNTS) =>
+    ({
+      ok: true,
+      status: 200,
+      body: pageOf([row({ storeName })], { total, counts }),
+    }) as const;
+
+  it('shows the rows, counts and total of the last tab asked when the answers arrive in reverse', async () => {
+    const waiting = held();
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: /^Refunded/ }));
+    await waitFor(() => expect(waiting.has('succeeded')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: /^Refused by Stripe/ }));
+    await waitFor(() => expect(waiting.has('failed')).toBe(true));
+    // B (Refused) answers first, then the older A (Refunded).
+    act(() => {
+      waiting.get('failed')!(body('Store B', 2, { ...COUNTS, failed: 40 }));
+    });
+    expect(await screen.findByText('Store B')).toBeTruthy();
+    act(() => {
+      waiting.get('succeeded')!(body('Store A', 1, { ...COUNTS, failed: 99 }));
+    });
+    expect(screen.getByText('Store B')).toBeTruthy();
+    expect(screen.queryByText('Store A')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Refused by Stripe (40)' })).toBeTruthy();
+    expect(screen.getByText('1 to 1 of 2')).toBeTruthy();
+  });
+
+  it('shows no error when the older request fails after the newer one answered', async () => {
+    const waiting = held();
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: /^Refunded/ }));
+    await waitFor(() => expect(waiting.has('succeeded')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: /^Refused by Stripe/ }));
+    await waitFor(() => expect(waiting.has('failed')).toBe(true));
+    act(() => {
+      waiting.get('failed')!(body('Store B', 1));
+    });
+    await screen.findByText('Store B');
+    act(() => {
+      waiting.get('succeeded')!({
+        ok: false,
+        failure: { status: 503, code: 'access.unavailable' },
+      });
+    });
+    expect(screen.queryByText("Refunds couldn't be loaded.")).toBeNull();
+    expect(screen.getByText('Store B')).toBeTruthy();
+  });
+
+  it('drops the answer that arrives after the first load gave up at 30 seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let late: ((reply: Reply) => void) | null = null;
+    call.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          late = resolve;
+        }) as never,
+    );
+    mount();
+    await act(() => vi.advanceTimersByTimeAsync(31_000));
+    expect(screen.getByText("Refunds couldn't be loaded.")).toBeTruthy();
+    act(() => {
+      late!(body('Late Store', 1));
+    });
+    expect(screen.queryByText('Late Store')).toBeNull();
+    expect(screen.getByText("Refunds couldn't be loaded.")).toBeTruthy();
   });
 });
 
@@ -499,6 +618,47 @@ describe('Refunds filters', () => {
       to: '2026-11-17T14:00:00.000Z',
     });
     expect(screen.getByText('Requested is Today')).toBeTruthy();
+  });
+
+  it('works on a Market that is not Australian: other locale, zone and currency', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    serve(() =>
+      pageOf([
+        row({
+          gross: money('12550', 'EUR'),
+          tax: money('2004', 'EUR'),
+          shippingGross: money('990', 'EUR'),
+        }),
+      ]),
+    );
+    mount({ locale: 'de-DE', zone: 'Europe/Berlin', marketId: 'DE' });
+    await screen.findByText(STORE);
+    expect(screen.getByText('Times and days are in Europe/Berlin.')).toBeTruthy();
+    expect(screen.getByText(/125,50\s€/)).toBeTruthy();
+    expect(screen.queryByText(/\$/)).toBeNull();
+    apply(await addCondition('requested', 'today'));
+    // 16 Nov 20:30 UTC is 21:30 in Berlin (UTC+1): today runs from 23:00 UTC on the 15th.
+    await waitFor(() => expect(paramsOf(lastUrl())['from']).toBeDefined());
+    expect(paramsOf(lastUrl())).toMatchObject({
+      from: '2026-11-15T23:00:00.000Z',
+      to: '2026-11-16T23:00:00.000Z',
+    });
+  });
+
+  it('reads the date presets at each load, so a tab left open past midnight moves on', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    serve(() => pageOf([row()]));
+    mount({ zone: BRISBANE });
+    await screen.findByText(STORE);
+    apply(await addCondition('requested', 'today'));
+    await waitFor(() => expect(paramsOf(lastUrl())['from']).toBe('2026-11-16T14:00:00.000Z'));
+    // A day later, a new tab asks for the new day.
+    vi.setSystemTime(new Date(NOW.getTime() + 24 * 3_600_000));
+    fireEvent.click(screen.getByRole('button', { name: /^Refused by Stripe/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())['state']).toBe('failed'));
+    expect(paramsOf(lastUrl())['from']).toBe('2026-11-17T14:00:00.000Z');
   });
 
   it('reads the same preset on another zone, Los Angeles, at the same instant', async () => {
@@ -736,6 +896,9 @@ describe('Refunds rows', () => {
     expect(within(recorded!).getByText('$9.90')).toBeTruthy();
     const badge = within(waiting!).getByText('Waiting');
     expect(badge.closest('td')).not.toBeNull();
+    expect(badge.closest('[title]')?.getAttribute('title')).toBe(
+      "Refunded, but not yet recorded in the seller's ledger.",
+    );
     expect(within(waiting!).getByText('None')).toBeTruthy();
     expect(within(pending!).getAllByText('Not yet')).toHaveLength(2);
     expect(within(failed!).getByText('None', { selector: 'span' })).toBeTruthy();
@@ -950,7 +1113,7 @@ describe('Refunds states', () => {
     expect(screen.getByRole('link', { name: 'Back to home' }).getAttribute('href')).toBe('/');
   });
 
-  it('treats validation.failed as "could not be loaded" and writes it once', async () => {
+  it('says the search cannot be run on validation.failed, with no Try again, and writes it once', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     call.mockResolvedValue({
       ok: false,
@@ -961,7 +1124,13 @@ describe('Refunds states', () => {
       },
     } as never);
     mount();
-    expect(await screen.findByText("Refunds couldn't be loaded.")).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "This search can't be run. Change the text or the filters, or clear them.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Refunds couldn't be loaded.")).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
   });
