@@ -104,6 +104,7 @@
     "sellers": "Sellers",
     "orders": "Orders",
     "shipments": "Shipments",
+    "refunds": "Refunds",
     "invoices": "Invoices",
     "price-holds": "Pricing",
     "review-queue": "Catalogue requests",
@@ -9606,7 +9607,8 @@
       "scope-tracking": "Tracking reference",
       "placeholder-name": "Customer, store, or order ID",
       "placeholder-tracking": "Tracking reference, exact",
-      "too-short": "Type at least 2 characters."
+      "too-short": "Type at least 2 characters.",
+      "tracking-invalid": "Tracking references use letters, digits, spaces and . _ # -."
     },
     "chip-search": "Search: \"{text}\"",
     "chip-tracking": "Tracking: \"{text}\"",
@@ -9700,6 +9702,7 @@
     "loading": "Loading shipments...",
     "error": {
       "unavailable": "Shipments couldn't be loaded.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them.",
       "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
     },
     "empty": {
@@ -9728,6 +9731,144 @@
       "refunded": {
         "title": "No cancelled shipments",
         "body": "Seller orders refunded in full before shipping show here."
+      }
+    }
+  },
+  "refunds": {
+    "title": "Refunds",
+    "page-title": "Refunds",
+    "intro": "Every refund in this Market. To refund an order, open the order.",
+    "no-access": "You don't have access to refunds.",
+    "back-home": "Back to home",
+    "tabs": "Refund views",
+    "tab": {
+      "all": "All"
+    },
+    "actor": {
+      "admin": "Admin",
+      "seller": "Seller",
+      "unknown": "Unknown"
+    },
+    "ledger": {
+      "waiting": "Waiting",
+      "waiting-title": "Refunded, but not yet recorded in the seller's ledger."
+    },
+    "ledger-filter": {
+      "waiting": "Waiting",
+      "recorded": "Recorded"
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Customer, store, order or refund ID, or Stripe ID",
+      "too-short": "Type at least 2 characters."
+    },
+    "chip-search": "Search: \"{text}\"",
+    "chip-seller": "Seller is {name}",
+    "filter": {
+      "title": "Filter refunds",
+      "name": {
+        "reason": "Reason",
+        "actor": "Requested by",
+        "lossBearer": "Loss borne by",
+        "ledger": "Seller ledger",
+        "requested": "Requested"
+      }
+    },
+    "sort": {
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "requested": "Requested",
+        "settled": "Settled",
+        "amount": "Amount"
+      },
+      "date": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      },
+      "amount": {
+        "first": "Highest first",
+        "second": "Lowest first"
+      }
+    },
+    "sorted": "Sorted by {field}: {order}",
+    "sorted-newest": "Newest first",
+    "match": "{count, plural, one {# refund matches} other {# refunds match}}",
+    "col": {
+      "order": "Order",
+      "state": "State",
+      "amount": "Amount (incl. tax)",
+      "reason": "Reason",
+      "actor": "Requested by",
+      "store": "Store",
+      "customer": "Customer",
+      "requested": "Requested",
+      "lossBearer": "Loss borne by",
+      "ledger": "Seller ledger",
+      "tax": "Tax",
+      "shipping": "Delivery part (incl. tax)",
+      "settled": "Settled",
+      "stripeRefundId": "Stripe refund ID",
+      "creditNote": "Credit note",
+      "refundId": "Refund ID",
+      "sellerOrderId": "Seller order ID"
+    },
+    "not-yet": "Not yet",
+    "stripe-not-made": "Not made yet",
+    "none": "None",
+    "unknown": "Unknown",
+    "row-name": "order {id}",
+    "select": {
+      "page": "Select all refunds on this page",
+      "page-short": "Select all on this page",
+      "row": "Select {name}"
+    },
+    "selection": {
+      "selected": "{count, plural, one {# refund selected} other {# refunds selected}}",
+      "all": "{count, plural, one {The # matching refund is selected} other {All # matching refunds are selected}}",
+      "all-open": "All matching refunds are selected",
+      "select-all": "Select all {count, number} matching",
+      "select-all-open": "Select all matching",
+      "clear": "Clear selection"
+    },
+    "bulk": {
+      "button": "Bulk action",
+      "selected": "{count, plural, one {# refund selected} other {# refunds selected}}",
+      "all-open": "All matching refunds selected",
+      "none-yet": "No bulk actions are available for refunds yet."
+    },
+    "actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "view-order": "View order",
+      "copy-stripe": "Copy Stripe refund ID",
+      "copied": "Copied",
+      "copy-failed": "Couldn't copy. Select the text and copy it."
+    },
+    "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
+    "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name.",
+    "too-many": "Page numbers stop at the first {limit} refunds. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
+    "loading": "Loading refunds...",
+    "error": {
+      "unavailable": "Refunds couldn't be loaded.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them.",
+      "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
+    },
+    "empty": {
+      "no-match": "No refunds match",
+      "no-match-help": "Try other filters or clear them.",
+      "all": {
+        "title": "No refunds yet",
+        "body": "Refunds made from an order page show here."
+      },
+      "pending": {
+        "title": "Nothing waiting for Stripe"
+      },
+      "succeeded": {
+        "title": "No completed refunds"
+      },
+      "failed": {
+        "title": "No refused refunds"
       }
     }
   },
