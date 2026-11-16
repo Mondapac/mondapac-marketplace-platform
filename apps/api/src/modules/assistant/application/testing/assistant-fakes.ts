@@ -8,9 +8,13 @@ import type { ToolRequest } from '../../domain/tools';
 import type { AssistantRuntime, ModelAnswer } from '../ports/assistant-runtime';
 import type { AssistantTools, ToolOutcome } from '../ports/assistant-tools';
 import type {
+  ConversationCursor,
+  ConversationListPage,
   ConversationRecord,
   ConversationRepository,
+  ConversationSummary,
   StoredMessage,
+  TranscriptMessage,
 } from '../ports/conversation.repository';
 import type { GuestTokens } from '../ports/guest-tokens';
 import type { MarketCalendar } from '../ports/market-calendar';
@@ -109,19 +113,108 @@ export class FakeTools implements AssistantTools {
 export class MemoryConversations implements ConversationRepository {
   readonly rows = new Map<
     string,
-    ConversationRecord & { market: string; lastAt: Temporal.Instant }
+    ConversationRecord & { market: string; startedAt: Temporal.Instant; lastAt: Temporal.Instant }
   >();
   readonly messages = new Map<string, (StoredMessage & { cards: readonly string[] })[]>();
+  /** When each stored message was written, in the same order as `messages`. */
+  readonly times = new Map<string, Temporal.Instant[]>();
+  /** Conversations whose key was destroyed (their messages read as nothing). */
+  readonly destroyed = new Set<string>();
 
+  spent(_market: MarketContext, id: string) {
+    return Promise.resolve(this.destroyed.has(id));
+  }
   find(market: MarketContext, id: string) {
     const row = this.rows.get(id);
-    return Promise.resolve(row === undefined || row.market !== market.marketId ? null : row);
+    return Promise.resolve(
+      row === undefined || row.market !== market.marketId
+        ? null
+        : { ...row, lastMessageAt: row.lastAt },
+    );
+  }
+  listByAccount(
+    market: MarketContext,
+    accountId: string,
+    query: {
+      visibleSince: ReadonlyMap<number, Temporal.Instant>;
+      after: ConversationCursor | null;
+      limit: number;
+    },
+  ): Promise<ConversationListPage> {
+    const newestFirst = (a: { lastAt: Temporal.Instant; id: string }, b: typeof a) =>
+      Temporal.Instant.compare(b.lastAt, a.lastAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+    const { after } = query;
+    const rows = [...this.rows.values()]
+      .filter((row) => {
+        if (row.market !== market.marketId) return false;
+        if (row.owner.kind !== 'account' || row.owner.accountId !== accountId) return false;
+        const since = query.visibleSince.get(row.retentionDays);
+        if (row.retentionDays === 0 || since === undefined) return false;
+        if (Temporal.Instant.compare(row.lastAt, since) < 0) return false;
+        return (
+          after === null || newestFirst({ lastAt: after.lastMessageAt, id: after.id }, row) < 0
+        );
+      })
+      .sort(newestFirst);
+    const page = rows.slice(0, Math.max(0, query.limit));
+    const last = rows.length > page.length ? page.at(-1) : undefined;
+    return Promise.resolve({
+      next: last === undefined ? null : { lastMessageAt: last.lastAt, id: last.id },
+      rows: page
+        .filter((row) => !this.destroyed.has(row.id))
+        .map((row): ConversationSummary => ({
+          id: row.id,
+          turns: row.turns,
+          startedAt: row.startedAt,
+          lastMessageAt: row.lastAt,
+          firstBuyerText:
+            (this.messages.get(row.id) ?? []).find((message) => message.role === 'buyer')?.text ??
+            null,
+        })),
+    });
+  }
+  transcript(_market: MarketContext, id: string): Promise<readonly TranscriptMessage[]> {
+    if (this.destroyed.has(id)) return Promise.resolve([]);
+    const row = this.rows.get(id);
+    return Promise.resolve(
+      (this.messages.get(id) ?? []).map((message, index) => ({
+        position: index + 1,
+        role: message.role,
+        text: message.text,
+        cards: message.cards,
+        at: this.timeOf(id, index, row?.lastAt),
+      })),
+    );
+  }
+  private timeOf(id: string, index: number, fallback: Temporal.Instant | undefined) {
+    const at = this.times.get(id)?.[index] ?? fallback;
+    if (at === undefined) throw new Error(`no time stored for message ${index} of ${id}`);
+    return at;
+  }
+  deleteOwn(market: MarketContext, id: string, accountId: string) {
+    const row = this.rows.get(id);
+    if (
+      row === undefined ||
+      row.market !== market.marketId ||
+      row.owner.kind !== 'account' ||
+      row.owner.accountId !== accountId
+    ) {
+      return Promise.resolve(false);
+    }
+    this.rows.delete(id);
+    this.messages.delete(id);
+    this.times.delete(id);
+    if (row.retentionDays > 0) this.destroyed.add(id);
+    return Promise.resolve(true);
   }
   create(
     market: MarketContext,
     conversation: ConversationRecord & { startedAt: Temporal.Instant },
   ) {
     if (this.rows.has(conversation.id)) return Promise.resolve(false);
+    if (conversation.retentionDays > 0 && this.destroyed.has(conversation.id)) {
+      return Promise.resolve(false);
+    }
     this.rows.set(conversation.id, {
       ...conversation,
       market: market.marketId,
@@ -143,11 +236,12 @@ export class MemoryConversations implements ConversationRepository {
   append(
     _market: MarketContext,
     id: string,
-    message: StoredMessage & { cards: readonly string[] },
+    message: StoredMessage & { cards: readonly string[]; at: Temporal.Instant },
   ) {
     const list = this.messages.get(id) ?? [];
     list.push({ role: message.role, text: message.text, cards: message.cards });
     this.messages.set(id, list);
+    this.times.set(id, [...(this.times.get(id) ?? []), message.at]);
     return Promise.resolve();
   }
   purgeExpired(
@@ -164,6 +258,7 @@ export class MemoryConversations implements ConversationRepository {
       if (Temporal.Instant.compare(row.lastAt.add({ hours: 24 * days }), now) < 0) {
         this.rows.delete(id);
         this.messages.delete(id);
+        if (row.retentionDays > 0) this.destroyed.add(id);
         purged += 1;
       }
     }
