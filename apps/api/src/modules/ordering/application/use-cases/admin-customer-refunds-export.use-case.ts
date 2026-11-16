@@ -9,6 +9,9 @@ import {
   type CustomerRefundsFailure,
 } from '../customer-refunds-list-flow';
 
+/** The step-up action the route guards and the unit spends (for the controller). */
+export { CUSTOMER_DATA_EXPORT_STEP_UP } from '../customer-refunds-list-flow';
+
 /**
  * `ordering.admin-customer-refunds-export`: the refunds of one customer's orders as a CSV or XLSX
  * file (at most 10,000). Rule: `ordering.order.view` and the protected `customers.customers.export`
