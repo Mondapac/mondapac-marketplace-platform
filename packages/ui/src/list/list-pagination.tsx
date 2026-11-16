@@ -95,18 +95,20 @@ export function ListPagination({
           {range}
         </p>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <div className="flex items-center gap-2 text-sm text-fg-muted">
-            <span aria-hidden="true">{labels.rowsPerPage}</span>
-            <div className="w-20 [&_label]:sr-only">
-              <Select
-                label={labels.rowsPerPage}
-                value={String(pageSize)}
-                disabled={disabled}
-                onChange={(event) => onPageSize(Number(event.target.value))}
-                options={pageSizes.map((size) => ({ value: String(size), label: String(size) }))}
-              />
+          {pageSizes.length > 1 ? (
+            <div className="flex items-center gap-2 text-sm text-fg-muted">
+              <span aria-hidden="true">{labels.rowsPerPage}</span>
+              <div className="w-20 [&_label]:sr-only">
+                <Select
+                  label={labels.rowsPerPage}
+                  value={String(pageSize)}
+                  disabled={disabled}
+                  onChange={(event) => onPageSize(Number(event.target.value))}
+                  options={pageSizes.map((size) => ({ value: String(size), label: String(size) }))}
+                />
+              </div>
             </div>
-          </div>
+          ) : null}
           {mode === 'prev-next' ? (
             <div className="flex gap-2">
               <Button
