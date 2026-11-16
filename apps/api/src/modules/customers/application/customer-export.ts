@@ -13,6 +13,7 @@ export const CUSTOMER_EXPORT_COLUMNS = [
   'spent',
   'currency',
   'refunds',
+  'groups',
 ] as const;
 export type CustomerExportColumn = (typeof CUSTOMER_EXPORT_COLUMNS)[number];
 
@@ -28,6 +29,7 @@ export const CUSTOMER_EXPORT_HEADERS: Readonly<Record<CustomerExportColumn | 'em
     spent: 'Spent (minor units)',
     currency: 'Currency',
     refunds: 'Refunds',
+    groups: 'Groups',
   });
 
 export function exportCell(column: CustomerExportColumn, row: CustomerListRow): string {
@@ -50,5 +52,7 @@ export function exportCell(column: CustomerExportColumn, row: CustomerListRow): 
       return row.currency ?? '';
     case 'refunds':
       return String(row.refundCount);
+    case 'groups':
+      return row.groups.map((group) => group.name).join('; ');
   }
 }

@@ -16,3 +16,7 @@ Available = platform on, minus seller-unsupported, minus structural rules. Reaso
 `applyDeliveryMargin(quote, { margin, roundingStepMinor })` is pure. The buyer pays quote + margin, rounded UP to the step (1, 5, 10, 50, 100 minor units; 1 means none). Percent margins are half-up on the quote. Checkout quotes are not wired to it yet (package 5).
 
 Migration: `20261025150000_shipping_delivery_settings` (with `down.sql`).
+
+## Review in System requests
+
+Saving the Market settings, setting a seller's methods, saving the fleets page and editing a fleet-selection model go live at once and open a review in Admin Inbox › System requests (area `delivery`, medium risk, on by default); a rejected or withdrawn change is restored by the module's reverters. Each write takes an optional `note` (required where the Market reviews the area) and answers `request`; the reads carry `review: {reviewed, risk}`. Creating a model is not reviewed. Details: `docs/modules/system-requests/notes.md`, "Hooked areas".

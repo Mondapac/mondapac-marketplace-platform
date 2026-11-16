@@ -58,6 +58,8 @@ export class InMemoryCustomerList implements CustomerListReader {
       if (selector.ordersMax !== null && row.orderCount > selector.ordersMax) return false;
       if (selector.spentMin !== null && row.spentMinor < selector.spentMin) return false;
       if (selector.spentMax !== null && row.spentMinor > selector.spentMax) return false;
+      if (selector.group !== null && !row.groups.some((group) => group.groupId === selector.group))
+        return false;
       if (selector.text !== null) {
         const text = selector.text.toLowerCase();
         const byEmail = row.email.toLowerCase().startsWith(text);
@@ -113,6 +115,7 @@ export class InMemoryCustomerList implements CustomerListReader {
       ordersMax: null,
       spentMin: null,
       spentMax: null,
+      group: null,
     } as const;
     return Promise.resolve(
       Object.fromEntries(
