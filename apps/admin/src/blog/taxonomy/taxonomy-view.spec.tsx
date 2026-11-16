@@ -39,7 +39,9 @@ function show(canEdit = true) {
 const writes = () => call.mock.calls.filter(([method]) => method !== 'GET');
 
 describe('admin blog taxonomy', () => {
-  beforeEach(() => call.mockReset());
+  beforeEach(() => {
+    call.mockReset();
+  });
   afterEach(cleanup);
 
   it('lists categories and tags, and offers no change to a reader', async () => {
@@ -148,8 +150,6 @@ describe('admin blog taxonomy', () => {
     finish(ok({}) as never);
     await waitFor(() => expect(addTag.getAttribute('aria-busy')).toBeNull());
     expect(save.disabled).toBe(false);
-    // The beforeEach hook returns the mock, which runs as a teardown: leave it with no held call.
-    call.mockReset();
   });
 
   it('cannot add a category when the Market has no blog language settings', async () => {

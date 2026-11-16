@@ -248,7 +248,8 @@ export function TaxonomyView({
         <span className="text-sm">{t('delete-sure', { name: label })}</span>
         <Button
           variant="destructive-solid"
-          disabled={busy}
+          loading={running === 'delete'}
+          disabled={busy && running !== 'delete'}
           aria-label={t('delete-confirm-named', { name: label })}
           onClick={() => void remove(path, done, heading)}
         >

@@ -125,7 +125,10 @@ beforeEach(() => {
   push.mockReset();
   wide(true);
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('CategoriesView', () => {
   it('offers Export and Import only with the import key', async () => {
@@ -168,7 +171,6 @@ describe('CategoriesView', () => {
     finish({ ok: false, status: 500 } as Response);
     await waitFor(() => expect(xlsx.getAttribute('aria-busy')).toBeNull());
     expect((csv as HTMLButtonElement).disabled).toBe(false);
-    vi.unstubAllGlobals();
   });
 
   it('filters the tree by feature set, own or inherited, and clears it', async () => {

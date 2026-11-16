@@ -143,8 +143,12 @@ describe('DecisionPanel', () => {
     const yes = screen.getByRole<HTMLButtonElement>('button', { name: 'Yes, approve' });
     expect(yes.getAttribute('aria-busy')).toBeNull();
     expect(yes.disabled).toBe(true);
-    resolve({ ok: true, status: 200, body: { observedOutcome: 'active' } } as never);
+    expect(record.hasAttribute('disabled')).toBe(false);
+    resolve({ ok: false, failure: { status: 503, code: 'x' } } as never);
     await waitFor(() => expect(record.getAttribute('aria-busy')).toBeNull());
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Yes, approve' }).disabled).toBe(
+      false,
+    );
   });
 
   it('shows the recorded manual check', () => {

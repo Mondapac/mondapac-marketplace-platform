@@ -81,7 +81,10 @@ beforeEach(() => {
   toast.mockReset();
   save.mockReset();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('Import categories page', () => {
   it('checks a file without writing, then shows the counts and the rows', async () => {
@@ -369,7 +372,6 @@ describe('Export links of the import page', () => {
     finish({ ok: false, status: 500 } as Response);
     await waitFor(() => expect(csv.getAttribute('aria-busy')).toBeNull());
     expect(xlsx.disabled).toBe(false);
-    vi.unstubAllGlobals();
   });
 });
 

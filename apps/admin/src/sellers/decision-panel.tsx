@@ -54,6 +54,8 @@ export function DecisionPanel({
   const busy = useRef(false);
 
   const locked = pending || decisionInProgress;
+  // The running button keeps focus (loading, not disabled); only the others are locked.
+  const lockedFor = (action: Action) => decisionInProgress || (pending && running !== action);
   const base = `sellers/admin/${sellerId}/review`;
 
   async function send(
@@ -163,7 +165,7 @@ export function DecisionPanel({
               type="submit"
               variant="secondary"
               loading={running === 'check'}
-              disabled={outcome === '' || locked}
+              disabled={outcome === '' || lockedFor('check')}
             >
               {t('sellers.decision.check.save')}
             </Button>
@@ -182,7 +184,7 @@ export function DecisionPanel({
               <ActionRow>
                 <Button
                   loading={running === 'approve'}
-                  disabled={locked}
+                  disabled={lockedFor('approve')}
                   onClick={() =>
                     void send('approve', 'POST', `${base}/approve`, { revisionId }, (status) =>
                       status === 202 ? 'settling' : 'approved',
@@ -219,7 +221,7 @@ export function DecisionPanel({
                   type="submit"
                   variant="destructive"
                   loading={running === 'reject'}
-                  disabled={locked || reason.trim() === ''}
+                  disabled={lockedFor('reject') || reason.trim() === ''}
                 >
                   {t('sellers.decision.reject-yes')}
                 </Button>
