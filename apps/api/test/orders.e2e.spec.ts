@@ -1209,7 +1209,19 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       // The route logs its outcome, never the reference typed.
       const logged = logLines.filter((l) => l['msg'] === 'ordering.admin-list-shipments-route');
       expect(logged.length).toBeGreaterThanOrEqual(5);
-      expect(JSON.stringify(logged)).not.toContain('0123');
+      // Look for the search text itself, not a bare '0123': random correlation ids are hex
+      // and contain '0123' about one run in a few hundred.
+      const loggedText = JSON.stringify(logged);
+      for (const piece of [
+        'JD 0123',
+        '0123 4567',
+        'JD%200123',
+        '0123%204567',
+        'JD+0123',
+        '0123+4567',
+      ]) {
+        expect(loggedText).not.toContain(piece);
+      }
     });
 
     it('lists order confirmations and credit notes behind ordering.order.view, unnumbered', async () => {
