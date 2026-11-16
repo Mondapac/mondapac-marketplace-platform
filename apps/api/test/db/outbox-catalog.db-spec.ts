@@ -461,6 +461,20 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // Promotions: a promotion has at most one open review entry (a unique key over open rows only).
   'promotions.promotion_reviews_one_open_idx':
     "CREATE UNIQUE INDEX promotion_reviews_one_open_idx ON promotions.promotion_reviews USING btree (market_id, promotion_id) WHERE (status = 'OPEN'::text)",
+  // Promotions T2: the redemption counts read over the rows that hold, the open reservations of the
+  // sweep, and the backstops of one live first-order discount per customer and one live row per code.
+  'promotions.redemptions_code_live_idx':
+    "CREATE UNIQUE INDEX redemptions_code_live_idx ON promotions.redemptions USING btree (market_id, code_hash) WHERE ((code_hash IS NOT NULL) AND (status <> 'RELEASED'::text))",
+  'promotions.redemptions_customer_live_idx':
+    "CREATE INDEX redemptions_customer_live_idx ON promotions.redemptions USING btree (market_id, promotion_id, customer_account_id) WHERE (status <> 'RELEASED'::text)",
+  'promotions.redemptions_first_order_month_idx':
+    "CREATE INDEX redemptions_first_order_month_idx ON promotions.redemptions USING btree (market_id, budget_month, amount_minor) WHERE ((kind = 'FIRST_ORDER'::text) AND (status <> 'RELEASED'::text))",
+  'promotions.redemptions_first_order_once_idx':
+    "CREATE UNIQUE INDEX redemptions_first_order_once_idx ON promotions.redemptions USING btree (market_id, customer_account_id) WHERE ((kind = 'FIRST_ORDER'::text) AND (status <> 'RELEASED'::text))",
+  'promotions.redemptions_reserved_idx':
+    "CREATE INDEX redemptions_reserved_idx ON promotions.redemptions USING btree (market_id, reserved_at, id) WHERE (status = 'RESERVED'::text)",
+  'promotions.redemptions_units_live_idx':
+    "CREATE INDEX redemptions_units_live_idx ON promotions.redemptions USING btree (market_id, promotion_id, units) WHERE ((status <> 'RELEASED'::text) AND (units IS NOT NULL))",
 };
 
 const OUTBOX_COLUMNS = `
