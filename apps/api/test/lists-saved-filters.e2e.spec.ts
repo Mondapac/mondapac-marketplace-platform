@@ -42,6 +42,67 @@ const OTHER_VIEWER = id<'Account'>(0xa004);
 const MODERATOR = id<'Account'>(0xa005);
 const NO_KEY = id<'Account'>(0xa003);
 const NO_KEY_ROLE = id<'Role'>(0xc0f2);
+const PHASE4 = id<'Account'>(0xa006);
+const PHASE4_ROLE = id<'Role'>(0xc0f3);
+
+/** The phase 4 lists (PR10): each with its view key and a document its list accepts. */
+const PHASE4_LISTS = [
+  {
+    listKey: 'admin.commission-payouts.payouts',
+    viewKey: 'commission-payouts.payout.view',
+    payload: {
+      v: 1,
+      view: 'paid',
+      filters: { approvalMode: 'AUTO' },
+      sort: 'amount',
+      direction: 'desc',
+    },
+  },
+  {
+    listKey: 'admin.commission-payouts.disputes',
+    viewKey: 'commission-payouts.dispute.view',
+    payload: {
+      v: 1,
+      view: 'all',
+      filters: { money: 'withdrawn' },
+      sort: 'opened',
+      direction: 'desc',
+    },
+  },
+  {
+    listKey: 'admin.payments.connected-accounts',
+    viewKey: 'payments.connected-account.view',
+    payload: { v: 1, filters: { status: 'restricted' }, sort: 'created', direction: 'desc' },
+  },
+  {
+    listKey: 'admin.wallet.credit-requests',
+    viewKey: 'wallet.credit.view',
+    payload: {
+      v: 1,
+      view: 'pending',
+      filters: { requestedBy: 'me' },
+      sort: 'requested',
+      direction: 'asc',
+    },
+  },
+  {
+    listKey: 'admin.customers.deletion-requests',
+    viewKey: 'customers.account-deletion-requests.view',
+    payload: { v: 1, view: 'pending', filters: {}, sort: 'scheduled', direction: 'asc' },
+  },
+  {
+    listKey: 'admin.blog.posts',
+    viewKey: 'blog.post.read',
+    payload: {
+      v: 1,
+      view: 'all',
+      q: 'eid',
+      filters: { kind: 'event' },
+      sort: 'created',
+      direction: 'desc',
+    },
+  },
+] as const;
 
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
@@ -154,6 +215,20 @@ describe('generic saved filters over HTTP (integration)', () => {
     seedAdmin(code, OTHER_VIEWER, 'viewer2', 'seed:viewer', 4);
     seedAdmin(code, MODERATOR, 'moderator', 'seed:catalogue-moderator', 5);
     seedAdmin(code, NO_KEY, 'nokey', NO_KEY_ROLE, 2);
+    fakes.seedRole({
+      id: PHASE4_ROLE,
+      marketId: code as AccountState['marketId'],
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      name: 'Phase 4 lists',
+      permissionKeys: PHASE4_LISTS.map((list) => list.viewKey),
+      version: 1,
+      createdAt: START,
+    });
+    seedAdmin(code, PHASE4, 'phase4', PHASE4_ROLE, 6);
   }
 
   function sessionOf(code: string, account: Id<'Account'>, n: number) {
@@ -443,6 +518,43 @@ describe('generic saved filters over HTTP (integration)', () => {
         ]);
       },
     );
+
+    it('accepts each phase 4 list with its view key, and refuses it without the key', async () => {
+      await boot();
+      await seeded(code);
+      const holder = sessionOf(code, PHASE4, 6);
+      const blind = sessionOf(code, NO_KEY, 2);
+
+      for (const list of PHASE4_LISTS) {
+        const body = {
+          listKey: list.listKey,
+          name: 'Mine',
+          visibility: 'me',
+          payload: list.payload,
+        };
+        const created = await call('post', code, '', holder).send(body);
+        const listed = await call('get', code, `?listKey=${list.listKey}`, holder);
+        const unknownKey = await call('post', code, '', holder).send({
+          ...body,
+          payload: { ...list.payload, page: 2 },
+        });
+        const shared = await call('post', code, '', holder).send({
+          ...body,
+          name: 'Ours',
+          visibility: 'everyone',
+        });
+
+        expect([list.listKey, created.status]).toEqual([list.listKey, 201]);
+        expect((created.body as { payload: unknown }).payload).toEqual(list.payload);
+        expect((listed.body as { items: unknown[] }).items).toHaveLength(1);
+        expect([list.listKey, unknownKey.status]).toEqual([list.listKey, 400]);
+        // The holder has the view key only, not the module's share key.
+        expect([list.listKey, shared.status]).toEqual([list.listKey, 403]);
+        expect((await call('post', code, '', blind).send(body)).status).toBe(403);
+        expect((await call('get', code, `?listKey=${list.listKey}`, blind)).status).toBe(403);
+      }
+      expect(store.rows.size).toBe(PHASE4_LISTS.length);
+    });
 
     it('never shows a Market the filters of another', async () => {
       await boot();

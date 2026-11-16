@@ -165,7 +165,7 @@ type Paging =
   | { readonly kind: 'pages'; readonly page: number; readonly pageSize: number }
   | { readonly kind: 'prev-next'; readonly after: CreditListCursor | null; readonly limit: number };
 
-type Fields = { path: string; code: string }[];
+export type Fields = { path: string; code: string }[];
 
 /** The admin who acts; an acting-as session sees no request queue (review S4). */
 function signedInAdmin(context: CallContext): Id<'Account'> | null {
@@ -176,8 +176,10 @@ function signedInAdmin(context: CallContext): Id<'Account'> | null {
   return actor.accountId;
 }
 
-/** The selector keys (view, search, filters) shared by the list and the export. */
-function parseSelector(
+/**
+ * The selector keys (view, search, filters) shared by the list, the export and the saved filters.
+ */
+export function parseCreditSelector(
   input: CreditListInput,
   admin: Id<'Account'>,
   fields: Fields,
@@ -289,7 +291,7 @@ function parse(
   AdminCreditFailure
 > {
   const fields: Fields = [];
-  const filter = parseSelector(input, admin, fields);
+  const filter = parseCreditSelector(input, admin, fields);
   const prevNext = input.cursor !== undefined || input.limit !== undefined;
   let paging: Paging;
   let sort: CreditSort = { key: 'requested', direction: 'desc' };
@@ -588,7 +590,7 @@ export async function exportAdminCredits(
     ids = wanted;
   } else {
     const fields: Fields = [];
-    const filter = parseSelector(input, admin, fields);
+    const filter = parseCreditSelector(input, admin, fields);
     const sort = parseSort(input, fields);
     if (fields.length > 0) return err({ code: 'validation.failed', fields });
     const picked = await deps.unitOfWork.run<

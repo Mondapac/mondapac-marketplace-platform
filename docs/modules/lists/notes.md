@@ -43,6 +43,20 @@ closed (`v: 1`; date filters are relative presets, never dates; search text is n
   on its `ListDefinition`; the panel's own column ids must stay the same.
 - Routes: `GET/PUT/DELETE /lists/admin/column-preferences` (`listKey` in the query or body). No
   audit: it is a personal preference. Ids the list no longer offers are dropped on read.
+## Phase 4 lists (PR10)
+
+- Registered admin lists: `admin.commission-payouts.payouts` (21), `admin.commission-payouts.disputes`
+  (23), `admin.payments.connected-accounts` (22), `admin.wallet.credit-requests` (24),
+  `admin.customers.deletion-requests` (25) and `admin.blog.posts` (26). Each `viewKey` is the key
+  its list use case checks; each `shareKey` is its module's `<module>.saved-filter.share`
+  (customers reuses `customers.saved-filter.share`).
+- Their payload is one closed shape, `savedListPayloadParser` (`contracts/saved-list-payload.ts`):
+  `{v: 1, view, q?, filters, sort, direction}`, `view` only for a list with views (the Seller
+  accounts list has none), no paging or columns. The view, `q` and filters go through the list's own
+  selector reader, so a saved value is one the list accepts; the stored form is canonical (ids in
+  lower case, instants as ISO text in UTC, minor units as digits).
+- The compact lists 27 and 28 have no saved filters. The seller Payouts list (33) joins when the
+  seller saved-filter routes (`/lists/seller/saved-filters`) exist.
 
 ## Not here yet
 

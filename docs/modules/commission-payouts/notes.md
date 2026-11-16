@@ -129,3 +129,12 @@ without one). The answer adds `request: {id, number}` (null when nothing was ope
 withdrawn request is restored by `CommissionRateReverter` / `PayoutTermsReverter`
 (application/money-reverters.ts), only while the seller still has the value after. The admin
 panel's note field comes with the panel package: until then a save in such a Market answers 400.
+
+## Saved filters (super list phase 4, PR10)
+
+The admin Payouts list (`admin.commission-payouts.payouts`, key `commission-payouts.payout.view`)
+and the admin Disputes list (`admin.commission-payouts.disputes`, key
+`commission-payouts.dispute.view`) have saved filters through `lists`
+(`application/saved-filters/list-definitions.ts`). Sharing one with every admin needs the new
+unprotected key `commission-payouts.saved-filter.share`; no role is seeded with it. The seller
+Payouts list (33) joins when `lists` has the seller routes. See docs/modules/lists/notes.md.

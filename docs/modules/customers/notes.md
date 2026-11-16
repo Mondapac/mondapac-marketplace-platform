@@ -914,3 +914,10 @@ card, the storefront's invite banner and the admin list's screens follow in the 
 - PR 4a-2: use case `customers.read-exclusive-seller` (rule `system`) and the read facade method
   `exclusiveSellerOf(context, accountId, at)` for promotions' exclusive-customer discount (and
   for 4b's checkout freeze). Ids and the instant only.
+## Saved filters of the Account deletion requests list (super list phase 4, PR10)
+
+The admin Account deletion requests list (`admin.customers.deletion-requests`, key
+`customers.account-deletion-requests.view`) has saved filters through `lists`
+(`application/saved-filters/list-definitions.ts`); sharing reuses `customers.saved-filter.share`.
+The Customers list keeps its own saved-filter routes until it moves to `lists`. See
+docs/modules/lists/notes.md.

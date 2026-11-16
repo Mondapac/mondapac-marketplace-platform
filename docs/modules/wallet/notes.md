@@ -357,3 +357,11 @@ risk) it also opens a System request in the same unit and needs the admin's `not
 without one). The answer adds `request: {id, number}`. A rejected or withdrawn request is restored
 by `WalletStatusReverter`, audited as `wallet.market-status.reverted` (part of the switch's
 history); going back to `off` once the Market has journals is refused as `changed-since`.
+
+## Saved filters (super list phase 4, PR10)
+
+The admin Credit requests list (`admin.wallet.credit-requests`, key `wallet.credit.view`) has
+saved filters through `lists` (`application/saved-filters/list-definitions.ts`). `requestedBy=me`
+is saved as `me`, so it means whoever opens the filter. Sharing one needs the new unprotected key
+`wallet.saved-filter.share` (with the protected view key); no role is seeded with it. See
+docs/modules/lists/notes.md.

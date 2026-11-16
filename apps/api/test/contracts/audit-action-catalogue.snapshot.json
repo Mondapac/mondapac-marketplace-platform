@@ -2427,7 +2427,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -2439,7 +2439,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -2453,7 +2453,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts)",
       "visibility": "enumOf(me|everyone)"
     }
   },

@@ -19,6 +19,12 @@ export const LISTS_AUDIT_LIST_KEYS = [
   'admin.ordering.shipments',
   'admin.ordering.refunds',
   'admin.ordering.documents',
+  'admin.commission-payouts.payouts',
+  'admin.commission-payouts.disputes',
+  'admin.payments.connected-accounts',
+  'admin.wallet.credit-requests',
+  'admin.customers.deletion-requests',
+  'admin.blog.posts',
 ] as const;
 export type ListsAuditListKey = (typeof LISTS_AUDIT_LIST_KEYS)[number];
 
