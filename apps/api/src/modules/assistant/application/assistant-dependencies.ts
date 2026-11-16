@@ -1,6 +1,7 @@
 import type { Clock } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { ChangeTrail } from '../../../platform/audit/change-trail';
+import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { AssistantRuntime } from './ports/assistant-runtime';
 import type { AssistantSettingsRepository } from './ports/assistant-settings.repository';
@@ -9,6 +10,7 @@ import type { ConversationRepository } from './ports/conversation.repository';
 import type { GuestTokens } from './ports/guest-tokens';
 import type { MarketCalendar } from './ports/market-calendar';
 import type { MessageLimits } from './ports/message-limits';
+import type { PreviewTokens } from './ports/preview-tokens';
 import type { QuickPrompts } from './ports/quick-prompts';
 import type { SpendRepository } from './ports/spend.repository';
 
@@ -25,6 +27,10 @@ export interface AssistantDependencies {
   readonly limits: MessageLimits;
   readonly guestTokens: GuestTokens;
   readonly calendar: MarketCalendar;
+  /** The internal preview token: issued to an admin, verified on the storefront. */
+  readonly previewTokens: PreviewTokens;
+  /** assistant's own outbox: the spend-cap event, in the unit that counted the turn. */
+  readonly outbox: OutboxWriter;
   /** The storefront's fixed quick prompts, in the buyer's language. */
   readonly quickPrompts: QuickPrompts;
   /** "Last changed by" and the history of the settings, from this module's audit rows. */

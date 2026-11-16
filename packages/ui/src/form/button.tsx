@@ -14,10 +14,15 @@ import { Spinner } from '../loading/spinner.tsx';
  * `destructive` is the outlined red button (a row action, Delete in a list); `destructive-solid` is
  * the filled red primary of a confirm dialog for a destructive action (design: Destructive dialog).
  */
-export type ButtonVariant = 'primary' | 'secondary' | 'link' | 'destructive' | 'destructive-solid';
+export type ButtonVariant =
+  'primary' | 'secondary' | 'link' | 'quiet' | 'destructive' | 'destructive-solid';
+
+/** `sm` is the compact control of a toolbar or chip row (height of `--mp-size-control-sm`, text-sm). */
+export type ButtonSize = 'default' | 'sm';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly variant?: ButtonVariant;
+  readonly size?: ButtonSize;
   /**
    * Work this button started is running (panel loading L1): a 14 px spinner shows before the label
    * at once (no delay), the button keeps its width and focus, and a second click does nothing.
@@ -41,11 +46,15 @@ const VARIANT: Record<ButtonVariant, string> = {
     'border border-critical-border bg-surface text-critical-fg hover:bg-critical-bg disabled:border-line-control disabled:text-fg-muted disabled:cursor-not-allowed',
   'destructive-solid':
     'bg-critical-solid text-on-accent enabled:hover:brightness-90 disabled:bg-muted disabled:text-fg-muted disabled:cursor-not-allowed',
+  /** A neutral text button (Clear all): grey text, a muted background on hover. */
+  quiet:
+    'text-fg-secondary hover:bg-muted hover:text-fg disabled:text-fg-muted disabled:cursor-not-allowed',
   link: 'text-link underline-offset-2 hover:underline disabled:text-fg-muted disabled:cursor-not-allowed',
 };
 
 export function Button({
   variant = 'primary',
+  size = 'default',
   loading = false,
   loadingLabel,
   block = false,
@@ -58,7 +67,14 @@ export function Button({
   style,
   ...rest
 }: ButtonProps) {
-  const size = variant === 'link' ? '' : 'h-(--mp-size-control) px-4';
+  const sizeClass =
+    size === 'sm'
+      ? variant === 'link'
+        ? 'min-h-(--mp-size-control-sm) text-sm'
+        : 'h-(--mp-size-control-sm) px-3 text-sm'
+      : variant === 'link'
+        ? ''
+        : 'h-(--mp-size-control) px-4';
   const own = useRef<HTMLButtonElement | null>(null);
   // The width at rest, measured after every idle render, so the busy button keeps exactly that
   // width (design: "measured and fixed") and nothing beside it moves when the label changes to the
@@ -88,8 +104,8 @@ export function Button({
       aria-busy={loading || undefined}
       className={[
         'inline-flex items-center justify-center rounded-md font-medium',
-        loading ? 'gap-2' : '',
-        size,
+        loading ? 'gap-2' : 'gap-1.5',
+        sizeClass,
         block ? 'w-full' : '',
         VARIANT[variant],
         className ?? '',
@@ -119,7 +135,7 @@ export function Button({
 
 export interface LinkButtonProps extends AnchorHTMLAttributes<HTMLAnchorElement> {
   readonly href: string;
-  readonly variant?: Exclude<ButtonVariant, 'link'>;
+  readonly variant?: Exclude<ButtonVariant, 'link' | 'quiet'>;
 }
 
 /** A link that looks like a button: a page action that opens another page (New product). */

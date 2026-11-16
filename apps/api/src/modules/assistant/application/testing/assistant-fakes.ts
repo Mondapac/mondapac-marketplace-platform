@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
-import { Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, MarketContext, MarketId } from '@mondapac/shared-kernel';
+import { encodePayload, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, MarketContext, MarketId, PendingEvent } from '@mondapac/shared-kernel';
+import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
+import { NO_PERMISSION_KEYS } from '../../../../platform/events/outbox-writer';
+import { ASSISTANT_EVENTS } from '../../domain/events';
 import type { ModelRequest, ModelTurn } from '../../../../platform/ai/model-provider';
 import type { ModelTier } from '../../domain/assistant-settings';
 import type { AssistantCard } from '../../domain/cards';
@@ -19,6 +22,7 @@ import type {
 import type { GuestTokens } from '../ports/guest-tokens';
 import type { MarketCalendar } from '../ports/market-calendar';
 import type { MessageLimits } from '../ports/message-limits';
+import type { PreviewTokens } from '../ports/preview-tokens';
 import type { QuickPrompts } from '../ports/quick-prompts';
 import type { SpendRepository, SpendTotals } from '../ports/spend.repository';
 
@@ -361,6 +365,21 @@ export class SequenceGuestTokens implements GuestTokens {
   }
 }
 
+/** Collects events with their Market, each checked against its definition as the writer does. */
+export class RecordingOutbox implements OutboxWriter {
+  readonly events: (PendingEvent & { marketId: string })[] = [];
+  append(context: CallContext, events: readonly PendingEvent[]): Promise<void> {
+    for (const event of events) {
+      const definition = ASSISTANT_EVENTS.find((d) => d.type === event.type);
+      if (definition === undefined) throw new Error(`outbox: unknown type ${event.type}`);
+      const checked = encodePayload(definition.fields, event.payload, NO_PERMISSION_KEYS);
+      if (!checked.ok) throw new Error(`outbox: ${JSON.stringify(checked.error)}`);
+      this.events.push({ ...event, marketId: context.market.marketId });
+    }
+    return Promise.resolve();
+  }
+}
+
 /**
  * Fixed prompts shaped like the fixtures: ZZ answers Japanese (its default, with no English
  * catalogue), AU English unless asked for `ja`; records each tag asked.
@@ -374,6 +393,29 @@ export class FixedQuickPrompts implements QuickPrompts {
     return market.marketId === 'ZZ' || lang?.startsWith('ja')
       ? FixedQuickPrompts.JA
       : FixedQuickPrompts.EN;
+  }
+}
+
+/**
+ * Preview tokens: `preview:<Market>:<expiry ms>`, valid until the expiry and for that Market only;
+ * `available` switches the key off.
+ */
+export class FakePreviewTokens implements PreviewTokens {
+  available_ = true;
+  available() {
+    return this.available_;
+  }
+  issue(market: MarketContext, now: Temporal.Instant) {
+    if (!this.available_) return null;
+    const expiresAt = now.add({ minutes: 30 });
+    return { token: `preview:${market.marketId}:${expiresAt.epochMilliseconds}`, expiresAt };
+  }
+  verify(market: MarketContext, token: unknown, now: Temporal.Instant) {
+    if (!this.available_ || typeof token !== 'string') return false;
+    const [kind, marketId, expiry] = token.split(':');
+    return (
+      kind === 'preview' && marketId === market.marketId && Number(expiry) > now.epochMilliseconds
+    );
   }
 }
 

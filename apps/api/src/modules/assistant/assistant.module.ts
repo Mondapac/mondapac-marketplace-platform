@@ -5,11 +5,14 @@ import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
 import { changeTrailProvider, IdentityModule } from '../identity';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
+import { registerEvents } from '../../platform/events/event-catalogue';
+import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { SubjectRateLimits } from '../../platform/rate-limit/subject-rate-limits';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CatalogModule } from '../catalog';
+import { SellersModule } from '../sellers';
 import { NotificationsModule } from '../notifications';
 import { SearchModule } from '../search';
 import type { AssistantDependencies } from './application/assistant-dependencies';
@@ -18,8 +21,10 @@ import { ASSISTANT_SETTINGS_REPOSITORY } from './application/ports/assistant-set
 import { ASSISTANT_TOOLS } from './application/ports/assistant-tools';
 import { CONVERSATION_REPOSITORY } from './application/ports/conversation.repository';
 import { GUEST_TOKENS } from './application/ports/guest-tokens';
+import { IssuePreviewToken } from './application/use-cases/issue-preview-token.use-case';
 import { MARKET_CALENDAR } from './application/ports/market-calendar';
 import { MESSAGE_LIMITS } from './application/ports/message-limits';
+import { PREVIEW_TOKENS } from './application/ports/preview-tokens';
 import { QUICK_PROMPTS } from './application/ports/quick-prompts';
 import { SPEND_REPOSITORY } from './application/ports/spend.repository';
 import { DeleteConversation } from './application/use-cases/delete-conversation.use-case';
@@ -34,8 +39,10 @@ import { ViewConversation } from './application/use-cases/view-conversation.use-
 import { ViewStorefrontAssistant } from './application/use-cases/view-storefront-assistant.use-case';
 import { ASSISTANT_PERMISSIONS } from './contracts';
 import { ASSISTANT_AUDIT_ACTIONS } from './domain/audit';
+import { ASSISTANT_EVENTS } from './domain/events';
 import { assistantProviders } from './infrastructure/assistant-providers';
 import { AdminAssistantSettingsController } from './presentation/admin-assistant-settings.controller';
+import { AdminPreviewTokenController } from './presentation/admin-preview-token.controller';
 import { ConversationController } from './presentation/conversation.controller';
 import { purgeConversationsJob } from './presentation/jobs/purge-conversations.job';
 import { StorefrontAssistantController } from './presentation/storefront-assistant.controller';
@@ -54,7 +61,9 @@ const PORTS: readonly [keyof AssistantDependencies, InjectionToken][] = [
   ['limits', MESSAGE_LIMITS],
   ['guestTokens', GUEST_TOKENS],
   ['calendar', MARKET_CALENDAR],
+  ['outbox', OUTBOX_WRITER],
   ['quickPrompts', QUICK_PROMPTS],
+  ['previewTokens', PREVIEW_TOKENS],
   ['trail', CHANGE_TRAIL],
 ];
 
@@ -84,15 +93,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * settings.
  */
 @Module({
-  imports: [SearchModule, CatalogModule, NotificationsModule, IdentityModule],
+  imports: [SearchModule, CatalogModule, SellersModule, NotificationsModule, IdentityModule],
   controllers: [
     AdminAssistantSettingsController,
+    AdminPreviewTokenController,
     StorefrontAssistantController,
     ConversationController,
   ],
   providers: [
     PersistenceModule.auditWriterFor('assistant'),
     PersistenceModule.auditTrailReaderFor('assistant'),
+    PersistenceModule.outboxWriterFor('assistant'),
+    registerEvents('assistant', ASSISTANT_EVENTS),
     changeTrailProvider(),
     registerAuditActions('assistant', ASSISTANT_AUDIT_ACTIONS),
     registerPermissions('assistant', ASSISTANT_PERMISSIONS),
@@ -103,6 +115,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewAssistantSettingsHistory,
       SetAssistantSettings,
       ViewStorefrontAssistant,
+      IssuePreviewToken,
       SendMessage,
       SendGuestMessage,
       ListConversations,

@@ -1,5 +1,12 @@
 [
   {
+    "type": "assistant.spend-cap-reached.v1",
+    "aggregateType": "assistant-spend-day",
+    "fields": {
+      "cap": "enumOf(daily|monthly)"
+    }
+  },
+  {
     "type": "blog.post-approved.v1",
     "aggregateType": "blog-post",
     "fields": {
@@ -911,6 +918,13 @@
       "orderId": "id",
       "sellerOrderIds": "listOf(id)",
       "sellerIds": "listOf(id)"
+    }
+  },
+  {
+    "type": "ordering.order-cancelled.v1",
+    "aggregateType": "order",
+    "fields": {
+      "orderId": "id"
     }
   },
   {
