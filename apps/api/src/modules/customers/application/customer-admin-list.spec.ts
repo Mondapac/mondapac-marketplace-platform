@@ -20,6 +20,7 @@ import type { CustomerListDependencies } from './customer-list-flow';
 import type { SheetWriter } from './ports/sheet-writer';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
 import { MemoryAccountDeletionRequests } from './testing/in-memory-account-deletion';
+import { InMemoryCustomerTimeline } from './testing/in-memory-customer-management';
 import { MemorySavedFilters } from './testing/memory-saved-filters';
 import { AdminCustomerOverview } from './use-cases/admin-customer-overview.use-case';
 import { AdminCustomerTabOpened } from './use-cases/admin-customer-tab-opened.use-case';
@@ -67,6 +68,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
 
   const row = (overrides: Partial<CustomerListRow> & { email: string }): CustomerListRow => ({
     accountId: ids.next<'Account'>(),
+    groups: [],
     displayName: null,
     status: 'active',
     emailVerified: true,
@@ -131,7 +133,8 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
     const savedFilters = new MemorySavedFilters();
     const listDeps: CustomerListDependencies = { unitOfWork, listReader, clock };
     const deletionRequests = new MemoryAccountDeletionRequests();
-    const pageDeps = { ...listDeps, audit, deletionRequests };
+    const timeline = new InMemoryCustomerTimeline(listReader);
+    const pageDeps = { ...listDeps, audit, deletionRequests, timeline, ids };
     const filterDeps = {
       unitOfWork,
       savedFilters,

@@ -2995,10 +2995,19 @@
       "who-unnamed": "Someone",
       "changed": "Changed: {fields}",
       "saved": "Saved"
+    },
+    "drawer": {
+      "close": "Close",
+      "cancel": "Cancel",
+      "discard-title": "Discard your input?",
+      "discard-message": "You have input that is not saved. If you close now, it is lost.",
+      "keep": "Keep editing",
+      "discard": "Discard"
     }
   },
   "fleets": {
     "title": "Delivery fleets",
+    "review-section": "Review",
     "permission-view": "View delivery fleets",
     "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
     "no-access": "Your role cannot see delivery fleets.",
@@ -5847,6 +5856,7 @@
   },
   "deliverySettings": {
     "title": "Delivery rules",
+    "review-section": "Review",
     "permission-view": "View delivery settings",
     "state": {
       "on": "On",
