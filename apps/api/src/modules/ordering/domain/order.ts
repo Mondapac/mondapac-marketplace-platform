@@ -222,7 +222,7 @@ export interface OrderState {
  * What a seller order's shipping tax adds to the order tax: the recorded tax, or nothing for a
  * seller order placed before it was recorded.
  */
-export function shippingTaxOf(seller: SellerOrder): bigint {
+export function shippingTaxOf(seller: Pick<SellerOrder, 'shippingTax'>): bigint {
   return seller.shippingTax ?? 0n;
 }
 
@@ -230,7 +230,7 @@ export function shippingTaxOf(seller: SellerOrder): bigint {
  * The tax of some order lines: the sum of their frozen tax, or null when any of them was placed
  * before tax was recorded (an unknown tax is never shown as zero).
  */
-export function linesTax(lines: readonly OrderLine[]): bigint | null {
+export function linesTax(lines: readonly Pick<OrderLine, 'taxAmount'>[]): bigint | null {
   let sum = 0n;
   for (const line of lines) {
     if (line.taxAmount === null) return null;

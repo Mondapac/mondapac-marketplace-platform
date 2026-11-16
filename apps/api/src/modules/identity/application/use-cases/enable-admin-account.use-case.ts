@@ -3,17 +3,22 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { ADMIN_ACCOUNT_DISABLE } from '../../contracts/permissions';
 import {
   changeAccountStatus,
-  type AccountStatusDependencies,
   type AccountStatusFailure,
+  type AdminEnableDependencies,
   type AccountStatusInput,
   type AccountStatusOutput,
 } from '../accounts/account-status';
+
+/** The answer of an admin's disable or enable, with the review request (null for a disable). */
+export type AdminStatusOutput = AccountStatusOutput;
 
 /**
  * Enables a disabled admin account again (identity design 3.1 `disabled` → `active`, decided by
  * Ali 14.1-8; slice 8b). Rule `permissions [identity.admin-account.disable]`, with the guards of
  * a disable except the last holder: not oneself, R1, R3. Serializable (HF8). The account signs
- * in again; nothing it lost at the disable comes back.
+ * in again; nothing it lost at the disable comes back. The enabling opens a review in Admin Inbox
+ * › System requests (area people) in the same unit, with the admin's `note`; a reviewer's reject
+ * disables the account again (people-reverters.ts).
  */
 export class EnableAdminAccount extends UseCase<
   AccountStatusInput,
@@ -27,7 +32,7 @@ export class EnableAdminAccount extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: AccountStatusDependencies,
+    private readonly deps: AdminEnableDependencies,
   ) {
     super(gate);
   }
@@ -40,6 +45,7 @@ export class EnableAdminAccount extends UseCase<
       population: 'admin',
       to: 'active',
       ruleKey: ADMIN_ACCOUNT_DISABLE.key,
+      review: this.deps.review,
     });
   }
 }

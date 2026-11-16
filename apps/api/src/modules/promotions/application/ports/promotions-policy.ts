@@ -38,6 +38,8 @@ export interface PromotionsSettings {
   readonly batchCodes: BatchCodeSettings | null;
   /** The first-order discount until an admin edits it; null when the Market configures none. */
   readonly firstOrderDefaults: FirstOrderSettings | null;
+  /** The Market's IANA zone: the first-order budget is per calendar month in it. */
+  readonly timeZone: string;
 }
 
 export interface PromotionsPolicy {

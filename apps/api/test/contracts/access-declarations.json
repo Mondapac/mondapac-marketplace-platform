@@ -1,7 +1,22 @@
 [
+  {
+    "name": "assistant.delete-conversation",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "assistant.list-conversations",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "assistant.purge-conversations", "rule": "system" },
   { "name": "assistant.send-guest-message", "rule": "anonymous" },
   { "name": "assistant.send-message", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  {
+    "name": "assistant.view-conversation",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "assistant.view-storefront-assistant", "rule": "anonymous" },
   { "name": "blog.pause-seller-posts", "rule": "system" },
   { "name": "blog.publish-due", "rule": "system" },
@@ -659,8 +674,11 @@
   },
   { "name": "promotions.cashback-on-delivery", "rule": "system" },
   { "name": "promotions.check-was-price", "rule": "anonymous" },
+  { "name": "promotions.confirm-redemptions", "rule": "system" },
   { "name": "promotions.qualify-referral-on-delivery", "rule": "system" },
   { "name": "promotions.quote-discounts", "rule": "system" },
+  { "name": "promotions.redeem-discounts", "rule": "system" },
+  { "name": "promotions.release-cancelled-redemptions", "rule": "system" },
   {
     "name": "promotions.view-my-referral",
     "rule": "own-resources",
@@ -869,6 +887,7 @@
   { "name": "storefront.view-published-slides", "rule": "anonymous" },
   { "name": "storefront.view-served-placements", "rule": "anonymous" },
   { "name": "storefront.view-slide-image", "rule": "anonymous" },
+  { "name": "system-requests.remind-overdue-system-requests", "rule": "system" },
   { "name": "tax.calculate-tax", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "tax.reverse-refund-tax", "rule": "anonymous" },
   { "name": "wallet.balance-of", "rule": "system" },

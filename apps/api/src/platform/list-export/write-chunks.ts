@@ -1,7 +1,5 @@
 import type { Response } from 'express';
 
-// Shared by the export routes of the customer page's sections in the owning modules (phase 2b).
-
 /**
  * Streams the chunks of an export to the response, with backpressure, and stops as soon as the
  * client goes away (a closed tab or a dropped connection): the source is then closed through the
