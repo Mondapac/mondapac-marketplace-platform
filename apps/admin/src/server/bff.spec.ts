@@ -3069,3 +3069,110 @@ describe('relay of the order list views', () => {
     }
   });
 });
+
+describe('relay of the refunds export', () => {
+  const path = ['ordering', 'admin', 'refunds', 'export'];
+  const base = 'http://api.test/ordering/admin/refunds/export';
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/refunds/export${query}`, {
+      method: 'GET',
+      headers: sameOrigin,
+    });
+  const ids = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, i) => `0190a000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+    ).join(',');
+
+  it('relays the list filter, the format, the columns, the ids and the zone, and drops paging and sort', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get(
+        '?state=succeeded&reason=damaged&actor=seller&lossBearer=platform&ledger=waiting&search=Ada&sellerId=0190a000-0000-7000-8000-0000000000b1&from=2026-11-01T00:00:00.000Z&to=2026-11-08T00:00:00.000Z&format=xlsx&columns=amount,store,lossBearer,creditNote&ids=' +
+          ids(2) +
+          '&zone=Australia/Brisbane&page=2&pageSize=25&sort=total&direction=asc&limit=25&cursor=1763300000000.0190a000-0000-7000-8000-0000000000a1&extra=1',
+      ),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    const url = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(url.origin + url.pathname).toBe(base);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      state: 'succeeded',
+      reason: 'damaged',
+      actor: 'seller',
+      lossBearer: 'platform',
+      ledger: 'waiting',
+      search: 'Ada',
+      sellerId: '0190a000-0000-7000-8000-0000000000b1',
+      from: '2026-11-01T00:00:00.000Z',
+      to: '2026-11-08T00:00:00.000Z',
+      format: 'xlsx',
+      columns: 'amount,store,lossBearer,creditNote',
+      ids: ids(2),
+      zone: 'Australia/Brisbane',
+    });
+  });
+
+  it('passes 200 ids and an empty column list, and drops 201 ids, a bad column, a bad format and a bad zone', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get(`?ids=${ids(200)}&columns=`), path, upstream);
+    await relay(config, get(`?ids=${ids(201)}`), path, upstream);
+    await relay(config, get('?columns=amount,secret'), path, upstream);
+    await relay(config, get('?format=xls&zone=../etc'), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `${base}?columns=&ids=${encodeURIComponent(ids(200))}`,
+    );
+    expect(upstream.mock.calls[1]?.[0]).toBe(base);
+    expect(upstream.mock.calls[2]?.[0]).toBe(base);
+    expect(upstream.mock.calls[3]?.[0]).toBe(base);
+  });
+
+  it('relays a file byte for byte with its type and attachment name', async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00, 0x80, 0x7f]);
+    const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(bytes, {
+          status: 200,
+          headers: {
+            'content-type': type,
+            'content-disposition': 'attachment; filename="refunds-2026-11-16.xlsx"',
+          },
+        }),
+      ),
+    );
+    const response = await relay(config, get('?format=xlsx'), path, upstream);
+    expect(response.headers.get('content-type')).toBe(type);
+    expect(response.headers.get('content-disposition')).toBe(
+      'attachment; filename="refunds-2026-11-16.xlsx"',
+    );
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
+
+  it('relays the too-large refusal with its details', async () => {
+    const body = JSON.stringify({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10000, total: 12000 },
+    });
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(body, { status: 413, headers: { 'content-type': 'application/json' } }),
+      ),
+    );
+    const response = await relay(config, get('?format=csv'), path, upstream);
+    expect(response.status).toBe(413);
+    expect(await response.text()).toBe(body);
+  });
+
+  it('does not relay the export as a write', async () => {
+    const upstream = upstreamOk();
+    expect(
+      (await relay(config, post('ordering/admin/refunds/export'), path, upstream)).status,
+    ).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
