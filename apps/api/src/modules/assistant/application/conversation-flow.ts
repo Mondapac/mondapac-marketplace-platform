@@ -320,6 +320,11 @@ export async function sendMessage(
       const spend = await deps.spend.totals(market, today);
       if (capReached(settings, spend) !== null) return err({ code: 'assistant.paused' });
       const conversation = await deps.conversations.find(market, conversationId);
+      // A deleted or purged conversation's id is spent: refused before any model call, so a
+      // re-sent id never costs what the caps cannot count (Hassan, PR 947).
+      if (conversation === null && (await deps.conversations.spent(market, conversationId))) {
+        return err({ code: 'assistant.conversation-not-found' });
+      }
       if (conversation !== null) {
         if (!sameOwner(conversation.owner, owner)) {
           return err({ code: 'assistant.conversation-not-found' });

@@ -24,12 +24,15 @@ import { MARKET_CALENDAR } from './application/ports/market-calendar';
 import { MESSAGE_LIMITS } from './application/ports/message-limits';
 import { QUICK_PROMPTS } from './application/ports/quick-prompts';
 import { SPEND_REPOSITORY } from './application/ports/spend.repository';
+import { DeleteConversation } from './application/use-cases/delete-conversation.use-case';
+import { ListConversations } from './application/use-cases/list-conversations.use-case';
 import { PurgeConversations } from './application/use-cases/purge-conversations.use-case';
 import { SendGuestMessage } from './application/use-cases/send-guest-message.use-case';
 import { SendMessage } from './application/use-cases/send-message.use-case';
 import { SetAssistantSettings } from './application/use-cases/set-assistant-settings.use-case';
 import { ViewAssistantSettingsHistory } from './application/use-cases/view-assistant-settings-history.use-case';
 import { ViewAssistantSettings } from './application/use-cases/view-assistant-settings.use-case';
+import { ViewConversation } from './application/use-cases/view-conversation.use-case';
 import { ViewStorefrontAssistant } from './application/use-cases/view-storefront-assistant.use-case';
 import { ASSISTANT_PERMISSIONS } from './contracts';
 import { ASSISTANT_AUDIT_ACTIONS } from './domain/audit';
@@ -108,6 +111,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewStorefrontAssistant,
       SendMessage,
       SendGuestMessage,
+      ListConversations,
+      ViewConversation,
+      DeleteConversation,
       PurgeConversations,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     registerJobsFrom('assistant', [PurgeConversations], (purge: PurgeConversations) => [

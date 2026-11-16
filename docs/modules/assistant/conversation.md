@@ -95,6 +95,40 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
   in words, which the guard does not catch. The "injection carried by a file" sample does not
   apply: this surface takes no files.
 
+## A signed-in buyer's history (stage 0, B2)
+
+Three routes on the same controller, for a signed-in customer only (session cookie; DELETE also
+needs the CSRF token). A guest is answered 403 `assistant.sign-in-required` before any use case;
+a seller or admin session is not read here. Every answer is `Cache-Control: no-store`.
+
+| Route | Use case (`own-resources`) | Answer |
+|---|---|---|
+| `GET /assistant/conversations?cursor&limit` | `assistant.list-conversations` | `{ items: [{ id, title, turns, full, startedAt, lastMessageAt }], nextCursor }`, newest activity first, 20 a page (at most 50), keyset cursor |
+| `GET /assistant/conversations/:id` | `assistant.view-conversation` | the same fields plus `messages: [{ position, role, text, cards, at }]`, oldest first |
+| `DELETE /assistant/conversations/:id` | `assistant.delete-conversation` | 204 |
+
+- Listed: the account's conversations of the Market that keep text and whose last message is
+  within the retention in force (the shorter of the stored one and the current setting; `none`
+  lists nothing). A conversation of another account, a guest's, an unknown one or an expired one
+  is 404 `assistant.conversation-not-found`.
+- Title: the first buyer message (masked before it was stored, masked again), on one line, at
+  most 30 user-perceived characters with an ellipsis. A conversation with no stored buyer message
+  is not listed.
+- Cards come back as stored: kind and ids only (`product` with `offerId`, `page` with `page`,
+  `support`). A price or product text is never replayed from an old answer; the widget reads the
+  product again if it shows one.
+- List and view answer 403 `assistant.off` while the Market's switch is off. Delete works while
+  it is off: a buyer can always erase their own conversation. Delete removes the conversation,
+  its messages (cascade) and destroys its key in one unit.
+- Continue a listed conversation with the existing POST; `full: true` means it has its 30 buyer
+  messages and the POST answers 409 `assistant.conversation-full`.
+- A deleted or purged conversation's id is spent: the POST answers 404
+  `assistant.conversation-not-found` for it before any model call (its key can never be created
+  again, and a failed write would roll back the spend).
+- Index (migration `20261116010000_assistant_conversations_account_index`, built CONCURRENTLY,
+  partial `WHERE account_id IS NOT NULL`): (`market_id`, `account_id`, `last_message_at` DESC,
+  `id` DESC) for the list.
+
 ## Preview for `internal` (designed, not built)
 
 `internal` reaches no storefront visitor. Proposed: an admin with `assistant.settings.manage`
