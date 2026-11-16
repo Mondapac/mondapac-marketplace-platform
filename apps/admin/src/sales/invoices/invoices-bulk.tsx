@@ -2,6 +2,7 @@
 
 import { ActionMenu, type ActionMenuItem } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import type { Tab } from './invoices-types.ts';
 
 /** The rows the Bulk action menu acts on: the ticked ones, or, after "Select all", the filter. */
 export interface BulkSelection {
@@ -22,20 +23,34 @@ export interface BulkSelection {
  * download. It needs `selection` (ids or "all matching" with the list's own query) and the
  * visible columns, which is why this component already takes the selection.
  */
-export function InvoicesBulk({ selection }: { readonly selection: BulkSelection }) {
+export function InvoicesBulk({
+  selection,
+  tab,
+}: {
+  readonly selection: BulkSelection;
+  readonly tab: Tab;
+}) {
   const t = useTranslations('invoices.bulk');
   const count = selection.allMatching ? (selection.total ?? 0) : selection.ids.length;
   const selected = selection.allMatching || selection.ids.length > 0;
+  const kind = tab === 'credit-note' ? 'credit' : 'confirmation';
   const items: ActionMenuItem[] = [];
+  const hint = items.length === 0 && selected ? t('none-yet') : null;
   return (
-    <ActionMenu
-      label={t('button')}
-      title={
-        selection.allMatching && selection.total === null ? t('all-open') : t('selected', { count })
-      }
-      items={items}
-      disabled={items.length === 0 || !selected}
-      {...(items.length === 0 && selected ? { hint: t('none-yet') } : {})}
-    />
+    <div className="flex flex-col items-end gap-1">
+      <ActionMenu
+        label={t('button')}
+        title={
+          selection.allMatching && selection.total === null
+            ? t('all-open', { kind })
+            : t('selected', { count, kind })
+        }
+        items={items}
+        disabled={items.length === 0 || !selected}
+        {...(hint === null ? {} : { hint })}
+      />
+      {/* A disabled button cannot take focus: the reason is plain text under it, not only a title. */}
+      {hint === null ? null : <p className="text-sm text-fg-muted">{hint}</p>}
+    </div>
   );
 }

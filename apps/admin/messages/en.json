@@ -9914,7 +9914,7 @@
     },
     "sorted": "Sorted by {field}: {order}",
     "sorted-newest": "Newest first",
-    "match": "{count, plural, one {# document matches} other {# documents match}}",
+    "match": "{kind, select, credit {{count, plural, one {# credit note matches} other {# credit notes match}}} other {{count, plural, one {# order confirmation matches} other {# order confirmations match}}}}",
     "col": {
       "order": "Order",
       "issued": "Issued",
@@ -9933,22 +9933,22 @@
     "tax-not-recorded-title": "An item was placed before its tax was recorded.",
     "row-name": "order {id}",
     "select": {
-      "page": "Select all documents on this page",
+      "page": "{kind, select, credit {Select all credit notes on this page} other {Select all order confirmations on this page}}",
       "page-short": "Select all on this page",
       "row": "Select {name}"
     },
     "selection": {
-      "selected": "{count, plural, one {# document selected} other {# documents selected}}",
-      "all": "{count, plural, one {The # matching document is selected} other {All # matching documents are selected}}",
-      "all-open": "All matching documents are selected",
+      "selected": "{kind, select, credit {{count, plural, one {# credit note selected} other {# credit notes selected}}} other {{count, plural, one {# order confirmation selected} other {# order confirmations selected}}}}",
+      "all": "{kind, select, credit {{count, plural, one {The # matching credit note is selected} other {All # matching credit notes are selected}}} other {{count, plural, one {The # matching order confirmation is selected} other {All # matching order confirmations are selected}}}}",
+      "all-open": "{kind, select, credit {All matching credit notes are selected} other {All matching order confirmations are selected}}",
       "select-all": "Select all {count, number} matching",
       "select-all-open": "Select all matching",
       "clear": "Clear selection"
     },
     "bulk": {
       "button": "Bulk action",
-      "selected": "{count, plural, one {# document selected} other {# documents selected}}",
-      "all-open": "All matching documents selected",
+      "selected": "{kind, select, credit {{count, plural, one {# credit note selected} other {# credit notes selected}}} other {{count, plural, one {# order confirmation selected} other {# order confirmations selected}}}}",
+      "all-open": "{kind, select, credit {All matching credit notes selected} other {All matching order confirmations selected}}",
       "none-yet": "No bulk actions are available for invoices yet."
     },
     "actions": {
@@ -9959,11 +9959,12 @@
     },
     "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
     "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name.",
-    "too-many": "Page numbers stop at the first {limit} documents. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
+    "too-many": "Page numbers stop at the first {limit} {kind, select, credit {credit notes} other {order confirmations}}. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
     "loading": "Loading invoices...",
     "error": {
       "unavailable": "Invoices couldn't be loaded.",
-      "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
+      "search-unavailable": "Name search isn't available right now. Try again, or search by ID.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them."
     },
     "empty": {
       "no-match": "No invoices match",

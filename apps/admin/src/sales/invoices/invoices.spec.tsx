@@ -119,10 +119,11 @@ function mount(
     zone?: string;
     marketId?: string;
     sellerId?: string | null;
+    locale?: string;
   } = {},
 ) {
   return render(
-    <NextIntlClientProvider locale="en-AU" messages={messages}>
+    <NextIntlClientProvider locale={options.locale ?? 'en-AU'} messages={messages}>
       <InvoicesList
         paging={options.paging ?? 'pages'}
         accountId="acc-1"
@@ -246,9 +247,16 @@ describe('Invoices tabs and page numbers', () => {
     mount();
     await screen.findByText('Cedar Lane Halal Meats');
     expect(
-      screen.getByText(/Page numbers stop at the first 10,000 documents\. Narrow the filters/),
+      screen.getByText(
+        /Page numbers stop at the first 10,000 order confirmations\. Narrow the filters/,
+      ),
     ).toBeTruthy();
     expect(screen.getByText('1 to 1 of 12,345')).toBeTruthy();
+    // The banner sits above the table, with the other banners.
+    const banner = screen.getByText(/Page numbers stop at the first 10,000 order confirmations/);
+    expect(
+      banner.compareDocumentPosition(screen.getByRole('table')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Page 400' }));
     await waitFor(() => expect(lastUrl()).toContain('page=400'));
     await waitFor(() =>
@@ -338,9 +346,11 @@ describe('Invoices Previous and next', () => {
     serve(() => cursorPage([confirmation()], cursor(1)));
     mount({ paging: 'prev-next' });
     await screen.findByText('Cedar Lane Halal Meats');
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all documents on this page' }));
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all order confirmations on this page' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Select all matching' }));
-    expect(screen.getByText('All matching documents are selected')).toBeTruthy();
+    expect(screen.getByText('All matching order confirmations are selected')).toBeTruthy();
   });
 });
 
@@ -376,6 +386,33 @@ describe('Invoices search', () => {
     fireEvent.keyDown(box(), { key: 'Enter' });
     await waitFor(() => expect(paramsOf(lastUrl())['search']).toBe('re_123'));
     expect(paramsOf(lastUrl())).not.toHaveProperty('q');
+  });
+
+  it('sends an upper-case v7 id lower-cased, and a v4 UUID as search (the API knows v7 ids only)', async () => {
+    serve(() => pageOf([confirmation()]));
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    fireEvent.change(box(), { target: { value: ID.toUpperCase() } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(paramsOf(lastUrl())['q']).toBe(ID));
+    const v4 = '3f2b8c1e-5d4a-4b6f-9a7e-1c2d3e4f5a6b';
+    fireEvent.change(box(), { target: { value: v4 } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(paramsOf(lastUrl())['search']).toBe(v4));
+    expect(paramsOf(lastUrl())).not.toHaveProperty('q');
+  });
+
+  it('shows the one-character hint only after Enter or leaving the box, not at the first keystroke', async () => {
+    serve(() => pageOf([confirmation()]));
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    fireEvent.change(box(), { target: { value: 'a' } });
+    expect(screen.queryByText('Type at least 2 characters.')).toBeNull();
+    fireEvent.blur(box());
+    expect(screen.getByRole('status').textContent).toBe('Type at least 2 characters.');
+    // Typing again takes it away until the box is left again.
+    fireEvent.change(box(), { target: { value: 'b' } });
+    expect(screen.queryByText('Type at least 2 characters.')).toBeNull();
   });
 
   it('asks for nothing from one character and shows the hint under the box', async () => {
@@ -480,10 +517,66 @@ describe('Invoices Issued filter', () => {
       to: '2026-11-17T14:00:00.000Z',
     });
     expect(screen.getByText('Issued is Today')).toBeTruthy();
-    expect(screen.getByText('1 document matches')).toBeTruthy();
+    expect(screen.getByText('1 order confirmation matches')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Remove filter Issued is Today' }));
     await waitFor(() => expect(paramsOf(lastUrl())).not.toHaveProperty('from'));
     expect(paramsOf(lastUrl())).not.toHaveProperty('to');
+  });
+
+  it('works on a Market that is not Australian: other locale, zone and currency', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    serve(() =>
+      pageOf([
+        confirmation({
+          total: money('12550', 'EUR'),
+          tax: money('2004', 'EUR'),
+          shipping: money('990', 'EUR'),
+        }),
+      ]),
+    );
+    mount({ locale: 'de-DE', zone: 'Europe/Berlin', marketId: 'DE' });
+    await screen.findByText('Cedar Lane Halal Meats');
+    expect(screen.getByText('Times and days are in Europe/Berlin.')).toBeTruthy();
+    expect(screen.getByText(/125,50\s€/)).toBeTruthy();
+    expect(screen.queryByText(/\$/)).toBeNull();
+    await applyFilter('today');
+    // 16 Nov 20:30 UTC is 21:30 in Berlin (UTC+1): today runs from 23:00 UTC on the 15th.
+    await waitFor(() => expect(paramsOf(lastUrl())['from']).toBeDefined());
+    expect(paramsOf(lastUrl())).toMatchObject({
+      from: '2026-11-15T23:00:00.000Z',
+      to: '2026-11-16T23:00:00.000Z',
+    });
+  });
+
+  it('shows a credit note with no tax and no reason in a non-Australian Market', async () => {
+    serve(
+      byKind(
+        [confirmation()],
+        [creditNote({ tax: null, refundReason: null, total: money('4000', 'EUR') })],
+      ),
+    );
+    mount({ locale: 'de-DE', zone: 'Europe/Berlin', marketId: 'DE' });
+    await screen.findByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('button', { name: /^Credit notes/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())['kind']).toBe('credit-note'));
+    expect(await screen.findByText(/40,00\s€/)).toBeTruthy();
+    expect(screen.getAllByText('Not recorded').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('reads the date presets at each load, so a tab left open past midnight moves on', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    serve(() => pageOf([confirmation()]));
+    mount({ zone: BRISBANE });
+    await screen.findByText('Cedar Lane Halal Meats');
+    await applyFilter('today');
+    await waitFor(() => expect(paramsOf(lastUrl())['from']).toBe('2026-11-16T14:00:00.000Z'));
+    // A day later, a new tab asks for the new day.
+    vi.setSystemTime(new Date(NOW.getTime() + 24 * 3_600_000));
+    fireEvent.click(screen.getByRole('button', { name: /^Credit notes/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())['kind']).toBe('credit-note'));
+    expect(paramsOf(lastUrl())['from']).toBe('2026-11-17T14:00:00.000Z');
   });
 
   it('reads the same preset on another zone, Los Angeles, at the same instant', async () => {
@@ -757,32 +850,217 @@ describe('Invoices selection and Bulk action', () => {
     await screen.findAllByText('Cedar Lane Halal Meats');
     expect(screen.getByRole('button', { name: 'Bulk action' })).toHaveProperty('disabled', true);
     fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select order 00000001' })[0]!);
-    expect(screen.getByText('1 document selected')).toBeTruthy();
+    expect(screen.getByText('1 order confirmation selected')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Bulk action' })).toHaveProperty('disabled', true);
     expect(screen.getByRole('button', { name: 'Bulk action' }).getAttribute('title')).toBe(
       'No bulk actions are available for invoices yet.',
     );
+    // The reason is also plain text, readable without focusing the disabled button.
+    expect(
+      screen.getByText('No bulk actions are available for invoices yet.', { selector: 'p' }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
-    expect(screen.queryByText('1 document selected')).toBeNull();
+    expect(screen.queryByText('1 order confirmation selected')).toBeNull();
   });
 
   it('offers "Select all N matching" after the page is ticked, and drops it with the next tab', async () => {
     serve(() => pageOf([confirmation()], { total: 143 }));
     mount();
     await screen.findByText('Cedar Lane Halal Meats');
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all documents on this page' }));
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all order confirmations on this page' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Select all 143 matching' }));
-    expect(screen.getByText('All 143 matching documents are selected')).toBeTruthy();
+    expect(screen.getByText('All 143 matching order confirmations are selected')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^Credit notes/ }));
-    await waitFor(() => expect(screen.queryByText(/matching documents are selected/)).toBeNull());
+    await waitFor(() =>
+      expect(screen.queryByText(/matching order confirmations are selected/)).toBeNull(),
+    );
+  });
+
+  it('ticks two credit notes of one seller order independently (rows are keyed by document)', async () => {
+    serve(
+      byKind(
+        [confirmation()],
+        [creditNote(), creditNote({ documentId: '0190a000-0000-7000-8000-0000000000e2' })],
+      ),
+    );
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('button', { name: /^Credit notes/ }));
+    await waitFor(() =>
+      expect(screen.getAllByRole('checkbox', { name: /^Select order/ })).toHaveLength(2),
+    );
+    fireEvent.click(screen.getAllByRole('checkbox', { name: /^Select order/ })[0]!);
+    expect(screen.getByText('1 credit note selected')).toBeTruthy();
+    expect(
+      screen
+        .getAllByRole('checkbox', { name: /^Select order/ })
+        .map((box) => (box as HTMLInputElement).checked),
+    ).toEqual([true, false]);
   });
 
   it('does not offer Select all matching when everything fits on the page', async () => {
     serve(() => pageOf([confirmation()], { total: 1 }));
     mount();
     await screen.findByText('Cedar Lane Halal Meats');
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all documents on this page' }));
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all order confirmations on this page' }),
+    );
     expect(screen.queryByRole('button', { name: /Select all .* matching/ })).toBeNull();
+  });
+});
+
+describe('Invoices words for the rows', () => {
+  it('names credit notes on the Credit notes tab, in the count, selection and Bulk hint', async () => {
+    serve(
+      byKind([confirmation()], [creditNote(), creditNote({ documentId: 'x9' })], { total: 143 }),
+    );
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('button', { name: /^Credit notes/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())['kind']).toBe('credit-note'));
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Select all credit notes on this page' }),
+    );
+    expect(screen.getByText('2 credit notes selected')).toBeTruthy();
+    expect(
+      screen.getByText('No bulk actions are available for invoices yet.', { selector: 'p' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Select all 143 matching' }));
+    expect(screen.getByText('All 143 matching credit notes are selected')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Bulk action' }).getAttribute('title')).toBe(
+      'No bulk actions are available for invoices yet.',
+    );
+  });
+
+  it('never says "document" to an admin, whatever the tab or count', () => {
+    const found: string[] = [];
+    const walk = (node: unknown, path: string) => {
+      if (typeof node === 'string') {
+        if (/document/i.test(node.replace(/\{[^}]*\}/g, ''))) found.push(`${path}: ${node}`);
+      } else if (node !== null && typeof node === 'object') {
+        for (const [key, value] of Object.entries(node)) walk(value, `${path}.${key}`);
+      }
+    };
+    walk(messages.invoices, 'invoices');
+    expect(found).toEqual([]);
+  });
+});
+
+describe('Invoices out-of-order answers', () => {
+  type Reply = { ok: true; status: 200; body: DocumentsPage } | { ok: false; failure: object };
+  /** Answers the requests of the credit-note tab by hand; the first tab answers at once. */
+  function held() {
+    const waiting: ((reply: Reply) => void)[] = [];
+    call.mockImplementation((_method, path) => {
+      if (path.includes('kind=order-confirmation') && !path.includes('search=')) {
+        return Promise.resolve({ ok: true, status: 200, body: pageOf([confirmation()]) } as never);
+      }
+      return new Promise((resolve) => {
+        waiting.push(resolve);
+      }) as never;
+    });
+    return waiting;
+  }
+  const body = (storeName: string, total: number, counts = COUNTS) =>
+    ({
+      ok: true,
+      status: 200,
+      body: pageOf([creditNote({ storeName })], { total, counts }),
+    }) as const;
+
+  it('shows the rows, counts and total of the last request when the answers arrive in reverse', async () => {
+    const waiting = held();
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    // A: the Credit notes tab. B: a search typed after it.
+    fireEvent.click(screen.getByRole('button', { name: /^Credit notes/ }));
+    await waitFor(() => expect(waiting).toHaveLength(1));
+    const box = screen.getByRole('searchbox', { name: 'Search' });
+    fireEvent.change(box, { target: { value: 'Store B' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(waiting).toHaveLength(2));
+    // B answers first, then the older A.
+    act(() => {
+      waiting[1]!(body('Store B', 2, { ...COUNTS, creditNotes: 40 }));
+    });
+    expect(await screen.findByText('Store B')).toBeTruthy();
+    act(() => {
+      waiting[0]!(body('Store A', 1, { ...COUNTS, creditNotes: 99 }));
+    });
+    expect(screen.getByText('Store B')).toBeTruthy();
+    expect(screen.queryByText('Store A')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Credit notes (40)' })).toBeTruthy();
+    expect(screen.getByText('1 to 1 of 2')).toBeTruthy();
+  });
+
+  it('shows no error when the older request fails after the newer one answered', async () => {
+    const waiting = held();
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('button', { name: /^Credit notes/ }));
+    await waitFor(() => expect(waiting).toHaveLength(1));
+    const box = screen.getByRole('searchbox', { name: 'Search' });
+    fireEvent.change(box, { target: { value: 'Store B' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(waiting).toHaveLength(2));
+    act(() => {
+      waiting[1]!(body('Store B', 1));
+    });
+    await screen.findByText('Store B');
+    act(() => {
+      waiting[0]!({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
+    });
+    expect(screen.queryByText("Invoices couldn't be loaded.")).toBeNull();
+    expect(screen.getByText('Store B')).toBeTruthy();
+  });
+
+  it('drops the answer that arrives after the first load gave up at 30 seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let late: ((reply: Reply) => void) | null = null;
+    call.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          late = resolve;
+        }) as never,
+    );
+    mount();
+    await act(() => vi.advanceTimersByTimeAsync(31_000));
+    expect(screen.getByText("Invoices couldn't be loaded.")).toBeTruthy();
+    act(() => {
+      late!(body('Late Store', 1));
+    });
+    expect(screen.queryByText('Late Store')).toBeNull();
+    expect(screen.getByText("Invoices couldn't be loaded.")).toBeTruthy();
+  });
+});
+
+describe('Invoices query refused by the API', () => {
+  it('says the search cannot be run, without a Try again that could never work', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    call.mockImplementation(
+      (_method, path) =>
+        Promise.resolve(
+          path.includes('q=')
+            ? { ok: false, failure: { status: 422, code: 'validation.failed' } }
+            : { ok: true, status: 200, body: pageOf([confirmation()]) },
+        ) as never,
+    );
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    const box = screen.getByRole('searchbox', { name: 'Search' });
+    fireEvent.change(box, { target: { value: '0190a000-0000-7000-8000-0000000000e5' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(
+      await screen.findByText(
+        "This search can't be run. Change the text or the filters, or clear them.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Invoices couldn't be loaded.")).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 });
 
