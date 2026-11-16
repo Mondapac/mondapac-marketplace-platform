@@ -185,15 +185,16 @@ export class PrismaAdminDisputeListReader implements AdminDisputeListReader {
     const found: Id<'Order'>[] = [];
     let after: string | null = null;
     for (;;) {
+      // A grouped read, so the chunk is cut by LIMIT in SQL (a `distinct` read would cut it in
+      // memory after reading every later row).
       const chunk: { orderId: string }[] = await this.prisma
         .tx(market)
-        .commissionPayoutsDisputeCase.findMany({
+        .commissionPayoutsDisputeCase.groupBy({
+          by: ['orderId'],
           where: {
             marketId: market.marketId,
             ...(after === null ? {} : { orderId: { gt: after } }),
           },
-          select: { orderId: true },
-          distinct: ['orderId'],
           orderBy: [{ orderId: 'asc' }],
           take: this.chunkSize,
         });

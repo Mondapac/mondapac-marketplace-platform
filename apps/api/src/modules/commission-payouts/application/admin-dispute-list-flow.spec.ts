@@ -362,7 +362,10 @@ describe.each([['AU'], ['ZZ']] as const)('the admin Disputes list in market %s',
           ok: false,
           error: { code: 'commission-payouts.search-unavailable' },
         });
-        expect(await list({ q: 'secret-term-7q' })).toMatchObject({ ok: false });
+        // A valid `q` with the failing search reaches the logged failure too.
+        const q = id<'Order'>(0x7e57);
+        expect(await list({ q, search: 'secret-term-7q' })).toMatchObject({ ok: false });
+        expect(JSON.stringify(logged.flatMap((spy) => spy.mock.calls))).not.toContain(q);
         // The failure is logged, and neither the search term nor `q` is in what was logged.
         const calls = logged.flatMap((spy) => spy.mock.calls);
         expect(calls.length).toBeGreaterThan(0);
@@ -395,11 +398,15 @@ describe.each([['AU'], ['ZZ']] as const)('the admin Disputes list in market %s',
         ok: false,
         error: { fields: [{ path: 'sellerId', code: 'too-broad' }] },
       });
+      expect(await exportAdminDisputes(deps, admin, { search: 'halal' })).toMatchObject({
+        ok: false,
+        error: { fields: [{ path: 'search', code: 'too-broad' }] },
+      });
       expect(await exportAdminDisputes(deps, admin, { sellerId: SELLER_A })).toMatchObject({
         ok: false,
         error: { fields: [{ path: 'sellerId', code: 'too-broad' }] },
       });
-      expect(asked).toEqual([1, 1, 1].map(() => DISPUTE_SELLER_ORDERS_MAX + 1));
+      expect(asked).toEqual([1, 1, 1, 1].map(() => DISPUTE_SELLER_ORDERS_MAX + 1));
       // At the cap itself the list is read.
       reader.disputedOrdersOfSellers = (_m, _sellers, limit) =>
         Promise.resolve(Array.from({ length: limit - 1 }, (_, i) => id<'Order'>(0x100000 + i)));
