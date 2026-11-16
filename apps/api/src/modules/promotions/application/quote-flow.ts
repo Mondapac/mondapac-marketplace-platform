@@ -61,6 +61,9 @@ export function audienceOf(record: PromotionRecord): Audience | null {
   if (record.segmentKind === 'DELIVERY_ZONE' && record.zones.length > 0) {
     return { kind: 'DELIVERY_ZONE', zones: record.zones };
   }
+  if (record.segmentKind === 'MANUAL_GROUP' && record.segmentGroupId !== null) {
+    return { kind: 'MANUAL_GROUP', groupId: record.segmentGroupId };
+  }
   return null;
 }
 
@@ -343,7 +346,18 @@ async function customerFactsOf(
     (record) => record.type === 'CUSTOMER_GROUP' && record.segmentKind === 'RETURNING_CUSTOMER',
   );
   const needsFollows = records.some((record) => record.type === 'STORE_FOLLOWER');
-  if (!needsHistory && !needsFollows) return null;
+  const groupIds = [
+    ...new Set(
+      records.flatMap((record) =>
+        record.type === 'CUSTOMER_GROUP' &&
+        record.segmentKind === 'MANUAL_GROUP' &&
+        record.segmentGroupId !== null
+          ? [record.segmentGroupId]
+          : [],
+      ),
+    ),
+  ].sort();
+  if (!needsHistory && !needsFollows && groupIds.length === 0) return null;
   let daysSinceLastOrder: number | null = null;
   if (needsHistory) {
     try {
@@ -365,7 +379,17 @@ async function customerFactsOf(
       followedSellerIds = null;
     }
   }
-  return { daysSinceLastOrder, followedSellerIds };
+  // One read per group; an unknown answer (a refusal, an error, an unknown group) is "not in it".
+  const memberOfGroupIds: string[] = [];
+  for (const groupId of groupIds) {
+    try {
+      const member = await deps.groupMembership.isMember(context, groupId, accountId);
+      if (member.known && member.value) memberOfGroupIds.push(groupId);
+    } catch {
+      // Fail closed: the group's promotion does not apply.
+    }
+  }
+  return { daysSinceLastOrder, followedSellerIds, memberOfGroupIds };
 }
 
 function checkShape(

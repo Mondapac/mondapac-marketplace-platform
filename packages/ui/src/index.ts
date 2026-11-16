@@ -145,6 +145,11 @@ export {
   type SettingsHistoryState,
 } from './settings/settings-history.tsx';
 export {
+  SettingsDrawer,
+  type SettingsDrawerLabels,
+  type SettingsDrawerProps,
+} from './settings/settings-drawer.tsx';
+export {
   SettingsViewOnlyBanner,
   type SettingsViewOnlyBannerProps,
 } from './settings/view-only-banner.tsx';
