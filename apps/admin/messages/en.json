@@ -407,8 +407,8 @@
         "keep": "Keep as it is",
         "reactivate": {
           "title": "Reactivate {name}'s admin account?",
-          "body": "A reviewer has to approve this before the account is active again.",
-          "action": "Send for review"
+          "body": "The account is active again at once. Another admin reviews this change and can undo it.",
+          "action": "Reactivate"
         },
         "deactivate": {
           "title": "Deactivate {name}'s admin account?",

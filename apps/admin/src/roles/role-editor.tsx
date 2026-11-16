@@ -22,7 +22,6 @@ import { useRef, useState } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import {
   isNoteFailure,
-  requestOf,
   ReviewNoteField,
   trimmedNote,
   useSentForReview,
@@ -245,8 +244,8 @@ export function RoleEditor({
       setDone(true);
       if (editing) {
         setNote('');
-        if (requestOf(result.body) !== null) sentForReview(result.body);
-        else toast.success(t('editor.saved'));
+        toast.success(t('editor.saved'));
+        sentForReview(result.body);
         router.refresh();
       } else {
         // The page of the new role shows the outcome.

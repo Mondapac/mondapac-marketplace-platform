@@ -7,7 +7,6 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import {
   isNoteFailure,
-  requestOf,
   ReviewNoteField,
   trimmedNote,
   useSentForReview,
@@ -123,8 +122,8 @@ export function ChangeRoleDialog({
       );
       if (result.ok) {
         onClose();
-        if (requestOf(result.body) !== null) sentForReview(result.body);
-        else toast.success(t('toast.change-role', { name }));
+        toast.success(t('toast.change-role', { name }));
+        sentForReview(result.body);
         router.refresh();
         return;
       }

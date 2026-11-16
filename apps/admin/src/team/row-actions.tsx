@@ -7,7 +7,6 @@ import { useRef, useState } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import {
   isNoteFailure,
-  requestOf,
   ReviewNoteField,
   trimmedNote,
   useSentForReview,
@@ -161,8 +160,8 @@ export function RowActions({
     if (result.ok) {
       setAsking(null);
       setNote('');
-      if (requestOf(result.body) !== null) sentForReview(result.body);
-      else toast.success(t(`toast.${action.id}`, { name: target.name }));
+      toast.success(t(`toast.${action.id}`, { name: target.name }));
+      sentForReview(result.body);
       router.refresh();
       return;
     }

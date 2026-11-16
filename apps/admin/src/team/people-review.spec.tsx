@@ -109,6 +109,7 @@ describe('change role in a reviewed Market', () => {
       ),
     );
     expect(await screen.findByText('Sent for review as SR-42')).toBeTruthy();
+    expect(screen.getByText(/role is changed/)).toBeTruthy();
   });
 
   it('shows a 400 on the note inline', async () => {
@@ -139,11 +140,11 @@ describe('reactivate and deactivate in a reviewed Market', () => {
     openMenu();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Reactivate account' }));
     expect(call).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Send for review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reactivate' }));
     expect(call).not.toHaveBeenCalled();
     expect(screen.getByText(/Write a note for the reviewers/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText(NOTE_FIELD), { target: { value: ' Back from leave ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Send for review' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reactivate' }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(
         'POST',
@@ -153,6 +154,7 @@ describe('reactivate and deactivate in a reviewed Market', () => {
       ),
     );
     expect(await screen.findByText('Sent for review as SR-42')).toBeTruthy();
+    expect(screen.getByText(/is active again/)).toBeTruthy();
   });
 
   it('reactivates at once, with no note, where the Market does not review', async () => {
@@ -256,6 +258,7 @@ describe('role editor in a reviewed Market', () => {
       ),
     );
     expect(await screen.findByText('Sent for review as SR-42')).toBeTruthy();
+    expect(screen.getByText(/Saved\./)).toBeTruthy();
   });
 
   it('shows a 400 on the note inline', async () => {
