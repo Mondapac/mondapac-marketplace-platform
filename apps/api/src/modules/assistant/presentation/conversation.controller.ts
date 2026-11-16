@@ -1,14 +1,28 @@
-import { Body, Controller, HttpCode, Logger, Param, Post, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Logger,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
   ApiForbiddenResponse,
   ApiHeader,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiTooManyRequestsResponse,
@@ -24,13 +38,22 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientOriginOf } from '../../../platform/rate-limit/client-origin';
+import { DeleteConversation } from '../application/use-cases/delete-conversation.use-case';
+import {
+  ListConversations,
+  type ConversationListItem,
+} from '../application/use-cases/list-conversations.use-case';
 import type { AssistantReply } from '../application/use-cases/send-message.use-case';
+import {
+  ViewConversation,
+  type ConversationTranscript,
+} from '../application/use-cases/view-conversation.use-case';
 import { SendGuestMessage } from '../application/use-cases/send-guest-message.use-case';
 import { SendMessage } from '../application/use-cases/send-message.use-case';
 import type { AssistantCard } from '../domain/cards';
 import { SendMessageRequest } from './assistant.dto';
 import { guestCookie, guestTokenOf } from './guest-cookie';
-import { closedBody, refusal } from './http-answers';
+import { closedBody, fail, refusal } from './http-answers';
 
 const ERROR = { type: Object };
 
@@ -40,6 +63,22 @@ function cardBody(card: AssistantCard) {
   const money = (value: typeof card.price) =>
     value === null ? null : { amount: value.amount.toString(), currency: value.currency };
   return { ...card, price: money(card.price), regularPrice: money(card.regularPrice) };
+}
+
+const listItemBody = (item: ConversationListItem) => ({
+  id: item.id,
+  title: item.title,
+  turns: item.turns,
+  full: item.full,
+  startedAt: item.startedAt.toString(),
+  lastMessageAt: item.lastMessageAt.toString(),
+});
+
+/** History is for a signed-in customer only; a guest has no list (stage 0, B2). */
+function signedInOnly(context: CallContext): void {
+  if (context.actor.kind !== 'authenticated') {
+    throw fail(403, 'assistant.sign-in-required');
+  }
 }
 
 /** One server-sent event; `data` is JSON on one line, so no field can break the frame. */
@@ -65,7 +104,114 @@ export class ConversationController {
   constructor(
     private readonly sendAccount: SendMessage,
     private readonly sendGuest: SendGuestMessage,
+    private readonly list: ListConversations,
+    private readonly view: ViewConversation,
+    private readonly remove: DeleteConversation,
   ) {}
+
+  @Get()
+  @ReadsSession()
+  @ApiOperation({
+    summary: "A signed-in buyer's own conversations with the shopping assistant, newest first",
+    description:
+      'Only conversations that keep text and are within the retention in force (the shorter of ' +
+      "the one they started with and the Market's current setting). The title is the first buyer " +
+      'message, masked, at most 30 characters. A guest is refused: guests have no history.',
+  })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    type: String,
+    description: 'nextCursor of the previous page',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    minimum: 1,
+    maximum: 50,
+    description: 'Default 20',
+  })
+  @ApiOkResponse({
+    description:
+      '{ items: [{ id, title, turns, full, startedAt, lastMessageAt }], nextCursor: string | null }',
+  })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'assistant.sign-in-required, assistant.off' })
+  async listOwn(
+    @Call() context: CallContext,
+    @Query('cursor') cursor: unknown,
+    @Query('limit') limit: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    signedInOnly(context);
+    const result = await this.list.execute(context, { cursor, limit });
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    response.setHeader('Cache-Control', 'no-store');
+    return { items: result.value.items.map(listItemBody), nextCursor: result.value.nextCursor };
+  }
+
+  @Get(':id')
+  @ReadsSession()
+  @ApiOperation({
+    summary: "One of a signed-in buyer's own conversations, every stored message in order",
+    description:
+      "Another buyer's conversation, a guest's, or one past its retention answers 404. Cards " +
+      'come back as their kind and ids only (product: offerId; page: page; support): a price or ' +
+      'product text is never replayed from an old answer. Continue it with POST ' +
+      '/assistant/conversations/:id/messages (409 assistant.conversation-full when full is true).',
+  })
+  @ApiParam({ name: 'id', type: String })
+  @ApiOkResponse({
+    description:
+      '{ id, title, turns, full, startedAt, lastMessageAt, messages: [{ position, role, text, ' +
+      'cards, at }] }',
+  })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'assistant.sign-in-required, assistant.off' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'assistant.conversation-not-found' })
+  async viewOwn(
+    @Call() context: CallContext,
+    @Param('id') id: string,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    signedInOnly(context);
+    const result = await this.view.execute(context, { conversationId: id });
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    response.setHeader('Cache-Control', 'no-store');
+    const transcript: ConversationTranscript = result.value;
+    return {
+      ...listItemBody(transcript),
+      messages: transcript.messages.map((message) => ({
+        position: message.position,
+        role: message.role,
+        text: message.text,
+        cards: message.cards,
+        at: message.at.toString(),
+      })),
+    };
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @ReadsSession()
+  @ApiOperation({
+    summary: "Deletes one of a signed-in buyer's own conversations",
+    description:
+      'The conversation, its messages and its encryption key are deleted at once. Works while ' +
+      'the assistant is off too.',
+  })
+  @ApiParam({ name: 'id', type: String })
+  @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
+  @ApiNoContentResponse({ description: 'Deleted' })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'assistant.sign-in-required, request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'assistant.conversation-not-found' })
+  async deleteOwn(@Call() context: CallContext, @Param('id') id: string): Promise<void> {
+    signedInOnly(context);
+    const result = await this.remove.execute(context, { conversationId: id });
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+  }
 
   @Post(':id/messages')
   @HttpCode(200)

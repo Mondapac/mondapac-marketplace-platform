@@ -140,6 +140,11 @@ export class SetAssistantSettingsRequest {
   settings!: AssistantSettingsFields;
 }
 
+export class StorefrontRetentionBody {
+  @ApiProperty({ description: '0, 30 or 365.' }) customer!: number;
+  @ApiProperty({ description: '0 or 30 (a guest is kept 30 days at most).' }) guest!: number;
+}
+
 export class StorefrontAssistantBody {
   @ApiProperty({ description: 'Switched on, configured, and this visitor is in the rollout.' })
   enabled!: boolean;
@@ -149,6 +154,21 @@ export class StorefrontAssistantBody {
   replyLanguage!: string;
   @ApiProperty({ nullable: true, type: String, description: 'null: the storefront default text.' })
   welcomeText!: string | null;
+  @ApiProperty({
+    type: StorefrontRetentionBody,
+    nullable: true,
+    description:
+      'How many days a conversation is kept (0: not kept), for a signed-in customer and for a ' +
+      'guest; null while the assistant is off for this visitor.',
+  })
+  retentionDays!: StorefrontRetentionBody | null;
+  @ApiProperty({
+    type: [String],
+    description:
+      "Fixed button texts in the buyer's language (lang, when the Market supports it; else the " +
+      "Market's default); empty while the assistant is off for this visitor.",
+  })
+  quickPrompts!: string[];
 }
 
 export class SendMessageRequest {
