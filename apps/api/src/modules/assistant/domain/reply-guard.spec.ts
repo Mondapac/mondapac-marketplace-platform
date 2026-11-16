@@ -1,6 +1,8 @@
 import { EVALUATION_SET, EVALUATION_VERSION } from './evaluation-set';
 import { maskPersonalData, MASKED } from './personal-data';
 import { guardReply, MAX_REPLY_CHARACTERS } from './reply-guard';
+import { cardRefOf } from './cards';
+import { storedCardOf } from './conversation';
 import { parseToolCall, TOOL_DECLARATIONS, toolDeclarationsFor } from './tools';
 
 // The deterministic checks around a model (plan section 5; ADR-0019 R1, R5, R9): what a buyer
@@ -148,8 +150,40 @@ describe('parseToolCall (R9: model output is schema-validated)', () => {
       ['a removal of an offer', { action: 'remove', offer_id: OFFER }],
       ['an extra field (a price)', { action: 'add', offer_id: OFFER, price: 1 }],
       ['an account id', { action: 'remove', line_id: LINE, account_id: LINE }],
+      ['a negative quantity', { action: 'add', offer_id: OFFER, quantity: -2 }],
+      ['a set with an offer id', { action: 'set_quantity', offer_id: OFFER, quantity: 2 }],
+      ['a removal with a quantity', { action: 'remove', line_id: LINE, quantity: 1 }],
+      ['an array', [{ action: 'add', offer_id: OFFER }]],
+      ['a string', 'add ghee'],
+      ['null', null],
     ])('refuses %s', (_name, input) => {
       expect(cart(input)).toBeNull();
+    });
+
+    it('stores a cart-action card as its product and a cart card as the cart page link', () => {
+      const units = [] as const;
+      expect(
+        cardRefOf({
+          kind: 'cart-action',
+          action: 'add',
+          offerId: OFFER,
+          productId: null,
+          sellerId: null,
+          sellerName: null,
+          name: null,
+          lineId: null,
+          currentQuantity: null,
+          quantity: 1,
+          limited: false,
+          cartFull: null,
+          units,
+          cartMode: 'multi-store',
+          otherStore: false,
+        }),
+      ).toBe(`product:${OFFER}`);
+      expect(cardRefOf({ kind: 'cart', lineCount: 0, total: null, groups: [] })).toBe('page:cart');
+      expect(storedCardOf(`product:${OFFER}`)).toEqual({ kind: 'product', offerId: OFFER });
+      expect(storedCardOf('page:cart')).toEqual({ kind: 'page', page: 'cart' });
     });
   });
 

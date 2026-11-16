@@ -566,7 +566,12 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
 
     it('answers an empty cart with no groups and no total', async () => {
       const cart = await facade().ownCart(customerCtx);
-      expect(cart.ok && cart.value).toEqual({ groups: [], lineCount: 0, total: null });
+      expect(cart.ok && cart.value).toEqual({
+        groups: [],
+        lineCount: 0,
+        maxLines: deps.policy.limits(market).maxLines,
+        total: null,
+      });
     });
 
     it('gives no max to a line that cannot be bought, and leaves its store out of the total', async () => {

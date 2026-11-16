@@ -63,9 +63,17 @@ export interface CartActionUnit {
   readonly taxInclusive: boolean | null;
   /** "max N": the most one cart line of it may hold now; null when it cannot be bought now. */
   readonly maxQuantity: number | null;
-  /** The buyer's cart line of this unit and its quantity; null when none or the cart is unread. */
+  /** The buyer's cart line of this unit; null when none or the cart is unread. */
   readonly lineId: string | null;
+  /** The quantity of that line; 0 when none; null when the cart is unread (a guest). */
   readonly inCart: number | null;
+  /**
+   * How many more of this unit the cart accepts now: `maxQuantity - inCart` (the cart's add caps
+   * the sum), 0 when the cart is full and this unit has no line yet; `maxQuantity` when the cart
+   * is unread. Null on line cards. The widget clamps the card's `quantity` to the chosen unit's
+   * `addable` and offers no button for a unit at 0.
+   */
+  readonly addable: number | null;
 }
 
 /**
@@ -90,16 +98,24 @@ export interface CartActionCard {
   readonly lineId: string | null;
   /** For `set-quantity` and `remove`: the line's quantity now. */
   readonly currentQuantity: number | null;
+  /**
+   * add: how many more, already lowered to the `addable` of the unit when there is one unit, or to
+   * the largest `addable` when the buyer picks among several (the widget clamps for the chosen
+   * one); set-quantity: the new total, lowered to the line's max; remove: 0.
+   */
   readonly quantity: number;
-  /** True when the proposed quantity was lowered to the max of the unit (the card says "max N"). */
+  /** True when the proposed quantity was lowered (the card says "max N"). */
   readonly limited: boolean;
+  /** add only: true when the cart holds its most lines (a unit with no line cannot be added). */
+  readonly cartFull: boolean | null;
   /** One to ten units, in catalog's order; the line's own unit for `set-quantity` and `remove`. */
   readonly units: readonly CartActionUnit[];
   readonly cartMode: 'multi-store' | 'single-store';
   /**
    * `single-store` only: true when the buyer's cart holds lines of another store, so the widget
-   * first asks to move them to saved items or remove them; null when the cart could not be read
-   * (a guest: the widget reads its own cart first); always false in `multi-store`.
+   * first asks to move them to saved items or remove them; null when it is not known (a guest's
+   * cart is not read here, or a line's store could not be checked): the widget then reads the
+   * cart itself first, and null never means "safe". Always false in `multi-store`.
    */
   readonly otherStore: boolean | null;
 }

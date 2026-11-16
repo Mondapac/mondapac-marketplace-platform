@@ -555,6 +555,26 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       const results = runtime.requests[1]!.messages.at(-1)!.blocks;
       expect(results.at(-1)).toMatchObject({ type: 'tool-result', isError: true });
     });
+    it('shows a cart card and its fixed notice to a guest under cart-suggestions', async () => {
+      settings.current = on({ scope: 'cart-suggestions' });
+      tools.outcomes.set('get_cart', {
+        forModel: '{"error":"sign in"}',
+        isError: true,
+        cards: [{ kind: 'page', page: 'cart', categoryId: null }],
+        notices: ['cart-sign-in'],
+      });
+      runtime.script.push(
+        answer({ calls: [{ id: 'c1', name: 'get_cart', input: {} }] }),
+        answer({ text: 'Please sign in to see your cart here. It costs $12.50 in total.' }),
+      );
+      const reply = await asGuest('What is in my cart?');
+      expect(reply.ok && reply.value).toMatchObject({
+        cards: [{ kind: 'page', page: 'cart', categoryId: null }],
+        sentences: ['Please sign in to see your cart here.'],
+        notices: expect.arrayContaining(['cart-sign-in', 'see-cards']) as string[],
+      });
+      expect(tools.runs[0]?.context.actor.kind).toBe('anonymous');
+    });
   });
 
   describe('the guard and the non-AI paths', () => {

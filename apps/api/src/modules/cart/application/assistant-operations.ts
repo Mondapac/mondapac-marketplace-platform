@@ -70,7 +70,12 @@ export async function assistantCart(
   const subtotals = groups
     .filter((group) => group.lines.some((line) => line.state === 'buyable'))
     .map((group) => group.subtotal);
-  return ok({ groups, lineCount: viewed.value.lineCount, total: totalOf(subtotals) });
+  return ok({
+    groups,
+    lineCount: viewed.value.lineCount,
+    maxLines: limits.maxLines,
+    total: totalOf(subtotals),
+  });
 }
 
 /**

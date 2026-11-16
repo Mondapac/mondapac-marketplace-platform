@@ -147,6 +147,15 @@ describe('parseAssistantSettings', () => {
     if (!result.ok) expect(result.error).toContainEqual({ path, code });
   });
 
+  it('accepts the cart-suggestions scope (S1-B1) and keeps read-only as the default', () => {
+    expect(DEFAULT_ASSISTANT_SETTINGS.scope).toBe('read-only');
+    const result = parseAssistantSettings({
+      ...DEFAULT_ASSISTANT_SETTINGS,
+      scope: 'cart-suggestions',
+    });
+    expect(result.ok && result.value.scope).toBe('cart-suggestions');
+  });
+
   it('needs a percentage of 1 to 100 for a percentage rollout, and only then', () => {
     const percent = (audiencePercent: unknown) =>
       parseAssistantSettings({

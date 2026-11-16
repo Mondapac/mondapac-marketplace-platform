@@ -41,6 +41,8 @@ export interface AssistantCartGroup {
 export interface AssistantCart {
   readonly groups: readonly AssistantCartGroup[];
   readonly lineCount: number;
+  /** The most lines one cart may hold in the Market: a new line is refused at this count. */
+  readonly maxLines: number;
   /** The sum of the store subtotals; null when a subtotal is unknown or currencies mix. */
   readonly total: Money | null;
 }

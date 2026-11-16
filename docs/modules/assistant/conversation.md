@@ -94,17 +94,22 @@ session and CSRF token, only after the buyer clicks (ADR-0019 R4).
 - `add` asks `cart.read-assistant-offer-units` (rule `anonymous`): the Offer's units on sale now,
   checked as the cart's add checks them (catalog, sellers, pricing, inventory; fail closed), at
   most 10, each with its price, Variant label and `maxQuantity` (the Market's line ceiling, lowered
-  by the stock read only while stock is low: the "max N" of the brief, never a stock count). The
-  proposed quantity is lowered to the largest max (`limited: true`). A signed-in buyer's cart is
-  read too: each unit's `lineId` and `inCart`. The buyer picks the unit when there are several.
+  by the stock read only while stock is low: the "max N" of the brief, never a stock count). A
+  signed-in buyer's cart is read too: each unit's `lineId`, `inCart` and `addable` (`maxQuantity -
+  inCart`, since the cart's add caps the sum; 0 for a unit with no line when the cart holds its
+  most lines, `cartFull`). The proposed quantity is lowered to the unit's `addable` (to the largest
+  one when the buyer picks among several; the widget clamps to the chosen unit's), with
+  `limited: true`; when nothing more fits there is no card. The cart and the mode are read once per
+  turn; the Offer read runs beside them.
 - `set_quantity` and `remove` need the signed-in buyer's own line (`cart.view-assistant-cart`, rule
   `own-resources`): a line id not in that cart is "not found"; a guest gets the cart page link and
   `cart-sign-in`. A line that cannot be bought now can be lowered or removed, never raised; a
   raise above the max is lowered to it.
 - Cart mode (`settings.read-cart-mode` through `SettingsFacade.cartMode`, `multi-store` on any
   failure): in `single-store`, `otherStore` is true when the buyer's cart holds lines of another
-  store (the widget then asks to move them to saved items or remove them first), null for a guest
-  (the widget reads its own cart), false in `multi-store`. Enforcement stays in `cart`/`ordering`.
+  store (the widget then asks to move them to saved items or remove them first), null when not
+  known (a guest's cart is not read here, or a line's store could not be checked: the widget reads
+  the cart itself first; null never means "safe"), false in `multi-store`. Enforcement stays in `cart`/`ordering`.
 - `get_cart` shows the `cart` card: lines grouped by store with the cart evaluator's subtotal and
   minimum-order state, each line's price and max, and the total of the stores with something
   buyable (null when one is unknown or currencies mix).
@@ -113,10 +118,14 @@ session and CSRF token, only after the buyer clicks (ADR-0019 R4).
   Its descriptions and the cart rules say it changes nothing and must not say a change was made.
 - Card JSON: every Money is `{ amount: "<minor units>", currency }`. `cart-action`: `action`,
   `offerId`, `productId`, `sellerId`, `sellerName`, `name`, `lineId` and `currentQuantity` (line
-  changes), `quantity` (add: how many more; set: the new total; remove: 0), `limited`, `units[]`
-  (`variantId`, `label`, `price`, `taxInclusive`, `maxQuantity`, `lineId`, `inCart`), `cartMode`,
-  `otherStore`. `cart`: `lineCount`, `total`, `groups[]` (`sellerId`, `sellerName`, `subtotal`,
+  changes), `quantity` (add: how many more; set: the new total; remove: 0), `limited`, `cartFull`
+  (add only), `units[]` (`variantId`, `label`, `price`, `taxInclusive`, `maxQuantity`, `lineId`,
+  `inCart`, `addable`), `cartMode`, `otherStore`. `cart`: `lineCount`, `total`, `groups[]` (`sellerId`, `sellerName`, `subtotal`,
   `minimumOrder {state, minimum}`, `lines[]`).
+- Before `cart-suggestions` is switched on in a Market: the storefront widget renders the new
+  cards (S1-F1; until then the scope stays off everywhere), the owner records "buyer cart
+  contents" (product names and quantities) as an approved data category for the provider (R7),
+  and the real-model evaluation of `buyer-assistant-4` passes, cart cases included.
 - History keeps a `cart-action` card as its product card and a `cart` card as the cart page link:
   an old action button or an old cart is never replayed.
 
