@@ -34,6 +34,16 @@ import {
   type SavedFilterRepository,
 } from '../application/ports/saved-filter.repository';
 import { SHEET_WRITER, type SheetWriter } from '../application/ports/sheet-writer';
+import {
+  ADMIN_DELETION_LIST_READER,
+  type AdminDeletionListReader,
+} from '../application/ports/admin-deletion-list.reader';
+import {
+  ExceljsSheetWriter as ListExceljsSheetWriter,
+  SHEET_WRITER as LIST_SHEET_WRITER,
+  type SheetWriter as ListSheetWriter,
+} from '../../../platform/list-export';
+import { PrismaAdminDeletionListReader } from './prisma-admin-deletion-list.reader';
 import { PrismaCustomerListReader } from './prisma-customer-list.reader';
 import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
 import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
@@ -99,6 +109,17 @@ export const customersProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SavedFilterRepository =>
       new PrismaSavedFilterRepository(prisma),
+  },
+  {
+    provide: ADMIN_DELETION_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminDeletionListReader =>
+      new PrismaAdminDeletionListReader(prisma),
+  },
+  {
+    // The super list export of platform/list-export (CSV and XLSX; every cell a string value).
+    provide: LIST_SHEET_WRITER,
+    useFactory: (): ListSheetWriter => new ListExceljsSheetWriter(),
   },
   {
     provide: SHEET_WRITER,

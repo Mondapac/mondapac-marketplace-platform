@@ -15,6 +15,13 @@ import {
 } from '../../src/modules/customers/application/testing/in-memory-address-book';
 import { AdminCancelAccountDeletion } from '../../src/modules/customers/application/use-cases/admin-cancel-account-deletion.use-case';
 import { AdminListAccountDeletions } from '../../src/modules/customers/application/use-cases/admin-list-account-deletions.use-case';
+import {
+  DELETION_ROW_KEYS,
+  type AdminDeletionListDependencies,
+} from '../../src/modules/customers/application/admin-deletion-list-flow';
+import { BuyerDeleteProbe } from '../../src/modules/customers/application/use-cases/buyer-delete-probe.use-case';
+import { PrismaAdminDeletionListReader } from '../../src/modules/customers/infrastructure/prisma-admin-deletion-list.reader';
+import { ExceljsSheetWriter as ListExceljsSheetWriter } from '../../src/platform/list-export/exceljs-sheet-writer';
 import { AdminRequestAccountDeletion } from '../../src/modules/customers/application/use-cases/admin-request-account-deletion.use-case';
 import { CancelAccountDeletion } from '../../src/modules/customers/application/use-cases/cancel-account-deletion.use-case';
 import { ExecuteAccountDeletions } from '../../src/modules/customers/application/use-cases/execute-account-deletions.use-case';
@@ -353,6 +360,13 @@ describe.each(TEST_MARKETS)(
     });
 
     const settingsRepo = () => new PrismaAccountDeletionSettingsRepository(db.service);
+    const listDeps = (): AdminDeletionListDependencies => ({
+      unitOfWork: db.unitOfWork,
+      list: new PrismaAdminDeletionListReader(db.service),
+      probes: { [DELETION_ROW_KEYS[0]]: new BuyerDeleteProbe(gate) },
+      sheetWriter: new ListExceljsSheetWriter(),
+      clock,
+    });
     const deps = (): AccountDeletionDependencies => {
       const zero = { amount: 0n, currency: 'AUD' };
       return {
@@ -901,8 +915,8 @@ describe.each(TEST_MARKETS)(
         await adminAsk();
         await adminAsk(OTHER_BUYER, 'SUP-2002');
         const [row] = await adminRow(BUYER);
-        const listed = await new AdminListAccountDeletions(gate, deps()).execute(admin(), {});
-        expect(listed.ok && listed.value.entries.map((e) => e.requestId)).toEqual(
+        const listed = await new AdminListAccountDeletions(gate, listDeps()).execute(admin(), {});
+        expect(listed.ok && listed.value.entries.map((e) => e.id)).toEqual(
           expect.arrayContaining([row!.id]),
         );
         const cancel = () =>
@@ -924,8 +938,8 @@ describe.each(TEST_MARKETS)(
           ticket_ref: 'SUP-2001',
         });
         expect((await adminRow(BUYER))[0]!.redacted_at).toBeInstanceOf(Date);
-        const after = await new AdminListAccountDeletions(gate, deps()).execute(admin(), {});
-        expect(after.ok && after.value.entries.map((e) => e.requestId)).not.toContain(row!.id);
+        const after = await new AdminListAccountDeletions(gate, listDeps()).execute(admin(), {});
+        expect(after.ok && after.value.entries.map((e) => e.id)).not.toContain(row!.id);
         // The buyer may ask again once it is cancelled.
         expect((await ask()).ok).toBe(true);
       });
@@ -960,7 +974,7 @@ describe.each(TEST_MARKETS)(
         const seen: string[] = [];
         let cursor: string | null = null;
         for (let page = 0; page < 200; page += 1) {
-          const result = await new AdminListAccountDeletions(gate, deps()).execute(admin(), {
+          const result = await new AdminListAccountDeletions(gate, listDeps()).execute(admin(), {
             limit: 1,
             ...(cursor === null ? {} : { cursor }),
           });
@@ -974,6 +988,95 @@ describe.each(TEST_MARKETS)(
         const foreign = await sql.query(
           `SELECT 1 FROM customers.account_deletion_requests WHERE market_id <> $1 AND id = ANY($2)`,
           [code, seen],
+        );
+        expect(foreign.rowCount).toBe(0);
+      });
+
+      it('the super list reads views, counts, filters, sorts and export ids from the table, its Market only', async () => {
+        await adminAsk();
+        await adminAsk(OTHER_BUYER, 'SUP-2005');
+        const [row] = await adminRow(BUYER);
+        expect(
+          (
+            await new AdminCancelAccountDeletion(gate, deps()).execute(admin(), {
+              requestId: row!.id,
+              reason: 'Buyer changed their mind',
+            })
+          ).ok,
+        ).toBe(true);
+        const reader = new PrismaAdminDeletionListReader(db.service);
+        const read = async <T>(fn: () => Promise<T>): Promise<T> => {
+          const result = await db.unitOfWork.run(market, async () => ok(await fn()), {
+            readOnly: true,
+          });
+          if (!result.ok) throw new Error('read failed');
+          return result.value;
+        };
+        const counts = await read(() => reader.countByStatus(market));
+        expect(counts.cancelled).toBeGreaterThanOrEqual(1);
+        expect(counts.pending).toBeGreaterThanOrEqual(1);
+        const cancelled = await new AdminListAccountDeletions(gate, listDeps()).execute(admin(), {
+          view: 'cancelled',
+          cancelReason: 'admin',
+          requestedBy: 'admin',
+          q: BUYER,
+          sort: 'cancelled',
+        });
+        if (!cancelled.ok) throw new Error(cancelled.error.code);
+        expect(cancelled.value.entries).toHaveLength(1);
+        expect(cancelled.value.entries[0]).toMatchObject({
+          id: row!.id,
+          status: 'cancelled',
+          cancelReason: 'admin',
+          completedAt: null,
+          actions: [],
+        });
+        expect(cancelled.value.entries[0]!.cancelledAt).not.toBeNull();
+        expect(cancelled.value.total).toBe(1);
+        const text = JSON.stringify(cancelled.value);
+        expect(text).not.toContain('SUP-2001');
+        expect(text).not.toContain(WHY);
+        // Every view and sort runs against the real table; a closed date sorts nulls last.
+        for (const sort of ['scheduled', 'requested', 'cancelled', 'completed']) {
+          for (const direction of ['asc', 'desc']) {
+            const page = await new AdminListAccountDeletions(gate, listDeps()).execute(admin(), {
+              view: 'all',
+              sort,
+              direction,
+              pageSize: 100,
+            });
+            if (!page.ok) throw new Error(page.error.code);
+            expect(page.value.total).toBe(page.value.counts.all);
+            if (sort === 'cancelled') {
+              const firstOpen = page.value.entries.findIndex((e) => e.cancelledAt === null);
+              const lastClosed = page.value.entries
+                .map((e) => e.cancelledAt !== null)
+                .lastIndexOf(true);
+              expect(firstOpen === -1 || lastClosed < firstOpen).toBe(true);
+            }
+          }
+        }
+        const filter = {
+          status: null,
+          requestedBy: null,
+          cancelReason: null,
+          requestOrAccountId: null,
+          from: null,
+          to: null,
+          scheduledBefore: null,
+        };
+        const exported = await read(() =>
+          reader.idsPage(market, filter, { key: 'scheduled', direction: 'asc' }, 10_001),
+        );
+        expect(exported).toEqual(expect.arrayContaining([row!.id]));
+        expect(await read(() => reader.count(market, filter))).toBe(exported.length);
+        const byIds = await read(() =>
+          reader.byIds(market, [row!.id as Id<'AccountDeletionRequest'>]),
+        );
+        expect(byIds.map((r) => r.id)).toEqual([row!.id]);
+        const foreign = await sql.query(
+          `SELECT 1 FROM customers.account_deletion_requests WHERE market_id <> $1 AND id = ANY($2)`,
+          [code, exported],
         );
         expect(foreign.rowCount).toBe(0);
       });
