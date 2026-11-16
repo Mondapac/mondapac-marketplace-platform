@@ -1,13 +1,14 @@
-import { CARD_TABLE, EmailText } from '@mondapac/ui';
+import { CARD_TABLE } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatMoney } from '../pricing/format.ts';
+import { CustomerCell } from '../sales/customer-cell.tsx';
 import { shortInstantInZone } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { FallbackId } from './fallback-id.tsx';
 import { DEFAULT_COLUMNS, type OrderColumn } from './orders-columns.ts';
 import { OrderStatusBadge } from './status-badge.tsx';
 import { orderHref, type CustomerOrigin } from './order-href.ts';
-import type { AdminOrder, OrderCustomer } from './types.ts';
+import type { AdminOrder } from './types.ts';
 
 /** The width of each column from 1024 px; the order reference is always the first. */
 const WIDTH: Readonly<Record<OrderColumn | 'order', string>> = {
@@ -134,32 +135,6 @@ export function OrdersTable({
           ))}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-/** Name with the email below it; the email alone when no name; the short id when neither. */
-function CustomerCell({
-  customer,
-  accountId,
-}: {
-  readonly customer: OrderCustomer | null;
-  readonly accountId: string;
-}) {
-  if (customer === null) return <FallbackId id={accountId} />;
-  const name = customer.displayName?.trim() || null;
-  return (
-    <div className="min-w-0 [overflow-wrap:anywhere]" title={accountId}>
-      {name === null ? (
-        <EmailText address={customer.email} />
-      ) : (
-        <>
-          <div className="font-medium">{name}</div>
-          <div className="text-sm text-fg-muted">
-            <EmailText address={customer.email} />
-          </div>
-        </>
-      )}
     </div>
   );
 }

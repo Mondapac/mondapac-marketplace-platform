@@ -182,6 +182,7 @@ describe('admin nav: daily work only', () => {
       'review-queue',
       'price-holds',
       'orders',
+      'shipments',
       'products',
       'categories',
       'attributes',

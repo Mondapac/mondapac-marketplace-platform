@@ -5,6 +5,12 @@ import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import type { ApiFailure } from '../api/client.ts';
+import {
+  isNoteFailure,
+  ReviewNoteField,
+  trimmedNote,
+  useSentForReview,
+} from '../shared/review-note.tsx';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { ChangeRoleDialog } from './role-dialog.tsx';
 import type { ActionHint, PlatformRole } from './types.ts';
@@ -54,7 +60,7 @@ interface ActionDef {
   readonly level: 2 | 3;
 }
 
-function definitionsFor(target: RowTarget): readonly ActionDef[] {
+function definitionsFor(target: RowTarget, reviewed: boolean): readonly ActionDef[] {
   if (target.kind === 'invitation') {
     return [
       {
@@ -97,7 +103,8 @@ function definitionsFor(target: RowTarget): readonly ActionDef[] {
           id: 'reactivate',
           hint: target.hints.enable,
           path: `identity/admin/accounts/${target.id}/enable`,
-          confirm: false,
+          // Reviewed: a dialog asks for the note first.
+          confirm: reviewed,
           critical: false,
           level: 2,
         },
@@ -109,8 +116,11 @@ export function RowActions({
   target,
   csrfToken,
   roles,
+  reviewed = false,
 }: {
   readonly target: RowTarget;
+  /** The Market reviews people changes: a role change and a reactivation need a note. */
+  readonly reviewed?: boolean;
   readonly csrfToken: string;
   /** Present only when the actor may assign roles and the list loaded; absent hides Change role. */
   readonly roles?: readonly PlatformRole[] | undefined;
@@ -123,6 +133,9 @@ export function RowActions({
   const [changingRole, setChangingRole] = useState(false);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
   // A ref, not only state: a second click must not start a second request before a render.
   const inFlight = useRef(false);
 
@@ -134,22 +147,41 @@ export function RowActions({
 
   async function run(action: ActionDef) {
     if (inFlight.current) return;
+    // Only a reviewed reactivation carries a note; a deactivation opens no request and sends none.
+    const noted = reviewed && action.id === 'reactivate';
+    const sentNote = noted ? trimmedNote(note) : null;
+    setNoteError(null);
+    if (noted && sentNote === null) {
+      setNoteError('required');
+      return;
+    }
     inFlight.current = true;
     setPending(true);
     setProblem(null);
-    const result = await callGuarded('POST', action.path, {}, csrfToken);
+    const result = await callGuarded<unknown>(
+      'POST',
+      action.path,
+      sentNote === null ? {} : { note: sentNote },
+      csrfToken,
+    );
     inFlight.current = false;
     setPending(false);
     if (isStepUpCancelled(result)) return;
     if (result.ok) {
       setAsking(null);
+      setNote('');
       toast.success(t(`toast.${action.id}`, { name: target.name }));
+      sentForReview(result.body);
       router.refresh();
       return;
     }
     const failure: ApiFailure = result.failure;
     if (failure.status === 401) {
       router.replace('/session-ended');
+      return;
+    }
+    if (noted && isNoteFailure(failure)) {
+      setNoteError(note.trim() === '' ? 'required' : 'rejected');
       return;
     }
     if (CHANGED_MEANWHILE.has(failure.code)) {
@@ -163,7 +195,7 @@ export function RowActions({
     else toast.error(messageFor(failure.code));
   }
 
-  const items: MenuItem[] = definitionsFor(target).map((action) => ({
+  const items: MenuItem[] = definitionsFor(target, reviewed).map((action) => ({
     id: action.id,
     label: t(`action.${action.id}`),
     disabled: !action.hint.allowed || pending,
@@ -172,6 +204,8 @@ export function RowActions({
     onSelect: () => {
       if (action.confirm) {
         setProblem(null);
+        setNote('');
+        setNoteError(null);
         setAsking(action);
       } else void run(action);
     },
@@ -200,6 +234,7 @@ export function RowActions({
           currentRoleId={target.roleId}
           roles={roles}
           csrfToken={csrfToken}
+          reviewed={reviewed}
         />
       ) : null}
       <Menu label={t('actions-for', { name: target.name })} items={items} />
@@ -207,7 +242,23 @@ export function RowActions({
         open={asking !== null}
         level={asking?.level ?? 2}
         title={asking === null ? '' : t(`dialog.${asking.id}.title`, { name: target.name })}
-        body={asking === null ? null : <p>{t(`dialog.${asking.id}.body`)}</p>}
+        body={
+          asking === null ? null : (
+            <>
+              <p>{t(`dialog.${asking.id}.body`)}</p>
+              {asking.id === 'reactivate' ? (
+                <div className="mt-3">
+                  <ReviewNoteField
+                    value={note}
+                    onChange={setNote}
+                    error={noteError ?? undefined}
+                    disabled={pending}
+                  />
+                </div>
+              ) : null}
+            </>
+          )
+        }
         rowName={target.name}
         typeLabel={t('dialog.type-to-confirm')}
         stepUpNote={asking?.level === 3 ? t('dialog.step-up-note') : undefined}

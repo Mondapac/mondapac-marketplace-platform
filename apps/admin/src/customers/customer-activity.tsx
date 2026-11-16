@@ -19,6 +19,8 @@ import {
   readIds,
   saveFile,
   toast,
+  listSkeletonRowCount,
+  useListLoading,
   useSuperListQuery,
   writeIds,
   type ExportFormat,
@@ -293,6 +295,7 @@ function ActivityList({
 }) {
   const t = useTranslations('customers.activity');
   const tl = useTranslations('customers.list');
+  const tload = useTranslations('load');
   const locale = useLocale();
   const text = useEntryText();
   const prove = useStepUpProof();
@@ -364,6 +367,16 @@ function ActivityList({
   useEffect(() => {
     void load(query);
   }, [load, query]);
+
+  // Panel loading L2: skeleton rows on the first load, dimmed rows on a later one.
+  const status = useListLoading(loading, answer !== null);
+  useEffect(() => {
+    if (!status.stalled) return;
+    latest.current += 1;
+    setLoading(false);
+    setFailure('unavailable');
+  }, [status.stalled]);
+  const skeleton = status.skeleton && failure === null;
 
   async function exportFile(format: ExportFormat) {
     setExporting(true);
@@ -631,8 +644,11 @@ function ActivityList({
                 : {}),
             }
       }
+      firstLoadError={answer === null && failure === 'unavailable'}
       loading={loading}
+      status={status}
       loadingLabel={t('loading')}
+      slowLabel={tload('slow')}
       ready={answer !== null}
       table={
         <SuperTable
@@ -660,6 +676,7 @@ function ActivityList({
               }
             />
           }
+          skeletonRows={skeleton ? listSkeletonRowCount(query.pageSize) : undefined}
           minWidthClass="lg:min-w-180"
         />
       }
