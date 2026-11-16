@@ -33,6 +33,7 @@ import {
   RecordingOutbox,
   SequenceGuestTokens,
   UtcCalendar,
+  FixedQuickPrompts,
 } from './testing/assistant-fakes';
 import { PurgeConversations } from './use-cases/purge-conversations.use-case';
 import { SendGuestMessage } from './use-cases/send-guest-message.use-case';
@@ -156,6 +157,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
       outbox,
+      quickPrompts: new FixedQuickPrompts(),
       trail: unusedChangeTrail,
     };
   });

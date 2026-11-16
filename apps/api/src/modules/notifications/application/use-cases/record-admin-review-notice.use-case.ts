@@ -17,6 +17,7 @@ import {
   ADMIN_SELLER_REFUND_LIMIT_REACHED,
   ADMIN_ASSISTANT_SPEND_CAP_REACHED,
   type ASSISTANT_SPEND_CAPS,
+  type AdminSystemRequestOverdueKind,
   type CERTIFICATE_SUBMISSIONS,
   type REFUND_LIMIT_KINDS,
   type HOLD_DIRECTIONS,
@@ -76,6 +77,12 @@ export type AdminReviewItem =
   | {
       readonly kind: typeof ADMIN_REVIEW_HELD | typeof ADMIN_REVIEW_REPORTED;
       readonly reviewId: string;
+    }
+  | {
+      readonly kind: AdminSystemRequestOverdueKind;
+      readonly requestId: string;
+      readonly number: number;
+      readonly ageDays: number;
     };
 
 export interface RecordAdminReviewNoticeInput {
@@ -91,7 +98,7 @@ export type RecordAdminReviewNoticeOutput =
 export type RecordAdminReviewNoticeFailure = { readonly code: 'access.denied' };
 
 /** The stored params of an item: its ids and enums, never a name. */
-function paramsOf(item: AdminReviewItem): Readonly<Record<string, string>> {
+function paramsOf(item: AdminReviewItem): Readonly<Record<string, string | number>> {
   switch (item.kind) {
     case ADMIN_SELLER_CERTIFICATE_SUBMITTED:
       return {
@@ -118,6 +125,9 @@ function paramsOf(item: AdminReviewItem): Readonly<Record<string, string>> {
     case ADMIN_REVIEW_HELD:
     case ADMIN_REVIEW_REPORTED:
       return { reviewId: item.reviewId };
+    default:
+      // A system request reminder: the request's id, SR number and age; never its note or values.
+      return { requestId: item.requestId, number: item.number, ageDays: item.ageDays };
   }
 }
 

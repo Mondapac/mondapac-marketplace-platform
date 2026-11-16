@@ -22,6 +22,7 @@ import { CONVERSATION_REPOSITORY } from './application/ports/conversation.reposi
 import { GUEST_TOKENS } from './application/ports/guest-tokens';
 import { MARKET_CALENDAR } from './application/ports/market-calendar';
 import { MESSAGE_LIMITS } from './application/ports/message-limits';
+import { QUICK_PROMPTS } from './application/ports/quick-prompts';
 import { SPEND_REPOSITORY } from './application/ports/spend.repository';
 import { PurgeConversations } from './application/use-cases/purge-conversations.use-case';
 import { SendGuestMessage } from './application/use-cases/send-guest-message.use-case';
@@ -54,6 +55,7 @@ const PORTS: readonly [keyof AssistantDependencies, InjectionToken][] = [
   ['guestTokens', GUEST_TOKENS],
   ['calendar', MARKET_CALENDAR],
   ['outbox', OUTBOX_WRITER],
+  ['quickPrompts', QUICK_PROMPTS],
   ['trail', CHANGE_TRAIL],
 ];
 

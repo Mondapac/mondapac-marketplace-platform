@@ -18,6 +18,7 @@ import type {
 import type { GuestTokens } from '../ports/guest-tokens';
 import type { MarketCalendar } from '../ports/market-calendar';
 import type { MessageLimits } from '../ports/message-limits';
+import type { QuickPrompts } from '../ports/quick-prompts';
 import type { SpendRepository, SpendTotals } from '../ports/spend.repository';
 
 // In-memory ports of the assistant for the use-case specs: the fake model answers from a script
@@ -280,6 +281,22 @@ export class RecordingOutbox implements OutboxWriter {
       this.events.push({ ...event, marketId: context.market.marketId });
     }
     return Promise.resolve();
+  }
+}
+
+/**
+ * Fixed prompts shaped like the fixtures: ZZ answers Japanese (its default, with no English
+ * catalogue), AU English unless asked for `ja`; records each tag asked.
+ */
+export class FixedQuickPrompts implements QuickPrompts {
+  static readonly JA = ['今週の特売は？'];
+  static readonly EN = ['What is on special?'];
+  readonly asked: (string | null)[] = [];
+  forBuyer(market: MarketContext, lang: string | null) {
+    this.asked.push(lang);
+    return market.marketId === 'ZZ' || lang?.startsWith('ja')
+      ? FixedQuickPrompts.JA
+      : FixedQuickPrompts.EN;
   }
 }
 

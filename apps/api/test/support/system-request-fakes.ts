@@ -27,6 +27,15 @@ export class RecordingReview implements SystemRequestRecorder {
     return this;
   }
 
+  /** Every area off again, and nothing opened or asked (a shared fake between tests). */
+  reset(): void {
+    this.reviewed.clear();
+    this.opened.length = 0;
+    this.asked.length = 0;
+    this.failNext = false;
+    this.counter = 0;
+  }
+
   areaPolicy(
     _context: CallContext,
     area: PolicyArea,

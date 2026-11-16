@@ -17,6 +17,8 @@ export interface RoleRecord {
 }
 
 export interface RoleCatalogue {
+  /** Whether an edit of a custom role is reviewed (then a note is required). */
+  readonly review?: { readonly reviewed: boolean; readonly risk: 'low' | 'medium' | 'high' };
   readonly items: readonly RoleRecord[];
   readonly keys: readonly {
     readonly key: string;

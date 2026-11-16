@@ -10,6 +10,7 @@ import type { ConversationRepository } from './ports/conversation.repository';
 import type { GuestTokens } from './ports/guest-tokens';
 import type { MarketCalendar } from './ports/market-calendar';
 import type { MessageLimits } from './ports/message-limits';
+import type { QuickPrompts } from './ports/quick-prompts';
 import type { SpendRepository } from './ports/spend.repository';
 
 /** What every assistant use case may need; one object built from the same ports. */
@@ -27,6 +28,8 @@ export interface AssistantDependencies {
   readonly calendar: MarketCalendar;
   /** assistant's own outbox: the spend-cap event, in the unit that counted the turn. */
   readonly outbox: OutboxWriter;
+  /** The storefront's fixed quick prompts, in the buyer's language. */
+  readonly quickPrompts: QuickPrompts;
   /** "Last changed by" and the history of the settings, from this module's audit rows. */
   readonly trail: ChangeTrail;
 }

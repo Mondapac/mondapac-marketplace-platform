@@ -34,6 +34,7 @@ import {
   MemoryLimits,
   MemorySpend,
   RecordingOutbox,
+  FixedQuickPrompts,
   SequenceGuestTokens,
   UtcCalendar,
 } from './testing/assistant-fakes';
@@ -273,6 +274,7 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
       outbox: new RecordingOutbox(),
+      quickPrompts: new FixedQuickPrompts(),
       trail: changeTrailOf(unitOfWork, audit, actors),
     };
   });
@@ -280,8 +282,8 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
   const view = () => new ViewAssistantSettings(gate, deps).execute(admin(), {});
   const set = (next: unknown, expectedVersion: unknown = 0, context = admin()) =>
     new SetAssistantSettings(gate, deps).execute(context, { settings: next, expectedVersion });
-  const storefront = (visitor: unknown = VISITOR) =>
-    new ViewStorefrontAssistant(gate, deps).execute(anonymous(), { visitor });
+  const storefront = (visitor: unknown = VISITOR, lang?: unknown) =>
+    new ViewStorefrontAssistant(gate, deps).execute(anonymous(), { visitor, lang });
 
   it('reads the defaults as version 0, with the key status and the model of each tier', async () => {
     const read = await view();
@@ -435,7 +437,16 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
   });
 
   describe('the storefront read', () => {
-    const OFF = { enabled: false, guestsAllowed: false, replyLanguage: 'buyer', welcomeText: null };
+    const OFF = {
+      enabled: false,
+      guestsAllowed: false,
+      replyLanguage: 'buyer',
+      welcomeText: null,
+      retentionDays: null,
+      quickPrompts: [],
+    };
+    // The fake answers each fixture's default: English for AU, Japanese for ZZ.
+    const EN = code === 'ZZ' ? FixedQuickPrompts.JA : FixedQuickPrompts.EN;
 
     it('is off by default', async () => {
       expect(await storefront()).toEqual(ok(OFF));
@@ -444,12 +455,48 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
     it('answers the safe subset when on for everyone', async () => {
       await set(on({ users: 'customers-only', replyLanguage: 'english', welcomeText: 'Hi' }));
       expect(await storefront()).toEqual(
-        ok({ enabled: true, guestsAllowed: false, replyLanguage: 'english', welcomeText: 'Hi' }),
+        ok({
+          enabled: true,
+          guestsAllowed: false,
+          replyLanguage: 'english',
+          welcomeText: 'Hi',
+          retentionDays: { customer: 30, guest: 30 },
+          quickPrompts: EN,
+        }),
       );
       await set(on({ welcomeText: 'Hi' }), 1);
       expect(await storefront(undefined)).toEqual(
-        ok({ enabled: true, guestsAllowed: true, replyLanguage: 'buyer', welcomeText: 'Hi' }),
+        ok({
+          enabled: true,
+          guestsAllowed: true,
+          replyLanguage: 'buyer',
+          welcomeText: 'Hi',
+          retentionDays: { customer: 30, guest: 30 },
+          quickPrompts: EN,
+        }),
       );
+    });
+
+    it.each([
+      ['none', { customer: 0, guest: 0 }],
+      ['30-days', { customer: 30, guest: 30 }],
+      ['12-months', { customer: 365, guest: 30 }],
+    ] as const)(
+      'says how long a conversation is kept with retention %s',
+      async (retention, days) => {
+        await set(on({ retention }));
+        const read = await storefront();
+        expect(read.ok && read.value.retentionDays).toEqual(days);
+      },
+    );
+
+    it("passes the storefront's language to the quick prompts, as sent", async () => {
+      await set(on());
+      const prompts = deps.quickPrompts as FixedQuickPrompts;
+      const read = await storefront(VISITOR, 'ja-JP');
+      expect(read.ok && read.value.quickPrompts).toEqual(['今週の特売は？']);
+      await storefront(VISITOR, 42);
+      expect(prompts.asked).toEqual(['ja-JP', null]);
     });
 
     it('stays off without the API key or a model for the chosen tier', async () => {

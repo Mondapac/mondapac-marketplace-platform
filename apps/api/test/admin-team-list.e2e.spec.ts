@@ -176,7 +176,7 @@ describe('admin team list over HTTP (integration, slice 8c)', () => {
       ]),
     );
     for (const schema of [
-      'AdminTeamPageView',
+      'AdminTeamReviewedPageView',
       'AdminTeamAccountRowView',
       'AdminTeamInvitationRowView',
       'AdminTeamActionHint',

@@ -93,7 +93,7 @@ export async function syncCustomer(
 
 /** The account that paid a confirmed order, through `ordering`. */
 export async function accountOfOrder(
-  deps: ReadModelDependencies,
+  deps: Pick<ReadModelDependencies, 'ordering'>,
   context: CallContext,
   orderId: string,
 ): Promise<Result<Id<'Account'> | null, ReadModelFailure>> {
@@ -107,7 +107,7 @@ export async function accountOfOrder(
 
 /** The account a refund went back to, through `ordering`. */
 export async function accountOfRefund(
-  deps: ReadModelDependencies,
+  deps: Pick<ReadModelDependencies, 'ordering'>,
   context: CallContext,
   orderId: string,
   refundId: string,

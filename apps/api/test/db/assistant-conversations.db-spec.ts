@@ -11,6 +11,7 @@ import {
   FakeTools,
   MemoryLimits,
   SequenceGuestTokens,
+  FixedQuickPrompts,
 } from '../../src/modules/assistant/application/testing/assistant-fakes';
 import { SendGuestMessage } from '../../src/modules/assistant/application/use-cases/send-guest-message.use-case';
 import {
@@ -330,6 +331,7 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
         guestTokens: new SequenceGuestTokens(),
         calendar: new RegistryMarketCalendar(markets),
         outbox: outboxWriter(),
+        quickPrompts: new FixedQuickPrompts(),
         trail: unusedChangeTrail,
       },
     );
@@ -377,6 +379,7 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
         guestTokens: new SequenceGuestTokens(),
         calendar: new RegistryMarketCalendar(markets),
         outbox: outboxWriter(),
+        quickPrompts: new FixedQuickPrompts(),
         trail: unusedChangeTrail,
       },
     );

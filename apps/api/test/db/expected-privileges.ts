@@ -526,8 +526,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'inventory_recorded_at',
         'ledger_attempts',
         'ledger_state',
+        'paid_at',
         'ready_at',
         'refunded_amount',
+        'refunded_in_full',
         'shipped_at',
         'tracking_ref',
       ],
@@ -832,6 +834,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'reward_bps',
         'reward_kind',
         'segment_kind',
+        'segment_group_id',
         'segment_min_days',
         'special_campaign',
         'starts_at',
@@ -1017,6 +1020,17 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    // The inbox of the read model subscribers: appended to only (DELETE with the prune job).
+    'customers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Phase 2a: groups are never deleted (a promotion may name one); members are added and
+    // removed; notes and timeline rows are written once and go only with the customer's erasure.
+    'customers.customer_groups': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['archived_at', 'description', 'name', 'updated_at', 'version'],
+    },
+    'customers.customer_group_members': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'customers.customer_notes': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'customers.customer_timeline': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
     'legal.marketing_consents': {
@@ -1822,10 +1836,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'decided_by_account_id',
         'decision',
         'decision_reason',
+        'last_reminded_at',
         'status',
         'superseded_by_request_id',
       ],
     },
+    // The reminder event the in-app notice follows (as every module's outbox).
+    'system_requests.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'system_requests.request_activity': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'system_requests.request_counters': {
       table: ['INSERT', 'SELECT'],
