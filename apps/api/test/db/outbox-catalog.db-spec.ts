@@ -13,6 +13,12 @@ import { testDatabaseUrl } from './test-database';
  * PostgreSQL prints it. A migration that adds, drops or changes one changes this list.
  */
 const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
+  // Buyer assistant insights (B3): the admin reads assistant replies by Market and time, and the
+  // flagged ones (unavailable, tool-failed, empty search) through their own small index.
+  'assistant.messages_market_id_created_at_idx':
+    "CREATE INDEX messages_market_id_created_at_idx ON assistant.messages USING btree (market_id, created_at) WHERE ((role)::text = 'assistant'::text)",
+  'assistant.messages_market_id_created_at_unanswered_idx':
+    "CREATE INDEX messages_market_id_created_at_unanswered_idx ON assistant.messages USING btree (market_id, created_at) WHERE (((role)::text = 'assistant'::text) AND (empty_search OR (notices && ARRAY['unavailable'::character varying(32), 'tool-failed'::character varying(32)])))",
   // Lists (ADR-0049): one saved-filter name per owner and list, and one shared name per list.
   'lists.saved_filters_owner_name_key':
     'CREATE UNIQUE INDEX saved_filters_owner_name_key ON lists.saved_filters USING btree (market_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NULL)',

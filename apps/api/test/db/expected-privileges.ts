@@ -1129,6 +1129,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['last_message_at', 'turns'],
     },
     'assistant.messages': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Buyer assistant feedback (B3): written once per message; only the rating, its reason and
+    // the time change (the last write wins); it goes with its message by the cascade.
+    'assistant.feedback': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['rating', 'reason', 'updated_at'],
+    },
     'assistant.spend_days': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // Notifications (support contact): a change is a new version row; none is updated or deleted.
     'notifications.support_contacts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
