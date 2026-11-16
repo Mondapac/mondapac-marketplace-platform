@@ -197,6 +197,9 @@ const filterWhere = (market: MarketContext, filter: OrderFilter) => ({
   marketId: market.marketId,
   ...(filter.status === null ? {} : { status: filter.status }),
   ...(filter.paymentState === null ? {} : { paymentState: filter.paymentState }),
+  ...(filter.accountId === undefined || filter.accountId === null
+    ? {}
+    : { accountId: filter.accountId }),
   ...(filter.reference === null
     ? {}
     : { OR: [{ id: filter.reference }, { sellerOrders: { some: { id: filter.reference } } }] }),
@@ -250,6 +253,10 @@ const afterCursor = (page: OrderPage) =>
         ],
       };
 
+/** The seller orders' `paid_at`: the confirmation time of a confirmed order, else null. */
+const paidAtOf = (order: Pick<OrderState, 'status' | 'confirmedAt'>): Date | null =>
+  order.status === 'confirmed' && order.confirmedAt !== null ? toDate(order.confirmedAt) : null;
+
 /**
  * {@link OrderRepository} on `ordering.orders`, `seller_orders` and `order_lines`, through the
  * Market-scoped client with `marketId` at the top level of every `where`.
@@ -296,6 +303,7 @@ export class PrismaOrderRepository implements OrderRepository {
         shippingTaxInclusive: s.shippingTaxInclusive,
         totalAmount: s.total,
         fulfilment: s.fulfilment,
+        paidAt: paidAtOf(order),
         ledgerState: s.ledgerState,
         deliveryMethod: s.deliveryMethod,
         deliveryWindowStart: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.start),
@@ -524,7 +532,17 @@ export class PrismaOrderRepository implements OrderRepository {
         version: order.version + 1,
       },
     });
-    return updated.count === 0 ? 'stale' : 'saved';
+    if (updated.count === 0) return 'stale';
+    const paidAt = paidAtOf(order);
+    if (paidAt !== null) {
+      // The payment time on the seller orders (admin Shipments and Invoices lists), in the unit
+      // that confirms the order; written once, so later saves match no row.
+      await this.prisma.tx(market).orderingSellerOrder.updateMany({
+        where: { marketId: market.marketId, orderId: order.id, paidAt: null },
+        data: { paidAt },
+      });
+    }
+    return 'saved';
   }
 
   async listForSeller(

@@ -22,7 +22,16 @@ export const CUSTOMERS_STEP_UP_ACTIONS: readonly StepUpActionDeclaration[] = [
     locked: true,
     audience: 'admin',
   },
+  // Phase 1 (package B2): an admin exports the Customers list, a bulk copy of personal data.
+  {
+    key: 'customers.customers.export',
+    defaultRequired: true,
+    locked: true,
+    audience: 'admin',
+  },
 ];
+
+export const CUSTOMERS_EXPORT_STEP_UP = 'customers.customers.export';
 
 export const ACCOUNT_DELETION_SETTINGS_CHANGE_STEP_UP =
   'customers.account-deletion-settings.change';

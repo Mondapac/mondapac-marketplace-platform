@@ -38,7 +38,78 @@ export const ACCOUNT_DELETION_REQUESTS_VIEW = definePermission('customers', {
   protected: false,
 });
 
+/**
+ * See the Customers list and a customer's page: names, sign-in addresses, order totals. Personal
+ * data, so no default role lists it (not even Viewer); the Platform Administrator grants it to the
+ * roles that need it. Every open of a customer page is audited.
+ */
+export const CUSTOMERS_CUSTOMER_VIEW = definePermission('customers', {
+  key: 'customers.customers.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Export the Customers list as CSV or XLSX: a bulk copy of personal data, so protected (only the
+ * Platform Administrator, or a custom role it grants it to) and every export needs a fresh admin
+ * step-up proof of `customers.customers.export` and is audited.
+ */
+export const CUSTOMERS_CUSTOMER_EXPORT = definePermission('customers', {
+  key: 'customers.customers.export',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Share a saved filter of the Customers list with every admin of the Market (and manage one that
+ * somebody else shared). Unprotected; also needs `customers.customers.view`.
+ */
+export const CUSTOMERS_SAVED_FILTER_SHARE = definePermission('customers', {
+  key: 'customers.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Edit a customer's account from the customer page (phase 2): the display name today (identity
+ * owns the write; status stays on identity's `identity.customer-account.disable`). Unprotected;
+ * also needs `customers.customers.view`. Every change is audited by identity and shown on the
+ * customer's timeline.
+ */
+export const CUSTOMERS_CUSTOMER_EDIT = definePermission('customers', {
+  key: 'customers.customers.edit',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Make, rename and archive manual customer groups and add or remove their members, one by one or
+ * in bulk (phase 2). Protected (owner decision, 15 Nov 2026): a group can carry a promotion's
+ * discount, so only a protected role grants it. Also needs `customers.customers.view`. Audited.
+ */
+export const CUSTOMERS_GROUPS_MANAGE = definePermission('customers', {
+  key: 'customers.groups.manage',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Write an internal note about a customer (phase 2). Reading the notes needs only
+ * `customers.customers.view`. Unprotected. Audited (id and length; the text is sealed).
+ */
+export const CUSTOMERS_NOTES_WRITE = definePermission('customers', {
+  key: 'customers.customer-notes.write',
+  scope: 'platform',
+  protected: false,
+});
+
 export const CUSTOMERS_PERMISSIONS = declarePermissions('customers', [
+  CUSTOMERS_CUSTOMER_EDIT,
+  CUSTOMERS_GROUPS_MANAGE,
+  CUSTOMERS_NOTES_WRITE,
+  CUSTOMERS_CUSTOMER_EXPORT,
+  CUSTOMERS_CUSTOMER_VIEW,
+  CUSTOMERS_SAVED_FILTER_SHARE,
   ACCOUNT_DELETION_REQUESTS_VIEW,
   ACCOUNT_DELETION_SETTINGS_MANAGE,
   ACCOUNT_DELETION_SETTINGS_VIEW,

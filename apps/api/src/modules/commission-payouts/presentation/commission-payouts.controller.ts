@@ -20,6 +20,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -39,11 +40,20 @@ import { SetCommissionRate } from '../application/use-cases/set-commission-rate.
 import { ViewCommissionRate } from '../application/use-cases/view-commission-rate.use-case';
 import { ViewOwnLedger } from '../application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from '../application/use-cases/view-seller-ledger.use-case';
+import { ExportSellerLedger } from '../application/use-cases/export-seller-ledger.use-case';
+import { EXPORT_FORMATS } from '../../../platform/list-export';
+import { LEDGER_EXPORT_COLUMNS } from '../domain/seller-page-lists';
+import { numbersOf, sendExport } from './list-export-route';
 import {
   CommissionRateBody,
   LedgerBody,
+  SellerLedgerListBody,
+  sellerLedgerListBody,
   ledgerBody,
   rateBody,
+  rateChangeBody,
+  CommissionRateChangeBody,
+  NOTE_DESCRIPTION,
   SetCommissionRateRequest,
 } from './commission-payouts.dto';
 import { closedBody, parseLimit, refusal } from './http-answers';
@@ -82,6 +92,7 @@ export class AdminCommissionController {
     private readonly setRate: SetCommissionRate,
     private readonly clearRate: ClearCommissionRate,
     private readonly viewLedger: ViewSellerLedger,
+    private readonly exportSellerLedger: ExportSellerLedger,
   ) {}
 
   @Get('commission-rate')
@@ -127,7 +138,7 @@ export class AdminCommissionController {
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerId', format: 'uuid' })
   @ApiBody({ type: SetCommissionRateRequest })
-  @ApiOkResponse({ type: CommissionRateBody })
+  @ApiOkResponse({ type: CommissionRateChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({
@@ -147,10 +158,10 @@ export class AdminCommissionController {
     @Body() requestBody: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, requestBody, ['rateBps']);
+    const invalid = closedBody(request, requestBody, ['rateBps', 'note']);
     if (invalid !== null) throw invalid;
-    const rateBps = (requestBody as { rateBps?: unknown }).rateBps;
-    const result = await this.setRate.execute(context, { sellerId, rateBps });
+    const { rateBps, note } = requestBody as { rateBps?: unknown; note?: unknown };
+    const result = await this.setRate.execute(context, { sellerId, rateBps, note });
     logRoute(
       this.#logger,
       'commission-payouts.set-commission-rate-route',
@@ -158,7 +169,7 @@ export class AdminCommissionController {
       result.ok ? 'set' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return rateBody(result.value);
+    return rateChangeBody(result.value);
   }
 
   @Delete('commission-rate')
@@ -174,7 +185,8 @@ export class AdminCommissionController {
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerId', format: 'uuid' })
-  @ApiOkResponse({ type: CommissionRateBody })
+  @ApiQuery({ name: 'note', required: false, description: NOTE_DESCRIPTION })
+  @ApiOkResponse({ type: CommissionRateChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({
@@ -186,10 +198,11 @@ export class AdminCommissionController {
   async clear(
     @Call() context: CallContext,
     @Param('sellerId') sellerId: string,
+    @Query('note') note: unknown,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.clearRate.execute(context, { sellerId });
+    const result = await this.clearRate.execute(context, { sellerId, note });
     logRoute(
       this.#logger,
       'commission-payouts.clear-commission-rate-route',
@@ -197,18 +210,25 @@ export class AdminCommissionController {
       result.ok ? 'cleared' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return rateBody(result.value);
+    return rateChangeBody(result.value);
   }
 
   @Get('ledger')
   @ApiOperation({
     summary: "A seller's ledger and balance (admin)",
-    description: 'Needs commission-payouts.settlement.view. Newest rows first.',
+    description:
+      'Needs commission-payouts.settlement.view. The compact super list of the seller page ' +
+      '(list 27). Filters: kind, side (credit or debit), q (an order or seller order id, exact), ' +
+      'from and to (ISO instants on the recorded time), minAmount and maxAmount (minor units). ' +
+      'Page numbers: page, pageSize (default 25, at most 100; page x pageSize at most 10,000), ' +
+      'sort (recorded, occurred, amount) and direction. Previous/Next: limit (default 50) and ' +
+      'cursor, newest recorded first, with no page, pageSize, sort or direction. The totals ' +
+      'cover every row of the seller, whatever the filter.',
   })
   @ApiParam({ name: 'sellerId', format: 'uuid' })
   @ApiQuery(CURSOR)
   @ApiQuery(LIMIT)
-  @ApiOkResponse({ type: LedgerBody })
+  @ApiOkResponse({ type: SellerLedgerListBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
@@ -216,16 +236,11 @@ export class AdminCommissionController {
   async ledger(
     @Call() context: CallContext,
     @Param('sellerId') sellerId: string,
-    @Query('cursor') cursor: unknown,
-    @Query('limit') limit: unknown,
+    @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.viewLedger.execute(context, {
-      sellerId,
-      cursor,
-      limit: parseLimit(limit),
-    });
+    const result = await this.viewLedger.execute(context, { ...numbersOf(query), sellerId });
     logRoute(
       this.#logger,
       'commission-payouts.view-seller-ledger-route',
@@ -233,7 +248,45 @@ export class AdminCommissionController {
       result.ok ? 'read' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return ledgerBody(result.value);
+    return sellerLedgerListBody(result.value);
+  }
+
+  @Get('ledger/export')
+  @ApiOperation({
+    summary: "Export a seller's ledger rows as a file (admin)",
+    description:
+      'Needs commission-payouts.settlement.view. `format` is csv (default) or xlsx. `columns` ' +
+      `is the comma-separated optional columns in the order shown (${LEDGER_EXPORT_COLUMNS.join(', ')}); ` +
+      'recorded, kind, direction, amount, currency, order id and seller order id are always ' +
+      'there; amounts are decimals of the currency. The rows are `ids` (at most 200; an id that ' +
+      'is not a row of this seller refuses the whole file) or the filter keys of the list with ' +
+      'sort and direction, at most 10,000 (more: batch.too-large with the total). CSV: a text ' +
+      'cell that starts with = + - @ gets a leading quote. XLSX: every cell is a string value.',
+  })
+  @ApiParam({ name: 'sellerId', format: 'uuid' })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({ name: 'columns', required: false })
+  @ApiQuery({ name: 'ids', required: false })
+  @ApiOkResponse({ description: 'seller-ledger-<date>.csv or .xlsx, as an attachment' })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'commission-payouts.ledger-entry-not-found' })
+  @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large (details.max, total)' })
+  async exportLedger(
+    @Call() context: CallContext,
+    @Param('sellerId') sellerId: string,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportSellerLedger.execute(context, { ...query, sellerId });
+    await sendExport(
+      response,
+      result,
+      context,
+      this.#logger,
+      'commission-payouts.export-seller-ledger-route',
+    );
   }
 }
 

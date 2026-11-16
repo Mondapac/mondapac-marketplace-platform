@@ -68,6 +68,8 @@ export interface ListInput {
   readonly direction?: unknown;
   readonly paymentState?: unknown;
   readonly sellerId?: unknown;
+  /** Admin only: the orders of one customer account (the customer page's Orders tab). */
+  readonly accountId?: unknown;
   readonly fulfilment?: unknown;
   /** ISO instants: placed at or after `from`, before `to`. */
   readonly from?: unknown;
@@ -149,6 +151,12 @@ function pageOf(
     if (allowFilters && parsed !== null && parsed.ok) sellerId = parsed.value;
     else fields.push({ path: 'sellerId', code: 'format' });
   }
+  let accountId: Id<'Account'> | null = null;
+  if (input.accountId !== undefined) {
+    const parsed = typeof input.accountId === 'string' ? parseId<'Account'>(input.accountId) : null;
+    if (allowFilters && parsed !== null && parsed.ok) accountId = parsed.value;
+    else fields.push({ path: 'accountId', code: 'format' });
+  }
   const instant = (path: 'from' | 'to', value: unknown): Temporal.Instant | null => {
     if (value === undefined) return null;
     try {
@@ -170,7 +178,17 @@ function pageOf(
     ? err({ code: 'validation.failed', fields })
     : ok({
         page: { limit, after },
-        filter: { status, reference, paymentState, sellerId, fulfilment, from, to, parties: null },
+        filter: {
+          status,
+          reference,
+          paymentState,
+          sellerId,
+          fulfilment,
+          accountId,
+          from,
+          to,
+          parties: null,
+        },
         search,
       });
 }

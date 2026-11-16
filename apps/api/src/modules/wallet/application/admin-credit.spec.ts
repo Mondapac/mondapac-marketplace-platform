@@ -1,4 +1,5 @@
 import { unusedChangeTrail } from '../../../../test/support/change-trail-fakes';
+import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -36,6 +37,7 @@ import { GrantCredit } from './use-cases/grant-credit.use-case';
 import { IssueAdminCredit } from './use-cases/issue-admin-credit.use-case';
 import { ListAdminCreditRequests } from './use-cases/list-admin-credit-requests.use-case';
 import { RejectAdminCredit } from './use-cases/reject-admin-credit.use-case';
+import { ViewCustomerHistory } from './use-cases/view-customer-history.use-case';
 import { ViewCustomerWallet } from './use-cases/view-customer-wallet.use-case';
 import type { AdminCreditDependencies } from './wallet-dependencies';
 
@@ -93,6 +95,7 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
   let customers: FakeCustomerDirectory;
   let audit: RecordingAudit;
   let deps: AdminCreditDependencies;
+  let review = new RecordingReview();
   let seq = 0;
   let stepUpAnswer: Awaited<ReturnType<AdminCreditDependencies['stepUp']['consume']>> | null;
   let stepUpAsked: string[];
@@ -139,11 +142,13 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
     audit = new RecordingAudit();
     stepUpAnswer = null;
     stepUpAsked = [];
+    review = new RecordingReview();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       wallet,
       settings: setting,
       policy: new ConfigWalletPolicy(markets),
+      review,
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,
@@ -784,6 +789,34 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
         ok: false,
         error: { code: 'validation.failed' },
       });
+    });
+
+    it("reads a customer's wallet history for an admin, refusing an unknown customer, a bad id or paging", async () => {
+      const history = new ViewCustomerHistory(gate, deps);
+      expect(ViewCustomerHistory.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: ['wallet.credit.view'],
+      });
+      expect(await history.execute(adminCtx(MAKER), { customerAccountId: CUSTOMER })).toEqual({
+        ok: true,
+        value: { currency, entries: [], nextCursor: null },
+      });
+      await issue(issueCap);
+      const read = await history.execute(adminCtx(MAKER), { customerAccountId: CUSTOMER });
+      expect(read).toMatchObject({
+        ok: true,
+        value: { currency, entries: [{ kind: 'grant-promo', amount: issueCap }], nextCursor: null },
+      });
+      expect(await history.execute(adminCtx(MAKER), { customerAccountId: 'x' })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(
+        await history.execute(adminCtx(MAKER), { customerAccountId: CUSTOMER, limit: 0 }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      expect(
+        await history.execute(adminCtx(MAKER), { customerAccountId: UNKNOWN_ACCOUNT }),
+      ).toEqual({ ok: false, error: { code: 'wallet.customer-not-found' } });
     });
   });
 });

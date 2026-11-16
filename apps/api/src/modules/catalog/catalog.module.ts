@@ -76,6 +76,11 @@ import { ADMIN_VARIANTS_READER } from './application/ports/admin-variants.reader
 import { AdminProductListController } from './presentation/admin-product-list.controller';
 import { AdminProductBulkController } from './presentation/admin-product-bulk.controller';
 import { AdminProductPause } from './application/use-cases/admin-product-pause.use-case';
+import { ProductPauseProbe } from './application/use-cases/product-pause-probe.use-case';
+import { ProductDeleteProbe } from './application/use-cases/product-delete-probe.use-case';
+import { PlatformProductRetireProbe } from './application/use-cases/platform-product-retire-probe.use-case';
+import { PlatformProductEditProbe } from './application/use-cases/platform-product-edit-probe.use-case';
+import { OwnProductEditProbe } from './application/use-cases/own-product-edit-probe.use-case';
 import { IMPORT_FILE_STORE } from './application/ports/import-file-store';
 import { PLATFORM_IMPORT_REPOSITORY } from './application/ports/platform-import.repository';
 import { PlatformImportDiscard } from './application/use-cases/platform-import-discard.use-case';
@@ -513,6 +518,7 @@ import {
   OwnDescriptionWriterController,
 } from './presentation/description-writer.controller';
 import { SettingsModule } from '../settings';
+import { ListsModule } from '../lists';
 import { VARIANT_ADMIN_READER } from './application/ports/variant-admin.reader';
 import { VARIANT_TYPE_SETTINGS_STORE } from './application/ports/variant-type-settings.store';
 import { AdminVariantTypeGet } from './application/use-cases/admin-variant-type-get.use-case';
@@ -608,6 +614,11 @@ const PORT = {
   notices: OFFER_OWNER_NOTICES,
   audit: AUDIT_WRITER,
   pause: AdminProductPause,
+  pauseProbe: ProductPauseProbe,
+  deleteProbe: ProductDeleteProbe,
+  retireProbe: PlatformProductRetireProbe,
+  platformEditProbe: PlatformProductEditProbe,
+  ownEditProbe: OwnProductEditProbe,
   resume: AdminProductResume,
   withdraw: AdminProductWithdraw,
   retire: PlatformProductRetire,
@@ -827,6 +838,7 @@ const RESTRUCTURE_DEPS = {
     CatalogReferencesModule,
     IdentityModule,
     SettingsModule,
+    ListsModule,
   ],
   providers: [
     PersistenceModule.outboxWriterFor('catalog'),
@@ -2067,11 +2079,20 @@ const RESTRUCTURE_DEPS = {
       clock: true,
       ids: true,
     }),
+    useCaseProvider(ProductPauseProbe, {}),
+    useCaseProvider(ProductDeleteProbe, {}),
+    useCaseProvider(PlatformProductRetireProbe, {}),
+    useCaseProvider(PlatformProductEditProbe, {}),
+    useCaseProvider(OwnProductEditProbe, {}),
     useCaseProvider(AdminProductsList, {
       unitOfWork: true,
       adminProductsReader: true,
       policy: true,
       sellerNames: true,
+      pauseProbe: true,
+      deleteProbe: true,
+      retireProbe: true,
+      platformEditProbe: true,
     }),
     useCaseProvider(PlatformImportCheck, {
       unitOfWork: true,
@@ -2580,7 +2601,12 @@ const RESTRUCTURE_DEPS = {
       objectStore: true,
       clock: true,
     }),
-    useCaseProvider(OwnProductsList, { unitOfWork: true, ownReader: true, policy: true }),
+    useCaseProvider(OwnProductsList, {
+      unitOfWork: true,
+      ownReader: true,
+      policy: true,
+      ownEditProbe: true,
+    }),
     useCaseProvider(OwnProductsExport, {
       unitOfWork: true,
       ownReader: true,

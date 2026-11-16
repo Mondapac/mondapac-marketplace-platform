@@ -15,6 +15,8 @@ export interface NavItem {
   readonly group?: string;
   /** Permission keys; the item shows with any one of them. Absent means always shown. */
   readonly anyOf?: readonly string[];
+  /** Message key of extra command-palette search words (comma-separated), if any. */
+  readonly keywordsKey?: string;
   /** Where the badge count comes from; the count itself is fetched by the app. */
   readonly badgeSource?: string;
   /**

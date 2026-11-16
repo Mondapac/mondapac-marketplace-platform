@@ -112,6 +112,7 @@ export function buildPaletteEntries(sources: PaletteSources): readonly PaletteEn
       kind: 'page',
       label: label(item.labelKey),
       ...(groupKey === undefined ? {} : { context: label(groupKey) }),
+      ...(item.keywordsKey === undefined ? {} : { keywords: label(item.keywordsKey) }),
       href: item.href,
       icon: item.icon,
     });

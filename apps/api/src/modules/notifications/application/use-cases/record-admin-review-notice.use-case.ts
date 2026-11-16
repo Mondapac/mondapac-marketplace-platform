@@ -15,6 +15,9 @@ import {
   ADMIN_SELLER_FILE_SUBMITTED,
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_SELLER_REFUND_LIMIT_REACHED,
+  ADMIN_ASSISTANT_SPEND_CAP_REACHED,
+  type ASSISTANT_SPEND_CAPS,
+  type AdminSystemRequestOverdueKind,
   type CERTIFICATE_SUBMISSIONS,
   type REFUND_LIMIT_KINDS,
   type HOLD_DIRECTIONS,
@@ -68,8 +71,18 @@ export type AdminReviewItem =
       readonly limit: (typeof REFUND_LIMIT_KINDS)[number];
     }
   | {
+      readonly kind: typeof ADMIN_ASSISTANT_SPEND_CAP_REACHED;
+      readonly cap: (typeof ASSISTANT_SPEND_CAPS)[number];
+    }
+  | {
       readonly kind: typeof ADMIN_REVIEW_HELD | typeof ADMIN_REVIEW_REPORTED;
       readonly reviewId: string;
+    }
+  | {
+      readonly kind: AdminSystemRequestOverdueKind;
+      readonly requestId: string;
+      readonly number: number;
+      readonly ageDays: number;
     };
 
 export interface RecordAdminReviewNoticeInput {
@@ -85,7 +98,7 @@ export type RecordAdminReviewNoticeOutput =
 export type RecordAdminReviewNoticeFailure = { readonly code: 'access.denied' };
 
 /** The stored params of an item: its ids and enums, never a name. */
-function paramsOf(item: AdminReviewItem): Readonly<Record<string, string>> {
+function paramsOf(item: AdminReviewItem): Readonly<Record<string, string | number>> {
   switch (item.kind) {
     case ADMIN_SELLER_CERTIFICATE_SUBMITTED:
       return {
@@ -107,9 +120,14 @@ function paramsOf(item: AdminReviewItem): Readonly<Record<string, string>> {
       return { importId: item.importId, outcome: item.outcome };
     case ADMIN_SELLER_REFUND_LIMIT_REACHED:
       return { sellerId: item.sellerId, limit: item.limit };
+    case ADMIN_ASSISTANT_SPEND_CAP_REACHED:
+      return { cap: item.cap };
     case ADMIN_REVIEW_HELD:
     case ADMIN_REVIEW_REPORTED:
       return { reviewId: item.reviewId };
+    default:
+      // A system request reminder: the request's id, SR number and age; never its note or values.
+      return { requestId: item.requestId, number: item.number, ageDays: item.ageDays };
   }
 }
 
@@ -119,7 +137,8 @@ function paramsOf(item: AdminReviewItem): Readonly<Record<string, string>> {
  * permission when they read. From the subscriptions on `certification.seller-certification-
  * submitted.v1`, `catalog.product-revision-submitted.v1`, `sellers.business-file-submitted.v1` and
  * `pricing.price-hold-opened.v1`, `commission-payouts.seller-reinstated-hold-remains.v1` and
- * `shipping.delivery-fallback-over-cap.v1` and `ordering.seller-refund-limit-reached.v1`. A product revision makes a notice only while it is still
+ * `shipping.delivery-fallback-over-cap.v1`, `ordering.seller-refund-limit-reached.v1` and
+ * `assistant.spend-cap-reached.v1`. A product revision makes a notice only while it is still
  * pending (a seller revision may publish at once, and a platform one is the admins' own); this is
  * read through catalog before the unit. Written in the inbox unit, so a repeated delivery adds
  * nothing; the Market's oldest admin notices of the same kind beyond the cap leave in the same

@@ -24,7 +24,11 @@ import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
 import { CREDIT_REPOSITORY, REFERRAL_REPOSITORY } from './application/ports/credit.repository';
 import { CustomersModule } from '../customers';
-import { CUSTOMER_ORDER_HISTORY, STORE_FOLLOWS } from './application/ports/customer-facts';
+import {
+  CUSTOMER_GROUP_MEMBERSHIP,
+  CUSTOMER_ORDER_HISTORY,
+  STORE_FOLLOWS,
+} from './application/ports/customer-facts';
 import { DELIVERED_ORDER_FACTS } from './application/ports/order-facts';
 import { REFERRAL_SIGNALS } from './application/ports/referral-signals';
 import { WALLET_CREDIT } from './application/ports/wallet-credit';
@@ -35,6 +39,7 @@ import { OPT_IN_REPOSITORY } from './application/ports/opt-in.repository';
 import { PRICE_HISTORY } from './application/ports/price-history';
 import { PROMOTION_REPOSITORY } from './application/ports/promotion.repository';
 import { PROMOTIONS_POLICY } from './application/ports/promotions-policy';
+import { REDEMPTION_REPOSITORY } from './application/ports/redemption.repository';
 import { REVIEW_QUEUE_REPOSITORY } from './application/ports/review-queue.repository';
 import { SELLER_ACTIVITY } from './application/ports/seller-activity';
 import { SELLER_CATALOGUE } from './application/ports/seller-catalogue';
@@ -46,6 +51,7 @@ import {
 import type { PromotionsDependencies } from './application/promotions-dependencies';
 import { ApplyReferralCode } from './application/use-cases/apply-referral-code.use-case';
 import { CashbackOnDelivery } from './application/use-cases/cashback-on-delivery.use-case';
+import { ListCustomerPromotionCredits } from './application/use-cases/list-customer-promotion-credits.use-case';
 import { ListPromotionCredits } from './application/use-cases/list-promotion-credits.use-case';
 import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
 import { ViewMyReferral } from './application/use-cases/view-my-referral.use-case';
@@ -69,6 +75,9 @@ import { PauseOwnPromotion } from './application/use-cases/pause-own-promotion.u
 import { PausePromotion } from './application/use-cases/pause-promotion.use-case';
 import { PreviewQuote } from './application/use-cases/preview-quote.use-case';
 import { QuoteDiscounts } from './application/use-cases/quote-discounts.use-case';
+import { RedeemDiscounts } from './application/use-cases/redeem-discounts.use-case';
+import { ConfirmRedemptions } from './application/use-cases/confirm-redemptions.use-case';
+import { ReleaseCancelledRedemptions } from './application/use-cases/release-cancelled-redemptions.use-case';
 import { ResumeOwnPromotion } from './application/use-cases/resume-own-promotion.use-case';
 import { ResumePromotion } from './application/use-cases/resume-promotion.use-case';
 import { ListSellerCampaigns } from './application/use-cases/list-seller-campaigns.use-case';
@@ -94,6 +103,7 @@ import {
   SellerPromotionsController,
 } from './presentation/promotions.controller';
 import { deliveryCreditSubscriptions } from './presentation/subscribers/delivery-credit.subscriptions';
+import { redemptionSubscriptions } from './presentation/subscribers/redemption.subscriptions';
 import { PromotionsFacadeImplementation } from './presentation/promotions.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: PromotionsDependencies) => U;
@@ -110,12 +120,14 @@ const PORTS: readonly [keyof PromotionsDependencies, InjectionToken][] = [
   ['batchCodes', BATCH_CODE_REPOSITORY],
   ['codeCrypto', BATCH_CODE_CRYPTO],
   ['flashSales', FLASH_SALES],
+  ['redemptions', REDEMPTION_REPOSITORY],
   ['sellerActivity', SELLER_ACTIVITY],
   ['priceHistory', PRICE_HISTORY],
   ['sellerCommission', SELLER_COMMISSION],
   ['sellerCatalogue', SELLER_CATALOGUE],
   ['orderHistory', CUSTOMER_ORDER_HISTORY],
   ['storeFollows', STORE_FOLLOWS],
+  ['groupMembership', CUSTOMER_GROUP_MEMBERSHIP],
   ['orderFacts', DELIVERED_ORDER_FACTS],
   ['referralSignals', REFERRAL_SIGNALS],
   ['walletCredit', WALLET_CREDIT],
@@ -148,8 +160,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Promotions (package T1): the discount domain and the pure calculation, the admin and seller
  * use cases, the review queue and the per-Market switch (off by default), in the `promotions`
  * schema. Other modules reach it through `PROMOTIONS_FACADE` only. The seller's age and the
- * was-price history are read through the sellers and pricing facades. Checkout integration, budget
- * reservation, the ledger and refunds come in later packages.
+ * was-price history are read through the sellers and pricing facades. Package T2: checkout
+ * redeems an order's discounts through the facade; payment confirms and cancellation releases them.
  */
 @Module({
   imports: [
@@ -206,8 +218,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ListSellerCampaigns,
       PreviewSellerPayout,
       QuoteDiscounts,
+      RedeemDiscounts,
+      ConfirmRedemptions,
+      ReleaseCancelledRedemptions,
       CheckWasPrice,
       ListPromotionCredits,
+      ListCustomerPromotionCredits,
       ApplyReferralCode,
       ViewMyReferral,
       CashbackOnDelivery,
@@ -220,11 +236,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       (cashback: CashbackOnDelivery, referral: QualifyReferralOnDelivery) =>
         deliveryCreditSubscriptions(cashback, referral),
     ),
+    // Package T2: an order's redemptions are confirmed when it is paid and released when it is
+    // cancelled.
+    registerSubscriptionsFrom(
+      'promotions',
+      [ConfirmRedemptions, ReleaseCancelledRedemptions],
+      (confirm: ConfirmRedemptions, release: ReleaseCancelledRedemptions) =>
+        redemptionSubscriptions(confirm, release),
+    ),
     {
       provide: PROMOTIONS_FACADE,
-      inject: [QuoteDiscounts, CheckWasPrice],
-      useFactory: (quote: QuoteDiscounts, wasPrice: CheckWasPrice) =>
-        new PromotionsFacadeImplementation(quote, wasPrice),
+      inject: [QuoteDiscounts, RedeemDiscounts, CheckWasPrice],
+      useFactory: (quote: QuoteDiscounts, redeem: RedeemDiscounts, wasPrice: CheckWasPrice) =>
+        new PromotionsFacadeImplementation(quote, redeem, wasPrice),
     },
   ],
   exports: [PROMOTIONS_FACADE],

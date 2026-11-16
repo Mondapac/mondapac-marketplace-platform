@@ -129,7 +129,7 @@ export function roleVersionBody(request: Request, body: unknown): number | HttpE
 }
 
 /** The catalogue as JSON: exactly the declared fields, in a fixed order. */
-export function catalogueView(catalogue: PlatformRoleCatalogue): RoleCatalogueView {
+export function catalogueView(catalogue: Omit<PlatformRoleCatalogue, 'review'>): RoleCatalogueView {
   return {
     items: catalogue.items.map((role) => ({
       roleId: role.roleId,

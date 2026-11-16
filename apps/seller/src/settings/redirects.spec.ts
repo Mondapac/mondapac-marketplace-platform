@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { settingsRedirects } from '../../next.config.ts';
+import { PAYOUT_ACCOUNT_PATH } from '../payout/types.ts';
 
 function target(path: string): string | undefined {
   return settingsRedirects.find((redirect) => redirect.source === path)?.destination;
@@ -7,15 +8,20 @@ function target(path: string): string | undefined {
 
 describe('seller settings redirects', () => {
   it('are all permanent', () => {
-    expect(settingsRedirects.length).toBe(4);
+    expect(settingsRedirects.length).toBe(5);
     expect(settingsRedirects.every((redirect) => redirect.permanent)).toBe(true);
   });
 
   it('moves each old settings page to its new address', () => {
     expect(target('/store-profile')).toBe('/settings/store-profile');
     expect(target('/stock-locations')).toBe('/settings/stock-locations');
-    expect(target('/payout-account')).toBe('/settings/payout-account');
     expect(target('/team')).toBe('/settings/team');
+  });
+
+  it("sends both earlier Payout account addresses to Accounting, keeping Stripe's way back", () => {
+    expect(target('/payout-account')).toBe(PAYOUT_ACCOUNT_PATH);
+    expect(target('/settings/payout-account')).toBe(PAYOUT_ACCOUNT_PATH);
+    expect(PAYOUT_ACCOUNT_PATH).toBe('/accounting/payout-account');
   });
 
   it('leaves the hub, the new pages, the offer stock page and the account pages alone', () => {

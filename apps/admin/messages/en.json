@@ -103,6 +103,7 @@
     "customers": "Customers",
     "sellers": "Sellers",
     "orders": "Orders",
+    "shipments": "Shipments",
     "price-holds": "Pricing",
     "review-queue": "Catalogue requests",
     "certificates": "Certification",
@@ -407,6 +408,13 @@
       },
       "dialog": {
         "keep": "Keep as it is",
+        "type-to-confirm": "Type the name to confirm",
+        "step-up-note": "We'll ask for your two-step code next.",
+        "reactivate": {
+          "title": "Reactivate {name}'s admin account?",
+          "body": "The account is active again at once. Another admin reviews this change and can undo it.",
+          "action": "Reactivate"
+        },
         "deactivate": {
           "title": "Deactivate {name}'s admin account?",
           "body": "They're signed out straight away and can't sign in.",
@@ -607,6 +615,7 @@
         "title-create": "New custom role",
         "title-edit": "Edit role",
         "section-name": "Name",
+        "section-note": "Review",
         "name": "Role name",
         "name-help": "Up to {max} characters. Each custom role needs its own name.",
         "name-required": "Enter a name for the role.",
@@ -1199,7 +1208,8 @@
     "tabs": {
       "label": "Certificates sections",
       "queue": "Review queue",
-      "issuers": "Issuers"
+      "issuers": "Issuers",
+      "requests": "Issuer requests"
     },
     "issuers": {
       "title": "Certificate issuers",
@@ -1286,7 +1296,17 @@
         "name-note": "Customers see this name on badges. Check it before activating: an active issuer can't be renamed.",
         "reactivation-waiting": "A reactivation is waiting for a second admin.",
         "view-only": "Your role can't change issuers.",
-        "activated": "Issuer activated. Sellers can now choose it."
+        "activated": "Issuer activated. Sellers can now choose it.",
+        "closed-note": "Closed to new certificates. Existing certificates stay valid until they expire.",
+        "derecognised-note": "Derecognised. This can't be undone.",
+        "done": {
+          "closed": "Issuer closed to new certificates.",
+          "derecognised": "Issuer derecognised.",
+          "reactivation-asked": "Reactivation sent. A second admin has to approve it.",
+          "approved": "Issuer reactivated. Sellers can choose it again.",
+          "rejected": "Reactivation rejected.",
+          "withdrawn": "Request withdrawn."
+        }
       },
       "error": {
         "invalid": "Check the highlighted fields and try again.",
@@ -1303,7 +1323,78 @@
         "throttled": "Too many requests. Try again in a minute.",
         "csrf": "Your session needs a refresh. Reload the page.",
         "unavailable": "The service is not available right now. Try again in a few minutes.",
-        "unknown": "Something went wrong. Try again."
+        "unknown": "Something went wrong. Try again.",
+        "count-changed": "The number of affected certificates changed. Reload the page and check it again.",
+        "expert-not-new": "Use a new expert approval, not the one already on record.",
+        "proposal-pending": "A reactivation is already waiting. Reload the page.",
+        "proposal-closed": "This reactivation was already answered. Reload the page.",
+        "proposal-gone": "This reactivation no longer exists. Reload the page.",
+        "second-admin": "A different admin has to answer this reactivation."
+      },
+      "close": {
+        "button": "Close to new certificates",
+        "title": "Close this issuer to new certificates",
+        "body": "Sellers can no longer choose {name} for new certificates. Certificates already approved stay valid until they expire. You can ask for the issuer to be reactivated later.",
+        "affected": "{count, plural, =0 {No approved certificates name this issuer.} one {# approved certificate names this issuer and stays valid.} other {# approved certificates name this issuer and stay valid.}}",
+        "cancel": "Cancel",
+        "confirm": "Close to new certificates",
+        "reload": "Reload"
+      },
+      "derecognise": {
+        "button": "Derecognise",
+        "title": "Derecognise this issuer",
+        "warning": "This can't be undone. Certificates from {name} stop counting as certified, offers carrying its badge can't be bought, and each affected seller owner gets an email.",
+        "affected": "{count, plural, =0 {No approved certificates name this issuer.} one {# approved certificate is affected.} other {# approved certificates are affected.}}",
+        "confirm-label": "Type {count} to confirm",
+        "confirm-help": "Type the number of affected certificates shown above.",
+        "confirm-wrong": "That is not the number of affected certificates.",
+        "confirm": "Derecognise"
+      },
+      "reactivate": {
+        "button": "Ask for reactivation",
+        "title": "Ask for reactivation",
+        "note": "A second admin has to approve this. Until then the issuer stays closed to new certificates.",
+        "by": "Confirmed by",
+        "by-help": "1 to 120 characters.",
+        "by-required": "Enter who confirmed the issuer.",
+        "by-long": "Use 120 characters or fewer.",
+        "reference": "New reference",
+        "reference-help": "A new document or note reference, 1 to 300 characters.",
+        "reference-required": "Enter a reference.",
+        "reference-long": "Use 300 characters or fewer.",
+        "reason": "Reason (optional)",
+        "reason-help": "Up to 500 characters. The second admin sees it.",
+        "reason-long": "Use 500 characters or fewer.",
+        "confirm": "Send for approval"
+      },
+      "proposal": {
+        "title": "Reactivation waiting for a second admin",
+        "sent": "Asked on",
+        "reason": "Reason",
+        "approve": "Approve reactivation",
+        "reject": "Reject",
+        "withdraw": "Withdraw request",
+        "second-admin": "You asked for this reactivation, so a different admin has to answer it.",
+        "reload": "Reload",
+        "no-actions": "Nothing can be done with this request from your account right now.",
+        "cancel": "Cancel",
+        "confirm": {
+          "approve": {
+            "title": "Approve this reactivation",
+            "body": "The issuer becomes active again and sellers can choose it at once.",
+            "button": "Approve reactivation"
+          },
+          "reject": {
+            "title": "Reject this reactivation",
+            "body": "The request is closed for good. The issuer stays closed to new certificates.",
+            "button": "Reject"
+          },
+          "withdraw": {
+            "title": "Withdraw your request",
+            "body": "The request is closed. You can ask again later.",
+            "button": "Withdraw request"
+          }
+        }
       }
     },
     "review": {
@@ -1516,6 +1607,93 @@
         "admin": "an admin",
         "system": "the system"
       }
+    },
+    "requests": {
+      "title": "Issuer requests",
+      "no-access": "You don't have access to issuer requests.",
+      "unavailable": "Issuer requests could not be loaded.",
+      "total": "{count, plural, =0 {No request is open.} one {# request is open, oldest first.} other {# requests are open, oldest first.}}",
+      "empty": "No issuer requests are open.",
+      "empty-page": "Nothing on this page. Go back to the first page.",
+      "answered": "Request answered. The seller gets an email.",
+      "col": {
+        "seller": "Seller",
+        "type": "Type",
+        "files": "Files",
+        "waiting": "Waiting since (UTC)"
+      },
+      "seller-fallback": "Not yet approved",
+      "seller-id": "Seller ID {id}",
+      "open-request": "Open request",
+      "back": "Back to issuer requests",
+      "state": {
+        "open": "Open",
+        "issuer-added": "Issuer added",
+        "not-accepted": "Not accepted"
+      },
+      "detail": {
+        "title": "Issuer request",
+        "no-access": "You don't have access to issuer requests.",
+        "not-found": "This request was not found.",
+        "unavailable": "This request could not be loaded."
+      },
+      "details": {
+        "title": "What the seller sent",
+        "typed": "Issuer named by the seller",
+        "typed-note": "The seller's own text. It is not a registry entry.",
+        "typed-gone": "The seller's text is no longer available.",
+        "sent": "Sent (UTC)",
+        "files": "Files",
+        "no-files": "No file was sent.",
+        "file": "File {n} · {type}{pages, plural, =0 {} one { · # page} other { · # pages}} · {size}",
+        "files-note": "Downloads are not offered on this screen yet."
+      },
+      "answer": {
+        "title": "Answer",
+        "outcome": "Answer",
+        "issuer": "Issuer",
+        "issuer-gone": "Issuer no longer active",
+        "reason": "Prepared reason",
+        "reason-gone": "Reason no longer listed",
+        "at": "Answered (UTC)",
+        "no-role": "Your role can't change issuers.",
+        "legend": "What is the answer?",
+        "issuer-added": "Issuer added",
+        "issuer-added-help": "The issuer is in the registry and active. The seller can pick it.",
+        "not-accepted": "Not accepted",
+        "not-accepted-help": "The seller is told why, with a prepared reason.",
+        "no-issuers": "No active issuer of this type. Add and activate one first.",
+        "no-reasons": "No reasons are set up for this Market.",
+        "open-registry": "Open the registry",
+        "outcome-required": "Choose an answer.",
+        "issuer-placeholder": "Choose an issuer",
+        "issuer-required": "Choose an issuer.",
+        "reason-placeholder": "Choose a reason",
+        "reason-required": "Choose a reason.",
+        "submit": "Send answer",
+        "reload": "Reload the page",
+        "answered-issuer": "Issuer",
+        "answered-reason": "Reason",
+        "no-details": "No details were recorded for this answer."
+      },
+      "error": {
+        "invalid": "Some details are not valid. Check the form.",
+        "gone": "This request no longer exists. Reload the page.",
+        "answered": "This request was answered by someone else. Reload the page.",
+        "reason": "That reason is not listed. Reload the page.",
+        "issuer-not-active": "That issuer is not active any more. Reload the page for the current list.",
+        "issuer-gone": "That issuer was not found. Reload the page.",
+        "stale": "This request changed while you were reading it. Reload the page.",
+        "retry": "Another change was in progress. Try again.",
+        "denied": "You don't have permission to do this.",
+        "acting-as": "This can't be done while you are acting as a seller.",
+        "throttled": "Too many requests. Try again in a moment.",
+        "csrf": "Your session needs a refresh. Reload the page.",
+        "unavailable": "The service is not available. Try again.",
+        "unknown": "Something went wrong. Nothing was recorded.",
+        "downloads-off": "Downloads are switched off."
+      },
+      "open-request-from": "Open request from {store}, seller {id}"
     }
   },
   "pricing": {
@@ -2660,8 +2838,13 @@
       }
     },
     "sub": {
-      "label": "Settings pages",
       "back": "Back to Settings"
+    },
+    "menu": {
+      "label": "Settings menu",
+      "back": "Back to Dashboard",
+      "search": "Search settings",
+      "empty": "No settings match"
     },
     "assistant": {
       "title": "Smart assistant",
@@ -2821,10 +3004,19 @@
       "who-unnamed": "Someone",
       "changed": "Changed: {fields}",
       "saved": "Saved"
+    },
+    "drawer": {
+      "close": "Close",
+      "cancel": "Cancel",
+      "discard-title": "Discard your input?",
+      "discard-message": "You have input that is not saved. If you close now, it is lost.",
+      "keep": "Keep editing",
+      "discard": "Discard"
     }
   },
   "fleets": {
     "title": "Delivery fleets",
+    "review-section": "Review",
     "permission-view": "View delivery fleets",
     "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
     "no-access": "Your role cannot see delivery fleets.",
@@ -2960,6 +3152,16 @@
     "compare": {
       "score": "{fleet} reliability",
       "unset": "not set"
+    }
+  },
+  "review-note": {
+    "label": "Note for reviewers",
+    "help": "Say why you are making this change. A reviewer reads it in Admin Inbox > System requests.",
+    "counter": "{count} / {max}",
+    "sent": "Sent for review as {number}",
+    "error": {
+      "required": "Write a note for the reviewers (1 to 500 characters).",
+      "rejected": "The note was refused. Write 1 to 500 characters."
     }
   },
   "commission": {
@@ -3192,8 +3394,47 @@
       "clear-all": "Clear all",
       "match": "{count, plural, one {# product matches} other {# products match}}",
       "range": "{from}–{to} of {total} products",
+      "range-open": "{from}–{to} products",
       "previous": "Previous",
       "next": "Next",
+      "paging": {
+        "rows-per-page": "Rows per page",
+        "previous": "Previous",
+        "next": "Next",
+        "pages": "Pages",
+        "page": "Page {page}",
+        "narrow": "Narrow the list to see more.",
+        "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other products."
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}"
+      },
+      "row": {
+        "menu": {
+          "open": "Open",
+          "edit": "Edit",
+          "pause": "Deactivate…",
+          "resume": "Activate",
+          "delete": "Delete…"
+        },
+        "type-code": "Type the product code to confirm",
+        "step-up-note": "You may be asked for a security code.",
+        "count-changed": "The product's Offers changed while you were deciding. Check the new count and confirm again.",
+        "nothing-changed": "{name} was not changed.",
+        "pause": {
+          "title": "Deactivate {name}?"
+        },
+        "delete": {
+          "title": "Delete {name}?",
+          "confirm": "Delete product"
+        },
+        "done": {
+          "pause": "{name} deactivated.",
+          "resume": "{name} activated.",
+          "delete": "{name} deleted."
+        }
+      },
       "loading": "Loading products",
       "error": {
         "denied": "You don't have access to products.",
@@ -4843,7 +5084,8 @@
     }
   },
   "load": {
-    "retry": "Try again"
+    "retry": "Try again",
+    "slow": "Still loading…"
   },
   "payments": {
     "accounts": {
@@ -5110,6 +5352,12 @@
   },
   "route": {
     "loading": "Loading the page",
+    "loading-page": "Loading {page}",
+    "slow": "Still loading…",
+    "stalled": {
+      "title": "This page is taking too long to load",
+      "message": "Check your connection and try again. Nothing you saved was lost."
+    },
     "error": {
       "title": "This page could not be shown",
       "message": "Something went wrong on our side. Try again, or go back to the dashboard. Nothing you saved was lost.",
@@ -5257,6 +5505,7 @@
       "platform-import-finished": "A <strong>product import</strong> {outcome, select, stopped {stopped part way} other {finished}}",
       "review-held": "A <strong>review</strong> is held for moderation",
       "review-reported": "A seller reported a <strong>review</strong>",
+      "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review",
       "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count cap</strong>} amount {A seller reached the <strong>refund amount cap</strong>} unset {A seller tried to refund with <strong>no refund cap set</strong>} other {A seller reached a <strong>refund cap</strong>}}"
     },
     "category": {
@@ -5267,6 +5516,7 @@
       "delivery": "Delivery",
       "reviews": "Reviews",
       "refunds": "Refunds",
+      "system-requests": "System requests",
       "other": "Other"
     },
     "empty": {
@@ -5289,6 +5539,7 @@
   },
   "deliverySettings": {
     "title": "Delivery rules",
+    "review-section": "Review",
     "permission-view": "View delivery settings",
     "state": {
       "on": "On",
@@ -8934,6 +9185,8 @@
     "title": "AI",
     "permission-view": "AI settings: view",
     "intro": "Turn AI features on or off for this Market and choose the model tier. Changes apply at once.",
+    "section-review": "Review",
+    "review-intro": "Changes here are reviewed. Write the note first, then change a setting; it is sent with that change.",
     "load-failed": "Couldn't load the AI settings.",
     "read-only": "You can view these settings but not change them.",
     "section-writer": "Write with AI",
@@ -8988,6 +9241,7 @@
     "read-only": "You can view this setting but not change it.",
     "intro": "How lists move between pages, in the admin and seller panels.",
     "section": "Paging",
+    "review-section": "Review",
     "version-defaults": "Not changed yet. The default is in force.",
     "version": "Version {version}",
     "saved": "Saved.",
@@ -9517,5 +9771,226 @@
     "loading": "Loading alerts",
     "announce": "New critical alert: {title}",
     "retrying": "Trying again in 30 seconds."
+  },
+  "sales-lists": {
+    "chip": "{field} is {value}",
+    "chip-remove": "Remove filter {filter}",
+    "clear-all": "Clear all",
+    "date-preset": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "last-7-days": "Last 7 days",
+      "last-30-days": "Last 30 days",
+      "this-month": "This month",
+      "last-month": "Last month"
+    },
+    "filter": {
+      "button": "Filter",
+      "match-all": "Match all conditions",
+      "field": "Field",
+      "field-placeholder": "Field",
+      "is": "is",
+      "value": "Value",
+      "value-placeholder": "Value",
+      "remove": "Remove condition",
+      "add": "Add condition",
+      "cancel": "Cancel",
+      "apply": "Apply"
+    },
+    "sort": {
+      "button": "Sort"
+    },
+    "columns": {
+      "button": "Columns",
+      "title": "Columns",
+      "help": "Choose what the table shows. Saved for you only, in this browser.",
+      "always": "Always shown",
+      "up": "Move {column} up",
+      "down": "Move {column} down",
+      "reset": "Reset to default",
+      "save": "Save"
+    },
+    "paging": {
+      "rows-per-page": "Rows per page",
+      "previous": "Previous",
+      "next": "Next",
+      "pages": "Pages",
+      "page": "Page {page}",
+      "narrow": "Narrow the list to see more.",
+      "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other rows."
+    }
+  },
+  "shipments": {
+    "title": "Shipments",
+    "page-title": "Shipments",
+    "intro": "One row for each seller in each paid order. Carrier tracking updates aren't shown here yet; open the order for details.",
+    "no-access": "You don't have access to shipments.",
+    "back-home": "Back to home",
+    "tabs": "Shipment views",
+    "tab": {
+      "all": "All",
+      "attention": "Needs attention",
+      "to-prepare": "To prepare",
+      "ready": "Ready",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "refunded": "Refunded"
+    },
+    "tab-title": {
+      "refunded": "Refunded in full before shipping, as an admin cancellation leaves it."
+    },
+    "stage": {
+      "to-prepare": "To prepare",
+      "ready": "Ready",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "refunded": "Refunded",
+      "unknown": "Unknown"
+    },
+    "problem": {
+      "no-carrier": "No courier found",
+      "carrier-unknown": "Courier booking unclear",
+      "cancel-unknown": "Cancellation not confirmed",
+      "unknown": "Delivery problem"
+    },
+    "problem-filter": {
+      "any": "Any problem",
+      "no-carrier": "No courier found",
+      "carrier-unknown": "Courier booking unclear",
+      "cancel-unknown": "Cancellation not confirmed"
+    },
+    "search": {
+      "label": "Search",
+      "scope": "Search by",
+      "scope-name": "Name or ID",
+      "scope-tracking": "Tracking reference",
+      "placeholder-name": "Customer, store, or order ID",
+      "placeholder-tracking": "Tracking reference, exact",
+      "too-short": "Type at least 2 characters.",
+      "tracking-invalid": "Tracking references use letters, digits, spaces and . _ # -."
+    },
+    "chip-search": "Search: \"{text}\"",
+    "chip-tracking": "Tracking: \"{text}\"",
+    "chip-seller": "Seller is {name}",
+    "filter": {
+      "title": "Filter shipments",
+      "name": {
+        "deliveryMethod": "Delivery method",
+        "attention": "Delivery problem",
+        "paid": "Paid",
+        "shipped": "Shipped"
+      }
+    },
+    "sort": {
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "paid": "Paid",
+        "shipped": "Shipped",
+        "delivered": "Delivered",
+        "total": "Total"
+      },
+      "date": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      },
+      "amount": {
+        "first": "Highest first",
+        "second": "Lowest first"
+      }
+    },
+    "sorted": "Sorted by {field}: {order}",
+    "sorted-newest": "Newest first",
+    "match": "{count, plural, one {# shipment matches} other {# shipments match}}",
+    "col": {
+      "order": "Order",
+      "stage": "Stage",
+      "store": "Store",
+      "customer": "Customer",
+      "paid": "Paid",
+      "delivery": "Delivery",
+      "carrier": "Carrier and tracking",
+      "total": "Total (incl. tax)",
+      "ready": "Ready",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "fleet": "Fleet",
+      "fee": "Delivery fee (incl. tax)",
+      "refunded": "Refunded (incl. tax)",
+      "seller-order": "Seller order ID"
+    },
+    "window": "{start} to {end}",
+    "carrier": {
+      "pickup": "Pickup",
+      "not-shipped": "Not shipped yet"
+    },
+    "not-yet": "Not yet",
+    "not-recorded": "Not recorded",
+    "none": "None",
+    "row-name": "order {id}",
+    "select": {
+      "page": "Select all shipments on this page",
+      "page-short": "Select all on this page",
+      "row": "Select {name}"
+    },
+    "selection": {
+      "selected": "{count, plural, one {# shipment selected} other {# shipments selected}}",
+      "all": "{count, plural, one {The # matching shipment is selected} other {All # matching shipments are selected}}",
+      "all-open": "All matching shipments are selected",
+      "select-all": "Select all {count, number} matching",
+      "select-all-open": "Select all matching",
+      "clear": "Clear selection"
+    },
+    "bulk": {
+      "button": "Bulk action",
+      "selected": "{count, plural, one {# shipment selected} other {# shipments selected}}",
+      "all-open": "All matching shipments selected",
+      "none-yet": "No bulk actions are available for shipments yet."
+    },
+    "actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "view-order": "View order",
+      "copy-tracking": "Copy tracking reference",
+      "copied": "Copied",
+      "copy-failed": "Couldn't copy. Select the text and copy it."
+    },
+    "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
+    "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name.",
+    "too-many": "Page numbers stop at the first {limit} shipments. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
+    "loading": "Loading shipments...",
+    "error": {
+      "unavailable": "Shipments couldn't be loaded.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them.",
+      "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
+    },
+    "empty": {
+      "no-match": "No shipments match",
+      "no-match-help": "Try other filters or clear them.",
+      "all": {
+        "title": "No shipments yet",
+        "body": "Paid orders show here, one row for each seller."
+      },
+      "attention": {
+        "title": "Nothing needs attention",
+        "body": "Deliveries with a courier problem show here."
+      },
+      "to-prepare": {
+        "title": "Nothing to prepare"
+      },
+      "ready": {
+        "title": "Nothing waiting for pickup by a courier"
+      },
+      "shipped": {
+        "title": "Nothing on the way"
+      },
+      "delivered": {
+        "title": "Nothing delivered yet"
+      },
+      "refunded": {
+        "title": "No cancelled shipments",
+        "body": "Seller orders refunded in full before shipping show here."
+      }
+    }
   }
 }

@@ -9,6 +9,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { ListsSettingsPanel } from './lists-settings-panel.tsx';
+import { expectToast } from '../../test/toast-spy.ts';
 import { listPagingOf, type MarketSettingsAnswer } from './types.ts';
 
 const call = vi.mocked(callApi);
@@ -65,6 +66,72 @@ describe('ListsSettingsPanel', () => {
       'csrf',
     );
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+  });
+
+  describe('where a change is reviewed', () => {
+    const reviewed: MarketSettingsAnswer = {
+      settings: [
+        {
+          code: 'list-paging',
+          value: 'pages',
+          version: 0,
+          updatedAt: null,
+          review: { reviewed: true, risk: 'low' },
+        },
+      ],
+    };
+    const note = (text: string) =>
+      fireEvent.change(screen.getByLabelText('Note for reviewers'), { target: { value: text } });
+
+    it('asks for no note when the view does not say reviewed', () => {
+      mount();
+      expect(screen.queryByLabelText('Note for reviewers')).toBeNull();
+    });
+
+    it('needs a note, sends it with the save and says the change was sent for review', async () => {
+      mount(reviewed);
+      fireEvent.change(select(), { target: { value: 'prev-next' } });
+      save();
+      expect(await screen.findByText(/Write a note for the reviewers/)).toBeTruthy();
+      expect(call).not.toHaveBeenCalled();
+      note('Faster lists');
+      call.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: {
+          code: 'list-paging',
+          value: 'prev-next',
+          version: 1,
+          updatedAt: null,
+          review: { reviewed: true, risk: 'low' },
+          request: { id: 'r1', number: 9 },
+        },
+      });
+      save();
+      await expectToast('Sent for review as SR-9', 'info');
+      expect(call).toHaveBeenCalledWith(
+        'PUT',
+        'settings/admin/market-settings',
+        { code: 'list-paging', value: 'prev-next', expectedVersion: 0, note: 'Faster lists' },
+        'csrf',
+      );
+    });
+
+    it('shows a 400 on note on the note field', async () => {
+      mount(reviewed);
+      fireEvent.change(select(), { target: { value: 'prev-next' } });
+      note('x');
+      call.mockResolvedValueOnce({
+        ok: false,
+        failure: {
+          status: 400,
+          code: 'validation.failed',
+          details: { fields: [{ path: 'note', code: 'required' }] },
+        },
+      });
+      save();
+      expect(await screen.findByText(/The note was refused/)).toBeTruthy();
+    });
   });
 
   it('keeps the draft and says so when the API refuses the save', async () => {

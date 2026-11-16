@@ -308,6 +308,10 @@ admin deletes a buyer's account for them, from a support ticket.
   `ordering.customerOrderStats` (both rule `system`, before any unit opens) and replaces the rows, so a
   repeated or late event changes nothing. `customers` cannot import `ordering`, so the peers are
   bound at start by `CustomersReadModelsModule`, like the deletion flow.
+- **Inbox (fix, 16 Nov 2026).** The subscribers handle each event once through `runOnce`, which
+  needs `customers.inbox`. B1 shipped without it, so every delivery failed and was retried until
+  dead-lettered; migration `20261116000000_customers_inbox` adds it, and
+  `email-verification.db-spec.ts` now checks that a sign-up reaches the directory through it.
 - **Backfill and reconcile.** Job `customers.reconcile-read-models` (daily and at worker start) walks
   `identity.customerDirectoryPage` and `ordering.customerOrderAccounts` by keyset (at most 200 pages of
   200 per phase per run) and replaces every row.
@@ -316,5 +320,111 @@ admin deletes a buyer's account for them, from a support ticket.
   `customers.customer-unknown` for a customer with no directory row (the caller fails closed).
   Promotions' `CUSTOMER_ORDER_HISTORY` is bound to it; an admin's preview of the returning-customer
   discount answers "unknown" until a permission-based read is needed.
-- **Left for B2 and B3.** Admin list API (views, search, filters, saved filters, export) and the
-  customer page reads.
+- **Left for B2 and B3.** Done in the section below.
+
+## Customers management, phase 1, packages B2 and B3: the admin list API and the customer page reads (15 Nov 2026)
+
+- **The list (B2).** `POST customers/admin/list` (key `customers.customers.view`; `POST list/ids` answers select-all) reads the two
+  read models in one query (a composite foreign key from stats to directory). Views: all, new (30
+  days), active (an order in the last 90 days), inactive, never-ordered, disabled, pending-deletion.
+  Search is an email prefix or a name `contains` (2 to 80 characters). Filters: status, verified,
+  joined and last-order dates, order count, spent in minor units. Sorts: joined, name, email,
+  last-order, orders, spent, each with the id as tie-break. Page mode (`page`, `pageSize`, total, cap
+  10,000 rows) and cursor mode (`o<offset>`). `ids` answers select-all (cap 10,000). Counts of every
+  tab come with the list. The answer is personal data: never logged, `Cache-Control: no-store`.
+- **Export.** `customers.customers.export` plus a fresh two-step proof (`customers.customers.export`,
+  spent inside the unit). CSV (formula-safe through `platform-import`, with BOM) or XLSX, streamed in
+  chunks; more than 10,000 customers is refused whole. The audit row holds the format, the row count, whether
+  ids or a filter selected them and the proof's session and instant, never an address or a name.
+- **Saved filters.** `customers.saved_filters` (personal, or shared with `customers.saved-filter.share`;
+  50 per owner, 20 shared; a closed document that holds filter keys only). Sharing, changing and
+  removing a shared one is audited.
+- **The customer page (B3).** `GET customers/admin/customers/:accountId` is the header and Overview
+  (profile, totals, first and last order, refunds). `POST .../tab-opened` audits the opening of the
+  Orders and Money tabs. Every open writes `customers.customer-page.opened` (tab and admin; no
+  customer data), in the unit that reads the customer, so a page that cannot be audited is not shown.
+  A customer of another Market, or none, is `customers.customer-not-found`.
+- **Tabs read from the owning module by account id, each under its own key.** Orders:
+  `GET ordering/admin/orders?accountId=` (`ordering.order.view`). Refunds:
+  `GET ordering/admin/customers/:accountId/refunds` (`ordering.order.view`, newest 100 with their
+  credit notes). Wallet: `GET wallet/admin/customers/:id` (balance) and
+  `.../history` (journal, `wallet.credit.view`). Credits: `GET promotions/admin/customers/:id/credits`
+  (`promotions.promotion.view`; index `credit_issuances_recipient_newest_idx`).
+- **Known gaps.** (1) The list cannot search by order number: the only peer that resolves an order
+  number (`orderNotice`) is a `system` read and refuses an admin context; it needs an admin-keyed read in
+  `ordering`. (2) Promotion usage per customer (code redemptions) is not readable: `promotion_usage` is
+  per promotion, not per account. The Money tab shows credits issued, not code usage.
+- **Known limits of the audit.** Only the Overview read and `tab-opened` write the page audit row. The
+  tab data endpoints of the owning modules (orders by `accountId`, refunds, wallet history, credits)
+  check their own key and write no row, and the default Viewer holds `ordering.order.view` and
+  `promotions.promotion.view`, so it can read ids, amounts and codes of a customer by account id
+  (no name or address). Accepted for phase 1; a per-account audit in the owning modules is the
+  follow-up if the owner wants it.
+- **Export keys.** The export needs `customers.customers.view` and `customers.customers.export`, and
+  a fresh proof of `customers.customers.export` (registered in `STEP_UP_ACTION_KEYS`).
+- **Performance follow-ups (database review).** The seven tab counts run on every list request
+  (about 0.8 s at 500,000 customers; cache or one `FILTER` query when a Market passes about 200,000).
+  `customer_directory_email_prefix_idx` is partial and the planner never uses it for a prefix search
+  (make it a full `text_pattern_ops` index in a new migration). A name search of three characters or
+  more is a scan of the Market until `pg_trgm` is approved. The two sort indexes on the stats
+  table are not used by the left join and can be dropped later.
+
+## Customers management, phase 2, PR 2a: groups, notes, the activity timeline and the name edit (15 Nov 2026)
+
+- **Manual groups.** `customers.customer_groups` and `customer_group_members` (migration
+  `20261116060000_customers_groups_notes_timeline`). A group has a name unique per Market whatever
+  its case (index `customer_groups_name_key` on `lower(name)`), an optional description, a version
+  and an archive instant; it is never deleted (a promotion may name it). Routes under
+  `customers/admin/groups` (`GET`, `POST`, `GET/PUT :groupId`, `POST :groupId/members/add|remove`),
+  key `customers.groups.manage` (protected, owner decision 15 Nov 2026: a group can carry a
+  discount) with `customers.customers.view` to change, the view key to read. At
+  most 500 groups per Market. Members are added or removed by `ids` (at most 1,000) or by the
+  Customers list's `view`, `q` and `filters` ("select all matching", at most 10,000; more is
+  refused whole with the total). Ids that are no customer of the Market are skipped; an archived
+  group takes no new members. Every change is audited (`customers.customer-group.created`,
+  `.changed`, `.members-changed`: how many and how they were picked, no names) and lands on each
+  customer's timeline.
+- **Members list = the Customers super list.** The list gains the filter `group` (a group id) and
+  the column `groups` (names, archived flagged), also in the export. No second list was built.
+- **Promotions.** A `CUSTOMER_GROUP` discount can take the segment `{ kind: "MANUAL_GROUP",
+  groupId }` (column `promotions.segment_group_id`, migration
+  `20261116060001_promotions_manual_group_segment`; a CHECK ties the id to that segment). The quote
+  asks `CustomersReadFacade.isGroupMember` as the system actor, once per group; a refusal, an error,
+  an unknown or archived group is "not a member" (fail closed). The group id is not checked at
+  create (an admin context cannot call the `system` read); an unknown id simply never applies.
+- **Notes.** `customers.customer_notes`: free text about a person, sealed under the customer
+  account's subject key before the unit (`fieldLabel('customers.customer-note.body')`), opened
+  after the read, never logged. Audited as `customers.customer-note.added` (note id and length).
+  Write key `customers.customer-notes.write`; read with the view key (`GET` keyset pages of at most
+  100, newest first). A destroyed key (erased account) shows a note without its text. Notes are
+  never edited or deleted by an admin.
+- **Activity timeline.** `customers.customer_timeline`: one row per event or admin action, with a
+  kind code, the instant, an order, refund, group or note reference, the admin who did it, and the
+  source event id (unique per customer, so an event is written once). From events: signed up,
+  email verified, name changed, disabled, enabled, order paid, refund succeeded (subscriptions
+  `customers.timeline-*`). From admin actions: every customer page open (with the tab), note added,
+  group added or removed, renamed by an admin. A page open is written once per admin, tab and
+  UTC day, so the table does not grow with every click. An event about an account that has no
+  directory row yet is refused with `customers.unavailable` and retried, so it is never lost;
+  a bulk write checks the directory in slices of 1,000. `POST customers/admin/customers/:accountId/activity`
+  is a super list scoped to one customer (filter by category or kinds and by day range, sort by
+  time, both paging modes); each read writes the page-open audit row (tab `activity`).
+  `.../activity/export` (CSV or XLSX, at most 10,000) needs the export key and a fresh two-step
+  proof, and is audited (`customers.customer-timeline.exported`).
+- **Name edit.** `PUT customers/admin/customers/:accountId/display-name` (key
+  `customers.customers.edit`): identity owns the write (`IdentityFacade.renameCustomerForAdmin`,
+  audit `identity.account.renamed-by-admin`, the usual name-changed event). Status changes stay on
+  identity's audited routes (`POST identity/admin/customers/:accountId/disable|enable`, key
+  `identity.customer-account.disable`). Deletion stays on the package 5c path.
+- **Erasure.** The account's erasure and the sweep call `removeAllOf`, which deletes the directory
+  row; foreign keys with ON DELETE CASCADE remove the customer's timeline rows, notes and group
+  memberships with it.
+- **Not in this PR.** The admin email change (identity's pending-email flow with step-up, a mail
+  to the new address and a warning to the old) is a PR of its own (security review). Per-module
+  reads of the customer page tabs are PR 2b.
+- **Known gaps.** Reviews and consent events carry no account id, so they are not on the timeline
+  yet. Status-change entries from identity's events have no admin attached. A rename by an admin writes
+  two entries (`renamed-by-admin` with the admin, and `name-changed` from identity's event, which
+  carries no actor). The notes read writes
+  no audit row of its own (the page open does). No role is seeded with the new keys; the owner
+  assigns them.

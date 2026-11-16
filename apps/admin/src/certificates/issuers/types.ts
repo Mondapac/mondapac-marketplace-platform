@@ -8,6 +8,7 @@ export const NAME_MAX = 200;
 export const ACCREDITATION_MAX = 64;
 export const CONFIRMED_BY_MAX = 120;
 export const REFERENCE_MAX = 300;
+export const REASON_MAX = 500;
 
 export const ISSUER_STATES = ['proposed', 'active', 'closed-to-new', 'derecognised'] as const;
 export type IssuerState = (typeof ISSUER_STATES)[number];
@@ -28,10 +29,24 @@ export interface IssuerPage {
   readonly nextAfterId: string | null;
 }
 
+export interface ProposalAction {
+  readonly allowed: boolean;
+  readonly code?: string;
+}
+
+/** A reactivation waiting for a second admin (the fields the card shows). */
 export interface Proposal {
   readonly id: string;
   readonly proposedAt: string;
   readonly state: string;
+  /** The version the proposal was read at; sent with approve, reject and withdraw. */
+  readonly version: number;
+  readonly reason?: { readonly state: string; readonly text?: string } | null;
+  readonly actions: {
+    readonly approve: ProposalAction;
+    readonly reject: ProposalAction;
+    readonly withdraw: ProposalAction;
+  };
 }
 
 export interface IssuerDetail extends IssuerRow {

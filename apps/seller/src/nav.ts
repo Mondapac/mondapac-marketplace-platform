@@ -1,3 +1,4 @@
+import { PAYOUT_ACCOUNT_PATH, PAYOUT_VIEW_PERMISSION } from './payout/types.ts';
 import { settingsViewKeys } from './settings/settings-nav.ts';
 import { visibleNavItems, type NavConfig, type NavItem } from '@mondapac/ui';
 
@@ -98,6 +99,16 @@ export const sellerNav: NavConfig = {
       href: '/earnings',
       group: 'accounting',
       anyOf: ['commission-payouts.earnings.view'],
+    },
+    {
+      id: 's_payout',
+      icon: 'wallet',
+      labelKey: 'nav.payoutAccount',
+      // The palette found this page by these words while it was a Settings page.
+      keywordsKey: 'nav.payoutAccountWords',
+      href: PAYOUT_ACCOUNT_PATH,
+      group: 'accounting',
+      anyOf: [PAYOUT_VIEW_PERMISSION],
     },
     {
       id: 's_settings',

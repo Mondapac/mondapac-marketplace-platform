@@ -22,6 +22,17 @@ export interface CustomerReadModelRepository {
     now: Temporal.Instant,
   ): Promise<void>;
 
+  /**
+   * Gives a customer who has no stats row an all-zero one (no orders), and leaves an existing row
+   * untouched, so every directory row has a stats row and the list sorts by order count and
+   * spent put never-ordered customers where zero belongs.
+   */
+  ensureStats(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    now: Temporal.Instant,
+  ): Promise<void>;
+
   /** The stats row of one customer, or null when it has none. */
   findStats(market: MarketContext, accountId: Id<'Account'>): Promise<CustomerStatsEntry | null>;
 
@@ -32,7 +43,11 @@ export interface CustomerReadModelRepository {
     limit: number,
   ): Promise<readonly Id<'Account'>[]>;
 
-  /** Removes both rows of one customer (account erasure, or an account identity no longer has). */
+  /**
+   * Removes everything the module keeps about one customer (account erasure, or an account
+   * identity no longer has): both read model rows and, since phase 2, the timeline, the admin
+   * notes and the group memberships.
+   */
   removeAllOf(market: MarketContext, accountId: Id<'Account'>): Promise<void>;
 }
 

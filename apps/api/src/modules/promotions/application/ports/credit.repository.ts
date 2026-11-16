@@ -56,6 +56,13 @@ export interface CreditRepository {
     limit: number,
     after?: CreditCursor,
   ): Promise<readonly CreditRecord[]>;
+  /** One customer's credits across promotions, newest first (keyset), for the admin customer page. */
+  listForRecipient(
+    market: MarketContext,
+    recipient: Id<'Account'>,
+    limit: number,
+    after?: CreditCursor,
+  ): Promise<readonly CreditRecord[]>;
 }
 
 export const CREDIT_REPOSITORY = Symbol('PROMOTIONS_CREDIT_REPOSITORY');
