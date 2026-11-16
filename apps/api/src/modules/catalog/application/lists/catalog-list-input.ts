@@ -7,8 +7,8 @@ import {
   type ListQueryFailure,
 } from '../../../../platform/list-query';
 
-/** The longest search text of a catalog list, in code points. */
-export const LIST_TEXT_MAX = 100;
+/** The longest search text of a catalog list, in code points (a brand name may be 120). */
+export const LIST_TEXT_MAX = 120;
 
 const PAGE_KEYS = ['sort', 'direction', 'page', 'pageSize', 'paging'] as const;
 

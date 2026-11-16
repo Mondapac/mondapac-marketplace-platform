@@ -353,6 +353,36 @@ describe('brand routes over HTTP (integration)', () => {
         await http().get(`${ADMIN}?limit=1&page=2`).set(editor).expect(400);
         const legacy = await http().get(`${ADMIN}?limit=1`).set(editor).expect(200);
         expect(legacy.body).toMatchObject({ pageSize: 1, total: null });
+        // The cursor walk of the current panel: each `nextAfterId` is fed back as `afterId`, and the
+        // walk meets the same rows, in the same order, as the numbered read.
+        type Body = { items: { id: string }[]; nextAfterId: string | null; hasNext: boolean };
+        const walked: string[] = [];
+        let after: string | null = null;
+        for (let step = 0; step < 20; step += 1) {
+          const url: string =
+            after === null ? `${ADMIN}?limit=1` : `${ADMIN}?limit=1&afterId=${after}`;
+          const body = (await http().get(url).set(editor).expect(200)).body as Body;
+          walked.push(...body.items.map((b) => b.id));
+          after = body.nextAfterId;
+          if (after === null) break;
+        }
+        const all = (await http().get(`${ADMIN}?pageSize=100`).set(editor).expect(200))
+          .body as Body;
+        expect(walked).toEqual(all.items.map((b) => b.id));
+        // On the default order a page read names the cursor of its next page; on another order it
+        // does not; past the end the page is empty with the total still shown.
+        const first = (await http().get(`${ADMIN}?pageSize=1`).set(editor).expect(200))
+          .body as Body;
+        expect(first.nextAfterId).toBe(first.items[0]!.id);
+        const byStatus = (
+          await http().get(`${ADMIN}?pageSize=1&sort=status`).set(editor).expect(200)
+        ).body as Body;
+        expect(byStatus.nextAfterId).toBeNull();
+        const past = (await http().get(`${ADMIN}?page=100`).set(editor).expect(200)).body as Body;
+        expect(past).toMatchObject({ items: [], hasNext: false, nextAfterId: null });
+        await http().get(`${ADMIN}?pageSize=101`).set(editor).expect(400);
+        await http().get(`${ADMIN}?page=101`).set(editor).expect(400);
+        await http().get(`${ADMIN}?afterId=${BRAND_A}&direction=desc`).set(editor).expect(400);
       });
 
       it('creates an active brand, refuses a look-alike and a taken slug, edits and archives it', async () => {

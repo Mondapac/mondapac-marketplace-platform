@@ -625,7 +625,7 @@ describe.each(FIXTURES)('topic use cases in market $code', ({ code, locales }) =
       [{ limit: 0 }, 'limit', 'range'],
       [{ group: 'season' }, 'group', 'unknown'],
       [{ status: 'gone' }, 'status', 'unknown'],
-      [{ search: 'x'.repeat(101) }, 'search', 'length'],
+      [{ search: 'x'.repeat(121) }, 'search', 'length'],
       [{ q: 'a', search: 'b' }, 'search', 'conflict'],
       [{ afterId: '01990000-0000-7000-8000-000000000001', page: 2 }, 'page', 'conflict'],
       [{ sort: 'price' }, 'sort', 'value'],

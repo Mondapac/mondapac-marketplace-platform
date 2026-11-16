@@ -375,6 +375,14 @@ describe('tag suggestions over HTTP (integration)', () => {
           },
         ],
       });
+      const reviewOnly = await http()
+        .get(QUEUE)
+        .set(session(code, 'admin', REVIEW_ONLY, 2))
+        .expect(200);
+      expect((reviewOnly.body as { items: { actions: string[] }[] }).items[0]?.actions).toEqual([
+        'map',
+        'reject',
+      ]);
       const aliased = await http()
         .get(`${QUEUE}?limit=5&q=fun`)
         .set(session(code, 'admin', REVIEWER, 1))

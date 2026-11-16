@@ -32,11 +32,15 @@ export const BRAND_MAX_PAGE = 100;
 
 /**
  * What each row action needs (the plan's table, row 8): `edit`, `merge` and `deactivate` (the
- * archive route) all decide with `catalog.brand.edit`; a merge takes an active brand, a deactivate
- * any brand not archived yet.
+ * archive route) all decide with `catalog.brand.edit`; an archived brand cannot be edited; a merge takes an active
+ * brand, a deactivate any brand not archived yet.
  */
 export const BRAND_ACTION_RULES: readonly RowActionRule<Pick<BrandState, 'status'>>[] = [
-  { id: 'edit', permission: CATALOG_BRAND_EDIT.key },
+  {
+    id: 'edit',
+    permission: CATALOG_BRAND_EDIT.key,
+    when: (row) => row.status !== 'archived',
+  },
   { id: 'merge', permission: CATALOG_BRAND_EDIT.key, when: (row) => row.status === 'active' },
   {
     id: 'deactivate',

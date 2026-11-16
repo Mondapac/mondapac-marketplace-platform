@@ -6,12 +6,14 @@ import {
   listPage,
   pageWindow,
   parseListQuery,
+  heldKeys,
   rowActions,
   type ListPagingMode,
+  type PermissionProbe,
   type RowActionRule,
 } from '../../../../platform/list-query';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { CATALOG_TOPIC_SUGGESTION_REVIEW } from '../../contracts/permissions';
+import { CATALOG_TOPIC_MANAGE, CATALOG_TOPIC_SUGGESTION_REVIEW } from '../../contracts/permissions';
 import { suggestTopicSlug } from '../../domain/topic';
 import { marketLocalesOf, type MarketLocales } from '../attributes/attribute-admin-views';
 import { closedInput, invalid, type ValidationFailure } from '../topics/topic-views';
@@ -27,9 +29,12 @@ export const TOPIC_SUGGESTION_SORTS = ['created'] as const;
 export const SUGGESTION_MAX_PAGE = 100;
 const MAX_TEXT = 100;
 
-/** What each row action needs (the plan's table, row 11): all three decide with the list's own key. */
+/**
+ * What each row action needs (the plan's table, row 11): `map` and `reject` decide with the list's own
+ * key; `approve` also creates a tag, so it needs `catalog.topic.manage` as its use case does.
+ */
 export const TOPIC_SUGGESTION_ACTION_RULES: readonly RowActionRule<Record<string, never>>[] = [
-  { id: 'approve', permission: null },
+  { id: 'approve', permission: CATALOG_TOPIC_MANAGE.key },
   { id: 'map', permission: null },
   { id: 'reject', permission: null },
 ];
@@ -81,6 +86,7 @@ export interface TopicSuggestionListDependencies {
   readonly topicSuggestions: TopicSuggestionStore;
   readonly products: ProductRepository;
   readonly policy: CatalogMarketPolicy;
+  readonly topicManageProbe: PermissionProbe;
 }
 
 /**
@@ -177,6 +183,9 @@ export class TopicSuggestionList extends UseCase<
     } catch {
       return err({ code: 'access.unavailable' });
     }
+    const granted = await heldKeys(context, {
+      [CATALOG_TOPIC_MANAGE.key]: this.deps.topicManageProbe,
+    });
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
@@ -209,7 +218,7 @@ export class TopicSuggestionList extends UseCase<
             productId: state.productId,
             productCode: product === null ? null : product.state.productCode,
             suggestedSlug: suggestTopicSlug(state.label),
-            actions: rowActions({}, TOPIC_SUGGESTION_ACTION_RULES, new Set()),
+            actions: rowActions({}, TOPIC_SUGGESTION_ACTION_RULES, granted),
           });
         }
         return ok({

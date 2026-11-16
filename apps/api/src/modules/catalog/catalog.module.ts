@@ -1468,6 +1468,7 @@ const RESTRUCTURE_DEPS = {
       topicSuggestions: true,
       products: true,
       policy: true,
+      topicManageProbe: true,
     }),
     useCaseProvider(TopicSuggestionApprove, {
       unitOfWork: true,
