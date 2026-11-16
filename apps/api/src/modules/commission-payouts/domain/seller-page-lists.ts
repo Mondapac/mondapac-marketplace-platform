@@ -55,7 +55,10 @@ export type LedgerExportColumn = (typeof LEDGER_EXPORT_COLUMNS)[number];
 export const HOLD_LIST_STATUSES = ['active', 'released'] as const;
 export type HoldListStatus = (typeof HOLD_LIST_STATUSES)[number];
 
-/** `active-first` (the default): active holds first, then newest placement first. */
+/**
+ * `active-first` (the default): active holds first, newest placement first; then released holds,
+ * most recently released first. Ascending flips both.
+ */
 export const HOLD_SORT_KEYS = ['active-first', 'placed', 'released'] as const;
 export type HoldSortKey = (typeof HOLD_SORT_KEYS)[number];
 

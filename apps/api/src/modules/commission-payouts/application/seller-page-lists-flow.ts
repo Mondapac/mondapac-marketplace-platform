@@ -87,7 +87,10 @@ const HOLD_ROW_RULES: readonly RowActionRule<PayoutHoldRecord>[] = [
   {
     id: 'release',
     permission: COMMISSION_PAYOUTS_PAYOUT_HOLD_RELEASE.key,
-    when: (hold) => hold.releasedAt === null,
+    // The panel's rule (apps/admin `canReleaseHold`): an admin's hold, or a suspended seller's.
+    // The system's own holds (a dispute, a refund, a waiting period) end by themselves.
+    when: (hold) =>
+      hold.releasedAt === null && (hold.origin === 'admin' || hold.reason === 'seller-suspended'),
   },
 ];
 

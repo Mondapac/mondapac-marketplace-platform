@@ -89,7 +89,8 @@ function holdOrder(sort: HoldSort) {
     case 'placed':
       return [{ placedAt: sort.direction }, tie];
     default:
-      // Active first (no release time), then the newest placement (the direction flips both).
+      // Active first (no release time) by newest placement; released ones by newest release time
+      // (placement breaks a tie). The direction flips both.
       return [
         {
           releasedAt: {
@@ -128,6 +129,9 @@ export class PrismaSellerPageListReader implements SellerPageListReader {
               AND: [
                 ...base.AND,
                 // The plain bound lets the index start at the cursor; the OR keeps the tie order.
+                // The cursor carries whole milliseconds (a JS Date); the columns are
+                // timestamptz(6), so the equality holds only because every writer stores whole
+                // milliseconds. A writer with microseconds would make the walk skip or repeat a row.
                 { recordedAt: { lte: toDate(after.recordedAt) } },
                 {
                   OR: [
@@ -227,13 +231,13 @@ export class PrismaSellerPageListReader implements SellerPageListReader {
   }
 
   async holdCounts(market: MarketContext, sellerId: Id<'Seller'>): Promise<HoldStatusCounts> {
-    const tx = this.prisma.tx(market);
-    const where = { marketId: market.marketId, sellerId };
-    const active = await tx.commissionPayoutsPayoutHold.count({
-      where: { ...where, releasedAt: null },
+    // One statement (ADR-0025: a read-only unit opens no transaction), so a hold placed or
+    // released meanwhile cannot make the two counts disagree. `releasedAt` counts non-nulls.
+    const counted = await this.prisma.tx(market).commissionPayoutsPayoutHold.count({
+      where: { marketId: market.marketId, sellerId },
+      select: { _all: true, releasedAt: true },
     });
-    const all = await tx.commissionPayoutsPayoutHold.count({ where });
-    return { active, released: all - active };
+    return { active: counted._all - counted.releasedAt, released: counted.releasedAt };
   }
 
   async holdByIds(market: MarketContext, sellerId: Id<'Seller'>, ids: readonly Id<'PayoutHold'>[]) {
