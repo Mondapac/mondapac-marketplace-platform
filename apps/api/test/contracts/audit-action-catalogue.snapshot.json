@@ -2389,6 +2389,32 @@
     }
   },
   {
+    "action": "payments.customer-payments.exported",
+    "targetType": "payments.customer-account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "payments.customer-disputes.exported",
+    "targetType": "payments.customer-account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
     "action": "payments.transfer.executed",
     "targetType": "payments.transfer-execution",
     "targetId": "id",

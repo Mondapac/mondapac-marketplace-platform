@@ -13,6 +13,13 @@ import {
   CUSTOMER_DATA_EXPORT_STEP_UP as ORDERING_CUSTOMER_DATA_EXPORT_STEP_UP,
 } from '../../src/modules/ordering/application/customer-refunds-list-flow';
 import { AdminCustomerRefundsExport } from '../../src/modules/ordering/application/use-cases/admin-customer-refunds-export.use-case';
+import { AdminCustomerOrderIds } from '../../src/modules/ordering/application/use-cases/admin-customer-order-ids.use-case';
+import { AdminCustomerPayments as OrderingAdminCustomerPayments } from '../../src/modules/ordering/application/use-cases/admin-customer-payments.use-case';
+import {
+  CUSTOMER_DATA_EXPORT_KEY as PAYMENTS_CUSTOMER_DATA_EXPORT_KEY,
+  CUSTOMER_DATA_EXPORT_STEP_UP as PAYMENTS_CUSTOMER_DATA_EXPORT_STEP_UP,
+} from '../../src/modules/payments/application/customer-payments-flow';
+import { PAYMENTS_CUSTOMER_PAYMENT_VIEW } from '../../src/modules/payments/contracts/permissions';
 
 // Hassan M1 (customers package 5c): the three admin facade use cases the deletion request calls in
 // other modules declare the key customers declared, so a Viewer admin or any other admin that does not
@@ -52,5 +59,25 @@ describe('the customer-page exports of the owning modules', () => {
       kind: 'permissions',
       allOf: ['ordering.order.view', CUSTOMERS_CUSTOMER_EXPORT.key],
     });
+  });
+});
+
+// Customers management phase 2b: ordering's facade reads behind payments' customer page lists
+// declare the key payments declared, so an admin without it reaches no payment fact through them.
+describe('the payment facade use cases of ordering', () => {
+  it.each([
+    ['ordering.admin-customer-payments', OrderingAdminCustomerPayments],
+    ['ordering.admin-customer-order-ids', AdminCustomerOrderIds],
+  ] as const)('%s requires exactly payments.customer-payment.view', (name, useCase) => {
+    expect(useCase.access.name).toBe(name);
+    expect(useCase.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [PAYMENTS_CUSTOMER_PAYMENT_VIEW.key],
+    });
+  });
+
+  it('payments casts exactly the customers export key and its step-up action', () => {
+    expect(PAYMENTS_CUSTOMER_DATA_EXPORT_KEY).toBe(CUSTOMERS_CUSTOMER_EXPORT.key);
+    expect(PAYMENTS_CUSTOMER_DATA_EXPORT_STEP_UP).toBe(CUSTOMERS_EXPORT_STEP_UP);
   });
 });

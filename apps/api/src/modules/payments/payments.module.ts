@@ -1,9 +1,17 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { AdminCustomerPaymentsController } from './presentation/admin-customer-payments.controller';
+import { AdminCustomerDisputesExport } from './application/use-cases/admin-customer-disputes-export.use-case';
+import { AdminCustomerDisputes } from './application/use-cases/admin-customer-disputes.use-case';
+import { AdminCustomerPaymentsExport } from './application/use-cases/admin-customer-payments-export.use-case';
+import { AdminCustomerPayments } from './application/use-cases/admin-customer-payments.use-case';
+import type { CustomerPaymentsDependencies } from './application/customer-payments-flow';
+import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../platform/list-export';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import {
   registerPermissions,
   registerStepUpActions,
+  STEP_UP_CONSUMER,
   USE_CASE_GATE,
   type UseCaseGate,
 } from '../../platform/authz';
@@ -118,6 +126,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     StripeWebhookController,
     SellerPayoutAccountController,
     AdminConnectedAccountsController,
+    AdminCustomerPaymentsController,
   ],
   providers: [
     PersistenceModule.auditWriterFor('payments'),
@@ -143,6 +152,35 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     useCaseProvider(SyncPayoutSchedules),
     useCaseProvider(AdminListConnectedAccounts),
     useCaseProvider(AdminViewConnectedAccount),
+    { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
+    ...[
+      AdminCustomerPayments,
+      AdminCustomerPaymentsExport,
+      AdminCustomerDisputes,
+      AdminCustomerDisputesExport,
+    ].map((type): FactoryProvider => ({
+      provide: type,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        ORDERING_FACADE,
+        DISPUTE_STORE,
+        AUDIT_WRITER,
+        STEP_UP_CONSUMER,
+        SHEET_WRITER,
+        CLOCK,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: CustomerPaymentsDependencies['unitOfWork'],
+        ordering: CustomerPaymentsDependencies['ordering'],
+        disputes: CustomerPaymentsDependencies['disputes'],
+        audit: CustomerPaymentsDependencies['audit'],
+        stepUp: CustomerPaymentsDependencies['stepUp'],
+        sheetWriter: CustomerPaymentsDependencies['sheetWriter'],
+        clock: CustomerPaymentsDependencies['clock'],
+      ) => new type(gate, { unitOfWork, ordering, disputes, audit, stepUp, sheetWriter, clock }),
+    })),
     {
       provide: PAYMENTS_FACADE,
       inject: [

@@ -101,6 +101,12 @@ import { RecordCarrierProgress } from './application/use-cases/record-carrier-pr
 import { RecordDeliveryAnchor } from './application/use-cases/record-delivery-anchor.use-case';
 import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier-after-refund.use-case';
 import { AdminOrderAccountOf } from './application/use-cases/admin-order-account-of.use-case';
+import { AdminCustomerOrderIds } from './application/use-cases/admin-customer-order-ids.use-case';
+import {
+  AdminCustomerPayments,
+  type CustomerPaymentsDependencies,
+} from './application/use-cases/admin-customer-payments.use-case';
+import { CUSTOMER_PAYMENTS_READER } from './application/ports/customer-payments.reader';
 import { AdminCustomerRefundsExport } from './application/use-cases/admin-customer-refunds-export.use-case';
 import { AdminCustomerRefundsList } from './application/use-cases/admin-customer-refunds-list.use-case';
 import type {
@@ -470,6 +476,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerSavedFilterDelete,
     ].map((type) => savedViewProvider(type as SavedViewUseCaseClass<unknown>, false)),
     { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
+    ...[AdminCustomerPayments, AdminCustomerOrderIds].map((type): FactoryProvider => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_PAYMENTS_READER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: CustomerPaymentsDependencies['unitOfWork'],
+        payments: CustomerPaymentsDependencies['payments'],
+      ) => new type(gate, { unitOfWork, payments }),
+    })),
     {
       provide: AdminCustomerRefundsList,
       inject: [USE_CASE_GATE, UNIT_OF_WORK, REFUND_REPOSITORY],
@@ -526,6 +541,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         CustomerOrderStatsQuery,
         CustomerOrderAccountsQuery,
         AdminOrderAccountOf,
+        AdminCustomerPayments,
+        AdminCustomerOrderIds,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -543,6 +560,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         customerStats: CustomerOrderStatsQuery,
         customerAccounts: CustomerOrderAccountsQuery,
         orderAccount: AdminOrderAccountOf,
+        customerPayments: AdminCustomerPayments,
+        customerOrderIds: AdminCustomerOrderIds,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -560,6 +579,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           customerStats,
           customerAccounts,
           orderAccount,
+          customerPayments,
+          customerOrderIds,
         ),
     },
     {

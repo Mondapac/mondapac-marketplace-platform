@@ -1,4 +1,9 @@
 import type { CallContext, Id, Money, Result, Temporal } from '@mondapac/shared-kernel';
+import type {
+  AdminCustomerPaymentsFailure,
+  CustomerPaymentsPage,
+  CustomerPaymentsRequest,
+} from '../application/use-cases/admin-customer-payments.use-case';
 import type { AccessDenied } from '../../../platform/authz';
 import type { RefundReason } from '../domain/refund';
 
@@ -307,6 +312,26 @@ export interface OrderingFacade {
       | { readonly code: 'ordering.order-not-found' }
     >
   >;
+
+  /**
+   * One customer's orders as payments (state, payment state, amount, the provider's payment id,
+   * created), filtered, sorted and paged, with the captured totals per currency ("Paid"). For the
+   * customer page's Payments section in `payments` (customers management phase 2b). Rule
+   * `permissions [payments.customer-payment.view]`, a platform admin not acting as a seller.
+   */
+  adminCustomerPayments(
+    context: CallContext,
+    request: CustomerPaymentsRequest,
+  ): Promise<Result<CustomerPaymentsPage, AdminCustomerPaymentsFailure | AccessDenied>>;
+
+  /**
+   * The ids of one customer's orders, newest first, at most `limit` (1 to 10,001), for the
+   * customer page's Disputes section in `payments`. Same rule as `adminCustomerPayments`.
+   */
+  adminCustomerOrderIds(
+    context: CallContext,
+    request: { readonly accountId: Id<'Account'>; readonly limit: number },
+  ): Promise<Result<readonly Id<'Order'>[], AdminCustomerPaymentsFailure | AccessDenied>>;
 
   /**
    * The signed-in customer's own seller orders whose fulfilment is `delivered`, delivered at or
