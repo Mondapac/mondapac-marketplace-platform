@@ -22,7 +22,7 @@ type Mode = { readonly kind: 'add' } | { readonly kind: 'edit'; readonly id: str
 
 /**
  * The seller's stock locations: a list with its own actions (add, edit, move), not a form with
- * one save. The add and edit form is an editor of one entry and keeps its own Save and Cancel.
+ * one save. The add and edit form is an editor of one entry and opens in the settings drawer.
  */
 export function StockLocations({
   initial,
@@ -133,8 +133,9 @@ export function StockLocations({
     <SettingsPage
       title={t('stock.title')}
       description={t('stock.intro', { max: view.max })}
+      // Always shown: the drawer is modal, and the button must still exist for focus to return to it.
       actions={
-        canEdit && mode === null ? (
+        canEdit ? (
           <div className="flex flex-col gap-2 sm:items-end">
             <Button onClick={() => open({ kind: 'add' })} disabled={full}>
               {t('stock.add')}
