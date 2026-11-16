@@ -23,6 +23,11 @@ import {
   SYSTEM_REQUESTS_REQUEST_VIEW,
 } from '../contracts/permissions';
 import type { AppliedChange } from '../contracts/recorder';
+import type {
+  ChangeReviewArea,
+  ChangeReviewRisk,
+} from '../../../platform/change-review/change-review';
+import { POLICY_AREAS, RISKS, type PolicyArea, type Risk } from '../domain/areas';
 import {
   SYSTEM_REQUESTS_DECIDE_HIGH_STEP_UP,
   SYSTEM_REQUESTS_POLICY_CHANGE_STEP_UP,
@@ -480,6 +485,19 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       expect(lines.map((line) => line.kind)).toEqual(['applied', 'rejected']);
     });
 
+    it('reverts in a serializable unit, so a reverter can keep a counted guard (HF8)', async () => {
+      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      const units = (deps.unitOfWork as FakeUnitOfWork).units;
+      await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: opened.id });
+      expect(units.at(-1)?.options).toEqual({});
+      const again = await change(MAKER, 'list-paging', { size: 50 }, { size: 75 });
+      await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+        requestId: again.id,
+        reason: 'No',
+      });
+      expect(units.at(-1)?.options).toEqual({ isolation: 'serializable' });
+    });
+
     it('does not revert when the subject changed since, outside a review', async () => {
       const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
       subjects.set(market.marketId, 'list-paging', { size: 75 });
@@ -889,6 +907,15 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
 
 describe('the reverter registry', () => {
   const reverter = { revert: () => Promise.resolve('reverted' as const) };
+
+  it('takes the same areas and risks as the platform port the modules call', () => {
+    // A compile-time check: the port's lists and system-requests' own lists are one.
+    const areas: readonly ChangeReviewArea[] = POLICY_AREAS;
+    const policyAreas: readonly PolicyArea[] = [] as ChangeReviewArea[];
+    const risks: readonly ChangeReviewRisk[] = RISKS;
+    const ownRisks: readonly Risk[] = [] as ChangeReviewRisk[];
+    expect([areas.length, policyAreas.length, risks.length, ownRisks.length]).toEqual([7, 0, 3, 0]);
+  });
 
   it('takes a kind of the registering module once, in one area, and nothing after it is sealed', () => {
     const registry = new ReverterRegistry();
