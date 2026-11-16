@@ -1,3 +1,4 @@
+import { CLAIM_WORDS_IN_LETTERS, foldForClaims, hasClaimWord } from '@mondapac/shared-kernel';
 import { MASKED, maskPersonalData } from './personal-data';
 
 /**
@@ -39,68 +40,6 @@ const LOGISTICS = new RegExp(
   ].join('|'),
   'iu',
 );
-
-// Certification claims of any type (CERT-01 types are data; these are the words a model uses).
-const CERTIFICATION = new RegExp(
-  [
-    String.raw`\bhe+la+l+\b`,
-    String.raw`\bhala+l\b`,
-    String.raw`\bkasher\b`,
-    String.raw`\bbio\b`,
-    String.raw`\bbiologi\w*`,
-    String.raw`\böko\w*`,
-    'כשר',
-    'اورگانیک',
-    'ذبیحه',
-    String.raw`\bharam\b`,
-    String.raw`\bkosher\b`,
-    String.raw`\bvegan\b`,
-    String.raw`\borganic\b`,
-    String.raw`\bcertif(?:ied|icate|ication)s?\b`,
-    String.raw`\bzabihah?\b`,
-    'حلال',
-    'حرام',
-    'ذبح',
-    'گواهی',
-    'ارگانیک',
-  ].join('|'),
-  'iu',
-);
-
-// Letters that look like Latin ones, folded before the certification words are tested (L3).
-const LOOK_ALIKES: Readonly<Record<string, string>> = {
-  а: 'a',
-  е: 'e',
-  о: 'o',
-  р: 'p',
-  с: 'c',
-  х: 'x',
-  у: 'y',
-  і: 'i',
-  ӏ: 'l',
-  ⅼ: 'l',
-  ı: 'i',
-  α: 'a',
-  ο: 'o',
-  ε: 'e',
-  κ: 'k',
-  ν: 'v',
-  ѕ: 's',
-  һ: 'h',
-  ԁ: 'd',
-  ɡ: 'g',
-  ᴢ: 'z',
-  ʜ: 'h',
-};
-const LOOK_ALIKE = new RegExp(`[${Object.keys(LOOK_ALIKES).join('')}]`, 'giu');
-// Default-ignorable characters (combining grapheme joiner, variation selectors, soft hyphen ...)
-// draw nothing: they are dropped before the words are tested, but the Persian ZWNJ stays.
-const IGNORABLE = /(?!\u200C)\p{DI}/gu;
-const folded = (sentence: string): string =>
-  sentence
-    .normalize('NFKC')
-    .replace(IGNORABLE, '')
-    .replace(LOOK_ALIKE, (letter) => LOOK_ALIKES[letter.toLowerCase()] ?? letter);
 
 // Inert rendering (R9): no markup, links or images reach the buyer from a model.
 const MARKDOWN_IMAGE = /!\[[^\]]*\]\([^)]*\)/g;
@@ -149,7 +88,7 @@ export function guardReply(text: string): GuardedReply {
   for (const part of inert(text).split(SENTENCE_BREAK)) {
     const sentence = part.replace(/\s+/gu, ' ').trim();
     if (sentence.length === 0 || !/[\p{L}\p{N}]/u.test(sentence)) continue;
-    if (CERTIFICATION.test(folded(sentence))) {
+    if (hasClaimWord(sentence)) {
       notices.add('see-certification');
       continue;
     }
@@ -164,10 +103,6 @@ export function guardReply(text: string): GuardedReply {
   return { sentences, notices: [...notices] };
 }
 
-// The claim words without word boundaries, for a text reduced to its letters.
-const LETTERS_ONLY_CLAIM =
-  /halal|hallal|helal|kosher|kasher|vegan|organic|certif|zabih|حلال|حرام|ذبح|گواهی|ارگانیک|اورگانیک|ذبیحه|כשר/iu;
-
 /**
  * Whether a short text carries nothing the guard would drop or change: no certification, price,
  * stock, delivery, contact, link or markup. Used for list lines the model passes to a tool, which
@@ -175,7 +110,7 @@ const LETTERS_ONLY_CLAIM =
  */
 export function isClaimFree(text: string): boolean {
   // A claim spelled with separators ("h.a.l.a.l", "h a l a l") is read from the letters alone.
-  if (LETTERS_ONLY_CLAIM.test(folded(text).replace(/[^\p{L}]/gu, ''))) return false;
+  if (CLAIM_WORDS_IN_LETTERS.test(foldForClaims(text).replace(/[^\p{L}]/gu, ''))) return false;
   const guarded = guardReply(text);
   return (
     guarded.notices.length === 0 &&

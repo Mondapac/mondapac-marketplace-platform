@@ -13,6 +13,7 @@
 //
 // Named exports only. Fakes and test builders live on the `/testing` entry and are never
 // re-exported from here.
+export { CLAIM_WORDS, CLAIM_WORDS_IN_LETTERS, foldForClaims, hasClaimWord } from './claim-words';
 export { err, ok } from './result';
 export type { Result } from './result';
 

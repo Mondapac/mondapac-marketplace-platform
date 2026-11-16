@@ -325,3 +325,37 @@ describe('the reply guard reads claims through invisible marks', () => {
     }
   });
 });
+
+describe('certification and diet claims in other spellings (shared claim words)', () => {
+  it.each([
+    'This chicken is ḥalāl.',
+    'This chicken is hálal.',
+    'This chicken is haIaI.',
+    'This chicken is ha1al.',
+    'This is h a l a l.',
+    'This is ح ل ا ل.',
+    'This chicken is zabeeha.',
+    'It is dhabiha meat.',
+    'This is Islamic slaughter.',
+    'The meat is شرعی.',
+    'Это халяль.',
+    'It is gluten free.',
+    'It is vegetarian.',
+    'It is glatt and parve.',
+    'It is non-GMO.',
+    'This chicken is h\u034Falal.',
+  ])('drops: %s', (reply) => {
+    const guarded = guardReply(reply);
+    expect(guarded.notices).toContain('see-certification');
+    expect(guarded.sentences).toEqual([]);
+  });
+
+  it.each([
+    'The rice is in the second card.',
+    'Try the basmati rice, a long grain.',
+    'Hall and heal are ordinary words.',
+    'A healthy snack list is on the cards.',
+  ])('keeps: %s', (reply) => {
+    expect(guardReply(reply).notices).toEqual([]);
+  });
+});
