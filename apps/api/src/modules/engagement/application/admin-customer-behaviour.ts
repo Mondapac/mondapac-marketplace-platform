@@ -1,5 +1,6 @@
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import { isPlatformAdminActor } from '../../../platform/authz';
 import {
   TOP_CATEGORIES,
   type AdminCartAddition,
@@ -20,22 +21,12 @@ type Dependencies = Pick<EngagementDependencies, 'unitOfWork' | 'events' | 'sett
 /** The largest page an admin's read answers (an export reads 10,000 and one more). */
 const MAX_WINDOW = 10_001;
 
-function isPlatformAdmin(context: CallContext): boolean {
-  const { actor } = context;
-  return (
-    actor.kind === 'authenticated' &&
-    actor.population === 'admin' &&
-    actor.sellerId === null &&
-    !(Object.hasOwn(actor, 'actingAs') && (actor as { actingAs?: unknown }).actingAs != null)
-  );
-}
-
 export async function readAdminCustomerBehaviour(
   deps: Dependencies,
   context: CallContext,
   accountId: Id<'Account'>,
 ): Promise<Result<AdminCustomerBehaviour, CustomerBehaviourFailure>> {
-  if (!isPlatformAdmin(context)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   const since = retentionEdges(deps.clock.now()).account;
   const read = await deps.unitOfWork.run(
     context.market,
@@ -77,7 +68,7 @@ export async function readAdminCartAdditions(
     CustomerBehaviourFailure
   >
 > {
-  if (!isPlatformAdmin(context)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   const kept = retentionEdges(deps.clock.now()).account;
   const range = {
     from:
