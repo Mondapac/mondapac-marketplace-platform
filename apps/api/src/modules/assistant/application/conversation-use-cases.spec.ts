@@ -86,16 +86,19 @@ const on = (overrides: Partial<AssistantSettings> = {}): AssistantSettings => ({
   ...overrides,
 });
 
-const PRODUCT: AssistantCard = {
+const PRODUCT: Extract<AssistantCard, { kind: 'product' }> = {
   kind: 'product',
   offerId: id<'Offer'>(0x0f1),
   productId: id<'Product'>(0x0e1),
   sellerId: id<'Seller'>(0x051),
   name: 'Lamb mince 500 g',
   shortText: null,
+  sellerName: 'Fresh Farm',
   price: null,
   regularPrice: null,
   taxInclusive: null,
+  priceFrom: false,
+  badges: [],
 };
 
 describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', (code) => {
@@ -466,6 +469,8 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
         'search_products',
         'list_bestsellers',
         'list_specials',
+        'get_product',
+        'get_seller',
         'list_categories',
         'show_page',
         'support_contact',

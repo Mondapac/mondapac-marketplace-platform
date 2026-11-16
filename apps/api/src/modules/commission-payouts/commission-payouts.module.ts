@@ -99,6 +99,13 @@ import { ViewCommissionRate } from './application/use-cases/view-commission-rate
 import { ViewSellerPayoutTerms } from './application/use-cases/view-seller-payout-terms.use-case';
 import { ViewOwnLedger } from './application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from './application/use-cases/view-seller-ledger.use-case';
+import { ExportSellerLedger } from './application/use-cases/export-seller-ledger.use-case';
+import { ExportSellerPayoutHolds } from './application/use-cases/export-seller-payout-holds.use-case';
+import { SELLER_PAGE_LIST_READER } from './application/ports/seller-page-list.reader';
+import {
+  HOLD_ROW_KEYS,
+  type SellerPageListDependencies,
+} from './application/seller-page-lists-flow';
 import { COMMISSION_PAYOUTS_FACADE, COMMISSION_PAYOUTS_PERMISSIONS } from './contracts';
 import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from './domain/audit';
 import { commissionPayoutsProviders } from './infrastructure/commission-payouts-providers';
@@ -253,6 +260,49 @@ function payoutListUseCaseProvider<U>(type: PayoutListUseCaseClass<U>): FactoryP
   };
 }
 
+type SellerPageListUseCaseClass<U> = new (gate: UseCaseGate, deps: SellerPageListDependencies) => U;
+
+/** The seller page's ledger and holds lists and their exports (super lists 27 and 28). */
+function sellerPageListUseCaseProvider<U>(type: SellerPageListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      LEDGER_REPOSITORY,
+      SELLER_PAGE_LIST_READER,
+      COMMISSION_POLICY,
+      SELLER_DIRECTORY,
+      PayoutHoldReleaseProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: SellerPageListDependencies['unitOfWork'],
+      ledger: SellerPageListDependencies['ledger'],
+      lists: SellerPageListDependencies['lists'],
+      policy: SellerPageListDependencies['policy'],
+      sellers: SellerPageListDependencies['sellers'],
+      release: PayoutHoldReleaseProbe,
+      sheetWriter: SellerPageListDependencies['sheetWriter'],
+      clock: SellerPageListDependencies['clock'],
+    ) => {
+      const [releaseKey] = HOLD_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        ledger,
+        lists,
+        policy,
+        sellers,
+        probes: { [releaseKey]: release },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
 function disputeUseCaseProvider<U>(type: DisputeUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
@@ -363,8 +413,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ClearSellerPayoutTerms,
       PlacePayoutHold,
       ReleasePayoutHold,
-      ListSellerPayoutHolds,
-      ViewSellerLedger,
       ViewOwnLedger,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     ...[
@@ -385,6 +433,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ListOwnPayouts,
       ListOwnPayoutHolds,
     ].map((type) => payoutUseCaseProvider(type as PayoutUseCaseClass<unknown>)),
+    ...[ViewSellerLedger, ExportSellerLedger, ListSellerPayoutHolds, ExportSellerPayoutHolds].map(
+      (type) => sellerPageListUseCaseProvider(type as SellerPageListUseCaseClass<unknown>),
+    ),
     ...[ListPayouts, ExportPayouts].map((type) =>
       payoutListUseCaseProvider(type as PayoutListUseCaseClass<unknown>),
     ),
