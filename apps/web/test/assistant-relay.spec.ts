@@ -188,4 +188,61 @@ describe('assistant routes of the buyer relay', () => {
     expect(spy.mock.calls.map(([ms]) => ms)).toEqual([30_000, 5000]);
     spy.mockRestore();
   });
+  it('answers 404 to a segment that smuggles a slash, backslash, encoding or dot-segment', async () => {
+    for (const parts of [
+      ['assistant/storefront'],
+      ['assistant\\storefront'],
+      ['assistant', '%2Fstorefront'],
+      ['assistant', 'storefront%2F'],
+      ['assistant', '..'],
+      ['assistant', '.', 'storefront'],
+      ['assistant', ''],
+      ['cart/merge'],
+      ['cart%2Fmerge'],
+    ]) {
+      const upstream = vi.fn<typeof fetch>(() => Promise.resolve(Response.json({})));
+      const request = new Request(`${ORIGIN}/api/x`, {
+        headers: { host: 'storefront.localhost:3003', 'x-mp-client-address': '203.0.113.9' },
+      });
+      const answer = await relaySession(CONFIG, request, parts, upstream, silent);
+      expect(answer.status, parts.join('|')).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    }
+  });
+
+  it('answers a clean 503 when the answer body aborts while it is read, and logs it', async () => {
+    const lines: Record<string, string | number>[] = [];
+    const stream = new ReadableStream<Uint8Array>({
+      pull: (controller) => controller.error(new DOMException('aborted', 'AbortError')),
+    });
+    const request = new Request(`${ORIGIN}/api/assistant/storefront?visitor=v&lang=en`, {
+      headers: { host: 'storefront.localhost:3003', 'x-mp-client-address': '203.0.113.9' },
+    });
+    const answer = await relaySession(
+      CONFIG,
+      request,
+      ['assistant', 'storefront'],
+      () => Promise.resolve(new Response(stream, { status: 200 })),
+      (line) => lines.push(line),
+    );
+    expect(answer.status).toBe(503);
+    expect(lines.map((l) => l.msg)).toContain('storefront.session.upstream-unreachable');
+  });
+
+  it('refuses an answer over the cap: 256 KB for the assistant, 1 MB elsewhere', async () => {
+    const big = (bytes: number) => () => new Response(new Uint8Array(bytes), { status: 200 });
+    const assistant = call(
+      'GET',
+      'assistant/storefront?visitor=v&lang=en',
+      {},
+      big(256 * 1024 + 1),
+    );
+    expect((await assistant.run()).status).toBe(502);
+    const fits = call('GET', 'assistant/storefront?visitor=v&lang=en', {}, big(256 * 1024));
+    expect((await fits.run()).status).toBe(200);
+    const other = call('GET', 'cart', {}, big(256 * 1024 + 1));
+    expect((await other.run()).status).toBe(200);
+    const huge = call('GET', 'cart', {}, big(1024 * 1024 + 1));
+    expect((await huge.run()).status).toBe(502);
+  });
 });

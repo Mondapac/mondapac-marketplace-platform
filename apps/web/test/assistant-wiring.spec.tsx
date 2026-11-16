@@ -22,6 +22,7 @@ import {
   storedPreview,
   takePreview,
 } from '../src/assistant/preview.ts';
+import { PreviewFragmentStrip } from '../src/assistant/preview-strip.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
 
 vi.mock('next/navigation', () => ({
@@ -151,6 +152,20 @@ describe('cardOf: product fields', () => {
     expect(card.badges[0]!.typeName).toHaveLength(60);
     expect(cardOf(product({ badges: 'HALAL' }))).toMatchObject({ badges: [] });
   });
+
+  it('keeps one badge per type code, the first, so the list key never collides', () => {
+    const card = cardOf(
+      product({
+        badges: [
+          { typeCode: 'HALAL', typeName: 'Halal certified', sellerClaim: false },
+          { typeCode: 'HALAL', typeName: 'Halal (declared)', sellerClaim: true },
+          { typeCode: 'ORGANIC', typeName: 'Organic', sellerClaim: true },
+        ],
+      }),
+    ) as unknown as { badges: { typeCode: string; typeName: string }[] };
+    expect(card.badges.map((badge) => badge.typeCode)).toEqual(['HALAL', 'ORGANIC']);
+    expect(card.badges[0]!.typeName).toBe('Halal certified');
+  });
 });
 
 describe('cardOf: seller card', () => {
@@ -260,6 +275,10 @@ describe('setup validation', () => {
     expect(
       storefrontReadOf({ ...ON, quickPrompts: ['  Halal meat ', '', 7, 'x'.repeat(500)] }),
     ).toEqual(expect.objectContaining({ enabled: true, quickPrompts: ['Halal meat'] }));
+    expect(
+      storefrontReadOf({ ...ON, quickPrompts: ['Deals', ' Deals ', 'Lamb', 'Deals'] })
+        ?.quickPrompts,
+    ).toEqual(['Deals', 'Lamb']);
     expect(storefrontReadOf({ ...ON, retentionDays: null })?.retentionDays).toBeNull();
     for (const bad of [
       null,
@@ -486,7 +505,12 @@ describe('assistant gate', () => {
     expect((init.headers as Record<string, string>)['x-assistant-preview']).toBe(TOKEN);
     // The panel marks itself a preview.
     fireEvent.click(screen.getByRole('button', { name: 'Ask the assistant' }));
-    expect(within(screen.getByRole('dialog', { hidden: true })).getByText('Preview')).toBeTruthy();
+    const dialog = screen.getByRole('dialog', { hidden: true });
+    expect(within(dialog).getByText('Preview')).toBeTruthy();
+    // The explanation is reachable by assistive tech, not only a hover title.
+    const note = dialog.getAttribute('aria-describedby');
+    expect(note).toBeTruthy();
+    expect(document.getElementById(note!)?.textContent).toMatch(/Internal preview/);
   });
 
   it('drops the stored token when the server answers preview: false', async () => {
@@ -542,6 +566,62 @@ describe('assistant gate', () => {
     view();
     fireEvent.click(await screen.findByRole('button', { name: 'Ask the assistant' }));
     expect(screen.getByRole('button', { name: 'Show halal meat' })).toBeTruthy();
+  });
+
+  it('uses the customer retention for a signed-in customer and the guest one for a guest', async () => {
+    const read = { ...ON, retentionDays: { customer: 365, guest: 30 } };
+    const customer = {
+      firstName: 'Sam',
+      fullName: 'Sam Lee',
+      email: 'sam@example.test',
+      addresses: [],
+    };
+    const wording = async (signedIn: boolean) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => Promise.resolve(Response.json(read))),
+      );
+      const { unmount } = render(
+        <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+          <StoreProvider initialCustomer={signedIn ? customer : null}>
+            <AssistantGate base={BASE} />
+          </StoreProvider>
+        </NextIntlClientProvider>,
+      );
+      fireEvent.click(await screen.findByRole('button', { name: 'Ask the assistant' }));
+      fireEvent.click(screen.getByRole('button', { name: 'AI assistant' }));
+      const text = document.body.textContent ?? '';
+      unmount();
+      return text;
+    };
+    expect(await wording(true)).toContain('saved with your account and deleted after 365 days');
+    expect(await wording(false)).toContain('kept for 30 days');
+  });
+
+  it('words a signed-in customer with retention 0 as not saved', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(Response.json({ ...ON, retentionDays: { customer: 0, guest: 30 } })),
+      ),
+    );
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider
+          initialCustomer={{
+            firstName: 'Sam',
+            fullName: 'Sam Lee',
+            email: 's@e.test',
+            addresses: [],
+          }}
+        >
+          <AssistantGate base={BASE} />
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Ask the assistant' }));
+    fireEvent.click(screen.getByRole('button', { name: 'AI assistant' }));
+    expect(screen.getByText(/Your chats are not saved/)).toBeTruthy();
   });
 
   it('words the retention for a guest, and says when chats are not kept', async () => {
@@ -623,7 +703,7 @@ describe('product and store rows', () => {
     expect(special.textContent).toBe('A$10.00');
     const struck = log.querySelector('s');
     expect(struck?.textContent).toContain('A$14.00');
-    expect(within(log).getByText('Special price')).toBeTruthy();
+    expect(within(log).getByText('Special price,', { exact: false })).toBeTruthy();
     expect(within(log).getByText('From NZ$8.00')).toBeTruthy();
     expect(within(log).getAllByText('including GST').length).toBeGreaterThan(0);
     // No price for the card without one, and the badge styles follow the product page.
@@ -633,6 +713,29 @@ describe('product and store rows', () => {
     const claim = within(goat).getByText("Organic · seller's declaration");
     expect(claim.className).toBe('badge decl');
     expect(within(goat).queryByText('Organic')).toBeNull();
+  });
+
+  it('shows a special that is also a from-price, with no visible Special price pill and readable screen-reader text', async () => {
+    const log = await ask([
+      product({
+        priceFrom: true,
+        price: { amount: '1000', currency: 'AUD' },
+        regularPrice: { amount: '1400', currency: 'AUD' },
+      }),
+    ]);
+    const row = within(log).getByText('Lamb shoulder').closest('li')!;
+    const price = row.querySelector('.asprice')!;
+    expect(price.querySelector('.badge')).toBeNull();
+    expect(within(row as HTMLElement).getByText('From A$10.00').className).toBe('sp');
+    expect(row.querySelector('s')?.textContent).toBe('Regular price, A$14.00');
+    expect(price.querySelector('.asvh')?.textContent).toBe('Special price, ');
+    expect(price.textContent).toContain('Special price, From A$10.00');
+  });
+
+  it('labels a store row as a store, and separates the rows in one list', async () => {
+    const log = await ask([seller(), product()]);
+    const row = within(log).getByRole('link', { name: 'Bright Butchers' }).closest('li')!;
+    expect(row.querySelector('.astag')?.textContent).toBe('Store');
   });
 
   it('formats money from its own currency and minor units, not AUD', async () => {
@@ -674,5 +777,29 @@ describe('product and store rows', () => {
     expect(log.querySelector('b')?.textContent).not.toBe('evil');
     expect(log.textContent).toContain('<img src=x onerror=alert(1)>');
     expect(log.querySelector('a[href*="account"]')).toBeNull();
+  });
+});
+
+describe('preview fragment strip', () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+    window.history.replaceState(null, '', '/');
+  });
+  afterEach(cleanup);
+
+  it('removes the token from the address bar even with no assistant mounted, keeping path, query and other fragment parts', () => {
+    window.history.replaceState(null, '', `/p/x?a=1#top&assistant-preview=${TOKEN}`);
+    render(<PreviewFragmentStrip />);
+    expect(window.location.href).not.toContain(TOKEN);
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe(
+      '/p/x?a=1#top',
+    );
+  });
+
+  it('strips a malformed token too and stores nothing', () => {
+    window.history.replaceState(null, '', '/#assistant-preview=short');
+    render(<PreviewFragmentStrip />);
+    expect(window.location.hash).toBe('');
+    expect(window.sessionStorage.getItem(PREVIEW_KEY)).toBeNull();
   });
 });

@@ -482,7 +482,7 @@ export function AssistantWidget({
                     {card.price === null ? null : (
                       <div className="asprice num">
                         {card.regularPrice === null ? null : (
-                          <span className="badge">{t('special-price')}</span>
+                          <span className="asvh">{t('special-price')}, </span>
                         )}
                         <b className={card.regularPrice === null ? undefined : 'sp'}>
                           {card.priceFrom
@@ -491,7 +491,7 @@ export function AssistantWidget({
                         </b>
                         {card.regularPrice === null ? null : (
                           <s>
-                            <span className="asvh">{t('regular-price')}</span>
+                            <span className="asvh">{t('regular-price')}, </span>
                             {money(card.regularPrice)}
                           </s>
                         )}
@@ -530,6 +530,10 @@ export function AssistantWidget({
                   ].filter((part): part is string => part !== null);
                   return (
                     <li key={card.sellerId}>
+                      <span className="astag">
+                        <Icon name="store" />
+                        {t('store-tag')}
+                      </span>
                       <Link href={`/s/${card.slug}`} onClick={() => sheet && setOpen(false)}>
                         {card.name}
                       </Link>
@@ -745,6 +749,7 @@ export function AssistantWidget({
         role="dialog"
         aria-modal={sheet}
         aria-labelledby="as-title"
+        aria-describedby={setup.preview === true ? 'as-preview-note' : undefined}
         hidden={!open}
       >
         <div className="ash">
@@ -757,6 +762,11 @@ export function AssistantWidget({
               {setup.preview === true ? (
                 <span className="aspreview" title={t('preview-note')}>
                   {t('preview')}
+                </span>
+              ) : null}
+              {setup.preview === true ? (
+                <span className="asvh" id="as-preview-note">
+                  {t('preview-note')}
                 </span>
               ) : null}
             </h2>

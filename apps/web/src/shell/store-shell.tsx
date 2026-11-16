@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { PreviewFragmentStrip } from '../assistant/preview-strip.tsx';
 import { AssistantGate } from '../assistant/assistant-gate.tsx';
 import type { AssistantBase } from '../assistant/assistant.ts';
 import { AccountDrawer } from '../account/account-drawer.tsx';
@@ -97,6 +98,7 @@ export function StoreShell({
             <TabBar />
           </Dock>
         </PageFrame>
+        <PreviewFragmentStrip />
         {assistant ? <AssistantGate base={assistant} /> : null}
       </div>
     </StoreProvider>

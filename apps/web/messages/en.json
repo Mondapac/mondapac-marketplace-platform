@@ -1374,6 +1374,7 @@
     "including-gst": "including GST",
     "declared-chip": "{name} · seller's declaration",
     "store-label": "Stores",
+    "store-tag": "Store",
     "store-since": "Selling since {year}",
     "store-products": "{count, plural, one {# product} other {# products}}",
     "preview": "Preview",

@@ -9740,6 +9740,30 @@ button.login {
 .aslist li {
   display: grid;
 }
+.aslist li + li {
+  border-top: 1px solid var(--sf-line);
+  padding-top: 6px;
+}
+.aslist + .aslist {
+  margin-top: 10px;
+  border-top: 1px solid var(--sf-line);
+  padding-top: 8px;
+}
+.aslist .astag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  color: var(--sf-slate);
+  font-size: calc(11.5px * var(--cfs));
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.aslist .astag .ico {
+  width: 13px;
+  height: 13px;
+}
 .aslist a {
   color: var(--sf-teal);
   font-weight: 700;

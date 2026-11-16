@@ -109,6 +109,7 @@ export function storefrontReadOf(data: unknown): StorefrontRead | null {
   const quickPrompts = prompts
     .flatMap((prompt) => (typeof prompt === 'string' ? [prompt.trim()] : []))
     .filter((prompt) => prompt !== '' && prompt.length <= PROMPT_MAX)
+    .filter((prompt, at, all) => all.indexOf(prompt) === at)
     .slice(0, PROMPTS_MAX);
   return {
     enabled: data.enabled,
@@ -282,6 +283,8 @@ function badgesOf(value: unknown): CardBadge[] {
     const typeName = text(raw.typeName, 60);
     if (typeof raw.typeCode !== 'string' || !BADGE_CODE.test(raw.typeCode) || !typeName) continue;
     if (typeof raw.sellerClaim !== 'boolean') continue;
+    // One badge per type: the type code is the list key.
+    if (badges.some((badge) => badge.typeCode === raw.typeCode)) continue;
     badges.push({ typeCode: raw.typeCode, typeName, sellerClaim: raw.sellerClaim });
   }
   return badges;

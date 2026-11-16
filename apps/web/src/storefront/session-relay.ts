@@ -334,6 +334,39 @@ async function readCapped(request: Request, limit: number): Promise<string | nul
   return chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join('') + decoder.decode();
 }
 
+/** The most of an upstream answer the relay holds in memory: the assistant's, and every other. */
+const MAX_ASSISTANT_ANSWER_BYTES = 256 * 1024;
+const MAX_ANSWER_BYTES = 1024 * 1024;
+
+/** Reads an upstream body with a hard cap; `null` when it is over. Throws on abort or timeout. */
+async function readAnswerCapped(response: Response, limit: number): Promise<ArrayBuffer | null> {
+  if (response.body === null) return new ArrayBuffer(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return out.buffer;
+}
+
+/** A path segment that could smuggle a separator, an encoding or a dot-segment past the allow-list. */
+const unsafeSegment = (segment: string): boolean =>
+  segment === '' || segment === '.' || segment === '..' || /[/\\%]/.test(segment);
+
 /**
  * Right after a sign-in, moves this browser's guest cart into the new session's cart
  * (`POST cart/merge`, the design's decision 3). Answers the Set-Cookie values to add (the cleared
@@ -405,10 +438,11 @@ export async function relaySession(
   if (config === null) return jsonError(503, 'access.unavailable');
   const host = storefrontHostFor(config, request.headers.get('host'));
   if (host === undefined) return notFound();
-  const assistant = isAssistantPath(path);
+  if (path.some(unsafeSegment)) return notFound();
+  const target = path.join('/');
+  const assistant = target === 'assistant' || target.startsWith('assistant/');
   const scope: CookieScope = assistant ? 'assistant' : 'session';
   // What is logged: the route, never the conversation id.
-  const target = path.join('/');
   const logged =
     assistant && path[1] === 'conversations' ? 'assistant/conversations/:id/messages' : target;
   if (!isSessionPathAllowed(request.method, path)) return notFound();
@@ -483,7 +517,32 @@ export async function relaySession(
   // An answer that carries a buyer's cookies is never cached, whatever the API says.
   headers.set('cache-control', 'private, no-store');
   const setCookies = passedSetCookies(upstream, host.marketId, scope);
-  const answer = upstream.status === 204 ? null : await upstream.arrayBuffer();
+  let answer: ArrayBuffer | null = null;
+  if (upstream.status !== 204) {
+    try {
+      answer = await readAnswerCapped(
+        upstream,
+        assistant ? MAX_ASSISTANT_ANSWER_BYTES : MAX_ANSWER_BYTES,
+      );
+    } catch {
+      log({
+        msg: 'storefront.session.upstream-unreachable',
+        method: request.method,
+        path: logged,
+        marketId: host.marketId,
+      });
+      return jsonError(503, 'access.unavailable');
+    }
+    if (answer === null) {
+      log({
+        msg: 'storefront.session.answer-too-large',
+        method: request.method,
+        path: logged,
+        marketId: host.marketId,
+      });
+      return jsonError(502, 'access.unavailable');
+    }
+  }
   if (upstream.status === 200 && SIGNS_IN.has(target) && answer !== null) {
     setCookies.push(
       ...(await mergeGuestCart(
