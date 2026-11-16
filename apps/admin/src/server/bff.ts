@@ -25,6 +25,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Market's order confirmations and credit notes (ordering, Sales > Invoices), read-only:
     // the list (query: the kind, search, issued dates and paging; see QUERY_KEYS).
     'ordering/admin/documents',
+    // The export of the Invoices list (order confirmations or credit notes, by `kind`) as a CSV or
+    // XLSX file (ordering): the list's own filter, the visible columns, the chosen ids and the zone.
+    'ordering/admin/documents/export',
     // The Market's buyer assistant settings, read again after another admin saved first.
     'assistant/admin/settings',
     // The Market's support email, read again after another admin saved first.
@@ -654,6 +657,20 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'from',
     'to',
   ],
+  // The Invoices export: the list's filter keys (no paging or sort), the file's format and
+  // columns, the chosen ids and the zone of its times.
+  'ordering/admin/documents/export': [
+    'kind',
+    'format',
+    'columns',
+    'ids',
+    'zone',
+    'q',
+    'search',
+    'sellerId',
+    'from',
+    'to',
+  ],
   'ordering/admin/saved-filters': ['listKey'],
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
@@ -709,6 +726,14 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
 const SEARCH_TEXT = /^[\s\S]{1,80}$/;
 /** An instant as the API takes it: ISO 8601 date and time with a zone (`Z` or an offset). */
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+/** The ids of an export: up to 200 UUIDs, the cap of the bulk action. */
+const EXPORT_IDS =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i;
+/** An IANA time zone name such as `Australia/Brisbane` or `Etc/GMT+10`. */
+const EXPORT_ZONE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+){0,2}$/;
+/** The columns an export may name, in any order (the list may show none: the server adds the fixed ones). */
+const exportColumns = (keys: readonly string[]): RegExp =>
+  new RegExp(`^(?:(?:${keys.join('|')})(?:,(?:${keys.join('|')})){0,${keys.length - 1}})?$`);
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
   'ordering/admin/shipments': {
@@ -742,6 +767,29 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     // The API's own cursor: epoch milliseconds of the issue time, a dot and the document id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
     // An id or a name: free text, up to the box's 80 characters.
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
+  },
+  'ordering/admin/documents/export': {
+    kind: /^(order-confirmation|credit-note)$/,
+    format: /^(csv|xlsx)$/,
+    columns: exportColumns([
+      'sellerOrderId',
+      'store',
+      'customer',
+      'issued',
+      'total',
+      'tax',
+      'shipping',
+      'documentId',
+      'refundId',
+      'reason',
+    ]),
+    ids: EXPORT_IDS,
+    zone: EXPORT_ZONE,
+    sellerId: UUID,
     q: SEARCH_TEXT,
     search: SEARCH_TEXT,
     from: ISO_INSTANT,
@@ -901,6 +949,7 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
+  'ordering/admin/documents/export:ids': 7400,
   'catalog/admin/attributes:search': 120,
 };
 
@@ -1037,7 +1086,7 @@ const FORWARDED_REQUEST_HEADERS = [
 const FORWARDED_RESPONSE_HEADERS = [
   'content-type',
   'retry-after',
-  // The product export (CSV or XLSX) and the import report CSV arrive as attachments with a file name the API made.
+  // The product and Sales list exports (CSV or XLSX) and the import report CSV arrive as attachments with a file name the API made.
   'content-disposition',
 ] as const;
 
