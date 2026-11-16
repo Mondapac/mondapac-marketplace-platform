@@ -1,4 +1,18 @@
 import { CertificationModule } from '../certification';
+import { registerSystemChangeReverter, SYSTEM_REQUEST_RECORDER } from '../system-requests';
+import {
+  AttributeDefinitionReverter,
+  CategoryDetailsReverter,
+  CategoryLinksReverter,
+  type CatalogueRevertDependencies,
+} from './application/catalogue-reverters';
+import {
+  ATTRIBUTE_DEFINITION_SUBJECT_KIND,
+  CATALOGUE_REVIEW_AREA,
+  CATEGORY_DETAILS_SUBJECT_KIND,
+  CATEGORY_LINKS_SUBJECT_KIND,
+  NO_REVIEW,
+} from './application/catalogue-review';
 import { CatalogReferencesModule } from './infrastructure/catalog-references.module';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import {
@@ -544,6 +558,8 @@ const CATEGORY_ACTION_PROBES = Symbol('CATEGORY_ACTION_PROBES');
 const OWN_IMPORT_PRODUCT_CREATE = Symbol('CATALOG_OWN_IMPORT_PRODUCT_CREATE');
 const OWN_IMPORT_OFFER_CREATE = Symbol('CATALOG_OWN_IMPORT_OFFER_CREATE');
 const OWN_IMPORT_OFFER_EDIT = Symbol('CATALOG_OWN_IMPORT_OFFER_EDIT');
+/** The attribute edit the file import runs: the same use case, with no review (import is not reviewed). */
+const ATTRIBUTE_IMPORT_EDIT = Symbol('CATALOG_ATTRIBUTE_IMPORT_EDIT');
 const OWN_IMPORT_IMAGE_UPLOAD = Symbol('CATALOG_OWN_IMPORT_IMAGE_UPLOAD');
 const NO_SAVE_BUDGET = { reserveSaves: (): Promise<null> => Promise.resolve(null) } as const;
 
@@ -659,7 +675,8 @@ const PORT = {
   familyResolver: ProductFamilyResolver,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
   attributeCreate: AttributeDefinitionCreate,
-  attributeEdit: AttributeDefinitionEdit,
+  attributeEdit: ATTRIBUTE_IMPORT_EDIT,
+  review: SYSTEM_REQUEST_RECORDER,
   featureSetStore: FEATURE_SET_STORE,
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
@@ -784,6 +801,40 @@ const RESTRUCTURE_DEPS = {
   clock: true,
   ids: true,
 } as const;
+
+const ATTRIBUTE_EDIT_PORTS = {
+  unitOfWork: true,
+  attributeStore: true,
+  relaxations: true,
+  policy: true,
+  matcher: true,
+  claimLocales: true,
+  audit: true,
+  clock: true,
+  ids: true,
+  review: true,
+} as const;
+
+/** The ports the reverters of area catalogue (Admin Inbox › System requests) are built from. */
+const REVERT_PORTS = [
+  ['store', CATEGORY_EDIT_STORE],
+  ['categories', PLATFORM_CATEGORY_REPOSITORY],
+  ['linkStore', CATEGORY_ATTRIBUTE_LINK_STORE],
+  ['attributeAdminReader', ATTRIBUTE_ADMIN_READER],
+  ['attributeStore', ATTRIBUTE_DEFINITION_STORE],
+  ['relaxations', ATTRIBUTE_RELAXATION_STORE],
+  ['audit', AUDIT_WRITER],
+  ['outbox', OUTBOX_WRITER],
+  ['clock', CLOCK],
+  ['ids', ID_GENERATOR],
+] as const satisfies readonly (readonly [keyof CatalogueRevertDependencies, InjectionToken])[];
+
+/** The reverters of area catalogue, registered with System requests below. */
+const REVERTERS = [
+  [CATEGORY_DETAILS_SUBJECT_KIND, CategoryDetailsReverter],
+  [ATTRIBUTE_DEFINITION_SUBJECT_KIND, AttributeDefinitionReverter],
+  [CATEGORY_LINKS_SUBJECT_KIND, CategoryLinksReverter],
+] as const;
 
 @Module({
   controllers: [
@@ -1177,6 +1228,7 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       attributeAdminReader: true,
       policy: true,
+      review: true,
     }),
     useCaseProvider(FeatureSetAdminList, { unitOfWork: true, attributeAdminReader: true }),
     useCaseProvider(AttributeDefinitionCreate, {
@@ -1189,17 +1241,14 @@ const RESTRUCTURE_DEPS = {
       clock: true,
       ids: true,
     }),
-    useCaseProvider(AttributeDefinitionEdit, {
-      unitOfWork: true,
-      attributeStore: true,
-      relaxations: true,
-      policy: true,
-      matcher: true,
-      claimLocales: true,
-      audit: true,
-      clock: true,
-      ids: true,
-    }),
+    useCaseProvider(AttributeDefinitionEdit, ATTRIBUTE_EDIT_PORTS),
+    portVariantProvider(
+      ATTRIBUTE_IMPORT_EDIT,
+      AttributeDefinitionEdit,
+      ATTRIBUTE_EDIT_PORTS,
+      { review: NO_REVIEW },
+      [],
+    ),
     useCaseProvider(AttributeRelaxationRequestCreate, {
       unitOfWork: true,
       attributeStore: true,
@@ -1534,12 +1583,14 @@ const RESTRUCTURE_DEPS = {
       audit: true,
       clock: true,
       ids: true,
+      review: true,
     }),
     useCaseProvider(CategoryAttributeLinksGet, {
       unitOfWork: true,
       linkStore: true,
       treeReader: true,
       attributeAdminReader: true,
+      review: true,
     }),
     useCaseProvider(ProductsMissingDetailsList, {
       unitOfWork: true,
@@ -1583,6 +1634,7 @@ const RESTRUCTURE_DEPS = {
       adminCategoryReader: true,
       policy: true,
       categoryProbes: true,
+      review: true,
     }),
     useCaseProvider(CategoryImpact, {
       unitOfWork: true,
@@ -1651,6 +1703,23 @@ const RESTRUCTURE_DEPS = {
       outbox: true,
       clock: true,
       ids: true,
+      review: true,
+    }),
+    ...REVERTERS.flatMap(([kind, Reverter]) => {
+      const token = Symbol(`CATALOG_REVERTER:${kind}`);
+      return [
+        {
+          provide: token,
+          inject: REVERT_PORTS.map(([, port]) => port),
+          useFactory: (...values: unknown[]) =>
+            new Reverter(
+              Object.fromEntries(
+                REVERT_PORTS.map(([name], index) => [name, values[index]]),
+              ) as unknown as CatalogueRevertDependencies,
+            ),
+        },
+        registerSystemChangeReverter('catalog', kind, CATALOGUE_REVIEW_AREA, token),
+      ];
     }),
     useCaseProvider(CategoryReorder, {
       contentFilter: true,

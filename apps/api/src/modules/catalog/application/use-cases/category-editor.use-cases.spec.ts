@@ -40,6 +40,9 @@ import { CategoryEditDetails } from './category-edit-details.use-case';
 import { CategoryHide } from './category-hide.use-case';
 import { CategoryReorder } from './category-reorder.use-case';
 import { CategoryShow } from './category-show.use-case';
+import { CategoryDetailsReverter } from '../catalogue-reverters';
+import { categoryDetailsValues } from '../catalogue-review';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 
 // The tree editor's use cases in memory (categories package C3a), on both Market fixtures: the
 // key, the admin population and the acting-as refusal; the closed input; the tree-version guard;
@@ -93,6 +96,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
   let matched: ClaimTextToMatch[];
   let unitOpen: boolean;
   let claimInsideUnit: boolean;
+  let review: RecordingReview;
 
   const check: AuthorisationCheck = {
     check: (_context, declaration) =>
@@ -192,7 +196,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
     };
     return {
       create: new CategoryCreate(gate, deps),
-      edit: new CategoryEditDetails(gate, deps),
+      edit: new CategoryEditDetails(gate, { ...deps, review }),
       reorder: new CategoryReorder(gate, deps),
       hide: new CategoryHide(gate, deps),
       show: new CategoryShow(gate, deps),
@@ -238,6 +242,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
     matched = [];
     unitOpen = false;
     claimInsideUnit = false;
+    review = new RecordingReview();
   });
 
   describe('access', () => {
@@ -636,6 +641,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
             revisionNo: 2,
             treeVersion: 1,
           },
+          request: null,
         }),
       );
       expect(store.rows.get(cat(1))).toMatchObject({
@@ -709,6 +715,171 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
         await build().edit.execute(context(), { categoryId: cat(9), version: 1, texts: text('X') }),
       ).toEqual(err({ code: 'category.not-found' }));
       expect(store.revisions).toEqual([]);
+    });
+
+    describe('review (area catalogue)', () => {
+      const note = 'Renamed to match the new aisle signs.';
+
+      it('opens a review of the edit in the same unit, with the values before and after', async () => {
+        review.review('catalogue', 'medium');
+        store.put(stored(1, null));
+        const answer = await edit(1, text('Pantry', { keywords: ['dry'] }), { note });
+        expect(answer.ok).toBe(true);
+        if (!answer.ok) return;
+        expect(answer.value.request).toMatchObject({ number: 1 });
+        expect(review.opened).toHaveLength(1);
+        expect(review.opened[0]).toMatchObject({
+          area: 'catalogue',
+          subjectKind: 'catalog.category-details',
+          subjectRef: cat(1),
+          note,
+          before: { names: { [english]: 'Category 1' }, keywords: { [english]: [] } },
+          after: { names: { [english]: 'Pantry' }, keywords: { [english]: ['dry'] } },
+        });
+      });
+
+      it('needs a note where the area is reviewed, and keeps nothing without one', async () => {
+        review.review('catalogue');
+        store.put(stored(1, null));
+        const answer = await edit(1, text('Pantry'));
+        expect(answer).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] }),
+        );
+        expect(store.rows.get(cat(1))!.texts[0]!.name).toBe('Category 1');
+        expect(store.revisions).toEqual([]);
+        expect(audits).toEqual([]);
+        expect(events).toEqual([]);
+        expect(review.opened).toEqual([]);
+      });
+
+      it('needs no note where the area is off, and answers no request', async () => {
+        store.put(stored(1, null));
+        const answer = await edit(1, text('Pantry'));
+        expect(answer.ok && answer.value.request).toBeNull();
+        expect(store.revisions).toHaveLength(1);
+      });
+
+      it('rolls the edit back when the review cannot be opened', async () => {
+        review.review('catalogue');
+        review.failNext = true;
+        store.put(stored(1, null));
+        expect(await edit(1, text('Pantry'), { note })).toEqual(err({ code: 'access.denied' }));
+        expect(store.rows.get(cat(1))!.texts[0]!.name).toBe('Category 1');
+        expect(store.revisions).toEqual([]);
+      });
+
+      it('opens no review for a save that changes nothing', async () => {
+        review.review('catalogue');
+        store.put(
+          stored(1, null, {
+            texts: [{ locale: english, name: 'Pantry', shortDescription: null, keywords: [] }],
+          }),
+        );
+        const answer = await edit(1, text('Pantry'), { note });
+        expect(answer.ok && answer.value.request).toBeNull();
+        expect(review.opened).toEqual([]);
+      });
+    });
+
+    describe('revert (System requests)', () => {
+      const REQUEST = '01990000-0000-7000-8000-000000005e01' as Id<'SystemRequest'>;
+      const reverter = () =>
+        new CategoryDetailsReverter({
+          store,
+          categories: tree as unknown as PlatformCategoryRepository,
+          linkStore: undefined as never,
+          attributeAdminReader: undefined as never,
+          attributeStore: undefined as never,
+          relaxations: undefined as never,
+          audit: { record: (_c, entry) => (audits.push(entry), Promise.resolve()) },
+          outbox: {
+            append: (_c: CallContext, batch: readonly PendingEvent[]) => {
+              events.push(...batch);
+              return Promise.resolve();
+            },
+          },
+          clock,
+          ids,
+        });
+      const seed = () => {
+        store.put(stored(1, null));
+        const before = categoryDetailsValues(
+          store.rows.get(cat(1))!.texts,
+          store.rows.get(cat(1))!.seo,
+          true,
+        );
+        return before;
+      };
+      const revert = (before: unknown, after: unknown) =>
+        reverter().revert(context(), {
+          requestId: REQUEST,
+          subjectRef: cat(1),
+          before: before as never,
+          after: after as never,
+        });
+
+      it('writes the details before back as a new revision and audits it as a revert', async () => {
+        const before = seed();
+        const edited = await edit(1, text('Pantry', { shortDescription: 'Dry goods' }), {
+          showInMenu: false,
+        });
+        expect(edited.ok).toBe(true);
+        const row = store.rows.get(cat(1))!;
+        const after = categoryDetailsValues(row.texts, row.seo, row.showInMenu);
+        audits.length = 0;
+        events.length = 0;
+        expect(await revert(before, after)).toBe('reverted');
+        const back = store.rows.get(cat(1))!;
+        expect(back.texts).toEqual([
+          { locale: english, name: 'Category 1', shortDescription: null, keywords: [] },
+        ]);
+        expect(back.showInMenu).toBe(true);
+        expect(back.revisionNo).toBe(3);
+        expect(audits.map((a) => a.action)).toEqual(['catalog.platform-category.details-reverted']);
+        expect(audits[0]).toMatchObject({ after: { requestId: REQUEST, revisionNo: 3 } });
+        expect(events.map((e) => e.type)).toEqual(['catalog.platform-category-changed.v1']);
+        expect(review.opened).toEqual([]);
+      });
+
+      it('answers changed-since when the category was edited again, and writes nothing', async () => {
+        const before = seed();
+        await edit(1, text('Pantry'));
+        const row = store.rows.get(cat(1))!;
+        const after = categoryDetailsValues(row.texts, row.seo, row.showInMenu);
+        await build().edit.execute(context(), {
+          categoryId: cat(1),
+          version: 2,
+          texts: text('Larder'),
+        });
+        const revisions = store.revisions.length;
+        expect(await revert(before, after)).toBe('changed-since');
+        expect(store.revisions).toHaveLength(revisions);
+        expect(store.rows.get(cat(1))!.texts[0]!.name).toBe('Larder');
+      });
+
+      it('answers gone for a category that does not exist and for values that are not details', async () => {
+        const before = seed();
+        const row = store.rows.get(cat(1))!;
+        const after = categoryDetailsValues(row.texts, row.seo, row.showInMenu);
+        store.rows.delete(cat(1));
+        expect(await revert(before, after)).toBe('gone');
+        store.put(stored(1, null));
+        expect(await revert({ rateBps: 5 }, after)).toBe('gone');
+      });
+
+      it('answers changed-since when a sibling took the restored name', async () => {
+        const before = seed();
+        await edit(1, text('Pantry'));
+        const row = store.rows.get(cat(1))!;
+        const after = categoryDetailsValues(row.texts, row.seo, row.showInMenu);
+        store.put(
+          stored(2, null, {
+            texts: [{ locale: english, name: 'Category 1', shortDescription: null, keywords: [] }],
+          }),
+        );
+        expect(await revert(before, after)).toBe('changed-since');
+        expect(store.rows.get(cat(1))!.texts[0]!.name).toBe('Pantry');
+      });
     });
   });
 

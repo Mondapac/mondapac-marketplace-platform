@@ -3,6 +3,7 @@
 import { Banner, Button, Dialog, Tabs, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { ReviewNoteField, trimmedNote, useSentForReview } from '../shared/review-note.tsx';
 import { CategoryProblemBanner } from './category-problem.tsx';
 import { ContentFields, SeoFields, useFieldMessage } from './category-form-parts.tsx';
 import type { Outcome } from './use-category-call.ts';
@@ -113,6 +114,11 @@ export function EditDetailsDialog({
   const [active, setActive] = useState(body.requiredLocales[0] ?? locales[0] ?? '');
   const [tab, setTab] = useState<FormTab>('content');
   const [local, setLocal] = useState<FieldErrors>({});
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
+  // The note is asked only where the view says a save is reviewed (area catalogue).
+  const reviewed = body.review?.reviewed === true;
   const errors = mergeErrors(local, call.problem?.fields ?? {});
 
   async function submit(event: FormEvent) {
@@ -129,13 +135,28 @@ export function EditDetailsDialog({
       }
       return;
     }
+    const sentNote = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sentNote === null) {
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     const answer: Outcome<WriteWrap> = await call.run<WriteWrap>(
       'PATCH',
       `${API_CATEGORIES}/${body.category.id}`,
-      { version: body.category.version, ...editBody(form) },
+      {
+        version: body.category.version,
+        ...editBody(form),
+        ...(sentNote === null ? {} : { note: sentNote }),
+      },
     );
-    if (answer.ok) onSaved();
-    else if (answer.problem !== null) showFirst(answer.problem.fields, setTab, setActive);
+    if (answer.ok) {
+      sentForReview(answer.body);
+      onSaved();
+    } else if (answer.problem !== null) {
+      if (answer.problem.fields['note'] !== undefined) setNoteError('rejected');
+      showFirst(answer.problem.fields, setTab, setActive);
+    }
   }
 
   const formId = 'category-edit-form';
@@ -188,6 +209,17 @@ export function EditDetailsDialog({
             />
           )}
         </Tabbed>
+        {reviewed ? (
+          <ReviewNoteField
+            value={note}
+            onChange={(next) => {
+              setNote(next);
+              setNoteError(null);
+            }}
+            error={noteError ?? undefined}
+            disabled={call.pending}
+          />
+        ) : null}
       </form>
     </Dialog>
   );

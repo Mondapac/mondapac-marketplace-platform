@@ -74,6 +74,21 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
   once the Market has journals is `changed-since`. A switch to `paused` or `frozen` is a stop and
   opens no request; a revert never lifts a stop (restoring `active` over `paused` or `frozen` is
   `not-permitted`, and the request stays open).
+- **catalog** (area `catalogue`, on by default, risk medium): field edits of existing PLATFORM
+  catalogue structure. Three kinds, each with the id of the record as subject:
+  `catalog.category-details` (names, short descriptions, keywords per locale, SEO, show in menu),
+  `catalog.attribute-definition` (a summary of the definition with `revisionNo` and `version`; the
+  full content is read back from the revision history) and `catalog.category-attribute-links`
+  (`{featureSetId, filters}`). The edit routes take `note` and answer `request`; the three admin
+  read views carry `review`. A revert writes the before fields as a new revision through the same
+  domain path and audits `catalog.platform-category.details-reverted`,
+  `catalog.attribute-definition.reverted` or `catalog.category-attributes.reverted` with the
+  request id. It answers `changed-since` when the record no longer matches the `after` values (or
+  the domain refuses the write) and `gone` when the record is deleted or no longer active.
+  Left out (owner decision): create, delete, merge, move, import, seller-scoped content and
+  ClaimBasisPolicy. Slug change, image set or remove, and feature-set edits are not hooked either:
+  a slug change and an image carry redirect and storage effects a revert cannot undo cleanly.
+  Imports run unreviewed.
 - Every money opening passes risk `high`, whatever the area's policy says, so the reviewer's
   step-up is spent before a revert writes.
 
@@ -82,6 +97,11 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
 - A request that turned the AI description writer off cannot be withdrawn into a revert that turns
   it back on: the reverter answers `not-permitted`, because a permission check cannot run inside
   the decision unit. The author changes the setting again instead.
+- Catalogue: a revert of an attribute edit keeps the options the edit added (revisions never
+  remove an option) and switches them off; cancelling an open relaxation request that the edit
+  triggered is not undone; the claim-text check is not run again on a revert; category values too
+  large for a request (over 10 KB) are refused with `too-large-for-review` where the area is
+  reviewed; a category revert restores details only, never image, slug, position or status.
 - A rate set for a seller with no rate row yet can race with a second first-time set (no row to
   lock); this predates the review hook.
 - Withdraw checks that the caller is the author, not that the author still holds the edit

@@ -26,6 +26,11 @@ import { AttributeDefinitionCreate } from './attribute-definition-create.use-cas
 import { AttributeDefinitionDiscard } from './attribute-definition-discard.use-case';
 import { AttributeDefinitionEdit } from './attribute-definition-edit.use-case';
 import { AttributeDefinitionPublish } from './attribute-definition-publish.use-case';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
+import { AttributeDefinitionReverter } from '../catalogue-reverters';
+import { attributeValues } from '../catalogue-review';
+import type { AttributeDefinition } from '../../domain/attribute-definition';
+import type { AttributeAdminReader } from '../ports/attribute-admin.reader';
 
 // The attribute editor's use cases in memory (attributes plan, package A2), on both Market
 // fixtures: the protected key, the admin population and the acting-as refusal; the closed input;
@@ -70,6 +75,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
   let matched: ClaimTextToMatch[];
   let unitOpen: boolean;
   let claimInsideUnit: boolean;
+  let review: RecordingReview;
 
   const check: AuthorisationCheck = {
     check: (_context, declaration) =>
@@ -135,6 +141,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
       audit,
       clock,
       ids,
+      review,
     };
     return {
       create: new AttributeDefinitionCreate(gate, deps),
@@ -155,6 +162,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
     matched = [];
     unitOpen = false;
     claimInsideUnit = false;
+    review = new RecordingReview();
   });
 
   const selectBody = (overrides: Record<string, unknown> = {}) => ({
@@ -485,6 +493,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
           attribute: <unknown>(
             expect.objectContaining({ version: 2, revisionNo: 2, status: 'draft' })
           ),
+          request: null,
         }),
       );
       const state = store.rows.get(created.id)!.state;
@@ -504,6 +513,190 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
         expect.objectContaining({ optionCount: 3, activeOptionCount: 2, revisionNo: 2 }),
       );
       expect(claimInsideUnit).toBe(false);
+    });
+
+    describe('review (area catalogue)', () => {
+      const note = 'Added the 2 kg pack and a help text.';
+      const REQUEST = '01990000-0000-7000-8000-000000005e01' as never;
+
+      it('opens a review of the edit with the values before and after', async () => {
+        review.review('catalogue', 'medium');
+        const created = await createdSelect();
+        const answer = await build().edit.execute(context(), {
+          attributeId: created.id,
+          version: 1,
+          ...content(),
+          note,
+        });
+        expect(answer.ok && answer.value.request).toMatchObject({ number: 1 });
+        expect(review.opened).toHaveLength(1);
+        expect(review.opened[0]).toMatchObject({
+          area: 'catalogue',
+          subjectKind: 'catalog.attribute-definition',
+          subjectRef: created.id,
+          note,
+          before: { revisionNo: 1, version: 1, optionCount: 2, activeOptionCount: 2 },
+          after: { revisionNo: 2, version: 2, optionCount: 3, activeOptionCount: 2 },
+        });
+      });
+
+      it('needs a note where the area is reviewed, and keeps nothing without one', async () => {
+        review.review('catalogue');
+        const created = await createdSelect();
+        const answer = await build().edit.execute(context(), {
+          attributeId: created.id,
+          version: 1,
+          ...content(),
+        });
+        expect(answer).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] }),
+        );
+        expect(review.opened).toEqual([]);
+      });
+
+      it('needs no note where the area is off, and answers no request', async () => {
+        const created = await createdSelect();
+        const answer = await build().edit.execute(context(), {
+          attributeId: created.id,
+          version: 1,
+          ...content(),
+        });
+        expect(answer.ok && answer.value.request).toBeNull();
+      });
+
+      it('opens no review for a save that changes no content', async () => {
+        review.review('catalogue');
+        const created = await createdSelect();
+        const same = {
+          names: { [english]: 'Pack size' },
+          options: [
+            { code: 'v-500-g', labels: { [english]: '500 g' } },
+            { code: 'kg1', labels: { [english]: '1 kg' } },
+          ],
+        };
+        const answer = await build().edit.execute(context(), {
+          attributeId: created.id,
+          version: 1,
+          ...same,
+        });
+        expect(answer.ok && answer.value.request).toBeNull();
+        expect(review.opened).toEqual([]);
+      });
+
+      describe('revert', () => {
+        const readerOf = (snapshots: AttributeDefinition[]): AttributeAdminReader =>
+          ({
+            revisions: () =>
+              Promise.resolve(
+                snapshots.map((definition) => ({
+                  revisionNo: definition.state.revisionNo,
+                  material: definition.state.material,
+                  isVariantOption: definition.state.isVariantOption,
+                  bounds: definition.state.bounds,
+                  names: definition.state.names,
+                  options: definition.state.options,
+                  display: definition.state.display,
+                })),
+              ),
+          }) as unknown as AttributeAdminReader;
+        const reverter = (snapshots: AttributeDefinition[]) =>
+          new AttributeDefinitionReverter({
+            store: undefined as never,
+            categories: undefined as never,
+            linkStore: undefined as never,
+            attributeAdminReader: readerOf(snapshots),
+            attributeStore: store,
+            relaxations: new MemoryAttributeRelaxationStore(),
+            audit,
+            outbox: undefined as never,
+            clock,
+            ids,
+          });
+        const revert = (snapshots: AttributeDefinition[], id: string) => {
+          const before = attributeValues(snapshots[0]!.state);
+          const after = attributeValues(store.rows.get(id)!.state);
+          return reverter(snapshots).revert(context(), {
+            requestId: REQUEST,
+            subjectRef: id,
+            before,
+            after,
+          });
+        };
+
+        it('writes the revision before back as the next one, audited with the request', async () => {
+          const created = await createdSelect();
+          const first = store.rows.get(created.id)!;
+          await build().edit.execute(context(), {
+            attributeId: created.id,
+            version: 1,
+            ...content(),
+          });
+          audits.length = 0;
+          expect(await revert([first], created.id)).toBe('reverted');
+          const state = store.rows.get(created.id)!.state;
+          expect(state.revisionNo).toBe(3);
+          expect(state.display.helpText).toEqual({});
+          expect(state.display.searchable).toBe(false);
+          // A value the edit added is never removed: it stays, switched off, after the others.
+          expect(state.options.map((o) => [o.code, o.active, o.position])).toEqual([
+            ['v-500-g', true, 0],
+            ['kg1', true, 1],
+            ['v-2-kg', false, 2],
+          ]);
+          expect(audits.map((a) => a.action)).toEqual(['catalog.attribute-definition.reverted']);
+          expect(audits[0]).toMatchObject({ after: { requestId: REQUEST, revisionNo: 3 } });
+          expect(review.opened).toEqual([]);
+        });
+
+        it('answers changed-since when the attribute was edited again, and writes nothing', async () => {
+          const created = await createdSelect();
+          const first = store.rows.get(created.id)!;
+          await build().edit.execute(context(), {
+            attributeId: created.id,
+            version: 1,
+            ...content(),
+          });
+          const edited = store.rows.get(created.id)!;
+          const before = attributeValues(first.state);
+          const after = attributeValues(edited.state);
+          await build().edit.execute(context(), {
+            attributeId: created.id,
+            version: 2,
+            ...content({ searchable: false }),
+          });
+          const answer = await reverter([first]).revert(context(), {
+            requestId: REQUEST,
+            subjectRef: created.id,
+            before,
+            after,
+          });
+          expect(answer).toBe('changed-since');
+          expect(store.rows.get(created.id as never)!.state.revisionNo).toBe(3);
+        });
+
+        it('answers gone for an attribute that does not exist and for values that are not ours', async () => {
+          const created = await createdSelect();
+          const first = store.rows.get(created.id)!;
+          const values = attributeValues(first.state);
+          store.rows.delete(created.id);
+          expect(
+            await reverter([first]).revert(context(), {
+              requestId: REQUEST,
+              subjectRef: created.id,
+              before: values,
+              after: values,
+            }),
+          ).toBe('gone');
+          expect(
+            await reverter([first]).revert(context(), {
+              requestId: REQUEST,
+              subjectRef: created.id,
+              before: { rateBps: 5 },
+              after: { rateBps: 6 },
+            }),
+          ).toBe('gone');
+        });
+      });
     });
 
     it('never removes a value', async () => {

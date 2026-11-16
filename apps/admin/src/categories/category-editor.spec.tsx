@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
+import { expectToast } from '../../test/toast-spy.ts';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
@@ -84,12 +85,19 @@ const written = {
 };
 
 /** Serves the tree and the detail of any category; writes answer `writeAnswer`. */
-function serve(writeAnswer: ApiResult<unknown> = ok(written)) {
+function serve(
+  writeAnswer: ApiResult<unknown> = ok(written),
+  review?: { reviewed: boolean; risk: string },
+) {
   call.mockImplementation((method: string, path: string) => {
     if (method !== 'GET') return Promise.resolve(writeAnswer);
     if (path === 'catalog/admin/categories') return Promise.resolve(ok(tree()));
     const found = tree().categories.find((c) => path === `catalog/admin/categories/${c.id}`);
-    return Promise.resolve(found === undefined ? ok(null) : ok(detail(found)));
+    return Promise.resolve(
+      found === undefined
+        ? ok(null)
+        : ok(review === undefined ? detail(found) : { ...detail(found), review }),
+    );
   });
 }
 /** Like `serve`, but once a write has happened the tree also holds `added`. */
@@ -202,6 +210,64 @@ describe('category editor (C3b)', () => {
         en: { name: 'Pantry' },
         fa: { name: 'خشکبار', shortDescription: null, keywords: [] },
       },
+    });
+  });
+
+  describe('review note on a details save', () => {
+    const save = () => {
+      const dialog = screen.getByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+      return dialog;
+    };
+
+    it('shows no note field and sends none when the save is not reviewed', async () => {
+      serve(ok(written), { reviewed: false, risk: 'low' });
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Pantry');
+      fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+      expect(screen.queryByLabelText('Note for reviewers')).toBeNull();
+      save();
+      await waitFor(() => expect(writes()).toHaveLength(1));
+      expect('note' in (writes()[0]![2] as object)).toBe(false);
+    });
+
+    it('requires a trimmed note when reviewed, and says the change was sent for review', async () => {
+      serve(ok({ ...written, request: { id: 'r1', number: 41 } }), {
+        reviewed: true,
+        risk: 'medium',
+      });
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Pantry');
+      fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+      save();
+      expect(writes()).toHaveLength(0);
+      fireEvent.change(screen.getByLabelText('Note for reviewers'), {
+        target: { value: '  New aisle  ' },
+      });
+      save();
+      await waitFor(() => expect(writes()).toHaveLength(1));
+      expect(writes()[0]![2]).toMatchObject({ note: 'New aisle' });
+      await expectToast('Sent for review as SR-41', 'info');
+    });
+
+    it('shows a 400 on note on the note field', async () => {
+      serve(
+        {
+          ok: false,
+          failure: {
+            status: 400,
+            code: 'validation.failed',
+            details: { fields: [{ path: 'note', code: 'required' }] },
+          },
+        },
+        { reviewed: true, risk: 'medium' },
+      );
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Pantry');
+      fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+      fireEvent.change(screen.getByLabelText('Note for reviewers'), { target: { value: 'Why' } });
+      const dialog = save();
+      expect(await within(dialog).findByText(/The note was refused/)).toBeTruthy();
     });
   });
 
