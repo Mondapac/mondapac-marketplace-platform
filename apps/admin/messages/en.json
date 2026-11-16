@@ -3144,7 +3144,7 @@
   },
   "review-note": {
     "label": "Note for reviewers",
-    "help": "Say why you are making this change. A reviewer reads it in Admin Inbox > System requests.",
+    "help": "Say why you are making this change. It applies at once; a reviewer reads your note in Admin Inbox > System requests and can undo the change.",
     "counter": "{count} / {max}",
     "sent": "Sent for review as {number}",
     "error": {

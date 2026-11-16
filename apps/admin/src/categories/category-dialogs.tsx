@@ -120,6 +120,9 @@ export function EditDetailsDialog({
   // The note is asked only where the view says a save is reviewed (area catalogue).
   const reviewed = body.review?.reviewed === true;
   const errors = mergeErrors(local, call.problem?.fields ?? {});
+  // A refusal of the note alone shows on the note field, not also as a banner.
+  const refusedFields = Object.keys(call.problem?.fields ?? {});
+  const noteOnly = refusedFields.length > 0 && refusedFields.every((path) => path === 'note');
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -187,7 +190,7 @@ export function EditDetailsDialog({
         onSubmit={(event) => void submit(event)}
         noValidate
       >
-        <CategoryProblemBanner problem={problem} />
+        <CategoryProblemBanner problem={noteOnly ? null : problem} />
         <Tabbed tab={tab} onTab={setTab}>
           {tab === 'content' ? (
             <ContentFields

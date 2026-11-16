@@ -319,6 +319,11 @@ export class FakeSubjects implements SystemChangeReverter {
   readonly reverts: RevertRequest[] = [];
   /** Refs whose revert the owning module refuses the decider (`not-permitted`). */
   readonly refused = new Set<string>();
+  /** Refs whose pre-unit check refuses (`not-permitted`) before any unit opens. */
+  readonly checkRefused = new Set<string>();
+  /** Set to give the fake a pre-unit `check`; left undefined, the reverter has none. */
+  readonly checks: RevertRequest[] = [];
+  withCheck = false;
 
   set(market: string, ref: string, value: Readonly<Record<string, unknown>>): void {
     this.values.set(`${market}:${ref}`, value);
@@ -326,6 +331,14 @@ export class FakeSubjects implements SystemChangeReverter {
 
   get(market: string, ref: string): Readonly<Record<string, unknown>> | undefined {
     return this.values.get(`${market}:${ref}`);
+  }
+
+  get check(): SystemChangeReverter['check'] {
+    if (!this.withCheck) return undefined;
+    return (_context, request) => {
+      this.checks.push(request);
+      return Promise.resolve(this.checkRefused.has(request.subjectRef) ? 'not-permitted' : 'ok');
+    };
   }
 
   revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome> {

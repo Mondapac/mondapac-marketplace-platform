@@ -583,6 +583,41 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       expect(view.ok && view.value.status).toBe('open');
     });
 
+    it('asks the reverter for its pre-unit check, and a refusal writes nothing and keeps the request open', async () => {
+      subjects.withCheck = true;
+      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      subjects.checkRefused.add('list-paging');
+      expect(
+        await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+          requestId: opened.id,
+          reason: 'No',
+        }),
+      ).toEqual({ ok: false, error: { code: 'system-requests.revert-not-permitted' } });
+      expect(subjects.checks).toHaveLength(1);
+      expect(subjects.reverts).toEqual([]);
+      expect(subjects.get(market.marketId, 'list-paging')).toEqual({ size: 50 });
+      const view = await useCase(ViewSystemRequest).execute(admin(CHECKER), {
+        requestId: opened.id,
+      });
+      expect(view.ok && view.value.status).toBe('open');
+      subjects.checkRefused.clear();
+      const again = await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+        requestId: opened.id,
+        reason: 'No',
+      });
+      expect(again.ok).toBe(true);
+    });
+
+    it('reverts as before for a reverter without a check', async () => {
+      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      const done = await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+        requestId: opened.id,
+        reason: 'No',
+      });
+      expect(done.ok).toBe(true);
+      expect(subjects.checks).toEqual([]);
+    });
+
     it('lets only the author withdraw, which restores the value before', async () => {
       const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
       expect(

@@ -781,6 +781,86 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
       });
     });
 
+    describe('values too large for a request', () => {
+      const MANY = Array.from({ length: 12 }, (_, i) => `x${String.fromCharCode(97 + i)}-XX`);
+      const wide = Object.assign(Object.create(policy) as ConfigCatalogMarketPolicy, {
+        locales: () => ({ default: MANY[0]!, supported: MANY }),
+      });
+      const fat = (suffix: string) =>
+        Object.fromEntries(
+          MANY.map((locale) => [
+            locale,
+            {
+              name: `${'n'.repeat(100)}${suffix}`,
+              shortDescription: 's'.repeat(300),
+              keywords: Array.from({ length: 20 }, (_, i) => `${'k'.repeat(30)}${i}`),
+            },
+          ]),
+        );
+      const editWide = () => {
+        const gate = createUseCaseGate(markets, check);
+        return new CategoryEditDetails(gate, {
+          unitOfWork,
+          store,
+          categories: tree as unknown as PlatformCategoryRepository,
+          policy: wide,
+          matcher,
+          claimLocales,
+          audit,
+          outbox,
+          clock,
+          ids,
+          contentFilter: new ContentFilter(markets),
+          review,
+        });
+      };
+      const seed = () =>
+        store.put(
+          stored(1, null, {
+            texts: MANY.map((locale) => ({
+              locale,
+              name: 'Old',
+              shortDescription: null,
+              keywords: [],
+            })),
+          }),
+        );
+
+      it('refuses a reviewed edit on texts and rolls it back', async () => {
+        review.review('catalogue');
+        covered = ok(MANY);
+        seed();
+        const answer = await editWide().execute(context(), {
+          categoryId: cat(1),
+          version: 1,
+          texts: fat('a'),
+          note: 'Fill every language',
+        });
+        expect(answer).toEqual(
+          err({
+            code: 'validation.failed',
+            fields: [{ path: 'texts', code: 'too-large-for-review' }],
+          }),
+        );
+        expect(store.rows.get(cat(1))!.texts[0]!.name).toBe('Old');
+        expect(store.revisions).toEqual([]);
+        expect(review.opened).toEqual([]);
+      });
+
+      it('saves where the area is not reviewed, answering no request', async () => {
+        covered = ok(MANY);
+        seed();
+        const answer = await editWide().execute(context(), {
+          categoryId: cat(1),
+          version: 1,
+          texts: fat('a'),
+        });
+        expect(answer.ok && answer.value.request).toBeNull();
+        expect(store.rows.get(cat(1))!.texts[0]!.name).toContain('n');
+        expect(review.opened).toEqual([]);
+      });
+    });
+
     describe('revert (System requests)', () => {
       const REQUEST = '01990000-0000-7000-8000-000000005e01' as Id<'SystemRequest'>;
       const reverter = () =>
@@ -791,6 +871,12 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
           attributeAdminReader: undefined as never,
           attributeStore: undefined as never,
           relaxations: undefined as never,
+          unitOfWork,
+          policy,
+          matcher,
+          claimLocales,
+          contentFilter: new ContentFilter(markets),
+          authorisation: check,
           audit: { record: (_c, entry) => (audits.push(entry), Promise.resolve()) },
           outbox: {
             append: (_c: CallContext, batch: readonly PendingEvent[]) => {
@@ -839,6 +925,88 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
         expect(audits[0]).toMatchObject({ after: { requestId: REQUEST, revisionNo: 3 } });
         expect(events.map((e) => e.type)).toEqual(['catalog.platform-category-changed.v1']);
         expect(review.opened).toEqual([]);
+      });
+
+      describe('check (before the unit)', () => {
+        const edited = async () => {
+          const before = seed();
+          await edit(1, text('Pantry'));
+          const row = store.rows.get(cat(1))!;
+          const after = categoryDetailsValues(row.texts, row.seo, row.showInMenu);
+          return {
+            requestId: REQUEST,
+            subjectRef: cat(1),
+            before: before as never,
+            after: after as never,
+          };
+        };
+
+        it('lets a revert through that passes every check', async () => {
+          expect(await reverter().check(context(), await edited())).toBe('ok');
+        });
+
+        it('refuses, writing nothing, a before value that holds a claim word added since', async () => {
+          const request = await edited();
+          claimWords = /Category 1/;
+          const revisions = store.revisions.length;
+          expect(await reverter().check(context(), request)).toBe('not-permitted');
+          expect(await reverter().revert(context(), request)).toBe('reverted'); // the unit alone writes
+          expect(store.revisions.length).toBe(revisions + 1);
+        });
+
+        it('refuses when the matcher or the vocabulary cannot answer (fail closed)', async () => {
+          const request = await edited();
+          matcherDown = true;
+          expect(await reverter().check(context(), request)).toBe('not-permitted');
+          matcherDown = false;
+          covered = err({ code: 'claim-text.check-unavailable' });
+          expect(await reverter().check(context(), request)).toBe('not-permitted');
+          covered = ok([]);
+          expect(await reverter().check(context(), request)).toBe('not-permitted');
+        });
+
+        it('refuses a before value with a term of the Market content filter', async () => {
+          const request = await edited();
+          const bad = code === 'AU' ? 'shit' : 'zzbad';
+          const withBad = {
+            ...(request.before as Record<string, unknown>),
+            names: { [english]: bad },
+          };
+          expect(await reverter().check(context(), { ...request, before: withBad })).toBe(
+            'not-permitted',
+          );
+        });
+
+        it('refuses a before value in a locale the Market no longer supports', async () => {
+          const request = await edited();
+          const before = request.before as {
+            names: Record<string, string>;
+            shortDescriptions: Record<string, string | null>;
+            keywords: Record<string, string[]>;
+          };
+          const retired = {
+            ...before,
+            names: { ...before.names, 'xx-XX': 'Old' },
+            shortDescriptions: { ...before.shortDescriptions, 'xx-XX': null },
+            keywords: { ...before.keywords, 'xx-XX': [] },
+          };
+          expect(await reverter().check(context(), { ...request, before: retired })).toBe(
+            'not-permitted',
+          );
+        });
+
+        it('refuses a decider who lacks the key of the category edit', async () => {
+          const request = await edited();
+          allow = false;
+          expect(await reverter().check(context(), request)).toBe('not-permitted');
+        });
+
+        it('runs outside any unit', async () => {
+          const request = await edited();
+          claimInsideUnit = false;
+          await reverter().check(context(), request);
+          expect(claimInsideUnit).toBe(false);
+        });
       });
 
       it('answers changed-since when the category was edited again, and writes nothing', async () => {

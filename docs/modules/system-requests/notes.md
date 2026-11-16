@@ -55,6 +55,14 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
    characters, never a secret). An `err` answer is the use case's own refusal.
 3. The page asks for a note only when `areaPolicy(context, area).enabled`.
 
+## Reverter pre-unit check
+
+A `SystemChangeReverter` may have `check(context, request): 'ok' | 'not-permitted'`. A reject or
+withdraw calls it after its first checks and before its unit opens (like `reviewableAreas`), so it
+may read other modules (the claim vocabulary, the decider's keys), which cannot run inside the
+unit. `not-permitted` answers `system-requests.revert-not-permitted`; nothing is written and the
+request stays open. A reverter without a `check` behaves as before.
+
 ## Hooked areas
 
 - **settings** (area marketplace, kind `settings.market-setting`, subject = the setting code):
@@ -83,8 +91,14 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
   read views carry `review`. A revert writes the before fields as a new revision through the same
   domain path and audits `catalog.platform-category.details-reverted`,
   `catalog.attribute-definition.reverted` or `catalog.category-attributes.reverted` with the
-  request id. It answers `changed-since` when the record no longer matches the `after` values (or
-  the domain refuses the write) and `gone` when the record is deleted or no longer active.
+  request id. It answers `changed-since` when the record no longer matches the `after` values, is
+  no longer active, or the domain refuses the write, and `gone` only when the record is not found
+  (including a record of another Market) or the request values are not ours. Before the unit
+  opens, an optional `check` on the reverter (see "Reverter pre-unit check") runs the claim-text
+  check on the text a revert would write back, the content filter and locale checks, the units
+  and publish rules of an active attribute, and that the decider holds the subject's edit key
+  (`catalog.category-tree.edit` or `catalog.attribute.edit`); any refusal, or a check that cannot
+  be answered, is `not-permitted` with nothing written and the request left open.
   Left out (owner decision): create, delete, merge, move, import, seller-scoped content and
   ClaimBasisPolicy. Slug change, image set or remove, and feature-set edits are not hooked either:
   a slug change and an image carry redirect and storage effects a revert cannot undo cleanly.
@@ -99,7 +113,9 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
   the decision unit. The author changes the setting again instead.
 - Catalogue: a revert of an attribute edit keeps the options the edit added (revisions never
   remove an option) and switches them off; cancelling an open relaxation request that the edit
-  triggered is not undone; the claim-text check is not run again on a revert; category values too
+  triggered is not undone; a revert that would clear `material` on a published attribute is
+  refused by the domain (`changed-since`: that needs the two-person request); a revert reads at
+  most the newest 200 revisions of an attribute, an older one is `changed-since`; category values too
   large for a request (over 10 KB) are refused with `too-large-for-review` where the area is
   reviewed; a category revert restores details only, never image, slug, position or status.
 - A rate set for a seller with no rate row yet can race with a second first-time set (no row to

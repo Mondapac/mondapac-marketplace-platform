@@ -607,6 +607,12 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
             attributeAdminReader: readerOf(snapshots),
             attributeStore: store,
             relaxations: new MemoryAttributeRelaxationStore(),
+            unitOfWork,
+            policy,
+            matcher,
+            claimLocales,
+            contentFilter: undefined as never,
+            authorisation: check,
             audit,
             outbox: undefined as never,
             clock,
@@ -646,6 +652,134 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
           expect(audits.map((a) => a.action)).toEqual(['catalog.attribute-definition.reverted']);
           expect(audits[0]).toMatchObject({ after: { requestId: REQUEST, revisionNo: 3 } });
           expect(review.opened).toEqual([]);
+        });
+
+        describe('check (before the unit)', () => {
+          const edited = async () => {
+            const created = await createdSelect();
+            const first = store.rows.get(created.id)!;
+            await build().edit.execute(context(), {
+              attributeId: created.id,
+              version: 1,
+              ...content(),
+            });
+            const request = {
+              requestId: REQUEST,
+              subjectRef: created.id,
+              before: attributeValues(first.state),
+              after: attributeValues(store.rows.get(created.id)!.state),
+            };
+            return { first, request, id: created.id };
+          };
+
+          it('lets a revert through that passes every check', async () => {
+            const { first, request } = await edited();
+            expect(await reverter([first]).check(context(), request)).toBe('ok');
+          });
+
+          it('refuses, writing nothing, a value that holds a claim word added since the edit', async () => {
+            const { first, request, id } = await edited();
+            claimWords = /500 g/;
+            expect(await reverter([first]).check(context(), request)).toBe('not-permitted');
+            expect(store.rows.get(id)!.state.revisionNo).toBe(2);
+          });
+
+          it('checks the values the edit added, which the revert keeps switched off', async () => {
+            const { first, request } = await edited();
+            claimWords = /2 kg/;
+            expect(await reverter([first]).check(context(), request)).toBe('not-permitted');
+          });
+
+          it('refuses when the vocabulary or the matcher cannot answer (fail closed)', async () => {
+            const { first, request } = await edited();
+            matcherDown = true;
+            expect(await reverter([first]).check(context(), request)).toBe('not-permitted');
+            matcherDown = false;
+            covered = err({ code: 'claim-text.check-unavailable' });
+            expect(await reverter([first]).check(context(), request)).toBe('not-permitted');
+            covered = ok([...locales.supported]);
+            expect(await reverter([first]).check(context(), request)).toBe('ok');
+          });
+
+          it('refuses a text in a locale the claim vocabulary does not cover', async () => {
+            const { first, request } = await edited();
+            covered = ok([]);
+            expect(await reverter([first]).check(context(), request)).toBe('not-permitted');
+          });
+
+          it('refuses a decider who lacks the key of the attribute edit', async () => {
+            const { first, request } = await edited();
+            allow = false;
+            expect(await reverter([first]).check(context(), request)).toBe('not-permitted');
+          });
+
+          it('runs the claim check outside any unit', async () => {
+            const { first, request } = await edited();
+            claimInsideUnit = false;
+            await reverter([first]).check(context(), request);
+            expect(claimInsideUnit).toBe(false);
+          });
+        });
+
+        it('refuses to clear material on a published attribute (changed-since), writing nothing', async () => {
+          const created = await createdSelect();
+          const { edit, publish } = build();
+          await publish.execute(context(), { attributeId: created.id, version: 1 });
+          const first = store.rows.get(created.id)!;
+          expect(
+            (
+              await edit.execute(context(), {
+                attributeId: created.id,
+                version: 2,
+                ...content({ material: true }),
+              })
+            ).ok,
+          ).toBe(true);
+          const revisionNo = store.rows.get(created.id)!.state.revisionNo;
+          expect(await revert([first], created.id)).toBe('changed-since');
+          expect(store.rows.get(created.id)!.state.revisionNo).toBe(revisionNo);
+        });
+
+        it('reads at most the newest 200 revisions: an older one is changed-since', async () => {
+          const created = await createdSelect();
+          const first = store.rows.get(created.id)!;
+          await build().edit.execute(context(), {
+            attributeId: created.id,
+            version: 1,
+            ...content(),
+          });
+          const seen: number[] = [];
+          const reader = {
+            revisions: (_m: unknown, _id: unknown, limit: number) => {
+              seen.push(limit);
+              return Promise.resolve([]);
+            },
+          } as unknown as AttributeAdminReader;
+          const answer = await new AttributeDefinitionReverter({
+            store: undefined as never,
+            categories: undefined as never,
+            linkStore: undefined as never,
+            attributeAdminReader: reader,
+            attributeStore: store,
+            relaxations: new MemoryAttributeRelaxationStore(),
+            unitOfWork,
+            policy,
+            matcher,
+            claimLocales,
+            contentFilter: undefined as never,
+            authorisation: check,
+            audit,
+            outbox: undefined as never,
+            clock,
+            ids,
+          }).revert(context(), {
+            requestId: REQUEST,
+            subjectRef: created.id,
+            before: attributeValues(first.state),
+            after: attributeValues(store.rows.get(created.id)!.state),
+          });
+          expect(answer).toBe('changed-since');
+          expect(seen).toEqual([200]);
         });
 
         it('answers changed-since when the attribute was edited again, and writes nothing', async () => {

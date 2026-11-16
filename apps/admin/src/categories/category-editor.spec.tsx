@@ -268,6 +268,8 @@ describe('category editor (C3b)', () => {
       fireEvent.change(screen.getByLabelText('Note for reviewers'), { target: { value: 'Why' } });
       const dialog = save();
       expect(await within(dialog).findByText(/The note was refused/)).toBeTruthy();
+      // The refusal of the note alone is not also a banner above the form.
+      expect(within(dialog).queryByText(/Some fields need attention/)).toBeNull();
     });
   });
 

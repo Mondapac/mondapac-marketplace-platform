@@ -19,5 +19,13 @@ and the attribute links of a category (`PUT catalog/admin/categories/:id/attribu
 - Reverters (`application/catalogue-reverters.ts`) are registered with system-requests and write
   through the same domain path as the edit. See `docs/modules/system-requests/notes.md` for the
   outcomes and the known limits.
+- A revert runs the checks an edit has, because the rules change over time. The reverters have a
+  `check` that System requests calls before the unit opens: the decider holds the edit key, the
+  claim-text check passes on every text the revert would write (for an attribute that includes the
+  switched-off values it keeps), the content filter and locale rules hold for a category, and the
+  units and publish rules hold for an active attribute. A failure, or a check that cannot answer,
+  is `not-permitted` and nothing is written. A revert that would clear `material` on a published
+  attribute is refused by the domain (`changed-since`), and a revert reads at most the newest 200
+  revisions of an attribute.
 - Imports (the attribute file import) run through a variant of the edit use case with a recorder
   that never reviews, so a file import never needs a note.

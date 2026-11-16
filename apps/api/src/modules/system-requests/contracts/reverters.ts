@@ -31,6 +31,13 @@ export interface RevertRequest {
  * new review request: the revert closes this one.
  */
 export interface SystemChangeReverter {
+  /**
+   * Optional checks that must run outside any unit (a claim-vocabulary read, an authorisation
+   * read), called before the unit opens with the request about to be reverted. Answer
+   * `not-permitted` to refuse the revert with nothing written; the request stays open. A reverter
+   * without it behaves as before.
+   */
+  check?(context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'>;
   revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome>;
 }
 

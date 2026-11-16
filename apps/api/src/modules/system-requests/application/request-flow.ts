@@ -600,6 +600,33 @@ export async function approveRequest(
 }
 
 /**
+ * The reverter's optional pre-unit check (checks that cannot run in the open unit): a first look
+ * at the request, then the check outside any unit. Null when there is nothing to refuse; the
+ * unit checks the request again once it is locked.
+ */
+async function checkBeforeRevert(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  id: Id<'SystemRequest'>,
+): Promise<SystemRequestsFailure | null> {
+  const seen = await deps.unitOfWork.run<SystemRequest | null, SystemRequestsFailure>(
+    context.market,
+    async () => ok(await deps.requests.find(context.market, id)),
+    { readOnly: true },
+  );
+  if (!seen.ok || seen.value === null) return null;
+  const reverter = deps.reverters.find(seen.value.subjectKind)?.reverter;
+  if (reverter?.check === undefined) return null;
+  const answer = await reverter.check(context, {
+    requestId: seen.value.id,
+    subjectRef: seen.value.subjectRef,
+    before: seen.value.before,
+    after: seen.value.after,
+  });
+  return answer === 'ok' ? null : { code: 'system-requests.revert-not-permitted' };
+}
+
+/**
  * Restores the value before the change (reject or withdraw), in one unit with the decision: the
  * subject must still hold the value after the change, and no later request may exist for it.
  */
@@ -613,6 +640,8 @@ async function revertRequest(
   if (!prepared.ok) return prepared;
   const { admin, id, reason } = prepared.value;
   const areas = await reviewableAreas(deps, context);
+  const refused = await checkBeforeRevert(deps, context, id);
+  if (refused !== null) return err(refused);
   return deps.unitOfWork.run<RequestView, SystemRequestsFailure>(context.market, async () => {
     const found = await decidable(deps, context, kind, admin, id);
     if (!found.ok) return found;

@@ -2,7 +2,7 @@ import { devNull } from 'node:os';
 import type { INestApplicationContext, InjectionToken } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import pino from 'pino';
-import { ok, Temporal, uuidV7 } from '@mondapac/shared-kernel';
+import { err, ok, Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { AuditEntry, Id } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -100,12 +100,33 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
   let setLinks: CategoryAttributeLinksSet;
   const audits: AuditEntry[] = [];
 
+  // What the claim-text check does now: a word added to the vocabulary since an edit, a matcher
+  // that cannot answer.
+  let claimWord: RegExp | null = null;
+  let matcherDown = false;
   const matcher: ClaimTextMatcher = {
-    match: (_context, texts) => Promise.resolve(ok(texts.map(() => []))),
+    match: (_context, texts) => {
+      if (matcherDown) return Promise.resolve(err({ code: 'claim-text.check-unavailable' }));
+      return Promise.resolve(
+        ok(
+          texts.map((t) =>
+            claimWord?.test(t.text) === true
+              ? [{ typeCode: 'halal', span: { fromToken: 0, toToken: 0 } }]
+              : [],
+          ),
+        ),
+      );
+    },
   };
   const claimLocales: ClaimTermLocales = {
-    covered: () => Promise.resolve(ok([...locales.supported, code === 'AU' ? 'en-AU' : 'en-US'])),
+    // Every locale of both fixtures, so a record of the other Market can be made too.
+    covered: () => Promise.resolve(ok(['en-AU', 'en-US', 'ja-JP', ...locales.supported])),
   };
+
+  afterEach(() => {
+    claimWord = null;
+    matcherDown = false;
+  });
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -151,6 +172,12 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
       attributeAdminReader,
       attributeStore,
       relaxations,
+      unitOfWork,
+      policy,
+      matcher,
+      claimLocales,
+      contentFilter: new ContentFilter(markets),
+      authorisation: { check: () => Promise.resolve({ allowed: true }) },
       audit,
       outbox,
       clock,
@@ -260,9 +287,12 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
     ).rows[0]?.name;
 
   it('keeps nothing of a category edit without a note, and reverts one with its request', async () => {
-    const { id, version } = await activeCategory('Pantry');
+    // Root names are unique among siblings and this database is shared with other specs: a name of
+    // its own, or restoring it could meet a sibling that took it (a legitimate `changed-since`).
+    const pantry = `Pantry ${slugOf()}`;
+    const { id, version } = await activeCategory(pantry);
     const author = admin('catalogue-db-author');
-    const texts = { [english]: { name: 'Pantry goods', keywords: ['dry'] } };
+    const texts = { [english]: { name: `${pantry} goods`, keywords: ['dry'] } };
 
     const refused = await editDetails.execute(author, {
       categoryId: id,
@@ -274,7 +304,7 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
       code: 'validation.failed',
       fields: [{ path: 'note', code: 'required' }],
     });
-    expect(await categoryName(id)).toBe('Pantry');
+    expect(await categoryName(id)).toBe(pantry);
     expect(await categoryRow(id)).toMatchObject({ show_in_menu: true });
 
     const saved = await editDetails.execute(author, {
@@ -285,10 +315,10 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
       note: 'Aisle signs changed',
     });
     if (!saved.ok || saved.value.request === null) throw new Error('no request opened');
-    expect(await categoryName(id)).toBe('Pantry goods');
+    expect(await categoryName(id)).toBe(`${pantry} goods`);
     const requestId = saved.value.request.id;
     const before = {
-      names: { [english]: 'Pantry' },
+      names: { [english]: pantry },
       shortDescriptions: { [english]: null },
       keywords: { [english]: [] },
       seoTitle: null,
@@ -298,7 +328,7 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
     };
     const after = {
       ...before,
-      names: { [english]: 'Pantry goods' },
+      names: { [english]: `${pantry} goods` },
       keywords: { [english]: ['dry'] },
       showInMenu: false,
     };
@@ -316,7 +346,7 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
     const request = { requestId, subjectRef: id, before, after };
     const reviewer = admin('catalogue-db-reviewer');
     expect(await inUnit(() => reverter.revert(reviewer, request))).toBe('reverted');
-    expect(await categoryName(id)).toBe('Pantry');
+    expect(await categoryName(id)).toBe(pantry);
     expect(await categoryRow(id)).toMatchObject({ show_in_menu: true });
     expect(audits.at(-1)).toMatchObject({
       action: 'catalog.platform-category.details-reverted',
@@ -336,10 +366,11 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
   });
 
   it('answers gone for a category that is not there', async () => {
-    const { id } = await activeCategory('Spices');
+    const spices = `Spices ${slugOf()}`;
+    const { id } = await activeCategory(spices);
     const reverter = new CategoryDetailsReverter(reverterDeps);
     const values = {
-      names: { [english]: 'Spices' },
+      names: { [english]: spices },
       shortDescriptions: { [english]: null },
       keywords: { [english]: [] },
       seoTitle: null,
@@ -358,7 +389,7 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
         }),
       ),
     ).toBe('gone');
-    expect(await categoryName(id)).toBe('Spices');
+    expect(await categoryName(id)).toBe(spices);
   });
 
   it('keeps nothing of an attribute edit without a note, and reverts one, keeping an added value off', async () => {
@@ -450,7 +481,7 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
 
   it('keeps nothing of a filter change without a note, and reverts one with its request', async () => {
     const author = admin('catalogue-db-links');
-    const { id: categoryId } = await activeCategory('Rice');
+    const { id: categoryId } = await activeCategory(`Rice ${slugOf()}`);
     const draft = await create.execute(author, {
       dataType: 'select',
       names: { [english]: `Origin ${slugOf()}` },
@@ -516,5 +547,222 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
       after: { requestId },
     });
     expect(await inUnit(() => reverter.revert(reviewer, request))).toBe('changed-since');
+  });
+
+  describe('the checks a revert has before it writes', () => {
+    const detailsValues = (name: string, showInMenu = true) => ({
+      names: { [english]: name },
+      shortDescriptions: { [english]: null },
+      keywords: { [english]: [] },
+      seoTitle: null,
+      seoDescription: null,
+      noindex: false,
+      showInMenu,
+    });
+
+    async function editedCategory() {
+      const name = `Spices ${slugOf()}`;
+      const { id, version } = await activeCategory(name);
+      const saved = await editDetails.execute(admin('catalogue-db-check-author'), {
+        categoryId: id,
+        version,
+        texts: { [english]: { name: `${name} rack` } },
+        note: 'Renamed',
+      });
+      if (!saved.ok || saved.value.request === null) throw new Error('no request opened');
+      return {
+        id,
+        request: {
+          requestId: saved.value.request.id,
+          subjectRef: id,
+          before: detailsValues(name),
+          after: detailsValues(`${name} rack`),
+          name,
+        },
+      };
+    }
+
+    it('refuses a category revert whose before text holds a claim word added since, with nothing written', async () => {
+      const { id, request } = await editedCategory();
+      const reverter = new CategoryDetailsReverter(reverterDeps);
+      const reviewer = admin('catalogue-db-check');
+      expect(await reverter.check(reviewer, request)).toBe('ok');
+      claimWord = /^Spices/;
+      expect(await reverter.check(reviewer, request)).toBe('not-permitted');
+      expect(await categoryName(id)).toBe(request.after.names[english]);
+    });
+
+    it('refuses a category revert when the matcher cannot answer (fail closed)', async () => {
+      const { id, request } = await editedCategory();
+      matcherDown = true;
+      expect(
+        await new CategoryDetailsReverter(reverterDeps).check(admin('catalogue-db-check'), request),
+      ).toBe('not-permitted');
+      expect(await categoryName(id)).toBe(request.after.names[english]);
+    });
+
+    it('refuses an attribute revert whose restored text, or a value it keeps off, holds a claim word added since', async () => {
+      const author = admin('catalogue-db-check-attribute');
+      const draft = await create.execute(author, {
+        dataType: 'select',
+        names: { [english]: `Pack size ${slugOf()}` },
+        options: [{ code: 'g500', labels: { [english]: '500 g' } }],
+      });
+      if (!draft.ok) throw new Error(`create failed: ${draft.error.code}`);
+      const attributeId = draft.value.attribute.id as Id<'AttributeDefinition'>;
+      expect((await publish.execute(author, { attributeId, version: 1 })).ok).toBe(true);
+      const saved = await editAttribute.execute(author, {
+        attributeId,
+        version: 2,
+        names: { [english]: `Pack size ${slugOf()}` },
+        options: [
+          { code: 'g500', labels: { [english]: '500 g' } },
+          { code: 'kg1', labels: { [english]: '1 kg' } },
+        ],
+        searchable: true,
+        note: 'Added 1 kg',
+      });
+      if (!saved.ok || saved.value.request === null) throw new Error('no request opened');
+      const requestId = saved.value.request.id;
+      const stored = await inUnit(() => requests.find(market, requestId));
+      const request = {
+        requestId,
+        subjectRef: attributeId,
+        before: stored!.before,
+        after: stored!.after,
+      };
+      const reverter = new AttributeDefinitionReverter(reverterDeps);
+      const reviewer = admin('catalogue-db-check');
+      expect(await reverter.check(reviewer, request)).toBe('ok');
+      claimWord = /500 g/;
+      expect(await reverter.check(reviewer, request)).toBe('not-permitted');
+      claimWord = /1 kg/; // the value the edit added, which the revert keeps switched off
+      expect(await reverter.check(reviewer, request)).toBe('not-permitted');
+      claimWord = null;
+      matcherDown = true;
+      expect(await reverter.check(reviewer, request)).toBe('not-permitted');
+    });
+
+    it('answers gone for a request of this Market that names a record of another Market, leaving it unchanged', async () => {
+      const otherCode = TEST_MARKETS.find((entry) => entry !== code)!;
+      const other = marketOf(otherCode);
+      const elsewhereName = `Elsewhere ${slugOf()}`;
+      const otherId = ids.next<'Category'>();
+      await unitOfWork.run(other, async () => {
+        await reverterDeps.store.insert(other, {
+          id: otherId,
+          revisionId: ids.next<'CategoryRevision'>(),
+          parentId: null,
+          slug: slugOf(),
+          texts: [{ locale: english, name: elsewhereName, shortDescription: null, keywords: [] }],
+          seo: { title: null, description: null, noindex: false },
+          showInMenu: true,
+          authorAccountId: ids.next<'Account'>(),
+          now: clock.now(),
+        });
+        return ok(null);
+      });
+      const reverter = new CategoryDetailsReverter(reverterDeps);
+      const request = {
+        requestId: ids.next<'SystemRequest'>(),
+        subjectRef: otherId,
+        before: detailsValues(elsewhereName),
+        after: detailsValues(elsewhereName, false),
+      };
+      expect(await inUnit(() => reverter.revert(admin('catalogue-db-cross'), request))).toBe(
+        'gone',
+      );
+      const rows = await sql.query<{ revisions: string }>(
+        `SELECT count(*) AS revisions FROM catalog.platform_category_revisions
+          WHERE category_id = $1`,
+        [otherId],
+      );
+      expect(rows.rows[0]!.revisions).toBe('1');
+
+      const otherAdmin = testCallContext(
+        other,
+        testAuthenticatedActor(other, {
+          population: 'admin',
+          accountId: ids.next<'Account'>(),
+          sessionId: ids.next<'Session'>(),
+          sellerId: null,
+        }),
+        'catalogue-db-cross-other',
+      );
+      const elsewhere = await create.execute(otherAdmin, {
+        dataType: 'select',
+        names: { [policy.locales(other).default]: `Elsewhere ${slugOf()}` },
+        options: [{ code: 'g500', labels: { [policy.locales(other).default]: '500 g' } }],
+      });
+      if (!elsewhere.ok) throw new Error(`create failed: ${JSON.stringify(elsewhere.error)}`);
+      const otherAttribute = elsewhere.value.attribute.id;
+      expect(
+        await inUnit(() =>
+          new AttributeDefinitionReverter(reverterDeps).revert(admin('catalogue-db-cross'), {
+            requestId: ids.next<'SystemRequest'>(),
+            subjectRef: otherAttribute,
+            before: { revisionNo: 1, version: 1 },
+            after: { revisionNo: 1, version: 1 },
+          }),
+        ),
+      ).toBe('gone');
+      const untouched = await sql.query<{ count: string }>(
+        `SELECT count(*) FROM catalog.attribute_definition_revisions WHERE definition_id = $1`,
+        [otherAttribute],
+      );
+      expect(untouched.rows[0]!.count).toBe('1');
+    });
+  });
+
+  it('lets an import-style edit through with no note while the area is reviewed, opening no request', async () => {
+    const author = admin('catalogue-db-import');
+    const draft = await create.execute(author, {
+      dataType: 'select',
+      names: { [english]: `Import size ${slugOf()}` },
+      options: [{ code: 'g500', labels: { [english]: '500 g' } }],
+    });
+    if (!draft.ok) throw new Error(`create failed: ${draft.error.code}`);
+    const attributeId = draft.value.attribute.id as Id<'AttributeDefinition'>;
+    const importEdit = new AttributeDefinitionEdit(gate, {
+      unitOfWork,
+      attributeStore: reverterDeps.attributeStore,
+      relaxations: reverterDeps.relaxations,
+      policy,
+      matcher,
+      claimLocales,
+      audit: reverterDeps.audit,
+      clock,
+      ids,
+      review: NO_REVIEW,
+    });
+    const requestCount = async () =>
+      (
+        await sql.query<{ count: string }>(
+          `SELECT count(*) FROM system_requests.requests WHERE subject_ref = $1`,
+          [attributeId],
+        )
+      ).rows[0]!.count;
+    const saved = await importEdit.execute(author, {
+      attributeId,
+      version: 1,
+      names: { [english]: `Import size ${slugOf()}` },
+      options: [{ code: 'g500', labels: { [english]: '500 g' } }],
+      searchable: true,
+    });
+    expect(saved.ok && saved.value.request).toBeNull();
+    expect(await requestCount()).toBe('0');
+    // The same edit through the panel use case needs a note: area catalogue is on by default.
+    const panel = await editAttribute.execute(author, {
+      attributeId,
+      version: 2,
+      names: { [english]: `Import size ${slugOf()}` },
+      options: [{ code: 'g500', labels: { [english]: '500 g' } }],
+      searchable: false,
+    });
+    expect(!panel.ok && panel.error).toEqual({
+      code: 'validation.failed',
+      fields: [{ path: 'note', code: 'required' }],
+    });
+    expect(await requestCount()).toBe('0');
   });
 });
