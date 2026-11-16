@@ -1303,6 +1303,43 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     });
   });
 
+  it('writes user text into an Offers export as text, and streams more than one chunk in order', async () => {
+    const tag = randomUUID().slice(0, 6);
+    const sku = (n: number) => `=${tag}-${String(n).padStart(3, '0')}`;
+    const made: Offer[] = [];
+    // 105 Offers: the second chunk (after 100) is read after the answer; a SKU may start with "=".
+    for (let n = 0; n < 105; n += 1) {
+      const product = await draftedProduct('PLATFORM', SELLER, `Chunk ${n}`);
+      made.push(await offerOn(product.state.id, SELLER, sku(n)));
+    }
+    const answer = await exportOffers.execute(sellerContext(), {
+      q: tag,
+      sort: 'sku',
+      direction: 'asc',
+    });
+    if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+    let text = '';
+    for await (const chunk of answer.value.chunks) text += chunk as string;
+    const rows = text
+      .replace(/^\uFEFF/, '')
+      .trim()
+      .split('\r\n');
+    expect(rows).toHaveLength(106);
+    // Formula guard: a cell that starts with "=" is written with a leading quote.
+    expect(rows[1]!.startsWith(`'=${tag}-000,`) || rows[1]!.startsWith(`"'=${tag}-000"`)).toBe(
+      true,
+    );
+    expect(rows.slice(1).map((row) => row.replace(/^"?'?=/, '').slice(0, tag.length + 4))).toEqual(
+      made.map((_, n) => `${tag}-${String(n).padStart(3, '0')}`),
+    );
+    // A customer or visitor is refused before any read.
+    const refused = await exportOffers.execute(
+      { ...sellerContext(), actor: { kind: 'anonymous' } } as never,
+      {},
+    );
+    expect(refused.ok).toBe(false);
+  });
+
   describe('offerTotalsOfProduct', () => {
     const THIRD = '01990000-0000-7000-8000-00000000c5a3' as Id<'Seller'>;
     const actorOf = () => ({ kind: 'seller' as const, accountId: uuid7() as Id<'Account'> });
