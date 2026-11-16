@@ -992,6 +992,101 @@ describe('relay of the orders list', () => {
   });
 });
 
+describe('relay of the shipments list', () => {
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/shipments${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['ordering', 'admin', 'shipments'];
+  const SELLER = '0190a000-0000-7000-8000-0000000000b1';
+  const CURSOR = '1763300000000.0190a000-0000-7000-8000-0000000000aa';
+  const urlOf = (upstream: ReturnType<typeof upstreamOk>) => {
+    const target = upstream.mock.calls[0]?.[0];
+    return typeof target === 'string' ? target : '';
+  };
+  const sent = async (query: string) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(200);
+    return new URL(urlOf(upstream)).searchParams;
+  };
+
+  it('forwards the page mode, the tab, the filters and the dates', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'page=2&pageSize=25&sort=paid&direction=desc&stage=shipped&deliveryMethod=same_day' +
+      '&attention=no-carrier&search=Cedar+Lane&paidFrom=2026-11-16T14%3A00%3A00.000Z' +
+      '&paidTo=2026-11-17T14%3A00%3A00.000Z&shippedFrom=2026-11-16T14%3A00%3A00%2B10%3A00' +
+      `&shippedTo=2026-11-17T14%3A00%3A00.000Z&sellerId=${SELLER}`;
+    await relay(config, get(`?${q}&x=1&fleet=swift`), path, upstream);
+    const url = new URL(urlOf(upstream));
+    expect(url.origin + url.pathname).toBe('http://api.test/ordering/admin/shipments');
+    // The relay writes the keys in its own order; the values are what the panel asked for.
+    expect(Object.fromEntries(url.searchParams)).toEqual(
+      Object.fromEntries(new URLSearchParams(q)),
+    );
+  });
+
+  it('forwards the Previous and next mode: limit, cursor, and an exact q', async () => {
+    const params = await sent(`?limit=25&cursor=${CURSOR}&q=SC+4471+99`);
+    expect(Object.fromEntries(params)).toEqual({ limit: '25', cursor: CURSOR, q: 'SC 4471 99' });
+  });
+
+  it('drops a key the panel does not use, such as fleet, and every unknown key', async () => {
+    const params = await sent('?stage=ready&fleet=swift&minAmount=1&x=1');
+    expect(Object.fromEntries(params)).toEqual({ stage: 'ready' });
+  });
+
+  it('drops a value of the wrong shape and keeps the rest', async () => {
+    const params = await sent(
+      '?stage=cancelled&sort=name&direction=up&deliveryMethod=drone&attention=all' +
+        '&sellerId=nope&page=0x&pageSize=1000&limit=-1&cursor=abc&paidFrom=yesterday' +
+        '&shippedTo=2026-11-16&q=ok',
+    );
+    expect(Object.fromEntries(params)).toEqual({ q: 'ok' });
+  });
+
+  it('accepts each stage, sort, method and problem the API names', async () => {
+    for (const stage of ['to-prepare', 'ready', 'shipped', 'delivered', 'refunded']) {
+      expect((await sent(`?stage=${stage}`)).get('stage')).toBe(stage);
+    }
+    for (const sort of ['paid', 'shipped', 'delivered', 'total']) {
+      expect((await sent(`?sort=${sort}`)).get('sort')).toBe(sort);
+    }
+    for (const method of ['pickup', 'instant', 'same_day', 'scheduled']) {
+      expect((await sent(`?deliveryMethod=${method}`)).get('deliveryMethod')).toBe(method);
+    }
+    for (const attention of ['any', 'no-carrier', 'carrier-unknown', 'cancel-unknown']) {
+      expect((await sent(`?attention=${attention}`)).get('attention')).toBe(attention);
+    }
+  });
+
+  it('keeps free text up to 80 characters for q and search, and drops more', async () => {
+    const eighty = 'x'.repeat(80);
+    expect((await sent(`?q=${eighty}`)).get('q')).toBe(eighty);
+    expect((await sent(`?search=${eighty}`)).get('search')).toBe(eighty);
+    expect((await sent(`?q=${eighty}y`)).has('q')).toBe(false);
+    expect((await sent(`?search=${eighty}y`)).has('search')).toBe(false);
+    expect((await sent('?q=')).has('q')).toBe(false);
+  });
+
+  it('refuses other paths and methods', async () => {
+    const upstream = upstreamOk();
+    const other = ['ordering', 'admin', 'shipments', '0190a000-0000-7000-8000-000000000001'];
+    expect((await relay(config, get(''), other, upstream)).status).toBe(404);
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const request = new Request('http://admin.localhost:3002/api/ordering/admin/shipments', {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      });
+      expect((await relay(config, request, path, upstream)).status).toBe(404);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
 describe('relay of the sellers without an owner', () => {
   const id = '0190a000-0000-7000-8000-000000000001';
   const get = (query: string) =>
