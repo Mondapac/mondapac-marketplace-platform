@@ -4674,6 +4674,7 @@
       "stock-unavailable": "Stock ran out",
       "superseded": "Replaced by a newer checkout",
       "provider-failed": "Payment provider failed",
+      "discount-changed": "A discount no longer applied",
       "unknown": "Other"
     },
     "col": {
@@ -4742,7 +4743,9 @@
       "shipped": "Shipped",
       "delivered": "Delivered",
       "subtotal": "Goods",
+      "discount": "Discount",
       "shipping": "Delivery",
+      "shipping-discount": "Delivery discount",
       "part-total": "Seller total",
       "delivery-method": "Delivery",
       "delivery-window": "Customer window"
@@ -4752,7 +4755,8 @@
       "offer": "Offer {id}",
       "quantity": "{quantity} x {price}",
       "tax-included": "Tax included",
-      "tax": "Tax {rate}: {amount}"
+      "tax": "Tax {rate}: {amount}",
+      "discount": "Discount: {amount}"
     },
     "detail": {
       "page-title": "Order",
@@ -4954,7 +4958,8 @@
       "quantity": "Qty",
       "unit-price": "Unit price",
       "amount": "Amount",
-      "tax-included": "Tax incl."
+      "tax-included": "Tax incl.",
+      "discount": "Discount"
     },
     "range": "{from} to {to} of {total}",
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",

@@ -140,6 +140,24 @@ describe('order page', () => {
     expect(within(page).queryByRole('button', { name: 'Cancel order' })).toBeNull();
   });
 
+  it('shows the discounts on the items and the delivery, and the total the buyer paid', async () => {
+    const discounted: { sellerOrders: Record<string, unknown>[] } = body();
+    discounted.sellerOrders[0] = {
+      ...discounted.sellerOrders[0]!,
+      discount: aud('500'),
+      shippingDiscount: aud('750'),
+    };
+    const order = accountOrderOf(discounted, LABELS, '') as AccountOrder;
+    renderLive([], <OrderDetails reference={ORDER} order={order} />);
+    const page = await screen.findByRole('main');
+    const summary = await within(page).findByRole('region', { name: 'Summary' });
+    expect(within(summary).getByText('Discount')).toBeTruthy();
+    expect(within(summary).getByText('−A$5.00')).toBeTruthy();
+    expect(within(summary).getByText('Delivery discount')).toBeTruthy();
+    expect(within(summary).getByText('−A$7.50')).toBeTruthy();
+    expect(within(summary).getByText('A$20.00')).toBeTruthy();
+  });
+
   it('says nothing about charges on a cancelled order, and no GST without a tax record', async () => {
     renderLive(
       [],

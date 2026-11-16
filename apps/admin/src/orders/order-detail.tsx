@@ -25,6 +25,7 @@ import { FulfilmentBadge, OrderStatusBadge } from './status-badge.tsx';
 import {
   CANCEL_REASONS,
   DELIVERY_METHODS,
+  isPositive,
   LOSS_BEARERS,
   PAYMENT_STATES,
   REFUND_REASONS,
@@ -440,8 +441,20 @@ function SellerPartCard({
       <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-line pt-3">
         <dt className="text-fg-muted">{t('field.subtotal')}</dt>
         <dd className="text-end tabular-nums">{formatMoney(part.subtotal, locale)}</dd>
+        {isPositive(part.discount) ? (
+          <>
+            <dt className="text-fg-muted">{t('field.discount')}</dt>
+            <dd className="text-end tabular-nums">−{formatMoney(part.discount, locale)}</dd>
+          </>
+        ) : null}
         <dt className="text-fg-muted">{t('field.shipping')}</dt>
         <dd className="text-end tabular-nums">{formatMoney(part.shipping, locale)}</dd>
+        {isPositive(part.shippingDiscount) ? (
+          <>
+            <dt className="text-fg-muted">{t('field.shipping-discount')}</dt>
+            <dd className="text-end tabular-nums">−{formatMoney(part.shippingDiscount, locale)}</dd>
+          </>
+        ) : null}
         <dt className="text-fg-muted">{t(`field.${taxLabel(part)}`)}</dt>
         <dd className="text-end tabular-nums">
           {part.tax === null ? t('tax.not-recorded') : formatMoney(part.tax, locale)}
@@ -496,6 +509,9 @@ function LineRow({ line }: { readonly line: OrderLine }) {
                 ),
                 amount: formatMoney(line.tax, locale),
               })}`
+            : ''}
+          {isPositive(line.discount)
+            ? ` · ${t('line.discount', { amount: formatMoney(line.discount, locale) })}`
             : ''}
         </div>
       </div>

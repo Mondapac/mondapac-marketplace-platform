@@ -42,6 +42,14 @@ function moneyOf(value: unknown): Money | null {
   return Number.isSafeInteger(minor) ? { amount: minor, currency } : null;
 }
 
+/** A discount: undefined when absent or zero (an order from before discounts), null when malformed. */
+function optionalMoney(value: unknown): Money | null | undefined {
+  if (value === undefined) return undefined;
+  const money = moneyOf(value);
+  if (money === null) return null;
+  return money.amount === 0 ? undefined : money;
+}
+
 /** The ISO date (UTC) of an instant, or null. */
 const dayOf = (value: unknown): string | null =>
   typeof value === 'string' && INSTANT.test(value) ? value.slice(0, 10) : null;
@@ -97,10 +105,15 @@ export function accountOrderOf(
     const status = partStatus(cancelled, seller.fulfilment);
     const deliveryMethod = METHODS.find((method) => method === seller.deliveryMethod) ?? null;
     const deliveryFee = moneyOf(seller.shipping);
+    const discount = optionalMoney(seller.discount);
+    const deliveryDiscount = optionalMoney(seller.shippingDiscount);
     const lines = seller.lines.map((line) => lineOf(line, labels.unnamedItem));
     if (sellerId === null || status === null || deliveryMethod === null || deliveryFee === null) {
       return null;
     }
+    // A discount the page cannot read, or one larger than what it comes off, is not shown wrong.
+    if (discount === null || deliveryDiscount === null) return null;
+    if (deliveryDiscount !== undefined && deliveryDiscount.amount > deliveryFee.amount) return null;
     if (lines.length === 0 || lines.some((line) => line === null)) return null;
     const deliveredOn = status === 'delivered' ? dayOf(seller.deliveredAt) : null;
     const note = text(notes[sellerId], 200);
@@ -111,6 +124,8 @@ export function accountOrderOf(
       deliveryMethod,
       ...(deliveredOn === null ? {} : { deliveredOn }),
       deliveryFee,
+      ...(discount === undefined ? {} : { discount }),
+      ...(deliveryDiscount === undefined ? {} : { deliveryDiscount }),
       ...(note === null ? {} : { note }),
       lines: lines as OrderLine[],
     });

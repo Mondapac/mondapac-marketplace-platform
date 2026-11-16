@@ -31,6 +31,8 @@ const part = (over: Partial<SellerPart> = {}): SellerPart => ({
   storeName: null,
   subtotal: money('2000'),
   shipping: money('500'),
+  discount: money('0'),
+  shippingDiscount: money('0'),
   shippingGross: money('500'),
   tax: money('182'),
   total: money('2500'),
@@ -52,6 +54,7 @@ const part = (over: Partial<SellerPart> = {}): SellerPart => ({
       quantity: 2,
       unitPrice: money('1000'),
       lineAmount: money('2000'),
+      discount: money('0'),
       taxInclusive: true,
       taxRateBps: 1000,
       tax: money('182'),
@@ -517,6 +520,27 @@ describe('order detail', () => {
     expect(screen.getAllByText('Delivered')).toHaveLength(1);
     expect(screen.getByText('Voided')).toBeTruthy();
   });
+
+  it('names the discount-changed cancel reason', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({
+            status: 'cancelled',
+            cancelReason: 'discount-changed',
+            cancelledAt: '2026-10-13T02:00:00.000Z',
+            confirmedAt: null,
+            paymentState: 'none',
+          })}
+        />,
+      ),
+    );
+    expect(
+      screen.getByText(/This order was cancelled: A discount no longer applied\./),
+    ).toBeTruthy();
+  });
 });
 
 describe('order detail layout', () => {
@@ -714,6 +738,34 @@ describe('order tax', () => {
     expect(screen.getByText('0190a000-0000-7000-8000-0000000000f1')).toBeTruthy();
     expect(screen.getByText('Tax added')).toBeTruthy();
     expect(screen.queryByText(/Tax included/)).toBeNull();
+  });
+
+  it('shows the discounts of a line and a seller part only when there are any', () => {
+    const discounted = part({
+      discount: money('300'),
+      shippingDiscount: money('500'),
+      tax: money('155'),
+      total: money('1700'),
+      lines: part().lines.map((line) => ({ ...line, discount: money('300'), tax: money('155') })),
+    });
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({ total: money('1700'), sellerOrders: [discounted] })}
+        />,
+      ),
+    );
+    expect(screen.getByText(/Discount: \$3\.00/)).toBeTruthy();
+    expect(screen.getByText('Discount')).toBeTruthy();
+    expect(screen.getByText('−$3.00')).toBeTruthy();
+    expect(screen.getByText('Delivery discount')).toBeTruthy();
+    expect(screen.getByText('−$5.00')).toBeTruthy();
+    cleanup();
+    render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
+    expect(screen.queryByText(/Discount/)).toBeNull();
+    expect(screen.queryByText('Delivery discount')).toBeNull();
   });
 
   it('says the tax was not recorded on an older order, never zero', () => {

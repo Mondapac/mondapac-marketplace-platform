@@ -35,6 +35,8 @@ const order = (n: number, fulfilment: SellerOrderView['fulfilment']): SellerOrde
   paidAt: '2026-10-14T01:00:00.000Z',
   subtotal: money('4000'),
   shipping: money('590'),
+  discount: money('0'),
+  shippingDiscount: money('0'),
   total: money('4590'),
   fulfilment,
   carrier: null,

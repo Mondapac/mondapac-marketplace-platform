@@ -2519,15 +2519,18 @@
         "quantity": "Qty",
         "unit": "Unit price",
         "amount": "Amount"
-      }
+      },
+      "discount": "Discount: {amount}"
     },
     "totals": "Totals",
     "fulfilment": "Fulfilment",
     "shipped-on": "Shipped",
     "delivered-on": "Delivered",
     "subtotal": "Items",
+    "discount": "Discount",
     "delivery": "Delivery",
     "delivery-free": "Free",
+    "delivery-discount": "Delivery discount",
     "total": "Total",
     "status": {
       "to-ship": "Awaiting you",

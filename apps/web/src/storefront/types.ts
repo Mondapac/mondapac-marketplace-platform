@@ -762,8 +762,12 @@ export interface OrderPart {
   readonly deliveryMethod: DeliveryMethod;
   /** The day the part was delivered (ISO date), once it is. */
   readonly deliveredOn?: string;
-  /** What the buyer paid for delivery, GST included; zero for a pickup. */
+  /** The delivery fee, GST included, before any discount; zero for a pickup. */
   readonly deliveryFee: Money;
+  /** What promotions took off this seller's items (absent: none). */
+  readonly discount?: Money;
+  /** What promotions took off the delivery fee (absent: none). */
+  readonly deliveryDiscount?: Money;
   /** The buyer's note to this seller at checkout. */
   readonly note?: string;
   /** Set for a pickup part that is ready and not collected yet. */
