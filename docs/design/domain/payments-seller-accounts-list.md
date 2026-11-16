@@ -11,10 +11,11 @@ or requirement content is ever answered or written to the file.
 - **Tabs:** `status` (not-started, pending, enabled, restricted, rejected). `counts` gives every
   status plus `all` for the same search and filters, in one grouped statement; null in
   Previous/Next.
-- **Search `q`:** a seller id finds that seller exactly; any other text (2 to 100 characters)
+- **Search `q`:** a seller id finds that seller exactly; any other text (2 to 80 code points, the sellers facade's bounds)
   searches the approved public store names through the sellers facade (`searchStoreNames`). A
   failed lookup refuses the request (`payments.search-unavailable`, 503) instead of listing every
-  account. The term is never logged.
+  account. The term is never logged. A search that matched more stores than sellers answers sets
+  `searchCapped`: the rows, total and counts then cover only the stores answered.
 - **Filters:** `ready` (yes, no: enabled and outside the waiting period, the domain's
   `isPayoutReady`), `requirements` (past-due, due, none), `waiting` (cooling-off, paused), `from`/
   `to` on the creation. Readiness and waiting are judged at the clock's now, never the caller's.
@@ -23,6 +24,8 @@ or requirement content is ever answered or written to the file.
 - **Paging:** the shared list query (`paging` pages or prev-next, `page`, `pageSize` 1 to 100,
   default 25, up to row 10,000). The older card's `cursor` keeps working: newest created first,
   25 rows; `nextCursor` is set whenever the rows are newest created first and more follow.
+- **Counts and total** are separate statements in one read-only unit with no transaction (ADR-0025):
+  while accounts change they can be a row apart. Advisory, like every list count.
 - **Rows:** as before plus the store name (`sellerName`, null when sellers cannot say) and
   `actions` (`open`).
 

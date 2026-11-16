@@ -249,6 +249,24 @@ describe.each([['AU'], ['ZZ']] as const)('the admin Seller accounts list in mark
       expect(must(await list({})).items[0]!.sellerName).toBeNull();
     });
 
+    it('says when the store search was capped, and checks its length in code points', async () => {
+      add({ name: 'Halal Corner' });
+      expect(must(await list({ q: 'corner' })).searchCapped).toBe(false);
+      names.capped = true;
+      const capped = must(await list({ q: 'corner' }));
+      expect(capped.searchCapped).toBe(true);
+      expect(capped.items).toHaveLength(1);
+      // The sellers facade's bounds: 2 to 80 code points, so one emoji is too short.
+      for (const q of ['\u{1F600}', 'a'.repeat(81), '\u{1F600}'.repeat(81)]) {
+        expect(await list({ q })).toMatchObject({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'q', code: 'length' }] },
+        });
+      }
+      expect((await list({ q: '\u{1F600}'.repeat(80) })).ok).toBe(true);
+      expect(reader.reads).toBeGreaterThan(0);
+    });
+
     it('is for admins only', async () => {
       add({});
       expect(await list({}, actorOf(market, 'seller'))).toEqual({
@@ -334,6 +352,23 @@ describe.each([['AU'], ['ZZ']] as const)('the admin Seller accounts list in mark
         ok: false,
         error: { code: 'access.denied' },
       });
+    });
+
+    it('writes a store name that looks like a formula as inert text', async () => {
+      add({ name: '=1+2', minutes: 2 });
+      add({ name: '@cmd', minutes: 1 });
+      const lines = await linesOf(must(await exportOf({})));
+      expect(lines.slice(1).map((line) => line.split(',')[0])).toEqual(["'=1+2", "'@cmd"]);
+      const file = must(await exportOf({ format: 'xlsx' }));
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of file.chunks) {
+        chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+      }
+      const book = new ExcelJS.Workbook();
+      await book.xlsx.load(Buffer.concat(chunks) as unknown as ArrayBuffer);
+      const cell = book.worksheets[0]!.getRow(2).getCell(1);
+      expect(cell.value).toBe('=1+2');
+      expect(cell.formula).toBeUndefined();
     });
 
     it('writes an XLSX file where every cell is a string', async () => {

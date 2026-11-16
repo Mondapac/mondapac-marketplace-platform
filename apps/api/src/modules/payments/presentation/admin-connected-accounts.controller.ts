@@ -95,7 +95,7 @@ export class AdminConnectedAccountsController {
   @ApiQuery({
     name: 'q',
     required: false,
-    description: 'A seller id (exact) or part of a store name (2 to 100 characters).',
+    description: 'A seller id (exact) or part of a store name (2 to 80 characters).',
   })
   @ApiQuery({ name: 'from', required: false, description: 'Created at or after (ISO instant).' })
   @ApiQuery({ name: 'to', required: false, description: 'Created before (ISO instant).' })

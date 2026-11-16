@@ -61,7 +61,9 @@ export const ACCOUNT_LIST_MAX_PAGE_SIZE = 100;
 /** Chosen rows one export may name. */
 export const ACCOUNT_EXPORT_MAX_IDS = 200;
 const EXPORT_CHUNK = 500;
-const SEARCH_MAX = 100;
+/** The store search's bounds in code points: the sellers facade's own (2 to 80). */
+const SEARCH_MIN = 2;
+const SEARCH_MAX = 80;
 
 export interface AccountListRow extends ConnectedAccountRow {
   readonly actions: readonly AccountRowAction[];
@@ -81,6 +83,11 @@ export interface AccountListPage {
    * Pass it back as `cursor`.
    */
   readonly nextCursor: string | null;
+  /**
+   * The store search matched more stores than sellers answers: the rows, the total and the counts
+   * cover only the stores it answered. Narrow the search.
+   */
+  readonly searchCapped: boolean;
 }
 
 type Fields = { path: string; code: string }[];
@@ -183,9 +190,11 @@ function selectorOf(fields: Fields, input: Input, now: Temporal.Instant): Select
       // A seller id finds that seller exactly; anything else searches the store names.
       const parsed = parseId<'Seller'>(term.toLowerCase());
       if (parsed.ok) sellerId = parsed.value;
-      else if (term.length < 2 || term.length > SEARCH_MAX)
-        fields.push({ path: 'q', code: 'length' });
-      else search = term;
+      else {
+        const length = [...term].length;
+        if (length < SEARCH_MIN || length > SEARCH_MAX) fields.push({ path: 'q', code: 'length' });
+        else search = term;
+      }
     }
   }
   const from = instant(fields, 'from', input.from);
@@ -385,6 +394,7 @@ export async function listAccountPage(
       newestFirst && hasNext && last !== undefined
         ? encodeCursor(last.createdAt, last.sellerId)
         : null,
+    searchCapped: searched.value.capped,
   });
 }
 

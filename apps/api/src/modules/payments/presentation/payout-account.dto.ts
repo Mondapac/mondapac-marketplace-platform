@@ -149,6 +149,12 @@ export class ConnectedAccountPageBody {
       'The older card\'s "Show more": set when rows are newest created first and more follow.',
   })
   nextCursor!: string | null;
+  @ApiProperty({
+    description:
+      'The store search matched more stores than it can carry: the rows, total and counts cover ' +
+      'only those it answered. Narrow the search.',
+  })
+  searchCapped!: boolean;
 }
 
 const text = (instant: Temporal.Instant): string => instant.toString();
@@ -205,6 +211,7 @@ export const connectedAccountPageBody = (page: AccountListPage): ConnectedAccoun
   paging: page.paging,
   hasNext: page.hasNext,
   nextCursor: page.nextCursor,
+  searchCapped: page.searchCapped,
 });
 
 export class PayoutAccountCodeRequest {

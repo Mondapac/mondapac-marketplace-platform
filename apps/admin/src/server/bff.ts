@@ -703,7 +703,7 @@ const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
   waiting: /^(cooling-off|paused)$/,
   // A seller id or part of a store name (payments refuses control characters and the length).
   // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
-  q: /^[^\u0000-\u001f\u007f]{1,100}$/,
+  q: /^[^\u0000-\u001f\u007f]{1,80}$/u,
   from: ISO_INSTANT,
   to: ISO_INSTANT,
   sort: /^(created|last-read|requirements)$/,
