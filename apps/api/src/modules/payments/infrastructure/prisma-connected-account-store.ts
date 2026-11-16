@@ -2,7 +2,6 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
-  AccountPage,
   AppliedSchedule,
   ConnectedAccountRecord,
   ConnectedAccountStore,
@@ -17,7 +16,7 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 
-interface Row {
+export interface Row {
   sellerId: string;
   accountRef: string | null;
   status: string;
@@ -39,7 +38,7 @@ interface Row {
 const optionalInstant = (date: Date | null): Temporal.Instant | null =>
   date === null ? null : toInstant(date);
 
-const record = (row: Row): ConnectedAccountRecord => ({
+export const record = (row: Row): ConnectedAccountRecord => ({
   sellerId: row.sellerId,
   accountRef: row.accountRef,
   status: row.status as AccountStatus,
@@ -331,30 +330,5 @@ export class PrismaConnectedAccountStore implements ConnectedAccountStore {
       data: { payoutScheduleRevision: { increment: 1 }, updatedAt: toDate(at) },
     });
     return updated.count === 1;
-  }
-
-  async list(
-    market: MarketContext,
-    status: AccountStatus | null,
-    page: AccountPage,
-  ): Promise<readonly ConnectedAccountRecord[]> {
-    const after = page.after;
-    const rows = await this.prisma.tx(market).paymentsConnectedAccount.findMany({
-      where: {
-        marketId: market.marketId,
-        ...(status === null ? {} : { status }),
-        ...(after === null
-          ? {}
-          : {
-              OR: [
-                { createdAt: { lt: toDate(after.createdAt) } },
-                { createdAt: toDate(after.createdAt), sellerId: { lt: after.sellerId } },
-              ],
-            }),
-      },
-      orderBy: [{ createdAt: 'desc' }, { sellerId: 'desc' }],
-      take: page.limit + 1,
-    });
-    return rows.map(record);
   }
 }
