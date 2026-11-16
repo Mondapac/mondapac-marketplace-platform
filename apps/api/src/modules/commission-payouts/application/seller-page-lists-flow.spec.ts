@@ -502,7 +502,12 @@ describe.each([['AU'], ['ZZ']] as const)('the seller page lists in market %s', (
         reason: 'seller-suspended',
         placedBy: null,
       });
-      const refund = hold({ minutes: 3, origin: 'system', reason: 'refund-pending', placedBy: null });
+      const refund = hold({
+        minutes: 3,
+        origin: 'system',
+        reason: 'refund-pending',
+        placedBy: null,
+      });
       const dispute = hold({ minutes: 4, origin: 'system', reason: 'dispute', placedBy: null });
       const page = must(await list({ sort: 'placed', direction: 'asc' }));
       expect(ids(page)).toEqual([byAdmin.id, suspended.id, refund.id, dispute.id]);
