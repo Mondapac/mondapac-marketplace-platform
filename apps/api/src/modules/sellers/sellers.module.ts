@@ -106,7 +106,11 @@ import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SweepOrphanStoreImageFiles } from './application/use-cases/sweep-orphan-store-image-files.use-case';
 import { SellerList } from './application/use-cases/list.use-case';
 import { ServiceAreaNamesEdit } from './application/use-cases/service-area-names-edit.use-case';
-import { ServiceAreaNamesList } from './application/use-cases/service-area-names-list.use-case';
+import {
+  ServiceAreaNamesList,
+  type ServiceAreaNamesListDependencies,
+} from './application/use-cases/service-area-names-list.use-case';
+import { ServiceAreaEditProbe } from './application/use-cases/service-area-edit-probe.use-case';
 import { SellerSummariesSystem } from './application/use-cases/seller-summaries-system.use-case';
 import { SearchStoreNames } from './application/use-cases/search-store-names.use-case';
 import { SellerSummaries } from './application/use-cases/seller-summaries.use-case';
@@ -727,10 +731,21 @@ const REVIEW_DECISION_PORTS = {
     }),
     // Editable service area names (ADR-0041), over HTTP through ServiceAreaNamesController: the
     // page under `sellers.seller.view`, the edit under `sellers.service-area.edit`.
-    useCaseProvider(ServiceAreaNamesList, {
-      onboardingAreas: true,
-      areaNames: true,
-    }),
+    {
+      provide: ServiceAreaEditProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new ServiceAreaEditProbe(gate),
+    },
+    {
+      provide: ServiceAreaNamesList,
+      inject: [USE_CASE_GATE, PORT.onboardingAreas, PORT.areaNames, ServiceAreaEditProbe],
+      useFactory: (
+        gate: UseCaseGate,
+        onboardingAreas: ServiceAreaNamesListDependencies['onboardingAreas'],
+        areaNames: ServiceAreaNamesListDependencies['areaNames'],
+        editProbe: ServiceAreaEditProbe,
+      ) => new ServiceAreaNamesList(gate, { onboardingAreas, areaNames, editProbe }),
+    },
     useCaseProvider(ServiceAreaNamesEdit, {
       unitOfWork: true,
       areaNameStore: true,

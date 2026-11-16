@@ -31,7 +31,16 @@ import {
   type StripeTransferGateway,
 } from '../application/ports/transfer-gateway';
 import { TRANSFER_STORE, type TransferStore } from '../application/ports/transfer-store';
+import {
+  CONNECTED_ACCOUNT_LIST_READER,
+  type ConnectedAccountListReader,
+} from '../application/ports/connected-account-list.reader';
+import { SELLER_NAMES, type SellerNames } from '../application/ports/seller-names';
+import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
+import { SHEET_WRITER, ExceljsSheetWriter, type SheetWriter } from '../../../platform/list-export';
 import { ConfigPaymentsPolicy } from './config-payments-policy';
+import { PrismaConnectedAccountListReader } from './prisma-connected-account-list.reader';
+import { SellersSellerNames } from './sellers-seller-names';
 import { PrismaConnectedAccountStore } from './prisma-connected-account-store';
 import { HmacExternalAccountKeyring } from './hmac-external-account-keyring';
 import { PrismaDisputeStore } from './prisma-dispute-store';
@@ -82,6 +91,21 @@ export const paymentsProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): ConnectedAccountStore =>
       new PrismaConnectedAccountStore(prisma),
+  },
+  {
+    provide: CONNECTED_ACCOUNT_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ConnectedAccountListReader =>
+      new PrismaConnectedAccountListReader(prisma),
+  },
+  {
+    provide: SELLER_NAMES,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerNames => new SellersSellerNames(sellers),
+  },
+  {
+    provide: SHEET_WRITER,
+    useFactory: (): SheetWriter => new ExceljsSheetWriter(),
   },
   {
     provide: CONNECT_GATEWAY,

@@ -4,6 +4,8 @@ import { APP_CONFIG } from '../../../platform/config/config.module';
 import { MAIL_TRANSPORT, type MailTransport } from '../../../platform/mail/mail-transport';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
+import { IDENTITY_FACADE, type IdentityFacade } from '../../identity';
+import { ADMIN_NAMES, type AdminNames } from '../application/ports/admin-names';
 import { ALERT_MESSENGER, type AlertMessenger } from '../application/ports/alert-messenger';
 import { ON_CALL_ROSTER, type OnCallRosterSource } from '../application/ports/on-call-roster';
 import {
@@ -11,6 +13,7 @@ import {
   type SecurityAlertRepository,
 } from '../application/ports/security-alert.repository';
 import { MailAlertMessenger } from './alert-messenger';
+import { FacadeAdminNames } from './facade-admin-names';
 import { FileOnCallRoster } from './file-on-call-roster';
 import { PrismaSecurityAlertRepository } from './prisma-security-alert.repository';
 
@@ -27,6 +30,11 @@ export const securityProviders: readonly FactoryProvider[] = [
     inject: [APP_CONFIG],
     useFactory: (config: AppConfig): OnCallRosterSource =>
       new FileOnCallRoster(config.securityOnCallFile),
+  },
+  {
+    provide: ADMIN_NAMES,
+    inject: [IDENTITY_FACADE],
+    useFactory: (identity: IdentityFacade): AdminNames => new FacadeAdminNames(identity),
   },
   {
     provide: ALERT_MESSENGER,

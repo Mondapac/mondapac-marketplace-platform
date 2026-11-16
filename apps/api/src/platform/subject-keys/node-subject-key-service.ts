@@ -75,6 +75,10 @@ export class NodeSubjectKeyService implements SubjectKeyService {
     await this.store.destroy(market, subjectOf(subject) as Id, this.clock.now());
   }
 
+  async hasHadKey(market: MarketContext, subject: Id): Promise<boolean> {
+    return (await this.store.find(market, subjectOf(subject) as Id)) !== null;
+  }
+
   /** Reads and unwraps the subject's key for one operation, then zeroes it. */
   private async withDataKey<T>(
     market: MarketContext,
