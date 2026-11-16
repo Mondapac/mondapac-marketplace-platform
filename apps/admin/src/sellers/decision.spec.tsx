@@ -129,6 +129,24 @@ describe('DecisionPanel', () => {
     await expectToast('Manual check recorded.');
   });
 
+  it('shows the spinner only on Record check, not on an open approve confirmation', async () => {
+    let resolve: (value: never) => void = () => undefined;
+    call.mockImplementationOnce(() => new Promise((r) => (resolve = r)));
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    fireEvent.change(screen.getByLabelText('What the register shows'), {
+      target: { value: 'active' },
+    });
+    const record = screen.getByRole('button', { name: 'Record check' });
+    fireEvent.click(record);
+    await waitFor(() => expect(record.getAttribute('aria-busy')).toBe('true'));
+    const yes = screen.getByRole<HTMLButtonElement>('button', { name: 'Yes, approve' });
+    expect(yes.getAttribute('aria-busy')).toBeNull();
+    expect(yes.disabled).toBe(true);
+    resolve({ ok: true, status: 200, body: { observedOutcome: 'active' } } as never);
+    await waitFor(() => expect(record.getAttribute('aria-busy')).toBeNull());
+  });
+
   it('shows the recorded manual check', () => {
     mount(
       {},

@@ -352,6 +352,27 @@ describe('Import categories page', () => {
   });
 });
 
+describe('Export links of the import page', () => {
+  it('shows the spinner only on the format that is being exported', async () => {
+    let finish: (value: Response) => void = () => undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((resolve) => (finish = resolve))),
+    );
+    page();
+    const csv = screen.getByRole<HTMLButtonElement>('button', { name: 'Export the tree as CSV' });
+    const xlsx = screen.getByRole<HTMLButtonElement>('button', { name: 'Export the tree as XLSX' });
+    fireEvent.click(csv);
+    await waitFor(() => expect(csv.getAttribute('aria-busy')).toBe('true'));
+    expect(xlsx.getAttribute('aria-busy')).toBeNull();
+    expect(xlsx.disabled).toBe(true);
+    finish({ ok: false, status: 500 } as Response);
+    await waitFor(() => expect(csv.getAttribute('aria-busy')).toBeNull());
+    expect(xlsx.disabled).toBe(false);
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('exportTree', () => {
   const response = (init: { ok: boolean; status?: number; text?: string }) =>
     ({
