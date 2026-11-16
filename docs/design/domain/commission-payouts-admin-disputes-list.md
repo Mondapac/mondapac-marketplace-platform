@@ -21,7 +21,10 @@ written here (only the case page carries it, for the Dashboard link).
   deadline; a case without one never matches), `minAmount`/`maxAmount` (minor units).
 - **Sellers:** a case names its sellers from this module's ledger rows of its order. The seller
   filter and the store search become the Market's disputed orders that have a seller order of
-  those sellers (bounded by the dispute cases, not by the Market's orders).
+  those sellers (bounded by the dispute cases, not by the Market's orders). The reader walks the
+  disputed orders 1,000 ids per query, so no query carries more bind parameters than that, and a
+  match of more than 5,000 disputed orders is refused as `too-broad` on `search` (or on
+  `sellerId` without a search), on the list and on the export.
 - **Sort:** opened (default, newest first), amount, evidence-due (a case without a deadline last
   either way), updated; the dispute id breaks ties.
 - **Paging:** page numbers with a total (default 25, `pageSize` 1 to 100, up to row 10,000) or

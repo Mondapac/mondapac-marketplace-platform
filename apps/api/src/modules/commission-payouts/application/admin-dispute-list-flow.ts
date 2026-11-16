@@ -98,6 +98,11 @@ export const DISPUTE_SEARCH_MIN = 2;
 export const DISPUTE_SEARCH_MAX = 80;
 /** Chosen rows one export may name: the same cap as the selection of a page. */
 export const DISPUTE_EXPORT_MAX_IDS = 200;
+/**
+ * The most disputed orders a seller filter or store search may match: the ids go into the
+ * query as bind parameters, so a wider match is refused as too broad instead of failing.
+ */
+export const DISPUTE_SELLER_ORDERS_MAX = 5000;
 /** Cases read per chunk while an export streams. */
 const EXPORT_CHUNK = 500;
 
@@ -375,18 +380,30 @@ async function resolveSellers(
   }
 }
 
-/** The filter with the seller part as the Market's disputed orders of those sellers. */
+/**
+ * The filter with the seller part as the Market's disputed orders of those sellers. More than
+ * DISPUTE_SELLER_ORDERS_MAX of them is refused as too broad (on `search` when a search was given).
+ */
 async function withOrders(
   deps: AdminDisputeListDependencies,
   context: CallContext,
   filter: DisputeListFilter,
   sellerIds: readonly Id<'Seller'>[] | null,
-): Promise<DisputeListFilter> {
-  if (sellerIds === null) return filter;
-  return {
-    ...filter,
-    orderIds: await deps.list.disputedOrdersOfSellers(context.market, sellerIds),
-  };
+  searched: boolean,
+): Promise<Result<DisputeListFilter, DisputeListFailure>> {
+  if (sellerIds === null) return ok(filter);
+  const orderIds = await deps.list.disputedOrdersOfSellers(
+    context.market,
+    sellerIds,
+    DISPUTE_SELLER_ORDERS_MAX + 1,
+  );
+  if (orderIds.length > DISPUTE_SELLER_ORDERS_MAX) {
+    return err({
+      code: 'validation.failed',
+      fields: [{ path: searched ? 'search' : 'sellerId', code: 'too-broad' }],
+    });
+  }
+  return ok({ ...filter, orderIds });
 }
 
 async function storeNamesOf(
@@ -473,7 +490,15 @@ export async function listAdminDisputes(
   >(
     context.market,
     async () => {
-      const filter = await withOrders(deps, context, parsed.value.filter, sellers.value.sellerIds);
+      const withSellers = await withOrders(
+        deps,
+        context,
+        parsed.value.filter,
+        sellers.value.sellerIds,
+        parsed.value.search !== null,
+      );
+      if (!withSellers.ok) return withSellers;
+      const filter = withSellers.value;
       const counts = await deps.list.countByBucket(context.market);
       let cases: readonly DisputeCase[];
       let total: number | null = null;
@@ -675,7 +700,15 @@ export async function exportAdminDisputes(
     >(
       market,
       async () => {
-        const filter = await withOrders(deps, context, selector.filter, sellers.value.sellerIds);
+        const withSellers = await withOrders(
+          deps,
+          context,
+          selector.filter,
+          sellers.value.sellerIds,
+          selector.search !== null,
+        );
+        if (!withSellers.ok) return withSellers;
+        const filter = withSellers.value;
         const found = await deps.list.idsPage(market, filter, sort, LIST_EXPORT_MAX_ROWS + 1);
         if (found.length <= LIST_EXPORT_MAX_ROWS) return ok({ found, total: found.length });
         return ok({ found, total: await deps.list.count(market, filter) });

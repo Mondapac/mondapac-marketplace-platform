@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
@@ -23,6 +24,7 @@ import type { DisputeCase } from '../domain/dispute';
 import type { LedgerEntry } from '../domain/ledger';
 import {
   DISPUTE_ROW_KEYS,
+  DISPUTE_SELLER_ORDERS_MAX,
   exportAdminDisputes,
   listAdminDisputes,
   type AdminDisputeListDependencies,
@@ -352,10 +354,22 @@ describe.each([['AU'], ['ZZ']] as const)('the admin Disputes list in market %s',
     it('fails closed when the store search fails, says when it was capped, degrades names', async () => {
       await add({});
       search.failing = true;
-      expect(await list({ search: 'halal' })).toEqual({
-        ok: false,
-        error: { code: 'commission-payouts.search-unavailable' },
-      });
+      const logged = (['log', 'warn', 'error', 'debug', 'verbose'] as const).map((level) =>
+        jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined),
+      );
+      try {
+        expect(await list({ search: 'secret-term-7q' })).toEqual({
+          ok: false,
+          error: { code: 'commission-payouts.search-unavailable' },
+        });
+        expect(await list({ q: 'secret-term-7q' })).toMatchObject({ ok: false });
+        // The failure is logged, and neither the search term nor `q` is in what was logged.
+        const calls = logged.flatMap((spy) => spy.mock.calls);
+        expect(calls.length).toBeGreaterThan(0);
+        expect(JSON.stringify(calls)).not.toContain('secret-term-7q');
+      } finally {
+        for (const spy of logged) spy.mockRestore();
+      }
       expect(reader.reads).toBe(0);
       search.failing = false;
       search.capped = true;
@@ -364,6 +378,32 @@ describe.each([['AU'], ['ZZ']] as const)('the admin Disputes list in market %s',
       expect(must(await list({})).disputes[0]!.sellers).toEqual([
         { sellerId: SELLER_A, storeName: null },
       ]);
+    });
+
+    it('refuses a seller filter or store search that matches too many disputed orders', async () => {
+      await add({});
+      const asked: number[] = [];
+      reader.disputedOrdersOfSellers = (_m, _sellers, limit) => {
+        asked.push(limit);
+        return Promise.resolve(Array.from({ length: limit }, (_, i) => id<'Order'>(0x100000 + i)));
+      };
+      expect(await list({ search: 'halal' })).toMatchObject({
+        ok: false,
+        error: { fields: [{ path: 'search', code: 'too-broad' }] },
+      });
+      expect(await list({ sellerId: SELLER_A })).toMatchObject({
+        ok: false,
+        error: { fields: [{ path: 'sellerId', code: 'too-broad' }] },
+      });
+      expect(await exportAdminDisputes(deps, admin, { sellerId: SELLER_A })).toMatchObject({
+        ok: false,
+        error: { fields: [{ path: 'sellerId', code: 'too-broad' }] },
+      });
+      expect(asked).toEqual([1, 1, 1].map(() => DISPUTE_SELLER_ORDERS_MAX + 1));
+      // At the cap itself the list is read.
+      reader.disputedOrdersOfSellers = (_m, _sellers, limit) =>
+        Promise.resolve(Array.from({ length: limit - 1 }, (_, i) => id<'Order'>(0x100000 + i)));
+      expect(must(await list({ sellerId: SELLER_A })).disputes).toEqual([]);
     });
 
     it('is for admins of the Market only', async () => {

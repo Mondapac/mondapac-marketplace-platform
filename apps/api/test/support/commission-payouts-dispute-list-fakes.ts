@@ -134,12 +134,16 @@ export class MemoryAdminDisputeList implements AdminDisputeListReader {
     return Promise.resolve(this.#rows(market).filter((c) => ids.includes(c.disputeId)));
   }
 
-  disputedOrdersOfSellers(market: MarketContext, sellerIds: readonly Id<'Seller'>[]) {
+  disputedOrdersOfSellers(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+    limit: number,
+  ) {
     const disputed = new Set<string>(this.#rows(market).map((c) => c.orderId));
     const found = new Set<Id<'Order'>>();
     for (const row of this.ledger.all(market)) {
       if (sellerIds.includes(row.sellerId) && disputed.has(row.orderId)) found.add(row.orderId);
     }
-    return Promise.resolve([...found].sort());
+    return Promise.resolve([...found].sort().slice(0, limit));
   }
 }

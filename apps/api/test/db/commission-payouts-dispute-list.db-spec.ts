@@ -199,9 +199,26 @@ describe.each(TEST_MARKETS)('the admin Disputes list in market %s (database)', (
     const two = await caseOf({ sellerId: seller, openedAt: T0.add({ minutes: 1 }) });
     await caseOf({ sellerId: randomUUID() as Id<'Seller'> });
     await caseOf({ sellerId: seller, target: other });
-    const orders = await value(market, () => reader.disputedOrdersOfSellers(market, [seller]));
+    const orders = await value(market, () => reader.disputedOrdersOfSellers(market, [seller], 100));
     expect([...orders].sort()).toEqual([one.orderId, two.orderId].sort());
-    expect(await value(market, () => reader.disputedOrdersOfSellers(market, []))).toEqual([]);
+    expect(await value(market, () => reader.disputedOrdersOfSellers(market, [], 100))).toEqual([]);
+  });
+
+  it('walks the disputed orders in chunks and stops at the limit', async () => {
+    const seller = randomUUID() as Id<'Seller'>;
+    const mine: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      mine.push((await caseOf({ sellerId: seller, openedAt: T0.add({ minutes: i }) })).orderId);
+      await caseOf({ sellerId: randomUUID() as Id<'Seller'>, openedAt: T0.add({ minutes: i }) });
+    }
+    mine.sort();
+    // A chunk of 2 ids per query: every one of the seller's orders is found across chunks.
+    const small = new PrismaAdminDisputeListReader(db.service, 2);
+    const all = await value(market, () => small.disputedOrdersOfSellers(market, [seller], 100));
+    expect([...all]).toEqual(mine);
+    // The limit stops the walk with the first orders in order id order.
+    const three = await value(market, () => small.disputedOrdersOfSellers(market, [seller], 3));
+    expect([...three]).toEqual(mine.slice(0, 3));
   });
 
   it('walks the Previous/Next cursor newest opened first across a tie', async () => {

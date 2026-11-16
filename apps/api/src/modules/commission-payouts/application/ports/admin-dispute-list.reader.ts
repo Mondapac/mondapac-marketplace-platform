@@ -48,10 +48,12 @@ export interface AdminDisputeListReader {
 
   /**
    * The Market's disputed orders that have a seller order of one of these sellers (the seller
-   * filter and the store search). Bounded by the Market's dispute cases, not by its orders.
+   * filter and the store search), at most `limit` of them in order id order. The caller asks for
+   * one more than it accepts, so a longer answer tells it the match is too broad.
    */
   disputedOrdersOfSellers(
     market: MarketContext,
     sellerIds: readonly Id<'Seller'>[],
+    limit: number,
   ): Promise<readonly Id<'Order'>[]>;
 }

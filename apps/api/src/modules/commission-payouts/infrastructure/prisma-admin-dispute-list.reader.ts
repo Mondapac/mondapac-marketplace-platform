@@ -10,6 +10,9 @@ import type {
 import { DISPUTE_BUCKETS, type DisputeBucket } from '../domain/dispute';
 import { toCase } from './prisma-dispute.repository';
 
+/** Disputed order ids read (and bound) per query when resolving the seller filter. */
+export const DISPUTED_ORDERS_CHUNK = 1000;
+
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 
 /** The money state as stored flags, the same order of checks as `moneyStateOf`. */
@@ -81,7 +84,11 @@ function orderBy(sort: DisputeSort) {
  * the seller filter), scoped by `marketId` in every `where`. Read-only.
  */
 export class PrismaAdminDisputeListReader implements AdminDisputeListReader {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    /** Disputed order ids per query; a test passes a small one to walk several chunks. */
+    private readonly chunkSize: number = DISPUTED_ORDERS_CHUNK,
+  ) {}
 
   async page(
     market: MarketContext,
@@ -164,23 +171,49 @@ export class PrismaAdminDisputeListReader implements AdminDisputeListReader {
     return rows.map(toCase);
   }
 
-  async disputedOrdersOfSellers(market: MarketContext, sellerIds: readonly Id<'Seller'>[]) {
-    if (sellerIds.length === 0) return [];
-    const disputed = await this.prisma.tx(market).commissionPayoutsDisputeCase.findMany({
-      where: { marketId: market.marketId },
-      select: { orderId: true },
-      distinct: ['orderId'],
-    });
-    if (disputed.length === 0) return [];
-    const groups = await this.prisma.tx(market).commissionPayoutsLedgerEntry.groupBy({
-      by: ['orderId'],
-      where: {
-        marketId: market.marketId,
-        sellerId: { in: [...sellerIds] },
-        orderId: { in: disputed.map((row) => row.orderId) },
-      },
-      orderBy: [{ orderId: 'asc' }],
-    });
-    return groups.map((group) => group.orderId as Id<'Order'>);
+  /**
+   * Walks the Market's disputed orders in chunks (order id order) and
+   * keeps those with a ledger row of one of the sellers, so no query carries more ids than one
+   * chunk, and stops once `limit` orders are found.
+   */
+  async disputedOrdersOfSellers(
+    market: MarketContext,
+    sellerIds: readonly Id<'Seller'>[],
+    limit: number,
+  ) {
+    if (sellerIds.length === 0 || limit <= 0) return [];
+    const found: Id<'Order'>[] = [];
+    let after: string | null = null;
+    for (;;) {
+      const chunk: { orderId: string }[] = await this.prisma
+        .tx(market)
+        .commissionPayoutsDisputeCase.findMany({
+          where: {
+            marketId: market.marketId,
+            ...(after === null ? {} : { orderId: { gt: after } }),
+          },
+          select: { orderId: true },
+          distinct: ['orderId'],
+          orderBy: [{ orderId: 'asc' }],
+          take: this.chunkSize,
+        });
+      if (chunk.length === 0) break;
+      const groups = await this.prisma.tx(market).commissionPayoutsLedgerEntry.groupBy({
+        by: ['orderId'],
+        where: {
+          marketId: market.marketId,
+          sellerId: { in: [...sellerIds] },
+          orderId: { in: chunk.map((row) => row.orderId) },
+        },
+        orderBy: [{ orderId: 'asc' }],
+      });
+      for (const group of groups) {
+        found.push(group.orderId as Id<'Order'>);
+        if (found.length >= limit) return found;
+      }
+      if (chunk.length < this.chunkSize) break;
+      after = chunk[chunk.length - 1]!.orderId;
+    }
+    return found;
   }
 }
