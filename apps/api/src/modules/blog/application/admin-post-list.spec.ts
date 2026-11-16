@@ -106,7 +106,11 @@ describe.each([['AU'], ['ZZ']] as const)('the admin Blog posts list in %s', (cod
       await h.repo.insertPost(h.market, sellerPost);
       const row = unwrap(await list()).items[0]!;
       expect(row.id).toBe(sellerPost.id);
-      expect(row.actions).toEqual(['open', 'archive']);
+      // Edit, submit and archive are platform posts only for an admin; nothing else fits a draft.
+      expect(row.actions).toEqual(['open']);
+      expect(
+        refusal(await h.cases.archivePost.execute(everything(), { post: sellerPost.id })).code,
+      ).toBe('blog.seller-owned');
       expect(unwrap(await list({ owner: 'seller' })).items.map((r) => r.id)).toEqual([
         sellerPost.id,
       ]);
@@ -120,6 +124,9 @@ describe.each([['AU'], ['ZZ']] as const)('the admin Blog posts list in %s', (cod
       expect(unwrap(await list({ q: 'EID' })).items.map((r) => r.id)).toEqual([draft.id]);
       expect(unwrap(await list({ q: live.slug })).items.map((r) => r.id)).toEqual([live.id]);
       expect(unwrap(await list({ kind: 'event' })).total).toBe(0);
+      // A zero-width non-joiner (Persian text) is kept; a control character is refused.
+      expect(unwrap(await list({ q: 'a\u200cb' })).total).toBe(0);
+      expect(refusal(await list({ q: 'a\u0007b' })).code).toBe('validation.failed');
       expect(unwrap(await list({ featured: 'false' })).total).toBe(3);
       expect(unwrap(await list({ featured: 'true' })).total).toBe(0);
       const narrowed = unwrap(await list({ to: draft.updatedAt.add({ minutes: 1 }).toString() }));

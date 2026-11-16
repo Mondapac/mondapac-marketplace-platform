@@ -12,7 +12,9 @@ Both routes need `blog.post.read` and are admin only.
   the view (never with `view`).
 - **Filters:** `kind`, `owner` (platform or seller), `sellerId`, `featured` (true or false), `q`
   (part of the title of the open or live version, or of the slug; any case; at most 100
-  characters; never echoed or logged), `from`/`to` on the last change (`to` excluded).
+  characters; `%` and `_` match themselves; control characters are refused, format characters
+  such as the zero-width non-joiner are kept; never echoed or logged), `from`/`to` on the last
+  change (`to` excluded).
 - **Sort:** created (default, newest first), updated, published, scheduled; a post never
   published or not scheduled sorts last either way; the id breaks ties.
 - **Paging:** page numbers with `total` and `hasMore` (default 25, `pageSize` 1 to 100, up to row
@@ -22,7 +24,11 @@ Both routes need `blog.post.read` and are admin only.
   each lifecycle action (edit, submit, approve, request-changes, reviewer-edit, publish,
   schedule, unschedule, pause, resume, archive, rename-slug, feature) that the post's state
   allows (`refusalFor`) and whose key the caller holds (one probe per key: edit, review,
-  publish, pause). Edit and submit are offered on platform posts only.
+  publish, pause). Edit, submit and archive are offered on platform posts only (the admin use
+  cases answer `blog.seller-owned` on a seller's post). Known gap: approve is offered to the
+  writer or submitter of the version, which the approve use case refuses (separation of duties)
+  unless the Market allows a self-approval with a two-step proof; the row has no version
+  authors to hide it by.
 - **Strict query:** a key outside the list above, or a repeated key, is refused.
 - **No body:** the reader selects the post row and the titles of its open and live versions; no
   body, excerpt or author text.
@@ -43,8 +49,10 @@ The default page size is 25 (was 50); the panel's "Load more" reads `hasMore` an
 
 ## Indexes
 
-The default order and the status views use (market_id, status, created_at desc, id desc); the
-seller filter uses (market_id, seller_id, created_at desc, id desc). Search on titles scans the
-Market's posts (small: a few posts a week per Market). Trigger: when a Market holds more than
-20,000 posts or a search read takes more than 200 ms at p95, add a trigram index on the version
+A status view in the default order uses (market_id, status, created_at desc, id desc); the
+seller filter uses (market_id, seller_id, created_at desc, id desc). The default `all` view has
+no status filter: it reads the Market's posts and keeps the newest page (a top-N sort), as do
+the search over the version titles and the `updated` sort. The Market's posts are few today (a
+few a week). Trigger: when a Market holds more than 20,000 posts or a list read takes more than
+200 ms at p95, add (market_id, created_at desc, id desc) and a trigram index on the version
 titles in a later migration (database-designer).

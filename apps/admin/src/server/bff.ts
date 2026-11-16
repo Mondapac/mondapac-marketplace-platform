@@ -901,8 +901,9 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     owner: /^(platform|seller)$/,
     sellerId: UUID,
     featured: /^(true|false)$/,
-    // Part of a title or slug: printable text, at most 100 characters (the API checks again).
-    q: /^[^\p{C}]{1,100}$/u,
+    // Part of a title or slug: no control character, at most 100 characters (the API checks
+    // again; a zero-width non-joiner of Persian text is kept).
+    q: /^[^\p{Cc}]{1,100}$/u,
     // ISO instants on the last change, `to` excluded.
     from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
     to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
@@ -927,8 +928,9 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     owner: /^(platform|seller)$/,
     sellerId: UUID,
     featured: /^(true|false)$/,
-    // Part of a title or slug: printable text, at most 100 characters (the API checks again).
-    q: /^[^\p{C}]{1,100}$/u,
+    // Part of a title or slug: no control character, at most 100 characters (the API checks
+    // again; a zero-width non-joiner of Persian text is kept).
+    q: /^[^\p{Cc}]{1,100}$/u,
     // ISO instants on the last change, `to` excluded.
     from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
     to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,

@@ -1,5 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
+import { escapeLikeTerm } from '../../../platform/text/like-escape';
 import type { AdminPostListReader } from '../application/ports/admin-post-list.reader';
 import type { PostListRow } from '../application/ports/blog.repository';
 import {
@@ -34,7 +35,8 @@ const toRow = (row: Included): PostListRow => ({
 function where(market: MarketContext, filter: PostListFilter) {
   const and: object[] = [];
   if (filter.search !== null) {
-    const contains = { contains: filter.search, mode: 'insensitive' as const };
+    // `%` and `_` match themselves: the term is escaped for LIKE.
+    const contains = { contains: escapeLikeTerm(filter.search), mode: 'insensitive' as const };
     and.push({
       OR: [
         { slug: contains },

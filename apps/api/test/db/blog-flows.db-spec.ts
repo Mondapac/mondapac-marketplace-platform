@@ -466,6 +466,10 @@ describe.each(TEST_MARKETS)('blog flows in market %s (database)', (code) => {
     ]);
     expect((await list({ q: token, view: 'published' })).items.map((r) => r.id)).toEqual([live.id]);
     expect((await list({ q: live.slug })).items.map((r) => r.id)).toEqual([live.id]);
+    // `%` and `_` match themselves, never as wildcards.
+    expect((await list({ q: `${token}%` })).total).toBe(0);
+    expect((await list({ q: `D_aft ${token}` })).total).toBe(0);
+    expect((await list({ q: '%' })).items.every((r) => r.title.includes('%'))).toBe(true);
     for (const sort of ['created', 'updated', 'published', 'scheduled']) {
       for (const direction of ['asc', 'desc']) {
         const page = await list({ q: token, sort, direction });

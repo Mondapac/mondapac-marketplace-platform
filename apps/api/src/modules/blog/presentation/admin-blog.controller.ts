@@ -143,7 +143,7 @@ export class AdminBlogController {
       'pageSize (default 25, at most 100, up to row 10,000) with `total` and `hasMore`, or ' +
       '`cursor` and `limit` (newest created first; no page, pageSize, sort or direction). Each ' +
       'row has `actions`: open, and the lifecycle actions its state allows and the caller holds ' +
-      'the key of (edit and submit on platform posts only). An unknown key is refused.',
+      'the key of (edit, submit and archive on platform posts only). An unknown key is refused.',
   })
   @ApiQuery({ name: 'view', required: false })
   @ApiQuery({ name: 'status', required: false })

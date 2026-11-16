@@ -85,8 +85,11 @@ const ACTION_KEYS: Readonly<Record<PostAction, string>> = {
   feature: BLOG_POST_PUBLISH.key,
 };
 
-/** An admin's edit and submit reach platform posts only; a seller's post is the seller's. */
-const PLATFORM_ONLY: ReadonlySet<PostAction> = new Set(['edit', 'submit']);
+/**
+ * An admin's edit, submit and archive reach platform posts only (`accessToPost` answers
+ * `blog.seller-owned` otherwise); a seller's post is the seller's.
+ */
+const PLATFORM_ONLY: ReadonlySet<PostAction> = new Set(['edit', 'submit', 'archive']);
 
 const factsOfRow = (row: PostListRow) => ({
   status: row.post.status,
@@ -213,8 +216,12 @@ function parseSelector(q: Query, fields: FieldError[]): PostListFilter {
   if (q.q !== undefined && q.q !== '') {
     // Matched, never echoed or logged.
     const text = typeof q.q === 'string' ? q.q.trim() : null;
-    if (text === null || /\p{C}/u.test(text)) fields.push({ path: 'q', code: 'format' });
-    else if (Array.from(text).length > POST_SEARCH_MAX) fields.push({ path: 'q', code: 'length' });
+    // Control and unassigned characters are refused; format characters such as the zero-width
+    // non-joiner of Persian text are kept.
+    if (text === null || /[\p{Cc}\p{Co}\p{Cs}\p{Cn}]/u.test(text)) {
+      fields.push({ path: 'q', code: 'format' });
+    } else if (Array.from(text).length > POST_SEARCH_MAX)
+      fields.push({ path: 'q', code: 'length' });
     else if (text !== '') search = text;
   }
   const instant = (path: 'from' | 'to', value: unknown): Temporal.Instant | null => {
