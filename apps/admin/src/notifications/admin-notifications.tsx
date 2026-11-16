@@ -24,6 +24,7 @@ import {
   SELLER_REFUND_LIMIT_REACHED,
   RINGING_KINDS,
   SELLER_FILE_SUBMITTED,
+  SYSTEM_REQUEST_OVERDUE_KINDS,
   type AdminNotice,
 } from './types.ts';
 
@@ -45,6 +46,11 @@ const LOOK: Readonly<
   [REVIEW_REPORTED]: { icon: 'star', tone: 'attention', category: 'reviews' },
   [SELLER_REFUND_LIMIT_REACHED]: { icon: 'wallet', tone: 'attention', category: 'refunds' },
 };
+const OVERDUE_LOOK = {
+  icon: 'alert-circle',
+  tone: 'attention',
+  category: 'system-requests',
+} as const;
 const UNKNOWN_LOOK = { icon: 'bell', tone: 'neutral', category: 'other' } as const;
 
 /** A page link is built only from an id of this shape. */
@@ -66,6 +72,13 @@ function hrefOf(notice: AdminNotice): string | null {
     UUID.test(notice.params.sellerId)
   ) {
     return `/sellers/${notice.params.sellerId}`;
+  }
+  if (
+    SYSTEM_REQUEST_OVERDUE_KINDS.has(notice.kind) &&
+    notice.params.requestId !== undefined &&
+    UUID.test(notice.params.requestId)
+  ) {
+    return `/system-requests/${notice.params.requestId}`;
   }
   if (notice.kind === DELIVERY_FALLBACK_OVER_CAP) return '/settings/delivery';
   if (notice.kind === PLATFORM_IMPORT_FINISHED && notice.params.importId !== undefined) {
@@ -144,12 +157,21 @@ export function AdminNotifications({ csrfToken }: { readonly csrfToken: string }
           limit: notice.params.limit ?? 'other',
         });
       default:
+        if (SYSTEM_REQUEST_OVERDUE_KINDS.has(notice.kind)) {
+          return t.rich('kind.system-request-overdue', {
+            strong,
+            number: notice.params.number ?? 0,
+            ageDays: notice.params.ageDays ?? 0,
+          });
+        }
         return t('kind.other');
     }
   }
 
   function toItem(notice: AdminNotice, now: number): NoticeItem {
-    const look = LOOK[notice.kind] ?? UNKNOWN_LOOK;
+    const look =
+      LOOK[notice.kind] ??
+      (SYSTEM_REQUEST_OVERDUE_KINDS.has(notice.kind) ? OVERDUE_LOOK : UNKNOWN_LOOK);
     return {
       id: notice.id,
       href: hrefOf(notice),

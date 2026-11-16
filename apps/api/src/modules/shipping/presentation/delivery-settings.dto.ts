@@ -1,6 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { LastChangedDto } from '../../../platform/audit/change-trail.dto';
 import { lastChangedBody } from '../../../platform/audit/change-trail';
+import {
+  DeliveryRequestRef,
+  DeliveryReviewBody,
+  NOTE_DESCRIPTION,
+  REQUEST_DESCRIPTION,
+  requestBody,
+  reviewBody,
+} from './review.dto';
 import { ROUNDING_STEPS } from '../domain/delivery-margin';
 import {
   formatCutoff,
@@ -67,6 +75,7 @@ export class DeliverySettingsRequest {
   roundingStepMinor!: number;
   @ApiProperty({ minimum: 0, description: 'The version read; 0 before the first save.' })
   expectedVersion!: number;
+  @ApiPropertyOptional({ description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class DeliverySettingsBody {
@@ -91,6 +100,16 @@ export class DeliverySettingsBody {
     description: 'Who changed this page last and when; null while nothing was ever changed.',
   })
   lastChanged!: LastChangedDto | null;
+  @ApiProperty({
+    type: DeliveryReviewBody,
+    description: 'Whether a save is reviewed in this Market: the page then asks for a note.',
+  })
+  review!: DeliveryReviewBody;
+}
+
+export class DeliverySettingsChangeBody extends DeliverySettingsBody {
+  @ApiProperty({ type: DeliveryRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: DeliveryRequestRef | null;
 }
 
 export function settingsBody(view: DeliverySettingsPage) {
@@ -114,12 +133,19 @@ export function settingsBody(view: DeliverySettingsPage) {
     marketZone: view.marketZone,
     roundingSteps: [...ROUNDING_STEPS],
     lastChanged: lastChangedBody(view.lastChanged),
+    review: reviewBody(view.review),
   };
 }
+
+export const settingsChangeBody = (view: DeliverySettingsPage) => ({
+  ...settingsBody(view),
+  request: requestBody(view.request),
+});
 
 export class SellerDeliveryMethodsRequest {
   @ApiProperty({ enum: METHODS, isArray: true, description: 'The methods the seller supports.' })
   supported!: string[];
+  @ApiPropertyOptional({ description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class SellerDeliveryMethodsBody {
@@ -130,10 +156,26 @@ export class SellerDeliveryMethodsBody {
     description: 'What the Market has on; a method that is off is unavailable whatever this says.',
   })
   platformEnabled!: EnabledMethodsBody;
+  @ApiProperty({
+    type: DeliveryReviewBody,
+    description: 'Whether a change is reviewed in this Market: the page then asks for a note.',
+  })
+  review!: DeliveryReviewBody;
+}
+
+export class SellerDeliveryMethodsChangeBody extends SellerDeliveryMethodsBody {
+  @ApiProperty({ type: DeliveryRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: DeliveryRequestRef | null;
 }
 
 export const sellerMethodsBody = (view: SellerDeliveryMethodsView) => ({
   sellerId: view.sellerId,
   supported: [...view.supported],
   platformEnabled: { ...view.platformEnabled },
+  review: reviewBody(view.review),
+});
+
+export const sellerMethodsChangeBody = (view: SellerDeliveryMethodsView) => ({
+  ...sellerMethodsBody(view),
+  request: requestBody(view.request),
 });

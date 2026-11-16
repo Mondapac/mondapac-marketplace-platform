@@ -127,6 +127,30 @@ export interface RequestRepository {
   ): Promise<readonly SystemRequest[]>;
   /** How many rows match, counting at most `cap` (a larger answer is `cap`). */
   count(market: MarketContext, filter: RequestFilter, cap: number): Promise<number>;
+  /**
+   * Open requests of these areas that are due at or before `now` and were not reminded since
+   * `remindedBefore` (never, or earlier), the longest overdue first. At most `limit`.
+   */
+  dueForReminder(
+    market: MarketContext,
+    query: {
+      readonly now: Temporal.Instant;
+      readonly remindedBefore: Temporal.Instant;
+      readonly areas: readonly ReviewArea[];
+      readonly limit: number;
+    },
+  ): Promise<readonly SystemRequest[]>;
+  /**
+   * Stamps the reminder time, under the same condition as {@link dueForReminder} (still open,
+   * not reminded since `remindedBefore`); false when another run got there first or the request
+   * was decided meanwhile. The one write that makes a reminder happen once.
+   */
+  markReminded(
+    market: MarketContext,
+    id: Id<'SystemRequest'>,
+    at: Temporal.Instant,
+    remindedBefore: Temporal.Instant,
+  ): Promise<boolean>;
 }
 
 export const REQUEST_REPOSITORY = Symbol('SYSTEM_REQUESTS_REQUEST_REPOSITORY');
