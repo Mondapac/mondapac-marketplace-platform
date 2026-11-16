@@ -155,6 +155,8 @@ window.fetch = ((input: string, init?: RequestInit) => {
     body = {
       productTypes: ['grocery', 'configurable-grocery'],
       locales: { default: 'en', supported: ['en'] },
+      taxCategoryCodes: ['gst-free-food', 'gst'],
+      categories,
     };
   } else if (path === `catalog/admin/platform-products/${PRODUCT}` && init?.method === 'GET') {
     body = scenarios[scenario];

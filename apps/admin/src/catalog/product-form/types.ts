@@ -80,6 +80,9 @@ export interface Locales {
 export interface ProductOptions {
   readonly productTypes: readonly string[];
   readonly locales: Locales;
+  /** The Market's tax categories and the active platform categories, as the product read lists them. */
+  readonly taxCategoryCodes: readonly string[];
+  readonly categories: readonly FormCategory[];
 }
 
 /** `POST catalog/admin/platform-products`. */

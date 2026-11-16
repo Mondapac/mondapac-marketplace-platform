@@ -8,7 +8,7 @@ import { callApi } from '../../api/client.ts';
 import { EditForm } from './edit-form.tsx';
 import { BASE, type ProductOptions, type ProductView } from './types.ts';
 
-/** The product an Add page stands on before anything exists: no fields, categories or tax codes yet. */
+/** The product an Add page stands on before anything exists: the Market's categories and tax codes, but no fields yet (they come from the category's family). */
 function blankProduct(options: ProductOptions): ProductView {
   return {
     productId: '',
@@ -23,7 +23,11 @@ function blankProduct(options: ProductOptions): ProductView {
     maxVariants: 0,
     lastChangedAt: '',
     createdAt: '',
-    form: { taxCategoryCodes: [], fields: [], categories: [] },
+    form: {
+      taxCategoryCodes: options.taxCategoryCodes,
+      fields: [],
+      categories: options.categories,
+    },
     locales: options.locales,
     workingCopy: null,
     published: null,

@@ -373,16 +373,15 @@ export function EditForm({
     fields: attributeFields,
     inputs,
   });
+  // An Add page has nothing to publish yet: saving the draft comes first.
+  const blockerItems = [
+    ...missing.map((item) => t(`blockers.${item}`)),
+    ...(creating === null ? [] : [t('blockers.save')]),
+  ];
   const blockers =
-    missing.length === 0
-      ? null
-      : t('blockers.lead', {
-          items: listOf(
-            missing.map((item) => t(`blockers.${item}`)),
-            locale,
-          ),
-        });
-  const canPublish = missing.length === 0 && (!published || dirty || hasRevision);
+    blockerItems.length === 0 ? null : t('blockers.lead', { items: listOf(blockerItems, locale) });
+  const canPublish =
+    creating === null && missing.length === 0 && (!published || dirty || hasRevision);
 
   function fail(failure: Parameters<typeof problemOf>[0]) {
     if (failure.status === 401) window.location.assign('/session-ended');
@@ -897,8 +896,8 @@ export function EditForm({
               name="categoryIds"
               label={t('field.categories')}
               help={
-                creating !== null
-                  ? t('create.after-save')
+                creating !== null && form.categories.length === 0
+                  ? t('create.categories-unavailable')
                   : t(
                       categoryIds.length === 0
                         ? 'field.categories-help-empty'
@@ -906,7 +905,6 @@ export function EditForm({
                     )
               }
               placeholder={t('field.categories-placeholder')}
-              disabled={creating !== null}
               options={categories}
               value={categories.filter((option) => categoryIds.includes(option.value))}
               labels={labels}
@@ -918,9 +916,8 @@ export function EditForm({
             <Select
               name="taxCategoryCode"
               label={t('field.tax')}
-              help={creating !== null ? t('create.after-save') : t('field.tax-help')}
+              help={t('field.tax-help')}
               placeholder={t('field.tax-placeholder')}
-              disabled={creating !== null}
               options={form.taxCategoryCodes.map((code) => ({
                 value: code,
                 label: readable(code),

@@ -80,6 +80,12 @@ for (const scheme of ['light', 'dark']) {
           .fill(
             'Tilda Sella basmati is an extra-long grain rice, parboiled and aged for two years.',
           );
+        await page.getByRole('combobox', { name: /Product category/ }).click();
+        await page.getByRole('option', { name: /Basmati rice/ }).click();
+        // The multiple choice stays open (a sheet on a phone): close it.
+        await page.keyboard.press('Escape');
+        await page.getByLabel('Tax category').selectOption('gst-free-food');
+        await page.getByLabel('Title').click();
         await page.getByText('Unsaved product').first().waitFor();
       }
       await page.waitForTimeout(300);

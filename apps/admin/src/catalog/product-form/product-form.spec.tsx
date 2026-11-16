@@ -192,6 +192,11 @@ describe('the add page', () => {
   const OPTIONS = {
     productTypes: ['simple', 'configurable'],
     locales: { default: 'en', supported: ['en'] },
+    taxCategoryCodes: ['gst-free', 'gst'],
+    categories: [
+      { categoryId: CATEGORY, parentId: null, names: { en: 'Pantry' } },
+      { categoryId: CHILD, parentId: CATEGORY, names: { en: 'Rice' } },
+    ],
   };
   const mount = () =>
     render(
@@ -240,15 +245,45 @@ describe('the add page', () => {
     expect(screen.getByText(/^To publish:/)).toBeTruthy();
     expect(screen.queryByText('Unsaved product')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
-    // Cards that need the product show their helper line.
+    // Category and tax come from the options read; the cards that need the product show a helper.
+    expect(screen.getByRole('combobox', { name: /Product category/ })).toBeTruthy();
     expect(
       screen.getByText('Choose a category first. Its feature set lists what to fill in here.'),
     ).toBeTruthy();
     expect(screen.getByText('Photos can be added after the first save.')).toBeTruthy();
-    expect(screen.getByLabelText<HTMLSelectElement>('Tax category').disabled).toBe(true);
+    expect(screen.getByLabelText<HTMLSelectElement>('Tax category').disabled).toBe(false);
     type('Sella rice');
     expect(screen.getByText('Unsaved product')).toBeTruthy();
     expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends the chosen category and tax category with the first save', async () => {
+    call.mockResolvedValueOnce(ok(OPTIONS));
+    mount();
+    await screen.findByLabelText('Product type');
+    pick('simple');
+    type('Sella rice');
+    fireEvent.click(screen.getByRole('combobox', { name: /Product category/ }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Pantry › Rice' }));
+    fireEvent.change(screen.getByLabelText('Tax category'), { target: { value: 'gst-free' } });
+    expect(screen.getByText('To publish: save the draft first.')).toBeTruthy();
+    call.mockResolvedValueOnce(created).mockResolvedValueOnce(saved);
+    saveDraft();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(`/catalog/products/${ID}/edit`));
+    const content = lastBody(2)['content'] as Record<string, unknown>;
+    expect(content['categoryIds']).toEqual([CHILD]);
+    expect(content['taxCategoryCode']).toBe('gst-free');
+  });
+
+  it('says so when the categories could not be loaded', async () => {
+    call.mockResolvedValueOnce(ok({ ...OPTIONS, categories: [] }));
+    mount();
+    await screen.findByLabelText('Product type');
+    expect(
+      screen.getByText(
+        "Categories can't be loaded right now. Save the draft and choose them on the next page.",
+      ),
+    ).toBeTruthy();
   });
 
   it('asks for the type and posts nothing without it', async () => {

@@ -3849,7 +3849,7 @@
         "type-help": "Required. The type decides the product's fields and whether it is one size or has variants. It can't be changed after the first save.",
         "choose": "Choose a type",
         "type-required": "Choose a product type.",
-        "after-save": "Available after the first save.",
+        "categories-unavailable": "Categories can't be loaded right now. Save the draft and choose them on the next page.",
         "images-after-save": "Photos can be added after the first save.",
         "variants-after-save": "Variants are set up after the first save. The product type and category decide them."
       },
@@ -3994,7 +3994,8 @@
         "title": "add a title",
         "category": "choose a category",
         "tax": "choose the tax category",
-        "details": "fill in the required details"
+        "details": "fill in the required details",
+        "save": "save the draft first"
       },
       "details-empty": "Choose a category first. Its feature set lists what to fill in here.",
       "active": {

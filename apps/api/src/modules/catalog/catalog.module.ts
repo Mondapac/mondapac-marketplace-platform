@@ -2649,7 +2649,7 @@ const RESTRUCTURE_DEPS = {
       outbox: true,
       clock: true,
     }),
-    useCaseProvider(PlatformProductOptions, { policy: true }),
+    useCaseProvider(PlatformProductOptions, { policy: true, unitOfWork: true, ownReader: true }),
     useCaseProvider(PlatformProductRead, {
       unitOfWork: true,
       products: true,
