@@ -13,6 +13,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
+import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import {
   ListRegistry,
   MemorySelection,
@@ -34,7 +35,9 @@ import {
 } from '../contracts/permissions';
 import { SHIPPING_AUDIT_ACTIONS } from '../domain/audit';
 import { ConfigCarrierPolicy } from '../infrastructure/config-carrier-policy';
+import type { ChangeValues } from '../../system-requests';
 import type { ShippingDependencies } from './shipping-dependencies';
+import { FleetSelectionModelReverter, FleetSelectionReverter } from './shipping-reverters';
 import { CreateFleetSelectionModel } from './use-cases/create-fleet-selection-model.use-case';
 import { SetFleetSelection } from './use-cases/set-fleet-selection.use-case';
 import { UpdateFleetSelectionModel } from './use-cases/update-fleet-selection-model.use-case';
@@ -104,6 +107,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
 
   let selection: MemorySelection;
   let audit: RecordingAudit;
+  let review: RecordingReview;
   let actors: FakeChangeActors;
   let clock: FixedClock;
   let deps: ShippingDependencies;
@@ -113,6 +117,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
     selection = new MemorySelection();
     clock = new FixedClock(T0);
     audit = new RecordingAudit(clock);
+    review = new RecordingReview();
     actors = new FakeChangeActors();
     drive = new ScriptedFleet('mondapac_drive', {
       fleet: 'mondapac_drive',
@@ -133,6 +138,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       policy: undefined as never,
       sellers: undefined as never,
       audit,
+      review,
       clock,
       ids: new SequenceIdGenerator(clock),
       outbox: undefined as never,
@@ -551,5 +557,241 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'access.denied' } });
     expect(selection.models.size).toBe(0);
+  });
+
+  describe('review in System requests (area delivery)', () => {
+    const requestId = id<'SystemRequest'>(0xe1);
+    const pageReverter = () => new FleetSelectionReverter(deps);
+    const modelReverter = () => new FleetSelectionModelReverter(deps);
+    const revertOf = (subjectRef: string, before: ChangeValues, after: ChangeValues) => ({
+      requestId,
+      subjectRef,
+      before,
+      after,
+    });
+    const saveWithNote = (
+      expectedVersion: unknown,
+      active: unknown,
+      reliability: unknown,
+      note?: unknown,
+    ) =>
+      new SetFleetSelection(gate, deps).execute(admin, {
+        expectedVersion,
+        active,
+        reliability,
+        note,
+      });
+
+    it('shows whether delivery is reviewed on the page, and opens nothing where it is not', async () => {
+      const off = await view();
+      expect(off.ok && off.value.review).toEqual({ reviewed: false, risk: 'low' });
+      review.review('delivery', 'medium');
+      const on = await view();
+      expect(on.ok && on.value.review).toEqual({ reviewed: true, risk: 'medium' });
+      expect(on.ok && on.value.request).toBeNull();
+    });
+
+    it('opens a review of a page save with only the items that changed, and refuses it without a note', async () => {
+      const model = await created('Cheapest wins');
+      review.review('delivery', 'medium');
+      const refused = await saveWithNote(0, { ...NONE, same_day: model.id }, { zoom2u: 80 });
+      expect(!refused.ok && refused.error).toMatchObject({
+        code: 'validation.failed',
+        fields: [{ path: 'note', code: 'required' }],
+      });
+      expect(review.opened).toHaveLength(0);
+      // The fake keeps the refused save (the database rolls it back): start from its version.
+      const saved = await saveWithNote(
+        1,
+        { ...NONE, same_day: model.id },
+        { zoom2u: 90 },
+        'Faster',
+      );
+      expect(saved.ok && saved.value.request).toMatchObject({ number: 1 });
+      expect(saved.ok && saved.value.review).toEqual({ reviewed: true, risk: 'medium' });
+      expect(review.opened).toEqual([
+        {
+          area: 'delivery',
+          subjectKind: 'shipping.fleet-selection',
+          subjectRef: 'fleet-selection',
+          before: { active: {}, reliability: { zoom2u: 80 } },
+          after: { active: {}, reliability: { zoom2u: 90 } },
+          note: 'Faster',
+        },
+      ]);
+    });
+
+    it('reverts the active model and the reliability of a save, audited with the request id', async () => {
+      const model = await created('Cheapest wins');
+      await saveWithNote(0, NONE, { zoom2u: 70 });
+      const saved = await saveWithNote(
+        1,
+        { ...NONE, instant: model.id },
+        { zoom2u: 90, auspost: 30 },
+      );
+      expect(saved.ok).toBe(true);
+      audit.entries.length = 0;
+      const request = revertOf(
+        'fleet-selection',
+        { active: { instant: null }, reliability: { zoom2u: 70, auspost: null } },
+        { active: { instant: model.id }, reliability: { zoom2u: 90, auspost: 30 } },
+      );
+      expect(await pageReverter().revert(admin, request)).toBe('reverted');
+      const now = await view();
+      expect(now.ok && now.value.active.instant).toBeNull();
+      expect(now.ok && now.value.version).toBe(3);
+      expect(now.ok && now.value.fleets.find((f) => f.fleet === 'zoom2u')?.reliability).toBe(70);
+      // A fleet nobody scored goes back to the neutral score, which routes the same.
+      expect(
+        now.ok && now.value.fleets.find((f) => f.fleet === 'auspost')?.effectiveReliability,
+      ).toBe(50);
+      expect(audit.entries.map((e) => [e.action, e.targetId])).toEqual([
+        ['shipping.fleet-model.activation-reverted', 'instant'],
+        ['shipping.fleet-reliability.reverted', 'zoom2u'],
+        ['shipping.fleet-reliability.reverted', 'auspost'],
+      ]);
+      expect(audit.entries[0]).toMatchObject({
+        before: { modelId: model.id },
+        after: { modelId: null, requestId },
+      });
+      expect(audit.entries[1]).toMatchObject({
+        before: { score: 90 },
+        after: { score: 70, requestId },
+      });
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('answers changed-since when an item moved on and gone for a model that no longer exists', async () => {
+      const model = await created('Cheapest wins');
+      await saveWithNote(0, { ...NONE, instant: model.id }, { zoom2u: 90 });
+      const request = revertOf(
+        'fleet-selection',
+        { active: { instant: null }, reliability: { zoom2u: 70 } },
+        { active: { instant: model.id }, reliability: { zoom2u: 90 } },
+      );
+      await saveWithNote(1, { ...NONE, instant: model.id }, { zoom2u: 95 });
+      audit.entries.length = 0;
+      expect(await pageReverter().revert(admin, request)).toBe('changed-since');
+      expect(audit.entries).toHaveLength(0);
+      const gone = revertOf(
+        'fleet-selection',
+        { active: { instant: id<'FleetSelectionModel'>(0x999) }, reliability: {} },
+        { active: { instant: model.id }, reliability: {} },
+      );
+      expect(await pageReverter().revert(admin, gone)).toBe('gone');
+      expect(
+        await pageReverter().revert(admin, revertOf('fleet-selection', { active: 1 }, {})),
+      ).toBe('gone');
+    });
+
+    it('answers changed-since when a save lands after the revert read the version, and keeps that save', async () => {
+      const model = await created('Cheapest wins');
+      await saveWithNote(0, NONE, { zoom2u: 70 });
+      await saveWithNote(1, { ...NONE, instant: model.id }, { zoom2u: 90 });
+      const request = revertOf(
+        'fleet-selection',
+        { active: { instant: null }, reliability: { zoom2u: 70 } },
+        { active: { instant: model.id }, reliability: { zoom2u: 90 } },
+      );
+      const read = selection.selectionVersion.bind(selection);
+      let landed = false;
+      selection.selectionVersion = async (market) => {
+        const version = await read(market);
+        if (!landed) {
+          landed = true;
+          // An admin's save commits between the revert's read and its bump.
+          await saveWithNote(version, { ...NONE, instant: model.id }, { zoom2u: 95 });
+        }
+        return version;
+      };
+      expect(await pageReverter().revert(admin, request)).toBe('changed-since');
+      const now = await view();
+      expect(now.ok && now.value.fleets.find((f) => f.fleet === 'zoom2u')?.reliability).toBe(95);
+      expect(now.ok && now.value.active.instant).toBe(model.id);
+    });
+
+    it('makes a page opened before a revert conflict when it saves with its old version', async () => {
+      const model = await created('Cheapest wins');
+      await saveWithNote(0, NONE, { zoom2u: 70 });
+      await saveWithNote(1, { ...NONE, instant: model.id }, { zoom2u: 90 });
+      const opened = await view();
+      const openedVersion = opened.ok ? opened.value.version : -1;
+      const request = revertOf(
+        'fleet-selection',
+        { active: { instant: null }, reliability: { zoom2u: 70 } },
+        { active: { instant: model.id }, reliability: { zoom2u: 90 } },
+      );
+      expect(await pageReverter().revert(admin, request)).toBe('reverted');
+      const stale = await saveWithNote(openedVersion, NONE, { zoom2u: 10 });
+      expect(!stale.ok && stale.error.code).toBe('shipping.fleet-selection-conflict');
+    });
+
+    it('opens a review of a model edit and reverts it to a new version', async () => {
+      const model = await created('Cheapest wins');
+      review.review('delivery');
+      const edited = await new UpdateFleetSelectionModel(gate, deps).execute(admin, {
+        modelId: model.id,
+        name: 'Reliable first',
+        rule: { kind: 'weighted', weights: { price: 10, eta: 10, reliability: 80 } },
+        expectedVersion: 1,
+        note: 'Rename',
+      });
+      expect(edited.ok && edited.value.request).toMatchObject({ number: 1 });
+      expect(review.opened[0]).toMatchObject({
+        subjectKind: 'shipping.fleet-selection-model',
+        subjectRef: model.id,
+        before: { name: 'Cheapest wins', rule: { kind: 'cheapest' } },
+        after: {
+          name: 'Reliable first',
+          rule: { kind: 'weighted', weights: { price: 10, eta: 10, reliability: 80 } },
+        },
+        note: 'Rename',
+      });
+      audit.entries.length = 0;
+      const request = revertOf(
+        model.id,
+        { name: 'Cheapest wins', rule: { kind: 'cheapest' } },
+        {
+          name: 'Reliable first',
+          rule: { weights: { reliability: 80, eta: 10, price: 10 }, kind: 'weighted' },
+        },
+      );
+      expect(await modelReverter().revert(admin, request)).toBe('reverted');
+      expect(selection.models.get(model.id)).toMatchObject({
+        name: 'Cheapest wins',
+        rule: { kind: 'cheapest' },
+        version: 3,
+      });
+      expect(audit.entries[0]).toMatchObject({
+        action: 'shipping.fleet-model.reverted',
+        targetId: model.id,
+        before: { kind: 'weighted', version: 2 },
+        after: { kind: 'cheapest', version: 3, requestId },
+      });
+      expect(await modelReverter().revert(admin, request)).toBe('changed-since');
+      expect(
+        await modelReverter().revert(
+          admin,
+          revertOf(id<'FleetSelectionModel'>(0x999), request.before, request.after),
+        ),
+      ).toBe('gone');
+    });
+
+    it('refuses a reviewed model edit without a note', async () => {
+      const model = await created('Cheapest wins');
+      review.review('delivery');
+      const refused = await update(model.id, 'Reliable first', { kind: 'cheapest' }, 1);
+      expect(!refused.ok && refused.error).toMatchObject({
+        code: 'validation.failed',
+        fields: [{ path: 'note', code: 'required' }],
+      });
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('does not review the creation of a model', async () => {
+      review.review('delivery');
+      expect((await create('Brand new', { kind: 'cheapest' })).ok).toBe(true);
+      expect(review.opened).toHaveLength(0);
+    });
   });
 });

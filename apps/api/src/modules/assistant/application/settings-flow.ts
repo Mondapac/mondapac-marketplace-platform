@@ -12,6 +12,7 @@ import {
   type ModelTier,
   type ReplyLanguage,
 } from '../domain/assistant-settings';
+import { retentionDaysOf } from '../domain/conversation';
 import { AssistantSettingsChanged } from '../domain/audit';
 import type { ChangeScope, LastChanged } from '../../../platform/audit/change-trail';
 import type { AssistantDependencies } from './assistant-dependencies';
@@ -69,13 +70,23 @@ export interface StorefrontAssistantView {
   readonly replyLanguage: ReplyLanguage;
   /** null: the storefront shows its own default text. */
   readonly welcomeText: string | null;
+  /**
+   * How many days a new conversation is kept (0: not kept), so the widget can say so: for a
+   * signed-in customer and for a guest (30 at most). The answer reads no session, so it gives
+   * both. null while off for this visitor.
+   */
+  readonly retentionDays: { readonly customer: number; readonly guest: number } | null;
+  /** Fixed button texts in the buyer's language; empty while off for this visitor. */
+  readonly quickPrompts: readonly string[];
 }
 
-const OFF: StorefrontAssistantView = Object.freeze({
+export const STOREFRONT_OFF: StorefrontAssistantView = Object.freeze({
   enabled: false,
   guestsAllowed: false,
   replyLanguage: DEFAULT_ASSISTANT_SETTINGS.replyLanguage,
   welcomeText: null,
+  retentionDays: null,
+  quickPrompts: Object.freeze([]),
 });
 
 // The key a storefront visitor sends to keep one rollout bucket (the widget's random id).
@@ -211,8 +222,9 @@ export async function setAssistantSettings(
 export async function viewStorefrontAssistant(
   deps: AssistantDependencies,
   context: CallContext,
-  input: { readonly visitor: unknown },
+  input: { readonly visitor: unknown; readonly lang?: unknown },
 ): Promise<Result<StorefrontAssistantView, never>> {
+  const lang = typeof input?.lang === 'string' ? input.lang : null;
   const visitorKey =
     typeof input?.visitor === 'string' && VISITOR_KEY.test(input.visitor) ? input.visitor : null;
   return deps.unitOfWork.run<StorefrontAssistantView, never>(
@@ -220,12 +232,19 @@ export async function viewStorefrontAssistant(
     async () => {
       const { settings } = await current(deps, context);
       const configured = deps.runtime.configured(context.market.marketId, settings.modelTier);
-      if (!configured || !inRollout(settings, context.market.marketId, visitorKey)) return ok(OFF);
+      if (!configured || !inRollout(settings, context.market.marketId, visitorKey)) {
+        return ok(STOREFRONT_OFF);
+      }
       return ok({
         enabled: true,
         guestsAllowed: settings.users === 'guests-and-customers',
         replyLanguage: settings.replyLanguage,
         welcomeText: settings.welcomeText,
+        retentionDays: {
+          customer: retentionDaysOf(settings.retention, 'customer'),
+          guest: retentionDaysOf(settings.retention, 'guest'),
+        },
+        quickPrompts: deps.quickPrompts.forBuyer(context.market, lang),
       });
     },
     { readOnly: true },
