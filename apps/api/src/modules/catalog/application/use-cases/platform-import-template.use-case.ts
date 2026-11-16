@@ -16,7 +16,7 @@ import { ATTRIBUTE_LOAD_MAX } from '../attributes/attribute-admin-views';
 import { templateCsv } from '../platform-import/import-report';
 import type { AttributeAdminReader } from '../ports/attribute-admin.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
-import type { SheetWriter } from '../ports/sheet-writer';
+import type { SheetWriter } from '../../../../platform/list-export/sheet-writer';
 
 /** Attributes that have a column of their own in the file (Brand, Description, Barcode, Unit size). */
 const DEDICATED_ATTRIBUTES: ReadonlySet<string> = new Set([

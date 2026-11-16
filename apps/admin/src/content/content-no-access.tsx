@@ -3,10 +3,17 @@ import { AdminShell } from '../server/admin-shell.tsx';
 import type { AdminSession } from '../server/session.ts';
 
 /** The no-access state of the Content pages, with a way home (as the settings pages do). */
-export async function ContentNoAccess({ session }: { readonly session: AdminSession }) {
+export async function ContentNoAccess({
+  session,
+  activeId = 'content',
+}: {
+  readonly session: AdminSession;
+  /** The CMS menu item to mark: Pages unless the page belongs to Blog, Slides or Menus. */
+  readonly activeId?: 'content' | 'blog' | 'slides' | 'menus';
+}) {
   const t = await getTranslations('content');
   return (
-    <AdminShell session={session} activeId="content" title={t('title')}>
+    <AdminShell session={session} activeId={activeId} title={t('title')}>
       <h1 className="mb-2 text-2xl font-semibold">{t('no-access.title')}</h1>
       <p className="text-fg-muted">{t('no-access.body')}</p>
       <p className="mt-4">

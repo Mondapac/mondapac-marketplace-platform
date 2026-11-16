@@ -14,6 +14,12 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { formatInstant } from '../shared/format.ts';
+import {
+  isNoteFailure,
+  ReviewNoteField,
+  trimmedNote,
+  useSentForReview,
+} from '../shared/review-note.tsx';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { aiProblemOf } from './errors.ts';
 import {
@@ -55,6 +61,9 @@ export function AiSettingsPanel({
   const [saved, setSaved] = useState(initial);
   const [pending, setPending] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
   const busy = useRef(false);
 
   const writer = settingOf(saved, WRITER_CODE);
@@ -68,25 +77,42 @@ export function AiSettingsPanel({
 
   async function change(row: AiSetting, value: string) {
     if (busy.current || row.value === value) return;
+    // Where the view says a change is reviewed, it goes with the note for the reviewers.
+    const sent = row.review?.reviewed === true ? trimmedNote(note) : null;
+    if (row.review?.reviewed === true && sent === null) {
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     busy.current = true;
     setPending(row.code);
     setProblem(null);
-    const result = await guarded<AiSetting>(
+    const result = await guarded<AiSetting & { request?: unknown }>(
       'PUT',
       AI_SETTINGS_PATH,
-      { code: row.code, value, expectedVersion: row.version },
+      {
+        code: row.code,
+        value,
+        expectedVersion: row.version,
+        ...(sent === null ? {} : { note: sent }),
+      },
       csrfToken,
     );
     if (result.ok) {
-      replace(result.body);
+      const { request, ...changed } = result.body;
+      replace(changed);
+      setNote('');
       busy.current = false;
       setPending(null);
       toast.success(t('saved'));
+      sentForReview({ request });
       return;
     }
     if (!isStepUpCancelled(result)) {
       if (result.failure.status === 401) {
         window.location.assign('/session-ended');
+      } else if (isNoteFailure(result.failure)) {
+        setNoteError('rejected');
       } else {
         const key = aiProblemOf(result.failure);
         setProblem(key);
@@ -132,6 +158,9 @@ export function AiSettingsPanel({
     ),
   ].filter((node) => node !== null);
 
+  const asksNote =
+    canManage && (writer.review?.reviewed === true || tier.review?.reviewed === true);
+
   const modelLine = (id: string | null) => (id === null ? t('model-none') : id);
 
   return (
@@ -142,6 +171,21 @@ export function AiSettingsPanel({
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }
     >
+      {asksNote ? (
+        <SettingsSection title={t('section-review')} description={t('review-intro')}>
+          <div className="px-5 py-4">
+            <ReviewNoteField
+              value={note}
+              onChange={(next) => {
+                setNote(next);
+                setNoteError(null);
+              }}
+              error={noteError ?? undefined}
+              disabled={pending !== null}
+            />
+          </div>
+        </SettingsSection>
+      ) : null}
       <SettingsSection title={t('section-writer')}>
         <SettingRow
           id="ai-writer"

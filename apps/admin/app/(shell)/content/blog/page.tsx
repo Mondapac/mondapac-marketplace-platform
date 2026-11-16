@@ -20,7 +20,7 @@ export default async function BlogPage() {
   }
   const { permissionKeys, timezone } = gate.session;
   if (!permissionKeys.includes(BLOG_READ_PERMISSION)) {
-    return <ContentNoAccess session={gate.session} />;
+    return <ContentNoAccess session={gate.session} activeId="blog" />;
   }
   const title = t('blog.title');
   return (

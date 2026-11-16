@@ -41,6 +41,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     commission_payouts: ['USAGE'],
     wallet: ['USAGE'],
     reviews: ['USAGE'],
+    lists: ['USAGE'],
     settings: ['USAGE'],
     promotions: ['USAGE'],
     customers: ['USAGE'],
@@ -56,6 +57,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     notifications: ['USAGE'],
     search: ['USAGE'],
     security: ['USAGE'],
+    system_requests: ['USAGE'],
   },
   tables: {
     // docs/design/data/identity.md section 7: DELETE only for the unverified purge and erasure
@@ -480,6 +482,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['count', 'window_started_at'],
     },
+    // The shared store of saved filters of every super list (super list phase 0): the same rules,
+    // one table. The two old tables stay until they are dropped one release later.
+    'lists.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
     // docs/design/data/ordering.md 3.15: a saved view of an order list; a filter is a preference, so
     // the application deletes it; only the name and who can use it change.
     'ordering.saved_filters': {
@@ -518,8 +526,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'inventory_recorded_at',
         'ledger_attempts',
         'ledger_state',
+        'paid_at',
         'ready_at',
         'refunded_amount',
+        'refunded_in_full',
         'shipped_at',
         'tracking_ref',
       ],
@@ -824,6 +834,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'reward_bps',
         'reward_kind',
         'segment_kind',
+        'segment_group_id',
         'segment_min_days',
         'special_campaign',
         'starts_at',
@@ -833,15 +844,33 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'promotions.promotion_targets': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
-    'promotions.promotion_usage': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
-    // Phase 2: tiers and bundle items are replaced as a set; generated codes are insert-only here
-    // (package T2 grants the update of used_at).
+    // Package T2: the counters move with each redemption and its release.
+    'promotions.promotion_usage': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'platform_share_minor',
+        'seller_share_minor',
+        'spent_minor',
+        'updated_at',
+        'uses_count',
+      ],
+    },
+    // Phase 2: tiers and bundle items are replaced as a set. Generated codes are inserted; package
+    // T2 claims and gives back a code (used_at with the redeeming order).
     'promotions.promotion_tiers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.promotion_bundle_items': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [],
     },
-    'promotions.promotion_batch_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'promotions.promotion_batch_codes': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['redeemed_order_id', 'used_at'],
+    },
+    // Package T2: a redemption is inserted and then only changes state; it is never deleted.
+    'promotions.redemptions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['confirmed_at', 'release_reason', 'released_at', 'status'],
+    },
     // Phase 3: a referral code is insert-only; a referral and a credit change state only and are
     // never deleted; the inbox of the delivery-credit handlers is appended to.
     'promotions.referral_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
@@ -994,7 +1023,32 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'status',
       ],
     },
+    // Customers phase 1 (package B1): the read models are written, replaced and removed (account
+    // erasure) by the application; no column is restricted.
+    'customers.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
+    'customers.customer_directory': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'customers.customer_stats': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    // The inbox of the read model subscribers: appended to only (DELETE with the prune job).
+    'customers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Phase 2a: groups are never deleted (a promotion may name one); members are added and
+    // removed; notes and timeline rows are written once and go only with the customer's erasure.
+    'customers.customer_groups': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['archived_at', 'description', 'name', 'updated_at', 'version'],
+    },
+    'customers.customer_group_members': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'customers.customer_notes': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'customers.customer_timeline': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
     'legal.marketing_consents': {
@@ -1108,6 +1162,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'assistant.messages': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'assistant.spend_days': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    'assistant.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Notifications (support contact): a change is a new version row; none is updated or deleted.
     'notifications.support_contacts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // In-app notifications package 1: a notice is written once and deleted by retention (90 days,
@@ -1787,6 +1842,37 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'security.evaluator_runs': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['finished_at', 'opened'],
+    },
+    // System requests (Admin Inbox): a request changes only its decision, supersession and comment
+    // count (triggers keep a decision and a supersession final); activity is append-only; no
+    // DELETE anywhere (triggers refuse it too).
+    'system_requests.requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'comment_count',
+        'decided_at',
+        'decided_by_account_id',
+        'decision',
+        'decision_reason',
+        'last_reminded_at',
+        'status',
+        'superseded_by_request_id',
+      ],
+    },
+    // The reminder event the in-app notice follows (as every module's outbox).
+    'system_requests.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    'system_requests.request_activity': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'system_requests.request_counters': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['last_number'],
+    },
+    'system_requests.policy_areas': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['default_risk', 'enabled', 'updated_at', 'updated_by_account_id', 'version'],
+    },
+    'system_requests.policy_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['review_due_days', 'updated_at', 'updated_by_account_id', 'version'],
     },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },

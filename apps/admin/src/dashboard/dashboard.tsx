@@ -100,7 +100,7 @@ function Attention({ data }: { readonly data: AdminDashboardData }) {
         label={t('attention.sellers.label')}
         value={formatCount(total, false, locale)}
         scope={t('attention.sellers.scope')}
-        href="/sellers"
+        href="/sellers?tab=awaiting-review"
         tone={total > 0 ? 'attention' : 'neutral'}
         {...(page === null ? { error: failed } : {})}
       />,
@@ -204,7 +204,7 @@ function Applications({ data }: { readonly data: AdminDashboardData }) {
       id="dash-applications"
       title={t('applications.title')}
       scope={t('scope.oldest', { count: RECENT })}
-      action={{ href: '/sellers', label: t('view-all') }}
+      action={{ href: '/sellers?tab=awaiting-review', label: t('view-all') }}
       flush={page !== null && page.items.length > 0}
       {...(page === null ? { error: t('error.card') } : {})}
     >
