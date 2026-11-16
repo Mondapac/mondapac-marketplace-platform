@@ -308,6 +308,10 @@ admin deletes a buyer's account for them, from a support ticket.
   `ordering.customerOrderStats` (both rule `system`, before any unit opens) and replaces the rows, so a
   repeated or late event changes nothing. `customers` cannot import `ordering`, so the peers are
   bound at start by `CustomersReadModelsModule`, like the deletion flow.
+- **Inbox (fix, 16 Nov 2026).** The subscribers handle each event once through `runOnce`, which
+  needs `customers.inbox`. B1 shipped without it, so every delivery failed and was retried until
+  dead-lettered; migration `20261116000000_customers_inbox` adds it, and
+  `email-verification.db-spec.ts` now checks that a sign-up reaches the directory through it.
 - **Backfill and reconcile.** Job `customers.reconcile-read-models` (daily and at worker start) walks
   `identity.customerDirectoryPage` and `ordering.customerOrderAccounts` by keyset (at most 200 pages of
   200 per phase per run) and replaces every row.
@@ -368,7 +372,7 @@ admin deletes a buyer's account for them, from a support ticket.
 ## Customers management, phase 2, PR 2a: groups, notes, the activity timeline and the name edit (15 Nov 2026)
 
 - **Manual groups.** `customers.customer_groups` and `customer_group_members` (migration
-  `20261115230009_customers_groups_notes_timeline`). A group has a name unique per Market whatever
+  `20261116060000_customers_groups_notes_timeline`). A group has a name unique per Market whatever
   its case (index `customer_groups_name_key` on `lower(name)`), an optional description, a version
   and an archive instant; it is never deleted (a promotion may name it). Routes under
   `customers/admin/groups` (`GET`, `POST`, `GET/PUT :groupId`, `POST :groupId/members/add|remove`),
@@ -384,7 +388,7 @@ admin deletes a buyer's account for them, from a support ticket.
   the column `groups` (names, archived flagged), also in the export. No second list was built.
 - **Promotions.** A `CUSTOMER_GROUP` discount can take the segment `{ kind: "MANUAL_GROUP",
   groupId }` (column `promotions.segment_group_id`, migration
-  `20261115230010_promotions_manual_group_segment`; a CHECK ties the id to that segment). The quote
+  `20261116060001_promotions_manual_group_segment`; a CHECK ties the id to that segment). The quote
   asks `CustomersReadFacade.isGroupMember` as the system actor, once per group; a refusal, an error,
   an unknown or archived group is "not a member" (fail closed). The group id is not checked at
   create (an admin context cannot call the `system` read); an unknown id simply never applies.

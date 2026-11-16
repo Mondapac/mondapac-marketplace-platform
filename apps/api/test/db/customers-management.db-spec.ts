@@ -195,24 +195,28 @@ describe.each(TEST_MARKETS)('customers management in market %s (database)', (cod
       const made = group(`${tag} bulk`);
       await inUnit(market, () => groups.insert(market, made));
       const many: Id<'Account'>[] = [];
-      await inUnit(market, async () => {
-        for (let n = 0; n < 2500; n += 1) {
-          const accountId = ids.next<'Account'>();
-          many.push(accountId);
-          await models.upsertDirectory(
-            market,
-            {
-              accountId,
-              email: `${tag}.b${n}@example.test`,
-              displayName: null,
-              status: 'active',
-              emailVerified: true,
-              signedUpAt: T0,
-            },
-            T0,
-          );
-        }
-      });
+      // Seeded in units of 250 rows: one unit of 2,500 upserts can outrun the 5 s transaction
+      // timeout on a busy database; the statement under test still gets all 2,500 at once.
+      for (let start = 0; start < 2500; start += 250) {
+        await inUnit(market, async () => {
+          for (let n = start; n < start + 250; n += 1) {
+            const accountId = ids.next<'Account'>();
+            many.push(accountId);
+            await models.upsertDirectory(
+              market,
+              {
+                accountId,
+                email: `${tag}.b${n}@example.test`,
+                displayName: null,
+                status: 'active',
+                emailVerified: true,
+                signedUpAt: T0,
+              },
+              T0,
+            );
+          }
+        });
+      }
       const added = await inUnit(market, () => groups.addMembers(market, made.id, many, admin, T0));
       expect(added).toHaveLength(2500);
       const entries = many.map((accountId) =>

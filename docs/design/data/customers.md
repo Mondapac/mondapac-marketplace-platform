@@ -90,7 +90,7 @@ reference stays, and is possible personal data too, so it is entered by pattern 
 
 ## 6. Phase 2 tables (PR 2a): groups, notes, timeline
 
-Migration `20261115230009_customers_groups_notes_timeline/` (down drops the four tables).
+Migration `20261116060000_customers_groups_notes_timeline/` (down drops the four tables).
 
 - `customer_groups` (PK `id`, unique `(market_id, id)`): `name` (trimmed, 1 to 80, no control
   characters, CHECK), `description` (at most 500), `kind` (`manual` only, CHECK), `archived_at`,

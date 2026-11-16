@@ -32,6 +32,14 @@ import { ORDER_REPOSITORY, type OrderRepository } from '../application/ports/ord
 import { ORDERING_POLICY, type OrderingPolicy } from '../application/ports/ordering-policy';
 import { REFUND_REPOSITORY, type RefundRepository } from '../application/ports/refund.repository';
 import {
+  ADMIN_SHIPMENT_LIST_READER,
+  type AdminShipmentListReader,
+} from '../application/ports/admin-shipment-list.reader';
+import {
+  ADMIN_REFUND_LIST_READER,
+  type AdminRefundListReader,
+} from '../application/ports/admin-refund-list.reader';
+import {
   ADMIN_NOTE_CIPHER,
   ADMIN_ORDER_NOTE_REPOSITORY,
   type AdminNoteCipher,
@@ -70,6 +78,8 @@ import {
   type SavedFilterRepository,
 } from '../application/ports/saved-filter.repository';
 import { PrismaRefundRepository } from './prisma-refund.repository';
+import { PrismaAdminShipmentListReader } from './prisma-admin-shipment-list.reader';
+import { PrismaAdminRefundListReader } from './prisma-admin-refund-list.reader';
 import {
   MARKET_ZONES,
   SHIP_TO_RETENTION_REPOSITORY,
@@ -117,6 +127,18 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: REFUND_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): RefundRepository => new PrismaRefundRepository(prisma),
+  },
+  {
+    provide: ADMIN_SHIPMENT_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminShipmentListReader =>
+      new PrismaAdminShipmentListReader(prisma),
+  },
+  {
+    provide: ADMIN_REFUND_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminRefundListReader =>
+      new PrismaAdminRefundListReader(prisma),
   },
   {
     provide: SHIP_TO_RETENTION_REPOSITORY,

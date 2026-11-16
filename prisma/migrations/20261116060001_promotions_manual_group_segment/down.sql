@@ -1,4 +1,4 @@
--- Reverses 20261115230010_promotions_manual_group_segment. Rows with a MANUAL_GROUP segment would
+-- Reverses 20261116060001_promotions_manual_group_segment. Rows with a MANUAL_GROUP segment would
 -- fail the restored check, so the down refuses while any exists (nothing is silently changed).
 SET lock_timeout = '5s';
 
