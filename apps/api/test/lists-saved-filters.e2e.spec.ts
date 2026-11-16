@@ -44,12 +44,17 @@ const NO_KEY = id<'Account'>(0xa003);
 const NO_KEY_ROLE = id<'Role'>(0xc0f2);
 const PHASE4 = id<'Account'>(0xa006);
 const PHASE4_ROLE = id<'Role'>(0xc0f3);
+const PHASE4_SHARER = id<'Account'>(0xa007);
+const PHASE4_SHARER_ROLE = id<'Role'>(0xc0f4);
+const PHASE4_SHARE_ONLY = id<'Account'>(0xa008);
+const PHASE4_SHARE_ONLY_ROLE = id<'Role'>(0xc0f5);
 
 /** The phase 4 lists (PR10): each with its view key and a document its list accepts. */
 const PHASE4_LISTS = [
   {
     listKey: 'admin.commission-payouts.payouts',
     viewKey: 'commission-payouts.payout.view',
+    shareKey: 'commission-payouts.saved-filter.share',
     payload: {
       v: 1,
       view: 'paid',
@@ -61,6 +66,7 @@ const PHASE4_LISTS = [
   {
     listKey: 'admin.commission-payouts.disputes',
     viewKey: 'commission-payouts.dispute.view',
+    shareKey: 'commission-payouts.saved-filter.share',
     payload: {
       v: 1,
       view: 'all',
@@ -72,11 +78,13 @@ const PHASE4_LISTS = [
   {
     listKey: 'admin.payments.connected-accounts',
     viewKey: 'payments.connected-account.view',
+    shareKey: 'payments.saved-filter.share',
     payload: { v: 1, filters: { status: 'restricted' }, sort: 'created', direction: 'desc' },
   },
   {
     listKey: 'admin.wallet.credit-requests',
     viewKey: 'wallet.credit.view',
+    shareKey: 'wallet.saved-filter.share',
     payload: {
       v: 1,
       view: 'pending',
@@ -88,11 +96,13 @@ const PHASE4_LISTS = [
   {
     listKey: 'admin.customers.deletion-requests',
     viewKey: 'customers.account-deletion-requests.view',
+    shareKey: 'customers.saved-filter.share',
     payload: { v: 1, view: 'pending', filters: {}, sort: 'scheduled', direction: 'asc' },
   },
   {
     listKey: 'admin.blog.posts',
     viewKey: 'blog.post.read',
+    shareKey: 'blog.saved-filter.share',
     payload: {
       v: 1,
       view: 'all',
@@ -229,6 +239,34 @@ describe('generic saved filters over HTTP (integration)', () => {
       createdAt: START,
     });
     seedAdmin(code, PHASE4, 'phase4', PHASE4_ROLE, 6);
+    fakes.seedRole({
+      id: PHASE4_SHARER_ROLE,
+      marketId: code as AccountState['marketId'],
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      name: 'Phase 4 sharer',
+      permissionKeys: [...new Set(PHASE4_LISTS.flatMap((list) => [list.viewKey, list.shareKey]))],
+      version: 1,
+      createdAt: START,
+    });
+    seedAdmin(code, PHASE4_SHARER, 'sharer', PHASE4_SHARER_ROLE, 7);
+    fakes.seedRole({
+      id: PHASE4_SHARE_ONLY_ROLE,
+      marketId: code as AccountState['marketId'],
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      name: 'Phase 4 shareonly',
+      permissionKeys: [...new Set(PHASE4_LISTS.map((list) => list.shareKey))],
+      version: 1,
+      createdAt: START,
+    });
+    seedAdmin(code, PHASE4_SHARE_ONLY, 'shareonly', PHASE4_SHARE_ONLY_ROLE, 8);
   }
 
   function sessionOf(code: string, account: Id<'Account'>, n: number) {
@@ -552,6 +590,42 @@ describe('generic saved filters over HTTP (integration)', () => {
         expect([list.listKey, shared.status]).toEqual([list.listKey, 403]);
         expect((await call('post', code, '', blind).send(body)).status).toBe(403);
         expect((await call('get', code, `?listKey=${list.listKey}`, blind)).status).toBe(403);
+      }
+      expect(store.rows.size).toBe(PHASE4_LISTS.length);
+    });
+
+    it('shares a phase 4 filter with the view and the module share key, never with the share key alone', async () => {
+      await boot();
+      await seeded(code);
+      const sharer = sessionOf(code, PHASE4_SHARER, 7);
+      const shareOnly = sessionOf(code, PHASE4_SHARE_ONLY, 8);
+
+      for (const list of PHASE4_LISTS) {
+        const body = {
+          listKey: list.listKey,
+          name: 'Ours',
+          visibility: 'everyone',
+          payload: list.payload,
+        };
+        const before = fakes.audits.filter((a) => a.action === 'lists.saved-filter.shared').length;
+        const shared = await call('post', code, '', sharer).send(body);
+        const refused = await call('post', code, '', shareOnly).send(body);
+        const refusedPrivate = await call('post', code, '', shareOnly).send({
+          ...body,
+          visibility: 'me',
+        });
+        const refusedList = await call('get', code, `?listKey=${list.listKey}`, shareOnly);
+        const audits = fakes.audits.filter((a) => a.action === 'lists.saved-filter.shared');
+
+        expect([list.listKey, shared.status]).toEqual([list.listKey, 201]);
+        expect(audits).toHaveLength(before + 1);
+        expect(audits.at(-1)).toMatchObject({
+          marketId: code,
+          after: { listKey: list.listKey, visibility: 'everyone' },
+        });
+        expect([list.listKey, refused.status]).toEqual([list.listKey, 403]);
+        expect([list.listKey, refusedPrivate.status]).toEqual([list.listKey, 403]);
+        expect([list.listKey, refusedList.status]).toEqual([list.listKey, 403]);
       }
       expect(store.rows.size).toBe(PHASE4_LISTS.length);
     });

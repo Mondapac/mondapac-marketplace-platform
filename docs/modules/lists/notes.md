@@ -54,7 +54,9 @@ closed (`v: 1`; date filters are relative presets, never dates; search text is n
   `{v: 1, view, q?, filters, sort, direction}`, `view` only for a list with views (the Seller
   accounts list has none), no paging or columns. The view, `q` and filters go through the list's own
   selector reader, so a saved value is one the list accepts; the stored form is canonical (ids in
-  lower case, instants as ISO text in UTC, minor units as digits).
+  lower case, instants as ISO text in UTC, minor units as digits). Every saved text (`q` and each filter
+  value) must be a string: `null` or another type is `type`, a control, private-use, surrogate or
+  unassigned character is `format`, and blank text is left out.
 - The compact lists 27 and 28 have no saved filters. The seller Payouts list (33) joins when the
   seller saved-filter routes (`/lists/seller/saved-filters`) exist.
 

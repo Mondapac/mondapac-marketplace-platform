@@ -50,6 +50,19 @@ const refuse = (path: string, code: string): Result<never, ListPayloadFailure> =
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+/** Control, private-use, surrogate and unassigned characters; format characters (ZWNJ) are kept. */
+const UNSAFE_TEXT = /[\p{Cc}\p{Co}\p{Cs}\p{Cn}]/u;
+
+/**
+ * A saved text value: a string (null and other types are refused as `type`), without control or
+ * unassigned characters (`format`); blank text is left out (null), as the lists read it.
+ */
+function textOf(value: unknown, path: string): Result<string | null, ListPayloadFailure> {
+  if (typeof value !== 'string') return refuse(path, 'type');
+  if (UNSAFE_TEXT.test(value)) return refuse(path, 'format');
+  return ok(value.trim() === '' ? null : value);
+}
+
 /** The payload parser of a list, for its `ListDefinition.parsePayload`. */
 export function savedListPayloadParser(
   spec: SavedListPayloadSpec,
@@ -76,21 +89,21 @@ export function savedListPayloadParser(
       if (!spec.views.includes(view)) return refuse('payload.view', 'value');
       query['view'] = view;
     }
-    const q = raw['q'];
-    if (q !== undefined && q !== null) {
-      if (typeof q !== 'string') return refuse('payload.q', 'type');
-      if (q !== '') query['q'] = q;
+    if (raw['q'] !== undefined) {
+      const q = textOf(raw['q'], 'payload.q');
+      if (!q.ok) return q;
+      if (q.value !== null) query['q'] = q.value;
     }
-    const filtersRaw = raw['filters'] ?? {};
+    const filtersRaw = raw['filters'] === undefined ? {} : raw['filters'];
     if (!isRecord(filtersRaw)) return refuse('payload.filters', 'type');
     for (const key of Object.keys(filtersRaw)) {
       if (!filterKeys.has(key)) return refuse(`payload.filters.${key}`, 'unknown');
     }
     for (const key of spec.filterKeys) {
-      const value = filtersRaw[key];
-      if (value === undefined || value === null || value === '') continue;
-      if (typeof value !== 'string') return refuse(`payload.filters.${key}`, 'type');
-      query[key] = value;
+      if (filtersRaw[key] === undefined) continue;
+      const value = textOf(filtersRaw[key], `payload.filters.${key}`);
+      if (!value.ok) return value;
+      if (value.value !== null) query[key] = value.value;
     }
 
     const read = spec.read(query);
