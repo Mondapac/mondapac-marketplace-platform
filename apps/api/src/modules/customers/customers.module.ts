@@ -92,6 +92,7 @@ import { AdminSavedFilterDelete } from './application/use-cases/admin-saved-filt
 import { AdminSavedFilterUpdate } from './application/use-cases/admin-saved-filter-update.use-case';
 import { AdminSavedFiltersList } from './application/use-cases/admin-saved-filters-list.use-case';
 import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
+import { CustomerReviewEventsCheck } from './application/use-cases/customer-review-events-check.use-case';
 import type { CustomerManagementDependencies } from './application/customer-management-dependencies';
 import { CUSTOMER_GROUP_REPOSITORY } from './application/ports/customer-groups.repository';
 import {
@@ -346,6 +347,7 @@ const MANAGEMENT_PORTS: readonly [
   ['addresses', ADDRESS_REPOSITORY],
   ['addressCipher', ADDRESS_CIPHER],
   ['groupUsage', CUSTOMER_GROUP_USAGE_REGISTRY],
+  ['reviewEventsCheck', CustomerReviewEventsCheck],
 ];
 
 /** The admin's management of customers (phase 2): its ports, plus identity bound at start. */
@@ -600,6 +602,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       provide: SavedFilterShareCheck,
       inject: [USE_CASE_GATE],
       useFactory: (gate: UseCaseGate): SavedFilterShareCheck => new SavedFilterShareCheck(gate),
+    },
+    {
+      provide: CustomerReviewEventsCheck,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate): CustomerReviewEventsCheck =>
+        new CustomerReviewEventsCheck(gate),
     },
     ...[
       AdminSavedFiltersList,

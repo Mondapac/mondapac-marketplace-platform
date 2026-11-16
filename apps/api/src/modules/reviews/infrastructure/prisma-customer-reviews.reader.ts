@@ -21,18 +21,22 @@ const among = <T extends string>(values: readonly T[] | null) =>
 
 /**
  * The reports the roles cover: `by` the account made them; `about` they report one of the
- * account's reviews and someone else made them (a NULL reporter is someone else).
+ * account's reviews (`reviewIds`, this Market's) and someone else made them (a NULL reporter is
+ * someone else).
  */
-function reportWhere(accountId: Id<'Account'>, roles: readonly ReviewReportRole[] | null) {
+function reportWhere(
+  accountId: Id<'Account'>,
+  roles: readonly ReviewReportRole[],
+  reviewIds: readonly string[],
+) {
   const by = { reporterAccountId: accountId };
   const about = {
-    review: { accountId },
+    reviewId: { in: [...reviewIds] },
     OR: [{ reporterAccountId: null }, { reporterAccountId: { not: accountId } }],
   };
-  const wanted = roles ?? ['by', 'about'];
   const parts = [
-    ...(wanted.includes('by') ? [by] : []),
-    ...(wanted.includes('about') ? [about] : []),
+    ...(roles.includes('by') ? [by] : []),
+    ...(roles.includes('about') ? [about] : []),
   ];
   return parts.length === 0 ? { id: { in: [] as string[] } } : { OR: parts };
 }
@@ -40,11 +44,32 @@ function reportWhere(accountId: Id<'Account'>, roles: readonly ReviewReportRole[
 /**
  * {@link CustomerReviewsReader} on the `reviews` schema, scoped by `marketId`: the reviews and
  * ratings through their (market, account, created) indexes, the votes through (market, account,
- * created), the reports by the account through (market, reporter, created) and the reports about
- * it through the reviews' index and the reports' (market, review, reporter) key.
+ * created), the reports by the account through (market, reporter, created). The reports about it
+ * take two queries in the same unit: the account's review ids in this Market through the reviews'
+ * (market, account, created) index, then the reports with `review_id IN (...)` through the
+ * reports' (market, review, reporter) key. A relation filter inside the OR would plan a hashed
+ * SubPlan with no market_id: a scan of every Market's reviews.
  */
 export class PrismaCustomerReviewsReader implements CustomerReviewsReader {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** The `where` of the reports the roles cover; loads the account's review ids for `about`. */
+  private async reportsWhere(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    roles: readonly ReviewReportRole[] | null,
+  ) {
+    const wanted = roles ?? (['by', 'about'] as const);
+    const reviewIds = wanted.includes('about')
+      ? (
+          await this.prisma.tx(market).reviewsProductReview.findMany({
+            where: { marketId: market.marketId, accountId },
+            select: { id: true },
+          })
+        ).map((row) => row.id)
+      : [];
+    return { marketId: market.marketId, ...reportWhere(accountId, wanted, reviewIds) };
+  }
 
   async reviewsOf(
     market: MarketContext,
@@ -188,8 +213,9 @@ export class PrismaCustomerReviewsReader implements CustomerReviewsReader {
     roles: readonly ReviewReportRole[] | null,
     window: AccountWindow,
   ): Promise<readonly AccountReportRow[]> {
+    const where = await this.reportsWhere(market, accountId, roles);
     const rows = await this.prisma.tx(market).reviewsReport.findMany({
-      where: { marketId: market.marketId, ...reportWhere(accountId, roles) },
+      where,
       orderBy: [{ createdAt: window.direction }, { id: window.direction }],
       skip: window.offset,
       take: window.limit,
@@ -213,14 +239,13 @@ export class PrismaCustomerReviewsReader implements CustomerReviewsReader {
     }));
   }
 
-  countReportsOf(
+  async countReportsOf(
     market: MarketContext,
     accountId: Id<'Account'>,
     roles: readonly ReviewReportRole[] | null,
   ) {
-    return this.prisma.tx(market).reviewsReport.count({
-      where: { marketId: market.marketId, ...reportWhere(accountId, roles) },
-    });
+    const where = await this.reportsWhere(market, accountId, roles);
+    return this.prisma.tx(market).reviewsReport.count({ where });
   }
 
   async authorOf(market: MarketContext, reviewId: Id<'ProductReview'>) {

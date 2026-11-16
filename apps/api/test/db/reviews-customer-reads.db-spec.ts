@@ -146,7 +146,13 @@ describe.each(TEST_MARKETS)('the customer page reviews reads in market %s (datab
     await report(market, reviewIds['published'], null, 'actioned', 1.2);
     reviewIds['byReport'] = await report(market, reviewIds['strangers'], customer, 'open', 1);
     await report(market, reviewIds['strangers'], randomUUID(), 'open', 0.5);
-    await report(other, reviewIds['elsewhere'], randomUUID(), 'open', 0.5);
+    reviewIds['elsewhereReport'] = await report(
+      other,
+      reviewIds['elsewhere'],
+      randomUUID(),
+      'open',
+      0.5,
+    );
 
     await rating(market, customer, 'published', 3);
     await rating(market, customer, 'hidden', 2);
@@ -222,6 +228,31 @@ describe.each(TEST_MARKETS)('the customer page reviews reads in market %s (datab
     expect(await read(market, () => reader.countReportsOf(market, customer, null))).toBe(4);
     expect(await read(market, () => reader.countReportsOf(market, customer, []))).toBe(0);
     expect(await read(other, () => reader.countReportsOf(other, customer, null))).toBe(1);
+  });
+
+  it('reads both roles (null) from this Market’s review ids only, rows and totals alike', async () => {
+    // `about` is `review_id IN (the account's review ids in this Market)`, never a relation
+    // filter: each Market sees its own reports, and a page agrees with the total.
+    const here = await read(market, () => reader.reportsOf(market, customer, null, desc()));
+    expect(here).toHaveLength(4);
+    expect(here.map((r) => r.reviewId)).not.toContain(reviewIds['elsewhere']);
+    expect(here.filter((r) => r.role === 'about').map((r) => r.reviewId)).toEqual([
+      reviewIds['published'],
+      reviewIds['hidden'],
+      reviewIds['hidden'],
+    ]);
+    expect(await read(market, () => reader.countReportsOf(market, customer, null))).toBe(4);
+    const second = await read(market, () =>
+      reader.reportsOf(market, customer, null, { direction: 'desc', offset: 2, limit: 2 }),
+    );
+    expect(second.map((r) => r.id)).toEqual(here.slice(2).map((r) => r.id));
+
+    const there = await read(other, () => reader.reportsOf(other, customer, null, desc()));
+    expect(there.map((r) => [r.id, r.role, r.reviewId])).toEqual([
+      [reviewIds['elsewhereReport'], 'about', reviewIds['elsewhere']],
+    ]);
+    expect(await read(other, () => reader.countReportsOf(other, customer, null))).toBe(1);
+    expect(await read(other, () => reader.countReportsOf(other, customer, ['by']))).toBe(0);
   });
 
   it('names a review’s author, null once detached, undefined when unknown here', async () => {

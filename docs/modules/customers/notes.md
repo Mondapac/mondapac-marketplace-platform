@@ -579,6 +579,10 @@ The last sections of the customer page and the review events on the timeline (ha
   so no change to the expected privileges), reversible. The reports about a customer's reviews and
   the other three lists use existing indexes (`product_reviews`, `seller_ratings` and
   `helpful_votes` by (market, account, created); the reports' (market, review, reporter) key).
+  The reports `about` the customer take two queries in the same read-only unit: the account's
+  review ids in the Market, then `review_id IN (...)` (Mojtaba, B1: a relation filter inside the
+  `OR` planned a hashed SubPlan with no `market_id`, a scan of every Market's reviews). Page and
+  count use the same filter.
 - **Reviews on the timeline.** New kinds `review-published`, `review-held`, `review-hidden`,
   `review-restored` in the new category `reviews`. Subscriptions `customers.timeline-review-*` on
   reviews' four events, registered by `CustomersSectionsModule` (it imports reviews). reviews'
@@ -587,9 +591,23 @@ The last sections of the customer page and the review events on the timeline (ha
   once per delivery (`runOnce`, the customers inbox) and once per event. A review that is gone or
   whose author was deleted writes nothing; reviews unavailable is refused and retried. No reference
   on the entry (the timeline CHECK allows order, refund, group and note only).
+- **Review kinds need the reviews key (Hassan, L1).** The timeline read, its export and so the
+  Overview's last five show `review-published`, `review-held`, `review-hidden` and
+  `review-restored` only to a caller who also holds `reviews.customer-review.view`, asked through
+  the probe use case `customers.customer-review-events-check` (the gate decides). Without the key
+  the kinds leave the query itself (not the page afterwards), so the page and its total agree; a
+  filter on the `reviews` category or on review kinds only answers an empty list, not an error. A
+  probe the gate cannot answer is `access.unavailable`.
+- **Author removals.** reviews publishes no event when an author deletes their own review (there
+  is no removal event; `ReviewHidden` follows only a moderator's hide or remove of a published
+  review), so an author's removal does not appear on the timeline: the earlier `review-published`
+  entry stays and nothing follows it.
 - **Tests.** Unit on both Market fixtures (reviews' reads and refusals; the four sections through
   the shared section spec; the timeline from review events and subscriptions), HTTP
-  (`customers-reviews-admin.e2e.spec.ts`), PostgreSQL (`reviews-customer-reads.db-spec.ts`).
+  (`customers-reviews-admin.e2e.spec.ts`: also a seller session, answered 403, and an acting-as
+  session, answered 401 `session.invalid` as on every admin route, on all eight routes; both view
+  keys without the export key refused on every export), PostgreSQL
+  (`reviews-customer-reads.db-spec.ts`, including both roles on both Markets).
 
 Not built in part 3:
 
@@ -597,8 +615,5 @@ Not built in part 3:
   consent value reaches an event). Needs a decision: a legal outbox and an event such as
   `legal.marketing-consent-changed.v1` (account and channel, no value), which customers would copy
   as `consent-changed`. The consent history section (part 2) shows every change meanwhile.
-- **Review kinds and the reviews key.** The timeline is read with `customers.customers.view` only,
-  so an admin without `reviews.customer-review.view` still sees that and when a review was
-  published, held, hidden or restored (no review id, no text).
 - `review-published` also follows an edit that passed the checks and a release from a hold, as
   reviews' event does; the timeline cannot tell a first submission from those.

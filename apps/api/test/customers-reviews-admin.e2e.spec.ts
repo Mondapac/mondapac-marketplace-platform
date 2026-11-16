@@ -1,5 +1,5 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { parseId, Temporal } from '@mondapac/shared-kernel';
+import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
@@ -14,6 +14,7 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { CUSTOMER_REVIEWS_READER } from '../src/modules/reviews/application/ports/customer-reviews.reader';
 import { MemoryCustomerReviews } from '../src/modules/reviews/application/testing/in-memory-customer-reviews';
+import { AUTHENTICATOR, type Authenticator } from '../src/platform/authz/authenticator';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
@@ -25,7 +26,9 @@ import { panelHeaders, TEST_MARKETS } from './support/test-config';
 // guards, gate, controller, customers' use cases and reviews' facade and use cases, with reviews'
 // reader in memory. Proves both keys (customers.customers.view alone, or the reviews key alone,
 // reaches nothing), CSRF on a POST, the closed bodies and filters, `no-store`, no review text and
-// no reporter, and the export's step-up and audit row, in both Markets.
+// no reporter, and the export's step-up and audit row, in both Markets. A seller session and an
+// acting-as (Login as Seller) session reach none of the eight routes; both view keys without
+// customers.customers.export reach no export.
 
 const START = Temporal.Instant.from('2026-11-16T10:00:00Z');
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 };
@@ -37,11 +40,15 @@ const id = <T extends string>(n: number): Id<T> => {
 const MODERATOR = id<'Account'>(0xa001);
 const VIEWER = id<'Account'>(0xa002);
 const REVIEWER = id<'Account'>(0xa003);
+const READER = id<'Account'>(0xa004);
+const SELLER_ACCOUNT = id<'Account'>(0xa005);
+const SELLER = id<'Seller'>(0xa301);
 const BUYER = id<'Account'>(0xa201);
 const REPORTER = id<'Account'>(0xa202);
 const ROLE = id<'Role'>(0xe001);
 const VIEW_ROLE = id<'Role'>(0xe002);
 const REVIEWS_ROLE = id<'Role'>(0xe003);
+const READ_ROLE = id<'Role'>(0xe004);
 const KEYS = [
   'customers.customers.view',
   'customers.customers.export',
@@ -144,7 +151,11 @@ describe.each(TEST_MARKETS)('customer page reviews sections over HTTP in market 
     refundedMinor: 0n,
   });
 
-  const account = (accountId: Id<'Account'>, population: 'admin' | 'customer', label: string) =>
+  const account = (
+    accountId: Id<'Account'>,
+    population: 'admin' | 'customer' | 'seller',
+    label: string,
+  ) =>
     fakes.seedAccount({
       id: accountId,
       marketId,
@@ -197,15 +208,19 @@ describe.each(TEST_MARKETS)('customer page reviews sections over HTTP in market 
     role(ROLE, KEYS);
     role(VIEW_ROLE, ['customers.customers.view']);
     role(REVIEWS_ROLE, ['reviews.customer-review.view']);
+    role(READ_ROLE, ['customers.customers.view', 'reviews.customer-review.view']);
     account(MODERATOR, 'admin', 'moderator');
     account(VIEWER, 'admin', 'viewer');
     account(REVIEWER, 'admin', 'reviewer');
+    account(READER, 'admin', 'reader');
+    account(SELLER_ACCOUNT, 'seller', 'seller');
     account(BUYER, 'customer', 'buyer');
     account(REPORTER, 'customer', 'reporter');
     for (const [n, accountId, roleId] of [
       [1, MODERATOR, ROLE],
       [2, VIEWER, VIEW_ROLE],
       [3, REVIEWER, REVIEWS_ROLE],
+      [4, READER, READ_ROLE],
     ] as const) {
       fakes.seedAssignment({
         id: id<'RoleAssignment'>(0xe900 + n),
@@ -220,7 +235,11 @@ describe.each(TEST_MARKETS)('customer page reviews sections over HTTP in market 
     fakes.audits.length = 0;
   }
 
-  function sessionOf(n: number, accountId: Id<'Account'>) {
+  function sessionOf(
+    n: number,
+    accountId: Id<'Account'>,
+    population: 'admin' | 'seller' = 'admin',
+  ) {
     const issued = tokens.issue();
     void fakes.sessionRepository.add(
       market,
@@ -228,8 +247,8 @@ describe.each(TEST_MARKETS)('customer page reviews sections over HTTP in market 
         id: id<'Session'>(0xf100 + n),
         marketId,
         accountId,
-        population: 'admin',
-        sellerId: null,
+        population,
+        sellerId: population === 'seller' ? SELLER : null,
         transport: 'cookie',
         device: null,
         lifetime: LIFETIME,
@@ -239,13 +258,37 @@ describe.each(TEST_MARKETS)('customer page reviews sections over HTTP in market 
     );
     return {
       'x-market-id': code,
-      ...panelHeaders(code, 'admin'),
-      cookie: `__Host-session-admin-${code}=${issued.token}`,
+      ...panelHeaders(code, population),
+      cookie: `__Host-session-${population}-${code}=${issued.token}`,
       'x-csrf-token': csrfTokenFor(issued.token),
     };
   }
 
+  /** An active second factor for the account, so a fresh proof passes the step-up guard. */
+  function enrol(accountId: Id<'Account'>, n: number) {
+    fakes.factors.set(accountId, {
+      id: id<'SecondFactor'>(0xf300 + n),
+      marketId,
+      accountId,
+      state: 'active',
+      secretCiphertext: 'sealed',
+      pendingSecretCiphertext: null,
+      lastAcceptedStep: null,
+      activatedAt: START,
+      lockedAt: null,
+      createdAt: START,
+      recoveryCodes: Array.from({ length: 10 }, (_, index) => ({
+        position: index + 1,
+        codeHash: new Uint8Array(32).fill(index + 1),
+        usedAt: null,
+      })),
+      version: 1,
+    });
+  }
+
   const base = `/customers/admin/customers/${BUYER}`;
+  const SECTIONS = ['reviews', 'seller-ratings', 'helpful-votes', 'review-reports'] as const;
+  const ROUTES = SECTIONS.flatMap((section) => [`${base}/${section}`, `${base}/${section}/export`]);
 
   beforeEach(() => {
     fakes.reset();
@@ -316,24 +359,7 @@ describe.each(TEST_MARKETS)('customer page reviews sections over HTTP in market 
     expect(refused.status).toBe(403);
     expect((refused.body as { code: string }).code).toMatch(/^second-factor\./);
 
-    fakes.factors.set(MODERATOR, {
-      id: id<'SecondFactor'>(0xf301),
-      marketId,
-      accountId: MODERATOR,
-      state: 'active',
-      secretCiphertext: 'sealed',
-      pendingSecretCiphertext: null,
-      lastAcceptedStep: null,
-      activatedAt: START,
-      lockedAt: null,
-      createdAt: START,
-      recoveryCodes: Array.from({ length: 10 }, (_, index) => ({
-        position: index + 1,
-        codeHash: new Uint8Array(32).fill(index + 1),
-        usedAt: null,
-      })),
-      version: 1,
-    });
+    enrol(MODERATOR, 1);
     fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf101)}|${EXPORT_STEP_UP}`, clock.now());
     const file = await http().post(`${base}/reviews/export`).set(admin).send({ format: 'csv' });
     expect(file.status).toBe(200);
@@ -343,5 +369,62 @@ describe.each(TEST_MARKETS)('customer page reviews sections over HTTP in market 
     expect(
       fakes.audits.filter((audit) => audit.action === 'customers.customer-section.exported'),
     ).toMatchObject([{ targetId: BUYER, after: { section: 'reviews', rowCount: 2 } }]);
+  });
+
+  it('refuses a seller session and an acting-as session on all eight routes', async () => {
+    // A seller session is refused (403); an acting-as session is not an admin session on an
+    // admin route, so the guard answers the exact 401 `session.invalid` before any use case.
+    await boot();
+    const seller = sessionOf(5, SELLER_ACCOUNT, 'seller');
+    for (const route of ROUTES) {
+      const res = await http().post(route).set(seller).send({});
+      expect([route, res.status]).toEqual([route, 403]);
+      expect(JSON.stringify(res.body)).not.toContain(id(0xb102));
+    }
+    // An admin with every key, signed in as a seller (Login as Seller): no route answers.
+    const admin = sessionOf(1, MODERATOR);
+    enrol(MODERATOR, 1);
+    fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf101)}|${EXPORT_STEP_UP}`, clock.now());
+    const authenticator = app!.get<Authenticator>(AUTHENTICATOR);
+    const real = authenticator.authenticate.bind(authenticator);
+    const spy = jest.spyOn(authenticator, 'authenticate').mockImplementation(async (m, c) => {
+      const result = await real(m, c);
+      return result.ok ? ok({ ...result.value, actingAs: { sellerId: SELLER } }) : result;
+    });
+    try {
+      for (const route of ROUTES) {
+        const res = await http().post(route).set(admin).send({ format: 'csv' });
+        expect([route, res.status, res.body]).toEqual([
+          route,
+          401,
+          { statusCode: 401, code: 'session.invalid' },
+        ]);
+      }
+    } finally {
+      spy.mockRestore();
+    }
+    expect(
+      fakes.audits.filter((audit) => audit.action === 'customers.customer-section.exported'),
+    ).toEqual([]);
+  });
+
+  it('refuses every export to an admin with both view keys but not the export key', async () => {
+    await boot();
+    const reader = sessionOf(4, READER);
+    // A fresh proof passes the step-up guard, so the refusal is the gate's: the missing key.
+    enrol(READER, 4);
+    fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf104)}|${EXPORT_STEP_UP}`, clock.now());
+    for (const section of SECTIONS) {
+      expect((await http().post(`${base}/${section}`).set(reader).send({})).status).toBe(200);
+      const res = await http()
+        .post(`${base}/${section}/export`)
+        .set(reader)
+        .send({ format: 'csv' });
+      expect([section, res.status]).toEqual([section, 403]);
+      expect(res.body).toMatchObject({ code: 'access.denied' });
+    }
+    expect(
+      fakes.audits.filter((audit) => audit.action === 'customers.customer-section.exported'),
+    ).toEqual([]);
   });
 });

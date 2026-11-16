@@ -150,8 +150,10 @@ model ReviewsReport {
   /// One report of a review per reporter.
   @@unique([marketId, reviewId, reporterAccountId])
   /// The reports one account made, newest first (customers management phase 2b: the customer
-  /// page's reports section). The reports about an account's reviews go through the reviews'
-  /// (market, account, created) index and the unique key above.
+  /// page's reports section). The reports about an account's reviews take two queries: the
+  /// account's review ids in the Market through the reviews' (market, account, created) index,
+  /// then `review_id IN (...)` through the unique key above (no relation filter: it would plan
+  /// a SubPlan without market_id).
   @@index([marketId, reporterAccountId, createdAt(sort: Desc)])
   @@map("review_reports")
   @@schema("reviews")

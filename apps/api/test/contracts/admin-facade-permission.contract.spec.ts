@@ -44,6 +44,7 @@ import { ASSISTANT_CUSTOMER_CONVERSATION_VIEW as CONVERSATIONS_KEY } from '../..
 import { AdminCustomerConversations as AssistantConversations } from '../../src/modules/assistant/application/use-cases/admin-customer-conversations.use-case';
 import { AdminCustomerReviewsSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-reviews-export.use-case';
 import { AdminCustomerReviewsSection } from '../../src/modules/customers/application/use-cases/admin-customer-reviews.use-case';
+import { CustomerReviewEventsCheck } from '../../src/modules/customers/application/use-cases/customer-review-events-check.use-case';
 import { AdminCustomerSellerRatingsSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-seller-ratings-export.use-case';
 import { AdminCustomerSellerRatingsSection } from '../../src/modules/customers/application/use-cases/admin-customer-seller-ratings.use-case';
 import { AdminCustomerHelpfulVotesSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-helpful-votes-export.use-case';
@@ -326,6 +327,11 @@ describe('the customer page sections and their owners’ facade reads', () => {
   it('keeps reviews’ customer key a platform key and the author lookup the system’s', () => {
     expect(REVIEWS_KEY.scope).toBe('platform');
     expect(ReviewAuthorOf.access.rule).toEqual({ kind: 'system' });
+    // The timeline shows the review kinds only to a caller who holds reviews' key (L1).
+    expect(CustomerReviewEventsCheck.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [REVIEWS_KEY.key],
+    });
     expect([...SECTION_REVIEW_STATUSES]).toEqual([...REVIEW_STATUSES]);
     expect([...SECTION_SELLER_RATING_STATUSES]).toEqual([...SELLER_RATING_STATUSES]);
     expect([...SECTION_REPORT_ROLES]).toEqual(['by', 'about']);
