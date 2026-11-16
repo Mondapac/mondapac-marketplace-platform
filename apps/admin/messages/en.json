@@ -2997,6 +2997,7 @@
   },
   "fleets": {
     "title": "Delivery fleets",
+    "review-section": "Review",
     "permission-view": "View delivery fleets",
     "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
     "no-access": "Your role cannot see delivery fleets.",
@@ -5478,6 +5479,7 @@
   },
   "deliverySettings": {
     "title": "Delivery rules",
+    "review-section": "Review",
     "permission-view": "View delivery settings",
     "state": {
       "on": "On",
