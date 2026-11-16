@@ -33,6 +33,8 @@ import {
 import { ViewCommissionRate } from '../src/modules/commission-payouts/application/use-cases/view-commission-rate.use-case';
 import { ViewOwnLedger } from '../src/modules/commission-payouts/application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from '../src/modules/commission-payouts/application/use-cases/view-seller-ledger.use-case';
+import { ExportSellerLedger } from '../src/modules/commission-payouts/application/use-cases/export-seller-ledger.use-case';
+import { ExportSellerPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/export-seller-payout-holds.use-case';
 import { COMMISSION_PAYOUTS_STATUS } from '../src/modules/commission-payouts/presentation/http-answers';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
@@ -92,9 +94,13 @@ const ledger = (currency: string) => ({
       sourceId: null,
       occurredAt: START,
       recordedAt: START,
+      actions: ['open-order'],
     },
   ],
   nextCursor: null,
+  total: null,
+  page: null,
+  pageSize: 10,
 });
 
 it('maps every refusal code of the commission-payouts routes to its exact status', () => {
@@ -108,6 +114,7 @@ it('maps every refusal code of the commission-payouts routes to its exact status
     'commission-payouts.version-conflict': 409,
     'commission-payouts.seller-order-not-found': 404,
     'commission-payouts.hold-not-found': 404,
+    'commission-payouts.ledger-entry-not-found': 404,
     'commission-payouts.hold-already-released': 409,
     'commission-payouts.dispute-not-found': 404,
     'commission-payouts.dispute.not-decidable': 409,
@@ -247,6 +254,10 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           .useValue(stub('list-payouts'))
           .overrideProvider(ExportPayouts)
           .useValue(stub('export-payouts'))
+          .overrideProvider(ExportSellerLedger)
+          .useValue(stub('export-seller-ledger'))
+          .overrideProvider(ExportSellerPayoutHolds)
+          .useValue(stub('export-seller-holds'))
           .overrideProvider(ViewPayout)
           .useValue(stub('view-payout'))
           .overrideProvider(ApprovePayout)
@@ -512,6 +523,13 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     const byAdmin = await call('get', 'admin', `${LEDGER}?limit=10&cursor=abc`, admin());
     expect(byAdmin.status).toBe(200);
     expect(byAdmin.headers['cache-control']).toBe('no-store');
+    expect(byAdmin.body).toMatchObject({
+      entries: [{ amount: '150', actions: ['open-order'] }],
+      total: null,
+      page: null,
+      pageSize: 10,
+      nextCursor: null,
+    });
     const own = await call('get', 'seller', OWN, seller());
     expect(own.status).toBe(200);
     expect(own.body).toEqual({
@@ -549,6 +567,57 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     expect(calls).toEqual([
       { name: 'seller-ledger', input: { sellerId: SELLER, cursor: 'abc', limit: 10 } },
       { name: 'own-ledger', input: { cursor: undefined, limit: undefined } },
+    ]);
+  });
+
+  it('passes the seller page list queries through and streams their exports', async () => {
+    await boot();
+    const session = admin();
+    const HOLD_LIST = `/commission-payouts/admin/sellers/${SELLER}/payout-holds`;
+    next = ok(ledger(currency));
+    await call('get', 'admin', `${LEDGER}?side=debit&q=x&page=2&pageSize=25&sort=amount`, session);
+    next = ok({
+      holds: [],
+      counts: { active: 0, released: 0 },
+      total: 0,
+      page: 1,
+      pageSize: 100,
+      nextCursor: null,
+    });
+    await call('get', 'admin', `${HOLD_LIST}?status=active&scope=order`, session);
+    const chunks = ['\uFEFFRecorded\r\n', 'row\r\n'];
+    next = ok({
+      filename: 'seller-ledger-2026-11-02.csv',
+      contentType: 'text/csv; charset=utf-8',
+      chunks,
+    });
+    const file = await call('get', 'admin', `${LEDGER}/export?kind=sale&format=csv`, session);
+    expect(file.status).toBe(200);
+    expect(file.headers['content-disposition']).toBe(
+      'attachment; filename="seller-ledger-2026-11-02.csv"',
+    );
+    expect(file.headers['cache-control']).toBe('no-store');
+    expect(file.headers['x-content-type-options']).toBe('nosniff');
+    expect(file.text).toContain('row');
+    next = err({ code: 'batch.too-large', max: 10000, total: 10001 });
+    const big = await call('get', 'admin', `${HOLD_LIST}/export`, session);
+    expect(big.status).toBe(413);
+    expect(big.body).toEqual({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10000, total: 10001 },
+    });
+    next = err({ code: 'commission-payouts.ledger-entry-not-found' });
+    expect((await call('get', 'admin', `${LEDGER}/export?ids=x`, session)).status).toBe(404);
+    expect(calls).toEqual([
+      {
+        name: 'seller-ledger',
+        input: { side: 'debit', q: 'x', page: 2, pageSize: 25, sort: 'amount', sellerId: SELLER },
+      },
+      { name: 'list-holds', input: { status: 'active', scope: 'order', sellerId: SELLER } },
+      { name: 'export-seller-ledger', input: { kind: 'sale', format: 'csv', sellerId: SELLER } },
+      { name: 'export-seller-holds', input: { sellerId: SELLER } },
+      { name: 'export-seller-ledger', input: { ids: 'x', sellerId: SELLER } },
     ]);
   });
 
@@ -690,11 +759,23 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       const session = admin();
       proveAll();
 
-      next = ok([hold]);
+      next = ok({
+        holds: [{ ...hold, actions: ['release'] }],
+        counts: { active: 1, released: 0 },
+        total: 1,
+        page: 1,
+        pageSize: 100,
+        nextCursor: null,
+      });
       const listed = await call('get', 'admin', HOLDS, session);
       expect(listed.status).toBe(200);
       expect(listed.body).toEqual({
-        holds: [{ ...hold, placedAt: START.toString() }],
+        holds: [{ ...hold, placedAt: START.toString(), actions: ['release'] }],
+        counts: { active: 1, released: 0 },
+        total: 1,
+        page: 1,
+        pageSize: 100,
+        nextCursor: null,
       });
       next = ok(hold);
       const placed = await call('post', 'admin', HOLDS, session, {

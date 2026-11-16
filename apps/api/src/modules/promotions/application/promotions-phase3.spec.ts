@@ -48,6 +48,7 @@ import { ListPromotionCredits } from './use-cases/list-promotion-credits.use-cas
 import { PreviewQuote } from './use-cases/preview-quote.use-case';
 import { QualifyReferralOnDelivery } from './use-cases/qualify-referral-on-delivery.use-case';
 import { QuoteDiscounts } from './use-cases/quote-discounts.use-case';
+import { RedeemDiscounts } from './use-cases/redeem-discounts.use-case';
 import { SetPromotionBudget } from './use-cases/set-promotion-budget.use-case';
 import { SetPromotionsStatus } from './use-cases/set-promotions-status.use-case';
 import { ViewMyReferral } from './use-cases/view-my-referral.use-case';
@@ -154,7 +155,11 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
   const make = <U>(type: new (g: typeof gate, d: PromotionsDependencies) => U): U =>
     new type(gate, deps);
   const facade = () =>
-    new PromotionsFacadeImplementation(make(QuoteDiscounts), make(CheckWasPrice));
+    new PromotionsFacadeImplementation(
+      make(QuoteDiscounts),
+      make(RedeemDiscounts),
+      make(CheckWasPrice),
+    );
 
   beforeEach(async () => {
     rulingInForce = rulingConfirmed;

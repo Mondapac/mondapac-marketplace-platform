@@ -129,12 +129,29 @@ a seller or admin session is not read here. Every answer is `Cache-Control: no-s
   partial `WHERE account_id IS NOT NULL`): (`market_id`, `account_id`, `last_message_at` DESC,
   `id` DESC) for the list.
 
-## Preview for `internal` (designed, not built)
+## Preview for `internal` (stage 0, B4)
 
-`internal` reaches no storefront visitor. Proposed: an admin with `assistant.settings.manage`
-opens the storefront with a short-lived signed preview token issued by an admin route; the
-storefront sends it with each message and the use case treats that visitor as in the rollout.
-`?visitor=` stays a rollout aid, never a control.
+- `POST /assistant/admin/preview-token` (admin session, CSRF, `assistant.settings.manage`,
+  protected) answers `{ token, expiresAt }`: valid 30 minutes, for this Market only. Each issue
+  is an audit row `assistant.preview-token.issued` naming the expiry (a security event, s3); the
+  token is never stored or logged. Without `ASSISTANT_PREVIEW_TOKEN_KEY` the route answers 503
+  `assistant.preview-unavailable` and no token verifies.
+- The storefront sends the token as the `x-assistant-preview` header with
+  `GET /assistant/storefront` and each `POST .../messages`. A valid token puts that browser in
+  the rollout whatever the audience; the kill switch, a missing key or model, the spend caps,
+  customers-only and the message limits still apply. The read answers `preview: true` so the
+  widget can mark itself. Invalid, expired or another Market's token counts as none.
+- Format `ap1.<expiry>.<nonce>.<mac>`: HMAC-SHA-256 under an HKDF key of
+  `ASSISTANT_PREVIEW_TOKEN_KEY` over (purpose, Market, expiry, nonce); constant-time compare; an
+  expiry past the lifetime is refused even with a valid MAC. The token names no account.
+- Replay: a token is a bearer token for its 30 minutes and is not bound to a browser. Accepted
+  because it unlocks only what any visitor gets with `audience: all`, under the same limits and
+  caps. Changing the key revokes every token at once; after a rotation admins take a new token
+  from the panel. Each environment (testbed, staging, production) has its own key, so a token
+  never crosses between them; a `dev-only-` key is refused when `NODE_ENV` is production. The
+  panel should pass it to the storefront
+  in the URL fragment (never a query string) and keep it in the tab's session storage only (F1/F3).
+- `?visitor=` stays a rollout aid, never a control.
 
 ## Tables (Mojtaba's sign-off before merge)
 
