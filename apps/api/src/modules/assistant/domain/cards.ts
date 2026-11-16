@@ -14,10 +14,39 @@ export type AssistantCard =
       readonly sellerId: string;
       readonly name: string;
       readonly shortText: string | null;
-      /** Only on the specials shelf, as pricing answered it; otherwise the card has no price. */
+      /** The public store name of the seller, as sellers answered it; null when unreadable. */
+      readonly sellerName: string | null;
+      /**
+       * The lowest buyer price of the Offer now, as pricing answered it (Money, never Cost); null
+       * when pricing could not be read, and then the card shows none. Never from model text.
+       */
       readonly price: Money | null;
+      /** The regular price, only while `price` is a special. */
       readonly regularPrice: Money | null;
       readonly taxInclusive: boolean | null;
+      /** True when the Offer has Variants at different prices: `price` is then a "from" price. */
+      readonly priceFrom: boolean;
+      /**
+       * Certification badges as catalog answered them live, only on the card of `get_product`.
+       * Display only: never model text and never an input to `evaluateClaim` (ADR-0019 R1).
+       */
+      readonly badges: readonly {
+        readonly typeCode: string;
+        readonly typeName: string;
+        /** True when the seller only declared it: the storefront shows it as it does on the page. */
+        readonly sellerClaim: boolean;
+      }[];
+    }
+  | {
+      readonly kind: 'seller';
+      readonly sellerId: string;
+      /** The store's own page address (`/stores/<slug>`); the storefront builds the link. */
+      readonly slug: string;
+      readonly name: string;
+      readonly city: string | null;
+      readonly sellingSince: number;
+      /** How many products the store has on sale; null means unknown, never zero. */
+      readonly productCount: number | null;
     }
   | { readonly kind: 'page'; readonly page: SitePage; readonly categoryId: string | null }
   | { readonly kind: 'support'; readonly email: string | null };
@@ -43,6 +72,8 @@ export type AssistantNotice =
 export const cardRefOf = (card: AssistantCard): string =>
   card.kind === 'product'
     ? `product:${card.offerId}`
-    : card.kind === 'page'
-      ? `page:${card.page}`
-      : 'support';
+    : card.kind === 'seller'
+      ? `seller:${card.sellerId}`
+      : card.kind === 'page'
+        ? `page:${card.page}`
+        : 'support';

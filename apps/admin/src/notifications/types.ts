@@ -11,6 +11,21 @@ export const REVIEW_HELD = 'admin.review-held';
 export const REVIEW_REPORTED = 'admin.review-reported';
 export const SELLER_REFUND_LIMIT_REACHED = 'admin.seller-refund-limit-reached';
 
+/** The areas of a system request; one overdue-reminder kind per area. */
+export const SYSTEM_REQUEST_AREAS = [
+  'people',
+  'money',
+  'delivery',
+  'catalogue',
+  'certification',
+  'marketplace',
+  'content',
+  'review-policy',
+] as const;
+export const SYSTEM_REQUEST_OVERDUE_KINDS: ReadonlySet<string> = new Set(
+  SYSTEM_REQUEST_AREAS.map((area) => `admin.system-request-overdue-${area}`),
+);
+
 /** Every admin kind asks for a review, so every one plays the sound when it is switched on. */
 export const RINGING_KINDS: ReadonlySet<string> = new Set([
   CERTIFICATE_SUBMITTED,
@@ -22,6 +37,7 @@ export const RINGING_KINDS: ReadonlySet<string> = new Set([
   REVIEW_HELD,
   REVIEW_REPORTED,
   SELLER_REFUND_LIMIT_REACHED,
+  ...SYSTEM_REQUEST_OVERDUE_KINDS,
 ]);
 
 /**
@@ -37,6 +53,13 @@ export const NOTICES_PERMISSIONS: readonly string[] = [
   'catalog.platform-import.run',
   'reviews.moderation.queue',
   'ordering.refund-limits.view',
+  'system-requests.people.review',
+  'system-requests.money.review',
+  'system-requests.delivery.review',
+  'system-requests.catalogue.review',
+  'system-requests.certification.review',
+  'system-requests.marketplace.review',
+  'system-requests.content.review',
 ];
 
 /** Whether the admin holds a permission behind at least one notice kind (shows the bell). */
@@ -67,6 +90,10 @@ export interface AdminNoticeParams {
   readonly reviewId?: string;
   /** admin.seller-refund-limit-reached (sellerId above too): which cap stopped the refund. */
   readonly limit?: 'count' | 'amount' | 'unset';
+  /** admin.system-request-overdue-<area>: the request, its SR number and its age in days. */
+  readonly requestId?: string;
+  readonly number?: number;
+  readonly ageDays?: number;
 }
 
 export interface AdminNotice {
