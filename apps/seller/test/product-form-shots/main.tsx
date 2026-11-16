@@ -2,7 +2,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
-import { BLANK_PRODUCT } from '../../src/catalog/add-offer.tsx';
+import { blankProduct } from '../../src/catalog/add-offer.tsx';
 import { EditForm } from '../../src/catalog/edit-form.tsx';
 import type { ProductOptions, ProductView } from '../../src/catalog/types.ts';
 
@@ -97,6 +97,8 @@ const shown: ProductView =
 const addOptions: ProductOptions = {
   productTypes: ['grocery', 'dry-goods', 'frozen'],
   conditions: ['new', 'used'],
+  taxCategoryCodes: ['gst-free-food', 'gst'],
+  categories: product.form.categories,
   locales: { default: 'en-AU', supported: ['en-AU', 'ar'] },
   sellerCanCreateProduct: true,
 };
@@ -105,7 +107,7 @@ createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     <main className="mx-auto max-w-7xl p-4 md:p-6">
       <EditForm
-        product={adding ? BLANK_PRODUCT : shown}
+        product={adding ? blankProduct(addOptions) : shown}
         photos={[]}
         locales={['en-AU', 'ar']}
         defaultLocale="en-AU"

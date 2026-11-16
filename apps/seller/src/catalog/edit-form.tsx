@@ -351,7 +351,15 @@ export function EditForm({
     const saved = await callApi<DraftSaved>(
       'PUT',
       `catalog/seller/products/${productId}/draft`,
-      { content: contentWith(undefined, defaultLocale, texts), variantIds },
+      {
+        content: contentFrom(contentWith(undefined, defaultLocale, texts), {
+          categoryIds,
+          taxCategoryCode,
+          attributeValues: {},
+          variants: null,
+        }),
+        variantIds,
+      },
       csrfToken,
     );
     if (saved.ok && saved.body.refusedFields.length === 0) {
@@ -617,10 +625,23 @@ export function EditForm({
           </Card>
           {adding ? (
             <>
-              <LaterCard
-                title={t('catalog.edit.classification')}
-                help={t('catalog.add.later.classification')}
-              />
+              <ClassificationSection
+                categories={form.categories}
+                taxCategoryCodes={form.taxCategoryCodes}
+                categoryIds={categoryIds}
+                taxCategoryCode={taxCategoryCode}
+                defaultLocale={defaultLocale}
+                onCategories={(ids) => {
+                  setCategoryIds(ids);
+                  edited();
+                }}
+                onTax={(code) => {
+                  setTaxCategoryCode(code);
+                  edited();
+                }}
+              >
+                <p className="text-sm text-fg-muted">{t('catalog.add.later.tags')}</p>
+              </ClassificationSection>
               <LaterCard
                 title={t('catalog.edit.attributes')}
                 help={t('catalog.add.later.attributes')}

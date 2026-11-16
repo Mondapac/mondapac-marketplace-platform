@@ -1195,7 +1195,7 @@
         "help": "These belong to your offer on this product, not to the product itself."
       },
       "later": {
-        "classification": "Save the draft first. Then you can choose the category, tax category and tags here.",
+        "tags": "Tags: save the draft first. Then you can add them here.",
         "attributes": "Save the draft first. The details to fill in depend on the category you choose.",
         "variants": "Save the draft first. Then you can choose the sizes or options you sell.",
         "photos": "Save the draft first. Then you can add photos here."

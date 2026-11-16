@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { catalogStateFor } from '../../../../src/catalog/catalog-states.tsx';
-import { BLANK_PRODUCT } from '../../../../src/catalog/add-offer.tsx';
+import { blankProduct } from '../../../../src/catalog/add-offer.tsx';
 import { EditForm } from '../../../../src/catalog/edit-form.tsx';
 import { EDIT_PERMISSION, type ProductOptions } from '../../../../src/catalog/types.ts';
 import { loadCatalogPage } from '../../../../src/server/catalog-page.ts';
@@ -25,7 +25,7 @@ export default async function NewProductPage() {
     <SellerShell session={page.session} activeId="s_products" title={title}>
       {page.body.sellerCanCreateProduct ? (
         <EditForm
-          product={BLANK_PRODUCT}
+          product={blankProduct(page.body)}
           photos={null}
           locales={page.body.locales.supported}
           defaultLocale={page.body.locales.default}

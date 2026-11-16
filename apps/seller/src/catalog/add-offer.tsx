@@ -6,28 +6,36 @@ import { readable } from './format.ts';
 import type { ProductOptions, ProductView } from './types.ts';
 
 /**
- * The product the Add page starts from. Nothing exists on the server yet, so the form, the
- * variants and the draft are empty; the first Save draft creates the product (see EditForm).
+ * The product the Add page starts from. Nothing exists on the server yet, so the variants and the
+ * draft are empty; the category list and tax category codes come from the options read. The first
+ * Save draft creates the product (see EditForm).
  */
-export const BLANK_PRODUCT: ProductView = {
-  productId: '',
-  productCode: '',
-  typeCode: '',
-  familyCode: '',
-  variantModel: 'single',
-  status: 'draft',
-  pausedAt: null,
-  variants: [],
-  maxVariants: 0,
-  sensitiveFields: [],
-  lastChangedAt: '',
-  createdAt: '',
-  pendingSubmittedAt: null,
-  form: { taxCategoryCodes: [], units: [], fields: [], categories: [] },
-  workingCopy: null,
-  published: null,
-  pending: null,
-};
+export function blankProduct(options: ProductOptions): ProductView {
+  return {
+    productId: '',
+    productCode: '',
+    typeCode: '',
+    familyCode: '',
+    variantModel: 'single',
+    status: 'draft',
+    pausedAt: null,
+    variants: [],
+    maxVariants: 0,
+    sensitiveFields: [],
+    lastChangedAt: '',
+    createdAt: '',
+    pendingSubmittedAt: null,
+    form: {
+      taxCategoryCodes: options.taxCategoryCodes,
+      units: [],
+      fields: [],
+      categories: options.categories,
+    },
+    workingCopy: null,
+    published: null,
+    pending: null,
+  };
+}
 
 /** The condition a new offer starts on: "new" when the Market offers it. */
 export function defaultCondition(options: ProductOptions): string {

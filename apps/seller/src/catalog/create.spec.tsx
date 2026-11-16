@@ -14,7 +14,7 @@ const replace = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace, refresh: vi.fn() }) }));
 
 import { callApi } from '../api/client.ts';
-import { BLANK_PRODUCT } from './add-offer.tsx';
+import { blankProduct } from './add-offer.tsx';
 import { createProblemOf } from './create-errors.ts';
 import { EditForm } from './edit-form.tsx';
 import { readable } from './format.ts';
@@ -25,6 +25,11 @@ const call = vi.mocked(callApi);
 const options: ProductOptions = {
   productTypes: ['grocery', 'dry-goods'],
   conditions: ['new', 'used'],
+  taxCategoryCodes: ['gst', 'gst-free-food'],
+  categories: [
+    { categoryId: 'c1', parentId: null, names: { 'en-AU': 'Pantry' } },
+    { categoryId: 'c2', parentId: 'c1', names: { 'en-AU': 'Rice' } },
+  ],
   locales: { default: 'en-AU', supported: ['en-AU', 'ar'] },
   sellerCanCreateProduct: true,
 };
@@ -32,7 +37,7 @@ const mount = () =>
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <EditForm
-        product={BLANK_PRODUCT}
+        product={blankProduct(options)}
         photos={null}
         locales={options.locales.supported}
         defaultLocale="en-AU"
@@ -63,6 +68,10 @@ function fill() {
   fireEvent.change(screen.getByLabelText('Product type'), { target: { value: 'grocery' } });
   fireEvent.change(screen.getByLabelText(/Your SKU/), { target: { value: ' OIL-1L ' } });
 }
+function classify() {
+  fireEvent.click(screen.getByLabelText('Rice'));
+  fireEvent.change(screen.getByLabelText('Tax category'), { target: { value: 'gst-free-food' } });
+}
 const saveDraft = () => fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
 
 describe('Add product page', () => {
@@ -74,10 +83,18 @@ describe('Add product page', () => {
     expect(screen.getByLabelText<HTMLSelectElement>('Condition').value).toBe('new');
     expect(screen.queryByLabelText(/Description \((en-AU|ar)\)/)).toBeNull();
     // Cards that need the saved product wait, empty.
-    expect(screen.getAllByText(/Save the draft first\./).length).toBe(4);
+    expect(screen.getAllByText(/Save the draft first\./).length).toBe(3);
+    // Category and tax category work before the first save; tags wait for the product.
+    expect(screen.getByLabelText('Rice')).toBeTruthy();
+    expect(screen.getByLabelText('Tax category')).toBeTruthy();
+    expect(screen.getByText(/Tags: save the draft first/)).toBeTruthy();
     const submit = screen.getByRole('button', { name: 'Submit for review' });
     expect((submit as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText(/To submit: add a title, choose a product type/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /To submit: add a title, choose a product type.*category.*tax category.*save the draft first/,
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText('Unsaved product')).toBeNull();
     expect(call).not.toHaveBeenCalled();
   });
@@ -93,6 +110,7 @@ describe('Add product page', () => {
     call.mockResolvedValueOnce(created).mockResolvedValueOnce(saved);
     mount();
     fill();
+    classify();
     saveDraft();
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1/edit'));
     expect(call).toHaveBeenNthCalledWith(
@@ -106,7 +124,14 @@ describe('Add product page', () => {
       2,
       'PUT',
       'catalog/seller/products/p1/draft',
-      { content: { texts: { 'en-AU': { name: 'Olive oil' } } }, variantIds: ['v1'] },
+      {
+        content: {
+          texts: { 'en-AU': { name: 'Olive oil' } },
+          categoryIds: ['c2'],
+          taxCategoryCode: 'gst-free-food',
+        },
+        variantIds: ['v1'],
+      },
       'csrf',
     );
     expectFlash('Draft saved.');

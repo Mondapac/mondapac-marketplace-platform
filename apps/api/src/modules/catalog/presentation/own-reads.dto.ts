@@ -402,6 +402,18 @@ export class OwnProductOptions {
   @ApiProperty({ type: OwnProductOptionsLocales })
   locales!: OwnProductOptionsLocales;
   @ApiProperty({
+    type: [String],
+    description:
+      "The Market's tax category codes, as `form.taxCategoryCodes` of the product read lists them.",
+  })
+  taxCategoryCodes!: string[];
+  @ApiProperty({
+    type: [OwnFormCategory],
+    description:
+      'The active platform categories a product may be filed under, as `form.categories` of the product read lists them (the list does not depend on the product).',
+  })
+  categories!: OwnFormCategory[];
+  @ApiProperty({
     description:
       'False when the Market does not let sellers create products (the form should not open).',
   })
