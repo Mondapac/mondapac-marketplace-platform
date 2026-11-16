@@ -409,6 +409,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
         id: first.id,
         label: 'Extra large',
         productCode: 'P-1',
+        actions: ['approve', 'map', 'reject'],
         attribute: {
           code: 'pack-size',
           options: [
@@ -426,6 +427,47 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
       expect(await build().list.execute(context('admin'), { extra: 1 } as never)).toMatchObject({
         error: { code: 'validation.failed' },
       });
+    });
+  });
+
+  describe('attribute-suggestion.list paging', () => {
+    it('pages with a total, or Previous and Next without one, and searches the text', async () => {
+      const first = await opened();
+      const pages = await build().list.execute(context('admin'), { pageSize: 1 });
+      expect(pages).toMatchObject({
+        ok: true,
+        value: { total: 1, page: 1, pageSize: 1, paging: 'pages', hasNext: false },
+      });
+      expect(await build().list.execute(context('admin'), { page: 2 })).toMatchObject({
+        ok: true,
+        value: { items: [], total: 1 },
+      });
+      expect(
+        await build().list.execute(context('admin'), { paging: 'prev-next', sort: 'created' }),
+      ).toMatchObject({ ok: true, value: { total: null, hasNext: false } });
+      const found = await build().list.execute(context('admin'), { q: ' EXTRA ' });
+      if (!found.ok) throw new Error(found.error.code);
+      expect(found.value.items.map((item) => item.id)).toEqual([first.id]);
+      expect(await build().list.execute(context('admin'), { q: 'zzz' })).toMatchObject({
+        ok: true,
+        value: { items: [], total: 0 },
+      });
+    });
+
+    it.each<[Record<string, unknown>, string]>([
+      [{ limit: 0 }, 'limit'],
+      [{ limit: 5, pageSize: 5 }, 'limit'],
+      [{ q: 5 }, 'q'],
+      [{ q: 'x'.repeat(101) }, 'q'],
+      [{ sort: 'price' }, 'sort'],
+      [{ direction: 'up' }, 'direction'],
+      [{ paging: 'infinite' }, 'paging'],
+      [{ page: 0 }, 'page'],
+      [{ pageSize: 101 }, 'pageSize'],
+    ])('refuses the query %j', async (input, field) => {
+      const answer = await build().list.execute(context('admin'), input);
+      expect(answer.ok).toBe(false);
+      expect(JSON.stringify(answer)).toContain(field);
     });
   });
 
