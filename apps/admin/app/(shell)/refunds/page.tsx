@@ -1,7 +1,7 @@
 import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
-import { isUuid } from '../../../src/sales/search-route.ts';
+import { toId } from '../../../src/sales/search-route.ts';
 import { RefundsList } from '../../../src/sales/refunds/refunds-list.tsx';
 import { VIEW_PERMISSION } from '../../../src/sales/refunds/refunds-types.ts';
 import { serverGet } from '../../../src/server/server-fetch.ts';
@@ -32,9 +32,9 @@ export default async function RefundsPage({
   const mode = await serverGet<{ readonly listPaging: string }>('settings/admin/list-paging');
   const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
   const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
-  // A link from a seller page may name one seller; anything that is not a UUID is ignored.
+  // A link from a seller page may name one seller; anything that is not a UUID v7 is ignored; the API wants it lower-case.
   const { sellerId } = await searchParams;
-  const seller = typeof sellerId === 'string' && isUuid(sellerId) ? sellerId : null;
+  const seller = typeof sellerId === 'string' ? toId(sellerId) : null;
   return (
     <AdminShell session={gate.session} activeId="refunds" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>

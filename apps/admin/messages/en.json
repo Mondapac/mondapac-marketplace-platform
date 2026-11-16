@@ -9749,7 +9749,8 @@
       "unknown": "Unknown"
     },
     "ledger": {
-      "waiting": "Waiting"
+      "waiting": "Waiting",
+      "waiting-title": "Refunded, but not yet recorded in the seller's ledger."
     },
     "ledger-filter": {
       "waiting": "Waiting",
@@ -9849,6 +9850,7 @@
     "loading": "Loading refunds...",
     "error": {
       "unavailable": "Refunds couldn't be loaded.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them.",
       "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
     },
     "empty": {

@@ -64,7 +64,12 @@ function LossCell({ row }: { readonly row: RefundRow }) {
 function LedgerCell({ row, zone }: { readonly row: RefundRow; readonly zone: string }) {
   const t = useTranslations('refunds');
   if (row.ledgerRecordedAt !== null) return <TimeCell at={row.ledgerRecordedAt} zone={zone} />;
-  if (row.state === 'succeeded') return <Badge tone="attention">{t('ledger.waiting')}</Badge>;
+  if (row.state === 'succeeded')
+    return (
+      <span title={t('ledger.waiting-title')}>
+        <Badge tone="attention">{t('ledger.waiting')}</Badge>
+      </span>
+    );
   if (row.state === 'pending') return <EmptyWord>{t('not-yet')}</EmptyWord>;
   return <EmptyWord>{t('none')}</EmptyWord>;
 }
@@ -195,11 +200,11 @@ export function RefundsTable({
       empty={empty}
       {...(skeletonRows === undefined ? {} : { skeletonRows })}
       minWidthClass={
-        columns.length > 9
+        defs.length > 9
           ? 'lg:min-w-480'
-          : columns.length > 5
+          : defs.length > 5
             ? 'lg:min-w-360'
-            : columns.length > 3
+            : defs.length > 3
               ? 'lg:min-w-300'
               : 'lg:min-w-240'
       }

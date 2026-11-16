@@ -27,15 +27,22 @@ export function RefundsBulk({ selection }: { readonly selection: BulkSelection }
   const count = selection.allMatching ? (selection.total ?? 0) : selection.ids.length;
   const selected = selection.allMatching || selection.ids.length > 0;
   const items: ActionMenuItem[] = [];
+  const hint = items.length === 0 && selected ? t('none-yet') : null;
   return (
-    <ActionMenu
-      label={t('button')}
-      title={
-        selection.allMatching && selection.total === null ? t('all-open') : t('selected', { count })
-      }
-      items={items}
-      disabled={items.length === 0 || !selected}
-      {...(items.length === 0 && selected ? { hint: t('none-yet') } : {})}
-    />
+    <div className="flex flex-col items-end gap-1">
+      <ActionMenu
+        label={t('button')}
+        title={
+          selection.allMatching && selection.total === null
+            ? t('all-open')
+            : t('selected', { count })
+        }
+        items={items}
+        disabled={items.length === 0 || !selected}
+        {...(hint === null ? {} : { hint })}
+      />
+      {/* A disabled button cannot take focus: the reason is plain text under it, not only a title. */}
+      {hint === null ? null : <p className="text-sm text-fg-muted">{hint}</p>}
+    </div>
   );
 }
