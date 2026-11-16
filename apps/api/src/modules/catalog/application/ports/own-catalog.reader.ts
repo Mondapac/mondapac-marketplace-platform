@@ -1,5 +1,5 @@
 import type { Id, MarketContext, MeasureSettings, Temporal } from '@mondapac/shared-kernel';
-import type { Offer } from '../../domain/offer';
+import type { Offer, OfferStatus } from '../../domain/offer';
 import type { Product, ProductStatus } from '../../domain/product';
 import type { WorkingCopy } from '../../domain/working-copy';
 
@@ -89,6 +89,22 @@ export interface OfferStatusCounts {
   readonly pendingFirstPublish: number;
   readonly changesNeeded: number;
   readonly published: number;
+}
+
+/** The sorts of the seller's Offer list; ties break on the id in the same direction. */
+export const OWN_OFFER_SORTS = ['created', 'sku', 'status'] as const;
+export type OwnOfferSort = (typeof OWN_OFFER_SORTS)[number];
+
+/** The filters of the seller's Offer list; `statuses` is already narrowed by view and status. */
+export interface OwnOffersFilter {
+  /** The Offer statuses kept (never `deleted`); empty keeps nothing. */
+  readonly statuses: readonly OfferStatus[];
+  /** On sale (`listed`) or not; null keeps both. */
+  readonly listed: boolean | null;
+  /** Contained, case-insensitive text of the seller SKU, the product code or the product name. */
+  readonly text: string | null;
+  /** The locale the product name is searched in. */
+  readonly locale: string;
 }
 
 /** The filters of the seller's product list; `statuses` is already narrowed by view and status. */
@@ -228,6 +244,32 @@ export interface OwnCatalogReader {
     sellerId: Id<'Seller'>,
     page: ListPage<'Offer'>,
   ): Promise<readonly Offer[]>;
+
+  /** One page of the seller's Offers that `filter` keeps, `limit` rows after `offset`. */
+  listOfferPage(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnOffersFilter,
+    order: { readonly sort: OwnOfferSort; readonly direction: OwnSortDirection },
+    page: { readonly offset: number; readonly limit: number },
+  ): Promise<readonly Offer[]>;
+
+  /** How many of the seller's Offers `filter` keeps (the total behind page numbers). */
+  countOffers(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnOffersFilter,
+  ): Promise<number>;
+
+  /**
+   * The Offers `filter` keeps, per status (one grouped count); `filter.statuses` is ignored and
+   * every status but `deleted` is counted, so each tab shows its own number.
+   */
+  countOffersByStatus(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnOffersFilter,
+  ): Promise<OfferStatusCounts>;
 
   /** How many of the seller's Offers are in each status, deleted ones left out (one count). */
   offerStatusCounts(market: MarketContext, sellerId: Id<'Seller'>): Promise<OfferStatusCounts>;

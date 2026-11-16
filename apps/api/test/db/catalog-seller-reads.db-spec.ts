@@ -357,6 +357,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       unitOfWork: persistence.unitOfWork,
       ownReader: reader,
       policy,
+      ownEditProbe: new OwnProductEditProbe(gate),
     });
     readOffer = new OwnOfferRead(gate, {
       unitOfWork: persistence.unitOfWork,
@@ -1055,6 +1056,92 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     expect(listed.value.counts.published).toBe(0);
     const pending = await inUnit(() => reader.pendingReviewCount(market));
     expect(typeof pending).toBe('number');
+  });
+
+  it('lists the seller’s Offers as a super list: search, filters, sort, paging, counts and row actions', async () => {
+    const platform = await draftedProduct('PLATFORM', SELLER, 'Saffron Threads');
+    const published = await submit.execute(adminContext(), {
+      productId: platform.state.id,
+      replacePending: false,
+    });
+    if (!published.ok) throw new Error(published.error.code);
+    const tag = randomUUID().slice(0, 6);
+    // A seller holds one open Offer per product: the second Offer stands on another product.
+    const other = await draftedProduct('PLATFORM', SELLER, 'Saffron Powder');
+    const publishedOther = await submit.execute(adminContext(), {
+      productId: other.state.id,
+      replacePending: false,
+    });
+    if (!publishedOther.ok) throw new Error(publishedOther.error.code);
+    const first = await offerOn(platform.state.id, SELLER, `B-${tag}`);
+    const second = await offerOn(other.state.id, SELLER, `A-${tag}`);
+    const theirs = await offerOn(platform.state.id, OTHER, `T-${tag}`);
+    const ids = async (input: Record<string, unknown>) => {
+      const answer = await listOffers.execute(sellerContext(), input);
+      if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+      return answer.value;
+    };
+    const idsOf = async (input: Record<string, unknown>) =>
+      (await ids(input)).items.map((item) => item.offerId);
+
+    // Text matches the SKU or the product name, case-insensitively, and never another seller's row.
+    expect(await idsOf({ q: tag.toUpperCase(), sort: 'sku', direction: 'asc' })).toEqual([
+      second.state.id,
+      first.state.id,
+    ]);
+    expect(await idsOf({ q: 'saffron', sort: 'sku' })).toEqual(
+      expect.arrayContaining([first.state.id, second.state.id]),
+    );
+    expect(await idsOf({ q: 'saffron' })).not.toContain(theirs.state.id);
+    expect(await idsOf({ q: `T-${tag}` })).toEqual([]);
+    // A SQL wildcard is matched as typed.
+    expect(await idsOf({ q: '%' })).toEqual([]);
+
+    // Tabs, the on-sale filter and the counts of the same search.
+    expect(await idsOf({ view: 'drafts', q: tag })).toHaveLength(2);
+    expect(await idsOf({ view: 'live', q: tag })).toEqual([]);
+    expect(await idsOf({ listed: true, q: tag })).toEqual([]);
+    expect(await idsOf({ listed: false, q: tag })).toHaveLength(2);
+    const counted = await ids({ q: tag });
+    expect(counted.counts).toMatchObject({ draft: 2, published: 0, all: 2 });
+
+    // Pages with a total, then Previous and Next without one; ties and edges are exact.
+    const page1 = await ids({ q: tag, sort: 'sku', direction: 'asc', page: 1, pageSize: 25 });
+    expect(page1).toMatchObject({ total: 2, page: 1, paging: 'pages', hasNext: false });
+    const prev1 = await ids({
+      q: tag,
+      sort: 'sku',
+      direction: 'asc',
+      page: 1,
+      paging: 'prev-next',
+    });
+    expect(prev1).toMatchObject({ total: null, paging: 'prev-next', hasNext: false });
+    const items = (answer: { items: readonly { offerId: string }[] }) =>
+      answer.items.map((item) => item.offerId);
+    expect(items(page1)).toEqual([second.state.id, first.state.id]);
+    expect(await idsOf({ q: tag, page: 2 })).toEqual([]);
+
+    // The row Actions menu of a draft.
+    const row = counted.items.find((item) => item.offerId === first.state.id)!;
+    expect('actions' in row && row.actions).toEqual(['open', 'edit', 'submit', 'delete']);
+
+    // The closed query: unknown keys and bad values are refused; keyset keys do not mix in.
+    const refused = (fields: { path: string; code: string }[]) => ({
+      ok: false,
+      error: { code: 'validation.failed', fields },
+    });
+    expect(await listOffers.execute(sellerContext(), { q: 'x', bogus: 1 } as never)).toEqual(
+      refused([{ path: 'bogus', code: 'unknown' }]),
+    );
+    expect(await listOffers.execute(sellerContext(), { q: 'x', limit: 5 })).toEqual(
+      refused([{ path: 'limit', code: 'unknown' }]),
+    );
+    expect(await listOffers.execute(sellerContext(), { sort: 'name' })).toEqual(
+      refused([{ path: 'sort', code: 'value' }]),
+    );
+    expect(await listOffers.execute(sellerContext(), { listed: 'yes' })).toEqual(
+      refused([{ path: 'listed', code: 'value' }]),
+    );
   });
 
   describe('offerTotalsOfProduct', () => {

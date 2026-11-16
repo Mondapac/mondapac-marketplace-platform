@@ -5,6 +5,8 @@ import type { Prisma } from '../../../generated/prisma/client';
 import type {
   ListPage,
   OwnCatalogReader,
+  OwnOfferSort,
+  OwnOffersFilter,
   OwnOfferSellUnitView,
   OwnProductRow,
   OwnProductIdsResult,
@@ -20,7 +22,7 @@ import type {
   RevisionQueueFilter,
 } from '../application/ports/own-catalog.reader';
 import type { FamilyGroup } from '../domain/attribute-family';
-import type { Offer } from '../domain/offer';
+import type { Offer, OfferStatus } from '../domain/offer';
 import type { Product, ProductStatus } from '../domain/product';
 import type { WorkingCopy } from '../domain/working-copy';
 import { offerFromRow } from './prisma-offer.repository';
@@ -116,6 +118,60 @@ function listWhere(
     ...(filter.paused === null ? {} : { pausedAt: filter.paused ? { not: null } : null }),
     ...(filter.typeCode === null ? {} : { typeCode: filter.typeCode }),
     ...(and.length === 0 ? {} : { AND: and }),
+  };
+}
+
+/** The statuses an Offer list can show: everything but `deleted`. */
+const OFFER_LIST_STATUSES = [
+  'draft',
+  'pending-first-publish',
+  'changes-needed',
+  'published',
+] as const satisfies readonly OfferStatus[];
+
+/**
+ * The seller's own Offers that `filter` keeps: the owner and the Market are in every statement.
+ * Text matches the seller SKU, the product code, or the product's published name in the locale.
+ */
+function offersWhere(
+  market: MarketContext,
+  sellerId: Id<'Seller'>,
+  filter: OwnOffersFilter,
+): Prisma.CatalogOfferWhereInput {
+  const part = filter.text === null ? null : literal(filter.text);
+  return {
+    marketId: market.marketId,
+    sellerId,
+    status: { in: [...filter.statuses] },
+    ...(filter.listed === null ? {} : { listed: filter.listed }),
+    ...(part === null
+      ? {}
+      : {
+          OR: [
+            { sellerSku: { contains: part, mode: 'insensitive' } },
+            {
+              product: {
+                is: {
+                  OR: [
+                    { productCode: { contains: part, mode: 'insensitive' } },
+                    {
+                      publishedRevision: {
+                        is: {
+                          texts: {
+                            some: {
+                              locale: filter.locale,
+                              name: { contains: part, mode: 'insensitive' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        }),
   };
 }
 
@@ -505,6 +561,54 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
     });
     // Read-only projections for the list (no tags): never saved (I1).
     return rows.map((row) => offerFromRow(row));
+  }
+
+  async listOfferPage(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnOffersFilter,
+    order: { readonly sort: OwnOfferSort; readonly direction: OwnSortDirection },
+    page: { readonly offset: number; readonly limit: number },
+  ): Promise<readonly Offer[]> {
+    const key = order.sort === 'created' ? 'id' : order.sort === 'sku' ? 'sellerSku' : 'status';
+    const rows = await this.prisma.tx(market).catalogOffer.findMany({
+      where: offersWhere(market, sellerId, filter),
+      // Ties break on the id in the same direction, so a page edge is exact.
+      orderBy:
+        key === 'id'
+          ? [{ id: order.direction }]
+          : [{ [key]: order.direction }, { id: order.direction }],
+      skip: page.offset,
+      take: Math.min(page.limit, MAX_PAGE + 1),
+    });
+    // Read-only projections for the list (no tags): never saved (I1).
+    return rows.map((row) => offerFromRow(row));
+  }
+
+  countOffers(market: MarketContext, sellerId: Id<'Seller'>, filter: OwnOffersFilter) {
+    return this.prisma
+      .tx(market)
+      .catalogOffer.count({ where: offersWhere(market, sellerId, filter) });
+  }
+
+  async countOffersByStatus(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnOffersFilter,
+  ) {
+    const groups = await this.prisma.tx(market).catalogOffer.groupBy({
+      by: ['status'],
+      where: offersWhere(market, sellerId, { ...filter, statuses: OFFER_LIST_STATUSES }),
+      _count: { _all: true },
+    });
+    const count = (status: string) =>
+      groups.find((group) => group.status === status)?._count._all ?? 0;
+    return {
+      draft: count('draft'),
+      pendingFirstPublish: count('pending-first-publish'),
+      changesNeeded: count('changes-needed'),
+      published: count('published'),
+    };
   }
 
   async offerStatusCounts(market: MarketContext, sellerId: Id<'Seller'>) {

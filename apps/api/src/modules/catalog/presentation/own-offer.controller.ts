@@ -121,6 +121,27 @@ export const OWN_OFFER_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'conflict.retry': 409,
 });
 
+const WHOLE_NUMBER = /^\d{1,6}$/;
+
+/**
+ * The query of the Offer list as the use case reads it: `limit` (keyset mode), `page` and
+ * `pageSize` become numbers and `listed` a boolean; a value that is not of that shape becomes one
+ * the use case refuses (-1 or the text itself), so the answer is a `validation.failed`.
+ */
+function offerListQuery(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = pageQuery(query);
+  for (const key of ['page', 'pageSize']) {
+    const value = out[key];
+    if (value !== undefined) {
+      out[key] = typeof value === 'string' && WHOLE_NUMBER.test(value) ? Number(value) : -1;
+    }
+  }
+  const listed = out['listed'];
+  if (listed === 'true') out['listed'] = true;
+  else if (listed === 'false') out['listed'] = false;
+  return out;
+}
+
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 
 /**
@@ -170,6 +191,41 @@ export class OwnOfferController {
     description: 'The last Offer id of the previous page.',
   })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 50, default 25.' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description:
+      'List mode (any of view, q, status, listed, sort, direction, page, pageSize, paging selects ' +
+      'it; send `page=1` for the first page): one numbered page with row `actions`. `afterId` and ' +
+      '`limit` are then refused.',
+  })
+  @ApiQuery({ name: 'pageSize', required: false, enum: ['25', '50', '100'] })
+  @ApiQuery({
+    name: 'view',
+    required: false,
+    enum: ['all', 'drafts', 'in-review', 'changes-needed', 'live'],
+  })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description: 'Contained text of the seller SKU, the product code or the product name.',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['draft', 'pending-first-publish', 'changes-needed', 'published'],
+  })
+  @ApiQuery({ name: 'listed', required: false, enum: ['true', 'false'], description: 'On sale.' })
+  @ApiQuery({ name: 'sort', required: false, enum: ['created', 'sku', 'status'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'paging',
+    required: false,
+    enum: ['pages', 'prev-next'],
+    description:
+      'The Market’s List paging setting: `pages` answers the total, `prev-next` answers `hasNext` ' +
+      'and no total. Default `pages`.',
+  })
   @ApiOkResponse({ type: OwnOfferList })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({
@@ -183,7 +239,7 @@ export class OwnOfferController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<OwnOfferList> {
-    const result = await this.listOffers.execute(context, pageQuery(query));
+    const result = await this.listOffers.execute(context, offerListQuery(query));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as OwnOfferList)
       : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
