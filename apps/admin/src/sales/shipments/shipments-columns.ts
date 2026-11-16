@@ -34,3 +34,16 @@ export const MONEY_COLUMNS: readonly OptionalColumn[] = ['total', 'fee', 'refund
 
 export const cleanColumns = (saved: readonly unknown[] | undefined): readonly OptionalColumn[] =>
   cleanColumnIds(saved, OPTIONAL_COLUMNS, DEFAULT_COLUMNS);
+
+/**
+ * The ids the export endpoint reads, where the picker's id is another: the delivery fee is
+ * `shipping` and the seller order ID is `sellerOrderId` there. The picker's ids stay as they are
+ * (they are the ones saved in the admin's browser).
+ */
+const EXPORT_IDS: Readonly<Partial<Record<OptionalColumn, string>>> = {
+  fee: 'shipping',
+  'seller-order': 'sellerOrderId',
+};
+
+export const exportColumnIds = (columns: readonly OptionalColumn[]): readonly string[] =>
+  columns.map((id) => EXPORT_IDS[id] ?? id);
