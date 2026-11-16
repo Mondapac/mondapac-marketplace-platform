@@ -363,6 +363,114 @@ describe.each(TEST_MARKETS)(
 
     type Error = { statusCode: number; code: string; details?: Record<string, unknown> };
 
+    describe('the admin queue as a super list, and the bulk decision', () => {
+      type Row = { id: string; actions: string[]; version: number };
+      type Queue = { items: Row[]; total: number | null; nextAfterId: string | null };
+
+      it('pages by number with a total, by cursor for the older panel, and names the actions', async () => {
+        await proposeOk('Queue one');
+        await proposeOk('Queue two');
+        const paged = await http()
+          .get(`${ADMIN_BASE}/category-proposals?page=1&pageSize=1`)
+          .set(admin())
+          .expect(200);
+        const body = paged.body as Queue;
+        expect(body).toMatchObject({ page: 1, pageSize: 1, paging: 'pages', hasNext: true });
+        expect(body.total).toBeGreaterThanOrEqual(2);
+        expect(body.items[0]).toMatchObject({ actions: ['approve', 'reject'] });
+        const first = body.items[0]!.id;
+        expect(body.nextAfterId).toBe(first);
+        const walked = await http()
+          .get(`${ADMIN_BASE}/category-proposals?limit=1&afterId=${first}`)
+          .set(admin())
+          .expect(200);
+        expect((walked.body as Queue).items[0]?.id).not.toBe(first);
+        const found = await http()
+          .get(`${ADMIN_BASE}/category-proposals?q=QUEUE%20TWO`)
+          .set(admin())
+          .expect(200);
+        expect((found.body as Queue).total).toBe(1);
+        await http()
+          .get(`${ADMIN_BASE}/category-proposals?limit=1&page=2`)
+          .set(admin())
+          .expect(400);
+        await http().get(`${ADMIN_BASE}/category-proposals?pageSize=51`).set(admin()).expect(400);
+      });
+
+      it('decides several at once: done, a stale row skipped, a bad request refused whole', async () => {
+        const one = await proposeOk('Bulk one');
+        const two = await proposeOk('Bulk two');
+        const three = await proposeOk('Bulk three');
+        const result = await http()
+          .post(`${ADMIN_BASE}/category-proposals/bulk-decide`)
+          .set(admin())
+          .send({
+            action: 'approve',
+            items: [
+              { id: one, version: 1 },
+              { id: two, version: 7 },
+              { id: three, version: 1 },
+              { id: MISSING, version: 1 },
+            ],
+          })
+          .expect(200);
+        const answer = result.body as {
+          counts: { done: number; skipped: number; failed: number };
+          results: { id: string; outcome: string; reason?: string }[];
+        };
+        expect(answer.counts).toEqual({ done: 2, skipped: 2, failed: 0 });
+        expect(answer.results.map((r) => r.outcome)).toEqual([
+          'done',
+          'skipped',
+          'done',
+          'skipped',
+        ]);
+        const rejected = await http()
+          .post(`${ADMIN_BASE}/category-proposals/bulk-decide`)
+          .set(admin())
+          .send({ action: 'reject', reasonCode: 'other', items: [{ id: two, version: 1 }] })
+          .expect(200);
+        expect((rejected.body as { counts: { done: number } }).counts.done).toBe(1);
+        const bad = [
+          { action: 'approve', items: [] },
+          {
+            action: 'approve',
+            items: [
+              { id: one, version: 1 },
+              { id: one, version: 1 },
+            ],
+          },
+          { action: 'reject', items: [{ id: one, version: 1 }] },
+          { action: 'explode', items: [{ id: one, version: 1 }] },
+          { action: 'approve', items: [{ id: 'x', version: 1 }] },
+        ];
+        for (const body of bad) {
+          await http()
+            .post(`${ADMIN_BASE}/category-proposals/bulk-decide`)
+            .set(admin())
+            .send(body)
+            .expect(400);
+        }
+        const many = Array.from({ length: 51 }, () => ({ id: one, version: 1 }));
+        const tooMany = await http()
+          .post(`${ADMIN_BASE}/category-proposals/bulk-decide`)
+          .set(admin())
+          .send({ action: 'approve', items: many })
+          .expect(413);
+        expect(tooMany.body).toMatchObject({ code: 'batch.too-large' });
+        await http()
+          .post(`${ADMIN_BASE}/category-proposals/bulk-decide`)
+          .set(anonymous('admin'))
+          .send({ action: 'approve', items: [{ id: one, version: 1 }] })
+          .expect(401);
+        await http()
+          .post(`${ADMIN_BASE}/category-proposals/bulk-decide`)
+          .set(seller())
+          .send({ action: 'approve', items: [{ id: one, version: 1 }] })
+          .expect((res) => expect([401, 403]).toContain(res.status));
+      });
+    });
+
     describe('the session gate', () => {
       // A valid body for each write: the closed body is checked before the use case's gate, so an
       // empty body would answer 400 and never reach the session check.
