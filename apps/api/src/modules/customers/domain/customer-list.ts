@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Id, Result, Temporal } from '@mondapac/shared-kernel';
+import { isLocalDay } from './local-day';
 
 // The vocabulary of the admin Customers list (a super list: views, search, filters, sort, paging,
 // saved filters, export). Pure: it reads a request into a closed selector and knows nothing of the
@@ -54,10 +55,11 @@ export const CUSTOMER_FILTER_KEYS = [
 ] as const;
 export type CustomerFilterKey = (typeof CUSTOMER_FILTER_KEYS)[number];
 
-/** A day as a request writes it, `YYYY-MM-DD`; the range is [from 00:00, to + 1 day) in UTC. */
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const isDay = (value: unknown): value is string =>
-  typeof value === 'string' && DAY.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+/**
+ * A day as a request writes it, `YYYY-MM-DD`; the range is [from's first instant, the first instant
+ * after to) in the admin's zone, else the Market's (ADR-0005), worked out by the reader.
+ */
+const isDay = isLocalDay;
 
 /** What a request selects: the tab, the search text and the filters, each already validated. */
 export interface CustomerSelector {

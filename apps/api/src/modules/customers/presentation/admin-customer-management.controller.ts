@@ -329,7 +329,7 @@ export class AdminCustomerManagementController {
     summary: 'A customer’s activity timeline (super list)',
     description:
       'Needs customers.customers.view. Body: `filters` (`category`: account, orders or admin; ' +
-      '`kinds`: an array of event kinds; `from`, `to`: YYYY-MM-DD in UTC), `direction` (desc, the ' +
+      '`kinds`: an array of event kinds; `from`, `to`: YYYY-MM-DD in the admin’s own zone, else the Market’s), `direction` (desc, the ' +
       'default, or asc), `page`, `pageSize` (at most 100) and `paging` (pages, with the total, or ' +
       'prev-next, the Market’s List paging setting). Codes and ids only; an admin action names ' +
       'the admin. Every read is an audited open of the page (tab activity).',

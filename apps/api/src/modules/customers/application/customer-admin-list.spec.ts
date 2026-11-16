@@ -18,6 +18,7 @@ import { MAX_SAVED_FILTERS_PER_OWNER, MAX_SHARED_SAVED_FILTERS } from '../domain
 import type { CustomerListRow } from '../domain/customer-list';
 import type { CustomerListDependencies } from './customer-list-flow';
 import type { SheetWriter } from './ports/sheet-writer';
+import { ActorOrMarketDayZone } from '../infrastructure/actor-or-market-day-zone';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
 import { InMemoryCustomerTimeline } from './testing/in-memory-customer-management';
 import { MemorySavedFilters } from './testing/memory-saved-filters';
@@ -130,7 +131,12 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       },
     };
     const savedFilters = new MemorySavedFilters();
-    const listDeps: CustomerListDependencies = { unitOfWork, listReader, clock };
+    // The admin's own zone, when the test sets one; otherwise the Market's (ADR-0005).
+    const ownZone = { value: null as string | null };
+    const dayZone = new ActorOrMarketDayZone(markets, {
+      describeActor: () => Promise.resolve(ok({ timezone: ownZone.value })),
+    });
+    const listDeps: CustomerListDependencies = { unitOfWork, listReader, clock, dayZone };
     const timeline = new InMemoryCustomerTimeline(listReader);
     const pageDeps = { ...listDeps, audit, timeline, ids };
     const filterDeps = {
@@ -158,7 +164,9 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
         audit,
         stepUp: consumer,
         clock,
+        dayZone,
       }),
+      ownZone,
       filters: {
         list: new AdminSavedFiltersList(gate, filterDeps),
         create: new AdminSavedFilterCreate(gate, filterDeps),
@@ -357,6 +365,37 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       expect(await q({ filters: { status: 'active' }, sort: 'orders', direction: 'desc' })).toEqual(
         ['bilal@example.test', 'amina@example.test', '=cmd@example.test'],
       );
+    });
+
+    it('reads the joined and last-order days in the Market’s zone, or in the admin’s own', async () => {
+      const t = setup();
+      // 14:30Z is already the next day in Brisbane (UTC+10) but not yet in Tokyo (UTC+9).
+      const at = Temporal.Instant.from('2026-11-01T14:30:00Z');
+      t.listReader.add(
+        market,
+        row({ email: 'edge@example.test', signedUpAt: at, lastOrderAt: at }),
+      );
+      const zone = markets.get(market.marketId).timezone;
+      const local = at.toZonedDateTimeISO(zone).toPlainDate();
+      const ctx = t.as(person([VIEW]));
+      const q = async (filters: object) => emails(await t.list.execute(ctx, { filters }));
+      const day = (date: Temporal.PlainDate) => date.toString();
+      expect(local.toString()).toBe(code === 'AU' ? '2026-11-02' : '2026-11-01');
+      expect(await q({ joinedFrom: day(local), joinedTo: day(local) })).toEqual([
+        'edge@example.test',
+      ]);
+      const next = local.add({ days: 1 });
+      expect(await q({ joinedFrom: day(next), joinedTo: day(next) })).toEqual([]);
+      expect(await q({ lastOrderFrom: day(local), lastOrderTo: day(local) })).toEqual([
+        'edge@example.test',
+      ]);
+      expect(await q({ lastOrderTo: day(local.subtract({ days: 1 })) })).toEqual([]);
+      // An admin who chose UTC reads the UTC day.
+      t.ownZone.value = 'UTC';
+      expect(await q({ joinedFrom: '2026-11-01', joinedTo: '2026-11-01' })).toEqual([
+        'edge@example.test',
+      ]);
+      expect(await q({ joinedFrom: '2026-11-02', joinedTo: '2026-11-02' })).toEqual([]);
     });
 
     it('reads the next page by cursor, without a total', async () => {

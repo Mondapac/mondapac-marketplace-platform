@@ -1,0 +1,27 @@
+import type { CallContext } from '@mondapac/shared-kernel';
+import type { MarketRegistry } from '../../../platform/market-config/market-registry';
+import type { AdminDayZone } from '../application/ports/admin-day-zone';
+import type { IdentityManagementPeer } from '../application/ports/customer-management-peers';
+
+/**
+ * {@link AdminDayZone}: the admin's own zone from `identity.describeActor` (the caller's context,
+ * unchanged), else the Market's configured zone. A refused or failed read is the Market's zone: the
+ * zone only places a day boundary, it grants nothing.
+ */
+export class ActorOrMarketDayZone implements AdminDayZone {
+  constructor(
+    private readonly markets: MarketRegistry,
+    private readonly identity: Pick<IdentityManagementPeer, 'describeActor'>,
+  ) {}
+
+  async zoneOf(context: CallContext): Promise<string> {
+    const market = this.markets.get(context.market.marketId).timezone;
+    try {
+      const actor = await this.identity.describeActor(context);
+      const own = actor.ok ? (actor.value.timezone ?? null) : null;
+      return own !== null && own !== '' ? own : market;
+    } catch {
+      return market;
+    }
+  }
+}

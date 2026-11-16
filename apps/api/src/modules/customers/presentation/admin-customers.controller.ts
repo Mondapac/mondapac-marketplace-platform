@@ -87,7 +87,8 @@ export class AdminCustomersController {
       'Needs customers.customers.view. Body: `view` (all, new, active, inactive, never-ordered, ' +
       'disabled, pending-deletion), `q` (2 to 80 characters: a sign-in address prefix or a part of ' +
       'the display name), `filters` (status, verified, joinedFrom, joinedTo, lastOrderFrom, ' +
-      'lastOrderTo, ordersMin, ordersMax, spentMin, spentMax in minor units), `sort` (joined, name, ' +
+      'lastOrderTo as YYYY-MM-DD in the admin’s own zone, else the Market’s, ordersMin, ordersMax, ' +
+      'spentMin, spentMax in minor units), `sort` (joined, name, ' +
       'email, last-order, orders, spent) and `direction`. With `page` (and `pageSize`, at most 100) ' +
       'the answer carries `paging.total` (the page-number mode of the List paging setting, at most ' +
       '10,000 rows deep); without it `cursor` and `limit` read the next page without a total. ' +

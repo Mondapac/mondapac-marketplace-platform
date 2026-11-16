@@ -18,6 +18,7 @@ import type { CustomerListRow } from '../domain/customer-list';
 import type { CustomerManagementDependencies } from './customer-management-dependencies';
 import type { IdentityManagementPeer } from './ports/customer-management-peers';
 import type { SheetWriter } from './ports/sheet-writer';
+import { ActorOrMarketDayZone } from '../infrastructure/actor-or-market-day-zone';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
 import {
   FakeNoteCipher,
@@ -137,7 +138,9 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
         Promise.resolve(
           ok(accountIds.map((accountId) => ({ accountId, displayName: 'Admin One' }))),
         ),
+      describeActor: () => Promise.resolve(ok({ timezone: ownZone.value })),
     };
+    const ownZone = { value: null as string | null };
     const deps: CustomerManagementDependencies = {
       unitOfWork,
       groups,
@@ -151,6 +154,7 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
       stepUp: consumer,
       sheetWriter,
       identity,
+      dayZone: new ActorOrMarketDayZone(markets, identity),
     };
     const admin = (keys: readonly string[], inMarket: MarketContext = market) => {
       const accountId = ids.next<'Account'>();
@@ -170,6 +174,7 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
     };
     return {
       deps,
+      ownZone,
       audits,
       listReader,
       groups,
@@ -609,6 +614,44 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
       ).toBe('validation.failed');
       const opened = t.audits.filter((entry) => entry.action === 'customers.customer-page.opened');
       expect(opened).toHaveLength(3);
+    });
+
+    it('reads the from and to days in the Market’s zone, or in the admin’s own (ADR-0005)', async () => {
+      const t = setup();
+      const viewer = t.admin([VIEW]);
+      const customer = row();
+      t.listReader.add(market, customer);
+      // 14:30Z is already the next day in Brisbane (UTC+10) but not yet in Tokyo (UTC+9).
+      const edge = Temporal.Instant.from('2026-11-01T14:30:00Z');
+      await t.timeline.record(
+        market,
+        {
+          id: ids.next<'CustomerTimelineEntry'>(),
+          accountId: customer.accountId,
+          occurredAt: edge,
+          kind: 'signed-up',
+          ref: null,
+          actorAccountId: null,
+          detail: null,
+          sourceEventId: ids.next(),
+        },
+        NOW,
+      );
+      const local = edge.toZonedDateTimeISO(markets.get(market.marketId).timezone).toPlainDate();
+      expect(local.toString()).toBe(market.marketId === 'AU' ? '2026-11-02' : '2026-11-01');
+      const kinds = async (from: string, to: string) => {
+        const read = await t.readTimeline.execute(viewer.context, {
+          accountId: customer.accountId,
+          filters: { from, to },
+        });
+        return read.ok ? read.value.items.map((item) => item.kind) : read.error.code;
+      };
+      expect(await kinds(local.toString(), local.toString())).toEqual(['signed-up']);
+      const next = local.add({ days: 1 }).toString();
+      expect(await kinds(next, next)).toEqual([]);
+      t.ownZone.value = 'UTC';
+      expect(await kinds('2026-11-01', '2026-11-01')).toEqual(['signed-up']);
+      expect(await kinds('2026-11-02', '2026-11-02')).toEqual([]);
     });
 
     it('exports behind a fresh step-up and the export key, without names of customers', async () => {

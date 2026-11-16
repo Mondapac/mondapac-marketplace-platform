@@ -14,6 +14,7 @@ import {
   type CustomerView,
   type SortDirection,
 } from '../domain/customer-list';
+import type { AdminDayZone } from './ports/admin-day-zone';
 import type { CustomerListQuery, CustomerListReader } from './ports/customer-list.reader';
 
 // The reading of a list request and the page it answers. Plain functions: use cases cannot extend
@@ -36,6 +37,8 @@ export interface CustomerListDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly listReader: CustomerListReader;
   readonly clock: Clock;
+  /** The zone the day filters are read in (the admin's, else the Market's). */
+  readonly dayZone: AdminDayZone;
 }
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -212,7 +215,11 @@ export async function listCustomers(
   context: CallContext,
   request: ListPageRequest,
 ): Promise<Result<CustomerListOutput, { readonly code: 'access.unavailable' }>> {
-  const query: CustomerListQuery = { selector: request.selector, now: deps.clock.now() };
+  const query: CustomerListQuery = {
+    selector: request.selector,
+    now: deps.clock.now(),
+    zone: await deps.dayZone.zoneOf(context),
+  };
   const read = await deps.unitOfWork.run<
     {
       readonly rows: readonly CustomerListRow[];

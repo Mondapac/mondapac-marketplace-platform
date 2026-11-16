@@ -314,6 +314,8 @@ export async function changeMembers(
   if (!selector.ok) return selector;
   const now = deps.clock.now();
   const { market } = context;
+  // Read before the unit opens: "select all matching" reads its day filters in this zone.
+  const zone = await deps.dayZone.zoneOf(context);
 
   return deps.unitOfWork.run<MembersChangeOutput, GroupFailure>(market, async () => {
     const group = await deps.groups.find(market, groupId);
@@ -324,7 +326,7 @@ export async function changeMembers(
     if (named !== null) {
       ids = named;
     } else {
-      const query = { selector: selector.value, now };
+      const query = { selector: selector.value, now, zone };
       ids = await deps.listReader.ids(market, query, GROUP_BULK_MATCHING_MAX + 1);
       if (ids.length > GROUP_BULK_MATCHING_MAX) {
         const total = await deps.listReader.count(market, query);

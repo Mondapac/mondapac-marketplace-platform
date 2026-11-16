@@ -28,5 +28,7 @@ export class LateBoundManagementPeers implements CustomerManagementPeers {
         : this.#bound.identity.renameCustomerForAdmin(context, input),
     changeActors: (context: CallContext, accountIds: readonly Id<'Account'>[]) =>
       this.#bound === null ? UNAVAILABLE() : this.#bound.identity.changeActors(context, accountIds),
+    describeActor: (context: CallContext) =>
+      this.#bound === null ? UNAVAILABLE() : this.#bound.identity.describeActor(context),
   };
 }

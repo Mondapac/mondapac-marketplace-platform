@@ -8,6 +8,7 @@ import {
   type CustomerView,
   type SortDirection,
 } from '../../domain/customer-list';
+import { localDayEnd, localDayStart } from '../../domain/local-day';
 import type { CustomerListQuery, CustomerListReader } from '../ports/customer-list.reader';
 
 /** The Customers list reader over an array of rows, one array per Market (for unit tests). */
@@ -60,6 +61,16 @@ export class InMemoryCustomerList implements CustomerListReader {
       if (selector.spentMax !== null && row.spentMinor > selector.spentMax) return false;
       if (selector.group !== null && !row.groups.some((group) => group.groupId === selector.group))
         return false;
+      const inDays = (at: Temporal.Instant | null, from: string | null, to: string | null) => {
+        if (from === null && to === null) return true;
+        if (at === null) return false;
+        const start = from === null ? null : localDayStart(from, query.zone);
+        const end = to === null ? null : localDayEnd(to, query.zone);
+        if (start !== null && at.epochMilliseconds < start.epochMilliseconds) return false;
+        return end === null || at.epochMilliseconds < end.epochMilliseconds;
+      };
+      if (!inDays(row.signedUpAt, selector.joinedFrom, selector.joinedTo)) return false;
+      if (!inDays(row.lastOrderAt, selector.lastOrderFrom, selector.lastOrderTo)) return false;
       if (selector.text !== null) {
         const text = selector.text.toLowerCase();
         const byEmail = row.email.toLowerCase().startsWith(text);
@@ -121,7 +132,7 @@ export class InMemoryCustomerList implements CustomerListReader {
       Object.fromEntries(
         CUSTOMER_VIEWS.map((view) => [
           view,
-          this.#match(market, { selector: { ...blank, view }, now }).length,
+          this.#match(market, { selector: { ...blank, view }, now, zone: 'UTC' }).length,
         ]),
       ) as Record<CustomerView, number>,
     );

@@ -25,6 +25,10 @@ export interface IdentityManagementPeer {
       Failure
     >
   >;
+  /** The calling admin's own panel zone (`timezone`), for day filters (ADR-0005). */
+  describeActor(
+    context: CallContext,
+  ): Promise<Result<{ readonly timezone?: string | null }, Failure>>;
 }
 
 export interface CustomerManagementPeers {

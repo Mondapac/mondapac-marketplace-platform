@@ -73,6 +73,7 @@ import { AddressBookController } from './presentation/address-book.controller';
 import { CustomersCheckoutFacadeImplementation } from './presentation/customers-checkout.facade';
 import { AdminCustomersController } from './presentation/admin-customers.controller';
 import { CUSTOMER_LIST_READER } from './application/ports/customer-list.reader';
+import { ADMIN_DAY_ZONE } from './application/ports/admin-day-zone';
 import { SAVED_FILTER_REPOSITORY } from './application/ports/saved-filter.repository';
 import { SHEET_WRITER } from './application/ports/sheet-writer';
 import type { CustomerListDependencies } from './application/customer-list-flow';
@@ -197,13 +198,14 @@ type ListUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerListDependencie
 function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
-    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_LIST_READER, CLOCK],
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_LIST_READER, CLOCK, ADMIN_DAY_ZONE],
     useFactory: (
       gate: UseCaseGate,
       unitOfWork: CustomerListDependencies['unitOfWork'],
       listReader: CustomerListDependencies['listReader'],
       clock: CustomerListDependencies['clock'],
-    ) => new type(gate, { unitOfWork, listReader, clock }),
+      dayZone: CustomerListDependencies['dayZone'],
+    ) => new type(gate, { unitOfWork, listReader, clock, dayZone }),
   };
 }
 
@@ -221,6 +223,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       AUDIT_WRITER,
       CUSTOMER_TIMELINE_REPOSITORY,
       ID_GENERATOR,
+      ADMIN_DAY_ZONE,
     ],
     useFactory: (
       gate: UseCaseGate,
@@ -230,7 +233,8 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       audit: CustomerPageDependencies['audit'],
       timeline: CustomerPageDependencies['timeline'],
       ids: CustomerPageDependencies['ids'],
-    ) => new type(gate, { unitOfWork, listReader, clock, audit, timeline, ids }),
+      dayZone: CustomerPageDependencies['dayZone'],
+    ) => new type(gate, { unitOfWork, listReader, clock, audit, timeline, ids, dayZone }),
   };
 }
 
@@ -278,6 +282,7 @@ const MANAGEMENT_PORTS: readonly [
   ['ids', ID_GENERATOR],
   ['stepUp', STEP_UP_CONSUMER],
   ['sheetWriter', SHEET_WRITER],
+  ['dayZone', ADMIN_DAY_ZONE],
 ];
 
 /** The admin's management of customers (phase 2): its ports, plus identity bound at start. */
@@ -432,6 +437,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         AUDIT_WRITER,
         STEP_UP_CONSUMER,
         CLOCK,
+        ADMIN_DAY_ZONE,
       ],
       useFactory: (
         gate: UseCaseGate,
@@ -441,6 +447,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         audit: AdminCustomersExportDependencies['audit'],
         stepUp: AdminCustomersExportDependencies['stepUp'],
         clock: AdminCustomersExportDependencies['clock'],
+        dayZone: AdminCustomersExportDependencies['dayZone'],
       ) =>
         new AdminCustomersExport(gate, {
           unitOfWork,
@@ -449,6 +456,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           audit,
           stepUp,
           clock,
+          dayZone,
         }),
     },
     {
