@@ -75,6 +75,7 @@ export {
   Button,
   LinkButton,
   type ButtonProps,
+  type ButtonSize,
   type ButtonVariant,
   type LinkButtonProps,
 } from './form/button.tsx';
@@ -154,6 +155,11 @@ export {
   type SettingsHistoryState,
 } from './settings/settings-history.tsx';
 export {
+  SettingsDrawer,
+  type SettingsDrawerLabels,
+  type SettingsDrawerProps,
+} from './settings/settings-drawer.tsx';
+export {
   SettingsViewOnlyBanner,
   type SettingsViewOnlyBannerProps,
 } from './settings/view-only-banner.tsx';
@@ -190,7 +196,7 @@ export {
   type PageItem as PaginationPageItem,
   type PaginationLabels,
 } from './data/pagination.tsx';
-export { CARD_TABLE } from './data/card-table.ts';
+export { CARD_TABLE, ROW_ACTIONS_COLUMN_ID } from './data/card-table.ts';
 export { MemberColumns } from './data/member-columns.tsx';
 export { addressLines } from './data/address.ts';
 export { EmailText } from './data/email-text.tsx';
@@ -312,6 +318,11 @@ export {
   type PrefsStore,
 } from './palette/panel-prefs.ts';
 export { panelToolsLabels } from './palette/palette-labels.ts';
+export {
+  ConfirmAction,
+  type ConfirmActionProps,
+  type ConfirmLevel,
+} from './overlay/confirm-action.tsx';
 export { BottomSheet, type BottomSheetProps } from './overlay/bottom-sheet.tsx';
 export { useDesktop, useMediaQuery, DESKTOP_QUERY, WIDE_QUERY } from './list/use-desktop.ts';
 export { ListThumb } from './list/list-thumb.tsx';
@@ -374,6 +385,23 @@ export {
   type ExportFormat,
 } from './list/export-dialog.tsx';
 export { useRowSelection, type RowSelectionState } from './list/use-row-selection.ts';
+export { SuperList, type SuperListProps, type SuperListTool } from './list/super-list.tsx';
+export {
+  SuperTable,
+  type SuperColumn,
+  type SuperTableProps,
+  type SuperTableSelectionLabels,
+} from './list/super-table.tsx';
+export {
+  useSuperListQuery,
+  type SuperListQuery,
+  type SuperListQueryOptions,
+} from './list/use-super-list-query.ts';
+export {
+  FilterChipRow,
+  type FilterChipRowChip,
+  type FilterChipRowProps,
+} from './list/filter-chip-row.tsx';
 export { ListViewsBar, type ListViewsBarProps } from './list/list-views-bar.tsx';
 export {
   DescriptionWriter,

@@ -87,3 +87,30 @@ admin, or completed): the same transaction sets `reason` to NULL and `redacted_a
 reference stays, and is possible personal data too, so it is entered by pattern (letters, digits and
 `. _ # /  -`, no spaces) rather than as free text. A retention period for the rows has not been set
 (follow-up in `notes.md`).
+
+## 6. Phase 2 tables (PR 2a): groups, notes, timeline
+
+Migration `20261116060000_customers_groups_notes_timeline/` (down drops the four tables).
+
+- `customer_groups` (PK `id`, unique `(market_id, id)`): `name` (trimmed, 1 to 80, no control
+  characters, CHECK), `description` (at most 500), `kind` (`manual` only, CHECK), `archived_at`,
+  `created_by_account_id`, `created_at`, `updated_at` (not before created), `version` (>= 1). Unique
+  index `customer_groups_name_key` on `(market_id, lower(name))`; index
+  `(market_id, archived_at, created_at desc)`. Grants: SELECT, INSERT, UPDATE of name, description,
+  archived_at, updated_at and version (no DELETE).
+- `customer_group_members` (PK `(market_id, group_id, account_id)`): FK to the group (RESTRICT) and
+  to the directory row (CASCADE, so an erased customer leaves every group). Indexes
+  `(market_id, account_id)` (the primary key serves the per-group reads). Grants: SELECT, INSERT,
+  DELETE.
+- `customer_notes`: FK `(market_id, account_id)` to the directory row (CASCADE). `body_ciphertext` (`v<n>.<base64url>`, 41 to 16,384 characters, CHECK: never
+  plain text), author, `created_at`. Index `(market_id, account_id, created_at desc, id desc)` for
+  the keyset. Grants: SELECT, INSERT, DELETE.
+- `customer_timeline`: FK `(market_id, account_id)` to the directory row (CASCADE). `kind` (a code
+  of the pattern the CHECK holds), `ref_type`/`ref_id` (both or neither; order,
+  refund, group or note), `actor_account_id`, `detail` (a short code), `source_event_id`, `occurred_at`,
+  `recorded_at`. Unique `(market_id, account_id, source_event_id)` (an event once; admin rows have
+  none; a full unique, not a partial one, because the Prisma schema cannot declare a partial index
+  and NULLs never collide). Index `(market_id, account_id, occurred_at desc, id desc)`. Grants: SELECT, INSERT, DELETE.
+- Retention: the rows of an account go with its erasure (`removeAllOf` deletes the directory row,
+  the cascades the rest); nothing else deletes them. A page open is written at most once per admin,
+  tab and UTC day, which bounds the table's growth from page views.

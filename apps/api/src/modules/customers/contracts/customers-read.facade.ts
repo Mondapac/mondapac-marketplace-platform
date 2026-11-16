@@ -7,6 +7,12 @@ export type CustomerLastOrderFailure =
   /** No read model row for the customer yet: unknown, and the caller treats it as "no". */
   | { readonly code: 'customers.customer-unknown' };
 
+export type CustomerGroupMembershipFailure =
+  | AccessDenied
+  | { readonly code: 'validation.failed' }
+  /** No such manual group in the caller's Market: the caller treats it as "not a member". */
+  | { readonly code: 'customers.group-not-found' };
+
 /** What `customers` publishes to other modules about a customer's orders (ids and instants only). */
 export interface CustomersReadFacade {
   /**
@@ -25,6 +31,17 @@ export interface CustomersReadFacade {
   ownLastOrderAt(
     context: CallContext,
   ): Promise<Result<{ readonly lastOrderAt: Temporal.Instant | null }, CustomerLastOrderFailure>>;
+
+  /**
+   * Whether the customer is in one of the Market's manual groups (an archived group has no
+   * members for this answer). Rule `system`. An unknown group is `customers.group-not-found`;
+   * a caller that gets any failure fails closed.
+   */
+  isGroupMember(
+    context: CallContext,
+    groupId: string,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly member: boolean }, CustomerGroupMembershipFailure>>;
 }
 
 /** Nest token of the {@link CustomersReadFacade}, provided and exported by `CustomersModule`. */

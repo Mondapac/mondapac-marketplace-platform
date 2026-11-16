@@ -1,6 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { ApprovedPayoutView } from '../application/use-cases/approve-payout.use-case';
-import type { PayoutListView, PayoutRowView } from '../application/use-cases/list-payouts.use-case';
+import type {
+  AdminPayoutListPage,
+  AdminPayoutRow,
+  PayoutRowView,
+} from '../application/use-cases/list-payouts.use-case';
+import { PAYOUT_LIST_VIEWS, PAYOUT_ROW_ACTIONS } from '../domain/admin-payout-list';
 import type { OwnHeldView } from '../application/use-cases/list-own-payout-holds.use-case';
 import type {
   OwnPayoutsView,
@@ -51,10 +56,52 @@ class PayoutRowBody {
   @ApiProperty({ format: 'date-time' }) stateChangedAt!: string;
 }
 
+class PayoutListRowBody extends PayoutRowBody {
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description: "The seller's active admin hold over the whole seller (Release), or null.",
+  })
+  activeHoldId!: string | null;
+  @ApiProperty({
+    enum: PAYOUT_ROW_ACTIONS,
+    isArray: true,
+    description: 'The row Actions menu: what the caller may run on this payout now.',
+  })
+  actions!: string[];
+}
+
+class PayoutViewCountsBody {
+  @ApiProperty() all!: number;
+  @ApiProperty({ name: 'awaiting-approval' }) 'awaiting-approval'!: number;
+  @ApiProperty() sending!: number;
+  @ApiProperty() paid!: number;
+  @ApiProperty() failed!: number;
+  @ApiProperty({ name: 'not-sent' }) 'not-sent'!: number;
+}
+
 export class PayoutListBody {
-  @ApiProperty({ type: [PayoutRowBody], description: 'Newest first.' }) payouts!: PayoutRowBody[];
+  @ApiProperty({ type: [PayoutListRowBody], description: 'In the sort asked for.' })
+  payouts!: PayoutListRowBody[];
+  @ApiProperty({
+    type: PayoutViewCountsBody,
+    description: `The Market's payouts per view (${PAYOUT_LIST_VIEWS.join(', ')}), whatever the filter.`,
+  })
+  counts!: PayoutViewCountsBody;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Page numbers only; null in Previous/Next.',
+  })
+  total!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Page numbers only.' })
+  page!: number | null;
+  @ApiProperty() pageSize!: number;
   @ApiProperty({ nullable: true, type: String, description: 'Pass back as `cursor`.' })
   nextCursor!: string | null;
+  @ApiProperty({ description: 'The store search matched too many stores: narrow it.' })
+  searchCapped!: boolean;
 }
 
 class PayoutItemBody {
@@ -134,9 +181,20 @@ const rowBody = (row: PayoutRowView): PayoutRowBody => ({
   stateChangedAt: instant(row.stateChangedAt),
 });
 
-export const payoutListBody = (view: PayoutListView): PayoutListBody => ({
-  payouts: view.payouts.map(rowBody),
+const listRowBody = (row: AdminPayoutRow): PayoutListRowBody => ({
+  ...rowBody(row),
+  activeHoldId: row.activeHoldId,
+  actions: [...row.actions],
+});
+
+export const payoutListBody = (view: AdminPayoutListPage): PayoutListBody => ({
+  payouts: view.payouts.map(listRowBody),
+  counts: { ...view.counts },
+  total: view.total,
+  page: view.page,
+  pageSize: view.pageSize,
   nextCursor: view.nextCursor,
+  searchCapped: view.searchCapped,
 });
 
 export const payoutDetailBody = (view: PayoutDetailView): PayoutDetailBody => ({
