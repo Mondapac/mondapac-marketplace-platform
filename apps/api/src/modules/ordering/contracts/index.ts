@@ -15,6 +15,7 @@ export {
 } from './permissions';
 export {
   ORDERING_EVENTS,
+  OrderCancelled,
   OrderPaid,
   OrderShipped,
   RefundSucceeded,

@@ -103,6 +103,7 @@
     "customers": "Customers",
     "sellers": "Sellers",
     "orders": "Orders",
+    "shipments": "Shipments",
     "price-holds": "Pricing",
     "review-queue": "Catalogue requests",
     "certificates": "Certification",
@@ -405,6 +406,13 @@
       },
       "dialog": {
         "keep": "Keep as it is",
+        "type-to-confirm": "Type the name to confirm",
+        "step-up-note": "We'll ask for your two-step code next.",
+        "reactivate": {
+          "title": "Reactivate {name}'s admin account?",
+          "body": "The account is active again at once. Another admin reviews this change and can undo it.",
+          "action": "Reactivate"
+        },
         "deactivate": {
           "title": "Deactivate {name}'s admin account?",
           "body": "They're signed out straight away and can't sign in.",
@@ -605,6 +613,7 @@
         "title-create": "New custom role",
         "title-edit": "Edit role",
         "section-name": "Name",
+        "section-note": "Review",
         "name": "Role name",
         "name-help": "Up to {max} characters. Each custom role needs its own name.",
         "name-required": "Enter a name for the role.",
@@ -3383,8 +3392,47 @@
       "clear-all": "Clear all",
       "match": "{count, plural, one {# product matches} other {# products match}}",
       "range": "{from}–{to} of {total} products",
+      "range-open": "{from}–{to} products",
       "previous": "Previous",
       "next": "Next",
+      "paging": {
+        "rows-per-page": "Rows per page",
+        "previous": "Previous",
+        "next": "Next",
+        "pages": "Pages",
+        "page": "Page {page}",
+        "narrow": "Narrow the list to see more.",
+        "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other products."
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}"
+      },
+      "row": {
+        "menu": {
+          "open": "Open",
+          "edit": "Edit",
+          "pause": "Deactivate…",
+          "resume": "Activate",
+          "delete": "Delete…"
+        },
+        "type-code": "Type the product code to confirm",
+        "step-up-note": "You may be asked for a security code.",
+        "count-changed": "The product's Offers changed while you were deciding. Check the new count and confirm again.",
+        "nothing-changed": "{name} was not changed.",
+        "pause": {
+          "title": "Deactivate {name}?"
+        },
+        "delete": {
+          "title": "Delete {name}?",
+          "confirm": "Delete product"
+        },
+        "done": {
+          "pause": "{name} deactivated.",
+          "resume": "{name} activated.",
+          "delete": "{name} deleted."
+        }
+      },
       "loading": "Loading products",
       "error": {
         "denied": "You don't have access to products.",
@@ -5455,6 +5503,7 @@
       "platform-import-finished": "A <strong>product import</strong> {outcome, select, stopped {stopped part way} other {finished}}",
       "review-held": "A <strong>review</strong> is held for moderation",
       "review-reported": "A seller reported a <strong>review</strong>",
+      "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review",
       "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count cap</strong>} amount {A seller reached the <strong>refund amount cap</strong>} unset {A seller tried to refund with <strong>no refund cap set</strong>} other {A seller reached a <strong>refund cap</strong>}}"
     },
     "category": {
@@ -5465,6 +5514,7 @@
       "delivery": "Delivery",
       "reviews": "Reviews",
       "refunds": "Refunds",
+      "system-requests": "System requests",
       "other": "Other"
     },
     "empty": {
@@ -9469,6 +9519,227 @@
       "csrf": "The page expired. Reload it and try again.",
       "denied": "You can't change this. You may be acting as a seller; this setting is not available then.",
       "unknown": "The change could not be saved. Try again."
+    }
+  },
+  "sales-lists": {
+    "chip": "{field} is {value}",
+    "chip-remove": "Remove filter {filter}",
+    "clear-all": "Clear all",
+    "date-preset": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "last-7-days": "Last 7 days",
+      "last-30-days": "Last 30 days",
+      "this-month": "This month",
+      "last-month": "Last month"
+    },
+    "filter": {
+      "button": "Filter",
+      "match-all": "Match all conditions",
+      "field": "Field",
+      "field-placeholder": "Field",
+      "is": "is",
+      "value": "Value",
+      "value-placeholder": "Value",
+      "remove": "Remove condition",
+      "add": "Add condition",
+      "cancel": "Cancel",
+      "apply": "Apply"
+    },
+    "sort": {
+      "button": "Sort"
+    },
+    "columns": {
+      "button": "Columns",
+      "title": "Columns",
+      "help": "Choose what the table shows. Saved for you only, in this browser.",
+      "always": "Always shown",
+      "up": "Move {column} up",
+      "down": "Move {column} down",
+      "reset": "Reset to default",
+      "save": "Save"
+    },
+    "paging": {
+      "rows-per-page": "Rows per page",
+      "previous": "Previous",
+      "next": "Next",
+      "pages": "Pages",
+      "page": "Page {page}",
+      "narrow": "Narrow the list to see more.",
+      "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other rows."
+    }
+  },
+  "shipments": {
+    "title": "Shipments",
+    "page-title": "Shipments",
+    "intro": "One row for each seller in each paid order. Carrier tracking updates aren't shown here yet; open the order for details.",
+    "no-access": "You don't have access to shipments.",
+    "back-home": "Back to home",
+    "tabs": "Shipment views",
+    "tab": {
+      "all": "All",
+      "attention": "Needs attention",
+      "to-prepare": "To prepare",
+      "ready": "Ready",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "refunded": "Refunded"
+    },
+    "tab-title": {
+      "refunded": "Refunded in full before shipping, as an admin cancellation leaves it."
+    },
+    "stage": {
+      "to-prepare": "To prepare",
+      "ready": "Ready",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "refunded": "Refunded",
+      "unknown": "Unknown"
+    },
+    "problem": {
+      "no-carrier": "No courier found",
+      "carrier-unknown": "Courier booking unclear",
+      "cancel-unknown": "Cancellation not confirmed",
+      "unknown": "Delivery problem"
+    },
+    "problem-filter": {
+      "any": "Any problem",
+      "no-carrier": "No courier found",
+      "carrier-unknown": "Courier booking unclear",
+      "cancel-unknown": "Cancellation not confirmed"
+    },
+    "search": {
+      "label": "Search",
+      "scope": "Search by",
+      "scope-name": "Name or ID",
+      "scope-tracking": "Tracking reference",
+      "placeholder-name": "Customer, store, or order ID",
+      "placeholder-tracking": "Tracking reference, exact",
+      "too-short": "Type at least 2 characters.",
+      "tracking-invalid": "Tracking references use letters, digits, spaces and . _ # -."
+    },
+    "chip-search": "Search: \"{text}\"",
+    "chip-tracking": "Tracking: \"{text}\"",
+    "chip-seller": "Seller is {name}",
+    "filter": {
+      "title": "Filter shipments",
+      "name": {
+        "deliveryMethod": "Delivery method",
+        "attention": "Delivery problem",
+        "paid": "Paid",
+        "shipped": "Shipped"
+      }
+    },
+    "sort": {
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "paid": "Paid",
+        "shipped": "Shipped",
+        "delivered": "Delivered",
+        "total": "Total"
+      },
+      "date": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      },
+      "amount": {
+        "first": "Highest first",
+        "second": "Lowest first"
+      }
+    },
+    "sorted": "Sorted by {field}: {order}",
+    "sorted-newest": "Newest first",
+    "match": "{count, plural, one {# shipment matches} other {# shipments match}}",
+    "col": {
+      "order": "Order",
+      "stage": "Stage",
+      "store": "Store",
+      "customer": "Customer",
+      "paid": "Paid",
+      "delivery": "Delivery",
+      "carrier": "Carrier and tracking",
+      "total": "Total (incl. tax)",
+      "ready": "Ready",
+      "shipped": "Shipped",
+      "delivered": "Delivered",
+      "fleet": "Fleet",
+      "fee": "Delivery fee (incl. tax)",
+      "refunded": "Refunded (incl. tax)",
+      "seller-order": "Seller order ID"
+    },
+    "window": "{start} to {end}",
+    "carrier": {
+      "pickup": "Pickup",
+      "not-shipped": "Not shipped yet"
+    },
+    "not-yet": "Not yet",
+    "not-recorded": "Not recorded",
+    "none": "None",
+    "row-name": "order {id}",
+    "select": {
+      "page": "Select all shipments on this page",
+      "page-short": "Select all on this page",
+      "row": "Select {name}"
+    },
+    "selection": {
+      "selected": "{count, plural, one {# shipment selected} other {# shipments selected}}",
+      "all": "{count, plural, one {The # matching shipment is selected} other {All # matching shipments are selected}}",
+      "all-open": "All matching shipments are selected",
+      "select-all": "Select all {count, number} matching",
+      "select-all-open": "Select all matching",
+      "clear": "Clear selection"
+    },
+    "bulk": {
+      "button": "Bulk action",
+      "selected": "{count, plural, one {# shipment selected} other {# shipments selected}}",
+      "all-open": "All matching shipments selected",
+      "none-yet": "No bulk actions are available for shipments yet."
+    },
+    "actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "view-order": "View order",
+      "copy-tracking": "Copy tracking reference",
+      "copied": "Copied",
+      "copy-failed": "Couldn't copy. Select the text and copy it."
+    },
+    "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
+    "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name.",
+    "too-many": "Page numbers stop at the first {limit} shipments. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
+    "loading": "Loading shipments...",
+    "error": {
+      "unavailable": "Shipments couldn't be loaded.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them.",
+      "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
+    },
+    "empty": {
+      "no-match": "No shipments match",
+      "no-match-help": "Try other filters or clear them.",
+      "all": {
+        "title": "No shipments yet",
+        "body": "Paid orders show here, one row for each seller."
+      },
+      "attention": {
+        "title": "Nothing needs attention",
+        "body": "Deliveries with a courier problem show here."
+      },
+      "to-prepare": {
+        "title": "Nothing to prepare"
+      },
+      "ready": {
+        "title": "Nothing waiting for pickup by a courier"
+      },
+      "shipped": {
+        "title": "Nothing on the way"
+      },
+      "delivered": {
+        "title": "Nothing delivered yet"
+      },
+      "refunded": {
+        "title": "No cancelled shipments",
+        "body": "Seller orders refunded in full before shipping show here."
+      }
     }
   }
 }
