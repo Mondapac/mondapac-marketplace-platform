@@ -187,7 +187,7 @@ function parse(input: DocumentListInput): Result<Parsed, ReadFailure> {
   }
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
   return ok({
-    filter: { kind, reference, sellerId, from, to, minAmount, maxAmount, parties: null },
+    filter: { ids: null, kind, reference, sellerId, from, to, minAmount, maxAmount, parties: null },
     search,
     sort: prevNext ? { key: 'issued', direction: 'desc' } : { key, direction },
     paging: prevNext ? { kind: 'prev-next', after, limit } : { kind: 'pages', page, pageSize },
@@ -203,11 +203,13 @@ export async function listDocuments(
   deps: AdminDocumentListDependencies,
   context: CallContext,
   input: DocumentListInput,
+  ids: readonly string[] | null = null,
 ): Promise<Result<DocumentListPage, ReadFailure>> {
   const parsed = parse(input ?? {});
   if (!parsed.ok) return parsed;
   const { sort, paging } = parsed.value;
-  let filter = parsed.value.filter;
+  // An export's selected rows narrow the list's own filter (an AND).
+  let filter = { ...parsed.value.filter, ids };
   let searchCapped = false;
   let searchScope: DocumentListPage['searchScope'] = null;
   if (parsed.value.search !== null) {

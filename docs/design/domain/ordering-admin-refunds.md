@@ -22,3 +22,13 @@ name lookup) and its credit note. Read only: refunding stays on the order page. 
   past 10,000.
 - **Row actions:** `view-order`, and `copy-stripe-reference` once Stripe made the refund. The
   Stripe refund id (`re_...`) is shown to admins on purpose: an object id, not a credential.
+- **Export (2026-11-16):** `GET ordering/admin/refunds/export`, the same rule, with the list's
+  own filter keys (no paging or sort keys), `format` (`csv` default, `xlsx`), `columns` (the
+  column picker's keys in the order shown; the fixed ones are always first; absent = every
+  column), `ids` (the selected rows: refund ids; at most 200, `batch.too-large` past it) and `zone`
+  (IANA; default the Market's zone). At most 10,000 rows, else 413 `batch.too-large` with
+  `details.total`. It reads through the list flow a page of 100 at a time (shared code:
+  `application/sales-list-export.ts`, columns in `sales-list-export-columns.ts`), so customer name
+  and email are filled only with `identity.customer-account.view`. Money is two columns (plain
+  decimal in major units, then the currency); times are ISO 8601 with the zone's offset; codes
+  are the API's codes. File: `refunds-<day>.csv|xlsx`.

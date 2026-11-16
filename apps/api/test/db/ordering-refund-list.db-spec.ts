@@ -63,6 +63,7 @@ class RefundsOn extends ConfigOrderingPolicy {
 }
 
 const NO_FILTER: RefundListFilter = {
+  ids: null,
   state: null,
   reference: null,
   stripeRefundId: null,
@@ -379,6 +380,19 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
     expect(await idsOf({ sellerId, ledger: 'recorded', state: 'succeeded' })).toEqual([
       small.refundId,
     ]);
+  });
+
+  it('narrows to the selected refunds of an export, beside the filter', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const a = await refunded(sellerId, 1, 'succeeded');
+    await refunded(sellerId, 1, 'succeeded');
+    const c = await refunded(sellerId, 1, 'pending');
+    expect(await idsOf({ sellerId, ids: [a.refundId, c.refundId] })).toEqual([
+      c.refundId,
+      a.refundId,
+    ]);
+    expect(await idsOf({ ids: [a.refundId, c.refundId], state: 'pending' })).toEqual([c.refundId]);
+    expect(await idsOf({ ids: [ids.next<'Refund'>()] })).toEqual([]);
   });
 
   it('finds a refund by its id, its order, its seller order or its Stripe id', async () => {

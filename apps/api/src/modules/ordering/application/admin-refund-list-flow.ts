@@ -209,6 +209,7 @@ function parse(input: RefundListInput): Result<Parsed, ReadFailure> {
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
   return ok({
     filter: {
+      ids: null,
       state,
       reference,
       stripeRefundId,
@@ -239,11 +240,13 @@ export async function listRefunds(
   deps: AdminRefundListDependencies,
   context: CallContext,
   input: RefundListInput,
+  ids: readonly string[] | null = null,
 ): Promise<Result<RefundListPage, ReadFailure>> {
   const parsed = parse(input ?? {});
   if (!parsed.ok) return parsed;
   const { sort, paging } = parsed.value;
-  let filter = parsed.value.filter;
+  // An export's selected rows narrow the list's own filter (an AND).
+  let filter = { ...parsed.value.filter, ids };
   let searchCapped = false;
   let searchScope: RefundListPage['searchScope'] = null;
   if (parsed.value.search !== null) {

@@ -212,6 +212,7 @@ function parse(input: ShipmentListInput): Result<Parsed, ReadFailure> {
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
   return ok({
     filter: {
+      ids: null,
       stage,
       reference,
       trackingRef,
@@ -240,11 +241,13 @@ export async function listShipments(
   deps: AdminShipmentListDependencies,
   context: CallContext,
   input: ShipmentListInput,
+  ids: readonly string[] | null = null,
 ): Promise<Result<ShipmentListPage, ReadFailure>> {
   const parsed = parse(input ?? {});
   if (!parsed.ok) return parsed;
   const { sort, paging } = parsed.value;
-  let filter = parsed.value.filter;
+  // An export's selected rows narrow the list's own filter (an AND).
+  let filter = { ...parsed.value.filter, ids };
   let searchCapped = false;
   let searchScope: ShipmentListPage['searchScope'] = null;
   if (parsed.value.search !== null) {

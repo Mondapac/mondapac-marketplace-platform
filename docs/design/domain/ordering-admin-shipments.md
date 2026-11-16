@@ -30,3 +30,13 @@ already show on the admin order page). One row per seller order of a paid order.
   where the price excluded it); `total` and `refunded` as stored.
 - **Not here:** the carrier's own progress (in `shipping`, a follow-up through its facade), and
   any admin action on a shipment (row actions are `view-order` and `copy-tracking-reference`).
+- **Export (2026-11-16):** `GET ordering/admin/shipments/export`, the same rule, with the list's
+  own filter keys (no paging or sort keys), `format` (`csv` default, `xlsx`), `columns` (the
+  column picker's keys in the order shown; the fixed ones are always first; absent = every
+  column), `ids` (the selected rows: seller order ids; at most 200, `batch.too-large` past it) and `zone`
+  (IANA; default the Market's zone). At most 10,000 rows, else 413 `batch.too-large` with
+  `details.total`. It reads through the list flow a page of 100 at a time (shared code:
+  `application/sales-list-export.ts`, columns in `sales-list-export-columns.ts`), so customer name
+  and email are filled only with `identity.customer-account.view`. Money is two columns (plain
+  decimal in major units, then the currency); times are ISO 8601 with the zone's offset; codes
+  are the API's codes. File: `shipments-<day>.csv|xlsx`.
