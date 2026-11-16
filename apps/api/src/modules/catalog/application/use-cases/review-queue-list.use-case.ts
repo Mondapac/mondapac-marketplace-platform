@@ -151,6 +151,29 @@ interface Position {
   readonly id: string;
 }
 
+/** The most rows a source gives in one call (the revision reader clamps its page at 100). */
+const SOURCE_CHUNK = 100;
+
+/** Reads `count` rows of one source, oldest first, in calls of at most {@link SOURCE_CHUNK}. */
+export async function readChunks<T>(
+  read: (after: Position | null, take: number) => Promise<readonly T[]>,
+  positionOf: (row: T) => Position,
+  start: Position | null,
+  count: number,
+): Promise<T[]> {
+  const rows: T[] = [];
+  let after = start;
+  while (rows.length < count) {
+    const take = Math.min(SOURCE_CHUNK, count - rows.length);
+    const chunk = await read(after, take);
+    rows.push(...chunk);
+    const last = chunk[chunk.length - 1];
+    if (chunk.length < take || last === undefined) break;
+    after = positionOf(last);
+  }
+  return rows;
+}
+
 const CURSOR = /^(\d{1,15})_([0-9a-f-]{36})$/;
 
 interface QueueFilter {
@@ -347,26 +370,37 @@ export class ReviewQueueList extends UseCase<
             fields: [{ path: 'direction', code: 'range' }],
           });
         }
-        const fetchCount = cursorMode
-          ? limit + 1
-          : descending
-            ? Math.max(1, DESC_MAX_ROWS)
-            : offset + limit;
+        const fetchCount = cursorMode ? limit + 1 : descending ? DESC_MAX_ROWS : offset + limit;
         const offers =
           withOffers && !(pagesMode && offset >= total)
-            ? await this.deps.offers.listPendingReview(
-                market,
-                { after, limit: fetchCount },
-                offerFilter,
+            ? await readChunks(
+                (position, take) =>
+                  this.deps.offers.listPendingReview(
+                    market,
+                    { after: position, limit: take },
+                    offerFilter,
+                  ),
+                (offer) => ({
+                  submittedAt: offer.state.submittedAt ?? Temporal.Instant.fromEpochMilliseconds(0),
+                  id: offer.state.id,
+                }),
+                after,
+                fetchCount,
               )
             : [];
         const revisions =
           withRevisions && !(pagesMode && offset >= total)
-            ? await this.deps.ownReader.listPendingRevisions(
-                market,
-                { after, limit: fetchCount },
-                locale,
-                revisionFilter,
+            ? await readChunks(
+                (position, take) =>
+                  this.deps.ownReader.listPendingRevisions(
+                    market,
+                    { after: position, limit: take },
+                    locale,
+                    revisionFilter,
+                  ),
+                (row) => ({ submittedAt: row.submittedAt, id: row.productId }),
+                after,
+                fetchCount,
               )
             : [];
         // Merge the two sources into one order: submit instant, then id.

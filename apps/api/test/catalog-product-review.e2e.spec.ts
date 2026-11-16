@@ -664,6 +664,15 @@ describe('admin product revision review over HTTP (integration)', () => {
       ]);
       expect(desc.nextAfterId).toBeNull();
 
+      const asModerator = await get(
+        code,
+        '/review-queue?page=1&pageSize=3',
+        sessionOf(code, MODERATOR, 2),
+      );
+      expect(asModerator.status).toBe(200);
+      for (const row of (asModerator.body as { items: { actions: string[] }[] }).items) {
+        expect(row.actions).toEqual(['approve', 'request-changes']);
+      }
       expect((await read('?afterId=' + first.nextAfterId + '&page=1')).status).toBe(400);
       expect((await read('?limit=2&sort=submitted')).status).toBe(400);
       expect((await read('?sort=price')).status).toBe(400);
