@@ -87,7 +87,7 @@ import {
   CategoryProposalBulkDecide,
   TopicSuggestionBulkDecide,
   VariantRequestBulkDecide,
-} from './application/use-cases/queue-bulk-decide.use-cases';
+} from './application/use-cases/queue-bulk-decide.use-case';
 import { QueueBulkController } from './presentation/queue-bulk.controller';
 import { AttributeEditProbe } from './application/use-cases/attribute-edit-probe.use-case';
 import { AttributeRestructureProbe } from './application/use-cases/attribute-restructure-probe.use-case';

@@ -25,7 +25,7 @@ import {
   CategoryProposalBulkDecide,
   TopicSuggestionBulkDecide,
   VariantRequestBulkDecide,
-} from '../application/use-cases/queue-bulk-decide.use-cases';
+} from '../application/use-cases/queue-bulk-decide.use-case';
 import { closedBody, refusalWith, type Refusal } from './http-answers';
 import { BulkDecideBody, BulkDecideRequest } from './queue-bulk.dto';
 import { ApiErrorBody } from './platform-product.dto';
