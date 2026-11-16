@@ -170,6 +170,7 @@ const body =
     />
   ) : scenario === 'column' ? (
     <ProductsList
+      paging="pages"
       accountId="acc-1"
       marketId="AU"
       marketName="Australia"

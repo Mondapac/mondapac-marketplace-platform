@@ -10,6 +10,8 @@ interface Input {
   readonly visitor: unknown;
   /** The storefront's language tag, for the quick prompts (untrusted; checked by the port). */
   readonly lang?: unknown;
+  /** The internal preview token the browser sent, if any (untrusted; verified by the port). */
+  readonly preview?: unknown;
 }
 
 /**
