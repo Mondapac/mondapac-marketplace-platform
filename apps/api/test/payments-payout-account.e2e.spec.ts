@@ -7,6 +7,7 @@ import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-ro
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
+import { AdminExportConnectedAccounts } from '../src/modules/payments/application/use-cases/admin-export-connected-accounts.use-case';
 import { AdminListConnectedAccounts } from '../src/modules/payments/application/use-cases/admin-list-connected-accounts.use-case';
 import { AdminViewConnectedAccount } from '../src/modules/payments/application/use-cases/admin-view-connected-account.use-case';
 import { ConnectPayoutAccount } from '../src/modules/payments/application/use-cases/connect-payout-account.use-case';
@@ -106,6 +107,8 @@ describe.each(TEST_MARKETS)('payout account over HTTP in market %s', (code) => {
           .useValue(stub('link'))
           .overrideProvider(AdminListConnectedAccounts)
           .useValue(stub('admin-list'))
+          .overrideProvider(AdminExportConnectedAccounts)
+          .useValue(stub('admin-export'))
           .overrideProvider(AdminViewConnectedAccount)
           .useValue(stub('admin-view')),
     }));
@@ -326,11 +329,29 @@ describe.each(TEST_MARKETS)('payout account over HTTP in market %s', (code) => {
   });
 
   describe('admin', () => {
-    it('lists the accounts with a cursor and a status filter, answering the contract row only', async () => {
-      await boot();
-      next = ok({ items: [row()], nextCursor: '1.cursor' });
+    const COUNTS = { all: 1, 'not-started': 0, pending: 0, enabled: 1, restricted: 0, rejected: 0 };
+    const page = (patch: object = {}) => ({
+      items: [{ ...row(), sellerName: 'Halal Corner', actions: ['open'] }],
+      counts: COUNTS,
+      total: 1,
+      page: 2,
+      pageSize: 25,
+      paging: 'pages',
+      hasNext: false,
+      nextCursor: null,
+      ...patch,
+    });
 
-      const res = await call('get', 'admin', `${ADMIN_LIST}?status=enabled&cursor=abc`, admin());
+    it('lists the accounts as a super list, page numbers as numbers, answering the contract row only', async () => {
+      await boot();
+      next = ok(page());
+
+      const res = await call(
+        'get',
+        'admin',
+        `${ADMIN_LIST}?status=enabled&ready=no&q=corner&page=2&pageSize=25&sort=last-read&direction=asc`,
+        admin(),
+      );
 
       expect(res.status).toBe(200);
       expect(res.headers['cache-control']).toBe('no-store');
@@ -338,7 +359,7 @@ describe.each(TEST_MARKETS)('payout account over HTTP in market %s', (code) => {
         items: [
           {
             sellerId: SELLER,
-            sellerName: null,
+            sellerName: 'Halal Corner',
             status: 'enabled',
             ready: false,
             requirementsDue: 0,
@@ -347,11 +368,82 @@ describe.each(TEST_MARKETS)('payout account over HTTP in market %s', (code) => {
             payoutsPaused: true,
             lastReadAt: START.toString(),
             createdAt: START.toString(),
+            actions: ['open'],
           },
         ],
-        nextCursor: '1.cursor',
+        counts: COUNTS,
+        total: 1,
+        page: 2,
+        pageSize: 25,
+        paging: 'pages',
+        hasNext: false,
+        nextCursor: null,
       });
+      expect(calls).toEqual([
+        {
+          name: 'admin-list',
+          input: {
+            status: 'enabled',
+            ready: 'no',
+            q: 'corner',
+            page: 2,
+            pageSize: 25,
+            sort: 'last-read',
+            direction: 'asc',
+          },
+        },
+      ]);
+    });
+
+    it("answers the older card's cursor, and maps a failed store search to 503", async () => {
+      await boot();
+      next = ok(
+        page({ counts: null, total: null, page: 1, paging: 'prev-next', nextCursor: '1.c' }),
+      );
+      const res = await call('get', 'admin', `${ADMIN_LIST}?status=enabled&cursor=abc`, admin());
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ counts: null, nextCursor: '1.c' });
       expect(calls).toEqual([{ name: 'admin-list', input: { status: 'enabled', cursor: 'abc' } }]);
+      next = err({ code: 'payments.search-unavailable' });
+      expect((await call('get', 'admin', `${ADMIN_LIST}?q=corner`, admin())).status).toBe(503);
+    });
+
+    it('sends the accounts file as an attachment, and maps too large and not found', async () => {
+      await boot();
+      const session = admin();
+      next = ok({
+        filename: 'seller-accounts-2026-11-02.csv',
+        contentType: 'text/csv; charset=utf-8',
+        chunks: ['\uFEFFSeller\r\n', 'row\r\n'],
+      });
+      const file = await call(
+        'get',
+        'admin',
+        `${ADMIN_LIST}/export?status=enabled&format=csv`,
+        session,
+      );
+      expect(file.status).toBe(200);
+      expect(file.headers['content-disposition']).toBe(
+        'attachment; filename="seller-accounts-2026-11-02.csv"',
+      );
+      expect(file.headers['cache-control']).toBe('no-store');
+      expect(file.headers['x-content-type-options']).toBe('nosniff');
+      expect(file.text).toContain('row');
+      next = err({ code: 'batch.too-large', max: 10000, total: 10001 });
+      const big = await call('get', 'admin', `${ADMIN_LIST}/export`, session);
+      expect(big.status).toBe(413);
+      expect(big.body).toEqual({
+        statusCode: 413,
+        code: 'batch.too-large',
+        details: { max: 10000, total: 10001 },
+      });
+      next = err({ code: 'payments.connected-account.not-found' });
+      expect((await call('get', 'admin', `${ADMIN_LIST}/export?ids=x`, session)).status).toBe(404);
+      expect(calls).toEqual([
+        { name: 'admin-export', input: { status: 'enabled', format: 'csv' } },
+        { name: 'admin-export', input: {} },
+        { name: 'admin-export', input: { ids: 'x' } },
+      ]);
     });
 
     it('views one account with its changes and maps invalid, not found and denied', async () => {
