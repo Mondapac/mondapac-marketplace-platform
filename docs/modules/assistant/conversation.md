@@ -65,8 +65,12 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
 - Spend: each call is priced from the Market's configured token price and counted in
   `assistant.spend_days` (Market calendar day). At the daily or monthly cap the Market answers
   `assistant.paused` until the next day or month; the first pause of a day is recorded (admin
-  read `spend.lastAutoOff`) and logged as a warning. A bell notice to admins waits for
-  notifications package 3.
+  read `spend.lastAutoOff`) and logged as a warning. The same unit writes one
+  `assistant.spend-cap-reached.v1` event (payload: the cap only) to `assistant.outbox`, once per
+  Market and day; notifications turns it into the admin bell notice
+  `admin.assistant-spend-cap-reached`, shown to admins holding `assistant.settings.view`.
+  Notifications reads the event through `assistant/contracts/admin-notice.contract.ts`, a contract
+  file only notifications may import (the assistant index would close a cycle).
 - Storage (`assistant.conversations`, `assistant.messages`): text only when the retention setting
   keeps it, encrypted under the conversation's key. The daily purge job deletes conversations
   older than the retention in force (a shorter setting applies to older conversations too; a guest

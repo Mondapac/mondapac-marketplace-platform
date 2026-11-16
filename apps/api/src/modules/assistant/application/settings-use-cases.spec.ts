@@ -33,6 +33,7 @@ import {
   MemoryConversations,
   MemoryLimits,
   MemorySpend,
+  RecordingOutbox,
   SequenceGuestTokens,
   UtcCalendar,
 } from './testing/assistant-fakes';
@@ -271,6 +272,7 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
       limits: new MemoryLimits(),
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
+      outbox: new RecordingOutbox(),
       trail: changeTrailOf(unitOfWork, audit, actors),
     };
   });

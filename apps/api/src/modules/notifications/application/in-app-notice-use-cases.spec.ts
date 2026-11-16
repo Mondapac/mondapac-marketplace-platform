@@ -21,6 +21,7 @@ import {
   ADMIN_NOTICES_PER_MARKET,
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_SELLER_REFUND_LIMIT_REACHED,
+  ADMIN_ASSISTANT_SPEND_CAP_REACHED,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -260,6 +261,11 @@ describe('parseNoticeParams', () => {
       'a refund limit notice with an unknown cap',
       ADMIN_SELLER_REFUND_LIMIT_REACHED,
       { sellerId: id(1), limit: 'speed' },
+    ],
+    [
+      'a spend cap notice with an unknown cap',
+      ADMIN_ASSISTANT_SPEND_CAP_REACHED,
+      { cap: 'weekly' },
     ],
   ])('refuses %s', (_label, kind, raw) => {
     expect(parseNoticeParams(kind, raw)).toBeNull();
@@ -734,6 +740,7 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
         sellerId: SELLER_A,
       },
       refundLimit: { kind: ADMIN_SELLER_REFUND_LIMIT_REACHED, sellerId: SELLER_B, limit: 'amount' },
+      spendCap: { kind: ADMIN_ASSISTANT_SPEND_CAP_REACHED, cap: 'daily' },
     };
     const review = (item: AdminReviewItem, eventNo = nextEvent++) =>
       new RecordAdminReviewNotice(gate, deps).execute(system, {
@@ -749,6 +756,7 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
         'pricing.price-hold.decide',
         'shipping.delivery-settings.view',
         'ordering.refund-limits.view',
+        'assistant.settings.view',
       ]);
       adminKeys.set(ADMIN_PRICES, ['pricing.price-hold.decide']);
     });
@@ -806,6 +814,13 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
           sellerId: null,
           kind: ADMIN_SELLER_REFUND_LIMIT_REACHED,
           params: { sellerId: SELLER_B, limit: 'amount' },
+          m: code,
+        },
+        {
+          audience: 'admin',
+          sellerId: null,
+          kind: ADMIN_ASSISTANT_SPEND_CAP_REACHED,
+          params: { cap: 'daily' },
           m: code,
         },
       ]);
@@ -905,6 +920,7 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
       it('shows an admin each kind only while they hold its permission', async () => {
         const all = await list(admin(ADMIN_ALL));
         expect(all.ok && all.value.items.map((item) => item.kind)).toEqual([
+          ADMIN_ASSISTANT_SPEND_CAP_REACHED,
           ADMIN_SELLER_REFUND_LIMIT_REACHED,
           ADMIN_DELIVERY_FALLBACK_OVER_CAP,
           ADMIN_PRICE_HOLD_OPENED,
@@ -938,8 +954,8 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
       it('reads per admin: one admin marking all leaves the others unread', async () => {
         expect(await mark(admin(ADMIN_PRICES), { all: true })).toEqual(ok({ marked: 1 }));
         const all = await count(admin(ADMIN_ALL));
-        expect(all.ok && all.value.unread).toBe(6);
-        expect(all.ok && all.value.newest?.kind).toBe(ADMIN_SELLER_REFUND_LIMIT_REACHED);
+        expect(all.ok && all.value.unread).toBe(7);
+        expect(all.ok && all.value.newest?.kind).toBe(ADMIN_ASSISTANT_SPEND_CAP_REACHED);
 
         const certificate = notices.rows.find(
           (row) => row.kind === ADMIN_SELLER_CERTIFICATE_SUBMITTED,

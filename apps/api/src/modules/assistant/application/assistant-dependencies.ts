@@ -1,6 +1,7 @@
 import type { Clock } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { ChangeTrail } from '../../../platform/audit/change-trail';
+import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { AssistantRuntime } from './ports/assistant-runtime';
 import type { AssistantSettingsRepository } from './ports/assistant-settings.repository';
@@ -24,6 +25,8 @@ export interface AssistantDependencies {
   readonly limits: MessageLimits;
   readonly guestTokens: GuestTokens;
   readonly calendar: MarketCalendar;
+  /** assistant's own outbox: the spend-cap event, in the unit that counted the turn. */
+  readonly outbox: OutboxWriter;
   /** "Last changed by" and the history of the settings, from this module's audit rows. */
   readonly trail: ChangeTrail;
 }

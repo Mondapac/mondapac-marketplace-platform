@@ -28,6 +28,7 @@ import { REVIEWS_MODERATION_QUEUE, REVIEWS_SELLER_VIEW } from '../../reviews';
 import { PRICING_PRICE_HOLD_DECIDE, PRICING_PRICE_VIEW } from '../../pricing';
 import { SHIPPING_DELIVERY_SETTINGS_VIEW } from '../../shipping';
 import { SELLERS_SELLER_FILE_REVIEW } from '../../sellers';
+import { ASSISTANT_SETTINGS_VIEW } from '../../assistant/contracts/admin-notice.contract';
 import {
   ADMIN_NOTICE_KINDS,
   ADMIN_PLATFORM_IMPORT_FINISHED,
@@ -35,6 +36,7 @@ import {
   ADMIN_REVIEW_REPORTED,
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_SELLER_REFUND_LIMIT_REACHED,
+  ADMIN_ASSISTANT_SPEND_CAP_REACHED,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -200,6 +202,11 @@ const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = 
     rule: { kind: 'permissions', allOf: [CATALOG_PLATFORM_IMPORT_RUN.key] },
   },
   // The admins who see the caps on seller refunds follow up a seller that reached one.
+  // The admins who see the assistant's settings and spend see that a cap switched it off.
+  [ADMIN_ASSISTANT_SPEND_CAP_REACHED]: {
+    name: 'notifications.see-admin-assistant-spend-cap-notices',
+    rule: { kind: 'permissions', allOf: [ASSISTANT_SETTINGS_VIEW.key] },
+  },
   [ADMIN_SELLER_REFUND_LIMIT_REACHED]: {
     name: 'notifications.see-admin-seller-refund-limit-notices',
     rule: { kind: 'permissions', allOf: [ORDERING_REFUND_LIMITS_VIEW.key] },

@@ -16,7 +16,9 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import { DEFAULT_ASSISTANT_SETTINGS, type AssistantSettings } from '../domain/assistant-settings';
 import type { AssistantCard } from '../domain/cards';
 import { MASKED } from '../domain/personal-data';
+import { AssistantSpendCapReached } from '../domain/events';
 import type { AssistantDependencies } from './assistant-dependencies';
+import { spendDayAggregateId } from './conversation-flow';
 import type {
   AssistantSettingsRecord,
   AssistantSettingsRepository,
@@ -28,6 +30,7 @@ import {
   MemoryConversations,
   MemoryLimits,
   MemorySpend,
+  RecordingOutbox,
   SequenceGuestTokens,
   UtcCalendar,
 } from './testing/assistant-fakes';
@@ -101,6 +104,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
   let tools: FakeTools;
   let conversations: MemoryConversations;
   let spend: MemorySpend;
+  let outbox: RecordingOutbox;
   let limits: MemoryLimits;
   let clock: FixedClock;
   let deps: AssistantDependencies;
@@ -136,6 +140,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
     tools = new FakeTools();
     conversations = new MemoryConversations();
     spend = new MemorySpend();
+    outbox = new RecordingOutbox();
     limits = new MemoryLimits();
     clock = new FixedClock(T0);
     deps = {
@@ -150,6 +155,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       limits,
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
+      outbox,
       trail: unusedChangeTrail,
     };
   });
@@ -506,6 +512,19 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
         conversationsToday: 1,
         lastAutoOff: { at: T0, cap: 'daily' },
       });
+      // One event for the admins' bell notice: which cap, no amount, on the Market's spend day.
+      const today = T0.toZonedDateTimeISO('UTC').toPlainDate();
+      expect(outbox.events).toEqual([
+        expect.objectContaining({
+          type: AssistantSpendCapReached.type,
+          aggregateType: 'assistant-spend-day',
+          aggregateId: spendDayAggregateId(market, today),
+          aggregateVersion: 1,
+          occurredAt: T0,
+          payload: { cap: 'daily' },
+          marketId: market.marketId,
+        }),
+      ]);
       // The next day the daily cap starts again.
       clock.set(T0.add({ hours: 24 }));
       expect((await asCustomer('Next day', SECOND)).ok).toBe(true);
@@ -520,6 +539,8 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
         conversations: 0,
       });
       expect(await asCustomer('Hi')).toEqual({ ok: false, error: { code: 'assistant.paused' } });
+      // Paused before the turn: no model call, so no new auto-off and no event.
+      expect(outbox.events).toEqual([]);
     });
   });
 
