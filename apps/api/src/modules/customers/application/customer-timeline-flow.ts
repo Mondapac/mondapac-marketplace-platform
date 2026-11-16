@@ -67,9 +67,15 @@ const SPEC = {
 const FILTER_KEYS = ['category', 'kinds', 'from', 'to'] as const;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
+/** The start of a calendar day (UTC); null for anything that is not a real day (31 February). */
 const dayStart = (day: string): Temporal.Instant | null => {
-  if (!DAY.test(day) || Number.isNaN(Date.parse(`${day}T00:00:00Z`))) return null;
-  return Temporal.Instant.from(`${day}T00:00:00Z`);
+  if (!DAY.test(day)) return null;
+  try {
+    const date = Temporal.PlainDate.from(day, { overflow: 'reject' });
+    return Temporal.Instant.from(`${date.toString()}T00:00:00Z`);
+  } catch {
+    return null;
+  }
 };
 
 /** Reads the filters of a timeline request (closed). */

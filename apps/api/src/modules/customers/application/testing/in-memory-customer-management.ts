@@ -219,6 +219,14 @@ export class InMemoryCustomerNotes implements CustomerNoteRepository {
 /** A reversible stand-in for the subject-key cipher; `destroy` plays an erased account's key. */
 export class FakeNoteCipher implements CustomerNoteCipher {
   readonly destroyed = new Set<string>();
+  /** Accounts that have a key; null: every account has one. The real service throws for others. */
+  keyed: Set<string> | null = null;
+
+  #check(market: MarketContext, accountId: Id<'Account'>): void {
+    if (this.keyed !== null && !this.keyed.has(key(market, accountId))) {
+      throw new Error('subject key missing');
+    }
+  }
 
   destroy(market: MarketContext, accountId: Id<'Account'>): void {
     this.destroyed.add(key(market, accountId));
@@ -229,6 +237,7 @@ export class FakeNoteCipher implements CustomerNoteCipher {
     accountId: Id<'Account'>,
     body: string,
   ): Promise<Result<string, NoteKeyDestroyed>> {
+    this.#check(market, accountId);
     if (this.destroyed.has(key(market, accountId))) {
       return Promise.resolve(err({ code: 'subject-key.destroyed' }));
     }
@@ -265,11 +274,24 @@ export class InMemoryCustomerTimeline implements CustomerTimelineRepository {
     market: MarketContext,
     entry: TimelineEntry,
     _at: Temporal.Instant,
-    options?: { readonly known?: boolean },
+    options?: { readonly onceSince?: Temporal.Instant },
   ): Promise<boolean> {
-    if (options?.known !== true && !(await this.hasCustomer(market, entry.accountId))) return false;
+    if (!(await this.hasCustomer(market, entry.accountId))) return false;
     const k = key(market, entry.accountId);
     const all = this.entries.get(k) ?? [];
+    const since = options?.onceSince;
+    if (
+      since !== undefined &&
+      all.some(
+        (e) =>
+          e.kind === entry.kind &&
+          e.actorAccountId === entry.actorAccountId &&
+          e.detail === entry.detail &&
+          Temporal.Instant.compare(e.occurredAt, since) >= 0,
+      )
+    ) {
+      return false;
+    }
     if (entry.sourceEventId !== null && all.some((e) => e.sourceEventId === entry.sourceEventId)) {
       return false;
     }

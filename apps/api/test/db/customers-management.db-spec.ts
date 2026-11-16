@@ -191,6 +191,43 @@ describe.each(TEST_MARKETS)('customers management in market %s (database)', (cod
       });
     });
 
+    it('adds and removes 2,500 customers at once, in slices, and counts each once', async () => {
+      const made = group(`${tag} bulk`);
+      await inUnit(market, () => groups.insert(market, made));
+      const many: Id<'Account'>[] = [];
+      await inUnit(market, async () => {
+        for (let n = 0; n < 2500; n += 1) {
+          const accountId = ids.next<'Account'>();
+          many.push(accountId);
+          await models.upsertDirectory(
+            market,
+            {
+              accountId,
+              email: `${tag}.b${n}@example.test`,
+              displayName: null,
+              status: 'active',
+              emailVerified: true,
+              signedUpAt: T0,
+            },
+            T0,
+          );
+        }
+      });
+      const added = await inUnit(market, () => groups.addMembers(market, made.id, many, admin, T0));
+      expect(added).toHaveLength(2500);
+      const entries = many.map((accountId) =>
+        entry(accountId, {
+          kind: 'group-added',
+          ref: { type: 'group', id: made.id },
+          actorAccountId: admin,
+          sourceEventId: null,
+        }),
+      );
+      expect(await inUnit(market, () => timeline.recordMany(market, entries, T0))).toBe(2500);
+      const removed = await inUnit(market, () => groups.removeMembers(market, made.id, many));
+      expect(removed).toHaveLength(2500);
+    });
+
     it('refuses a name with a line break and a group of an unknown kind (CHECK)', async () => {
       await expect(
         sql.query(
@@ -268,22 +305,39 @@ describe.each(TEST_MARKETS)('customers management in market %s (database)', (cod
       expect(await inUnit(market, () => timeline.record(market, entry(accountId), T0))).toBe(true);
       const stranger = ids.next<'Account'>();
       expect(await inUnit(market, () => timeline.record(market, entry(stranger), T0))).toBe(false);
-      expect(
-        await inUnit(market, () => timeline.record(market, entry(stranger), T0, { known: true })),
-      ).toBe(true);
+      // The foreign key: no row for an account without a directory row, whatever the writer.
+      await expect(
+        sql.query(
+          `INSERT INTO customers.customer_timeline (id, market_id, tenant_id, account_id, occurred_at,
+             kind, recorded_at) VALUES ($1, $2, 'default', $3, now(), 'signed-up', now())`,
+          [ids.next(), market.marketId, stranger],
+        ),
+      ).rejects.toMatchObject({ code: '23503' });
+      // One page-open row per admin, tab and day.
+      const opened = (minutes: number) =>
+        entry(accountId, {
+          kind: 'page-opened',
+          occurredAt: T0.add({ minutes }),
+          actorAccountId: admin,
+          detail: 'overview',
+          sourceEventId: null,
+        });
+      const today = { onceSince: T0.subtract({ hours: 1 }) };
+      expect(await inUnit(market, () => timeline.record(market, opened(1), T0, today))).toBe(true);
+      expect(await inUnit(market, () => timeline.record(market, opened(2), T0, today))).toBe(false);
       const query = { accountId, kinds: null, from: null, to: null };
       const desc = await inUnit(market, () =>
         timeline.page(market, query, 'desc', { offset: 0, limit: 10 }),
       );
-      expect(desc.map((row) => row.kind)).toEqual(['signed-up', 'order-paid']);
-      expect(desc[1]?.ref).toEqual(paid.ref);
+      expect(desc.map((row) => row.kind)).toEqual(['page-opened', 'signed-up', 'order-paid']);
+      expect(desc[2]?.ref).toEqual(paid.ref);
       const orders = await inUnit(market, () =>
         timeline.page(market, { ...query, kinds: ['order-paid'] }, 'asc', { offset: 0, limit: 10 }),
       );
       expect(orders.map((row) => row.id)).toEqual([paid.id]);
       expect(
         await inUnit(market, () => timeline.count(market, { ...query, from: at(5), to: null })),
-      ).toBe(1);
+      ).toBe(2);
       expect(await inUnit(other, () => timeline.count(other, query))).toBe(0);
     });
 

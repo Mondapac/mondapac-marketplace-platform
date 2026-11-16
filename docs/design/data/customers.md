@@ -100,13 +100,17 @@ Migration `20261115230009_customers_groups_notes_timeline/` (down drops the four
   archived_at, updated_at and version (no DELETE).
 - `customer_group_members` (PK `(market_id, group_id, account_id)`): FK to the group (RESTRICT) and
   to the directory row (CASCADE, so an erased customer leaves every group). Indexes
-  `(market_id, account_id)` and `(market_id, group_id, added_at desc)`. Grants: SELECT, INSERT,
+  `(market_id, account_id)` (the primary key serves the per-group reads). Grants: SELECT, INSERT,
   DELETE.
-- `customer_notes`: `body_ciphertext` (`v<n>.<base64url>`, 41 to 16,384 characters, CHECK: never
+- `customer_notes`: FK `(market_id, account_id)` to the directory row (CASCADE). `body_ciphertext` (`v<n>.<base64url>`, 41 to 16,384 characters, CHECK: never
   plain text), author, `created_at`. Index `(market_id, account_id, created_at desc, id desc)` for
   the keyset. Grants: SELECT, INSERT, DELETE.
-- `customer_timeline`: `kind` (a code, CHECK), `ref_type`/`ref_id` (both or neither; order,
+- `customer_timeline`: FK `(market_id, account_id)` to the directory row (CASCADE). `kind` (a code
+  of the pattern the CHECK holds), `ref_type`/`ref_id` (both or neither; order,
   refund, group or note), `actor_account_id`, `detail` (a short code), `source_event_id`, `occurred_at`,
   `recorded_at`. Unique `(market_id, account_id, source_event_id)` (an event once; admin rows have
-  none). Index `(market_id, account_id, occurred_at desc, id desc)`. Grants: SELECT, INSERT, DELETE.
-- Retention: the rows of an account go with its erasure (`removeAllOf`); nothing else deletes them.
+  none; a full unique, not a partial one, because the Prisma schema cannot declare a partial index
+  and NULLs never collide). Index `(market_id, account_id, occurred_at desc, id desc)`. Grants: SELECT, INSERT, DELETE.
+- Retention: the rows of an account go with its erasure (`removeAllOf` deletes the directory row,
+  the cascades the rest); nothing else deletes them. A page open is written at most once per admin,
+  tab and UTC day, which bounds the table's growth from page views.

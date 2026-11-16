@@ -84,12 +84,13 @@ export const CUSTOMERS_CUSTOMER_EDIT = definePermission('customers', {
 
 /**
  * Make, rename and archive manual customer groups and add or remove their members, one by one or
- * in bulk (phase 2). Unprotected; also needs `customers.customers.view`. Audited.
+ * in bulk (phase 2). Protected (owner decision, 15 Nov 2026): a group can carry a promotion's
+ * discount, so only a protected role grants it. Also needs `customers.customers.view`. Audited.
  */
 export const CUSTOMERS_GROUPS_MANAGE = definePermission('customers', {
   key: 'customers.groups.manage',
   scope: 'platform',
-  protected: false,
+  protected: true,
 });
 
 /**

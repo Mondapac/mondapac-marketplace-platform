@@ -372,7 +372,8 @@ admin deletes a buyer's account for them, from a support ticket.
   its case (index `customer_groups_name_key` on `lower(name)`), an optional description, a version
   and an archive instant; it is never deleted (a promotion may name it). Routes under
   `customers/admin/groups` (`GET`, `POST`, `GET/PUT :groupId`, `POST :groupId/members/add|remove`),
-  key `customers.groups.manage` with `customers.customers.view` to change, the view key to read. At
+  key `customers.groups.manage` (protected, owner decision 15 Nov 2026: a group can carry a
+  discount) with `customers.customers.view` to change, the view key to read. At
   most 500 groups per Market. Members are added or removed by `ids` (at most 1,000) or by the
   Customers list's `view`, `q` and `filters` ("select all matching", at most 10,000; more is
   refused whole with the total). Ids that are no customer of the Market are skipped; an archived
@@ -398,7 +399,10 @@ admin deletes a buyer's account for them, from a support ticket.
   source event id (unique per customer, so an event is written once). From events: signed up,
   email verified, name changed, disabled, enabled, order paid, refund succeeded (subscriptions
   `customers.timeline-*`). From admin actions: every customer page open (with the tab), note added,
-  group added or removed, renamed by an admin. `POST customers/admin/customers/:accountId/activity`
+  group added or removed, renamed by an admin. A page open is written once per admin, tab and
+  UTC day, so the table does not grow with every click. An event about an account that has no
+  directory row yet is refused with `customers.unavailable` and retried, so it is never lost;
+  a bulk write checks the directory in slices of 1,000. `POST customers/admin/customers/:accountId/activity`
   is a super list scoped to one customer (filter by category or kinds and by day range, sort by
   time, both paging modes); each read writes the page-open audit row (tab `activity`).
   `.../activity/export` (CSV or XLSX, at most 10,000) needs the export key and a fresh two-step
@@ -408,12 +412,15 @@ admin deletes a buyer's account for them, from a support ticket.
   audit `identity.account.renamed-by-admin`, the usual name-changed event). Status changes stay on
   identity's audited routes (`POST identity/admin/customers/:accountId/disable|enable`, key
   `identity.customer-account.disable`). Deletion stays on the package 5c path.
-- **Erasure.** The account's erasure and the sweep call `removeAllOf`, which now also deletes the
-  customer's timeline rows, notes and group memberships.
+- **Erasure.** The account's erasure and the sweep call `removeAllOf`, which deletes the directory
+  row; foreign keys with ON DELETE CASCADE remove the customer's timeline rows, notes and group
+  memberships with it.
 - **Not in this PR.** The admin email change (identity's pending-email flow with step-up, a mail
   to the new address and a warning to the old) is a PR of its own (security review). Per-module
   reads of the customer page tabs are PR 2b.
 - **Known gaps.** Reviews and consent events carry no account id, so they are not on the timeline
-  yet. Status-change entries from identity's events have no admin attached. The notes read writes
+  yet. Status-change entries from identity's events have no admin attached. A rename by an admin writes
+  two entries (`renamed-by-admin` with the admin, and `name-changed` from identity's event, which
+  carries no actor). The notes read writes
   no audit row of its own (the page open does). No role is seeded with the new keys; the owner
   assigns them.

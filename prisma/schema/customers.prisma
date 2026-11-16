@@ -151,6 +151,9 @@ model CustomersCustomerDirectory {
   stats            CustomersCustomerStats?
   /// The manual groups the customer is in (phase 2); the rows go with this one.
   groupMemberships CustomersCustomerGroupMember[]
+  /// The admins' notes and the activity timeline (phase 2); the rows go with this one.
+  notes            CustomersCustomerNote[]
+  timeline         CustomersCustomerTimelineEntry[]
 
   @@id([marketId, accountId])
   @@index([marketId, signedUpAt(sort: Desc), accountId(sort: Desc)])
@@ -260,7 +263,6 @@ model CustomersCustomerGroupMember {
 
   @@id([marketId, groupId, accountId])
   @@index([marketId, accountId])
-  @@index([marketId, groupId, addedAt(sort: Desc)])
   @@map("customer_group_members")
   @@schema("customers")
 }
@@ -277,10 +279,11 @@ model CustomersCustomerNote {
   accountId       String   @map("account_id") @db.Uuid
   /// The admin who wrote it (identity account id, no foreign key).
   authorAccountId String   @map("author_account_id") @db.Uuid
-  bodyCiphertext  String   @map("body_ciphertext")
-  createdAt       DateTime @map("created_at") @db.Timestamptz(6)
+  bodyCiphertext  String                     @map("body_ciphertext")
+  createdAt       DateTime                   @map("created_at") @db.Timestamptz(6)
+  /// The customer must have a directory row; the note goes with it when the account is erased.
+  customer        CustomersCustomerDirectory @relation(fields: [marketId, accountId], references: [marketId, accountId], onDelete: Cascade, onUpdate: Restrict)
 
-  @@unique([marketId, id])
   @@index([marketId, accountId, createdAt(sort: Desc), id(sort: Desc)])
   @@map("customer_notes")
   @@schema("customers")
@@ -297,7 +300,7 @@ model CustomersCustomerTimelineEntry {
   tenantId       String   @map("tenant_id")
   accountId      String   @map("account_id") @db.Uuid
   occurredAt     DateTime @map("occurred_at") @db.Timestamptz(6)
-  /// What happened, a closed code (CHECK); the application owns the list.
+  /// What happened: a code of the pattern the CHECK holds; the application owns the list.
   kind           String
   /// The kind of thing `ref_id` names (order, refund, group, note), or NULL.
   refType        String?  @map("ref_type")
@@ -308,9 +311,10 @@ model CustomersCustomerTimelineEntry {
   detail         String?
   /// The event this entry was copied from, or NULL for an admin action written directly.
   sourceEventId  String?  @map("source_event_id") @db.Uuid
-  recordedAt     DateTime @map("recorded_at") @db.Timestamptz(6)
+  recordedAt     DateTime                   @map("recorded_at") @db.Timestamptz(6)
+  /// The customer must have a directory row; the entry goes with it when the account is erased.
+  customer       CustomersCustomerDirectory @relation(fields: [marketId, accountId], references: [marketId, accountId], onDelete: Cascade, onUpdate: Restrict)
 
-  @@unique([marketId, id])
   @@unique([marketId, accountId, sourceEventId])
   @@index([marketId, accountId, occurredAt(sort: Desc), id(sort: Desc)])
   @@map("customer_timeline")

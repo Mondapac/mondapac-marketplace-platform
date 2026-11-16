@@ -39,8 +39,8 @@ export type RecordTimelineInput = {
  * (kind, instant, the order or refund id), once per delivery and once per event (the source event
  * id is unique per customer). The customer is the event's account, or the order's paying account
  * read through `ordering`. An event about an account the module does not know yet (the directory
- * row comes from another subscription) is written once identity confirms the account exists; an
- * erased or unknown account gets nothing.
+ * row comes from another subscription) is refused while identity knows it, so the delivery is
+ * retried after that row is written; an erased or unknown account gets nothing.
  */
 export class RecordCustomerTimeline extends UseCase<
   RecordTimelineInput,
@@ -84,8 +84,9 @@ export class RecordCustomerTimeline extends UseCase<
       accountId = parsed.value;
     }
 
-    // The directory row may not be there yet (sign-up): ask identity, outside the unit.
-    let known = false;
+    // The directory row may not be there yet (sign-up): ask identity, outside the unit. An account
+    // identity knows is refused for now, so the delivery is retried once the read model's own
+    // subscription wrote the row (the entry needs it: a foreign key, removed with the erasure).
     if (accountId !== null) {
       const id = accountId;
       const inDirectory = await deps.unitOfWork.run(
@@ -98,7 +99,7 @@ export class RecordCustomerTimeline extends UseCase<
         const records = await deps.identity.customerDirectoryRecords(context, [id]);
         if (!records.ok) return err({ code: 'customers.unavailable' });
         if (!records.value.some((record) => record.accountId === id)) accountId = null;
-        else known = true;
+        else return err({ code: 'customers.unavailable' });
       }
     }
 
@@ -122,7 +123,6 @@ export class RecordCustomerTimeline extends UseCase<
             sourceEventId: eventId.value,
           },
           now,
-          { known },
         );
         return ok({ recorded });
       },

@@ -121,37 +121,32 @@ export class PrismaCustomerGroupRepository implements CustomerGroupRepository {
     addedBy: Id<'Account'>,
     at: Temporal.Instant,
   ): Promise<readonly Id<'Account'>[]> {
-    if (accountIds.length === 0) return [];
     const tx = this.prisma.tx(market);
-    const [known, already] = await Promise.all([
-      tx.customersCustomerDirectory.findMany({
-        where: { marketId: market.marketId, accountId: { in: [...accountIds] } },
+    const added: Id<'Account'>[] = [];
+    // In slices, so a "select all matching" of 10,000 stays far below the bind-parameter limit.
+    for (const slice of slices([...new Set(accountIds)])) {
+      const known = await tx.customersCustomerDirectory.findMany({
+        where: { marketId: market.marketId, accountId: { in: slice } },
         select: { accountId: true },
-      }),
-      tx.customersCustomerGroupMember.findMany({
-        where: { marketId: market.marketId, groupId, accountId: { in: [...accountIds] } },
+      });
+      if (known.length === 0) continue;
+      // Only the rows this statement inserted come back: an existing member, or one a concurrent
+      // add wrote first, is a skipped duplicate and is not counted twice.
+      const inserted = await tx.customersCustomerGroupMember.createManyAndReturn({
+        data: known.map((row) => ({
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          groupId,
+          accountId: row.accountId,
+          addedByAccountId: addedBy,
+          addedAt: date(at),
+        })),
+        skipDuplicates: true,
         select: { accountId: true },
-      }),
-    ]);
-    const members = new Set(already.map((row) => row.accountId));
-    const fresh = known
-      .map((row) => row.accountId as Id<'Account'>)
-      .filter((accountId) => !members.has(accountId))
-      .sort();
-    if (fresh.length === 0) return [];
-    // A concurrent add of the same customer is a duplicate key, skipped: the member is there.
-    await tx.customersCustomerGroupMember.createMany({
-      data: fresh.map((accountId) => ({
-        marketId: market.marketId,
-        tenantId: market.tenantId,
-        groupId,
-        accountId,
-        addedByAccountId: addedBy,
-        addedAt: date(at),
-      })),
-      skipDuplicates: true,
-    });
-    return fresh;
+      });
+      for (const row of inserted) added.push(row.accountId as Id<'Account'>);
+    }
+    return added.sort();
   }
 
   async removeMembers(
@@ -159,18 +154,21 @@ export class PrismaCustomerGroupRepository implements CustomerGroupRepository {
     groupId: Id<'CustomerGroup'>,
     accountIds: readonly Id<'Account'>[],
   ): Promise<readonly Id<'Account'>[]> {
-    if (accountIds.length === 0) return [];
     const tx = this.prisma.tx(market);
-    const present = await tx.customersCustomerGroupMember.findMany({
-      where: { marketId: market.marketId, groupId, accountId: { in: [...accountIds] } },
-      select: { accountId: true },
-    });
-    const ids = present.map((row) => row.accountId).sort();
-    if (ids.length === 0) return [];
-    await tx.customersCustomerGroupMember.deleteMany({
-      where: { marketId: market.marketId, groupId, accountId: { in: ids } },
-    });
-    return ids as Id<'Account'>[];
+    const removed: Id<'Account'>[] = [];
+    for (const slice of slices([...new Set(accountIds)])) {
+      const present = await tx.customersCustomerGroupMember.findMany({
+        where: { marketId: market.marketId, groupId, accountId: { in: slice } },
+        select: { accountId: true },
+      });
+      const ids = present.map((row) => row.accountId);
+      if (ids.length === 0) continue;
+      await tx.customersCustomerGroupMember.deleteMany({
+        where: { marketId: market.marketId, groupId, accountId: { in: ids } },
+      });
+      for (const id of ids) removed.push(id as Id<'Account'>);
+    }
+    return removed.sort();
   }
 
   async groupsOf(market: MarketContext, accountIds: readonly Id<'Account'>[]) {
@@ -213,4 +211,14 @@ export class PrismaCustomerGroupRepository implements CustomerGroupRepository {
     });
     return { member: member !== null, archived: group.archivedAt !== null };
   }
+}
+
+/** Statements of at most this many customers (six columns each: far below 32,767 parameters). */
+const SLICE = 1000;
+
+function slices<T>(items: readonly T[]): T[][] {
+  const out: T[][] = [];
+  for (let start = 0; start < items.length; start += SLICE)
+    out.push(items.slice(start, start + SLICE));
+  return out;
 }

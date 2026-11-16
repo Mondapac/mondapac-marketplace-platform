@@ -42,9 +42,23 @@ export class PrismaCustomerTimelineRepository implements CustomerTimelineReposit
     market: MarketContext,
     entry: TimelineEntry,
     at: Temporal.Instant,
-    options: { readonly known?: boolean } = {},
+    options: { readonly onceSince?: Temporal.Instant } = {},
   ) {
-    return (await this.#insert(market, [entry], at, options.known === true)) === 1;
+    if (options.onceSince !== undefined) {
+      const same = await this.prisma.tx(market).customersCustomerTimelineEntry.findFirst({
+        where: {
+          marketId: market.marketId,
+          accountId: entry.accountId,
+          kind: entry.kind,
+          actorAccountId: entry.actorAccountId,
+          detail: entry.detail,
+          occurredAt: { gte: date(options.onceSince) },
+        },
+        select: { id: true },
+      });
+      if (same !== null) return false;
+    }
+    return (await this.#insert(market, [entry], at)) === 1;
   }
 
   recordMany(
@@ -52,7 +66,7 @@ export class PrismaCustomerTimelineRepository implements CustomerTimelineReposit
     entries: readonly TimelineEntry[],
     at: Temporal.Instant,
   ): Promise<number> {
-    return this.#insert(market, entries, at, false);
+    return this.#insert(market, entries, at);
   }
 
   async hasCustomer(market: MarketContext, accountId: Id<'Account'>): Promise<boolean> {
@@ -67,24 +81,27 @@ export class PrismaCustomerTimelineRepository implements CustomerTimelineReposit
     market: MarketContext,
     entries: readonly TimelineEntry[],
     at: Temporal.Instant,
-    known: boolean,
   ): Promise<number> {
     if (entries.length === 0) return 0;
     const tx = this.prisma.tx(market);
     // No entry for a customer the module does not know (unknown, erased): the read models decide.
-    let ids: Set<string> | null = null;
-    if (!known) {
-      const rows = await tx.customersCustomerDirectory.findMany({
-        where: {
-          marketId: market.marketId,
-          accountId: { in: [...new Set(entries.map((entry) => entry.accountId))] },
-        },
-        select: { accountId: true },
-      });
-      ids = new Set(rows.map((row) => row.accountId));
+    // The foreign key to the directory row backs this up against an erasure in between.
+    const ids = new Set<string>();
+    {
+      const accounts = [...new Set(entries.map((entry) => entry.accountId))];
+      for (let start = 0; start < accounts.length; start += 1000) {
+        const rows = await tx.customersCustomerDirectory.findMany({
+          where: {
+            marketId: market.marketId,
+            accountId: { in: accounts.slice(start, start + 1000) },
+          },
+          select: { accountId: true },
+        });
+        for (const row of rows) ids.add(row.accountId);
+      }
     }
     const data = entries
-      .filter((entry) => ids === null || ids.has(entry.accountId))
+      .filter((entry) => ids.has(entry.accountId))
       .map((entry) => ({
         id: entry.id,
         marketId: market.marketId,
@@ -99,12 +116,16 @@ export class PrismaCustomerTimelineRepository implements CustomerTimelineReposit
         sourceEventId: entry.sourceEventId,
         recordedAt: date(at),
       }));
-    if (data.length === 0) return 0;
     // A repeated delivery of the same event is a duplicate of the (account, source event) key.
-    const { count } = await tx.customersCustomerTimelineEntry.createMany({
-      data,
-      skipDuplicates: true,
-    });
+    // In slices of 1,000 rows (12 columns each), below the bind-parameter limit of a statement.
+    let count = 0;
+    for (let start = 0; start < data.length; start += 1000) {
+      const written = await tx.customersCustomerTimelineEntry.createMany({
+        data: data.slice(start, start + 1000),
+        skipDuplicates: true,
+      });
+      count += written.count;
+    }
     return count;
   }
 

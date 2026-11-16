@@ -16,16 +16,16 @@ export interface TimelineQuery {
  */
 export interface CustomerTimelineRepository {
   /**
-   * Writes the entry when the customer has a directory row (or, with `known`, when the caller has
-   * just asked identity that the account exists: an event can arrive before the directory row);
-   * an entry copied from an event that is already there (same source event) is left as it is.
-   * Answers whether a row was written.
+   * Writes the entry when the customer has a directory row (a foreign key holds it); an entry
+   * copied from an event that is already there (same source event) is left as it is. With
+   * `onceSince`, nothing is written when an entry of the same kind, admin and detail is there from
+   * that instant on (one page-open row per admin, tab and day). Answers whether a row was written.
    */
   record(
     market: MarketContext,
     entry: TimelineEntry,
     at: Temporal.Instant,
-    options?: { readonly known?: boolean },
+    options?: { readonly onceSince?: Temporal.Instant },
   ): Promise<boolean>;
   /** Whether the customer has a directory row. */
   hasCustomer(market: MarketContext, accountId: Id<'Account'>): Promise<boolean>;

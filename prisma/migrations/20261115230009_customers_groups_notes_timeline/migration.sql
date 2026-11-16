@@ -75,19 +75,10 @@ CREATE UNIQUE INDEX "customer_groups_market_id_id_key" ON "customers"."customer_
 CREATE INDEX "customer_group_members_market_id_account_id_idx" ON "customers"."customer_group_members"("market_id", "account_id");
 
 -- CreateIndex
-CREATE INDEX "customer_group_members_market_id_group_id_added_at_idx" ON "customers"."customer_group_members"("market_id", "group_id", "added_at" DESC);
-
--- CreateIndex
 CREATE INDEX "customer_notes_market_id_account_id_created_at_id_idx" ON "customers"."customer_notes"("market_id", "account_id", "created_at" DESC, "id" DESC);
 
 -- CreateIndex
-CREATE UNIQUE INDEX "customer_notes_market_id_id_key" ON "customers"."customer_notes"("market_id", "id");
-
--- CreateIndex
 CREATE INDEX "customer_timeline_market_id_account_id_occurred_at_id_idx" ON "customers"."customer_timeline"("market_id", "account_id", "occurred_at" DESC, "id" DESC);
-
--- CreateIndex
-CREATE UNIQUE INDEX "customer_timeline_market_id_id_key" ON "customers"."customer_timeline"("market_id", "id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "customer_timeline_market_id_account_id_source_event_id_key" ON "customers"."customer_timeline"("market_id", "account_id", "source_event_id");
@@ -97,6 +88,12 @@ ALTER TABLE "customers"."customer_group_members" ADD CONSTRAINT "customer_group_
 
 -- AddForeignKey
 ALTER TABLE "customers"."customer_group_members" ADD CONSTRAINT "customer_group_members_market_id_account_id_fkey" FOREIGN KEY ("market_id", "account_id") REFERENCES "customers"."customer_directory"("market_id", "account_id") ON DELETE CASCADE ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "customers"."customer_notes" ADD CONSTRAINT "customer_notes_market_id_account_id_fkey" FOREIGN KEY ("market_id", "account_id") REFERENCES "customers"."customer_directory"("market_id", "account_id") ON DELETE CASCADE ON UPDATE RESTRICT;
+
+-- AddForeignKey
+ALTER TABLE "customers"."customer_timeline" ADD CONSTRAINT "customer_timeline_market_id_account_id_fkey" FOREIGN KEY ("market_id", "account_id") REFERENCES "customers"."customer_directory"("market_id", "account_id") ON DELETE CASCADE ON UPDATE RESTRICT;
 
 -- Hand-written: scope and value checks.
 ALTER TABLE "customers"."customer_groups"

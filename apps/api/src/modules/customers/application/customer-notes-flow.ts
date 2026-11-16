@@ -171,8 +171,19 @@ export async function addNote(
   if (accountId === null) return err({ code: 'customers.customer-not-found' });
   const body = parseCustomerNoteBody(input['body']);
   if (!body.ok) return invalidField(body.error.path, body.error.code);
+  // The directory first (read-only, no transaction): an id that is no customer of this Market is
+  // not-found before any key is touched, so the answer never depends on who holds a key.
+  const known = await deps.unitOfWork.run<true, NoteFailure>(
+    context.market,
+    async () => {
+      const [found] = await deps.listReader.rowsByIds(context.market, [accountId]);
+      return found === undefined ? err({ code: 'customers.customer-not-found' }) : ok(true);
+    },
+    { readOnly: true },
+  );
+  if (!known.ok) return known;
   const sealed = await deps.noteCipher.seal(context.market, accountId, body.value);
-  // No key: the account was erased, or was never a customer of this Market.
+  // No key: the account was erased meanwhile.
   if (!sealed.ok) return err({ code: 'customers.customer-not-found' });
   const now = deps.clock.now();
   const note: StoredCustomerNote = {

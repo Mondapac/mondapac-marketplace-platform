@@ -366,6 +366,103 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
     });
   });
 
+  describe('limits and failure paths', () => {
+    it('refuses more than 1,000 ids, and a name taken on a rename', async () => {
+      const t = setup();
+      const manager = t.admin([VIEW, MANAGE]);
+      const one = await t.create.execute(manager.context, { name: 'One' });
+      const two = await t.create.execute(manager.context, { name: 'Two' });
+      if (!one.ok || !two.ok) throw new Error('create failed');
+      const many = Array.from({ length: 1001 }, () => ids.next<'Account'>());
+      const tooMany = await t.add.execute(manager.context, {
+        groupId: one.value.groupId,
+        ids: many,
+      });
+      expect(tooMany.ok ? 'ok' : tooMany.error).toEqual({ code: 'batch.too-large', max: 1000 });
+      expect(
+        failure(
+          await t.update.execute(manager.context, {
+            groupId: two.value.groupId,
+            expectedVersion: 1,
+            name: 'one',
+          }),
+        ),
+      ).toBe('customers.group-name-taken');
+    });
+
+    it('writes nothing for an update that changes nothing, and lets members leave an archived group', async () => {
+      const t = setup();
+      const manager = t.admin([VIEW, MANAGE]);
+      const customer = row();
+      t.listReader.add(market, customer);
+      const made = await t.create.execute(manager.context, { name: 'Same' });
+      if (!made.ok) throw new Error('create failed');
+      const groupId = made.value.groupId;
+      await t.add.execute(manager.context, { groupId, ids: [customer.accountId] });
+      const before = t.audits.length;
+      const same = await t.update.execute(manager.context, {
+        groupId,
+        expectedVersion: 1,
+        name: 'Same',
+      });
+      expect(same.ok && same.value.version).toBe(1);
+      expect(t.audits).toHaveLength(before);
+      await t.update.execute(manager.context, { groupId, expectedVersion: 1, archived: true });
+      const removed = await t.remove.execute(manager.context, {
+        groupId,
+        ids: [customer.accountId],
+      });
+      expect(removed.ok && removed.value.changed).toBe(1);
+    });
+
+    it('refuses a day that does not exist, a bad cursor and a limit out of range', async () => {
+      const t = setup();
+      const viewer = t.admin([VIEW]);
+      const customer = row();
+      t.listReader.add(market, customer);
+      for (const from of ['2026-02-31', '2025-02-29', '2026-13-01', '2026-1-1']) {
+        expect(
+          failure(
+            await t.readTimeline.execute(viewer.context, {
+              accountId: customer.accountId,
+              filters: { from },
+            }),
+          ),
+        ).toBe('validation.failed');
+      }
+      expect(
+        failure(
+          await t.readTimeline.execute(viewer.context, {
+            accountId: customer.accountId,
+            filters: { from: '2028-02-29' },
+          }),
+        ),
+      ).toBe('ok');
+      expect(
+        failure(
+          await t.listNotes.execute(viewer.context, { accountId: customer.accountId, cursor: 'x' }),
+        ),
+      ).toBe('validation.failed');
+      expect(
+        failure(
+          await t.listNotes.execute(viewer.context, { accountId: customer.accountId, limit: 101 }),
+        ),
+      ).toBe('validation.failed');
+    });
+
+    it('exports the timeline as XLSX', async () => {
+      const t = setup();
+      const exporter = t.admin([VIEW, EXPORT]);
+      const customer = row();
+      t.listReader.add(market, customer);
+      const file = await t.exportTimeline.execute(exporter.context, {
+        accountId: customer.accountId,
+        format: 'xlsx',
+      });
+      expect(file.ok && file.value.filename).toMatch(/\.xlsx$/);
+    });
+  });
+
   describe('notes', () => {
     it('seals the text, pages newest first, and audits only id and length', async () => {
       const t = setup();
@@ -428,6 +525,11 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
       const writer = t.admin([VIEW, NOTES]);
       const foreign = row();
       t.listReader.add(otherMarket, foreign);
+      // Only the foreign customer holds a key (in its own Market): the key is never touched here.
+      t.noteCipher.keyed = new Set([`${otherMarket.marketId}:${foreign.accountId}`]);
+      expect(
+        failure(await t.addNote.execute(writer.context, { accountId: ids.next(), body: 'x' })),
+      ).toBe('customers.customer-not-found');
       expect(
         failure(
           await t.addNote.execute(writer.context, { accountId: foreign.accountId, body: 'x' }),

@@ -1815,8 +1815,6 @@ function useCaseProvider<D, U>(
         CustomerAccountExists,
         CustomerDirectoryRecords,
         CustomerDirectoryPage,
-        CustomerDirectoryRecords,
-        CustomerDirectoryPage,
         OwnAccountTiedToSeller,
         EraseCustomerAccount,
         AdminRenameCustomer,
