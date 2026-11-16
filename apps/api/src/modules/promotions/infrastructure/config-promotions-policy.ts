@@ -62,6 +62,7 @@ export class ConfigPromotionsPolicy implements PromotionsPolicy {
       wasPrice: promotions.wasPrice,
       batchCodes: promotions.batchCodes ?? null,
       firstOrderDefaults: defaults,
+      timeZone: config.timezone,
     };
   }
 }

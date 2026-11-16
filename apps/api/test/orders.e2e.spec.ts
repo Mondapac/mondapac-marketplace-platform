@@ -22,6 +22,11 @@ import {
 } from '../src/modules/ordering/application/ports/admin-shipment-list.reader';
 import type { ShipmentListRecord } from '../src/modules/ordering/domain/admin-shipment-list';
 import {
+  ADMIN_DOCUMENT_LIST_READER,
+  type AdminDocumentListReader,
+} from '../src/modules/ordering/application/ports/admin-document-list.reader';
+import type { DocumentListRecord } from '../src/modules/ordering/domain/admin-document-list';
+import {
   ADMIN_REFUND_LIST_READER,
   type AdminRefundListReader,
 } from '../src/modules/ordering/application/ports/admin-refund-list.reader';
@@ -170,6 +175,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let shipToRetention: MemoryShipToRetention;
   /** The admin Shipments list's rows, served in memory (the SQL is in the db spec). */
   let shipmentRows: ShipmentListRecord[];
+  /** The admin Invoices list's rows, served in memory (the SQL is in the db spec). */
+  let documentRows: DocumentListRecord[];
   /** The admin Refunds list's rows, served in memory (the SQL is in the db spec). */
   let refundRows: RefundListRecord[];
   /** Ordering's audit rows, each checked against its definition. */
@@ -191,6 +198,14 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     refundLimits = new MemoryRefundLimits();
     shipToRetention = new MemoryShipToRetention();
     shipmentRows = [];
+    documentRows = [];
+    const documentReader: AdminDocumentListReader = {
+      page: (_market, _filter, _sort, offset, limit) =>
+        Promise.resolve(documentRows.slice(offset, offset + limit)),
+      count: () => Promise.resolve(documentRows.length),
+      countByKind: () =>
+        Promise.resolve({ orderConfirmations: documentRows.length, creditNotes: 0 }),
+    };
     const shipmentReader: AdminShipmentListReader = {
       page: (_market, _filter, _sort, offset, limit) =>
         Promise.resolve(shipmentRows.slice(offset, offset + limit)),
@@ -245,6 +260,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(orders)
           .overrideProvider(ADMIN_SHIPMENT_LIST_READER)
           .useValue(shipmentReader)
+          .overrideProvider(ADMIN_DOCUMENT_LIST_READER)
+          .useValue(documentReader)
           .overrideProvider(ADMIN_REFUND_LIST_READER)
           .useValue(refundReader)
           .overrideProvider(CHECKOUT_GATEWAY)
@@ -1192,7 +1209,83 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       // The route logs its outcome, never the reference typed.
       const logged = logLines.filter((l) => l['msg'] === 'ordering.admin-list-shipments-route');
       expect(logged.length).toBeGreaterThanOrEqual(5);
-      expect(JSON.stringify(logged)).not.toContain('0123');
+      // A random correlation id (UUID), the time, the pid or the host name can hold "0123" by
+      // chance, so those fields are left out of the digit check; the whole line must still never
+      // hold the reference itself.
+      const byChance = new Set(['correlationId', 'time', 'pid', 'hostname']);
+      const withoutChanceFields = JSON.stringify(logged, (key, value: unknown) =>
+        byChance.has(key) ? undefined : value,
+      );
+      expect(withoutChanceFields).not.toContain('0123');
+      expect(JSON.stringify(logged)).not.toMatch(/JD( |%20|\+)0123/);
+    });
+
+    it('lists order confirmations and credit notes behind ordering.order.view, unnumbered', async () => {
+      await seedAdmins();
+      const row = (n: number): DocumentListRecord => ({
+        kind: 'order-confirmation',
+        documentId: id<'SellerOrder'>(0x7000 + n),
+        orderId: id<'Order'>(0x8000 + n),
+        sellerOrderId: id<'SellerOrder'>(0x7000 + n),
+        sellerId: SELLER,
+        accountId: CUSTOMER,
+        issuedAt: START,
+        total: money(3850n, currency),
+        tax: money(350n, currency),
+        shipping: money(550n, currency),
+        refundId: null,
+        refundReason: null,
+      });
+      documentRows = [row(1), row(2), row(3)];
+
+      const paged = await http()
+        .get('/ordering/admin/documents?page=1&pageSize=2')
+        .set(adminHeaders(VIEWER, 51));
+      const walked = await http()
+        .get('/ordering/admin/documents?kind=order-confirmation&limit=2')
+        .set(adminHeaders(VIEWER, 52));
+      const bad = await http()
+        .get('/ordering/admin/documents?kind=tax-invoice&minAmount=1.5')
+        .set(adminHeaders(VIEWER, 53));
+      const noKey = await http().get('/ordering/admin/documents').set(adminHeaders(NO_KEY, 54));
+
+      expect(paged.status).toBe(200);
+      expect(paged.headers['cache-control']).toBe('no-store');
+      expect(body(paged)).toMatchObject({
+        total: 3,
+        page: 1,
+        pageSize: 2,
+        nextCursor: null,
+        counts: { orderConfirmations: 3, creditNotes: 0 },
+        documents: [
+          {
+            kind: 'order-confirmation',
+            documentId: id<'SellerOrder'>(0x7001),
+            documentNumber: null,
+            total: { amount: '3850', currency },
+            actions: ['view-order', 'download-order-document'],
+          },
+          { documentId: id<'SellerOrder'>(0x7002) },
+        ],
+      });
+      expect(body(walked)).toMatchObject({
+        total: null,
+        page: null,
+        nextCursor: `${START.epochMilliseconds}.${id<'SellerOrder'>(0x7002)}`,
+      });
+      expect(bad.status).toBe(400);
+      expect(body(bad)).toMatchObject({
+        details: {
+          fields: [
+            { path: 'kind', code: 'value' },
+            { path: 'minAmount', code: 'format' },
+          ],
+        },
+      });
+      expect(noKey.status).toBe(403);
+      expect(
+        logLines.filter((l) => l['msg'] === 'ordering.admin-list-documents-route').length,
+      ).toBeGreaterThanOrEqual(3);
     });
 
     it('lists refunds behind ordering.order.view, in pages or Previous/Next', async () => {

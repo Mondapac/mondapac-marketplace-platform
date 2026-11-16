@@ -13,6 +13,7 @@ export type PrefsKind =
   | 'single-key'
   | 'products-columns'
   | 'orders-columns'
+  | 'shipments-columns'
   | 'system-requests-columns'
   | 'system-requests-view'
   | 'system-requests-query';

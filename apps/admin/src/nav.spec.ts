@@ -184,6 +184,7 @@ describe('admin nav: daily work only', () => {
       'price-holds',
       'system-requests',
       'orders',
+      'shipments',
       'products',
       'categories',
       'attributes',

@@ -1,5 +1,8 @@
 import type { CustomersReadFacade } from '../../customers';
-import type { CustomerOrderHistory } from '../application/ports/customer-facts';
+import type {
+  CustomerGroupMembership,
+  CustomerOrderHistory,
+} from '../application/ports/customer-facts';
 
 /**
  * {@link CustomerOrderHistory} on `customers`' public read facade (customers phase 1, package B1).
@@ -30,5 +33,23 @@ export class FacadeCustomerOrderHistory implements CustomerOrderHistory {
     }
     if (!read.ok) return { known: false };
     return { known: true, value: read.value.lastOrderAt };
+  }
+}
+
+/**
+ * {@link CustomerGroupMembership} on `customers`' read facade (customers phase 2). Only the system
+ * actor (the quote) asks; any other caller (an admin's preview) and any failure is "unknown", so
+ * the manual-group discount is not offered.
+ */
+export class FacadeCustomerGroupMembership implements CustomerGroupMembership {
+  constructor(private readonly customers: CustomersReadFacade) {}
+
+  async isMember(
+    ...[context, groupId, accountId]: Parameters<CustomerGroupMembership['isMember']>
+  ): ReturnType<CustomerGroupMembership['isMember']> {
+    if (context.actor.kind !== 'system') return { known: false };
+    const read = await this.customers.isGroupMember(context, groupId, accountId);
+    if (!read.ok) return { known: false };
+    return { known: true, value: read.value.member };
   }
 }

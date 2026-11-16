@@ -71,6 +71,14 @@ export const adminNav: NavConfig = {
       anyOf: ['ordering.order.view'],
     },
     {
+      id: 'shipments',
+      icon: 'package',
+      labelKey: 'nav.shipments',
+      href: '/shipments',
+      group: 'sales',
+      anyOf: ['ordering.order.view'],
+    },
+    {
       id: 'products',
       icon: 'package',
       labelKey: 'nav.products',
