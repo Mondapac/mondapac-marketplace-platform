@@ -31,6 +31,11 @@ export class SuggestionItemBody {
   @ApiProperty({ nullable: true, type: String }) productCode!: string | null;
   @ApiProperty({ description: 'The slug the label suggests, for the approve form.' })
   suggestedSlug!: string;
+  @ApiProperty({
+    type: [String],
+    description: 'The row actions of the Actions menu the caller may run: approve, map, reject.',
+  })
+  actions!: string[];
 }
 
 export class SuggestionLocalesBody {
@@ -40,6 +45,16 @@ export class SuggestionLocalesBody {
 
 export class SuggestionListBody {
   @ApiProperty({ type: [SuggestionItemBody] }) items!: SuggestionItemBody[];
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Open suggestions matching over all pages; null in prev-next mode.',
+  })
+  total!: number | null;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty({ description: 'Whether a page after this one exists.' }) hasNext!: boolean;
   @ApiProperty({
     type: [String],
     description: 'The locales an approval must name the tag in.',

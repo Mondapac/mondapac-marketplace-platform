@@ -339,6 +339,20 @@ describe('brand routes over HTTP (integration)', () => {
         expect(one.body).toMatchObject({ aliases: ['Acme Co'], productCount: 3 });
         await http().get(`${ADMIN}/${MISSING}`).set(editor).expect(404);
         await http().get(`${ADMIN}?status=bogus`).set(editor).expect(400);
+        // The numbered read over HTTP: page numbers arrive as text and become numbers; each row
+        // names its actions; the cursor read and the page keys do not mix.
+        const paged = await http()
+          .get(`${ADMIN}?page=1&pageSize=1&sort=name&direction=desc&q=acme`)
+          .set(editor)
+          .expect(200);
+        expect(paged.body).toMatchObject({ page: 1, pageSize: 1, paging: 'pages', total: 1 });
+        const row = (paged.body as { items: { actions: string[] }[] }).items[0]!;
+        expect(row.actions).toContain('edit');
+        await http().get(`${ADMIN}?paging=prev-next&pageSize=1`).set(editor).expect(200);
+        await http().get(`${ADMIN}?page=abc`).set(editor).expect(400);
+        await http().get(`${ADMIN}?limit=1&page=2`).set(editor).expect(400);
+        const legacy = await http().get(`${ADMIN}?limit=1`).set(editor).expect(200);
+        expect(legacy.body).toMatchObject({ pageSize: 1, total: null });
       });
 
       it('creates an active brand, refuses a look-alike and a taken slug, edits and archives it', async () => {
