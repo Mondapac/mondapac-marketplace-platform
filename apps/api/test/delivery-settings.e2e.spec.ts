@@ -185,6 +185,8 @@ describe.each(TEST_MARKETS)('delivery settings over HTTP in market %s', (code) =
     },
     currency: code === 'AU' ? 'AUD' : 'JPY',
     marketZone: code === 'AU' ? 'Australia/Brisbane' : 'Asia/Tokyo',
+    review: { reviewed: true, risk: 'medium' as const },
+    request: null,
   };
   const request_ = {
     enabled: { pickup: true, instant: false, same_day: true, scheduled: true },
@@ -199,6 +201,8 @@ describe.each(TEST_MARKETS)('delivery settings over HTTP in market %s', (code) =
     sellerId: SELLER,
     supported: ['pickup', 'scheduled'],
     platformEnabled: { pickup: true, instant: true, same_day: false, scheduled: true },
+    review: { reviewed: true, risk: 'medium' as const },
+    request: null,
   };
 
   beforeEach(() => {
@@ -230,6 +234,7 @@ describe.each(TEST_MARKETS)('delivery settings over HTTP in market %s', (code) =
       marketZone: view.marketZone,
       roundingSteps: [1, 5, 10, 50, 100],
       lastChanged: LAST_CHANGED_BODY,
+      review: { reviewed: true, risk: 'medium' },
     });
     expect(calls).toEqual([{ name: 'view', input: {} }]);
   });
@@ -242,6 +247,26 @@ describe.each(TEST_MARKETS)('delivery settings over HTTP in market %s', (code) =
     expect(res.status).toBe(200);
     expect(res.headers['cache-control']).toBe('no-store');
     expect(calls).toEqual([{ name: 'save', input: request_ }]);
+    expect(res.body).toMatchObject({ request: null, review: { reviewed: true, risk: 'medium' } });
+  });
+
+  it('passes the note of a save and answers the request it opened', async () => {
+    await boot();
+    const opened = { id: id<'SystemRequest'>(0xe1), number: 7 };
+    next = ok({ ...view, request: opened, lastChanged: LAST_CHANGED });
+
+    const res = await call('put', 'admin', SETTINGS_URL, admin(), { ...request_, note: 'Why' });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ request: { id: opened.id, number: 7 } });
+    expect(calls).toEqual([{ name: 'save', input: { ...request_, note: 'Why' } }]);
+
+    next = err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] });
+    const refused = await call('put', 'admin', SETTINGS_URL, admin(), request_);
+    expect(refused.status).toBe(400);
+    expect(refused.body).toMatchObject({
+      details: { fields: [{ path: 'note', code: 'required' }] },
+    });
   });
 
   it('lists the history for an admin and passes the paging', async () => {
@@ -274,16 +299,27 @@ describe.each(TEST_MARKETS)('delivery settings over HTTP in market %s', (code) =
     next = ok(sellerView);
 
     const read = await call('get', 'admin', SELLER_URL, session);
+    next = ok({ ...sellerView, request: { id: id<'SystemRequest'>(0xe2), number: 8 } });
     const saved = await call('put', 'admin', SELLER_URL, session, {
       supported: ['pickup', 'scheduled'],
+      note: 'Capacity',
     });
 
     expect(read.status).toBe(200);
-    expect(read.body).toEqual(sellerView);
+    expect(read.body).toEqual({
+      sellerId: SELLER,
+      supported: ['pickup', 'scheduled'],
+      platformEnabled: sellerView.platformEnabled,
+      review: { reviewed: true, risk: 'medium' },
+    });
     expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject({ request: { id: id<'SystemRequest'>(0xe2), number: 8 } });
     expect(calls).toEqual([
       { name: 'view-seller', input: { sellerId: SELLER } },
-      { name: 'save-seller', input: { sellerId: SELLER, supported: ['pickup', 'scheduled'] } },
+      {
+        name: 'save-seller',
+        input: { sellerId: SELLER, supported: ['pickup', 'scheduled'], note: 'Capacity' },
+      },
     ]);
   });
 
