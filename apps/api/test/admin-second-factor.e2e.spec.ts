@@ -158,6 +158,18 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
   const codeFor = (secret: string, at: Temporal.Instant = clock.now()) =>
     hotp(decodeBase32Secret(secret)!, Math.floor(at.epochMilliseconds / 1000 / TOTP.periodSeconds));
 
+  /**
+   * A six-digit code that is none of the codes the server accepts now (the current step and the
+   * tolerated steps around it): a fixed wrong code such as 000000 is the real one now and then.
+   */
+  const wrongCodeFor = (secret: string): string => {
+    const accepted = new Set<string>();
+    for (let k = -TOTP.toleranceSteps; k <= TOTP.toleranceSteps; k += 1) {
+      accepted.add(codeFor(secret, clock.now().add({ seconds: k * TOTP.periodSeconds })));
+    }
+    return ['000000', '111111', '222222'].find((candidate) => !accepted.has(candidate))!;
+  };
+
   const eventsOf = (type: string) => fakes.events.filter((event) => event.type === type);
   const adminAccount = () =>
     [...fakes.accounts.values()].find((account) => account.population === 'admin')!;
@@ -379,7 +391,10 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
         .get(CompleteAdminSignIn)
         .execute(anonymousOf(code), { challengeToken, code: sameStep, client: CLIENT });
       expect(replayed).toEqual({ ok: false, error: { code: 'second-factor.invalid' } });
-      const wrong = await post('second-factor', code, { challengeToken, code: '000000' });
+      const wrong = await post('second-factor', code, {
+        challengeToken,
+        code: wrongCodeFor(secret),
+      });
       expect(wrong.status).toBe(400);
       expect(wrong.body).toMatchObject({ code: 'second-factor.invalid' });
       expect(fakes.sessions.size).toBe(0);
