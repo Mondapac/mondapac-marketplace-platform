@@ -24,6 +24,8 @@ export interface OrderLineView {
   readonly quantity: number;
   readonly unitPrice: Money;
   readonly lineAmount: Money;
+  /** The line's discount from promotions (package T2); zero without one. */
+  readonly discount: Money;
   readonly taxInclusive: boolean;
   /** The tax rate frozen at placement; null on lines placed before tax was recorded. */
   readonly taxRateBps: number | null;
@@ -39,11 +41,14 @@ export interface SellerOrderView {
   readonly sellerId: Id<'Seller'>;
   readonly subtotal: Money;
   readonly shipping: Money;
+  /** The discounts of the goods and of the delivery fee (package T2); zero without any. */
+  readonly discount: Money;
+  readonly shippingDiscount: Money;
   /** The tax on the delivery fee, frozen at placement; null on older orders. */
   readonly shippingTax: Money | null;
   /**
-   * The delivery fee as the customer paid it, tax included: what a refund can give back of it at
-   * most. Null when the delivery tax was not recorded (an older order).
+   * The delivery fee as the customer paid it (after its discount), tax included: what a refund
+   * can give back of it at most. Null when the delivery tax was not recorded (an older order).
    */
   readonly shippingGross: Money | null;
   /**
@@ -261,6 +266,7 @@ const lineView = (line: OrderLine, currency: string): OrderLineView => ({
   quantity: line.quantity,
   unitPrice: line.unitPrice,
   lineAmount: makeMoney(line.lineAmount, currency),
+  discount: makeMoney(line.discountAmount, currency),
   taxInclusive: line.taxInclusive,
   taxRateBps: line.taxRateBps,
   taxCategoryCode: line.taxCategoryCode,
@@ -280,7 +286,9 @@ const shippingGrossView = (seller: SellerOrder, currency: string): Money | null 
   seller.shippingTax === null || seller.shippingTaxInclusive === null
     ? null
     : makeMoney(
-        seller.shipping + (seller.shippingTaxInclusive ? 0n : seller.shippingTax),
+        seller.shipping -
+          seller.shippingDiscount +
+          (seller.shippingTaxInclusive ? 0n : seller.shippingTax),
         currency,
       );
 
@@ -313,6 +321,8 @@ export function sellerOrderDetailView(record: {
     sellerId: seller.sellerId,
     subtotal: makeMoney(seller.subtotal, currency),
     shipping: makeMoney(seller.shipping, currency),
+    discount: makeMoney(seller.discount, currency),
+    shippingDiscount: makeMoney(seller.shippingDiscount, currency),
     shippingTax: shippingTaxView(seller, currency),
     shippingGross: shippingGrossView(seller, currency),
     tax: taxOf(lines, currency, shippingTaxOf(seller)),
@@ -355,6 +365,8 @@ export function orderView(order: OrderState): OrderView {
         sellerId: seller.sellerId,
         subtotal: money(seller.subtotal),
         shipping: money(seller.shipping),
+        discount: money(seller.discount),
+        shippingDiscount: money(seller.shippingDiscount),
         shippingTax: shippingTaxView(seller, currency),
         shippingGross: shippingGrossView(seller, currency),
         tax: taxOf(lines, currency, shippingTaxOf(seller)),

@@ -620,6 +620,7 @@
   },
   { "name": "ordering.seller-health-counts", "rule": "system" },
   { "name": "ordering.settle-refunds", "rule": "system" },
+  { "name": "ordering.settle-stale-redemptions", "rule": "system" },
   { "name": "ordering.shipment-notice", "rule": "system" },
   { "name": "ordering.start-checkout", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.view-order", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -660,10 +661,22 @@
   { "name": "promotions.cashback-on-delivery", "rule": "system" },
   { "name": "promotions.check-was-price", "rule": "anonymous" },
   { "name": "promotions.confirm-redemptions", "rule": "system" },
+  { "name": "promotions.list-stale-redemptions", "rule": "system" },
   { "name": "promotions.qualify-referral-on-delivery", "rule": "system" },
   { "name": "promotions.quote-discounts", "rule": "system" },
+  {
+    "name": "promotions.quote-own-discounts",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "promotions.redeem-discounts", "rule": "system" },
+  {
+    "name": "promotions.redeem-own-discounts",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "promotions.release-cancelled-redemptions", "rule": "system" },
+  { "name": "promotions.settle-redemptions", "rule": "system" },
   {
     "name": "promotions.view-my-referral",
     "rule": "own-resources",

@@ -26,6 +26,7 @@ import { IdentityModule } from '../identity';
 import { InventoryModule } from '../inventory';
 import { INVENTORY_ORDERING_PORT } from '../inventory/contracts/ordering-port';
 import { SellersModule } from '../sellers';
+import { PROMOTIONS_FACADE, PromotionsModule } from '../promotions';
 import { SHIPPING_FACADE, ShippingModule } from '../shipping';
 import { TAX_FACADE, TaxModule } from '../tax';
 import type { OrderingDependencies } from './application/checkout-flow';
@@ -64,6 +65,7 @@ import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
 import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-policy';
 import { ORDER_LABELS } from './application/ports/order-labels';
 import { ORDER_TAX_CATEGORIES } from './application/ports/order-tax-categories';
+import { ORDER_PRODUCTS } from './application/ports/order-products';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
 import { PAYMENT_ATTEMPT_LIMITS } from './application/ports/payment-attempt-limits';
 import { PICKUP_CODE_REPOSITORY } from './application/ports/pickup-code.repository';
@@ -106,6 +108,7 @@ import { AdminRemoveRefundLimit } from './application/use-cases/admin-remove-ref
 import { AdminSetRefundLimit } from './application/use-cases/admin-set-refund-limit.use-case';
 import { AdminViewRefundLimits } from './application/use-cases/admin-view-refund-limits.use-case';
 import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
+import { SettleStaleRedemptions } from './application/use-cases/settle-stale-redemptions.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
 import { AdminViewOrderDocument } from './application/use-cases/admin-view-order-document.use-case';
@@ -170,6 +173,7 @@ import { recordLedgerJob } from './presentation/jobs/record-ledger.job';
 import { recordRefundLedgerJob } from './presentation/jobs/record-refund-ledger.job';
 import { recordShipmentsJob } from './presentation/jobs/record-shipments.job';
 import { settleRefundsJob } from './presentation/jobs/settle-refunds.job';
+import { settleStaleRedemptionsJob } from './presentation/jobs/settle-stale-redemptions.job';
 import { OrdersController } from './presentation/orders.controller';
 import { SellerOrdersController } from './presentation/seller-orders.controller';
 import { AdminCustomerRefundsController } from './presentation/admin-customer-refunds.controller';
@@ -195,6 +199,8 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['commission', COMMISSION_PAYOUTS_FACADE],
   ['tax', TAX_FACADE],
   ['taxCategories', ORDER_TAX_CATEGORIES],
+  ['products', ORDER_PRODUCTS],
+  ['promotions', PROMOTIONS_FACADE],
   ['outbox', OUTBOX_WRITER],
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
@@ -323,6 +329,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     SellersModule,
     ShippingModule,
     CommissionPayoutsModule,
+    PromotionsModule,
     TaxModule,
   ],
   controllers: [
@@ -419,6 +426,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminSetRefundLimit,
       AdminRemoveRefundLimit,
       SettleRefunds,
+      SettleStaleRedemptions,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: AdminListShipments,
@@ -608,6 +616,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         SettleRefunds,
         RebuildOfferPairs,
         PurgeSettledShipTo,
+        SettleStaleRedemptions,
       ],
       (
         shipments: RecordShipments,
@@ -616,6 +625,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         refunds: SettleRefunds,
         pairs: RebuildOfferPairs,
         purgeShipTo: PurgeSettledShipTo,
+        staleRedemptions: SettleStaleRedemptions,
       ) => [
         recordShipmentsJob(shipments),
         recordLedgerJob(ledger),
@@ -623,6 +633,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         settleRefundsJob(refunds),
         rebuildOfferPairsJob(pairs),
         purgeSettledShipToJob(purgeShipTo),
+        settleStaleRedemptionsJob(staleRedemptions),
       ],
     ),
   ],

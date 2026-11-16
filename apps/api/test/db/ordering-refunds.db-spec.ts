@@ -1,3 +1,5 @@
+import { FakeOrderProducts, FakePromotions } from '../support/ordering-promotions-fakes';
+import { testAreas, testOrderingPolicy } from '../support/ordering-policy';
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, PendingEvent } from '@mondapac/shared-kernel';
 import {
@@ -221,7 +223,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         new PrismaRefundRepository(db.service),
       ),
       gateway,
-      policy: new RefundsOn(markets),
+      policy: new RefundsOn(markets, testAreas),
       cart: new FakeCart(),
       customers: new FakeCustomers(),
       shipTo: new FakeShipToCipher(),
@@ -230,6 +232,8 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       commission,
       tax: new FakeTax(),
       taxCategories: new FakeTaxCategories('taxable'),
+      products: new FakeOrderProducts(),
+      promotions: new FakePromotions(),
       outbox: { append: () => Promise.resolve() },
       audit,
       ids,
@@ -281,6 +285,8 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           sellerId,
           subtotal: 3300n,
           shipping,
+          discount: 0n,
+          shippingDiscount: 0n,
           shippingTaxRateBps: inclusive ? 1000 : 1500,
           shippingTax,
           shippingTaxInclusive: inclusive,
@@ -309,6 +315,9 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           quantity: 3,
           unitPrice: money(unit, currency),
           lineAmount: 3300n,
+          discountAmount: 0n,
+          discountSellerShare: 0n,
+          discountPlatformShare: 0n,
           taxInclusive: inclusive,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
@@ -390,7 +399,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
 
   it('refuses while the Market switch is off: nothing written, Stripe never called', async () => {
     const o = await paidOrder();
-    const off = { ...deps, policy: new ConfigOrderingPolicy(markets) };
+    const off = { ...deps, policy: testOrderingPolicy(markets) };
 
     const result = await refund(o, 1, undefined, off);
 
@@ -1080,7 +1089,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         denied,
       );
       expect(await sellerUnavailableRefund(deps, admin, input)).toEqual(denied);
-      const off = { ...deps, policy: new ConfigOrderingPolicy(markets) };
+      const off = { ...deps, policy: testOrderingPolicy(markets) };
       expect(await sellerUnavailableRefund(off, sellerOf(o.sellerId), input)).toEqual({
         ok: false,
         error: { code: 'ordering.refund-disabled' },
@@ -2035,7 +2044,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
 
     it('refuses while the switch is off, and a body off the closed lists', async () => {
       const o = await paidOrder();
-      const off = { ...deps, policy: new ConfigOrderingPolicy(markets) };
+      const off = { ...deps, policy: testOrderingPolicy(markets) };
       expect(await cancel(o.orderId, off)).toEqual({
         ok: false,
         error: { code: 'ordering.refund-disabled' },

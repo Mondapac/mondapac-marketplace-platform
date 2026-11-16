@@ -68,10 +68,17 @@ import {
   MemoryAdminNotes,
   OrderingAuditWriter,
 } from './support/ordering-fakes';
-import { FakeUnitOfWork, RecordingOutbox } from './support/pricing-fakes';
+import { FakeUnitOfWork } from './support/pricing-fakes';
 import { STORE_PROFILE_REPOSITORY } from '../src/modules/sellers/application/ports/store-profile.repository';
 import { InMemoryStoreProfiles } from '../src/modules/sellers/application/testing/in-memory-store-profiles';
 import { createTestApp } from './support/test-app';
+import {
+  FakeOrderProducts,
+  FakePromotions,
+  RecordingOrderingOutbox,
+} from './support/ordering-promotions-fakes';
+import { PROMOTIONS_FACADE } from '../src/modules/promotions';
+import { ORDER_PRODUCTS } from '../src/modules/ordering/application/ports/order-products';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 import { encodeCursor } from '../src/modules/ordering/application/read-flow';
 
@@ -125,6 +132,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.check-unavailable': 503,
     'ordering.delivery-quote-changed': 409,
     'ordering.price-changed': 409,
+    'ordering.discount-code-not-applied': 422,
     'ordering.card-not-accepted': 422,
     'ordering.card-declined': 402,
     'ordering.seller-order-not-found': 404,
@@ -168,6 +176,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let inventory: FakeInventory;
   let cart: FakeCart;
   let shipping: FakeShipping;
+  let promotions: FakePromotions;
   let pickupCodes: MemoryPickupCodes;
   let notes: MemoryAdminNotes;
   let pickupVault: FakePickupVault;
@@ -192,6 +201,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     inventory = new FakeInventory();
     cart = new FakeCart();
     shipping = new FakeShipping();
+    promotions = new FakePromotions();
     pickupCodes = new MemoryPickupCodes();
     notes = new MemoryAdminNotes();
     pickupVault = new FakePickupVault();
@@ -255,7 +265,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .overrideProvider(AUDIT_WRITER)
           .useValue(audit)
           .overrideProvider(OUTBOX_WRITER)
-          .useValue(new RecordingOutbox())
+          .useValue(new RecordingOrderingOutbox())
           .overrideProvider(ORDER_REPOSITORY)
           .useValue(orders)
           .overrideProvider(ADMIN_SHIPMENT_LIST_READER)
@@ -295,7 +305,11 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .overrideProvider(ORDER_TAX_CATEGORIES)
           .useValue(new FakeTaxCategories(code === 'AU' ? 'taxable' : 'zz_standard'))
           .overrideProvider(COMMISSION_PAYOUTS_FACADE)
-          .useValue(new FakeCommission()),
+          .useValue(new FakeCommission())
+          .overrideProvider(PROMOTIONS_FACADE)
+          .useValue(promotions)
+          .overrideProvider(ORDER_PRODUCTS)
+          .useValue(new FakeOrderProducts()),
     }));
   });
   afterEach(async () => {
@@ -508,6 +522,36 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
         accountId: CUSTOMER,
         status: 'pending-payment',
       });
+    });
+
+    it('takes the discounts promotions gives, and a discount code (promotions package T2)', async () => {
+      promotions.lineDiscount = () => ({ sellerShare: 100n, platformShare: 0n });
+      promotions.codes.add('SPRING10');
+
+      const res = await checkout(customer(), { addressId: ADDRESS, code: '  SPRING10 ' });
+
+      expect(res.status).toBe(200);
+      const [order] = [...orders.rows.values()];
+      const discount = order!.lines.reduce((sum, l) => sum + l.discountAmount, 0n);
+      expect(discount).toBe(100n * BigInt(order!.lines.length));
+      expect(res.body).toMatchObject({ total: { amount: String(3500n - discount), currency } });
+      expect(promotions.quotes[0]!.request).toMatchObject({ code: 'SPRING10', testMode: false });
+      expect(promotions.redeems).toHaveLength(1);
+    });
+
+    it('refuses a code that does not apply with a coded 422, and a bad code with 400', async () => {
+      const notApplied = await checkout(customer(), { addressId: ADDRESS, code: 'NOPE' });
+      expect(notApplied.status).toBe(422);
+      expect(body(notApplied).code).toBe('ordering.discount-code-not-applied');
+      expect(inventory.calls).not.toContain('reserve');
+
+      const bad = await checkout(customer(), { addressId: ADDRESS, code: 'x'.repeat(65) });
+      expect(bad.status).toBe(400);
+      expect(bad.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'code' }] },
+      });
+      expect(orders.rows.size).toBe(0);
     });
 
     it('needs a session and the CSRF token', async () => {
@@ -1209,7 +1253,13 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       // The route logs its outcome, never the reference typed.
       const logged = logLines.filter((l) => l['msg'] === 'ordering.admin-list-shipments-route');
       expect(logged.length).toBeGreaterThanOrEqual(5);
-      expect(JSON.stringify(logged)).not.toContain('0123');
+      // The random correlation id and the timestamps may hold the digits by chance: left out.
+      const withoutRandom = logged.map((line) =>
+        Object.fromEntries(
+          Object.entries(line).filter(([key]) => key !== 'correlationId' && key !== 'time'),
+        ),
+      );
+      expect(JSON.stringify(withoutRandom)).not.toContain('0123');
     });
 
     it('lists order confirmations and credit notes behind ordering.order.view, unnumbered', async () => {

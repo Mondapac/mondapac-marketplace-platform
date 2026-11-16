@@ -334,6 +334,11 @@ export class MemoryOrders implements OrderRepository {
     const order = this.rows.get(orderId);
     return Promise.resolve(order?.accountId === accountId ? order : null);
   }
+  hasPaidOrder(_m: MarketContext, accountId: Id<'Account'>) {
+    return Promise.resolve(
+      [...this.rows.values()].some((o) => o.accountId === accountId && o.status === 'confirmed'),
+    );
+  }
   findPending(_m: MarketContext, accountId: Id<'Account'>) {
     return Promise.resolve(
       [...this.rows.values()].filter(

@@ -11,6 +11,12 @@ import type {
 import type { CartCheckoutFacade } from '../../cart';
 import type { CommissionPayoutsFacade } from '../../commission-payouts';
 import type { CustomersCheckoutFacade } from '../../customers';
+import type {
+  PromotionsFacade,
+  RedeemFacadeFailure,
+  RedeemRequest,
+  RedeemResult,
+} from '../../promotions';
 import type { QuotedDelivery, ShippingFacade } from '../../shipping';
 import type { TaxFacade } from '../../tax';
 import type {
@@ -37,6 +43,15 @@ import {
   type OrderState,
   type ShipTo,
 } from '../domain/order';
+import { orderCancelledEvent } from '../domain/events';
+import { NO_DISCOUNT } from '../domain/discounts';
+import {
+  hasDiscounts,
+  lineKeyOf,
+  parseDiscountCode,
+  priceOrder,
+  type PricingInput,
+} from './checkout-pricing';
 import type { CheckoutGateway } from './ports/checkout-gateway';
 import type { DeliveryMethodPolicy } from './ports/delivery-method-policy';
 import type { PaymentAttemptLimits } from './ports/payment-attempt-limits';
@@ -44,6 +59,7 @@ import type { PickupCodeVault } from './ports/pickup-code-vault';
 import type { PickupCodeRepository } from './ports/pickup-code.repository';
 import type { OrderLabels } from './ports/order-labels';
 import type { OrderTaxCategories } from './ports/order-tax-categories';
+import type { OrderProducts } from './ports/order-products';
 import type { OrderingPolicy } from './ports/ordering-policy';
 import type { OrderRepository } from './ports/order.repository';
 import type { RefundRepository } from './ports/refund.repository';
@@ -66,6 +82,10 @@ export interface OrderingDependencies {
   readonly tax: TaxFacade;
   /** The product's tax category of each Offer bought (catalog's published revision). */
   readonly taxCategories: OrderTaxCategories;
+  /** The product of each Offer bought, for the promotions quote (package T2). */
+  readonly products: OrderProducts;
+  /** The discounts of the order: quoted before the total, redeemed once the order is stored. */
+  readonly promotions: PromotionsFacade;
   readonly outbox: OutboxWriter;
   /** The audit of refunds (tax step 3). */
   readonly audit: AuditWriter;
@@ -145,6 +165,8 @@ export type StartCheckoutFailure =
    * moved): nothing was reserved or charged; the buyer confirms the new total.
    */
   | { readonly code: 'ordering.price-changed'; readonly total: ReturnType<typeof money> }
+  /** The discount code the buyer typed gives this cart nothing (unknown, used up, not eligible). */
+  | { readonly code: 'ordering.discount-code-not-applied' }
   /** The card is not one the Market accepts (Visa and Mastercard only). */
   | { readonly code: 'ordering.card-not-accepted' }
   /** The bank refused the card. Nothing was charged; the stock hold was released. */
@@ -189,6 +211,22 @@ async function reserveWithRetry(
   return last;
 }
 
+/** A lock timeout in promotions writes nothing, so the redemption is tried again a few times. */
+const REDEEM_ATTEMPTS = 3;
+
+async function redeemWithRetry(
+  deps: OrderingDependencies,
+  context: CallContext,
+  request: RedeemRequest,
+): Promise<Result<RedeemResult, RedeemFacadeFailure>> {
+  let last: Result<RedeemResult, RedeemFacadeFailure> = err({ code: 'conflict.retry' });
+  for (let attempt = 0; attempt < REDEEM_ATTEMPTS; attempt += 1) {
+    last = await deps.promotions.redeem(context, request);
+    if (last.ok || last.error.code !== 'conflict.retry') return last;
+  }
+  return last;
+}
+
 /**
  * What the customer sends to start checkout: the id of an address of their address book and,
  * optionally, a note to each seller (`{ [sellerId]: text }`, plain text, 200 characters at most).
@@ -201,6 +239,8 @@ export interface StartCheckoutInput {
    * A seller without an entry gets {@link DEFAULT_DELIVERY_METHOD} until the basket asks.
    */
   readonly deliveryMethods?: unknown;
+  /** The one discount code the buyer typed (package T2); absent, null or empty for none. */
+  readonly code?: unknown;
 }
 
 /**
@@ -359,6 +399,9 @@ export async function placeOrder<T>(
   }
   const choices = parseDeliveryChoices(input?.deliveryMethods, deps.clock.now());
   if (!choices.ok) return err({ code: 'validation.failed', fields: choices.fields });
+  const code = parseDiscountCode(input?.code);
+  if (!code.ok)
+    return err({ code: 'validation.failed', fields: [{ path: 'code', code: 'format' }] });
   const address = await readShipTo(deps, context, input?.addressId);
   if (!address.ok) return address;
   const read = await deps.cart.checkoutLines(context);
@@ -522,68 +565,55 @@ export async function placeOrder<T>(
   // The tax of each line is frozen on it now (ADR-0039 decision 4); no tax answer, no order.
   const planLines = plan.sellers.flatMap((seller) => seller.lines);
   let categories: ReadonlyMap<Id<'Offer'>, string>;
+  let products: ReadonlyMap<Id<'Offer'>, Id<'Product'>>;
   try {
-    categories = await deps.taxCategories.categoriesOf(
-      context,
-      planLines.map((line) => line.offerId),
-    );
+    const offerIds = planLines.map((line) => line.offerId);
+    categories = await deps.taxCategories.categoriesOf(context, offerIds);
+    // Promotions target products: each line's product goes into the quote (package T2).
+    products = await deps.products.productsOf(context, offerIds);
   } catch {
     return err({ code: 'ordering.check-unavailable' });
   }
   // A bought Offer has a published product, so its category is known; one that is not is a
   // failed check, never a silent default rate.
-  if (planLines.some((line) => !categories.has(line.offerId))) {
+  if (planLines.some((line) => !categories.has(line.offerId) || !products.has(line.offerId))) {
     return err({ code: 'ordering.check-unavailable' });
   }
-  // The shipping price of each seller is taxed in the same answer, after the product lines, at
-  // the strategy's default rate (no category). A fleet quote is a price with tax included (and
-  // so is the margin on it), so the delivery is always inclusive: its tax is shown, not added.
-  const shippingInclusive = new Map(plan.sellers.map((seller) => [seller.sellerId, true]));
-  const taxed = await deps.tax.calculateTax(context, [
-    ...planLines.map((line) => ({
-      amount: line.unitPrice.amount * BigInt(line.quantity),
-      taxInclusive: line.taxInclusive,
-      categoryCode: categories.get(line.offerId)!,
-    })),
-    ...plan.sellers.map((seller) => ({
-      amount: seller.shipping,
-      taxInclusive: shippingInclusive.get(seller.sellerId)!,
-      categoryCode: null,
-    })),
-  ]);
-  if (!taxed.ok || taxed.value.lines.length !== planLines.length + plan.sellers.length) {
-    return err(
-      !taxed.ok && taxed.error.code === 'access.denied'
-        ? { code: 'access.denied' }
-        : { code: 'ordering.check-unavailable' },
-    );
+  const provisionalTaxBps = deps.policy.provisionalTaxBps(context.market);
+  if (provisionalTaxBps === null) return err({ code: 'ordering.check-unavailable' });
+  // Whether this is the customer's first order comes from ordering's own paid orders only.
+  const history = await deps.unitOfWork.run<boolean, never>(
+    context.market,
+    async () => ok(await deps.orders.hasPaidOrder(context.market, accountId)),
+    { readOnly: true },
+  );
+  if (!history.ok) return err({ code: 'ordering.check-unavailable' });
+  const pricing: PricingInput = {
+    accountId,
+    plan,
+    rates: rates.value,
+    categories,
+    products,
+    methodOf: (sellerId) => choiceOf(sellerId).method,
+    zone: deps.policy.deliveryZone(context.market, address.value.postcode),
+    code: code.code,
+    isFirstOrder: !history.value,
+    provisionalTaxBps,
+  };
+  // The discounts, the tax on what the buyer pays after them, and the totals (package T2).
+  const prices = await priceOrder(deps, context, pricing);
+  if (!prices.ok) return prices;
+  // A code that gives nothing is refused before anything is reserved: the buyer typed it to pay
+  // less, so the order is never placed at the full price without telling them.
+  if (code.code !== null && !prices.value.discounts.codeApplied) {
+    return err({ code: 'ordering.discount-code-not-applied' });
   }
-  const lineTax = new Map(
-    planLines.map((line, index) => [
-      `${line.offerId}/${line.variantId}`,
-      taxed.value.lines[index]!,
-    ]),
-  );
-  const shippingTax = new Map(
-    plan.sellers.map((seller, index) => [
-      seller.sellerId,
-      taxed.value.lines[planLines.length + index]!,
-    ]),
-  );
-  // Tax on a price that excludes it is charged on top of the goods and the shipping, per seller.
-  const addedTax = new Map(
-    plan.sellers.map((seller) => [
-      seller.sellerId,
-      seller.lines.reduce(
-        (sum, line) =>
-          line.taxInclusive ? sum : sum + lineTax.get(`${line.offerId}/${line.variantId}`)!.tax,
-        0n,
-      ) + (shippingInclusive.get(seller.sellerId)! ? 0n : shippingTax.get(seller.sellerId)!.tax),
-    ]),
-  );
-  const sellerTotal = (seller: (typeof plan.sellers)[number]): bigint =>
-    seller.subtotal + seller.shipping + addedTax.get(seller.sellerId)!;
-  const total = plan.sellers.reduce((sum, seller) => sum + sellerTotal(seller), 0n);
+  const { discounts, lineTax, shippingTax, shippingInclusive, addedTax, sellerTotals, total } =
+    prices.value;
+  const lineDiscount = (line: { offerId: Id<'Offer'>; variantId: Id<'Variant'> }) =>
+    discounts.lines.get(lineKeyOf(line)) ?? NO_DISCOUNT;
+  const shippingDiscount = (sellerId: Id<'Seller'>): bigint =>
+    discounts.shipping.get(sellerId) ?? 0n;
   // The payment step may refuse now (the total moved, the card is not accepted): nothing is
   // reserved yet, so a refusal here costs nothing.
   const turnedDown = await step.precheck(money(total, plan.currency));
@@ -634,8 +664,9 @@ export async function placeOrder<T>(
   for (const { id: sellerOrderId, seller } of sellerOrders) {
     const rate = rates.value.get(seller.sellerId);
     for (const line of seller.lines) {
-      const reservationLineId = reservationLine.get(`${line.offerId}/${line.variantId}`);
-      const tax = lineTax.get(`${line.offerId}/${line.variantId}`)!;
+      const reservationLineId = reservationLine.get(lineKeyOf(line));
+      const tax = lineTax.get(lineKeyOf(line))!;
+      const discount = lineDiscount(line);
       if (reservationLineId === undefined || rate === undefined) {
         await deps.inventory.releaseOwnReservation(context, {
           reservationId: reservation.reservationId,
@@ -650,6 +681,9 @@ export async function placeOrder<T>(
         quantity: line.quantity,
         unitPrice: line.unitPrice,
         lineAmount: line.unitPrice.amount * BigInt(line.quantity),
+        discountAmount: discount.amount,
+        discountSellerShare: discount.sellerShare,
+        discountPlatformShare: discount.platformShare,
         taxInclusive: line.taxInclusive,
         reservationLineId,
         commissionRateBps: rate.rateBps,
@@ -676,17 +710,19 @@ export async function placeOrder<T>(
     confirmedAt: null,
     cancelledAt: null,
     version: 1,
-    taxStrategyId: taxed.value.strategyId,
+    taxStrategyId: prices.value.taxStrategyId,
     shipToSealed: shipToSealed.value,
     sellerOrders: sellerOrders.map(({ id, seller }) => ({
       id,
       sellerId: seller.sellerId,
       subtotal: seller.subtotal,
       shipping: seller.shipping,
+      discount: seller.lines.reduce((sum, line) => sum + lineDiscount(line).amount, 0n),
+      shippingDiscount: shippingDiscount(seller.sellerId),
       shippingTaxRateBps: shippingTax.get(seller.sellerId)!.rateBps,
       shippingTax: shippingTax.get(seller.sellerId)!.tax,
       shippingTaxInclusive: shippingInclusive.get(seller.sellerId)!,
-      total: sellerTotal(seller),
+      total: sellerTotals.get(seller.sellerId)!,
       fulfilment: 'to-ship' as const,
       carrier: null,
       trackingRef: null,
@@ -716,16 +752,58 @@ export async function placeOrder<T>(
     return stored;
   }
 
-  const packages = sellerOrders.flatMap(({ seller }, index) => [
-    { label: `MondaPac order, package ${index + 1}`, amount: seller.subtotal },
-    // A free delivery (an explicit zero fee) is no line: Stripe takes no zero-priced item.
-    ...(seller.shipping > 0n
-      ? [{ label: `Delivery, package ${index + 1}`, amount: seller.shipping }]
-      : []),
-    ...(addedTax.get(seller.sellerId)! > 0n
-      ? [{ label: `Tax, package ${index + 1}`, amount: addedTax.get(seller.sellerId)! }]
-      : []),
-  ]);
+  // The order's discounts are reserved before anything is charged (package T2): promotions prices
+  // the cart again under its locks and reserves exactly what the stored order holds, or refuses.
+  // A refusal cancels the order (its event releases whatever was held) and frees the stock; the
+  // buyer is told the new total and nothing is charged.
+  if (hasDiscounts(discounts.summary)) {
+    const redeemed = await redeemWithRetry(deps, context, {
+      orderId,
+      customerAccountId: accountId,
+      request: discounts.request,
+      expected: discounts.summary,
+    });
+    if (!redeemed.ok) {
+      await abandon(deps, context, order, 'discount-changed');
+      await deps.inventory.releaseOwnReservation(context, {
+        reservationId: reservation.reservationId,
+      });
+      switch (redeemed.error.code) {
+        case 'promotions.quote-changed':
+        case 'promotions.redemption-released': {
+          // The quote promotions answered used the old commission: price everything again.
+          const again = await priceOrder(deps, context, pricing);
+          if (!again.ok) return again;
+          return err({
+            code: 'ordering.price-changed',
+            total: money(again.value.total, plan.currency),
+          });
+        }
+        case 'conflict.retry':
+          return err({ code: 'conflict.retry' });
+        case 'access.denied':
+          return err({ code: 'access.denied' });
+        default:
+          return err({ code: 'ordering.check-unavailable' });
+      }
+    }
+  }
+
+  // What the buyer pays per seller: the goods and the delivery net of their discounts, and the tax
+  // added on top. The Stripe lines add up to the order's total.
+  const packages = sellerOrders.flatMap(({ seller }, index) => {
+    const goods =
+      seller.subtotal - seller.lines.reduce((sum, line) => sum + lineDiscount(line).amount, 0n);
+    const delivery = seller.shipping - shippingDiscount(seller.sellerId);
+    return [
+      { label: `MondaPac order, package ${index + 1}`, amount: goods },
+      // A free delivery (an explicit zero fee) is no line: Stripe takes no zero-priced item.
+      ...(delivery > 0n ? [{ label: `Delivery, package ${index + 1}`, amount: delivery }] : []),
+      ...(addedTax.get(seller.sellerId)! > 0n
+        ? [{ label: `Tax, package ${index + 1}`, amount: addedTax.get(seller.sellerId)! }]
+        : []),
+    ];
+  });
   const charged = await step.charge({ order, packages, urls, payBy });
   if (!charged.ok) {
     await abandon(deps, context, order, 'provider-failed');
@@ -780,17 +858,34 @@ export async function placeOrder<T>(
   return ok({ order: linked.value, payBy, answer: charged.value.answer });
 }
 
+/**
+ * Saves an order just cancelled with its {@link OrderCancelled} event, in the caller's unit:
+ * promotions releases what the order reserved (package T2). False when another unit saved the
+ * order first (nothing is written then).
+ */
+async function saveCancelled(
+  deps: OrderingDependencies,
+  context: CallContext,
+  cancelled: OrderState,
+): Promise<boolean> {
+  if ((await deps.orders.save(context.market, cancelled)) !== 'saved') return false;
+  await deps.outbox.append(context, [
+    orderCancelledEvent({ id: cancelled.id, version: cancelled.version + 1 }, deps.clock.now()),
+  ]);
+  return true;
+}
+
 /** Cancels the stored order after a failure that follows its insert. */
 async function abandon(
   deps: OrderingDependencies,
   context: CallContext,
   order: OrderState,
-  reason: 'provider-failed',
+  reason: 'provider-failed' | 'discount-changed',
 ): Promise<void> {
   await deps.unitOfWork.run<true, never>(context.market, async () => {
     const fresh = await deps.orders.findById(context.market, order.id);
     const cancelled = fresh === null ? null : cancelOrder(fresh, reason, 'none', deps.clock.now());
-    if (cancelled !== null) await deps.orders.save(context.market, cancelled);
+    if (cancelled !== null) await saveCancelled(deps, context, cancelled);
     return ok(true as const);
   });
 }
@@ -819,7 +914,7 @@ async function supersedeOthers(
           ? null
           : cancelOrder(fresh, 'superseded', fresh.paymentState, deps.clock.now());
       if (cancelled === null) return ok(false);
-      return ok((await deps.orders.save(context.market, cancelled)) === 'saved');
+      return ok(await saveCancelled(deps, context, cancelled));
     });
     if (done.ok && done.value && old.stripeSessionId !== null) {
       await deps.gateway.expireSession(old.stripeSessionId);

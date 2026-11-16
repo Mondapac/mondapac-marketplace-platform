@@ -53,6 +53,8 @@ interface OrderRow {
     readonly sellerId: string;
     readonly subtotalAmount: bigint;
     readonly shippingAmount: bigint;
+    readonly discountAmount: bigint;
+    readonly shippingDiscountAmount: bigint;
     readonly shippingTaxRateBps: number | null;
     readonly shippingTaxAmount: bigint | null;
     readonly shippingTaxInclusive: boolean | null;
@@ -85,6 +87,9 @@ interface OrderRow {
     readonly quantity: number;
     readonly unitAmount: bigint;
     readonly lineAmount: bigint;
+    readonly discountAmount: bigint;
+    readonly discountSellerShare: bigint;
+    readonly discountPlatformShare: bigint;
     readonly taxInclusive: boolean;
     readonly reservationLineId: string;
     readonly commissionRateBps: number | null;
@@ -105,6 +110,8 @@ const toSellerOrder = (s: SellerOrderRow): SellerOrder => ({
   sellerId: s.sellerId as Id<'Seller'>,
   subtotal: s.subtotalAmount,
   shipping: s.shippingAmount,
+  discount: s.discountAmount,
+  shippingDiscount: s.shippingDiscountAmount,
   shippingTaxRateBps: s.shippingTaxRateBps,
   shippingTax: s.shippingTaxAmount,
   shippingTaxInclusive: s.shippingTaxInclusive,
@@ -150,6 +157,9 @@ const toLine = (l: LineRow, currency: string): OrderLine => ({
   quantity: l.quantity,
   unitPrice: money(l.unitAmount, currency),
   lineAmount: l.lineAmount,
+  discountAmount: l.discountAmount,
+  discountSellerShare: l.discountSellerShare,
+  discountPlatformShare: l.discountPlatformShare,
   taxInclusive: l.taxInclusive,
   reservationLineId: l.reservationLineId,
   commissionRateBps: l.commissionRateBps,
@@ -298,6 +308,8 @@ export class PrismaOrderRepository implements OrderRepository {
         sellerId: s.sellerId,
         subtotalAmount: s.subtotal,
         shippingAmount: s.shipping,
+        discountAmount: s.discount,
+        shippingDiscountAmount: s.shippingDiscount,
         shippingTaxRateBps: s.shippingTaxRateBps,
         shippingTaxAmount: s.shippingTax,
         shippingTaxInclusive: s.shippingTaxInclusive,
@@ -328,6 +340,9 @@ export class PrismaOrderRepository implements OrderRepository {
         quantity: l.quantity,
         unitAmount: l.unitPrice.amount,
         lineAmount: l.lineAmount,
+        discountAmount: l.discountAmount,
+        discountSellerShare: l.discountSellerShare,
+        discountPlatformShare: l.discountPlatformShare,
         taxInclusive: l.taxInclusive,
         reservationLineId: l.reservationLineId,
         commissionRateBps: l.commissionRateBps,
@@ -352,6 +367,14 @@ export class PrismaOrderRepository implements OrderRepository {
       include: INCLUDE,
     });
     return row === null ? null : toOrder(row);
+  }
+
+  async hasPaidOrder(market: MarketContext, accountId: Id<'Account'>) {
+    const row = await this.prisma.tx(market).orderingOrder.findFirst({
+      where: { marketId: market.marketId, accountId, status: 'confirmed' },
+      select: { id: true },
+    });
+    return row !== null;
   }
 
   async findPending(market: MarketContext, accountId: Id<'Account'>) {

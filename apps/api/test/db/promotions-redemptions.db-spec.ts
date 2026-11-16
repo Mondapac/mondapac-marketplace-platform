@@ -1,3 +1,7 @@
+import { QuoteOwnDiscounts } from '../../src/modules/promotions/application/use-cases/quote-own-discounts.use-case';
+import { RedeemOwnDiscounts } from '../../src/modules/promotions/application/use-cases/redeem-own-discounts.use-case';
+import { ListStaleRedemptions } from '../../src/modules/promotions/application/use-cases/list-stale-redemptions.use-case';
+import { SettleRedemptions } from '../../src/modules/promotions/application/use-cases/settle-redemptions.use-case';
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, Result } from '@mondapac/shared-kernel';
 import {
@@ -174,6 +178,10 @@ describe.each(TEST_MARKETS)('promotions redemptions in market %s (database)', (c
       make(QuoteDiscounts),
       make(RedeemDiscounts),
       make(CheckWasPrice),
+      make(QuoteOwnDiscounts),
+      make(RedeemOwnDiscounts),
+      make(ListStaleRedemptions),
+      make(SettleRedemptions),
     );
   const state = (promise: Promise<unknown>) =>
     promise.then(

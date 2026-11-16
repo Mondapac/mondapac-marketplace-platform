@@ -99,6 +99,8 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           sellerId: ids.next<'Seller'>(),
           subtotal: 2500n,
           shipping: 0n,
+          discount: 0n,
+          shippingDiscount: 0n,
           shippingTaxRateBps: null,
           shippingTax: null,
           shippingTaxInclusive: null,
@@ -127,6 +129,9 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           quantity: 2,
           unitPrice: money(1250n, currency),
           lineAmount: 2500n,
+          discountAmount: 0n,
+          discountSellerShare: 0n,
+          discountPlatformShare: 0n,
           taxInclusive: true,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
@@ -174,6 +179,8 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       sellerOrders: exclusive.sellerOrders.map((seller) => ({
         ...seller,
         shipping: 500n,
+        discount: 0n,
+        shippingDiscount: 0n,
         shippingTaxRateBps: 1000,
         shippingTax: 50n,
         shippingTaxInclusive: false,
@@ -210,6 +217,8 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       sellerOrders: base.sellerOrders.map((seller) => ({
         ...seller,
         shipping: 1150n,
+        discount: 0n,
+        shippingDiscount: 0n,
         shippingTaxRateBps: 1000,
         shippingTax: 105n,
         shippingTaxInclusive: true,
@@ -622,6 +631,83 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
         ],
       ),
     ).toBe(CHECK);
+  });
+
+  it('round-trips the discounts of a line and a seller order, and keeps them consistent (package T2)', async () => {
+    const plain = newOrder();
+    const [seller] = plain.sellerOrders;
+    const [line] = plain.lines;
+    const order = {
+      ...plain,
+      total: money(2200n + 450n, currency),
+      sellerOrders: [
+        { ...seller!, shipping: 500n, discount: 300n, shippingDiscount: 50n, total: 2650n },
+      ],
+      lines: [
+        { ...line!, discountAmount: 300n, discountSellerShare: 200n, discountPlatformShare: 100n },
+      ],
+    };
+    await value(market, () => repository.insert(market, order));
+    expect(await value(market, () => repository.findById(market, order.id))).toEqual(order);
+
+    const attempt = (statement: string, params: unknown[]) =>
+      sql.query(statement, params).then(
+        () => null,
+        (error: { code?: string }) => error.code ?? 'unknown',
+      );
+    // The application role inserts lines and seller orders and never changes their amounts, so
+    // each check is tried on a new row of the order.
+    const insertLine = (amount: number, sellerShare: number, platformShare: number) =>
+      attempt(
+        `INSERT INTO ordering.order_lines (id, market_id, tenant_id, order_id, seller_order_id, offer_id, variant_id, quantity, unit_amount, line_amount, tax_inclusive, reservation_line_id, discount_amount, discount_seller_share, discount_platform_share)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 2, 1250, 2500, true, $8, $9, $10, $11)`,
+        [
+          ids.next(),
+          market.marketId,
+          market.tenantId,
+          order.id,
+          seller!.id,
+          ids.next(),
+          ids.next(),
+          ids.next(),
+          amount,
+          sellerShare,
+          platformShare,
+        ],
+      );
+    const insertSeller = (discount: number, shippingDiscount: number, total: number) =>
+      attempt(
+        `INSERT INTO ordering.seller_orders (id, market_id, tenant_id, order_id, seller_id, subtotal_amount, shipping_amount, discount_amount, shipping_discount_amount, total_amount, fulfilment, ledger_state, delivery_method)
+         VALUES ($1, $2, $3, $4, $5, 2500, 500, $6, $7, $8, 'to-ship', 'pending', 'instant')`,
+        [
+          ids.next(),
+          market.marketId,
+          market.tenantId,
+          order.id,
+          ids.next(),
+          discount,
+          shippingDiscount,
+          total,
+        ],
+      );
+    expect(await insertLine(300, 200, 100)).toBeNull();
+    expect(await insertSeller(300, 50, 2650)).toBeNull();
+    // The shares add up to the discount, none is negative, and no line is discounted below zero.
+    expect(await insertLine(300, 250, 100)).toBe(CHECK);
+    expect(await insertLine(300, -100, 400)).toBe(CHECK);
+    expect(await insertLine(2600, 2600, 0)).toBe(CHECK);
+    // A seller order's discounts stay within its goods and its delivery, and its total covers them.
+    expect(await insertSeller(2501, 0, 500)).toBe(CHECK);
+    expect(await insertSeller(0, 501, 2500)).toBe(CHECK);
+    expect(await insertSeller(-1, 0, 3001)).toBe(CHECK);
+    expect(await insertSeller(300, 50, 2649)).toBe(CHECK);
+    // A checkout abandoned because its discounts moved is a cancel reason of its own.
+    expect(
+      await attempt(
+        `UPDATE ordering.orders SET status = 'cancelled', cancel_reason = 'discount-changed', cancelled_at = now() WHERE id = $1`,
+        [order.id],
+      ),
+    ).toBeNull();
   });
 
   it('lets the application role change an order but never delete one', async () => {

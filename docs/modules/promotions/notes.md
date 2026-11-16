@@ -389,3 +389,38 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   Stripe, the ledger and refunds on the net amounts), the refund release (owner's decision pending), and a sweep
   of reservations whose order never settles (the order is stored before the redemption, so every row has an
   order that ordering cancels or confirms; the sweep covers a crash between them).
+
+## Package T2: discounts at checkout (part B, ordering side)
+
+Migration `20261116130000_ordering_discounts`: `order_lines` gains `discount_amount` with its seller and platform
+shares (CHECK: shares at zero or above, they add up to the discount, the discount at most the line);
+`seller_orders` gains `discount_amount` and `shipping_discount_amount` (within the goods and the delivery; the
+total covers what is left); the cancel reason `discount-changed`. Existing rows read zero.
+
+- **Checkout** (`start-checkout`, card `pay`): takes an optional `code` (trimmed, printable, at most 64; empty is
+  none). Ordering quotes promotions under the customer's own `CallContext` (new own-session use cases
+  `promotions.quote-own-discounts` and `promotions.redeem-own-discounts`, rule `own-resources`: a customer, not
+  acting-as, only their own account, `testMode` always false; the facade picks the system or own use case by the
+  actor). The quote carries each line's product (catalog), the delivery charges with the address's ServiceArea
+  code as the zone, whether this is the customer's first paid order, and the order's commission; when the
+  platform's share moves the commission, the quote is asked again (at most 3 times). A code that does not apply
+  answers `ordering.discount-code-not-applied` (422) before anything is reserved.
+- **Prices**: the discounts are stored per line and per seller order; tax is worked out on what the buyer pays
+  (line minus discount, delivery minus its discount); the Stripe packages are the net goods, the net delivery
+  and the added tax; the commission ledger gets each line minus its seller share; refunds are per unit of the
+  net line (the shares floored cumulatively) and of the net delivery.
+- **Redeem** runs after the order is stored, up to 3 times on `conflict.retry`. Any other failure cancels the
+  order with `discount-changed` (stock released, `OrderCancelled` emitted): a changed quote or a released order
+  re-prices and answers `ordering.price-changed` with the new total; nothing is charged.
+- **`ordering.order-cancelled.v1`** is emitted whenever an unpaid order is cancelled (expiry, payment
+  failure, superseded, a failed checkout). promotions subscribes to ordering's events from `PromotionsOrderEventsModule`, a
+  binding module: ordering imports promotions, so `PromotionsModule` holds no ordering import (no file cycle).
+- **Safety sweep** `ordering.settle-stale-redemptions` (worker, every 15 minutes, rule `system`): promotions
+  lists the orders that still hold RESERVED rows written before the payment window plus one hour
+  (`promotions.list-stale-redemptions`, at most 100, read only); for each, ordering reads the order: confirmed
+  confirms the rows, cancelled or unknown releases them (`promotions.settle-redemptions`); a pending order whose
+  payment page expired over an hour ago with no payment held is cancelled as `expired`. It lives in ordering
+  because promotions cannot read ordering without a cycle.
+- Follow-ups: manual-group audiences do not match under the customer's context yet (customers' group check is
+  system-only); the admin panel's cancel-reason list lacks `discount-changed` and the web checkout has no code
+  field yet (part C); the refund release waits for the owner's decision.

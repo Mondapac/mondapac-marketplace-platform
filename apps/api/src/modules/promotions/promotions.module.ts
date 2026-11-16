@@ -19,7 +19,6 @@ import { changeActorSourceOf, IDENTITY_FACADE, IdentityModule } from '../identit
 import { PricingModule } from '../pricing';
 import { SellersModule } from '../sellers';
 import { WalletModule } from '../wallet';
-import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
 import { CREDIT_REPOSITORY, REFERRAL_REPOSITORY } from './application/ports/credit.repository';
@@ -76,6 +75,10 @@ import { PausePromotion } from './application/use-cases/pause-promotion.use-case
 import { PreviewQuote } from './application/use-cases/preview-quote.use-case';
 import { QuoteDiscounts } from './application/use-cases/quote-discounts.use-case';
 import { RedeemDiscounts } from './application/use-cases/redeem-discounts.use-case';
+import { QuoteOwnDiscounts } from './application/use-cases/quote-own-discounts.use-case';
+import { RedeemOwnDiscounts } from './application/use-cases/redeem-own-discounts.use-case';
+import { ListStaleRedemptions } from './application/use-cases/list-stale-redemptions.use-case';
+import { SettleRedemptions } from './application/use-cases/settle-redemptions.use-case';
 import { ConfirmRedemptions } from './application/use-cases/confirm-redemptions.use-case';
 import { ReleaseCancelledRedemptions } from './application/use-cases/release-cancelled-redemptions.use-case';
 import { ResumeOwnPromotion } from './application/use-cases/resume-own-promotion.use-case';
@@ -102,8 +105,6 @@ import {
   CustomerReferralController,
   SellerPromotionsController,
 } from './presentation/promotions.controller';
-import { deliveryCreditSubscriptions } from './presentation/subscribers/delivery-credit.subscriptions';
-import { redemptionSubscriptions } from './presentation/subscribers/redemption.subscriptions';
 import { PromotionsFacadeImplementation } from './presentation/promotions.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: PromotionsDependencies) => U;
@@ -219,6 +220,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       PreviewSellerPayout,
       QuoteDiscounts,
       RedeemDiscounts,
+      QuoteOwnDiscounts,
+      RedeemOwnDiscounts,
+      ListStaleRedemptions,
+      SettleRedemptions,
       ConfirmRedemptions,
       ReleaseCancelledRedemptions,
       CheckWasPrice,
@@ -229,28 +234,45 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CashbackOnDelivery,
       QualifyReferralOnDelivery,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
-    // Phase 3: cashback and the refer-a-friend reward, after `ordering.seller-order-delivered.v1`.
-    registerSubscriptionsFrom(
-      'promotions',
-      [CashbackOnDelivery, QualifyReferralOnDelivery],
-      (cashback: CashbackOnDelivery, referral: QualifyReferralOnDelivery) =>
-        deliveryCreditSubscriptions(cashback, referral),
-    ),
-    // Package T2: an order's redemptions are confirmed when it is paid and released when it is
-    // cancelled.
-    registerSubscriptionsFrom(
-      'promotions',
-      [ConfirmRedemptions, ReleaseCancelledRedemptions],
-      (confirm: ConfirmRedemptions, release: ReleaseCancelledRedemptions) =>
-        redemptionSubscriptions(confirm, release),
-    ),
     {
       provide: PROMOTIONS_FACADE,
-      inject: [QuoteDiscounts, RedeemDiscounts, CheckWasPrice],
-      useFactory: (quote: QuoteDiscounts, redeem: RedeemDiscounts, wasPrice: CheckWasPrice) =>
-        new PromotionsFacadeImplementation(quote, redeem, wasPrice),
+      inject: [
+        QuoteDiscounts,
+        RedeemDiscounts,
+        CheckWasPrice,
+        QuoteOwnDiscounts,
+        RedeemOwnDiscounts,
+        ListStaleRedemptions,
+        SettleRedemptions,
+      ],
+      useFactory: (
+        quote: QuoteDiscounts,
+        redeem: RedeemDiscounts,
+        wasPrice: CheckWasPrice,
+        quoteOwn: QuoteOwnDiscounts,
+        redeemOwn: RedeemOwnDiscounts,
+        listStale: ListStaleRedemptions,
+        settle: SettleRedemptions,
+      ) =>
+        new PromotionsFacadeImplementation(
+          quote,
+          redeem,
+          wasPrice,
+          quoteOwn,
+          redeemOwn,
+          listStale,
+          settle,
+        ),
     },
   ],
-  exports: [PROMOTIONS_FACADE],
+  // The event handlers are exported for `PromotionsOrderEventsModule`, which subscribes them to
+  // ordering's events (ordering imports promotions, so this module cannot).
+  exports: [
+    PROMOTIONS_FACADE,
+    CashbackOnDelivery,
+    QualifyReferralOnDelivery,
+    ConfirmRedemptions,
+    ReleaseCancelledRedemptions,
+  ],
 })
 export class PromotionsModule {}

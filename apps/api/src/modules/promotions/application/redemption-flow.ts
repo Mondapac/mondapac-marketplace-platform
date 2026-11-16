@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { err, ok, parseId } from '@mondapac/shared-kernel';
+import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
 import type { QuoteRequest, QuoteResult } from '../contracts/promotions.facade';
@@ -349,8 +349,8 @@ export interface RedemptionEventOutput {
 export type RedemptionEventFailure =
   { readonly code: 'validation.failed' } | { readonly code: 'promotions.try-again' };
 
-const orderIdOf = (input: RedemptionEventInput): Id<'Order'> | null => {
-  const parsed = typeof input?.orderId === 'string' ? parseId<'Order'>(input.orderId) : null;
+const orderIdOf = (value: unknown): Id<'Order'> | null => {
+  const parsed = typeof value === 'string' ? parseId<'Order'>(value) : null;
   return parsed === null || !parsed.ok ? null : parsed.value;
 };
 
@@ -364,7 +364,7 @@ export async function confirmRedemptions(
   context: CallContext,
   input: RedemptionEventInput,
 ): Promise<Result<RedemptionEventOutput, RedemptionEventFailure>> {
-  const orderId = orderIdOf(input);
+  const orderId = orderIdOf(input?.orderId);
   if (orderId === null) return err({ code: 'validation.failed' });
   const now = deps.clock.now();
   const marked = await deps.unitOfWork.runOnce(context.market, input.delivery, async () =>
@@ -386,45 +386,130 @@ export async function releaseRedemptions(
   input: RedemptionEventInput,
   reason: ReleaseReason,
 ): Promise<Result<RedemptionEventOutput, RedemptionEventFailure>> {
-  const orderId = orderIdOf(input);
+  const orderId = orderIdOf(input?.orderId);
   if (orderId === null) return err({ code: 'validation.failed' });
   const now = deps.clock.now();
-  const marked = await deps.unitOfWork.runOnce(context.market, input.delivery, async () => {
-    // The head row first: a cancellation that comes before the redemption leaves it RELEASED, so
-    // the redemption is refused; one that comes after (or waits on it) finds the rows below.
-    await deps.redemptions.markReleased(
-      context.market,
-      orderId,
-      deps.ids.next<'PromotionRedemption'>(),
-      reason,
-      now,
-    );
-    const released = await deps.redemptions.release(context.market, orderId, reason, now, true);
-    const deltas: UsageDelta[] = released.flatMap((row) =>
-      row.promotionId === null
-        ? []
-        : [
-            {
-              promotionId: row.promotionId as Id<'Promotion'>,
-              uses: -1,
-              spent: -row.amount,
-              sellerShare: -row.sellerShare,
-              platformShare: -row.platformShare,
-            },
-          ],
-    );
-    await deps.redemptions.addUsage(context.market, deltas, now);
-    for (const row of released) {
-      if (row.codeHash !== null) {
-        await deps.redemptions.unclaimCode(context.market, row.codeHash, orderId);
-      }
-    }
-    return ok(released.filter((row) => row.kind !== 'ORDER').length);
-  });
+  const marked = await deps.unitOfWork.runOnce(context.market, input.delivery, async () =>
+    ok(await releaseInUnit(deps, context, orderId, reason, now)),
+  );
   if (!marked.ok) return err({ code: 'promotions.try-again' });
   if (!marked.value.handled) return ok({ outcome: 'already-handled' });
   if (marked.value.value > 0) {
     logger.log({ msg: 'promotions.redemptions-released', orderId, rows: marked.value.value });
   }
   return ok({ outcome: marked.value.value > 0 ? 'released' : 'nothing' });
+}
+
+/**
+ * Inside the caller's unit: releases the order's rows (the head row first, so a redemption that
+ * comes later is refused) and gives back what they took. The number of discount rows released.
+ */
+async function releaseInUnit(
+  deps: PromotionsDependencies,
+  context: CallContext,
+  orderId: Id<'Order'>,
+  reason: ReleaseReason,
+  now: Temporal.Instant,
+): Promise<number> {
+  // The head row first: a cancellation that comes before the redemption leaves it RELEASED, so
+  // the redemption is refused; one that comes after (or waits on it) finds the rows below.
+  await deps.redemptions.markReleased(
+    context.market,
+    orderId,
+    deps.ids.next<'PromotionRedemption'>(),
+    reason,
+    now,
+  );
+  const released = await deps.redemptions.release(context.market, orderId, reason, now, true);
+  const deltas: UsageDelta[] = released.flatMap((row) =>
+    row.promotionId === null
+      ? []
+      : [
+          {
+            promotionId: row.promotionId as Id<'Promotion'>,
+            uses: -1,
+            spent: -row.amount,
+            sellerShare: -row.sellerShare,
+            platformShare: -row.platformShare,
+          },
+        ],
+  );
+  await deps.redemptions.addUsage(context.market, deltas, now);
+  for (const row of released) {
+    if (row.codeHash !== null) {
+      await deps.redemptions.unclaimCode(context.market, row.codeHash, orderId);
+    }
+  }
+  return released.filter((row) => row.kind !== 'ORDER').length;
+}
+
+/** At most this many orders are listed per sweep. */
+export const MAX_STALE_ORDERS = 100;
+
+export interface StaleRedemptionsInput {
+  /** Orders whose RESERVED rows were written before this instant. */
+  readonly before: unknown;
+  readonly limit: unknown;
+}
+
+/**
+ * The orders that still hold RESERVED redemptions written before `before`, oldest first: the
+ * safety sweep's list (ordering asks, then settles each by its own order's state). Read only.
+ */
+export async function staleRedemptions(
+  deps: PromotionsDependencies,
+  context: CallContext,
+  input: StaleRedemptionsInput,
+): Promise<Result<readonly Id<'Order'>[], RedemptionEventFailure>> {
+  const before = input?.before;
+  const limit = input?.limit;
+  if (
+    !(before instanceof Temporal.Instant) ||
+    typeof limit !== 'number' ||
+    !Number.isInteger(limit) ||
+    limit < 1 ||
+    limit > MAX_STALE_ORDERS
+  ) {
+    return err({ code: 'validation.failed' });
+  }
+  const read = await deps.unitOfWork.run(
+    context.market,
+    async () => ok(await deps.redemptions.staleReservations(context.market, before, limit)),
+    { readOnly: true },
+  );
+  return read.ok ? read : err({ code: 'promotions.try-again' });
+}
+
+export interface SettleRedemptionsInput {
+  readonly orderId: unknown;
+  /** What became of the order: `paid` confirms its rows, `cancelled` releases them. */
+  readonly outcome: unknown;
+}
+
+/**
+ * The safety sweep's settlement of one order (ordering read its state): `paid` confirms the
+ * RESERVED rows, `cancelled` releases them and gives back what they took, as the event handlers
+ * do. Both are idempotent: rows move only from the status they were read in.
+ */
+export async function settleRedemptions(
+  deps: PromotionsDependencies,
+  context: CallContext,
+  input: SettleRedemptionsInput,
+): Promise<Result<RedemptionEventOutput, RedemptionEventFailure>> {
+  const orderId = orderIdOf(input?.orderId);
+  const outcome = input?.outcome;
+  if (orderId === null || (outcome !== 'paid' && outcome !== 'cancelled')) {
+    return err({ code: 'validation.failed' });
+  }
+  const now = deps.clock.now();
+  const done = await deps.unitOfWork.run(context.market, async () =>
+    ok(
+      outcome === 'paid'
+        ? await deps.redemptions.confirm(context.market, orderId, now)
+        : await releaseInUnit(deps, context, orderId, 'ORDER_CANCELLED', now),
+    ),
+  );
+  if (!done.ok) return err({ code: 'promotions.try-again' });
+  if (done.value === 0) return ok({ outcome: 'nothing' });
+  return ok({ outcome: outcome === 'paid' ? 'confirmed' : 'released' });
 }
