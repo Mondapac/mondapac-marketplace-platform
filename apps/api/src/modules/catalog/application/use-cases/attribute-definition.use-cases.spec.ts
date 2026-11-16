@@ -707,6 +707,34 @@ describe.each(['AU', 'ZZ'] as const)('attribute editor use cases in market %s', 
             expect(await reverter([first]).check(context(), request)).toBe('not-permitted');
           });
 
+          it('refuses a restored text in a locale the Market no longer supports', async () => {
+            const { first, request } = await edited();
+            const retired = {
+              ...first,
+              state: { ...first.state, names: { ...first.state.names, 'xx-XX': 'Old' } },
+            } as unknown as AttributeDefinition;
+            expect(await reverter([retired]).check(context(), request)).toBe('not-permitted');
+            const withHelp = {
+              ...first,
+              state: {
+                ...first.state,
+                display: { ...first.state.display, helpText: { 'xx-XX': 'Old' } },
+              },
+            } as unknown as AttributeDefinition;
+            expect(await reverter([withHelp]).check(context(), request)).toBe('not-permitted');
+            const withLabel = {
+              ...first,
+              state: {
+                ...first.state,
+                options: first.state.options.map((option) => ({
+                  ...option,
+                  labels: { ...option.labels, 'xx-XX': 'Old' },
+                })),
+              },
+            } as unknown as AttributeDefinition;
+            expect(await reverter([withLabel]).check(context(), request)).toBe('not-permitted');
+          });
+
           it('refuses a decider who lacks the key of the attribute edit', async () => {
             const { first, request } = await edited();
             allow = false;

@@ -26,7 +26,7 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { CATALOG_CATEGORY_TREE_EDIT } from '../../contracts/permissions';
+import { CATALOG_ATTRIBUTE_EDIT, CATALOG_CATEGORY_TREE_EDIT } from '../../contracts/permissions';
 import type { EditableCategory } from '../../domain/category-edit';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import type { CategoryWriteDependencies } from '../categories/category-editor';
@@ -40,7 +40,7 @@ import { CategoryEditDetails } from './category-edit-details.use-case';
 import { CategoryHide } from './category-hide.use-case';
 import { CategoryReorder } from './category-reorder.use-case';
 import { CategoryShow } from './category-show.use-case';
-import { CategoryDetailsReverter } from '../catalogue-reverters';
+import { CategoryDetailsReverter, CategoryLinksReverter } from '../catalogue-reverters';
 import { categoryDetailsValues } from '../catalogue-review';
 import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 
@@ -861,6 +861,55 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
       });
     });
 
+    describe('links revert check (System requests)', () => {
+      const linksReverter = (allowed: boolean) =>
+        new CategoryLinksReverter({
+          store,
+          categories: tree as unknown as PlatformCategoryRepository,
+          linkStore: undefined as never,
+          attributeAdminReader: undefined as never,
+          attributeStore: undefined as never,
+          relaxations: undefined as never,
+          unitOfWork,
+          policy,
+          matcher,
+          claimLocales,
+          contentFilter: new ContentFilter(markets),
+          authorisation: {
+            check: (_c, declaration) =>
+              Promise.resolve(
+                allowed &&
+                  declaration.rule.kind === 'permissions' &&
+                  declaration.rule.allOf.includes(CATALOG_ATTRIBUTE_EDIT.key)
+                  ? { allowed: true }
+                  : { allowed: false, denial: { code: 'access.denied' } },
+              ),
+          },
+          audit,
+          outbox,
+          clock,
+          ids,
+        });
+
+      it('lets a decider with the attribute edit key through', async () => {
+        expect(await linksReverter(true).check(context())).toBe('ok');
+      });
+
+      it('refuses a decider without the key, writing nothing', async () => {
+        store.put(stored(1, null));
+        expect(await linksReverter(false).check(context())).toBe('not-permitted');
+        expect(store.revisions).toEqual([]);
+        expect(audits).toEqual([]);
+      });
+
+      it('refuses an acting-as session, writing nothing', async () => {
+        store.put(stored(1, null));
+        expect(await linksReverter(true).check(actingAs())).toBe('not-permitted');
+        expect(store.revisions).toEqual([]);
+        expect(audits).toEqual([]);
+      });
+    });
+
     describe('revert (System requests)', () => {
       const REQUEST = '01990000-0000-7000-8000-000000005e01' as Id<'SystemRequest'>;
       const reverter = () =>
@@ -1045,8 +1094,12 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
             texts: [{ locale: english, name: 'Category 1', shortDescription: null, keywords: [] }],
           }),
         );
+        const revisions = store.revisions.length;
+        const auditCount = audits.length;
         expect(await revert(before, after)).toBe('changed-since');
         expect(store.rows.get(cat(1))!.texts[0]!.name).toBe('Pantry');
+        expect(store.revisions).toHaveLength(revisions);
+        expect(audits).toHaveLength(auditCount);
       });
     });
   });

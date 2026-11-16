@@ -1,8 +1,7 @@
 import type { CallContext, Clock, Id, IdGenerator } from '@mondapac/shared-kernel';
-import { parseId } from '@mondapac/shared-kernel';
+import { ok, parseId } from '@mondapac/shared-kernel';
 import type { AccessDeclaration, AuthorisationCheck } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
-import { ok } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
@@ -21,6 +20,7 @@ import {
   attributeIdOf,
   auditShapeOf,
   editorAccountOf,
+  localizedOf,
   marketUnitsRefusal,
   refuseClaimContent,
 } from './attributes/attribute-editor';
@@ -286,6 +286,16 @@ export class AttributeDefinitionReverter implements SystemChangeReverter {
       );
       if (!read.ok || read.value === null) return 'ok'; // the revert answers `gone` or `changed-since`
       content = restoredContent(read.value.found.state.options, read.value.old);
+      // The Market's supported-locale rule a normal edit runs: names, help text, value labels.
+      const supported = this.deps.policy.locales(market).supported;
+      const localeIssues = [
+        localizedOf(content.names, 'names', supported),
+        localizedOf(content.display.helpText, 'helpText', supported),
+        ...content.options.map((option, index) =>
+          localizedOf(option.labels, `options[${index}].labels`, supported),
+        ),
+      ];
+      if (localeIssues.some((issue) => !issue.ok)) return 'not-permitted';
       const units = marketUnitsRefusal(content.bounds, this.deps.policy.units(market));
       if (units !== null) return 'not-permitted';
       const next = read.value.found.revise({

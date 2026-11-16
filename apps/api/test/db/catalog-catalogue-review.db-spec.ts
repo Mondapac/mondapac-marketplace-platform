@@ -356,6 +356,48 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
     expect(await inUnit(() => reverter.revert(reviewer, request))).toBe('changed-since');
   });
 
+  it('answers changed-since, writing nothing, when a sibling root took the restored name', async () => {
+    const pantry = `Larder ${slugOf()}`;
+    const { id, version } = await activeCategory(pantry);
+    const saved = await editDetails.execute(admin('catalogue-db-sibling'), {
+      categoryId: id,
+      version,
+      texts: { [english]: { name: `${pantry} goods` } },
+      note: 'Renamed',
+    });
+    if (!saved.ok || saved.value.request === null) throw new Error('no request opened');
+    const values = (name: string) => ({
+      names: { [english]: name },
+      shortDescriptions: { [english]: null },
+      keywords: { [english]: [] },
+      seoTitle: null,
+      seoDescription: null,
+      noindex: false,
+      showInMenu: true,
+    });
+    await activeCategory(pantry); // a sibling root takes the name the revert would restore
+    const revisions = async () =>
+      (
+        await sql.query<{ count: string }>(
+          'SELECT count(*) FROM catalog.platform_category_revisions WHERE category_id = $1',
+          [id],
+        )
+      ).rows[0]!.count;
+    const before = await revisions();
+    expect(
+      await inUnit(() =>
+        new CategoryDetailsReverter(reverterDeps).revert(admin('catalogue-db-sibling-revert'), {
+          requestId: saved.value.request!.id,
+          subjectRef: id,
+          before: values(pantry),
+          after: values(`${pantry} goods`),
+        }),
+      ),
+    ).toBe('changed-since');
+    expect(await revisions()).toBe(before);
+    expect(await categoryName(id)).toBe(`${pantry} goods`);
+  });
+
   it('runs the attribute file import through the editor with no review (import is not reviewed)', () => {
     const run = app.select(CatalogModule).get(AttributeImportRun, { strict: true });
     const edit = (run as unknown as { deps: { attributeEdit: { deps: { review: unknown } } } }).deps
