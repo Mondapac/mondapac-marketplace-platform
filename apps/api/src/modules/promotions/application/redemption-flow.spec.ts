@@ -67,6 +67,7 @@ const SELLER = id<'Seller'>(0x5e1);
 const SELLER_ACCOUNT = id<'Account'>(0xa1);
 const BUYER = id<'Account'>(0xb1);
 const BUYER_2 = id<'Account'>(0xb2);
+const BUYER_3 = id<'Account'>(0xb3);
 const product = (n: number) => id<'Product'>(0x1000 + n);
 const order = (n: number) => id<'Order'>(0x0de0 + n);
 
@@ -469,6 +470,43 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
       expect((await quote(cart(BUYER_2))).totals.goodsDiscount).toBe(200n);
       expect((await cancel(order(40))).ok).toBe(true);
       expect((await quote(cart(BUYER_2))).totals.goodsDiscount).toBe(800n);
+    });
+
+    it('spends the budget of the month the order is redeemed in, in the Market zone', async () => {
+      const saved = await make(SetFirstOrderSettings).execute(admin(), {
+        enabled: true,
+        kind: 'FIXED',
+        amountMinor: '800',
+        minSpendMinor: '3000',
+        monthlyBudgetMinor: '1000',
+      });
+      expect(saved.ok).toBe(true);
+      const cart = (who: Id<'Account'>) =>
+        request([line(1, 5000n, 1)], { isFirstOrder: true, customerAccountId: who });
+      // The last minute of October where the Market is (another instant in each fixture's zone).
+      const lastMinute = Temporal.PlainDateTime.from('2026-10-31T23:59')
+        .toZonedDateTime(settings.timeZone)
+        .toInstant();
+      clock.set(lastMinute);
+      expect((await (await priced(order(44), cart(BUYER_2), BUYER_2)).redeem()).ok).toBe(true);
+      expect(redemptions.discounts[0]).toMatchObject({ budgetMonth: '2026-10' });
+      // October has 200 left; this order is priced in October and redeemed in November.
+      const late = await priced(order(45), cart(BUYER));
+      expect(late.quoted.totals.goodsDiscount).toBe(200n);
+      clock.set(lastMinute.add({ minutes: 2 }));
+      const redeemed = await late.redeem();
+      // November's budget is whole again: the October price no longer holds.
+      expect(redeemed).toMatchObject({ ok: false, error: { code: 'promotions.quote-changed' } });
+      if (!redeemed.ok && redeemed.error.code === 'promotions.quote-changed') {
+        expect(redeemed.error.quote.totals.goodsDiscount).toBe(800n);
+      }
+      const november = await priced(order(46), cart(BUYER));
+      expect((await november.redeem()).ok).toBe(true);
+      expect(redemptions.discounts[1]).toMatchObject({ budgetMonth: '2026-11', amount: 800n });
+      // Releasing October's row gives back October's money, not November's.
+      expect((await cancel(order(44))).ok).toBe(true);
+      clock.set(lastMinute);
+      expect((await quote(cart(BUYER_3))).totals.goodsDiscount).toBe(800n);
     });
 
     it('gives the first-order discount once per customer, even to two orders placed together', async () => {

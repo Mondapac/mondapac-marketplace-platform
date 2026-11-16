@@ -81,9 +81,10 @@ ALTER TABLE "promotions"."redemptions"
     AND ("released_at" IS NULL OR "released_at" >= "reserved_at")
     AND ("released_at" IS NULL OR "confirmed_at" IS NULL OR "released_at" >= "confirmed_at"));
 
--- A code is redeemed by exactly one order, named with the instant. Added NOT VALID and validated
--- apart, so the scan of existing codes holds only SHARE UPDATE EXCLUSIVE (no code was used before
--- T2: nothing wrote `used_at`).
+-- A code is redeemed by exactly one order, named with the instant. The migration runs in one
+-- transaction and ADD COLUMN above already holds ACCESS EXCLUSIVE, so NOT VALID + VALIDATE does not
+-- shorten the lock here; the scan is short because no code was used before T2 (nothing wrote
+-- `used_at`).
 ALTER TABLE "promotions"."promotion_batch_codes"
   ADD CONSTRAINT "promotion_batch_codes_redeemed_check" CHECK (("used_at" IS NULL) = ("redeemed_order_id" IS NULL)) NOT VALID;
 ALTER TABLE "promotions"."promotion_batch_codes" VALIDATE CONSTRAINT "promotion_batch_codes_redeemed_check";

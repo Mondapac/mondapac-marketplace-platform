@@ -354,6 +354,10 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   amounts). A cancellation writes that row RELEASED when the order has none, so a cancellation and a redemption
   of one order always meet on the same unique key: whichever comes second sees the first, in either order.
   Backstop unique indexes: one live first-order row per customer, one live row per single-use code hash.
+  Every cancelled order leaves one RELEASED head row, even without a discount (small, accepted growth); a
+  reader of a customer's redemptions (the customer page) filters out `kind = 'ORDER'`. A repeat is compared
+  with the stored rows per promotion (amount and shares); the per-line and per-shipping split is not stored
+  here, it is ordering's.
 - **`promotion_batch_codes.redeemed_order_id`**: set with `used_at` (CHECK both or neither); a trigger allows
   only claim (unused to used) and give back (used to unused). The app may now UPDATE those two columns and the
   `promotion_usage` counters (the core CHECK keeps them at zero or above).
