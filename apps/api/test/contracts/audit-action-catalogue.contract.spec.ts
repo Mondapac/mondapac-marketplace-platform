@@ -304,6 +304,8 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
     expect(actions).toEqual([
       'identity.account-role.assigned',
       'identity.account-role.changed',
+      'identity.account-role.reverted',
+      'identity.account-status.reverted',
       'identity.account.disabled',
       'identity.account.email-change-cancelled',
       'identity.account.email-change-requested',
@@ -322,6 +324,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.invitation.revoked',
       'identity.role.created',
       'identity.role.deleted',
+      'identity.role.reverted',
       'identity.role.seed-applied',
       'identity.role.seeded',
       'identity.role.updated',
