@@ -220,6 +220,24 @@ describe('the navigation editor', () => {
     await expectToast('Navigation approved.', 'success');
   });
 
+  it('spins only the dialog button while approving, not Save to draft behind it', async () => {
+    let finish: (value: never) => void = () => undefined;
+    const reads = call.getMockImplementation()!;
+    call.mockImplementation((method, ...rest) =>
+      method === 'POST' ? new Promise((resolve) => (finish = resolve)) : reads(method, ...rest),
+    );
+    mount(nav(), true, true);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    const dialog = screen.getByRole('dialog', { name: 'Approve this navigation?', hidden: true });
+    const confirm = within(dialog).getByRole('button', { name: 'Approve', hidden: true });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBe('true'));
+    const save = screen.getByRole('button', { name: 'Save to draft', hidden: true });
+    expect(save.getAttribute('aria-busy')).toBeNull();
+    finish(refused('x', 503) as never);
+    await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBeNull());
+  });
+
   it('words a draft that changed under the approver and offers the reload', async () => {
     call.mockImplementation((method) =>
       Promise.resolve(
