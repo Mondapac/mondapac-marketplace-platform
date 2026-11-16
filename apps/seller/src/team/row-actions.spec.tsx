@@ -213,7 +213,7 @@ describe('remove a member', () => {
     expect(screen.getByRole('dialog', { name: 'Remove Sam Seller from the team?' })).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Remove from team' }).className).toContain(
-      'text-critical-fg',
+      'bg-critical-solid',
     );
     fireEvent.click(screen.getByRole('button', { name: 'Remove from team' }));
     await waitFor(() =>

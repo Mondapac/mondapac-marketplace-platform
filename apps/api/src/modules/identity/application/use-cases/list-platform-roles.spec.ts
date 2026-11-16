@@ -9,6 +9,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { fakeHashOf, IdentityFakes } from '../../../../../test/support/identity-fakes';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 import {
   realEffectiveKeys,
   realPermissionRegistry,
@@ -276,6 +277,7 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       permissions,
       outbox: fakes.outbox,
       audit: fakes.audit,
+      review: new RecordingReview(),
       clock,
     };
     return {
@@ -288,6 +290,7 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
         grants: fakes.grantReader,
         effectiveKeys,
         permissions,
+        review: new RecordingReview(),
       }),
       assign: new AssignAdminRole(gate, common),
       invite: new InviteAdmin(gate, {

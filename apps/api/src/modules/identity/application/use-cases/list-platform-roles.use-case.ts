@@ -7,6 +7,7 @@ import {
   type SealedPermissionCatalogue,
   type UseCaseGate,
 } from '../../../../platform/authz';
+import type { SystemRequestRecorder } from '../../../../platform/change-review/change-review';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
   PLATFORM_ROLE_DELETE,
@@ -14,6 +15,7 @@ import {
   PLATFORM_ROLE_VIEW,
 } from '../../contracts/permissions';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
+import { peopleReview, type PeopleReview } from '../people/people-review';
 import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { RoleAssignmentRepository, RoleRepository } from '../ports/seller-team.repository';
@@ -29,8 +31,13 @@ export type ListPlatformRolesInput = Readonly<Record<string, never>>;
  */
 export type PlatformRoleEntry = RoleEntry;
 
-/** The platform roles and the keys of the platform scope (slice 10). */
-export type PlatformRoleCatalogue = RoleCatalogue;
+/**
+ * The platform roles and the keys of the platform scope (slice 10), and whether an edit is
+ * reviewed in Admin Inbox › System requests (area people): the editor asks for a note when it is.
+ */
+export interface PlatformRoleCatalogue extends RoleCatalogue {
+  readonly review: PeopleReview;
+}
 
 export type ListPlatformRolesFailure =
   | { readonly code: 'access.denied' }
@@ -47,6 +54,7 @@ export interface ListPlatformRolesDependencies {
   readonly grants: RoleGrantReader;
   readonly effectiveKeys: EffectiveKeyResolver;
   readonly permissions: Pick<SealedPermissionCatalogue, 'get' | 'list'>;
+  readonly review: SystemRequestRecorder;
 }
 
 /**
@@ -126,6 +134,8 @@ export class ListPlatformRoles extends UseCase<
       });
     }
     const self: GrantSubject = { accountId: actor.accountId, population: 'admin', sellerId: null };
+    // Its own read-only unit, before this one (units do not nest).
+    const review = await peopleReview(this.deps.review, context);
     return this.deps.unitOfWork.run(
       market,
       async (): Promise<Result<PlatformRoleCatalogue, ListPlatformRolesFailure>> => {
@@ -155,7 +165,7 @@ export class ListPlatformRoles extends UseCase<
           deleteKey: PLATFORM_ROLE_DELETE.key,
           deps: this.deps,
         });
-        return ok(catalogue);
+        return ok({ ...catalogue, review });
       },
       { readOnly: true },
     );

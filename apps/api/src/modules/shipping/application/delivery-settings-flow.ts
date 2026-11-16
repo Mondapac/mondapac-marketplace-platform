@@ -1,7 +1,14 @@
 import { err, ok, parseId, parseMoney, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { ChangeScope, LastChanged } from '../../../platform/audit/change-trail';
-import { auditCode, DeliverySettingsChanged, SellerDeliveryMethodsSet } from '../domain/audit';
+import {
+  auditCode,
+  DeliverySettingsChanged,
+  DeliverySettingsReverted,
+  SellerDeliveryMethodsReverted,
+  SellerDeliveryMethodsSet,
+} from '../domain/audit';
+import type { RevertOutcome, RevertRequest } from '../../system-requests';
 import { applyDeliveryMargin, type PricedDelivery } from '../domain/delivery-margin';
 import {
   DELIVERY_METHODS,
@@ -19,6 +26,20 @@ import {
   type SellerDeliveryAvailability,
 } from '../domain/delivery-settings';
 import { sellerIdsOf } from './seller-ids';
+import {
+  DELIVERY_REVIEW_AREA,
+  DELIVERY_SETTINGS_SUBJECT_KIND,
+  DELIVERY_SETTINGS_SUBJECT_REF,
+  SELLER_METHODS_SUBJECT_KIND,
+  deliveryReview,
+  requestRef,
+  reverterOf,
+  settingsInputOf,
+  settingsValues,
+  unsupportedValues,
+  type ShippingRequestRef,
+  type ShippingReview,
+} from './shipping-review';
 import type { ActorId } from './ports/fleet-selection.repository';
 import type { ShippingDependencies } from './shipping-dependencies';
 
@@ -55,9 +76,18 @@ export interface DeliverySettingsPage extends DeliverySettingsView {
  * seller (the page's last card). Both are Market-wide admin settings, so every target is read.
  */
 export const DELIVERY_SETTINGS_CHANGES: ChangeScope = {
-  actions: [DeliverySettingsChanged.action, SellerDeliveryMethodsSet.action],
+  actions: [
+    DeliverySettingsChanged.action,
+    SellerDeliveryMethodsSet.action,
+    DeliverySettingsReverted.action,
+    SellerDeliveryMethodsReverted.action,
+  ],
   targetId: null,
-  fixedFields: { [SellerDeliveryMethodsSet.action]: ['sellerMethods'] },
+  fixedFields: {
+    [SellerDeliveryMethodsSet.action]: ['sellerMethods'],
+    [SellerDeliveryMethodsReverted.action]: ['sellerMethods'],
+  },
+  ignoreKeys: ['requestId'],
 };
 
 export interface DeliverySettingsView {
@@ -66,6 +96,10 @@ export interface DeliverySettingsView {
   readonly currency: string;
   /** The Market's own zone: the fallback of a seller without one. */
   readonly marketZone: string;
+  /** Whether a save is reviewed in Admin Inbox › System requests: the page then asks for a note. */
+  readonly review: ShippingReview;
+  /** The review the save opened; null on a read, when delivery is not reviewed or nothing changed. */
+  readonly request: ShippingRequestRef;
 }
 
 export interface SellerDeliveryMethodsView {
@@ -74,6 +108,10 @@ export interface SellerDeliveryMethodsView {
   readonly supported: readonly DeliveryMethod[];
   /** What the Market has on, so a screen can show a method as "off for the platform". */
   readonly platformEnabled: Readonly<Record<DeliveryMethod, boolean>>;
+  /** Whether a change is reviewed in Admin Inbox › System requests: the page then asks for a note. */
+  readonly review: ShippingReview;
+  /** The review the change opened; null on a read, when delivery is not reviewed or nothing changed. */
+  readonly request: ShippingRequestRef;
 }
 
 const adminOf = (context: CallContext): ActorId | null => {
@@ -115,10 +153,14 @@ const viewOf = (
   deps: ShippingDependencies,
   context: CallContext,
   settings: DeliverySettings,
+  review: ShippingReview,
+  request: ShippingRequestRef,
 ): DeliverySettingsView => ({
   settings,
   currency: deps.policy.currency(context.market),
   marketZone: deps.policy.timeZone(context.market),
+  review,
+  request,
 });
 
 /** `view-delivery-settings`: the Market's settings (the defaults while nothing was saved). */
@@ -127,9 +169,19 @@ export function viewDeliverySettings(
   context: CallContext,
 ): Promise<Result<DeliverySettingsView, DeliverySettingsFailure>> {
   if (adminOf(context) === null) return Promise.resolve(err({ code: 'access.denied' }));
+  return viewDeliverySettingsReviewed(deps, context);
+}
+
+async function viewDeliverySettingsReviewed(
+  deps: ShippingDependencies,
+  context: CallContext,
+): Promise<Result<DeliverySettingsView, DeliverySettingsFailure>> {
+  // Its own read-only unit, before this one (units do not nest).
+  const review = await deliveryReview(deps, context);
   return deps.unitOfWork.run<DeliverySettingsView, DeliverySettingsFailure>(
     context.market,
-    async () => ok(viewOf(deps, context, await deps.deliverySettings.settings(context.market))),
+    async () =>
+      ok(viewOf(deps, context, await deps.deliverySettings.settings(context.market), review, null)),
     { readOnly: true },
   );
 }
@@ -145,11 +197,13 @@ export async function setDeliverySettings(
 ): Promise<Result<DeliverySettingsView, DeliverySettingsFailure>> {
   const admin = adminOf(context);
   if (admin === null) return err({ code: 'access.denied' });
-  const version =
-    typeof input === 'object' && input !== null && !Array.isArray(input)
-      ? (input as Record<string, unknown>).expectedVersion
-      : undefined;
-  const parsed = parseDeliverySettings(input);
+  const isBody = typeof input === 'object' && input !== null && !Array.isArray(input);
+  const version = isBody ? (input as Record<string, unknown>).expectedVersion : undefined;
+  // The note is the review's, not a setting: it is checked by the recorder, not the parser.
+  const { note, ...settingsBody } = isBody
+    ? (input as Record<string, unknown>)
+    : { note: undefined };
+  const parsed = parseDeliverySettings(isBody ? settingsBody : input);
   const fields: Field[] = [
     ...(parsed.ok ? [] : parsed.fields),
     ...(typeof version === 'number' && Number.isInteger(version) && version >= 0
@@ -160,6 +214,7 @@ export async function setDeliverySettings(
     return err({ code: 'validation.failed', fields });
   }
   const now = deps.clock.now();
+  const reviewPolicy = await deliveryReview(deps, context);
   return deps.unitOfWork.run<DeliverySettingsView, DeliverySettingsFailure>(
     context.market,
     async () => {
@@ -183,7 +238,17 @@ export async function setDeliverySettings(
           after: settingsShape(saved),
         }),
       );
-      return ok(viewOf(deps, context, saved));
+      // The change is live; its review opens in the same unit (a refusal rolls the change back).
+      const review = await deps.review.openReview(context, {
+        area: DELIVERY_REVIEW_AREA,
+        subjectKind: DELIVERY_SETTINGS_SUBJECT_KIND,
+        subjectRef: DELIVERY_SETTINGS_SUBJECT_REF,
+        before: settingsValues(before),
+        after: settingsValues(saved),
+        note,
+      });
+      if (!review.ok) return err(review.error);
+      return ok(viewOf(deps, context, saved, reviewPolicy, requestRef(review.value)));
     },
   );
 }
@@ -193,6 +258,7 @@ async function readSellerMethods(
   context: CallContext,
   sellerId: Id<'Seller'>,
 ): Promise<Result<SellerDeliveryMethodsView, DeliverySettingsFailure>> {
+  const review = await deliveryReview(deps, context);
   return deps.unitOfWork.run<SellerDeliveryMethodsView, DeliverySettingsFailure>(
     context.market,
     async () => {
@@ -205,6 +271,8 @@ async function readSellerMethods(
         sellerId,
         supported: DELIVERY_METHODS.filter((method) => !taken.has(method)),
         platformEnabled: settings.enabled,
+        review,
+        request: null,
       });
     },
     { readOnly: true },
@@ -232,7 +300,7 @@ export async function viewSellerDeliveryMethods(
 export async function setSellerDeliveryMethods(
   deps: ShippingDependencies,
   context: CallContext,
-  input: { readonly sellerId: unknown; readonly supported: unknown },
+  input: { readonly sellerId: unknown; readonly supported: unknown; readonly note?: unknown },
 ): Promise<Result<SellerDeliveryMethodsView, DeliverySettingsFailure>> {
   const admin = adminOf(context);
   if (admin === null) return err({ code: 'access.denied' });
@@ -248,6 +316,7 @@ export async function setSellerDeliveryMethods(
   if (!known) return err({ code: 'shipping.seller-not-found' });
   const now = deps.clock.now();
   const unsupported = DELIVERY_METHODS.filter((method) => !supported.includes(method));
+  const reviewPolicy = await deliveryReview(deps, context);
   return deps.unitOfWork.run<SellerDeliveryMethodsView, DeliverySettingsFailure>(
     context.market,
     async () => {
@@ -261,10 +330,120 @@ export async function setSellerDeliveryMethods(
           after: { unsupported: auditMethods(unsupported) },
         }),
       );
+      // The change is live; its review opens in the same unit (a refusal rolls the change back).
+      const review = await deps.review.openReview(context, {
+        area: DELIVERY_REVIEW_AREA,
+        subjectKind: SELLER_METHODS_SUBJECT_KIND,
+        subjectRef: sellerId,
+        before: unsupportedValues(before),
+        after: unsupportedValues(unsupported),
+        note: input.note,
+      });
+      if (!review.ok) return err(review.error);
       const settings = await deps.deliverySettings.settings(context.market);
-      return ok({ sellerId, supported, platformEnabled: settings.enabled });
+      return ok({
+        sellerId,
+        supported,
+        platformEnabled: settings.enabled,
+        review: reviewPolicy,
+        request: requestRef(review.value),
+      });
     },
   );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Reverts (Admin Inbox › System requests): run in the open unit of a reviewer's decision
+
+const sameValues = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Restores the delivery settings before a rejected or withdrawn save, as a new version with its
+ * audit row (naming the request), only while the Market still holds the settings after it.
+ * Settings the rules no longer allow are gone.
+ */
+export async function revertDeliverySettings(
+  deps: ShippingDependencies,
+  context: CallContext,
+  request: RevertRequest,
+): Promise<RevertOutcome> {
+  const admin = reverterOf(context);
+  const restore = parseDeliverySettings(settingsInputOf(request.before));
+  const expected = parseDeliverySettings(settingsInputOf(request.after));
+  if (!restore.ok || !expected.ok) return 'gone';
+  const current = await deps.deliverySettings.settings(context.market);
+  const expectedSettings = {
+    ...expected.value,
+    readyPrepMinutes: expected.value.readyPrepMinutes ?? current.readyPrepMinutes,
+  };
+  if (!sameValues(settingsValues(current), settingsValues(expectedSettings))) {
+    return 'changed-since';
+  }
+  const saved = await deps.deliverySettings.saveSettings(
+    context.market,
+    {
+      ...restore.value,
+      readyPrepMinutes: restore.value.readyPrepMinutes ?? current.readyPrepMinutes,
+    },
+    current.version,
+    admin,
+    deps.clock.now(),
+  );
+  if (saved === 'conflict') return 'changed-since';
+  await deps.audit.record(
+    context,
+    DeliverySettingsReverted.entry('market', {
+      before: settingsShape(current),
+      after: { ...settingsShape(saved), requestId: request.requestId },
+    }),
+  );
+  return 'reverted';
+}
+
+/** Methods of a stored `{unsupported: [...]}`, or null when it is not one. */
+function unsupportedOfValues(values: unknown): readonly DeliveryMethod[] | null {
+  const list = (values as { readonly unsupported?: unknown } | null)?.unsupported;
+  if (!Array.isArray(list) || !list.every((item) => isDeliveryMethod(item))) return null;
+  return DELIVERY_METHODS.filter((method) => list.includes(method));
+}
+
+/**
+ * Restores the methods a seller supports before a rejected or withdrawn change, audited with the
+ * request, only while the seller still holds the set after it. A seller that no longer exists is
+ * gone. (Whether the seller exists is asked of the sellers module; an unreadable answer fails the
+ * decision as a whole, so the request stays open.)
+ */
+export async function revertSellerDeliveryMethods(
+  deps: ShippingDependencies,
+  context: CallContext,
+  request: RevertRequest,
+): Promise<RevertOutcome> {
+  const admin = reverterOf(context);
+  const sellerId = sellerIdOf(request.subjectRef);
+  const restore = unsupportedOfValues(request.before);
+  const expected = unsupportedOfValues(request.after);
+  if (sellerId === null || restore === null || expected === null) return 'gone';
+  const known = await deps.sellers.exists(context, sellerId);
+  if (known === 'unavailable') throw new Error('shipping: the sellers module cannot be read');
+  if (!known) return 'gone';
+  const current =
+    (await deps.deliverySettings.unsupportedOf(context.market, [sellerId])).get(sellerId) ?? [];
+  if (!sameValues(unsupportedValues(current), unsupportedValues(expected))) return 'changed-since';
+  await deps.deliverySettings.setUnsupported(
+    context.market,
+    sellerId,
+    restore,
+    admin,
+    deps.clock.now(),
+  );
+  await deps.audit.record(
+    context,
+    SellerDeliveryMethodsReverted.entry(sellerId, {
+      before: { unsupported: auditMethods(current) },
+      after: { unsupported: auditMethods(restore), requestId: request.requestId },
+    }),
+  );
+  return 'reverted';
 }
 
 // ---------------------------------------------------------------------------------------------

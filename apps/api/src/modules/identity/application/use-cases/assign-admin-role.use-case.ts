@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
+import type { SystemRequestRecorder } from '../../../../platform/change-review/change-review';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
@@ -15,6 +16,11 @@ import { AccountRoleChangedAudit } from '../../domain/audit';
 import { LastHolderPolicy } from '../../domain/last-holder-policy';
 import { isSystemRole, mayActOnAdmin } from '../accounts/admin-verdicts';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
+import {
+  ADMIN_ROLES_SUBJECT_KIND,
+  openPeopleReview,
+  type ReviewRef,
+} from '../people/people-review';
 import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { RoleAssignmentRepository, RoleRepository } from '../ports/seller-team.repository';
@@ -30,6 +36,11 @@ const RULE_KEYS = [PLATFORM_ROLE_ASSIGN.key];
 export interface AssignAdminRoleInput {
   readonly accountId: Id<'Account'>;
   readonly roleId: Id<'Role'>;
+  /**
+   * The admin's note for the reviewer (Admin Inbox › System requests, area people); needed only
+   * where the Market reviews the area.
+   */
+  readonly note?: unknown;
 }
 
 export interface AssignAdminRoleOutput {
@@ -37,6 +48,8 @@ export interface AssignAdminRoleOutput {
   readonly code: 'role.assigned' | 'role.unchanged';
   readonly accountId: Id<'Account'>;
   readonly roleId: Id<'Role'>;
+  /** The review the change opened; null when the area is off or nothing changed. */
+  readonly request: ReviewRef | null;
 }
 
 export type AssignAdminRoleFailure =
@@ -48,6 +61,11 @@ export type AssignAdminRoleFailure =
   | { readonly code: 'member.outranks-actor' }
   | { readonly code: 'role.not-grantable' }
   | { readonly code: 'member.last-holder' }
+  /** The note is missing or too long where the change is reviewed (path `note`). */
+  | {
+      readonly code: 'validation.failed';
+      readonly fields: readonly { readonly path: string; readonly code: string }[];
+    }
   | { readonly code: 'access.denied' };
 
 export interface AssignAdminRoleDependencies {
@@ -60,6 +78,7 @@ export interface AssignAdminRoleDependencies {
   readonly permissions: Pick<SealedPermissionCatalogue, 'get'>;
   readonly outbox: OutboxWriter;
   readonly audit: AuditWriter;
+  readonly review: SystemRequestRecorder;
   readonly clock: Clock;
 }
 
@@ -89,6 +108,10 @@ export interface AssignAdminRoleDependencies {
  *    active, verified holders are counted in this unit (`member.last-holder`, AC 25).
  * 6. The assignment changes under its version; `identity.account-role-changed.v1` and the audit
  *    row `identity.account-role.changed` (`before` and `after` role ids, R5).
+ * 7. The change is reviewed in Admin Inbox › System requests (area people, high risk): its request
+ *    opens in this unit with the admin's `note` (a refusal rolls the change back), values
+ *    `{ roleIds }`. A reviewer's reject restores the role before only if it narrows access
+ *    (people-reverters.ts).
  *
  * The same role answers `role.unchanged` and writes nothing. No session is revoked: permissions
  * are read on every request (R4, AC 26).
@@ -177,6 +200,7 @@ export class AssignAdminRole extends UseCase<
             code: 'role.unchanged',
             accountId: subject.accountId,
             roleId: role.state.id,
+            request: null,
           });
         }
         if (holdsSystem) {
@@ -199,7 +223,20 @@ export class AssignAdminRole extends UseCase<
             after: { roleId: role.state.id, scope: 'platform', sellerId: null },
           }),
         );
-        return ok({ code: 'role.assigned', accountId: subject.accountId, roleId: role.state.id });
+        const opened = await openPeopleReview(this.deps.review, context, {
+          subjectKind: ADMIN_ROLES_SUBJECT_KIND,
+          subjectRef: subject.accountId,
+          before: { roleIds: [previousRoleId] },
+          after: { roleIds: [role.state.id] },
+          note: input.note,
+        });
+        if (!opened.ok) return err(opened.error);
+        return ok({
+          code: 'role.assigned',
+          accountId: subject.accountId,
+          roleId: role.state.id,
+          request: opened.value,
+        });
       },
       { isolation: 'serializable' },
     );
