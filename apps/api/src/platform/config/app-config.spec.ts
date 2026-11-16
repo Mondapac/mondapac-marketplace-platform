@@ -35,6 +35,7 @@ describe('loadAppConfig', () => {
       stripeConnectWebhookSecrets: {},
       externalAccountHmac: { keys: {}, currentVersion: null },
       promotionsCodePepper: null,
+      assistantPreviewTokenKey: null,
       securityOnCallFile: null,
       clientAddressTrust: null,
       aiKillSwitch: false,

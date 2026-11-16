@@ -28,7 +28,7 @@ import type { AssistantReply } from '../application/use-cases/send-message.use-c
 import { SendGuestMessage } from '../application/use-cases/send-guest-message.use-case';
 import { SendMessage } from '../application/use-cases/send-message.use-case';
 import type { AssistantCard } from '../domain/cards';
-import { SendMessageRequest } from './assistant.dto';
+import { PREVIEW_HEADER, SendMessageRequest } from './assistant.dto';
 import { guestCookie, guestTokenOf } from './guest-cookie';
 import { closedBody, refusal } from './http-answers';
 
@@ -84,6 +84,12 @@ export class ConversationController {
     required: false,
     description: 'The CSRF token of the session; required for a signed-in customer',
   })
+  @ApiHeader({
+    name: PREVIEW_HEADER,
+    required: false,
+    description:
+      'An internal preview token (see GET /assistant/storefront); invalid counts as none',
+  })
   @ApiBody({ type: SendMessageRequest })
   @ApiOkResponse({ description: 'text/event-stream: conversation, card*, text*, notice*, done' })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
@@ -106,7 +112,13 @@ export class ConversationController {
     const closed = closedBody(request, body, ['text', 'visitor']);
     if (closed !== null) throw closed;
     const fields = body as { text?: unknown; visitor?: unknown };
-    const input = { conversationId: id, text: fields.text, visitor: fields.visitor };
+    const preview = request.headers[PREVIEW_HEADER];
+    const input = {
+      conversationId: id,
+      text: fields.text,
+      visitor: fields.visitor,
+      preview: typeof preview === 'string' ? preview : undefined,
+    };
     const { marketId } = context.market;
     const result =
       context.actor.kind === 'authenticated'

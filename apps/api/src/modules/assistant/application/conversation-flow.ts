@@ -41,6 +41,8 @@ export interface SendMessageInput {
   readonly text: unknown;
   /** The widget's random visitor key, for a percentage rollout (a rollout aid, not a control). */
   readonly visitor: unknown;
+  /** The internal preview token the browser sent, if any (untrusted; verified by the port). */
+  readonly preview?: unknown;
 }
 
 /** What the buyer is sent, in this order: cards, then the checked sentences, then notices. */
@@ -266,6 +268,9 @@ export async function sendMessage(
   const conversationId = id.value;
   const visitorKey =
     typeof input.visitor === 'string' && VISITOR_KEY.test(input.visitor) ? input.visitor : null;
+  const preview =
+    input.preview !== undefined &&
+    deps.previewTokens.verify(context.market, input.preview, deps.clock.now());
 
   // A guest without a usable token gets a new one; it can only start a new conversation.
   let guestHash: string | null = null;
@@ -295,7 +300,7 @@ export async function sendMessage(
       const on =
         settings.enabled &&
         deps.runtime.configured(market.marketId, settings.modelTier) &&
-        inRollout(settings, market.marketId, visitorKey);
+        inRollout(settings, market.marketId, visitorKey, preview);
       if (!on) return err({ code: 'assistant.off' });
       if (caller.kind === 'guest' && settings.users === 'customers-only') {
         return err({ code: 'assistant.sign-in-required' });

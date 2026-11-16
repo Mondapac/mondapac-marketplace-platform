@@ -15,6 +15,7 @@ import type {
 import type { GuestTokens } from '../ports/guest-tokens';
 import type { MarketCalendar } from '../ports/market-calendar';
 import type { MessageLimits } from '../ports/message-limits';
+import type { PreviewTokens } from '../ports/preview-tokens';
 import type { QuickPrompts } from '../ports/quick-prompts';
 import type { SpendRepository, SpendTotals } from '../ports/spend.repository';
 
@@ -272,6 +273,29 @@ export class FixedQuickPrompts implements QuickPrompts {
   forBuyer(_market: MarketContext, lang: string | null) {
     this.asked.push(lang);
     return lang?.startsWith('ja') ? ['今週の特売は？'] : ['What is on special?'];
+  }
+}
+
+/**
+ * Preview tokens: `preview:<Market>:<expiry ms>`, valid until the expiry and for that Market only;
+ * `available` switches the key off.
+ */
+export class FakePreviewTokens implements PreviewTokens {
+  available_ = true;
+  available() {
+    return this.available_;
+  }
+  issue(market: MarketContext, now: Temporal.Instant) {
+    if (!this.available_) return null;
+    const expiresAt = now.add({ minutes: 30 });
+    return { token: `preview:${market.marketId}:${expiresAt.epochMilliseconds}`, expiresAt };
+  }
+  verify(market: MarketContext, token: unknown, now: Temporal.Instant) {
+    if (!this.available_ || typeof token !== 'string') return false;
+    const [kind, marketId, expiry] = token.split(':');
+    return (
+      kind === 'preview' && marketId === market.marketId && Number(expiry) > now.epochMilliseconds
+    );
   }
 }
 

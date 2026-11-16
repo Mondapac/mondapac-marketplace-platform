@@ -12,6 +12,7 @@ import {
   MemoryConversations,
   MemoryLimits,
   SequenceGuestTokens,
+  FakePreviewTokens,
   FixedQuickPrompts,
 } from '../../src/modules/assistant/application/testing/assistant-fakes';
 import { SetAssistantSettings } from '../../src/modules/assistant/application/use-cases/set-assistant-settings.use-case';
@@ -108,6 +109,7 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
     guestTokens: new SequenceGuestTokens(),
     calendar: new RegistryMarketCalendar(markets),
     quickPrompts: new FixedQuickPrompts(),
+    previewTokens: new FakePreviewTokens(),
     trail: dbChangeTrail('assistant', catalogue, db.unitOfWork, actors),
   });
   const auditRows = async (target: MarketContext) =>

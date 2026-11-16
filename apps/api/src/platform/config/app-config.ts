@@ -161,6 +161,10 @@ const envSchema = z.object({
   // secret, never stored in the database or echoed; without it no batch of codes is generated and
   // none is looked up.
   PROMOTIONS_CODE_PEPPER: z.string().regex(HMAC_KEY, HMAC_KEY_MESSAGE).optional(),
+  // Buyer assistant stage 0 (B4): the key that signs the internal preview token an admin takes to
+  // the storefront. A server secret, never echoed or logged; without it no preview token is issued
+  // or accepted (the internal audience then reaches no storefront visitor).
+  ASSISTANT_PREVIEW_TOKEN_KEY: z.string().regex(HMAC_KEY, HMAC_KEY_MESSAGE).optional(),
   /** The on-call roster file of the SOC (docs/design/data/security.md 5); a path, never in the repo. */
   SECURITY_ON_CALL_FILE: z.string().min(1).max(4096).optional(),
   PAYMENTS_EXTERNAL_ACCOUNT_HMAC_CURRENT_VERSION: z.coerce.number().int().min(1).max(3).optional(),
@@ -462,6 +466,11 @@ export interface AppConfig {
   readonly securityOnCallFile: string | null;
   /** `PROMOTIONS_CODE_PEPPER` (a secret, never logged), or null when unset: single-use codes are then off. */
   readonly promotionsCodePepper: string | null;
+  /**
+   * `ASSISTANT_PREVIEW_TOKEN_KEY` (a secret, never logged), or null when unset: the assistant's
+   * internal preview is then off. Read by the assistant's preview token adapter alone.
+   */
+  readonly assistantPreviewTokenKey: string | null;
   /**
    * The keys of the hash of a connected account's default external account id, by version
    * (`PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K<n>`), and the version new values use (the setting
@@ -965,6 +974,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     stripeConnectWebhookSecrets: connectSecrets.secrets,
     externalAccountHmac: externalAccountHmac.value,
     promotionsCodePepper: parsed.data.PROMOTIONS_CODE_PEPPER ?? null,
+    assistantPreviewTokenKey: parsed.data.ASSISTANT_PREVIEW_TOKEN_KEY ?? null,
     securityOnCallFile: parsed.data.SECURITY_ON_CALL_FILE ?? null,
     clientAddressTrust: clientAddress.trust,
     assistantModels: assistant.config,

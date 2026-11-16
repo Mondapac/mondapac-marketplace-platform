@@ -7,6 +7,7 @@ import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-ro
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
+import { IssuePreviewToken } from '../src/modules/assistant/application/use-cases/issue-preview-token.use-case';
 import { SetAssistantSettings } from '../src/modules/assistant/application/use-cases/set-assistant-settings.use-case';
 import { ViewAssistantSettings } from '../src/modules/assistant/application/use-cases/view-assistant-settings.use-case';
 import { ViewAssistantSettingsHistory } from '../src/modules/assistant/application/use-cases/view-assistant-settings-history.use-case';
@@ -66,7 +67,9 @@ const STOREFRONT = {
   welcomeText: 'Hi',
   retentionDays: { customer: 30, guest: 30 },
   quickPrompts: ['What is on special?'],
+  preview: false,
 };
+const PREVIEW_PATH = '/assistant/admin/preview-token';
 
 it('maps every refusal code of the assistant routes to its exact status', () => {
   expect(ASSISTANT_STATUS).toEqual({
@@ -78,6 +81,7 @@ it('maps every refusal code of the assistant routes to its exact status', () => 
     'assistant.conversation-full': 409,
     'request.throttled': 429,
     'assistant.paused': 503,
+    'assistant.preview-unavailable': 503,
     'assistant.unavailable': 503,
   });
 });
@@ -114,7 +118,9 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
           .overrideProvider(ViewAssistantSettingsHistory)
           .useValue(stub('history'))
           .overrideProvider(ViewStorefrontAssistant)
-          .useValue(stub('public')),
+          .useValue(stub('public'))
+          .overrideProvider(IssuePreviewToken)
+          .useValue(stub('preview')),
     }));
     await app
       .get(SeedRoles)
@@ -268,9 +274,52 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     expect(read.headers['set-cookie']).toBeUndefined();
     expect(read.body).toEqual(STOREFRONT);
     expect(calls).toEqual([
-      { name: 'public', input: { visitor: 'visitor-key-0123456789', lang: 'en-AU' } },
+      {
+        name: 'public',
+        input: { visitor: 'visitor-key-0123456789', lang: 'en-AU', preview: undefined },
+      },
     ]);
     expect(actorKinds).toEqual(['anonymous']);
+  });
+
+  it('passes the preview header of the storefront read to the use case, as sent', async () => {
+    await boot();
+    next = ok({ ...STOREFRONT, preview: true });
+    const read = await http()
+      .get(PUBLIC)
+      .set({ 'x-market-id': code, 'x-assistant-preview': 'ap1.token' });
+    expect(read.status).toBe(200);
+    expect(read.body).toEqual({ ...STOREFRONT, preview: true });
+    expect(calls).toEqual([
+      { name: 'public', input: { visitor: undefined, lang: undefined, preview: 'ap1.token' } },
+    ]);
+  });
+
+  it('issues a preview token to an admin with CSRF, no-store, and maps its refusals', async () => {
+    await boot();
+    const session = sessionOf('admin', 2);
+    const post = (headers: Record<string, string>) =>
+      http()
+        .post(PREVIEW_PATH)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...headers });
+
+    next = ok({ token: 'ap1.x', expiresAt: '2026-10-19T21:30:00Z' });
+    const issued = await post(session);
+    expect(issued.status).toBe(200);
+    expect(issued.headers['cache-control']).toBe('no-store');
+    expect(issued.body).toEqual({ token: 'ap1.x', expiresAt: '2026-10-19T21:30:00Z' });
+    expect(calls).toEqual([{ name: 'preview', input: {} }]);
+    expect(actorKinds).toEqual(['authenticated']);
+
+    expect((await post({ cookie: session.cookie })).status).toBe(403);
+    expect(calls).toHaveLength(1);
+
+    next = err({ code: 'assistant.preview-unavailable' });
+    const off = await post(session);
+    expect(off.status).toBe(503);
+    expect(off.body).toEqual({ statusCode: 503, code: 'assistant.preview-unavailable' });
+    next = err({ code: 'access.denied' });
+    expect((await post(session)).status).toBe(403);
   });
 
   it('refuses the storefront read without a Market header', async () => {
