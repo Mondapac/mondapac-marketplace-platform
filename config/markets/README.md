@@ -8,6 +8,11 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
 `defaultLocale`, `supportedLocales`, `defaultCurrency`, `settlementCurrency` and `timezone`.
 `timezone` is only a fallback (ADR-0005): sellers, locations and addresses carry their own zone.
 
+Adding a Market also needs its text in `config/locales/` (see that folder's README). In
+particular, the Market's `defaultLocale` needs an `assistant.json` with at least one buyer
+assistant quick prompt (`assistant.quick-prompt.1`): the API refuses to start without it, even
+while the assistant is off.
+
 - `pricesIncludeTax` (required boolean; true for AU): the Market's price display convention
   (ADR-0007 decision 4). When true, prices are entered and shown tax-inclusive and tax is
   extracted from them; when false (the synthetic Market), tax is added on top. Read by pricing,
