@@ -9,6 +9,19 @@ import {
   CUSTOMERS_CUSTOMER_VIEW,
   CUSTOMERS_GROUPS_MANAGE,
 } from '../../src/modules/customers/contracts/permissions';
+import * as SECTION_KEYS from '../../src/modules/customers/application/section-keys';
+import { AdminCustomerPasswordReset as CustomersPasswordReset } from '../../src/modules/customers/application/use-cases/admin-customer-password-reset.use-case';
+import { AdminCustomerSessions as CustomersSessions } from '../../src/modules/customers/application/use-cases/admin-customer-sessions.use-case';
+import { AdminCustomerSignInReveal as CustomersSignInReveal } from '../../src/modules/customers/application/use-cases/admin-customer-sign-in-reveal.use-case';
+import { AdminCustomerSignInsExport as CustomersSignInsExport } from '../../src/modules/customers/application/use-cases/admin-customer-sign-ins-export.use-case';
+import { AdminCustomerSignIns as CustomersSignIns } from '../../src/modules/customers/application/use-cases/admin-customer-sign-ins.use-case';
+import { AdminCustomerSignOut as CustomersSignOut } from '../../src/modules/customers/application/use-cases/admin-customer-sign-out.use-case';
+import * as IDENTITY_KEYS from '../../src/modules/identity/contracts/permissions';
+import { AdminCustomerSessions as IdentityCustomerSessions } from '../../src/modules/identity/application/use-cases/admin-customer-sessions.use-case';
+import { AdminCustomerSignIns as IdentityCustomerSignIns } from '../../src/modules/identity/application/use-cases/admin-customer-sign-ins.use-case';
+import { AdminRevealCustomerSignIn as IdentityRevealCustomerSignIn } from '../../src/modules/identity/application/use-cases/admin-reveal-customer-sign-in.use-case';
+import { AdminSendCustomerPasswordReset as IdentitySendCustomerPasswordReset } from '../../src/modules/identity/application/use-cases/admin-send-customer-password-reset.use-case';
+import { AdminSignOutCustomer as IdentitySignOutCustomer } from '../../src/modules/identity/application/use-cases/admin-sign-out-customer.use-case';
 import { CUSTOMERS_EXPORT_STEP_UP } from '../../src/modules/customers/contracts/step-up';
 import {
   CUSTOMER_DATA_EXPORT_KEY as ORDERING_CUSTOMER_DATA_EXPORT_KEY,
@@ -147,5 +160,56 @@ describe('the group segment count of promotions', () => {
       name: 'promotions.count-group-segment-uses',
       rule: { kind: 'permissions', allOf: [CUSTOMERS_GROUPS_MANAGE.key] },
     });
+  });
+});
+
+// Customers management phase 2b, part 2: the customer page's sections other modules own. Each
+// customers use case declares customers.customers.view plus the owner's key (and the export adds
+// the protected customers.customers.export); the owner's facade use case declares the owner's key.
+// customers casts the owners' literals (section-keys.ts); this pins each to its declaration.
+describe('the customer page sections and their owners’ facade reads', () => {
+  const VIEW = CUSTOMERS_CUSTOMER_VIEW.key;
+  const EXPORT = CUSTOMERS_CUSTOMER_EXPORT.key;
+
+  it('casts exactly the keys the owners declared', () => {
+    expect([
+      SECTION_KEYS.IDENTITY_CUSTOMER_SIGN_IN_VIEW,
+      SECTION_KEYS.IDENTITY_CUSTOMER_SIGN_IN_REVEAL,
+      SECTION_KEYS.IDENTITY_CUSTOMER_SESSION_END,
+      SECTION_KEYS.IDENTITY_CUSTOMER_PASSWORD_RESET_SEND,
+    ]).toEqual([
+      IDENTITY_KEYS.CUSTOMER_SIGN_IN_VIEW.key,
+      IDENTITY_KEYS.CUSTOMER_SIGN_IN_REVEAL.key,
+      IDENTITY_KEYS.CUSTOMER_SESSION_END.key,
+      IDENTITY_KEYS.CUSTOMER_PASSWORD_RESET_SEND.key,
+    ]);
+    expect(IDENTITY_KEYS.CUSTOMER_SIGN_IN_REVEAL.protected).toBe(true);
+  });
+
+  it.each([
+    [CustomersSignIns, [VIEW, IDENTITY_KEYS.CUSTOMER_SIGN_IN_VIEW.key]],
+    [CustomersSignInsExport, [VIEW, IDENTITY_KEYS.CUSTOMER_SIGN_IN_VIEW.key, EXPORT]],
+    [
+      CustomersSignInReveal,
+      [VIEW, IDENTITY_KEYS.CUSTOMER_SIGN_IN_VIEW.key, IDENTITY_KEYS.CUSTOMER_SIGN_IN_REVEAL.key],
+    ],
+    [CustomersSessions, [VIEW, IDENTITY_KEYS.CUSTOMER_SIGN_IN_VIEW.key]],
+    [CustomersSignOut, [VIEW, IDENTITY_KEYS.CUSTOMER_SESSION_END.key]],
+    [CustomersPasswordReset, [VIEW, IDENTITY_KEYS.CUSTOMER_PASSWORD_RESET_SEND.key]],
+  ] as const)('%p requires customers view plus the owner’s key', (useCase, keys) => {
+    expect(useCase.access.rule).toEqual({ kind: 'permissions', allOf: keys });
+  });
+
+  it.each([
+    [IdentityCustomerSignIns, [IDENTITY_KEYS.CUSTOMER_SIGN_IN_VIEW.key]],
+    [IdentityCustomerSessions, [IDENTITY_KEYS.CUSTOMER_SIGN_IN_VIEW.key]],
+    [
+      IdentityRevealCustomerSignIn,
+      [IDENTITY_KEYS.CUSTOMER_SIGN_IN_VIEW.key, IDENTITY_KEYS.CUSTOMER_SIGN_IN_REVEAL.key],
+    ],
+    [IdentitySignOutCustomer, [IDENTITY_KEYS.CUSTOMER_SESSION_END.key]],
+    [IdentitySendCustomerPasswordReset, [IDENTITY_KEYS.CUSTOMER_PASSWORD_RESET_SEND.key]],
+  ] as const)('the owner’s facade read %p declares its own key', (useCase, keys) => {
+    expect(useCase.access.rule).toEqual({ kind: 'permissions', allOf: keys });
   });
 });

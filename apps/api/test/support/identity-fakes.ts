@@ -59,7 +59,9 @@ import {
   type SessionRepository,
 } from '../../src/modules/identity/application/ports/session.repository';
 import {
+  customerSignInResultOf,
   SIGN_IN_RECORD_REPOSITORY,
+  type CustomerSignInQuery,
   type SignInRecord,
   type SignInRecordRepository,
 } from '../../src/modules/identity/application/ports/sign-in-record.repository';
@@ -1527,9 +1529,52 @@ export class IdentityFakes {
         );
       return Promise.resolve(latest);
     },
+    pageOfCustomer: (market, query, direction, window) => {
+      const sign = direction === 'asc' ? 1 : -1;
+      const rows = this.customerRecords(market.marketId, query)
+        .sort(
+          (a, b) =>
+            sign *
+            (Temporal.Instant.compare(a.occurredAt, b.occurredAt) || a.id.localeCompare(b.id)),
+        )
+        .slice(window.offset, window.offset + window.limit)
+        .map(({ id, occurredAt, outcome, device }) => ({ id, occurredAt, outcome, device }));
+      return Promise.resolve(rows);
+    },
+    countOfCustomer: (market, query) =>
+      Promise.resolve(this.customerRecords(market.marketId, query).length),
+    customerAddressOf: (market, accountId, recordId, since) => {
+      const found = this.records.find(
+        (record) =>
+          record.marketId === market.marketId &&
+          record.id === recordId &&
+          record.accountId === accountId &&
+          record.population === 'customer' &&
+          Temporal.Instant.compare(record.occurredAt, since) >= 0,
+      );
+      return Promise.resolve(
+        found === undefined ? null : { address: found.address, occurredAt: found.occurredAt },
+      );
+    },
     oldest: () => Promise.resolve(null),
     deleteBetween: () => Promise.resolve(0),
   };
+
+  /** One customer's records as `pageOfCustomer` filters them (any order). */
+  private customerRecords(
+    marketId: string,
+    query: CustomerSignInQuery,
+  ): (SignInRecord & { marketId: string })[] {
+    return this.records.filter(
+      (record) =>
+        record.marketId === marketId &&
+        record.accountId === query.accountId &&
+        record.population === 'customer' &&
+        Temporal.Instant.compare(record.occurredAt, query.from) >= 0 &&
+        (query.to === null || Temporal.Instant.compare(record.occurredAt, query.to) < 0) &&
+        (query.results === null || query.results.includes(customerSignInResultOf(record.outcome))),
+    );
+  }
 
   readonly factorRepository: SecondFactorRepository = {
     findByAccount: (market, accountId) => {
