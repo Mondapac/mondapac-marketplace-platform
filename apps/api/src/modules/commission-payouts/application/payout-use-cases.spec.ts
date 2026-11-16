@@ -1262,7 +1262,12 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
     const next = (context: CallContext = sellerCtx) =>
       new ViewNextPayout(gate, deps).execute(context, undefined);
     const history = (input: Record<string, unknown> = {}, context: CallContext = sellerCtx) =>
-      new ListOwnPayouts(gate, deps).execute(context, input);
+      new ListOwnPayouts(gate, {
+        unitOfWork: deps.unitOfWork,
+        payouts: new MemoryAdminPayoutList(payouts, stores.holds),
+        sheetWriter: new ExceljsSheetWriter(),
+        clock,
+      }).execute(context, input);
     const held = (context: CallContext = sellerCtx) =>
       new ListOwnPayoutHolds(gate, deps).execute(context, undefined);
 
@@ -1316,6 +1321,7 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       expect(own.payouts.map((row) => row.status).sort()).toEqual(['not-sent', 'paid']);
       expect(own.payouts.find((row) => row.status === 'not-sent')!.reason).toBe('cooling-off');
       expect(json(own)).not.toContain(SELLER_B);
+      expect(own.counts).toMatchObject({ all: 2, paid: 1, 'not-sent': 1 });
 
       const otherSeller = must(await history({}, sellerBCtx));
       expect(otherSeller.payouts).toHaveLength(1);

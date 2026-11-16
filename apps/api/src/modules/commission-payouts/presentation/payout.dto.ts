@@ -14,6 +14,8 @@ import type {
 import type { NextPayoutView } from '../application/use-cases/view-next-payout.use-case';
 import type { PayoutDetailView } from '../application/use-cases/view-payout.use-case';
 import { BLOCK_REASONS, PAYOUT_STATES } from '../domain/payout';
+import { OWN_PAYOUT_ROW_ACTIONS } from '../domain/own-payout-list';
+import type { OwnPayoutListPage } from '../application/use-cases/list-own-payouts.use-case';
 
 // Bodies of the payout routes (package 6d). Ids, enums, minor-unit strings and instants only. A
 // seller's body never carries an admin, a note, a hold id, a transfer id or an internal code.
@@ -315,6 +317,51 @@ const ownPayoutBody = (view: OwnPayoutView): OwnPayoutBody => ({
 
 export const ownPayoutsBody = (view: OwnPayoutsView): OwnPayoutsBody => ({
   payouts: view.payouts.map(ownPayoutBody),
+  nextCursor: view.nextCursor,
+});
+
+class OwnPayoutRowBody extends OwnPayoutBody {
+  @ApiProperty({
+    enum: OWN_PAYOUT_ROW_ACTIONS,
+    isArray: true,
+    description: 'The row Actions menu: open shows the payout.',
+  })
+  actions!: string[];
+}
+
+class OwnPayoutCountsBody {
+  @ApiProperty() all!: number;
+  @ApiProperty() scheduled!: number;
+  @ApiProperty({ name: 'awaiting-approval' }) 'awaiting-approval'!: number;
+  @ApiProperty({ name: 'on-its-way' }) 'on-its-way'!: number;
+  @ApiProperty() paid!: number;
+  @ApiProperty({ name: 'not-sent' }) 'not-sent'!: number;
+  @ApiProperty() failed!: number;
+  @ApiProperty() settled!: number;
+}
+
+export class OwnPayoutListBody {
+  @ApiProperty({ type: [OwnPayoutRowBody], description: 'In the order of the sort.' })
+  payouts!: OwnPayoutRowBody[];
+  @ApiProperty({ type: OwnPayoutCountsBody, description: "The seller's payouts per status." })
+  counts!: OwnPayoutCountsBody;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Page numbers only; null with Previous/Next.',
+  })
+  total!: number | null;
+  @ApiProperty({ nullable: true, type: Number }) page!: number | null;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ nullable: true, type: String }) nextCursor!: string | null;
+}
+
+export const ownPayoutListBody = (view: OwnPayoutListPage): OwnPayoutListBody => ({
+  payouts: view.payouts.map((row) => ({ ...ownPayoutBody(row), actions: [...row.actions] })),
+  counts: { ...view.counts },
+  total: view.total,
+  page: view.page,
+  pageSize: view.pageSize,
   nextCursor: view.nextCursor,
 });
 

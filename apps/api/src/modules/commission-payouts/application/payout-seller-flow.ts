@@ -153,7 +153,7 @@ export interface OwnPayoutsView {
   readonly nextCursor: string | null;
 }
 
-const SELLER_STATUS: Readonly<Record<PayoutState, SellerPayoutState | null>> = {
+export const SELLER_STATUS: Readonly<Record<PayoutState, SellerPayoutState | null>> = {
   pending: 'scheduled',
   'awaiting-approval': 'awaiting-approval',
   approved: 'scheduled',
@@ -167,7 +167,7 @@ const SELLER_STATUS: Readonly<Record<PayoutState, SellerPayoutState | null>> = {
   'settled-by-netting': 'settled',
 };
 
-const ownView = (payout: Payout): OwnPayoutView => ({
+export const ownView = (payout: Payout): OwnPayoutView => ({
   payoutId: payout.id,
   status: SELLER_STATUS[payout.state] ?? 'scheduled',
   gross: moneyOf(payout.gross, payout.currency),

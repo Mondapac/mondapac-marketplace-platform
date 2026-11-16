@@ -116,18 +116,18 @@ export type SellerPageListFailure =
 
 export type SellerPageExportFailure = SellerPageListFailure | ExportInputFailure | ExportTooLarge;
 
-type Fields = { path: string; code: string }[];
-type Input = Readonly<Record<string, unknown>>;
+export type Fields = { path: string; code: string }[];
+export type Input = Readonly<Record<string, unknown>>;
 
 const isAdmin = (context: CallContext) =>
   context.actor.kind === 'authenticated' && context.actor.population === 'admin';
 
-const whole = (value: unknown, min: number, max: number): number | null =>
+export const whole = (value: unknown, min: number, max: number): number | null =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= min && value <= max
     ? value
     : null;
 
-function oneOf<T extends string>(
+export function oneOf<T extends string>(
   fields: Fields,
   path: string,
   value: unknown,
@@ -139,7 +139,7 @@ function oneOf<T extends string>(
   return null;
 }
 
-function idOf<K extends string>(fields: Fields, path: string, value: unknown): Id<K> | null {
+export function idOf<K extends string>(fields: Fields, path: string, value: unknown): Id<K> | null {
   if (value === undefined || value === '') return null;
   const parsed = typeof value === 'string' ? parseId<K>(value.trim().toLowerCase()) : null;
   if (parsed !== null && parsed.ok) return parsed.value;
@@ -148,7 +148,7 @@ function idOf<K extends string>(fields: Fields, path: string, value: unknown): I
 }
 
 /** `from` and `to` as ISO instants, `to` after `from`. */
-function window(
+export function instantWindow(
   fields: Fields,
   input: Input,
 ): { from: Temporal.Instant | null; to: Temporal.Instant | null } {
@@ -181,11 +181,11 @@ type Paging<C> =
  * Page numbers, or Previous/Next when `cursor` or `limit` is given (newest first only, so no
  * `page`, `pageSize`, `sort` or `direction` with it). Returns the sort for page numbers.
  */
-function pagingOf<K extends string, C>(
+export function pagingOf<K extends string, C>(
   fields: Fields,
   input: Input,
   keys: readonly K[],
-  defaults: { readonly sort: K; readonly pageSize: number },
+  defaults: { readonly sort: K; readonly pageSize: number; readonly limit?: number },
   decode: (value: unknown) => C | null,
 ): { paging: Paging<C>; sort: { key: K; direction: 'asc' | 'desc' } } {
   const sort = { key: defaults.sort, direction: 'desc' as 'asc' | 'desc' };
@@ -193,7 +193,7 @@ function pagingOf<K extends string, C>(
     for (const path of ['page', 'pageSize', 'sort', 'direction']) {
       if (input[path] !== undefined) fields.push({ path, code: 'with-cursor' });
     }
-    let limit = LEDGER_DEFAULT_LIMIT;
+    let limit = defaults.limit ?? LEDGER_DEFAULT_LIMIT;
     if (input.limit !== undefined) {
       const given = whole(input.limit, 1, SELLER_PAGE_MAX_PAGE_SIZE);
       if (given === null) fields.push({ path: 'limit', code: 'range' });
@@ -225,7 +225,7 @@ function pagingOf<K extends string, C>(
   return { paging: { kind: 'pages', page, pageSize }, sort };
 }
 
-function sortOf<K extends string>(
+export function sortOf<K extends string>(
   fields: Fields,
   input: Input,
   keys: readonly K[],
@@ -242,7 +242,7 @@ function sortOf<K extends string>(
 }
 
 /** A cursor is `<ms>.<uuid>`: opaque to callers, checked on the way in. */
-function decodeCursor<K extends string>(
+export function decodeCursor<K extends string>(
   value: unknown,
 ): { at: Temporal.Instant; id: Id<K> } | null {
   const match = typeof value === 'string' ? /^([0-9]{1,15})\.([0-9a-f-]{36})$/.exec(value) : null;
@@ -251,7 +251,8 @@ function decodeCursor<K extends string>(
   return { at: Temporal.Instant.fromEpochMilliseconds(Number(match[1])), id: id.value };
 }
 
-const cursorOf = (at: Temporal.Instant, id: string): string => `${at.epochMilliseconds}.${id}`;
+export const cursorOf = (at: Temporal.Instant, id: string): string =>
+  `${at.epochMilliseconds}.${id}`;
 
 function sellerOf(context: CallContext, input: Input): Result<Id<'Seller'>, SellerPageListFailure> {
   if (!isAdmin(context)) return err({ code: 'access.denied' });
@@ -263,7 +264,7 @@ function sellerOf(context: CallContext, input: Input): Result<Id<'Seller'>, Sell
 }
 
 /** Refuses a key the list does not know (a typo must not widen an export). */
-function unknownKey(input: Input, known: ReadonlySet<string>): string | null {
+export function unknownKey(input: Input, known: ReadonlySet<string>): string | null {
   return Object.keys(input).find((key) => !known.has(key)) ?? null;
 }
 
@@ -325,7 +326,7 @@ function ledgerFilterOf(fields: Fields, sellerId: Id<'Seller'>, input: Input): L
   if (kind !== null) kinds = (kinds ?? LEDGER_KINDS).filter((k) => k === kind);
   // An order or seller order id, exact; never echoed or logged.
   const reference = idOf<'Order'>(fields, 'q', input.q);
-  const { from, to } = window(fields, input);
+  const { from, to } = instantWindow(fields, input);
   const amount = (path: 'minAmount' | 'maxAmount'): bigint | null => {
     const value = input[path];
     if (value === undefined || value === '') return null;
@@ -632,7 +633,7 @@ export interface SellerHoldPage {
 }
 
 function holdFilterOf(fields: Fields, sellerId: Id<'Seller'>, input: Input): HoldListFilter {
-  const { from, to } = window(fields, input);
+  const { from, to } = instantWindow(fields, input);
   return {
     sellerId,
     status: oneOf(fields, 'status', input.status, HOLD_LIST_STATUSES),
