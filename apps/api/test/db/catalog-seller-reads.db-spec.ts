@@ -9,6 +9,7 @@ import {
 import type { MarketContext } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { OwnOfferRead } from '../../src/modules/catalog/application/use-cases/own-offer-read.use-case';
+import { OwnOffersExport } from '../../src/modules/catalog/application/use-cases/own-offers-export.use-case';
 import { OwnOffersList } from '../../src/modules/catalog/application/use-cases/own-offers-list.use-case';
 import { OwnProductRead } from '../../src/modules/catalog/application/use-cases/own-product-read.use-case';
 import { PlatformProductRead } from '../../src/modules/catalog/application/use-cases/platform-product-read.use-case';
@@ -318,6 +319,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
   let read: OwnProductRead;
   let readPlatform: PlatformProductRead;
   let listOffers: OwnOffersList;
+  let exportOffers: OwnOffersExport;
   let readOffer: OwnOfferRead;
   beforeAll(() => {
     reader = new PrismaOwnCatalogReader(persistence.service);
@@ -358,6 +360,13 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       ownReader: reader,
       policy,
       ownEditProbe: new OwnProductEditProbe(gate),
+    });
+    exportOffers = new OwnOffersExport(gate, {
+      unitOfWork: persistence.unitOfWork,
+      ownReader: reader,
+      policy,
+      sheetWriter: new ExceljsSheetWriter(),
+      clock,
     });
     readOffer = new OwnOfferRead(gate, {
       unitOfWork: persistence.unitOfWork,
@@ -1202,6 +1211,96 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       ? ownList.value.items.find((i) => i.offerId === ownOffer.state.id)
       : null;
     expect(ownRow && 'actions' in ownRow && ownRow.actions).toEqual(['open', 'edit', 'submit']);
+  });
+
+  it('exports the seller’s Offers: selector, selected ids, columns, XLSX, and refuses what does not fit', async () => {
+    const tag = randomUUID().slice(0, 6);
+    const names = ['Export Alpha', 'Export Beta', 'Export Gamma'];
+    const made: Offer[] = [];
+    for (const [n, name] of names.entries()) {
+      const product = await draftedProduct('PLATFORM', SELLER, name);
+      const published = await submit.execute(adminContext(), {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      if (!published.ok) throw new Error(published.error.code);
+      made.push(await offerOn(product.state.id, SELLER, `EXP-${tag}-${n}`));
+    }
+    const foreignProduct = await draftedProduct('PLATFORM', OTHER, 'Export Foreign');
+    const foreign = await offerOn(foreignProduct.state.id, OTHER, `EXP-${tag}-f`);
+    const run = async (input: Record<string, unknown>) => {
+      const answer = await exportOffers.execute(sellerContext(), input);
+      if (!answer.ok) return answer;
+      let text = '';
+      for await (const chunk of answer.value.chunks) {
+        text += typeof chunk === 'string' ? chunk : '';
+      }
+      return { ok: true as const, file: answer.value, text };
+    };
+    const lines = (text: string) =>
+      text
+        .replace(/^\uFEFF/, '')
+        .trim()
+        .split('\r\n');
+
+    const all = await run({ q: `exp-${tag}`, sort: 'sku', direction: 'asc' });
+    if (!all.ok) throw new Error(JSON.stringify(all.error));
+    expect(all.file.filename).toBe(
+      'offers-2026-01-01.csv'.replace('2026-01-01', T0.toString().slice(0, 10)),
+    );
+    expect(all.file.contentType).toBe('text/csv; charset=utf-8');
+    const rows = lines(all.text);
+    expect(rows[0]).toBe('SKU,Product,Status,Product code,On sale');
+    expect(rows).toHaveLength(4);
+    expect(rows[1]).toMatch(new RegExp(`^EXP-${tag}-0,Export Alpha,Draft,X[0-9A-Z]+,No$`));
+    expect(all.text).not.toContain(foreign.state.sellerSku);
+
+    // Selected ids: exactly those, in the order of the sort; columns after the fixed three.
+    const picked = await run({
+      offerIds: `${made[2]!.state.id},${made[0]!.state.id}`,
+      columns: 'created,type',
+      sort: 'sku',
+      direction: 'desc',
+    });
+    if (!picked.ok) throw new Error(JSON.stringify(picked.error));
+    const pickedRows = lines(picked.text);
+    expect(pickedRows[0]).toBe('SKU,Product,Status,Created,Product type');
+    expect(pickedRows.map((row) => row.split(',')[0])).toEqual([
+      'SKU',
+      `EXP-${tag}-2`,
+      `EXP-${tag}-0`,
+    ]);
+
+    // XLSX leaves as bytes of a zip.
+    const xlsx = await exportOffers.execute(sellerContext(), { q: `exp-${tag}`, format: 'xlsx' });
+    if (!xlsx.ok) throw new Error(JSON.stringify(xlsx.error));
+    expect(xlsx.value.filename).toMatch(/\.xlsx$/);
+    const bytes: Uint8Array[] = [];
+    for await (const chunk of xlsx.value.chunks) bytes.push(chunk as Uint8Array);
+    expect(Buffer.concat(bytes).subarray(0, 2).toString()).toBe('PK');
+
+    // Refusals: another seller's id is one answer with an unknown id; keys of the list are refused.
+    const notFound = { ok: false, error: { code: 'offer.not-found' } };
+    expect(await run({ offerIds: foreign.state.id })).toEqual(notFound);
+    expect(await run({ offerIds: uuid7() })).toEqual(notFound);
+    expect(await run({ offerIds: `${made[0]!.state.id},${foreign.state.id}` })).toEqual(notFound);
+    const refused = (path: string, code: string) => ({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path, code }] },
+    });
+    expect(await run({ page: 1 })).toEqual(refused('page', 'unknown'));
+    expect(await run({ paging: 'prev-next' })).toEqual(refused('paging', 'unknown'));
+    expect(await run({ columns: 'price' })).toEqual(refused('columns', 'value'));
+    expect(await run({ format: 'pdf' })).toEqual(refused('format', 'value'));
+    expect(await run({ offerIds: 'nope' })).toEqual(refused('offerIds', 'format'));
+    expect(await run({ offerIds: `${made[0]!.state.id},${made[0]!.state.id}` })).toEqual(
+      refused('offerIds', 'duplicate'),
+    );
+    const tooMany = Array.from({ length: 101 }, () => uuid7()).join(',');
+    expect(await run({ offerIds: tooMany })).toEqual({
+      ok: false,
+      error: { code: 'batch.too-large', max: 100 },
+    });
   });
 
   describe('offerTotalsOfProduct', () => {
