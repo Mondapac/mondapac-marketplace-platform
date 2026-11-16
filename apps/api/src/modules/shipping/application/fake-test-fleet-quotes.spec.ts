@@ -111,6 +111,7 @@ describe('checkout delivery quotes from the fake_test fleet in market ZZ', () =>
       policy: new ConfigShippingPolicy(markets, areas),
       sellers: undefined as never,
       audit: undefined as never,
+      review: undefined as never,
       clock,
       ids: new SequenceIdGenerator(clock),
       outbox: {

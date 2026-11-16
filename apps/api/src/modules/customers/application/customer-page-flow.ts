@@ -1,5 +1,5 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, IdGenerator, Result } from '@mondapac/shared-kernel';
 import { parseId } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import { CustomerPageOpened } from '../domain/audit';
@@ -7,6 +7,7 @@ import type { AccountDeletionRequest } from '../domain/account-deletion-request'
 import type { CustomerListRow } from '../domain/customer-list';
 import type { AccountDeletionRequestRepository } from './ports/account-deletion-request.repository';
 import { rowView, type CustomerRowView, type CustomerListDependencies } from './customer-list-flow';
+import type { CustomerTimelineRepository } from './ports/customer-timeline.repository';
 
 export const CUSTOMER_PAGE_TABS = ['overview', 'orders', 'money'] as const;
 export type CustomerPageTab = (typeof CUSTOMER_PAGE_TABS)[number];
@@ -15,6 +16,9 @@ export interface CustomerPageDependencies extends CustomerListDependencies {
   readonly audit: AuditWriter;
   /** The account's open deletion request, shown on the Overview (same module's own table). */
   readonly deletionRequests: Pick<AccountDeletionRequestRepository, 'findActiveOf'>;
+  /** Phase 2: every open is also an entry on the customer's timeline ("who looked"). */
+  readonly timeline: CustomerTimelineRepository;
+  readonly ids: IdGenerator;
 }
 
 export type CustomerPageFailure =
@@ -34,9 +38,9 @@ export function accountIdOf(value: unknown): Id<'Account'> | null {
 }
 
 /**
- * Opens one tab of a customer's page: reads the customer in a unit that also writes the audit row,
- * so a page that cannot be audited is not shown (the row holds the tab and the admin, never the
- * customer's data). Another Market's customer, or none, is `customers.customer-not-found`.
+ * Opens one tab of a customer's page: reads the customer in a unit that also writes the audit row
+ * and the timeline entry, so a page that cannot be audited is not shown (the row holds the tab and
+ * the admin, never the customer's data). Another Market's customer, or none, is `customers.customer-not-found`.
  */
 export async function openCustomerPage(
   deps: CustomerPageDependencies,
@@ -52,6 +56,24 @@ export async function openCustomerPage(
         ? await deps.deletionRequests.findActiveOf(context.market, accountId)
         : null;
     await deps.audit.record(context, CustomerPageOpened.entry(accountId, { after: { tab } }));
+    const admin = context.actor.kind === 'authenticated' ? context.actor.accountId : null;
+    const now = deps.clock.now();
+    await deps.timeline.record(
+      context.market,
+      {
+        id: deps.ids.next<'CustomerTimelineEntry'>(),
+        accountId,
+        occurredAt: now,
+        kind: 'page-opened',
+        ref: null,
+        actorAccountId: admin,
+        detail: tab,
+        sourceEventId: null,
+      },
+      now,
+      // One row per admin, tab and (UTC) day: the audit log keeps every open.
+      { onceSince: now.toZonedDateTimeISO('UTC').startOfDay().toInstant() },
+    );
     return ok({ row, deletion });
   });
 }

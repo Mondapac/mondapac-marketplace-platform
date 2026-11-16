@@ -407,6 +407,11 @@
         "keep": "Keep as it is",
         "type-to-confirm": "Type the name to confirm",
         "step-up-note": "We'll ask for your two-step code next.",
+        "reactivate": {
+          "title": "Reactivate {name}'s admin account?",
+          "body": "The account is active again at once. Another admin reviews this change and can undo it.",
+          "action": "Reactivate"
+        },
         "deactivate": {
           "title": "Deactivate {name}'s admin account?",
           "body": "They're signed out straight away and can't sign in.",
@@ -607,6 +612,7 @@
         "title-create": "New custom role",
         "title-edit": "Edit role",
         "section-name": "Name",
+        "section-note": "Review",
         "name": "Role name",
         "name-help": "Up to {max} characters. Each custom role needs its own name.",
         "name-required": "Enter a name for the role.",
@@ -2995,10 +3001,19 @@
       "who-unnamed": "Someone",
       "changed": "Changed: {fields}",
       "saved": "Saved"
+    },
+    "drawer": {
+      "close": "Close",
+      "cancel": "Cancel",
+      "discard-title": "Discard your input?",
+      "discard-message": "You have input that is not saved. If you close now, it is lost.",
+      "keep": "Keep editing",
+      "discard": "Discard"
     }
   },
   "fleets": {
     "title": "Delivery fleets",
+    "review-section": "Review",
     "permission-view": "View delivery fleets",
     "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
     "no-access": "Your role cannot see delivery fleets.",
@@ -5815,6 +5830,7 @@
       "platform-import-finished": "A <strong>product import</strong> {outcome, select, stopped {stopped part way} other {finished}}",
       "review-held": "A <strong>review</strong> is held for moderation",
       "review-reported": "A seller reported a <strong>review</strong>",
+      "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review",
       "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count cap</strong>} amount {A seller reached the <strong>refund amount cap</strong>} unset {A seller tried to refund with <strong>no refund cap set</strong>} other {A seller reached a <strong>refund cap</strong>}}"
     },
     "category": {
@@ -5825,6 +5841,7 @@
       "delivery": "Delivery",
       "reviews": "Reviews",
       "refunds": "Refunds",
+      "system-requests": "System requests",
       "other": "Other"
     },
     "empty": {
@@ -5847,6 +5864,7 @@
   },
   "deliverySettings": {
     "title": "Delivery rules",
+    "review-section": "Review",
     "permission-view": "View delivery settings",
     "state": {
       "on": "On",

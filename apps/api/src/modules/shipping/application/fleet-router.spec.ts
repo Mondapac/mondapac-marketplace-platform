@@ -158,6 +158,7 @@ describe.each([
       },
       sellers: undefined as never,
       audit: undefined as never,
+      review: undefined as never,
       clock,
       ids: new SequenceIdGenerator(clock),
       outbox: {
@@ -560,6 +561,7 @@ describe.each([['ZZ', 'JPY', '1000001', '1000002']] as const)(
         },
         sellers: undefined as never,
         audit: undefined as never,
+        review: undefined as never,
         clock,
         ids: new SequenceIdGenerator(clock),
         outbox: { append: () => Promise.resolve() },

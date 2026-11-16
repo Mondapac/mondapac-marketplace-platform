@@ -2,6 +2,7 @@ import type { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, IdGenerator, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
+import type { SystemRequestRecorder } from '../../../../platform/change-review/change-review';
 import type { SealedPermissionCatalogue } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
@@ -13,6 +14,11 @@ import type { AccountRepository } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { RoleAssignmentRepository, RoleRepository } from '../ports/seller-team.repository';
+import {
+  openPeopleReview,
+  PLATFORM_ROLE_SUBJECT_KIND,
+  type ReviewRef,
+} from '../people/people-review';
 import { isActingAsSession } from '../sellers/access-decision-reads';
 import { readActingGrants, roleIsInActorsReach, type GrantSubject } from './granting';
 import {
@@ -62,6 +68,11 @@ export interface EditRoleInput extends CreateRoleInput {
   readonly roleId: Id<'Role'>;
   /** The `version` the editor read (required): a different stored version answers `conflict.stale`. */
   readonly expectedVersion: number;
+  /**
+   * The admin's note for the reviewer (Admin Inbox › System requests, area people): read only by
+   * the platform editor, and needed only where the Market reviews the area.
+   */
+  readonly note?: unknown;
 }
 
 export interface DeleteRoleInput {
@@ -92,6 +103,11 @@ export type RoleEditorFailure =
 export interface RoleWritten {
   readonly code: 'role.created' | 'role.updated' | 'role.unchanged' | 'role.deleted';
   readonly roleId: Id<'Role'>;
+  /**
+   * Only on the platform editor's edit: the review it opened (Admin Inbox › System requests, area
+   * people), or null when the area is off or nothing changed.
+   */
+  readonly request?: ReviewRef | null;
 }
 
 type Outcome = Result<RoleWritten, RoleEditorFailure>;
@@ -218,13 +234,19 @@ export async function createCustomRole(
   );
 }
 
-/** Edit a custom role (`.role.edit`): its name and its whole key set. */
+/**
+ * Edit a custom role (`.role.edit`): its name and its whole key set. With `review` (the platform
+ * editor only), the edit opens its review in Admin Inbox › System requests in the same unit, with
+ * the values `{ name, permissionKeys }` before and after and the admin's `note`; a refusal (a
+ * missing note) rolls the edit back.
+ */
 export async function editCustomRole(
   deps: RoleEditorDependencies,
   editor: RoleEditorScope,
   logger: Logger,
   context: CallContext,
   input: EditRoleInput,
+  review?: SystemRequestRecorder,
 ): Promise<Outcome> {
   const { market } = context;
   const self = subjectOf(context, editor);
@@ -285,7 +307,11 @@ export async function editCustomRole(
             role.state.permissionKeys.length === keys.value.length &&
             role.state.permissionKeys.every((key, index) => key === keys.value[index]);
           if (sameKeys && role.state.name === name.value) {
-            return ok({ code: 'role.unchanged', roleId: role.state.id });
+            return ok({
+              code: 'role.unchanged',
+              roleId: role.state.id,
+              ...(review === undefined ? {} : { request: null }),
+            });
           }
           if (
             role.nameNormalized !== normalizeRoleName(name.value) &&
@@ -319,7 +345,19 @@ export async function editCustomRole(
               },
             }),
           );
-          return ok({ code: 'role.updated', roleId: role.state.id });
+          if (review === undefined) return ok({ code: 'role.updated', roleId: role.state.id });
+          const opened = await openPeopleReview(review, context, {
+            subjectKind: PLATFORM_ROLE_SUBJECT_KIND,
+            subjectRef: role.state.id,
+            before: {
+              name: role.state.name ?? null,
+              permissionKeys: [...role.state.permissionKeys],
+            },
+            after: { name: name.value, permissionKeys: [...keys.value] },
+            note: input.note,
+          });
+          if (!opened.ok) return err(opened.error);
+          return ok({ code: 'role.updated', roleId: role.state.id, request: opened.value });
         },
         { isolation: 'serializable' },
       ),
