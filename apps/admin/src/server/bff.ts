@@ -16,7 +16,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   GET: new Set([
     'identity/admin/session',
     'identity/admin/sellers',
+    // The Seller accounts list (super list 22) and the same rows as a file (CSV or XLSX).
     'payments/admin/connected-accounts',
+    'payments/admin/connected-accounts/export',
     // The Market's orders (ordering), read-only: the list; one order is read by the page server.
     'ordering/admin/orders',
     // The Market's buyer assistant settings, read again after another admin saved first.
@@ -604,7 +606,35 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'identity/admin/sellers': ['state', 'limit', 'after'],
-  'payments/admin/connected-accounts': ['status', 'cursor'],
+  'payments/admin/connected-accounts': [
+    'status',
+    'ready',
+    'requirements',
+    'waiting',
+    'q',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'paging',
+    'cursor',
+  ],
+  'payments/admin/connected-accounts/export': [
+    'format',
+    'columns',
+    'ids',
+    'status',
+    'ready',
+    'requirements',
+    'waiting',
+    'q',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   // The page mode and the filters of the orders list (the API validates every value).
   'ordering/admin/orders': [
     'status',
@@ -740,7 +770,37 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'ordering/admin/refund-limits': ['sellerId'],
 };
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/;
+/** The Seller accounts list's filters and sort (payments validates every value again). */
+const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
+  status: /^(not-started|pending|enabled|restricted|rejected)$/,
+  ready: /^(yes|no)$/,
+  requirements: /^(past-due|due|none)$/,
+  waiting: /^(cooling-off|paused)$/,
+  // A seller id or part of a store name (payments refuses control characters and the length).
+  // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+  q: /^[^\u0000-\u001f\u007f]{1,80}$/u,
+  from: ISO_INSTANT,
+  to: ISO_INSTANT,
+  sort: /^(created|last-read|requirements)$/,
+  direction: /^(asc|desc)$/,
+};
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'payments/admin/connected-accounts': {
+    ...ACCOUNT_LIST_SHAPES,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    // The API's own cursor: epoch milliseconds of the creation, a dot and the seller id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'payments/admin/connected-accounts/export': {
+    ...ACCOUNT_LIST_SHAPES,
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(cooling-off|paused|last-read|seller-id)(,(cooling-off|paused|last-read|seller-id)){0,3}$/,
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+  },
   'ordering/admin/refund-limits': { sellerId: UUID },
   // The cursor is the API's own: epoch milliseconds, a dot and a request id.
   'wallet/admin/credit-requests': {
@@ -976,8 +1036,32 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
   'wallet/admin/credit-requests/export:ids': 7400,
+  'payments/admin/connected-accounts/export:ids': 7400,
   'catalog/admin/attributes:search': 120,
 };
+
+/**
+ * Exports whose query is checked strictly: a known key whose value is out of shape or too long
+ * refuses the request (400), instead of being dropped. Dropping a filter of an export would send
+ * a wider file than the one asked for.
+ */
+const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
+  'payments/admin/connected-accounts/export',
+]);
+
+/** The first known key of a strict target whose value cannot cross, or null. */
+function strictQueryRefusal(method: string, target: string, requestUrl: string): string | null {
+  if (method !== 'GET' || !STRICT_QUERY_TARGETS.has(target)) return null;
+  const shapes = QUERY_SHAPES[target] ?? {};
+  const source = new URL(requestUrl).searchParams;
+  for (const key of QUERY_KEYS[target] ?? []) {
+    const value = source.get(key);
+    if (value === null) continue;
+    const max = QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX;
+    if (value.length > max || shapes[key]?.test(value) === false) return key;
+  }
+  return null;
+}
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
 function upstreamQuery(method: string, target: string, requestUrl: string): string {
@@ -1291,6 +1375,17 @@ export async function relay(
     const read = await readCapped(request, bodyCap);
     if (read === null) return jsonError(413, 'request.too-large');
     body = read;
+  }
+  const refused = strictQueryRefusal(request.method, target, request.url);
+  if (refused !== null) {
+    return new Response(
+      JSON.stringify({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: refused, code: 'format' }] },
+      }),
+      { status: 400, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } },
+    );
   }
   let outgoing: Headers;
   try {
