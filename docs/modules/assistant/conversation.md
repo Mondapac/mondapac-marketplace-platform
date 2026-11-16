@@ -120,11 +120,11 @@ Three routes on the same controller, for a signed-in customer only (session cook
 needs the CSRF token). A guest is answered 403 `assistant.sign-in-required` before any use case;
 a seller or admin session is not read here. Every answer is `Cache-Control: no-store`.
 
-| Route | Use case (`own-resources`) | Answer |
-|---|---|---|
-| `GET /assistant/conversations?cursor&limit` | `assistant.list-conversations` | `{ items: [{ id, title, turns, full, startedAt, lastMessageAt }], nextCursor }`, newest activity first, 20 a page (at most 50), keyset cursor |
-| `GET /assistant/conversations/:id` | `assistant.view-conversation` | the same fields plus `messages: [{ position, role, text, cards, at }]`, oldest first |
-| `DELETE /assistant/conversations/:id` | `assistant.delete-conversation` | 204 |
+| Route                                       | Use case (`own-resources`)      | Answer                                                                                                                                        |
+| ------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /assistant/conversations?cursor&limit` | `assistant.list-conversations`  | `{ items: [{ id, title, turns, full, startedAt, lastMessageAt }], nextCursor }`, newest activity first, 20 a page (at most 50), keyset cursor |
+| `GET /assistant/conversations/:id`          | `assistant.view-conversation`   | the same fields plus `messages: [{ position, role, text, cards, at }]`, oldest first                                                          |
+| `DELETE /assistant/conversations/:id`       | `assistant.delete-conversation` | 204                                                                                                                                           |
 
 - Listed: the account's conversations of the Market that keep text and whose last message is
   within the retention in force (the shorter of the stored one and the current setting; `none`
