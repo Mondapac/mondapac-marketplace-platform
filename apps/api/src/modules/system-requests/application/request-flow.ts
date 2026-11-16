@@ -620,12 +620,26 @@ async function checkBeforeRevert(
   if (request === null || request.status !== 'open') return ok(null);
   const reverter = deps.reverters.find(request.subjectKind)?.reverter;
   if (reverter?.check === undefined) return ok(null);
-  const answer = await reverter.check(context, {
-    requestId: request.id,
-    subjectRef: request.subjectRef,
-    before: request.before,
-    after: request.after,
-  });
+  let answer: 'ok' | 'not-permitted';
+  try {
+    answer = await reverter.check(context, {
+      requestId: request.id,
+      subjectRef: request.subjectRef,
+      before: request.before,
+      after: request.after,
+    });
+  } catch (error) {
+    // Fails closed: a check that throws is a refusal, and the request stays open. Ids only.
+    logger.error({
+      msg: 'system-requests.revert-check-failed',
+      error: error instanceof Error ? error.name : 'unknown',
+      requestId: request.id,
+      subjectKind: request.subjectKind,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    answer = 'not-permitted';
+  }
   return answer === 'ok' ? ok(null) : err({ code: 'system-requests.revert-not-permitted' });
 }
 

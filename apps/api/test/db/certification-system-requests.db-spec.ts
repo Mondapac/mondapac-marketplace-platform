@@ -321,6 +321,7 @@ describe.each(TEST_MARKETS)('certification reviews in market %s (database)', (co
     const refused = await save.execute(admin(), { typeId, version: 0, rows });
     expect(!refused.ok && refused.error.code).toBe('validation.failed');
     expect(await inUnit(() => policyDeps.policies.policyOfType(market, typeId))).toBeNull();
+    expect(await requestsOf(typeId)).toBe(0);
 
     const saved = await save.execute(admin(), { typeId, version: 0, rows, note: 'No claims' });
     if (!saved.ok || saved.value.outcome !== 'published' || saved.value.request === null) {

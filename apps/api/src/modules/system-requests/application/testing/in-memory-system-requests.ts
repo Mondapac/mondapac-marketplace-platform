@@ -322,9 +322,14 @@ export class FakeSubjects implements SystemChangeReverter {
   /** Refs whose pre-unit `check` refuses the decider; every check asked is kept in `checks`. */
   readonly checkRefused = new Set<string>();
   readonly checks: RevertRequest[] = [];
+  /** Refs whose pre-unit `check` throws (a broken dependency of the owning module). */
+  readonly checkThrows = new Set<string>();
 
   check(_context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'> {
     this.checks.push(request);
+    if (this.checkThrows.has(request.subjectRef)) {
+      return Promise.reject(new Error('check dependency down'));
+    }
     return Promise.resolve(this.checkRefused.has(request.subjectRef) ? 'not-permitted' : 'ok');
   }
 

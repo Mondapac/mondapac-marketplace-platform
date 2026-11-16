@@ -90,7 +90,8 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
   its approval. The save routes take `note` and answer `request`; the type and claim-policy views
   carry `review: {reviewed, risk}`. A revert writes the content before as a new published revision
   (audited `certification.type.reverted` / `certification.claim-policy.reverted` with the request
-  id, and the save's own event, so catalog re-checks tags after a policy change). **A revert never
+  id, and the save's own event; only `claim-policy-changed.v1` makes catalog re-check tags, nothing
+  consumes `certification-type-revised.v1` yet). **A revert never
   loosens enforcement** (CERT-21, ADR-0012): it is classified by the save's own rule, and one that
   relaxes (a setting, a removed claim term or locale, a less strict basis, a removed non-manufacturer
   row) is `not-permitted`, as is any revert while a relaxation of the subject waits for a second
