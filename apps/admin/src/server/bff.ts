@@ -21,6 +21,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'payments/admin/connected-accounts/export',
     // The Market's orders (ordering), read-only: the list; one order is read by the page server.
     'ordering/admin/orders',
+    // The Market's shipments (ordering, Sales > Shipments), read-only: the list (query: the tab,
+    // search, filters and paging; see QUERY_KEYS).
+    'ordering/admin/shipments',
     // The Market's buyer assistant settings, read again after another admin saved first.
     'assistant/admin/settings',
     // The Market's support email, read again after another admin saved first.
@@ -581,7 +584,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // One variant type with its options and settings (catalog, variants V6).
     'catalog/admin/variant-types/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
+    // The seller page's commission ledger (a compact super list) and its export.
     'commission-payouts/admin/sellers/:id/ledger',
+    'commission-payouts/admin/sellers/:id/ledger/export',
     // A storefront slide as a package to create in another Market (storefront).
     'storefront/admin/slides/:id/copy',
     // One customer's wallet and the caller's credit caps (wallet), for the issue screen.
@@ -595,6 +600,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A seller's payout terms and holds (commission-payouts), read again after a change.
     'commission-payouts/admin/sellers/:id/payout-terms',
     'commission-payouts/admin/sellers/:id/payout-holds',
+    // The seller page's payout holds list (a compact super list) as a file.
+    'commission-payouts/admin/sellers/:id/payout-holds/export',
     // The delivery methods of a seller (shipping), read again after a conflict.
     'shipping/admin/sellers/:id/delivery-methods',
   ],
@@ -646,6 +653,26 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sellerId',
     'from',
     'to',
+  ],
+  // The Shipments list: the tab (`stage`, `attention`), the search (`q` or `search`), the filters
+  // and the paging of either List paging mode (the API refuses the two modes mixed).
+  'ordering/admin/shipments': [
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+    'sort',
+    'direction',
+    'stage',
+    'q',
+    'search',
+    'deliveryMethod',
+    'attention',
+    'sellerId',
+    'paidFrom',
+    'paidTo',
+    'shippedFrom',
+    'shippedTo',
   ],
   'ordering/admin/saved-filters': ['listKey'],
   'notifications/admin/notices': ['show', 'before'],
@@ -764,8 +791,35 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
   'ordering/admin/refund-limits': ['sellerId'],
 };
-/** Query values that must have a shape to cross; a value of another shape is dropped. */
-const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/;
+/** Free text typed in a list's search box: 1 to 80 characters. */
+const SEARCH_TEXT = /^[\s\S]{1,80}$/;
+/** An instant as the API takes it: ISO 8601 date and time with a zone (`Z` or an offset). */
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+/** At most 200 ids, the cap of a selection. */
+const UUID_LIST_200 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i;
+/** The filters of the seller page's ledger list: the API validates them again. */
+const LEDGER_FILTER_SHAPES: Readonly<Record<string, RegExp>> = {
+  kind: /^(sale|shipping|commission|refund-sale|refund-shipping|refund-commission|dispute-debit|dispute-reinstate)$/,
+  side: /^(credit|debit)$/,
+  // An order or seller order id.
+  q: UUID,
+  from: ISO_INSTANT,
+  to: ISO_INSTANT,
+  // The row amount in minor units.
+  minAmount: /^[0-9]{1,15}$/,
+  maxAmount: /^[0-9]{1,15}$/,
+};
+/** The filters of the seller page's payout holds list. */
+const HOLD_FILTER_SHAPES: Readonly<Record<string, RegExp>> = {
+  status: /^(active|released)$/,
+  reason: /^(seller-suspended|refund-pending|dispute|admin-review|bank-change)$/,
+  origin: /^(admin|system)$/,
+  scope: /^(seller|order)$/,
+  sellerOrderId: UUID,
+  from: ISO_INSTANT,
+  to: ISO_INSTANT,
+};
 /** The Seller accounts list's filters and sort (payments validates every value again). */
 const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
   status: /^(not-started|pending|enabled|restricted|rejected)$/,
@@ -781,6 +835,26 @@ const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
   direction: /^(asc|desc)$/,
 };
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'ordering/admin/shipments': {
+    stage: /^(to-prepare|ready|shipped|delivered|refunded)$/,
+    sort: /^(paid|shipped|delivered|total)$/,
+    direction: /^(asc|desc)$/,
+    deliveryMethod: /^(pickup|instant|same_day|scheduled)$/,
+    attention: /^(any|no-carrier|carrier-unknown|cancel-unknown)$/,
+    sellerId: UUID,
+    page: /^[0-9]{1,4}$/,
+    pageSize: /^[0-9]{1,3}$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the payment, a dot and the seller order id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+    // An id, a tracking reference or a name: free text, up to the box's 80 characters.
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    paidFrom: ISO_INSTANT,
+    paidTo: ISO_INSTANT,
+    shippedFrom: ISO_INSTANT,
+    shippedTo: ISO_INSTANT,
+  },
   'payments/admin/connected-accounts': {
     ...ACCOUNT_LIST_SHAPES,
     page: /^[1-9][0-9]{0,4}$/,
@@ -901,6 +975,43 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^(created|amount|state-changed|slot)$/,
     direction: /^(asc|desc)$/,
   },
+  'commission-payouts/admin/sellers/:id/ledger': {
+    ...LEDGER_FILTER_SHAPES,
+    sort: /^(recorded|occurred|amount)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the record, a dot and the entry id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'commission-payouts/admin/sellers/:id/ledger/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(occurred|order-line|rate|base|source|entry-id)(,(occurred|order-line|rate|base|source|entry-id)){0,5}$/,
+    ids: UUID_LIST_200,
+    ...LEDGER_FILTER_SHAPES,
+    sort: /^(recorded|occurred|amount)$/,
+    direction: /^(asc|desc)$/,
+  },
+  'commission-payouts/admin/sellers/:id/payout-holds': {
+    ...HOLD_FILTER_SHAPES,
+    sort: /^(active-first|placed|released)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the placement, a dot and the hold id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'commission-payouts/admin/sellers/:id/payout-holds/export': {
+    format: /^(csv|xlsx)$/,
+    columns: /^(release-reason|hold-id)(,(release-reason|hold-id))?$/,
+    ids: UUID_LIST_200,
+    ...HOLD_FILTER_SHAPES,
+    sort: /^(active-first|placed|released)$/,
+    direction: /^(asc|desc)$/,
+  },
   'customers/admin/deletion-requests': {
     view: /^(pending|executing|cancelled|completed|all)$/,
     // The older list's name of the pending view.
@@ -996,7 +1107,65 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
 };
 /** GET templates with a resource id whose query crosses, and the keys that may cross. */
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
-  'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
+  // The seller page's compact super lists (ledger 27, payout holds 28) and their exports.
+  'commission-payouts/admin/sellers/:id/ledger': [
+    'kind',
+    'side',
+    'q',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'limit',
+    'cursor',
+  ],
+  'commission-payouts/admin/sellers/:id/ledger/export': [
+    'format',
+    'columns',
+    'ids',
+    'kind',
+    'side',
+    'q',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+  ],
+  'commission-payouts/admin/sellers/:id/payout-holds': [
+    'status',
+    'reason',
+    'origin',
+    'scope',
+    'sellerOrderId',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'limit',
+    'cursor',
+  ],
+  'commission-payouts/admin/sellers/:id/payout-holds/export': [
+    'format',
+    'columns',
+    'ids',
+    'status',
+    'reason',
+    'origin',
+    'scope',
+    'sellerOrderId',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/platform-imports/:id/report': ['kind'],
   'catalog/admin/categories/:id/impact': ['action', 'targetId'],
 };
@@ -1019,6 +1188,8 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
   'customers/admin/deletion-requests/export:ids': 7400,
+  'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
+  'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
   'payments/admin/connected-accounts/export:ids': 7400,
   'catalog/admin/attributes:search': 120,
 };
@@ -1069,7 +1240,10 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
     const value = source.get(key);
     if (
       value === null ||
-      value.length > (QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX)
+      value.length >
+        (QUERY_VALUE_MAX_FOR[`${target}:${key}`] ??
+          QUERY_VALUE_MAX_FOR[`${template}:${key}`] ??
+          QUERY_VALUE_MAX)
     ) {
       continue;
     }

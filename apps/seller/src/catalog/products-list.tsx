@@ -5,7 +5,7 @@ import {
   BottomSheet,
   Button,
   EmptyState,
-  FilterChip,
+  FilterChipRow,
   Icon,
   IconButton,
   LinkButton,
@@ -492,36 +492,23 @@ export function ProductsList({
         </p>
       </div>
       {filtered || canSave ? (
-        <div className="flex flex-wrap items-center gap-2">
-          {chips.map((chip) => (
-            <FilterChip
-              key={chip.field}
-              label={chip.label}
-              removeLabel={t('chip-remove', { filter: chip.label })}
-              onRemove={() => go({ filters: withoutFilter(chip.field) })}
-            />
-          ))}
-          {filtered ? (
-            <Button variant="link" className="min-h-(--mp-size-control-sm)" onClick={clearAll}>
-              {t('clear-all')}
-            </Button>
-          ) : null}
-          {canSave ? (
-            <Button
-              variant="link"
-              className="min-h-(--mp-size-control-sm)"
-              onClick={() => setDialog('save')}
-            >
-              <Icon name="star" />
-              {t('saved.save-link')}
-            </Button>
-          ) : null}
-          <p role="status" className="text-sm font-medium text-fg-secondary sm:ms-auto">
-            {!filtered || answer === null || failure !== null
+        <FilterChipRow
+          chips={chips.map((chip) => ({
+            key: chip.field,
+            label: chip.label,
+            removeLabel: t('chip-remove', { filter: chip.label }),
+            onRemove: () => go({ filters: withoutFilter(chip.field) }),
+          }))}
+          clearAll={filtered ? { label: t('clear-all'), onClick: clearAll } : undefined}
+          save={
+            canSave ? { label: t('saved.save-link'), onClick: () => setDialog('save') } : undefined
+          }
+          status={
+            !filtered || answer === null || failure !== null
               ? ''
-              : t('match', { count: answer.total })}
-          </p>
-        </div>
+              : t('match', { count: answer.total })
+          }
+        />
       ) : null}
       {/* A refresh that fails keeps the rows on screen, with the banner above them. */}
       {failure === null || firstLoadError ? null : (
