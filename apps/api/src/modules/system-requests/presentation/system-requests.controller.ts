@@ -298,6 +298,7 @@ export class SystemRequestsController {
     ...ERROR,
     description:
       'access.denied, request.csrf, system-requests.not-reviewer, system-requests.own-request, ' +
+      'system-requests.own-subject (the change is about you), ' +
       'second-factor.required or second-factor.enrolment-required',
   })
   @ApiNotFoundResponse({ ...ERROR, description: 'system-requests.not-found' })
@@ -326,7 +327,9 @@ export class SystemRequestsController {
     description:
       'Needs system-requests.request.view and, per request, its area review key. 1 to 100 ' +
       'distinct ids; each is decided on its own and answered with approved or its refusal ' +
-      '(system-requests.not-low-risk for medium and high, which are reviewed one by one). ' +
+      '(system-requests.not-low-risk for medium and high, which are reviewed one by one; ' +
+      'system-requests.own-request and system-requests.own-subject for a change by or about ' +
+      'the reviewer). ' +
       'Refused in an acting-as session. Audited per request.',
   })
   @ApiHeader(CSRF)
@@ -420,6 +423,7 @@ export class SystemRequestsController {
     ...ERROR,
     description:
       'access.denied, request.csrf, system-requests.not-reviewer, system-requests.own-request, ' +
+      'system-requests.own-subject (the change is about you), ' +
       'system-requests.revert-not-permitted, second-factor.required or ' +
       'second-factor.enrolment-required',
   })

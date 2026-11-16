@@ -31,6 +31,10 @@ import {
   type AdminShipmentListReader,
 } from '../application/ports/admin-shipment-list.reader';
 import {
+  ADMIN_DOCUMENT_LIST_READER,
+  type AdminDocumentListReader,
+} from '../application/ports/admin-document-list.reader';
+import {
   ADMIN_REFUND_LIST_READER,
   type AdminRefundListReader,
 } from '../application/ports/admin-refund-list.reader';
@@ -74,6 +78,7 @@ import {
 } from '../application/ports/saved-filter.repository';
 import { PrismaRefundRepository } from './prisma-refund.repository';
 import { PrismaAdminShipmentListReader } from './prisma-admin-shipment-list.reader';
+import { PrismaAdminDocumentListReader } from './prisma-admin-document-list.reader';
 import { PrismaAdminRefundListReader } from './prisma-admin-refund-list.reader';
 import {
   MARKET_ZONES,
@@ -128,6 +133,12 @@ export const orderingProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminShipmentListReader =>
       new PrismaAdminShipmentListReader(prisma),
+  },
+  {
+    provide: ADMIN_DOCUMENT_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminDocumentListReader =>
+      new PrismaAdminDocumentListReader(prisma),
   },
   {
     provide: ADMIN_REFUND_LIST_READER,

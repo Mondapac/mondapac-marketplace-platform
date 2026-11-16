@@ -45,6 +45,12 @@ import {
   ADMIN_SHIPMENT_LIST_READER,
   type AdminShipmentListReader,
 } from './application/ports/admin-shipment-list.reader';
+import { AdminDocumentsController } from './presentation/admin-documents.controller';
+import { AdminListDocuments } from './application/use-cases/admin-list-documents.use-case';
+import {
+  ADMIN_DOCUMENT_LIST_READER,
+  type AdminDocumentListReader,
+} from './application/ports/admin-document-list.reader';
 import { AdminRefundsController } from './presentation/admin-refunds.controller';
 import { AdminListRefunds } from './application/use-cases/admin-list-refunds.use-case';
 import {
@@ -326,6 +332,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminCustomerRefundsController,
     AdminShipToRetentionController,
     AdminShipmentsController,
+    AdminDocumentsController,
     AdminRefundsController,
     SellerOrdersController,
     AdminSavedViewsController,
@@ -422,6 +429,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         shipments: AdminShipmentListReader,
         labels: OrderLabels,
       ) => new AdminListShipments(gate, { unitOfWork, shipments, labels }),
+    },
+    {
+      provide: AdminListDocuments,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_DOCUMENT_LIST_READER, ORDER_LABELS],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        documents: AdminDocumentListReader,
+        labels: OrderLabels,
+      ) => new AdminListDocuments(gate, { unitOfWork, documents, labels }),
     },
     {
       provide: AdminListRefunds,

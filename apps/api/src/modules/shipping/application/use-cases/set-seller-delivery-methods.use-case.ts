@@ -10,7 +10,7 @@ import type { ShippingDependencies } from '../shipping-dependencies';
 
 /** `shipping.set-seller-delivery-methods`: an admin sets the delivery methods a seller supports (protected key; audited). */
 export class SetSellerDeliveryMethods extends UseCase<
-  { readonly sellerId: unknown; readonly supported: unknown },
+  { readonly sellerId: unknown; readonly supported: unknown; readonly note?: unknown },
   SellerDeliveryMethodsView,
   DeliverySettingsFailure
 > {
@@ -28,7 +28,11 @@ export class SetSellerDeliveryMethods extends UseCase<
 
   protected handle(
     context: CallContext,
-    input: { readonly sellerId: unknown; readonly supported: unknown },
+    input: {
+      readonly sellerId: unknown;
+      readonly supported: unknown;
+      readonly note?: unknown;
+    },
   ) {
     return setSellerDeliveryMethods(this.deps, context, input);
   }

@@ -5,7 +5,11 @@ import type {
   StepUpProofConsumer,
   StepUpRefusal,
 } from '../../../../platform/authz';
-import type { RevertOutcome, RevertRequest, SystemChangeReverter } from '../../contracts/reverters';
+import type {
+  RevertOutcome,
+  RevertRequest,
+  SystemChangeReverter,
+} from '../../../../platform/change-review/change-review';
 import type { PolicyArea, Risk } from '../../domain/areas';
 import type { SystemRequest } from '../../domain/request';
 import type { AdminNames } from '../ports/admin-names';
@@ -320,6 +324,13 @@ export class FakeSubjects implements SystemChangeReverter {
   readonly reverts: RevertRequest[] = [];
   /** Refs whose revert the owning module refuses the decider (`not-permitted`). */
   readonly refused = new Set<string>();
+  /** `account:ref` pairs where the account has a stake in the subject (separation of duties). */
+  readonly interested = new Set<string>();
+
+  /** The labels the owning module would give, per Market and ref. */
+  readonly labels = new Map<string, string>();
+  readonly described: (readonly string[])[] = [];
+  describeFails = false;
 
   set(market: string, ref: string, value: Readonly<Record<string, unknown>>): void {
     this.values.set(`${market}:${ref}`, value);
@@ -342,10 +353,11 @@ export class FakeSubjects implements SystemChangeReverter {
     return Promise.resolve('reverted');
   }
 
-  /** The labels the owning module would give, per Market and ref. */
-  readonly labels = new Map<string, string>();
-  readonly described: (readonly string[])[] = [];
-  describeFails = false;
+  isInterested(context: CallContext, request: RevertRequest): Promise<boolean> {
+    const actor = context.actor;
+    const account = actor.kind === 'authenticated' ? actor.accountId : '';
+    return Promise.resolve(this.interested.has(`${account}:${request.subjectRef}`));
+  }
 
   describe(context: CallContext, subjectRefs: readonly string[]) {
     this.described.push([...subjectRefs]);

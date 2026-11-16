@@ -1,6 +1,10 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
-import type { RevertOutcome, RevertRequest, SystemChangeReverter } from '../contracts/reverters';
+import type {
+  RevertOutcome,
+  RevertRequest,
+  SystemChangeReverter,
+} from '../../../platform/change-review/change-review';
 import { SYSTEM_REQUESTS_POLICY_CHANGE_STEP_UP } from '../contracts/step-up';
 import {
   AREA_DEFAULTS,

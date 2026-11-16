@@ -3,7 +3,7 @@ import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { ConsumedStepUp, StepUpRefusal } from '../../../platform/authz';
 import type { AppliedChange, RecordedRequest, RecordFailure } from '../contracts/recorder';
-import { MAX_DESCRIBE_REFS } from '../contracts/reverters';
+import { MAX_DESCRIBE_REFS } from '../../../platform/change-review/change-review';
 import { SYSTEM_REQUESTS_DECIDE_HIGH_STEP_UP } from '../contracts/step-up';
 import {
   AREA_DEFAULTS,
@@ -65,6 +65,11 @@ export type SystemRequestsFailure =
   | { readonly code: 'system-requests.decided' }
   /** Maker-checker: the author cannot approve or reject their own change. */
   | { readonly code: 'system-requests.own-request' }
+  /**
+   * Separation of duties: the change is about the decider (their own account, or a role they
+   * hold), as the owning module's reverter says; they may neither approve nor reject it.
+   */
+  | { readonly code: 'system-requests.own-subject' }
   /** Only the author withdraws a change. */
   | { readonly code: 'system-requests.not-author' }
   /** The caller does not hold the area's review key. */
@@ -664,7 +669,11 @@ async function prepareDecision(
   return ok({ admin, id, reason });
 }
 
-/** The locked open request `admin` may decide this way, or the refusal. */
+/**
+ * The locked open request `admin` may decide this way, or the refusal. An approval or a reject
+ * also asks the owning module whether the change is about the decider (`isInterested`, read in
+ * this unit); a module without that check lets any reviewer but the author decide.
+ */
 export async function decidable(
   deps: SystemRequestsDependencies,
   context: CallContext,
@@ -678,6 +687,20 @@ export async function decidable(
   const own = request.requestedBy === admin;
   if (kind === 'withdraw' && !own) return err({ code: 'system-requests.not-author' });
   if (kind !== 'withdraw' && own) return err({ code: 'system-requests.own-request' });
+  if (kind !== 'withdraw') {
+    const reverter = deps.reverters.find(request.subjectKind)?.reverter;
+    if (
+      reverter?.isInterested !== undefined &&
+      (await reverter.isInterested(context, {
+        requestId: request.id,
+        subjectRef: request.subjectRef,
+        before: request.before,
+        after: request.after,
+      }))
+    ) {
+      return err({ code: 'system-requests.own-subject' });
+    }
+  }
   return ok(request);
 }
 
@@ -774,6 +797,10 @@ export async function approveRequest(
 /**
  * Restores the value before the change (reject or withdraw), in one unit with the decision: the
  * subject must still hold the value after the change, and no later request may exist for it.
+ *
+ * The unit is serializable: a reverter may re-check a guard by counting rows (identity's last
+ * Platform Administrator, HF8), and every writer of those rows runs serializable, so a revert and
+ * a concurrent change cannot each keep the one holder. A conflict is retried by the unit of work.
  */
 async function revertRequest(
   deps: SystemRequestsDependencies,
@@ -860,6 +887,7 @@ async function revertRequest(
         ),
       );
     },
+    { isolation: 'serializable' },
   );
   return labelled(deps, context, reverted);
 }

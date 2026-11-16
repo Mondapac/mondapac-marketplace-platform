@@ -1,4 +1,7 @@
-import type { SystemChangeReverter, SystemChangeReverters } from '../contracts/reverters';
+import type {
+  SystemChangeReverter,
+  SystemChangeReverters,
+} from '../../../platform/change-review/change-review';
 import { isPolicyArea, type ReviewArea } from '../domain/areas';
 import { isSubjectKind } from '../domain/request';
 
