@@ -175,6 +175,16 @@ export const SECURITY_RULES: readonly SecurityRule[] = Object.freeze([
     types: ['certification.retired-category.flagged-relaxing'],
     lookback: hours(1),
   },
+  // Security review of #969 (L3): an admin who reveals many customers' personal data in an hour.
+  // customers records the event once per admin and window, so each event is one alert.
+  {
+    code: 'admin-bulk-pii-reveal',
+    kind: 'each',
+    severity: 's2',
+    title: 'An admin revealed a lot of customer personal data within an hour',
+    types: ['customers.pii-reveal.bulk'],
+    lookback: hours(1),
+  },
   // S3: plan section 4 row 3.
   {
     code: 'webhook-signature-failures',

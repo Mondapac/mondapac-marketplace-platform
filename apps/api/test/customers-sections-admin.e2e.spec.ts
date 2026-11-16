@@ -14,6 +14,7 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
+import { MarketRegistry } from '../src/platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp } from './support/test-app';
@@ -24,7 +25,8 @@ import { panelHeaders, TEST_MARKETS } from './support/test-config';
 // timeline in memory. Proves the keys (customers.customers.view alone reaches no section; the
 // reveal needs its protected key), CSRF on every POST, the closed bodies, `no-store`, that the
 // sign-ins carry no address, the reveal's audit row and timeline entry, "sign out everywhere",
-// "send password reset" and the export's step-up, in both Markets.
+// "send password reset" and the export's step-up, in both Markets; the per-admin reveal limit's
+// 429 request.throttled with Retry-After and its one bulk-reveal alert (security review of #969).
 
 const START = Temporal.Instant.from('2026-11-16T10:00:00Z');
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 };
@@ -279,6 +281,39 @@ describe.each(TEST_MARKETS)('customer page sections over HTTP in market %s', (co
       .set(admin)
       .send({ accountId: BUYER });
     expect(body.status).toBe(400);
+  });
+
+  it('answers 429 request.throttled with Retry-After past the admin’s reveal limit, and raises one alert', async () => {
+    await boot();
+    const signInId = await signIn(5, 'signed-in', 1);
+    const limits = app!.get(MarketRegistry).get(market.marketId).customers!.adminActionLimits;
+    const admin = sessionOf(1, SECURITY, 'admin');
+    const reveal = () => http().post(`${base}/sign-ins/${signInId}/reveal`).set(admin).send({});
+    for (let index = 0; index < limits.piiRevealsPerHour; index += 1) {
+      expect((await reveal()).status).toBe(200);
+    }
+
+    const refused = await reveal();
+    expect(refused.status).toBe(429);
+    expect(refused.headers['cache-control']).toBe('no-store');
+    expect(refused.body).toEqual({
+      statusCode: 429,
+      code: 'request.throttled',
+      details: { retryAfterSeconds: expect.any(Number) as number },
+    });
+    const seconds = (refused.body as { details: { retryAfterSeconds: number } }).details
+      .retryAfterSeconds;
+    expect(seconds).toBeGreaterThan(0);
+    expect(seconds).toBeLessThanOrEqual(3600);
+    expect(refused.headers['retry-after']).toBe(String(seconds));
+    expect(JSON.stringify(refused.body)).not.toContain('203.0.113');
+    // Only the admitted reveals were audited; the alert was raised once, naming the admin.
+    expect(fakes.audits).toHaveLength(limits.piiRevealsPerHour);
+    expect(
+      fakes.recordedSecurityEvents
+        .filter((event) => event.type === 'customers.pii-reveal.bulk' && event.marketId === code)
+        .map((event) => [event.targetId, event.payload, event.actor]),
+    ).toEqual([[SECURITY, { reveals: limits.piiRevealAlertAt }, 'authenticated']]);
   });
 
   it('lists the live sessions and signs the customer out everywhere', async () => {

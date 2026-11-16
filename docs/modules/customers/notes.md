@@ -630,3 +630,41 @@ Not built in part 3:
   as `consent-changed`. The consent history section (part 2) shows every change meanwhile.
 - `review-published` also follows an edit that passed the checks and a release from a hold, as
   reviews' event does; the timeline cannot tell a first submission from those.
+
+## Per-admin limits on customer PII actions and the bulk-reveal alert (16 Nov 2026)
+
+Follow-up of Hassan's review of #969 (findings L2, L3, I3).
+
+- **Limits.** Per admin account and fixed one-hour window, from the Market's
+  `customers.adminActionLimits` (AU / ZZ fixture): `passwordResetsPerHour` 20 / 5 for "send
+  password reset", and `piiRevealsPerHour` 60 / 10 for the reveals of a customer's personal data,
+  the sign-in address (`sign-ins/:signInId/reveal`) and the delivery address
+  (`addresses/:addressId/reveal`) sharing one count. Past it the route answers 429
+  `request.throttled` with `details.retryAfterSeconds` and `Retry-After` (the seconds left in the
+  window). "Sign out everywhere" and the reads are not limited. A Market without the section, or a
+  counter that cannot be read, refuses with `access.unavailable` (503).
+- **Counters.** The platform's shared per-subject counters (`SubjectRateLimits`), new classes
+  `admin-customer-password-reset` and `admin-customer-pii-reveal` (3600-second windows), subject
+  `<market>:<admin account id>` stored as its keyed hash. Migration
+  `20261116140000_platform_rate_limit_admin_customer_classes` widens
+  `platform.rate_limit_counters_key_check` (no grant or index change), reversible.
+- **What counts.** Counted in the application layer after the gate allowed the call and the body
+  is closed, before the customer is looked up: a refused key, an acting-as session or a stray body
+  does not count; an unknown customer, sign-in or address does (no free probing). A refused
+  (throttled) attempt counts too: the windows are fixed, so trying on does not move the window's
+  end, and the count stays one atomic statement.
+- **Bulk-reveal alert.** When an admin's reveal count reaches `piiRevealAlertAt` (AU 40 / ZZ 6, at
+  most the reveal limit) customers records the security event `customers.pii-reveal.bulk` (s2,
+  target the admin's account, payload `{ reveals }` only), and the security centre's rule
+  `admin-bulk-pii-reveal` (kind `each`, s2) opens one alert for it. Only the attempt that reaches
+  the count exactly records it, so there is one alert per admin and window. A reveal whose alert
+  cannot be recorded is refused (`access.unavailable`) and logged at error level.
+- **I3.** The platform-admin check of the admin reads (authenticated admin, no seller, no
+  acting-as marker) is one helper, `isPlatformAdminActor` in `platform/authz`, used by identity's
+  customer security, cart, engagement, legal, reviews, notifications (support contact) and
+  assistant (settings). In the last two it replaces a population-only check; today no admin actor
+  has a seller or an acting-as marker, so no answer changes.
+- **Tests.** `admin-action-limits.spec.ts` (both Markets: limit then 429, another admin
+  unaffected, the window resets, the shared count, the alert raised once, only allowed calls
+  counted, fail closed), HTTP 429 mapping in `customers-sections-admin.e2e.spec.ts` and
+  `customers-management-admin.e2e.spec.ts`, the CHECK in `rate-limit-counters.db-spec.ts`.

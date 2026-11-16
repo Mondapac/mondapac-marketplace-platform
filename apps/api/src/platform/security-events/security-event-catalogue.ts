@@ -299,6 +299,21 @@ export const CarrierWebhookSignatureFailed = defineSecurityEvent({
   payload: { carrier: eventField.enumOf(['mondapac-drive', 'uber-direct', 'zoom2u'] as const) },
 });
 
+/**
+ * An admin reached the Market's alert count of reveals of customers' personal data (a sign-in's
+ * address, a delivery address) within one hour on the customer page (security review of #969,
+ * L3): recorded once per admin and window, when the count reaches
+ * `customers.adminActionLimits.piiRevealAlertAt`. The target is the admin's account; the count
+ * only, never a customer or what was revealed (that stays in the audit log).
+ */
+export const AdminBulkPiiReveal = defineSecurityEvent({
+  type: 'customers.pii-reveal.bulk',
+  severity: 's2',
+  targetType: 'account',
+  ip: false,
+  payload: { reveals: eventField.integer() },
+});
+
 /** Every recorded type, by type. */
 export const RECORDED_SECURITY_EVENTS: ReadonlyMap<string, SecurityEventDefinition> = new Map(
   (
@@ -318,6 +333,7 @@ export const RECORDED_SECURITY_EVENTS: ReadonlyMap<string, SecurityEventDefiniti
       DisputeOrderMismatch,
       PayoutAlert,
       CarrierWebhookSignatureFailed,
+      AdminBulkPiiReveal,
     ] as readonly SecurityEventDefinition[]
   ).map((definition) => [definition.type, definition]),
 );

@@ -7,6 +7,7 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import { RecordingSecurityEvents } from '../../../../test/support/recording-security-events';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { AuthorisationCheck, StepUpProofConsumer } from '../../../platform/authz';
@@ -20,6 +21,7 @@ import type { CustomerSectionDependencies } from './customer-section-lists';
 import type { CustomerSectionPeers } from './ports/customer-section-peers';
 import type { SheetWriter } from './ports/sheet-writer';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
+import { MemoryAdminActionLimits } from './testing/memory-admin-action-limits';
 import { InMemoryCustomerTimeline } from './testing/in-memory-customer-management';
 import { AdminCustomerAssistantConversationsSectionExport } from './use-cases/admin-customer-assistant-conversations-export.use-case';
 import { AdminCustomerAssistantConversationsSection } from './use-cases/admin-customer-assistant-conversations.use-case';
@@ -134,6 +136,8 @@ describe.each(['AU', 'ZZ'] as const)('customer page activity sections in market 
       sheetWriter,
       clock,
       ids,
+      adminLimits: new MemoryAdminActionLimits(markets, clock),
+      securityEvents: new RecordingSecurityEvents(),
       peers: peers as unknown as CustomerSectionPeers,
     };
     const admin = (keys: readonly string[] = ALL): CallContext => {
