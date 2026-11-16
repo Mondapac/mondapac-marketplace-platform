@@ -74,6 +74,30 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
   once the Market has journals is `changed-since`. A switch to `paused` or `frozen` is a stop and
   opens no request; a revert never lifts a stop (restoring `active` over `paused` or `frozen` is
   `not-permitted`, and the request stays open).
+- **shipping** (area delivery, medium risk by default, on by default): only changes that can be
+  put back are reviewed; creating, deleting, merging, moving and importing are not.
+  - `shipping.delivery-settings` (subject `delivery-settings`): the save of the Market's delivery
+    settings (`PUT /shipping/admin/delivery-settings`). Values: the saved set without its version
+    (`enabled` per method, `sameDayCutoffMinutes`, `scheduledDaysAhead`, `scheduledWindowMinutes`,
+    `readyPrepMinutes`, `margin`, `roundingStepMinor`). A revert saves the values before as a new
+    version, audited as `shipping.delivery-settings.reverted`; `changed-since` when the settings
+    differ from the values after.
+  - `shipping.seller-delivery-methods` (subject = seller id, values `{unsupported: [...]}`):
+    `PUT /shipping/admin/sellers/:sellerId/delivery-methods`. Audited as
+    `shipping.seller-delivery-methods.reverted`; `gone` when the seller no longer exists.
+  - `shipping.fleet-selection` (subject `fleet-selection`): the page save
+    (`PUT /shipping/admin/fleet-selection`). Values `{active: {method: modelId|null},
+    reliability: {fleet: score|null}}`, only the items that changed (nothing changed opens
+    nothing). A revert compares and raises the page version like an admin's save, restores each
+    item still holding its value after, and audits `shipping.fleet-model.activation-reverted` and
+    `shipping.fleet-reliability.reverted`; a model that no longer exists is `gone`. A fleet that
+    had no score ends with reliability 50, not null, after the revert (the table has no delete; routing is the same).
+  - `shipping.fleet-selection-model` (subject = model id, values `{name, rule}`): the edit of a
+    model (`PUT /shipping/admin/fleet-selection/models/:modelId`); a revert writes a new version,
+    audited as `shipping.fleet-model.reverted`; a name another model took since is
+    `changed-since`.
+  - Every write takes `note` in the body (closed key list) and answers `request: {id, number} |
+    null`; the page reads carry `review: {reviewed, risk}` so the panel asks for a note.
 - Every money opening passes risk `high`, whatever the area's policy says, so the reviewer's
   step-up is spent before a revert writes.
 

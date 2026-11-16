@@ -42,3 +42,4 @@ export class ViewDeliverySettings extends UseCase<
 export type { DeliverySettingsView };
 
 export type { DeliverySettingsPage };
+export type { ShippingRequestRef, ShippingReview } from '../shipping-review';
