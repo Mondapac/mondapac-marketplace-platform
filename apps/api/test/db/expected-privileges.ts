@@ -128,6 +128,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'identity.access_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Social sign-in: a provider identity is written once; it goes with its account (cascade).
     'identity.external_identities': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Customers admin email change (Hassan M1): one notice per confirmed change, written once and
+    // deleted once by its handler; never updated.
+    'identity.email_change_notices': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'platform.audit_log': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/platform.md 11.6 (identity slice 6a): append-only like the audit log;
     // INSERT moves to a worker-only group before the hardening trigger (11.6, PA 13).

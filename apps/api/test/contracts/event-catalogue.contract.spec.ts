@@ -119,6 +119,9 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'commission-payouts.place-suspended-hold',
       // Phase 5 package 8b: dispute effects from payments' dispute events.
       'commission-payouts.sync-dispute',
+      // Customers admin email change (Hassan L2): a requested deletion cancels a pending sign-in email change.
+      'customers.email-change-on-admin-deletion',
+      'customers.email-change-on-deletion',
       // Customers phase 1 (B1): the customer directory and stats follow identity's account events and ordering's paid orders and refunds.
       'customers.read-model-disabled',
       // Customers admin email change: the directory copies the confirmed new sign-in email.

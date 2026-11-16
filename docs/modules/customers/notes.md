@@ -389,18 +389,29 @@ confirm page and the admin screen are not part of this change.
   and runs through the sign-in sequence (throttles, failure counter): the link must belong to the
   pending request (bound by its request instant); the address is swapped and verified, every
   session is revoked (`email-changed`), no session is opened, the account's other live links are
-  cancelled, and a notice goes to the previous address (kept sealed under the account's key in
-  `email_change_notice` until it is sent). Every refusal of the link is `link.rejected`; a clash
-  on the unique email key rolls the unit back and also answers `link.rejected`.
-- **Lapse.** A pending address lapses with its link: `requestedAt` plus the Market's
-  `confirm-email-change` link lifetime (AU 1440 minutes). The customer page stops showing it then;
-  `identity.purge-expired` clears it.
+  cancelled, and a notice goes to the previous address. The notice is one row per confirmed
+  change in `identity.email_change_notices` (key: Market, account, the account version of the
+  swap; both addresses sealed under the account's key; cascade with the account); the mail
+  handler sends exactly its event's notice, masks that change's new address, and deletes only
+  that row. Every refusal of the link is `link.rejected`; a clash on the unique email key rolls
+  the unit back and also answers `link.rejected`.
+- **Lapse.** A pending address lapses at `requestedAt` plus the Market's `confirm-email-change`
+  link lifetime (AU 1440 minutes). Confirm and SendLinkMail use that one boundary: a link mail
+  that is delivered late is skipped once the address has lapsed (`account.pending-email-lapsed`),
+  and a link issued late may outlive the lapse but its confirmation answers `link.rejected`.
+  The customer page stops showing the address then; `identity.purge-expired` clears it (index
+  `accounts_market_id_pending_email_requested_at_idx`, partial, built concurrently).
+- **Deletion.** A deletion request (by the customer or an admin) cancels the pending change:
+  customers' subscribers `customers.email-change-on-deletion` and
+  `customers.email-change-on-admin-deletion` read the request's account and call identity's
+  `cancelCustomerEmailChangeForDeletion` (system actor from the dispatcher; repeat-safe; the
+  link is voided without a mail; logged by id; no audit row, the deletion request is audited).
+  The request itself still refuses a change while a deletion is pending.
 - **Customer page.** The overview carries `pendingEmailChange` (`email`, `requestedAt`) or null,
   read from identity at read time (`identity.customer-pending-email-of`, key
   `customers.customers.view`). The read model takes the new address from
   `identity.account-email-changed.v1`.
-- **Known gaps.** (1) The deletion-request check runs only at the request; identity cannot read
-  customers' requests, so a deletion requested after the change was asked for does not block the
-  confirmation. (2) No timeline entries: the customer timeline is not on main yet; the
-  subscriber and the three entry kinds follow with it. (3) If a second change is confirmed before
-  the first notice was sent, only the latest previous address gets a notice.
+- **Known gaps.** (1) The deletion cancel is asynchronous: between the deletion request's commit
+  and the dispatch of its event, a confirmation can still swap the address. (2) No timeline
+  entries: the customer timeline is not on main yet; the subscriber and the three entry kinds
+  follow with it.

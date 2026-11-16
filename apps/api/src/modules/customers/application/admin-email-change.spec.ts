@@ -14,7 +14,9 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import { overviewView } from './customer-page-flow';
 import type { EmailChangePeer } from './ports/email-change-peer';
+import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { MemoryAccountDeletionRequests } from './testing/in-memory-account-deletion';
+import { CancelEmailChangeOnDeletion } from './use-cases/cancel-email-change-on-deletion.use-case';
 import { AdminCustomerEmailChangeCancel } from './use-cases/admin-customer-email-change-cancel.use-case';
 import { AdminCustomerEmailChangeRequest } from './use-cases/admin-customer-email-change-request.use-case';
 
@@ -57,6 +59,13 @@ class Peer implements EmailChangePeer {
   }
   customerPendingEmailOf() {
     return Promise.resolve(ok(null));
+  }
+  cancelCustomerEmailChangeForDeletion(
+    _context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ cancelled: boolean }, { readonly code: string }>> {
+    this.calls.push(`deletion-cancel:${accountId}`);
+    return Promise.resolve(ok({ cancelled: true }));
   }
 }
 
@@ -288,6 +297,74 @@ describe.each(['AU', 'ZZ'] as const)(
       expect(overviewView(row, { email: NEW_EMAIL, requestedAt: NOW }).pendingEmailChange).toEqual({
         email: NEW_EMAIL,
         requestedAt: '2026-11-16T10:00:00.123Z',
+      });
+    });
+
+    describe('a requested deletion cancels the pending change (Hassan R6, L2)', () => {
+      const system = testCallContext(market, 'system', 'email-change-deletion-0001');
+      const REQUEST = id<'AccountDeletionRequest'>(0xde1);
+      let n = 0;
+      const delivery = () => ({
+        eventId: id<'event'>(0xe000 + (n += 1)),
+        subscriber: 'customers.email-change-on-deletion',
+        attempt: 1,
+      });
+      function deletionSetup() {
+        const gate = createUseCaseGate(markets, {
+          check: () => Promise.resolve({ allowed: true }),
+        });
+        const units = new FakeUnitOfWork();
+        const requests = new MemoryAccountDeletionRequests();
+        jest
+          .spyOn(requests, 'findById')
+          .mockImplementation((_m, requestId) =>
+            Promise.resolve(requestId === REQUEST ? ({ accountId: CUSTOMER } as never) : null),
+          );
+        const identity = new Peer();
+        return {
+          identity,
+          units,
+          cancel: new CancelEmailChangeOnDeletion(gate, { unitOfWork: units, requests, identity }),
+        };
+      }
+
+      it("cancels the account's pending change in identity and records the delivery", async () => {
+        const t = deletionSetup();
+        expect(
+          await t.cancel.execute(system, { requestId: REQUEST, delivery: delivery() }),
+        ).toEqual(ok({ code: 'email-change.cancelled' }));
+        expect(t.identity.calls).toEqual([`deletion-cancel:${CUSTOMER}`]);
+        expect(t.units.onceUnits).toHaveLength(1);
+      });
+
+      it('answers gone for an unknown request, asking identity nothing', async () => {
+        const t = deletionSetup();
+        expect(
+          await t.cancel.execute(system, {
+            requestId: id<'AccountDeletionRequest'>(0xbad),
+            delivery: delivery(),
+          }),
+        ).toEqual(ok({ code: 'deletion-request.gone' }));
+        expect(t.identity.calls).toEqual([]);
+      });
+
+      it('throws when identity cannot answer, so the delivery is retried', async () => {
+        const t = deletionSetup();
+        jest
+          .spyOn(t.identity, 'cancelCustomerEmailChangeForDeletion')
+          .mockResolvedValue(err({ code: 'customers.unavailable' }));
+        await expect(
+          t.cancel.execute(system, { requestId: REQUEST, delivery: delivery() }),
+        ).rejects.toThrow('identity refused');
+        expect(t.units.onceUnits).toHaveLength(0);
+      });
+
+      it('runs for the system actor only', async () => {
+        const t = deletionSetup();
+        expect(await t.cancel.execute(admin, { requestId: REQUEST, delivery: delivery() })).toEqual(
+          err({ code: 'access.denied' }),
+        );
+        expect(t.identity.calls).toEqual([]);
       });
     });
   },

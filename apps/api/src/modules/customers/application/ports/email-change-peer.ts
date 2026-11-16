@@ -32,6 +32,11 @@ export interface EmailChangePeer {
   ): Promise<
     Result<{ readonly email: string; readonly requestedAt: Temporal.Instant } | null, Failure>
   >;
+  /** A deletion was requested: the pending change is cancelled (rule `system`, repeat-safe). */
+  cancelCustomerEmailChangeForDeletion(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly cancelled: boolean }, Failure>>;
 }
 
 export const EMAIL_CHANGE_PEER = Symbol('EMAIL_CHANGE_PEER');

@@ -167,33 +167,53 @@ export class AccountEmailTakenError extends Error {
   }
 }
 
+/** One "your sign-in email was changed" notice, opened (customers admin email change). */
+export interface EmailChangeNotice {
+  /** The address before the change, as typed: the recipient. */
+  readonly previousEmail: string;
+  /** The address after the change, as typed: shown masked. */
+  readonly newEmail: string;
+}
+
 /**
  * The parts of an email change kept beside the account (customers admin email change). Every
  * method runs in the caller's open unit and takes the `MarketContext` only.
  *
- * - The previous address waits, sealed under the account's subject key, for the "your sign-in
- *   email was changed" notice (Hassan R11: no plain previous address anywhere): stored in the
- *   confirmation's unit, opened by the notice's handler, cleared once the notice is sent. An
- *   erased account's key is destroyed, so its value can never be opened again.
- * - A pending address lapses with its link: the hourly purge clears the ones asked for before
- *   `before`, one version step each (Hassan: "cleared lazily on read and by the existing purge").
+ * - One notice per confirmed change (Hassan M1), keyed by the account version the confirmation
+ *   produced (the event's aggregate version), both addresses sealed under the account's subject
+ *   key (Hassan R11: no plain previous address anywhere). The confirmation's unit stores it; the
+ *   handler of that change's event opens it and deletes exactly that row, so two quick changes
+ *   each keep their own notice. An erased account's key is destroyed: its notices never open.
+ * - A pending address lapses with its link: the hourly purge clears the ones asked for at or
+ *   before `before`, one version step each (Hassan: "cleared lazily on read and by the existing
+ *   purge").
  */
 export interface EmailChangeStore {
-  /** Seals `previousEmail` (as typed) and stores it for the notice; replaces an earlier one. */
-  keepPreviousEmail(
+  /** Seals and stores the notice of the change that produced `accountVersion`. */
+  recordNotice(
     market: MarketContext,
     accountId: Id<'Account'>,
-    previousEmail: string,
+    accountVersion: number,
+    notice: EmailChangeNotice,
+    now: Temporal.Instant,
   ): Promise<void>;
 
   /**
-   * The previous address waiting for the notice, opened; null when none waits or the account's
-   * key was destroyed.
+   * The notice of the change that produced `accountVersion`, opened: `missing` when none waits
+   * (already sent), `unreadable` when the account's key was destroyed.
    */
-  previousEmailOf(market: MarketContext, accountId: Id<'Account'>): Promise<string | null>;
+  noticeOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    accountVersion: number,
+  ): Promise<EmailChangeNotice | 'missing' | 'unreadable'>;
 
-  /** Clears the waiting previous address (the notice was sent). No version step. */
-  forgetPreviousEmail(market: MarketContext, accountId: Id<'Account'>): Promise<void>;
+  /** Deletes exactly that notice (compare-and-delete on the full key); true when it was there. */
+  forgetNotice(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    accountVersion: number,
+  ): Promise<boolean>;
 
   /** Clears the pending addresses asked for at or before `before` (lapsed, as the read); answers how many. */
   clearLapsedPendingEmails(market: MarketContext, before: Temporal.Instant): Promise<number>;

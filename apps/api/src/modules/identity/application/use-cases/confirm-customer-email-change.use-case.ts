@@ -62,8 +62,8 @@ const OTHER_LINKS: readonly LinkPurpose[] = ['verify-email', 'reset-password'];
  * (R6): an active, verified customer account whose pending request is the one the link was
  * requested with (R2), the new address not held by another customer account of the Market; the
  * link consumed by its conditional statement at the version read; the address swapped, verified
- * now (`identity.account-email-changed.v1`, Mohammad 4); the previous address kept sealed for the
- * notice (R11); **every session revoked** (`email-changed`) and **none opened**; the account's
+ * now (`identity.account-email-changed.v1`, Mohammad 4); the notice of this change kept sealed
+ * (R11, Hassan M1); **every session revoked** (`email-changed`) and **none opened**; the account's
  * other live links (verify-email, reset-password) cancelled; the audit row
  * `identity.account.email-changed` (R10). A clash on the unique email key at the save rolls the
  * whole unit back and answers `link.rejected`. Every cause of a refused link is `link.rejected`.
@@ -151,7 +151,15 @@ export class ConfirmCustomerEmailChange extends UseCase<
     const accountId = account.state.id;
     // R2: bound to the pending request the link was requested with; refuses when cancelled,
     // replaced or already confirmed. Nothing is written before every check passed.
-    const confirmed = account.confirmEmailChange({ requestedAt: link.state.requestedAt, now });
+    // Sajad 5: the pending address lapses at its request plus the link lifetime, even when a late
+    // mail issued the link later; no lifetime configured is fail-closed.
+    const lifetimeMinutes = deps.policy.linkLifetimeMinutes(market, EMAIL_CHANGE_PURPOSE);
+    if (lifetimeMinutes === null) return err('rejected');
+    const confirmed = account.confirmEmailChange({
+      requestedAt: link.state.requestedAt,
+      now,
+      lifetimeMinutes,
+    });
     if (!confirmed.ok) return err('rejected');
     const holder = await deps.accounts.findByEmail(
       market,
@@ -165,7 +173,15 @@ export class ConfirmCustomerEmailChange extends UseCase<
     }
     // The unique key decides a concurrent holder: `AccountEmailTakenError` rolls everything back.
     await deps.accounts.save(market, account);
-    await deps.emailChanges.keepPreviousEmail(market, accountId, confirmed.value.typed);
+    // Hassan M1: one notice per change, keyed by the version this change produced (the event's
+    // aggregate version), with both addresses of this change; a later change keeps its own.
+    await deps.emailChanges.recordNotice(
+      market,
+      accountId,
+      account.state.version,
+      { previousEmail: confirmed.value.typed, newEmail: account.state.email.typed },
+      now,
+    );
     const revokedSessions = await deps.sessions.revokeAllOf(
       market,
       accountId,

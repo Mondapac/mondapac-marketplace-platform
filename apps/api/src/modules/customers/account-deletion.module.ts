@@ -9,6 +9,9 @@ import type { LateBoundAccountDeletionPeers } from './infrastructure/late-bound-
 import { EMAIL_CHANGE_PEER } from './application/ports/email-change-peer';
 import type { LateBoundEmailChangePeer } from './infrastructure/late-bound-email-change-peer';
 import { CustomersModule } from './customers.module';
+import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
+import { CancelEmailChangeOnDeletion } from './application/use-cases/cancel-email-change-on-deletion.use-case';
+import { emailChangeOnDeletionSubscriptions } from './presentation/subscribers/email-change-on-deletion.subscriptions';
 
 /**
  * Binds the buyer deletion flow (customers package 5b) to the modules it asks. It is a module of
@@ -26,6 +29,14 @@ import { CustomersModule } from './customers.module';
     OrderingModule,
     EngagementModule,
     ReviewsModule,
+  ],
+  providers: [
+    // A requested deletion cancels a pending sign-in email change in identity (Hassan R6, L2).
+    registerSubscriptionsFrom(
+      'customers',
+      [CancelEmailChangeOnDeletion],
+      (cancel: CancelEmailChangeOnDeletion) => emailChangeOnDeletionSubscriptions(cancel),
+    ),
   ],
 })
 export class CustomersAccountDeletionModule implements OnModuleInit {

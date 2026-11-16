@@ -43,6 +43,7 @@ import {
   AccountEmailTakenError,
   EMAIL_CHANGE_STORE,
   type AccountRepository,
+  type EmailChangeNotice,
   type EmailChangeStore,
 } from '../../src/modules/identity/application/ports/account.repository';
 import {
@@ -258,7 +259,7 @@ export class IdentityFakes {
     this.provider.failure = null;
     this.provider.exchanges.length = 0;
     this.accounts.clear();
-    this.previousEmails.clear();
+    this.emailChangeNotices.clear();
     this.sessions.clear();
     this.throttles.clear();
     this.records.length = 0;
@@ -1159,24 +1160,27 @@ export class IdentityFakes {
     },
   };
 
-  /** The previous addresses kept for the "email changed" notice (sealed in the real store). */
-  readonly previousEmails = new Map<string, string>();
+  /** The notices of confirmed changes, by `${accountId}|${accountVersion}` (sealed in the real store). */
+  readonly emailChangeNotices = new Map<string, EmailChangeNotice>();
 
   readonly emailChangeStore: EmailChangeStore = {
-    keepPreviousEmail: (_market, accountId, previousEmail) => {
-      this.previousEmails.set(accountId, previousEmail);
+    recordNotice: (_market, accountId, accountVersion, notice) => {
+      const key = `${accountId}|${accountVersion}`;
+      if (this.emailChangeNotices.has(key)) {
+        return Promise.reject(new Error('email_change_notices_pkey'));
+      }
+      this.emailChangeNotices.set(key, { ...notice });
       return Promise.resolve();
     },
-    previousEmailOf: (_market, accountId) =>
-      Promise.resolve(
-        this.subjectKeys.get(accountId) === 'destroyed'
-          ? null
-          : (this.previousEmails.get(accountId) ?? null),
-      ),
-    forgetPreviousEmail: (_market, accountId) => {
-      this.previousEmails.delete(accountId);
-      return Promise.resolve();
+    noticeOf: (_market, accountId, accountVersion) => {
+      const notice = this.emailChangeNotices.get(`${accountId}|${accountVersion}`);
+      if (notice === undefined) return Promise.resolve('missing' as const);
+      return Promise.resolve(
+        this.subjectKeys.get(accountId) === 'destroyed' ? ('unreadable' as const) : notice,
+      );
     },
+    forgetNotice: (_market, accountId, accountVersion) =>
+      Promise.resolve(this.emailChangeNotices.delete(`${accountId}|${accountVersion}`)),
     clearLapsedPendingEmails: (market, before) => {
       let count = 0;
       for (const [id, state] of this.accounts) {

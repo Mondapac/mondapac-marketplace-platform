@@ -237,6 +237,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX customer_directory_email_prefix_idx ON customers.customer_directory USING btree (market_id, email_lower text_pattern_ops) WHERE (email_lower <> ''::text)",
   'customers.saved_filters_shared_name_key':
     "CREATE UNIQUE INDEX saved_filters_shared_name_key ON customers.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
+  'identity.accounts_market_id_pending_email_requested_at_idx':
+    'CREATE INDEX accounts_market_id_pending_email_requested_at_idx ON identity.accounts USING btree (market_id, pending_email_requested_at) WHERE (pending_email_requested_at IS NOT NULL)',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
   'identity.invitations_market_id_email_pending_platform_key':

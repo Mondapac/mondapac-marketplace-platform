@@ -137,10 +137,12 @@ describe.each(['AU', 'ZZ'])(
 
       it('swaps the address, verifies it now, clears pending and answers the previous one', () => {
         const a = account({ pendingEmail: NEW, pendingEmailRequestedAt: NOW });
-        expect(a.confirmEmailChange({ requestedAt: NOW, now: LATER })).toEqual({
-          ok: true,
-          value: OLD,
-        });
+        expect(a.confirmEmailChange({ requestedAt: NOW, now: LATER, lifetimeMinutes: 60 })).toEqual(
+          {
+            ok: true,
+            value: OLD,
+          },
+        );
         expect(a.state.email).toEqual(NEW);
         expect(a.state.emailVerifiedAt).toEqual(LATER);
         expect(a.state.pendingEmail).toBeNull();
@@ -160,7 +162,29 @@ describe.each(['AU', 'ZZ'])(
       it('binds to the request at millisecond precision (the store keeps no more)', () => {
         const precise = NOW.add({ microseconds: 250 });
         const a = account({ pendingEmail: NEW, pendingEmailRequestedAt: precise });
-        expect(a.confirmEmailChange({ requestedAt: NOW, now: LATER }).ok).toBe(true);
+        expect(a.confirmEmailChange({ requestedAt: NOW, now: LATER, lifetimeMinutes: 60 }).ok).toBe(
+          true,
+        );
+      });
+
+      it('lapses at the request plus the lifetime, the same boundary as the read (Sajad 5)', () => {
+        const before = account({ pendingEmail: NEW, pendingEmailRequestedAt: NOW });
+        const confirmedJustBefore = before.confirmEmailChange({
+          requestedAt: NOW,
+          now: NOW.add({ minutes: 60 }).subtract({ milliseconds: 1 }),
+          lifetimeMinutes: 60,
+        });
+        expect(confirmedJustBefore.ok).toBe(true);
+        const at = account({ pendingEmail: NEW, pendingEmailRequestedAt: NOW });
+        expect(
+          at.confirmEmailChange({
+            requestedAt: NOW,
+            now: NOW.add({ minutes: 60 }),
+            lifetimeMinutes: 60,
+          }),
+        ).toEqual({ ok: false, error: { code: 'link.rejected' } });
+        expect(at.state.pendingEmail).toEqual(NEW);
+        expect(at.pendingEvents).toEqual([]);
       });
 
       it.each<[string, Partial<AccountState>, Temporal.Instant]>([
@@ -187,7 +211,7 @@ describe.each(['AU', 'ZZ'])(
         ],
       ])('rejects the link for %s and changes nothing (R2)', (_name, overrides, requestedAt) => {
         const a = account(overrides);
-        expect(a.confirmEmailChange({ requestedAt, now: LATER })).toEqual({
+        expect(a.confirmEmailChange({ requestedAt, now: LATER, lifetimeMinutes: 60 })).toEqual({
           ok: false,
           error: { code: 'link.rejected' },
         });

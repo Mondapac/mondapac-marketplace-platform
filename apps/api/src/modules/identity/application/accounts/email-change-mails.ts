@@ -17,13 +17,21 @@ export interface SendEmailChangeMailInput {
   readonly occurredAt: Temporal.Instant;
 }
 
+/** One delivery of `identity.account-email-changed.v1`: its version names the change's notice. */
+export interface SendEmailChangedMailInput extends SendEmailChangeMailInput {
+  /** The event's aggregate version: the account version the confirmation produced. */
+  readonly aggregateVersion: number;
+}
+
 export type EmailChangeMailSkipped =
   | 'account.gone'
   | 'account.population'
   /** The warning: the request is no longer the pending one (confirmed, cancelled, replaced). */
   | 'email-change.superseded'
-  /** The notice: no previous address waits (already sent, or the account's key is destroyed). */
-  | 'email-change.no-previous-email';
+  /** The notice: none waits for this change (already sent). */
+  | 'email-change.no-notice'
+  /** The notice: the account's key is destroyed (erased); the row is deleted unsent. */
+  | 'email-change.notice-unreadable';
 
 export type SendEmailChangeMailOutput =
   | { readonly code: 'email-change-mail.sent' }

@@ -81,6 +81,7 @@ import type { AdminCustomersExportDependencies } from './application/use-cases/a
 import { AdminCustomerOverview } from './application/use-cases/admin-customer-overview.use-case';
 import { AdminCustomerEmailChangeRequest } from './application/use-cases/admin-customer-email-change-request.use-case';
 import { AdminCustomerEmailChangeCancel } from './application/use-cases/admin-customer-email-change-cancel.use-case';
+import { CancelEmailChangeOnDeletion } from './application/use-cases/cancel-email-change-on-deletion.use-case';
 import { AdminCustomerTabOpened } from './application/use-cases/admin-customer-tab-opened.use-case';
 import type { CustomerPageDependencies } from './application/customer-page-flow';
 import type { EmailChangeDependencies } from './application/admin-email-change-flow';
@@ -341,6 +342,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         ) => new type(gate, { unitOfWork, requests, identity }),
       }),
     ),
+    {
+      provide: CancelEmailChangeOnDeletion,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ACCOUNT_DELETION_REQUEST_REPOSITORY, EMAIL_CHANGE_PEER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: EmailChangeDependencies['unitOfWork'],
+        requests: EmailChangeDependencies['requests'],
+        identity: EmailChangePeer,
+      ) => new CancelEmailChangeOnDeletion(gate, { unitOfWork, requests, identity }),
+    },
     ...[AdminCustomersList, AdminCustomersIds].map((type) =>
       listUseCaseProvider(type as ListUseCaseClass<unknown>),
     ),
@@ -414,6 +425,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     CUSTOMER_READ_MODEL_PEERS,
     SyncCustomerReadModel,
     ReconcileCustomerReadModels,
+    CancelEmailChangeOnDeletion,
   ],
 })
 export class CustomersModule {}

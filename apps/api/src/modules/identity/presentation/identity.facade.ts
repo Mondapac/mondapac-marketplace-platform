@@ -8,6 +8,7 @@ import type { CustomerAccountOf } from '../application/use-cases/customer-accoun
 import type { AdminRequestCustomerEmailChange } from '../application/use-cases/admin-request-customer-email-change.use-case';
 import type { AdminCancelCustomerEmailChange } from '../application/use-cases/admin-cancel-customer-email-change.use-case';
 import type { CustomerPendingEmailOf } from '../application/use-cases/customer-pending-email-of.use-case';
+import type { CancelCustomerEmailChangeForDeletion } from '../application/use-cases/cancel-customer-email-change-for-deletion.use-case';
 import type { SearchCustomerAccounts } from '../application/use-cases/search-customer-accounts.use-case';
 import type { CustomerAccountSummaries } from '../application/use-cases/customer-account-summaries.use-case';
 import type { CustomerShortNames } from '../application/use-cases/customer-short-names.use-case';
@@ -71,6 +72,7 @@ export interface IdentityFacadeUseCases {
   readonly adminRequestCustomerEmailChange: AdminRequestCustomerEmailChange;
   readonly adminCancelCustomerEmailChange: AdminCancelCustomerEmailChange;
   readonly customerPendingEmailOf: CustomerPendingEmailOf;
+  readonly cancelCustomerEmailChangeForDeletion: CancelCustomerEmailChangeForDeletion;
 }
 
 /**
@@ -176,6 +178,13 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     accountId: Id<'Account'>,
   ): Promise<Result<CustomerPendingEmailChange | null, CustomerAccountOfFailure>> {
     return this.useCases.customerPendingEmailOf.execute(context, { accountId });
+  }
+
+  cancelCustomerEmailChangeForDeletion(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly cancelled: boolean }, CustomerAccountOfFailure>> {
+    return this.useCases.cancelCustomerEmailChangeForDeletion.execute(context, { accountId });
   }
 
   customerAccountSummaries(

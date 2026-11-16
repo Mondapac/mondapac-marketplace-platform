@@ -7,6 +7,7 @@ import { ACCOUNT_DELETION_REQUEST_REPOSITORY } from '../src/modules/customers/ap
 import { CUSTOMER_LIST_READER } from '../src/modules/customers/application/ports/customer-list.reader';
 import { InMemoryCustomerList } from '../src/modules/customers/application/testing/in-memory-customer-list';
 import { MemoryAccountDeletionRequests } from '../src/modules/customers/application/testing/in-memory-account-deletion';
+import { CancelEmailChangeOnDeletion } from '../src/modules/customers/application/use-cases/cancel-email-change-on-deletion.use-case';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
@@ -383,5 +384,42 @@ describe.each(TEST_MARKETS)('admin customer email change over HTTP in market %s'
     const missing = await confirm({ token: 'x' });
     expect(missing.status).toBe(400);
     expect(missing.body).toMatchObject({ code: 'validation.failed' });
+  });
+  it('a deletion requested after the change cancels it: the mailed link then answers link.rejected', async () => {
+    await boot();
+    const admin = sessionOf('admin', 9, CHANGER);
+    prove(9);
+    expect(
+      (await http().put(emailPath(CUSTOMER)).set(admin).send({ email: NEW_EMAIL })).status,
+    ).toBe(200);
+    const token = issueChangeLink();
+    // The customer's deletion request is recorded (as customers' request use case writes it);
+    // the dispatcher then delivers its deletion-requested event to customers' subscriber.
+    const requestId = id<'AccountDeletionRequest'>(0xde01);
+    await requests.insertPending(marketOf(), {
+      id: requestId,
+      accountId: CUSTOMER,
+      adminOrigin: null,
+    } as never);
+    const system = testCallContext(marketOf(), 'system', 'email-change-deletion-e2e');
+    const delivery = {
+      eventId: id<'event'>(0xe0e1),
+      subscriber: 'customers.email-change-on-deletion',
+      attempt: 1,
+    };
+    const handled = await app!
+      .get(CancelEmailChangeOnDeletion)
+      .execute(system, { requestId, delivery });
+    expect(handled).toEqual({ ok: true, value: { code: 'email-change.cancelled' } });
+    expect(customer().pendingEmail ?? null).toBeNull();
+
+    const res = await confirm({ token, password: PASSWORD });
+    expect(res.status).toBe(400);
+    expect(res.body).toMatchObject({ code: 'link.rejected' });
+    expect(customer().email.typed).toBe('maryam@Example.com');
+    // A repeated delivery changes nothing.
+    expect(
+      await app!.get(CancelEmailChangeOnDeletion).execute(system, { requestId, delivery }),
+    ).toEqual({ ok: true, value: { code: 'delivery.already-handled' } });
   });
 });

@@ -177,6 +177,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         adminRequestCustomerEmailChange: undefined as never,
         adminCancelCustomerEmailChange: undefined as never,
         customerPendingEmailOf: undefined as never,
+        cancelCustomerEmailChangeForDeletion: undefined as never,
       });
 
     it("answers the actor's ids, email and session times; the facade drops the email", async () => {

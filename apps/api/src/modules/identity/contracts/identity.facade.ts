@@ -407,6 +407,17 @@ export interface IdentityFacade {
   ): Promise<Result<CustomerPendingEmailChange | null, CustomerAccountOfFailure>>;
 
   /**
+   * Cancels a customer's pending sign-in email change because the account's deletion was
+   * requested (customers admin email change; Hassan R6, L2): the pending address cleared and its
+   * mailed link voided. Rule `system` (customers' subscriber on its deletion-requested events).
+   * `cancelled: false` when none was pending. Repeat-safe.
+   */
+  cancelCustomerEmailChangeForDeletion(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly cancelled: boolean }, CustomerAccountOfFailure>>;
+
+  /**
    * The directory fields of customer accounts by id, for the `customers` read model. Rule `system`;
    * at most 100 ids; an unknown id, another Market's and a non-customer account are absent. PERSONAL
    * DATA. Not exposed over HTTP.

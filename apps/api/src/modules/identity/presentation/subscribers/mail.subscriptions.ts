@@ -251,6 +251,7 @@ export function identityMailSubscriptions(
           delivery,
           accountId: event.payload.accountId,
           occurredAt: event.occurredAt,
+          aggregateVersion: event.aggregateVersion,
         });
         if (!result.ok) {
           throw new Error(`${EMAIL_CHANGED_MAIL_SUBSCRIBER} refused: ${result.error.code}`);

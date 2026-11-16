@@ -447,7 +447,8 @@ export class Account {
    * The customer confirms the change with the link mailed to the pending address and the account's
    * password (Hassan R1, R2, R6): the account must be an active, verified customer account whose
    * pending request is the one the link was requested with (`requestedAt`, the link's request
-   * instant); otherwise `link.rejected`, one answer for every cause. The pending address becomes the
+   * instant) and has not lapsed (`lifetimeMinutes` after it was asked for, the boundary of
+   * {@link pendingEmailChange}); otherwise `link.rejected`, one answer for every cause. The pending address becomes the
    * sign-in email, verified now (the link proved the mailbox), and the pending columns are cleared,
    * in one version step that records `identity.account-email-changed.v1` and nothing else (Mohammad
    * 4: no `account-email-verified`). Answers the previous address, for the notice the caller
@@ -456,8 +457,13 @@ export class Account {
   confirmEmailChange(input: {
     readonly requestedAt: Temporal.Instant;
     readonly now: Temporal.Instant;
+    /**
+     * The Market's lifetime of the change's link: the pending address lapses at its request plus
+     * this, whatever the link's own expiry (a mail sent late issues a link that outlives it).
+     */
+    readonly lifetimeMinutes: number;
   }): Result<EmailAddress, EmailChangeRejected> {
-    const { requestedAt, now } = input;
+    const { requestedAt, now, lifetimeMinutes } = input;
     const state = this.#state;
     const pending = state.pendingEmail ?? null;
     const pendingAt = state.pendingEmailRequestedAt ?? null;
@@ -468,7 +474,9 @@ export class Account {
       pending === null ||
       pendingAt === null ||
       // Compared at the store's precision: both instants are written by one unit at one `now`.
-      pendingAt.epochMilliseconds !== requestedAt.epochMilliseconds
+      pendingAt.epochMilliseconds !== requestedAt.epochMilliseconds ||
+      // One boundary with the read and the purge (Sajad 5): lapsed is lapsed.
+      this.pendingEmailChange(now, lifetimeMinutes) === null
     ) {
       return err({ code: 'link.rejected' });
     }

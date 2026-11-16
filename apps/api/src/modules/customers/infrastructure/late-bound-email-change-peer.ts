@@ -35,4 +35,10 @@ export class LateBoundEmailChangePeer implements EmailChangePeer {
       ? UNAVAILABLE()
       : this.#bound.customerPendingEmailOf(context, accountId);
   }
+
+  cancelCustomerEmailChangeForDeletion(context: CallContext, accountId: Id<'Account'>) {
+    return this.#bound === null
+      ? UNAVAILABLE()
+      : this.#bound.cancelCustomerEmailChangeForDeletion(context, accountId);
+  }
 }

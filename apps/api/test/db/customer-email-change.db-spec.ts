@@ -20,10 +20,11 @@ import { createPersistence, marketOf, type Persistence } from './persistence-sup
 import { testDatabaseUrl } from './test-database';
 
 // The admin email change on PostgreSQL (customers admin email change), as the application role,
-// for both Market fixtures: the CHECKs of the pending columns and the notice, the new link
-// purpose, the swap through the real repository, the unique key deciding a clash (the unit rolls
-// back whole), the previous address sealed under the account's key and cleared, and the purge of
-// lapsed pending addresses at the same boundary as the read.
+// for both Market fixtures: the CHECKs of the pending columns and of the notices table, the new
+// link purpose, the swap through the real repository, the unique key deciding a clash (the unit
+// rolls back whole), one sealed notice per change opened and deleted by its key only, and the
+// purge of lapsed pending addresses at the same boundary as the read. The races and the A to B to
+// C notices through the real application are customer-email-change-races.db-spec.ts.
 
 const NOW = Temporal.Instant.from('2026-11-16T10:00:00.123456Z');
 const HASH = '$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2FsdA$dGFndGFndGFn';
@@ -155,7 +156,7 @@ describe('identity customer email change (database)', () => {
         );
       });
 
-      it('allows a pending address and a notice on a customer account only', async () => {
+      it('allows a pending address on a customer account only', async () => {
         const sellerId = randomUUID();
         await sql.query(
           `INSERT INTO identity.accounts (id, market_id, tenant_id, population, email,
@@ -172,25 +173,67 @@ describe('identity customer email change (database)', () => {
             ),
           ),
         ).toBe('accounts_pending_email_customer_check');
-        expect(await violated(update(sellerId, `email_change_notice = '${ENVELOPE}'`))).toBe(
-          'accounts_pending_email_customer_check',
-        );
       });
 
-      it('takes only a sealed envelope as the notice', async () => {
+      it('takes only sealed envelopes in a notice, a version above 1 and one row per change', async () => {
         const accountId = await storedCustomer();
-        expect(await violated(update(accountId, `email_change_notice = 'old@example.com'`))).toBe(
-          'accounts_email_change_notice_check',
-        );
-        for (const plain of ['v1.jane@mail.test', 'v1.short', `v0.${'A'.repeat(40)}`]) {
-          expect(await violated(update(accountId, `email_change_notice = '${plain}'`))).toBe(
-            'accounts_email_change_notice_check',
+        const insert = (previous: string, next: string, version = 2) =>
+          sql.query(
+            `INSERT INTO identity.email_change_notices (market_id, tenant_id, account_id,
+               account_version, previous_email, new_email, created_at)
+             VALUES ($1, 'default', $2, $3, $4, $5, now())`,
+            [code, accountId, version, previous, next],
+          );
+        for (const plain of [
+          'old@example.com',
+          'v1.jane@mail.test',
+          'v1.short',
+          `v0.${'A'.repeat(40)}`,
+          `v1.${'A'.repeat(2046)}`,
+        ]) {
+          expect(await violated(insert(plain, ENVELOPE))).toBe(
+            'email_change_notices_previous_email_check',
+          );
+          expect(await violated(insert(ENVELOPE, plain))).toBe(
+            'email_change_notices_new_email_check',
           );
         }
-        expect(await violated(update(accountId, `email_change_notice = '${ENVELOPE}'`))).toBeNull();
+        expect(await violated(insert(ENVELOPE, ENVELOPE, 1))).toBe(
+          'email_change_notices_account_version_check',
+        );
+        expect(await violated(insert(ENVELOPE, `v12.${'b'.repeat(40)}`))).toBeNull();
+        expect(await violated(insert(ENVELOPE, ENVELOPE))).toBe('email_change_notices_pkey');
         expect(
-          await violated(update(accountId, `email_change_notice = 'v12.${'b'.repeat(40)}'`)),
-        ).toBeNull();
+          await violated(
+            sql.query(
+              `INSERT INTO identity.email_change_notices (market_id, tenant_id, account_id,
+                 account_version, previous_email, new_email, created_at)
+               VALUES ($1, 'default', $2, 2, $3, $3, now())`,
+              [code, randomUUID(), ENVELOPE],
+            ),
+          ),
+        ).toBe('email_change_notices_market_id_account_id_fkey');
+      });
+
+      it('lets the application role delete a notice but never update one', async () => {
+        const accountId = await storedCustomer();
+        await sql.query(
+          `INSERT INTO identity.email_change_notices (market_id, tenant_id, account_id,
+             account_version, previous_email, new_email, created_at)
+           VALUES ($1, 'default', $2, 2, $3, $3, now())`,
+          [code, accountId, ENVELOPE],
+        );
+        await expect(
+          sql.query(
+            `UPDATE identity.email_change_notices SET new_email = $1 WHERE account_id = $2`,
+            [ENVELOPE, accountId],
+          ),
+        ).rejects.toMatchObject({ code: '42501' });
+        const { rowCount } = await sql.query(
+          'DELETE FROM identity.email_change_notices WHERE account_id = $1',
+          [accountId],
+        );
+        expect(rowCount).toBe(1);
       });
 
       it('takes the confirm-email-change link purpose and still refuses an unknown one', async () => {
@@ -220,6 +263,7 @@ describe('identity customer email change (database)', () => {
         const confirmed = account.confirmEmailChange({
           requestedAt: NOW,
           now: NOW.add({ minutes: 1 }),
+          lifetimeMinutes: 60,
         });
         expect(confirmed.ok).toBe(true);
       });
@@ -237,10 +281,17 @@ describe('identity customer email change (database)', () => {
             const previous = account!.confirmEmailChange({
               requestedAt: NOW,
               now: NOW.add({ minutes: 5 }),
+              lifetimeMinutes: 60,
             });
             if (!previous.ok) throw new Error('test: not confirmable');
             await accounts.save(market, account!);
-            await store.keepPreviousEmail(market, accountId, previous.value.typed);
+            await store.recordNotice(
+              market,
+              accountId,
+              account!.state.version,
+              { previousEmail: previous.value.typed, newEmail: account!.state.email.typed },
+              NOW,
+            );
             return ok(previous.value.typed);
           });
 
@@ -250,42 +301,50 @@ describe('identity customer email change (database)', () => {
         // Nothing of the refused unit stays: the pending address and no notice.
         const after = await load(second);
         expect(after.state.pendingEmail?.normalized).toBe(target);
-        const { rows } = await sql.query<{ email_change_notice: string | null }>(
-          'SELECT email_change_notice FROM identity.accounts WHERE id = $1',
+        const { rows } = await sql.query(
+          'SELECT 1 FROM identity.email_change_notices WHERE account_id = $1',
           [second],
         );
-        expect(rows[0]?.email_change_notice).toBeNull();
+        expect(rows).toEqual([]);
       });
 
-      it('keeps the previous address sealed, opens it, and forgets it', async () => {
+      it('seals one notice per change, opens it by its version and deletes only that one', async () => {
         const accountId = await storedCustomer();
-        const previous = 'Previous.Address@Example.com';
+        const first = { previousEmail: 'Previous.Address@Example.com', newEmail: 'B@Mailbox.test' };
+        const second = { previousEmail: 'B@Mailbox.test', newEmail: 'C@Mailbox.test' };
         await db.unitOfWork.run(market, async () => {
-          await store.keepPreviousEmail(market, accountId, previous);
+          await store.recordNotice(market, accountId, 2, first, NOW);
+          await store.recordNotice(market, accountId, 3, second, NOW);
           return ok(undefined);
         });
-        const { rows } = await sql.query<{ email_change_notice: string | null }>(
-          'SELECT email_change_notice FROM identity.accounts WHERE id = $1',
+        const { rows } = await sql.query<{ previous_email: string; new_email: string }>(
+          'SELECT previous_email, new_email FROM identity.email_change_notices WHERE account_id = $1',
           [accountId],
         );
-        expect(rows[0]?.email_change_notice).toMatch(/^v1\./);
-        expect(rows[0]?.email_change_notice).not.toContain('Previous');
-        const opened = await db.unitOfWork.run(
-          market,
-          async () => ok(await store.previousEmailOf(market, accountId)),
-          { readOnly: true },
-        );
-        expect(opened).toEqual(ok(previous));
-        await db.unitOfWork.run(market, async () => {
-          await store.forgetPreviousEmail(market, accountId);
-          return ok(undefined);
-        });
-        const gone = await db.unitOfWork.run(
-          market,
-          async () => ok(await store.previousEmailOf(market, accountId)),
-          { readOnly: true },
-        );
-        expect(gone).toEqual(ok(null));
+        expect(rows).toHaveLength(2);
+        for (const sealed of rows) {
+          expect(sealed.previous_email).toMatch(/^v1\./);
+          expect(JSON.stringify(sealed)).not.toMatch(/Previous|Mailbox/);
+        }
+        const read = (version: number) =>
+          db.unitOfWork.run(
+            market,
+            async () => ok(await store.noticeOf(market, accountId, version)),
+            {
+              readOnly: true,
+            },
+          );
+        expect(await read(2)).toEqual(ok(first));
+        expect(await read(3)).toEqual(ok(second));
+        expect(await read(4)).toEqual(ok('missing'));
+        const forget = (version: number) =>
+          db.unitOfWork.run(market, async () =>
+            ok(await store.forgetNotice(market, accountId, version)),
+          );
+        expect(await forget(2)).toEqual(ok(true));
+        expect(await forget(2)).toEqual(ok(false));
+        expect(await read(2)).toEqual(ok('missing'));
+        expect(await read(3)).toEqual(ok(second));
       });
 
       it('purges a pending address at the lifetime boundary, with a version step, and not before', async () => {

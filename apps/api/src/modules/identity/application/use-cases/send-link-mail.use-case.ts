@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import type { EventDelivery } from '../../../../platform/events/event-delivery';
 import type { MailTransport } from '../../../../platform/mail/mail-transport';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -35,7 +35,9 @@ export type LinkMailSkipped =
   /** confirm-email-change: the account has no pending address any more (cancelled, confirmed). */
   | 'account.no-pending-email'
   /** confirm-email-change: the pending address is another request's than the link's. */
-  | 'account.pending-email-changed';
+  | 'account.pending-email-changed'
+  /** confirm-email-change: the pending address lapsed before the mail went out (Sajad 5). */
+  | 'account.pending-email-lapsed';
 
 export type SendLinkMailOutput =
   | { readonly code: 'link-mail.sent'; readonly issued: boolean }
@@ -161,7 +163,7 @@ export class SendLinkMail extends UseCase<
     );
     if (!loaded.ok) throw new Error('send-link-mail: the read unit failed');
     const { link, account } = loaded.value;
-    const skipped = this.skipReason(link, account, input);
+    const skipped = this.skipReason(market, link, account, input);
     if (skipped !== null) {
       const marked = await unitOfWork.runOnce(market, input.delivery, () =>
         Promise.resolve(ok(undefined)),
@@ -226,6 +228,7 @@ export class SendLinkMail extends UseCase<
   }
 
   private skipReason(
+    market: MarketContext,
     link: OneTimeLink | null,
     account: Account | null,
     input: SendLinkMailInput,
@@ -256,6 +259,15 @@ export class SendLinkMail extends UseCase<
       // R2, R3: bound to the request the link was requested with (the same instant, one unit).
       if (pendingAt.epochMilliseconds !== link.state.requestedAt.epochMilliseconds) {
         return 'account.pending-email-changed';
+      }
+      // One boundary with the confirmation and the purge: a mail that goes out after the pending
+      // address lapsed would carry a link that can only be refused.
+      const lifetime = this.deps.policy.linkLifetimeMinutes(market, 'confirm-email-change');
+      if (
+        lifetime === null ||
+        account.pendingEmailChange(this.deps.clock.now(), lifetime) === null
+      ) {
+        return 'account.pending-email-lapsed';
       }
     }
     // 3.7: no reset link for an unverified account (it signs up again, 3.2).

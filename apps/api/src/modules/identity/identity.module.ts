@@ -169,6 +169,7 @@ import { AdminRequestCustomerEmailChange } from './application/use-cases/admin-r
 import { AdminCancelCustomerEmailChange } from './application/use-cases/admin-cancel-customer-email-change.use-case';
 import { ConfirmCustomerEmailChange } from './application/use-cases/confirm-customer-email-change.use-case';
 import { CustomerPendingEmailOf } from './application/use-cases/customer-pending-email-of.use-case';
+import { CancelCustomerEmailChangeForDeletion } from './application/use-cases/cancel-customer-email-change-for-deletion.use-case';
 import { SendEmailChangeRequestedMail } from './application/use-cases/send-email-change-requested-mail.use-case';
 import { SendEmailChangedMail } from './application/use-cases/send-email-changed-mail.use-case';
 import { SearchCustomerAccounts } from './application/use-cases/search-customer-accounts.use-case';
@@ -660,6 +661,12 @@ function useCaseProvider<D, U>(
       stepUpActions: true,
       factors: true,
       audit: true,
+      clock: true,
+    }),
+    useCaseProvider(CancelCustomerEmailChangeForDeletion, {
+      unitOfWork: true,
+      accounts: true,
+      links: true,
       clock: true,
     }),
     useCaseProvider(ConfirmCustomerEmailChange, {
@@ -1901,6 +1908,7 @@ function useCaseProvider<D, U>(
         AdminRequestCustomerEmailChange,
         AdminCancelCustomerEmailChange,
         CustomerPendingEmailOf,
+        CancelCustomerEmailChangeForDeletion,
       ],
       useFactory: (
         describeActor: DescribeActor,
@@ -1927,6 +1935,7 @@ function useCaseProvider<D, U>(
         adminRequestCustomerEmailChange: AdminRequestCustomerEmailChange,
         adminCancelCustomerEmailChange: AdminCancelCustomerEmailChange,
         customerPendingEmailOf: CustomerPendingEmailOf,
+        cancelCustomerEmailChangeForDeletion: CancelCustomerEmailChangeForDeletion,
       ) =>
         new IdentityFacadeImplementation({
           describeActor,
@@ -1953,6 +1962,7 @@ function useCaseProvider<D, U>(
           adminRequestCustomerEmailChange,
           adminCancelCustomerEmailChange,
           customerPendingEmailOf,
+          cancelCustomerEmailChangeForDeletion,
         }),
     },
     {

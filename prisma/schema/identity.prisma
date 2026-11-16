@@ -70,8 +70,6 @@ model IdentityAccount {
   pendingEmailNormalized  String?                     @map("pending_email_normalized")
   /// When the pending address was asked for; the link of the change is bound to this instant.
   pendingEmailRequestedAt DateTime?                   @map("pending_email_requested_at") @db.Timestamptz(6)
-  /// Personal, sealed under the account's subject key: the previous address, until the "your sign-in email was changed" notice is sent to it.
-  emailChangeNotice       String?                     @map("email_change_notice")
   /// active | disabled.
   status                  String
   /// NULL while the email is unverified.
@@ -93,6 +91,7 @@ model IdentityAccount {
   secondFactor            IdentitySecondFactor?
   signInChallenges        IdentitySignInChallenge[]
   externalIdentities      IdentityExternalIdentity[]
+  emailChangeNotices      IdentityEmailChangeNotice[]
 
   /// ADR-0018 decision 3: one account per Market, population and normalised email.
   @@unique([marketId, population, emailNormalized])
@@ -643,5 +642,26 @@ model IdentityExternalIdentity {
   /// At most one identity per account and provider.
   @@unique([marketId, accountId, provider])
   @@map("external_identities")
+  @@schema("identity")
+}
+
+/// One "your sign-in email was changed" notice per confirmed change (customers admin email
+/// change; Hassan M1): written in the confirmation's unit, read and deleted by the notice handler
+/// of that change's event only. Goes with its account.
+model IdentityEmailChangeNotice {
+  marketId       String          @map("market_id") @db.VarChar(8)
+  tenantId       String          @map("tenant_id")
+  accountId      String          @map("account_id") @db.Uuid
+  /// The account version the confirmation produced: the event's aggregate version.
+  accountVersion Int             @map("account_version")
+  /// Personal, sealed under the account's subject key: the address before the change, the recipient.
+  previousEmail  String          @map("previous_email")
+  /// Personal, sealed under the account's subject key: the address after the change, shown masked.
+  newEmail       String          @map("new_email")
+  createdAt      DateTime        @map("created_at") @db.Timestamptz(6)
+  account        IdentityAccount @relation(fields: [marketId, accountId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, accountId, accountVersion])
+  @@map("email_change_notices")
   @@schema("identity")
 }

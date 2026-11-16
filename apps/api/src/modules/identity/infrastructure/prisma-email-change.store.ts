@@ -2,18 +2,20 @@ import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { fieldLabel } from '../../../platform/subject-keys/labels';
 import type { SubjectKeyService } from '../../../platform/subject-keys/subject-key-service';
-import type { EmailChangeStore } from '../application/ports/account.repository';
+import type { EmailChangeNotice, EmailChangeStore } from '../application/ports/account.repository';
 
-/** The label the previous address is sealed under: bound into the ciphertext. */
-const PREVIOUS_EMAIL = fieldLabel('identity.account.previous-email');
+/** The labels the two addresses of a notice are sealed under: bound into each ciphertext. */
+const PREVIOUS_EMAIL = fieldLabel('identity.email-change-notice.previous-email');
+const NEW_EMAIL = fieldLabel('identity.email-change-notice.new-email');
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 
 /**
- * {@link EmailChangeStore} on `identity.accounts` (`email_change_notice`, the pending columns).
- * Every statement goes through `PrismaService.tx(market)` with `marketId` at the top of `where`.
- * The previous address is sealed with the account's subject key before it is written and opened
- * only by the notice's handler; no value is logged or returned in an error.
+ * {@link EmailChangeStore} on `identity.email_change_notices` (one row per confirmed change) and
+ * the pending columns of `identity.accounts`. Every statement goes through
+ * `PrismaService.tx(market)` with `marketId` at the top of `where`. Both addresses are sealed
+ * with the account's subject key before they are written and opened only by the notice's
+ * handler; no value is logged or returned in an error.
  */
 export class PrismaEmailChangeStore implements EmailChangeStore {
   constructor(
@@ -21,39 +23,65 @@ export class PrismaEmailChangeStore implements EmailChangeStore {
     private readonly subjectKeys: SubjectKeyService,
   ) {}
 
-  async keepPreviousEmail(
+  async recordNotice(
     market: MarketContext,
     accountId: Id<'Account'>,
-    previousEmail: string,
+    accountVersion: number,
+    notice: EmailChangeNotice,
+    now: Temporal.Instant,
   ): Promise<void> {
-    const sealed = await this.subjectKeys.encrypt(market, accountId, PREVIOUS_EMAIL, previousEmail);
-    if (!sealed.ok) throw new Error('identity.accounts: the account key is destroyed');
-    await this.prisma.tx(market).identityAccount.updateMany({
-      where: { marketId: market.marketId, id: accountId, population: 'customer' },
-      data: { emailChangeNotice: sealed.value },
-    });
-  }
-
-  async previousEmailOf(market: MarketContext, accountId: Id<'Account'>): Promise<string | null> {
-    const row = await this.prisma.tx(market).identityAccount.findFirst({
-      where: { marketId: market.marketId, id: accountId },
-      select: { emailChangeNotice: true },
-    });
-    if (row === null || row.emailChangeNotice === null) return null;
-    const opened = await this.subjectKeys.decrypt(
+    const previous = await this.subjectKeys.encrypt(
       market,
       accountId,
       PREVIOUS_EMAIL,
-      row.emailChangeNotice,
+      notice.previousEmail,
     );
-    return opened.ok ? opened.value : null;
+    const next = await this.subjectKeys.encrypt(market, accountId, NEW_EMAIL, notice.newEmail);
+    if (!previous.ok || !next.ok)
+      throw new Error('identity.accounts: the account key is destroyed');
+    await this.prisma.tx(market).identityEmailChangeNotice.create({
+      data: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        accountId,
+        accountVersion,
+        previousEmail: previous.value,
+        newEmail: next.value,
+        createdAt: toDate(now),
+      },
+    });
   }
 
-  async forgetPreviousEmail(market: MarketContext, accountId: Id<'Account'>): Promise<void> {
-    await this.prisma.tx(market).identityAccount.updateMany({
-      where: { marketId: market.marketId, id: accountId },
-      data: { emailChangeNotice: null },
+  async noticeOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    accountVersion: number,
+  ): Promise<EmailChangeNotice | 'missing' | 'unreadable'> {
+    const row = await this.prisma.tx(market).identityEmailChangeNotice.findFirst({
+      where: { marketId: market.marketId, accountId, accountVersion },
+      select: { previousEmail: true, newEmail: true },
     });
+    if (row === null) return 'missing';
+    const previous = await this.subjectKeys.decrypt(
+      market,
+      accountId,
+      PREVIOUS_EMAIL,
+      row.previousEmail,
+    );
+    const next = await this.subjectKeys.decrypt(market, accountId, NEW_EMAIL, row.newEmail);
+    if (!previous.ok || !next.ok) return 'unreadable';
+    return { previousEmail: previous.value, newEmail: next.value };
+  }
+
+  async forgetNotice(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    accountVersion: number,
+  ): Promise<boolean> {
+    const { count } = await this.prisma.tx(market).identityEmailChangeNotice.deleteMany({
+      where: { marketId: market.marketId, accountId, accountVersion },
+    });
+    return count === 1;
   }
 
   async clearLapsedPendingEmails(market: MarketContext, before: Temporal.Instant): Promise<number> {

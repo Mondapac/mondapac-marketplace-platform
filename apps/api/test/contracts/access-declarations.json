@@ -292,6 +292,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "customers.cancel-email-change-on-deletion", "rule": "system" },
   { "name": "customers.create-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.delete-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.execute-account-deletions", "rule": "system" },
@@ -350,6 +351,7 @@
   },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
+  { "name": "identity.cancel-customer-email-change-for-deletion", "rule": "system" },
   {
     "name": "identity.change-actor-labels",
     "rule": "own-resources",

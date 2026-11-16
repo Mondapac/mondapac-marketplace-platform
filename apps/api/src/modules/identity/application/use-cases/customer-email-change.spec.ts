@@ -31,6 +31,7 @@ import { CatalogueMailComposer } from '../../infrastructure/mail/mail-catalogue'
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
 import { RandomSessionTokens } from '../../infrastructure/sessions/random-session-tokens';
 import type { ThrottleKeys } from '../ports/session-secrets';
+import { CancelCustomerEmailChangeForDeletion } from './cancel-customer-email-change-for-deletion.use-case';
 import { AdminCancelCustomerEmailChange } from './admin-cancel-customer-email-change.use-case';
 import {
   AdminRequestCustomerEmailChange,
@@ -220,6 +221,12 @@ function setUp(code: string) {
       ids,
     }),
     cancel: new AdminCancelCustomerEmailChange(gate, adminDeps),
+    cancelForDeletion: new CancelCustomerEmailChangeForDeletion(gate, {
+      unitOfWork: fakes.unitOfWork,
+      accounts: fakes.accountRepository,
+      links: fakes.linkRepository,
+      clock,
+    }),
     confirm: new ConfirmCustomerEmailChange(gate, {
       ...signInDeps,
       audit: fakes.audit,
@@ -599,6 +606,14 @@ describe.each(TEST_MARKETS)('admin email change in market %s', (code) => {
   });
 
   describe('the confirmation (R1, R2, R6, R7, R10, R11)', () => {
+    const deliverNotice = (s: Setup, event: PendingEvent) =>
+      s.sendNotice.execute(system, {
+        delivery: deliveryOf('identity.email-changed-mail'),
+        accountId: CUSTOMER,
+        occurredAt: event.occurredAt,
+        aggregateVersion: event.aggregateVersion,
+      });
+
     async function mailedToken(s: Setup) {
       expect((await requestChange(s)).ok).toBe(true);
       await deliverLink(s);
@@ -659,21 +674,97 @@ describe.each(TEST_MARKETS)('admin email change in market %s', (code) => {
         JSON.stringify([s.fakes.events, s.fakes.audits, s.fakes.records]).toLowerCase(),
       ).not.toContain('maryam');
 
-      // The notice to the previous address, the new one masked; the kept address is cleared.
-      const changed = eventsOf(s, 'identity.account-email-changed.v1')[0]!;
-      const sent = await s.sendNotice.execute(system, {
-        delivery: deliveryOf('identity.email-changed-mail'),
-        accountId: CUSTOMER,
-        occurredAt: changed.occurredAt,
-      });
+      // The notice to the previous address, the new one masked; that notice row is deleted.
+      expect(s.fakes.emailChangeNotices.size).toBe(1);
+      const sent = await deliverNotice(s, eventsOf(s, 'identity.account-email-changed.v1')[0]!);
       expect(sent).toEqual({ ok: true, value: { code: 'email-change-mail.sent' } });
       const notice = s.fakes.mails.at(-1)!;
       expect(notice.to).toBe(OLD_EMAIL);
       expect(notice.text).toContain('m***@m***.test');
       expect(notice.text.toLowerCase()).not.toContain('maryam.new');
-      expect(s.fakes.previousEmails.size).toBe(0);
+      expect(s.fakes.emailChangeNotices.size).toBe(0);
       // The old address no longer signs in; the session stays closed until a new sign-in.
       expect(s.fakes.accounts.size).toBeGreaterThan(1);
+    });
+
+    it('keeps one notice per change: A to B to C before any notice notifies A and B, each with its own new address (Hassan M1)', async () => {
+      const s = setUp(code);
+      const first = await mailedToken(s);
+      expect(
+        (await s.confirm.execute(anonymous, { token: first, password: PASSWORD, client: CLIENT }))
+          .ok,
+      ).toBe(true);
+      s.clock.advance(Temporal.Duration.from({ minutes: 1 }));
+      expect((await requestChange(s, 'third@mailbox.test')).ok).toBe(true);
+      await deliverLink(s);
+      const second = tokenOf(s.fakes.mails.at(-1)!.text);
+      expect(
+        (await s.confirm.execute(anonymous, { token: second, password: PASSWORD, client: CLIENT }))
+          .ok,
+      ).toBe(true);
+      expect(customer(s).email.typed).toBe('third@mailbox.test');
+      const [ab, bc] = eventsOf(s, 'identity.account-email-changed.v1');
+      expect(s.fakes.emailChangeNotices.size).toBe(2);
+
+      // The later notice first: it deletes only its own row.
+      expect(await deliverNotice(s, bc!)).toEqual({
+        ok: true,
+        value: { code: 'email-change-mail.sent' },
+      });
+      expect(s.fakes.mails.at(-1)!.to).toBe(NEW_EMAIL);
+      expect(s.fakes.mails.at(-1)!.text).toContain('t***@m***.test');
+      expect(s.fakes.emailChangeNotices.size).toBe(1);
+      expect(await deliverNotice(s, ab!)).toEqual({
+        ok: true,
+        value: { code: 'email-change-mail.sent' },
+      });
+      // A gets the notice, with B (the new address of that change) masked, not C.
+      expect(s.fakes.mails.at(-1)!.to).toBe(OLD_EMAIL);
+      expect(s.fakes.mails.at(-1)!.text).toContain('m***@m***.test');
+      expect(s.fakes.emailChangeNotices.size).toBe(0);
+      // A redelivery of a sent notice finds none and sends nothing.
+      const mails = s.fakes.mails.length;
+      expect(await deliverNotice(s, ab!)).toMatchObject({ ok: true });
+      expect(s.fakes.mails.length).toBe(mails);
+    });
+
+    it('skips a notice whose account key is destroyed (erased) and deletes it unsent', async () => {
+      const s = setUp(code);
+      const token = await mailedToken(s);
+      await s.confirm.execute(anonymous, { token, password: PASSWORD, client: CLIENT });
+      s.fakes.subjectKeys.set(CUSTOMER, 'destroyed');
+      const mails = s.fakes.mails.length;
+      expect(await deliverNotice(s, eventsOf(s, 'identity.account-email-changed.v1')[0]!)).toEqual({
+        ok: true,
+        value: { code: 'email-change-mail.skipped', reason: 'email-change.notice-unreadable' },
+      });
+      expect(s.fakes.mails.length).toBe(mails);
+      expect(s.fakes.emailChangeNotices.size).toBe(0);
+    });
+
+    it('lapses at the request plus the lifetime even when the link mail went out late (Sajad 5)', async () => {
+      const s = setUp(code);
+      expect((await requestChange(s)).ok).toBe(true);
+      // The mail is delivered one minute before the pending address lapses: the link it issues
+      // would live a full lifetime from now.
+      s.clock.advance(Temporal.Duration.from({ minutes: lifetimeMinutes - 1 }));
+      expect(await deliverLink(s)).toMatchObject({ ok: true, value: { code: 'link-mail.sent' } });
+      const token = tokenOf(s.fakes.mails.at(-1)!.text);
+      s.clock.advance(Temporal.Duration.from({ minutes: 1 }));
+      expect(
+        await s.confirm.execute(anonymous, { token, password: PASSWORD, client: CLIENT }),
+      ).toEqual({ ok: false, error: { code: 'link.rejected' } });
+      expect(customer(s).email.typed).toBe(OLD_EMAIL);
+    });
+
+    it('skips the link mail once the pending address has lapsed (Sajad 5)', async () => {
+      const s = setUp(code);
+      expect((await requestChange(s)).ok).toBe(true);
+      s.clock.advance(Temporal.Duration.from({ minutes: lifetimeMinutes }));
+      expect(await deliverLink(s)).toEqual({
+        ok: true,
+        value: { code: 'link-mail.skipped', reason: 'account.pending-email-lapsed' },
+      });
     });
 
     it('refuses a wrong password, counts it as a sign-in failure and leaves the link usable (R12 wrong password)', async () => {
@@ -805,6 +896,50 @@ describe.each(TEST_MARKETS)('admin email change in market %s', (code) => {
           client: CLIENT,
         }),
       ).toEqual({ ok: false, error: { code: 'link.rejected' } });
+    });
+  });
+
+  describe('a requested account deletion (Hassan R6, L2)', () => {
+    it('cancels the pending change: the mailed link then answers link.rejected', async () => {
+      const s = setUp(code);
+      expect((await requestChange(s)).ok).toBe(true);
+      await deliverLink(s);
+      const token = tokenOf(s.fakes.mails.at(-1)!.text);
+      // customers' subscriber on its deletion-requested event, as the system actor.
+      expect(await s.cancelForDeletion.execute(system, { accountId: CUSTOMER })).toEqual({
+        ok: true,
+        value: { cancelled: true },
+      });
+      expect(customer(s).pendingEmail ?? null).toBeNull();
+      expect(
+        await s.confirm.execute(anonymous, { token, password: PASSWORD, client: CLIENT }),
+      ).toEqual({ ok: false, error: { code: 'link.rejected' } });
+      expect(customer(s).email.typed).toBe(OLD_EMAIL);
+      // Repeat-safe: a redelivery finds nothing pending.
+      expect(await s.cancelForDeletion.execute(system, { accountId: CUSTOMER })).toEqual({
+        ok: true,
+        value: { cancelled: false },
+      });
+    });
+
+    it('is for the system actor only and answers false for an unknown or malformed id', async () => {
+      const s = setUp(code);
+      expect((await requestChange(s)).ok).toBe(true);
+      expect(await s.cancelForDeletion.execute(admin, { accountId: CUSTOMER })).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(await s.cancelForDeletion.execute(anonymous, { accountId: CUSTOMER })).toMatchObject({
+        ok: false,
+      });
+      expect(customer(s).pendingEmail).not.toBeNull();
+      expect(await s.cancelForDeletion.execute(system, { accountId: 'nope' })).toEqual({
+        ok: true,
+        value: { cancelled: false },
+      });
+      expect(
+        await s.cancelForDeletion.execute(system, { accountId: id<'Account'>(0xdead) }),
+      ).toEqual({ ok: true, value: { cancelled: false } });
     });
   });
 
