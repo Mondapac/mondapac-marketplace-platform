@@ -31,6 +31,9 @@ import { panelHeaders, TEST_MARKETS } from './support/test-config';
 // transport as in-memory fakes and a fixed clock. Admin sessions are seeded into the fake store
 // (slice 7b's tests cover how one opens); the invitee's acceptance runs through the use cases.
 
+/** A reviewed write's answer (Admin Inbox › System requests). */
+type Reviewed = { code: string; request: unknown; review: unknown };
+
 const START = Temporal.Instant.from('2026-10-08T10:00:00Z');
 const PASSWORD = 'correct horse battery staple';
 const CLIENT = { origin: '203.0.113.7', address: '203.0.113.7' };
@@ -294,6 +297,7 @@ describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => 
         code: 'role.assigned',
         accountId: VIEWER,
         roleId: roleOf('operations-support'),
+        request: null,
       });
       expect(roleIdOf(VIEWER)).toBe(roleOf('operations-support'));
 
@@ -390,7 +394,7 @@ describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => 
 
       const disabled = await post(code, `accounts/${VIEWER}/disable`, {}, root);
       expect(disabled.status).toBe(200);
-      expect(disabled.body).toEqual({ code: 'account.disabled', accountId: VIEWER });
+      expect(disabled.body).toEqual({ code: 'account.disabled', accountId: VIEWER, request: null });
       const after = await http()
         .get('/identity/admin/session')
         .set({ 'x-market-id': code, cookie: viewer.cookie });
@@ -401,7 +405,66 @@ describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => 
       expect(again.body).toEqual({ statusCode: 409, code: 'account.already-disabled' });
       const enabled = await post(code, `accounts/${VIEWER}/enable`, {}, root);
       expect(enabled.status).toBe(200);
-      expect(enabled.body).toEqual({ code: 'account.enabled', accountId: VIEWER });
+      expect(enabled.body).toEqual({ code: 'account.enabled', accountId: VIEWER, request: null });
+    });
+
+    it('takes a note and answers the review request where people is reviewed (System requests)', async () => {
+      await boot();
+      await seeded(code);
+      fakes.review.review('people', 'high');
+      const root = sessionOf(code, ROOT, 1);
+
+      const team = await http()
+        .get('/identity/admin/team')
+        .set({ 'x-market-id': code, cookie: root.cookie });
+      expect((team.body as Reviewed).review).toEqual({ reviewed: true, risk: 'high' });
+
+      const badNote = await post(
+        code,
+        `accounts/${VIEWER}/role`,
+        { roleId: roleOf('operations-support'), note: 7 },
+        root,
+      );
+      expect([badNote.status, (badNote.body as Reviewed).code]).toEqual([400, 'validation.failed']);
+      const changed = await post(
+        code,
+        `accounts/${VIEWER}/role`,
+        { roleId: roleOf('operations-support'), note: 'Covers support' },
+        root,
+      );
+      expect(changed.status).toBe(200);
+      expect((changed.body as Reviewed).request).toEqual({
+        id: expect.any(String) as string,
+        number: 1,
+      });
+      // Without a note the change is refused (its unit keeps nothing: test/db/people-review).
+      const noNote = await post(
+        code,
+        `accounts/${VIEWER}/role`,
+        { roleId: roleOf('viewer') },
+        root,
+      );
+      expect([noNote.status, (noNote.body as Reviewed).code]).toEqual([400, 'validation.failed']);
+
+      // A disable is a stop: no note needed, never a request.
+      const disabled = await post(code, `accounts/${VIEWER}/disable`, {}, root);
+      expect([disabled.status, (disabled.body as Reviewed).request]).toEqual([200, null]);
+      const unknownField = await post(code, `accounts/${VIEWER}/enable`, { reason: 'x' }, root);
+      expect([unknownField.status, (unknownField.body as Reviewed).code]).toEqual([
+        400,
+        'validation.failed',
+      ]);
+      const enabled = await post(code, `accounts/${VIEWER}/enable`, { note: 'Back' }, root);
+      expect(enabled.status).toBe(200);
+      expect(enabled.body).toEqual({
+        code: 'account.enabled',
+        accountId: VIEWER,
+        request: { id: expect.any(String) as string, number: 2 },
+      });
+      expect(fakes.review.opened.map((change) => [change.subjectKind, change.note])).toEqual([
+        ['identity.admin-roles', 'Covers support'],
+        ['identity.admin-status', 'Back'],
+      ]);
     });
 
     it('disables a customer, and answers 404 for an admin id on the customer route', async () => {
@@ -607,7 +670,7 @@ describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => 
       );
       expect([unchanged.status, unchanged.body]).toEqual([
         200,
-        { code: 'role.unchanged', accountId: VIEWER, roleId: roleOf('viewer') },
+        { code: 'role.unchanged', accountId: VIEWER, roleId: roleOf('viewer'), request: null },
       ]);
       const unknownRole = await post(code, `accounts/${VIEWER}/role`, { roleId: MISSING }, root);
       expect([unknownRole.status, unknownRole.body]).toEqual([

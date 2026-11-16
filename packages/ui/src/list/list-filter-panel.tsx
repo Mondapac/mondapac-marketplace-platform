@@ -128,7 +128,7 @@ export function ListFilterPanel({ fields, values, labels, onApply, close }: List
         <div>
           <Button
             variant="link"
-            className="min-h-(--mp-size-control-sm)"
+            size="sm"
             onClick={() => {
               setRows((current) => [...current, { key: next, field: '', value: '' }]);
               setNext((value) => value + 1);

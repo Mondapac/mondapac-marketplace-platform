@@ -49,6 +49,7 @@ import { GenerateBatchCodes } from './use-cases/generate-batch-codes.use-case';
 import { SetFirstOrderSettings } from './use-cases/set-first-order-settings.use-case';
 import { PausePromotion } from './use-cases/pause-promotion.use-case';
 import { QuoteDiscounts } from './use-cases/quote-discounts.use-case';
+import { RedeemDiscounts } from './use-cases/redeem-discounts.use-case';
 import { SetPromotionsStatus } from './use-cases/set-promotions-status.use-case';
 import { ViewBatchCodeSummary } from './use-cases/view-batch-code-summary.use-case';
 
@@ -142,7 +143,11 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 2 types in market %s'
   const make = <U>(type: new (g: typeof gate, d: PromotionsDependencies) => U): U =>
     new type(gate, deps);
   const facade = () =>
-    new PromotionsFacadeImplementation(make(QuoteDiscounts), make(CheckWasPrice));
+    new PromotionsFacadeImplementation(
+      make(QuoteDiscounts),
+      make(RedeemDiscounts),
+      make(CheckWasPrice),
+    );
 
   beforeEach(async () => {
     clock = new FixedClock(T0);

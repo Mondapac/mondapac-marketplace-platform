@@ -173,6 +173,14 @@ describe.each(TEST_MARKETS)('NodeSubjectKeyService in market %s', (code) => {
     await expect(service.createKey(market, subject)).rejects.toBeInstanceOf(SubjectKeyExistsError);
   });
 
+  it('knows whether a subject has had a key: live, tombstone, unknown, other Market', async () => {
+    expect(await service.hasHadKey(market, subject)).toBe(true);
+    await service.destroyKey(market, subject);
+    expect(await service.hasHadKey(market, subject)).toBe(true);
+    expect(await service.hasHadKey(market, ids.next())).toBe(false);
+    expect(await service.hasHadKey(other, subject)).toBe(false);
+  });
+
   it('after destruction answers subject-key.destroyed, keeps a tombstone, and destroys idempotently', async () => {
     const sealed = unwrapped(await service.encrypt(market, subject, FIELD, 'secret'));
     clock.advance(Temporal.Duration.from({ minutes: 5 }));

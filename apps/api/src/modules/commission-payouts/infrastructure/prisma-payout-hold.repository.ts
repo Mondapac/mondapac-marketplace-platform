@@ -11,7 +11,7 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 
-interface Row {
+export interface Row {
   readonly id: string;
   readonly sellerId: string;
   readonly sellerOrderId: string | null;
@@ -25,7 +25,8 @@ interface Row {
   readonly releaseReason: string | null;
 }
 
-const toRecord = (row: Row): PayoutHoldRecord => ({
+/** A stored hold row as the application reads it (also used by the list reader). */
+export const toRecord = (row: Row): PayoutHoldRecord => ({
   id: row.id as Id<'PayoutHold'>,
   sellerId: row.sellerId as Id<'Seller'>,
   sellerOrderId: row.sellerOrderId as Id<'SellerOrder'> | null,

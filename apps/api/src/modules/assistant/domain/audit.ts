@@ -31,4 +31,19 @@ export const AssistantSettingsChanged = defineAuditAction({
   after: SNAPSHOT,
 });
 
-export const ASSISTANT_AUDIT_ACTIONS = [AssistantSettingsChanged] as const;
+/**
+ * An admin took an internal preview token to the storefront (stage 0, B4). The row says when it
+ * expires; the token itself is never recorded.
+ */
+export const AssistantPreviewTokenIssued = defineAuditAction({
+  action: 'assistant.preview-token.issued',
+  targetType: ASSISTANT_SETTINGS_TARGET,
+  targetId: auditField.enumOf(['assistant-settings'] as const),
+  actors: ['authenticated'],
+  after: { expiresAt: auditField.instant() },
+});
+
+export const ASSISTANT_AUDIT_ACTIONS = [
+  AssistantSettingsChanged,
+  AssistantPreviewTokenIssued,
+] as const;
