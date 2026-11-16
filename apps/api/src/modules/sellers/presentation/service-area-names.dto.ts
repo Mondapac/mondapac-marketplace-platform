@@ -34,6 +34,14 @@ export class ServiceAreaNamesRowView {
     description: 'Language tag to name; only languages that have a name.',
   })
   names!: Record<string, ServiceAreaLanguageNameView>;
+
+  @ApiProperty({
+    type: [String],
+    enum: ['edit-names'],
+    description:
+      "The row's Actions menu: edit-names for a holder of sellers.service-area.edit, else empty.",
+  })
+  actions!: string[];
 }
 
 export class ServiceAreaNamesBody {

@@ -24,6 +24,7 @@ import type {
   EditedNamesByArea,
   ServiceAreaNamesRepository,
 } from '../ports/service-area-names.repository';
+import { ServiceAreaEditProbe } from './service-area-edit-probe.use-case';
 import { ServiceAreaNamesEdit } from './service-area-names-edit.use-case';
 import { ServiceAreaNamesList } from './service-area-names-list.use-case';
 
@@ -82,11 +83,16 @@ function setUp() {
     },
   };
   let held = true;
+  let viewOnly = false;
   const authorisation: AuthorisationCheck = {
-    check: () =>
-      Promise.resolve(
-        held ? { allowed: true } : { allowed: false, denial: { code: 'access.denied' } },
-      ),
+    check: (_context, declaration) => {
+      const keys: readonly string[] =
+        declaration.rule.kind === 'permissions' ? declaration.rule.allOf : [];
+      const allowed = held && !(viewOnly && keys.includes('sellers.service-area.edit'));
+      return Promise.resolve(
+        allowed ? { allowed: true } : { allowed: false, denial: { code: 'access.denied' } },
+      );
+    },
   };
   const areas: OnboardingAreas = {
     openCodes: () => [],
@@ -113,7 +119,12 @@ function setUp() {
     audits,
     forgotten: () => forgotten,
     withhold: () => void (held = false),
-    list: new ServiceAreaNamesList(gate, { onboardingAreas: areas, areaNames }),
+    viewOnly: () => void (viewOnly = true),
+    list: new ServiceAreaNamesList(gate, {
+      onboardingAreas: areas,
+      areaNames,
+      editProbe: new ServiceAreaEditProbe(gate),
+    }),
     edit: new ServiceAreaNamesEdit(gate, {
       unitOfWork,
       areaNameStore: store,
@@ -227,6 +238,18 @@ describe.each([['AU'], ['ZZ']])('service area names in %s', (code) => {
     const denied = await t.edit.execute(context, { areaCode: AREA.code, names: { en: 'X' } });
     expect(!denied.ok && denied.error.code).toBe('access.denied');
     expect(t.store.rows.size).toBe(0);
+  });
+
+  it('names the Edit names action only for a holder of the edit key', async () => {
+    const t = setUp();
+    const context = adminOf(t, code);
+    const holder = await t.list.execute(context, undefined);
+    expect(holder.ok && holder.value.areas.map((area) => area.actions)).toEqual([['edit-names']]);
+    const edited = await t.edit.execute(context, { areaCode: AREA.code, names: { en: 'New' } });
+    expect(edited.ok && edited.value.area.actions).toEqual(['edit-names']);
+    t.viewOnly();
+    const viewer = await t.list.execute(context, undefined);
+    expect(viewer.ok && viewer.value.areas.map((area) => area.actions)).toEqual([[]]);
   });
 
   it('keeps edits of one Market out of the other', async () => {
