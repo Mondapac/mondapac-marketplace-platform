@@ -405,6 +405,11 @@
       },
       "dialog": {
         "keep": "Keep as it is",
+        "reactivate": {
+          "title": "Reactivate {name}'s admin account?",
+          "body": "The account is active again at once. Another admin reviews this change and can undo it.",
+          "action": "Reactivate"
+        },
         "deactivate": {
           "title": "Deactivate {name}'s admin account?",
           "body": "They're signed out straight away and can't sign in.",
@@ -605,6 +610,7 @@
         "title-create": "New custom role",
         "title-edit": "Edit role",
         "section-name": "Name",
+        "section-note": "Review",
         "name": "Role name",
         "name-help": "Up to {max} characters. Each custom role needs its own name.",
         "name-required": "Enter a name for the role.",
@@ -3005,6 +3011,7 @@
   },
   "fleets": {
     "title": "Delivery fleets",
+    "review-section": "Review",
     "permission-view": "View delivery fleets",
     "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
     "no-access": "Your role cannot see delivery fleets.",
@@ -5486,6 +5493,7 @@
   },
   "deliverySettings": {
     "title": "Delivery rules",
+    "review-section": "Review",
     "permission-view": "View delivery settings",
     "state": {
       "on": "On",

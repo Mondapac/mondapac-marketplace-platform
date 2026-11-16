@@ -64,11 +64,14 @@ model PromotionsPromotion {
   /// both set if and only if the type is FLASH_SALE (CHECK), which also has an end.
   flashUnitLimit     Int?                       @map("flash_unit_limit")
   flashTimeZone      String?                    @map("flash_time_zone")
-  /// CUSTOMER_GROUP: RETURNING_CUSTOMER or DELIVERY_ZONE (the zones are its ZONE targets); set if
-  /// and only if the type is CUSTOMER_GROUP (CHECK).
+  /// CUSTOMER_GROUP: RETURNING_CUSTOMER, DELIVERY_ZONE (the zones are its ZONE targets) or
+  /// MANUAL_GROUP; set if and only if the type is CUSTOMER_GROUP (CHECK).
   segmentKind        String?                    @map("segment_kind")
   /// RETURNING_CUSTOMER: whole days since the customer's last order (1 to 3650).
   segmentMinDays     Int?                       @map("segment_min_days") @db.SmallInt
+  /// MANUAL_GROUP: the id of a manual customer group owned by `customers` (no foreign key across
+  /// modules); set if and only if the segment is MANUAL_GROUP (CHECK).
+  segmentGroupId     String?                    @map("segment_group_id") @db.Uuid
   /// REFERRAL: the credit the new customer gets; `rewardAmountMinor` is the referrer's. Set if and
   /// only if the type is REFERRAL (CHECK).
   refereeRewardMinor BigInt?                    @map("referee_reward_minor")
