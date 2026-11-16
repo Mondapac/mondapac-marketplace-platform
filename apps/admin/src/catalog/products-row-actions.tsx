@@ -145,14 +145,12 @@ export function useProductRowActions({
       out.push({
         id: 'resume',
         label: t('row.menu.resume'),
-        icon: 'check',
         onSelect: () => void run('resume', row),
       });
     if (allowed.has('pause'))
       out.push({
         id: 'pause',
         label: t('row.menu.pause'),
-        icon: 'ban',
         onSelect: () => {
           dryRun.current += 1;
           setProblem(null);
@@ -163,7 +161,6 @@ export function useProductRowActions({
       out.push({
         id: 'delete',
         label: t('row.menu.delete'),
-        icon: 'trash',
         tone: 'critical',
         onSelect: () => void openDelete(row),
       });
@@ -198,7 +195,7 @@ export function useProductRowActions({
       confirmLabel={
         asking === null
           ? ''
-          : t(asking.kind === 'pause' ? 'bulk.pause.confirm' : 'bulk.delete.confirm')
+          : t(asking.kind === 'pause' ? 'bulk.pause.confirm' : 'row.delete.confirm')
       }
       cancelLabel={t('bulk.cancel')}
       pending={pending}

@@ -3408,7 +3408,8 @@
           "title": "Deactivate {name}?"
         },
         "delete": {
-          "title": "Delete {name}?"
+          "title": "Delete {name}?",
+          "confirm": "Delete product"
         },
         "done": {
           "pause": "{name} deactivated.",
