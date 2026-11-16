@@ -1,42 +1,119 @@
-import { CLAIM_WORDS_IN_LETTERS, foldForClaims, hasClaimWord } from './claim-words';
+import * as claimWords from './claim-words';
+import { foldForClaims, hasClaimWord, hasLookAlikeScripts } from './claim-words';
+
+const claims = [
+  'ḥalāl',
+  'hálal',
+  'haIaI',
+  'ha1al',
+  'h.a.l.a.l',
+  'h. a. l. a. l.',
+  'h a l a l',
+  'h/a/l/a/l',
+  'h,a,l,a,l',
+  'ha-lal',
+  'hal al chicken',
+  'ha lal chicken',
+  'hal‌al',
+  'hɑlɑl',
+  'hałal',
+  'haʟal',
+  'ʜᴀʟᴀʟ',
+  'h⃝alal',
+  'ح ل ا ل',
+  'حـلال',
+  'zabeeha',
+  'dhabiha',
+  'Islamic slaughter',
+  'شرعی',
+  'شرعي',
+  'ذبيحة',
+  'كوشر',
+  'گیاه‌خوار',
+  'بی‌گلوتن',
+  'وگان',
+  'عضوي',
+  'Это халяль',
+  'кошер',
+  'веган',
+  'харам',
+  'органический',
+  'טבעוני',
+  'אורגני',
+  'gluten free',
+  'gluten‐free',
+  'gluten‑free',
+  'gluten–free',
+  'It contains no gluten.',
+  'Free from gluten.',
+  'Safe for coeliacs.',
+  'It is plant-based.',
+  'GF bread',
+  'vegetarian',
+  'Suitable for vegans.',
+  'Organically grown.',
+  'The beef is koshered.',
+  'halals',
+  'Kashruth supervised.',
+  'It is pareve.',
+  'It is Shari’ah compliant.',
+  'glatt',
+  'non-GMO',
+  'h͏alal',
+  'kasher',
+  'koscher',
+  'helal',
+  'Bio',
+  'Chicken h4l4l',
+  'It is k0sher.',
+  'It is 0rganic.',
+  'It is ve9an.',
+  'Lactose-free milk',
+];
 
 describe('claim words', () => {
-  it.each([
-    'ḥalāl',
-    'hálal',
-    'haIaI',
-    'ha1al',
-    'h.a.l.a.l',
-    'h a l a l',
-    'ح ل ا ل',
-    'zabeeha',
-    'dhabiha',
-    'Islamic slaughter',
-    'شرعی',
-    'Это халяль',
-    'gluten free',
-    'vegetarian',
-    'glatt',
-    'non-GMO',
-    'h͏alal',
-    'kasher',
-    'helal',
-    'Bio',
-  ])('sees a claim in "%s"', (text) => {
+  it.each(claims)('sees a claim in "%s"', (text) => {
     expect(hasClaimWord(text)).toBe(true);
   });
 
-  it.each(['rice', 'hall', 'heal', 'healthy snacks', 'the Isle of Man', 'tea bags 100'])(
-    'sees none in "%s"',
+  it.each([
+    'rice',
+    'hall',
+    'heal',
+    'healthy snacks',
+    'the Isle of Man',
+    'tea bags 100',
+    'Halloumi',
+  ])('sees none in "%s"', (text) => {
+    expect(hasClaimWord(text)).toBe(false);
+  });
+
+  it('folds accents and invisible marks', () => {
+    expect(foldForClaims('ḥalāl')).toBe('halal');
+    expect(foldForClaims('ha​lal')).toBe('halal');
+  });
+
+  it('exports no pattern that an importer could alter', () => {
+    expect(Object.keys(claimWords).sort()).toEqual([
+      'foldForClaims',
+      'hasClaimWord',
+      'hasLookAlikeScripts',
+    ]);
+  });
+});
+
+describe('look-alike scripts', () => {
+  it.each(['Ηalal', 'Нalal', 'ΗΑLΑL', 'ᎻᎪᏞᎪᏞ', 'հalal', 'кosher', 'ѵegan', 'Lamb حلالlamb'])(
+    'refuses "%s"',
     (text) => {
-      expect(hasClaimWord(text)).toBe(false);
+      expect(hasLookAlikeScripts(text)).toBe(true);
     },
   );
 
-  it('reduces to letters for the letters-only list', () => {
-    expect(
-      CLAIM_WORDS_IN_LETTERS.test(foldForClaims('chicken h-a-l-a-l').replace(/[^\p{L}]/gu, '')),
-    ).toBe(true);
-    expect(foldForClaims('ḥalāl')).toBe('halal');
-  });
+  it.each(['rice', 'برنج ایرانی', 'Рис', 'ρύζι', 'Basmati 5kg', 'ארז'])(
+    'lets "%s" through',
+    (text) => {
+      expect(hasLookAlikeScripts(text)).toBe(false);
+    },
+  );
 });

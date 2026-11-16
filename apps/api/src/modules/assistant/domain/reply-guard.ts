@@ -1,4 +1,4 @@
-import { CLAIM_WORDS_IN_LETTERS, foldForClaims, hasClaimWord } from '@mondapac/shared-kernel';
+import { hasClaimWord, hasLookAlikeScripts } from '@mondapac/shared-kernel';
 import { MASKED, maskPersonalData } from './personal-data';
 
 /**
@@ -51,7 +51,7 @@ const MARKUP_CHARACTERS = /[*_`#>|~]/g;
 // A bare domain (an off-platform address without a scheme), with any path (Hassan, M1).
 const BARE_DOMAIN = /\b[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.\p{L}{2,}\b(?:\/\S*)?/gu;
 // Controls and format characters, except the Persian zero-width non-joiner and line breaks.
-const INVISIBLE = /(?![\n‌])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{DI}]/gu;
+const INVISIBLE = /(?![\n\u200C])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{DI}]/gu;
 
 // A sentence ends at . ! ? or ؟ followed by a space, or at a line break ("$12.50" stays whole).
 const SENTENCE_BREAK = /(?<=[.!?؟])\s+|\n+/u;
@@ -88,7 +88,7 @@ export function guardReply(text: string): GuardedReply {
   for (const part of inert(text).split(SENTENCE_BREAK)) {
     const sentence = part.replace(/\s+/gu, ' ').trim();
     if (sentence.length === 0 || !/[\p{L}\p{N}]/u.test(sentence)) continue;
-    if (hasClaimWord(sentence)) {
+    if (hasClaimWord(sentence) || hasLookAlikeScripts(sentence)) {
       notices.add('see-certification');
       continue;
     }
@@ -100,6 +100,10 @@ export function guardReply(text: string): GuardedReply {
     sentences.push(sentence);
     length += sentence.length + 1;
   }
+  // A word split across sentences ("h. a. l. a. l.") is read again over the whole kept reply.
+  if (sentences.length > 0 && hasClaimWord(sentences.join(' '))) {
+    return { sentences: [], notices: ['see-certification'] };
+  }
   return { sentences, notices: [...notices] };
 }
 
@@ -109,8 +113,7 @@ export function guardReply(text: string): GuardedReply {
  * reach the buyer on a card and so must pass the same checks as a reply (ADR-0019 R1, R9).
  */
 export function isClaimFree(text: string): boolean {
-  // A claim spelled with separators ("h.a.l.a.l", "h a l a l") is read from the letters alone.
-  if (CLAIM_WORDS_IN_LETTERS.test(foldForClaims(text).replace(/[^\p{L}]/gu, ''))) return false;
+  if (hasClaimWord(text) || hasLookAlikeScripts(text)) return false;
   const guarded = guardReply(text);
   return (
     guarded.notices.length === 0 &&

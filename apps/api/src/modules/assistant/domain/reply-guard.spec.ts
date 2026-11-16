@@ -5,7 +5,7 @@ import {
   LIST_PARSING_CASES,
 } from './evaluation-set';
 import { maskPersonalData, MASKED } from './personal-data';
-import { guardReply, MAX_REPLY_CHARACTERS } from './reply-guard';
+import { guardReply, isClaimFree, MAX_REPLY_CHARACTERS } from './reply-guard';
 import { cardRefOf } from './cards';
 import { storedCardOf } from './conversation';
 import { parseToolCall, TOOL_DECLARATIONS, toolDeclarationsFor } from './tools';
@@ -357,5 +357,35 @@ describe('certification and diet claims in other spellings (shared claim words)'
     'A healthy snack list is on the cards.',
   ])('keeps: %s', (reply) => {
     expect(guardReply(reply).notices).toEqual([]);
+  });
+});
+
+// Security review of the shared guard (Hassan, H1, H2, M1 to M3): the look-alikes and the plain
+// phrasings a model writes without being attacked.
+describe('claim spellings the guard must not let through', () => {
+  const spellings = [
+    'This chicken is hal‌al.',
+    'This chicken is Ηalal.',
+    'This chicken is Нalal.',
+    'Lamb حـلال today.',
+    'Suitable for vegans.',
+    'Organically grown.',
+    'It is pareve.',
+    'It is Shari’ah compliant.',
+    'It is gluten‐free.',
+    'It contains no gluten.',
+    'Safe for coeliacs.',
+    'It is plant-based.',
+    'GF bread.',
+    'h. a. l. a. l.',
+    'ha-lal chicken.',
+    'Chicken h4l4l.',
+    'It is k0sher.',
+    'شرعي است.',
+    'گیاه‌خوار است.',
+  ];
+  it.each(spellings)('drops: %s', (reply) => {
+    expect(guardReply(reply).notices).toEqual(['see-certification']);
+    expect(isClaimFree(reply)).toBe(false);
   });
 });
