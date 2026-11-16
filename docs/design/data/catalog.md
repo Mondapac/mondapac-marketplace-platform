@@ -402,8 +402,8 @@ through the PK.
 | `id` | `uuid` | no | PK |
 | `product_id` | `uuid` | no | FK `(market_id, product_id)` → `products`, RESTRICT |
 | `revision_no` | `integer` | no | CHECK `>= 1`. Unique `(market_id, product_id, revision_no)` |
-| `revision_kind` | `text` | no | CHECK `submission`, `revert`, `tax-override` (D 4.2 rows 1 and 6, D 4.3) |
-| `base_revision_id` | `uuid` | yes | The published revision it was built on; same-product FK. CHECK `revision_kind <> 'tax-override' OR base_revision_id IS NOT NULL`: a tax override is always the published revision with one field changed (D 4.3, Hassan 1a) |
+| `revision_kind` | `text` | no | CHECK `submission`, `revert`, `tax-override`, `category-override` (D 4.2 rows 1 and 6, D 4.3; `category-override` from C5a, 3.33) |
+| `base_revision_id` | `uuid` | yes | The published revision it was built on; same-product FK. CHECK `revision_kind <> 'tax-override' OR base_revision_id IS NOT NULL`: a tax override is always the published revision with one field changed (D 4.3, Hassan 1a). CHECK `product_revisions_category_override_base_check` `revision_kind <> 'category-override' OR base_revision_id IS NOT NULL`: a category override is the published revision with its platform categories changed (C5a, 3.33) |
 | `reverted_from_revision_id` | `uuid` | yes | Same-product FK. CHECK `(revision_kind = 'revert') = (reverted_from_revision_id IS NOT NULL)` |
 | `type_code` | `text` | no | V9. The type the revision was frozen with (D M-9); backfilled from `products.type_code` (every product is still of its creation type), then NOT NULL; CHECK the CA4 pattern `^[a-z][a-z0-9_-]{0,63}$`. Insert-only like every column here (`product_revisions_no_update_delete`). Readers of a revision's content take the handler from here |
 | `family_revision_id` | `uuid` | no | Schema ref (3.5) |
@@ -421,6 +421,7 @@ through the PK.
 | `submitted_at` | `timestamptz(6)` | no | |
 
 - CHECK `revision_kind <> 'tax-override' OR author_kind = 'admin'`.
+- CHECK `product_revisions_category_override_author_check`: `revision_kind <> 'category-override' OR author_kind = 'admin'` (C5a, 3.33).
 - Unique `(market_id, id)`, `(market_id, product_id, id)` (pointer and child target).
 - Insert-only (CA3). Status is derived, as CE-data 3.5: **pending** = `products.pending_revision_id`;
   **published** = `products.published_revision_id`; **changes-needed**, **superseded while pending**
@@ -1211,7 +1212,7 @@ One row per seller and product an admin asked to fill in required details: the p
 
 ### 3.33 `category_product_move_jobs`, `category_product_move_items` (Move products; categories C5a)
 
-Migration `20261115170000_catalog_move_products_job`. One job moves every published product of a
+Migration `20261116230000_catalog_move_products_job`. One job moves every published product of a
 platform category to another; one item per product of the job. Notes from the C5a review:
 
 - Item write order. An item is inserted `pending` with `revision_id` NULL (the once-per-product

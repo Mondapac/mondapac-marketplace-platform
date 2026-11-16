@@ -42,6 +42,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import type { AdminStatusOutput } from '../application/use-cases/enable-admin-account.use-case';
 import { AssignAdminRole } from '../application/use-cases/assign-admin-role.use-case';
 import { DisableAdminAccount } from '../application/use-cases/disable-admin-account.use-case';
 import { DisableCustomerAccount } from '../application/use-cases/disable-customer-account.use-case';
@@ -64,14 +65,12 @@ import { RevokeAdminInvitation } from '../application/use-cases/revoke-admin-inv
 import { adminBody, adminClient } from './admin.answer';
 import {
   AdminAccountStatusChanged,
-  AdminAssignRoleRequest,
   AdminCustomerLookupRequest,
   AdminCustomerView,
   AdminEmptyRequest,
   AdminInvitationChanged,
   AdminInvitationIssued,
   AdminInviteRequest,
-  AdminRoleAssigned,
   AdminSecondFactorReset,
   AdminTeamAccountRowView,
   AdminTeamInvitationRowView,
@@ -80,12 +79,16 @@ import {
 import { fail } from './customer-sign-up.controller';
 import { ApiErrorBody } from './customer-sign-up.dto';
 import {
-  RoleCatalogueView,
-  RoleEditorRequest,
-  RoleEditRequest,
-  RoleVersionRequest,
-  RoleWrittenView,
-} from './role-editor.dto';
+  AdminAssignRoleReviewedRequest,
+  AdminRoleAssignedReviewed,
+  AdminStatusChangedReviewed,
+  AdminStatusRequest,
+  AdminTeamReviewedPageView,
+  PlatformRoleCatalogueView,
+  PlatformRoleEditedView,
+  PlatformRoleEditRequest,
+} from './people-review.dto';
+import { RoleEditorRequest, RoleVersionRequest, RoleWrittenView } from './role-editor.dto';
 import {
   catalogueView,
   roleBody,
@@ -145,6 +148,33 @@ function pathId<K extends string>(raw: string, unknown: string): Id<K> | HttpExc
   const parsed = parseId<K>(raw);
   return parsed.ok ? parsed.value : refusal({ code: unknown });
 }
+
+/**
+ * The optional `note` of a reviewed change (Admin Inbox › System requests, area people), split
+ * off the body before the route's closed check of the rest. A note that is not a string is a
+ * field error; its length is checked by the review, and only where the Market reviews the area.
+ */
+function splitNote(body: unknown): {
+  readonly rest: unknown;
+  readonly note: string | undefined;
+  readonly invalid: boolean;
+} {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return { rest: body, note: undefined, invalid: false };
+  }
+  if (!Object.hasOwn(body, 'note')) return { rest: body, note: undefined, invalid: false };
+  const { note, ...rest } = body as Record<string, unknown>;
+  return typeof note === 'string'
+    ? { rest, note, invalid: false }
+    : { rest, note: undefined, invalid: true };
+}
+
+const NOTE_TYPE = (): HttpException =>
+  refusal({ code: 'validation.failed', fields: [{ path: 'note', code: 'type' }] });
+
+/** A change's review request as JSON, or null. */
+const requestView = (request: { readonly id: string; readonly number: number } | null) =>
+  request === null ? null : { id: request.id, number: request.number };
 
 /** The default page of the team list. */
 const DEFAULT_TEAM_PAGE = 50;
@@ -258,7 +288,7 @@ export class AdminTeamController {
       'custom role. All flags are hints: assigning, inviting, creating, editing and deleting ' +
       'check again. Never a seller role. No query parameter is accepted. Not cached.',
   })
-  @ApiOkResponse({ type: RoleCatalogueView })
+  @ApiOkResponse({ type: PlatformRoleCatalogueView })
   @ApiBadRequestResponse({
     type: ApiErrorBody,
     description: 'validation.failed: any query parameter (details.fields)',
@@ -269,13 +299,18 @@ export class AdminTeamController {
     @Call() context: CallContext,
     @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<RoleCatalogueView> {
+  ): Promise<PlatformRoleCatalogueView> {
     const input = rolesQuery(query);
-    let outcome: RoleCatalogueView | HttpException;
+    let outcome: PlatformRoleCatalogueView | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.listPlatformRoles.execute(context, input);
-      outcome = result.ok ? catalogueView(result.value) : refusal(result.error);
+      outcome = result.ok
+        ? {
+            ...catalogueView(result.value),
+            review: { reviewed: result.value.review.reviewed, risk: result.value.review.risk },
+          }
+        : refusal(result.error);
     }
     // What the actor may grant: never stored by a cache.
     response.setHeader('Cache-Control', 'no-store');
@@ -334,12 +369,15 @@ export class AdminTeamController {
       'Needs identity.platform-role.edit. Replaces the name and the whole key set of a custom ' +
       'role. Never a system or default role (role.read-only), never a role that outranks you ' +
       'or a key you may not give (role.not-grantable). The same name and keys answer ' +
-      'role.unchanged and write nothing. Holders of the role see the change at once.',
+      'role.unchanged and write nothing. Holders of the role see the change at once. Where the ' +
+      'Market reviews area people (`review` of the catalogue), the edit needs a `note` and opens ' +
+      'a high-risk review in Admin Inbox › System requests (`request`); a reviewer who rejects it ' +
+      'restores the role only when that removes keys or renames it, never when it would add one.',
   })
   @ApiParam(ROLE_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: RoleEditRequest })
-  @ApiOkResponse({ type: RoleWrittenView })
+  @ApiBody({ type: PlatformRoleEditRequest })
+  @ApiOkResponse({ type: PlatformRoleEditedView })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
@@ -357,20 +395,29 @@ export class AdminTeamController {
     @Req() request: Request,
     @Param('roleId') rawRoleId: string,
     @Body() body: unknown,
-  ): Promise<RoleWrittenView> {
+  ): Promise<PlatformRoleEditedView> {
     const roleId = rolePathId(rawRoleId);
-    const input = roleBody(request, body, true);
-    let outcome: RoleWrittenView | HttpException;
+    const split = splitNote(body);
+    const input = roleBody(request, split.rest, true);
+    let outcome: PlatformRoleEditedView | HttpException;
     if (roleId instanceof HttpException) outcome = roleId;
     else if (input instanceof HttpException) outcome = input;
+    else if (split.invalid) outcome = NOTE_TYPE();
     else {
       const result = await this.editPlatformRole.execute(context, {
         roleId,
         name: input.name,
         permissionKeys: input.permissionKeys as string[],
         expectedVersion: input.expectedVersion,
+        note: split.note,
       });
-      outcome = result.ok ? result.value : roleRefusal(result.error);
+      outcome = result.ok
+        ? {
+            code: result.value.code,
+            roleId: result.value.roleId,
+            request: requestView(result.value.request),
+          }
+        : roleRefusal(result.error);
     }
     return this.settle('identity.admin-edit-role', context, outcome);
   }
@@ -439,7 +486,7 @@ export class AdminTeamController {
     required: false,
     description: '`next` of the previous page (a UUID v7); absent for the first page.',
   })
-  @ApiOkResponse({ type: AdminTeamPageView })
+  @ApiOkResponse({ type: AdminTeamReviewedPageView })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
@@ -448,13 +495,18 @@ export class AdminTeamController {
     @Call() context: CallContext,
     @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) response: Response,
-  ): Promise<AdminTeamPageView> {
+  ): Promise<AdminTeamReviewedPageView> {
     const input = teamQuery(query);
-    let outcome: AdminTeamPageView | HttpException;
+    let outcome: AdminTeamReviewedPageView | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.listAdminTeam.execute(context, input);
-      outcome = result.ok ? teamPageView(result.value) : refusal(result.error);
+      outcome = result.ok
+        ? {
+            ...teamPageView(result.value),
+            review: { reviewed: result.value.review.reviewed, risk: result.value.review.risk },
+          }
+        : refusal(result.error);
     }
     // Personal data of the team: never stored by a cache.
     response.setHeader('Cache-Control', 'no-store');
@@ -471,12 +523,15 @@ export class AdminTeamController {
       'permission the actor lacks; never a role with a permission the actor lacks, or a ' +
       'protected one without the Platform Administrator role; never leaves the Market without ' +
       'a Platform Administrator who can sign in. Sessions stay: permissions are read on every ' +
-      'request.',
+      'request. Where the Market reviews area people (`review` of the team list), the change ' +
+      'needs a `note` and opens a high-risk review in Admin Inbox › System requests (`request`); ' +
+      'a reviewer who rejects it restores the role before only when that confers no permission ' +
+      'the current role lacks.',
   })
   @ApiParam(ACCOUNT_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: AdminAssignRoleRequest })
-  @ApiOkResponse({ type: AdminRoleAssigned })
+  @ApiBody({ type: AdminAssignRoleReviewedRequest })
+  @ApiOkResponse({ type: AdminRoleAssignedReviewed })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
@@ -496,18 +551,31 @@ export class AdminTeamController {
     @Req() request: Request,
     @Param('accountId') rawAccountId: string,
     @Body() body: unknown,
-  ): Promise<AdminRoleAssigned> {
+  ): Promise<AdminRoleAssignedReviewed> {
     const accountId = pathId<'Account'>(rawAccountId, 'account.unknown');
-    const input = adminBody(request, body, ['roleId'] as const);
-    let outcome: AdminRoleAssigned | HttpException;
+    const split = splitNote(body);
+    const input = adminBody(request, split.rest, ['roleId'] as const);
+    let outcome: AdminRoleAssignedReviewed | HttpException;
     if (accountId instanceof HttpException) outcome = accountId;
     else if (input instanceof HttpException) outcome = input;
+    else if (split.invalid) outcome = NOTE_TYPE();
     else {
       const roleId = parseId<'Role'>(input.roleId);
       const result = roleId.ok
-        ? await this.assignAdminRole.execute(context, { accountId, roleId: roleId.value })
+        ? await this.assignAdminRole.execute(context, {
+            accountId,
+            roleId: roleId.value,
+            note: split.note,
+          })
         : err({ code: 'validation.failed', fields: [{ path: 'roleId', code: 'format' }] });
-      outcome = result.ok ? result.value : refusal(result.error);
+      outcome = result.ok
+        ? {
+            code: result.value.code,
+            accountId: result.value.accountId,
+            roleId: result.value.roleId,
+            request: requestView(result.value.request),
+          }
+        : refusal(result.error);
     }
     return this.settle('identity.admin-assign-role', context, outcome);
   }
@@ -662,12 +730,14 @@ export class AdminTeamController {
     description:
       'Needs identity.admin-account.disable. Every session of the account ends and its open ' +
       'sign-ins are void. Never oneself, never an admin who holds a permission the actor ' +
-      'lacks, never the last Platform Administrator who can sign in.',
+      'lacks, never the last Platform Administrator who can sign in. A disable is a stop: it ' +
+      'is never reviewed in Admin Inbox › System requests (`request` is always null) and never ' +
+      'needs a note.',
   })
   @ApiParam(ACCOUNT_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: AdminEmptyRequest })
-  @ApiOkResponse({ type: AdminAccountStatusChanged })
+  @ApiBody({ type: AdminStatusRequest })
+  @ApiOkResponse({ type: AdminStatusChangedReviewed })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
@@ -686,8 +756,8 @@ export class AdminTeamController {
     @Req() request: Request,
     @Param('accountId') rawAccountId: string,
     @Body() body: unknown,
-  ): Promise<AdminAccountStatusChanged> {
-    const outcome = await this.onAccount(request, rawAccountId, body, (accountId) =>
+  ): Promise<AdminStatusChangedReviewed> {
+    const outcome = await this.onAdminStatus(request, rawAccountId, body, (accountId) =>
       this.disableAdminAccount.execute(context, { accountId }),
     );
     return this.settle('identity.admin-disable-admin', context, outcome);
@@ -698,12 +768,16 @@ export class AdminTeamController {
   @ReadsSession()
   @ApiOperation({
     summary: 'Enable a disabled admin account again',
-    description: 'Needs identity.admin-account.disable; the guards of a disable but the last one.',
+    description:
+      'Needs identity.admin-account.disable; the guards of a disable but the last one. Where ' +
+      'the Market reviews area people (`review` of the team list), the enabling needs a `note` ' +
+      'and opens a high-risk review in Admin Inbox › System requests (`request`); a reviewer ' +
+      'who rejects it disables the account again, ending its sessions.',
   })
   @ApiParam(ACCOUNT_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: AdminEmptyRequest })
-  @ApiOkResponse({ type: AdminAccountStatusChanged })
+  @ApiBody({ type: AdminStatusRequest })
+  @ApiOkResponse({ type: AdminStatusChangedReviewed })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
@@ -722,9 +796,9 @@ export class AdminTeamController {
     @Req() request: Request,
     @Param('accountId') rawAccountId: string,
     @Body() body: unknown,
-  ): Promise<AdminAccountStatusChanged> {
-    const outcome = await this.onAccount(request, rawAccountId, body, (accountId) =>
-      this.enableAdminAccount.execute(context, { accountId }),
+  ): Promise<AdminStatusChangedReviewed> {
+    const outcome = await this.onAdminStatus(request, rawAccountId, body, (accountId, note) =>
+      this.enableAdminAccount.execute(context, { accountId, note }),
     );
     return this.settle('identity.admin-enable-admin', context, outcome);
   }
@@ -889,6 +963,35 @@ export class AdminTeamController {
     const result = await run(accountId);
     return result.ok
       ? { code: result.value.code, accountId: result.value.accountId }
+      : refusal(result.error);
+  }
+
+  /**
+   * An admin's disable or enable: the path id, a body with only the optional `note`, then the use
+   * case; the answer carries the review request (always null for a disable).
+   */
+  private async onAdminStatus(
+    request: Request,
+    rawAccountId: string,
+    body: unknown,
+    run: (
+      accountId: Id<'Account'>,
+      note: string | undefined,
+    ) => Promise<Result<AdminStatusOutput, Refusal>>,
+  ): Promise<AdminStatusChangedReviewed | HttpException> {
+    const accountId = pathId<'Account'>(rawAccountId, 'account.unknown');
+    if (accountId instanceof HttpException) return accountId;
+    const split = splitNote(body);
+    const input = adminBody(request, split.rest, []);
+    if (input instanceof HttpException) return input;
+    if (split.invalid) return NOTE_TYPE();
+    const result = await run(accountId, split.note);
+    return result.ok
+      ? {
+          code: result.value.code,
+          accountId: result.value.accountId,
+          request: requestView(result.value.request),
+        }
       : refusal(result.error);
   }
 

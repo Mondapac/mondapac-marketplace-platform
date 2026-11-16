@@ -1,4 +1,4 @@
--- Reverses 20261115170000_catalog_move_products_job. The jobs and their items go with the tables: a
+-- Reverses 20261116230000_catalog_move_products_job. The jobs and their items go with the tables: a
 -- development rollback. A `category-override` revision cannot be removed (products point at it and
 -- revisions are insert-only), so the rollback refuses while one exists instead of failing half-way.
 SET lock_timeout = '5s';

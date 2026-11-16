@@ -2,27 +2,19 @@
 
 import { Button, LinkButton } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
-import { exportTree } from './export-tree.ts';
 import { IMPORT_PAGE_PATH } from './import-model.ts';
+import { useTreeExport } from './use-tree-export.ts';
 
 /** Export of the tree as a file, and the way to the import page: for a holder of the import key. */
 export function TreeFileActions() {
   const t = useTranslations('categories.export');
-  const [busy, setBusy] = useState(false);
-  const run = async (format: 'csv' | 'xlsx') => {
-    setBusy(true);
-    try {
-      await exportTree(format, t('failed'));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const { exporting, run } = useTreeExport(t('failed'));
   return (
     <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('group')}>
       <Button
         variant="secondary"
-        loading={busy}
+        loading={exporting === 'csv'}
+        disabled={exporting === 'xlsx'}
         aria-label={t('csv-label')}
         onClick={() => void run('csv')}
       >
@@ -30,7 +22,8 @@ export function TreeFileActions() {
       </Button>
       <Button
         variant="secondary"
-        loading={busy}
+        loading={exporting === 'xlsx'}
+        disabled={exporting === 'csv'}
         aria-label={t('xlsx-label')}
         onClick={() => void run('xlsx')}
       >

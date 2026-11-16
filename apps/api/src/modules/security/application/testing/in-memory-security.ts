@@ -1,5 +1,5 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import type { MarketContext } from '@mondapac/shared-kernel';
+import type { CallContext, MarketContext } from '@mondapac/shared-kernel';
 import type {
   SecurityEventCountQuery,
   SecurityEventFeed,
@@ -14,6 +14,7 @@ import type { DeliveryChannel, DeliveryOutcome } from '../../domain/delivery';
 import type { AlertKeyType } from '../../domain/rules';
 import type { OnCallRoster, RosterMember } from '../../domain/roster';
 import { SEVERITIES, type SecuritySeverity } from '../../domain/severity';
+import type { AdminNames } from '../ports/admin-names';
 import type { AlertMessage, AlertMessenger } from '../ports/alert-messenger';
 import type { OnCallRosterSource } from '../ports/on-call-roster';
 import type {
@@ -390,4 +391,21 @@ export function testRoster(accounts: { ali: string; hassan: string }): OnCallRos
     incidentCommander: 'ali',
     securityOwner: 'hassan',
   };
+}
+
+/** Admin names by account id; `refusing` answers an empty map, as a refused lookup does. */
+export class StaticAdminNames implements AdminNames {
+  refusing = false;
+  readonly asked: (readonly string[])[] = [];
+  constructor(private readonly names: Readonly<Record<string, string>> = {}) {}
+  namesOf(
+    _context: CallContext,
+    accountIds: readonly string[],
+  ): Promise<ReadonlyMap<string, string>> {
+    this.asked.push(accountIds);
+    if (this.refusing) return Promise.resolve(new Map());
+    return Promise.resolve(
+      new Map(accountIds.flatMap((id) => (this.names[id] ? [[id, this.names[id]] as const] : []))),
+    );
+  }
 }
