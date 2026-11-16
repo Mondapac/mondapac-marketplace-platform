@@ -596,6 +596,18 @@ export const SellerAccessReappliedAudit = defineAuditAction({
 });
 
 /** Every audited action of identity, for its module's registration. */
+/**
+ * An admin changed a customer account's display name from the customer page (customers management
+ * phase 2; customers' key `customers.customers.edit`). Target: the account. The name is personal
+ * data and never audited: the row says only that it changed and whose account it was.
+ */
+export const CustomerRenamedByAdminAudit = defineAuditAction({
+  action: 'identity.account.renamed-by-admin',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { population: auditField.enumOf(['customer'] as const) },
+});
+
 export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   RoleSeeded,
   RoleSeedApplied,
@@ -626,6 +638,7 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   OtherSessionsSignedOutAudit,
   AccountErasedAudit,
   AccountSessionsEndedForErasureAudit,
+  CustomerRenamedByAdminAudit,
   SellerAccessApprovedAudit,
   SellerAccessRejectedAudit,
   SellerAccessSuspendedAudit,
