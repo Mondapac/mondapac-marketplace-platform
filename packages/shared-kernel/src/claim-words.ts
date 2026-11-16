@@ -184,8 +184,8 @@ const FREE_FROM = [
   String.raw`non[\s-]*alcohol`,
   String.raw`(?:does\s*not|doesn'?t)\s+contain\s+(?:any\s+)?${FOODS}${END}`,
   String.raw`${START}(?:contains?\s+(?:no|zero)|zero|0%|free\s+of|without\s+any)[\s-]+${FOODS}${END}`,
-  String.raw`${FOODS}[\s-]*less${END}`,
-  String.raw`${START}no[\s-]*(?:pork|swine)`,
+  String.raw`${START}${FOODS}-?less${END}`,
+  String.raw`${START}no-?(?:pork|swine)${END}`,
   String.raw`allerg`,
   String.raw`sertifi`,
 ];
@@ -207,6 +207,7 @@ const OTHER_SCRIPTS = [
   'گیاهخوار',
   'وگان',
   'وگن',
+  'مسلمان',
   '(?<!ب)اسلام',
   'غلوتین',
   '(?<!روغن )(?<!زیت )نباتی',

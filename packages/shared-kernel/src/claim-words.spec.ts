@@ -129,6 +129,7 @@ const claims = [
   '0% alcohol',
   'meatless',
   'Moslem',
+  'مسلمان',
   'dhabeeha',
   'thabiha',
 ];
