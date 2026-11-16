@@ -8,7 +8,7 @@ import { SELLERS_SERVICE_AREA_EDIT } from '../../contracts/permissions';
 import { ServiceAreaNamesChanged } from '../../domain/audit';
 import { parseAreaNamesEdit, type AreaNamesProblem } from '../../domain/service-area-names';
 import { areaTargetId } from '../service-areas/area-target-id';
-import { rowOfArea, type ServiceAreaNamesRow } from '../service-areas/area-name-views';
+import { rowOfArea, type ServiceAreaNamesListRow } from '../service-areas/area-name-views';
 import type { OnboardingAreas } from '../ports/seller-market-formats';
 import type {
   AreaNameSource,
@@ -41,7 +41,7 @@ export interface ServiceAreaNamesEditDependencies {
  */
 export class ServiceAreaNamesEdit extends UseCase<
   unknown,
-  { readonly area: ServiceAreaNamesRow; readonly changed: number },
+  { readonly area: ServiceAreaNamesListRow; readonly changed: number },
   ServiceAreaNamesEditFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -63,7 +63,7 @@ export class ServiceAreaNamesEdit extends UseCase<
     input: unknown,
   ): Promise<
     Result<
-      { readonly area: ServiceAreaNamesRow; readonly changed: number },
+      { readonly area: ServiceAreaNamesListRow; readonly changed: number },
       ServiceAreaNamesEditFailure
     >
   > {
@@ -82,7 +82,7 @@ export class ServiceAreaNamesEdit extends UseCase<
     input: unknown,
   ): Promise<
     Result<
-      { readonly area: ServiceAreaNamesRow; readonly changed: number },
+      { readonly area: ServiceAreaNamesListRow; readonly changed: number },
       ServiceAreaNamesEditFailure
     >
   > {
@@ -121,6 +121,10 @@ export class ServiceAreaNamesEdit extends UseCase<
     if (!written.ok) return written;
     areaNames.forget(market);
     const edited = await areaNames.edited(market);
-    return ok({ area: rowOfArea(area, edited, languages), changed: written.value });
+    // The caller just passed the edit check, so the row keeps its Edit names… action.
+    return ok({
+      area: { ...rowOfArea(area, edited, languages), actions: ['edit-names'] },
+      changed: written.value,
+    });
   }
 }

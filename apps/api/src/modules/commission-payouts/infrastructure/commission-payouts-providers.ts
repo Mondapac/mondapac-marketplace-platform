@@ -44,6 +44,13 @@ import {
   type SellerPayoutAccess,
 } from '../application/ports/payout-gateways';
 import { PAYOUT_REPOSITORY, type PayoutRepository } from '../application/ports/payout.repository';
+import {
+  ADMIN_PAYOUT_LIST_READER,
+  type AdminPayoutListReader,
+} from '../application/ports/admin-payout-list.reader';
+import { STORE_NAME_SEARCH, type StoreNameSearch } from '../application/ports/store-name-search';
+import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../../platform/list-export';
+import { PrismaAdminPayoutListReader } from './prisma-admin-payout-list.reader';
 import { ConfigPayoutPolicy } from './config-payout-policy';
 import { PrismaPayoutCursorRepository } from './prisma-payout-cursor.repository';
 import { PrismaPayoutRepository } from './prisma-payout.repository';
@@ -124,6 +131,22 @@ export const commissionPayoutsProviders: readonly FactoryProvider[] = [
     provide: SELLER_DIRECTORY,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): SellerDirectory => new SellersSellerDirectory(sellers),
+  },
+  {
+    provide: ADMIN_PAYOUT_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminPayoutListReader =>
+      new PrismaAdminPayoutListReader(prisma),
+  },
+  {
+    provide: STORE_NAME_SEARCH,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): StoreNameSearch => new SellersSellerNames(sellers),
+  },
+  {
+    // The super list export (CSV and XLSX): every cell a string value, never a formula.
+    provide: SHEET_WRITER,
+    useFactory: (): SheetWriter => new ExceljsSheetWriter(),
   },
   {
     provide: PAYOUT_REPOSITORY,
