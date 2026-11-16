@@ -17,6 +17,7 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import {
   SYSTEM_REQUESTS_CATALOGUE_REVIEW,
   SYSTEM_REQUESTS_MARKETPLACE_REVIEW,
+  SYSTEM_REQUESTS_MONEY_REVIEW,
   SYSTEM_REQUESTS_PEOPLE_REVIEW,
   SYSTEM_REQUESTS_POLICY_MANAGE,
   SYSTEM_REQUESTS_POLICY_VIEW,
@@ -77,6 +78,7 @@ const KIND_OF = {
   catalogue: SETTING,
   people: 'settings.people-setting',
   marketplace: 'settings.listing-rule',
+  money: 'settings.money-rule',
 } as const;
 
 type AuditEntry = Parameters<AuditWriter['record']>[1];
@@ -97,6 +99,7 @@ const KEYS: Readonly<Record<string, readonly string[]>> = {
     SYSTEM_REQUESTS_CATALOGUE_REVIEW.key,
     SYSTEM_REQUESTS_PEOPLE_REVIEW.key,
     SYSTEM_REQUESTS_MARKETPLACE_REVIEW.key,
+    SYSTEM_REQUESTS_MONEY_REVIEW.key,
     SYSTEM_REQUESTS_POLICY_VIEW.key,
     SYSTEM_REQUESTS_POLICY_MANAGE.key,
   ],
@@ -722,6 +725,81 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
         expect(second.ok && second.value.remaining).toBe(0);
       });
 
+      it('answers the approvals with remaining null when the count fails after they committed', async () => {
+        const first = await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        jest.spyOn(requests, 'count').mockRejectedValueOnce(new Error('down'));
+        expect(await matching(CHECKER)).toEqual({
+          ok: true,
+          value: {
+            approved: [{ id: first.id, number: first.number }],
+            failed: [],
+            remaining: null,
+          },
+        });
+        expect((await requests.find(market, first.id))?.status).toBe('approved');
+      });
+
+      it('never approves a money request (always high) beside low ones, even where money is set low', async () => {
+        policy.areaRows.set(`${market.marketId}:money`, {
+          area: 'money',
+          enabled: true,
+          risk: 'low',
+          version: 1,
+          updatedAt: START,
+          updatedBy: CHECKER,
+        });
+        const low = await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        const money = await change(
+          MAKER,
+          'rate',
+          { rateBps: 1000 },
+          { rateBps: 1200 },
+          {
+            area: 'money',
+            risk: 'high',
+          },
+        );
+        expect(money.risk).toBe('high');
+        expect(await matching(CHECKER, { view: 'all' })).toEqual({
+          ok: true,
+          value: { approved: [{ id: low.id, number: low.number }], failed: [], remaining: 0 },
+        });
+        expect((await requests.find(market, money.id))?.status).toBe('open');
+        expect(stepUp.spent).toEqual([]);
+      });
+
+      it("leaves another Market's requests untouched and out of remaining", async () => {
+        policy.areaRows.set(`${other.marketId}:marketplace`, {
+          area: 'marketplace',
+          enabled: true,
+          risk: 'low',
+          version: 1,
+          updatedAt: START,
+          updatedBy: CHECKER,
+        });
+        subjects.set(other.marketId, 'canary', { v: 2 });
+        const canary = await recorder.openReview(admin(MAKER, other), {
+          area: 'marketplace',
+          subjectKind: KIND_OF.marketplace,
+          subjectRef: 'canary',
+          before: { v: 1 },
+          after: { v: 2 },
+          note: 'Canary in the other Market',
+        });
+        if (!canary.ok || canary.value === null) throw new Error('expected a canary request');
+        const mine = await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        expect(await matching(CHECKER, { view: 'all' })).toEqual({
+          ok: true,
+          value: { approved: [{ id: mine.id, number: mine.number }], failed: [], remaining: 0 },
+        });
+        expect((await requests.find(other, canary.value.id))?.status).toBe('open');
+        expect(
+          audit.rows.filter(
+            (row) => row.action === 'system-requests.request.approved' && row.market !== code,
+          ),
+        ).toEqual([]);
+      });
+
       it('approves nothing in an area the caller does not review', async () => {
         await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
         expect(await matching(OUTSIDER)).toEqual({
@@ -908,21 +986,35 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
     });
 
     it('shows ids without names or labels when the sources fail or give a bad label', async () => {
-      subjects.labels.set(`${market.marketId}:a`, 'Bell\u0007');
-      subjects.labels.set(`${market.marketId}:b`, 'x'.repeat(201));
-      await change(MAKER, 'a', { v: 1 }, { v: 2 });
-      await change(MAKER, 'b', { v: 1 }, { v: 2 });
-      const bad = await list(CHECKER, { view: 'all' });
-      expect(bad.ok && bad.value.rows.map((row) => row.subjectLabel)).toEqual([null, null]);
+      const bad = {
+        a: 'Bell\u0007',
+        b: 'x'.repeat(201),
+        c: 'Store \u202Egnp.exe', // a right-to-left override
+        d: 'Halal\u200BCorner', // a zero-width space
+        e: 'Next\u0085line', // a C1 control
+        f: 'Two\u2028lines', // the line separator
+        g: 'Isolated \u2066text\u2069', // a bidi isolate
+      };
+      for (const [ref, label] of Object.entries(bad)) {
+        subjects.labels.set(`${market.marketId}:${ref}`, label);
+        await change(MAKER, ref, { v: 1 }, { v: 2 });
+      }
+      subjects.labels.set(`${market.marketId}:ok`, 'Café Ümit (Brisbane)');
+      await change(MAKER, 'ok', { v: 1 }, { v: 2 });
+      const labelled = await list(CHECKER, { view: 'all', sort: 'number' });
+      expect(labelled.ok && labelled.value.rows.map((row) => row.subjectLabel)).toEqual([
+        ...Object.keys(bad).map(() => null),
+        'Café Ümit (Brisbane)',
+      ]);
       names.refusing = true;
       subjects.describeFails = true;
       const failed = await list(CHECKER, { view: 'all' });
       expect(
-        failed.ok && failed.value.rows.map((row) => [row.requestedByName, row.subjectLabel]),
-      ).toEqual([
-        [null, null],
-        [null, null],
-      ]);
+        failed.ok &&
+          failed.value.rows.every(
+            (row) => row.requestedByName === null && row.subjectLabel === null,
+          ),
+      ).toBe(true);
     });
 
     it('gives the number of the newer request beside the id that superseded a row', async () => {
@@ -1000,6 +1092,48 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
         ok: false,
         error: { code: 'access.denied' },
       });
+    });
+
+    it('names who last changed each area and the review period, and null when unreadable', async () => {
+      stepUp.grant(CHECKER, SYSTEM_REQUESTS_POLICY_CHANGE_STEP_UP);
+      const changed = await useCase(ChangeAreaReviewPolicy).execute(admin(CHECKER), {
+        area: 'content',
+        enabled: true,
+        risk: 'low',
+        expectedVersion: 0,
+        note: 'Review page edits',
+      });
+      expect(changed).toMatchObject({
+        ok: true,
+        value: { value: { updatedBy: CHECKER, updatedByName: 'Ali R.' } },
+      });
+      stepUp.grant(CHECKER, SYSTEM_REQUESTS_POLICY_CHANGE_STEP_UP);
+      const days = await useCase(ChangeReviewDueDays).execute(admin(CHECKER), {
+        reviewDueDays: 3,
+        expectedVersion: 0,
+        note: 'Faster',
+      });
+      expect(days).toMatchObject({
+        ok: true,
+        value: { value: { updatedBy: CHECKER, updatedByName: 'Ali R.' } },
+      });
+      const view = await useCase(ViewReviewPolicy).execute(admin(MAKER), {});
+      if (!view.ok) throw new Error('view failed');
+      expect(view.value.areas.find((area) => area.area === 'content')?.updatedByName).toBe(
+        'Ali R.',
+      );
+      expect(view.value.areas.find((area) => area.area === 'people')).toMatchObject({
+        updatedBy: null,
+        updatedByName: null,
+      });
+      expect(view.value.reviewDueDays.updatedByName).toBe('Ali R.');
+      names.refusing = true;
+      const unnamed = await useCase(ViewReviewPolicy).execute(admin(MAKER), {});
+      expect(unnamed.ok && unnamed.value.areas.find((a) => a.area === 'content')).toMatchObject({
+        updatedBy: CHECKER,
+        updatedByName: null,
+      });
+      expect(unnamed.ok && unnamed.value.reviewDueDays.updatedByName).toBeNull();
     });
 
     it('changes an area under a step-up proof and opens a high-risk review of the change', async () => {

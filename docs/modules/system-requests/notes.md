@@ -120,12 +120,16 @@ bulk-approve-matching, reject, withdraw, `review-policy`, and the two policy wri
 - `subjectLabel`: the owning module's label of the subject, from the optional
   `SystemChangeReverter.describe(context, subjectRefs)` (one call per kind per page, at most 100
   refs, outside any unit). Null when the module gives none, it throws, or the label is empty,
-  over 200 characters or holds a control character. Implemented by: settings (the setting's name
+  over 200 characters or holds any `\p{C}` character (controls, bidi overrides and isolates,
+  zero-width characters) or U+2028/U+2029. Implemented by: settings (the setting's name
   from its definition, e.g. "List paging"), commission-payouts (both kinds: the seller's public
   store name through sellers' facade), wallet ("Wallet status"), and the review policy itself
   ("Money review" for an area, "Review period" for the due days). Every queue viewer sees the label,
   so it names the subject only, never a value of the change.
 - `supersededByNumber`: the SR number of `supersededBy` (kept), read in the same unit.
+- The review policy page: each area and the review period carry `updatedByName` beside
+  `updatedBy` (the same names port, one read per page; null when unknown or unreadable), on the
+  view and on both policy writes' answers.
 
 ### Select all matching (rule 14)
 
@@ -137,7 +141,9 @@ open, low risk, an area whose review key the caller holds, not the caller's own;
 call, oldest SR number first, each in its own unit with the same checks and audit row as
 bulk-approve. Answer: `{approved: [{id, number, displayNumber}], failed: [{id, code}], remaining}`,
 where `remaining` counts the approvable requests that still match (10,000 at most). The panel
-repeats while `remaining > 0` and stops when `approved` is empty. Refused in an acting-as session;
+repeats while `remaining > 0` and stops when `approved` is empty. `remaining` is `null` when the
+count failed after the approvals had committed (the route never fails after a commit): the panel
+treats null as "stop" and reloads the list. Refused in an acting-as session;
 needs `system-requests.request.view`.
 
 ### Confirmed behaviour

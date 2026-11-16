@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { isReviewArea, isRisk, type ReviewArea, type Risk } from '../domain/areas';
@@ -34,6 +35,8 @@ import {
 import type { SystemRequestsDependencies } from './system-requests-dependencies';
 
 export { REQUEST_VIEWS, type RequestTab };
+
+const logger = new Logger('SystemRequestsList');
 
 // The System requests list (a super list, CLAUDE.md rule 14): views, search, filters, sort, page
 // numbers with a total or Previous and Next (the panel picks the mode from the Market's List
@@ -450,8 +453,11 @@ export interface MatchingOutcome {
     readonly id: Id<'SystemRequest'>;
     readonly code: SystemRequestsFailure['code'];
   }[];
-  /** How many approvable requests still match after this call (at most 10,000). */
-  readonly remaining: number;
+  /**
+   * How many approvable requests still match after this call (at most 10,000); null when the
+   * count could not be read after the approvals committed (the panel then stops).
+   */
+  readonly remaining: number | null;
 }
 
 /**
@@ -541,13 +547,25 @@ export async function approveMatching(
     if (result.ok) approved.push({ id: candidate.id, number: candidate.number });
     else failed.push({ id: candidate.id, code: result.error.code });
   }
-  const remaining = await deps.unitOfWork.run<number, SystemRequestsFailure>(
-    context.market,
-    async () => ok(await deps.requests.count(context.market, filter, MAX_PAGED_ROWS)),
-    { readOnly: true },
-  );
-  if (!remaining.ok) return remaining;
-  return ok({ approved, failed, remaining: remaining.value });
+  // The approvals have committed: a failed count never turns them into an error.
+  let remaining: number | null = null;
+  try {
+    const counted = await deps.unitOfWork.run<number, SystemRequestsFailure>(
+      context.market,
+      async () => ok(await deps.requests.count(context.market, filter, MAX_PAGED_ROWS)),
+      { readOnly: true },
+    );
+    if (counted.ok) remaining = counted.value;
+  } catch (error) {
+    logger.warn({
+      msg: 'system-requests.matching-remaining-unavailable',
+      error: error instanceof Error ? error.name : 'unknown',
+      approved: approved.length,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+  }
+  return ok({ approved, failed, remaining });
 }
 
 /** `CountSystemRequests`: the menu badge (Needs my review) and the Overdue count. */

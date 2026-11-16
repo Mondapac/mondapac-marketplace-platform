@@ -17,6 +17,7 @@ import { PolicyChanged } from '../domain/audit';
 import { checkText, MAX_NOTE } from '../domain/request';
 import type { RecordedRequest } from '../contracts/recorder';
 import {
+  adminNamesOf,
   openInUnit,
   signedInAdmin,
   stepUpFailure,
@@ -58,6 +59,8 @@ export interface AreaPolicyView {
   readonly version: number;
   readonly updatedAt: Temporal.Instant | null;
   readonly updatedBy: Id<'Account'> | null;
+  /** The display name of `updatedBy` (identity's facade); null when unknown or unreadable. */
+  readonly updatedByName: string | null;
 }
 
 export interface DueDaysView {
@@ -65,6 +68,35 @@ export interface DueDaysView {
   readonly version: number;
   readonly updatedAt: Temporal.Instant | null;
   readonly updatedBy: Id<'Account'> | null;
+  /** The display name of `updatedBy`; null when unknown or unreadable. */
+  readonly updatedByName: string | null;
+}
+
+/** Adds `updatedByName` to stamped values, after the unit; null where a name cannot be read. */
+async function namedStamps<T extends { readonly updatedBy: Id<'Account'> | null }>(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  values: readonly T[],
+): Promise<T[]> {
+  const names = await adminNamesOf(
+    deps,
+    context,
+    values.map((value) => value.updatedBy),
+  );
+  return values.map((value) => ({
+    ...value,
+    updatedByName: value.updatedBy === null ? null : (names.get(value.updatedBy) ?? null),
+  }));
+}
+
+async function namedChange<T extends { readonly updatedBy: Id<'Account'> | null }>(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  result: Result<PolicyChangeView<T>, SystemRequestsFailure>,
+): Promise<Result<PolicyChangeView<T>, SystemRequestsFailure>> {
+  if (!result.ok) return result;
+  const [value] = await namedStamps(deps, context, [result.value.value]);
+  return ok({ ...result.value, value: value! });
 }
 
 export interface PolicyView {
@@ -86,7 +118,7 @@ export async function viewPolicy(
   context: CallContext,
 ): Promise<Result<PolicyView, SystemRequestsFailure>> {
   if (signedInAdmin(context) === null) return err({ code: 'access.denied' });
-  return deps.unitOfWork.run<PolicyView, SystemRequestsFailure>(
+  const read = await deps.unitOfWork.run<PolicyView, SystemRequestsFailure>(
     context.market,
     async () => {
       const rows = await deps.policy.areas(context.market);
@@ -102,6 +134,7 @@ export async function viewPolicy(
             version: row?.version ?? 0,
             updatedAt: row?.updatedAt ?? null,
             updatedBy: row?.updatedBy ?? null,
+            updatedByName: null,
           };
         }),
         reviewDueDays: {
@@ -109,12 +142,28 @@ export async function viewPolicy(
           version: due?.version ?? 0,
           updatedAt: due?.updatedAt ?? null,
           updatedBy: due?.updatedBy ?? null,
+          updatedByName: null,
         },
         reviewPolicy: { risk: 'high', reviewPermission: REVIEW_KEYS['review-policy'] },
       });
     },
     { readOnly: true },
   );
+  if (!read.ok) return read;
+  // One names read for the page, after the unit (P 3.1 row 5).
+  const names = await adminNamesOf(deps, context, [
+    ...read.value.areas.map((area) => area.updatedBy),
+    read.value.reviewDueDays.updatedBy,
+  ]);
+  const nameOf = (id: Id<'Account'> | null) => (id === null ? null : (names.get(id) ?? null));
+  return ok({
+    ...read.value,
+    areas: read.value.areas.map((area) => ({ ...area, updatedByName: nameOf(area.updatedBy) })),
+    reviewDueDays: {
+      ...read.value.reviewDueDays,
+      updatedByName: nameOf(read.value.reviewDueDays.updatedBy),
+    },
+  });
 }
 
 const versionOk = (value: unknown): value is number =>
@@ -146,60 +195,62 @@ export async function changeAreaPolicy(
   const next = { enabled: input.enabled as boolean, risk: input.risk as Risk };
   const seen = input.expectedVersion as number;
 
-  return deps.unitOfWork.run<PolicyChangeView<AreaPolicyView>, SystemRequestsFailure>(
-    context.market,
-    async () => {
-      const row = await deps.policy.area(context.market, area);
-      const version = row?.version ?? 0;
-      if (version !== seen) return err({ code: 'system-requests.policy-conflict' });
-      const was = row === null ? AREA_DEFAULTS[area] : { enabled: row.enabled, risk: row.risk };
-      const unchanged: AreaPolicyView = {
-        area,
-        ...was,
-        reviewPermission: REVIEW_KEYS[area],
-        version,
-        updatedAt: row?.updatedAt ?? null,
-        updatedBy: row?.updatedBy ?? null,
-      };
-      if (was.enabled === next.enabled && was.risk === next.risk) {
-        return ok({ value: unchanged, request: null });
-      }
-      const spent = await deps.stepUp.consume(context, SYSTEM_REQUESTS_POLICY_CHANGE_STEP_UP);
-      if (!spent.ok) return err(stepUpFailure(spent.error));
-      const now = deps.clock.now();
-      const written = await deps.policy.setArea(context.market, area, next, {
-        version: version + 1,
-        at: now,
-        by: admin,
-      });
-      if (!written) return err({ code: 'system-requests.policy-conflict' });
-      const request = await openInUnit(deps, context, admin, {
-        area: 'review-policy',
-        subjectKind: POLICY_AREA_KIND,
-        subjectRef: area,
-        before: { enabled: was.enabled, risk: was.risk },
-        after: { enabled: next.enabled, risk: next.risk },
-        note: note.text,
-      });
-      await deps.audit.record(
-        context,
-        PolicyChanged.entry(area, {
-          before: { enabled: was.enabled, risk: was.risk, reviewDueDays: null },
-          after: {
-            enabled: next.enabled,
-            risk: next.risk,
-            reviewDueDays: null,
-            version: version + 1,
-            requestId: request?.id ?? null,
-          },
-        }),
-      );
-      return ok({
-        value: { ...unchanged, ...next, version: version + 1, updatedAt: now, updatedBy: admin },
-        request,
-      });
-    },
-  );
+  const changed = await deps.unitOfWork.run<
+    PolicyChangeView<AreaPolicyView>,
+    SystemRequestsFailure
+  >(context.market, async () => {
+    const row = await deps.policy.area(context.market, area);
+    const version = row?.version ?? 0;
+    if (version !== seen) return err({ code: 'system-requests.policy-conflict' });
+    const was = row === null ? AREA_DEFAULTS[area] : { enabled: row.enabled, risk: row.risk };
+    const unchanged: AreaPolicyView = {
+      area,
+      ...was,
+      reviewPermission: REVIEW_KEYS[area],
+      version,
+      updatedAt: row?.updatedAt ?? null,
+      updatedBy: row?.updatedBy ?? null,
+      updatedByName: null,
+    };
+    if (was.enabled === next.enabled && was.risk === next.risk) {
+      return ok({ value: unchanged, request: null });
+    }
+    const spent = await deps.stepUp.consume(context, SYSTEM_REQUESTS_POLICY_CHANGE_STEP_UP);
+    if (!spent.ok) return err(stepUpFailure(spent.error));
+    const now = deps.clock.now();
+    const written = await deps.policy.setArea(context.market, area, next, {
+      version: version + 1,
+      at: now,
+      by: admin,
+    });
+    if (!written) return err({ code: 'system-requests.policy-conflict' });
+    const request = await openInUnit(deps, context, admin, {
+      area: 'review-policy',
+      subjectKind: POLICY_AREA_KIND,
+      subjectRef: area,
+      before: { enabled: was.enabled, risk: was.risk },
+      after: { enabled: next.enabled, risk: next.risk },
+      note: note.text,
+    });
+    await deps.audit.record(
+      context,
+      PolicyChanged.entry(area, {
+        before: { enabled: was.enabled, risk: was.risk, reviewDueDays: null },
+        after: {
+          enabled: next.enabled,
+          risk: next.risk,
+          reviewDueDays: null,
+          version: version + 1,
+          requestId: request?.id ?? null,
+        },
+      }),
+    );
+    return ok({
+      value: { ...unchanged, ...next, version: version + 1, updatedAt: now, updatedBy: admin },
+      request,
+    });
+  });
+  return namedChange(deps, context, changed);
 }
 
 /** `ChangeReviewDueDays`: after how many days an open request is overdue (1 to 90). */
@@ -230,7 +281,7 @@ export async function changeDueDays(
   const next = days as number;
   const seen = input.expectedVersion as number;
 
-  return deps.unitOfWork.run<PolicyChangeView<DueDaysView>, SystemRequestsFailure>(
+  const changed = await deps.unitOfWork.run<PolicyChangeView<DueDaysView>, SystemRequestsFailure>(
     context.market,
     async () => {
       const row = await deps.policy.dueDays(context.market);
@@ -242,6 +293,7 @@ export async function changeDueDays(
         version,
         updatedAt: row?.updatedAt ?? null,
         updatedBy: row?.updatedBy ?? null,
+        updatedByName: null,
       };
       if (was === next) return ok({ value: unchanged, request: null });
       const spent = await deps.stepUp.consume(context, SYSTEM_REQUESTS_POLICY_CHANGE_STEP_UP);
@@ -275,11 +327,18 @@ export async function changeDueDays(
         }),
       );
       return ok({
-        value: { reviewDueDays: next, version: version + 1, updatedAt: now, updatedBy: admin },
+        value: {
+          reviewDueDays: next,
+          version: version + 1,
+          updatedAt: now,
+          updatedBy: admin,
+          updatedByName: null,
+        },
         request,
       });
     },
   );
+  return namedChange(deps, context, changed);
 }
 
 /**

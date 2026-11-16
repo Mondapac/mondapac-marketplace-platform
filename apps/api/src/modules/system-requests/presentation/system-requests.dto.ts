@@ -217,11 +217,14 @@ export class BulkApproveMatchingBody {
   approved!: MatchingApprovedBody[];
   @ApiProperty({ type: [MatchingFailedBody] }) failed!: MatchingFailedBody[];
   @ApiProperty({
+    type: Number,
+    nullable: true,
     description:
       'Approvable requests that still match (at most 10,000). Call again while above 0 and the ' +
-      'last call approved at least one.',
+      'last call approved at least one. null: the count could not be read after the approvals ' +
+      'committed; the panel stops and reloads the list.',
   })
-  remaining!: number;
+  remaining!: number | null;
 }
 
 export class RecordedRequestBody {
@@ -240,6 +243,12 @@ export class AreaPolicyBody {
   @ApiProperty({ description: '0 while the default is in force.' }) version!: number;
   @ApiProperty({ format: 'date-time', nullable: true, type: String }) updatedAt!: string | null;
   @ApiProperty({ format: 'uuid', nullable: true, type: String }) updatedBy!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The display name of updatedBy; null when unknown or unreadable.',
+  })
+  updatedByName!: string | null;
 }
 
 export class DueDaysBody {
@@ -247,6 +256,12 @@ export class DueDaysBody {
   @ApiProperty({ description: '0 while the default (7) is in force.' }) version!: number;
   @ApiProperty({ format: 'date-time', nullable: true, type: String }) updatedAt!: string | null;
   @ApiProperty({ format: 'uuid', nullable: true, type: String }) updatedBy!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The display name of updatedBy; null when unknown or unreadable.',
+  })
+  updatedByName!: string | null;
 }
 
 export class ReviewPolicyRowBody {
@@ -388,6 +403,7 @@ const areaPolicyBody = (view: AreaPolicyView): AreaPolicyBody => ({
   version: view.version,
   updatedAt: iso(view.updatedAt),
   updatedBy: view.updatedBy,
+  updatedByName: view.updatedByName,
 });
 
 const dueDaysBody = (view: DueDaysView): DueDaysBody => ({
@@ -395,6 +411,7 @@ const dueDaysBody = (view: DueDaysView): DueDaysBody => ({
   version: view.version,
   updatedAt: iso(view.updatedAt),
   updatedBy: view.updatedBy,
+  updatedByName: view.updatedByName,
 });
 
 export const policyBody = (view: PolicyView): PolicyBody => ({

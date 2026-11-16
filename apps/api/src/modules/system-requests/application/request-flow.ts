@@ -427,10 +427,10 @@ function cleanLabel(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const text = value.trim();
   if (text.length === 0 || Array.from(text).length > MAX_SUBJECT_LABEL) return null;
-  for (let index = 0; index < text.length; index += 1) {
-    const code = text.charCodeAt(index);
-    if (code < 0x20 || code === 0x7f) return null;
-  }
+  // Any "other" character, as closedBody refuses: controls (C0 and C1), format characters (bidi
+  // overrides and isolates, zero-width ones), private use and unassigned code points; and the
+  // line and paragraph separators U+2028 and U+2029, which are not in \p{C}.
+  if (/[\p{C}\u2028\u2029]/u.test(text)) return null;
   return text;
 }
 
@@ -479,7 +479,7 @@ async function subjectLabels(
 }
 
 /** The admin names of `accountIds`, outside any unit; none on a failure. */
-async function adminNamesOf(
+export async function adminNamesOf(
   deps: SystemRequestsDependencies,
   context: CallContext,
   accountIds: readonly (string | null)[],

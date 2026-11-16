@@ -383,6 +383,12 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
       remaining: 4,
     });
     expect(calls).toEqual([{ name: 'matching', input: filter }]);
+    // A count that failed after the approvals committed is null: the panel stops.
+    next = ok({ approved: [{ id: REQUEST, number: 12 }], failed: [], remaining: null });
+    const uncounted = await send('post', path, session, filter);
+    expect(uncounted.status).toBe(200);
+    expect(uncounted.body).toMatchObject({ remaining: null });
+    calls.length = 0;
     // Paging and sort are not part of what matches; no CSRF is no write.
     const paged = await send('post', path, session, { view: 'all', page: '2' });
     expect(paged.status).toBe(400);
@@ -392,7 +398,7 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     expect((await send('post', path, { cookie: session.cookie }, {})).status).toBe(403);
     next = err({ code: 'access.denied' });
     expect((await send('post', path, session, {})).status).toBe(403);
-    expect(calls.map((call) => call.name)).toEqual(['matching', 'matching']);
+    expect(calls.map((call) => call.name)).toEqual(['matching']);
   });
 
   it('refuses a write without CSRF, with a stray field, or not as JSON', async () => {
@@ -488,16 +494,24 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
         version: 1,
         updatedAt: START,
         updatedBy: ADMIN,
+        updatedByName: 'Ali R.',
       },
       request: { id: REQUEST, number: 12, risk: 'high', reviewDueAt: START.add({ hours: 168 }) },
     });
     const changed = await send('put', areaPath, session, body);
     expect(changed.status).toBe(200);
+    expect(changed.body).toMatchObject({ value: { updatedBy: ADMIN, updatedByName: 'Ali R.' } });
     expect(calls).toEqual([{ name: 'area', input: { area: 'content', ...body } }]);
     // The guard asks for a fresh proof; spending it is the use case's (unit spec), so the
     // still unspent proof lets the due-days write through to its use case here.
     next = ok({
-      value: { reviewDueDays: 3, version: 1, updatedAt: START, updatedBy: ADMIN },
+      value: {
+        reviewDueDays: 3,
+        version: 1,
+        updatedAt: START,
+        updatedBy: ADMIN,
+        updatedByName: null,
+      },
       request: null,
     });
     const days = await send(
@@ -511,6 +525,7 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
       },
     );
     expect(days.status).toBe(200);
+    expect(days.body).toMatchObject({ value: { updatedByName: null } });
     expect(calls.map((call) => call.name)).toEqual(['area', 'days']);
   });
 });
