@@ -207,8 +207,8 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
     const assign = app.get(AssignAdminRole);
 
     await race(
-      (one, two) => assign.execute(as(one), { accountId: two, roleId: viewer }),
-      (one, two) => assign.execute(as(two), { accountId: one, roleId: viewer }),
+      (one, two) => assign.execute(as(one), { accountId: two, roleId: viewer, note: 'Race' }),
+      (one, two) => assign.execute(as(two), { accountId: one, roleId: viewer, note: 'Race' }),
     );
   });
 
@@ -219,7 +219,7 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
 
     await race(
       (one, two) => disable.execute(as(one), { accountId: two }),
-      (one, two) => assign.execute(as(two), { accountId: one, roleId: viewer }),
+      (one, two) => assign.execute(as(two), { accountId: one, roleId: viewer, note: 'Race' }),
     );
   });
 
@@ -228,9 +228,11 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
     const target = await admin('viewer');
 
     await expect(
-      app
-        .get(AssignAdminRole)
-        .execute(as(root), { accountId: target, roleId: await roleId('operations-support') }),
+      app.get(AssignAdminRole).execute(as(root), {
+        accountId: target,
+        roleId: await roleId('operations-support'),
+        note: 'Covers support',
+      }),
     ).resolves.toMatchObject({ ok: true, value: { code: 'role.assigned' } });
 
     const { rows } = await sql.query<{ role_id: string; version: number; by: string }>(
@@ -387,7 +389,7 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
     expect(await challengesOf(target)).toBe(0);
 
     await expect(
-      app.get(EnableAdminAccount).execute(as(root), { accountId: target }),
+      app.get(EnableAdminAccount).execute(as(root), { accountId: target, note: 'Back' }),
     ).resolves.toMatchObject({ ok: true, value: { code: 'account.enabled' } });
     expect(await statusOf(target)).toEqual({ status: 'active', version: 3 });
     expect(await outboxTypes(target)).toEqual([

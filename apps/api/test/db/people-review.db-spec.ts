@@ -1,0 +1,320 @@
+import { randomBytes, randomUUID } from 'node:crypto';
+import { Logger } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import { ok, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id } from '@mondapac/shared-kernel';
+import { testAuthenticatedActor, testCallContext } from '@mondapac/shared-kernel/testing';
+import { Client } from 'pg';
+import {
+  SESSION_REPOSITORY,
+  type SessionRepository,
+} from '../../src/modules/identity/application/ports/session.repository';
+import { AssignAdminRole } from '../../src/modules/identity/application/use-cases/assign-admin-role.use-case';
+import { CreatePlatformRole } from '../../src/modules/identity/application/use-cases/create-platform-role.use-case';
+import { DisableAdminAccount } from '../../src/modules/identity/application/use-cases/disable-admin-account.use-case';
+import { EditPlatformRole } from '../../src/modules/identity/application/use-cases/edit-platform-role.use-case';
+import { EnableAdminAccount } from '../../src/modules/identity/application/use-cases/enable-admin-account.use-case';
+import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
+import { openSession } from '../../src/modules/identity/domain/session';
+import { RejectSystemRequest } from '../../src/modules/system-requests/application/use-cases/reject-system-request.use-case';
+import { STEP_UP_CONSUMER } from '../../src/platform/authz';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
+import { withRoleLimit } from '../support/role-limits';
+import { createTestApp } from '../support/test-app';
+import { TEST_MARKETS } from '../support/test-config';
+import { marketOf } from './persistence-support';
+import { testDatabaseUrl } from './test-database';
+
+// Admin Inbox › System requests, area people, on PostgreSQL with the real recorder through the
+// application graph, in both Market fixtures (people is reviewed by default, at high risk): a
+// change without a note leaves nothing behind (its unit rolls back); a change with one opens its
+// request in the same unit; a reviewer's reject runs identity's reverter in the decision's
+// serializable unit and restores what narrows access, audited with the request id, while a
+// revert that would widen access is refused and the request stays open. A disable opens
+// nothing. The reviewer's step-up proof is stubbed (its spend is system-requests' own test).
+// Accounts and roles are new per test, so no other spec's rows are met.
+
+const CREATED = '2026-11-15T00:00:00Z';
+const PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2FsdA$dGFn';
+const newId = <T extends string>(): Id<T> =>
+  `01990000-0000-7000-8000-${randomBytes(6).toString('hex')}` as Id<T>;
+
+describe.each(TEST_MARKETS)('people reviews in market %s (database, System requests)', (code) => {
+  const market = marketOf(code);
+  let app: NestExpressApplication;
+  let sql: Client;
+  let logs: jest.SpyInstance[];
+
+  beforeAll(async () => {
+    ({ app } = await createTestApp({
+      env: { DATABASE_URL: testDatabaseUrl() },
+      override: (builder) =>
+        withRoleLimit(builder, 1000)
+          .overrideProvider(STEP_UP_CONSUMER)
+          .useValue({
+            consume: (context: CallContext) =>
+              Promise.resolve(
+                ok({
+                  sessionId: (context.actor as { sessionId: Id<'Session'> }).sessionId,
+                  verifiedAt: Temporal.Now.instant(),
+                }),
+              ),
+          }),
+    }));
+    sql = new Client({ connectionString: testDatabaseUrl() });
+    await sql.connect();
+    await app
+      .get(SeedRoles)
+      .execute(testCallContext(market, 'system', `db-people-${randomUUID()}`), {});
+  });
+  afterAll(async () => {
+    await sql.end();
+    await app.close();
+  });
+  beforeEach(() => {
+    logs = (['log', 'warn', 'error', 'debug'] as const).map((level) =>
+      jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined),
+    );
+  });
+  afterEach(() => logs.forEach((spy) => spy.mockRestore()));
+
+  const as = (accountId: Id<'Account'>) =>
+    testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'admin',
+        accountId,
+        sessionId: newId<'Session'>(),
+        sellerId: null,
+      }),
+      `db-people-${randomUUID()}`,
+    );
+
+  async function seededRole(seedCode: string): Promise<Id<'Role'>> {
+    const { rows } = await sql.query<{ id: string }>(
+      `SELECT id FROM identity.roles WHERE market_id = $1 AND scope = 'platform' AND seed_code = $2`,
+      [code, seedCode],
+    );
+    return rows[0]!.id as Id<'Role'>;
+  }
+
+  async function admin(roleId: Id<'Role'>, status = 'active'): Promise<Id<'Account'>> {
+    const id = newId<'Account'>();
+    const email = `People.${id}@Review.example`;
+    await sql.query(
+      `INSERT INTO identity.accounts (id, market_id, tenant_id, population, email,
+       email_normalized, display_name, status, email_verified_at, signed_up_at, version, created_at)
+       VALUES ($1, $2, 'default', 'admin', $3, $4, 'People', $6, $5, $5, 1, $5)`,
+      [id, code, email, email.toLowerCase(), CREATED, status],
+    );
+    await sql.query(
+      `INSERT INTO identity.password_credentials
+         (market_id, tenant_id, account_id, password_hash, changed_at)
+       VALUES ($1, 'default', $2, $3, $4)`,
+      [code, id, PASSWORD_HASH, CREATED],
+    );
+    await sql.query(
+      `INSERT INTO identity.role_assignments (id, market_id, tenant_id, account_id, role_id,
+       assigned_by_account_id, assigned_at, version)
+       VALUES ($1, $2, 'default', $3, $4, NULL, $5, 1)`,
+      [newId(), code, id, roleId, CREATED],
+    );
+    return id;
+  }
+
+  async function customRole(root: Id<'Account'>, keys: string[]): Promise<Id<'Role'>> {
+    const made = await app.get(CreatePlatformRole).execute(as(root), {
+      name: `People ${randomUUID().slice(0, 8)}`,
+      permissionKeys: keys,
+    });
+    if (!made.ok) throw new Error(JSON.stringify(made.error));
+    return made.value.roleId;
+  }
+
+  const roleIdOf = async (accountId: Id<'Account'>) =>
+    (
+      await sql.query<{ role_id: string }>(
+        'SELECT role_id FROM identity.role_assignments WHERE market_id = $1 AND account_id = $2',
+        [code, accountId],
+      )
+    ).rows[0]!.role_id;
+  const keysOf = async (roleId: Id<'Role'>) =>
+    (
+      await sql.query<{ permission_key: string }>(
+        `SELECT permission_key FROM identity.role_permissions WHERE market_id = $1 AND role_id = $2
+         ORDER BY permission_key`,
+        [code, roleId],
+      )
+    ).rows.map((row) => row.permission_key);
+  const statusOf = async (accountId: Id<'Account'>) =>
+    (
+      await sql.query<{ status: string }>(
+        'SELECT status FROM identity.accounts WHERE market_id = $1 AND id = $2',
+        [code, accountId],
+      )
+    ).rows[0]!.status;
+  const requestsOf = async (subjectRef: string) =>
+    (
+      await sql.query<{
+        id: Id<'SystemRequest'>;
+        status: string;
+        risk: string;
+        area: string;
+        subject_kind: string;
+        before: unknown;
+        after: unknown;
+        note: string;
+      }>(
+        `SELECT id, status, risk, area, subject_kind, before, after, note
+         FROM system_requests.requests WHERE market_id = $1 AND subject_ref = $2 ORDER BY number`,
+        [code, subjectRef],
+      )
+    ).rows;
+  const auditOf = async (action: string, targetId: string) =>
+    (
+      await sql.query<{ after: { requestId?: string } }>(
+        `SELECT after FROM platform.audit_log WHERE market_id = $1 AND action = $2 AND target_id = $3`,
+        [code, action, targetId],
+      )
+    ).rows;
+  const reject = (reviewer: Id<'Account'>, requestId: Id<'SystemRequest'>) =>
+    app.get(RejectSystemRequest).execute(as(reviewer), { requestId, reason: 'Not agreed' });
+
+  it('keeps nothing of a role change without a note, and reverts a reviewed one on reject', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const narrow = await customRole(root, ['identity.admin-account.view']);
+    const wide = await customRole(root, [
+      'identity.admin-account.view',
+      'identity.platform-role.view',
+    ]);
+    const member = await admin(narrow);
+
+    const refused = await app
+      .get(AssignAdminRole)
+      .execute(as(root), { accountId: member, roleId: wide });
+    expect(refused).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    expect(await roleIdOf(member)).toBe(narrow);
+    expect(await requestsOf(member)).toEqual([]);
+    expect(await auditOf('identity.account-role.changed', member)).toEqual([]);
+
+    const saved = await app
+      .get(AssignAdminRole)
+      .execute(as(root), { accountId: member, roleId: wide, note: 'Needs the role list' });
+    if (!saved.ok || saved.value.request === null) throw new Error('no request opened');
+    expect(await roleIdOf(member)).toBe(wide);
+    const [opened] = await requestsOf(member);
+    expect(opened).toMatchObject({
+      id: saved.value.request.id,
+      status: 'open',
+      area: 'people',
+      risk: 'high',
+      subject_kind: 'identity.admin-roles',
+      before: { roleIds: [narrow] },
+      after: { roleIds: [wide] },
+      note: 'Needs the role list',
+    });
+
+    expect(await reject(checker, opened!.id)).toMatchObject({
+      ok: true,
+      value: { status: 'reverted', decision: 'rejected' },
+    });
+    expect(await roleIdOf(member)).toBe(narrow);
+    expect(await auditOf('identity.account-role.reverted', member)).toMatchObject([
+      { after: { roleId: narrow, requestId: opened!.id } },
+    ]);
+  });
+
+  it('reverts a role edit that added a key; refuses one that would add a key back', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const role = await customRole(root, ['identity.admin-account.view']);
+    const edit = app.get(EditPlatformRole);
+    const name = `Edited ${randomUUID().slice(0, 8)}`;
+
+    const added = await edit.execute(as(root), {
+      roleId: role,
+      expectedVersion: 1,
+      name,
+      permissionKeys: ['identity.admin-account.view', 'identity.platform-role.view'],
+      note: 'Add the role list',
+    });
+    if (!added.ok || added.value.request === null) throw new Error('no request opened');
+    expect(await reject(checker, added.value.request.id)).toMatchObject({ ok: true });
+    expect(await keysOf(role)).toEqual(['identity.admin-account.view']);
+    expect(await auditOf('identity.role.reverted', role)).toMatchObject([
+      {
+        after: {
+          removedKeys: ['identity.platform-role.view'],
+          renamed: true,
+          requestId: added.value.request.id,
+        },
+      },
+    ]);
+
+    const removed = await edit.execute(as(root), {
+      roleId: role,
+      expectedVersion: 3,
+      name,
+      permissionKeys: [],
+      note: 'Nothing for now',
+    });
+    if (!removed.ok || removed.value.request === null) throw new Error('no request opened');
+    expect(await reject(checker, removed.value.request.id)).toEqual({
+      ok: false,
+      error: { code: 'system-requests.revert-not-permitted' },
+    });
+    expect(await keysOf(role)).toEqual([]);
+    expect((await requestsOf(role)).map((r) => r.status)).toEqual(['reverted', 'open']);
+  });
+
+  it('disables again an admin whose enabling is rejected, ending its sessions; a disable opens nothing', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const target = await admin(await seededRole('viewer'));
+
+    const disabled = await app.get(DisableAdminAccount).execute(as(root), { accountId: target });
+    expect(disabled).toMatchObject({
+      ok: true,
+      value: { code: 'account.disabled', request: null },
+    });
+    expect(await requestsOf(target)).toEqual([]);
+
+    const enabled = await app
+      .get(EnableAdminAccount)
+      .execute(as(root), { accountId: target, note: 'Back from leave' });
+    if (!enabled.ok || enabled.value.request === null) throw new Error('no request opened');
+    await app.get<UnitOfWork>(UNIT_OF_WORK).run(market, async () => {
+      await app.get<SessionRepository>(SESSION_REPOSITORY).add(
+        market,
+        openSession({
+          id: newId<'Session'>(),
+          marketId: market.marketId,
+          accountId: target,
+          population: 'admin',
+          transport: 'cookie',
+          lifetime: { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 },
+          now: Temporal.Now.instant(),
+        }),
+        new Uint8Array(randomBytes(32)),
+      );
+      return ok(undefined);
+    });
+
+    expect(await reject(checker, enabled.value.request.id)).toMatchObject({ ok: true });
+    expect(await statusOf(target)).toBe('disabled');
+    const sessions = await sql.query<{ revoked_reason: string | null }>(
+      'SELECT revoked_reason FROM identity.sessions WHERE market_id = $1 AND account_id = $2',
+      [code, target],
+    );
+    expect(sessions.rows.map((row) => row.revoked_reason)).toEqual(['account-disabled']);
+    expect(await auditOf('identity.account-status.reverted', target)).toMatchObject([
+      {
+        after: { status: 'disabled', requestId: enabled.value.request.id },
+      },
+    ]);
+  });
+});

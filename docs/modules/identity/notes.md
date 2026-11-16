@@ -78,3 +78,40 @@ snapshot), so it can still read the invitation pending; its insert of the addres
 attempt (40001 under SERIALIZABLE) and the retry reads the invitation accepted: at most two
 attempts, never a second account. Two different invitations of one seller stay covered by
 SERIALIZABLE (HF5 (a)), not by this lock.
+
+## People changes in Admin Inbox › System requests (2026-11-15)
+
+Area `people` (on by default, high risk). Revertible changes only; creating, deleting, inviting
+and revoking are out (owner decision of 15 Nov 2026).
+
+- **Hooked writes.** `EditPlatformRole` (kind `identity.platform-role`, subject = role id, values
+  `{name, permissionKeys}`), `AssignAdminRole` (`identity.admin-roles`, subject = admin account id,
+  values `{roleIds}`, one id in Phase 2) and `EnableAdminAccount` (`identity.admin-status`, values
+  `{status}`) open their review in their own serializable unit after the write, always at risk
+  `high`, with the body's optional `note`. Where people is reviewed, a missing note is
+  `validation.failed` on `note` and the unit keeps nothing. The seller role editor is not hooked.
+- **A disable opens nothing.** It is a stop (like a wallet freeze): it never waits for a note and
+  its `request` is always null.
+- **Reverts never widen access** (Hassan's rule of #912 and #913). A role edit reverts only when the
+  keys before are a subset of the keys now (removing keys or renaming); an admin's role reverts
+  only to a role whose effective keys are a subset of the current role's, and never to the
+  Platform Administrator role from another; an enabling reverts (the admin is disabled again,
+  every session revoked and every open challenge voided through the same write as a disable,
+  under the credential lock), and restoring `active` never runs. Each refusal is `not-permitted`
+  (403 `system-requests.revert-not-permitted`, the request stays open).
+- **Last holder.** A narrowing revert keeps `LastHolderPolicy`: it never leaves the Market without
+  an active, verified Platform Administrator (that role confers every key, the role-management and
+  review keys included); a revert that would is `not-permitted`. Editing a custom role cannot touch
+  the system role.
+- **Sessions.** A role revert keeps sessions (permissions are read on every request, R4); a status
+  revert revokes them, as a disable does.
+- **The decider.** The revert runs with the reviewer's (or withdrawing author's) context in
+  system-requests' decision unit, after its step-up is spent. The decider's own role-editing keys
+  are not asked for: the area's review key is the authority.
+- **Audit.** `identity.role.reverted` (removed keys, renamed, `requestId`),
+  `identity.account-role.reverted` and `identity.account-status.reverted`, each with `requestId`.
+- **Panel hints.** `GET identity/admin/team` and `GET identity/admin/roles` carry
+  `review: {reviewed, risk}` (read outside any unit).
+- **Wiring.** identity imports no module (ADR-0018 decision 4), so it reaches the recorder and the
+  reverter registry through the port `platform/change-review/change-review.ts`, which
+  system-requests implements and re-exports from its contracts.
