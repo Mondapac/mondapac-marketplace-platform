@@ -357,6 +357,22 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
       expect(second.ok && second.value.nextCursor).toBeNull();
     });
 
+    it('leaves out a conversation with no stored buyer message, and still pages on', async () => {
+      await send('Older', conversationId(1));
+      later(1);
+      await send('Newer', conversationId(2));
+      // A turn counted but its text not stored (another request took it first).
+      conversations.messages.delete(conversationId(2));
+      conversations.times.delete(conversationId(2));
+
+      const first = await list({ limit: 1 });
+      const second = await list({ limit: 1, cursor: first.ok ? first.value.nextCursor : null });
+
+      expect(first.ok && first.value.items).toEqual([]);
+      expect(first.ok && first.value.nextCursor).not.toBeNull();
+      expect(second.ok && second.value.items.map((item) => item.id)).toEqual([conversationId(1)]);
+    });
+
     it('is off while the assistant is off, and refuses a seller', async () => {
       settings.current = on({ enabled: false });
       expect(await list()).toEqual({ ok: false, error: { code: 'assistant.off' } });
@@ -516,6 +532,39 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
         ok: false,
         error: { code: 'assistant.conversation-not-found' },
       });
+      expect(runtime.requests).toHaveLength(calls);
+    });
+
+    it('refuses a purged id the same way, on the customer and the guest route', async () => {
+      await send('Old', conversationId(1));
+      const guestReply = await new SendGuestMessage(gate, deps).execute(
+        testCallContext(market, 'anonymous'),
+        {
+          conversationId: conversationId(2),
+          text: 'Hi',
+          visitor: VISITOR,
+          token: null,
+          origin: '203.0.113.7',
+        },
+      );
+      const token = guestReply.ok ? guestReply.value.guestToken : null;
+      later(24 * 400);
+      await conversations.purgeExpired(market, clock.now(), { customer: 365, guest: 30 }, 100);
+      const calls = runtime.requests.length;
+
+      expect(await send('Again', conversationId(1))).toEqual({
+        ok: false,
+        error: { code: 'assistant.conversation-not-found' },
+      });
+      expect(
+        await new SendGuestMessage(gate, deps).execute(testCallContext(market, 'anonymous'), {
+          conversationId: conversationId(2),
+          text: 'Again',
+          visitor: VISITOR,
+          token,
+          origin: '203.0.113.8',
+        }),
+      ).toEqual({ ok: false, error: { code: 'assistant.conversation-not-found' } });
       expect(runtime.requests).toHaveLength(calls);
     });
 
