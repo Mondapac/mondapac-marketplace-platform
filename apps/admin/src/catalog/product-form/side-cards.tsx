@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Button, Card, Switch } from '@mondapac/ui';
+import { Badge, Button, Card, Select, Switch } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { dayInZone } from '../../shared/format.ts';
@@ -116,13 +116,24 @@ export function ActiveRow({
   );
 }
 
-/** Market, scope and type; read only. */
+/** The type picker of an Add page: required until the product exists. */
+export interface TypeChoice {
+  readonly types: readonly string[];
+  readonly value: string;
+  readonly missing: boolean;
+  readonly disabled: boolean;
+  readonly onChange: (value: string) => void;
+}
+
+/** Market, scope and type. The type is read only, except on an Add page (`choice`), where it is chosen. */
 export function OrganisationCard({
   marketName,
   typeCode,
+  choice,
 }: {
   readonly marketName: string;
   readonly typeCode: string;
+  readonly choice?: TypeChoice;
 }) {
   const t = useTranslations('catalog.productForm');
   return (
@@ -132,9 +143,27 @@ export function OrganisationCard({
         <dd>{marketName}</dd>
         <dt className="text-fg-muted">{t('organisation.scope')}</dt>
         <dd>{t('organisation.platform')}</dd>
-        <dt className="text-fg-muted">{t('organisation.type')}</dt>
-        <dd>{readable(typeCode)}</dd>
+        {choice === undefined ? (
+          <>
+            <dt className="text-fg-muted">{t('organisation.type')}</dt>
+            <dd>{readable(typeCode)}</dd>
+          </>
+        ) : null}
       </dl>
+      {choice === undefined ? null : (
+        <Select
+          name="typeCode"
+          label={t('create.type')}
+          help={t('create.type-help')}
+          value={choice.value}
+          placeholder={t('create.choose')}
+          disabled={choice.disabled}
+          required
+          error={choice.missing ? t('create.type-required') : undefined}
+          options={choice.types.map((code) => ({ value: code, label: readable(code) }))}
+          onChange={(event) => choice.onChange(event.target.value)}
+        />
+      )}
     </Card>
   );
 }

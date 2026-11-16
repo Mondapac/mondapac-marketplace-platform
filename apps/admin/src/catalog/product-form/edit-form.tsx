@@ -22,6 +22,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { callApi } from '../../api/client.ts';
+import { AfterSaveCard, ImagesAfterSave } from './pre-creation.tsx';
 import { AddSizesDialog } from './add-sizes-dialog.tsx';
 import { canAddSizes, maxAxesOf, publishedAxesOf } from './add-sizes.ts';
 import { AttributesSection } from './attributes-section.tsx';
@@ -63,6 +64,7 @@ import {
   readable,
   type BulkAnswer,
   type DraftSaved,
+  type ProductCreated,
   type ProductImage,
   type ProductView,
   type Submitted,
@@ -144,6 +146,7 @@ export function ProductEdit({
   canPause,
   permissionKeys = [],
   canReadTags = permissionKeys.includes(TOPIC_READ_PERMISSION),
+  startProblem,
 }: {
   readonly productId: string;
   readonly csrfToken: string;
@@ -159,6 +162,8 @@ export function ProductEdit({
   readonly canReadTags?: boolean;
   /** The admin's permission keys: the certificates card reads its own (view, edit). */
   readonly permissionKeys?: readonly string[];
+  /** Why the page opens with an error: the first save of an Add page created the product only. */
+  readonly startProblem?: StartProblem;
 }) {
   const t = useTranslations('catalog.productForm');
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
@@ -211,6 +216,7 @@ export function ProductEdit({
       canPause={canPause}
       canReadTags={canReadTags}
       permissionKeys={permissionKeys}
+      startProblem={generation === 1 ? startProblem : undefined}
       onReload={() => void load()}
     />
   );
@@ -232,7 +238,18 @@ function hasSavedRevision(product: ProductView): boolean {
   return Date.parse(workingCopy.lastSavedAt) > Date.parse(published.submittedAt);
 }
 
-function EditForm({
+/** The product exists but the page content of its first save did not all arrive. */
+export type StartProblem = 'draft-not-saved' | 'draft-refused';
+
+/** What an Add page is, before anything exists: the types to choose from. */
+export interface Creating {
+  readonly productTypes: readonly string[];
+}
+
+export function EditForm({
+  creating = null,
+  onCreated = () => undefined,
+  startProblem,
   product,
   images,
   csrfToken,
@@ -252,9 +269,16 @@ function EditForm({
   readonly canReadTags: boolean;
   readonly permissionKeys: readonly string[];
   readonly onReload: () => void;
+  /** Set on the Add page: nothing is created until the first Save draft. */
+  readonly creating?: Creating | null;
+  /** The Add page moves here (the edit URL) once the product exists. */
+  readonly onCreated?: (url: string) => void;
+  readonly startProblem?: StartProblem | undefined;
 }) {
   const t = useTranslations('catalog.productForm');
   const locale = useLocale();
+  const [typeCode, setTypeCode] = useState('');
+  const [typeMissing, setTypeMissing] = useState(false);
   const defaultLocale = product.locales.default;
   const { form } = product;
   const configurable = product.variantModel === 'configurable';
@@ -280,7 +304,9 @@ function EditForm({
   // A new run of the dialog per opening: nothing of an earlier one (an error, a tick) survives.
   const [sizesRun, setSizesRun] = useState(0);
   const [pending, setPending] = useState(false);
-  const [problem, setProblem] = useState<FormProblem | null>(null);
+  const [problem, setProblem] = useState<FormProblem | null>(() =>
+    startProblem === undefined ? null : { key: startProblem, details: [], reload: false },
+  );
   const [refused, setRefused] = useState<DraftSaved['refusedFields']>([]);
   const [notices, setNotices] = useState<NonNullable<DraftSaved['variantNotices']>>([]);
   const [status, setStatus] = useState(product.status);
@@ -312,7 +338,7 @@ function EditForm({
   const base = `${BASE}/${product.productId}`;
   const published = publishedNo !== null || status === 'published';
   // A product that was never published and has no title yet is still being added.
-  const adding = !published && savedName === '';
+  const adding = creating !== null || (!published && savedName === '');
   const nextNo = (publishedNo ?? 0) + 1;
   const inactive = status === 'published' && pausedAt !== null;
   const publishedAxes = publishedAxesOf(product.published?.content, form.fields);
@@ -431,12 +457,58 @@ function EditForm({
     return result.body.refusedFields.length === 0 ? 'saved' : 'refused';
   }
 
+  /**
+   * The first Save draft of the Add page: the product is created with its type, the page content
+   * is saved with the draft route, and the page moves to the edit URL. A content save that fails
+   * still moves there; the edit page opens with the error.
+   */
+  async function createAndSave() {
+    if (typeCode === '') {
+      setTypeMissing(true);
+      busy.current = false;
+      setPending(false);
+      return;
+    }
+    const created = await callApi<ProductCreated>('POST', BASE, { typeCode }, csrfToken);
+    if (!created.ok) {
+      busy.current = false;
+      setPending(false);
+      fail(created.failure);
+      return;
+    }
+    const saved = await callApi<DraftSaved>(
+      'PUT',
+      `${BASE}/${created.body.productId}/draft`,
+      { content: contentOf([]), variantIds: [...created.body.variantIds] },
+      csrfToken,
+    );
+    if (!saved.ok && saved.failure.status === 401) {
+      window.location.assign('/session-ended');
+      return;
+    }
+    const outcome: StartProblem | null = !saved.ok
+      ? 'draft-not-saved'
+      : saved.body.refusedFields.length > 0
+        ? 'draft-refused'
+        : null;
+    if (outcome === null) toast.success(t('notice.saved'));
+    // The browser is leaving this page: stay busy, and drop the leave prompt.
+    flushSync(() => setDirty(false));
+    onCreated(
+      `/catalog/products/${created.body.productId}/edit${outcome === null ? '' : `?saved=${outcome === 'draft-refused' ? 'refused' : 'failed'}`}`,
+    );
+  }
+
   async function run(action: 'save' | 'publish') {
     if (busy.current) return;
     busy.current = true;
     setPending(true);
     setProblem(null);
     setJustPublished(false);
+    if (creating !== null) {
+      await createAndSave();
+      return;
+    }
     if (action === 'publish' && secondMissing) {
       setProblem({ key: 'second-missing', details: [], reload: false });
       busy.current = false;
@@ -554,25 +626,27 @@ function EditForm({
   return (
     <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
       {guard.dialog}
-      <AddSizesDialog
-        key={sizesRun}
-        open={sizesOpen}
-        productId={product.productId}
-        fields={form.fields}
-        maxAxes={maxAxes}
-        waiting={(product.pendingSubmittedAt ?? null) !== null}
-        defaultLocale={defaultLocale}
-        csrfToken={csrfToken}
-        onClose={() => setSizesOpen(false)}
-        onDone={() => {
-          setSizesOpen(false);
-          onReload();
-        }}
-        onStale={() => {
-          setSizesOpen(false);
-          onReload();
-        }}
-      />
+      {creating !== null ? null : (
+        <AddSizesDialog
+          key={sizesRun}
+          open={sizesOpen}
+          productId={product.productId}
+          fields={form.fields}
+          maxAxes={maxAxes}
+          waiting={(product.pendingSubmittedAt ?? null) !== null}
+          defaultLocale={defaultLocale}
+          csrfToken={csrfToken}
+          onClose={() => setSizesOpen(false)}
+          onDone={() => {
+            setSizesOpen(false);
+            onReload();
+          }}
+          onStale={() => {
+            setSizesOpen(false);
+            onReload();
+          }}
+        />
+      )}
       <Dialog
         open={confirm === 'discard'}
         title={t('discard.title')}
@@ -731,7 +805,9 @@ function EditForm({
             pending={pending}
             onPublish={() => setConfirm('publish')}
             onDiscard={
-              published || submitted || status !== 'draft' ? null : () => setConfirm('discard')
+              creating !== null || published || submitted || status !== 'draft'
+                ? null
+                : () => setConfirm('discard')
             }
             active={
               canPause && status === 'published' ? (
@@ -799,16 +875,20 @@ function EditForm({
                 edited();
               }}
             />
-            <ImagesSection
-              productId={product.productId}
-              csrfToken={csrfToken}
-              library={images}
-              imageIds={imageIds}
-              onImageIds={(next) => {
-                setImageIds(next);
-                edited();
-              }}
-            />
+            {creating !== null ? (
+              <ImagesAfterSave />
+            ) : (
+              <ImagesSection
+                productId={product.productId}
+                csrfToken={csrfToken}
+                library={images}
+                imageIds={imageIds}
+                onImageIds={(next) => {
+                  setImageIds(next);
+                  edited();
+                }}
+              />
+            )}
           </Card>
           <Card title={t('category')}>
             <SearchSelect
@@ -816,10 +896,17 @@ function EditForm({
               alwaysSearch
               name="categoryIds"
               label={t('field.categories')}
-              help={t(
-                categoryIds.length === 0 ? 'field.categories-help-empty' : 'field.categories-help',
-              )}
+              help={
+                creating !== null
+                  ? t('create.after-save')
+                  : t(
+                      categoryIds.length === 0
+                        ? 'field.categories-help-empty'
+                        : 'field.categories-help',
+                    )
+              }
               placeholder={t('field.categories-placeholder')}
+              disabled={creating !== null}
               options={categories}
               value={categories.filter((option) => categoryIds.includes(option.value))}
               labels={labels}
@@ -831,8 +918,9 @@ function EditForm({
             <Select
               name="taxCategoryCode"
               label={t('field.tax')}
-              help={t('field.tax-help')}
+              help={creating !== null ? t('create.after-save') : t('field.tax-help')}
               placeholder={t('field.tax-placeholder')}
+              disabled={creating !== null}
               options={form.taxCategoryCodes.map((code) => ({
                 value: code,
                 label: readable(code),
@@ -873,33 +961,37 @@ function EditForm({
               edited();
             }}
           />
-          <VariantsSection
-            configurable={configurable}
-            rows={rows}
-            fields={form.fields}
-            axes={axes}
-            defaultLocale={defaultLocale}
-            max={product.maxVariants}
-            published={published}
-            publishedAxes={publishedAxes}
-            maxAxes={maxAxes}
-            canAddSizes={canAddSizes(product, form.fields)}
-            addSizesBlocked={dirty || pending}
-            refused={refused}
-            productId={product.productId}
-            galleryIds={imageIds}
-            notices={notices.map((notice) => notice.variantId)}
-            onChange={(next) => {
-              setRows(next.rows);
-              setAxes(next.axes);
-              clearRefused((item) => rows.some((row) => row.variantId === item.ref));
-              edited();
-            }}
-            onAddSizes={() => {
-              setSizesRun((run) => run + 1);
-              setSizesOpen(true);
-            }}
-          />
+          {creating !== null ? (
+            <AfterSaveCard title={t('variants')} text={t('create.variants-after-save')} />
+          ) : (
+            <VariantsSection
+              configurable={configurable}
+              rows={rows}
+              fields={form.fields}
+              axes={axes}
+              defaultLocale={defaultLocale}
+              max={product.maxVariants}
+              published={published}
+              publishedAxes={publishedAxes}
+              maxAxes={maxAxes}
+              canAddSizes={canAddSizes(product, form.fields)}
+              addSizesBlocked={dirty || pending}
+              refused={refused}
+              productId={product.productId}
+              galleryIds={imageIds}
+              notices={notices.map((notice) => notice.variantId)}
+              onChange={(next) => {
+                setRows(next.rows);
+                setAxes(next.axes);
+                clearRefused((item) => rows.some((row) => row.variantId === item.ref));
+                edited();
+              }}
+              onAddSizes={() => {
+                setSizesRun((run) => run + 1);
+                setSizesOpen(true);
+              }}
+            />
+          )}
           <CertificationsSection
             product={product}
             csrfToken={csrfToken}
@@ -910,7 +1002,25 @@ function EditForm({
           />
         </div>
         <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-2">
-          <OrganisationCard marketName={marketName} typeCode={product.typeCode} />
+          <OrganisationCard
+            marketName={marketName}
+            typeCode={product.typeCode}
+            {...(creating === null
+              ? {}
+              : {
+                  choice: {
+                    types: creating.productTypes,
+                    value: typeCode,
+                    missing: typeMissing && typeCode === '',
+                    disabled: pending,
+                    onChange: (value: string) => {
+                      setTypeCode(value);
+                      setTypeMissing(false);
+                      edited();
+                    },
+                  },
+                })}
+          />
           {status === 'published' ? (
             <SellersCard
               sellerCount={product.offers.sellerCount}

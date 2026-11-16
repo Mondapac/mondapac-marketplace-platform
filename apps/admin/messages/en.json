@@ -3845,13 +3845,13 @@
       "reload": "Read the product again",
       "create": {
         "title": "Add product",
-        "subtitle": "Platform product",
         "type": "Product type",
-        "type-help": "The type decides the product's fields and whether it is one size or has variants. It can't be changed later.",
+        "type-help": "Required. The type decides the product's fields and whether it is one size or has variants. It can't be changed after the first save.",
         "choose": "Choose a type",
         "type-required": "Choose a product type.",
-        "submit": "Create draft",
-        "cancel": "Cancel"
+        "after-save": "Available after the first save.",
+        "images-after-save": "Photos can be added after the first save.",
+        "variants-after-save": "Variants are set up after the first save. The product type and category decide them."
       },
       "edit": {
         "title": "Edit product"
@@ -3956,7 +3956,9 @@
         "partial": "The new variants were created but the draft wasn't saved with them. Save again.",
         "variant-fields": "Fix the highlighted variant fields before saving.",
         "pause-failed": "The product could not be turned on or off. Read it again, then retry.",
-        "second-missing": "Choose the new type's value for every variant before you publish."
+        "second-missing": "Choose the new type's value for every variant before you publish.",
+        "draft-not-saved": "The product was created, but what you entered wasn't saved. Enter it again and save the draft.",
+        "draft-refused": "The product was created, but some text wasn't saved because it holds a claim or a hidden character. Check the title and description."
       },
       "discard": {
         "button": "Discard product",

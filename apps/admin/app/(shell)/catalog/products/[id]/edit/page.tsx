@@ -21,10 +21,16 @@ export async function generateMetadata() {
 
 export default async function EditProductPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>;
+  readonly searchParams: Promise<{ readonly saved?: string | string[] }>;
 }) {
   const { id } = await params;
+  const { saved } = await searchParams;
+  // The first Save draft of the Add page created the product but not all of the page's content.
+  const startProblem =
+    saved === 'failed' ? 'draft-not-saved' : saved === 'refused' ? 'draft-refused' : undefined;
   if (!UUID.test(id)) notFound();
   const gate = await requireSession();
   const t = await getTranslations();
@@ -44,6 +50,7 @@ export default async function EditProductPage({
           canPause={gate.session.permissionKeys.includes(PAUSE_PERMISSION)}
           canReadTags={gate.session.permissionKeys.includes(TOPIC_READ_PERMISSION)}
           permissionKeys={gate.session.permissionKeys}
+          startProblem={startProblem}
         />
       ) : (
         <>

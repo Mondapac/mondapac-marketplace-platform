@@ -26,7 +26,7 @@ vi.mock('../../api/client.ts', () => ({
 }));
 
 import { expectToast } from '../../../test/toast-spy.ts';
-import { ProductCreateForm } from './create-form.tsx';
+import { ProductAdd } from './add-form.tsx';
 import { contentWithTexts, ProductEdit, textsOf } from './edit-form.tsx';
 import { problemOf } from './errors.ts';
 import type { ProductView } from './types.ts';
@@ -36,6 +36,8 @@ const ID = '0190a000-0000-7000-8000-0000000000c1';
 const CATEGORY = '0190a000-0000-7000-8000-0000000000d1';
 const CHILD = '0190a000-0000-7000-8000-0000000000d2';
 const assign = vi.fn();
+const replace = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ replace, push: vi.fn() }) }));
 const LIBRARY_PHOTO = {
   imageId: 'img-1',
   width: 1600,
@@ -186,71 +188,200 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe('the create form', () => {
+describe('the add page', () => {
+  const OPTIONS = {
+    productTypes: ['simple', 'configurable'],
+    locales: { default: 'en', supported: ['en'] },
+  };
   const mount = () =>
     render(
       <NextIntlClientProvider locale="en-AU" messages={messages}>
-        <ProductCreateForm csrfToken="csrf-1" />
+        <ProductAdd
+          csrfToken="csrf-1"
+          marketName="Australia"
+          timeZone="Australia/Brisbane"
+          canReadTags
+          permissionKeys={['certification.product-certificate.view']}
+        />
       </NextIntlClientProvider>,
     );
+  const saveDraft = () => fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+  const type = (title: string) =>
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: title } });
+  const pick = (value: string) =>
+    fireEvent.change(screen.getByLabelText('Product type'), { target: { value } });
+  const created = ok({ productId: ID, productCode: 'P1', variantIds: ['v-1'] });
+  const saved = ok({ variantIds: ['v-1'], refusedFields: [] });
 
-  it('reads the options, asks for a type, and creates the draft with the type only', async () => {
-    call.mockResolvedValueOnce(
-      ok({
-        productTypes: ['simple', 'configurable'],
-        locales: { default: 'en', supported: ['en'] },
-      }),
-    );
+  it('opens as the one-page form, empty, and creates nothing', async () => {
+    call.mockResolvedValueOnce(ok(OPTIONS));
     mount();
     expect(await screen.findByRole('heading', { name: 'Add product' })).toBeTruthy();
+    expect(screen.getByText('Platform product · Australia')).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
     expect(call.mock.calls[0]?.slice(0, 2)).toEqual([
       'GET',
       'catalog/admin/platform-products/options',
     ]);
-
-    // The heading shows while the options load; the form (and its button) only after the read.
-    fireEvent.click(await screen.findByRole('button', { name: 'Create draft' }));
-    expect(screen.getByText('Choose a product type.')).toBeTruthy();
+    expect(headings()).toEqual(
+      expect.arrayContaining([
+        'Product',
+        'Category and tags',
+        'Product details',
+        'Variants',
+        'Product certifications',
+        'Status',
+        'Organisation',
+      ]),
+    );
+    // The type is chosen in the Organisation card; Publish waits; no unsaved bar before an edit.
+    expect(screen.getByLabelText('Product type')).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Publish' }).disabled).toBe(true);
+    expect(screen.getByText(/^To publish:/)).toBeTruthy();
+    expect(screen.queryByText('Unsaved product')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
+    // Cards that need the product show their helper line.
+    expect(
+      screen.getByText('Choose a category first. Its feature set lists what to fill in here.'),
+    ).toBeTruthy();
+    expect(screen.getByText('Photos can be added after the first save.')).toBeTruthy();
+    expect(screen.getByLabelText<HTMLSelectElement>('Tax category').disabled).toBe(true);
+    type('Sella rice');
+    expect(screen.getByText('Unsaved product')).toBeTruthy();
     expect(call).toHaveBeenCalledTimes(1);
+  });
 
-    fireEvent.change(screen.getByLabelText('Product type'), { target: { value: 'configurable' } });
-    call.mockResolvedValueOnce(ok({ productId: ID, productCode: 'P1', variantIds: [] }));
-    fireEvent.click(screen.getByRole('button', { name: 'Create draft' }));
-    await waitFor(() => expect(assign).toHaveBeenCalledWith(`/catalog/products/${ID}/edit`));
+  it('asks for the type and posts nothing without it', async () => {
+    call.mockResolvedValueOnce(ok(OPTIONS));
+    mount();
+    await screen.findByLabelText('Product type');
+    type('Sella rice');
+    saveDraft();
+    expect(await screen.findByText('Choose a product type.')).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
+    pick('simple');
+    expect(screen.queryByText('Choose a product type.')).toBeNull();
+  });
+
+  it('creates, saves the page content, then replaces the URL with the edit page', async () => {
+    call.mockResolvedValueOnce(ok(OPTIONS));
+    mount();
+    await screen.findByLabelText('Product type');
+    pick('configurable');
+    type('Sella rice');
+    call.mockResolvedValueOnce(created).mockResolvedValueOnce(saved);
+    saveDraft();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(`/catalog/products/${ID}/edit`));
     expect(call.mock.calls[1]).toEqual([
       'POST',
       'catalog/admin/platform-products',
       { typeCode: 'configurable' },
       'csrf-1',
     ]);
+    expect(call.mock.calls[2]?.slice(0, 2)).toEqual([
+      'PUT',
+      `catalog/admin/platform-products/${ID}/draft`,
+    ]);
+    const body = lastBody(2) as {
+      content: { texts: { en: { name: string } } };
+      variantIds: string[];
+    };
+    expect(body.content.texts.en.name).toBe('Sella rice');
+    expect(body.variantIds).toEqual(['v-1']);
+    expect(assign).not.toHaveBeenCalled();
+    await expectToast('Draft saved.');
   });
 
-  it('says why a create was refused and keeps the form', async () => {
-    call.mockResolvedValueOnce(
-      ok({ productTypes: ['simple'], locales: { default: 'en', supported: ['en'] } }),
-    );
+  it('ignores a second Save draft while the first is running', async () => {
+    call.mockResolvedValueOnce(ok(OPTIONS));
     mount();
     await screen.findByLabelText('Product type');
-    fireEvent.change(screen.getByLabelText('Product type'), { target: { value: 'simple' } });
+    pick('simple');
+    type('Sella rice');
+    let release: (value: ReturnType<typeof ok>) => void = () => undefined;
+    call.mockImplementationOnce(
+      () => new Promise((resolve) => (release = resolve as typeof release)),
+    );
+    call.mockResolvedValueOnce(saved);
+    saveDraft();
+    saveDraft();
+    saveDraft();
+    expect(call).toHaveBeenCalledTimes(2);
+    release(created);
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(call).toHaveBeenCalledTimes(3);
+  });
+
+  it('still moves to the edit page when the content save fails after the create', async () => {
+    call.mockResolvedValueOnce(ok(OPTIONS));
+    mount();
+    await screen.findByLabelText('Product type');
+    pick('simple');
+    type('Sella rice');
+    call.mockResolvedValueOnce(created).mockResolvedValueOnce(fail(503, 'access.unavailable'));
+    saveDraft();
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(`/catalog/products/${ID}/edit?saved=failed`),
+    );
+  });
+
+  it('keeps the page and says why when the create is refused', async () => {
+    call.mockResolvedValueOnce(ok(OPTIONS));
+    mount();
+    await screen.findByLabelText('Product type');
+    pick('simple');
+    type('Sella rice');
     call.mockResolvedValueOnce(fail(422, 'product.type-not-offered'));
-    fireEvent.click(screen.getByRole('button', { name: 'Create draft' }));
+    saveDraft();
     expect(await screen.findByText("This Market doesn't offer that product type.")).toBeTruthy();
-    expect(assign).not.toHaveBeenCalled();
+    expect(replace).not.toHaveBeenCalled();
+    // The form is usable again.
+    call.mockResolvedValueOnce(created).mockResolvedValueOnce(saved);
+    saveDraft();
+    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+  });
+
+  it('starts the form over on Discard, with nothing deleted', async () => {
+    call.mockResolvedValueOnce(ok(OPTIONS));
+    mount();
+    await screen.findByLabelText('Product type');
+    type('Sella rice');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(screen.queryByText('Unsaved product')).toBeNull());
+    expect(screen.getByLabelText<HTMLInputElement>('Title').value).toBe('');
+    expect(call).toHaveBeenCalledTimes(1);
   });
 
   it('shows a load error with a retry, and goes to sign-in on a 401', async () => {
     call.mockResolvedValueOnce(fail(503, 'access.unavailable'));
     mount();
     expect(await screen.findByText('The product could not be loaded.')).toBeTruthy();
-    call.mockResolvedValueOnce(
-      ok({ productTypes: ['simple'], locales: { default: 'en', supported: ['en'] } }),
-    );
+    call.mockResolvedValueOnce(ok(OPTIONS));
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByLabelText('Product type')).toBeTruthy();
     cleanup();
     call.mockResolvedValueOnce(fail(401, 'session.invalid'));
     mount();
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+  });
+});
+
+describe('the edit page after an Add save', () => {
+  it('opens with the error when the first content save did not arrive', async () => {
+    call.mockResolvedValueOnce(ok(view()));
+    render(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <ProductEdit
+          productId={ID}
+          csrfToken="csrf-1"
+          marketName="Australia"
+          timeZone="Australia/Brisbane"
+          canPause={false}
+          startProblem="draft-not-saved"
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(await screen.findByText(/The product was created, but what you entered/)).toBeTruthy();
   });
 });
 

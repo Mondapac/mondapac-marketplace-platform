@@ -35,6 +35,8 @@ const { chromium } = process.env.PLAYWRIGHT_PATH
 const browser = await chromium.launch();
 // name, scenario, what to wait for, optional action, element to shoot (null: the full page)
 const views = [
+  ['admin-add-empty-page', 'new', 'Add product', null, null],
+  ['admin-add-filled-page', 'new', 'Add product', 'fill', null],
   ['admin-add-empty', 'add', 'Add product', null, null],
   ['admin-edit-published-revision', 'published', 'Sella basmati rice', null, null],
   ['admin-edit-inactive', 'inactive', 'This product is inactive', null, null],
@@ -68,6 +70,17 @@ for (const scheme of ['light', 'dark']) {
       if (action === 'turn-off') {
         await page.getByRole('switch', { name: 'Active' }).click();
         await page.getByText('Turn off Sella basmati rice?').waitFor();
+      }
+      if (action === 'fill') {
+        await page.getByLabel('Product type').selectOption('grocery');
+        await page.getByLabel('Title').fill('Sella basmati rice 5 kg');
+        await page
+          .getByLabel('Description')
+          .first()
+          .fill(
+            'Tilda Sella basmati is an extra-long grain rice, parboiled and aged for two years.',
+          );
+        await page.getByText('Unsaved product').first().waitFor();
       }
       await page.waitForTimeout(300);
       const over = await page.evaluate(
