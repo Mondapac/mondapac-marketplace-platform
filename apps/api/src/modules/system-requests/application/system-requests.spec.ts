@@ -675,6 +675,18 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       expect(rejected.ok && rejected.value.status).toBe('reverted');
     });
 
+    it('does not run the check for a withdraw by someone who is not the author (not-author)', async () => {
+      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      subjects.checkRefused.add('list-paging');
+      expect(
+        await useCase(WithdrawSystemRequest).execute(admin(CHECKER), {
+          requestId: opened.id,
+          reason: 'No',
+        }),
+      ).toEqual({ ok: false, error: { code: 'system-requests.not-author' } });
+      expect(subjects.checks).toEqual([]);
+    });
+
     it('reverts as before for a reverter without a check', async () => {
       (subjects as { check?: unknown }).check = undefined;
       const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });

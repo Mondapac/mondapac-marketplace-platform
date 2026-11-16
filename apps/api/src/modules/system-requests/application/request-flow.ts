@@ -631,6 +631,8 @@ export async function approveRequest(
 async function checkBeforeRevert(
   deps: SystemRequestsDependencies,
   context: CallContext,
+  kind: 'reject' | 'withdraw',
+  admin: Id<'Account'>,
   id: Id<'SystemRequest'>,
 ): Promise<Result<null, SystemRequestsFailure>> {
   const seen = await deps.unitOfWork.run<SystemRequest | null, SystemRequestsFailure>(
@@ -641,6 +643,9 @@ async function checkBeforeRevert(
   if (!seen.ok) return seen;
   const request = seen.value;
   if (request === null || request.status !== 'open') return ok(null);
+  // Only the author may withdraw: for anyone else the unit answers not-author, so the check (which
+  // reads other modules) is not run for them.
+  if (kind === 'withdraw' && request.requestedBy !== admin) return ok(null);
   const reverter = deps.reverters.find(request.subjectKind)?.reverter;
   if (reverter?.check === undefined) return ok(null);
   const answer = await reverter.check(context, {
@@ -669,7 +674,7 @@ async function revertRequest(
   const prepared = await prepareDecision(deps, context, kind, input);
   if (!prepared.ok) return prepared;
   const { admin, id, reason } = prepared.value;
-  const checked = await checkBeforeRevert(deps, context, id);
+  const checked = await checkBeforeRevert(deps, context, kind, admin, id);
   if (!checked.ok) return checked;
   const areas = await reviewableAreas(deps, context);
   return deps.unitOfWork.run<RequestView, SystemRequestsFailure>(
