@@ -49,6 +49,11 @@ import {
   type AdminPayoutListReader,
 } from '../application/ports/admin-payout-list.reader';
 import { STORE_NAME_SEARCH, type StoreNameSearch } from '../application/ports/store-name-search';
+import {
+  ADMIN_DISPUTE_LIST_READER,
+  type AdminDisputeListReader,
+} from '../application/ports/admin-dispute-list.reader';
+import { PrismaAdminDisputeListReader } from './prisma-admin-dispute-list.reader';
 import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../../platform/list-export';
 import { PrismaAdminPayoutListReader } from './prisma-admin-payout-list.reader';
 import { ConfigPayoutPolicy } from './config-payout-policy';
@@ -137,6 +142,12 @@ export const commissionPayoutsProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminPayoutListReader =>
       new PrismaAdminPayoutListReader(prisma),
+  },
+  {
+    provide: ADMIN_DISPUTE_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminDisputeListReader =>
+      new PrismaAdminDisputeListReader(prisma),
   },
   {
     provide: STORE_NAME_SEARCH,
