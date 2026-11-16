@@ -1022,6 +1022,75 @@ describe('relay of the customers list and customer page', () => {
     const other = await relay(config, post(list.join('/'), sameOrigin, body), list, upstream);
     expect(other.status).toBe(413);
   });
+
+  describe('customers phase 2a: groups, notes, activity and the name edit', () => {
+    const G = '0190a000-0000-7000-8000-0000000000b1';
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it.each([
+      ['GET', 'customers/admin/groups'],
+      ['POST', 'customers/admin/groups'],
+      ['GET', `customers/admin/groups/${G}`],
+      ['PUT', `customers/admin/groups/${G}`],
+      ['POST', `customers/admin/groups/${G}/members/add`],
+      ['POST', `customers/admin/groups/${G}/members/remove`],
+      ['GET', `customers/admin/customers/${ID}/notes`],
+      ['POST', `customers/admin/customers/${ID}/notes`],
+      ['POST', `customers/admin/customers/${ID}/activity`],
+      ['POST', `customers/admin/customers/${ID}/activity/export`],
+      ['PUT', `customers/admin/customers/${ID}/display-name`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['DELETE', `customers/admin/groups/${G}`],
+      ['PUT', `customers/admin/groups/not-a-uuid`],
+      ['POST', `customers/admin/groups/${G}/members/purge`],
+      ['GET', `customers/admin/customers/${ID}/activity`],
+      ['DELETE', `customers/admin/customers/${ID}/notes`],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('forwards only the notes paging keys', async () => {
+      const upstream = upstreamOk();
+      const target = `customers/admin/customers/${ID}/notes?limit=20&cursor=abc.1&author=x`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/customers/admin/customers/${ID}/notes?limit=20&cursor=abc.1`,
+      );
+    });
+
+    it('takes 1000 ticked ids for a members change, and nowhere else on the group', async () => {
+      const ids = Array.from({ length: 1000 }, () => ID);
+      const body = JSON.stringify({ ids });
+      expect(body.length).toBeGreaterThan(16 * 1024);
+      const add = `customers/admin/groups/${G}/members/add`;
+      const upstream = upstreamOk();
+      expect((await relay(config, send('POST', add, body), pathOf(add), upstream)).status).toBe(
+        200,
+      );
+      const rename = `customers/admin/groups/${G}`;
+      expect(
+        (await relay(config, send('PUT', rename, body), pathOf(rename), upstream)).status,
+      ).toBe(413);
+    });
+  });
 });
 
 describe('relay of the orders list', () => {

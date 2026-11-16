@@ -133,6 +133,15 @@ export const adminNav: NavConfig = {
       anyOf: ['customers.customers.view'],
     },
     {
+      // Customers management phase 2a: the manual customer groups, under Customers.
+      id: 'customer-groups',
+      icon: 'users',
+      labelKey: 'nav.customer-groups',
+      href: '/customers/groups',
+      group: 'customers',
+      anyOf: ['customers.customers.view'],
+    },
+    {
       id: 'review-moderation',
       icon: 'shield-check',
       labelKey: 'nav.review-moderation',

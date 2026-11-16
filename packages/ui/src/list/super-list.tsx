@@ -25,7 +25,8 @@ export interface SuperListProps {
   readonly heading: { readonly subtitle: string; readonly actions?: ReactNode };
   /** Built-in tabs with their counts, then the saved filters, and "Manage filters…". */
   readonly views: ListViewsBarProps;
-  readonly search: {
+  /** Left out for a list its API cannot search (a customer's activity): no search box. */
+  readonly search?: {
     readonly label: string;
     readonly placeholder: string;
     readonly value: string;
@@ -117,18 +118,20 @@ export function SuperList({
       </div>
       <ListViewsBar {...views} />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <SearchField
-          label={search.label}
-          placeholder={search.placeholder}
-          value={search.value}
-          maxLength={search.maxLength}
-          {...(search.help === undefined ? {} : { help: search.help })}
-          className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
-          onChange={(event) => search.onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') search.onSubmit(search.value.trim());
-          }}
-        />
+        {search === undefined ? null : (
+          <SearchField
+            label={search.label}
+            placeholder={search.placeholder}
+            value={search.value}
+            maxLength={search.maxLength}
+            {...(search.help === undefined ? {} : { help: search.help })}
+            className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
+            onChange={(event) => search.onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') search.onSubmit(search.value.trim());
+            }}
+          />
+        )}
         {hasTools ? (
           <div className="flex items-center gap-2">
             {filter === undefined ? null : <Tool tool={filter} kind="filter" />}

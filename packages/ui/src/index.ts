@@ -210,6 +210,7 @@ export {
   type StatTone,
 } from './dashboard/dashboard.tsx';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
+export { SidePanel, type SidePanelProps } from './overlay/side-panel.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
 export {
   ActionMenu,
