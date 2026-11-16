@@ -4,6 +4,8 @@ import type { MyDeliveredSellerOrders } from '../application/use-cases/my-delive
 import type { OrderPaymentRefQuery } from '../application/use-cases/order-payment-ref.use-case';
 import type { CustomerOrderAccountsQuery } from '../application/use-cases/customer-order-accounts.use-case';
 import type { CustomerOrderStatsQuery } from '../application/use-cases/customer-order-stats.use-case';
+import type { CustomerSellerStatsQuery } from '../application/use-cases/customer-seller-stats.use-case';
+import type { SellerCustomerOrdersQuery } from '../application/use-cases/seller-customer-orders.use-case';
 import type { OrderNoticeQuery } from '../application/use-cases/order-notice.use-case';
 import type { AdminOpenObligationsOfQuery } from '../application/use-cases/admin-open-obligations-of.use-case';
 import type { OpenObligationsOfQuery } from '../application/use-cases/open-obligations-of.use-case';
@@ -32,7 +34,24 @@ export class OrderingFacadeImplementation implements OrderingFacade {
     private readonly refundNoticeQuery: RefundNoticeQuery,
     private readonly customerStats: CustomerOrderStatsQuery,
     private readonly customerAccounts: CustomerOrderAccountsQuery,
+    private readonly customerSellers: CustomerSellerStatsQuery,
+    private readonly sellerCustomerOrdersQuery: SellerCustomerOrdersQuery,
   ) {}
+
+  customerSellerStats(context: CallContext, accountId: Id<'Account'>) {
+    return this.customerSellers.execute(context, { accountId });
+  }
+
+  sellerCustomerOrders(
+    context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly page: number;
+      readonly pageSize: number;
+    },
+  ) {
+    return this.sellerCustomerOrdersQuery.execute(context, request);
+  }
 
   customerOrderStats(context: CallContext, accountId: Id<'Account'>) {
     return this.customerStats.execute(context, { accountId });
