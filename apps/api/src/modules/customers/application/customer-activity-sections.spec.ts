@@ -32,10 +32,19 @@ import { AdminCustomerCartSection } from './use-cases/admin-customer-cart.use-ca
 import { AdminCustomerConsentHistorySectionExport } from './use-cases/admin-customer-consent-history-export.use-case';
 import { AdminCustomerConsentHistorySection } from './use-cases/admin-customer-consent-history.use-case';
 import { AdminCustomerConsentSection } from './use-cases/admin-customer-consent.use-case';
+import { AdminCustomerReviewsSectionExport } from './use-cases/admin-customer-reviews-export.use-case';
+import { AdminCustomerReviewsSection } from './use-cases/admin-customer-reviews.use-case';
+import { AdminCustomerSellerRatingsSectionExport } from './use-cases/admin-customer-seller-ratings-export.use-case';
+import { AdminCustomerSellerRatingsSection } from './use-cases/admin-customer-seller-ratings.use-case';
+import { AdminCustomerHelpfulVotesSectionExport } from './use-cases/admin-customer-helpful-votes-export.use-case';
+import { AdminCustomerHelpfulVotesSection } from './use-cases/admin-customer-helpful-votes.use-case';
+import { AdminCustomerReviewReportsSectionExport } from './use-cases/admin-customer-review-reports-export.use-case';
+import { AdminCustomerReviewReportsSection } from './use-cases/admin-customer-review-reports.use-case';
 import { AdminCustomerSavedItemsSectionExport } from './use-cases/admin-customer-saved-items-export.use-case';
 import { AdminCustomerSavedItemsSection } from './use-cases/admin-customer-saved-items.use-case';
 
-// The customer page's shopping and privacy sections (phase 2b, part 2), with the owners faked at
+// The customer page's shopping, privacy and reviews sections (phase 2b, parts 2 and 3), with the
+// owners faked at
 // their facade, for both Market fixtures: each super list pages through its owner with the right
 // request and exports behind the step-up with an audit row naming the section; each read asks
 // its owner once; the owner's key and customers.customers.view are both needed; an unknown
@@ -50,7 +59,8 @@ const REMINDERS = 'notifications.customer-cart-reminder.view';
 const BEHAVIOUR = 'engagement.customer-behaviour.view';
 const CONSENT = 'legal.customer-consent.view';
 const CONVERSATIONS = 'assistant.customer-conversation.view';
-const ALL = [VIEW, EXPORT, CART, REMINDERS, BEHAVIOUR, CONSENT, CONVERSATIONS];
+const REVIEWS = 'reviews.customer-review.view';
+const ALL = [VIEW, EXPORT, CART, REMINDERS, BEHAVIOUR, CONSENT, CONVERSATIONS, REVIEWS];
 const ID = '01990000-0000-7000-8000-000000000a01';
 
 describe.each(['AU', 'ZZ'] as const)('customer page activity sections in market %s', (code) => {
@@ -217,6 +227,81 @@ describe.each(['AU', 'ZZ'] as const)('customer page activity sections in market 
       filters: { channel: ['email'] },
       expected: { channels: ['email'] },
     },
+    {
+      section: 'reviews',
+      key: REVIEWS,
+      owner: 'reviews',
+      method: 'adminCustomerReviews',
+      list: AdminCustomerReviewsSection,
+      exporter: AdminCustomerReviewsSectionExport,
+      row: (n: number) => ({
+        reviewId: ID,
+        productId: ID,
+        offerId: ID,
+        sellerId: ID,
+        rating: 4,
+        anonymous: false,
+        status: 'hidden',
+        createdAt: at(n),
+        editedAt: null,
+        publishedAt: null,
+        helpfulCount: 2,
+        openReports: 1,
+        lastModeration: { action: 'hide', reasonCode: 'abusive', byModerator: true, at: at(n) },
+      }),
+      filters: { status: ['hidden', 'held'] },
+      expected: { statuses: ['hidden', 'held'] },
+    },
+    {
+      section: 'seller-ratings',
+      key: REVIEWS,
+      owner: 'reviews',
+      method: 'adminCustomerSellerRatings',
+      list: AdminCustomerSellerRatingsSection,
+      exporter: AdminCustomerSellerRatingsSectionExport,
+      row: (n: number) => ({
+        ratingId: ID,
+        sellerId: ID,
+        sellerOrderId: ID,
+        satisfaction: 3,
+        asDescribed: true,
+        arrivedOk: false,
+        reasonCode: 'damaged',
+        status: 'published',
+        createdAt: at(n),
+      }),
+      filters: { status: ['published'] },
+      expected: { statuses: ['published'] },
+    },
+    {
+      section: 'helpful-votes',
+      key: REVIEWS,
+      owner: 'reviews',
+      method: 'adminCustomerHelpfulVotes',
+      list: AdminCustomerHelpfulVotesSection,
+      exporter: AdminCustomerHelpfulVotesSectionExport,
+      row: (n: number) => ({ reviewId: ID, productId: ID, votedAt: at(n) }),
+      filters: {},
+      expected: {},
+    },
+    {
+      section: 'review-reports',
+      key: REVIEWS,
+      owner: 'reviews',
+      method: 'adminCustomerReviewReports',
+      list: AdminCustomerReviewReportsSection,
+      exporter: AdminCustomerReviewReportsSectionExport,
+      row: (n: number) => ({
+        reportId: ID,
+        reviewId: ID,
+        role: 'about',
+        reasonCode: 'off-topic',
+        status: 'open',
+        createdAt: at(n),
+      }),
+      filters: { role: ['about'] },
+      expected: { roles: ['about'] },
+    },
   ] as const;
 
   describe.each(LISTS)('the $section super list', (spec) => {
@@ -333,6 +418,64 @@ describe.each(['AU', 'ZZ'] as const)('customer page activity sections in market 
         }),
       ).resolves.toMatchObject({ ok: false, error: { code: 'access.denied' } });
       expect(audits).toEqual([]);
+    });
+  });
+
+  describe('the reviews sections', () => {
+    it('refuses a status or a role reviews does not keep before asking reviews', async () => {
+      const owner = pager(1, () => ({}));
+      const reviews = {
+        adminCustomerReviews: owner.call,
+        adminCustomerSellerRatings: owner.call,
+        adminCustomerReviewReports: owner.call,
+      };
+      const { deps, gate, admin, customer } = setup({ reviews });
+      const accountId = customer.accountId;
+      for (const [useCase, filters] of [
+        [AdminCustomerReviewsSection, { status: ['visible'] }],
+        [AdminCustomerSellerRatingsSection, { status: ['held'] }],
+        [AdminCustomerReviewReportsSection, { role: ['reporter'] }],
+        [AdminCustomerHelpfulVotesSection, { status: ['published'] }],
+      ] as const) {
+        await expect(
+          new useCase(gate, deps).execute(admin(), { accountId, filters }),
+        ).resolves.toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      }
+      expect(owner.requests).toEqual([]);
+    });
+
+    it('writes no review text into the export', async () => {
+      const owner = pager(1, (n) => ({
+        reviewId: ID,
+        productId: ID,
+        offerId: ID,
+        sellerId: ID,
+        rating: 5,
+        anonymous: true,
+        status: 'published',
+        createdAt: at(n),
+        editedAt: null,
+        publishedAt: at(n),
+        helpfulCount: 0,
+        openReports: 0,
+        lastModeration: null,
+      }));
+      const { deps, gate, admin, customer } = setup({
+        reviews: { adminCustomerReviews: owner.call },
+      });
+      const exported = await new AdminCustomerReviewsSectionExport(gate, deps).execute(admin(), {
+        accountId: customer.accountId,
+      });
+      expect(exported.ok).toBe(true);
+      if (!exported.ok) return;
+      let text = '';
+      for await (const chunk of exported.value.chunks) text += String(chunk);
+      expect(text.split('\r\n')[0]).toBe(
+        '\uFEFFReview,Product,Offer,Seller,Rating,Anonymous,Status,Created at,Edited at,' +
+          'Published at,Helpful votes,Open reports,Last moderation,Last moderation reason,' +
+          'Last moderation by moderator,Last moderation at',
+      );
+      expect(text).toContain(`${ID},${ID},${ID},${ID},5,yes,published`);
     });
   });
 

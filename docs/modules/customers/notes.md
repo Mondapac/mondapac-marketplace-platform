@@ -549,3 +549,56 @@ Not built in part 2 (remaining):
   to show; not built (in-app notices go to sellers and admins only).
 - **Promotion usages (e)** remain as above.
 
+
+## Phase 2b, part 3 (reviews) (16 Nov 2026)
+
+The last sections of the customer page and the review events on the timeline (handoff item k).
+
+- **reviews' facade read by account.** `CustomerReviewsFacade` (`CUSTOMER_REVIEWS_FACADE`), four
+  reads behind the new plain platform key `reviews.customer-review.view` (not a seller key, not
+  seeded to Viewer), checked again in reviews for a platform admin who is not seller-scoped and not
+  acting as anyone. Read only and text-free: never a review's title or body, never a reporter's
+  account, never the author of a review the customer voted for. They answer whether reviews are on
+  or off in the Market (they are the history). Their own small dependency set
+  (`CustomerReviewsReader`, `PrismaCustomerReviewsReader`), not the big review repository.
+- **Four super lists, each with `/export`.** Under `customers/admin/customers/:accountId/`:
+  `POST reviews` (filter `status`; each row: ids, rating, anonymous, status, created/edited/published,
+  helpful votes, open reports and the latest moderation line: action, reason code, whether a
+  moderator did it, when; no moderation action here), `POST seller-ratings` (filter `status`),
+  `POST helpful-votes` (no filters) and `POST review-reports` (filter `role`: `by` the customer
+  made it, `about` it reports one of their reviews; a NULL reporter counts as someone else). Each
+  needs `customers.customers.view` and `reviews.customer-review.view`; each export also the
+  protected `customers.customers.export` with its step-up, audited as
+  `customers.customer-section.exported` (the sections `reviews`, `seller-ratings`,
+  `helpful-votes`, `review-reports` are back in `CUSTOMER_SECTIONS` and the catalogue snapshot).
+  customers mirrors reviews' status lists (it cannot import reviews: reviews reaches ordering,
+  which imports customers); the admin-facade-permission contract pins them.
+- **Index.** `20261116130000_reviews_reports_reporter_idx`:
+  `review_reports(market_id, reporter_account_id, created_at DESC)`, plain `CREATE INDEX` with
+  `lock_timeout` (no deployed environment; not partial, so not in the partial-index list; no grant,
+  so no change to the expected privileges), reversible. The reports about a customer's reviews and
+  the other three lists use existing indexes (`product_reviews`, `seller_ratings` and
+  `helpful_votes` by (market, account, created); the reports' (market, review, reporter) key).
+- **Reviews on the timeline.** New kinds `review-published`, `review-held`, `review-hidden`,
+  `review-restored` in the new category `reviews`. Subscriptions `customers.timeline-review-*` on
+  reviews' four events, registered by `CustomersSectionsModule` (it imports reviews). reviews'
+  events still carry no account: `RecordCustomerTimeline` asks `reviewAuthorOf` (new use case
+  `reviews.review-author-of`, rule `system`, so no person and no seller reaches it), then writes
+  once per delivery (`runOnce`, the customers inbox) and once per event. A review that is gone or
+  whose author was deleted writes nothing; reviews unavailable is refused and retried. No reference
+  on the entry (the timeline CHECK allows order, refund, group and note only).
+- **Tests.** Unit on both Market fixtures (reviews' reads and refusals; the four sections through
+  the shared section spec; the timeline from review events and subscriptions), HTTP
+  (`customers-reviews-admin.e2e.spec.ts`), PostgreSQL (`reviews-customer-reads.db-spec.ts`).
+
+Not built in part 3:
+
+- **Consent on the timeline.** legal publishes no event (it has no outbox, and its flow says no
+  consent value reaches an event). Needs a decision: a legal outbox and an event such as
+  `legal.marketing-consent-changed.v1` (account and channel, no value), which customers would copy
+  as `consent-changed`. The consent history section (part 2) shows every change meanwhile.
+- **Review kinds and the reviews key.** The timeline is read with `customers.customers.view` only,
+  so an admin without `reviews.customer-review.view` still sees that and when a review was
+  published, held, hidden or restored (no review id, no text).
+- `review-published` also follows an edit that passed the checks and a release from a hold, as
+  reviews' event does; the timeline cannot tell a first submission from those.
