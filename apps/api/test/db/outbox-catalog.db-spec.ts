@@ -26,6 +26,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // the public list and the worker's due-posts index, and the outbox's unpublished index.
   'reviews.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON reviews.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'system_requests.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON system_requests.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'blog.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON blog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'blog.post_versions_market_id_category_id_idx':
