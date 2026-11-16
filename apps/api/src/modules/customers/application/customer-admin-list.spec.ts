@@ -138,7 +138,13 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
     });
     const listDeps: CustomerListDependencies = { unitOfWork, listReader, clock, dayZone };
     const timeline = new InMemoryCustomerTimeline(listReader);
-    const pageDeps = { ...listDeps, audit, timeline, ids };
+    // Completed deletions (the erasure ran), by Market and account: the tombstone's source.
+    const erased = new Map<string, Temporal.Instant>();
+    const deletions = {
+      completedAt: (inMarket: MarketContext, accountId: Id<'Account'>) =>
+        Promise.resolve(erased.get(`${inMarket.marketId}:${accountId}`) ?? null),
+    };
+    const pageDeps = { ...listDeps, audit, timeline, ids, deletions };
     const filterDeps = {
       unitOfWork,
       savedFilters,
@@ -167,6 +173,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
         dayZone,
       }),
       ownZone,
+      erased,
       filters: {
         list: new AdminSavedFiltersList(gate, filterDeps),
         create: new AdminSavedFilterCreate(gate, filterDeps),
@@ -295,6 +302,29 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
         'customers.customer-not-found',
       );
       expect(t.audits).toHaveLength(0);
+    });
+
+    it('answers a tombstone (id and when) for an erased customer, audited, and not for another Market’s', async () => {
+      const t = seeded();
+      const admin = t.as(person([VIEW]));
+      const gone = ids.next<'Account'>();
+      t.erased.set(`${market.marketId}:${gone}`, day(3));
+      const result = await t.overview.execute(admin, { accountId: gone });
+      expect(result.ok && result.value).toEqual({
+        accountId: gone,
+        status: 'deleted',
+        deletedAt: day(3).toString(),
+      });
+      expect(t.audits.map((entry) => entry.action)).toEqual(['customers.customer-page.opened']);
+      const elsewhere = ids.next<'Account'>();
+      t.erased.set(`${otherMarket.marketId}:${elsewhere}`, day(3));
+      expect(failure(await t.overview.execute(admin, { accountId: elsewhere }))).toBe(
+        'customers.customer-not-found',
+      );
+      // Without the view key the gate refuses before any read.
+      expect(failure(await t.overview.execute(t.as(person([])), { accountId: gone }))).toBe(
+        'access.denied',
+      );
     });
 
     it('refuses an unknown body key', async () => {

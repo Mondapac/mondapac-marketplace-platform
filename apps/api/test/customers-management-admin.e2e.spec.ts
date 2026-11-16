@@ -10,6 +10,8 @@ import {
   CUSTOMER_NOTE_REPOSITORY,
 } from '../src/modules/customers/application/ports/customer-notes.repository';
 import { CUSTOMER_TIMELINE_REPOSITORY } from '../src/modules/customers/application/ports/customer-timeline.repository';
+import { ACCOUNT_DELETION_REQUEST_REPOSITORY } from '../src/modules/customers/application/ports/account-deletion-request.repository';
+import { MemoryAccountDeletionRequests } from '../src/modules/customers/application/testing/in-memory-account-deletion';
 import { InMemoryCustomerList } from '../src/modules/customers/application/testing/in-memory-customer-list';
 import {
   FakeNoteCipher,
@@ -61,6 +63,7 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
   let app: NestExpressApplication | undefined;
   let clock: FixedClock;
   let list: InMemoryCustomerList;
+  let deletions: MemoryAccountDeletionRequests;
   const http = () => request(app!.getHttpServer());
   const market = testMarketContext(code, PLATFORM_TENANT_ID);
 
@@ -98,6 +101,7 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
     });
 
   async function boot() {
+    deletions = new MemoryAccountDeletionRequests();
     list = new InMemoryCustomerList();
     list.add(market, row(BUYER));
     ({ app } = await createTestApp({
@@ -116,7 +120,9 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
           .overrideProvider(CUSTOMER_NOTE_CIPHER)
           .useValue(new FakeNoteCipher())
           .overrideProvider(CUSTOMER_TIMELINE_REPOSITORY)
-          .useValue(new InMemoryCustomerTimeline(list)),
+          .useValue(new InMemoryCustomerTimeline(list))
+          .overrideProvider(ACCOUNT_DELETION_REQUEST_REPOSITORY)
+          .useValue(deletions),
     }));
     await app
       .get(SeedRoles)
@@ -235,6 +241,42 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
       .set(manager);
     expect(missing.status).toBe(404);
     expect(missing.body).toMatchObject({ code: 'customers.group-not-found' });
+  });
+
+  it('answers a tombstone for an erased customer and 404 for an unknown one (phase 2b)', async () => {
+    await boot();
+    const viewer = sessionOf(2, VIEWER);
+    const gone = id<'Account'>(0xa901);
+    const deletedAt = START.subtract({ hours: 48 });
+    deletions.rows.set('request-gone', {
+      id: id<'AccountDeletionRequest'>(0xd901),
+      accountId: gone,
+      status: 'completed',
+      waitingPeriodDays: 14,
+      requestedAt: START.subtract({ hours: 24 * 20 }),
+      scheduledFor: START.subtract({ hours: 24 * 6 }),
+      claimedAt: deletedAt,
+      requestedBy: 'customer',
+      adminOrigin: null,
+      market: code,
+      closedAt: deletedAt,
+      cancelReason: null,
+      cancelledByAdmin: null,
+      redactedAt: null,
+    });
+    const tomb = await http().get(`/customers/admin/customers/${gone}`).set(viewer);
+    expect(tomb.status).toBe(200);
+    expect(tomb.headers['cache-control']).toBe('no-store');
+    expect(tomb.body).toEqual({
+      accountId: gone,
+      status: 'deleted',
+      deletedAt: deletedAt.toString(),
+    });
+    const unknown = await http()
+      .get(`/customers/admin/customers/${id(0xa902)}`)
+      .set(viewer);
+    expect(unknown.status).toBe(404);
+    expect(unknown.body).toMatchObject({ code: 'customers.customer-not-found' });
   });
 
   it('writes and reads a note without caching, and reads the activity', async () => {

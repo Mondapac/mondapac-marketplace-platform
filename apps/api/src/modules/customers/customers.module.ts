@@ -224,6 +224,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       CUSTOMER_TIMELINE_REPOSITORY,
       ID_GENERATOR,
       ADMIN_DAY_ZONE,
+      ACCOUNT_DELETION_REQUEST_REPOSITORY,
     ],
     useFactory: (
       gate: UseCaseGate,
@@ -234,7 +235,9 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       timeline: CustomerPageDependencies['timeline'],
       ids: CustomerPageDependencies['ids'],
       dayZone: CustomerPageDependencies['dayZone'],
-    ) => new type(gate, { unitOfWork, listReader, clock, audit, timeline, ids, dayZone }),
+      deletions: CustomerPageDependencies['deletions'],
+    ) =>
+      new type(gate, { unitOfWork, listReader, clock, audit, timeline, ids, dayZone, deletions }),
   };
 }
 

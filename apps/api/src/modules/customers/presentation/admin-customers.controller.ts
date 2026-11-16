@@ -336,7 +336,9 @@ export class AdminCustomersController {
       'joined) and what the orders add up to (count, spent, refunds, first and last order). The ' +
       'wallet balance, the orders (`GET ordering/admin/orders?accountId=`) and the money tab are ' +
       'read from their owning modules, each under its own permission. Every open is audited. ' +
-      '404 customers.customer-not-found for a customer of another Market, or none. Personal data.',
+      'An erased customer (account deletion completed) answers a tombstone, `{ accountId, ' +
+      'status: "deleted", deletedAt }`, and nothing else. 404 customers.customer-not-found for a ' +
+      'customer of another Market, or none. Personal data.',
   })
   @ApiOkResponse({ type: Object })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
