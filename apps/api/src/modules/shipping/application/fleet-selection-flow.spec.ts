@@ -684,6 +684,48 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       ).toBe('gone');
     });
 
+    it('answers changed-since when a save lands after the revert read the version, and keeps that save', async () => {
+      const model = await created('Cheapest wins');
+      await saveWithNote(0, NONE, { zoom2u: 70 });
+      await saveWithNote(1, { ...NONE, instant: model.id }, { zoom2u: 90 });
+      const request = revertOf(
+        'fleet-selection',
+        { active: { instant: null }, reliability: { zoom2u: 70 } },
+        { active: { instant: model.id }, reliability: { zoom2u: 90 } },
+      );
+      const read = selection.selectionVersion.bind(selection);
+      let landed = false;
+      selection.selectionVersion = async (market) => {
+        const version = await read(market);
+        if (!landed) {
+          landed = true;
+          // An admin's save commits between the revert's read and its bump.
+          await saveWithNote(version, { ...NONE, instant: model.id }, { zoom2u: 95 });
+        }
+        return version;
+      };
+      expect(await pageReverter().revert(admin, request)).toBe('changed-since');
+      const now = await view();
+      expect(now.ok && now.value.fleets.find((f) => f.fleet === 'zoom2u')?.reliability).toBe(95);
+      expect(now.ok && now.value.active.instant).toBe(model.id);
+    });
+
+    it('makes a page opened before a revert conflict when it saves with its old version', async () => {
+      const model = await created('Cheapest wins');
+      await saveWithNote(0, NONE, { zoom2u: 70 });
+      await saveWithNote(1, { ...NONE, instant: model.id }, { zoom2u: 90 });
+      const opened = await view();
+      const openedVersion = opened.ok ? opened.value.version : -1;
+      const request = revertOf(
+        'fleet-selection',
+        { active: { instant: null }, reliability: { zoom2u: 70 } },
+        { active: { instant: model.id }, reliability: { zoom2u: 90 } },
+      );
+      expect(await pageReverter().revert(admin, request)).toBe('reverted');
+      const stale = await saveWithNote(openedVersion, NONE, { zoom2u: 10 });
+      expect(!stale.ok && stale.error.code).toBe('shipping.fleet-selection-conflict');
+    });
+
     it('opens a review of a model edit and reverts it to a new version', async () => {
       const model = await created('Cheapest wins');
       review.review('delivery');

@@ -1,12 +1,6 @@
 import type { LastChangedValue } from '@mondapac/ui';
 // Answers of the admin delivery-settings routes (apps/api delivery-settings.controller.ts).
 
-/** Whether a change is reviewed in this Market (Admin Inbox > System requests). */
-export interface DeliveryReview {
-  readonly reviewed: boolean;
-  readonly risk: string;
-}
-
 export const DELIVERY_VIEW_PERMISSION = 'shipping.delivery-settings.view';
 export const DELIVERY_MANAGE_PERMISSION = 'shipping.delivery-settings.manage';
 export const DELIVERY_SETTINGS_PATH = 'shipping/admin/delivery-settings';
@@ -44,7 +38,6 @@ export interface DeliverySettings {
   /** The Market's zone: the fallback for a seller without one. */
   readonly marketZone: string;
   readonly roundingSteps: readonly number[];
-  readonly review?: DeliveryReview;
 }
 
 export interface SellerMethods {
@@ -52,7 +45,6 @@ export interface SellerMethods {
   readonly supported: readonly Method[];
   /** What the Market has on. */
   readonly platformEnabled: Readonly<Record<Method, boolean>>;
-  readonly review?: DeliveryReview;
 }
 
 export const MIN_DAYS = 1;

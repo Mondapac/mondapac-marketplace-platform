@@ -387,6 +387,50 @@ describe.each(TEST_MARKETS)('delivery reviews in market %s (database)', (code) =
     );
   });
 
+  it('puts the neutral score 50 in the row for a fleet that had none, and stales a page opened before the revert', async () => {
+    const author = admin('delivery-db-neutral');
+    const reviewer = admin('delivery-db-neutral-reviewer');
+    const read = async () => {
+      const result = await viewFleetSelection(deps, author);
+      if (!result.ok) throw new Error('view failed');
+      return result.value;
+    };
+    const start = await read();
+    expect(start.fleets.find((fleet) => fleet.fleet === 'fake_test')?.reliability).toBeNull();
+    const saved = await setFleetSelection(deps, author, {
+      expectedVersion: start.version,
+      active: { ...start.active },
+      reliability: { fake_test: 30 },
+      note: 'Score a fleet',
+    });
+    if (!saved.ok || saved.value.request === null) throw new Error('no request opened');
+    // A page an admin opened before the revert.
+    const opened = await read();
+    const requestId = saved.value.request.id;
+    const stored = await inUnit(() => requests.find(market, requestId));
+    const request = {
+      requestId,
+      subjectRef: 'fleet-selection',
+      before: stored!.before,
+      after: stored!.after,
+    };
+    expect(await inUnit(() => new FleetSelectionReverter(deps).revert(reviewer, request))).toBe(
+      'reverted',
+    );
+    const row = await sql.query<{ score: number }>(
+      'SELECT score FROM shipping.fleet_reliability WHERE market_id = $1 AND fleet = $2',
+      [market.marketId, 'fake_test'],
+    );
+    expect(row.rows).toEqual([{ score: 50 }]);
+    const stale = await setFleetSelection(deps, author, {
+      expectedVersion: opened.version,
+      active: { ...opened.active },
+      reliability: { fake_test: 10 },
+      note: 'From the old page',
+    });
+    expect(!stale.ok && stale.error.code).toBe('shipping.fleet-selection-conflict');
+  });
+
   it('keeps nothing of a refused model edit and does not review a nothing-to-do page save', async () => {
     const author = admin('delivery-db-refusals');
     const model = await createFleetSelectionModel(deps, author, {

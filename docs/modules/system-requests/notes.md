@@ -91,7 +91,7 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
     nothing). A revert compares and raises the page version like an admin's save, restores each
     item still holding its value after, and audits `shipping.fleet-model.activation-reverted` and
     `shipping.fleet-reliability.reverted`; a model that no longer exists is `gone`. A fleet that
-    had no score gets the neutral default 50 back (the table has no delete; routing is the same).
+    had no score ends with reliability 50, not null, after the revert (the table has no delete; routing is the same).
   - `shipping.fleet-selection-model` (subject = model id, values `{name, rule}`): the edit of a
     model (`PUT /shipping/admin/fleet-selection/models/:modelId`); a revert writes a new version,
     audited as `shipping.fleet-model.reverted`; a name another model took since is

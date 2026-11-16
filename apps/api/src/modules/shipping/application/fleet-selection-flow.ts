@@ -527,6 +527,15 @@ export async function revertFleetSelection(
   ) {
     return 'gone';
   }
+  // The version compare-and-bump comes first: it is the row lock, so a save that commits after it
+  // waits for this decision and one that committed before it is seen by the compare below.
+  const now = deps.clock.now();
+  const version = await deps.selection.selectionVersion(context.market);
+  if (
+    (await deps.selection.bumpSelectionVersion(context.market, version, admin, now)) === 'conflict'
+  ) {
+    return 'changed-since';
+  }
   const assigned = await deps.selection.assignments(context.market);
   for (const [method, modelId] of expectedActive) {
     if ((assigned.get(method) ?? null) !== modelId) return 'changed-since';
@@ -539,13 +548,6 @@ export async function revertFleetSelection(
     if (modelId !== null && (await deps.selection.findModel(context.market, modelId)) === null) {
       return 'gone';
     }
-  }
-  const now = deps.clock.now();
-  const version = await deps.selection.selectionVersion(context.market);
-  if (
-    (await deps.selection.bumpSelectionVersion(context.market, version, admin, now)) === 'conflict'
-  ) {
-    return 'changed-since';
   }
   for (const [method, modelId] of restoreActive) {
     const current = assigned.get(method) ?? null;

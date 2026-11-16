@@ -62,6 +62,4 @@ export interface Selection {
   readonly active: Readonly<Record<Method, string | null>>;
   readonly defaultOrder: readonly FleetCode[];
   readonly fleets: readonly FleetRow[];
-  /** Whether a change is reviewed in this Market (Admin Inbox > System requests). */
-  readonly review?: { readonly reviewed: boolean; readonly risk: string };
 }
