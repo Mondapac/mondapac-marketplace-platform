@@ -14,6 +14,12 @@ mode from the design; no separate brief.
   rejects with a reason (the value before is restored). The author can never approve or reject
   their own request; they may withdraw it, which also restores the value before. A database CHECK
   enforces this too.
+- **Separation of duties**: a reviewer never decides a change about themselves either. A reverter
+  may declare `isInterested(context, request)` on the port (platform/change-review); System
+  requests asks it inside the decision's unit and refuses approve, bulk approve and reject with
+  403 `system-requests.own-subject`. identity declares it: an admin's own role change or enabling,
+  or an edit of the role the admin holds now. Withdraw is not affected, and a module without the
+  check decides as before.
 - **Revert only if unchanged**: the owning module's `SystemChangeReverter` compares the current
   value with `after` and refuses with `changed-since` when they differ. It may also answer
   `not-permitted` (403 `system-requests.revert-not-permitted`) when the decider may not make the
@@ -44,6 +50,11 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
 `policy.manage`. All keys are protected.
 
 ## For a module that adds a reviewed area
+
+The recorder and the reverter port live in `platform/change-review/change-review.ts` (so identity,
+which imports no module, can use them); system-requests implements them and re-exports them from
+its contracts, which other modules keep importing. A reject or withdraw runs in a serializable
+unit, so a reverter can keep a counted guard (identity's last Platform Administrator).
 
 1. Export a `SystemChangeReverter` for each subject kind (`<module>.<subject>`), and add
    `registerSystemChangeReverter('<module>', '<module>.<subject>', '<area>', TOKEN)` to the
@@ -100,8 +111,24 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
     null`; the page reads carry `review: {reviewed, risk}` so the panel asks for a note.
 - Every money opening passes risk `high`, whatever the area's policy says, so the reviewer's
   step-up is spent before a revert writes.
+- **identity** (area people): kind `identity.platform-role` (subject = role id, values
+  `{name, permissionKeys}`), `identity.admin-roles` (subject = admin account id, values
+  `{roleIds}`) and `identity.admin-status` (subject = admin account id, values `{status}`). The
+  routes `PUT identity/admin/roles/:roleId`, `POST identity/admin/accounts/:accountId/role` and
+  `POST identity/admin/accounts/:accountId/enable` take `note` and answer `request`;
+  `.../disable` takes `note` but is a stop and opens no request. `GET identity/admin/team` and
+  `GET identity/admin/roles` carry `review`. Every opening is high risk. A revert never widens
+  access: one that would add a key to a role, give an admin a role with a key the current one
+  lacks (or the Platform Administrator role) or enable an admin is `not-permitted`; a narrowing
+  revert keeps the last Platform Administrator (else `not-permitted`). Audited as
+  `identity.role.reverted`, `identity.account-role.reverted`, `identity.account-status.reverted`.
 
 ### Known limits (follow-ups)
+
+- A people revert that would widen access (a role edit that removed keys, a demotion, a disable)
+  can only be approved: the author makes the change again instead. Only narrowing reverts run.
+- Role names are free text (identity R5) and travel in the request's values for a rename's revert;
+  they are shown only to the author and the people reviewers, never in an audit row or a log.
 
 - A request that turned the AI description writer off cannot be withdrawn into a revert that turns
   it back on: the reverter answers `not-permitted`, because a permission check cannot run inside
@@ -112,6 +139,14 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
   permission of the subject.
 - On DELETE routes the note travels in the `note` query, so it reaches access logs that keep the
   query string; the API's own logs drop it. A body on DELETE comes with the panel package.
+- A revert of an admin's enabling (a disable) can deadlock with an enable of the same account: each
+  takes the account's credential lock and the request's row in the opposite order. Postgres
+  breaks it (40P01) and the unit of work's bounded retry runs the loser again, so nobody sees an
+  error; under sustained contention the retries can run out and the call fails (to be repeated).
+- Inviting or creating an admin, and creating a platform role, are not reviewed (owner decision):
+  they are the cheapest way around the people review (create a wide role and invite into it
+  instead of widening an existing one). A follow-up to review them, or to require an approved
+  request before the new admin's first sign-in, is tracked.
 
 ## Supersession and locks
 

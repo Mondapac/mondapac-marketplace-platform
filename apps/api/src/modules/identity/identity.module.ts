@@ -1,4 +1,4 @@
-import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { Module, type FactoryProvider, type InjectionToken, type Provider } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Clock } from '@mondapac/shared-kernel';
 import {
@@ -20,6 +20,11 @@ import {
 } from '../../platform/authz';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import {
+  registerSystemChangeReverter,
+  SYSTEM_REQUEST_RECORDER,
+  type SystemChangeReverter,
+} from '../../platform/change-review/change-review';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
@@ -108,6 +113,18 @@ import { SELLER_TEAM_READER } from './application/ports/seller-team-reader';
 import { CreatePlatformRole } from './application/use-cases/create-platform-role.use-case';
 import { DeletePlatformRole } from './application/use-cases/delete-platform-role.use-case';
 import { EditPlatformRole } from './application/use-cases/edit-platform-role.use-case';
+import {
+  ADMIN_ROLES_SUBJECT_KIND,
+  ADMIN_STATUS_SUBJECT_KIND,
+  PEOPLE_REVIEW_AREA,
+  PLATFORM_ROLE_SUBJECT_KIND,
+} from './application/people/people-review';
+import {
+  AdminRolesReverter,
+  AdminStatusReverter,
+  PlatformRoleReverter,
+  type PeopleReverterDependencies,
+} from './application/people/people-reverters';
 import { CreateSellerRole } from './application/use-cases/create-seller-role.use-case';
 import { DeleteSellerRole } from './application/use-cases/delete-seller-role.use-case';
 import { EditSellerRole } from './application/use-cases/edit-seller-role.use-case';
@@ -311,6 +328,7 @@ const PORT = {
   signInProviders: SIGN_IN_PROVIDERS_PORT,
   flowSecrets: SIGN_IN_PROVIDER_FLOW_SECRETS,
   externalIdentities: EXTERNAL_IDENTITY_REPOSITORY,
+  review: SYSTEM_REQUEST_RECORDER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -352,6 +370,45 @@ function roleEditorProvider<U>(
     clock: true,
     ids: true,
   });
+}
+
+/** The ports of the people reverters (Admin Inbox › System requests, area people). */
+const PEOPLE_REVERTER_PORTS = {
+  accounts: true,
+  roles: true,
+  assignments: true,
+  effectiveKeys: true,
+  permissions: true,
+  sessions: true,
+  challenges: true,
+  outbox: true,
+  audit: true,
+  clock: true,
+} as const satisfies { readonly [K in keyof PeopleReverterDependencies]-?: true };
+
+/**
+ * The reverter of one people subject kind, registered with System requests in the area people:
+ * the reverter itself (under its own token) and its registration.
+ */
+function peopleReverter(
+  subjectKind: string,
+  type: new (deps: PeopleReverterDependencies) => SystemChangeReverter,
+): Provider[] {
+  const token = Symbol(`IDENTITY_REVERTER:${subjectKind}`);
+  const names = Object.keys(PEOPLE_REVERTER_PORTS) as PortName[];
+  return [
+    {
+      provide: token,
+      inject: names.map((name) => PORT[name]),
+      useFactory: (...values: unknown[]) =>
+        new type(
+          Object.fromEntries(
+            names.map((name, index) => [name, values[index]]),
+          ) as unknown as PeopleReverterDependencies,
+        ),
+    },
+    registerSystemChangeReverter('identity', subjectKind, PEOPLE_REVIEW_AREA, token),
+  ];
 }
 
 /**
@@ -1301,6 +1358,7 @@ function useCaseProvider<D, U>(
       permissions: true,
       factors: true,
       policy: true,
+      review: true,
       clock: true,
     }),
     useCaseProvider(ListPlatformRoles, {
@@ -1311,6 +1369,7 @@ function useCaseProvider<D, U>(
       grants: true,
       effectiveKeys: true,
       permissions: true,
+      review: true,
     }),
     useCaseProvider(ListSellerRoles, {
       unitOfWork: true,
@@ -1387,7 +1446,21 @@ function useCaseProvider<D, U>(
       clock: true,
     }),
     roleEditorProvider(CreatePlatformRole),
-    roleEditorProvider(EditPlatformRole),
+    useCaseProvider(EditPlatformRole, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+      policy: true,
+      outbox: true,
+      audit: true,
+      review: true,
+      clock: true,
+      ids: true,
+    }),
     roleEditorProvider(DeletePlatformRole),
     roleEditorProvider(CreateSellerRole),
     roleEditorProvider(EditSellerRole),
@@ -1402,6 +1475,7 @@ function useCaseProvider<D, U>(
       permissions: true,
       outbox: true,
       audit: true,
+      review: true,
       clock: true,
     }),
     useCaseProvider(InviteAdmin, {
@@ -1469,8 +1543,12 @@ function useCaseProvider<D, U>(
       challenges: true,
       outbox: true,
       audit: true,
+      review: true,
       clock: true,
     }),
+    ...peopleReverter(PLATFORM_ROLE_SUBJECT_KIND, PlatformRoleReverter),
+    ...peopleReverter(ADMIN_ROLES_SUBJECT_KIND, AdminRolesReverter),
+    ...peopleReverter(ADMIN_STATUS_SUBJECT_KIND, AdminStatusReverter),
     useCaseProvider(DisableCustomerAccount, {
       unitOfWork: true,
       accounts: true,

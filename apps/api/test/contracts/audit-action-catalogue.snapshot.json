@@ -1751,6 +1751,34 @@
     }
   },
   {
+    "action": "identity.account-role.reverted",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "roleId": "id"
+    },
+    "after": {
+      "requestId": "id",
+      "roleId": "id",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
+    "action": "identity.account-status.reverted",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|disabled)"
+    },
+    "after": {
+      "population": "enumOf(admin)",
+      "requestId": "id",
+      "status": "enumOf(active|disabled)"
+    }
+  },
+  {
     "action": "identity.account.disabled",
     "targetType": "identity.account",
     "targetId": "id",
@@ -1921,6 +1949,19 @@
       "sellerId": "optional(id)"
     },
     "after": null
+  },
+  {
+    "action": "identity.role.reverted",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "removedKeys": "listOf(permissionKey, max 40)",
+      "renamed": "boolean",
+      "requestId": "id",
+      "scope": "enumOf(platform|seller)"
+    }
   },
   {
     "action": "identity.role.seed-applied",
