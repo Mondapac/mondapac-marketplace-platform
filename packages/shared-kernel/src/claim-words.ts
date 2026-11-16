@@ -58,7 +58,11 @@ const SPELLED_OUT_RUN = /(?<!\p{L})(?:\p{L}[\s\p{P}\p{S}]+){2,}\p{L}(?!\p{L})/gu
 const SEPARATORS = /[\s\p{P}\p{S}]+/u;
 
 function prepare(text: string): string {
-  return text.normalize('NFKC').replace(DRAWS_NOTHING, '').replaceAll('\u200D', '');
+  return text
+    .replaceAll('\u00B5', 'u')
+    .normalize('NFKC')
+    .replace(DRAWS_NOTHING, '')
+    .replaceAll('\u200D', '');
 }
 
 /**
@@ -80,7 +84,7 @@ export function foldForClaims(text: string): string {
 }
 
 // Not preceded by a letter or digit (JavaScript's \b knows only ASCII).
-const START = String.raw`(?<![\p{L}\p{N}])`;
+const START = String.raw`(?<!\p{L})`;
 const END = String.raw`(?![\p{L}\p{N}])`;
 const REST = String.raw`\p{L}*`;
 
@@ -96,8 +100,11 @@ const STEMS = [
   'vegetar',
   'organic',
   'biologi',
+  'o?e?kolog',
   'oekolog',
   'certif',
+  'vegetal',
+  'veggie',
   'accredit',
   'z[ae]+b[ie]*h+a+h?',
   'zabih',
@@ -120,18 +127,32 @@ const STEMS = [
   'вегетариан',
   'сертифи',
   'глютен',
+  'халал',
+  'органик',
   // Greek.
   'χαλαλ',
   'βιολογικ',
+  'endors',
+  'afic',
 ].map((stem) => `${START}(?:${stem})${REST}`);
 
-const WORDS = ['bio', 'glatt', 'gf', 'approved', 'permitted', 'permissible', 'forbidden'].map(
-  (word) => `${START}${word}${END}`,
-);
+const WORDS = [
+  'bio',
+  'био',
+  'glatt',
+  'gf',
+  'approved',
+  'permitted',
+  'permissible',
+  'forbidden',
+].map((word) => `${START}${word}${END}`);
 
 const FREE_FROM = [
-  String.raw`${START}(?:pork|alcohol|lard|gelatin|lactose|dairy|nut|egg|soy)[\s-]*free${END}`,
-  String.raw`${START}(?:no|without|free\s+from)[\s-]+(?:lactose|dairy|nuts?|pork|alcohol|lard|gelatin)${END}`,
+  String.raw`(?:pork|alcohol|lard|gelatin|lactose|dairy|nut|egg|soy|meat|milk|wheat|sesame|shellfish|sugar|fat|msg|gmo)[\s-]*free${END}`,
+  String.raw`${START}(?:no|without|free\s+from)[\s-]+(?:lactose|dairy|nuts?|pork|alcohol|lard|gelatin|sugar|meat|milk|eggs?)${END}`,
+  String.raw`non[\s-]*alcohol`,
+  String.raw`allerg`,
+  String.raw`sertifi`,
 ];
 
 // Arabic, Persian (spelled with the Persian letters the fold produces; no ZWNJ) and Hebrew
@@ -144,15 +165,20 @@ const OTHER_SCRIPTS = [
   'گواهی',
   'ارگانیک',
   'اورگانیک',
-  'عضوی',
+  'عضوی(?![تهة])',
   'شرعی',
   'شریعت',
   'کوشر',
   'گیاهخوار',
   'وگان',
-  'نباتی',
+  'وگن',
+  'اسلام',
+  'غلوتین',
+  'خالیاز',
+  '(?<!روغن )(?<!زیت )نباتی',
   'گلوتن',
   'כשר',
+  'חלאל',
   'טבעוני',
   'אורגני',
   'מוסלמי',
@@ -170,34 +196,39 @@ const LEET: Readonly<Record<string, string>> = {
   '3': 'e',
   '9': 'g',
   '5': 's',
+  '6': 'g',
+  '8': 'b',
+  '!': 'i',
+  '(': 'c',
   $: 's',
   '7': 't',
   '1': 'l',
   '|': 'l',
   I: 'l',
 };
-const LEET_CHARACTERS = /[4@039$571|I]/gu;
+const LEET_CHARACTERS = /[4@0396$8571|I!(]/gu;
+
+// A window ends on a whole common word that only follows by chance ("veg and herbs").
+const CHANCE_ENDINGS = new Set(['and', 'or', 'the', 'a', 'an', 'of', 'in', 'on', 'to']);
+const MAX_WINDOW_PIECES = 5;
+const MAX_WINDOW_LENGTH = 12;
+
+function pieces(folded: string): string[] {
+  return folded.split(SEPARATORS).filter((part) => part.length > 0);
+}
 
 function carriesClaim(folded: string): boolean {
   if (CLAIM.test(folded)) return true;
-  // Words split in two or three pieces ("ha lal", "hal-al", "h al al"): fragments are joined.
-  const parts = folded.split(SEPARATORS).filter((part) => part.length > 0);
-  for (let index = 0; index < parts.length; index += 1) {
-    const one = parts[index]!;
-    const two = parts[index + 1];
-    const three = parts[index + 2];
-    if (two !== undefined && one.length <= 5 && two.length <= 5 && CLAIM.test(one + two)) {
-      return true;
-    }
-    if (
-      two !== undefined &&
-      three !== undefined &&
-      one.length <= 3 &&
-      two.length <= 3 &&
-      three.length <= 3 &&
-      CLAIM.test(one + two + three)
-    ) {
-      return true;
+  // Words split in pieces ("ha lal", "hal-al", "h al a l"): neighbouring pieces are joined.
+  const parts = pieces(folded);
+  for (let start = 0; start < parts.length; start += 1) {
+    let joined = parts[start]!;
+    for (let end = start + 1; end < parts.length && end < start + MAX_WINDOW_PIECES; end += 1) {
+      const piece = parts[end]!;
+      joined += piece;
+      if (joined.length > MAX_WINDOW_LENGTH) break;
+      if (CHANCE_ENDINGS.has(piece.toLowerCase())) continue;
+      if (CLAIM.test(joined)) return true;
     }
   }
   return false;
@@ -218,31 +249,68 @@ export function hasClaimWord(text: string): boolean {
   );
 }
 
-const SCRIPTS = [
-  ['latin', /\p{Script=Latin}/u],
-  ['greek', /\p{Script=Greek}/u],
-  ['cyrillic', /\p{Script=Cyrillic}/u],
-  ['arabic', /\p{Script=Arabic}/u],
-  ['hebrew', /\p{Script=Hebrew}/u],
-] as const;
-// Scripts no store text uses and that offer look-alikes of Latin letters.
-const NEVER_USED = /[\p{Script=Cherokee}\p{Script=Armenian}\p{Script=Coptic}\p{Script=Lisu}]/u;
+const LATIN = /\p{Script=Latin}/u;
+const CYRILLIC_OR_GREEK = /[\p{Script=Cyrillic}\p{Script=Greek}]/u;
+// Scripts whose claim words the lists cover; text in any other script is not read and is refused.
+const REVIEWED_SCRIPT =
+  /^[\p{Script=Latin}\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Arabic}\p{Script=Hebrew}]+$/u;
+// Latin letters that stay after the fold and are real letters of European words.
+const PLAIN_LATIN_EXTRAS = new Set(['\u00DF', '\u00E6', '\u0153', '\u00F8']);
+const OTHER_SCRIPT_LETTER =
+  /[\p{Script=Greek}\p{Script=Cyrillic}\p{Script=Arabic}\p{Script=Hebrew}]/u;
+
+function mixesScripts(word: string): boolean {
+  let latin = false;
+  let other = false;
+  for (const letter of word.match(/\p{L}/gu) ?? []) {
+    if (LATIN.test(letter)) latin = true;
+    else other = true;
+  }
+  if (latin && other) return true;
+  const kinds = [
+    /\p{Script=Greek}/u,
+    /\p{Script=Cyrillic}/u,
+    /\p{Script=Arabic}/u,
+    /\p{Script=Hebrew}/u,
+  ].filter((pattern) => pattern.test(word)).length;
+  return kinds > 1;
+}
 
 /**
- * Whether a word of the text mixes letters of two scripts ("Ηalal" with a Greek capital eta,
- * "кosher" with a Cyrillic ka), or uses a script with Latin look-alikes that no store text needs
- * (Cherokee, Armenian). Such a word looks like a claim word without being spelled as one, so a
- * guard that fails closed refuses it.
+ * Whether the text cannot be read safely, so a guard that fails closed refuses it: a word that
+ * mixes scripts ("Ηalal" with a Greek capital eta, "кosher" with a Cyrillic ka, also when marks or
+ * separators split it), a Latin letter that survives the fold and is not an ordinary letter
+ * ("haɫaɫ"), or a script whose claim words the lists do not cover (Chinese, Hindi, Thai ...).
+ * The Persian zero-width non-joiner counts as a word break here.
  */
 export function hasLookAlikeScripts(text: string): boolean {
-  const prepared = prepare(text);
-  if (NEVER_USED.test(prepared)) return true;
-  for (const word of prepared.match(/\p{L}+/gu) ?? []) {
-    let seen = 0;
-    for (const [, pattern] of SCRIPTS) {
-      if (pattern.test(word)) seen += 1;
+  const folded = foldForClaims(text.replaceAll('\u200C', ' '));
+  for (const letter of folded.match(/\p{L}/gu) ?? []) {
+    if (!REVIEWED_SCRIPT.test(letter)) return true;
+    if (
+      LATIN.test(letter) &&
+      !/[a-z]/iu.test(letter) &&
+      !PLAIN_LATIN_EXTRAS.has(letter.toLowerCase())
+    ) {
+      return true;
     }
-    if (seen > 1) return true;
+  }
+  const parts = pieces(folded);
+  for (let index = 0; index < parts.length; index += 1) {
+    const part = parts[index]!;
+    if (mixesScripts(part)) return true;
+    // "Н alal": a one or two letter Cyrillic or Greek piece in front of or behind a Latin word.
+    for (const neighbour of [parts[index + 1], parts[index - 1]]) {
+      if (
+        neighbour !== undefined &&
+        [...part].length <= 2 &&
+        CYRILLIC_OR_GREEK.test(part) &&
+        !OTHER_SCRIPT_LETTER.test(neighbour) &&
+        LATIN.test(neighbour)
+      ) {
+        return true;
+      }
+    }
   }
   return false;
 }

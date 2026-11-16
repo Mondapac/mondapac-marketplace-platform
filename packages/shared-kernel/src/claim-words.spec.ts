@@ -69,6 +69,29 @@ const claims = [
   'It is 0rganic.',
   'It is ve9an.',
   'Lactose-free milk',
+  'Это халал.',
+  'Это био продукт.',
+  'Это органик.',
+  'وگن',
+  'اسلامی',
+  'غلوتین',
+  'ökologisch',
+  'bersertifikat',
+  'végétalien',
+  'h al a l',
+  'h a la l',
+  'k os h er',
+  'organi c',
+  've6an',
+  'cert!fied',
+  '100halal',
+  'peanut-free',
+  'meat-free',
+  'non-alcoholic',
+  'safe for people with a nut allergy',
+  'hypoallergenic',
+  'Endorsed by AFIC',
+  'ha\u200Clal',
 ];
 
 describe('claim words', () => {
@@ -110,10 +133,19 @@ describe('look-alike scripts', () => {
     },
   );
 
-  it.each(['rice', 'برنج ایرانی', 'Рис', 'ρύζι', 'Basmati 5kg', 'ארז'])(
-    'lets "%s" through',
-    (text) => {
-      expect(hasLookAlikeScripts(text)).toBe(false);
-    },
-  );
+  it.each([
+    'rice',
+    'برنج ایرانی',
+    'Рис',
+    'ρύζι',
+    'Basmati 5kg',
+    'ארז',
+    'Vitamin D 10µg',
+    'محصولات Nestlé\u200Cی',
+    'Straße',
+    'ویتامین C',
+    'Рис басмати',
+  ])('lets "%s" through', (text) => {
+    expect(hasLookAlikeScripts(text)).toBe(false);
+  });
 });
