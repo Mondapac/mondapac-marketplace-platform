@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isUuid, routeSearch } from './search-route.ts';
+import { isUuid, routeSearch, toId } from './search-route.ts';
 
 const ID = '0190A000-0000-7000-8000-000000000001';
 
@@ -10,10 +10,19 @@ describe('routeSearch', () => {
   });
 
   it('sends a UUID as q, in any case and with spaces around it trimmed', () => {
-    expect(routeSearch(`  ${ID} `)).toEqual({ kind: 'q', value: ID });
+    expect(routeSearch(`  ${ID} `)).toEqual({ kind: 'q', value: ID.toLowerCase() });
     expect(routeSearch(ID.toLowerCase())).toEqual({ kind: 'q', value: ID.toLowerCase() });
     expect(isUuid(ID)).toBe(true);
     expect(isUuid('0190a000')).toBe(false);
+  });
+
+  it('sends a UUID v7 as q and a v4 UUID as search (the API knows v7 ids only)', () => {
+    const v4 = '3f2b8c1e-5d4a-4b6f-9a7e-1c2d3e4f5a6b';
+    expect(isUuid(v4)).toBe(false);
+    expect(routeSearch(v4)).toEqual({ kind: 'search', value: v4 });
+    expect(routeSearch(ID.toLowerCase())).toEqual({ kind: 'q', value: ID.toLowerCase() });
+    expect(toId(ID)).toBe(ID.toLowerCase());
+    expect(toId(v4)).toBeNull();
   });
 
   it('sends a name of 2 characters or more as search', () => {

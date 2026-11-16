@@ -5,9 +5,12 @@
 export const SEARCH_MIN = 2;
 export const SEARCH_MAX = 80;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// The API's ids are canonical lower-case UUID v7 only (`CANONICAL_UUID_V7` in shared-kernel's
+// id.ts). Typed or linked ids may be upper-case: callers send `toId(text)`, the lower-case form.
+const UUID_V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export const isUuid = (text: string): boolean => UUID.test(text);
+/** True for a UUID v7 in any case. A v4 UUID is not an id the API knows: it is plain text. */
+export const isUuid = (text: string): boolean => UUID_V7.test(text);
 
 export type SearchRoute =
   | { readonly kind: 'none' }
@@ -23,12 +26,16 @@ export interface SearchRouteOptions {
   readonly exactPrefixes?: readonly string[];
 }
 
+/** The canonical (lower-case) form of an id the API accepts, or null for anything else. */
+export const toId = (text: string): string | null => (isUuid(text) ? text.toLowerCase() : null);
+
 /** Routes the trimmed text of a search box. */
 export function routeSearch(text: string, options: SearchRouteOptions = {}): SearchRoute {
   const value = Array.from(text.trim()).slice(0, SEARCH_MAX).join('');
   if (value === '') return { kind: 'none' };
   if (options.exact === true) return { kind: 'q', value };
-  if (isUuid(value) || (options.exactPrefixes ?? []).some((prefix) => value.startsWith(prefix))) {
+  if (isUuid(value)) return { kind: 'q', value: value.toLowerCase() };
+  if ((options.exactPrefixes ?? []).some((prefix) => value.startsWith(prefix))) {
     return { kind: 'q', value };
   }
   if (value.length < SEARCH_MIN) return { kind: 'too-short' };

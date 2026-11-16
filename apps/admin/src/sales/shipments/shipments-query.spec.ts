@@ -103,6 +103,19 @@ describe('Shipments query: search', () => {
     expect(name).not.toHaveProperty('q');
   });
 
+  it('sends an upper-case v7 id lower-cased, and a v4 UUID as search in the name scope', () => {
+    expect(params(queryString(of({ q: ID.toUpperCase() }), pages))['q']).toBe(ID);
+    const v4 = '3f2b8c1e-5d4a-4b6f-9a7e-1c2d3e4f5a6b';
+    const sent = params(queryString(of({ q: v4 }), pages));
+    expect(sent['search']).toBe(v4);
+    expect(sent).not.toHaveProperty('q');
+  });
+
+  it('keeps sending a v4 UUID as q in the tracking scope (a reference the API may know)', () => {
+    const v4 = '3f2b8c1e-5d4a-4b6f-9a7e-1c2d3e4f5a6b';
+    expect(params(queryString(of({ q: v4, scope: 'tracking' }), pages))['q']).toBe(v4);
+  });
+
   it('sends nothing for one character', () => {
     const sent = params(queryString(of({ q: 'a' }), pages));
     expect(sent).not.toHaveProperty('q');
