@@ -8,7 +8,12 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { payoutStores } from '../../../../test/support/commission-payouts-fakes';
+import {
+  holdsOf,
+  sellerPageDepsOf,
+} from '../../../../test/support/commission-payouts-seller-page-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
+import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
@@ -24,6 +29,8 @@ import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 import { ConfigCommissionPolicy } from '../infrastructure/config-commission-policy';
 import { ConfigPayoutTermsPolicy } from '../infrastructure/config-payout-terms-policy';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
+import { PAYOUT_TERMS_SUBJECT_KIND } from './money-review';
+import { PayoutTermsReverter } from './money-reverters';
 import type { LedgerRepository } from './ports/ledger.repository';
 import type { SellerRateRepository } from './ports/seller-rate.repository';
 import { ClearSellerPayoutTerms } from './use-cases/clear-seller-payout-terms.use-case';
@@ -103,8 +110,10 @@ describe.each([['AU'], ['ZZ']] as const)('payout terms and holds in market %s', 
   let stores: ReturnType<typeof payoutStores>;
   let policyTerms: ConfigPayoutTermsPolicy | { marketTerms: () => null };
   let deps: CommissionPayoutsDependencies;
+  let review: RecordingReview;
   const build = (policy: ConfigPayoutTermsPolicy | { marketTerms: () => null }) => {
     policyTerms = policy;
+    review = new RecordingReview();
     stores = payoutStores(policy);
     deps = {
       unitOfWork: new FakeUnitOfWork(),
@@ -117,6 +126,7 @@ describe.each([['AU'], ['ZZ']] as const)('payout terms and holds in market %s', 
           Promise.resolve(sellerId === SELLER_A || sellerId === SELLER_B),
       },
       audit,
+      review,
       ids: new SequenceIdGenerator(clock),
       clock,
     };
@@ -376,6 +386,107 @@ describe.each([['AU'], ['ZZ']] as const)('payout terms and holds in market %s', 
     });
   });
 
+  describe('payout terms review in System requests (area money)', () => {
+    const revert = (before: unknown, after: unknown) =>
+      new PayoutTermsReverter(deps).revert(admin, {
+        requestId: id<'SystemRequest'>(0x5e1),
+        subjectRef: SELLER_A,
+        before: { terms: before } as Record<string, null>,
+        after: { terms: after } as Record<string, null>,
+      });
+    const values = (override: Record<string, unknown>) => ({
+      weekdays: null,
+      localTime: null,
+      holdDaysCarrier: null,
+      holdDaysSellerClick: null,
+      minimumMinor: null,
+      approvalMode: null,
+      ...override,
+    });
+
+    it('opens a review of a set and of a removal with the terms before and after and the note', async () => {
+      review.review('money', 'high');
+      const first = await new SetSellerPayoutTerms(gate, deps).execute(admin, {
+        sellerId: SELLER_A,
+        terms: { holdDaysCarrier: 9, minimumMinor: 7000, weekdays: ['FRI', 'MON'] },
+        expectedVersion: null,
+        reasonCode: 'correction',
+        note: 'Seller asked',
+      });
+      expect(first).toMatchObject({ ok: true, value: { version: 1, request: { number: 1 } } });
+      const removed = await new ClearSellerPayoutTerms(gate, deps).execute(admin, {
+        sellerId: SELLER_A,
+        expectedVersion: 1,
+        reasonCode: 'policy',
+        note: 'Back to the Market',
+      });
+      expect(removed).toMatchObject({ ok: true, value: { request: { number: 2 } } });
+      const nine = values({ holdDaysCarrier: 9, minimumMinor: 7000, weekdays: ['MON', 'FRI'] });
+      expect(review.opened.map((o) => [o.subjectKind, o.before, o.after, o.note, o.risk])).toEqual([
+        [PAYOUT_TERMS_SUBJECT_KIND, { terms: null }, { terms: nine }, 'Seller asked', 'high'],
+        [PAYOUT_TERMS_SUBJECT_KIND, { terms: nine }, { terms: null }, 'Back to the Market', 'high'],
+      ]);
+    });
+
+    it('refuses a change without a note where money is reviewed, and opens nothing where not', async () => {
+      expect(await set(SELLER_A, { holdDaysCarrier: 9 })).toMatchObject({
+        ok: true,
+        value: { request: null },
+      });
+      review.review('money');
+      expect(await set(SELLER_A, { holdDaysCarrier: 10 }, 1)).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'note' }] },
+      });
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('restores the override before as a new version, or removes it, and reschedules', async () => {
+      await set(SELLER_A, { holdDaysCarrier: 9 });
+      await set(SELLER_A, { holdDaysCarrier: 12 }, 1);
+      audit.entries.length = 0;
+      const outbox = stores.outbox as unknown as { events: unknown[] };
+      const announced = outbox.events.length;
+      expect(await revert(values({ holdDaysCarrier: 9 }), values({ holdDaysCarrier: 12 }))).toBe(
+        'reverted',
+      );
+      expect(await view(SELLER_A)).toMatchObject({
+        ok: true,
+        value: { version: 3, override: { holdDaysCarrier: 9 } },
+      });
+      expect(await revert(null, values({ holdDaysCarrier: 9 }))).toBe('reverted');
+      expect(await view(SELLER_A)).toMatchObject({
+        ok: true,
+        value: { source: 'market', version: null },
+      });
+      const REQUEST = id<'SystemRequest'>(0x5e1);
+      expect(audit.entries.map((e) => [e.action, e.before, e.after])).toMatchObject([
+        [
+          'commission-payouts.payout-terms.reverted',
+          { holdDaysCarrier: 12, version: 2 },
+          { holdDaysCarrier: 9, version: 3, requestId: REQUEST },
+        ],
+        [
+          'commission-payouts.payout-terms.reverted',
+          { holdDaysCarrier: 9, version: 3 },
+          { holdDaysCarrier: null, version: null, requestId: REQUEST },
+        ],
+      ]);
+      // Each restore works the seller's schedule out again, as an admin's change does.
+      expect(outbox.events.length).toBe(announced + 2);
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('answers changed-since when the terms moved on, and gone for terms the bounds refuse', async () => {
+      await set(SELLER_A, { holdDaysCarrier: 9 });
+      expect(await revert(null, values({ holdDaysCarrier: 12 }))).toBe('changed-since');
+      expect(await revert(values({ holdDaysCarrier: 999 }), values({ holdDaysCarrier: 9 }))).toBe(
+        'gone',
+      );
+      expect(await view(SELLER_A)).toMatchObject({ ok: true, value: { version: 1 } });
+    });
+  });
+
   describe('holds placed by an admin', () => {
     const place = (input: Record<string, unknown>, context = admin) =>
       new PlacePayoutHold(gate, deps).execute(context, input as never);
@@ -473,9 +584,15 @@ describe.each([['AU'], ['ZZ']] as const)('payout terms and holds in market %s', 
     it('lists a seller holds and refuses every caller but an admin', async () => {
       await place({ sellerId: SELLER_A, reason: 'admin-review' });
       const list = (sellerId: unknown, context = admin) =>
-        new ListSellerPayoutHolds(gate, deps).execute(context, { sellerId });
-      expect(await list(SELLER_A)).toMatchObject({ ok: true, value: [{ reason: 'admin-review' }] });
-      expect(await list(SELLER_B)).toEqual(ok([]));
+        new ListSellerPayoutHolds(
+          gate,
+          sellerPageDepsOf(deps, { holds: holdsOf(stores.holds) }),
+        ).execute(context, { sellerId });
+      expect(await list(SELLER_A)).toMatchObject({
+        ok: true,
+        value: { holds: [{ reason: 'admin-review', actions: ['release'] }], total: 1 },
+      });
+      expect(await list(SELLER_B)).toMatchObject({ ok: true, value: { holds: [], total: 0 } });
       expect(await list(GHOST)).toEqual(err({ code: 'commission-payouts.seller-not-found' }));
       expect(await list(SELLER_A, sellerA)).toEqual(err({ code: 'access.denied' }));
       expect(await place({ sellerId: SELLER_A, reason: 'admin-review' }, sellerA)).toEqual(

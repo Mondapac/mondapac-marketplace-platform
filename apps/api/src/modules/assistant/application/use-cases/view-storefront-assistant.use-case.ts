@@ -3,14 +3,22 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { AssistantDependencies } from '../assistant-dependencies';
 import { viewStorefrontAssistant, type StorefrontAssistantView } from '../settings-flow';
 
+/** The answer when the assistant is off for the visitor; the route's fallback too. */
+export { STOREFRONT_OFF } from '../settings-flow';
+
 interface Input {
   readonly visitor: unknown;
+  /** The storefront's language tag, for the quick prompts (untrusted; checked by the port). */
+  readonly lang?: unknown;
+  /** The internal preview token the browser sent, if any (untrusted; verified by the port). */
+  readonly preview?: unknown;
 }
 
 /**
  * `assistant.view-storefront-assistant`: the storefront asks whether to show the assistant to this
  * visitor, without reading a session. It answers the safe subset only: on for this visitor,
- * guests allowed, reply language and welcome text; never limits, caps, model or rollout.
+ * guests allowed, reply language, welcome text, the retention in days and the quick prompts;
+ * never limits, caps, model or rollout.
  */
 export class ViewStorefrontAssistant extends UseCase<Input, StorefrontAssistantView, never> {
   static override readonly access: AccessDeclaration = {

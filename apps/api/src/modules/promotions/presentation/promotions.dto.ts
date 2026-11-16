@@ -65,13 +65,20 @@ export class FlashBody {
 }
 
 export class SegmentBody {
-  @ApiProperty({ enum: ['RETURNING_CUSTOMER', 'DELIVERY_ZONE'] }) kind!: string;
+  @ApiProperty({ enum: ['RETURNING_CUSTOMER', 'DELIVERY_ZONE', 'MANUAL_GROUP'] }) kind!: string;
   @ApiProperty({
     nullable: true,
     type: Number,
     description: 'RETURNING_CUSTOMER: whole days since the last order.',
   })
   minDaysSinceLastOrder!: number | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description: 'MANUAL_GROUP: the manual customer group (customers module).',
+  })
+  groupId!: string | null;
 }
 
 class PromotionCommonBody {
@@ -293,7 +300,9 @@ export class PromotionRequest {
     type: Object,
     description:
       'CUSTOMER_GROUP (admin): `{ kind: "RETURNING_CUSTOMER", minDaysSinceLastOrder? }` (the ' +
-      'Market\'s default days when left out) or `{ kind: "DELIVERY_ZONE" }` with `zones`.',
+      'Market\'s default days when left out), `{ kind: "DELIVERY_ZONE" }` with `zones`, or ' +
+      '`{ kind: "MANUAL_GROUP", groupId }` (a manual customer group; a customer gets it only ' +
+      'while the group is live and they are in it, fail closed).',
   })
   segment?: object;
   @ApiProperty({
@@ -510,7 +519,8 @@ export class QuoteRequestBody {
     type: Object,
     description:
       'Customer facts to try a customer-group or store-follower promotion with: ' +
-      '`{ daysSinceLastOrder?, followedSellerIds? }`. A field left out is unknown, so the ' +
+      '`{ daysSinceLastOrder?, followedSellerIds?, memberOfGroupIds? }`. A field left out is ' +
+      'unknown, so the ' +
       'promotions that need it do not apply.',
   })
   customer?: object;
@@ -572,7 +582,11 @@ function common(view: Common) {
     segment:
       view.segment === null
         ? null
-        : { kind: view.segment.kind, minDaysSinceLastOrder: view.segment.minDaysSinceLastOrder },
+        : {
+            kind: view.segment.kind,
+            minDaysSinceLastOrder: view.segment.minDaysSinceLastOrder,
+            groupId: view.segment.groupId,
+          },
     refereeRewardMinor: minorOrNull(view.refereeRewardMinor),
     createdAt: iso(view.createdAt),
     updatedAt: iso(view.updatedAt),

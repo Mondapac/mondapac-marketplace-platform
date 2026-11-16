@@ -11,6 +11,7 @@ import { StepUpProvider } from '../step-up/step-up.tsx';
 import { PayoutHoldsCard } from './holds-card.tsx';
 import { canReleaseHold, type PayoutHold, type PayoutTerms } from './seller-types.ts';
 import { PayoutTermsCard } from './terms-card.tsx';
+import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
 const SELLER = '0190a000-0000-7000-8000-0000000000c1';
@@ -79,6 +80,11 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+const typeNote = (dialog: HTMLElement, text = 'Seller asked by email') =>
+  fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+    target: { value: text },
+  });
+
 describe('payout terms card', () => {
   const mount = (initial: PayoutTerms, canEdit = true, currency: string | null = 'AUD') =>
     render(
@@ -130,6 +136,7 @@ describe('payout terms card', () => {
       target: { value: '30' },
     });
     fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'policy' } });
+    typeNote(dialog);
     call.mockResolvedValueOnce(ok({ ...own(), version: 4 }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save terms' }));
     await waitFor(() =>
@@ -141,11 +148,39 @@ describe('payout terms card', () => {
           approvalMode: 'MANUAL',
           reasonCode: 'policy',
           expectedVersion: 3,
+          note: 'Seller asked by email',
         },
         'csrf-1',
       ),
     );
     expect(await screen.findByText('Payout terms saved.')).toBeTruthy();
+  });
+
+  it('needs a note before saving, and shows a 400 on note on the field', async () => {
+    mount(own());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit for this seller' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit payout terms' });
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'policy' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save terms' }));
+    expect(within(dialog).getByText(/Write a note for the reviewers/)).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+    typeNote(dialog);
+    call.mockResolvedValueOnce(
+      refuse(400, 'validation.failed', { fields: [{ path: 'note', code: 'invalid' }] }),
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save terms' }));
+    expect(await within(dialog).findByText(/The note was refused/)).toBeTruthy();
+  });
+
+  it('says a saved change was sent for review, with its SR number', async () => {
+    mount(own());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit for this seller' }));
+    const dialog = screen.getByRole('dialog', { name: 'Edit payout terms' });
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'policy' } });
+    typeNote(dialog);
+    call.mockResolvedValueOnce(ok({ ...own(), request: { id: 'r1', number: 7 } }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save terms' }));
+    await expectToast('Sent for review as SR-7', 'info');
   });
 
   it('keeps an out-of-range value, a missing reason and an empty selection out of the request', () => {
@@ -164,6 +199,7 @@ describe('payout terms card', () => {
       target: { value: '3' },
     });
     fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'policy' } });
+    typeNote(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save terms' }));
     expect(within(dialog).getByText('Enter whole days from 7 to 60.')).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
@@ -185,6 +221,7 @@ describe('payout terms card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit for this seller' }));
     const dialog = screen.getByRole('dialog', { name: 'Edit payout terms' });
     fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'policy' } });
+    typeNote(dialog);
     call.mockResolvedValueOnce(refuse(409, 'commission-payouts.version-conflict'));
     call.mockResolvedValueOnce(ok({ ...own(), version: 5 }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save terms' }));
@@ -206,12 +243,16 @@ describe('payout terms card', () => {
     fireEvent.change(within(dialog).getByLabelText('Reason'), {
       target: { value: 'seller-request' },
     });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove seller terms' }));
+    expect(within(dialog).getByText(/Write a note for the reviewers/)).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+    typeNote(dialog, 'Back to default & done');
     call.mockResolvedValueOnce(ok(terms()));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove seller terms' }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(
         'DELETE',
-        `commission-payouts/admin/sellers/${SELLER}/payout-terms?expectedVersion=3&reasonCode=seller-request`,
+        `commission-payouts/admin/sellers/${SELLER}/payout-terms?expectedVersion=3&reasonCode=seller-request&note=Back%20to%20default%20%26%20done`,
         undefined,
         'csrf-1',
       ),
@@ -225,6 +266,7 @@ describe('payout terms card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit for this seller' }));
     const dialog = screen.getByRole('dialog', { name: 'Edit payout terms' });
     fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'policy' } });
+    typeNote(dialog);
     call.mockResolvedValueOnce(
       refuse(403, 'second-factor.required', { actionKey: 'commission-payouts.payout-terms.edit' }),
     );

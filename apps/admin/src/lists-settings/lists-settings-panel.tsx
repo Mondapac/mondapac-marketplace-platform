@@ -16,6 +16,12 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { SettingsConflictView } from '../settings/conflict-view.tsx';
+import {
+  isNoteFailure,
+  ReviewNoteField,
+  trimmedNote,
+  useSentForReview,
+} from '../shared/review-note.tsx';
 import { listsProblemOf } from './errors.ts';
 import {
   isListPagingValue,
@@ -55,6 +61,9 @@ export function ListsSettingsPanel({
   const t = useTranslations();
   const P = 'lists-settings';
   const [problem, setProblem] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
   const label = (value: string) => t(`${P}.paging.option.${value}`);
   const form = useSettingsForm<MarketSettingsAnswer, Draft>({
     initial,
@@ -77,33 +86,54 @@ export function ListsSettingsPanel({
   const dirty = canManage && form.dirty;
   const count = canManage ? form.count : 0;
 
+  // The note is asked only where the view says a change is reviewed.
+  const reviewed = savedRow.review?.reviewed === true;
+
   function discard() {
     form.discard();
     setProblem(null);
+    setNote('');
+    setNoteError(null);
   }
 
   async function save() {
     setProblem(null);
+    const sent = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sent === null) {
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     const result = await form.run(
       async (expectedVersion): Promise<SaveResult<MarketSettingsAnswer>> => {
-        const answer = await callApi<MarketSetting>(
+        const answer = await callApi<MarketSetting & { request?: unknown }>(
           'PUT',
           'settings/admin/market-settings',
-          { code: LIST_PAGING_CODE, value: form.draft.paging, expectedVersion },
+          {
+            code: LIST_PAGING_CODE,
+            value: form.draft.paging,
+            expectedVersion,
+            ...(sent === null ? {} : { note: sent }),
+          },
           csrfToken,
         );
         if (answer.ok) {
           const rest = form.saved.settings.filter((row) => row.code !== LIST_PAGING_CODE);
-          return { status: 'saved', saved: { settings: [...rest, answer.body] } };
+          const { request, ...row } = answer.body;
+          sentForReview({ request });
+          return { status: 'saved', saved: { settings: [...rest, row] } };
         }
         if (answer.failure.status === 401) window.location.assign('/session-ended');
+        else if (isNoteFailure(answer.failure)) setNoteError('rejected');
         else if (listsProblemOf(answer.failure) === 'conflict') return { status: 'conflict' };
         else setProblem(listsProblemOf(answer.failure));
         return { status: 'failed' };
       },
     );
-    if (result.status === 'saved') toast.success(t(`${P}.saved`));
-    else if (result.status === 'conflict' && result.reloaded === false) setProblem('conflict');
+    if (result.status === 'saved') {
+      setNote('');
+      toast.success(t(`${P}.saved`));
+    } else if (result.status === 'conflict' && result.reloaded === false) setProblem('conflict');
   }
 
   const banners = [
@@ -181,6 +211,20 @@ export function ListsSettingsPanel({
           />
         </SettingRow>
       </SettingsSection>
+      {reviewed && canManage ? (
+        <SettingsSection title={t(`${P}.review-section`)}>
+          <div className="px-5 py-4">
+            <ReviewNoteField
+              value={note}
+              onChange={(next) => {
+                setNote(next);
+                setNoteError(null);
+              }}
+              error={noteError ?? undefined}
+            />
+          </div>
+        </SettingsSection>
+      ) : null}
     </SettingsPage>
   );
 }

@@ -193,7 +193,8 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
   const turnOn = async (context: CallContext) =>
     app
       .get(SetWalletStatus)
-      .execute(context, { status: 'active', expectedVersion: await versionNow() });
+      // Turning the wallet on is reviewed in area money (on by default), so it carries a note.
+      .execute(context, { status: 'active', expectedVersion: await versionNow(), note: 'Launch' });
   /** The switch and who moved it last; `off` and null while the Market has no row. */
   const switchOf = async () => {
     const { rows } = await sql.query<{ status: string; updated_by_account_id: string }>(
@@ -255,6 +256,8 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
       ['identity.admin-step-up.refused', accountId],
       ['identity.admin-step-up.verified', accountId],
       ['wallet.market-status.changed', 'wallet-settings'],
+      // Turning the wallet on opens its System requests review in the same unit.
+      ['system-requests.request.opened', expect.any(String)],
     ]);
     expect(audits[0]!.after).toEqual({
       sessionId: sessionIdOf(context),
@@ -356,7 +359,9 @@ describe.each(TEST_MARKETS)('the admin step-up in market %s (database)', (code) 
 
     const expectedVersion = await versionNow();
     const results = await Promise.all([
-      app.get(SetWalletStatus).execute(context, { status: 'active', expectedVersion }),
+      app
+        .get(SetWalletStatus)
+        .execute(context, { status: 'active', expectedVersion, note: 'Launch' }),
       app
         .get(SetWalletStatus)
         .execute(context, { status: 'paused', reasonCode: 'maintenance', expectedVersion }),

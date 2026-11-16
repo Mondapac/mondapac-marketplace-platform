@@ -8,7 +8,7 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 
-interface Row {
+export interface Row {
   readonly id: string;
   readonly sellerId: string;
   readonly orderId: string;
@@ -24,7 +24,8 @@ interface Row {
   readonly recordedAt: Date;
 }
 
-const toEntry = (row: Row): LedgerEntry => ({
+/** A stored ledger row as the domain reads it (also used by the list reader). */
+export const toEntry = (row: Row): LedgerEntry => ({
   id: row.id as Id<'LedgerEntry'>,
   sellerId: row.sellerId as Id<'Seller'>,
   orderId: row.orderId as Id<'Order'>,

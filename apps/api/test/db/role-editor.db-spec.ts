@@ -212,8 +212,17 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
       expectedVersion: 1,
       name: `${name} 2`,
       permissionKeys: ['identity.platform-role.view', 'identity.seller-access.view'],
+      note: 'Seller access for the team',
     });
-    expect(edited).toEqual({ ok: true, value: { code: 'role.updated', roleId } });
+    // People is reviewed by default: the edit opened its review (Admin Inbox › System requests).
+    expect(edited).toEqual({
+      ok: true,
+      value: {
+        code: 'role.updated',
+        roleId,
+        request: { id: expect.any(String) as string, number: expect.any(Number) as number },
+      },
+    });
     expect(await keysOf(roleId)).toEqual([
       'identity.platform-role.view',
       'identity.seller-access.view',
@@ -448,6 +457,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
           expectedVersion: 1,
           name: `Racer ${n} ${unique()}`,
           permissionKeys,
+          note: 'Race',
         }),
       ),
     );
@@ -495,6 +505,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
         expectedVersion: 1,
         name: `Edited ${unique()}`,
         permissionKeys: ['identity.customer-account.view'],
+        note: 'Narrow it',
       }),
       app.get(DeletePlatformRole).execute(asAdmin(root), { roleId, expectedVersion: 1 }),
     ]);
@@ -581,6 +592,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
         expectedVersion: 1,
         name: `Long ${unique()}`,
         permissionKeys: [],
+        note: 'Empty it',
       });
       const gone = await app.get(remove).execute(context, { roleId, expectedVersion: 2 });
 

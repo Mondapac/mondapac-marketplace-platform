@@ -23,6 +23,11 @@ import {
   SYSTEM_REQUESTS_REQUEST_VIEW,
 } from '../contracts/permissions';
 import type { AppliedChange } from '../contracts/recorder';
+import type {
+  ChangeReviewArea,
+  ChangeReviewRisk,
+} from '../../../platform/change-review/change-review';
+import { POLICY_AREAS, RISKS, type PolicyArea, type Risk } from '../domain/areas';
 import {
   SYSTEM_REQUESTS_DECIDE_HIGH_STEP_UP,
   SYSTEM_REQUESTS_POLICY_CHANGE_STEP_UP,
@@ -252,6 +257,16 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
         note: 'n',
       });
       expect(off).toEqual({ ok: true, value: null });
+      // No note is needed where nothing is reviewed.
+      const noNote = await recorder.openReview(admin(MAKER), {
+        area: 'marketplace',
+        subjectKind: KIND_OF.marketplace,
+        subjectRef: 'x',
+        before: { v: 1 },
+        after: { v: 2 },
+        note: undefined,
+      });
+      expect(noNote).toEqual({ ok: true, value: null });
       const same = await recorder.openReview(admin(MAKER), {
         area: 'catalogue',
         subjectKind: SETTING,
@@ -386,6 +401,45 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       ).toEqual({ ok: false, error: { code: 'system-requests.own-request' } });
     });
 
+    it('never lets a reviewer decide a change about themselves (separation of duties)', async () => {
+      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      subjects.interested.add(`${CHECKER}:list-paging`);
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: opened.id }),
+      ).toEqual({ ok: false, error: { code: 'system-requests.own-subject' } });
+      expect(
+        await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+          requestId: opened.id,
+          reason: 'Not mine to keep',
+        }),
+      ).toEqual({ ok: false, error: { code: 'system-requests.own-subject' } });
+      // Nothing was reverted and the request stays open.
+      expect(subjects.reverts).toEqual([]);
+      expect(subjects.get(market.marketId, 'list-paging')).toEqual({ size: 50 });
+      const view = await useCase(ViewSystemRequest).execute(admin(CHECKER), {
+        requestId: opened.id,
+      });
+      expect(view.ok && view.value.status).toBe('open');
+      // The author may still withdraw: the check guards decisions by others only.
+      subjects.interested.add(`${MAKER}:list-paging`);
+      expect(
+        await useCase(WithdrawSystemRequest).execute(admin(MAKER), {
+          requestId: opened.id,
+          reason: 'Wrong Market',
+        }),
+      ).toMatchObject({ ok: true, value: { status: 'reverted', decision: 'withdrawn' } });
+    });
+
+    it('decides as before where the owning module declares no conflict check', async () => {
+      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      subjects.interested.add(`${CHECKER}:list-paging`);
+      // A module whose reverter has no `isInterested` (the check is optional on the port).
+      Object.defineProperty(subjects, 'isInterested', { value: undefined });
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: opened.id }),
+      ).toMatchObject({ ok: true, value: { status: 'approved' } });
+    });
+
     it('refuses an admin without the area review key, and one without the queue key', async () => {
       const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
       expect(
@@ -468,6 +522,19 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       expect(subjects.get(market.marketId, 'list-paging')).toEqual({ size: 25 });
       const lines = await requests.activity(market, opened.id);
       expect(lines.map((line) => line.kind)).toEqual(['applied', 'rejected']);
+    });
+
+    it('reverts in a serializable unit, so a reverter can keep a counted guard (HF8)', async () => {
+      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      const units = (deps.unitOfWork as FakeUnitOfWork).units;
+      await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: opened.id });
+      expect(units.at(-1)?.options).toEqual({});
+      const again = await change(MAKER, 'list-paging', { size: 50 }, { size: 75 });
+      await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+        requestId: again.id,
+        reason: 'No',
+      });
+      expect(units.at(-1)?.options).toEqual({ isolation: 'serializable' });
     });
 
     it('does not revert when the subject changed since, outside a review', async () => {
@@ -558,6 +625,21 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       ).toEqual({ ok: false, error: { code: 'system-requests.subject-gone' } });
     });
 
+    it('answers revert-not-permitted when the owning module refuses the decider, and keeps the request open', async () => {
+      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      subjects.refused.add('list-paging');
+      expect(
+        await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+          requestId: opened.id,
+          reason: 'No',
+        }),
+      ).toEqual({ ok: false, error: { code: 'system-requests.revert-not-permitted' } });
+      const view = await useCase(ViewSystemRequest).execute(admin(CHECKER), {
+        requestId: opened.id,
+      });
+      expect(view.ok && view.value.status).toBe('open');
+    });
+
     it('lets only the author withdraw, which restores the value before', async () => {
       const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
       expect(
@@ -615,6 +697,23 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
           { requestId: low.id, outcome: 'approved' },
           { requestId: medium.id, outcome: 'system-requests.not-low-risk' },
           { requestId: own.id, outcome: 'system-requests.own-request' },
+        ],
+      });
+    });
+
+    it('reports own-subject for a request about the reviewer, and approves the others', async () => {
+      const mine = await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+      const theirs = await change(MAKER, 'b', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+      subjects.interested.add(`${CHECKER}:a`);
+      expect(
+        await useCase(ApproveSystemRequests).execute(admin(CHECKER), {
+          requestIds: [mine.id, theirs.id],
+        }),
+      ).toEqual({
+        ok: true,
+        value: [
+          { requestId: mine.id, outcome: 'system-requests.own-subject' },
+          { requestId: theirs.id, outcome: 'approved' },
         ],
       });
     });
@@ -864,6 +963,15 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
 
 describe('the reverter registry', () => {
   const reverter = { revert: () => Promise.resolve('reverted' as const) };
+
+  it('takes the same areas and risks as the platform port the modules call', () => {
+    // A compile-time check: the port's lists and system-requests' own lists are one.
+    const areas: readonly ChangeReviewArea[] = POLICY_AREAS;
+    const policyAreas: readonly PolicyArea[] = [] as ChangeReviewArea[];
+    const risks: readonly ChangeReviewRisk[] = RISKS;
+    const ownRisks: readonly Risk[] = [] as ChangeReviewRisk[];
+    expect([areas.length, policyAreas.length, risks.length, ownRisks.length]).toEqual([7, 0, 3, 0]);
+  });
 
   it('takes a kind of the registering module once, in one area, and nothing after it is sealed', () => {
     const registry = new ReverterRegistry();
