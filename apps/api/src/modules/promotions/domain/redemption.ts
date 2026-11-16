@@ -5,7 +5,7 @@
 import type { Temporal } from '@mondapac/shared-kernel';
 import type { CalculationOutput, CartLine } from './calculation/types';
 
-export const REDEMPTION_KINDS = ['PROMOTION', 'FIRST_ORDER', 'FREE_SHIPPING'] as const;
+export const REDEMPTION_KINDS = ['PROMOTION', 'FIRST_ORDER', 'FREE_SHIPPING', 'ORDER'] as const;
 export type RedemptionKind = (typeof REDEMPTION_KINDS)[number];
 
 export const REDEMPTION_STATUSES = ['RESERVED', 'CONFIRMED', 'RELEASED'] as const;
@@ -18,6 +18,12 @@ export type ReleaseReason = (typeof RELEASE_REASONS)[number];
 export const FIRST_ORDER_KEY = 'first-order';
 /** The key prefix of a zone's free delivery (a settings-based offer, no promotion row). */
 export const FREE_SHIPPING_PREFIX = 'free-shipping:';
+/**
+ * The key of an order's head row (kind ORDER, zero amounts): written with every redemption, and
+ * written RELEASED alone when the order is cancelled before it was redeemed. A redemption and a
+ * cancellation of one order meet on this key, so whichever comes second sees the first.
+ */
+export const ORDER_KEY = 'order';
 
 export interface RedemptionRecord {
   readonly id: string;
@@ -27,10 +33,11 @@ export interface RedemptionRecord {
   /** The stored promotion; null for a settings-based offer. */
   readonly promotionId: string | null;
   readonly kind: RedemptionKind;
-  readonly customerAccountId: string;
+  /** Null only on the head row of an order cancelled before it was redeemed. */
+  readonly customerAccountId: string | null;
   /** The hash of the single-use code the order redeemed (never the code). */
   readonly codeHash: string | null;
-  readonly currency: string;
+  readonly currency: string | null;
   readonly amount: bigint;
   readonly sellerShare: bigint;
   readonly platformShare: bigint;

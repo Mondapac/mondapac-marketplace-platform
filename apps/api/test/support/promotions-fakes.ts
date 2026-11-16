@@ -73,9 +73,10 @@ import type {
   ShippingThresholdRepository,
 } from '../../src/modules/promotions/application/ports/settings.repository';
 import { displayStatusOf } from '../../src/modules/promotions/domain/display-status';
-import type {
-  RedemptionRepository,
-  UsageDelta,
+import {
+  RedemptionTakenError,
+  type RedemptionRepository,
+  type UsageDelta,
 } from '../../src/modules/promotions/application/ports/redemption.repository';
 import type {
   RedemptionRecord,
@@ -609,6 +610,10 @@ export class FakeBatchCodeCrypto implements BatchCodeCrypto {
 export class MemoryRedemptions implements RedemptionRepository {
   readonly rows: RedemptionRecord[] = [];
   readonly claims = new Map<string, string>();
+  /** The rows of the discounts, without the orders' head rows. */
+  get discounts(): RedemptionRecord[] {
+    return this.rows.filter((row) => row.kind !== 'ORDER');
+  }
   marketLocked = 0;
   constructor(
     private readonly promotions?: MemoryPromotions,
@@ -624,11 +629,50 @@ export class MemoryRedemptions implements RedemptionRepository {
           (row) => row.orderId === record.orderId && row.promotionKey === record.promotionKey,
         )
       ) {
-        throw new Error('unique violation: redemptions');
+        throw new RedemptionTakenError();
       }
-      this.rows.push(record);
     }
+    this.rows.push(...records);
     return Promise.resolve();
+  }
+  markReleased(
+    market: MarketContext,
+    orderId: Id<'Order'>,
+    id: string,
+    reason: ReleaseReason,
+    at: Temporal.Instant,
+  ) {
+    if (this.rows.some((row) => row.orderId === orderId && row.promotionKey === 'order')) {
+      return Promise.resolve();
+    }
+    this.rows.push({
+      id,
+      orderId,
+      promotionKey: 'order',
+      promotionId: null,
+      kind: 'ORDER',
+      customerAccountId: null,
+      codeHash: null,
+      currency: null,
+      amount: 0n,
+      sellerShare: 0n,
+      platformShare: 0n,
+      units: null,
+      budgetMonth: null,
+      status: 'RELEASED',
+      releaseReason: reason,
+      reservedAt: at,
+      confirmedAt: null,
+      releasedAt: at,
+    });
+    return Promise.resolve();
+  }
+  customerFirstOrders(_market: MarketContext, customerAccountId: Id<'Account'>) {
+    return Promise.resolve(
+      this.live().filter(
+        (row) => row.kind === 'FIRST_ORDER' && row.customerAccountId === customerAccountId,
+      ).length,
+    );
   }
   confirm(_market: MarketContext, orderId: Id<'Order'>, at: Temporal.Instant) {
     let moved = 0;

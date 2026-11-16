@@ -344,7 +344,8 @@ describe.each(TEST_MARKETS)('promotions redemptions in market %s (database)', (c
     });
     expect(paid).toEqual({ ok: true, value: { outcome: 'confirmed' } });
     const [row] = await rows(
-      `SELECT id, status FROM promotions.redemptions WHERE market_id = $1 AND order_id = $2`,
+      `SELECT id, status FROM promotions.redemptions
+        WHERE market_id = $1 AND order_id = $2 AND kind <> 'ORDER'`,
       [market.marketId, o.orderId],
     );
     expect(row).toMatchObject({ status: 'CONFIRMED' });
@@ -404,6 +405,205 @@ describe.each(TEST_MARKETS)('promotions redemptions in market %s (database)', (c
         ),
       ),
     ).toBe(CHECK);
+    // Nothing is born CONFIRMED (the transition guard would never have seen it).
+    expect(
+      await state(
+        sql.query(
+          `INSERT INTO promotions.redemptions
+             SELECT gen_random_uuid(), market_id, tenant_id, gen_random_uuid(), promotion_key, promotion_id,
+                    kind, customer_account_id, code_hash, currency, amount_minor, seller_share_minor,
+                    platform_share_minor, units, budget_month, 'CONFIRMED', NULL, reserved_at, reserved_at, NULL
+               FROM promotions.redemptions WHERE id = $1`,
+          [row!.id],
+        ),
+      ),
+    ).toBe(RESTRICT);
+  });
+
+  /** A first-order or other raw row, inserted by the owner. */
+  const rawRow = (fields: {
+    orderId?: string;
+    key: string;
+    kind: string;
+    customer: string;
+    codeHash?: string | null;
+    month?: string | null;
+  }) =>
+    owner.query(
+      `INSERT INTO promotions.redemptions (id, market_id, tenant_id, order_id, promotion_key, promotion_id,
+         kind, customer_account_id, code_hash, currency, amount_minor, seller_share_minor,
+         platform_share_minor, units, budget_month, status, reserved_at)
+       VALUES (gen_random_uuid(), $1, 'default', $2, $3, NULL, $4, $5, $6, $7, 500, 0, 500, NULL, $8,
+         'RESERVED', now())`,
+      [
+        market.marketId,
+        fields.orderId ?? ids.next<'Order'>(),
+        fields.key,
+        fields.kind,
+        fields.customer,
+        fields.codeHash ?? null,
+        currency,
+        fields.month ?? null,
+      ],
+    );
+
+  it('backs the per-customer first-order rule and the codes with constraints', async () => {
+    const customer = ids.next<'Account'>();
+    const firstOrder = { key: 'first-order', kind: 'FIRST_ORDER', customer, month: '2026-10' };
+    expect(await state(rawRow(firstOrder))).toBe('allowed');
+    // A second live first-order discount of the same customer, on another order.
+    expect(await state(rawRow(firstOrder))).toBe(UNIQUE);
+    expect(await state(rawRow({ ...firstOrder, customer: ids.next<'Account'>() }))).toBe('allowed');
+    // A code hash only on a stored promotion's row.
+    expect(
+      await state(
+        rawRow({
+          key: 'free-shipping:city',
+          kind: 'FREE_SHIPPING',
+          customer,
+          codeHash: 'a'.repeat(64),
+        }),
+      ),
+    ).toBe(CHECK);
+    // A head row has no money, and only a cancellation's head row lacks the customer.
+    expect(await state(rawRow({ key: 'order', kind: 'ORDER', customer }))).toBe(CHECK);
+    expect(
+      await state(
+        owner.query(
+          `INSERT INTO promotions.redemptions (id, market_id, tenant_id, order_id, promotion_key, kind,
+             customer_account_id, currency, amount_minor, seller_share_minor, platform_share_minor,
+             status, reserved_at)
+           VALUES (gen_random_uuid(), $1, 'default', $2, 'order', 'ORDER', NULL, NULL, 0, 0, 0,
+             'RESERVED', now())`,
+          [market.marketId, ids.next<'Order'>()],
+        ),
+      ),
+    ).toBe(CHECK);
+    // A RESERVED row released keeps no confirmation instant.
+    const [held] = await rows(
+      `SELECT id FROM promotions.redemptions
+        WHERE market_id = $1 AND customer_account_id = $2 AND status = 'RESERVED' LIMIT 1`,
+      [market.marketId, customer],
+    );
+    expect(
+      await state(
+        owner.query(
+          `UPDATE promotions.redemptions SET status = 'RELEASED', release_reason = 'ORDER_CANCELLED',
+             released_at = now(), confirmed_at = now() WHERE id = $1`,
+          [held!.id],
+        ),
+      ),
+    ).toBe(RESTRICT);
+  });
+
+  it('gives back a paid order cancelled at the same moment as its payment is recorded', async () => {
+    const productId = ids.next<'Product'>();
+    const promotion = await created(
+      make(CreateOwnPromotion).execute(seller, {
+        type: 'SELLER_SALE',
+        name: 'Paid and cancelled',
+        funding: 'SELLER',
+        startsAt: startsAt(),
+        reward: { kind: 'PERCENT', bps: 1000 },
+        productIds: [productId],
+      }),
+    );
+    for (let round = 0; round < 3; round += 1) {
+      const o = await pricedOrder(request(productId, 5000n, 1, { testMode: false }));
+      expect(await o.redeem()).toEqual({ ok: true, value: { outcome: 'redeemed' } });
+      await Promise.all([
+        make(ConfirmRedemptions).execute(system, { delivery: delivery(), orderId: o.orderId }),
+        make(ReleaseCancelledRedemptions).execute(system, {
+          delivery: delivery(),
+          orderId: o.orderId,
+        }),
+      ]);
+      const left = await rows(
+        `SELECT status FROM promotions.redemptions WHERE market_id = $1 AND order_id = $2`,
+        [market.marketId, o.orderId],
+      );
+      expect(left.map((r) => r.status)).toEqual(['RELEASED', 'RELEASED']);
+    }
+    expect(await usage(promotion.id)).toEqual({ uses_count: 0, spent: '0' });
+  });
+
+  it('never leaves a discount held when the cancellation races the redemption', async () => {
+    const productId = ids.next<'Product'>();
+    const promotion = await created(
+      make(CreateOwnPromotion).execute(seller, {
+        type: 'SELLER_SALE',
+        name: 'Raced cancellation',
+        funding: 'SELLER',
+        startsAt: startsAt(),
+        reward: { kind: 'PERCENT', bps: 1000 },
+        productIds: [productId],
+      }),
+    );
+    for (let round = 0; round < 3; round += 1) {
+      const o = await pricedOrder(request(productId, 5000n, 1, { testMode: false }));
+      const [redeemed] = await Promise.all([
+        o.redeem(),
+        make(ReleaseCancelledRedemptions).execute(system, {
+          delivery: delivery(),
+          orderId: o.orderId,
+        }),
+      ]);
+      // Either order of arrival ends with nothing held.
+      if (!redeemed.ok) {
+        expect(redeemed.error).toEqual({ code: 'promotions.redemption-released' });
+      }
+      const held = await rows(
+        `SELECT count(*)::int AS n FROM promotions.redemptions
+          WHERE market_id = $1 AND order_id = $2 AND status <> 'RELEASED'`,
+        [market.marketId, o.orderId],
+      );
+      expect(held[0]).toEqual({ n: 0 });
+      // A later redemption of the cancelled order is refused.
+      expect(await o.redeem()).toEqual({
+        ok: false,
+        error: { code: 'promotions.redemption-released' },
+      });
+    }
+    expect(await usage(promotion.id)).toEqual({ uses_count: 0, spent: '0' });
+  });
+
+  it('counts a promotion that was stored without its usage row', async () => {
+    const productId = ids.next<'Product'>();
+    const source = await created(
+      make(CreateOwnPromotion).execute(seller, {
+        type: 'SELLER_SALE',
+        name: 'Source',
+        funding: 'SELLER',
+        startsAt: startsAt(),
+        reward: { kind: 'PERCENT', bps: 1000 },
+        productIds: [ids.next<'Product'>()],
+      }),
+    );
+    // A copy written outside the repository: its promotion and target rows, no usage row.
+    const copy = ids.next<'Promotion'>();
+    await owner.query(
+      `INSERT INTO promotions.promotions
+         SELECT (jsonb_populate_record(p, jsonb_build_object('id', $2::uuid, 'name', 'Copy'))).*
+           FROM promotions.promotions p WHERE market_id = $1 AND id = $3`,
+      [market.marketId, copy, source.id],
+    );
+    await owner.query(
+      `INSERT INTO promotions.promotion_targets
+         SELECT (jsonb_populate_record(t, jsonb_build_object('promotion_id', $2::uuid, 'value', $4::text))).*
+           FROM promotions.promotion_targets t WHERE market_id = $1 AND promotion_id = $3`,
+      [market.marketId, copy, source.id, productId],
+    );
+    expect(await usage(copy)).toBeUndefined();
+    const orders = await Promise.all(
+      [0, 1].map(() => pricedOrder(request(productId, 5000n, 1, { testMode: false }))),
+    );
+    for (const o of orders) expect(o.quoted.totals.goodsDiscount).toBe(500n);
+    const results = await Promise.all(orders.map((o) => o.redeem()));
+    expect(results).toEqual([
+      { ok: true, value: { outcome: 'redeemed' } },
+      { ok: true, value: { outcome: 'redeemed' } },
+    ]);
+    expect(await usage(copy)).toEqual({ uses_count: 2, spent: '1000' });
   });
 
   it('keeps a single-use code to one order at a time in the database too', async () => {

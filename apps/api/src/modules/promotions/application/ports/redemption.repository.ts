@@ -19,12 +19,35 @@ export interface UsageDelta {
 export interface RedemptionRepository {
   /** Every redemption of one order (any status). */
   forOrder(market: MarketContext, orderId: Id<'Order'>): Promise<readonly RedemptionRecord[]>;
+  /**
+   * Inserts the rows of one order. Throws {@link RedemptionTakenError} when a row of the same order
+   * and key exists (a concurrent redemption, or the head row a cancellation wrote).
+   */
   insertMany(market: MarketContext, records: readonly RedemptionRecord[]): Promise<void>;
-  /** RESERVED rows of the order become CONFIRMED; answers how many moved. */
+  /**
+   * Writes the order's head row RELEASED when the order has none (a cancellation before the
+   * redemption). Waits on, and then yields to, a redemption of the order still in progress.
+   */
+  markReleased(
+    market: MarketContext,
+    orderId: Id<'Order'>,
+    id: string,
+    reason: ReleaseReason,
+    at: Temporal.Instant,
+  ): Promise<void>;
+  /** Live (not RELEASED) first-order redemptions of one customer, any order. */
+  customerFirstOrders(market: MarketContext, customerAccountId: Id<'Account'>): Promise<number>;
+  /**
+   * RESERVED rows of the order become CONFIRMED, one row at a time in key order (the order
+   * `release` takes them in, so a payment and a cancellation never wait in a cycle); answers how
+   * many moved.
+   */
   confirm(market: MarketContext, orderId: Id<'Order'>, at: Temporal.Instant): Promise<number>;
   /**
-   * The order's rows that hold (RESERVED, and CONFIRMED when `includeConfirmed`) become RELEASED;
-   * answers the rows as they were before the release, so the caller gives back what they took.
+   * The order's rows that hold (RESERVED, and CONFIRMED when `includeConfirmed`) become RELEASED,
+   * in key order; answers the rows that this call moved, so the caller gives back what they took.
+   * A row confirmed meanwhile is still released (the status is checked again under its lock); a
+   * row another call released is not answered.
    */
   release(
     market: MarketContext,
@@ -81,12 +104,20 @@ export interface RedemptionRepository {
   ): Promise<boolean>;
   /** Gives a code back, only if this order holds it. */
   unclaimCode(market: MarketContext, codeHash: string, orderId: Id<'Order'>): Promise<void>;
-  /** RESERVED rows older than `before`, oldest first (the order ids, distinct). */
+  /** Orders with RESERVED rows older than `before`, oldest first. */
   staleReservations(
     market: MarketContext,
     before: Temporal.Instant,
     limit: number,
   ): Promise<readonly Id<'Order'>[]>;
+}
+
+/** A row of the same order and key exists: another redemption or a cancellation came first. */
+export class RedemptionTakenError extends Error {
+  constructor() {
+    super('promotions.redemptions: order already has rows');
+    this.name = 'RedemptionTakenError';
+  }
 }
 
 export const REDEMPTION_REPOSITORY = Symbol('PROMOTIONS_REDEMPTION_REPOSITORY');

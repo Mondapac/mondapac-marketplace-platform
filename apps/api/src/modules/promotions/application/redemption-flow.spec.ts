@@ -32,7 +32,8 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { QuoteRequest } from '../contracts/promotions.facade';
-import { budgetMonthOf, summaryOf } from '../domain/redemption';
+import { budgetMonthOf, summaryOf, type DiscountSummary } from '../domain/redemption';
+import { LockContendedError } from './ports/promotion.repository';
 import { ConfigPromotionsPolicy } from '../infrastructure/config-promotions-policy';
 import { RedemptionFlashSales } from '../infrastructure/redemption-flash-sales';
 import { PromotionsFacadeImplementation } from '../presentation/promotions.facade';
@@ -248,7 +249,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
     expect(quoted.totals.goodsDiscount).toBe(1000n);
 
     expect(await redeem()).toEqual({ ok: true, value: { outcome: 'redeemed' } });
-    expect(redemptions.rows).toEqual([
+    expect(redemptions.discounts).toEqual([
       expect.objectContaining({
         orderId: order(1),
         promotionKey: own.id,
@@ -272,14 +273,14 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
     });
 
     expect(await redeem()).toEqual({ ok: true, value: { outcome: 'already-redeemed' } });
-    expect(redemptions.rows).toHaveLength(1);
+    expect(redemptions.discounts).toHaveLength(1);
     expect(promotions.usage.get(own.id)?.usesCount).toBe(1);
   });
 
   it('writes nothing for an order without a discount', async () => {
     const { redeem } = await priced(order(2), request([line(1, 5000n, 1)]));
     expect(await redeem()).toEqual({ ok: true, value: { outcome: 'nothing' } });
-    expect(redemptions.rows).toHaveLength(0);
+    expect(redemptions.discounts).toHaveLength(0);
   });
 
   it('answers the fresh quote and writes nothing when the discounts are not what the order holds', async () => {
@@ -299,7 +300,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
     if (!result.ok && result.error.code === 'promotions.quote-changed') {
       expect(result.error.quote.totals.goodsDiscount).toBe(500n);
     }
-    expect(redemptions.rows).toHaveLength(0);
+    expect(redemptions.discounts).toHaveLength(0);
   });
 
   it('refuses another customer than the one the request is for', async () => {
@@ -313,7 +314,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
       expected: summaryOf(quoted),
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
-    expect(redemptions.rows).toHaveLength(0);
+    expect(redemptions.discounts).toHaveLength(0);
   });
 
   it('is refused to anyone but the system actor', async () => {
@@ -355,7 +356,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
 
       expect(await first.redeem()).toEqual({ ok: true, value: { outcome: 'redeemed' } });
       const hash = codeCrypto.hash(only!);
-      expect(redemptions.rows[0]).toMatchObject({
+      expect(redemptions.discounts[0]).toMatchObject({
         codeHash: hash,
         amount: 500n,
         platformShare: 500n,
@@ -368,7 +369,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
         expect(lost.error.quote.code).toBe('NOT_APPLIED');
         expect(lost.error.quote.totals.goodsDiscount).toBe(0n);
       }
-      expect(redemptions.rows).toHaveLength(1);
+      expect(redemptions.discounts).toHaveLength(1);
 
       // The first order is cancelled: the code is free again and the counters are back to zero.
       expect(await cancel(order(10))).toEqual({ ok: true, value: { outcome: 'released' } });
@@ -425,14 +426,14 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
       const three = await priced(order(30), request([line(1, 1000n, 3)], { testMode: false }));
       expect(three.quoted.totals.goodsDiscount).toBe(900n);
       expect((await three.redeem()).ok).toBe(true);
-      expect(redemptions.rows[0]).toMatchObject({ promotionId: flash.id, units: 3 });
+      expect(redemptions.discounts[0]).toMatchObject({ promotionId: flash.id, units: 3 });
 
       // Two units are left: a line of three gets the sale on two of them.
       const more = await quote(request([line(1, 1000n, 3)], { testMode: false }));
       expect(more.totals.goodsDiscount).toBe(600n);
       const two = await priced(order(31), request([line(1, 1000n, 3)], { testMode: false }));
       expect((await two.redeem()).ok).toBe(true);
-      expect(redemptions.rows[1]).toMatchObject({ units: 2 });
+      expect(redemptions.discounts[1]).toMatchObject({ units: 2 });
       expect(
         (await quote(request([line(1, 1000n, 1)], { testMode: false }))).totals.goodsDiscount,
       ).toBe(0n);
@@ -457,7 +458,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
       const first = await priced(order(40), cart(BUYER));
       expect(first.quoted.totals.goodsDiscount).toBe(800n);
       expect((await first.redeem()).ok).toBe(true);
-      expect(redemptions.rows[0]).toMatchObject({
+      expect(redemptions.discounts[0]).toMatchObject({
         kind: 'FIRST_ORDER',
         promotionKey: 'first-order',
         promotionId: null,
@@ -468,6 +469,31 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
       expect((await quote(cart(BUYER_2))).totals.goodsDiscount).toBe(200n);
       expect((await cancel(order(40))).ok).toBe(true);
       expect((await quote(cart(BUYER_2))).totals.goodsDiscount).toBe(800n);
+    });
+
+    it('gives the first-order discount once per customer, even to two orders placed together', async () => {
+      const saved = await make(SetFirstOrderSettings).execute(admin(), {
+        enabled: true,
+        kind: 'FIXED',
+        amountMinor: '500',
+        minSpendMinor: '1000',
+        monthlyBudgetMinor: '100000',
+      });
+      expect(saved.ok).toBe(true);
+      // Both orders were priced as the first (no paid order yet), before either was redeemed.
+      const cart = request([line(1, 5000n, 1)], { isFirstOrder: true });
+      const first = await priced(order(41), cart);
+      const second = await priced(order(42), cart);
+      expect(second.quoted.totals.goodsDiscount).toBe(500n);
+      expect((await first.redeem()).ok).toBe(true);
+      const late = await second.redeem();
+      expect(late).toMatchObject({ ok: false, error: { code: 'promotions.quote-changed' } });
+      if (!late.ok && late.error.code === 'promotions.quote-changed') {
+        expect(late.error.quote.totals.goodsDiscount).toBe(0n);
+      }
+      // Once the first order is cancelled, the discount is the customer's again.
+      expect((await cancel(order(41))).ok).toBe(true);
+      expect((await (await priced(order(43), cart)).redeem()).ok).toBe(true);
     });
   });
 
@@ -483,7 +509,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
         ok: true,
         value: { outcome: 'already-handled' },
       });
-      expect(redemptions.rows[0]).toMatchObject({ status: 'CONFIRMED', confirmedAt: T0 });
+      expect(redemptions.discounts[0]).toMatchObject({ status: 'CONFIRMED', confirmedAt: T0 });
 
       const cancelled = delivery();
       expect(await cancel(order(50), cancelled)).toEqual({
@@ -496,7 +522,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
       });
       // A new delivery of the same cancellation finds nothing left to give back.
       expect(await cancel(order(50))).toEqual({ ok: true, value: { outcome: 'nothing' } });
-      expect(redemptions.rows[0]).toMatchObject({
+      expect(redemptions.discounts[0]).toMatchObject({
         status: 'RELEASED',
         releaseReason: 'ORDER_CANCELLED',
       });
@@ -508,6 +534,75 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
         ok: false,
         error: { code: 'promotions.redemption-released' },
       });
+    });
+
+    it('refuses to redeem an order whose cancellation came first, and never confirms it', async () => {
+      await created(make(CreateOwnPromotion).execute(seller(), sale()));
+      const { redeem } = await priced(order(51), request([line(1, 5000n, 1)], { testMode: false }));
+      expect(await cancel(order(51))).toEqual({ ok: true, value: { outcome: 'nothing' } });
+      expect(await redeem()).toEqual({
+        ok: false,
+        error: { code: 'promotions.redemption-released' },
+      });
+      expect(redemptions.discounts).toHaveLength(0);
+      expect(await pay(order(51))).toEqual({ ok: true, value: { outcome: 'nothing' } });
+    });
+
+    it('answers a repeat with other discounts for the same order as a mismatch', async () => {
+      await created(make(CreateOwnPromotion).execute(seller(), sale()));
+      const cart = request([line(1, 5000n, 2)], { testMode: false });
+      const { quoted, redeem } = await priced(order(52), cart);
+      expect((await redeem()).ok).toBe(true);
+      const summary = summaryOf(quoted);
+      const other = await facade().redeem(system, {
+        orderId: order(52),
+        customerAccountId: BUYER,
+        request: cart,
+        expected: {
+          ...summary,
+          applied: summary.applied.map((a) => ({ ...a, amount: a.amount + 1n })),
+        },
+      });
+      expect(other).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'expected', code: 'mismatch' }] },
+      });
+    });
+
+    it('refuses an order with no expected summary, and answers nothing only when it took nothing', async () => {
+      const cart = request([line(1, 5000n, 1)], { testMode: false });
+      const missing = await facade().redeem(system, {
+        orderId: order(53),
+        customerAccountId: BUYER,
+        request: cart,
+        expected: undefined as unknown as DiscountSummary,
+      });
+      expect(missing).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      // Line discounts with no promotion behind them are not "nothing": they are compared.
+      const lines = await facade().redeem(system, {
+        orderId: order(53),
+        customerAccountId: BUYER,
+        request: cart,
+        expected: {
+          applied: [],
+          lines: [{ lineId: 'l1', discount: 100n, sellerShare: 100n, platformShare: 0n }],
+          shipping: [],
+        },
+      });
+      expect(lines).toMatchObject({ ok: false, error: { code: 'promotions.quote-changed' } });
+      expect(redemptions.discounts).toHaveLength(0);
+    });
+
+    it('answers conflict.retry and writes nothing when a lock cannot be taken', async () => {
+      await created(make(CreateOwnPromotion).execute(seller(), sale()));
+      const { redeem } = await priced(order(54), request([line(1, 5000n, 1)], { testMode: false }));
+      const lockUsage = jest
+        .spyOn(redemptions, 'lockUsage')
+        .mockRejectedValueOnce(new LockContendedError('promotions.usage'));
+      expect(await redeem()).toEqual({ ok: false, error: { code: 'conflict.retry' } });
+      expect(redemptions.rows).toHaveLength(0);
+      lockUsage.mockRestore();
+      expect(await redeem()).toEqual({ ok: true, value: { outcome: 'redeemed' } });
     });
 
     it('confirms and releases whatever the switch says now', async () => {
@@ -528,7 +623,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
       if (!result.ok && result.error.code === 'promotions.quote-changed') {
         expect(result.error.quote.enabled).toBe(false);
       }
-      expect(redemptions.rows).toHaveLength(0);
+      expect(redemptions.discounts).toHaveLength(0);
     });
   });
 });

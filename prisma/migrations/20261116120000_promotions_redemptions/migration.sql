@@ -11,9 +11,9 @@ CREATE TABLE "promotions"."redemptions" (
     "promotion_key" TEXT NOT NULL,
     "promotion_id" UUID,
     "kind" TEXT NOT NULL,
-    "customer_account_id" UUID NOT NULL,
+    "customer_account_id" UUID,
     "code_hash" TEXT,
-    "currency" VARCHAR(3) NOT NULL,
+    "currency" VARCHAR(3),
     "amount_minor" BIGINT NOT NULL,
     "seller_share_minor" BIGINT NOT NULL,
     "platform_share_minor" BIGINT NOT NULL,
@@ -42,20 +42,29 @@ ALTER TABLE "promotions"."redemptions"
   ADD CONSTRAINT "redemptions_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
   ADD CONSTRAINT "redemptions_tenant_id_check" CHECK ("tenant_id" ~ '^[a-z][a-z0-9-]{1,31}$'),
   ADD CONSTRAINT "redemptions_currency_check" CHECK ("currency" ~ '^[A-Z]{3}$'),
-  -- A stored promotion (its uuid as the key), the Market's first-order discount, or the free delivery
-  -- of one zone (the settings-based offers have no promotion row).
+  -- A stored promotion (its uuid as the key), the Market's first-order discount, the free delivery
+  -- of one zone (the settings-based offers have no promotion row), or the order's head row: written
+  -- with every redemption, or RELEASED alone when the order is cancelled before it was redeemed, so
+  -- a redemption and a cancellation of one order always meet on the same unique key.
   ADD CONSTRAINT "redemptions_kind_check" CHECK (
     CASE "kind"
       WHEN 'PROMOTION' THEN "promotion_id" IS NOT NULL AND "promotion_key" = "promotion_id"::text
       WHEN 'FIRST_ORDER' THEN "promotion_id" IS NULL AND "promotion_key" = 'first-order'
       WHEN 'FREE_SHIPPING' THEN "promotion_id" IS NULL AND "promotion_key" ~ '^free-shipping:[A-Za-z0-9_-]{1,64}$'
+      WHEN 'ORDER' THEN "promotion_id" IS NULL AND "promotion_key" = 'order'
       ELSE false
     END),
+  -- Only a head row written by a cancellation may lack the customer and the currency.
+  ADD CONSTRAINT "redemptions_customer_check" CHECK (
+    ("customer_account_id" IS NOT NULL AND "currency" IS NOT NULL)
+    OR ("kind" = 'ORDER' AND "status" = 'RELEASED')),
   ADD CONSTRAINT "redemptions_amounts_check" CHECK (
-    "amount_minor" >= 1 AND "seller_share_minor" >= 0 AND "platform_share_minor" >= 0
-    AND "seller_share_minor" + "platform_share_minor" = "amount_minor"),
-  ADD CONSTRAINT "redemptions_units_check" CHECK ("units" IS NULL OR "units" >= 1),
-  ADD CONSTRAINT "redemptions_code_hash_check" CHECK ("code_hash" IS NULL OR "code_hash" ~ '^[0-9a-f]{64}$'),
+    "seller_share_minor" >= 0 AND "platform_share_minor" >= 0
+    AND "seller_share_minor" + "platform_share_minor" = "amount_minor"
+    AND (CASE WHEN "kind" = 'ORDER' THEN "amount_minor" = 0 ELSE "amount_minor" >= 1 END)),
+  ADD CONSTRAINT "redemptions_units_check" CHECK ("units" IS NULL OR ("units" >= 1 AND "kind" = 'PROMOTION')),
+  ADD CONSTRAINT "redemptions_code_hash_check" CHECK (
+    "code_hash" IS NULL OR ("code_hash" ~ '^[0-9a-f]{64}$' AND "kind" = 'PROMOTION')),
   -- The month (in the Market's zone) whose first-order budget the row spends; first-order rows only.
   ADD CONSTRAINT "redemptions_budget_month_check" CHECK (
     ("kind" = 'FIRST_ORDER') = ("budget_month" IS NOT NULL)
@@ -69,11 +78,15 @@ ALTER TABLE "promotions"."redemptions"
     AND ("status" <> 'RESERVED' OR "confirmed_at" IS NULL)
     AND ("status" <> 'CONFIRMED' OR "confirmed_at" IS NOT NULL)
     AND ("confirmed_at" IS NULL OR "confirmed_at" >= "reserved_at")
-    AND ("released_at" IS NULL OR "released_at" >= "reserved_at"));
+    AND ("released_at" IS NULL OR "released_at" >= "reserved_at")
+    AND ("released_at" IS NULL OR "confirmed_at" IS NULL OR "released_at" >= "confirmed_at"));
 
+-- A code is redeemed by exactly one order, named with the instant. Added NOT VALID and validated
+-- apart, so the scan of existing codes holds only SHARE UPDATE EXCLUSIVE (no code was used before
+-- T2: nothing wrote `used_at`).
 ALTER TABLE "promotions"."promotion_batch_codes"
-  -- A code is redeemed by exactly one order, named with the instant.
-  ADD CONSTRAINT "promotion_batch_codes_redeemed_check" CHECK (("used_at" IS NULL) = ("redeemed_order_id" IS NULL));
+  ADD CONSTRAINT "promotion_batch_codes_redeemed_check" CHECK (("used_at" IS NULL) = ("redeemed_order_id" IS NULL)) NOT VALID;
+ALTER TABLE "promotions"."promotion_batch_codes" VALIDATE CONSTRAINT "promotion_batch_codes_redeemed_check";
 
 -- The counts the quote and the redemption read, each over the rows that hold (not RELEASED).
 -- Uses of one promotion by one customer (max uses per customer).
@@ -88,8 +101,14 @@ CREATE INDEX "redemptions_first_order_month_idx" ON "promotions"."redemptions" (
 -- A customer's redemptions, newest first (the admin customer page).
 CREATE INDEX "redemptions_customer_newest_idx" ON "promotions"."redemptions" ("market_id", "customer_account_id", "reserved_at" DESC, "id" DESC);
 -- Reservations left open (the sweep).
-CREATE INDEX "redemptions_reserved_idx" ON "promotions"."redemptions" ("market_id", "reserved_at")
+CREATE INDEX "redemptions_reserved_idx" ON "promotions"."redemptions" ("market_id", "reserved_at", "id")
   WHERE "status" = 'RESERVED';
+-- Backstops of the checks the redemption makes under its locks: a customer takes the first-order
+-- discount once, and a single-use code holds one live redemption.
+CREATE UNIQUE INDEX "redemptions_first_order_once_idx" ON "promotions"."redemptions" ("market_id", "customer_account_id")
+  WHERE "kind" = 'FIRST_ORDER' AND "status" <> 'RELEASED';
+CREATE UNIQUE INDEX "redemptions_code_live_idx" ON "promotions"."redemptions" ("market_id", "code_hash")
+  WHERE "code_hash" IS NOT NULL AND "status" <> 'RELEASED';
 
 -- A redemption is never deleted; it only moves RESERVED -> CONFIRMED, RESERVED -> RELEASED or
 -- CONFIRMED -> RELEASED, and nothing else of the row changes, for every role (the owner too).
@@ -119,7 +138,8 @@ BEGIN
      AND NEW."units" IS NOT DISTINCT FROM OLD."units"
      AND NEW."budget_month" IS NOT DISTINCT FROM OLD."budget_month"
      AND NEW."reserved_at" = OLD."reserved_at"
-     AND (OLD."confirmed_at" IS NULL OR NEW."confirmed_at" = OLD."confirmed_at") THEN
+     AND (OLD."confirmed_at" IS NULL OR NEW."confirmed_at" = OLD."confirmed_at")
+     AND (OLD."status" <> 'RESERVED' OR NEW."status" <> 'RELEASED' OR NEW."confirmed_at" IS NULL) THEN
     RETURN NEW;
   END IF;
   RAISE EXCEPTION 'promotions.redemptions: % -> % is not allowed', OLD."status", NEW."status"
@@ -128,6 +148,22 @@ END; $$;
 
 CREATE TRIGGER "redemptions_transition" BEFORE UPDATE ON "promotions"."redemptions"
   FOR EACH ROW EXECUTE FUNCTION "promotions"."guard_redemption_transition"();
+
+-- A redemption starts RESERVED; the only row born RELEASED is the head row of an order cancelled
+-- before it was redeemed. Nothing is inserted CONFIRMED.
+CREATE FUNCTION "promotions"."guard_redemption_insert"() RETURNS trigger LANGUAGE plpgsql
+  SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF (NEW."status" = 'RESERVED' AND NEW."confirmed_at" IS NULL AND NEW."released_at" IS NULL)
+     OR (NEW."status" = 'RELEASED' AND NEW."kind" = 'ORDER' AND NEW."confirmed_at" IS NULL) THEN
+    RETURN NEW;
+  END IF;
+  RAISE EXCEPTION 'promotions.redemptions: a row is inserted RESERVED'
+    USING ERRCODE = 'restrict_violation';
+END; $$;
+
+CREATE TRIGGER "redemptions_insert" BEFORE INSERT ON "promotions"."redemptions"
+  FOR EACH ROW EXECUTE FUNCTION "promotions"."guard_redemption_insert"();
 
 -- A single-use code is claimed by one order (unused -> used) or given back by that order
 -- (used -> unused); its hash, promotion and batch never change.

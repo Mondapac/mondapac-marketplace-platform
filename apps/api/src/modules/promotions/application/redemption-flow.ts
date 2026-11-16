@@ -9,6 +9,7 @@ import {
   budgetMonthOf,
   kindOfKey,
   limitedUnits,
+  ORDER_KEY,
   sameDiscounts,
   summaryOf,
   type DiscountSummary,
@@ -17,8 +18,9 @@ import {
 } from '../domain/redemption';
 import type { PromotionsFailure } from './failures';
 import { activeSettings } from './market-switch';
+import { TransactionConflictError } from '../../../platform/unit-of-work/errors';
 import { LockContendedError } from './ports/promotion.repository';
-import type { UsageDelta } from './ports/redemption.repository';
+import { RedemptionTakenError, type UsageDelta } from './ports/redemption.repository';
 import type { PromotionsDependencies } from './promotions-dependencies';
 import {
   bareQuote,
@@ -98,7 +100,21 @@ export async function redeem(
       fields: [{ path: 'request.customerAccountId', code: 'mismatch' }],
     });
   }
-  if (input.expected.applied.length === 0) return ok({ outcome: 'nothing' });
+  const expected = input.expected as DiscountSummary | undefined;
+  if (
+    !Array.isArray(expected?.applied) ||
+    !Array.isArray(expected.lines) ||
+    !Array.isArray(expected.shipping)
+  ) {
+    return err({ code: 'validation.failed', fields: [{ path: 'expected', code: 'format' }] });
+  }
+  if (
+    expected.applied.length === 0 &&
+    expected.lines.length === 0 &&
+    expected.shipping.length === 0
+  ) {
+    return ok({ outcome: 'nothing' });
+  }
   const shape = checkQuoteShape(deps, context, request);
   if (shape.issues.length > 0) return err({ code: 'validation.failed', fields: shape.issues });
   const switched = await activeSettings(deps, context);
@@ -139,23 +155,27 @@ export async function redeem(
   try {
     return await deps.unitOfWork.run<RedeemOutput, RedeemFailure>(context.market, async () => {
       const existing = await deps.redemptions.forOrder(context.market, orderId.value);
-      if (existing.length > 0) {
-        return existing.some((row) => row.status === 'RELEASED')
-          ? err({ code: 'promotions.redemption-released' } as const)
-          : ok({ outcome: 'already-redeemed' as const });
-      }
+      if (existing.length > 0) return repeated(existing, input.expected);
       // The locks first, then every count read again under them: another order of the same
       // promotion has either committed (and is counted) or waits behind this unit.
       await deps.redemptions.lockUsage(context.market, lockIds, now);
       if (takesFirstOrder && !(await deps.redemptions.lockMarket(context.market))) {
         return err({ code: 'promotions.unavailable' } as const);
       }
-      const loaded = await loadCart(deps, context, request, settings, now, code, true);
+      // The first-order discount is once per customer: a live one on another order (two
+      // checkouts at once, or an unpaid earlier order) prices this order as not the first.
+      const priceAs =
+        takesFirstOrder &&
+        request.isFirstOrder &&
+        (await deps.redemptions.customerFirstOrders(context.market, accountId.value)) > 0
+          ? { ...request, isFirstOrder: false }
+          : request;
+      const loaded = await loadCart(deps, context, priceAs, settings, now, code, true);
       const flashIds = loaded.records
         .filter((record) => record.type === 'FLASH_SALE')
         .map((record) => record.id);
       const sold = await deps.redemptions.unitsSold(context.market, flashIds);
-      const priced = priceCart(request, settings, loaded, sold, customer, code);
+      const priced = priceCart(priceAs, settings, loaded, sold, customer, code);
       if (!priced.ok) return priced;
       if (!sameDiscounts(summaryOf(priced.value), input.expected)) {
         return err({ code: 'promotions.quote-changed' as const, quote: priced.value });
@@ -163,19 +183,53 @@ export async function redeem(
       return write(deps, context, {
         orderId: orderId.value,
         accountId: accountId.value,
-        request,
+        request: priceAs,
         loaded,
         sold,
         priced: priced.value,
         code,
-        recalc: (taken: LoadedCart) => priceCart(request, settings, taken, sold, customer, code),
+        recalc: (taken: LoadedCart) => priceCart(priceAs, settings, taken, sold, customer, code),
         budgetMonth: budgetMonthOf(now, settings.timeZone),
       });
     });
   } catch (error) {
-    if (error instanceof LockContendedError) return err({ code: 'conflict.retry' });
-    throw error;
+    if (error instanceof LockContendedError || error instanceof TransactionConflictError) {
+      return err({ code: 'conflict.retry' });
+    }
+    if (!(error instanceof RedemptionTakenError)) throw error;
+    // Another redemption of the order, or its cancellation, wrote first: answer as a repeat.
+    const after = await deps.unitOfWork.run(
+      context.market,
+      async () => ok(await deps.redemptions.forOrder(context.market, orderId.value)),
+      { readOnly: true },
+    );
+    if (!after.ok || after.value.length === 0) return err({ code: 'conflict.retry' });
+    return repeated(after.value, input.expected);
   }
+}
+
+/**
+ * The answer to a redemption of an order that has rows: released (it was cancelled), or the same
+ * discounts again. Different discounts under the same order id are refused, never hidden.
+ */
+function repeated(
+  rows: readonly RedemptionRecord[],
+  expected: DiscountSummary,
+): Result<RedeemOutput, RedeemFailure> {
+  if (rows.some((row) => row.status === 'RELEASED')) {
+    return err({ code: 'promotions.redemption-released' });
+  }
+  const stored = rows
+    .filter((row) => row.kind !== 'ORDER')
+    .map((row) => `${row.promotionKey}|${row.amount}|${row.sellerShare}|${row.platformShare}`)
+    .sort();
+  const asked = expected.applied
+    .map((a) => `${a.promotionId}|${a.amount}|${a.sellerShare}|${a.platformShare}`)
+    .sort();
+  if (stored.join(',') !== asked.join(',')) {
+    return err({ code: 'validation.failed', fields: [{ path: 'expected', code: 'mismatch' }] });
+  }
+  return ok({ outcome: 'already-redeemed' });
 }
 
 async function write(
@@ -257,6 +311,27 @@ async function write(
       });
     }
   }
+  // The head row: the key a cancellation of the order meets (see ORDER_KEY).
+  rows.push({
+    id: deps.ids.next<'PromotionRedemption'>(),
+    orderId: args.orderId,
+    promotionKey: ORDER_KEY,
+    promotionId: null,
+    kind: 'ORDER',
+    customerAccountId: args.accountId,
+    codeHash: null,
+    currency: args.priced.currency,
+    amount: 0n,
+    sellerShare: 0n,
+    platformShare: 0n,
+    units: null,
+    budgetMonth: null,
+    status: 'RESERVED',
+    releaseReason: null,
+    reservedAt: now,
+    confirmedAt: null,
+    releasedAt: null,
+  });
   await deps.redemptions.insertMany(context.market, rows);
   await deps.redemptions.addUsage(context.market, deltas, now);
   return ok({ outcome: 'redeemed' });
@@ -315,6 +390,15 @@ export async function releaseRedemptions(
   if (orderId === null) return err({ code: 'validation.failed' });
   const now = deps.clock.now();
   const marked = await deps.unitOfWork.runOnce(context.market, input.delivery, async () => {
+    // The head row first: a cancellation that comes before the redemption leaves it RELEASED, so
+    // the redemption is refused; one that comes after (or waits on it) finds the rows below.
+    await deps.redemptions.markReleased(
+      context.market,
+      orderId,
+      deps.ids.next<'PromotionRedemption'>(),
+      reason,
+      now,
+    );
     const released = await deps.redemptions.release(context.market, orderId, reason, now, true);
     const deltas: UsageDelta[] = released.flatMap((row) =>
       row.promotionId === null
@@ -335,7 +419,7 @@ export async function releaseRedemptions(
         await deps.redemptions.unclaimCode(context.market, row.codeHash, orderId);
       }
     }
-    return ok(released.length);
+    return ok(released.filter((row) => row.kind !== 'ORDER').length);
   });
   if (!marked.ok) return err({ code: 'promotions.try-again' });
   if (!marked.value.handled) return ok({ outcome: 'already-handled' });

@@ -10,6 +10,7 @@ REVOKE SELECT, INSERT, UPDATE ("status", "release_reason", "confirmed_at", "rele
 DROP TRIGGER "promotion_batch_codes_redemption" ON "promotions"."promotion_batch_codes";
 DROP TABLE "promotions"."redemptions";
 DROP FUNCTION "promotions"."guard_redemption_transition"();
+DROP FUNCTION "promotions"."guard_redemption_insert"();
 DROP FUNCTION "promotions"."guard_batch_code_redemption"();
 
 ALTER TABLE "promotions"."promotion_batch_codes"

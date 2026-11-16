@@ -418,6 +418,8 @@ model PromotionsInbox {
 /// CONFIRMED when it is paid, RELEASED when it is cancelled (or refunded, per the owner's rule).
 /// The settings-based offers have no promotion row: `promotionKey` is the promotion's id,
 /// `first-order` or `free-shipping:<zone>` (`kind` PROMOTION, FIRST_ORDER, FREE_SHIPPING; CHECK).
+/// Each redeemed order also has a head row (`kind` ORDER, key `order`, zero amounts); an order
+/// cancelled before its redemption gets that row RELEASED, so a later redemption is refused.
 /// Never deleted; only the status moves (trigger). Partial indexes in the migration.
 model PromotionsRedemption {
   id                 String               @id @db.Uuid
@@ -427,10 +429,11 @@ model PromotionsRedemption {
   promotionKey       String               @map("promotion_key")
   promotionId        String?              @map("promotion_id") @db.Uuid
   kind               String
-  customerAccountId  String               @map("customer_account_id") @db.Uuid
+  /// Null only on the head row of an order cancelled before it was redeemed (CHECK).
+  customerAccountId  String?              @map("customer_account_id") @db.Uuid
   /// The hash of the single-use code the order redeemed (BATCH_CODE only).
   codeHash           String?              @map("code_hash")
-  currency           String               @db.VarChar(3)
+  currency           String?              @db.VarChar(3)
   amountMinor        BigInt               @map("amount_minor")
   sellerShareMinor   BigInt               @map("seller_share_minor")
   platformShareMinor BigInt               @map("platform_share_minor")

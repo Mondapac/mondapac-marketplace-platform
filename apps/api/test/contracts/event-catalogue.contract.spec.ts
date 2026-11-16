@@ -203,7 +203,10 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
       'promotions.cashback-on-delivery',
+      // Promotions T2: an order's redemption is confirmed when it is paid, released when cancelled.
+      'promotions.confirm-redemptions',
       'promotions.qualify-referral-on-delivery',
+      'promotions.release-cancelled-redemptions',
       'search.index-approved-seller',
       'search.index-availability-changed',
       'search.index-category-archived',
@@ -253,6 +256,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.seller-new-order-mail',
       'notifications.seller-order-notice',
       'ordering.book-carrier-deliveries',
+      'promotions.confirm-redemptions',
     ]);
     expect(subscriptions.subscribersOf('ordering.seller-order-ready.v1')).toEqual([
       'ordering.book-ready-carrier-delivery',

@@ -659,8 +659,11 @@
   },
   { "name": "promotions.cashback-on-delivery", "rule": "system" },
   { "name": "promotions.check-was-price", "rule": "anonymous" },
+  { "name": "promotions.confirm-redemptions", "rule": "system" },
   { "name": "promotions.qualify-referral-on-delivery", "rule": "system" },
   { "name": "promotions.quote-discounts", "rule": "system" },
+  { "name": "promotions.redeem-discounts", "rule": "system" },
+  { "name": "promotions.release-cancelled-redemptions", "rule": "system" },
   {
     "name": "promotions.view-my-referral",
     "rule": "own-resources",

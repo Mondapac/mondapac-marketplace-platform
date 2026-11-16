@@ -1,8 +1,13 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { RedemptionRepository, UsageDelta } from '../application/ports/redemption.repository';
+import {
+  RedemptionTakenError,
+  type RedemptionRepository,
+  type UsageDelta,
+} from '../application/ports/redemption.repository';
 import { LockContendedError } from '../application/ports/promotion.repository';
+import { ORDER_KEY } from '../domain/redemption';
 import type {
   RedemptionKind,
   RedemptionRecord,
@@ -20,9 +25,9 @@ interface Row {
   readonly promotionKey: string;
   readonly promotionId: string | null;
   readonly kind: string;
-  readonly customerAccountId: string;
+  readonly customerAccountId: string | null;
   readonly codeHash: string | null;
-  readonly currency: string;
+  readonly currency: string | null;
   readonly amountMinor: bigint;
   readonly sellerShareMinor: bigint;
   readonly platformShareMinor: bigint;
@@ -75,7 +80,10 @@ export class PrismaRedemptionRepository implements RedemptionRepository {
 
   async insertMany(market: MarketContext, records: readonly RedemptionRecord[]): Promise<void> {
     if (records.length === 0) return;
-    await this.prisma.tx(market).promotionsRedemption.createMany({
+    // ON CONFLICT DO NOTHING keeps the transaction usable; a row that was not written means the
+    // order has rows already, and the throw rolls the unit back.
+    const written = await this.prisma.tx(market).promotionsRedemption.createMany({
+      skipDuplicates: true,
       data: records.map((record) => ({
         id: record.id,
         marketId: market.marketId,
@@ -99,6 +107,57 @@ export class PrismaRedemptionRepository implements RedemptionRepository {
         releasedAt: record.releasedAt === null ? null : toDate(record.releasedAt),
       })),
     });
+    if (written.count !== records.length) throw new RedemptionTakenError();
+  }
+
+  async markReleased(
+    market: MarketContext,
+    orderId: Id<'Order'>,
+    id: string,
+    reason: ReleaseReason,
+    at: Temporal.Instant,
+  ): Promise<void> {
+    await this.prisma.tx(market).promotionsRedemption.createMany({
+      skipDuplicates: true,
+      data: [
+        {
+          id,
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          orderId,
+          promotionKey: ORDER_KEY,
+          promotionId: null,
+          kind: 'ORDER',
+          customerAccountId: null,
+          codeHash: null,
+          currency: null,
+          amountMinor: 0n,
+          sellerShareMinor: 0n,
+          platformShareMinor: 0n,
+          units: null,
+          budgetMonth: null,
+          status: 'RELEASED',
+          releaseReason: reason,
+          reservedAt: toDate(at),
+          confirmedAt: null,
+          releasedAt: toDate(at),
+        },
+      ],
+    });
+  }
+
+  async customerFirstOrders(
+    market: MarketContext,
+    customerAccountId: Id<'Account'>,
+  ): Promise<number> {
+    return this.prisma.tx(market).promotionsRedemption.count({
+      where: {
+        marketId: market.marketId,
+        customerAccountId,
+        kind: 'FIRST_ORDER',
+        status: { not: 'RELEASED' },
+      },
+    });
   }
 
   async confirm(
@@ -106,11 +165,21 @@ export class PrismaRedemptionRepository implements RedemptionRepository {
     orderId: Id<'Order'>,
     at: Temporal.Instant,
   ): Promise<number> {
-    const moved = await this.prisma.tx(market).promotionsRedemption.updateMany({
+    const tx = this.prisma.tx(market);
+    const rows = await tx.promotionsRedemption.findMany({
       where: { marketId: market.marketId, orderId, status: 'RESERVED' },
-      data: { status: 'CONFIRMED', confirmedAt: toDate(at) },
+      orderBy: { promotionKey: 'asc' },
+      select: { id: true },
     });
-    return moved.count;
+    let count = 0;
+    for (const row of rows) {
+      const moved = await tx.promotionsRedemption.updateMany({
+        where: { marketId: market.marketId, id: row.id, status: 'RESERVED' },
+        data: { status: 'CONFIRMED', confirmedAt: toDate(at) },
+      });
+      count += moved.count;
+    }
+    return count;
   }
 
   async release(
@@ -127,12 +196,13 @@ export class PrismaRedemptionRepository implements RedemptionRepository {
       orderBy: { promotionKey: 'asc' },
     });
     if (rows.length === 0) return [];
-    // Each row moves only from the status it was read in: a row another unit moved meanwhile is
-    // not counted, so its counters are never given back twice.
+    // Each row moves only while it still holds, checked again under its lock: a row confirmed
+    // meanwhile is still released, and a row another unit released is not counted, so its
+    // counters are never given back twice.
     const released: RedemptionRecord[] = [];
     for (const row of rows) {
       const moved = await tx.promotionsRedemption.updateMany({
-        where: { marketId: market.marketId, id: row.id, status: row.status },
+        where: { marketId: market.marketId, id: row.id, status: { in: statuses } },
         data: { status: 'RELEASED', releaseReason: reason, releasedAt: toDate(at) },
       });
       if (moved.count === 1) released.push(toRecord(row));
@@ -304,13 +374,13 @@ export class PrismaRedemptionRepository implements RedemptionRepository {
     before: Temporal.Instant,
     limit: number,
   ): Promise<readonly Id<'Order'>[]> {
-    const rows = await this.prisma.tx(market).promotionsRedemption.findMany({
+    // Grouped in the database (a Prisma `distinct` runs in memory and would read every row).
+    const groups = await this.prisma.tx(market).promotionsRedemption.groupBy({
+      by: ['orderId'],
       where: { marketId: market.marketId, status: 'RESERVED', reservedAt: { lt: toDate(before) } },
-      orderBy: [{ reservedAt: 'asc' }, { id: 'asc' }],
-      distinct: ['orderId'],
-      select: { orderId: true },
+      orderBy: [{ _min: { reservedAt: 'asc' } }, { orderId: 'asc' }],
       take: limit,
     });
-    return rows.map((row) => row.orderId as Id<'Order'>);
+    return groups.map((group) => group.orderId as Id<'Order'>);
   }
 }

@@ -844,15 +844,33 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'promotions.promotion_targets': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
-    'promotions.promotion_usage': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
-    // Phase 2: tiers and bundle items are replaced as a set; generated codes are insert-only here
-    // (package T2 grants the update of used_at).
+    // Package T2: the counters move with each redemption and its release.
+    'promotions.promotion_usage': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'platform_share_minor',
+        'seller_share_minor',
+        'spent_minor',
+        'updated_at',
+        'uses_count',
+      ],
+    },
+    // Phase 2: tiers and bundle items are replaced as a set. Generated codes are inserted; package
+    // T2 claims and gives back a code (used_at with the redeeming order).
     'promotions.promotion_tiers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.promotion_bundle_items': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [],
     },
-    'promotions.promotion_batch_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'promotions.promotion_batch_codes': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['redeemed_order_id', 'used_at'],
+    },
+    // Package T2: a redemption is inserted and then only changes state; it is never deleted.
+    'promotions.redemptions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['confirmed_at', 'release_reason', 'released_at', 'status'],
+    },
     // Phase 3: a referral code is insert-only; a referral and a credit change state only and are
     // never deleted; the inbox of the delivery-credit handlers is appended to.
     'promotions.referral_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },

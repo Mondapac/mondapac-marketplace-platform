@@ -349,26 +349,34 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   code, the units of a flash sale, and for first-order rows the budget month (`YYYY-MM` in the Market zone,
   Market config `timezone`). Status RESERVED, then CONFIRMED (paid) or RELEASED (`ORDER_CANCELLED`, or
   `ORDER_REFUNDED` per the owner's refund rule). Never deleted; a trigger allows only RESERVED to CONFIRMED,
-  RESERVED to RELEASED and CONFIRMED to RELEASED, with every other column unchanged, for every role.
+  RESERVED to RELEASED and CONFIRMED to RELEASED, with every other column unchanged, for every role; a row is
+  inserted RESERVED (trigger). Each redeemed order also has a **head row** (`kind` ORDER, key `order`, zero
+  amounts). A cancellation writes that row RELEASED when the order has none, so a cancellation and a redemption
+  of one order always meet on the same unique key: whichever comes second sees the first, in either order.
+  Backstop unique indexes: one live first-order row per customer, one live row per single-use code hash.
 - **`promotion_batch_codes.redeemed_order_id`**: set with `used_at` (CHECK both or neither); a trigger allows
   only claim (unused to used) and give back (used to unused). The app may now UPDATE those two columns and the
   `promotion_usage` counters (the core CHECK keeps them at zero or above).
 - **Facade `redeem`** (rule `system`, use case `promotions.redeem-discounts`): ordering stores the order with the
   discounts of a `quote`, then asks to redeem them, sending the quote request and `discountSummaryOf(quote)`.
-  In one unit: the order's rows are looked up (a repeat answers `already-redeemed`; a released order
-  `promotions.redemption-released`); the usage rows of the promotions the order took are locked in id order (and
+  In one unit: the order's rows are looked up (a repeat with the same discounts answers `already-redeemed`,
+  with other discounts `validation.failed`; a released order `promotions.redemption-released`); the usage rows of the promotions the order took are locked in id order (and
   the Market's switch row when it took the first-order discount); everything is read again under the locks and
   the same calculation runs (`loadCart` + `priceCart`, shared with the quote). Equal to what the order holds: the
   code is claimed in one conditional update, the rows are written RESERVED and the counters move. Not equal (a
   budget, a total or per-customer use limit, the flash units or the code was taken meanwhile): nothing is
   written and the answer is `promotions.quote-changed` with the fresh quote, so the buyer confirms the new total.
   A lock that cannot be taken in time is `conflict.retry`. Off since the order was priced: `quote-changed` with
-  the bare cart.
+  the bare cart. The first-order discount is once per customer: a live first-order row of the customer on any
+  order (two checkouts at once, an unpaid earlier order) prices the order as not the first. The fresh quote of a
+  `quote-changed` was made with the order's old commission: ordering quotes again before it stores anything.
 - **Subscribers**: `ordering.order-paid.v1` confirms the order's rows (`promotions.confirm-redemptions`);
   the new `ordering.order-cancelled.v1` (defined here, emitted by ordering in part B) releases them and gives
   back what they took: counters, budget, first-order money (the month's sum leaves the row out), the code
   (`promotions.release-cancelled-redemptions`). Both whatever the switch says now; both idempotent through
-  the inbox, and a row moves only from the status it was read in, so nothing is given back twice.
+  the inbox. Confirm and release take the rows one at a time in key order (no deadlock between a payment and a
+  cancellation of one order); a release re-checks the status under the lock, so a row confirmed meanwhile is
+  still released and a row released already is never given back twice.
 - **Quote changes**: `maxUsesPerCustomer` is now enforced, counting the customer's rows that hold; a quote
   without a customer gets no promotion that has the limit (fail closed), and the admin preview ignores it.
   The first-order discount takes what is left of the month's budget. The flash-sale counter
