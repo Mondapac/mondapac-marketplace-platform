@@ -22,6 +22,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Market's shipments (ordering, Sales > Shipments), read-only: the list (query: the tab,
     // search, filters and paging; see QUERY_KEYS).
     'ordering/admin/shipments',
+    // The Market's order confirmations and credit notes (ordering, Sales > Invoices), read-only:
+    // the list (query: the kind, search, issued dates and paging; see QUERY_KEYS).
+    'ordering/admin/documents',
     // The Market's buyer assistant settings, read again after another admin saved first.
     'assistant/admin/settings',
     // The Market's support email, read again after another admin saved first.
@@ -635,6 +638,22 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'shippedFrom',
     'shippedTo',
   ],
+  // The Invoices list: the tab (`kind`), the search (`q` or `search`), the issued dates and the
+  // paging of either List paging mode (the API refuses the two modes mixed).
+  'ordering/admin/documents': [
+    'kind',
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+    'sort',
+    'direction',
+    'q',
+    'search',
+    'sellerId',
+    'from',
+    'to',
+  ],
   'ordering/admin/saved-filters': ['listKey'],
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
@@ -711,6 +730,22 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     paidTo: ISO_INSTANT,
     shippedFrom: ISO_INSTANT,
     shippedTo: ISO_INSTANT,
+  },
+  'ordering/admin/documents': {
+    kind: /^(order-confirmation|credit-note)$/,
+    sort: /^(issued|amount)$/,
+    direction: /^(asc|desc)$/,
+    sellerId: UUID,
+    page: /^[0-9]{1,4}$/,
+    pageSize: /^[0-9]{1,3}$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the issue time, a dot and the document id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+    // An id or a name: free text, up to the box's 80 characters.
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
   },
   'ordering/admin/refund-limits': { sellerId: UUID },
   // The cursor is the API's own: epoch milliseconds, a dot and a request id.

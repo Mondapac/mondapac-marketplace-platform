@@ -1087,6 +1087,96 @@ describe('relay of the shipments list', () => {
   });
 });
 
+describe('relay of the invoices list (documents)', () => {
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/documents${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['ordering', 'admin', 'documents'];
+  const SELLER = '0190a000-0000-7000-8000-0000000000b1';
+  const CURSOR = '1763300000000.0190a000-0000-7000-8000-0000000000aa';
+  const urlOf = (upstream: ReturnType<typeof upstreamOk>) => {
+    const target = upstream.mock.calls[0]?.[0];
+    return typeof target === 'string' ? target : '';
+  };
+  const sent = async (query: string) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(200);
+    return new URL(urlOf(upstream)).searchParams;
+  };
+
+  it('forwards the page mode, the kind, the search, the seller and the dates', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'kind=credit-note&page=2&pageSize=25&sort=amount&direction=asc&search=Cedar+Lane' +
+      '&from=2026-11-16T14%3A00%3A00.000Z&to=2026-11-17T14%3A00%3A00%2B10%3A00' +
+      `&sellerId=${SELLER}`;
+    await relay(config, get(`?${q}&x=1`), path, upstream);
+    const url = new URL(urlOf(upstream));
+    expect(url.origin + url.pathname).toBe('http://api.test/ordering/admin/documents');
+    expect(Object.fromEntries(url.searchParams)).toEqual(
+      Object.fromEntries(new URLSearchParams(q)),
+    );
+  });
+
+  it('forwards the Previous and next mode: limit, cursor, and an exact q', async () => {
+    const params = await sent(`?kind=order-confirmation&limit=25&cursor=${CURSOR}&q=${SELLER}`);
+    expect(Object.fromEntries(params)).toEqual({
+      kind: 'order-confirmation',
+      limit: '25',
+      cursor: CURSOR,
+      q: SELLER,
+    });
+  });
+
+  it('drops the amount filters and every unknown key', async () => {
+    const params = await sent('?kind=credit-note&minAmount=1&maxAmount=9&fleet=x&x=1');
+    expect(Object.fromEntries(params)).toEqual({ kind: 'credit-note' });
+  });
+
+  it('drops a value of the wrong shape and keeps the rest', async () => {
+    const params = await sent(
+      '?kind=tax-invoice&sort=name&direction=up&sellerId=nope&page=0x&pageSize=1000' +
+        '&limit=-1&cursor=abc&from=yesterday&to=2026-11-16&q=ok',
+    );
+    expect(Object.fromEntries(params)).toEqual({ q: 'ok' });
+  });
+
+  it('accepts each kind and sort the API names', async () => {
+    for (const kind of ['order-confirmation', 'credit-note']) {
+      expect((await sent(`?kind=${kind}`)).get('kind')).toBe(kind);
+    }
+    for (const sort of ['issued', 'amount']) {
+      expect((await sent(`?sort=${sort}`)).get('sort')).toBe(sort);
+    }
+  });
+
+  it('keeps free text up to 80 characters for q and search, and drops more', async () => {
+    const eighty = 'x'.repeat(80);
+    expect((await sent(`?q=${eighty}`)).get('q')).toBe(eighty);
+    expect((await sent(`?search=${eighty}`)).get('search')).toBe(eighty);
+    expect((await sent(`?q=${eighty}y`)).has('q')).toBe(false);
+    expect((await sent(`?search=${eighty}y`)).has('search')).toBe(false);
+  });
+
+  it('refuses other paths and methods', async () => {
+    const upstream = upstreamOk();
+    const other = ['ordering', 'admin', 'documents', '0190a000-0000-7000-8000-000000000001'];
+    expect((await relay(config, get(''), other, upstream)).status).toBe(404);
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const request = new Request('http://admin.localhost:3002/api/ordering/admin/documents', {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      });
+      expect((await relay(config, request, path, upstream)).status).toBe(404);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
 describe('relay of the sellers without an owner', () => {
   const id = '0190a000-0000-7000-8000-000000000001';
   const get = (query: string) =>
