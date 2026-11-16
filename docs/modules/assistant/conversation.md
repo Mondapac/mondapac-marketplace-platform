@@ -176,10 +176,10 @@ a seller or admin session is not read here. Every answer is `Cache-Control: no-s
 
 Migration `20261019224946_assistant_conversations`. `conversations`: one owner (account, or a
 32-byte guest token hash), `turns` 0 to 30, `retention_days` 0 or 30 (365 for an account only),
-index on (`market_id`, `retention_days`, `last_message_at`) for the purge, and (migration
-`20261116200201_assistant_conversations_account_idx`, customers phase 2b) index on (`market_id`,
-`account_id`, `started_at` DESC) for the admin customer page's assistant section (one account's
-conversation count and dates, newest first); the application role updates only `turns` and
+index on (`market_id`, `retention_days`, `last_message_at`) for the purge (the admin customer
+page's assistant section, customers phase 2b, reads one account's conversation count and dates
+through the buyer list's partial (`market_id`, `account_id`, `last_message_at` DESC, `id` DESC)
+index; it adds no index of its own); the application role updates only `turns` and
 `last_message_at`. `messages`: PK (Market, conversation,
 position 1 to 60), `text_cipher`, card refs (ids only, at most 40), cascade delete with the
 conversation; the application role can neither UPDATE nor DELETE them. `spend_days`: PK (Market, day), counts
