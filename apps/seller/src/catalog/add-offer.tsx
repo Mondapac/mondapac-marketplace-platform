@@ -74,7 +74,7 @@ export function YourOfferCard({
         name="typeCode"
         label={t('catalog.create.type')}
         value={typeCode}
-        placeholder={t('catalog.create.choose')}
+        placeholder={t('catalog.create.choose-type')}
         error={error('typeCode')}
         options={options.productTypes.map((code) => ({ value: code, label: readable(code) }))}
         onChange={(event) => onType(event.target.value)}
@@ -83,7 +83,7 @@ export function YourOfferCard({
         name="conditionCode"
         label={t('catalog.create.condition')}
         value={conditionCode}
-        placeholder={t('catalog.create.choose')}
+        placeholder={t('catalog.create.choose-condition')}
         error={error('conditionCode')}
         options={options.conditions.map((code) => ({ value: code, label: readable(code) }))}
         onChange={(event) => onCondition(event.target.value)}

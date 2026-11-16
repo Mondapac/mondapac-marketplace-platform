@@ -1187,7 +1187,6 @@
       "tabs": "Offer sections"
     },
     "add": {
-      "title": "Add product",
       "subtitle": "Your product · {market}",
       "unsaved": "Unsaved product",
       "offer": {
@@ -1213,7 +1212,8 @@
       "condition": "Condition",
       "sku": "Your SKU",
       "sku-help": "Your own code for this offer. It must be unique among your open offers.",
-      "choose": "Choose",
+      "choose-type": "Choose a product type",
+      "choose-condition": "Choose a condition",
       "description": "Description ({locale})",
       "optional": "optional",
       "validation": {
@@ -1276,7 +1276,12 @@
       "classification": "Category and tags",
       "categories": "Categories",
       "categories-none": "No categories are available yet.",
+      "categories-unavailable": "Categories can't be loaded right now. Save the draft and choose them on the next page.",
+      "categories-required": "required",
+      "categories-help": "Only a category or subcategory (levels 3 and 4). It decides the product details and variant types.",
       "tax-category": "Tax category",
+      "tax-category-placeholder": "Choose a tax category",
+      "tax-category-help": "Required. Separate from the product category: it decides GST on every seller's offer.",
       "variants": "Variants",
       "grid": {
         "step-axes": "1. What does this product come in?",

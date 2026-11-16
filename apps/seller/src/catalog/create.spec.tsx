@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toast } from '@mondapac/ui';
 import type * as Ui from '@mondapac/ui';
 import messages from '../../messages/en.json';
 
@@ -54,14 +55,25 @@ const created = {
 } as const;
 const saved = { ok: true, status: 200, body: { variantIds: ['v1'], refusedFields: [] } } as const;
 
+const realLocation = window.location;
+const assign = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
+  replace.mockReset();
   Object.defineProperty(window, 'location', {
-    value: { assign: vi.fn(), reload: vi.fn() },
+    value: { assign, reload: vi.fn() },
     writable: true,
+    configurable: true,
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  Object.defineProperty(window, 'location', {
+    value: realLocation,
+    writable: true,
+    configurable: true,
+  });
+});
 
 function fill() {
   fireEvent.change(screen.getByLabelText('Title'), { target: { value: ' Olive oil ' } });
@@ -205,6 +217,167 @@ describe('Add product page', () => {
     saveDraft();
     await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1/edit'));
     expectFlash(/some text was not saved/, 'error');
+  });
+
+  it('clears the unsaved guard and flashes the result before it leaves the page', async () => {
+    call.mockResolvedValueOnce(created).mockResolvedValueOnce(saved);
+    const seen: { bar: boolean; prevented: boolean; flashed: boolean }[] = [];
+    replace.mockImplementation(() => {
+      const unload = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(unload);
+      seen.push({
+        bar: screen.queryByText('Unsaved product') !== null,
+        prevented: unload.defaultPrevented,
+        flashed: vi.mocked(toast.flash).mock.calls.length > 0,
+      });
+    });
+    mount();
+    fill();
+    expect(screen.getByText('Unsaved product')).toBeTruthy();
+    saveDraft();
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1/edit'));
+    expect(seen).toEqual([{ bar: false, prevented: false, flashed: true }]);
+    const flash = vi.mocked(toast.flash).mock.invocationCallOrder[0] ?? Infinity;
+    expect(flash).toBeLessThan(replace.mock.invocationCallOrder[0] ?? 0);
+  });
+
+  it('goes to the sign-in page on a 401 from the create, and does not leave the page', async () => {
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 401, code: 'auth.required' } });
+    mount();
+    fill();
+    saveDraft();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    expect(replace).not.toHaveBeenCalled();
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('goes to the sign-in page on a 401 from the draft save after the create', async () => {
+    call
+      .mockResolvedValueOnce(created)
+      .mockResolvedValueOnce({ ok: false, failure: { status: 401, code: 'auth.required' } });
+    mount();
+    fill();
+    saveDraft();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('shows a refused product type on the type field and saves no draft', async () => {
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 422, code: 'type.not-allowed' } });
+    mount();
+    fill();
+    saveDraft();
+    const message = await screen.findAllByText("You can't sell this product type yet.");
+    expect(message.length).toBe(2);
+    const type = screen.getByLabelText('Product type');
+    expect(type.getAttribute('aria-invalid')).toBe('true');
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('shows the banner and keeps the form when the market has product creation off', async () => {
+    call.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 422, code: 'setting.product-creation-off' },
+    });
+    mount();
+    fill();
+    saveDraft();
+    expect(
+      await screen.findByText('Your market does not let sellers add products yet.'),
+    ).toBeTruthy();
+    expect(screen.getByLabelText<HTMLInputElement>('Title').value).toBe(' Olive oil ');
+    expect(replace).not.toHaveBeenCalled();
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('creates once when Save draft is pressed twice before the create answers', async () => {
+    let resolve: (value: never) => void = () => undefined;
+    call.mockImplementationOnce(() => new Promise((r) => (resolve = r)));
+    call.mockResolvedValueOnce(saved);
+    mount();
+    fill();
+    const form = screen.getByLabelText('Title').closest('form')!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(call).toHaveBeenCalledTimes(1);
+    resolve(created as never);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1/edit'));
+    fireEvent.submit(form);
+    expect(call.mock.calls.filter(([method]) => method === 'POST').length).toBe(1);
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it('locks the fields while the product is being created', async () => {
+    let resolve: (value: never) => void = () => undefined;
+    call.mockImplementationOnce(() => new Promise((r) => (resolve = r)));
+    mount();
+    fill();
+    fireEvent.submit(screen.getByLabelText('Title').closest('form')!);
+    expect(screen.getByLabelText<HTMLInputElement>('Title').closest('fieldset')?.disabled).toBe(
+      true,
+    );
+    resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } } as never);
+    await screen.findAllByText(/unavailable right now/);
+    expect(screen.getByLabelText<HTMLInputElement>('Title').closest('fieldset')?.disabled).toBe(
+      false,
+    );
+  });
+
+  it('unlocks the form when leaving the page throws', async () => {
+    call.mockResolvedValueOnce(created).mockResolvedValueOnce(saved);
+    replace.mockImplementationOnce(() => {
+      throw new Error('navigation failed');
+    });
+    mount();
+    fill();
+    saveDraft();
+    await waitFor(() => expect(replace).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>('Title').closest('fieldset')?.disabled).toBe(
+        false,
+      ),
+    );
+  });
+
+  it('tells the seller when the category list could not be loaded', () => {
+    render(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <EditForm
+          product={blankProduct({ ...options, categories: [] })}
+          photos={null}
+          locales={options.locales.supported}
+          defaultLocale="en-AU"
+          marketName="Australia"
+          csrfToken="csrf"
+          add={{ options: { ...options, categories: [] } }}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(
+      screen.getByText(
+        "Categories can't be loaded right now. Save the draft and choose them on the next page.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('explains the category and the tax category, with readable tax names', () => {
+    mount();
+    expect(screen.getByText(/Only a category or subcategory \(levels 3 and 4\)/)).toBeTruthy();
+    expect(screen.getByText(/Required\. Separate from the product category/)).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Choose a tax category' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Gst free food' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Choose a product type' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Choose a condition' })).toBeTruthy();
+  });
+
+  it('ties the "To submit" line to the disabled Submit button', () => {
+    mount();
+    const submit = screen.getByRole('button', { name: 'Submit for review' });
+    const line = screen.getByText(/^To submit:/);
+    expect(submit.getAttribute('aria-describedby')).toBe(line.id);
+    expect(line.parentElement?.getAttribute('aria-live')).toBe('polite');
   });
 
   it('does not offer Submit for review before the product exists', () => {

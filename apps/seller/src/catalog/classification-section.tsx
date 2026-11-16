@@ -2,7 +2,8 @@
 
 import { Card, CheckboxRow, Select } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
+import { readable } from './format.ts';
 import { pickLabel } from './draft-content.ts';
 import type { FormCategory } from './types.ts';
 
@@ -25,6 +26,7 @@ export function ClassificationSection({
   defaultLocale,
   onCategories,
   onTax,
+  categoriesEmpty,
   children,
 }: {
   readonly categories: readonly FormCategory[];
@@ -34,17 +36,38 @@ export function ClassificationSection({
   readonly defaultLocale: string;
   readonly onCategories: (ids: string[]) => void;
   readonly onTax: (code: string) => void;
+  /** What to say when there is no category to list (the default: the Market has none). */
+  readonly categoriesEmpty?: string;
   /** The optional fields that follow the tax category (the tags). */
   readonly children?: ReactNode;
 }) {
   const t = useTranslations();
+  const helpId = useId();
   const byId = new Map(categories.map((category) => [category.categoryId, category]));
   return (
     <Card title={t('catalog.edit.classification')}>
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 text-sm font-medium text-fg">{t('catalog.edit.categories')}</legend>
+      <fieldset
+        className="flex flex-col gap-2"
+        aria-describedby={categories.length > 0 ? helpId : undefined}
+      >
+        <legend className="mb-1 text-sm font-medium text-fg">
+          {t('catalog.edit.categories')}
+          {categories.length > 0 ? (
+            <span className="font-normal text-fg-muted">
+              {' '}
+              ({t('catalog.edit.categories-required')})
+            </span>
+          ) : null}
+        </legend>
+        {categories.length > 0 ? (
+          <p id={helpId} className="text-sm text-fg-muted">
+            {t('catalog.edit.categories-help')}
+          </p>
+        ) : null}
         {categories.length === 0 ? (
-          <p className="text-sm text-fg-muted">{t('catalog.edit.categories-none')}</p>
+          <p className="text-sm text-fg-muted">
+            {categoriesEmpty ?? t('catalog.edit.categories-none')}
+          </p>
         ) : (
           categories.map((category) => (
             <div
@@ -70,8 +93,9 @@ export function ClassificationSection({
       <Select
         name="taxCategoryCode"
         label={t('catalog.edit.tax-category')}
-        placeholder={t('catalog.edit.attribute.unset')}
-        options={taxCategoryCodes.map((code) => ({ value: code, label: code }))}
+        placeholder={t('catalog.edit.tax-category-placeholder')}
+        help={t('catalog.edit.tax-category-help')}
+        options={taxCategoryCodes.map((code) => ({ value: code, label: readable(code) }))}
         value={taxCategoryCode}
         onChange={(event) => onTax(event.target.value)}
       />

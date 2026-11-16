@@ -1,6 +1,7 @@
 'use client';
 
 import { Badge, Button, Card, CheckboxRow } from '@mondapac/ui';
+import { useId } from 'react';
 import { useTranslations } from 'next-intl';
 import { readable } from './format.ts';
 
@@ -49,6 +50,7 @@ export function StatusCard({
   } | null;
 }) {
   const t = useTranslations('catalog.edit');
+  const blockersId = useId();
   return (
     <Card title={t('status.title')}>
       <div className="flex flex-wrap items-center gap-2">
@@ -70,10 +72,20 @@ export function StatusCard({
           onChange={(event) => replacePending.onChange(event.target.checked)}
         />
       )}
-      <Button disabled={pending || !canSubmit} onClick={onSubmit}>
+      <Button
+        disabled={pending || !canSubmit}
+        aria-describedby={blockers === null ? undefined : blockersId}
+        onClick={onSubmit}
+      >
         {t('submit')}
       </Button>
-      {blockers === null ? null : <p className="text-xs text-fg-muted">{blockers}</p>}
+      <div aria-live="polite">
+        {blockers === null ? null : (
+          <p id={blockersId} className="text-sm text-fg-muted">
+            {blockers}
+          </p>
+        )}
+      </div>
     </Card>
   );
 }

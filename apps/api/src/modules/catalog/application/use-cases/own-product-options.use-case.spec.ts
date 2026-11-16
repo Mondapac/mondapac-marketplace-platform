@@ -69,7 +69,7 @@ describe.each(['AU', 'ZZ'] as const)('own-product.options in market %s', (code) 
     expect(asked).toContain(market.marketId);
   });
 
-  it('answers unavailable when the category read fails', async () => {
+  it('answers an empty category list, keeping the rest, when the category read fails', async () => {
     const failing = {
       run: () => Promise.resolve({ ok: false, error: { code: 'unit.failed' } }),
     } as unknown as UnitOfWork;
@@ -79,6 +79,23 @@ describe.each(['AU', 'ZZ'] as const)('own-product.options in market %s', (code) 
       unitOfWork: failing,
       ownReader,
     }).execute(context, {});
-    expect(result).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.categories).toEqual([]);
+    expect(result.value.taxCategoryCodes).toEqual([...policy.taxCategoryCodes(market)]);
+    expect(result.value.productTypes.length).toBeGreaterThan(0);
+  });
+
+  it('answers an empty category list when the reader throws', async () => {
+    const throwing = {
+      productCategories: () => Promise.reject(new Error('db down')),
+    } as unknown as OwnCatalogReader;
+    const result = await new OwnProductOptions(gate, {
+      policy,
+      allowedTypes,
+      unitOfWork,
+      ownReader: throwing,
+    }).execute(context, {});
+    if (!result.ok) throw new Error('expected ok');
+    expect(result.value.categories).toEqual([]);
   });
 });
