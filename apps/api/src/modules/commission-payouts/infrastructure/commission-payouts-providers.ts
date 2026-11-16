@@ -51,6 +51,11 @@ import {
 import { STORE_NAME_SEARCH, type StoreNameSearch } from '../application/ports/store-name-search';
 import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../../platform/list-export';
 import { PrismaAdminPayoutListReader } from './prisma-admin-payout-list.reader';
+import {
+  SELLER_PAGE_LIST_READER,
+  type SellerPageListReader,
+} from '../application/ports/seller-page-list.reader';
+import { PrismaSellerPageListReader } from './prisma-seller-page-list.reader';
 import { ConfigPayoutPolicy } from './config-payout-policy';
 import { PrismaPayoutCursorRepository } from './prisma-payout-cursor.repository';
 import { PrismaPayoutRepository } from './prisma-payout.repository';
@@ -137,6 +142,12 @@ export const commissionPayoutsProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminPayoutListReader =>
       new PrismaAdminPayoutListReader(prisma),
+  },
+  {
+    provide: SELLER_PAGE_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerPageListReader =>
+      new PrismaSellerPageListReader(prisma),
   },
   {
     provide: STORE_NAME_SEARCH,

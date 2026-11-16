@@ -1191,6 +1191,12 @@ describe('admin product bulk action', () => {
 });
 
 describe('product list helpers', () => {
+  // Nothing stays mounted past its test: work React schedules for a tree left standing runs
+  // after the environment is torn down (`window is not defined`).
+  afterEach(() => {
+    cleanup();
+  });
+
   it('builds the query string with only what is set, trimmed', () => {
     expect(queryString({ ...DEFAULT_QUERY, q: '  lamb ', filters: { scope: 'PLATFORM' } })).toBe(
       'view=active&sort=updated&direction=desc&page=1&pageSize=25&q=lamb&scope=PLATFORM',
@@ -1207,7 +1213,6 @@ describe('product list helpers', () => {
   });
 
   it('pages without a total: an open range, no tab counts, Next only while another page follows', async () => {
-    cleanup();
     serve(() => page([row()], { total: null, counts: null, hasNext: true }));
     mount();
     await screen.findByText('Lamb cutlets 500 g');

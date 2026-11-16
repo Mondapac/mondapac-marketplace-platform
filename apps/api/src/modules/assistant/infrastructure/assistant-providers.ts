@@ -1,11 +1,13 @@
 import type { FactoryProvider } from '@nestjs/common';
 import { CATALOG_ASSISTANT_FACADE, type CatalogAssistantFacade } from '../../catalog';
+import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { SUPPORT_CONTACT_FACADE, type SupportContactFacade } from '../../notifications';
 import { SEARCH_ASSISTANT_FACADE, type SearchAssistantFacade } from '../../search';
 import { ModelGateway } from '../../../platform/ai/model-gateway';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import { LocaleCatalogues } from '../../../platform/i18n/locale-catalogues';
+import { ServiceAreaDirectory } from '../../../platform/market-config/service-area-directory';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { SubjectRateLimits } from '../../../platform/rate-limit/subject-rate-limits';
@@ -66,12 +68,20 @@ export const assistantProviders: readonly FactoryProvider[] = [
   },
   {
     provide: ASSISTANT_TOOLS,
-    inject: [SEARCH_ASSISTANT_FACADE, CATALOG_ASSISTANT_FACADE, SUPPORT_CONTACT_FACADE],
+    inject: [
+      SEARCH_ASSISTANT_FACADE,
+      CATALOG_ASSISTANT_FACADE,
+      SUPPORT_CONTACT_FACADE,
+      SELLERS_FACADE,
+      ServiceAreaDirectory,
+    ],
     useFactory: (
       search: SearchAssistantFacade,
       catalog: CatalogAssistantFacade,
       support: SupportContactFacade,
-    ): AssistantTools => new FacadeAssistantTools(search, catalog, support),
+      sellers: SellersFacade,
+      areas: ServiceAreaDirectory,
+    ): AssistantTools => new FacadeAssistantTools(search, catalog, support, sellers, areas),
   },
   {
     provide: MESSAGE_LIMITS,
