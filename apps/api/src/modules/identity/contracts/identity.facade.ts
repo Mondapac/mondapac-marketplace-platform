@@ -328,6 +328,31 @@ export interface IdentityFacade {
   ): Promise<Result<{ readonly revokedSessions: number }, AccessDenied>>;
 
   /**
+   * An admin changes a customer account's display name from the customer page (customers
+   * management phase 2). Rule `permissions [customers.customers.edit]`; only a platform admin that
+   * is not acting as a seller, any other caller `access.denied`. `account.unknown` for an id that
+   * is no customer of the Market, `account.not-eligible` for a disabled or unverified account,
+   * `validation.failed` for a name the holder could not set either. Records the display-name
+   * event and an audit row (never the name). Not exposed over HTTP.
+   */
+  renameCustomerForAdmin(
+    context: CallContext,
+    input: { readonly accountId: Id<'Account'>; readonly displayName: string },
+  ): Promise<
+    Result<
+      { readonly changed: boolean },
+      | AccessDenied
+      | { readonly code: 'access.unavailable' }
+      | { readonly code: 'account.unknown' }
+      | { readonly code: 'account.not-eligible' }
+      | {
+          readonly code: 'validation.failed';
+          readonly fields: readonly { readonly path: string; readonly code: string }[];
+        }
+    >
+  >;
+
+  /**
    * The directory fields of customer accounts by id, for the `customers` read model. Rule `system`;
    * at most 100 ids; an unknown id, another Market's and a non-customer account are absent. PERSONAL
    * DATA. Not exposed over HTTP.
