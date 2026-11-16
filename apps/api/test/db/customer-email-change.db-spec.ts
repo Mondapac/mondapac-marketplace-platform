@@ -243,7 +243,7 @@ describe('identity customer email change (database)', () => {
           'SELECT email_change_notice FROM identity.accounts WHERE id = $1',
           [second],
         );
-        expect(rows[0].email_change_notice).toBeNull();
+        expect(rows[0]?.email_change_notice).toBeNull();
       });
 
       it('keeps the previous address sealed, opens it, and forgets it', async () => {
@@ -257,8 +257,8 @@ describe('identity customer email change (database)', () => {
           'SELECT email_change_notice FROM identity.accounts WHERE id = $1',
           [accountId],
         );
-        expect(rows[0].email_change_notice).toMatch(/^v1\./);
-        expect(rows[0].email_change_notice).not.toContain('Previous');
+        expect(rows[0]?.email_change_notice).toMatch(/^v1\./);
+        expect(rows[0]?.email_change_notice).not.toContain('Previous');
         const opened = await db.unitOfWork.run(
           market,
           async () => ok(await store.previousEmailOf(market, accountId)),
