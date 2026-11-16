@@ -149,6 +149,10 @@ model ReviewsReport {
 
   /// One report of a review per reporter.
   @@unique([marketId, reviewId, reporterAccountId])
+  /// The reports one account made, newest first (customers management phase 2b: the customer
+  /// page's reports section). The reports about an account's reviews go through the reviews'
+  /// (market, account, created) index and the unique key above.
+  @@index([marketId, reporterAccountId, createdAt(sort: Desc)])
   @@map("review_reports")
   @@schema("reviews")
 }

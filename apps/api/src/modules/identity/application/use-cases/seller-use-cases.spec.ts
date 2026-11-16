@@ -326,9 +326,11 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // same reason: one customer's payments and disputes (customers phase 2b). So is
     // `identity.customer-sign-in.view`: one customer's sign-ins and sessions (customers phase 2b).
     // So are the other owners' keys of one customer's page (phase 2b, part 2): the cart, the
-    // reminders sent, the behaviour, the consent and the assistant conversation dates.
+    // reminders sent, the behaviour, the consent and the assistant conversation dates. So is
+    // reviews' read of one customer's reviews, ratings, votes and reports (phase 2b, part 3).
     const DECRYPTING_VIEW_KEYS = [
       'identity.customer-sign-in.view',
+      'reviews.customer-review.view',
       'cart.customer-cart.view',
       'notifications.customer-cart-reminder.view',
       'engagement.customer-behaviour.view',
