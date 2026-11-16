@@ -1,13 +1,6 @@
 import { createHash } from 'node:crypto';
-import { err, ok } from '@mondapac/shared-kernel';
-import type {
-  CallContext,
-  Id,
-  MarketContext,
-  Money,
-  Result,
-  Temporal,
-} from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, Money, Result } from '@mondapac/shared-kernel';
 import type { ConsumedStepUp, StepUpProofConsumer, StepUpRefusal } from '../../src/platform/authz';
 import type { BatchCodeCrypto } from '../../src/modules/promotions/application/ports/batch-code-crypto';
 import type {
@@ -80,6 +73,14 @@ import type {
   ShippingThresholdRepository,
 } from '../../src/modules/promotions/application/ports/settings.repository';
 import { displayStatusOf } from '../../src/modules/promotions/domain/display-status';
+import type {
+  RedemptionRepository,
+  UsageDelta,
+} from '../../src/modules/promotions/application/ports/redemption.repository';
+import type {
+  RedemptionRecord,
+  ReleaseReason,
+} from '../../src/modules/promotions/domain/redemption';
 import type { PromotionRecord } from '../../src/modules/promotions/domain/promotion';
 
 // The promotions tables in memory, with the rules the tables enforce: a Market-unique code, one
@@ -600,6 +601,148 @@ export class FakeBatchCodeCrypto implements BatchCodeCrypto {
   }
 }
 
+/**
+ * The redemptions of orders (package T2), in memory. Linked to a {@link MemoryPromotions} (its usage
+ * rows) and a {@link MemoryBatchCodes} when a test gives them; otherwise the counters and codes are
+ * not kept. Locks are no-ops (one test runs one call at a time).
+ */
+export class MemoryRedemptions implements RedemptionRepository {
+  readonly rows: RedemptionRecord[] = [];
+  readonly claims = new Map<string, string>();
+  marketLocked = 0;
+  constructor(
+    private readonly promotions?: MemoryPromotions,
+    private readonly codes?: MemoryBatchCodes,
+  ) {}
+  forOrder(_market: MarketContext, orderId: Id<'Order'>) {
+    return Promise.resolve(this.rows.filter((row) => row.orderId === orderId));
+  }
+  insertMany(_market: MarketContext, records: readonly RedemptionRecord[]) {
+    for (const record of records) {
+      if (
+        this.rows.some(
+          (row) => row.orderId === record.orderId && row.promotionKey === record.promotionKey,
+        )
+      ) {
+        throw new Error('unique violation: redemptions');
+      }
+      this.rows.push(record);
+    }
+    return Promise.resolve();
+  }
+  confirm(_market: MarketContext, orderId: Id<'Order'>, at: Temporal.Instant) {
+    let moved = 0;
+    this.rows.forEach((row, index) => {
+      if (row.orderId === orderId && row.status === 'RESERVED') {
+        this.rows[index] = { ...row, status: 'CONFIRMED', confirmedAt: at };
+        moved += 1;
+      }
+    });
+    return Promise.resolve(moved);
+  }
+  release(
+    _market: MarketContext,
+    orderId: Id<'Order'>,
+    reason: ReleaseReason,
+    at: Temporal.Instant,
+    includeConfirmed: boolean,
+  ) {
+    const released: RedemptionRecord[] = [];
+    this.rows.forEach((row, index) => {
+      const holds = row.status === 'RESERVED' || (includeConfirmed && row.status === 'CONFIRMED');
+      if (row.orderId === orderId && holds) {
+        released.push(row);
+        this.rows[index] = { ...row, status: 'RELEASED', releaseReason: reason, releasedAt: at };
+      }
+    });
+    return Promise.resolve(released);
+  }
+  lockUsage() {
+    return Promise.resolve();
+  }
+  lockMarket() {
+    this.marketLocked += 1;
+    return Promise.resolve(true);
+  }
+  addUsage(_market: MarketContext, deltas: readonly UsageDelta[]) {
+    if (this.promotions === undefined) return Promise.resolve();
+    for (const delta of deltas) {
+      const usage = this.promotions.usage.get(delta.promotionId);
+      if (usage === undefined) throw new Error('promotions.usage row missing');
+      const next = {
+        usesCount: usage.usesCount + delta.uses,
+        spentMinor: usage.spentMinor + delta.spent,
+        sellerShareMinor: usage.sellerShareMinor + delta.sellerShare,
+        platformShareMinor: usage.platformShareMinor + delta.platformShare,
+      };
+      if (next.usesCount < 0 || next.spentMinor < 0n) throw new Error('usage below zero');
+      this.promotions.usage.set(delta.promotionId, next);
+    }
+    return Promise.resolve();
+  }
+  private live() {
+    return this.rows.filter((row) => row.status !== 'RELEASED');
+  }
+  customerUses(
+    _market: MarketContext,
+    customerAccountId: Id<'Account'>,
+    promotionIds: readonly Id<'Promotion'>[],
+  ) {
+    const uses = new Map<Id<'Promotion'>, number>();
+    for (const row of this.live()) {
+      if (row.customerAccountId !== customerAccountId || row.promotionId === null) continue;
+      const id = row.promotionId as Id<'Promotion'>;
+      if (!promotionIds.includes(id)) continue;
+      uses.set(id, (uses.get(id) ?? 0) + 1);
+    }
+    return Promise.resolve(uses as ReadonlyMap<Id<'Promotion'>, number>);
+  }
+  unitsSold(_market: MarketContext, promotionIds: readonly Id<'Promotion'>[]) {
+    const sold = new Map<Id<'Promotion'>, number>(promotionIds.map((id) => [id, 0]));
+    for (const row of this.live()) {
+      const id = row.promotionId as Id<'Promotion'> | null;
+      if (id !== null && sold.has(id) && row.units !== null)
+        sold.set(id, sold.get(id)! + row.units);
+    }
+    return Promise.resolve(sold as ReadonlyMap<Id<'Promotion'>, number>);
+  }
+  firstOrderSpent(_market: MarketContext, budgetMonth: string) {
+    return Promise.resolve(
+      this.live()
+        .filter((row) => row.kind === 'FIRST_ORDER' && row.budgetMonth === budgetMonth)
+        .reduce((sum, row) => sum + row.amount, 0n),
+    );
+  }
+  claimCode(_market: MarketContext, codeHash: string, orderId: Id<'Order'>, at: Temporal.Instant) {
+    const holder = this.claims.get(codeHash);
+    if (holder !== undefined) return Promise.resolve(holder === orderId);
+    this.claims.set(codeHash, orderId);
+    if (this.codes?.rows.has(codeHash)) this.codes.markUsed(codeHash, at);
+    return Promise.resolve(true);
+  }
+  unclaimCode(_market: MarketContext, codeHash: string, orderId: Id<'Order'>) {
+    if (this.claims.get(codeHash) === orderId) {
+      this.claims.delete(codeHash);
+      const row = this.codes?.rows.get(codeHash);
+      if (row !== undefined) this.codes!.rows.set(codeHash, { ...row, usedAt: null });
+    }
+    return Promise.resolve();
+  }
+  staleReservations(_market: MarketContext, before: Temporal.Instant, limit: number) {
+    const ids = [
+      ...new Set(
+        this.rows
+          .filter(
+            (row) =>
+              row.status === 'RESERVED' && Temporal.Instant.compare(row.reservedAt, before) < 0,
+          )
+          .map((row) => row.orderId as Id<'Order'>),
+      ),
+    ];
+    return Promise.resolve(ids.slice(0, limit));
+  }
+}
+
 /** The units-sold counter of flash sales: unknown (null) until a test says otherwise. */
 export class FakeFlashSales implements FlashSales {
   sold: Map<Id<'Promotion'>, number> | null = null;
@@ -983,5 +1126,6 @@ export function phase3Fakes() {
     walletCredit: new FakeWalletCredit(),
     credits: new MemoryCredits(),
     referrals: new MemoryReferrals(),
+    redemptions: new MemoryRedemptions(),
   };
 }
