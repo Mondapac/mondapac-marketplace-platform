@@ -108,6 +108,8 @@ import { AdminCustomerGroupUpdate } from './application/use-cases/admin-customer
 import { AdminCustomerGroupView } from './application/use-cases/admin-customer-group-view.use-case';
 import { AdminCustomerGroupsList } from './application/use-cases/admin-customer-groups-list.use-case';
 import { AdminCustomerNoteAdd } from './application/use-cases/admin-customer-note-add.use-case';
+import { AdminCustomerAddressReveal } from './application/use-cases/admin-customer-address-reveal.use-case';
+import { AdminCustomerAddresses } from './application/use-cases/admin-customer-addresses.use-case';
 import { AdminCustomerNotesList } from './application/use-cases/admin-customer-notes-list.use-case';
 import { AdminCustomerRename } from './application/use-cases/admin-customer-rename.use-case';
 import { AdminCustomerTimelineExport } from './application/use-cases/admin-customer-timeline-export.use-case';
@@ -306,6 +308,8 @@ const MANAGEMENT_PORTS: readonly [
   ['stepUp', STEP_UP_CONSUMER],
   ['sheetWriter', SHEET_WRITER],
   ['dayZone', ADMIN_DAY_ZONE],
+  ['addresses', ADDRESS_REPOSITORY],
+  ['addressCipher', ADDRESS_CIPHER],
 ];
 
 /** The admin's management of customers (phase 2): its ports, plus identity bound at start. */
@@ -410,6 +414,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminCustomerTimeline,
       AdminCustomerTimelineExport,
       AdminCustomerRename,
+      AdminCustomerAddresses,
+      AdminCustomerAddressReveal,
     ].map((type) => managementUseCaseProvider(type as ManagementUseCaseClass<unknown>)),
     {
       provide: RecordCustomerTimeline,

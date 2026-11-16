@@ -1596,6 +1596,16 @@
     }
   },
   {
+    "action": "customers.customer-address.revealed",
+    "targetType": "customers.customer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "addressId": "id"
+    }
+  },
+  {
     "action": "customers.customer-group.changed",
     "targetType": "customers.customer-group",
     "targetId": "id",

@@ -247,6 +247,17 @@ export const CustomerTimelineExported = defineAuditAction({
   },
 });
 
+/**
+ * An admin revealed one of a customer's full delivery addresses (phase 2b). Target: the customer;
+ * the row names the address, never its content.
+ */
+export const CustomerAddressRevealed = defineAuditAction({
+  action: 'customers.customer-address.revealed',
+  targetType: CUSTOMER_PAGE_TARGET,
+  actors: ['authenticated'],
+  after: { addressId: auditField.id() },
+});
+
 export const CUSTOMERS_AUDIT_ACTIONS = [
   AccountDeletionSettingsChanged,
   AccountDeletionRequested,
@@ -264,4 +275,5 @@ export const CUSTOMERS_AUDIT_ACTIONS = [
   CustomerGroupMembersChanged,
   CustomerNoteAdded,
   CustomerTimelineExported,
+  CustomerAddressRevealed,
 ] as const;

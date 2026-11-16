@@ -3,6 +3,12 @@ import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
+import { ADDRESS_CIPHER } from '../src/modules/customers/application/ports/address-cipher';
+import { ADDRESS_REPOSITORY } from '../src/modules/customers/application/ports/address.repository';
+import {
+  InMemoryAddresses,
+  ReversibleAddressCipher,
+} from '../src/modules/customers/application/testing/in-memory-address-book';
 import { CUSTOMER_GROUP_REPOSITORY } from '../src/modules/customers/application/ports/customer-groups.repository';
 import { CUSTOMER_LIST_READER } from '../src/modules/customers/application/ports/customer-list.reader';
 import {
@@ -57,6 +63,7 @@ const KEYS = [
   'customers.customer-notes.write',
   'customers.customers.edit',
   'customers.customers.export',
+  'customers.customer-address.reveal',
 ];
 const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
@@ -67,6 +74,8 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
   let list: InMemoryCustomerList;
   let deletions: MemoryAccountDeletionRequests;
   let orders: MemoryOrders;
+  let addresses: InMemoryAddresses;
+  let addressCipher: ReversibleAddressCipher;
   const http = () => request(app!.getHttpServer());
   const market = testMarketContext(code, PLATFORM_TENANT_ID);
 
@@ -106,6 +115,8 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
   async function boot() {
     deletions = new MemoryAccountDeletionRequests();
     orders = new MemoryOrders();
+    addresses = new InMemoryAddresses();
+    addressCipher = new ReversibleAddressCipher();
     list = new InMemoryCustomerList();
     list.add(market, row(BUYER));
     ({ app } = await createTestApp({
@@ -128,7 +139,11 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
           .overrideProvider(ACCOUNT_DELETION_REQUEST_REPOSITORY)
           .useValue(deletions)
           .overrideProvider(ORDER_REPOSITORY)
-          .useValue(orders),
+          .useValue(orders)
+          .overrideProvider(ADDRESS_REPOSITORY)
+          .useValue(addresses)
+          .overrideProvider(ADDRESS_CIPHER)
+          .useValue(addressCipher),
     }));
     await app
       .get(SeedRoles)
@@ -348,6 +363,67 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
     const none = await listed(reader, id(0xb002));
     expect(none.status).toBe(200);
     expect((none.body as { items: unknown[] }).items).toEqual([]);
+  });
+
+  it('shows suburb and country to a viewer, and the full address only under the reveal key (phase 2b)', async () => {
+    await boot();
+    const addressId = id<'CustomerAddress'>(0xad01);
+    const sealed = await addressCipher.seal(market, BUYER, {
+      recipientFirstName: 'Aisha',
+      recipientLastName: 'Rahman',
+      phone: '+61412345678',
+      line1: '1 Hidden Street',
+      line2: null,
+      suburb: 'Sunnybank',
+      region: null,
+      postcode: '4109',
+      deliveryNotes: null,
+    });
+    if (!sealed.ok) throw new Error('seal failed');
+    await addresses.insert(market, {
+      id: addressId,
+      accountId: BUYER,
+      sealed: sealed.value,
+      countryCode: code,
+      isDefault: true,
+      createdAt: START,
+      updatedAt: START,
+    });
+    const base = `/customers/admin/customers/${BUYER}/addresses`;
+    const viewer = sessionOf(31, VIEWER);
+    const listed = await http().get(base).set(viewer);
+    expect(listed.status).toBe(200);
+    expect(listed.headers['cache-control']).toBe('no-store');
+    expect(listed.body).toEqual({
+      items: [
+        {
+          addressId,
+          suburb: 'Sunnybank',
+          countryCode: code,
+          isDefault: true,
+          createdAt: START.toString(),
+        },
+      ],
+    });
+    expect((await http().post(`${base}/${addressId}/reveal`).set(viewer).send({})).status).toBe(
+      403,
+    );
+    const manager = sessionOf(32, MANAGER);
+    const shown = await http().post(`${base}/${addressId}/reveal`).set(manager).send({});
+    expect(shown.status).toBe(200);
+    expect(shown.headers['cache-control']).toBe('no-store');
+    expect(shown.body).toMatchObject({ addressId, line1: '1 Hidden Street', countryCode: code });
+    const missing = await http()
+      .post(`${base}/${id<'CustomerAddress'>(0xad02)}/reveal`)
+      .set(manager)
+      .send({});
+    expect(missing.status).toBe(404);
+    expect(missing.body).toMatchObject({ code: 'customers.address-not-found' });
+    const stray = await http()
+      .post(`${base}/${addressId}/reveal`)
+      .set(manager)
+      .send({ accountId: BUYER });
+    expect(stray.status).toBe(400);
   });
 
   it('writes and reads a note without caching, and reads the activity', async () => {

@@ -26,6 +26,9 @@ import {
   InMemoryCustomerNotes,
   InMemoryCustomerTimeline,
 } from './testing/in-memory-customer-management';
+import { InMemoryAddresses, ReversibleAddressCipher } from './testing/in-memory-address-book';
+import { AdminCustomerAddressReveal } from './use-cases/admin-customer-address-reveal.use-case';
+import { AdminCustomerAddresses } from './use-cases/admin-customer-addresses.use-case';
 import { AdminCustomerGroupCreate } from './use-cases/admin-customer-group-create.use-case';
 import { AdminCustomerGroupMembersAdd } from './use-cases/admin-customer-group-members-add.use-case';
 import { AdminCustomerGroupMembersRemove } from './use-cases/admin-customer-group-members-remove.use-case';
@@ -52,6 +55,7 @@ const MANAGE = 'customers.groups.manage';
 const NOTES = 'customers.customer-notes.write';
 const EDIT = 'customers.customers.edit';
 const EXPORT = 'customers.customers.export';
+const REVEAL = 'customers.customer-address.reveal';
 
 describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code) => {
   const market: MarketContext = testMarketContext(code, 'default');
@@ -141,7 +145,11 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
       describeActor: () => Promise.resolve(ok({ timezone: ownZone.value })),
     };
     const ownZone = { value: null as string | null };
+    const addresses = new InMemoryAddresses();
+    const addressCipher = new ReversibleAddressCipher();
     const deps: CustomerManagementDependencies = {
+      addresses,
+      addressCipher,
       unitOfWork,
       groups,
       notes,
@@ -174,6 +182,10 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
     };
     return {
       deps,
+      addresses,
+      addressCipher,
+      listAddresses: new AdminCustomerAddresses(gate, deps),
+      revealAddress: new AdminCustomerAddressReveal(gate, deps),
       ownZone,
       audits,
       listReader,
@@ -679,6 +691,119 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
         (entry) => entry.action === 'customers.customer-timeline.exported',
       );
       expect(exported).toBeDefined();
+    });
+  });
+
+  describe('addresses (phase 2b)', () => {
+    const content = {
+      recipientFirstName: 'Aisha',
+      recipientLastName: 'Rahman',
+      phone: '+61412345678',
+      line1: '1 Hidden Street',
+      line2: null,
+      suburb: 'Sunnybank',
+      region: null,
+      postcode: code === 'AU' ? '4109' : '1000001',
+      deliveryNotes: 'Leave at the side gate',
+    };
+    async function seeded(t: ReturnType<typeof setup>, inMarket: MarketContext = market) {
+      const customer = row();
+      t.listReader.add(inMarket, customer);
+      const sealed = await t.addressCipher.seal(inMarket, customer.accountId, content);
+      if (!sealed.ok) throw new Error('seal failed');
+      const addressId = ids.next<'CustomerAddress'>();
+      await t.addresses.insert(inMarket, {
+        id: addressId,
+        accountId: customer.accountId,
+        sealed: sealed.value,
+        countryCode: code === 'AU' ? 'AU' : 'ZZ',
+        isDefault: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      return { accountId: customer.accountId, addressId };
+    }
+
+    it('shows suburb and country only with the view key, and writes no audit row for it', async () => {
+      const t = setup();
+      const { accountId, addressId } = await seeded(t);
+      const listed = await t.listAddresses.execute(t.admin([VIEW]).context, { accountId });
+      expect(listed.ok && listed.value.items).toEqual([
+        {
+          addressId,
+          suburb: 'Sunnybank',
+          countryCode: code === 'AU' ? 'AU' : 'ZZ',
+          isDefault: true,
+          createdAt: NOW.toString(),
+        },
+      ]);
+      expect(JSON.stringify(listed)).not.toContain('Hidden');
+      expect(failure(await t.listAddresses.execute(t.admin([]).context, { accountId }))).toBe(
+        'access.denied',
+      );
+      t.addressCipher.destroyed.add(accountId);
+      const erased = await t.listAddresses.execute(t.admin([VIEW]).context, { accountId });
+      expect(erased.ok && erased.value.items[0]?.suburb).toBeNull();
+      expect(t.audits).toEqual([]);
+    });
+
+    it('reveals one address in full only with the protected key, audited and on the timeline', async () => {
+      const t = setup();
+      const { accountId, addressId } = await seeded(t);
+      const viewer = t.admin([VIEW]);
+      expect(failure(await t.revealAddress.execute(viewer.context, { accountId, addressId }))).toBe(
+        'access.denied',
+      );
+      const revealer = t.admin([VIEW, REVEAL]);
+      const shown = await t.revealAddress.execute(revealer.context, { accountId, addressId });
+      expect(shown.ok && shown.value).toMatchObject({
+        addressId,
+        line1: '1 Hidden Street',
+        deliveryNotes: 'Leave at the side gate',
+      });
+      expect(t.audits.map((entry) => [entry.action, entry.after])).toEqual([
+        ['customers.customer-address.revealed', { addressId }],
+      ]);
+      expect(JSON.stringify(t.audits)).not.toContain('Hidden');
+      const entries = t.timeline.entries.get(`${market.marketId}:${accountId}`) ?? [];
+      expect(entries.map((entry) => [entry.kind, entry.actorAccountId, entry.detail])).toEqual([
+        ['address-revealed', revealer.accountId, 'address'],
+      ]);
+    });
+
+    it('treats another customer’s address, another Market’s customer and a bad id as not found', async () => {
+      const t = setup();
+      const mine = await seeded(t);
+      const theirs = await seeded(t);
+      const foreign = await seeded(t, otherMarket);
+      const revealer = t.admin([VIEW, REVEAL]);
+      expect(
+        failure(
+          await t.revealAddress.execute(revealer.context, {
+            accountId: mine.accountId,
+            addressId: theirs.addressId,
+          }),
+        ),
+      ).toBe('customers.address-not-found');
+      expect(failure(await t.revealAddress.execute(revealer.context, foreign))).toBe(
+        'customers.customer-not-found',
+      );
+      expect(
+        failure(
+          await t.revealAddress.execute(revealer.context, {
+            accountId: mine.accountId,
+            addressId: 'nope',
+          }),
+        ),
+      ).toBe('customers.address-not-found');
+      expect(
+        failure(await t.revealAddress.execute(revealer.context, { ...mine, extra: true })),
+      ).toBe('validation.failed');
+      t.addressCipher.destroyed.add(mine.accountId);
+      expect(failure(await t.revealAddress.execute(revealer.context, mine))).toBe(
+        'customers.address-not-found',
+      );
+      expect(t.audits).toEqual([]);
     });
   });
 

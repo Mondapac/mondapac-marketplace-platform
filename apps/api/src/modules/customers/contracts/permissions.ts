@@ -103,7 +103,20 @@ export const CUSTOMERS_NOTES_WRITE = definePermission('customers', {
   protected: false,
 });
 
+/**
+ * See a customer's full delivery address (recipient, phone, street, postcode, courier note) on the
+ * customer page (phase 2b). Without it the page shows each address's suburb and country only.
+ * Protected: only the Platform Administrator holds it, or a custom role it grants it to. Also
+ * needs `customers.customers.view`. Every reveal is audited and lands on the customer's timeline.
+ */
+export const CUSTOMERS_ADDRESS_REVEAL = definePermission('customers', {
+  key: 'customers.customer-address.reveal',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CUSTOMERS_PERMISSIONS = declarePermissions('customers', [
+  CUSTOMERS_ADDRESS_REVEAL,
   CUSTOMERS_CUSTOMER_EDIT,
   CUSTOMERS_GROUPS_MANAGE,
   CUSTOMERS_NOTES_WRITE,
