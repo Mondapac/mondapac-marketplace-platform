@@ -6,6 +6,7 @@ import request from 'supertest';
 import { ApproveBlogPost } from '../src/modules/blog/application/use-cases/approve-post.use-case';
 import { CreateBlogPost } from '../src/modules/blog/application/use-cases/create-post.use-case';
 import { ListBlogPosts } from '../src/modules/blog/application/use-cases/list-posts.use-case';
+import { ExportBlogPosts } from '../src/modules/blog/application/use-cases/export-posts.use-case';
 import { PauseBlogPost } from '../src/modules/blog/application/use-cases/pause-post.use-case';
 import { PrepareBlogPostCopy } from '../src/modules/blog/application/use-cases/prepare-post-copy.use-case';
 import { ScheduleBlogPost } from '../src/modules/blog/application/use-cases/schedule-post.use-case';
@@ -45,6 +46,7 @@ const tokens = new RandomSessionTokens();
 it('maps every refusal code of the blog routes to its exact status', () => {
   expect(BLOG_STATUS).toEqual({
     'validation.failed': 400,
+    'batch.too-large': 413,
     'blog.post-not-found': 404,
     'blog.not-found': 404,
     'blog.category-not-found': 404,
@@ -95,6 +97,8 @@ describe.each(TEST_MARKETS)('blog routes over HTTP in market %s', (code) => {
           .useValue(clock)
           .overrideProvider(ListBlogPosts)
           .useValue(stub('list'))
+          .overrideProvider(ExportBlogPosts)
+          .useValue(stub('export'))
           .overrideProvider(CreateBlogPost)
           .useValue(stub('create'))
           .overrideProvider(ApproveBlogPost)
@@ -221,6 +225,55 @@ describe.each(TEST_MARKETS)('blog routes over HTTP in market %s', (code) => {
       { name: 'schedule', input: { post: POST_ID, body: schedule } },
       { name: 'pause', input: { post: POST_ID, body: pause } },
       { name: 'copy', input: { post: POST_ID } },
+    ]);
+  });
+
+  it('passes the list query to the list, and streams the export from its own route before `:post`', async () => {
+    await boot();
+    const session = adminSession();
+    next = ok({
+      items: [],
+      counts: {},
+      total: 0,
+      page: 1,
+      pageSize: 25,
+      hasMore: false,
+      nextCursor: null,
+    });
+    const listed = await call('get', '/blog/admin/posts?view=draft&q=eid&page=2', session);
+    expect(listed.status).toBe(200);
+    expect(listed.headers['cache-control']).toBe('no-store');
+    next = ok({
+      filename: 'blog-posts-2026-11-16.csv',
+      contentType: 'text/csv; charset=utf-8',
+      chunks: (async function* () {
+        await Promise.resolve();
+        yield 'Post ID,Title\r\n';
+        yield `${POST_ID},Eid gifts\r\n`;
+      })(),
+    });
+    const file = await call('get', '/blog/admin/posts/export?format=csv&view=all', session);
+    expect(file.status).toBe(200);
+    expect(file.headers['content-type']).toContain('text/csv');
+    expect(file.headers['content-disposition']).toBe(
+      'attachment; filename="blog-posts-2026-11-16.csv"',
+    );
+    expect(file.headers['cache-control']).toBe('no-store');
+    expect(file.headers['x-content-type-options']).toBe('nosniff');
+    expect(file.text).toContain('Eid gifts');
+    next = { ok: false, error: { code: 'batch.too-large', max: 10_000, total: 12_000 } };
+    const big = await call('get', '/blog/admin/posts/export', session);
+    expect(big.status).toBe(413);
+    expect(big.headers['cache-control']).toBe('no-store');
+    expect(big.body).toEqual({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10_000, total: 12_000 },
+    });
+    expect(calls).toEqual([
+      { name: 'list', input: { query: { view: 'draft', q: 'eid', page: '2' } } },
+      { name: 'export', input: { query: { format: 'csv', view: 'all' } } },
+      { name: 'export', input: { query: {} } },
     ]);
   });
 

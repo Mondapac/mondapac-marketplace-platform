@@ -1152,6 +1152,44 @@ describe('relay of the blog posts list', () => {
     );
     expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/blog/admin/posts');
   });
+
+  it('passes the Blog posts super list query and its export only in the shapes the API takes', async () => {
+    const seller = '0190a000-0000-7000-8000-0000000000aa';
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request(
+        `blog/admin/posts?view=published&owner=seller&sellerId=${seller}&featured=true&q=eid%20sweets&from=2026-11-01T00:00:00Z&sort=published&direction=asc&page=2&pageSize=50&body=x`,
+      ),
+      list,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/blog/admin/posts?view=published&owner=seller&sellerId=${seller}&featured=true&q=eid+sweets&from=2026-11-01T00%3A00%3A00Z&sort=published&direction=asc&page=2&pageSize=50`,
+    );
+    const dropped = upstreamOk();
+    await relay(
+      config,
+      request(
+        `blog/admin/posts?view=live&featured=yes&q=${'a'.repeat(101)}&sort=title&pageSize=500&cursor=nope`,
+      ),
+      list,
+      dropped,
+    );
+    expect(dropped.mock.calls[0]?.[0]).toBe('http://api.test/blog/admin/posts');
+    const file = upstreamOk();
+    await relay(
+      config,
+      request(
+        `blog/admin/posts/export?format=xlsx&columns=slug,published&ids=${seller}&view=all&page=2`,
+      ),
+      [...list, 'export'],
+      file,
+    );
+    expect(file.mock.calls[0]?.[0]).toBe(
+      `http://api.test/blog/admin/posts/export?format=xlsx&columns=slug%2Cpublished&ids=${seller}&view=all`,
+    );
+  });
 });
 
 describe('relay of the storefront slides', () => {

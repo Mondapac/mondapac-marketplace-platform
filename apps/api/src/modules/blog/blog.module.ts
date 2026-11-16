@@ -33,6 +33,14 @@ import { DeleteBlogCategory } from './application/use-cases/delete-category.use-
 import { DeleteBlogTag } from './application/use-cases/delete-tag.use-case';
 import { FeatureBlogPost } from './application/use-cases/feature-post.use-case';
 import { ListBlogPosts } from './application/use-cases/list-posts.use-case';
+import { ExportBlogPosts } from './application/use-cases/export-posts.use-case';
+import { BlogPostEditProbe } from './application/use-cases/post-edit-probe.use-case';
+import { BlogPostPauseProbe } from './application/use-cases/post-pause-probe.use-case';
+import { BlogPostPublishProbe } from './application/use-cases/post-publish-probe.use-case';
+import { BlogPostReviewProbe } from './application/use-cases/post-review-probe.use-case';
+import { POST_ROW_KEYS, type AdminPostListDependencies } from './application/admin-post-list-flow';
+import { ADMIN_POST_LIST_READER } from './application/ports/admin-post-list.reader';
+import { SHEET_WRITER } from '../../platform/list-export';
 import { ListBlogTaxonomy } from './application/use-cases/list-taxonomy.use-case';
 import { PauseBlogPost } from './application/use-cases/pause-post.use-case';
 import { PauseSellerBlogPosts } from './application/use-cases/pause-seller-posts.use-case';
@@ -103,6 +111,37 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   };
 }
 
+type PostListUseCaseClass<U> = new (gate: UseCaseGate, deps: AdminPostListDependencies) => U;
+const PROBES = [BlogPostEditProbe, BlogPostReviewProbe, BlogPostPublishProbe, BlogPostPauseProbe];
+
+/** The admin Blog posts list and its export: the reader, one probe per row key, the writer. */
+function postListUseCaseProvider<U>(type: PostListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_POST_LIST_READER, ...PROBES, SHEET_WRITER, CLOCK],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AdminPostListDependencies['unitOfWork'],
+      list: AdminPostListDependencies['list'],
+      edit: BlogPostEditProbe,
+      review: BlogPostReviewProbe,
+      publish: BlogPostPublishProbe,
+      pause: BlogPostPauseProbe,
+      sheetWriter: AdminPostListDependencies['sheetWriter'],
+      clock: AdminPostListDependencies['clock'],
+    ) => {
+      const [editKey, reviewKey, publishKey, pauseKey] = POST_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        list,
+        probes: { [editKey]: edit, [reviewKey]: review, [publishKey]: publish, [pauseKey]: pause },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
 /**
  * Blog: posts of four kinds (product, brand, event, news) for the buyer site, written by the
  * platform's editors and, where an admin has switched a seller's blog access on, by sellers (four
@@ -138,7 +177,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       DeleteBlogCategory,
       DeleteBlogTag,
       FeatureBlogPost,
-      ListBlogPosts,
       ListBlogTaxonomy,
       PauseBlogPost,
       PrepareBlogPostCopy,
@@ -169,6 +207,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       PublishDueBlogPosts,
       PauseSellerBlogPosts,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    ...[ListBlogPosts, ExportBlogPosts].map((type) =>
+      postListUseCaseProvider(type as PostListUseCaseClass<unknown>),
+    ),
+    ...PROBES.map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new type(gate),
+    })),
     registerJobsFrom('blog', [PublishDueBlogPosts], (publishDue: PublishDueBlogPosts) => [
       publishDueJob(publishDue),
     ]),

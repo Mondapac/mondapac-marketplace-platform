@@ -7,6 +7,12 @@ import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { BLOG_LINKS, type BlogLinks } from '../application/ports/blog-links';
 import { BLOG_POLICY, type BlogPolicy } from '../application/ports/blog-policy';
 import { BLOG_REPOSITORY, type BlogRepository } from '../application/ports/blog.repository';
+import {
+  ADMIN_POST_LIST_READER,
+  type AdminPostListReader,
+} from '../application/ports/admin-post-list.reader';
+import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../../platform/list-export';
+import { PrismaAdminPostListReader } from './prisma-admin-post-list.reader';
 import { ConfigBlogPolicy } from './config-blog-policy';
 import { FacadeBlogLinks } from './facade-blog-links';
 import { PrismaBlogRepository } from './prisma-blog.repository';
@@ -17,6 +23,16 @@ export const blogProviders: readonly FactoryProvider[] = [
     provide: BLOG_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BlogRepository => new PrismaBlogRepository(prisma),
+  },
+  {
+    provide: ADMIN_POST_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminPostListReader =>
+      new PrismaAdminPostListReader(prisma),
+  },
+  {
+    provide: SHEET_WRITER,
+    useFactory: (): SheetWriter => new ExceljsSheetWriter(),
   },
   {
     provide: BLOG_POLICY,

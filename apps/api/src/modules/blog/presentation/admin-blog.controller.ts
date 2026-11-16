@@ -22,6 +22,8 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
+  ApiProduces,
   ApiQuery,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -41,6 +43,8 @@ import { CreateBlogPost } from '../application/use-cases/create-post.use-case';
 import { EditBlogPostInReview } from '../application/use-cases/reviewer-edit.use-case';
 import { FeatureBlogPost } from '../application/use-cases/feature-post.use-case';
 import { ListBlogPosts } from '../application/use-cases/list-posts.use-case';
+import { ExportBlogPosts } from '../application/use-cases/export-posts.use-case';
+import { EXPORT_FORMATS, writeChunks } from '../../../platform/list-export';
 import { PauseBlogPost } from '../application/use-cases/pause-post.use-case';
 import { PrepareBlogPostCopy } from '../application/use-cases/prepare-post-copy.use-case';
 import { PublishBlogPost } from '../application/use-cases/publish-post.use-case';
@@ -104,6 +108,7 @@ export class AdminBlogController {
     private readonly feature: FeatureBlogPost,
     private readonly eventStatus: ChangeBlogEventStatus,
     private readonly copy: PrepareBlogPostCopy,
+    private readonly exportPosts: ExportBlogPosts,
   ) {}
 
   private answer<T>(
@@ -128,15 +133,33 @@ export class AdminBlogController {
 
   @Get()
   @ApiOperation({
-    summary: 'The posts of the Market (admin)',
+    summary: 'The posts of the Market (the Blog posts super list, admin)',
     description:
-      'Needs blog.post.read. Newest first, 50 a page; filters: status, kind, owner, sellerId, page.',
+      'Needs blog.post.read. Views: `view` all (default) or one status (`status` is the older ' +
+      'name of the view, never with `view`), with `counts` of every view. Filters: kind, owner, ' +
+      'sellerId, featured (true or false), q (part of the title or slug, at most 100 ' +
+      'characters; never echoed), from/to on the last change. Sort: created (default), updated, ' +
+      'published, scheduled (not published or not scheduled last), direction. Paging: page and ' +
+      'pageSize (default 25, at most 100, up to row 10,000) with `total` and `hasMore`, or ' +
+      '`cursor` and `limit` (newest created first; no page, pageSize, sort or direction). Each ' +
+      'row has `actions`: open, and the lifecycle actions its state allows and the caller holds ' +
+      'the key of (edit and submit on platform posts only). An unknown key is refused.',
   })
+  @ApiQuery({ name: 'view', required: false })
   @ApiQuery({ name: 'status', required: false })
   @ApiQuery({ name: 'kind', required: false })
   @ApiQuery({ name: 'owner', required: false })
   @ApiQuery({ name: 'sellerId', required: false })
+  @ApiQuery({ name: 'featured', required: false })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'from', required: false })
+  @ApiQuery({ name: 'to', required: false })
+  @ApiQuery({ name: 'sort', required: false })
+  @ApiQuery({ name: 'direction', required: false })
   @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'pageSize', required: false })
+  @ApiQuery({ name: 'cursor', required: false })
+  @ApiQuery({ name: 'limit', required: false })
   @ApiOkResponse(BODY)
   @ApiBadRequestResponse(BAD)
   @ApiUnauthorizedResponse(UNAUTHORIZED)
@@ -152,6 +175,70 @@ export class AdminBlogController {
       context,
       await this.list.execute(context, { query: request.query }),
     );
+  }
+
+  @Get('export')
+  @ApiOperation({
+    summary: 'The Blog posts list as a CSV or XLSX file (admin)',
+    description:
+      'Needs blog.post.read. `format` csv (default) or xlsx; `columns` adds slug, seller-id, ' +
+      'stage, featured, scheduled, published, created (comma-separated); post id, title, type, ' +
+      'author, status and updated are always there. No body, excerpt or author text is written; ' +
+      'titles are text (a CSV cell that starts like a formula is guarded). The posts are `ids` ' +
+      '(comma-separated, at most 200; an id that is not a post of the Market refuses the whole ' +
+      'file as not found) or the view, filters and sort of the list, at most 10,000 (more: ' +
+      'batch.too-large with the total). An unknown key is refused.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({ name: 'columns', required: false })
+  @ApiQuery({ name: 'ids', required: false })
+  @ApiProduces('text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  @ApiOkResponse({
+    description: 'blog-posts-<date>.csv or blog-posts-<date>.xlsx, as an attachment',
+  })
+  @ApiBadRequestResponse(BAD)
+  @ApiUnauthorizedResponse(UNAUTHORIZED)
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse(NOT_FOUND)
+  @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large (details.max, total)' })
+  async download(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportPosts.execute(context, { query: request.query });
+    this.#logger.log({
+      msg: 'blog.export-posts-route',
+      outcome: result.ok ? 'ok' : result.error.code,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (!result.ok) {
+      const error = refusal(result.error, context, this.#logger);
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      await writeChunks(response, chunks);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logger.warn({
+        msg: 'blog.export-posts-route',
+        code: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+    }
   }
 
   @Post()
