@@ -1209,7 +1209,15 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       // The route logs its outcome, never the reference typed.
       const logged = logLines.filter((l) => l['msg'] === 'ordering.admin-list-shipments-route');
       expect(logged.length).toBeGreaterThanOrEqual(5);
-      expect(JSON.stringify(logged)).not.toContain('0123');
+      // A random correlation id (UUID), the time, the pid or the host name can hold "0123" by
+      // chance, so those fields are left out of the digit check; the whole line must still never
+      // hold the reference itself.
+      const byChance = new Set(['correlationId', 'time', 'pid', 'hostname']);
+      const withoutChanceFields = JSON.stringify(logged, (key, value: unknown) =>
+        byChance.has(key) ? undefined : value,
+      );
+      expect(withoutChanceFields).not.toContain('0123');
+      expect(JSON.stringify(logged)).not.toMatch(/JD( |%20|\+)0123/);
     });
 
     it('lists order confirmations and credit notes behind ordering.order.view, unnumbered', async () => {

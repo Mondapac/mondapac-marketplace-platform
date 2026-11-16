@@ -37,6 +37,17 @@ import { ApprovePayout } from './application/use-cases/approve-payout.use-case';
 import { ListOwnPayoutHolds } from './application/use-cases/list-own-payout-holds.use-case';
 import { ListOwnPayouts } from './application/use-cases/list-own-payouts.use-case';
 import { ListPayouts } from './application/use-cases/list-payouts.use-case';
+import { ExportPayouts } from './application/use-cases/export-payouts.use-case';
+import { PayoutApproveProbe } from './application/use-cases/payout-approve-probe.use-case';
+import { PayoutHoldPlaceProbe } from './application/use-cases/payout-hold-place-probe.use-case';
+import { PayoutHoldReleaseProbe } from './application/use-cases/payout-hold-release-probe.use-case';
+import { ADMIN_PAYOUT_LIST_READER } from './application/ports/admin-payout-list.reader';
+import { STORE_NAME_SEARCH } from './application/ports/store-name-search';
+import {
+  PAYOUT_ROW_KEYS,
+  type AdminPayoutListDependencies,
+} from './application/admin-payout-list-flow';
+import { SHEET_WRITER } from '../../platform/list-export';
 import { ReconcileInstructions } from './application/use-cases/reconcile-instructions.use-case';
 import { RunPayouts } from './application/use-cases/run-payouts.use-case';
 import { ViewNextPayout } from './application/use-cases/view-next-payout.use-case';
@@ -198,6 +209,50 @@ function payoutUseCaseProvider<U>(type: PayoutUseCaseClass<U>): FactoryProvider<
   };
 }
 
+type PayoutListUseCaseClass<U> = new (gate: UseCaseGate, deps: AdminPayoutListDependencies) => U;
+
+/** The admin Payouts list and its export (super list 21) share one dependency object. */
+function payoutListUseCaseProvider<U>(type: PayoutListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      ADMIN_PAYOUT_LIST_READER,
+      SELLER_NAMES,
+      STORE_NAME_SEARCH,
+      PayoutApproveProbe,
+      PayoutHoldPlaceProbe,
+      PayoutHoldReleaseProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AdminPayoutListDependencies['unitOfWork'],
+      payouts: AdminPayoutListDependencies['payouts'],
+      sellerNames: AdminPayoutListDependencies['sellerNames'],
+      storeSearch: AdminPayoutListDependencies['storeSearch'],
+      approve: PayoutApproveProbe,
+      place: PayoutHoldPlaceProbe,
+      release: PayoutHoldReleaseProbe,
+      sheetWriter: AdminPayoutListDependencies['sheetWriter'],
+      clock: AdminPayoutListDependencies['clock'],
+    ) => {
+      const [approveKey, placeKey, releaseKey] = PAYOUT_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        payouts,
+        sellerNames,
+        storeSearch,
+        probes: { [approveKey]: approve, [placeKey]: place, [releaseKey]: release },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
 function disputeUseCaseProvider<U>(type: DisputeUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
@@ -324,13 +379,22 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RunPayouts,
       ReconcileInstructions,
       ApplyTransferChange,
-      ListPayouts,
       ViewPayout,
       ApprovePayout,
       ViewNextPayout,
       ListOwnPayouts,
       ListOwnPayoutHolds,
     ].map((type) => payoutUseCaseProvider(type as PayoutUseCaseClass<unknown>)),
+    ...[ListPayouts, ExportPayouts].map((type) =>
+      payoutListUseCaseProvider(type as PayoutListUseCaseClass<unknown>),
+    ),
+    ...[PayoutApproveProbe, PayoutHoldPlaceProbe, PayoutHoldReleaseProbe].map(
+      (type): FactoryProvider => ({
+        provide: type,
+        inject: [USE_CASE_GATE],
+        useFactory: (gate: UseCaseGate) => new type(gate),
+      }),
+    ),
     // Package 6d: the payout run (every 15 minutes) and the reconciliation of instructed
     // transfers (every 5 minutes), once per Market under the scheduler's advisory lock.
     registerJobsFrom(
