@@ -20,6 +20,13 @@ import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
+import {
+  isNoteFailure,
+  requestOf,
+  ReviewNoteField,
+  trimmedNote,
+  useSentForReview,
+} from '../shared/review-note.tsx';
 import { useSettingsChrome } from '../settings/settings-chrome.ts';
 import { groupByResource, humanise } from './role-name.ts';
 import type { RoleCatalogue, RoleRecord } from './types.ts';
@@ -76,8 +83,13 @@ export function RoleEditor({
   const [version, setVersion] = useState(role?.version ?? 0);
   const [conflict, setConflict] = useState<Conflict | null>(null);
   const [comparing, setComparing] = useState(false);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
 
   const editing = role !== undefined;
+  // Only an edit of a custom role is reviewed; creating one is not.
+  const reviewed = editing && catalogue.review?.reviewed === true;
   const keyInfo = new Map(catalogue.keys.map((entry) => [entry.key, entry]));
   const groups = groupByResource(catalogue.keys.map((entry) => entry.key));
   const canDelete = editing && role.actions.delete.allowed;
@@ -108,6 +120,8 @@ export function RoleEditor({
     setProblem(null);
     setConflict(null);
     setComparing(false);
+    setNote('');
+    setNoteError(null);
   }
 
   function messageFor(code: string): string {
@@ -169,6 +183,10 @@ export function RoleEditor({
       await adoptSaved();
       return;
     }
+    if (reviewed && isNoteFailure(failure)) {
+      setNoteError(note.trim() === '' ? 'required' : 'rejected');
+      return;
+    }
     if (failure.code === 'validation.failed') {
       const fields = failure.details?.fields ?? [];
       if (fields.some((field) => field.path === 'name')) {
@@ -188,11 +206,17 @@ export function RoleEditor({
 
   async function submit() {
     setNameError(null);
+    setNoteError(null);
     setProblem(null);
     setConflict(null);
     const trimmed = name.trim();
     if (nameRule !== null) {
       live.attempt();
+      return;
+    }
+    const sentNote = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sentNote === null) {
+      setNoteError('required');
       return;
     }
     if (selected.size > MAX_KEYS) {
@@ -205,7 +229,11 @@ export function RoleEditor({
         ? await callApi<Written>(
             'PUT',
             `identity/admin/roles/${role.roleId}`,
-            { ...body, expectedVersion: version },
+            {
+              ...body,
+              expectedVersion: version,
+              ...(sentNote === null ? {} : { note: sentNote }),
+            },
             csrfToken,
           )
         : await callApi<Written>('POST', 'identity/admin/roles', body, csrfToken);
@@ -216,7 +244,9 @@ export function RoleEditor({
       // Saved: leaving this page is no longer a loss.
       setDone(true);
       if (editing) {
-        toast.success(t('editor.saved'));
+        setNote('');
+        if (requestOf(result.body) !== null) sentForReview(result.body);
+        else toast.success(t('editor.saved'));
         router.refresh();
       } else {
         // The page of the new role shows the outcome.
@@ -343,6 +373,22 @@ export function RoleEditor({
             />
           </SettingRow>
         </SettingsSection>
+        {reviewed ? (
+          <SettingsSection title={t('editor.section-note')}>
+            <div className="px-5 py-4">
+              <ReviewNoteField
+                value={note}
+                onChange={(next) => {
+                  setNote(next);
+                  setDone(false);
+                  setNoteError(null);
+                }}
+                error={noteError ?? undefined}
+                disabled={pending}
+              />
+            </div>
+          </SettingsSection>
+        ) : null}
         <p className="text-fg-muted" aria-live="polite">
           {t('selected', { selected: selected.size, total: catalogue.keys.length })}
         </p>
