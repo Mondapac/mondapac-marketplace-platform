@@ -3,6 +3,12 @@
 
 import { cleanColumnIds } from '../columns.ts';
 
+/**
+ * The columns of the picker. These ids are saved in each admin's browser, so they are not renamed;
+ * the export endpoint's ids differ for two of them (see `exportColumnIds`), and the relay's
+ * `exportColumns` list in `server/bff.ts` holds the export-side ids. A new column here needs its
+ * export id in both places, and a test in `shipments.spec.tsx` that lists all of them.
+ */
 export const OPTIONAL_COLUMNS = [
   'store',
   'customer',

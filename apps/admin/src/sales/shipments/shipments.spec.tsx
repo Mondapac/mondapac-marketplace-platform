@@ -14,7 +14,7 @@ vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../../api/client.ts';
 import { ShipmentsList } from './shipments-list.tsx';
-import { cleanColumns } from './shipments-columns.ts';
+import { OPTIONAL_COLUMNS, cleanColumns, exportColumnIds } from './shipments-columns.ts';
 import type { ShipmentRow, ShipmentsPage } from './shipments-types.ts';
 
 const call = vi.mocked(callApi);
@@ -1311,6 +1311,7 @@ describe('Shipments nav', () => {
 });
 
 describe('Shipments Export', () => {
+  const CSV = { 'content-type': 'text/csv; charset=utf-8' };
   const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const bulk = () => screen.getByRole('button', { name: 'Bulk action' });
   const openExport = async () => {
@@ -1391,7 +1392,9 @@ describe('Shipments Export', () => {
     await waitFor(() => expect(lastUrl()).toContain('stage=shipped'));
     await screen.findAllByText('Cedar Lane Halal Meats');
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
-    answerWith(() => new Response('﻿Order ID\r\nrow 1\r\nrow 2\r\n', { status: 200 }));
+    answerWith(
+      () => new Response('﻿Order ID\r\nrow 1\r\nrow 2\r\n', { status: 200, headers: CSV }),
+    );
     confirm(await openExport());
     expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
     expect(fetched).toHaveLength(1);
@@ -1443,7 +1446,11 @@ describe('Shipments Export', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
     fireEvent.click(screen.getByRole('button', { name: 'Select all matching' }));
     answerWith(
-      () => new Response('Order ID,Note\r\nr1,"two\r\nlines"\r\nr2,x\r\n', { status: 200 }),
+      () =>
+        new Response('Order ID,Note\r\nr1,"two\r\nlines"\r\nr2,x\r\n', {
+          status: 200,
+          headers: CSV,
+        }),
     );
     confirm(await openExport());
     expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
@@ -1526,7 +1533,7 @@ describe('Shipments Export', () => {
               controller.error(new TypeError('network'));
             },
           }),
-          { status: 200 },
+          { status: 200, headers: CSV },
         ),
     );
     confirm(await openExport());
@@ -1543,5 +1550,26 @@ describe('Shipments Export', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(fetched).toEqual([]);
+  });
+});
+
+describe('Shipments export column ids', () => {
+  it('maps every column of the picker to the id the export endpoint reads', () => {
+    expect(OPTIONAL_COLUMNS).toHaveLength(13);
+    expect(exportColumnIds(OPTIONAL_COLUMNS)).toEqual([
+      'store',
+      'customer',
+      'paid',
+      'delivery',
+      'carrier',
+      'total',
+      'ready',
+      'shipped',
+      'delivered',
+      'fleet',
+      'shipping',
+      'refunded',
+      'sellerOrderId',
+    ]);
   });
 });
