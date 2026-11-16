@@ -158,6 +158,30 @@ export async function customerOf(
   return ok({ admin, accountId });
 }
 
+/**
+ * One read of a section that is not a list (the cart, the behaviour summary, the consent): the
+ * body names the account only; the owner's answer is shaped by `answer`.
+ */
+export async function readSectionItem<T, A>(
+  deps: Pick<CustomerSectionDependencies, 'unitOfWork' | 'listReader' | 'peers'>,
+  context: CallContext,
+  input: unknown,
+  read: (
+    peers: CustomerSectionPeers,
+    accountId: Id<'Account'>,
+  ) => Promise<Result<T, { readonly code: string }>>,
+  answer: (value: T) => A,
+): Promise<Result<A, CustomerSectionFailure>> {
+  if (adminAccountOf(context) === null) return err({ code: 'access.denied' });
+  const body = closed(input, ['accountId']);
+  if (!body.ok) return body;
+  const customer = await customerOf(deps, context, body.value['accountId']);
+  if (!customer.ok) return customer;
+  const value = await read(deps.peers, customer.value.accountId);
+  if (!value.ok) return err(fromOwner(value.error.code));
+  return ok(answer(value.value));
+}
+
 /** One page of a section, with the owner's extra fields beside the page. */
 export async function readSectionList<F, S extends string, R>(
   deps: CustomerSectionDependencies,

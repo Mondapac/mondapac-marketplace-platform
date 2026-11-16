@@ -46,3 +46,6 @@ export class AdminCustomerSignInsExport extends UseCase<
     return exportSectionList(this.deps, SIGN_INS_SECTION, context, input);
   }
 }
+
+/** The file every section export answers, for the controllers (they import use cases only). */
+export type { SectionExportFile };

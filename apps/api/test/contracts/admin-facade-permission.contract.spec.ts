@@ -16,6 +16,32 @@ import { AdminCustomerSignInReveal as CustomersSignInReveal } from '../../src/mo
 import { AdminCustomerSignInsExport as CustomersSignInsExport } from '../../src/modules/customers/application/use-cases/admin-customer-sign-ins-export.use-case';
 import { AdminCustomerSignIns as CustomersSignIns } from '../../src/modules/customers/application/use-cases/admin-customer-sign-ins.use-case';
 import { AdminCustomerSignOut as CustomersSignOut } from '../../src/modules/customers/application/use-cases/admin-customer-sign-out.use-case';
+import { AdminCustomerAssistantConversationsSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-assistant-conversations-export.use-case';
+import { AdminCustomerAssistantConversationsSection } from '../../src/modules/customers/application/use-cases/admin-customer-assistant-conversations.use-case';
+import { AdminCustomerBehaviourSection } from '../../src/modules/customers/application/use-cases/admin-customer-behaviour.use-case';
+import { AdminCustomerCartAdditionsSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-cart-additions-export.use-case';
+import { AdminCustomerCartAdditionsSection } from '../../src/modules/customers/application/use-cases/admin-customer-cart-additions.use-case';
+import { AdminCustomerCartRemindersSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-cart-reminders-export.use-case';
+import { AdminCustomerCartRemindersSection } from '../../src/modules/customers/application/use-cases/admin-customer-cart-reminders.use-case';
+import { AdminCustomerCartSection } from '../../src/modules/customers/application/use-cases/admin-customer-cart.use-case';
+import { AdminCustomerConsentHistorySectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-consent-history-export.use-case';
+import { AdminCustomerConsentHistorySection } from '../../src/modules/customers/application/use-cases/admin-customer-consent-history.use-case';
+import { AdminCustomerConsentSection } from '../../src/modules/customers/application/use-cases/admin-customer-consent.use-case';
+import { AdminCustomerSavedItemsSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-saved-items-export.use-case';
+import { AdminCustomerSavedItemsSection } from '../../src/modules/customers/application/use-cases/admin-customer-saved-items.use-case';
+import { CART_CUSTOMER_CART_VIEW as CART_KEY } from '../../src/modules/cart/contracts/permissions';
+import { AdminCustomerCartRead as CartCustomerCart } from '../../src/modules/cart/application/use-cases/admin-customer-cart.use-case';
+import { AdminCustomerSavedItems as CartSavedItems } from '../../src/modules/cart/application/use-cases/admin-customer-saved-items.use-case';
+import { NOTIFICATIONS_CUSTOMER_CART_REMINDER_VIEW as REMINDERS_KEY } from '../../src/modules/notifications/contracts/permissions';
+import { AdminCustomerCartReminders as NotificationsCartReminders } from '../../src/modules/notifications/application/use-cases/admin-customer-cart-reminders.use-case';
+import { ENGAGEMENT_CUSTOMER_BEHAVIOUR_VIEW as BEHAVIOUR_KEY } from '../../src/modules/engagement/contracts/permissions';
+import { AdminCustomerBehaviour as EngagementBehaviour } from '../../src/modules/engagement/application/use-cases/admin-customer-behaviour.use-case';
+import { AdminCustomerCartAdditions as EngagementCartAdditions } from '../../src/modules/engagement/application/use-cases/admin-customer-cart-additions.use-case';
+import { LEGAL_CUSTOMER_CONSENT_VIEW as CONSENT_KEY } from '../../src/modules/legal/contracts/permissions';
+import { AdminCustomerConsent as LegalConsent } from '../../src/modules/legal/application/use-cases/admin-customer-consent.use-case';
+import { AdminCustomerConsentHistory as LegalConsentHistory } from '../../src/modules/legal/application/use-cases/admin-customer-consent-history.use-case';
+import { ASSISTANT_CUSTOMER_CONVERSATION_VIEW as CONVERSATIONS_KEY } from '../../src/modules/assistant/contracts/permissions';
+import { AdminCustomerConversations as AssistantConversations } from '../../src/modules/assistant/application/use-cases/admin-customer-conversations.use-case';
 import * as IDENTITY_KEYS from '../../src/modules/identity/contracts/permissions';
 import { AdminCustomerSessions as IdentityCustomerSessions } from '../../src/modules/identity/application/use-cases/admin-customer-sessions.use-case';
 import { AdminCustomerSignIns as IdentityCustomerSignIns } from '../../src/modules/identity/application/use-cases/admin-customer-sign-ins.use-case';
@@ -184,6 +210,19 @@ describe('the customer page sections and their owners’ facade reads', () => {
       IDENTITY_KEYS.CUSTOMER_PASSWORD_RESET_SEND.key,
     ]);
     expect(IDENTITY_KEYS.CUSTOMER_SIGN_IN_REVEAL.protected).toBe(true);
+    expect([
+      SECTION_KEYS.CART_CUSTOMER_CART_VIEW,
+      SECTION_KEYS.NOTIFICATIONS_CUSTOMER_CART_REMINDER_VIEW,
+      SECTION_KEYS.ENGAGEMENT_CUSTOMER_BEHAVIOUR_VIEW,
+      SECTION_KEYS.LEGAL_CUSTOMER_CONSENT_VIEW,
+      SECTION_KEYS.ASSISTANT_CUSTOMER_CONVERSATION_VIEW,
+    ]).toEqual([
+      CART_KEY.key,
+      REMINDERS_KEY.key,
+      BEHAVIOUR_KEY.key,
+      CONSENT_KEY.key,
+      CONVERSATIONS_KEY.key,
+    ]);
   });
 
   it.each([
@@ -196,6 +235,19 @@ describe('the customer page sections and their owners’ facade reads', () => {
     [CustomersSessions, [VIEW, IDENTITY_KEYS.CUSTOMER_SIGN_IN_VIEW.key]],
     [CustomersSignOut, [VIEW, IDENTITY_KEYS.CUSTOMER_SESSION_END.key]],
     [CustomersPasswordReset, [VIEW, IDENTITY_KEYS.CUSTOMER_PASSWORD_RESET_SEND.key]],
+    [AdminCustomerCartSection, [VIEW, CART_KEY.key]],
+    [AdminCustomerSavedItemsSection, [VIEW, CART_KEY.key]],
+    [AdminCustomerSavedItemsSectionExport, [VIEW, CART_KEY.key, EXPORT]],
+    [AdminCustomerCartRemindersSection, [VIEW, REMINDERS_KEY.key]],
+    [AdminCustomerCartRemindersSectionExport, [VIEW, REMINDERS_KEY.key, EXPORT]],
+    [AdminCustomerBehaviourSection, [VIEW, BEHAVIOUR_KEY.key]],
+    [AdminCustomerCartAdditionsSection, [VIEW, BEHAVIOUR_KEY.key]],
+    [AdminCustomerCartAdditionsSectionExport, [VIEW, BEHAVIOUR_KEY.key, EXPORT]],
+    [AdminCustomerConsentSection, [VIEW, CONSENT_KEY.key]],
+    [AdminCustomerConsentHistorySection, [VIEW, CONSENT_KEY.key]],
+    [AdminCustomerConsentHistorySectionExport, [VIEW, CONSENT_KEY.key, EXPORT]],
+    [AdminCustomerAssistantConversationsSection, [VIEW, CONVERSATIONS_KEY.key]],
+    [AdminCustomerAssistantConversationsSectionExport, [VIEW, CONVERSATIONS_KEY.key, EXPORT]],
   ] as const)('%p requires customers view plus the owner’s key', (useCase, keys) => {
     expect(useCase.access.rule).toEqual({ kind: 'permissions', allOf: keys });
   });
@@ -209,7 +261,21 @@ describe('the customer page sections and their owners’ facade reads', () => {
     ],
     [IdentitySignOutCustomer, [IDENTITY_KEYS.CUSTOMER_SESSION_END.key]],
     [IdentitySendCustomerPasswordReset, [IDENTITY_KEYS.CUSTOMER_PASSWORD_RESET_SEND.key]],
+    [CartCustomerCart, [CART_KEY.key]],
+    [CartSavedItems, [CART_KEY.key]],
+    [NotificationsCartReminders, [REMINDERS_KEY.key]],
+    [EngagementBehaviour, [BEHAVIOUR_KEY.key]],
+    [EngagementCartAdditions, [BEHAVIOUR_KEY.key]],
+    [LegalConsent, [CONSENT_KEY.key]],
+    [LegalConsentHistory, [CONSENT_KEY.key]],
+    [AssistantConversations, [CONVERSATIONS_KEY.key]],
   ] as const)('the owner’s facade read %p declares its own key', (useCase, keys) => {
     expect(useCase.access.rule).toEqual({ kind: 'permissions', allOf: keys });
+  });
+
+  it('keeps the owners’ new view keys plain (not protected)', () => {
+    for (const key of [CART_KEY, REMINDERS_KEY, BEHAVIOUR_KEY, CONSENT_KEY, CONVERSATIONS_KEY]) {
+      expect(key.protected).toBe(false);
+    }
   });
 });

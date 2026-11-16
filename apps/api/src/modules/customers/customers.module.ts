@@ -117,9 +117,23 @@ import { AdminCustomerSignInReveal } from './application/use-cases/admin-custome
 import { AdminCustomerSignInsExport } from './application/use-cases/admin-customer-sign-ins-export.use-case';
 import { AdminCustomerSignIns } from './application/use-cases/admin-customer-sign-ins.use-case';
 import { AdminCustomerSignOut } from './application/use-cases/admin-customer-sign-out.use-case';
+import { AdminCustomerCartSection } from './application/use-cases/admin-customer-cart.use-case';
+import { AdminCustomerSavedItemsSection } from './application/use-cases/admin-customer-saved-items.use-case';
+import { AdminCustomerSavedItemsSectionExport } from './application/use-cases/admin-customer-saved-items-export.use-case';
+import { AdminCustomerCartRemindersSection } from './application/use-cases/admin-customer-cart-reminders.use-case';
+import { AdminCustomerCartRemindersSectionExport } from './application/use-cases/admin-customer-cart-reminders-export.use-case';
+import { AdminCustomerCartAdditionsSection } from './application/use-cases/admin-customer-cart-additions.use-case';
+import { AdminCustomerCartAdditionsSectionExport } from './application/use-cases/admin-customer-cart-additions-export.use-case';
+import { AdminCustomerBehaviourSection } from './application/use-cases/admin-customer-behaviour.use-case';
+import { AdminCustomerConsentSection } from './application/use-cases/admin-customer-consent.use-case';
+import { AdminCustomerConsentHistorySection } from './application/use-cases/admin-customer-consent-history.use-case';
+import { AdminCustomerConsentHistorySectionExport } from './application/use-cases/admin-customer-consent-history-export.use-case';
+import { AdminCustomerAssistantConversationsSection } from './application/use-cases/admin-customer-assistant-conversations.use-case';
+import { AdminCustomerAssistantConversationsSectionExport } from './application/use-cases/admin-customer-assistant-conversations-export.use-case';
 import type { CustomerSectionDependencies } from './application/customer-section-lists';
 import { CUSTOMER_SECTION_PEERS } from './application/ports/customer-section-peers';
 import { LateBoundSectionPeers } from './infrastructure/late-bound-section-peers';
+import { AdminCustomerActivityController } from './presentation/admin-customer-activity.controller';
 import { AdminCustomerSectionsController } from './presentation/admin-customer-sections.controller';
 import { AdminCustomerAddresses } from './application/use-cases/admin-customer-addresses.use-case';
 import { AdminCustomerNotesList } from './application/use-cases/admin-customer-notes-list.use-case';
@@ -407,6 +421,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminCustomersController,
     AdminCustomerManagementController,
     AdminCustomerSectionsController,
+    AdminCustomerActivityController,
   ],
   providers: [
     {
@@ -474,6 +489,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminCustomerSessions,
       AdminCustomerSignOut,
       AdminCustomerPasswordReset,
+      AdminCustomerCartSection,
+      AdminCustomerSavedItemsSection,
+      AdminCustomerSavedItemsSectionExport,
+      AdminCustomerCartRemindersSection,
+      AdminCustomerCartRemindersSectionExport,
+      AdminCustomerCartAdditionsSection,
+      AdminCustomerCartAdditionsSectionExport,
+      AdminCustomerBehaviourSection,
+      AdminCustomerConsentSection,
+      AdminCustomerConsentHistorySection,
+      AdminCustomerConsentHistorySectionExport,
+      AdminCustomerAssistantConversationsSection,
+      AdminCustomerAssistantConversationsSectionExport,
     ].map((type) => sectionUseCaseProvider(type as SectionUseCaseClass<unknown>)),
     {
       provide: RecordCustomerTimeline,

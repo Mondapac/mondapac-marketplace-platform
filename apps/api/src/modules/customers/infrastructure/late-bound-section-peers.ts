@@ -1,10 +1,30 @@
 import { err } from '@mondapac/shared-kernel';
-import type {
-  CustomerSectionPeers,
-  IdentitySectionPeer,
-} from '../application/ports/customer-section-peers';
+import type { CustomerSectionPeers } from '../application/ports/customer-section-peers';
 
 const UNAVAILABLE = () => Promise.resolve(err({ code: 'access.unavailable' as const }));
+
+type Method = (...args: never[]) => Promise<unknown>;
+
+/**
+ * One owner's methods, each refusing (fail closed) until the owner is bound, then calling it with
+ * the caller's arguments unchanged.
+ */
+function lateBound<K extends keyof CustomerSectionPeers>(
+  bound: () => CustomerSectionPeers | null,
+  owner: K,
+  methods: readonly (keyof CustomerSectionPeers[K])[],
+): CustomerSectionPeers[K] {
+  return Object.fromEntries(
+    methods.map((name) => [
+      name,
+      (...args: never[]) => {
+        const peers = bound();
+        if (peers === null) return UNAVAILABLE();
+        return (peers[owner][name] as Method).apply(peers[owner], args);
+      },
+    ]),
+  ) as CustomerSectionPeers[K];
+}
 
 /**
  * The owners of the customer page's sections, refusing (fail closed) until
@@ -17,26 +37,29 @@ export class LateBoundSectionPeers implements CustomerSectionPeers {
     this.#bound = peers;
   }
 
-  readonly identity: IdentitySectionPeer = {
-    adminCustomerSignIns: (context, request) =>
-      this.#bound === null
-        ? UNAVAILABLE()
-        : this.#bound.identity.adminCustomerSignIns(context, request),
-    adminRevealCustomerSignIn: (context, input) =>
-      this.#bound === null
-        ? UNAVAILABLE()
-        : this.#bound.identity.adminRevealCustomerSignIn(context, input),
-    adminCustomerSessions: (context, accountId) =>
-      this.#bound === null
-        ? UNAVAILABLE()
-        : this.#bound.identity.adminCustomerSessions(context, accountId),
-    adminSignOutCustomer: (context, accountId) =>
-      this.#bound === null
-        ? UNAVAILABLE()
-        : this.#bound.identity.adminSignOutCustomer(context, accountId),
-    adminSendCustomerPasswordReset: (context, accountId) =>
-      this.#bound === null
-        ? UNAVAILABLE()
-        : this.#bound.identity.adminSendCustomerPasswordReset(context, accountId),
-  };
+  readonly #peers = () => this.#bound;
+
+  readonly identity = lateBound(this.#peers, 'identity', [
+    'adminCustomerSignIns',
+    'adminRevealCustomerSignIn',
+    'adminCustomerSessions',
+    'adminSignOutCustomer',
+    'adminSendCustomerPasswordReset',
+  ]);
+
+  readonly cart = lateBound(this.#peers, 'cart', ['adminCustomerCart', 'adminCustomerSavedItems']);
+
+  readonly reminders = lateBound(this.#peers, 'reminders', ['adminCustomerCartReminders']);
+
+  readonly behaviour = lateBound(this.#peers, 'behaviour', [
+    'adminCustomerBehaviour',
+    'adminCustomerCartAdditions',
+  ]);
+
+  readonly consent = lateBound(this.#peers, 'consent', [
+    'adminCustomerConsent',
+    'adminCustomerConsentHistory',
+  ]);
+
+  readonly conversations = lateBound(this.#peers, 'conversations', ['adminCustomerConversations']);
 }
