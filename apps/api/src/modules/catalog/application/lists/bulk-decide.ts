@@ -43,7 +43,12 @@ export function parseBulkItems(raw: unknown): Result<readonly BulkDecideItem[], 
     }
     const { id, version } = record;
     if (typeof id !== 'string' || !UUID.test(id)) return bad(`items.${index}.id`, 'format');
-    if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
+    if (
+      typeof version !== 'number' ||
+      !Number.isInteger(version) ||
+      version < 1 ||
+      version > 2147483647
+    ) {
       return bad(`items.${index}.version`, 'type');
     }
     if (seen.has(id.toLowerCase())) return bad(`items.${index}.id`, 'duplicate');
@@ -69,12 +74,7 @@ export interface BulkDecideCounts {
 }
 
 /** Refusals of one row that mean "this row is not decidable now": the row is skipped. */
-const SKIPPED_CODES = new Set([
-  'access.denied',
-  'conflict.stale',
-  'validation.failed',
-  'category-proposal.not-allowed',
-]);
+const SKIPPED_CODES = new Set(['access.denied', 'conflict.stale', 'category-proposal.not-allowed']);
 
 const isSkipped = (code: string): boolean =>
   SKIPPED_CODES.has(code) ||

@@ -380,6 +380,10 @@ describe.each(TEST_MARKETS)(
         expect(body.items[0]).toMatchObject({ actions: ['approve', 'reject'] });
         const first = body.items[0]!.id;
         expect(body.nextAfterId).toBe(first);
+        await http()
+          .get(`${ADMIN_BASE}/category-proposals?limit=1&q=queue`)
+          .set(admin())
+          .expect(400);
         const walked = await http()
           .get(`${ADMIN_BASE}/category-proposals?limit=1&afterId=${first}`)
           .set(admin())

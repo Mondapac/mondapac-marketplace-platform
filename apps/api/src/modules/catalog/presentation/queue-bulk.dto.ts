@@ -18,8 +18,7 @@ export class BulkDecideRequest {
   reason?: string;
   @ApiProperty({
     required: false,
-    description:
-      'Category proposals: the reject reason code. Tag suggestions: `group` is for approve.',
+    description: 'Category proposals: the reject reason code (instead of `reason`).',
   })
   reasonCode?: string;
   @ApiProperty({ required: false, enum: ['occasion', 'cuisine', 'use'] }) group?: string;

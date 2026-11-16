@@ -2129,6 +2129,7 @@ const RESTRUCTURE_DEPS = {
       attributeReject: true,
       suggestions: true,
       policy: true,
+      unitOfWork: true,
     }),
     useCaseProvider(TopicSuggestionBulkDecide, { topicApprove: true, topicReject: true }),
     useCaseProvider(CategoryProposalBulkDecide, { proposalApprove: true, proposalReject: true }),

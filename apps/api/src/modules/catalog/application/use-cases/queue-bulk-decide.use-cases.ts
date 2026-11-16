@@ -7,7 +7,9 @@ import {
   CATALOG_TOPIC_SUGGESTION_REVIEW,
   CATALOG_VARIANT_REQUEST_REVIEW,
 } from '../../contracts/permissions';
+import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { PROPOSAL_REJECT_REASONS } from '../../domain/seller-category';
+import { TOPIC_GROUPS } from '../../domain/topic';
 import {
   parseBulkItems,
   runBulkDecide,
@@ -128,6 +130,7 @@ export interface AttributeSuggestionBulkDecideDependencies {
   readonly attributeReject: AttributeSuggestionReject;
   readonly suggestions: AttributeValueSuggestionStore;
   readonly policy: CatalogMarketPolicy;
+  readonly unitOfWork: UnitOfWork;
 }
 
 /**
@@ -171,7 +174,14 @@ export class AttributeSuggestionBulkDecide extends UseCase<
         return err({ code: 'access.unavailable' });
       }
       const done = await runBulkDecide(items.value, async (item) => {
-        const found = await this.deps.suggestions.findById(context.market, item.id as never);
+        // The label read needs its own read-only unit; the decision below opens its own.
+        const read = await this.deps.unitOfWork.run(
+          context.market,
+          async () => ok(await this.deps.suggestions.findById(context.market, item.id as never)),
+          { readOnly: true },
+        );
+        if (!read.ok) return err({ code: 'access.unavailable' });
+        const found = read.value;
         if (found === null) return err({ code: 'suggestion.not-found' });
         return this.deps.attributeApprove.execute(context, {
           suggestionId: item.id,
@@ -239,6 +249,7 @@ export class TopicSuggestionBulkDecide extends UseCase<
       if (body.value['reason'] !== undefined) return refuse('reason', 'unknown');
       const group = body.value['group'];
       if (typeof group !== 'string') return refuse('group', 'required');
+      if (!(TOPIC_GROUPS as readonly string[]).includes(group)) return refuse('group', 'value');
       const done = await runBulkDecide(items.value, (item) =>
         this.deps.topicApprove.execute(context, {
           suggestionId: item.id,

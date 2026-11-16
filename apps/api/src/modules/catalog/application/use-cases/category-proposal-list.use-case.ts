@@ -5,6 +5,7 @@ import { listPage, pageWindow, type ListPagingMode } from '../../../../platform/
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_CATEGORY_PROPOSAL_DECIDE } from '../../contracts/permissions';
 import { normaliseShelfName } from '../../domain/seller-category';
+import { invalid } from '../attributes/attribute-editor';
 import { closedInput, editorAccountOf } from '../categories/category-editor';
 import { readCatalogListInput } from '../lists/catalog-list-input';
 import type { CategoryProposalView } from '../../domain/seller-category';
@@ -115,6 +116,10 @@ export class CategoryProposalList extends UseCase<unknown, CategoryProposalListA
     if (!read.ok) return read;
     const { market } = context;
     const { shelves } = this.deps;
+    // The older cursor read has no search; a `q` with it would be dropped silently, so it is refused.
+    if (read.value.mode === 'cursor' && read.value.q !== null) {
+      return invalid('q', 'conflict');
+    }
     const nameKey = read.value.q === null ? null : normaliseShelfName(read.value.q);
     const unit = await this.deps.unitOfWork.run(
       market,
