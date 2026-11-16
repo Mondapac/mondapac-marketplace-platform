@@ -397,7 +397,7 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
       }
     });
 
-    it('keeps usage insert-only for the application, with shares that add up', async () => {
+    it('lets the application change only the usage counters, with shares that add up', async () => {
       const statement = promotionSql();
       await sql.query(...statement);
       const promotionId = statement[1][0];
@@ -415,9 +415,25 @@ describe.each(TEST_MARKETS)('promotions in market %s (database)', (code) => {
       expect(
         await state(
           sql.query(
-            `UPDATE promotions.promotion_usage SET uses_count = 1 WHERE promotion_id = $1`,
+            `UPDATE promotions.promotion_usage SET uses_count = 1, updated_at = now() WHERE promotion_id = $1`,
             [promotionId],
           ),
+        ),
+      ).toBe('allowed');
+      // The counters move with the redemptions (package T2); the row's identity never does.
+      expect(
+        await state(
+          sql.query(
+            `UPDATE promotions.promotion_usage SET market_id = market_id WHERE promotion_id = $1`,
+            [promotionId],
+          ),
+        ),
+      ).toBe(NO_PRIVILEGE);
+      expect(
+        await state(
+          sql.query(`DELETE FROM promotions.promotion_usage WHERE promotion_id = $1`, [
+            promotionId,
+          ]),
         ),
       ).toBe(NO_PRIVILEGE);
       expect(

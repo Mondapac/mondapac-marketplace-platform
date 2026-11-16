@@ -921,6 +921,13 @@
     }
   },
   {
+    "type": "ordering.order-cancelled.v1",
+    "aggregateType": "order",
+    "fields": {
+      "orderId": "id"
+    }
+  },
+  {
     "type": "ordering.seller-order-ready.v1",
     "aggregateType": "seller-order",
     "fields": {

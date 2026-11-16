@@ -20,6 +20,7 @@ import type { MarketSettingRepository } from './ports/market-setting.repository'
 import type { OptInRepository } from './ports/opt-in.repository';
 import type { PriceHistory } from './ports/price-history';
 import type { PromotionRepository } from './ports/promotion.repository';
+import type { RedemptionRepository } from './ports/redemption.repository';
 import type { PromotionsPolicy } from './ports/promotions-policy';
 import type { ReviewQueueRepository } from './ports/review-queue.repository';
 import type { SellerActivity } from './ports/seller-activity';
@@ -43,6 +44,8 @@ export interface PromotionsDependencies {
   readonly batchCodes: BatchCodeRepository;
   readonly codeCrypto: BatchCodeCrypto;
   readonly flashSales: FlashSales;
+  /** What orders took from the promotions, with the usage counters and the codes (package T2). */
+  readonly redemptions: RedemptionRepository;
   readonly sellerActivity: SellerActivity;
   readonly priceHistory: PriceHistory;
   /** Seller campaigns (package PB2): the commission rate and the seller's catalogue. */
