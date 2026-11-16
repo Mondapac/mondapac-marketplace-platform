@@ -20,8 +20,10 @@ import { ASSISTANT_SETTINGS_REPOSITORY } from './application/ports/assistant-set
 import { ASSISTANT_TOOLS } from './application/ports/assistant-tools';
 import { CONVERSATION_REPOSITORY } from './application/ports/conversation.repository';
 import { GUEST_TOKENS } from './application/ports/guest-tokens';
+import { IssuePreviewToken } from './application/use-cases/issue-preview-token.use-case';
 import { MARKET_CALENDAR } from './application/ports/market-calendar';
 import { MESSAGE_LIMITS } from './application/ports/message-limits';
+import { PREVIEW_TOKENS } from './application/ports/preview-tokens';
 import { QUICK_PROMPTS } from './application/ports/quick-prompts';
 import { SPEND_REPOSITORY } from './application/ports/spend.repository';
 import { DeleteConversation } from './application/use-cases/delete-conversation.use-case';
@@ -39,6 +41,7 @@ import { ASSISTANT_AUDIT_ACTIONS } from './domain/audit';
 import { ASSISTANT_EVENTS } from './domain/events';
 import { assistantProviders } from './infrastructure/assistant-providers';
 import { AdminAssistantSettingsController } from './presentation/admin-assistant-settings.controller';
+import { AdminPreviewTokenController } from './presentation/admin-preview-token.controller';
 import { ConversationController } from './presentation/conversation.controller';
 import { purgeConversationsJob } from './presentation/jobs/purge-conversations.job';
 import { StorefrontAssistantController } from './presentation/storefront-assistant.controller';
@@ -59,6 +62,7 @@ const PORTS: readonly [keyof AssistantDependencies, InjectionToken][] = [
   ['calendar', MARKET_CALENDAR],
   ['outbox', OUTBOX_WRITER],
   ['quickPrompts', QUICK_PROMPTS],
+  ['previewTokens', PREVIEW_TOKENS],
   ['trail', CHANGE_TRAIL],
 ];
 
@@ -91,6 +95,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   imports: [SearchModule, CatalogModule, NotificationsModule, IdentityModule],
   controllers: [
     AdminAssistantSettingsController,
+    AdminPreviewTokenController,
     StorefrontAssistantController,
     ConversationController,
   ],
@@ -109,6 +114,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewAssistantSettingsHistory,
       SetAssistantSettings,
       ViewStorefrontAssistant,
+      IssuePreviewToken,
       SendMessage,
       SendGuestMessage,
       ListConversations,

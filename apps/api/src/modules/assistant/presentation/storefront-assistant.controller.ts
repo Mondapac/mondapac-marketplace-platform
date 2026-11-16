@@ -1,5 +1,5 @@
-import { Controller, Get, Query, Res } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Headers, Query, Res } from '@nestjs/common';
+import { ApiHeader, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Response } from 'express';
 import { Call } from '../../../platform/call-context/call-context.decorator';
@@ -8,7 +8,7 @@ import {
   STOREFRONT_OFF,
   ViewStorefrontAssistant,
 } from '../application/use-cases/view-storefront-assistant.use-case';
-import { StorefrontAssistantBody } from './assistant.dto';
+import { PREVIEW_HEADER, StorefrontAssistantBody } from './assistant.dto';
 
 /**
  * Whether the storefront shows the buyer assistant to this visitor. No session is read: the
@@ -33,15 +33,23 @@ export class StorefrontAssistantController {
   })
   @ApiQuery({ name: 'visitor', required: false, type: String })
   @ApiQuery({ name: 'lang', required: false, type: String })
+  @ApiHeader({
+    name: PREVIEW_HEADER,
+    required: false,
+    description:
+      'An internal preview token from POST /assistant/admin/preview-token: the assistant then ' +
+      'answers this browser while the audience is internal. Invalid or expired counts as none.',
+  })
   @ApiOkResponse({ type: StorefrontAssistantBody })
   async one(
     @Call() context: CallContext,
     @Query('visitor') visitor: unknown,
     @Query('lang') lang: unknown,
+    @Headers(PREVIEW_HEADER) preview: string | undefined,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.view.execute(context, { visitor, lang });
+    const result = await this.view.execute(context, { visitor, lang, preview });
     // The use case cannot fail: its error type is never.
     return result.ok ? result.value : STOREFRONT_OFF;
   }
