@@ -1620,10 +1620,11 @@ one `(market, area, language)` row. No other index is needed. Growth: at most ar
 languages rows per Market. Reversible: `down.sql` drops the table (the edited names are lost).
 
 Row actions (super list phase 4, 2026-11-16): the list is a small list (a handful of rows), so it
-gets only the row Actions menu. Each row of `GET /admin/service-area-names` carries `actions`:
+gets only the row Actions menu. Each row of `GET /sellers/admin/service-areas` carries `actions`:
 `edit-names` when the caller holds `sellers.service-area.edit` (asked once per request through the
-probe `sellers.service-area-edit-probe`), else empty. The edit response's `area` always carries
-`edit-names`, since its caller just passed the edit check. No query or table change.
+probe `sellers.service-area-edit-probe`), else empty. The response of
+`POST /sellers/admin/service-areas/names` always carries `edit-names` on its `area`, since its
+caller just passed the edit check. No query or table change.
 
 ## 25. Seller health tables: retention and revisit triggers (2026-11-03; Mojtaba review)
 Tables `seller_health_days` (migration `20261101070000_sellers_health_store`) and `seller_health_snapshots`. Rows are written by the hourly job `sellers.seller-health` (last 3 local days per seller, in the seller's zone) and deleted by `sellers.purge-seller-health` (every 6 hours; migration `20261103150000_sellers_health_retention` grants DELETE to the application role and nothing else may delete). Rows older than 400 days go: the longest window a Market may set is 366 days plus the 3-day recount, and the cut is made on the UTC date, so no score reads a deleted day.

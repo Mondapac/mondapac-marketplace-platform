@@ -71,7 +71,7 @@ class Store implements ServiceAreaNamesRepository {
   }
 }
 
-function setUp() {
+function setUp(configured: readonly ConfiguredArea[] = [AREA]) {
   const clock = new FixedClock(Temporal.Instant.from('2026-11-04T10:00:00Z'));
   const ids = new SequenceIdGenerator(clock);
   const store = new Store();
@@ -84,8 +84,10 @@ function setUp() {
   };
   let held = true;
   let viewOnly = false;
+  let probes = 0;
   const authorisation: AuthorisationCheck = {
     check: (_context, declaration) => {
+      if (declaration.name === 'sellers.service-area-edit-probe') probes += 1;
       const keys: readonly string[] =
         declaration.rule.kind === 'permissions' ? declaration.rule.allOf : [];
       const allowed = held && !(viewOnly && keys.includes('sellers.service-area.edit'));
@@ -97,8 +99,8 @@ function setUp() {
   const areas: OnboardingAreas = {
     openCodes: () => [],
     nameOf: () => null,
-    all: () => [{ code: AREA.code, name: 'Harbour City' }],
-    configured: () => [AREA],
+    all: () => configured.map((area) => ({ code: area.code, name: area.names['en'] ?? '' })),
+    configured: () => [...configured],
   };
   let forgotten = 0;
   const areaNames: AreaNameSource = {
@@ -120,6 +122,7 @@ function setUp() {
     forgotten: () => forgotten,
     withhold: () => void (held = false),
     viewOnly: () => void (viewOnly = true),
+    probes: () => probes,
     list: new ServiceAreaNamesList(gate, {
       onboardingAreas: areas,
       areaNames,
@@ -250,6 +253,20 @@ describe.each([['AU'], ['ZZ']])('service area names in %s', (code) => {
     t.viewOnly();
     const viewer = await t.list.execute(context, undefined);
     expect(viewer.ok && viewer.value.areas.map((area) => area.actions)).toEqual([[]]);
+  });
+
+  it('asks the probe once per page, and not at all when the Market has no areas', async () => {
+    const two = setUp([AREA, { ...AREA, code: 'river-town', names: { en: 'River Town' } }]);
+    const listed = await two.list.execute(adminOf(two, code), undefined);
+    expect(listed.ok && listed.value.areas.map((area) => area.actions)).toEqual([
+      ['edit-names'],
+      ['edit-names'],
+    ]);
+    expect(two.probes()).toBe(1);
+    const none = setUp([]);
+    const empty = await none.list.execute(adminOf(none, code), undefined);
+    expect(empty.ok && empty.value.areas).toEqual([]);
+    expect(none.probes()).toBe(0);
   });
 
   it('keeps edits of one Market out of the other', async () => {
