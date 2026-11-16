@@ -15,7 +15,8 @@ again. No bulk money action exists; the only bulk action is the export. Both rou
 - **Older queue:** without `view`, a `status` of pending, decided or granted is read as the view, so
   the panel's request queue keeps sending `status`, `cursor` and `limit` and reads the same rows
   and `nextCursor` (20 rows by default).
-- **Filters:** `status` (one status inside the view; outside it nothing matches), `reason`,
+- **Filters:** `status` (one status inside the view; a status the view does not show is refused
+  as `outside-view`), `reason`,
   `approvalReason`, `q` (a request id or a customer account id, exact), `requestedBy` (an admin
   account id, or `me`), `from`/`to` on the request time, `minAmount`/`maxAmount` (minor units, both
   ends included).
@@ -43,7 +44,10 @@ again. No bulk money action exists; the only bulk action is the export. Both rou
 
 ## Data
 
-No migration. The views read through
-`(market_id, status, requested_at DESC, id DESC)`; the all view and the other sorts sort the
-Market's requests, which are few (only issues above the caps wait, and they expire). The old
+No migration. The pending and granted views read through
+`(market_id, status, requested_at DESC, id DESC)`; the decided and all views and the other sorts
+sort the Market's requests. Every issue stays as a row (granted at once included), so when the
+volume grows, add `(market_id, requested_at DESC, id DESC)` and an index for `q` on
+`customer_account_id`. The cursor is in milliseconds while the column keeps microseconds; every
+request time is written from the Clock in milliseconds, so it is exact. The old
 repository `list` method is replaced by the list reader (`ADMIN_CREDIT_LIST_READER`).

@@ -194,8 +194,8 @@ describe.each([['AU'], ['ZZ']] as const)('the admin Credit requests list in mark
       const c = add({ minutes: 3, status: 'expired' });
       const all = (input: Record<string, unknown>) => list({ view: 'all', ...input });
       expect(ids(must(await all({ status: 'expired' })))).toEqual([c.id]);
-      // A status outside the view matches nothing.
-      expect(ids(must(await list({ view: 'pending', status: 'expired' })))).toEqual([]);
+      // A status outside the view is refused.
+      expect(await list({ view: 'pending', status: 'expired' })).toMatchObject({ ok: false });
       expect(ids(must(await all({ reason: 'promotion' })))).toEqual([a.id]);
       expect(ids(must(await all({ approvalReason: 'daily-cap' })))).toEqual([b.id]);
       expect(ids(must(await all({ q: a.id.toUpperCase() })))).toEqual([a.id]);
@@ -261,6 +261,40 @@ describe.each([['AU'], ['ZZ']] as const)('the admin Credit requests list in mark
       expect(last.nextCursor).toBeNull();
       // Page numbers answer 25 rows by default.
       expect(must(await list({})).pageSize).toBe(25);
+    });
+
+    it("walks the older queue's decided and granted tabs with its status, limit and cursor", async () => {
+      const decided = [1, 2, 3].map((minutes) =>
+        add({
+          minutes,
+          status: minutes === 2 ? 'expired' : 'rejected',
+          decidedBy: minutes === 2 ? null : CHECKER,
+          decidedAt: minutes === 2 ? null : T0.add({ hours: 2 }),
+        }),
+      );
+      const grants = [4, 5, 6].map((minutes) => granted({ minutes }));
+      add({ minutes: 7 });
+      const walk = async (status: string) => {
+        const seen: string[] = [];
+        let cursor: string | null | undefined;
+        do {
+          const page = must(await list({ status, limit: 2, ...(cursor ? { cursor } : {}) }));
+          expect(page.entries.every((row) => row.actions.join() === 'open')).toBe(true);
+          seen.push(...ids(page));
+          cursor = page.nextCursor;
+        } while (cursor !== null);
+        return seen;
+      };
+      expect(await walk('decided')).toEqual(decided.map((r) => r.id).reverse());
+      expect(await walk('granted')).toEqual(grants.map((r) => r.id).reverse());
+      // A status the view does not show is refused, not answered empty.
+      expect(await list({ status: 'approved' })).toMatchObject({
+        ok: false,
+        error: { fields: [{ path: 'status', code: 'outside-view' }] },
+      });
+      expect(ids(must(await list({ view: 'decided', status: 'expired' })))).toEqual([
+        decided[1]!.id,
+      ]);
     });
 
     it('refuses what it does not know, every field at once, and reads nothing', async () => {
@@ -420,6 +454,15 @@ describe.each([['AU'], ['ZZ']] as const)('the admin Credit requests list in mark
         error: { fields: [{ path: 'cursor', code: 'unknown' }] },
       });
       expect(await exportOf({ columns: 'fingerprint' })).toMatchObject({ ok: false });
+      // More than 200 chosen ids, or one twice, refuses the file before any read.
+      const reads = reader.reads;
+      const chosen = Array.from({ length: 201 }, (_, i) => id<'WalletCreditRequest'>(0x5000 + i));
+      expect(await exportOf({ ids: chosen.join(',') })).toMatchObject({
+        ok: false,
+        error: { code: 'batch.too-large', max: 200 },
+      });
+      expect(await exportOf({ ids: `${chosen[0]},${chosen[0]}` })).toMatchObject({ ok: false });
+      expect(reader.reads).toBe(reads);
       expect(await exportOf({ format: 'pdf' })).toMatchObject({ ok: false });
       const seller = testCallContext(
         market,

@@ -146,7 +146,11 @@ export interface AdminCreditListPage {
 const AMOUNT = /^[0-9]{1,15}$/;
 const OLD_VIEWS: readonly string[] = ['pending', 'decided', 'granted'];
 
-/** A cursor is `<requested-at ms>.<request id>`, the cursor the older queue already holds. */
+/**
+ * A cursor is `<requested-at ms>.<request id>`, the cursor the older queue already holds. The
+ * column keeps microseconds, but every request time is written from the Clock in milliseconds, so
+ * the millisecond cursor is exact.
+ */
 export const encodeCreditListCursor = (row: CreditListCursor): string =>
   `${row.requestedAt.epochMilliseconds}.${row.id}`;
 
@@ -194,6 +198,10 @@ function parseSelector(
   const status = legacyView
     ? null
     : oneOf<AdminCreditStatus>('status', input.status, ADMIN_CREDIT_STATUSES);
+  // One status inside the view: a status the view does not show would only answer an empty list.
+  if (status !== null && view !== 'all' && !CREDIT_VIEW_STATUSES[view].includes(status)) {
+    fields.push({ path: 'status', code: 'outside-view' });
+  }
   const reason = oneOf<AdminCreditReason>('reason', input.reason, ADMIN_CREDIT_REASONS);
   const approvalReason = oneOf<ApprovalReason>(
     'approvalReason',
