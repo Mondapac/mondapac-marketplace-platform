@@ -905,6 +905,14 @@
     }
   },
   {
+    "type": "legal.marketing-consent-changed.v1",
+    "aggregateType": "marketing-consent-change",
+    "fields": {
+      "accountId": "id",
+      "channel": "enumOf(email)"
+    }
+  },
+  {
     "type": "ordering.order-paid.v1",
     "aggregateType": "order",
     "fields": {

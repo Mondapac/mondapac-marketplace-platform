@@ -45,6 +45,7 @@ import { AdminCustomerConversations as AssistantConversations } from '../../src/
 import { AdminCustomerReviewsSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-reviews-export.use-case';
 import { AdminCustomerReviewsSection } from '../../src/modules/customers/application/use-cases/admin-customer-reviews.use-case';
 import { CustomerReviewEventsCheck } from '../../src/modules/customers/application/use-cases/customer-review-events-check.use-case';
+import { CustomerConsentEventsCheck } from '../../src/modules/customers/application/use-cases/customer-consent-events-check.use-case';
 import { AdminCustomerSellerRatingsSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-seller-ratings-export.use-case';
 import { AdminCustomerSellerRatingsSection } from '../../src/modules/customers/application/use-cases/admin-customer-seller-ratings.use-case';
 import { AdminCustomerHelpfulVotesSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-helpful-votes-export.use-case';
@@ -335,5 +336,14 @@ describe('the customer page sections and their owners’ facade reads', () => {
     expect([...SECTION_REVIEW_STATUSES]).toEqual([...REVIEW_STATUSES]);
     expect([...SECTION_SELLER_RATING_STATUSES]).toEqual([...SELLER_RATING_STATUSES]);
     expect([...SECTION_REPORT_ROLES]).toEqual(['by', 'about']);
+  });
+
+  // Part 4: consent on the timeline. The entry carries no value, but the count of entries tells
+  // whether the consent stands, so the timeline shows the consent kind only with legal's key.
+  it('shows the consent kind of the timeline only with legal’s consent key', () => {
+    expect(CustomerConsentEventsCheck.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [CONSENT_KEY.key],
+    });
   });
 });

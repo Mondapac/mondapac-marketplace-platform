@@ -20,6 +20,9 @@ import type { CustomerReadModelPeers } from '../ports/customer-read-model-peers'
 import type { ReviewsSectionPeer } from '../ports/customer-section-peers';
 import type { CustomerTimelineRepository } from '../ports/customer-timeline.repository';
 
+/** A timeline detail is a short lower-case code (the table's CHECK). */
+const CHANNEL_CODE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
 export interface TimelineRecordDependencies extends CustomerReadModelPeers {
   /** reviews' author lookup (rule `system`), bound at start; fails closed until then. */
   readonly reviews: Pick<ReviewsSectionPeer, 'reviewAuthorOf'>;
@@ -38,7 +41,8 @@ export type RecordTimelineInput = {
 
 /**
  * `customers.record-customer-timeline`: from a subscription on an `identity` account event, an
- * `ordering` order or refund event or a `reviews` review event. Rule `system`. Copies the event onto the customer's timeline
+ * `ordering` order or refund event, a `reviews` review event or a `legal` consent event (the
+ * channel is kept as the entry's detail). Rule `system`. Copies the event onto the customer's timeline
  * (kind, instant, the order or refund id), once per delivery and once per event (the source event
  * id is unique per customer). The customer is the event's account, the order's paying account
  * read through `ordering`, or the review's author read through `reviews`. An event about an account the module does not know yet (the directory
@@ -71,6 +75,7 @@ export class RecordCustomerTimeline extends UseCase<
     if (eventId === null || !eventId.ok) return err({ code: 'validation.failed' });
     let accountId: Id<'Account'> | null;
     let ref: { readonly type: 'order' | 'refund'; readonly id: string } | null = null;
+    let detail: string | null = null;
     if (input.kind === 'order-paid') {
       const found = await accountOfOrder(deps, context, input.orderId);
       if (!found.ok) return found;
@@ -98,6 +103,11 @@ export class RecordCustomerTimeline extends UseCase<
       const parsed = parseId<'Account'>(input.accountId);
       if (parsed === null || !parsed.ok) return err({ code: 'validation.failed' });
       accountId = parsed.value;
+      if (input.kind === 'consent-changed') {
+        // The channel only (a code legal's event declares); the value is never in the event.
+        if (!CHANNEL_CODE.test(input.channel)) return err({ code: 'validation.failed' });
+        detail = input.channel;
+      }
     }
 
     // The directory row may not be there yet (sign-up): ask identity, outside the unit. An account
@@ -135,7 +145,7 @@ export class RecordCustomerTimeline extends UseCase<
             kind: input.kind,
             ref,
             actorAccountId: null,
-            detail: null,
+            detail,
             sourceEventId: eventId.value,
           },
           now,

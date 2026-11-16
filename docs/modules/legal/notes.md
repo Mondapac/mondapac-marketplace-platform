@@ -54,3 +54,17 @@ G1/G2 brief. Package 1b of that plan includes customers package 4 (consent recor
   retention decision for `marketing_consent_changes` (keep as proof for a set period, or
   pseudonymise). Physical model doc `docs/design/data/legal.md` (Mojtaba).
 - Consider a boundary rule so only notifications calls `withdrawMarketingEmailByLink`.
+
+## Consent event (customers management phase 2b, part 4, 16 Nov 2026)
+
+- legal now has an outbox (`legal.outbox`, migration `20261116150000_legal_outbox`, the same
+  table, CHECKs, partial index and grants as every module's outbox) and publishes one event,
+  `legal.marketing-consent-changed.v1` (aggregate `marketing-consent-change`, the id of the
+  history row, version 1): `accountId` and `channel` (`email`) only. Never the value (granted or
+  withdrawn), the source or an address; a consumer that needs the value reads
+  `CUSTOMER_CONSENT_FACADE` with `legal.customer-consent.view`.
+- Written in the unit of the change (sign-up box, account page and the unsubscribe link alike),
+  so a change and its event commit together or not at all; a "change" that changes nothing writes
+  neither.
+- Consumer: customers copies it onto the customer's timeline as `consent-changed`
+  (docs/modules/customers/notes.md, Phase 2b, part 4).
