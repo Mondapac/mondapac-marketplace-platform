@@ -184,9 +184,9 @@ not sent to the model and, if the model asks for it anyway, the call is refused 
   to 99). Anything else refuses the whole call. The model parses a typed or pasted list (Persian,
   English or mixed) and nothing else: it never picks a product, a pack, a store or a number.
 - **Planner** `domain/plan-basket.ts` (pure, no model): one storefront search per distinct line
-  with the buyer's own `CallContext` (8 results, the search's own order), then per line: *found*
-  when a result carries every word of the line and its pack fits, *unsure* (up to 3 options) when
-  results exist but none fits clearly, *not found* otherwise. Pack size comes from the product
+  with the buyer's own `CallContext` (8 results, the search's own order), then per line: _found_
+  when a result carries every word of the line and its pack fits, _unsure_ (up to 3 options) when
+  results exist but none fits clearly, _not found_ otherwise. Pack size comes from the product
   name (`domain/pack-size.ts`: "2 kg", "500 g", "1,5 L", "6 x 330 ml", Persian units and digits);
   a wanted weight or volume with no readable size is never guessed, it becomes an option. Packs are
   rounded up; a pack more than twice the wish is an option only; the line says `larger` when the
@@ -211,7 +211,16 @@ not sent to the model and, if the model asks for it anyway, the call is refused 
 - Evaluation set `buyer-assistant-5`: guard cases for totals, injections and diet claims in a
   list, four list-parsing cases (English, Persian, mixed, bullets and fractions) whose expected calls
   must pass the schema, and twelve invalid calls the parser must refuse.
-- Known limits: pack size is read from the name, so products with no size in the name become
+- **Variants**: the card carries `offerId`, not `variantId`; cart lines are keyed by both. A
+  weight or volume line whose Offer has Variants at different prices (`priceFrom`) is never
+  auto-picked (the size is often the Variant): it is an option and the buyer picks. For a
+  single-Variant Offer F1 reads the product page for the Variant before it adds the line. A count
+  wish for an item whose name says it holds several ("12 pack", "6 x 330 ml") is also an option.
+- **Rollout**: do not switch "Basket proposals from a list" on before the storefront widget
+  (S1-F1) renders `basket-proposal`: until then the buyer would see no card. `not-in-store` means
+  "not among the store's results for this search", not "the store does not sell it".
+- Known limits: multi-store mode does not group lines by store to save delivery (no fee read);
+  unit and digit tables are metric, English and Persian; pack size is read from the name, so products with no size in the name become
   options for weight and volume lines; a line's options come from at most 8 search results;
   coverage in single-store mode is therefore judged on those results. Stage 2 adds `cheapest`.
 

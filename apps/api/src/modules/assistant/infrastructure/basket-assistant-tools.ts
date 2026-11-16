@@ -8,6 +8,8 @@ import type { ToolRequest } from '../domain/tools';
 /** Lines are searched this many at a time, and the whole plan is cut after this long. */
 const SEARCH_CONCURRENCY = 4;
 export const PLAN_TIMEOUT_MS = 12_000;
+/** Plans running at once in this process; more are refused as failed (load shed, not queued). */
+export const MAX_CONCURRENT_PLANS = 8;
 
 const failed: ToolOutcome = Object.freeze({
   forModel: JSON.stringify({ error: 'could not read the store; say so and do not guess' }),
@@ -40,6 +42,8 @@ function summaryForModel(proposal: BasketProposal) {
  * never writes: the cart changes only when the buyer clicks in the storefront (R4).
  */
 export class BasketAssistantTools implements AssistantTools {
+  private running = 0;
+
   constructor(
     private readonly inner: AssistantTools,
     private readonly sources: BasketSources,
@@ -48,20 +52,33 @@ export class BasketAssistantTools implements AssistantTools {
 
   async run(context: CallContext, request: ToolRequest): Promise<ToolOutcome> {
     if (request.tool !== 'plan_basket') return this.inner.run(context, request);
+    if (this.running >= MAX_CONCURRENT_PLANS) return failed;
+    this.running += 1;
+    const state = { stopped: false };
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const timeout = new Promise<ToolOutcome>((resolve) => {
-        timer = setTimeout(() => resolve(failed), this.timeoutMs);
+        timer = setTimeout(() => {
+          // Stop searching at the next batch: a timed-out plan must not keep working.
+          state.stopped = true;
+          resolve(failed);
+        }, this.timeoutMs);
       });
-      return await Promise.race([this.plan(context, request.items), timeout]);
+      return await Promise.race([this.plan(context, request.items, state), timeout]);
     } catch {
       return failed;
     } finally {
+      state.stopped = true;
+      this.running -= 1;
       clearTimeout(timer);
     }
   }
 
-  private async plan(context: CallContext, items: readonly BasketItem[]): Promise<ToolOutcome> {
+  private async plan(
+    context: CallContext,
+    items: readonly BasketItem[],
+    state: { stopped: boolean },
+  ): Promise<ToolOutcome> {
     // One search per distinct line text; a repeated line reuses it.
     const keyOf = (item: BasketItem) => normaliseText(item.text).trim();
     const distinct = new Map<string, string>();
@@ -69,6 +86,7 @@ export class BasketAssistantTools implements AssistantTools {
     const keys = [...distinct.keys()];
     const results = new Map<string, Awaited<ReturnType<BasketSources['candidates']>>>();
     for (let start = 0; start < keys.length; start += SEARCH_CONCURRENCY) {
+      if (state.stopped) return failed;
       const batch = keys.slice(start, start + SEARCH_CONCURRENCY);
       const answers = await Promise.all(
         batch.map((key) => this.sources.candidates(context, distinct.get(key)!)),

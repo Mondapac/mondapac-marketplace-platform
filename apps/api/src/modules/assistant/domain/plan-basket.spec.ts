@@ -6,6 +6,7 @@ import {
   type BasketCandidate,
   type BasketItem,
   type CartMode,
+  linesAreBuyersOwn,
 } from './plan-basket';
 
 // The planner is pure: the same list and results always give the same basket. Every fixture runs
@@ -51,7 +52,7 @@ describe.each(CURRENCIES)('planBasket (%s)', (currency) => {
         [
           [cand('o1', 'A', 'Basmati Rice 1 kg', 500), cand('o2', 'B', 'Basmati Rice 2 kg', 900)],
           [cand('o3', 'B', 'Full Cream Milk 1 L', 200)],
-          [cand('o4', 'A', 'Eggs 12 pack', 650)],
+          [cand('o4', 'A', 'Eggs free range', 650)],
         ],
       );
       expect(result.mode).toBe('multi-store');
@@ -190,6 +191,62 @@ describe.each(CURRENCIES)('planBasket (%s)', (currency) => {
       expect(result.totalIsFrom).toBe(true);
     });
 
+    it('matches whole words only, with plurals and compounds, and ignores unit words in the line', () => {
+      const result = plan(
+        'multi-store',
+        [item('tea'), item('oil'), item('egg'), item('rice 2 kg')],
+        [
+          [cand('o1', 'A', 'Steak sauce 500g', 300), cand('o2', 'A', 'Tea bags 100', 400)],
+          [cand('o3', 'A', 'Boiled eggs', 300)],
+          [cand('o4', 'A', 'Free range eggs', 600)],
+          [cand('o5', 'A', 'Basmati rice 2 kg', 900)],
+        ],
+      );
+      expect(result.stores[0]!.lines.map((line) => [line.text, line.offerId])).toEqual([
+        ['tea', 'o2'],
+        ['egg', 'o4'],
+        ['rice 2 kg', 'o5'],
+      ]);
+      expect(result.uncertain.map((line) => line.text)).toEqual(['oil']);
+    });
+
+    it('keeps two lines for the same product apart (the cart adds each line)', () => {
+      const same = [cand('o1', 'A', 'Rice 1 kg', 300)];
+      const result = plan('multi-store', [item('rice'), item('rice', 2)], [same, same]);
+      expect(result.stores[0]!.lines.map((line) => [line.offerId, line.quantity])).toEqual([
+        ['o1', 1],
+        ['o1', 2],
+      ]);
+      expect(result.total).toEqual(price(900));
+    });
+
+    it('drops a pack count over 99 and a size of a different kind', () => {
+      const result = plan(
+        'multi-store',
+        [item('rice', 100, 'kg')],
+        [[cand('o1', 'A', 'Rice 1 kg', 300), cand('o2', 'A', 'Rice 1 L', 300)]],
+      );
+      expect(result.stores).toEqual([]);
+      expect(result.notFound).toHaveLength(1);
+    });
+
+    it('does not auto-pick a from-priced weight line (the size may be the Variant) or "12 pack" for 12 items', () => {
+      const variants = plan(
+        'multi-store',
+        [item('rice', 1, 'kg')],
+        [[cand('o1', 'A', 'Rice 1 kg', 500, { priceFrom: true })]],
+      );
+      expect(variants.stores).toEqual([]);
+      expect(variants.uncertain[0]!.options[0]).toMatchObject({ offerId: 'o1', quantity: null });
+      const cartons = plan(
+        'multi-store',
+        [item('eggs', 12, 'each')],
+        [[cand('o2', 'A', 'Eggs 12 pack', 650), cand('o3', 'A', 'Eggs loose', 60)]],
+      );
+      expect(cartons.stores[0]!.lines[0]).toMatchObject({ offerId: 'o3', quantity: 12 });
+      expect(cartons.uncertain).toEqual([]);
+    });
+
     it('ignores a result in a different currency from the list and repeated offers', () => {
       const result = plan(
         'multi-store',
@@ -303,5 +360,21 @@ describe.each(CURRENCIES)('planBasket (%s)', (currency) => {
     expect(result.itemCount).toBe(1);
     expect(result.total).toBeNull();
     expect(result.totalIsFrom).toBe(false);
+  });
+});
+
+describe('linesAreBuyersOwn', () => {
+  const items = (...texts: string[]) => texts.map((text) => ({ text, quantity: 1, unit: null }));
+
+  it('accepts lines made of the buyer words, in any language, ignoring units and numbers', () => {
+    expect(linesAreBuyersOwn(items('rice', 'برنج ایرانی'), ['rice 2 kg\nبرنج ایرانی ۲ کیلو'])).toBe(
+      true,
+    );
+    expect(linesAreBuyersOwn(items('rice'), ['milk'])).toBe(false);
+  });
+
+  it('refuses a line the buyer never wrote (a model or a seller text made it up)', () => {
+    expect(linesAreBuyersOwn(items('rice', 'free gift card'), ['rice and milk'])).toBe(false);
+    expect(linesAreBuyersOwn(items('2 kg'), ['rice 2 kg'])).toBe(false);
   });
 });

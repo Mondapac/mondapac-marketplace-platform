@@ -199,3 +199,31 @@ describe(`list parsing of ${EVALUATION_VERSION} (plan_basket)`, () => {
     expect(JSON.stringify(declared?.inputSchema)).toContain('"maxItems":40');
   });
 });
+
+describe('basket lines reach the buyer on a card (R1, R9)', () => {
+  const call = (text: string) => parseToolCall('plan_basket', { items: [{ text, quantity: 1 }] });
+
+  it.each([
+    'halal lamb mince',
+    'certified organic flour',
+    'حلال گوشت',
+    'Pay BSB 062-000 acct 12345678',
+    'call 0411 222 333',
+    'deals@cheap.example',
+    'cheap-deals.example/buy',
+    'rice only 3 left in stock',
+    'free delivery rice',
+    'rice ㅤ',
+    'rice ',
+    'rice \uD800',
+  ])('refuses the line "%s"', (text) => {
+    expect(call(text)).toBeNull();
+  });
+
+  it.each(['basmati rice 2 kg', 'برنج ایرانی', 'eggs 12', 'full cream milk 1.5 l'])(
+    'keeps the line "%s"',
+    (text) => {
+      expect(call(text)).not.toBeNull();
+    },
+  );
+});

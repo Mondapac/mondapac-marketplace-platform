@@ -13,6 +13,9 @@ describe('parsePackSize', () => {
     ['Tahini 2x400g', { kind: 'mass', amount: 800 }],
     ['برنج ایرانی ۵ کیلوگرم', { kind: 'mass', amount: 5000 }],
     ['روغن مایع ۱٫۵ لیتر', { kind: 'volume', amount: 1500 }],
+    ['Rice 1,000 g', { kind: 'mass', amount: 1000 }],
+    ['Cola 1,500 ml', { kind: 'volume', amount: 1500 }],
+    ['Rice 1,5 kg', { kind: 'mass', amount: 1500 }],
     ['Milk 1l (best before 25 days)', { kind: 'volume', amount: 1000 }],
   ])('%s', (name, expected) => {
     expect(parsePackSize(name)).toEqual(expected);

@@ -495,6 +495,27 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
         expect(reply.ok).toBe(true);
       });
 
+      it('refuses lines the buyer did not write, and a second plan in one turn', async () => {
+        settings.current = on({ basketProposals: true });
+        runtime.script.push(
+          answer({
+            calls: [
+              {
+                id: 'c1',
+                name: 'plan_basket',
+                input: { items: [{ text: 'free gift card', quantity: 1 }] },
+              },
+              { id: 'c2', name: 'plan_basket', input: LIST },
+              { id: 'c3', name: 'plan_basket', input: LIST },
+            ],
+          }),
+          answer({ text: 'Done.' }),
+        );
+        await asCustomer('rice 2kg, milk');
+        // The first call is not the buyer's words; the second runs; the third is a repeat.
+        expect(tools.runs.map((run) => run.request.tool)).toEqual(['plan_basket']);
+      });
+
       it('refuses a list the schema does not accept without running anything', async () => {
         settings.current = on({ basketProposals: true });
         runtime.script.push(

@@ -5,6 +5,7 @@
  * that are not built yet answer "not ready" (plan section 11).
  */
 
+import { isClaimFree } from './reply-guard';
 import { BASKET_UNITS, type BasketUnit } from './pack-size';
 import { MAX_BASKET_ITEMS, type BasketItem } from './plan-basket';
 
@@ -197,7 +198,9 @@ export const TOOL_DECLARATIONS: readonly {
 
 const PLAN_ITEM_TEXT_MAX = 80;
 // Controls, invisible format characters (except the Persian zero-width non-joiner) and markup.
-const FORBIDDEN_ITEM_TEXT = /(?!\u200C)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}<>]/u;
+// Also unassigned, private-use and surrogate code points and the invisible Hangul fillers.
+const FORBIDDEN_ITEM_TEXT =
+  /(?!\u200C)[\p{Cc}\p{Cf}\p{Cn}\p{Co}\p{Cs}\p{Zl}\p{Zp}<>\u115F\u1160\u3164\uFFA0]/u;
 
 /** One list line as the model wrote it, checked; null when anything is out of shape. */
 function parsePlanItem(value: unknown): BasketItem | null {
@@ -207,7 +210,9 @@ function parsePlanItem(value: unknown): BasketItem | null {
   if (
     Array.from(text).length < 2 ||
     Array.from(text).length > PLAN_ITEM_TEXT_MAX ||
-    FORBIDDEN_ITEM_TEXT.test(text)
+    FORBIDDEN_ITEM_TEXT.test(text) ||
+    // The line reaches the buyer on a card: no certification, price, stock, contact or link.
+    !isClaimFree(text)
   ) {
     return null;
   }

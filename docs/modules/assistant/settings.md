@@ -37,6 +37,9 @@ SELECT and INSERT only) and one `assistant.settings.changed` audit row (versions
 
 The database CHECKs repeat these bounds.
 
+`basketProposals` is required like every field: a PUT without it answers 400 (a breaking change for
+any client but the admin panel, which carries it; its switch comes with S1-F2).
+
 ## Not settings
 
 The guardrails of plan section 5 (numbers only from server cards, certification only from

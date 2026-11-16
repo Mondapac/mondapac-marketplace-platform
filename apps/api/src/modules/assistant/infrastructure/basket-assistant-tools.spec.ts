@@ -165,3 +165,59 @@ describe.each(TEST_MARKET_IDS)('BasketAssistantTools in market %s', (marketCode)
     expect(passed).toEqual([]);
   });
 });
+
+describe('BasketAssistantTools load limits', () => {
+  const context = testCallContext(testMarketContext('AU', 'default'), 'anonymous');
+  const inner: AssistantTools = {
+    run: () => Promise.resolve({ forModel: '{}', isError: false, cards: [], notices: [] }),
+  };
+  const one: ToolRequest = {
+    tool: 'plan_basket',
+    items: [{ text: 'rice', quantity: 1, unit: null }],
+  };
+
+  it('sheds a ninth plan at once instead of queueing it', async () => {
+    const release: (() => void)[] = [];
+    const slow: BasketSources = {
+      candidates: () =>
+        new Promise((resolve) => {
+          release.push(() => resolve(ok([])));
+        }),
+      cartMode: () => Promise.resolve('multi-store'),
+    };
+    const tools = new BasketAssistantTools(inner, slow, 5_000);
+    const running = Array.from({ length: 8 }, () => tools.run(context, one));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(await tools.run(context, one)).toMatchObject({
+      isError: true,
+      notices: ['tool-failed'],
+    });
+    release.forEach((done) => done());
+    const done = await Promise.all(running);
+    expect(done.every((outcome) => !outcome.isError)).toBe(true);
+  });
+
+  it('starts no new search batch after it timed out', async () => {
+    let searches = 0;
+    const slow: BasketSources = {
+      candidates: async () => {
+        searches += 1;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return ok([]);
+      },
+      cartMode: () => Promise.resolve('multi-store'),
+    };
+    const many: ToolRequest = {
+      tool: 'plan_basket',
+      items: Array.from({ length: 40 }, (_, index) => ({
+        text: `item ${index}x`,
+        quantity: 1,
+        unit: null,
+      })),
+    };
+    const outcome = await new BasketAssistantTools(inner, slow, 40).run(context, many);
+    expect(outcome.isError).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(searches).toBeLessThan(40);
+  });
+});

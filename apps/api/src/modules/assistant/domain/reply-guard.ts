@@ -151,3 +151,18 @@ export function guardReply(text: string): GuardedReply {
   }
   return { sentences, notices: [...notices] };
 }
+
+/**
+ * Whether a short text carries nothing the guard would drop or change: no certification, price,
+ * stock, delivery, contact, link or markup. Used for list lines the model passes to a tool, which
+ * reach the buyer on a card and so must pass the same checks as a reply (ADR-0019 R1, R9).
+ */
+export function isClaimFree(text: string): boolean {
+  const guarded = guardReply(text);
+  return (
+    guarded.notices.length === 0 &&
+    guarded.sentences.length === 1 &&
+    guarded.sentences[0] === text.trim() &&
+    maskPersonalData(text) === text
+  );
+}

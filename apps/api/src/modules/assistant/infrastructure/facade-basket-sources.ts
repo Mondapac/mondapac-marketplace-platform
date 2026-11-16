@@ -5,7 +5,7 @@ import type { BasketSources } from '../application/ports/basket-sources';
 import type { BasketCandidate, CartMode } from '../domain/plan-basket';
 
 /** How many results of one line the planner looks at (the storefront search's own order). */
-export const CANDIDATES_PER_LINE = 8;
+export const CANDIDATES_PER_LINE = 6;
 
 /**
  * {@link BasketSources} on the READ facade of `search` (one storefront search per line) and on

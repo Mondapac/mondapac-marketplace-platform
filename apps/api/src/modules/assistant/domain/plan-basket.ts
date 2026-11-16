@@ -1,8 +1,10 @@
 import { addMoney, money } from '@mondapac/shared-kernel';
 import type { Money } from '@mondapac/shared-kernel';
 import {
+  UNIT_WORDS,
   normaliseText,
   parsePackSize,
+  statesMultiPack,
   wantedMeasure,
   type BasketUnit,
   type Measure,
@@ -154,26 +156,38 @@ type Fit = {
 const NOISE = /[^\p{L}\p{N}]+/u;
 
 /** The words of a line that a product name must contain: no numbers (the size is read apart). */
-function tokensOf(text: string): readonly string[] {
+export function tokensOf(text: string): readonly string[] {
   return normaliseText(text)
     .split(NOISE)
-    .filter((token) => token.length >= 2 && !/^\d+$/.test(token));
+    .filter((token) => token.length >= 2 && !/^\d+$/.test(token) && !UNIT_WORDS.has(token));
 }
 
 function nameMatches(tokens: readonly string[], name: string): boolean {
   if (tokens.length === 0) return false;
-  const words = normaliseText(name);
-  return tokens.every((token) => words.includes(token));
+  // Whole words only ("tea" is not in "steak"); a longer word that starts with the token ("teabags")
+  // and a plural of it ("egg" for "eggs") count.
+  const words = normaliseText(name).split(NOISE);
+  return tokens.every((token) =>
+    words.some(
+      (word) =>
+        word === token ||
+        (token.length >= 3 && word.startsWith(token)) ||
+        (token.length >= 4 && token.endsWith('s') && word === token.slice(0, -1)),
+    ),
+  );
 }
 
 /** How a product fits a wish: the packs it takes, or why it cannot be picked on its own. */
-function fitOf(wanted: Measure, name: string): Fit | null {
+function fitOf(wanted: Measure, name: string, priceFrom: boolean): Fit | null {
   if (wanted.kind === 'count') {
+    // "12 eggs" is not twelve cartons of "Eggs 12 pack": the buyer says which they mean.
+    if (statesMultiPack(name)) return { auto: false, quantity: null, sizeNote: null };
     const packs = Math.max(1, Math.ceil(wanted.amount));
     return packs > MAX_PACKS ? null : { auto: true, quantity: packs, sizeNote: null };
   }
   const pack = parsePackSize(name);
-  if (pack === null) return { auto: false, quantity: null, sizeNote: null };
+  // With Variants at different prices the size is often the Variant: the buyer picks it.
+  if (pack === null || priceFrom) return { auto: false, quantity: null, sizeNote: null };
   if (pack.kind !== wanted.kind) return null;
   const packs = Math.max(1, Math.ceil(wanted.amount / pack.amount));
   if (packs > MAX_PACKS) return null;
@@ -220,7 +234,7 @@ function evaluate(
     if (candidate.price === null || candidate.price.currency !== currency) continue;
     if (candidate.price.amount <= 0n || seen.has(candidate.offerId)) continue;
     seen.add(candidate.offerId);
-    const fit = fitOf(wanted, candidate.name);
+    const fit = fitOf(wanted, candidate.name, candidate.priceFrom);
     if (fit === null) continue;
     out.push({
       candidate: candidate as BasketCandidate & { readonly price: Money },
@@ -414,4 +428,20 @@ export function planBasket(input: BasketPlanInput): BasketProposal {
     totalIsFrom: stores.some((store) => store.subtotalIsFrom),
     deliveryShownAtCheckout: true,
   };
+}
+
+/**
+ * Whether every line of a list is the buyer's own words: each word of each line (units and
+ * numbers aside) appears in what the buyer wrote in this conversation. A line the model made up
+ * or took from a seller's text fails, so the card never shows model text (ADR-0019 R1, R9).
+ */
+export function linesAreBuyersOwn(
+  items: readonly BasketItem[],
+  buyerTexts: readonly string[],
+): boolean {
+  const corpus = normaliseText(buyerTexts.join('\n'));
+  return items.every((item) => {
+    const tokens = tokensOf(item.text);
+    return tokens.length > 0 && tokens.every((token) => corpus.includes(token));
+  });
 }
