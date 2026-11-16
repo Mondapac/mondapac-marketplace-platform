@@ -42,11 +42,15 @@ import { ViewDeliverySettingsHistory } from '../application/use-cases/view-deliv
 import { ViewSellerDeliveryMethods } from '../application/use-cases/view-seller-delivery-methods.use-case';
 import {
   DeliverySettingsBody,
+  DeliverySettingsChangeBody,
   DeliverySettingsRequest,
   SellerDeliveryMethodsBody,
+  SellerDeliveryMethodsChangeBody,
   SellerDeliveryMethodsRequest,
   sellerMethodsBody,
+  sellerMethodsChangeBody,
   settingsBody,
+  settingsChangeBody,
 } from './delivery-settings.dto';
 import { closedBody, refusal } from './http-answers';
 
@@ -136,11 +140,14 @@ export class DeliverySettingsController {
       'Needs shipping.delivery-settings.manage (protected). The whole set is sent; ' +
       '`expectedVersion` is the version read (0 before the first save) and a stale one answers ' +
       '409 shipping.delivery-settings-conflict. A method that is off is unavailable for every ' +
-      'seller. The change is audited and applies to orders placed after it.',
+      'seller. The change is audited and applies to orders placed after it. It goes live at once ' +
+      'and is reviewed after in Admin Inbox › System requests (area delivery, on by default): ' +
+      'where the Market reviews it, `note` (1 to 500 characters) is required (400 on note ' +
+      'otherwise) and `request` names the review the save opened. A rejected change is restored.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: DeliverySettingsRequest })
-  @ApiOkResponse({ type: DeliverySettingsBody })
+  @ApiOkResponse({ type: DeliverySettingsChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -165,6 +172,7 @@ export class DeliverySettingsController {
       'margin',
       'roundingStepMinor',
       'expectedVersion',
+      'note',
     ]);
     if (invalid !== null) throw invalid;
     const result = await this.set.execute(context, requestBody);
@@ -174,7 +182,7 @@ export class DeliverySettingsController {
       result.ok ? 'set' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return settingsBody(result.value);
+    return settingsChangeBody(result.value);
   }
 
   @Get('sellers/:sellerId/delivery-methods')
@@ -214,12 +222,15 @@ export class DeliverySettingsController {
     description:
       'Needs shipping.delivery-settings.manage (protected). `supported` lists the methods the ' +
       'seller keeps; the rest are taken away (for example a seller without the capacity for ' +
-      'instant delivery). The change is audited and applies to orders placed after it.',
+      'instant delivery). The change is audited and applies to orders placed after it. It goes ' +
+      'live at once and is reviewed after in Admin Inbox › System requests (area delivery): ' +
+      'where the Market reviews it, `note` (1 to 500 characters) is required and `request` ' +
+      'names the review the change opened.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerId', format: 'uuid' })
   @ApiBody({ type: SellerDeliveryMethodsRequest })
-  @ApiOkResponse({ type: SellerDeliveryMethodsBody })
+  @ApiOkResponse({ type: SellerDeliveryMethodsChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -233,17 +244,17 @@ export class DeliverySettingsController {
     @Body() requestBody: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, requestBody, ['supported']);
+    const invalid = closedBody(request, requestBody, ['supported', 'note']);
     if (invalid !== null) throw invalid;
-    const { supported } = requestBody as { supported?: unknown };
-    const result = await this.setSeller.execute(context, { sellerId, supported });
+    const { supported, note } = requestBody as { supported?: unknown; note?: unknown };
+    const result = await this.setSeller.execute(context, { sellerId, supported, note });
     this.log(
       'shipping.set-seller-delivery-methods-route',
       context,
       result.ok ? 'set' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return sellerMethodsBody(result.value);
+    return sellerMethodsChangeBody(result.value);
   }
 
   private log(msg: string, context: CallContext, outcome: string): void {

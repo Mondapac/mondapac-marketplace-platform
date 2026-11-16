@@ -319,6 +319,8 @@ export class FakeSubjects implements SystemChangeReverter {
   readonly reverts: RevertRequest[] = [];
   /** Refs whose revert the owning module refuses the decider (`not-permitted`). */
   readonly refused = new Set<string>();
+  /** `account:ref` pairs where the account has a stake in the subject (separation of duties). */
+  readonly interested = new Set<string>();
   /** Refs whose pre-unit `check` refuses the decider; every check asked is kept in `checks`. */
   readonly checkRefused = new Set<string>();
   readonly checks: RevertRequest[] = [];
@@ -347,5 +349,11 @@ export class FakeSubjects implements SystemChangeReverter {
     }
     this.values.set(key, request.before);
     return Promise.resolve('reverted');
+  }
+
+  isInterested(context: CallContext, request: RevertRequest): Promise<boolean> {
+    const actor = context.actor;
+    const account = actor.kind === 'authenticated' ? actor.accountId : '';
+    return Promise.resolve(this.interested.has(`${account}:${request.subjectRef}`));
   }
 }
