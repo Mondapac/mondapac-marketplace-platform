@@ -405,6 +405,8 @@
       },
       "dialog": {
         "keep": "Keep as it is",
+        "type-to-confirm": "Type the name to confirm",
+        "step-up-note": "We'll ask for your two-step code next.",
         "reactivate": {
           "title": "Reactivate {name}'s admin account?",
           "body": "The account is active again at once. Another admin reviews this change and can undo it.",
