@@ -1,6 +1,9 @@
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { CalculationOutput } from '../domain/calculation/types';
+import type { DiscountSummary } from '../domain/redemption';
+
+export type { DiscountSummary } from '../domain/redemption';
 
 export interface QuoteLine {
   /** The caller's reference for the line; the allocation of every discount is keyed by it. */
@@ -54,6 +57,31 @@ export type PromotionsFacadeFailure =
   /** The Market has no promotions settings or a read failed: callers fail closed. */
   | { readonly code: 'promotions.unavailable' };
 
+/** What checkout asks to redeem: the stored order, its customer, the quote it was priced with. */
+export interface RedeemRequest {
+  readonly orderId: Id<'Order'>;
+  readonly customerAccountId: Id<'Account'>;
+  /** The request the order's quote was made with. */
+  readonly request: QuoteRequest;
+  /** The discounts the stored order holds ({@link discountSummaryOf} of that quote). */
+  readonly expected: DiscountSummary;
+}
+
+export interface RedeemResult {
+  /** `nothing`: the order took no discount; `already-redeemed`: a repeat for the same order. */
+  readonly outcome: 'redeemed' | 'already-redeemed' | 'nothing';
+}
+
+export type RedeemFacadeFailure =
+  | PromotionsFacadeFailure
+  /** The discounts changed since the quote (a budget, a limit or a code was taken): nothing was
+   * reserved; `quote` is what the order would get now. */
+  | { readonly code: 'promotions.quote-changed'; readonly quote: QuoteResult }
+  /** The order's redemption was released (it was cancelled): it is never redeemed again. */
+  | { readonly code: 'promotions.redemption-released' }
+  /** A lock could not be taken in time: nothing was reserved; the caller may try again. */
+  | { readonly code: 'conflict.retry' };
+
 /**
  * The public facade of `promotions`. Every method takes the caller's `CallContext` first,
  * unchanged, and is a thin call of one use case, so the gate runs. Other modules inject
@@ -71,6 +99,19 @@ export interface PromotionsFacade {
     context: CallContext,
     request: QuoteRequest,
   ): Promise<Result<QuoteResult, PromotionsFacadeFailure>>;
+
+  /**
+   * The checkout saga's redemption (package T2, rule `system`): after ordering stored the order
+   * with the discounts of a {@link quote}, this reserves them in one unit under row locks (usage
+   * counters, budgets, the per-customer and flash-sale limits, the first-order month budget, a
+   * single-use code), or answers `promotions.quote-changed` with the fresh quote and reserves
+   * nothing. Idempotent per order. `ordering.order-paid.v1` confirms the reservation and
+   * `ordering.order-cancelled.v1` releases it. In-process.
+   */
+  redeem(
+    context: CallContext,
+    request: RedeemRequest,
+  ): Promise<Result<RedeemResult, RedeemFacadeFailure>>;
 
   /**
    * Whether a priced unit (an Offer's Variant) may show a struck-through earlier price: it sold at

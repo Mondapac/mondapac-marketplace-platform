@@ -43,6 +43,8 @@ export interface ConfirmActionProps {
   /** A line under the body for a money or security action: a code will be asked next. */
   readonly stepUpNote?: string;
   readonly pending: boolean;
+  /** Keeps Confirm off while the caller still checks something (a dry run); Cancel stays. */
+  readonly confirmDisabled?: boolean;
   /** The failure of the last try, shown in the dialog. */
   readonly error?: string | null;
   readonly onConfirm: (reason: string) => void;
@@ -62,6 +64,7 @@ export function ConfirmAction({
   typeLabel,
   stepUpNote,
   pending,
+  confirmDisabled = false,
   error = null,
   onConfirm,
   onCancel,
@@ -80,7 +83,7 @@ export function ConfirmAction({
   // Level 3 fails closed: with no row name to type there is nothing to confirm against.
   const typedOk = level === 2 || (rowName.trim() !== '' && typed.trim() === rowName.trim());
   const reasonOk = reason === undefined || !reason.required || why.trim().length > 0;
-  const ready = typedOk && reasonOk && !pending;
+  const ready = typedOk && reasonOk && !pending && !confirmDisabled;
   const close = () => {
     if (pending) return;
     setTyped('');

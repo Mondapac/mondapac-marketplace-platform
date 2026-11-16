@@ -13,6 +13,8 @@ import {
   readIds,
   toast,
   useRowSelection,
+  listSkeletonRowCount,
+  useListLoading,
   useSuperListQuery,
   writeIds,
   type MenuItem,
@@ -196,6 +198,17 @@ export function CustomersList({
   ]);
   const pageIds = useMemo(() => answer?.items.map((row) => row.accountId) ?? [], [answer]);
   const selection = useRowSelection(pageIds, SELECT_MAX, selectionKey);
+  // Panel loading L2: skeleton rows on the first load, dimmed rows on a later one.
+  const status = useListLoading(loading, answer !== null);
+  // A first load that runs past 30 s gives up: its answer is dropped and Retry starts anew.
+  useEffect(() => {
+    if (!status.stalled) return;
+    latest.current += 1;
+    setLoading(false);
+    setFailure('unavailable');
+  }, [status.stalled]);
+  const firstLoadError = answer === null && failure === 'unavailable';
+  const skeleton = status.skeleton && failure === null;
 
   const number = (value: number) => numberFormat(locale, {}).format(value);
   const money = (row: CustomerRow) =>
@@ -532,8 +545,11 @@ export function CustomersList({
                 : {}),
             }
       }
+      firstLoadError={firstLoadError}
       loading={loading}
+      status={status}
       loadingLabel={t('loading')}
+      slowLabel={tl('slow')}
       ready={answer !== null}
       table={
         <SuperTable
@@ -556,6 +572,7 @@ export function CustomersList({
             items: rowItems,
           }}
           empty={empty}
+          skeletonRows={skeleton ? listSkeletonRowCount(query.pageSize) : undefined}
           minWidthClass="lg:min-w-200"
         />
       }

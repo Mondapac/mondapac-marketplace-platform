@@ -14,6 +14,7 @@ export {
   SellerCultureStatusChanged,
 } from '../domain/events';
 export type { ApprovedSellerZone, SellerSummary } from '../domain/seller-summary';
+export type { PublishedStore } from '../domain/published-store';
 export {
   SELLERS_BLOG_ACCESS_EDIT,
   SELLERS_BUSINESS_ACTIVITY_MANAGE,

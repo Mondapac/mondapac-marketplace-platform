@@ -50,7 +50,8 @@ export class ServiceAreaNamesController {
     summary: 'List service areas with their names (admin)',
     description:
       'Every service area of the Market with its names in each supported language, marking ' +
-      'the edited ones. Needs sellers.seller.view.',
+      "the edited ones, and each row's actions (edit-names for a holder of " +
+      'sellers.service-area.edit). Needs sellers.seller.view.',
   })
   @ApiOkResponse({ type: ServiceAreaNamesBody })
   @ApiUnauthorizedResponse({ type: SellersErrorBody, description: 'session.invalid' })
@@ -65,7 +66,11 @@ export class ServiceAreaNamesController {
     return {
       defaultLanguage: result.value.defaultLanguage,
       languages: [...result.value.languages],
-      areas: result.value.areas.map((area) => ({ ...area, names: { ...area.names } })),
+      areas: result.value.areas.map((area) => ({
+        ...area,
+        names: { ...area.names },
+        actions: [...area.actions],
+      })),
     };
   }
 
@@ -97,7 +102,11 @@ export class ServiceAreaNamesController {
     if (!result.ok) throw errorOf(result.error, response);
     return {
       changed: result.value.changed,
-      area: { ...result.value.area, names: { ...result.value.area.names } },
+      area: {
+        ...result.value.area,
+        names: { ...result.value.area.names },
+        actions: [...result.value.area.actions],
+      },
     };
   }
 }

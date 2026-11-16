@@ -41,6 +41,9 @@ const files = [
   ...readdirSync(path.join(src, 'customers'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'customers', name)),
+  ...readdirSync(path.join(src, 'sales', 'shipments'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'sales', 'shipments', name)),
   ...readdirSync(path.join(src, 'lists-settings'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'lists-settings', name)),
@@ -74,7 +77,7 @@ function calls(): { method: string; target: string }[] {
   return found;
 }
 
-describe('every path the wallet, dispute, review moderation, account deletion and step-up client code calls passes the relay allowlist', () => {
+describe('every path the wallet, dispute, review moderation, account deletion, shipments and step-up client code calls passes the relay allowlist', () => {
   const found = calls();
 
   it('finds the calls it is meant to check', () => {
@@ -111,6 +114,7 @@ describe('every path the wallet, dispute, review moderation, account deletion an
         'POST ordering/admin/orders/:id/cancel',
         'POST ordering/admin/orders/:id/notes',
         'POST ordering/admin/orders/:id/seller-orders/:id/refunds',
+        'GET ordering/admin/shipments',
         'GET ordering/admin/saved-filters',
         'POST ordering/admin/saved-filters',
         'PUT ordering/admin/saved-filters/:id',
