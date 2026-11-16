@@ -249,6 +249,10 @@ describe.each(TEST_MARKETS)('the admin Payouts list in market %s (database)', (c
         'voided',
       ].sort(),
     );
+    // One seller's counts (the seller Earnings tabs): exact, and nothing of another seller.
+    const own = await value(market, () => reader.countByState(market, s));
+    expect(own['awaiting-approval']).toBe(1);
+    expect(Object.values(own).reduce((sum, count) => sum + count, 0)).toBe(1);
   });
 
   it("names each seller's newest active admin hold over the whole seller, and nothing else", async () => {

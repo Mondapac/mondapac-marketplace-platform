@@ -180,7 +180,7 @@ export async function listOwnPayoutPage(
   const { paging, sort } = pagingOf<PayoutSort['key'], PayoutListCursor>(
     fields,
     input ?? {},
-    OWN_PAYOUT_SORT_KEYS as unknown as readonly PayoutSort['key'][],
+    OWN_PAYOUT_SORT_KEYS,
     { sort: 'created', pageSize: OWN_PAYOUT_DEFAULT_PAGE_SIZE, limit: OWN_PAYOUT_DEFAULT_LIMIT },
     decodeListCursor,
   );
