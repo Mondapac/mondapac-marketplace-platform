@@ -15,6 +15,9 @@ import {
  * customer's `CallContext` (rule `own-resources`, customers only, never an acting-as session).
  * The same redemption as `promotions.redeem-discounts`; the customer named must be the session's
  * account, and the quote it repeats is never a test order's.
+ *
+ * In-process only, for ordering's checkout: `isFirstOrder` and `orderCommission` come from the
+ * caller, so this use case must never get a controller or an AI tool.
  */
 export class RedeemOwnDiscounts extends UseCase<RedeemInput, RedeemOutput, RedeemFailure> {
   static override readonly access: AccessDeclaration = {

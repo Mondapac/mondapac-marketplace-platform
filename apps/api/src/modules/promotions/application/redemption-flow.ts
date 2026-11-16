@@ -450,11 +450,14 @@ export interface StaleRedemptionsInput {
   /** Orders whose RESERVED rows were written before this instant. */
   readonly before: unknown;
   readonly limit: unknown;
+  /** Optional: the last order id of the previous page. */
+  readonly after?: unknown;
 }
 
 /**
- * The orders that still hold RESERVED redemptions written before `before`, oldest first: the
- * safety sweep's list (ordering asks, then settles each by its own order's state). Read only.
+ * The orders that still hold RESERVED redemptions written before `before`, in order id order
+ * after `after`: the safety sweep's list, in pages (ordering asks, then settles each by its own
+ * order's state). Paging by id lets the sweep pass orders it cannot settle yet. Read only.
  */
 export async function staleRedemptions(
   deps: PromotionsDependencies,
@@ -463,7 +466,9 @@ export async function staleRedemptions(
 ): Promise<Result<readonly Id<'Order'>[], RedemptionEventFailure>> {
   const before = input?.before;
   const limit = input?.limit;
+  const after = input?.after === undefined ? null : orderIdOf(input.after);
   if (
+    (input?.after !== undefined && after === null) ||
     !(before instanceof Temporal.Instant) ||
     typeof limit !== 'number' ||
     !Number.isInteger(limit) ||
@@ -474,7 +479,7 @@ export async function staleRedemptions(
   }
   const read = await deps.unitOfWork.run(
     context.market,
-    async () => ok(await deps.redemptions.staleReservations(context.market, before, limit)),
+    async () => ok(await deps.redemptions.staleReservations(context.market, before, limit, after)),
     { readOnly: true },
   );
   return read.ok ? read : err({ code: 'promotions.try-again' });

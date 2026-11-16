@@ -377,6 +377,22 @@ export class PrismaOrderRepository implements OrderRepository {
     return row !== null;
   }
 
+  async findExpiredUnpaid(market: MarketContext, before: Temporal.Instant, limit: number) {
+    // Few orders wait for payment at a time: the (market, status, created_at) index narrows them.
+    const rows = await this.prisma.tx(market).orderingOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'pending-payment',
+        paymentState: 'none',
+        paymentExpiresAt: { lt: new Date(before.epochMilliseconds) },
+      },
+      select: { id: true },
+      orderBy: [{ paymentExpiresAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    return rows.map((row) => row.id as Id<'Order'>);
+  }
+
   async findPending(market: MarketContext, accountId: Id<'Account'>) {
     const rows = await this.prisma.tx(market).orderingOrder.findMany({
       where: { marketId: market.marketId, accountId, status: 'pending-payment' },

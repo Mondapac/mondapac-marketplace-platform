@@ -78,15 +78,21 @@ export class FakePromotions implements PromotionsFacade {
 
   /** The orders the sweep is told hold stale RESERVED redemptions. */
   readonly stale: Id<'Order'>[] = [];
-  readonly staleRequests: { before: Temporal.Instant; limit: number }[] = [];
+  readonly staleRequests: { before: Temporal.Instant; limit: number; after?: Id<'Order'> }[] = [];
   readonly settlements: { orderId: Id<'Order'>; outcome: RedemptionSettlement }[] = [];
 
   staleRedemptions(
     _context: CallContext,
-    request: { readonly before: Temporal.Instant; readonly limit: number },
+    request: {
+      readonly before: Temporal.Instant;
+      readonly limit: number;
+      readonly after?: Id<'Order'>;
+    },
   ): Promise<Result<readonly Id<'Order'>[], RedemptionSweepFailure>> {
     this.staleRequests.push({ ...request });
-    return Promise.resolve(ok(this.stale.slice(0, request.limit)));
+    const { after } = request;
+    const ids = [...this.stale].sort().filter((id) => after === undefined || id > after);
+    return Promise.resolve(ok(ids.slice(0, request.limit)));
   }
 
   settleRedemptions(

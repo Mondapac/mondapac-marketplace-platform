@@ -2,8 +2,9 @@
 -- seller orders. A line's discount is split into the seller's share and the platform's share; a
 -- seller order carries the sum of its lines' discounts and the discount on its delivery price.
 -- Adding a NOT NULL column with a constant default is a catalogue change only (no rewrite). The
--- CHECKs are added NOT VALID and then validated, so the validation scan holds only a SHARE UPDATE
--- EXCLUSIVE lock; existing rows hold zero discounts and pass.
+-- CHECKs are added NOT VALID and then validated; existing rows hold zero discounts and pass. The
+-- file runs in one transaction, so the validation still holds the ACCESS EXCLUSIVE lock of the ADD
+-- (accepted while the tables are small; on large tables VALIDATE goes in a migration of its own).
 SET lock_timeout = '5s';
 
 ALTER TABLE "ordering"."order_lines"

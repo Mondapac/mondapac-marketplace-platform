@@ -255,7 +255,12 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
   const total = inclusive ? 3300n + 550n : 3300n + 451n + 500n + 75n;
 
   /** A paid order of one seller with one line of three units; answers its ids. */
-  const paidOrder = async (sellerId: Id<'Seller'> = ids.next<'Seller'>(), pay = true) => {
+  const paidOrder = async (
+    sellerId: Id<'Seller'> = ids.next<'Seller'>(),
+    pay = true,
+    /** The discounts the order was placed with (package T2): the seller funds the line's. */
+    discounts: { readonly line: bigint; readonly shipping: bigint } = { line: 0n, shipping: 0n },
+  ) => {
     const orderId = ids.next<'Order'>();
     const sellerOrderId = ids.next<'SellerOrder'>();
     const lineId = ids.next<'OrderLine'>();
@@ -267,7 +272,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       status: 'pending-payment',
       cancelReason: null,
       paymentState: 'none',
-      total: money(total, currency),
+      total: money(total - discounts.line - discounts.shipping, currency),
       reservationId: ids.next<'Reservation'>(),
       stripeIdempotencyKey: `checkout-${orderId}`,
       stripeSessionId: `cs_${orderId.replaceAll('-', '')}`,
@@ -285,12 +290,12 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           sellerId,
           subtotal: 3300n,
           shipping,
-          discount: 0n,
-          shippingDiscount: 0n,
+          discount: discounts.line,
+          shippingDiscount: discounts.shipping,
           shippingTaxRateBps: inclusive ? 1000 : 1500,
           shippingTax,
           shippingTaxInclusive: inclusive,
-          total,
+          total: total - discounts.line - discounts.shipping,
           fulfilment: 'to-ship',
           carrier: null,
           trackingRef: null,
@@ -315,8 +320,8 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           quantity: 3,
           unitPrice: money(unit, currency),
           lineAmount: 3300n,
-          discountAmount: 0n,
-          discountSellerShare: 0n,
+          discountAmount: discounts.line,
+          discountSellerShare: discounts.line,
           discountPlatformShare: 0n,
           taxInclusive: inclusive,
           reservationLineId: ids.next<'ReservationLine'>(),
@@ -481,6 +486,26 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     const grossBack = rows.notes.reduce((sum, n) => sum + BigInt(n.gross_amount), 0n);
     expect(taxBack).toBe(lineTax + shippingTax);
     expect(grossBack).toBe(total);
+    expect(await refund(o, 0, '1')).toMatchObject({ error: { code: 'ordering.refund-exceeds' } });
+  });
+
+  it('gives back what the buyer paid for a discounted order: the net line and the net delivery (package T2)', async () => {
+    const o = await paidOrder(ids.next<'Seller'>(), true, { line: 300n, shipping: 50n });
+    const paid = total - 350n;
+    // The delivery as paid: the fee less its discount, plus its tax when the fee excluded it.
+    const netShippingGross = shipping - 50n + (inclusive ? 0n : shippingTax);
+
+    expect(await refund(o, 3, (netShippingGross + 1n).toString())).toMatchObject({
+      ok: false,
+      error: { code: 'ordering.refund-exceeds' },
+    });
+    const all = await refund(o, 3, netShippingGross.toString());
+    expect(all.ok).toBe(true);
+    if (!all.ok) return;
+    // Every unit gives back its share of the line after the discount, never its price before.
+    expect(all.value.amount).toEqual(money(paid, currency));
+    expect((await rowsOf(o.sellerOrderId)).refunded).toBe(paid.toString());
+    expect(await inFull(o.sellerOrderId)).toBe(true);
     expect(await refund(o, 0, '1')).toMatchObject({ error: { code: 'ordering.refund-exceeds' } });
   });
 

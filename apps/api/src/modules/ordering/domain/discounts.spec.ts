@@ -41,4 +41,27 @@ describe('order discounts (promotions package T2)', () => {
     expect(netGoodsOf(line, 1, 2)).toBe(1934n);
     expect(netGoodsOf({ lineAmount: 500n, discountAmount: 0n, quantity: 2 }, 0, 1)).toBe(250n);
   });
+
+  it('gives back exactly the net for every split of a line, whatever its size and discount', () => {
+    for (const quantity of [1, 2, 3, 7]) {
+      for (const [lineAmount, discountAmount] of [
+        [1000n, 0n],
+        [1001n, 13n],
+        [999n, 998n],
+        [700n, 700n],
+      ] as const) {
+        const line = { lineAmount, discountAmount, quantity };
+        const net = lineAmount - discountAmount;
+        const perUnit = Array.from({ length: quantity }, (_, n) => netGoodsOf(line, n, 1));
+        expect(perUnit.reduce((sum, unit) => sum + unit, 0n)).toBe(net);
+        expect(perUnit.every((unit) => unit >= 0n)).toBe(true);
+        // Any two-part split adds up too: what one refund leaves, the next gives back.
+        for (let first = 0; first <= quantity; first += 1) {
+          expect(netGoodsOf(line, 0, first) + netGoodsOf(line, first, quantity - first)).toBe(net);
+        }
+      }
+    }
+    // A line discounted to nothing gives nothing back.
+    expect(netGoodsOf({ lineAmount: 700n, discountAmount: 700n, quantity: 7 }, 0, 7)).toBe(0n);
+  });
 });

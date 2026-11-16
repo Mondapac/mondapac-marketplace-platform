@@ -710,6 +710,26 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     ).toBeNull();
   });
 
+  it("lists the Market's expired unpaid orders for the safety sweep, oldest expiry first (package T2)", async () => {
+    // Older than any other order of the file, so they lead the list.
+    const at = T0.subtract({ hours: 24 * 300 });
+    const older = newOrder(ids.next<'Account'>(), at);
+    const newer = newOrder(ids.next<'Account'>(), at.add({ minutes: 5 }));
+    const held = { ...newOrder(ids.next<'Account'>(), at), paymentState: 'authorised' as const };
+    const fresh = newOrder(ids.next<'Account'>(), at.add({ hours: 5 }));
+    for (const order of [newer, older, held, fresh]) {
+      await value(market, () => repository.insert(market, order));
+    }
+    const before = at.add({ hours: 1 });
+    const listed = await value(market, () => repository.findExpiredUnpaid(market, before, 100));
+    const mine = new Set<string>([older.id, newer.id, held.id, fresh.id]);
+    // Unpaid only (a payment held is never listed), expired before the instant, oldest first.
+    expect(listed.filter((id) => mine.has(id))).toEqual([older.id, newer.id]);
+    expect(await value(market, () => repository.findExpiredUnpaid(market, before, 1))).toHaveLength(
+      1,
+    );
+  });
+
   it('lets the application role change an order but never delete one', async () => {
     const order = newOrder();
     await value(market, () => repository.insert(market, order));

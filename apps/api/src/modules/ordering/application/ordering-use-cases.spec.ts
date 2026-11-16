@@ -3448,6 +3448,46 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       ]);
     });
 
+    it('counts checkouts with a code per account and throttles the eleventh in a window', async () => {
+      for (let n = 0; n < 10; n += 1) {
+        expect(await startWith({ code: `GUESS${n}` })).toEqual(
+          err({ code: 'ordering.discount-code-not-applied' }),
+        );
+      }
+      promotions.codes.add('REAL');
+      // Even a code that applies is refused once the window is spent: the limit tells nothing.
+      expect(await startWith({ code: 'REAL' })).toEqual(
+        err({ code: 'request.throttled', retryAfterSeconds: 120 }),
+      );
+      expect(promotions.quotes).toHaveLength(10);
+      // A checkout without a code is not counted.
+      expect((await start()).ok).toBe(true);
+    });
+
+    it('charges no line for a seller part discounted to nothing', async () => {
+      promotions.lineDiscount = (l) =>
+        l.productId === (OFFER_2 as string)
+          ? { sellerShare: l.unitPrice.amount * BigInt(l.quantity), platformShare: 0n }
+          : null;
+
+      expect((await start()).ok).toBe(true);
+      expect(gateway.sessions[0]!.packages.map((p) => p.amount)).toEqual([2099n, 500n]);
+      expect(promotions.redeems).toHaveLength(1);
+    });
+
+    it('refuses an order the discounts make free before anything is reserved or redeemed', async () => {
+      promotions.lineDiscount = (l) => ({
+        sellerShare: l.unitPrice.amount * BigInt(l.quantity),
+        platformShare: 0n,
+      });
+      promotions.shippingDiscount = (charge) => charge.amount.amount;
+
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      expect(inventory.calls).toEqual([]);
+      expect(promotions.redeems).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+    });
+
     it('tries a redemption that met a lock again, and gives up after three', async () => {
       sellerFundedOnOffer1();
       promotions.redeemAnswers.push(err({ code: 'conflict.retry' }));
@@ -3497,11 +3537,15 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(await sweep()).toEqual(
         ok({ confirmed: 1, released: 2, expired: 0, waiting: 0, failed: 0 }),
       );
-      expect(promotions.settlements).toEqual([
-        { orderId: paid.id, outcome: 'paid' },
-        { orderId: cancelled.id, outcome: 'cancelled' },
-        { orderId: unknown, outcome: 'cancelled' },
-      ]);
+      // promotions lists them in order id order.
+      expect(promotions.settlements).toHaveLength(3);
+      expect(promotions.settlements).toEqual(
+        expect.arrayContaining([
+          { orderId: paid.id, outcome: 'paid' },
+          { orderId: cancelled.id, outcome: 'cancelled' },
+          { orderId: unknown, outcome: 'cancelled' },
+        ]),
+      );
     });
 
     it('cancels a pending order whose payment page expired over an hour ago', async () => {
@@ -3516,18 +3560,76 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
 
       clock.advance(Temporal.Duration.from({ minutes: 2 }));
       expect(await sweep()).toEqual(
-        ok({ confirmed: 0, released: 0, expired: 1, waiting: 0, failed: 0 }),
+        ok({ confirmed: 0, released: 1, expired: 1, waiting: 0, failed: 0 }),
       );
       expect(orders.rows.get(order.id)).toMatchObject({
         status: 'cancelled',
         cancelReason: 'expired',
       });
-      // The cancellation is announced; promotions releases the redemptions on that event.
+      expect(inventory.calls).toContain('release:cancelled');
+      // The cancellation is announced (promotions releases the redemptions on that event), and
+      // the second pass releases them at once too: both are idempotent.
       expect(written.map((e) => [e.type, e.aggregateId])).toContainEqual([
         'ordering.order-cancelled.v1',
         order.id,
       ]);
+      expect(promotions.settlements).toEqual([{ orderId: order.id, outcome: 'cancelled' }]);
+    });
+
+    it('cancels an expired unpaid order that holds no redemption (a checkout that never got a page)', async () => {
+      const order = await placed();
+      clock.advance(Temporal.Duration.from({ minutes: 30 + 61 }));
+
+      expect(await sweep()).toEqual(
+        ok({ confirmed: 0, released: 0, expired: 1, waiting: 0, failed: 0 }),
+      );
+      expect(orders.rows.get(order.id)).toMatchObject({
+        status: 'cancelled',
+        cancelReason: 'expired',
+        paymentState: 'none',
+      });
+      expect(gateway.voided).toEqual([]);
+    });
+
+    it('never cancels or voids a pending order with a payment held on the card', async () => {
+      const order = await placed();
+      orders.rows.set(order.id, {
+        ...order,
+        paymentState: 'authorised',
+        stripePaymentIntentId: 'pi_held_1',
+      });
+      promotions.stale.push(order.id);
+      clock.advance(Temporal.Duration.from({ hours: 5 }));
+
+      expect(await sweep()).toEqual(
+        ok({ confirmed: 0, released: 0, expired: 0, waiting: 1, failed: 0 }),
+      );
+      expect(orders.rows.get(order.id)).toMatchObject({
+        status: 'pending-payment',
+        paymentState: 'authorised',
+      });
+      expect(gateway.voided).toEqual([]);
       expect(promotions.settlements).toEqual([]);
+      expect(written.map((e) => e.type)).not.toContain('ordering.order-cancelled.v1');
+    });
+
+    it('pages past orders it cannot settle yet, so they never block the ones after them', async () => {
+      const waiting = await placed();
+      orders.rows.set(waiting.id, { ...waiting, paymentState: 'authorised' });
+      // 54 unknown orders after the waiting one: two pages of 50.
+      const unknown = Array.from(
+        { length: 54 },
+        (_, n) => `ffffffff-ffff-7fff-bfff-${String(n).padStart(12, '0')}` as Id<'Order'>,
+      );
+      promotions.stale.push(waiting.id, ...unknown);
+
+      expect(await sweep()).toEqual(
+        ok({ confirmed: 0, released: 54, expired: 0, waiting: 1, failed: 0 }),
+      );
+      expect(promotions.staleRequests.map((r) => r.after ?? null)).toEqual([
+        null,
+        [waiting.id, ...unknown].sort()[49],
+      ]);
     });
   });
 

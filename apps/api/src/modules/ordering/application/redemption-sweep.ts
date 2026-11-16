@@ -1,15 +1,17 @@
 import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
-import type { OrderState } from '../domain/order';
 import type { OrderingDependencies } from './checkout-flow';
-import { cancelPayment } from './payment-flow';
+import { expireUnpaid } from './payment-flow';
 
-/** How many orders one run of the sweep looks at. */
+/** How many orders one page of the sweep looks at. */
 export const SWEEP_BATCH = 50;
 
+/** At most this many pages of stale redemptions per run; the next run goes on. */
+export const SWEEP_PAGES = 10;
+
 /**
- * How long after an order's payment page expired the sweep waits before it cancels the order
- * itself. Stripe's `checkout.session.expired` normally cancels it well before this.
+ * How long after an order's payment page expired the sweep waits before it acts. Stripe's
+ * `checkout.session.expired` normally cancels the order well before this.
  */
 export const SWEEP_GRACE = Temporal.Duration.from({ hours: 1 });
 
@@ -18,20 +20,25 @@ export interface RedemptionSweep {
   readonly confirmed: number;
   readonly released: number;
   readonly expired: number;
-  /** Orders the sweep left alone this run: still payable, or a payment held on the card. */
+  /** Orders the sweep left alone this run: still waiting for payment, or a payment held. */
   readonly waiting: number;
   /** Orders whose settlement failed; the next run tries them again. */
   readonly failed: number;
 }
 
 /**
- * `ordering.settle-stale-redemptions` (package T2): the safety net under promotions' event
- * subscriptions. promotions lists the orders that still hold RESERVED redemptions written before
- * the payment window plus {@link SWEEP_GRACE}; for each, ordering says what became of the order.
- * A confirmed order confirms them; a cancelled or unknown order releases them; a pending order
- * whose payment page expired more than the grace ago, with no payment held on the card, is
- * cancelled as `expired` (which releases its stock hold and, through `OrderCancelled`, the
- * redemptions). Every step is idempotent, so two runs at once are safe.
+ * `ordering.settle-stale-redemptions` (package T2): the safety net under the payment events and
+ * promotions' event subscriptions. Two passes, each idempotent, so two runs at once are safe:
+ *
+ * 1. Ordering's own orders still waiting for payment, with no money moved, whose payment page
+ *    expired more than {@link SWEEP_GRACE} ago are cancelled as `expired` (stock released,
+ *    `OrderCancelled` emitted, so promotions releases their redemptions). This covers an order
+ *    that never got a payment page (a crash between the order and the redemption, a failed
+ *    abandon). An order with a payment held is never touched here.
+ * 2. promotions lists, page by page in order id order, the orders that still hold RESERVED
+ *    redemptions written before the payment window plus the grace; ordering reads each: a
+ *    confirmed order confirms them, a cancelled or unknown order releases them. One still
+ *    waiting is counted and passed over, so it never blocks the orders after it.
  *
  * The sweep lives in ordering, not promotions, because ordering already depends on promotions:
  * promotions cannot read ordering without a module cycle.
@@ -41,50 +48,66 @@ export async function settleStaleRedemptions(
   context: CallContext,
 ): Promise<Result<RedemptionSweep, never>> {
   const now = deps.clock.now();
-  const before = now.subtract({ milliseconds: deps.policy.sessionTtlMs() }).subtract(SWEEP_GRACE);
-  const stale = await deps.promotions.staleRedemptions(context, { before, limit: SWEEP_BATCH });
   const counts = { confirmed: 0, released: 0, expired: 0, waiting: 0, failed: 0 };
-  if (!stale.ok) return ok({ ...counts, failed: 1 });
-  for (const orderId of stale.value) {
-    const order = await readOrder(deps, context, orderId);
-    if (order === undefined) {
+
+  const expiredBefore = now.subtract(SWEEP_GRACE);
+  const unpaid = await read(deps, context, () =>
+    deps.orders.findExpiredUnpaid(context.market, expiredBefore, SWEEP_BATCH),
+  );
+  if (unpaid === undefined) counts.failed += 1;
+  for (const orderId of unpaid ?? []) {
+    const expired = await expireUnpaid(deps, context, orderId);
+    if (!expired.ok) counts.failed += 1;
+    else if (expired.value === 'cancelled') counts.expired += 1;
+  }
+
+  const before = now.subtract({ milliseconds: deps.policy.sessionTtlMs() }).subtract(SWEEP_GRACE);
+  let after: Id<'Order'> | undefined;
+  for (let page = 0; page < SWEEP_PAGES; page += 1) {
+    const stale = await deps.promotions.staleRedemptions(context, {
+      before,
+      limit: SWEEP_BATCH,
+      ...(after === undefined ? {} : { after }),
+    });
+    if (!stale.ok) {
       counts.failed += 1;
-      continue;
+      break;
     }
-    if (order === null || order.status === 'cancelled' || order.status === 'confirmed') {
+    for (const orderId of stale.value) {
+      const order = await read(deps, context, () => deps.orders.findById(context.market, orderId));
+      if (order === undefined) {
+        counts.failed += 1;
+        continue;
+      }
+      if (order !== null && order.status === 'pending-payment') {
+        counts.waiting += 1;
+        continue;
+      }
       const outcome = order?.status === 'confirmed' ? 'paid' : 'cancelled';
       const settled = await deps.promotions.settleRedemptions(context, { orderId, outcome });
       if (!settled.ok) counts.failed += 1;
       else if (settled.value.outcome === 'confirmed') counts.confirmed += 1;
       else if (settled.value.outcome === 'released') counts.released += 1;
-      continue;
     }
-    const expiredLongAgo =
-      Temporal.Instant.compare(order.paymentExpiresAt.add(SWEEP_GRACE), now) < 0;
-    if (!expiredLongAgo || order.paymentState !== 'none') {
-      counts.waiting += 1;
-      continue;
-    }
-    const cancelled = await cancelPayment(deps, context, { orderId, cause: 'expired' });
-    if (cancelled.ok) counts.expired += 1;
-    else counts.failed += 1;
+    if (stale.value.length < SWEEP_BATCH) break;
+    after = stale.value[stale.value.length - 1];
   }
   return ok(counts);
 }
 
-/** The order, null when there is none, undefined when it could not be read. */
-async function readOrder(
+/** A read in its own read-only unit; undefined when it could not be read. */
+async function read<T>(
   deps: OrderingDependencies,
   context: CallContext,
-  orderId: Id<'Order'>,
-): Promise<OrderState | null | undefined> {
+  query: () => Promise<T>,
+): Promise<T | undefined> {
   try {
-    const read = await deps.unitOfWork.run<OrderState | null, never>(
+    const result = await deps.unitOfWork.run<T, never>(
       context.market,
-      async () => ok(await deps.orders.findById(context.market, orderId)),
+      async () => ok(await query()),
       { readOnly: true },
     );
-    return read.ok ? read.value : undefined;
+    return result.ok ? result.value : undefined;
   } catch {
     return undefined;
   }

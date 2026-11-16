@@ -13,6 +13,9 @@ import { quote } from '../quote-flow';
  * only, never an acting-as session). The same calculation as `promotions.quote-discounts`, with
  * two things the caller cannot choose: the customer is the session's account (the request's
  * `customerAccountId` must be absent or that account) and the order is never a test order.
+ *
+ * In-process only, for ordering's checkout: `isFirstOrder` and `orderCommission` come from the
+ * caller, so this use case must never get a controller or an AI tool.
  */
 export class QuoteOwnDiscounts extends UseCase<QuoteRequest, QuoteResult, PromotionsFailure> {
   static override readonly access: AccessDeclaration = {

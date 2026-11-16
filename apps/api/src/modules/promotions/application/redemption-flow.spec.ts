@@ -372,7 +372,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
       ]);
     });
 
-    it("refuses another customer's account, a test order, and a seller or admin session", async () => {
+    it("refuses another customer's account, a test order, a seller or admin session and acting-as", async () => {
       await created(make(CreateOwnPromotion).execute(seller(), sale()));
       const cart = request([line(1, 5000n, 1)], { testMode: false });
       const expected = summaryOf(await quote(cart));
@@ -408,6 +408,19 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
         error: { code: 'access.denied' },
       });
       expect(await redeemAs(admin(), BUYER)).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      // Never an acting-as session, even one on the buyer's own account.
+      const actingAs = {
+        ...customer,
+        actor: { ...customer.actor, actingAs: { adminAccountId: id<'Account'>(0xad) } },
+      } as unknown as typeof customer;
+      expect(await facade().quote(actingAs, cart)).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(await redeemAs(actingAs, BUYER)).toMatchObject({
         ok: false,
         error: { code: 'access.denied' },
       });
@@ -772,6 +785,13 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
         ok: true,
         value: [order(80)],
       });
+      // The next page starts after the last order id of the one before.
+      expect(
+        await facade().staleRedemptions(system, { before: later, limit: 10, after: order(80) }),
+      ).toEqual({ ok: true, value: [] });
+      expect(
+        await facade().staleRedemptions(system, { before: later, limit: 10, after: order(79) }),
+      ).toEqual({ ok: true, value: [order(80)] });
     });
 
     it('confirms a paid order and releases a cancelled one, once', async () => {
@@ -818,6 +838,13 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
       expect(
         await facade().settleRedemptions(customer, { orderId: order(84), outcome: 'cancelled' }),
       ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      expect(
+        await facade().staleRedemptions(system, {
+          before: later,
+          limit: 10,
+          after: 'not-an-id' as Id<'Order'>,
+        }),
+      ).toEqual({ ok: false, error: { code: 'validation.failed' } });
       for (const limit of [0, 101, 1.5]) {
         expect(await facade().staleRedemptions(system, { before: later, limit })).toEqual({
           ok: false,

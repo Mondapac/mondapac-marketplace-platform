@@ -184,6 +184,9 @@ class EmptyRefunds implements RefundRepository {
   findPending() {
     return this.unexpected('findPending');
   }
+  findExpiredUnpaid() {
+    return this.unexpected('findExpiredUnpaid');
+  }
   guardSellerRefunds() {
     return this.unexpected('guardSellerRefunds');
   }
@@ -337,6 +340,20 @@ export class MemoryOrders implements OrderRepository {
   hasPaidOrder(_m: MarketContext, accountId: Id<'Account'>) {
     return Promise.resolve(
       [...this.rows.values()].some((o) => o.accountId === accountId && o.status === 'confirmed'),
+    );
+  }
+  findExpiredUnpaid(_m: MarketContext, before: Temporal.Instant, limit: number) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (o) =>
+            o.status === 'pending-payment' &&
+            o.paymentState === 'none' &&
+            Temporal.Instant.compare(o.paymentExpiresAt, before) < 0,
+        )
+        .sort((a, b) => Temporal.Instant.compare(a.paymentExpiresAt, b.paymentExpiresAt))
+        .slice(0, limit)
+        .map((o) => o.id),
     );
   }
   findPending(_m: MarketContext, accountId: Id<'Account'>) {

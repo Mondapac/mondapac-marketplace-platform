@@ -19,9 +19,11 @@ export function settleStaleRedemptionsJob(settle: SettleStaleRedemptions): JobDe
       const result = await settle.execute(context, {});
       if (!result.ok) throw new Error(`${SETTLE_STALE_REDEMPTIONS_JOB} refused`);
       const { confirmed, released, expired, waiting, failed } = result.value;
-      if (confirmed + released + expired + failed > 0) {
+      // An order still waiting this long after its payment page has a payment held that never
+      // settled: worth a warning, as is a failure.
+      if (confirmed + released + expired + waiting + failed > 0) {
         const fields = { marketId: context.market.marketId, correlationId: context.correlationId };
-        logger[failed > 0 ? 'warn' : 'log']({
+        logger[failed + waiting > 0 ? 'warn' : 'log']({
           msg: SETTLE_STALE_REDEMPTIONS_JOB,
           ...fields,
           confirmed,

@@ -211,6 +211,12 @@ async function reserveWithRetry(
   return last;
 }
 
+/**
+ * Checkouts with a discount code one customer account may make in one window of the
+ * `checkout-payment` counter (10 minutes). Not a Market setting.
+ */
+export const DISCOUNT_CODE_ATTEMPTS_PER_WINDOW = 10;
+
 /** A lock timeout in promotions writes nothing, so the redemption is tried again a few times. */
 const REDEEM_ATTEMPTS = 3;
 
@@ -402,6 +408,21 @@ export async function placeOrder<T>(
   const code = parseDiscountCode(input?.code);
   if (!code.ok)
     return err({ code: 'validation.failed', fields: [{ path: 'code', code: 'format' }] });
+  // Whether a code applies is an answer about the code, so trying codes is counted per account
+  // (applied or not, so the limit itself tells nothing): a few per window, never a guessing
+  // oracle. A counter that cannot be read refuses the attempt (fail closed).
+  if (code.code !== null) {
+    try {
+      const counted = await deps.attempts.count(
+        `discount-code:${context.market.marketId}:${accountId}`,
+      );
+      if (counted.count > DISCOUNT_CODE_ATTEMPTS_PER_WINDOW) {
+        return err({ code: 'request.throttled', retryAfterSeconds: counted.retryAfterSeconds });
+      }
+    } catch {
+      return err({ code: 'ordering.check-unavailable' });
+    }
+  }
   const address = await readShipTo(deps, context, input?.addressId);
   if (!address.ok) return address;
   const read = await deps.cart.checkoutLines(context);
@@ -614,6 +635,9 @@ export async function placeOrder<T>(
     discounts.lines.get(lineKeyOf(line)) ?? NO_DISCOUNT;
   const shippingDiscount = (sellerId: Id<'Seller'>): bigint =>
     discounts.shipping.get(sellerId) ?? 0n;
+  // An order the discounts make free has nothing to charge, and a payment page needs an amount:
+  // it is refused before anything is reserved or redeemed (orders at no cost are not built).
+  if (total <= 0n) return err({ code: 'ordering.check-unavailable' });
   // The payment step may refuse now (the total moved, the card is not accepted): nothing is
   // reserved yet, so a refusal here costs nothing.
   const turnedDown = await step.precheck(money(total, plan.currency));
@@ -795,9 +819,10 @@ export async function placeOrder<T>(
     const goods =
       seller.subtotal - seller.lines.reduce((sum, line) => sum + lineDiscount(line).amount, 0n);
     const delivery = seller.shipping - shippingDiscount(seller.sellerId);
+    // A part at no cost (goods discounted to zero, a free delivery) is no line: Stripe takes no
+    // zero-priced item.
     return [
-      { label: `MondaPac order, package ${index + 1}`, amount: goods },
-      // A free delivery (an explicit zero fee) is no line: Stripe takes no zero-priced item.
+      ...(goods > 0n ? [{ label: `MondaPac order, package ${index + 1}`, amount: goods }] : []),
       ...(delivery > 0n ? [{ label: `Delivery, package ${index + 1}`, amount: delivery }] : []),
       ...(addedTax.get(seller.sellerId)! > 0n
         ? [{ label: `Tax, package ${index + 1}`, amount: addedTax.get(seller.sellerId)! }]

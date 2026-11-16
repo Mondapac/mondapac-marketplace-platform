@@ -152,6 +152,16 @@ export interface OrderRepository {
   findPending(market: MarketContext, accountId: Id<'Account'>): Promise<readonly OrderState[]>;
 
   /**
+   * Orders of the Market still waiting for payment with no money moved whose payment page
+   * expired before `before`, oldest expiry first: the safety sweep cancels them (package T2).
+   */
+  findExpiredUnpaid(
+    market: MarketContext,
+    before: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly Id<'Order'>[]>;
+
+  /**
    * What is still open for the account, for a decision that must not strand a customer (account
    * deletion): the orders waiting for payment, or paid and not yet delivered in every seller
    * order (cancelled orders and delivered ones are closed), and the refunds still pending.

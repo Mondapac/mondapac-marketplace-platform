@@ -67,7 +67,11 @@ export class PromotionsFacadeImplementation implements PromotionsFacade {
 
   staleRedemptions(
     context: CallContext,
-    request: { readonly before: Temporal.Instant; readonly limit: number },
+    request: {
+      readonly before: Temporal.Instant;
+      readonly limit: number;
+      readonly after?: Id<'Order'>;
+    },
   ) {
     return this.listStale.execute(context, request);
   }

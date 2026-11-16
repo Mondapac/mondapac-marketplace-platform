@@ -128,7 +128,12 @@ export interface PromotionsFacade {
    */
   staleRedemptions(
     context: CallContext,
-    request: { readonly before: Temporal.Instant; readonly limit: number },
+    request: {
+      readonly before: Temporal.Instant;
+      readonly limit: number;
+      /** The last order id of the previous page: the list goes on after it (by order id). */
+      readonly after?: Id<'Order'>;
+    },
   ): Promise<Result<readonly Id<'Order'>[], RedemptionSweepFailure>>;
 
   /**

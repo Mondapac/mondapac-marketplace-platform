@@ -415,12 +415,18 @@ total covers what is left); the cancel reason `discount-changed`. Existing rows 
 - **`ordering.order-cancelled.v1`** is emitted whenever an unpaid order is cancelled (expiry, payment
   failure, superseded, a failed checkout). promotions subscribes to ordering's events from `PromotionsOrderEventsModule`, a
   binding module: ordering imports promotions, so `PromotionsModule` holds no ordering import (no file cycle).
-- **Safety sweep** `ordering.settle-stale-redemptions` (worker, every 15 minutes, rule `system`): promotions
-  lists the orders that still hold RESERVED rows written before the payment window plus one hour
-  (`promotions.list-stale-redemptions`, at most 100, read only); for each, ordering reads the order: confirmed
-  confirms the rows, cancelled or unknown releases them (`promotions.settle-redemptions`); a pending order whose
-  payment page expired over an hour ago with no payment held is cancelled as `expired`. It lives in ordering
-  because promotions cannot read ordering without a cycle.
-- Follow-ups: manual-group audiences do not match under the customer's context yet (customers' group check is
+- **Safety sweep** `ordering.settle-stale-redemptions` (worker, every 15 minutes, rule `system`), two passes:
+  (1) ordering's own orders still waiting for payment with no money moved, whose payment page expired over an
+  hour ago, are cancelled as `expired` (never voiding or stopping a payment; an order with a payment held is
+  left to its payment events); (2) promotions lists, in pages by order id (`promotions.list-stale-redemptions`,
+  at most 100 a page, read only), the orders still holding RESERVED rows written before the payment window plus
+  one hour; confirmed confirms them, cancelled or unknown releases them (`promotions.settle-redemptions`), and an
+  order still waiting is passed over (paging by id, so it never blocks the rest) and logged as a warning. It
+  lives in ordering because promotions cannot read ordering without a cycle.
+- **Limits**: a checkout with a code is counted per account (10 per 10-minute window of the `checkout-payment`
+  counter, applied or not), so the code answer is no guessing oracle. An order the discounts make free is
+  refused (`ordering.check-unavailable`) before anything is reserved; a seller part at no cost sends no Stripe
+  line.
+- Follow-ups: orders at no cost (a 100% voucher) need an owner decision; manual-group audiences do not match under the customer's context yet (customers' group check is
   system-only); the admin panel's cancel-reason list lacks `discount-changed` and the web checkout has no code
   field yet (part C); the refund release waits for the owner's decision.

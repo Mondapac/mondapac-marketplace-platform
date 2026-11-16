@@ -314,3 +314,23 @@ export async function cancelPayment(
   const settled = await release(deps, context, order, input.cause, paymentState);
   return settled.ok ? ok('cancelled') : settled;
 }
+
+/**
+ * The safety sweep's cancel of an order whose payment page expired long ago (package T2): only
+ * while no money moved on it. Unlike {@link cancelPayment} it never voids or stops a payment: an
+ * order with a payment held, or one authorised meanwhile, is left for its payment events
+ * (`cancelOrder` refuses an authorised order unless the payment is voided). Answers whether it
+ * cancelled the order.
+ */
+export async function expireUnpaid(
+  deps: OrderingDependencies,
+  context: CallContext,
+  orderId: Id<'Order'>,
+): Promise<Result<CancelOutcome, PaymentFailure>> {
+  const order = await reload(deps, context, orderId);
+  if (order === null) return err({ code: 'ordering.order-not-found' });
+  if (order.status !== 'pending-payment' || order.paymentState !== 'none') return ok('ignored');
+  const settled = await release(deps, context, order, 'expired', 'none');
+  if (!settled.ok) return settled;
+  return ok(settled.value === null ? 'ignored' : 'cancelled');
+}
