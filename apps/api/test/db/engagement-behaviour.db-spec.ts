@@ -310,6 +310,9 @@ describe.each(TEST_MARKETS)('behaviour store in market %s (database)', (code) =>
     );
     expect(await insertRow(account, 'search-performed', { query: ' x' })).toBe(CHECK);
     expect(await insertRow(account, 'category-viewed', {})).toBe(CHECK);
+    // An addition without its offer and variant: the CHECK is what lets
+    // `cartAdditionsOfAccount` page with skip/take and agree with its count (no row dropped).
+    expect(await insertRow(account, 'added-to-cart', {})).toBe(CHECK);
     expect(
       await insertRow({ account: null, guest: hash }, 'search-performed', { query: 'x' }),
     ).toBe('allowed');

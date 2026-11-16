@@ -43,6 +43,13 @@ import { ApprovePayout } from './use-cases/approve-payout.use-case';
 import { ListOwnPayoutHolds } from './use-cases/list-own-payout-holds.use-case';
 import { ListOwnPayouts } from './use-cases/list-own-payouts.use-case';
 import { ListPayouts } from './use-cases/list-payouts.use-case';
+import { PAYOUT_ROW_KEYS, type AdminPayoutListDependencies } from './admin-payout-list-flow';
+import { ExceljsSheetWriter } from '../../../platform/list-export';
+import {
+  FakeStoreSearch,
+  MemoryAdminPayoutList,
+  ScriptedProbe,
+} from '../../../../test/support/commission-payouts-list-fakes';
 import { ReconcileInstructions } from './use-cases/reconcile-instructions.use-case';
 import { RunPayouts } from './use-cases/run-payouts.use-case';
 import { ViewNextPayout } from './use-cases/view-next-payout.use-case';
@@ -1128,8 +1135,19 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
   // --- what admins see ----------------------------------------------------------------------------
 
   describe('the admin views', () => {
-    const list = (input: Record<string, unknown>, context: CallContext = admin) =>
-      new ListPayouts(gate, deps).execute(context, input);
+    const list = (input: Record<string, unknown>, context: CallContext = admin) => {
+      const held = new ScriptedProbe(true);
+      const listDeps: AdminPayoutListDependencies = {
+        unitOfWork: deps.unitOfWork,
+        payouts: new MemoryAdminPayoutList(payouts, stores.holds),
+        sellerNames: names,
+        storeSearch: new FakeStoreSearch(names.names),
+        probes: Object.fromEntries(PAYOUT_ROW_KEYS.map((k) => [k, held])),
+        sheetWriter: new ExceljsSheetWriter(),
+        clock,
+      };
+      return new ListPayouts(gate, listDeps).execute(context, input);
+    };
     const view = (payoutId: unknown, context: CallContext = admin) =>
       new ViewPayout(gate, deps).execute(context, { payoutId });
 

@@ -12,7 +12,8 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { CartState } from '../domain/cart';
 import { CartAdminFacadeImplementation } from '../presentation/cart-admin.facade';
-import type { AdminCartDependencies } from './admin-customer-cart';
+import { SAVED_READ_CAP, type AdminCartDependencies } from './admin-customer-cart';
+import { MAX_SAVED_ITEMS } from './saved-operations';
 import { InMemorySavedItems } from './testing/in-memory-saved-items';
 import { AdminCustomerCartRead } from './use-cases/admin-customer-cart.use-case';
 import { AdminCustomerSavedItems } from './use-cases/admin-customer-saved-items.use-case';
@@ -196,5 +197,12 @@ describe.each([['AU'], ['ZZ']] as const)('the admin’s read of a customer’s c
     for (const type of [AdminCustomerCartRead, AdminCustomerSavedItems]) {
       expect(type.access.rule).toEqual({ kind: 'permissions', allOf: ['cart.customer-cart.view'] });
     }
+  });
+
+  it('reads every saved item an account can hold, with a margin over the per-account cap', () => {
+    // The admin read loads the list in one go and cuts the page in memory, so its cap must stay
+    // above what the save use case allows one account to keep.
+    expect(MAX_SAVED_ITEMS).toBe(100);
+    expect(SAVED_READ_CAP).toBe(2 * MAX_SAVED_ITEMS);
   });
 });

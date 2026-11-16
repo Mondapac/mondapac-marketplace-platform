@@ -81,7 +81,13 @@ import {
 } from './prisma-settings.repository';
 import { CryptoBatchCodeCrypto } from './crypto-batch-code-crypto';
 import { PrismaBatchCodeRepository } from './prisma-batch-code.repository';
-import { UnknownFlashSales } from './unknown-flash-sales';
+import { RedemptionFlashSales } from './redemption-flash-sales';
+import { PrismaRedemptionRepository } from './prisma-redemption.repository';
+import {
+  REDEMPTION_REPOSITORY,
+  type RedemptionRepository,
+} from '../application/ports/redemption.repository';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 
 /** Binds the ports of promotions. Only this layer may reach `PrismaService`. */
 export const promotionsProviders: readonly FactoryProvider[] = [
@@ -138,8 +144,16 @@ export const promotionsProviders: readonly FactoryProvider[] = [
       new CryptoBatchCodeCrypto(config.promotionsCodePepper),
   },
   {
+    provide: REDEMPTION_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): RedemptionRepository =>
+      new PrismaRedemptionRepository(prisma),
+  },
+  {
     provide: FLASH_SALES,
-    useFactory: (): FlashSales => new UnknownFlashSales(),
+    inject: [UNIT_OF_WORK, REDEMPTION_REPOSITORY],
+    useFactory: (units: UnitOfWork, redemptions: RedemptionRepository): FlashSales =>
+      new RedemptionFlashSales(units, redemptions),
   },
   {
     provide: SELLER_ACTIVITY,

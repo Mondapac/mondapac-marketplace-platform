@@ -170,6 +170,7 @@ describe.each([
       },
       sellers: undefined as never,
       audit: undefined as never,
+      review: undefined as never,
       clock,
       ids: new SequenceIdGenerator(clock),
       outbox: {

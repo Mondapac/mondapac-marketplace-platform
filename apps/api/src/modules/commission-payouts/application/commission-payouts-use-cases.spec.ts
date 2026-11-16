@@ -20,6 +20,7 @@ import { commissionBase, commissionOn, parseRateBps } from '../domain/commission
 import { reversedAmount } from '../domain/reversal';
 import { netBySellerOrder, type LedgerEntry, type LedgerKind } from '../domain/ledger';
 import { payoutStores } from '../../../../test/support/commission-payouts-fakes';
+import { sellerPageDepsOf } from '../../../../test/support/commission-payouts-seller-page-fakes';
 import type { AllowingStepUp } from '../../../../test/support/commission-payouts-fakes';
 import { COMMISSION_PAYOUTS_RATE_EDIT } from '../contracts/permissions';
 import { ConfigPayoutTermsPolicy } from '../infrastructure/config-payout-terms-policy';
@@ -679,10 +680,11 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       ]);
       const other = await new ViewOwnLedger(gate, deps).execute(sellerB, {});
       expect(other).toMatchObject({ ok: true, value: { sellerId: SELLER_B, entries: [] } });
-      const byAdmin = await new ViewSellerLedger(gate, deps).execute(admin, { sellerId: SELLER_A });
+      const page = sellerPageDepsOf(deps, { ledger: () => ledger.rows });
+      const byAdmin = await new ViewSellerLedger(gate, page).execute(admin, { sellerId: SELLER_A });
       expect(byAdmin.ok && byAdmin.value.totals).toEqual(own.ok && own.value.totals);
       expect(
-        await new ViewSellerLedger(gate, deps).execute(sellerB, { sellerId: SELLER_A }),
+        await new ViewSellerLedger(gate, page).execute(sellerB, { sellerId: SELLER_A }),
       ).toEqual(err({ code: 'access.denied' }));
       expect(await new ViewOwnLedger(gate, deps).execute(customer, {})).toMatchObject({
         ok: false,

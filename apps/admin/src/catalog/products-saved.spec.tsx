@@ -4,6 +4,9 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+}));
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
@@ -128,6 +131,7 @@ function mount() {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <ProductsList
+        paging="pages"
         accountId="acc-1"
         marketId="AU"
         marketName="Australia"

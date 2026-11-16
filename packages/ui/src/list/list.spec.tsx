@@ -82,6 +82,15 @@ describe('ListPagination', () => {
     expect(html).not.toMatch(/aria-label="Next"[^>]*disabled=""/);
   });
 
+  it('shows the rows per page select only when there is more than one size', () => {
+    expect(pagination({ pageSizes: [25] })).not.toContain('Rows per page');
+    expect(pagination({ pageSizes: [25] })).not.toContain('<select');
+    expect(pagination({ pageSizes: [25, 50] })).toContain('Rows per page');
+    // The range line and the page numbers stay.
+    expect(pagination({ pageSizes: [25] })).toContain('aria-live="polite"');
+    expect(pagination({ pageSizes: [25] })).toContain('aria-label="Pages"');
+  });
+
   it('shows only Previous and Next in that mode, with no page numbers', () => {
     const html = pagination({ mode: 'prev-next', page: 2 });
     expect(html).not.toContain('aria-label="Pages"');
@@ -211,5 +220,33 @@ describe('ListThumb and BottomSheet', () => {
     expect(html).toContain('Body');
     expect(html).toContain('Filter');
     expect(html).toContain('aria-label="Close"');
+  });
+});
+
+describe('ListColumnsPanel and the Actions column', () => {
+  it('never offers the row Actions column in the picker', () => {
+    const html = renderToStaticMarkup(
+      <ListColumnsPanel
+        columns={['sku', 'actions']}
+        optional={['sku', 'price', 'actions']}
+        defaults={['sku']}
+        fixed={[{ id: 'name', label: 'Name' }]}
+        optionalLabel={(column) => `col-${column}`}
+        labels={{
+          title: 'Columns',
+          help: 'h',
+          always: 'Always shown',
+          up: (c) => `up ${c}`,
+          down: (c) => `down ${c}`,
+          reset: 'Reset',
+          save: 'Save',
+        }}
+        onSave={() => {}}
+        close={() => {}}
+      />,
+    );
+    expect(html).toContain('col-sku');
+    expect(html).toContain('col-price');
+    expect(html).not.toContain('col-actions');
   });
 });

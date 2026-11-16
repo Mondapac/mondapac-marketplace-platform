@@ -65,6 +65,7 @@ describe.each(TEST_MARKET_IDS)('the admin’s read of a customer’s conversatio
         role: 'buyer',
         text: 'private question',
         cards: [],
+        at: T0.add({ minutes: hours * 60 + 30 }),
       });
     };
     for (const hours of [1, 2, 3]) await start(market, CUSTOMER, hours);

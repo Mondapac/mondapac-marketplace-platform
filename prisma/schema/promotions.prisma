@@ -87,6 +87,7 @@ model PromotionsPromotion {
   batchCodes         PromotionsBatchCode[]
   referrals          PromotionsReferral[]
   creditIssuances    PromotionsCreditIssuance[]
+  redemptions        PromotionsRedemption[]
 
   /// The foreign-key target of the children.
   @@unique([marketId, id])
@@ -156,15 +157,18 @@ model PromotionsBundleItem {
 /// A code is unique in a Market. `usedAt` is set when an order redeems it (package T2); the quote
 /// treats a used code as not applicable. Never deleted.
 model PromotionsBatchCode {
-  marketId    String              @map("market_id") @db.VarChar(8)
-  tenantId    String              @map("tenant_id")
-  codeHash    String              @map("code_hash")
-  promotionId String              @map("promotion_id") @db.Uuid
+  marketId        String              @map("market_id") @db.VarChar(8)
+  tenantId        String              @map("tenant_id")
+  codeHash        String              @map("code_hash")
+  promotionId     String              @map("promotion_id") @db.Uuid
   /// The generating call that made the code (to tell batches of one promotion apart).
-  batchId     String              @map("batch_id") @db.Uuid
-  createdAt   DateTime            @map("created_at") @db.Timestamptz(6)
-  usedAt      DateTime?           @map("used_at") @db.Timestamptz(6)
-  promotion   PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  batchId         String              @map("batch_id") @db.Uuid
+  createdAt       DateTime            @map("created_at") @db.Timestamptz(6)
+  /// Set with `redeemedOrderId` when an order redeems the code (package T2); cleared when that
+  /// order's redemption is released (CHECK: both or neither; trigger: only set or clear).
+  usedAt          DateTime?           @map("used_at") @db.Timestamptz(6)
+  redeemedOrderId String?             @map("redeemed_order_id") @db.Uuid
+  promotion       PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, codeHash])
   /// Counting and listing the codes of one promotion.
@@ -174,7 +178,7 @@ model PromotionsBatchCode {
 }
 
 /// How much a promotion has been used. One row per promotion, made with it, all zero. Package T2
-/// (budget reservation) keeps the counters; this package only reads them. The money columns are
+/// keeps the counters: a redemption adds to them and its release takes the same back. The money columns are
 /// financial data: a Viewer's answer carries `usesCount` only.
 model PromotionsUsage {
   marketId           String              @map("market_id") @db.VarChar(8)
@@ -407,5 +411,50 @@ model PromotionsInbox {
 
   @@id([eventId, handler])
   @@map("inbox")
+  @@schema("promotions")
+}
+
+/// What one order took from one promotion (package T2): reserved when the order is placed,
+/// CONFIRMED when it is paid, RELEASED when it is cancelled (or refunded, per the owner's rule).
+/// The settings-based offers have no promotion row: `promotionKey` is the promotion's id,
+/// `first-order` or `free-shipping:<zone>` (`kind` PROMOTION, FIRST_ORDER, FREE_SHIPPING; CHECK).
+/// Each redeemed order also has a head row (`kind` ORDER, key `order`, zero amounts); an order
+/// cancelled before its redemption gets that row RELEASED, so a later redemption is refused.
+/// Never deleted; only the status moves (trigger). Partial indexes in the migration.
+model PromotionsRedemption {
+  id                 String               @id @db.Uuid
+  marketId           String               @map("market_id") @db.VarChar(8)
+  tenantId           String               @map("tenant_id")
+  orderId            String               @map("order_id") @db.Uuid
+  promotionKey       String               @map("promotion_key")
+  promotionId        String?              @map("promotion_id") @db.Uuid
+  kind               String
+  /// Null only on the head row of an order cancelled before it was redeemed (CHECK).
+  customerAccountId  String?              @map("customer_account_id") @db.Uuid
+  /// The hash of the single-use code the order redeemed (BATCH_CODE only).
+  codeHash           String?              @map("code_hash")
+  currency           String?              @db.VarChar(3)
+  amountMinor        BigInt               @map("amount_minor")
+  sellerShareMinor   BigInt               @map("seller_share_minor")
+  platformShareMinor BigInt               @map("platform_share_minor")
+  /// Units of a flash sale the order discounted (the sale's limit counts them).
+  units              Int?
+  /// `YYYY-MM` in the Market's zone: the month whose first-order budget the row spends.
+  budgetMonth        String?              @map("budget_month")
+  /// RESERVED, CONFIRMED or RELEASED (CHECK).
+  status             String
+  /// ORDER_CANCELLED or ORDER_REFUNDED, when RELEASED.
+  releaseReason      String?              @map("release_reason")
+  reservedAt         DateTime             @map("reserved_at") @db.Timestamptz(6)
+  confirmedAt        DateTime?            @map("confirmed_at") @db.Timestamptz(6)
+  releasedAt         DateTime?            @map("released_at") @db.Timestamptz(6)
+  promotion          PromotionsPromotion? @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// One row per order and promotion: the redemption's idempotency.
+  @@unique([marketId, orderId, promotionKey])
+  /// A customer's redemptions, newest first (the admin customer page). The partial indexes of the
+  /// counts and the sweep are in the migration only.
+  @@index([marketId, customerAccountId, reservedAt(sort: Desc), id(sort: Desc)], map: "redemptions_customer_newest_idx")
+  @@map("redemptions")
   @@schema("promotions")
 }

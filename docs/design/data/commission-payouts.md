@@ -365,6 +365,7 @@ Index sizes at 3.1 × 10⁶ entries: heap 427 MB, balance index 118 MB, list ind
 - An index on `journal_entries (market_id, transaction_id)` beyond the line key (the line key serves it).
 - Indexes on in-schema FK referencing columns of the journal refs: parents are never deleted.
 - An index by `invoice_id` on entries: assessments are found by invoice through their unique key.
+- **Sort indexes for the admin Payouts list** (super list 21, 2026-11-15, Mojtaba on #927). The default newest-first sort and its keyset cursor use `payouts_market_id_created_at_id_idx`; one state uses the state index, the awaiting-approval view the partial open index, seller and store search the seller index. The amount, slot and state-changed sorts scan the Market's rows and sort them (milliseconds at thousands of payouts); an index on `state_changed_at` would also cost a write on every transition. When a Market passes about 50k payouts, run EXPLAIN (ANALYZE, BUFFERS) on page 400 × 25 sorted by amount, and add `(market_id, transfer_minor DESC, id DESC)` CONCURRENTLY if the sort spills or p95 exceeds 50 ms. The export fixes its ids with an id-only read, then reads rows by id in chunks of 500.
 
 ## 7. Grants
 
