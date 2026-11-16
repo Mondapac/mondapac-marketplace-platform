@@ -6,32 +6,32 @@ assistant ships **off**.
 
 ## Routes
 
-| Route | Who | What |
-|---|---|---|
-| `GET /assistant/admin/settings` | admin, `assistant.settings.view` (viewer role, seed version 14) | Settings in force, `version` (0 = defaults), `apiKey: set / not-set`, the model configured per tier, options not available yet |
-| `PUT /assistant/admin/settings` | admin, `assistant.settings.manage` (protected: Platform Administrator only) | `{ expectedVersion, settings }`, every field; stale version answers 409 `assistant.conflict`; same settings again change nothing |
-| `GET /assistant/storefront?visitor=` | anyone, no session read | `{ enabled, guestsAllowed, replyLanguage, welcomeText }` only |
+| Route                                | Who                                                                         | What                                                                                                                             |
+| ------------------------------------ | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /assistant/admin/settings`      | admin, `assistant.settings.view` (viewer role, seed version 14)             | Settings in force, `version` (0 = defaults), `apiKey: set / not-set`, the model configured per tier, options not available yet   |
+| `PUT /assistant/admin/settings`      | admin, `assistant.settings.manage` (protected: Platform Administrator only) | `{ expectedVersion, settings }`, every field; stale version answers 409 `assistant.conflict`; same settings again change nothing |
+| `GET /assistant/storefront?visitor=` | anyone, no session read                                                     | `{ enabled, guestsAllowed, replyLanguage, welcomeText }` only                                                                    |
 
 Each change is a new row of the insert-only `assistant.settings` (the application role has
 SELECT and INSERT only) and one `assistant.settings.changed` audit row (versions and the switch).
 
 ## Fields and bounds
 
-| Field | Values | Default |
-|---|---|---|
-| `enabled` | true / false | false |
-| `audience`, `audiencePercent` | `internal` / `percent` (1 to 100) / `all` | `internal` |
-| `scope` | `read-only` / `cart-suggestions` (not available yet) | `read-only` |
-| `modelTier` | `fast` / `balanced` | `fast` |
-| `users` | `guests-and-customers` / `customers-only` | `guests-and-customers` |
-| `guestMessageLimit` | 5 to 60 per 10 minutes | 20 |
-| `customerMessageLimit` | 5 to 120 per 10 minutes | 40 |
-| `retention` | `none` / `30-days` / `12-months` (a guest is kept 30 days at most) | `30-days` |
-| `replyLanguage` | `buyer` / `english` | `buyer` |
-| `dailySpendCapUsdCents` | 100 to 100,000, at most the monthly cap | 1,000 |
-| `monthlySpendCapUsdCents` | 100 to 2,000,000 | 20,000 |
-| `supportHandoff` | `email-link` / `in-panel-form` (not available yet) | `email-link` |
-| `welcomeText` | null, or 1 to 200 characters without control characters, bidi overrides, `<` or `>` | null (storefront default) |
+| Field                         | Values                                                                              | Default                   |
+| ----------------------------- | ----------------------------------------------------------------------------------- | ------------------------- |
+| `enabled`                     | true / false                                                                        | false                     |
+| `audience`, `audiencePercent` | `internal` / `percent` (1 to 100) / `all`                                           | `internal`                |
+| `scope`                       | `read-only` / `cart-suggestions` (not available yet)                                | `read-only`               |
+| `modelTier`                   | `fast` / `balanced`                                                                 | `fast`                    |
+| `users`                       | `guests-and-customers` / `customers-only`                                           | `guests-and-customers`    |
+| `guestMessageLimit`           | 5 to 60 per 10 minutes                                                              | 20                        |
+| `customerMessageLimit`        | 5 to 120 per 10 minutes                                                             | 40                        |
+| `retention`                   | `none` / `30-days` / `12-months` (a guest is kept 30 days at most)                  | `30-days`                 |
+| `replyLanguage`               | `buyer` / `english`                                                                 | `buyer`                   |
+| `dailySpendCapUsdCents`       | 100 to 100,000, at most the monthly cap                                             | 1,000                     |
+| `monthlySpendCapUsdCents`     | 100 to 2,000,000                                                                    | 20,000                    |
+| `supportHandoff`              | `email-link` / `in-panel-form` (not available yet)                                  | `email-link`              |
+| `welcomeText`                 | null, or 1 to 200 characters without control characters, bidi overrides, `<` or `>` | null (storefront default) |
 
 The database CHECKs repeat these bounds.
 

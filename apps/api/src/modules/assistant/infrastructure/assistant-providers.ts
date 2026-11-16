@@ -1,6 +1,5 @@
 import type { FactoryProvider } from '@nestjs/common';
 import { CATALOG_ASSISTANT_FACADE, type CatalogAssistantFacade } from '../../catalog';
-import { CERTIFICATION_FACADE, type CertificationFacade } from '../../certification';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { SUPPORT_CONTACT_FACADE, type SupportContactFacade } from '../../notifications';
 import { SEARCH_ASSISTANT_FACADE, type SearchAssistantFacade } from '../../search';
@@ -67,7 +66,6 @@ export const assistantProviders: readonly FactoryProvider[] = [
       CATALOG_ASSISTANT_FACADE,
       SUPPORT_CONTACT_FACADE,
       SELLERS_FACADE,
-      CERTIFICATION_FACADE,
       ServiceAreaDirectory,
     ],
     useFactory: (
@@ -75,10 +73,8 @@ export const assistantProviders: readonly FactoryProvider[] = [
       catalog: CatalogAssistantFacade,
       support: SupportContactFacade,
       sellers: SellersFacade,
-      certification: CertificationFacade,
       areas: ServiceAreaDirectory,
-    ): AssistantTools =>
-      new FacadeAssistantTools(search, catalog, support, sellers, certification, areas),
+    ): AssistantTools => new FacadeAssistantTools(search, catalog, support, sellers, areas),
   },
   {
     provide: MESSAGE_LIMITS,

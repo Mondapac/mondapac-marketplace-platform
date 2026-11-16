@@ -147,7 +147,18 @@ export class SearchAssistantFacadeImplementation implements SearchAssistantFacad
         : { ok: false, error: failureOf(result.error.code) };
     }
     const page = result.value;
-    const [first, ...rest] = page.offers.map(offerOf);
+    const [first, ...rest] = page.offers
+      .map(offerOf)
+      .sort((a, b) =>
+        a.price.amount !== b.price.amount
+          ? a.price.amount < b.price.amount
+            ? -1
+            : 1
+          : a.offerId < b.offerId
+            ? -1
+            : 1,
+      );
+    if (first === undefined) return { ok: false, error: { code: 'not-found' } };
     return {
       ok: true,
       value: {
@@ -159,7 +170,7 @@ export class SearchAssistantFacadeImplementation implements SearchAssistantFacad
         attributes: page.specifications.flatMap((group) =>
           group.specifications.map(({ name, value }) => ({ name, value: textOf(value) })),
         ),
-        offers: [first!, ...rest],
+        offers: [first, ...rest],
       },
     };
   }
@@ -183,14 +194,15 @@ export class SearchAssistantFacadeImplementation implements SearchAssistantFacad
   ): Promise<readonly AssistantProduct[]> {
     const pages = await this.pagesOf(context, items);
     return items.map((item) => {
-      const offer = pages.get(item.productId)?.offers.find((hit) => hit.offerId === item.offerId);
+      const hit = pages.get(item.productId)?.offers.find((offer) => offer.offerId === item.offerId);
+      const offer = hit === undefined ? undefined : offerOf(hit);
       return {
         ...item,
-        sellerName: offer?.seller.storeName ?? null,
-        price: offer === undefined ? null : offerOf(offer).price,
+        sellerName: offer?.sellerName ?? null,
+        price: offer?.price ?? null,
         regularPrice: null,
-        taxInclusive: offer === undefined ? null : offerOf(offer).taxInclusive,
-        priceFrom: offer === undefined ? false : offerOf(offer).priceFrom,
+        taxInclusive: offer?.taxInclusive ?? null,
+        priceFrom: offer?.priceFrom ?? false,
       };
     });
   }

@@ -30,7 +30,12 @@ export type AssistantCard =
        * Certification badges as catalog answered them live, only on the card of `get_product`.
        * Display only: never model text and never an input to `evaluateClaim` (ADR-0019 R1).
        */
-      readonly badges: readonly { readonly typeCode: string; readonly typeName: string }[];
+      readonly badges: readonly {
+        readonly typeCode: string;
+        readonly typeName: string;
+        /** True when the seller only declared it: the storefront shows it as it does on the page. */
+        readonly sellerClaim: boolean;
+      }[];
     }
   | {
       readonly kind: 'seller';
@@ -40,8 +45,8 @@ export type AssistantCard =
       readonly name: string;
       readonly city: string | null;
       readonly sellingSince: number;
+      /** How many products the store has on sale; null means unknown, never zero. */
       readonly productCount: number | null;
-      readonly badges: readonly { readonly typeCode: string; readonly typeName: string }[];
     }
   | { readonly kind: 'page'; readonly page: SitePage; readonly categoryId: string | null }
   | { readonly kind: 'support'; readonly email: string | null };

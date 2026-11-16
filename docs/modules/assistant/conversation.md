@@ -9,10 +9,10 @@ Source: the buyer assistant plan (sections 4 to 8 and 11), ADR-0019, the setting
 is 400). `id` is a canonical UUID v7 the widget generates for a new conversation and repeats for
 the next messages; the conversation is the subject of its own encryption key.
 
-| Caller | Use case (rule) | Who owns the conversation |
-|---|---|---|
-| Signed-in customer (session cookie and CSRF token) | `assistant.send-message` (`own-resources`) | the account of the session |
-| Anyone else | `assistant.send-guest-message` (`anonymous`) | the assistant's own guest cookie `__Host-assistant-guest-<Market>` (30 days, HttpOnly, Secure, SameSite=Lax; the store keeps only the SHA-256 of the token) |
+| Caller                                             | Use case (rule)                              | Who owns the conversation                                                                                                                                   |
+| -------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Signed-in customer (session cookie and CSRF token) | `assistant.send-message` (`own-resources`)   | the account of the session                                                                                                                                  |
+| Anyone else                                        | `assistant.send-guest-message` (`anonymous`) | the assistant's own guest cookie `__Host-assistant-guest-<Market>` (30 days, HttpOnly, Secure, SameSite=Lax; the store keeps only the SHA-256 of the token) |
 
 A seller or admin session is not read on this route. A conversation answers only its owner in its
 Market; anything else is 404 `assistant.conversation-not-found`. The owner never comes from the
@@ -52,14 +52,20 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
   special), read through the product page use case (one read per distinct product). A price that
   cannot be read leaves the card without one. `get_product` (description, attributes, brand, who
   sells it) and `get_seller` (store name, city, selling-since year, product count) show a product
-  card (with catalog's live badges) and a store card (`kind: 'seller'`, with the certification
-  types the store holds a valid certificate of, a display measure and not a claim); an unknown or
-  not-selling id answers "not found", a failed read answers `tool-failed`.
-- The model gets ids, names and short texts for lists, and for `get_product` / `get_seller` the
-  seller-entered texts between `<<seller-text` and `seller-text>>` (a forged marker inside the
-  text is removed, 1500 characters at most each): data, never instructions. It never gets a price,
+  card (the cheapest Offer, with catalog's live badges and whether each is only a seller claim)
+  and a store card (`kind: 'seller'`). The store card has no certification badge: a store-level
+  certificate is not an Offer claim (R1). An unknown, malformed or not-selling id answers "not
+  found" alike; a failed read answers `tool-failed`. `productCount` null means unknown, never zero.
+  Known limits: the city name is read in English (the ServiceArea directory guarantees `en`; a
+  Market read in another language needs a language source before launch), the store count comes
+  from the store query by name, and each list tool call does one product page read per distinct
+  product (a batched card read is a follow-up).
+- The model gets ids and, for lists, `get_product` and `get_seller`, every seller-entered text
+  (names, short texts, descriptions, attributes, store names) between `<<seller-text` and
+  `seller-text>>` (a forged marker inside the text is removed; 200 characters for names, 1500 for
+  descriptions, 20 attributes, 5 sellers): data, never instructions. It never gets a price,
   a stock figure or a certification badge: those reach the buyer only on the cards.
-- The model sees names and short texts only, never a price or stock figure. Its reply is checked
+- The model never sees a price, stock figure or badge. Its reply is checked
   sentence by sentence (`domain/reply-guard.ts`): money, stock, delivery, minimum-order and
   certification sentences are dropped with a notice; markup, links, addresses and invisible
   characters are removed. Tool calls are schema-checked; at most 4 model rounds and 25 s a turn,

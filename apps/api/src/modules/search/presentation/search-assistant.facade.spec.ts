@@ -1,6 +1,7 @@
 import { money, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import { TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { ProductDetail } from '../application/use-cases/view-product-detail.use-case';
 import { SearchAssistantFacadeImplementation } from './search-assistant.facade';
 
@@ -74,8 +75,11 @@ const page = (): ProductDetail =>
     ],
   }) as unknown as ProductDetail;
 
-describe('SearchAssistantFacadeImplementation', () => {
-  const context: CallContext = testCallContext(testMarketContext('AU', 'default'), 'anonymous');
+describe.each(TEST_MARKET_IDS)('SearchAssistantFacadeImplementation in market %s', (marketCode) => {
+  const context: CallContext = testCallContext(
+    testMarketContext(marketCode, 'default'),
+    'anonymous',
+  );
   const item = (offerId: Id<'Offer'>, sellerId: Id<'Seller'>) => ({
     offerId,
     productId: PRODUCT,

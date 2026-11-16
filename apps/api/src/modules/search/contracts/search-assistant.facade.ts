@@ -92,7 +92,10 @@ export interface SearchAssistantFacade {
   ): Promise<
     Result<AssistantProductDetail, AssistantSearchFailure | { readonly code: 'not-found' }>
   >;
-  /** How many products the store with this public name and address has on sale, or null. */
+  /**
+   * How many products the store with this public name and address has on sale. `null` means
+   * unknown (not found by the store query, or a failed read), never zero: the card shows none.
+   */
   storeProductCount(
     context: CallContext,
     store: { readonly slug: string; readonly name: string },
