@@ -50,6 +50,18 @@ const ARABIC_FORMS: Readonly<Record<string, string>> = {
   ۀ: 'ه',
   ہ: 'ه',
   ؤ: 'و',
+  ڵ: 'ل',
+  ݪ: 'ل',
+  ٱ: 'ا',
+  ٲ: 'ا',
+  ٳ: 'ا',
+  ڪ: 'ک',
+  ګ: 'ک',
+  ھ: 'ه',
+  ې: 'ی',
+  ۍ: 'ی',
+  ێ: 'ی',
+  ە: '',
 };
 const ARABIC_FORM = new RegExp(`[${Object.keys(ARABIC_FORMS).join('')}]`, 'gu');
 
@@ -57,8 +69,19 @@ const ARABIC_FORM = new RegExp(`[${Object.keys(ARABIC_FORMS).join('')}]`, 'gu');
 const SPELLED_OUT_RUN = /(?<!\p{L})(?:\p{L}[\s\p{P}\p{S}]+){2,}\p{L}(?!\p{L})/gu;
 const SEPARATORS = /[\s\p{P}\p{S}]+/u;
 
+function enclosedLetter(character: string): string {
+  const code = character.codePointAt(0)!;
+  const base =
+    code >= 0x1f1e6 ? 0x1f1e6 : code >= 0x1f170 ? 0x1f170 : code >= 0x1f150 ? 0x1f150 : 0x1f130;
+  return String.fromCharCode(97 + code - base);
+}
+
 function prepare(text: string): string {
   return text
+    .replace(
+      /[\u{1F130}-\u{1F149}\u{1F150}-\u{1F169}\u{1F170}-\u{1F189}\u{1F1E6}-\u{1F1FF}]/gu,
+      enclosedLetter,
+    )
     .replaceAll('\u00B5', 'u')
     .normalize('NFKC')
     .replace(DRAWS_NOTHING, '')
@@ -88,7 +111,7 @@ const START = String.raw`(?<!\p{L})`;
 const END = String.raw`(?![\p{L}\p{N}])`;
 const REST = String.raw`\p{L}*`;
 
-const STEMS = [
+const STEM_SOURCES = [
   'h+e*a+l+a+l+',
   'h+e+l+a+l+',
   'hara+m',
@@ -134,7 +157,10 @@ const STEMS = [
   'βιολογικ',
   'endors',
   'afic',
-].map((stem) => `${START}(?:${stem})${REST}`);
+];
+const STEMS = STEM_SOURCES.map((stem) => `${START}(?:${stem})${REST}`);
+// A stem that must end where the window ends (an optional plural aside): "hara" + "masala" is no claim.
+const STRICT_STEMS = STEM_SOURCES.map((stem) => `${START}(?:${stem})(?:s|es)?${END}`);
 
 const WORDS = [
   'bio',
@@ -172,9 +198,8 @@ const OTHER_SCRIPTS = [
   'گیاهخوار',
   'وگان',
   'وگن',
-  'اسلام',
+  '(?<!با)اسلام',
   'غلوتین',
-  'خالیاز',
   '(?<!روغن )(?<!زیت )نباتی',
   'گلوتن',
   'כשר',
@@ -185,7 +210,12 @@ const OTHER_SCRIPTS = [
 ];
 
 const CLAIM = new RegExp([...STEMS, ...WORDS, ...FREE_FROM, ...OTHER_SCRIPTS].join('|'), 'iu');
+const STRICT_CLAIM = new RegExp(
+  [...STRICT_STEMS, ...WORDS, ...FREE_FROM, ...OTHER_SCRIPTS].join('|'),
+  'iu',
+);
 Object.freeze(CLAIM);
+Object.freeze(STRICT_CLAIM);
 
 // A capital I, a one or a bar for an l ("haIaI"); digits and symbols for letters ("h4l4l").
 const L_READING = /[I1|]/gu;
@@ -205,11 +235,14 @@ const LEET: Readonly<Record<string, string>> = {
   '1': 'l',
   '|': 'l',
   I: 'l',
+  '€': 'e',
+  '¢': 'c',
+  '£': 'l',
+  '§': 's',
+  '†': 't',
 };
-const LEET_CHARACTERS = /[4@0396$8571|I!(]/gu;
+const LEET_CHARACTERS = /[4@0396$8571|I!(€¢£§†]/gu;
 
-// A window ends on a whole common word that only follows by chance ("veg and herbs").
-const CHANCE_ENDINGS = new Set(['and', 'or', 'the', 'a', 'an', 'of', 'in', 'on', 'to']);
 const MAX_WINDOW_PIECES = 5;
 const MAX_WINDOW_LENGTH = 12;
 
@@ -227,12 +260,73 @@ function carriesClaim(folded: string): boolean {
       const piece = parts[end]!;
       joined += piece;
       if (joined.length > MAX_WINDOW_LENGTH) break;
-      if (CHANCE_ENDINGS.has(piece.toLowerCase())) continue;
-      if (CLAIM.test(joined)) return true;
+      // A joined window is a claim only when the claim word ends with it ("veg" + "and" is not).
+      if (STRICT_CLAIM.test(joined)) return true;
     }
   }
   return false;
 }
+
+// Greek and Cyrillic letters, and Latin ones with strokes, drawn like a Latin letter: a reading
+// that turns them into that letter ("ΒΙΟ", "НАІАІ", "køsher"); words really written in those
+// scripts are tested as they are by the other readings.
+const SKELETON: Readonly<Record<string, string>> = {
+  Α: 'a',
+  Β: 'b',
+  Ε: 'e',
+  Η: 'h',
+  Ι: 'I',
+  Κ: 'k',
+  Μ: 'm',
+  Ν: 'n',
+  Ο: 'o',
+  Ρ: 'p',
+  Τ: 't',
+  Υ: 'y',
+  Χ: 'x',
+  Ζ: 'z',
+  ο: 'o',
+  ν: 'v',
+  ι: 'I',
+  κ: 'k',
+  α: 'a',
+  ε: 'e',
+  А: 'a',
+  В: 'b',
+  Е: 'e',
+  Н: 'h',
+  І: 'I',
+  Ј: 'j',
+  К: 'k',
+  М: 'm',
+  О: 'o',
+  Р: 'p',
+  Ѕ: 's',
+  Т: 't',
+  Х: 'x',
+  Ү: 'y',
+  Ӏ: 'l',
+  а: 'a',
+  е: 'e',
+  о: 'o',
+  р: 'p',
+  с: 'c',
+  у: 'y',
+  х: 'x',
+  і: 'I',
+  ј: 'j',
+  ѕ: 's',
+  һ: 'h',
+  ԁ: 'd',
+  г: 'r',
+  ѵ: 'v',
+  к: 'k',
+  ø: 'o',
+  æ: 'a',
+  œ: 'o',
+  ß: 'b',
+};
+const SKELETON_LETTER = new RegExp(`[${Object.keys(SKELETON).join('')}]`, 'giu');
 
 /**
  * Whether a text carries a claim word, in any of the readings a buyer would take: as folded, with
@@ -240,11 +334,20 @@ function carriesClaim(folded: string): boolean {
  * digits or symbols read as the letters they imitate ("h4l4l"). Words split by spaces, dots or
  * hyphens are joined first.
  */
+function skeletonOf(folded: string): string {
+  return folded.replace(
+    SKELETON_LETTER,
+    (letter) => SKELETON[letter.toLowerCase()] ?? SKELETON[letter] ?? letter,
+  );
+}
+
 export function hasClaimWord(text: string): boolean {
   const folded = foldForClaims(text);
   return (
     carriesClaim(folded) ||
     carriesClaim(folded.replace(L_READING, 'l')) ||
+    carriesClaim(skeletonOf(folded)) ||
+    carriesClaim(skeletonOf(folded).replace(L_READING, 'l')) ||
     carriesClaim(folded.replace(LEET_CHARACTERS, (character) => LEET[character] ?? character))
   );
 }
