@@ -1,9 +1,10 @@
 'use client';
 
-import { Banner, Button, Dialog, Select, TextField, toast } from '@mondapac/ui';
+import { Banner, Select, SettingsDrawer, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { useDrawerLabels } from '../settings/drawer-labels.ts';
 import { taxProblemOf } from './errors.ts';
 import {
   parsePercent,
@@ -15,11 +16,9 @@ import {
   type TaxStrategy,
 } from './types.ts';
 
-const FORM_ID = 'tax-strategy-form';
-
 /**
  * Add (`POST tax/admin/strategies`) or edit (`PUT tax/admin/strategies/:id`) one strategy. The
- * rates are typed as percentages and sent as basis points. The dialog is mounted per opening.
+ * rates are typed as percentages and sent as basis points. The drawer is mounted per opening.
  */
 export function StrategyDialog({
   strategy,
@@ -60,9 +59,12 @@ export function StrategyDialog({
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
+  const labels = useDrawerLabels(t('save'));
+  const snapshot = () => JSON.stringify([name, kind, rate, defaultRate, rates]);
+  // What the form held when it opened: closing with anything else asks first.
+  const [start] = useState(snapshot);
 
-  async function submit(event?: FormEvent) {
-    event?.preventDefault();
+  async function submit() {
     if (inFlight.current) return;
     setProblem(null);
     const bad = new Set<string>();
@@ -123,83 +125,67 @@ export function StrategyDialog({
 
   const rateError = t('rate-invalid');
   return (
-    <Dialog
+    <SettingsDrawer
       open
-      size="form"
       title={strategy === null ? t('add-title') : t('edit-title', { name: strategy.name })}
-      onClose={() => {
-        if (!pending) onClose();
-      }}
-      actions={
-        <>
-          <Button variant="secondary" className="min-h-12" onClick={onClose} disabled={pending}>
-            {t('cancel')}
-          </Button>
-          <Button type="submit" form={FORM_ID} className="min-h-12" loading={pending}>
-            {t('save')}
-          </Button>
-        </>
-      }
+      onClose={onClose}
+      onSubmit={() => void submit()}
+      pending={pending}
+      dirty={snapshot() !== start}
+      labels={labels}
+      notice={problem === null ? undefined : <Banner tone="critical">{problem}</Banner>}
     >
-      <form
-        id={FORM_ID}
-        onSubmit={(event) => void submit(event)}
-        noValidate
-        className="flex flex-col gap-4"
-      >
+      <TextField
+        label={t('name')}
+        value={name}
+        maxLength={STRATEGY_NAME_MAX}
+        error={invalid.has('name') ? t('name-required') : undefined}
+        onChange={(event) => setName(event.target.value)}
+      />
+      <Select
+        label={t('kind')}
+        value={kind}
+        onChange={(event) => setKind(event.target.value as StrategyKind)}
+        options={(['flat-rate', 'by-category'] as const).map((value) => ({
+          value,
+          label: kinds(value),
+        }))}
+      />
+      {kind === 'flat-rate' ? (
         <TextField
-          label={t('name')}
-          value={name}
-          maxLength={STRATEGY_NAME_MAX}
-          error={invalid.has('name') ? t('name-required') : undefined}
-          onChange={(event) => setName(event.target.value)}
+          label={t('rate')}
+          inputMode="decimal"
+          value={rate}
+          help={t('rate-help')}
+          error={invalid.has('rate') ? rateError : undefined}
+          onChange={(event) => setRate(event.target.value)}
         />
-        <Select
-          label={t('kind')}
-          value={kind}
-          onChange={(event) => setKind(event.target.value as StrategyKind)}
-          options={(['flat-rate', 'by-category'] as const).map((value) => ({
-            value,
-            label: kinds(value),
-          }))}
-        />
-        {kind === 'flat-rate' ? (
+      ) : (
+        <>
           <TextField
-            label={t('rate')}
+            label={t('default-rate')}
             inputMode="decimal"
-            value={rate}
-            help={t('rate-help')}
-            error={invalid.has('rate') ? rateError : undefined}
-            onChange={(event) => setRate(event.target.value)}
+            value={defaultRate}
+            help={t('default-rate-help')}
+            error={invalid.has('default') ? rateError : undefined}
+            onChange={(event) => setDefaultRate(event.target.value)}
           />
-        ) : (
-          <>
-            <TextField
-              label={t('default-rate')}
-              inputMode="decimal"
-              value={defaultRate}
-              help={t('default-rate-help')}
-              error={invalid.has('default') ? rateError : undefined}
-              onChange={(event) => setDefaultRate(event.target.value)}
-            />
-            {categoryCodes.length === 0 ? (
-              <p className="text-sm text-fg-muted">{t('no-categories')}</p>
-            ) : (
-              categoryCodes.map((code) => (
-                <TextField
-                  key={code}
-                  label={t('category-rate', { code })}
-                  inputMode="decimal"
-                  value={rates[code] ?? ''}
-                  error={invalid.has(code) ? rateError : undefined}
-                  onChange={(event) => setRates((all) => ({ ...all, [code]: event.target.value }))}
-                />
-              ))
-            )}
-          </>
-        )}
-        {problem === null ? null : <Banner tone="critical">{problem}</Banner>}
-      </form>
-    </Dialog>
+          {categoryCodes.length === 0 ? (
+            <p className="text-sm text-fg-muted">{t('no-categories')}</p>
+          ) : (
+            categoryCodes.map((code) => (
+              <TextField
+                key={code}
+                label={t('category-rate', { code })}
+                inputMode="decimal"
+                value={rates[code] ?? ''}
+                error={invalid.has(code) ? rateError : undefined}
+                onChange={(event) => setRates((all) => ({ ...all, [code]: event.target.value }))}
+              />
+            ))
+          )}
+        </>
+      )}
+    </SettingsDrawer>
   );
 }

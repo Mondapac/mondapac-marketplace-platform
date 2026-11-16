@@ -58,6 +58,9 @@ class FakeKeys implements SubjectKeyService {
     this.destroyed = true;
     return Promise.resolve();
   }
+  hasHadKey(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
 }
 
 describe.each(TEST_MARKETS)('SubjectKeyStoreProfileContentSealer in market %s', (code) => {

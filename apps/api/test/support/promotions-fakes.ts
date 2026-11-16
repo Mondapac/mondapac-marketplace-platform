@@ -25,6 +25,7 @@ import type {
   CustomerOrderHistory,
   Known,
   StoreFollows,
+  CustomerGroupMembership,
 } from '../../src/modules/promotions/application/ports/customer-facts';
 import type {
   DeliveredOrderFacts,
@@ -633,6 +634,23 @@ export class FakeCustomerOrderHistory implements CustomerOrderHistory {
 }
 
 /** Which sellers a customer follows: unknown until a test says otherwise. */
+/** Manual customer groups as the quote reads them: unknown unless a test puts the customer in. */
+export class FakeGroupMembership implements CustomerGroupMembership {
+  readonly members = new Map<string, Set<Id<'Account'>>>();
+  broken = false;
+  throws = false;
+  reads = 0;
+  isMember(_context: CallContext, groupId: string, accountId: Id<'Account'>) {
+    this.reads += 1;
+    if (this.throws) return Promise.reject(new Error('customers unreachable'));
+    if (this.broken) return Promise.resolve({ known: false } as Known<boolean>);
+    return Promise.resolve({
+      known: true,
+      value: this.members.get(groupId)?.has(accountId) ?? false,
+    } as Known<boolean>);
+  }
+}
+
 export class FakeStoreFollows implements StoreFollows {
   readonly follows = new Map<Id<'Account'>, Id<'Seller'>[]>();
   broken = false;
@@ -959,6 +977,7 @@ export function phase3Fakes() {
     ...NO_ACTIVITY,
     orderHistory: new FakeCustomerOrderHistory(),
     storeFollows: new FakeStoreFollows(),
+    groupMembership: new FakeGroupMembership(),
     orderFacts: new FakeOrderFacts(),
     referralSignals: new FakeReferralSignals(),
     walletCredit: new FakeWalletCredit(),

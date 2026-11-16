@@ -19,6 +19,12 @@ import {
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
+import {
+  isNoteFailure,
+  ReviewNoteField,
+  trimmedNote,
+  useSentForReview,
+} from '../shared/review-note.tsx';
 import { useChangeHistory, useWinnerTitle } from '../settings/last-changed.tsx';
 import { useSettingsChrome } from '../settings/settings-chrome.ts';
 import { fleetProblemOf } from './errors.ts';
@@ -42,7 +48,11 @@ const DEFAULT_OPTION = '';
 
 type Confirm =
   | { readonly kind: 'page' }
-  | { readonly kind: 'edit'; readonly body: { name: string; rule: Rule } }
+  | {
+      readonly kind: 'edit';
+      readonly body: { name: string; rule: Rule };
+      readonly note: string | null;
+    }
   | null;
 
 type Editing = { readonly kind: 'new' } | { readonly kind: 'edit'; readonly model: Model } | null;
@@ -70,6 +80,10 @@ export function FleetSelectionPanel({
   const [pending, setPending] = useState<'page' | 'model' | null>(null);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const busy = useRef(false);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const [modelNoteRejected, setModelNoteRejected] = useState(false);
+  const sentForReview = useSentForReview();
   const noticeRef = useRef<HTMLDivElement>(null);
   // Where focus goes after a saved model: its row heading, or "New model" after a create. The
   // form and its buttons are gone by then, and the toast never takes focus.
@@ -94,12 +108,17 @@ export function FleetSelectionPanel({
     'shipping/admin/fleet-selection/history',
   );
   const winnerTitle = useWinnerTitle();
+  // The note is asked only where the view says a change is reviewed; the model edit uses the
+  // page's flag, as it has none of its own.
+  const reviewed = selection.review?.reviewed === true;
   const nameOf = (fleet: FleetCode) =>
     selection.fleets.find((row) => row.fleet === fleet)?.displayName ?? fleet;
 
   /** The page as saved: the draft is replaced by it. */
   function adopt(next: Selection) {
     setSelection(next);
+    setNote('');
+    setNoteError(null);
     setChoice(choiceOf(next));
     setScores(scoresOf(next));
     live.reset();
@@ -167,6 +186,10 @@ export function FleetSelectionPanel({
       live.attempt();
       return;
     }
+    if (reviewed && trimmedNote(note) === null) {
+      setNoteError('required');
+      return;
+    }
     if (changes.length > 0) setConfirm({ kind: 'page' });
     else void savePage();
   }
@@ -178,15 +201,23 @@ export function FleetSelectionPanel({
     setProblem(null);
     setConflict(false);
     setComparing(false);
+    setNote('');
+    setNoteError(null);
   }
 
   async function savePage() {
     if (busy.current) return;
+    const sent = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sent === null) {
+      setNoteError('required');
+      return;
+    }
     busy.current = true;
     setPending('page');
     setNotice(null);
     setProblem(null);
-    const result = await callApi<Selection>(
+    setNoteError(null);
+    const result = await callApi<Selection & { request?: unknown }>(
       'PUT',
       FLEET_SELECTION_PATH,
       {
@@ -200,14 +231,18 @@ export function FleetSelectionPanel({
         reliability: Object.fromEntries(
           FLEET_CODES.map((fleet) => [fleet, scoreOf(scores[fleet])]),
         ),
+        ...(sent === null ? {} : { note: sent }),
       },
       csrfToken,
     );
     if (result.ok) {
-      adopt(result.body);
+      const { request, ...next } = result.body;
+      sentForReview({ request });
+      adopt(next);
       toast.success(t(`${P}.notice.saved`));
     } else if (!ended(result.failure.status)) {
-      if (result.failure.code === 'shipping.fleet-selection-conflict') {
+      if (isNoteFailure(result.failure)) setNoteError('rejected');
+      else if (result.failure.code === 'shipping.fleet-selection-conflict') {
         // Someone saved first: the draft is kept; the page now measures it against what is stored.
         const fresh = await callApi<Selection>('GET', FLEET_SELECTION_PATH);
         if (fresh.ok) {
@@ -225,27 +260,39 @@ export function FleetSelectionPanel({
     setPending(null);
   }
 
-  async function saveModel(body: { name: string; rule: Rule }) {
+  async function saveModel(body: { name: string; rule: Rule }, sent: string | null) {
     if (busy.current || editing === null) return;
     busy.current = true;
     setPending('model');
     setFormProblem(null);
+    setModelNoteRejected(false);
     const creating = editing.kind === 'new';
     const result = creating
       ? await callApi<Model>('POST', `${FLEET_SELECTION_PATH}/models`, body, csrfToken)
-      : await callApi<Model>(
+      : await callApi<Model & { request?: unknown }>(
           'PUT',
           `${FLEET_SELECTION_PATH}/models/${editing.model.id}`,
-          { ...body, expectedVersion: editing.model.version },
+          {
+            ...body,
+            expectedVersion: editing.model.version,
+            ...(sent === null ? {} : { note: sent }),
+          },
           csrfToken,
         );
     if (result.ok) {
+      sentForReview(result.body);
       const fresh = await callApi<Selection>('GET', FLEET_SELECTION_PATH);
       if (fresh.ok) refresh(fresh.body);
       setEditing(null);
       focusNext.current = creating ? { kind: 'add' } : { kind: 'model', id: editing.model.id };
       toast.success(t(`${P}.notice.${creating ? 'created' : 'edited'}`));
     } else if (!ended(result.failure.status)) {
+      if (isNoteFailure(result.failure)) {
+        setModelNoteRejected(true);
+        busy.current = false;
+        setPending(null);
+        return;
+      }
       const key = fleetProblemOf(result.failure);
       setFormProblem(key);
       if (key === 'conflict') {
@@ -370,6 +417,20 @@ export function FleetSelectionPanel({
           }}
           onLeave={(fleet) => live.touch(fleet)}
         />
+        {reviewed && canManage ? (
+          <SettingsSection title={t(`${P}.review-section`)}>
+            <div className="px-5 py-4">
+              <ReviewNoteField
+                value={note}
+                onChange={(next) => {
+                  setNote(next);
+                  setNoteError(null);
+                }}
+                error={noteError ?? undefined}
+              />
+            </div>
+          </SettingsSection>
+        ) : null}
         {canManage ? (
           <SaveBar
             {...chrome.saveBar({
@@ -469,10 +530,12 @@ export function FleetSelectionPanel({
                   .join(', ')
               : null
           }
-          onSubmit={(body) => {
+          reviewed={reviewed && editing.kind === 'edit'}
+          noteRejected={modelNoteRejected}
+          onSubmit={(body, sent) => {
             if (editing.kind === 'edit' && methodsOf(editing.model).length > 0) {
-              setConfirm({ kind: 'edit', body });
-            } else void saveModel(body);
+              setConfirm({ kind: 'edit', body, note: sent });
+            } else void saveModel(body, sent);
           }}
           onCancel={() => setEditing(null)}
         />
@@ -492,7 +555,7 @@ export function FleetSelectionPanel({
                 const taken = confirm;
                 setConfirm(null);
                 if (taken?.kind === 'page') void savePage();
-                else if (taken?.kind === 'edit') void saveModel(taken.body);
+                else if (taken?.kind === 'edit') void saveModel(taken.body, taken.note);
               }}
             >
               {t(`${P}.confirm.go`)}
