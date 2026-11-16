@@ -182,6 +182,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Mark units unavailable and refund them (protected: step-up), and add a note to the order.
     'ordering/seller/orders/:id/unavailable',
     'ordering/seller/orders/:id/notes',
+    // The packing slips of a selection of orders (up to 50 ids in the body; a read).
+    'ordering/seller/orders/documents',
     'pricing/seller/offers/:id/variants/:id/special-price/withdraw',
     'notifications/seller/notices/:id/read',
     // One public reply per review, and a report of a review (buyer reviews, package 4c).

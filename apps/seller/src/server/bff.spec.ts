@@ -804,6 +804,14 @@ describe('relay of the seller order routes', () => {
     expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/seller/orders?${q}`);
   });
 
+  it('posts the packing-slip selection to the documents route only', async () => {
+    const upstream = upstreamOk();
+    const path = [...list, 'documents'];
+    expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+    const other = [...list, 'documents', 'x'];
+    expect((await relay(config, post(other.join('/')), other, upstream)).status).toBe(404);
+  });
+
   it('posts ship and deliver by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     for (const action of ['ship', 'deliver']) {

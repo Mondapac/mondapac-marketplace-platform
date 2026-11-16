@@ -75,3 +75,13 @@ export const orderDocumentBody = (document: OrderDocumentView): OrderDocumentBod
   total: moneyBody(document.total),
   tax: orNull(document.tax),
 });
+
+export class OrderDocumentsBody {
+  @ApiProperty({ type: [OrderDocumentBody] }) documents!: OrderDocumentBody[];
+  @ApiProperty({
+    type: [String],
+    description:
+      "Ids that gave no document (not the shop's, unknown or not paid), no reason given.",
+  })
+  unavailable!: string[];
+}
