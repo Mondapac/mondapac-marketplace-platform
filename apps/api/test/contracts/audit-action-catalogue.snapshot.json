@@ -669,6 +669,16 @@
     }
   },
   {
+    "action": "assistant.preview-token.issued",
+    "targetType": "assistant.settings",
+    "targetId": "enumOf(assistant-settings)",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "expiresAt": "instant"
+    }
+  },
+  {
     "action": "assistant.settings.changed",
     "targetType": "assistant.settings",
     "targetId": "enumOf(assistant-settings)",

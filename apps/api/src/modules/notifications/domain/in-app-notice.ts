@@ -196,6 +196,14 @@ export const ADMIN_SELLER_REFUND_LIMIT_REACHED = 'admin.seller-refund-limit-reac
 /** `unset`: a seller refund was refused because no cap is in force (the admin must set one). */
 export const REFUND_LIMIT_KINDS = ['count', 'amount', 'unset'] as const;
 
+/**
+ * A spend cap switched the Market's buyer assistant off until the next day or month (assistant
+ * stage 0, B4). At most one a Market day. Which cap only: no amount.
+ */
+export const ADMIN_ASSISTANT_SPEND_CAP_REACHED = 'admin.assistant-spend-cap-reached';
+/** The caps of the assistant; in-app-notice-use-cases.spec checks they match assistant's event. */
+export const ASSISTANT_SPEND_CAPS = ['daily', 'monthly'] as const;
+
 /** A review waits in the held tab of the moderation queue (buyer reviews, package 4b). */
 export const ADMIN_REVIEW_HELD = 'admin.review-held';
 /** A seller reported a review; it waits in the reported tab. */
@@ -284,6 +292,7 @@ export type AdminNoticeKind =
   | typeof ADMIN_SELLER_REFUND_LIMIT_REACHED
   | typeof ADMIN_REVIEW_HELD
   | typeof ADMIN_REVIEW_REPORTED
+  | typeof ADMIN_ASSISTANT_SPEND_CAP_REACHED
   | AdminSystemRequestOverdueKind;
 export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
@@ -296,6 +305,7 @@ export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_SELLER_REFUND_LIMIT_REACHED,
   ADMIN_REVIEW_HELD,
   ADMIN_REVIEW_REPORTED,
+  ADMIN_ASSISTANT_SPEND_CAP_REACHED,
   ...SYSTEM_REQUEST_AREAS.map((area) => ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS[area]),
 ];
 
@@ -403,6 +413,7 @@ const PARAM_SHAPES: Readonly<
     enums: { outcome: PLATFORM_IMPORT_OUTCOMES },
   },
   [ADMIN_SELLER_REFUND_LIMIT_REACHED]: { ids: ['sellerId'], enums: { limit: REFUND_LIMIT_KINDS } },
+  [ADMIN_ASSISTANT_SPEND_CAP_REACHED]: { ids: [], enums: { cap: ASSISTANT_SPEND_CAPS } },
 };
 
 /**
