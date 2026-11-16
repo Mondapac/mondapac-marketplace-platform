@@ -1626,13 +1626,76 @@
     }
   },
   {
+    "action": "customers.customer-group.changed",
+    "targetType": "customers.customer-group",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "archived": "boolean",
+      "version": "integer"
+    },
+    "after": {
+      "archived": "boolean",
+      "describedChanged": "boolean",
+      "renamed": "boolean",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "customers.customer-group.created",
+    "targetType": "customers.customer-group",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(manual)",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "customers.customer-group.members-changed",
+    "targetType": "customers.customer-group",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "change": "enumOf(added|removed)",
+      "count": "integer",
+      "selection": "enumOf(ids|filter)"
+    }
+  },
+  {
+    "action": "customers.customer-note.added",
+    "targetType": "customers.customer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "length": "integer",
+      "noteId": "id"
+    }
+  },
+  {
     "action": "customers.customer-page.opened",
     "targetType": "customers.customer",
     "targetId": "id",
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "tab": "enumOf(overview|orders|money)"
+      "tab": "enumOf(overview|orders|money|activity)"
+    }
+  },
+  {
+    "action": "customers.customer-timeline.exported",
+    "targetType": "customers.customer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
     }
   },
   {
@@ -1718,6 +1781,34 @@
     }
   },
   {
+    "action": "identity.account-role.reverted",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "roleId": "id"
+    },
+    "after": {
+      "requestId": "id",
+      "roleId": "id",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
+    "action": "identity.account-status.reverted",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|disabled)"
+    },
+    "after": {
+      "population": "enumOf(admin)",
+      "requestId": "id",
+      "status": "enumOf(active|disabled)"
+    }
+  },
+  {
     "action": "identity.account.disabled",
     "targetType": "identity.account",
     "targetId": "id",
@@ -1762,6 +1853,16 @@
     "after": {
       "keptSessionId": "id",
       "revokedSessions": "integer"
+    }
+  },
+  {
+    "action": "identity.account.renamed-by-admin",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "population": "enumOf(customer)"
     }
   },
   {
@@ -1878,6 +1979,19 @@
       "sellerId": "optional(id)"
     },
     "after": null
+  },
+  {
+    "action": "identity.role.reverted",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "removedKeys": "listOf(permissionKey, max 40)",
+      "renamed": "boolean",
+      "requestId": "id",
+      "scope": "enumOf(platform|seller)"
+    }
   },
   {
     "action": "identity.role.seed-applied",
@@ -2949,6 +3063,35 @@
     }
   },
   {
+    "action": "shipping.delivery-settings.reverted",
+    "targetType": "shipping.delivery-settings",
+    "targetId": "enumOf(market)",
+    "actors": ["authenticated"],
+    "before": {
+      "enabled": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)",
+      "marginKind": "enumOf(none|percent|fixed)",
+      "marginValue": "integer",
+      "readyPrepMinutes": "integer",
+      "roundingStepMinor": "integer",
+      "sameDayCutoffMinutes": "integer",
+      "scheduledDaysAhead": "integer",
+      "scheduledWindowMinutes": "integer",
+      "version": "integer"
+    },
+    "after": {
+      "enabled": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)",
+      "marginKind": "enumOf(none|percent|fixed)",
+      "marginValue": "integer",
+      "readyPrepMinutes": "integer",
+      "roundingStepMinor": "integer",
+      "sameDayCutoffMinutes": "integer",
+      "scheduledDaysAhead": "integer",
+      "scheduledWindowMinutes": "integer",
+      "version": "integer",
+      "requestId": "id"
+    }
+  },
+  {
     "action": "shipping.fleet-model.activated",
     "targetType": "shipping.fleet-selection-assignment",
     "targetId": "enumOf(instant|same-day|scheduled)",
@@ -2958,6 +3101,19 @@
     },
     "after": {
       "modelId": "optional(id)"
+    }
+  },
+  {
+    "action": "shipping.fleet-model.activation-reverted",
+    "targetType": "shipping.fleet-selection-assignment",
+    "targetId": "enumOf(instant|same-day|scheduled)",
+    "actors": ["authenticated"],
+    "before": {
+      "modelId": "optional(id)"
+    },
+    "after": {
+      "modelId": "optional(id)",
+      "requestId": "id"
     }
   },
   {
@@ -2998,6 +3154,42 @@
     }
   },
   {
+    "action": "shipping.fleet-model.reverted",
+    "targetType": "shipping.fleet-selection-model",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "kind": "enumOf(cheapest|weighted|fixed-priority)",
+      "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|doordash-drive|auspost|fake-test), max 8)",
+      "version": "integer",
+      "weightEta": "optional(integer)",
+      "weightPrice": "optional(integer)",
+      "weightReliability": "optional(integer)"
+    },
+    "after": {
+      "kind": "enumOf(cheapest|weighted|fixed-priority)",
+      "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|doordash-drive|auspost|fake-test), max 8)",
+      "version": "integer",
+      "weightEta": "optional(integer)",
+      "weightPrice": "optional(integer)",
+      "weightReliability": "optional(integer)",
+      "requestId": "id"
+    }
+  },
+  {
+    "action": "shipping.fleet-reliability.reverted",
+    "targetType": "shipping.fleet-reliability",
+    "targetId": "enumOf(mondapac-drive|uber-direct|zoom2u|doordash-drive|auspost|fake-test)",
+    "actors": ["authenticated"],
+    "before": {
+      "score": "optional(integer)"
+    },
+    "after": {
+      "score": "integer",
+      "requestId": "id"
+    }
+  },
+  {
     "action": "shipping.fleet-reliability.set",
     "targetType": "shipping.fleet-reliability",
     "targetId": "enumOf(mondapac-drive|uber-direct|zoom2u|doordash-drive|auspost|fake-test)",
@@ -3007,6 +3199,19 @@
     },
     "after": {
       "score": "integer"
+    }
+  },
+  {
+    "action": "shipping.seller-delivery-methods.reverted",
+    "targetType": "shipping.seller-delivery-methods",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "unsupported": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)"
+    },
+    "after": {
+      "unsupported": "listOf(enumOf(pickup|instant|same-day|scheduled), max 4)",
+      "requestId": "id"
     }
   },
   {

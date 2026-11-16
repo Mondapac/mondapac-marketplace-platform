@@ -127,6 +127,14 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'customers.read-model-order-paid',
       'customers.read-model-refund-succeeded',
       'customers.read-model-registered',
+      // Customers phase 2 (PR 2a): the same events copied onto the customer's activity timeline.
+      'customers.timeline-disabled',
+      'customers.timeline-email-verified',
+      'customers.timeline-enabled',
+      'customers.timeline-name-changed',
+      'customers.timeline-order-paid',
+      'customers.timeline-refund-succeeded',
+      'customers.timeline-registered',
       'identity.existing-account-mail',
       'identity.invitation-mail',
       'identity.link-mail',
@@ -239,6 +247,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('ordering.order-paid.v1')).toEqual([
       'customers.read-model-order-paid',
+      'customers.timeline-order-paid',
       'notifications.order-confirmation-mail',
       'notifications.seller-new-order-mail',
       'notifications.seller-order-notice',
@@ -254,6 +263,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
       'customers.read-model-refund-succeeded',
+      'customers.timeline-refund-succeeded',
       'notifications.item-unavailable-refund-mail',
       'ordering.cancel-carrier-after-refund',
     ]);

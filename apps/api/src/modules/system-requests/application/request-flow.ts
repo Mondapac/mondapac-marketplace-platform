@@ -64,6 +64,11 @@ export type SystemRequestsFailure =
   | { readonly code: 'system-requests.decided' }
   /** Maker-checker: the author cannot approve or reject their own change. */
   | { readonly code: 'system-requests.own-request' }
+  /**
+   * Separation of duties: the change is about the decider (their own account, or a role they
+   * hold), as the owning module's reverter says; they may neither approve nor reject it.
+   */
+  | { readonly code: 'system-requests.own-subject' }
   /** Only the author withdraws a change. */
   | { readonly code: 'system-requests.not-author' }
   /** The caller does not hold the area's review key. */
@@ -500,7 +505,11 @@ async function prepareDecision(
   return ok({ admin, id, reason });
 }
 
-/** The locked open request `admin` may decide this way, or the refusal. */
+/**
+ * The locked open request `admin` may decide this way, or the refusal. An approval or a reject
+ * also asks the owning module whether the change is about the decider (`isInterested`, read in
+ * this unit); a module without that check lets any reviewer but the author decide.
+ */
 async function decidable(
   deps: SystemRequestsDependencies,
   context: CallContext,
@@ -514,6 +523,20 @@ async function decidable(
   const own = request.requestedBy === admin;
   if (kind === 'withdraw' && !own) return err({ code: 'system-requests.not-author' });
   if (kind !== 'withdraw' && own) return err({ code: 'system-requests.own-request' });
+  if (kind !== 'withdraw') {
+    const reverter = deps.reverters.find(request.subjectKind)?.reverter;
+    if (
+      reverter?.isInterested !== undefined &&
+      (await reverter.isInterested(context, {
+        requestId: request.id,
+        subjectRef: request.subjectRef,
+        before: request.before,
+        after: request.after,
+      }))
+    ) {
+      return err({ code: 'system-requests.own-subject' });
+    }
+  }
   return ok(request);
 }
 
@@ -646,6 +669,10 @@ async function checkBeforeRevert(
 /**
  * Restores the value before the change (reject or withdraw), in one unit with the decision: the
  * subject must still hold the value after the change, and no later request may exist for it.
+ *
+ * The unit is serializable: a reverter may re-check a guard by counting rows (identity's last
+ * Platform Administrator, HF8), and every writer of those rows runs serializable, so a revert and
+ * a concurrent change cannot each keep the one holder. A conflict is retried by the unit of work.
  */
 async function revertRequest(
   deps: SystemRequestsDependencies,
@@ -659,79 +686,83 @@ async function revertRequest(
   const checked = await checkBeforeRevert(deps, context, id);
   if (!checked.ok) return checked;
   const areas = await reviewableAreas(deps, context);
-  return deps.unitOfWork.run<RequestView, SystemRequestsFailure>(context.market, async () => {
-    const found = await decidable(deps, context, kind, admin, id);
-    if (!found.ok) return found;
-    const request = found.value;
-    if (request.supersededBy !== null) {
-      return err({ code: 'system-requests.changed-since', newerRequestId: request.supersededBy });
-    }
-    const registered = deps.reverters.find(request.subjectKind);
-    if (registered === null) return err({ code: 'system-requests.revert-unavailable' });
-    const reverter = registered.reverter;
-    const proof = await spendIfHigh(deps, context, request);
-    if (!proof.ok) return proof;
-    const outcome = await reverter.revert(context, {
-      requestId: request.id,
-      subjectRef: request.subjectRef,
-      before: request.before,
-      after: request.after,
-    });
-    if (outcome === 'changed-since') {
-      return err({ code: 'system-requests.changed-since', newerRequestId: null });
-    }
-    if (outcome === 'gone') return err({ code: 'system-requests.subject-gone' });
-    if (outcome === 'not-permitted') return err({ code: 'system-requests.revert-not-permitted' });
-    if (outcome !== 'reverted') throw new Error('system-requests: unknown revert outcome');
-    const decision = kind === 'reject' ? 'rejected' : 'withdrawn';
-    const now = deps.clock.now();
-    const written = await deps.requests.decide(context.market, request.id, {
-      status: 'reverted',
-      decision,
-      decidedBy: admin,
-      decidedAt: now,
-      reason,
-    });
-    if (!written) throw new Error('system-requests: a locked open request changed');
-    // The subject holds the value before this change again, which is the value after the
-    // requests this one superseded: they are the latest again, and can be decided in full
-    // (Hassan H1: else an author could bury a change by superseding and withdrawing it).
-    await deps.requests.release(context.market, request.id);
-    await deps.requests.addActivity(context.market, request.id, {
-      id: deps.ids.next<'SystemRequestActivity'>(),
-      kind: decision,
-      actor: admin,
-      at: now,
-      body: reason,
-    });
-    await deps.audit.record(
-      context,
-      RequestReverted.entry(request.id, {
-        before: { status: 'open' },
-        after: {
-          status: 'reverted',
-          decision,
-          requestedBy: request.requestedBy,
-          risk: request.risk,
-          ...proofFields(proof.value),
-        },
-      }),
-    );
-    return ok(
-      requestView(
-        {
-          ...request,
-          status: 'reverted',
-          decision,
-          decidedBy: admin,
-          decidedAt: now,
-          decisionReason: reason,
-        },
-        { accountId: admin, reviews: areas },
-        now,
-      ),
-    );
-  });
+  return deps.unitOfWork.run<RequestView, SystemRequestsFailure>(
+    context.market,
+    async () => {
+      const found = await decidable(deps, context, kind, admin, id);
+      if (!found.ok) return found;
+      const request = found.value;
+      if (request.supersededBy !== null) {
+        return err({ code: 'system-requests.changed-since', newerRequestId: request.supersededBy });
+      }
+      const registered = deps.reverters.find(request.subjectKind);
+      if (registered === null) return err({ code: 'system-requests.revert-unavailable' });
+      const reverter = registered.reverter;
+      const proof = await spendIfHigh(deps, context, request);
+      if (!proof.ok) return proof;
+      const outcome = await reverter.revert(context, {
+        requestId: request.id,
+        subjectRef: request.subjectRef,
+        before: request.before,
+        after: request.after,
+      });
+      if (outcome === 'changed-since') {
+        return err({ code: 'system-requests.changed-since', newerRequestId: null });
+      }
+      if (outcome === 'gone') return err({ code: 'system-requests.subject-gone' });
+      if (outcome === 'not-permitted') return err({ code: 'system-requests.revert-not-permitted' });
+      if (outcome !== 'reverted') throw new Error('system-requests: unknown revert outcome');
+      const decision = kind === 'reject' ? 'rejected' : 'withdrawn';
+      const now = deps.clock.now();
+      const written = await deps.requests.decide(context.market, request.id, {
+        status: 'reverted',
+        decision,
+        decidedBy: admin,
+        decidedAt: now,
+        reason,
+      });
+      if (!written) throw new Error('system-requests: a locked open request changed');
+      // The subject holds the value before this change again, which is the value after the
+      // requests this one superseded: they are the latest again, and can be decided in full
+      // (Hassan H1: else an author could bury a change by superseding and withdrawing it).
+      await deps.requests.release(context.market, request.id);
+      await deps.requests.addActivity(context.market, request.id, {
+        id: deps.ids.next<'SystemRequestActivity'>(),
+        kind: decision,
+        actor: admin,
+        at: now,
+        body: reason,
+      });
+      await deps.audit.record(
+        context,
+        RequestReverted.entry(request.id, {
+          before: { status: 'open' },
+          after: {
+            status: 'reverted',
+            decision,
+            requestedBy: request.requestedBy,
+            risk: request.risk,
+            ...proofFields(proof.value),
+          },
+        }),
+      );
+      return ok(
+        requestView(
+          {
+            ...request,
+            status: 'reverted',
+            decision,
+            decidedBy: admin,
+            decidedAt: now,
+            decisionReason: reason,
+          },
+          { accountId: admin, reviews: areas },
+          now,
+        ),
+      );
+    },
+    { isolation: 'serializable' },
+  );
 }
 
 /** `RejectSystemRequest`: another admin who reviews the area rejects; the value before returns. */
