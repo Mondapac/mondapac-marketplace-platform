@@ -568,6 +568,19 @@ describe('seller product list', () => {
     ]);
   });
 
+  it('shows one allowed Action alone, and no row button when the server allows none', async () => {
+    serve(() =>
+      page([row({ actions: ['open'] }), row({ productId: 'p2', name: 'Dates 500g', actions: [] })]),
+    );
+    mount();
+    await screen.findByText('Olive oil 1L');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Olive oil 1L' }));
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Open']);
+    // Only the menu button carries an action: no inline Open or Edit button in any row.
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Actions for Dates 500g' })).toBeNull();
+  });
+
   it('still works when storage is missing or refuses', async () => {
     const spy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
