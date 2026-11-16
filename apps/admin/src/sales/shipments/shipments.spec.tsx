@@ -104,10 +104,11 @@ function mount(
     zone?: string;
     marketId?: string;
     sellerId?: string | null;
+    locale?: string;
   } = {},
 ) {
   return render(
-    <NextIntlClientProvider locale="en-AU" messages={messages}>
+    <NextIntlClientProvider locale={options.locale ?? 'en-AU'} messages={messages}>
       <ShipmentsList
         paging={options.paging ?? 'pages'}
         accountId="acc-1"
@@ -205,6 +206,11 @@ describe('Shipments page numbers', () => {
       screen.getByText(/Page numbers stop at the first 10,000 shipments\. Narrow the filters/),
     ).toBeTruthy();
     expect(screen.getByText('1 to 1 of 12,345')).toBeTruthy();
+    // The banner sits above the table, with the other banners.
+    const banner = screen.getByText(/Page numbers stop at the first 10,000 shipments/);
+    expect(
+      banner.compareDocumentPosition(screen.getByRole('table')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Page 400' }));
     await waitFor(() => expect(lastUrl()).toContain('page=400'));
     await waitFor(() =>
@@ -215,16 +221,12 @@ describe('Shipments page numbers', () => {
     expect(screen.queryByText('Narrow the list to see more.')).toBeNull();
   });
 
-  it('offers one page size only and no rows-per-page choice beyond it', async () => {
+  it('has no rows-per-page choice (one size), and keeps the range line', async () => {
     serve(() => pageOf([row()]));
     mount();
     await screen.findByText('Cedar Lane Halal Meats');
-    const picker = screen.getByLabelText('Rows per page');
-    expect(
-      within(picker)
-        .getAllByRole('option')
-        .map((option) => option.textContent),
-    ).toEqual(['25']);
+    expect(screen.queryByLabelText('Rows per page')).toBeNull();
+    expect(screen.getByText('1 to 1 of 1')).toBeTruthy();
   });
 
   it('goes back to the last page that has rows when the page asked for is empty', async () => {
@@ -337,6 +339,19 @@ describe('Shipments search', () => {
     expect(screen.getByText('Search: "Cedar"')).toBeTruthy();
   });
 
+  it('shows the one-character hint only after Enter or leaving the box, not at the first keystroke', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    fireEvent.change(box(), { target: { value: 'a' } });
+    expect(screen.queryByText('Type at least 2 characters.')).toBeNull();
+    fireEvent.blur(box());
+    expect(screen.getByRole('status').textContent).toBe('Type at least 2 characters.');
+    // Typing again takes it away until the box is left again.
+    fireEvent.change(box(), { target: { value: 'b' } });
+    expect(screen.queryByText('Type at least 2 characters.')).toBeNull();
+  });
+
   it('asks for nothing from one character and shows the hint under the box', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     serve(() => pageOf([row()]));
@@ -371,6 +386,38 @@ describe('Shipments search', () => {
     fireEvent.keyDown(box(), { key: 'Enter' });
     await waitFor(() => expect(paramsOf(lastUrl())['q']).toBe('7'));
     expect(screen.queryByText('Type at least 2 characters.')).toBeNull();
+  });
+
+  it.each(['SC/4471', 'AB:12', '-abc', 'abc-', 'x'.repeat(5) + '!'])(
+    'does not send %s as a tracking reference, and says which characters are allowed',
+    async (text) => {
+      serve(() => pageOf([row()]));
+      mount();
+      await screen.findByText('Cedar Lane Halal Meats');
+      fireEvent.change(screen.getByLabelText('Search by'), { target: { value: 'tracking' } });
+      const before = urls().length;
+      fireEvent.change(box(), { target: { value: text } });
+      fireEvent.keyDown(box(), { key: 'Enter' });
+      expect(
+        screen.getByText('Tracking references use letters, digits, spaces and . _ # -.'),
+      ).toBeTruthy();
+      await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+      expect(urls()).toHaveLength(before);
+      expect(screen.queryByText(/^Tracking: /)).toBeNull();
+    },
+  );
+
+  it('sends a tracking reference with spaces and . _ # -, and an id, as q', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    fireEvent.change(screen.getByLabelText('Search by'), { target: { value: 'tracking' } });
+    for (const text of ['SC 4471.99_a#b-c', ID]) {
+      fireEvent.change(box(), { target: { value: text } });
+      fireEvent.keyDown(box(), { key: 'Enter' });
+      await waitFor(() => expect(paramsOf(lastUrl())['q']).toBe(text));
+    }
+    expect(screen.queryByText(/^Tracking references use/)).toBeNull();
   });
 
   it('drops a one-character search when the scope changes to one that needs two', async () => {
@@ -434,6 +481,117 @@ describe('Shipments search', () => {
     expect(lastUrl()).toContain('search=Cedar');
     fireEvent.click(screen.getByRole('button', { name: 'Remove filter Search: "Cedar"' }));
     expect(await screen.findByText('Cedar Lane Halal Meats')).toBeTruthy();
+  });
+});
+
+describe('Shipments out-of-order answers', () => {
+  type Reply = { ok: true; status: 200; body: ShipmentsPage } | { ok: false; failure: object };
+  /** Answers the requests of the tabs by hand: the first one (All) at once, the others later. */
+  function held() {
+    const waiting = new Map<string, (reply: Reply) => void>();
+    call.mockImplementation((_method, path) => {
+      if (!path.includes('stage=')) {
+        return Promise.resolve({ ok: true, status: 200, body: pageOf([row()]) } as never);
+      }
+      return new Promise((resolve) => {
+        waiting.set(path.match(/stage=([a-z-]+)/)![1]!, resolve);
+      }) as never;
+    });
+    return waiting;
+  }
+  const body = (storeName: string, total: number, counts = COUNTS) =>
+    ({
+      ok: true,
+      status: 200,
+      body: pageOf([row({ storeName })], { total, counts }),
+    }) as const;
+
+  it('shows the rows, counts and total of the last tab asked when the answers arrive in reverse', async () => {
+    const waiting = held();
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('button', { name: /^Shipped/ }));
+    await waitFor(() => expect(waiting.has('shipped')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: /^Delivered/ }));
+    await waitFor(() => expect(waiting.has('delivered')).toBe(true));
+    // B (Delivered) answers first, then the older A (Shipped).
+    act(() => {
+      waiting.get('delivered')!(body('Store B', 2, { ...COUNTS, delivered: 40 }));
+    });
+    expect(await screen.findByText('Store B')).toBeTruthy();
+    act(() => {
+      waiting.get('shipped')!(body('Store A', 1, { ...COUNTS, delivered: 99 }));
+    });
+    expect(screen.getByText('Store B')).toBeTruthy();
+    expect(screen.queryByText('Store A')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Delivered (40)' })).toBeTruthy();
+    expect(screen.getByText('1 to 1 of 2')).toBeTruthy();
+  });
+
+  it('shows no error when the older request fails after the newer one answered', async () => {
+    const waiting = held();
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('button', { name: /^Shipped/ }));
+    await waitFor(() => expect(waiting.has('shipped')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: /^Delivered/ }));
+    await waitFor(() => expect(waiting.has('delivered')).toBe(true));
+    act(() => {
+      waiting.get('delivered')!(body('Store B', 1));
+    });
+    await screen.findByText('Store B');
+    act(() => {
+      waiting.get('shipped')!({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
+    });
+    expect(screen.queryByText("Shipments couldn't be loaded.")).toBeNull();
+    expect(screen.getByText('Store B')).toBeTruthy();
+  });
+
+  it('drops the answer that arrives after the first load gave up at 30 seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let late: ((reply: Reply) => void) | null = null;
+    call.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          late = resolve;
+        }) as never,
+    );
+    mount();
+    await act(() => vi.advanceTimersByTimeAsync(31_000));
+    expect(screen.getByText("Shipments couldn't be loaded.")).toBeTruthy();
+    act(() => {
+      late!(body('Late Store', 1));
+    });
+    expect(screen.queryByText('Late Store')).toBeNull();
+    expect(screen.getByText("Shipments couldn't be loaded.")).toBeTruthy();
+  });
+});
+
+describe('Shipments query refused by the API', () => {
+  it('says the search cannot be run, without a Try again that could never work', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    call.mockImplementation(
+      (_method, path) =>
+        Promise.resolve(
+          path.includes('q=')
+            ? { ok: false, failure: { status: 400, code: 'validation.failed' } }
+            : { ok: true, status: 200, body: pageOf([row()]) },
+        ) as never,
+    );
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search' }), {
+      target: { value: '0190a000-0000-7000-8000-0000000000e5' },
+    });
+    fireEvent.keyDown(screen.getByRole('searchbox', { name: 'Search' }), { key: 'Enter' });
+    expect(
+      await screen.findByText(
+        "This search can't be run. Change the text or the filters, or clear them.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Shipments couldn't be loaded.")).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    warn.mockRestore();
   });
 });
 
@@ -556,6 +714,39 @@ describe('Shipments filters', () => {
       paidFrom: '2026-11-16T08:00:00.000Z',
       paidTo: '2026-11-17T08:00:00.000Z',
     });
+  });
+
+  it('works on a Market that is not Australian: other locale, zone and currency', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    serve(() => pageOf([row({ total: money('12550', 'EUR'), shipping: money('990', 'EUR') })]));
+    mount({ locale: 'de-DE', zone: 'Europe/Berlin', marketId: 'DE' });
+    await screen.findByText('Cedar Lane Halal Meats');
+    expect(screen.getByText('Times and days are in Europe/Berlin.')).toBeTruthy();
+    expect(screen.getByText(/125,50\s€/)).toBeTruthy();
+    expect(screen.queryByText(/\$/)).toBeNull();
+    await applyFilter('paid', 'today');
+    // 16 Nov 20:30 UTC is 16 Nov 21:30 in Berlin (UTC+1): today runs from 23:00 UTC on the 15th.
+    await waitFor(() => expect(paramsOf(lastUrl())['paidFrom']).toBeDefined());
+    expect(paramsOf(lastUrl())).toMatchObject({
+      paidFrom: '2026-11-15T23:00:00.000Z',
+      paidTo: '2026-11-16T23:00:00.000Z',
+    });
+  });
+
+  it('reads the date presets at each load, so a tab left open past midnight moves on', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    await applyFilter('paid', 'today');
+    await waitFor(() => expect(paramsOf(lastUrl())['paidFrom']).toBe('2026-11-16T14:00:00.000Z'));
+    // A day later, Try again style reload (a new tab and back) asks for the new day.
+    vi.setSystemTime(new Date(NOW.getTime() + 24 * 3_600_000));
+    fireEvent.click(screen.getByRole('button', { name: /^Shipped/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())['stage']).toBe('shipped'));
+    expect(paramsOf(lastUrl())['paidFrom']).toBe('2026-11-17T14:00:00.000Z');
   });
 
   it('shows a removable Seller chip when a link names one, with the store name or the short id', async () => {
@@ -689,6 +880,7 @@ describe('Shipments rows', () => {
           fulfilment: 'to-ship',
           carrier: null,
           trackingRef: null,
+          shippedAt: null,
         }),
         row({
           sellerOrderId: '0190a000-0000-7000-8000-0000000000d3',
@@ -702,6 +894,25 @@ describe('Shipments rows', () => {
     expect(screen.getByText('Pickup', { selector: 'span' })).toBeTruthy();
     expect(screen.getByText('Not shipped yet')).toBeTruthy();
     expect(screen.getByText('Not recorded')).toBeTruthy();
+  });
+
+  it('says "Not shipped yet" for a row refunded before shipping, whatever its fulfilment value', async () => {
+    serve(() =>
+      pageOf([
+        row({
+          stage: 'refunded',
+          fulfilment: 'cancelled',
+          shippedAt: null,
+          readyAt: null,
+          carrier: null,
+          trackingRef: null,
+        }),
+      ]),
+    );
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    expect(screen.getByText('Not shipped yet')).toBeTruthy();
+    expect(screen.queryByText('Not recorded')).toBeNull();
   });
 
   it('shows the window of a scheduled delivery under the method', async () => {
@@ -870,6 +1081,10 @@ describe('Shipments selection and Bulk action', () => {
     expect(screen.getByRole('button', { name: 'Bulk action' }).getAttribute('title')).toBe(
       'No bulk actions are available for shipments yet.',
     );
+    // The reason is also plain text, readable without focusing the disabled button.
+    expect(
+      screen.getByText('No bulk actions are available for shipments yet.', { selector: 'p' }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
     expect(screen.queryByText('1 shipment selected')).toBeNull();
   });
