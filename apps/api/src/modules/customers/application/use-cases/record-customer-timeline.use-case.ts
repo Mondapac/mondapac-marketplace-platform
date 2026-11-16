@@ -16,10 +16,10 @@ import {
   accountOfRefund,
   type ReadModelFailure,
 } from '../customer-read-model-flow';
-import type { CustomerReadModelPeers } from '../ports/customer-read-model-peers';
+import type { ReadModelPeers } from '../ports/customer-read-model-peers';
 import type { CustomerTimelineRepository } from '../ports/customer-timeline.repository';
 
-export interface TimelineRecordDependencies extends CustomerReadModelPeers {
+export interface TimelineRecordDependencies extends ReadModelPeers {
   readonly unitOfWork: UnitOfWork;
   readonly timeline: CustomerTimelineRepository;
   readonly ids: IdGenerator;

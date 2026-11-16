@@ -171,9 +171,8 @@ model CustomersCustomerDirectory {
   /// The admins' notes and the activity timeline (phase 2); the rows go with this one.
   notes            CustomersCustomerNote[]
   timeline         CustomersCustomerTimelineEntry[]
-  stats         CustomersCustomerStats?
   /// The customer's relation with each seller (phase 3); deleted with the directory row.
-  sellerCustomers CustomersSellerCustomer[]
+  sellerCustomers  CustomersSellerCustomer[]
 
   @@id([marketId, accountId])
   @@index([marketId, signedUpAt(sort: Desc), accountId(sort: Desc)])

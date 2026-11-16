@@ -43,6 +43,7 @@ const ALL: SellerCustomerSelector = {
 
 const BLANK_LIST: CustomerSelector = {
   view: 'all',
+  group: null,
   text: null,
   status: null,
   verified: null,
