@@ -8,6 +8,8 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { SECURITY_EVENT_FEED } from '../../platform/security-events/security-event-feed';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { IdentityModule } from '../identity';
+import { ADMIN_NAMES } from './application/ports/admin-names';
 import { ALERT_MESSENGER } from './application/ports/alert-messenger';
 import { ON_CALL_ROSTER } from './application/ports/on-call-roster';
 import { SECURITY_ALERT_REPOSITORY } from './application/ports/security-alert.repository';
@@ -39,6 +41,7 @@ const PORTS: readonly [keyof SecurityDependencies, InjectionToken][] = [
   ['roster', ON_CALL_ROSTER],
   ['messenger', ALERT_MESSENGER],
   ['audit', AUDIT_WRITER],
+  ['names', ADMIN_NAMES],
   ['clock', CLOCK],
   ['ids', ID_GENERATOR],
 ];
@@ -65,6 +68,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * The events are read through the platform's feed, bound into this module alone.
  */
 @Module({
+  imports: [IdentityModule],
   controllers: [AdminSecurityController],
   providers: [
     PersistenceModule.auditWriterFor('security'),

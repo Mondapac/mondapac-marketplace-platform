@@ -39,6 +39,20 @@ import { AdminViewShipToRetention } from './application/use-cases/admin-view-shi
 import { PurgeSettledShipTo } from './application/use-cases/purge-settled-ship-to.use-case';
 import { ORDERING_STEP_UP_ACTIONS } from './contracts/step-up';
 import { AdminShipToRetentionController } from './presentation/admin-ship-to-retention.controller';
+import { AdminShipmentsController } from './presentation/admin-shipments.controller';
+import { AdminListShipments } from './application/use-cases/admin-list-shipments.use-case';
+import {
+  ADMIN_SHIPMENT_LIST_READER,
+  type AdminShipmentListReader,
+} from './application/ports/admin-shipment-list.reader';
+import { AdminRefundsController } from './presentation/admin-refunds.controller';
+import { AdminListRefunds } from './application/use-cases/admin-list-refunds.use-case';
+import {
+  ADMIN_REFUND_LIST_READER,
+  type AdminRefundListReader,
+} from './application/ports/admin-refund-list.reader';
+import type { OrderLabels } from './application/ports/order-labels';
+import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { purgeSettledShipToJob } from './presentation/jobs/purge-settled-ship-to.job';
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
 import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-policy';
@@ -311,6 +325,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminRefundLimitsController,
     AdminCustomerRefundsController,
     AdminShipToRetentionController,
+    AdminShipmentsController,
+    AdminRefundsController,
     SellerOrdersController,
     AdminSavedViewsController,
     SellerSavedViewsController,
@@ -397,6 +413,26 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminRemoveRefundLimit,
       SettleRefunds,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    {
+      provide: AdminListShipments,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_SHIPMENT_LIST_READER, ORDER_LABELS],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        shipments: AdminShipmentListReader,
+        labels: OrderLabels,
+      ) => new AdminListShipments(gate, { unitOfWork, shipments, labels }),
+    },
+    {
+      provide: AdminListRefunds,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_REFUND_LIST_READER, ORDER_LABELS],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        refunds: AdminRefundListReader,
+        labels: OrderLabels,
+      ) => new AdminListRefunds(gate, { unitOfWork, refunds, labels }),
+    },
     ...[AdminListOrderNotes, AdminAddOrderNote].map((type) => ({
       provide: type,
       inject: [

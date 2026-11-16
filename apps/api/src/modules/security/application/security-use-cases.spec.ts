@@ -25,6 +25,7 @@ import {
   FakeEventFeed,
   InMemorySecurityAlerts,
   RecordingMessenger,
+  StaticAdminNames,
   StaticRoster,
   testRoster,
   type FakeEvent,
@@ -109,6 +110,7 @@ describe.each([['AU'], ['ZZ']] as const)('security alerts in market %s', (code) 
   let messenger: RecordingMessenger;
   let roster: StaticRoster;
   let audit: Audit;
+  let names: StaticAdminNames;
   let deps: SecurityDependencies;
   let eventNo: number;
   const useCase = <U>(type: new (g: typeof gate, d: SecurityDependencies) => U) =>
@@ -155,6 +157,7 @@ describe.each([['AU'], ['ZZ']] as const)('security alerts in market %s', (code) 
     messenger = new RecordingMessenger();
     roster = new StaticRoster(testRoster({ ali: ALI, hassan: HASSAN }));
     audit = new Audit();
+    names = new StaticAdminNames({ [HASSAN]: 'Hassan R.', [KAZEM]: 'Kazem M.' });
     eventNo = 0;
     deps = {
       unitOfWork: new FakeUnitOfWork(),
@@ -163,6 +166,7 @@ describe.each([['AU'], ['ZZ']] as const)('security alerts in market %s', (code) 
       roster,
       messenger,
       audit,
+      names,
       clock,
       ids: new SequenceIdGenerator(clock),
     };
@@ -575,6 +579,52 @@ describe.each([['AU'], ['ZZ']] as const)('security alerts in market %s', (code) 
         expectedVersion: 1,
       });
       expect(result.ok).toBe(false);
+    });
+
+    it('names who acknowledged and who resolved, and tells an s1 resolver apart', async () => {
+      const alert = await openS2();
+      const ack = await useCase(AcknowledgeSecurityAlert).execute(admin(KAZEM), {
+        alertId: alert.id,
+        expectedVersion: 1,
+      });
+      expect(ack).toMatchObject({
+        ok: true,
+        value: {
+          acknowledgedByName: 'Kazem M.',
+          resolvedByName: null,
+          viewerResolvesCritical: false,
+        },
+      });
+      const done = await useCase(ResolveSecurityAlert).execute(admin(HASSAN), {
+        alertId: alert.id,
+        expectedVersion: 2,
+        resolution: 'false-positive',
+        note: 'A seller mistyped their password.',
+      });
+      expect(done).toMatchObject({
+        ok: true,
+        value: {
+          acknowledgedByName: 'Kazem M.',
+          resolvedByName: 'Hassan R.',
+          viewerResolvesCritical: true,
+        },
+      });
+      const page = await useCase(ListSecurityAlerts).execute(admin(VIEWER), { state: 'resolved' });
+      expect(page.ok && page.value.alerts.map((row) => row.acknowledgedByName)).toEqual([
+        'Kazem M.',
+      ]);
+      // Nothing to name: no lookup at all.
+      names.asked.length = 0;
+      await useCase(ListSecurityAlerts).execute(admin(VIEWER), { state: 'open' });
+      expect(names.asked).toEqual([]);
+      // A refused lookup shows the alert without names; no roster, no s1 resolver.
+      names.refusing = true;
+      roster.value = null;
+      const plain = await useCase(ViewSecurityAlert).execute(admin(ALI), { alertId: alert.id });
+      expect(plain).toMatchObject({
+        ok: true,
+        value: { acknowledgedByName: null, resolvedByName: null, viewerResolvesCritical: false },
+      });
     });
 
     it('shows the summary and the on-call view with names only', async () => {

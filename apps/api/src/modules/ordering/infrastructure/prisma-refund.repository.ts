@@ -438,17 +438,30 @@ export class PrismaRefundRepository implements RefundRepository {
     options?: { readonly whileNotReady?: boolean },
   ): Promise<'saved' | 'stale'> {
     const tx = this.prisma.tx(market);
-    const raised = await tx.orderingSellerOrder.updateMany({
-      where: {
-        marketId: market.marketId,
-        id: refund.sellerOrderId,
-        refundedAmount: expectedRefunded,
-        ...(options?.whileNotReady === true ? { fulfilment: 'to-ship', readyAt: null } : {}),
-        order: { is: { status: 'confirmed', paymentState: 'captured' } },
-      },
-      data: { refundedAmount: expectedRefunded + refund.gross },
-    });
-    if (raised.count === 0) return 'stale';
+    const next = expectedRefunded + refund.gross;
+    const raisable = {
+      marketId: market.marketId,
+      id: refund.sellerOrderId,
+      refundedAmount: expectedRefunded,
+      ...(options?.whileNotReady === true ? { fulfilment: 'to-ship', readyAt: null } : {}),
+      order: { is: { status: 'confirmed', paymentState: 'captured' } },
+    };
+    // `refunded_in_full` turns true in the same statement that brings the refunded gross to the
+    // total (a CHECK holds the two together), so a raise to the total is its own statement.
+    const raised =
+      (
+        await tx.orderingSellerOrder.updateMany({
+          where: { ...raisable, totalAmount: { not: next } },
+          data: { refundedAmount: next },
+        })
+      ).count ||
+      (
+        await tx.orderingSellerOrder.updateMany({
+          where: { ...raisable, totalAmount: next },
+          data: { refundedAmount: next, refundedInFull: true },
+        })
+      ).count;
+    if (raised === 0) return 'stale';
     // The raise holds the seller order's row lock, so this read sees every refund that became
     // pending before it; `stale` rolls the raise back with the unit (never a unique-index 500).
     const pending = await tx.orderingRefund.findFirst({
@@ -553,7 +566,8 @@ export class PrismaRefundRepository implements RefundRepository {
     if (settled.count === 0) return false;
     await tx.orderingSellerOrder.updateMany({
       where: { marketId: market.marketId, id: refund.sellerOrderId },
-      data: { refundedAmount: { decrement: refund.gross } },
+      // A failed refund gives its gross back, so the seller order is no longer refunded in full.
+      data: { refundedAmount: { decrement: refund.gross }, refundedInFull: false },
     });
     return true;
   }
