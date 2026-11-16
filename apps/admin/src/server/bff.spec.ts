@@ -944,25 +944,56 @@ describe('relay allowlist for seller decisions', () => {
 });
 
 describe('relay of the connected accounts list', () => {
-  const get = (query: string) =>
-    new Request(`http://admin.localhost:3002/api/payments/admin/connected-accounts${query}`, {
-      method: 'GET',
-      headers: { host: 'admin.localhost:3002' },
-    });
+  const get = (query: string, suffix = '') =>
+    new Request(
+      `http://admin.localhost:3002/api/payments/admin/connected-accounts${suffix}${query}`,
+      { method: 'GET', headers: { host: 'admin.localhost:3002' } },
+    );
   const path = ['payments', 'admin', 'connected-accounts'];
+  const ID = '01990000-0000-7000-8000-000000000051';
 
-  it('forwards only the status and cursor keys of the query', async () => {
+  it('forwards the list keys in their shapes, and drops the rest', async () => {
     const upstream = upstreamOk();
     const response = await relay(
       config,
-      get('?status=pending&cursor=abc&limit=500&x=1'),
+      get(
+        `?status=pending&ready=no&requirements=past-due&waiting=paused&q=Halal%20Corner&from=2026-11-01T00:00:00Z&sort=last-read&direction=asc&page=2&pageSize=50&paging=pages&limit=500&x=1`,
+      ),
       path,
       upstream,
     );
     expect(response.status).toBe(200);
     expect(upstream.mock.calls[0]?.[0]).toBe(
-      'http://api.test/payments/admin/connected-accounts?status=pending&cursor=abc',
+      'http://api.test/payments/admin/connected-accounts?status=pending&ready=no&requirements=past-due&waiting=paused&q=Halal+Corner&from=2026-11-01T00%3A00%3A00Z&sort=last-read&direction=asc&page=2&pageSize=50&paging=pages',
     );
+    const cursor = `1790000000000.${ID}`;
+    const older = upstreamOk();
+    await relay(config, get(`?status=enabled&cursor=${cursor}&sort=name`), path, older);
+    expect(older.mock.calls[0]?.[0]).toBe(
+      `http://api.test/payments/admin/connected-accounts?status=enabled&cursor=${encodeURIComponent(cursor)}`,
+    );
+  });
+
+  it('forwards the export keys, and refuses an export value out of shape instead of widening the file', async () => {
+    const exportPath = [...path, 'export'];
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      get(`?format=xlsx&columns=paused,seller-id&ids=${ID}&status=enabled&page=2`, '/export'),
+      exportPath,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/payments/admin/connected-accounts/export?format=xlsx&columns=${encodeURIComponent('paused,seller-id')}&ids=${ID}&status=enabled`,
+    );
+    const many = Array.from({ length: 201 }, () => ID).join(',');
+    for (const query of ['?status=open', '?ids=x', `?ids=${many}`, '?columns=stripe']) {
+      const refused = upstreamOk();
+      const response = await relay(config, get(query, '/export'), exportPath, refused);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ code: 'validation.failed' });
+      expect(refused).not.toHaveBeenCalled();
+    }
   });
 
   it('forwards no query when none is given, and refuses other paths and methods', async () => {
@@ -1010,6 +1041,101 @@ describe('relay of the orders list', () => {
     const other = ['ordering', 'admin', 'orders', '0190a000-0000-7000-8000-000000000001'];
     expect((await relay(config, get(''), other, upstream)).status).toBe(404);
     expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay of the shipments list', () => {
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/shipments${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['ordering', 'admin', 'shipments'];
+  const SELLER = '0190a000-0000-7000-8000-0000000000b1';
+  const CURSOR = '1763300000000.0190a000-0000-7000-8000-0000000000aa';
+  const urlOf = (upstream: ReturnType<typeof upstreamOk>) => {
+    const target = upstream.mock.calls[0]?.[0];
+    return typeof target === 'string' ? target : '';
+  };
+  const sent = async (query: string) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(200);
+    return new URL(urlOf(upstream)).searchParams;
+  };
+
+  it('forwards the page mode, the tab, the filters and the dates', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'page=2&pageSize=25&sort=paid&direction=desc&stage=shipped&deliveryMethod=same_day' +
+      '&attention=no-carrier&search=Cedar+Lane&paidFrom=2026-11-16T14%3A00%3A00.000Z' +
+      '&paidTo=2026-11-17T14%3A00%3A00.000Z&shippedFrom=2026-11-16T14%3A00%3A00%2B10%3A00' +
+      `&shippedTo=2026-11-17T14%3A00%3A00.000Z&sellerId=${SELLER}`;
+    await relay(config, get(`?${q}&x=1&fleet=swift`), path, upstream);
+    const url = new URL(urlOf(upstream));
+    expect(url.origin + url.pathname).toBe('http://api.test/ordering/admin/shipments');
+    // The relay writes the keys in its own order; the values are what the panel asked for.
+    expect(Object.fromEntries(url.searchParams)).toEqual(
+      Object.fromEntries(new URLSearchParams(q)),
+    );
+  });
+
+  it('forwards the Previous and next mode: limit, cursor, and an exact q', async () => {
+    const params = await sent(`?limit=25&cursor=${CURSOR}&q=SC+4471+99`);
+    expect(Object.fromEntries(params)).toEqual({ limit: '25', cursor: CURSOR, q: 'SC 4471 99' });
+  });
+
+  it('drops a key the panel does not use, such as fleet, and every unknown key', async () => {
+    const params = await sent('?stage=ready&fleet=swift&minAmount=1&x=1');
+    expect(Object.fromEntries(params)).toEqual({ stage: 'ready' });
+  });
+
+  it('drops a value of the wrong shape and keeps the rest', async () => {
+    const params = await sent(
+      '?stage=cancelled&sort=name&direction=up&deliveryMethod=drone&attention=all' +
+        '&sellerId=nope&page=0x&pageSize=1000&limit=-1&cursor=abc&paidFrom=yesterday' +
+        '&shippedTo=2026-11-16&q=ok',
+    );
+    expect(Object.fromEntries(params)).toEqual({ q: 'ok' });
+  });
+
+  it('accepts each stage, sort, method and problem the API names', async () => {
+    for (const stage of ['to-prepare', 'ready', 'shipped', 'delivered', 'refunded']) {
+      expect((await sent(`?stage=${stage}`)).get('stage')).toBe(stage);
+    }
+    for (const sort of ['paid', 'shipped', 'delivered', 'total']) {
+      expect((await sent(`?sort=${sort}`)).get('sort')).toBe(sort);
+    }
+    for (const method of ['pickup', 'instant', 'same_day', 'scheduled']) {
+      expect((await sent(`?deliveryMethod=${method}`)).get('deliveryMethod')).toBe(method);
+    }
+    for (const attention of ['any', 'no-carrier', 'carrier-unknown', 'cancel-unknown']) {
+      expect((await sent(`?attention=${attention}`)).get('attention')).toBe(attention);
+    }
+  });
+
+  it('keeps free text up to 80 characters for q and search, and drops more', async () => {
+    const eighty = 'x'.repeat(80);
+    expect((await sent(`?q=${eighty}`)).get('q')).toBe(eighty);
+    expect((await sent(`?search=${eighty}`)).get('search')).toBe(eighty);
+    expect((await sent(`?q=${eighty}y`)).has('q')).toBe(false);
+    expect((await sent(`?search=${eighty}y`)).has('search')).toBe(false);
+    expect((await sent('?q=')).has('q')).toBe(false);
+  });
+
+  it('refuses other paths and methods', async () => {
+    const upstream = upstreamOk();
+    const other = ['ordering', 'admin', 'shipments', '0190a000-0000-7000-8000-000000000001'];
+    expect((await relay(config, get(''), other, upstream)).status).toBe(404);
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const request = new Request('http://admin.localhost:3002/api/ordering/admin/shipments', {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      });
+      expect((await relay(config, request, path, upstream)).status).toBe(404);
+    }
     expect(upstream).not.toHaveBeenCalled();
   });
 });
@@ -2007,7 +2133,7 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe(
       'http://api.test/commission-payouts/admin/payouts',
     );
-    // Only the states a tab shows cross; the API's other states are not relayed.
+    // Every state of the list's Status filter crosses, the ones the All view shows too.
     for (const state of ['pending', 'voided', 'settled-by-netting']) {
       const other = await run(
         'GET',
@@ -2015,9 +2141,45 @@ describe('relay of the wallet and step-up routes', () => {
         readHeaders,
       );
       expect(other.upstream.mock.calls[0]?.[0]).toBe(
-        'http://api.test/commission-payouts/admin/payouts',
+        `http://api.test/commission-payouts/admin/payouts?status=${state}`,
       );
     }
+    const exported = await run(
+      'GET',
+      'commission-payouts/admin/payouts/export?status=voided',
+      readHeaders,
+    );
+    expect(exported.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/admin/payouts/export?status=voided',
+    );
+  });
+
+  it('passes the Payouts super list query and its export only in the shapes the API takes', async () => {
+    const listed = await run(
+      'GET',
+      `commission-payouts/admin/payouts?view=sending&search=spice&sellerId=${id}&approvalMode=MANUAL&from=2026-11-01T00:00:00Z&minAmount=100&sort=amount&direction=asc&page=2&pageSize=25&x=1`,
+      readHeaders,
+    );
+    expect(listed.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts?view=sending&search=spice&sellerId=${id}&approvalMode=MANUAL&from=2026-11-01T00%3A00%3A00Z&minAmount=100&sort=amount&direction=asc&page=2&pageSize=25`,
+    );
+    const dropped = await run(
+      'GET',
+      'commission-payouts/admin/payouts?view=archived&q=nope&approvalMode=auto&minAmount=-1&sort=store&pageSize=500',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/admin/payouts',
+    );
+    const file = await run(
+      'GET',
+      `commission-payouts/admin/payouts/export?format=xlsx&columns=gross,outcome&ids=${id}&view=paid&page=2`,
+      readHeaders,
+    );
+    expect(file.response.status).toBe(200);
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts/export?format=xlsx&columns=gross%2Coutcome&ids=${id}&view=paid`,
+    );
   });
 
   it('passes the version and reason of removing payout terms, and nothing else', async () => {

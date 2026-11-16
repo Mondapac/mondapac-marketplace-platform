@@ -25,6 +25,7 @@ import type {
 } from './ports/assistant-settings.repository';
 import {
   answer,
+  FakePreviewTokens,
   FakeRuntime,
   FakeTools,
   FixedQuickPrompts,
@@ -152,6 +153,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
       quickPrompts: new FixedQuickPrompts(),
+      previewTokens: new FakePreviewTokens(),
       outbox: new RecordingOutbox(),
       trail: unusedChangeTrail,
     };

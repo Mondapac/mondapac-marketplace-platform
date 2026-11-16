@@ -16,9 +16,14 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   GET: new Set([
     'identity/admin/session',
     'identity/admin/sellers',
+    // The Seller accounts list (super list 22) and the same rows as a file (CSV or XLSX).
     'payments/admin/connected-accounts',
+    'payments/admin/connected-accounts/export',
     // The Market's orders (ordering), read-only: the list; one order is read by the page server.
     'ordering/admin/orders',
+    // The Market's shipments (ordering, Sales > Shipments), read-only: the list (query: the tab,
+    // search, filters and paging; see QUERY_KEYS).
+    'ordering/admin/shipments',
     // The Market's buyer assistant settings, read again after another admin saved first.
     'assistant/admin/settings',
     // The Market's support email, read again after another admin saved first.
@@ -56,9 +61,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The buyer-review moderation queue (reviews), read-only list (query: `tab`, `cursor`,
     // `limit`); one review is read by its dialog and again after an action.
     'reviews/admin/moderation',
-    // The seller payouts (commission-payouts, package 6d), read-only list (query: `status`,
-    // `cursor`, `limit`); one payout is read by the page server and again by the approve dialog.
+    // The seller payouts (commission-payouts, package 6d; the Payouts super list), read-only list
+    // (query: `view`, `status`, `q`, `search`, the filters, `sort`, `direction`, `page`,
+    // `pageSize`, or `cursor` and `limit`); one payout is read by the page server and again by the
+    // approve dialog. The export of the list as a file: the chosen ids or the list's own query.
     'commission-payouts/admin/payouts',
+    'commission-payouts/admin/payouts/export',
     // The delivery settings of the Market (shipping), read again after a conflict.
     'shipping/admin/delivery-settings',
     // The service areas with their names (sellers, ADR-0041), read-only.
@@ -597,7 +605,35 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'identity/admin/sellers': ['state', 'limit', 'after'],
-  'payments/admin/connected-accounts': ['status', 'cursor'],
+  'payments/admin/connected-accounts': [
+    'status',
+    'ready',
+    'requirements',
+    'waiting',
+    'q',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'paging',
+    'cursor',
+  ],
+  'payments/admin/connected-accounts/export': [
+    'format',
+    'columns',
+    'ids',
+    'status',
+    'ready',
+    'requirements',
+    'waiting',
+    'q',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   // The page mode and the filters of the orders list (the API validates every value).
   'ordering/admin/orders': [
     'status',
@@ -611,6 +647,26 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sellerId',
     'from',
     'to',
+  ],
+  // The Shipments list: the tab (`stage`, `attention`), the search (`q` or `search`), the filters
+  // and the paging of either List paging mode (the API refuses the two modes mixed).
+  'ordering/admin/shipments': [
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+    'sort',
+    'direction',
+    'stage',
+    'q',
+    'search',
+    'deliveryMethod',
+    'attention',
+    'sellerId',
+    'paidFrom',
+    'paidTo',
+    'shippedFrom',
+    'shippedTo',
   ],
   'ordering/admin/saved-filters': ['listKey'],
   'notifications/admin/notices': ['show', 'before'],
@@ -647,7 +703,42 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'typeCode',
     'sellerId',
   ],
-  'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
+  // The view, search, filters and page mode of the Payouts super list (the API validates them).
+  'commission-payouts/admin/payouts': [
+    'view',
+    'status',
+    'q',
+    'search',
+    'sellerId',
+    'approvalMode',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+  ],
+  'commission-payouts/admin/payouts/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'status',
+    'q',
+    'search',
+    'sellerId',
+    'approvalMode',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+  ],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
   // The category tree, narrowed to the categories of one feature set (categories, A4).
@@ -663,8 +754,60 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
   'ordering/admin/refund-limits': ['sellerId'],
 };
-/** Query values that must have a shape to cross; a value of another shape is dropped. */
+/** Free text typed in a list's search box: 1 to 80 characters. */
+const SEARCH_TEXT = /^[\s\S]{1,80}$/;
+/** An instant as the API takes it: ISO 8601 date and time with a zone (`Z` or an offset). */
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+/** The Seller accounts list's filters and sort (payments validates every value again). */
+const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
+  status: /^(not-started|pending|enabled|restricted|rejected)$/,
+  ready: /^(yes|no)$/,
+  requirements: /^(past-due|due|none)$/,
+  waiting: /^(cooling-off|paused)$/,
+  // A seller id or part of a store name (payments refuses control characters and the length).
+  // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+  q: /^[^\u0000-\u001f\u007f]{1,80}$/u,
+  from: ISO_INSTANT,
+  to: ISO_INSTANT,
+  sort: /^(created|last-read|requirements)$/,
+  direction: /^(asc|desc)$/,
+};
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'ordering/admin/shipments': {
+    stage: /^(to-prepare|ready|shipped|delivered|refunded)$/,
+    sort: /^(paid|shipped|delivered|total)$/,
+    direction: /^(asc|desc)$/,
+    deliveryMethod: /^(pickup|instant|same_day|scheduled)$/,
+    attention: /^(any|no-carrier|carrier-unknown|cancel-unknown)$/,
+    sellerId: UUID,
+    page: /^[0-9]{1,4}$/,
+    pageSize: /^[0-9]{1,3}$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the payment, a dot and the seller order id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+    // An id, a tracking reference or a name: free text, up to the box's 80 characters.
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    paidFrom: ISO_INSTANT,
+    paidTo: ISO_INSTANT,
+    shippedFrom: ISO_INSTANT,
+    shippedTo: ISO_INSTANT,
+  },
+  'payments/admin/connected-accounts': {
+    ...ACCOUNT_LIST_SHAPES,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    // The API's own cursor: epoch milliseconds of the creation, a dot and the seller id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'payments/admin/connected-accounts/export': {
+    ...ACCOUNT_LIST_SHAPES,
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(cooling-off|paused|last-read|seller-id)(,(cooling-off|paused|last-read|seller-id)){0,3}$/,
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+  },
   'ordering/admin/refund-limits': { sellerId: UUID },
   // The cursor is the API's own: epoch milliseconds, a dot and a request id.
   'wallet/admin/credit-requests': {
@@ -729,10 +872,46 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'ordering/admin/saved-filters': { listKey: /^admin\.ordering\.orders$/ },
   'commission-payouts/admin/payouts': {
-    status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,
+    view: /^(all|awaiting-approval|sending|paid|failed|not-sent)$/,
+    status:
+      /^(pending|awaiting-approval|approved|instructing|instructed|paid|failed|not-sent|voided|settled-by-netting)$/,
+    q: UUID,
+    sellerId: UUID,
+    approvalMode: /^(AUTO|MANUAL)$/,
+    // ISO instants: the creation time, `to` excluded.
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The transfer in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(created|amount|state-changed|slot)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the creation, a dot and the payout id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'commission-payouts/admin/payouts/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(gross|netted|approval-mode|approval-reason|slot|state-changed|outcome|seller-id)(,(gross|netted|approval-mode|approval-reason|slot|state-changed|outcome|seller-id)){0,7}$/,
+    // At most 200 payout ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(all|awaiting-approval|sending|paid|failed|not-sent)$/,
+    status:
+      /^(pending|awaiting-approval|approved|instructing|instructed|paid|failed|not-sent|voided|settled-by-netting)$/,
+    q: UUID,
+    sellerId: UUID,
+    approvalMode: /^(AUTO|MANUAL)$/,
+    // ISO instants: the creation time, `to` excluded.
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The transfer in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(created|amount|state-changed|slot)$/,
+    direction: /^(asc|desc)$/,
   },
   'customers/admin/deletion-requests': {
     limit: /^[0-9]{1,3}$/,
@@ -819,8 +998,33 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
+  'commission-payouts/admin/payouts/export:ids': 7400,
+  'payments/admin/connected-accounts/export:ids': 7400,
   'catalog/admin/attributes:search': 120,
 };
+
+/**
+ * Exports whose query is checked strictly: a known key whose value is out of shape or too long
+ * refuses the request (400), instead of being dropped. Dropping a filter of an export would send
+ * a wider file than the one asked for.
+ */
+const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
+  'payments/admin/connected-accounts/export',
+]);
+
+/** The first known key of a strict target whose value cannot cross, or null. */
+function strictQueryRefusal(method: string, target: string, requestUrl: string): string | null {
+  if (method !== 'GET' || !STRICT_QUERY_TARGETS.has(target)) return null;
+  const shapes = QUERY_SHAPES[target] ?? {};
+  const source = new URL(requestUrl).searchParams;
+  for (const key of QUERY_KEYS[target] ?? []) {
+    const value = source.get(key);
+    if (value === null) continue;
+    const max = QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX;
+    if (value.length > max || shapes[key]?.test(value) === false) return key;
+  }
+  return null;
+}
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
 function upstreamQuery(method: string, target: string, requestUrl: string): string {
@@ -955,7 +1159,7 @@ const FORWARDED_REQUEST_HEADERS = [
 const FORWARDED_RESPONSE_HEADERS = [
   'content-type',
   'retry-after',
-  // The product export (CSV or XLSX) and the import report CSV arrive as attachments with a file name the API made.
+  // The product and payout exports (CSV or XLSX) and the import report CSV arrive as attachments with a file name the API made.
   'content-disposition',
 ] as const;
 
@@ -1134,6 +1338,17 @@ export async function relay(
     const read = await readCapped(request, bodyCap);
     if (read === null) return jsonError(413, 'request.too-large');
     body = read;
+  }
+  const refused = strictQueryRefusal(request.method, target, request.url);
+  if (refused !== null) {
+    return new Response(
+      JSON.stringify({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: refused, code: 'format' }] },
+      }),
+      { status: 400, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } },
+    );
   }
   let outgoing: Headers;
   try {

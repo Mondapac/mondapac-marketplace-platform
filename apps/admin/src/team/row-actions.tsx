@@ -1,16 +1,17 @@
 'use client';
 
-import { Banner, Button, Dialog, Menu, toast, type MenuItem } from '@mondapac/ui';
+import { ConfirmAction, Menu, toast, type MenuItem } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
-import { callApi, type ApiFailure } from '../api/client.ts';
+import type { ApiFailure } from '../api/client.ts';
 import {
   isNoteFailure,
   ReviewNoteField,
   trimmedNote,
   useSentForReview,
 } from '../shared/review-note.tsx';
+import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { ChangeRoleDialog } from './role-dialog.tsx';
 import type { ActionHint, PlatformRole } from './types.ts';
 
@@ -55,6 +56,8 @@ interface ActionDef {
   /** Needs a confirmation dialog (D3); the others act at once. */
   readonly confirm: boolean;
   readonly critical: boolean;
+  /** 3 = security or irreversible: the person types the row's name, and a step-up code may follow. */
+  readonly level: 2 | 3;
 }
 
 function definitionsFor(target: RowTarget, reviewed: boolean): readonly ActionDef[] {
@@ -66,6 +69,7 @@ function definitionsFor(target: RowTarget, reviewed: boolean): readonly ActionDe
         path: `identity/admin/invitations/${target.id}/resend`,
         confirm: false,
         critical: false,
+        level: 2,
       },
       {
         id: 'cancel-invitation',
@@ -73,6 +77,7 @@ function definitionsFor(target: RowTarget, reviewed: boolean): readonly ActionDe
         path: `identity/admin/invitations/${target.id}/revoke`,
         confirm: true,
         critical: true,
+        level: 2,
       },
     ];
   }
@@ -83,6 +88,7 @@ function definitionsFor(target: RowTarget, reviewed: boolean): readonly ActionDe
       path: `identity/admin/accounts/${target.id}/second-factor/reset`,
       confirm: true,
       critical: false,
+      level: 3,
     },
     target.status === 'active'
       ? {
@@ -91,6 +97,7 @@ function definitionsFor(target: RowTarget, reviewed: boolean): readonly ActionDe
           path: `identity/admin/accounts/${target.id}/disable`,
           confirm: true,
           critical: true,
+          level: 2,
         }
       : {
           id: 'reactivate',
@@ -99,6 +106,7 @@ function definitionsFor(target: RowTarget, reviewed: boolean): readonly ActionDe
           // Reviewed: a dialog asks for the note first.
           confirm: reviewed,
           critical: false,
+          level: 2,
         },
   ];
 }
@@ -120,6 +128,7 @@ export function RowActions({
   const t = useTranslations('identity.members');
   const te = useTranslations('identity');
   const router = useRouter();
+  const callGuarded = useGuardedCall();
   const [asking, setAsking] = useState<ActionDef | null>(null);
   const [changingRole, setChangingRole] = useState(false);
   const [pending, setPending] = useState(false);
@@ -149,7 +158,7 @@ export function RowActions({
     inFlight.current = true;
     setPending(true);
     setProblem(null);
-    const result = await callApi<unknown>(
+    const result = await callGuarded<unknown>(
       'POST',
       action.path,
       sentNote === null ? {} : { note: sentNote },
@@ -157,6 +166,7 @@ export function RowActions({
     );
     inFlight.current = false;
     setPending(false);
+    if (isStepUpCancelled(result)) return;
     if (result.ok) {
       setAsking(null);
       setNote('');
@@ -228,46 +238,41 @@ export function RowActions({
         />
       ) : null}
       <Menu label={t('actions-for', { name: target.name })} items={items} />
-      <Dialog
+      <ConfirmAction
         open={asking !== null}
+        level={asking?.level ?? 2}
         title={asking === null ? '' : t(`dialog.${asking.id}.title`, { name: target.name })}
-        onClose={() => {
-          if (!pending) setAsking(null);
-        }}
-        actions={
-          <>
-            <Button variant="secondary" onClick={() => setAsking(null)} disabled={pending}>
-              {t(asking?.id === 'cancel-invitation' ? 'dialog.keep-invitation' : 'dialog.keep')}
-            </Button>
-            <Button
-              variant={asking?.critical === true ? 'destructive' : 'primary'}
-              loading={pending}
-              onClick={() => {
-                if (asking !== null) void run(asking);
-              }}
-            >
-              {asking === null ? '' : t(`dialog.${asking.id}.action`)}
-            </Button>
-          </>
+        body={
+          asking === null ? null : (
+            <>
+              <p>{t(`dialog.${asking.id}.body`)}</p>
+              {asking.id === 'reactivate' ? (
+                <div className="mt-3">
+                  <ReviewNoteField
+                    value={note}
+                    onChange={setNote}
+                    error={noteError ?? undefined}
+                    disabled={pending}
+                  />
+                </div>
+              ) : null}
+            </>
+          )
         }
-      >
-        {asking === null ? null : <p>{t(`dialog.${asking.id}.body`)}</p>}
-        {asking?.id === 'reactivate' ? (
-          <div className="mt-3">
-            <ReviewNoteField
-              value={note}
-              onChange={setNote}
-              error={noteError ?? undefined}
-              disabled={pending}
-            />
-          </div>
-        ) : null}
-        {problem === null ? null : (
-          <div className="mt-3">
-            <Banner tone="critical">{problem}</Banner>
-          </div>
+        rowName={target.name}
+        typeLabel={t('dialog.type-to-confirm')}
+        stepUpNote={asking?.level === 3 ? t('dialog.step-up-note') : undefined}
+        confirmLabel={asking === null ? '' : t(`dialog.${asking.id}.action`)}
+        cancelLabel={t(
+          asking?.id === 'cancel-invitation' ? 'dialog.keep-invitation' : 'dialog.keep',
         )}
-      </Dialog>
+        pending={pending}
+        error={problem}
+        onConfirm={() => {
+          if (asking !== null) void run(asking);
+        }}
+        onCancel={() => setAsking(null)}
+      />
     </>
   );
 }
