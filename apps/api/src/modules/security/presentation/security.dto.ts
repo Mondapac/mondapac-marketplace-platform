@@ -29,6 +29,12 @@ export class AlertSummaryBody {
   @ApiProperty({ format: 'date-time' }) openedAt!: string;
   @ApiProperty({ format: 'date-time', nullable: true, type: String }) acknowledgedAt!:
     string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'Who acknowledged, by display name; null when not acknowledged or not nameable.',
+  })
+  acknowledgedByName!: string | null;
   @ApiProperty({ format: 'date-time', nullable: true, type: String }) resolvedAt!: string | null;
   @ApiProperty({ format: 'date-time', nullable: true, type: String }) nextNotifyAt!: string | null;
   @ApiProperty({ description: 'Send it back to acknowledge or resolve.' }) version!: number;
@@ -53,6 +59,14 @@ export class AlertDetailBody extends AlertSummaryBody {
   @ApiProperty() notifyStep!: number;
   @ApiProperty({ format: 'uuid', nullable: true, type: String }) acknowledgedBy!: string | null;
   @ApiProperty({ format: 'uuid', nullable: true, type: String }) resolvedBy!: string | null;
+  @ApiProperty({ nullable: true, type: String, description: 'Who resolved, by display name.' })
+  resolvedByName!: string | null;
+  @ApiProperty({
+    description:
+      'Whether the caller is the incident commander or the security owner of the on-call roster, ' +
+      'who alone resolve an s1 alert. False without a roster.',
+  })
+  viewerResolvesCritical!: boolean;
   @ApiProperty({ enum: ALERT_RESOLUTIONS, nullable: true, type: String }) resolution!:
     string | null;
   @ApiProperty({ nullable: true, type: String }) resolutionNote!: string | null;
@@ -124,6 +138,7 @@ export function alertSummaryBody(view: AlertSummaryView): AlertSummaryBody {
     lastEventAt: view.lastEventAt.toString(),
     openedAt: view.openedAt.toString(),
     acknowledgedAt: iso(view.acknowledgedAt),
+    acknowledgedByName: view.acknowledgedByName,
     resolvedAt: iso(view.resolvedAt),
     nextNotifyAt: iso(view.nextNotifyAt),
     version: view.version,
@@ -141,6 +156,8 @@ export function alertDetailBody(view: AlertDetailView): AlertDetailBody {
     notifyStep: view.notifyStep,
     acknowledgedBy: view.acknowledgedBy,
     resolvedBy: view.resolvedBy,
+    resolvedByName: view.resolvedByName,
+    viewerResolvesCritical: view.viewerResolvesCritical,
     resolution: view.resolution,
     resolutionNote: view.resolutionNote,
     deliveries: view.deliveries.map((row) => ({

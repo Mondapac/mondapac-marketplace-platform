@@ -116,7 +116,7 @@ export async function TeamTable({
             <th scope="col" className="px-4 py-3 font-medium">
               {t('identity.members.label.status')}
             </th>
-            <th scope="col" className={CARD_TABLE.actionsHead}>
+            <th scope="col" className="px-4 py-3 text-end font-medium">
               {t('identity.members.actions')}
             </th>
           </tr>
@@ -147,8 +147,13 @@ export async function TeamTable({
                     {status.label}
                   </Badge>
                 </td>
-                <td className={CARD_TABLE.actions}>
-                  <RowActions target={targetOf(row)} csrfToken={csrfToken} roles={roles} />
+                <td className={`${CARD_TABLE.corner} text-end`}>
+                  <RowActions
+                    target={targetOf(row)}
+                    csrfToken={csrfToken}
+                    roles={roles}
+                    reviewed={page.review?.reviewed === true}
+                  />
                 </td>
               </tr>
             );
