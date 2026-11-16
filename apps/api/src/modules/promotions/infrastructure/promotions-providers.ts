@@ -5,7 +5,10 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { COMMISSION_PAYOUTS_FACADE, type CommissionPayoutsFacade } from '../../commission-payouts';
 import { CUSTOMERS_READ_FACADE, type CustomersReadFacade } from '../../customers';
-import { FacadeCustomerOrderHistory } from './facade-customer-order-history';
+import {
+  FacadeCustomerGroupMembership,
+  FacadeCustomerOrderHistory,
+} from './facade-customer-order-history';
 import { PRICING_FACADE, type PricingFacade } from '../../pricing';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { WALLET_FACADE, type WalletFacade } from '../../wallet';
@@ -22,8 +25,10 @@ import {
   type ReferralRepository,
 } from '../application/ports/credit.repository';
 import {
+  CUSTOMER_GROUP_MEMBERSHIP,
   CUSTOMER_ORDER_HISTORY,
   STORE_FOLLOWS,
+  type CustomerGroupMembership,
   type CustomerOrderHistory,
   type StoreFollows,
 } from '../application/ports/customer-facts';
@@ -164,6 +169,12 @@ export const promotionsProviders: readonly FactoryProvider[] = [
     inject: [CUSTOMERS_READ_FACADE],
     useFactory: (customers: CustomersReadFacade): CustomerOrderHistory =>
       new FacadeCustomerOrderHistory(customers),
+  },
+  {
+    provide: CUSTOMER_GROUP_MEMBERSHIP,
+    inject: [CUSTOMERS_READ_FACADE],
+    useFactory: (customers: CustomersReadFacade): CustomerGroupMembership =>
+      new FacadeCustomerGroupMembership(customers),
   },
   { provide: STORE_FOLLOWS, useFactory: (): StoreFollows => new UnknownStoreFollows() },
   {

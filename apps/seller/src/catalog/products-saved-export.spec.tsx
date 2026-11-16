@@ -579,6 +579,8 @@ describe('export', () => {
 describe('saved filter tabs', () => {
   it('shows the saved filters after the built-in views, then Manage filters', async () => {
     mount();
+    // The saved tabs come from the saved-filters read and the counts from the list read: wait for both.
+    await screen.findByText('Olive oil 1L');
     expect(await screen.findByRole('button', { name: 'Live oils' })).toBeTruthy();
     expect(tabs()).toEqual([
       'All (143)',

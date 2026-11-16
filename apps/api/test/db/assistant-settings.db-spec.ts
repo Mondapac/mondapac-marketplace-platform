@@ -11,7 +11,9 @@ import {
   FakeTools,
   MemoryConversations,
   MemoryLimits,
+  RecordingOutbox,
   SequenceGuestTokens,
+  FixedQuickPrompts,
 } from '../../src/modules/assistant/application/testing/assistant-fakes';
 import { SetAssistantSettings } from '../../src/modules/assistant/application/use-cases/set-assistant-settings.use-case';
 import { ViewAssistantSettings } from '../../src/modules/assistant/application/use-cases/view-assistant-settings.use-case';
@@ -106,6 +108,8 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
     limits: new MemoryLimits(),
     guestTokens: new SequenceGuestTokens(),
     calendar: new RegistryMarketCalendar(markets),
+    outbox: new RecordingOutbox(),
+    quickPrompts: new FixedQuickPrompts(),
     trail: dbChangeTrail('assistant', catalogue, db.unitOfWork, actors),
   });
   const auditRows = async (target: MarketContext) =>
@@ -208,7 +212,14 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
     );
     expect(read).toEqual({
       ok: true,
-      value: { enabled: true, guestsAllowed: true, replyLanguage: 'buyer', welcomeText: 'Hi' },
+      value: {
+        enabled: true,
+        guestsAllowed: true,
+        replyLanguage: 'buyer',
+        welcomeText: 'Hi',
+        retentionDays: { customer: 30, guest: 30 },
+        quickPrompts: code === 'ZZ' ? FixedQuickPrompts.JA : FixedQuickPrompts.EN,
+      },
     });
   });
 
