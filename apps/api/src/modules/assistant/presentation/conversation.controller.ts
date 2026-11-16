@@ -118,8 +118,20 @@ export class ConversationController {
       "the one they started with and the Market's current setting). The title is the first buyer " +
       'message, masked, at most 30 characters. A guest is refused: guests have no history.',
   })
-  @ApiQuery({ name: 'cursor', required: false, description: 'nextCursor of the previous page' })
-  @ApiQuery({ name: 'limit', required: false, description: '1 to 50; default 20' })
+  @ApiQuery({
+    name: 'cursor',
+    required: false,
+    type: String,
+    description: 'nextCursor of the previous page',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    minimum: 1,
+    maximum: 50,
+    description: 'Default 20',
+  })
   @ApiOkResponse({
     description:
       '{ items: [{ id, title, turns, full, startedAt, lastMessageAt }], nextCursor: string | null }',

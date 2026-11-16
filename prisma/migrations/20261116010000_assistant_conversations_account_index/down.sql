@@ -1,4 +1,4 @@
--- Reverses 20261116010000_assistant_conversations_account_index.
-SET lock_timeout = '5s';
-
-DROP INDEX "assistant"."conversations_market_id_account_id_last_message_at_id_idx";
+-- Reverses 20261116010000_assistant_conversations_account_index. One statement, alone in its
+-- file: DROP INDEX CONCURRENTLY cannot run inside a transaction block, and the reversibility check
+-- sends a down file as one query, so there is no SET lock_timeout here.
+DROP INDEX CONCURRENTLY "assistant"."conversations_market_id_account_id_last_message_at_id_idx";

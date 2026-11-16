@@ -412,6 +412,26 @@ describe.each(TEST_MARKETS)('the assistant conversation over HTTP in market %s',
       expect((res.body as { code: string }).code).toBe(failure);
     });
 
+    it('answers a bad query with 400 and its fields, a deleted id with 404', async () => {
+      await boot();
+      const session = customerSession();
+      const headers = { 'x-market-id': code, cookie: session.cookie };
+      next = err({ code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] });
+      const bad = await http().get(`${LIST}?limit=0`).set(headers);
+      next = err({ code: 'assistant.conversation-not-found' });
+      const gone = await http()
+        .delete(ONE)
+        .set({ ...headers, 'x-csrf-token': session.csrf });
+
+      expect(bad.status).toBe(400);
+      expect(bad.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'limit', code: 'range' }] },
+      });
+      expect(gone.status).toBe(404);
+      expect((gone.body as { code: string }).code).toBe('assistant.conversation-not-found');
+    });
+
     it('deletes with the CSRF token only, answering 204', async () => {
       await boot();
       const session = customerSession();

@@ -64,8 +64,9 @@ model AssistantConversation {
   @@unique([marketId, id])
   /// The purge reads the conversations of a Market by the age of their last message.
   @@index([marketId, retentionDays, lastMessageAt])
-  /// A buyer's own list (stage 0, B2): one account's conversations, newest activity first.
-  @@index([marketId, accountId, lastMessageAt(sort: Desc), id(sort: Desc)])
+  /// The partial index (market_id, account_id, last_message_at DESC, id DESC) WHERE account_id IS
+  /// NOT NULL (a buyer's own list, stage 0 B2) is hand-written in its own migration, built
+  /// CONCURRENTLY; Prisma cannot declare it.
   @@map("conversations")
   @@schema("assistant")
 }

@@ -1888,6 +1888,8 @@ export class IdentityFakes {
       this.subjectKeys.set(subject, 'destroyed');
       return Promise.resolve();
     },
+    hasHadKey: (_market: MarketContext, subject: Id) =>
+      Promise.resolve(this.subjectKeys.has(subject)),
   };
 
   /** The second factor's secrets over the fake subject keys (the real adapter, slice 7b). */

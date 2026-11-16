@@ -142,20 +142,15 @@ export async function listConversations(
         const days = retentionInForce(stored, current.days);
         if (days > 0) visibleSince.set(stored, now.subtract({ hours: days * DAY_HOURS }));
       }
-      // One more row than asked tells whether another page follows.
-      const rows = await deps.conversations.listByAccount(market, accountId, {
+      const page = await deps.conversations.listByAccount(market, accountId, {
         visibleSince,
         after: cursor.value,
-        limit: limit.value + 1,
+        limit: limit.value,
       });
-      const items = rows.slice(0, limit.value).map(listItemOf);
-      const last = items.at(-1);
       return ok({
-        items,
-        nextCursor:
-          rows.length > limit.value && last !== undefined
-            ? encodeCursor({ lastMessageAt: last.lastMessageAt, id: last.id })
-            : null,
+        // A conversation with no stored buyer message opens as not found: not listed either.
+        items: page.rows.filter((row) => row.firstBuyerText !== null).map(listItemOf),
+        nextCursor: page.next === null ? null : encodeCursor(page.next),
       });
     },
     { readOnly: true },

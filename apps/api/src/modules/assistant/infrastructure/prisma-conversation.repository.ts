@@ -5,6 +5,7 @@ import type { SubjectKeyService } from '../../../platform/subject-keys/subject-k
 import { Temporal } from '@mondapac/shared-kernel';
 import type {
   ConversationCursor,
+  ConversationListPage,
   ConversationOwner,
   ConversationRecord,
   ConversationRepository,
@@ -66,11 +67,20 @@ export class PrismaConversationRepository implements ConversationRepository {
     };
   }
 
+  spent(market: MarketContext, id: string): Promise<boolean> {
+    return this.keys.hasHadKey(market, id as Id<'Conversation'>);
+  }
+
   async create(
     market: MarketContext,
     conversation: ConversationRecord & { readonly startedAt: Temporal.Instant },
   ): Promise<boolean> {
     const { owner } = conversation;
+    // A spent id would fail createKey (a subject has one key for life) and roll the whole unit
+    // back, spend included: answer "taken" instead (Hassan, PR 947).
+    if (conversation.retentionDays > 0 && (await this.spent(market, conversation.id))) {
+      return false;
+    }
     const created = await this.prisma.tx(market).assistantConversation.createMany({
       data: [
         {
@@ -173,17 +183,24 @@ export class PrismaConversationRepository implements ConversationRepository {
       readonly after: ConversationCursor | null;
       readonly limit: number;
     },
-  ): Promise<readonly ConversationSummary[]> {
-    const windows = [...query.visibleSince]
-      .filter(([days]) => days > 0)
-      .map(([days, since]) => ({ retentionDays: days, lastMessageAt: { gte: dateOf(since) } }));
-    if (windows.length === 0 || query.limit <= 0) return [];
+  ): Promise<ConversationListPage> {
+    const open = [...query.visibleSince].filter(([days]) => days > 0);
+    const windows = open.map(([days, since]) => ({
+      retentionDays: days,
+      lastMessageAt: { gte: dateOf(since) },
+    }));
+    if (windows.length === 0 || query.limit <= 0) return { rows: [], next: null };
+    // The oldest window bounds the scan of the account's index entries.
+    const oldest = open
+      .map(([, since]) => since)
+      .reduce((a, b) => (Temporal.Instant.compare(a, b) <= 0 ? a : b));
     const tx = this.prisma.tx(market);
     const { after } = query;
     const rows = await tx.assistantConversation.findMany({
       where: {
         marketId: market.marketId,
         accountId,
+        lastMessageAt: { gte: dateOf(oldest) },
         AND: [
           { OR: windows },
           ...(after === null
@@ -199,10 +216,15 @@ export class PrismaConversationRepository implements ConversationRepository {
         ],
       },
       orderBy: [{ lastMessageAt: 'desc' }, { id: 'desc' }],
-      take: query.limit,
+      // One more row than the page tells whether another page follows.
+      take: query.limit + 1,
       select: { id: true, turns: true, startedAt: true, lastMessageAt: true },
     });
-    if (rows.length === 0) return [];
+    const last = rows.length > query.limit ? rows[query.limit - 1] : undefined;
+    const next: ConversationCursor | null =
+      last === undefined ? null : { lastMessageAt: instantOf(last.lastMessageAt), id: last.id };
+    rows.splice(query.limit);
+    if (rows.length === 0) return { rows: [], next: null };
     // The first message of each listed conversation, in one read; each decrypts under its own key.
     const firsts = await tx.assistantMessage.findMany({
       where: {
@@ -237,7 +259,7 @@ export class PrismaConversationRepository implements ConversationRepository {
         firstBuyerText,
       });
     }
-    return summaries;
+    return { rows: summaries, next };
   }
 
   async transcript(market: MarketContext, id: string): Promise<readonly TranscriptMessage[]> {

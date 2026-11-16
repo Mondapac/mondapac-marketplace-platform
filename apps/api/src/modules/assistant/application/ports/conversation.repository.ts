@@ -36,6 +36,12 @@ export interface ConversationCursor {
   readonly id: string;
 }
 
+/** A page of the list as stored. */
+export interface ConversationListPage {
+  readonly rows: readonly ConversationSummary[];
+  readonly next: ConversationCursor | null;
+}
+
 /** One stored message of a transcript, decrypted, with its card refs and time. */
 export interface TranscriptMessage {
   readonly position: number;
@@ -58,7 +64,15 @@ export interface StoredMessage {
  */
 export interface ConversationRepository {
   find(market: MarketContext, id: string): Promise<FoundConversation | null>;
-  /** Creates the conversation (and its key when text is kept); false if the id is taken. */
+  /**
+   * Whether this id belonged to a conversation that is gone (deleted or purged with its key):
+   * such an id can never start a new conversation that keeps text.
+   */
+  spent(market: MarketContext, id: string): Promise<boolean>;
+  /**
+   * Creates the conversation (and its key when text is kept); false if the id is taken, or is
+   * spent and the new one would keep text.
+   */
   create(
     market: MarketContext,
     conversation: ConversationRecord & { readonly startedAt: Temporal.Instant },
@@ -78,9 +92,11 @@ export interface ConversationRepository {
     message: StoredMessage & { readonly cards: readonly string[]; readonly at: Temporal.Instant },
   ): Promise<void>;
   /**
-   * One account's conversations that keep text, newest activity first, after `after`: a
-   * conversation that stored `retentionDays` is listed only when its last message is at or after
-   * `visibleSince[retentionDays]` (a stored retention missing from the map is not listed).
+   * One page of an account's conversations that keep text, newest activity first, after `after`:
+   * a conversation that stored `retentionDays` is listed only when its last message is at or
+   * after `visibleSince[retentionDays]` (a stored retention missing from the map is not listed).
+   * A conversation whose key was destroyed is left out of `rows` but still moves the page on:
+   * `next` is where the following page starts, null on the last page.
    */
   listByAccount(
     market: MarketContext,
@@ -90,7 +106,7 @@ export interface ConversationRepository {
       readonly after: ConversationCursor | null;
       readonly limit: number;
     },
-  ): Promise<readonly ConversationSummary[]>;
+  ): Promise<ConversationListPage>;
   /** Every stored message of a conversation, oldest first; empty when its key was destroyed. */
   transcript(market: MarketContext, id: string): Promise<readonly TranscriptMessage[]>;
   /**

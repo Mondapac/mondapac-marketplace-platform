@@ -114,15 +114,17 @@ export const TITLE_CHARACTERS = 30;
 export const HISTORY_PAGE_DEFAULT = 20;
 export const HISTORY_PAGE_MAX = 50;
 
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
 /**
  * A conversation's title in the buyer's list: its first buyer message on one line, masked again
- * (it was masked before it was stored), cut to 30 characters with an ellipsis. Empty when no
- * text is readable.
+ * (it was masked before it was stored), cut to 30 characters (user-perceived characters, so an
+ * emoji or a combined letter is never split) with an ellipsis. Empty when no text is readable.
  */
 export function conversationTitle(firstBuyerText: string | null): string {
   if (firstBuyerText === null) return '';
   const line = maskPersonalData(firstBuyerText).replace(/\s+/gu, ' ').trim();
-  const characters = [...line];
+  const characters = [...GRAPHEMES.segment(line)].map((part) => part.segment);
   if (characters.length <= TITLE_CHARACTERS) return line;
   return `${characters
     .slice(0, TITLE_CHARACTERS - 1)

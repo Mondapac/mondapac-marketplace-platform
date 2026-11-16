@@ -108,7 +108,8 @@ a seller or admin session is not read here. Every answer is `Cache-Control: no-s
   lists nothing). A conversation of another account, a guest's, an unknown one or an expired one
   is 404 `assistant.conversation-not-found`.
 - Title: the first buyer message (masked before it was stored, masked again), on one line, at
-  most 30 characters with an ellipsis.
+  most 30 user-perceived characters with an ellipsis. A conversation with no stored buyer message
+  is not listed.
 - Cards come back as stored: kind and ids only (`product` with `offerId`, `page` with `page`,
   `support`). A price or product text is never replayed from an old answer; the widget reads the
   product again if it shows one.
@@ -117,8 +118,12 @@ a seller or admin session is not read here. Every answer is `Cache-Control: no-s
   its messages (cascade) and destroys its key in one unit.
 - Continue a listed conversation with the existing POST; `full: true` means it has its 30 buyer
   messages and the POST answers 409 `assistant.conversation-full`.
-- Index (migration `20261116010000_assistant_conversations_account_index`):
-  (`market_id`, `account_id`, `last_message_at` DESC, `id` DESC) for the list.
+- A deleted or purged conversation's id is spent: the POST answers 404
+  `assistant.conversation-not-found` for it before any model call (its key can never be created
+  again, and a failed write would roll back the spend).
+- Index (migration `20261116010000_assistant_conversations_account_index`, built CONCURRENTLY,
+  partial `WHERE account_id IS NOT NULL`): (`market_id`, `account_id`, `last_message_at` DESC,
+  `id` DESC) for the list.
 
 ## Preview for `internal` (designed, not built)
 

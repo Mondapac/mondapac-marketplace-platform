@@ -9,6 +9,7 @@ import type { AssistantRuntime, ModelAnswer } from '../ports/assistant-runtime';
 import type { AssistantTools, ToolOutcome } from '../ports/assistant-tools';
 import type {
   ConversationCursor,
+  ConversationListPage,
   ConversationRecord,
   ConversationRepository,
   ConversationSummary,
@@ -118,6 +119,9 @@ export class MemoryConversations implements ConversationRepository {
   /** Conversations whose key was destroyed (their messages read as nothing). */
   readonly destroyed = new Set<string>();
 
+  spent(_market: MarketContext, id: string) {
+    return Promise.resolve(this.destroyed.has(id));
+  }
   find(market: MarketContext, id: string) {
     const row = this.rows.get(id);
     return Promise.resolve(
@@ -134,7 +138,7 @@ export class MemoryConversations implements ConversationRepository {
       after: ConversationCursor | null;
       limit: number;
     },
-  ): Promise<readonly ConversationSummary[]> {
+  ): Promise<ConversationListPage> {
     const newestFirst = (a: { lastAt: Temporal.Instant; id: string }, b: typeof a) =>
       Temporal.Instant.compare(b.lastAt, a.lastAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
     const { after } = query;
@@ -142,7 +146,6 @@ export class MemoryConversations implements ConversationRepository {
       .filter((row) => {
         if (row.market !== market.marketId) return false;
         if (row.owner.kind !== 'account' || row.owner.accountId !== accountId) return false;
-        if (this.destroyed.has(row.id)) return false;
         const since = query.visibleSince.get(row.retentionDays);
         if (row.retentionDays === 0 || since === undefined) return false;
         if (Temporal.Instant.compare(row.lastAt, since) < 0) return false;
@@ -150,19 +153,23 @@ export class MemoryConversations implements ConversationRepository {
           after === null || newestFirst({ lastAt: after.lastMessageAt, id: after.id }, row) < 0
         );
       })
-      .sort(newestFirst)
-      .slice(0, Math.max(0, query.limit));
-    return Promise.resolve(
-      rows.map((row) => ({
-        id: row.id,
-        turns: row.turns,
-        startedAt: row.startedAt,
-        lastMessageAt: row.lastAt,
-        firstBuyerText:
-          (this.messages.get(row.id) ?? []).find((message) => message.role === 'buyer')?.text ??
-          null,
-      })),
-    );
+      .sort(newestFirst);
+    const page = rows.slice(0, Math.max(0, query.limit));
+    const last = rows.length > page.length ? page.at(-1) : undefined;
+    return Promise.resolve({
+      next: last === undefined ? null : { lastMessageAt: last.lastAt, id: last.id },
+      rows: page
+        .filter((row) => !this.destroyed.has(row.id))
+        .map((row): ConversationSummary => ({
+          id: row.id,
+          turns: row.turns,
+          startedAt: row.startedAt,
+          lastMessageAt: row.lastAt,
+          firstBuyerText:
+            (this.messages.get(row.id) ?? []).find((message) => message.role === 'buyer')?.text ??
+            null,
+        })),
+    });
   }
   transcript(_market: MarketContext, id: string): Promise<readonly TranscriptMessage[]> {
     if (this.destroyed.has(id)) return Promise.resolve([]);
@@ -173,9 +180,14 @@ export class MemoryConversations implements ConversationRepository {
         role: message.role,
         text: message.text,
         cards: message.cards,
-        at: this.times.get(id)?.[index] ?? row?.lastAt ?? Temporal.Instant.fromEpochMilliseconds(0),
+        at: this.timeOf(id, index, row?.lastAt),
       })),
     );
+  }
+  private timeOf(id: string, index: number, fallback: Temporal.Instant | undefined) {
+    const at = this.times.get(id)?.[index] ?? fallback;
+    if (at === undefined) throw new Error(`no time stored for message ${index} of ${id}`);
+    return at;
   }
   deleteOwn(market: MarketContext, id: string, accountId: string) {
     const row = this.rows.get(id);
@@ -198,6 +210,9 @@ export class MemoryConversations implements ConversationRepository {
     conversation: ConversationRecord & { startedAt: Temporal.Instant },
   ) {
     if (this.rows.has(conversation.id)) return Promise.resolve(false);
+    if (conversation.retentionDays > 0 && this.destroyed.has(conversation.id)) {
+      return Promise.resolve(false);
+    }
     this.rows.set(conversation.id, {
       ...conversation,
       market: market.marketId,
@@ -241,6 +256,7 @@ export class MemoryConversations implements ConversationRepository {
       if (Temporal.Instant.compare(row.lastAt.add({ hours: 24 * days }), now) < 0) {
         this.rows.delete(id);
         this.messages.delete(id);
+        if (row.retentionDays > 0) this.destroyed.add(id);
         purged += 1;
       }
     }

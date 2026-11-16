@@ -17,6 +17,7 @@ import { DEFAULT_ASSISTANT_SETTINGS, type AssistantSettings } from '../domain/as
 import type { AssistantCard } from '../domain/cards';
 import { MASKED } from '../domain/personal-data';
 import type { AssistantDependencies } from './assistant-dependencies';
+import { conversationTitle, storedCardOf } from '../domain/conversation';
 import { decodeCursor, encodeCursor } from './history-flow';
 import type {
   AssistantSettingsRecord,
@@ -284,6 +285,78 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
       });
     });
 
+    it('pages through conversations with the same last message time, newest id first', async () => {
+      for (const n of [3, 1, 2]) await send(`Same time ${n}`, conversationId(n));
+
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      for (let page = 0; page < 4; page += 1) {
+        const result = await list({ limit: 1, cursor });
+        if (!result.ok) throw new Error('list failed');
+        seen.push(...result.value.items.map((item) => item.id));
+        cursor = result.value.nextCursor;
+        if (cursor === null) break;
+      }
+
+      expect(seen).toEqual([conversationId(3), conversationId(2), conversationId(1)]);
+    });
+
+    it('lists and opens a conversation exactly at the retention edge, not 1 ms past it', async () => {
+      settings.current = on({ retention: '30-days' });
+      await send('Edge', conversationId(1));
+      clock.set(T0.add({ hours: 24 * 30 }));
+
+      const atEdge = await list();
+      expect(atEdge.ok && atEdge.value.items.map((item) => item.id)).toEqual([conversationId(1)]);
+      expect((await view(conversationId(1))).ok).toBe(true);
+
+      clock.set(T0.add({ hours: 24 * 30, milliseconds: 1 }));
+      expect((await list()).ok && (await list())).toMatchObject({ value: { items: [] } });
+      expect(await view(conversationId(1))).toEqual({
+        ok: false,
+        error: { code: 'assistant.conversation-not-found' },
+      });
+    });
+
+    it.each<[string, unknown, boolean]>([
+      ['absent', undefined, true],
+      ['the maximum', '50', true],
+      ['a number', 50, true],
+      ['an array', ['1', '2'], false],
+      ['a fraction', '2.5', false],
+      ['padded', ' 2', false],
+      ['over the maximum', 51, false],
+      ['negative', '-1', false],
+    ])('takes a limit that is %s: %s', async (_label, limit, accepted) => {
+      const result = await list({ limit });
+      expect(result.ok).toBe(accepted);
+    });
+
+    it('refuses a cursor longer than 96 characters', async () => {
+      expect(await list({ cursor: 'a'.repeat(97) })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'cursor', code: 'format' }] },
+      });
+    });
+
+    it('moves the page on past a conversation whose key is already destroyed', async () => {
+      for (let n = 1; n <= 3; n += 1) {
+        await send(`Question ${n}`, conversationId(n));
+        later(1);
+      }
+      // A purge or delete in flight: the row is still there, its key is gone.
+      conversations.destroyed.add(conversationId(3));
+
+      const first = await list({ limit: 2 });
+      const second = await list({ limit: 2, cursor: first.ok ? first.value.nextCursor : null });
+
+      const ids = (page: typeof first) => (page.ok ? page.value.items.map((item) => item.id) : []);
+      expect(ids(first)).toEqual([conversationId(2)]);
+      expect(first.ok && first.value.nextCursor).not.toBeNull();
+      expect(ids(second)).toEqual([conversationId(1)]);
+      expect(second.ok && second.value.nextCursor).toBeNull();
+    });
+
     it('is off while the assistant is off, and refuses a seller', async () => {
       settings.current = on({ enabled: false });
       expect(await list()).toEqual({ ok: false, error: { code: 'assistant.off' } });
@@ -395,6 +468,23 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
     });
   });
 
+  describe('one conversation, more cases', () => {
+    it('is off while the assistant is off, and not found when it kept no text', async () => {
+      settings.current = on({ retention: 'none' });
+      await send('Not kept', conversationId(1));
+      settings.current = on();
+      expect(await view(conversationId(1))).toEqual({
+        ok: false,
+        error: { code: 'assistant.conversation-not-found' },
+      });
+      settings.current = on({ enabled: false });
+      expect(await view(conversationId(1))).toEqual({
+        ok: false,
+        error: { code: 'assistant.off' },
+      });
+    });
+  });
+
   describe('deleting', () => {
     it("deletes the buyer's own conversation and its key, even while the assistant is off", async () => {
       await send('Delete me', conversationId(1));
@@ -417,6 +507,18 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
       expect(listed.ok && listed.value.items.map((item) => item.id)).toEqual([conversationId(2)]);
     });
 
+    it('refuses a deleted id before any model call, so nothing escapes the spend caps', async () => {
+      await send('Delete me', conversationId(1));
+      await remove(conversationId(1));
+      const calls = runtime.requests.length;
+
+      expect(await send('Again', conversationId(1))).toEqual({
+        ok: false,
+        error: { code: 'assistant.conversation-not-found' },
+      });
+      expect(runtime.requests).toHaveLength(calls);
+    });
+
     it("never deletes another buyer's conversation, and refuses a seller", async () => {
       await send('Mine', conversationId(1));
 
@@ -430,6 +532,29 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
       });
       expect(conversations.rows.has(conversationId(1))).toBe(true);
     });
+  });
+
+  it.each<[string, string | null, string]>([
+    ['no message', null, ''],
+    ['exactly 30 characters', 'a'.repeat(30), 'a'.repeat(30)],
+    ['31 characters', 'a'.repeat(31), `${'a'.repeat(29)}…`],
+    ['an emoji at the cut', `${'a'.repeat(28)}😀😀😀`, `${'a'.repeat(28)}😀…`],
+    ['a family emoji at the cut', `${'a'.repeat(29)}👨‍👩‍👧`, `${'a'.repeat(29)}👨‍👩‍👧`],
+    ['line breaks', 'Do you have\n\n  dates?', 'Do you have dates?'],
+    ['an email', 'mail a@b.co now', `mail ${MASKED} now`],
+  ])('titles %s', (_label, text, title) => {
+    expect(conversationTitle(text)).toBe(title);
+  });
+
+  it.each<[string, unknown]>([
+    ['support', { kind: 'support' }],
+    ['page:cart', { kind: 'page', page: 'cart' }],
+    ['page:admin', null],
+    ['product:not-an-id', null],
+    [`product:${id<'Offer'>(1)}:x`, null],
+    ['coupon:x', null],
+  ])('reads the stored card ref %s', (ref, card) => {
+    expect(storedCardOf(ref)).toEqual(card);
   });
 
   it('round-trips a cursor', () => {
