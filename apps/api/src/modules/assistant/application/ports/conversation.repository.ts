@@ -47,6 +47,20 @@ export interface ConversationRepository {
     message: StoredMessage & { readonly cards: readonly string[]; readonly at: Temporal.Instant },
   ): Promise<void>;
   /**
+   * The start and last-message instants of one account's conversations of the Market, by start
+   * then id in the direction given (customers management phase 2b). Never a message.
+   */
+  datesOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    direction: 'asc' | 'desc',
+    window: { readonly offset: number; readonly limit: number },
+  ): Promise<
+    readonly { readonly startedAt: Temporal.Instant; readonly lastMessageAt: Temporal.Instant }[]
+  >;
+  /** How many conversations one account of the Market has. */
+  countOfAccount(market: MarketContext, accountId: Id<'Account'>): Promise<number>;
+  /**
    * Deletes up to `limit` conversations whose last message is older than their retention, with
    * their messages, and destroys their keys. The retention is the shorter of the one stored with
    * the conversation and the current setting (`currentDays`, by owner kind), and at least one day

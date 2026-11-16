@@ -64,6 +64,8 @@ model AssistantConversation {
   @@unique([marketId, id])
   /// The purge reads the conversations of a Market by the age of their last message.
   @@index([marketId, retentionDays, lastMessageAt])
+  /// The admin's customer page reads one account's conversation dates and count.
+  @@index([marketId, accountId, startedAt(sort: Desc)])
   @@map("conversations")
   @@schema("assistant")
 }

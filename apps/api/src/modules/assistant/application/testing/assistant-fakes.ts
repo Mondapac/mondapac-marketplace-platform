@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, MarketContext, MarketId } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { ModelRequest, ModelTurn } from '../../../../platform/ai/model-provider';
 import type { ModelTier } from '../../domain/assistant-settings';
 import type { AssistantCard } from '../../domain/cards';
@@ -120,6 +120,7 @@ export class MemoryConversations implements ConversationRepository {
     conversation: ConversationRecord & { startedAt: Temporal.Instant },
   ) {
     if (this.rows.has(conversation.id)) return Promise.resolve(false);
+    this.started.set(conversation.id, conversation.startedAt);
     this.rows.set(conversation.id, {
       ...conversation,
       market: market.marketId,
@@ -147,6 +148,37 @@ export class MemoryConversations implements ConversationRepository {
     list.push({ role: message.role, text: message.text, cards: message.cards });
     this.messages.set(id, list);
     return Promise.resolve();
+  }
+  /** When each conversation started, for the admin's read (set by `create`). */
+  readonly started = new Map<string, Temporal.Instant>();
+  datesOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    direction: 'asc' | 'desc',
+    window: { readonly offset: number; readonly limit: number },
+  ) {
+    const sign = direction === 'asc' ? 1 : -1;
+    return Promise.resolve(
+      this.ofAccount(market, accountId)
+        .map(([id, row]) => ({ id, startedAt: this.started.get(id)!, lastMessageAt: row.lastAt }))
+        .sort(
+          (a, b) =>
+            sign * (Temporal.Instant.compare(a.startedAt, b.startedAt) || a.id.localeCompare(b.id)),
+        )
+        .slice(window.offset, window.offset + window.limit)
+        .map(({ startedAt, lastMessageAt }) => ({ startedAt, lastMessageAt })),
+    );
+  }
+  countOfAccount(market: MarketContext, accountId: Id<'Account'>) {
+    return Promise.resolve(this.ofAccount(market, accountId).length);
+  }
+  private ofAccount(market: MarketContext, accountId: Id<'Account'>) {
+    return [...this.rows].filter(
+      ([, row]) =>
+        row.market === market.marketId &&
+        row.owner.kind === 'account' &&
+        row.owner.accountId === accountId,
+    );
   }
   purgeExpired(
     market: MarketContext,

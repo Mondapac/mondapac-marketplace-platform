@@ -6,7 +6,9 @@ import type { ServedPlacements } from '../ports/served-placements';
 import type {
   BehaviourEventRecord,
   BehaviourEventRepository,
+  BehaviourRange,
   BehaviourSubject,
+  CartAdditionRow,
   RecentViews,
 } from '../ports/behaviour-event.repository';
 import type { EngagementGuestTokens } from '../ports/guest-tokens';
@@ -53,6 +55,88 @@ export class InMemoryBehaviourEvents implements BehaviourEventRepository {
       ),
     };
     return Promise.resolve(views);
+  }
+
+  cartAdditionsOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    range: BehaviourRange,
+    direction: 'asc' | 'desc',
+    window: { readonly offset: number; readonly limit: number },
+  ) {
+    const sign = direction === 'asc' ? 1 : -1;
+    const rows = this.additions(market, accountId, range)
+      .sort(
+        (a, b) =>
+          sign *
+          (a.occurredAt.epochMilliseconds - b.occurredAt.epochMilliseconds ||
+            a.id.localeCompare(b.id)),
+      )
+      .slice(window.offset, window.offset + window.limit);
+    return Promise.resolve(rows);
+  }
+
+  countCartAdditionsOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    range: BehaviourRange,
+  ) {
+    return Promise.resolve(this.additions(market, accountId, range).length);
+  }
+
+  summaryOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    since: Temporal.Instant,
+    top: number,
+  ) {
+    const mine = this.rows.filter(
+      (row) =>
+        row.marketId === market.marketId &&
+        row.subject.kind === 'account' &&
+        row.subject.accountId === accountId &&
+        row.occurredAt.epochMilliseconds >= since.epochMilliseconds,
+    );
+    const count = (kind: string) => mine.filter((row) => row.facts.kind === kind).length;
+    const views = new Map<Id<'Category'>, number>();
+    for (const row of mine) {
+      if (row.facts.kind === 'category-viewed') {
+        views.set(row.facts.categoryId, (views.get(row.facts.categoryId) ?? 0) + 1);
+      }
+    }
+    return Promise.resolve({
+      productViews: count('product-viewed'),
+      categoryViews: count('category-viewed'),
+      cartAdditions: count('added-to-cart'),
+      topCategories: [...views]
+        .map(([categoryId, n]) => ({ categoryId, views: n }))
+        .sort((a, b) => b.views - a.views || a.categoryId.localeCompare(b.categoryId))
+        .slice(0, top),
+    });
+  }
+
+  private additions(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    range: BehaviourRange,
+  ): CartAdditionRow[] {
+    return this.rows.flatMap((row) =>
+      row.marketId === market.marketId &&
+      row.subject.kind === 'account' &&
+      row.subject.accountId === accountId &&
+      row.facts.kind === 'added-to-cart' &&
+      row.occurredAt.epochMilliseconds >= range.from.epochMilliseconds &&
+      (range.to === null || row.occurredAt.epochMilliseconds < range.to.epochMilliseconds)
+        ? [
+            {
+              id: row.id,
+              offerId: row.facts.offerId,
+              variantId: row.facts.variantId,
+              occurredAt: row.occurredAt,
+            },
+          ]
+        : [],
+    );
   }
 
   deleteForAccount(market: MarketContext, accountId: Id<'Account'>) {

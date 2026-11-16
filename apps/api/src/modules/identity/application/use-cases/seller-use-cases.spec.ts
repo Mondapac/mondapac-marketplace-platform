@@ -325,8 +325,15 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // role (customers phase 1, package B2). `payments.customer-payment.view` is left out for the
     // same reason: one customer's payments and disputes (customers phase 2b). So is
     // `identity.customer-sign-in.view`: one customer's sign-ins and sessions (customers phase 2b).
+    // So are the other owners' keys of one customer's page (phase 2b, part 2): the cart, the
+    // reminders sent, the behaviour, the consent and the assistant conversation dates.
     const DECRYPTING_VIEW_KEYS = [
       'identity.customer-sign-in.view',
+      'cart.customer-cart.view',
+      'notifications.customer-cart-reminder.view',
+      'engagement.customer-behaviour.view',
+      'legal.customer-consent.view',
+      'assistant.customer-conversation.view',
       'payments.customer-payment.view',
       'security.centre.view',
       'customers.customers.view',
