@@ -5,6 +5,9 @@
  * that are not built yet answer "not ready" (plan section 11).
  */
 
+import { BASKET_UNITS, type BasketUnit } from './pack-size';
+import { MAX_BASKET_ITEMS, type BasketItem } from './plan-basket';
+
 /** The storefront pages the assistant can send the buyer to; the path is built by code (R9). */
 export const SITE_PAGES = [
   'home',
@@ -44,7 +47,8 @@ export type ToolRequest =
   | { readonly tool: 'show_page'; readonly page: SitePage; readonly categoryId: string | null }
   | { readonly tool: 'support_contact' }
   | { readonly tool: 'suggest_cart_change' }
-  | { readonly tool: 'open_support_form' };
+  | { readonly tool: 'open_support_form' }
+  | { readonly tool: 'plan_basket'; readonly items: readonly BasketItem[] };
 
 export type ToolName = ToolRequest['tool'];
 
@@ -156,7 +160,69 @@ export const TOOL_DECLARATIONS: readonly {
     description: 'Opens a support form inside the chat window. Not available yet.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: true },
   },
+  {
+    name: 'plan_basket',
+    description:
+      'Plans a whole shopping list for the buyer. Use it when the buyer gives a list of things ' +
+      'to buy (typed or pasted, up to 40 lines, in any language). Split the list into lines yourself: ' +
+      'text is the thing to find in the language the buyer wrote it, quantity is the amount asked ' +
+      '(1 if none), unit is kg, g, l or ml for an amount by weight or volume, each (or leave it ' +
+      'out) for a number of items. The server picks the products, packs, stores and totals and ' +
+      'shows the buyer a basket card; you get only how many lines were found, unsure or not found. ' +
+      'Never state a price or total. Nothing is added to the cart until the buyer clicks.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          minItems: 1,
+          maxItems: MAX_BASKET_ITEMS,
+          items: {
+            type: 'object',
+            properties: {
+              text: { type: 'string', description: 'What to buy, 2 to 80 characters.' },
+              quantity: { type: 'number', description: 'How much, more than 0.' },
+              unit: { type: 'string', enum: [...BASKET_UNITS] },
+            },
+            required: ['text', 'quantity'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['items'],
+      additionalProperties: false,
+    },
+  },
 ]);
+
+const PLAN_ITEM_TEXT_MAX = 80;
+// Controls, invisible format characters (except the Persian zero-width non-joiner) and markup.
+const FORBIDDEN_ITEM_TEXT = /(?!\u200C)[\p{Cc}\p{Cf}\p{Zl}\p{Zp}<>]/u;
+
+/** One list line as the model wrote it, checked; null when anything is out of shape. */
+function parsePlanItem(value: unknown): BasketItem | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const fields = value as Record<string, unknown>;
+  const text = typeof fields.text === 'string' ? fields.text.normalize('NFC').trim() : '';
+  if (
+    Array.from(text).length < 2 ||
+    Array.from(text).length > PLAN_ITEM_TEXT_MAX ||
+    FORBIDDEN_ITEM_TEXT.test(text)
+  ) {
+    return null;
+  }
+  const quantity = fields.quantity;
+  if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) return null;
+  if (quantity > 100_000) return null;
+  const rawUnit = fields.unit;
+  if (rawUnit !== undefined && rawUnit !== null && typeof rawUnit !== 'string') return null;
+  const unit = rawUnit === undefined || rawUnit === null ? null : rawUnit;
+  if (unit !== null && !(BASKET_UNITS as readonly string[]).includes(unit)) return null;
+  // A count is a whole number of packs.
+  if ((unit === null || unit === 'each') && !Number.isInteger(quantity)) return null;
+  if ((unit === null || unit === 'each') && quantity > 99) return null;
+  return { text, quantity, unit: unit as BasketUnit | null };
+}
 
 const optionalId = (value: unknown): string | null | undefined =>
   value === undefined || value === null
@@ -200,6 +266,14 @@ export function parseToolCall(name: string, input: unknown): ToolRequest | null 
       const sellerId = typeof fields.seller_id === 'string' ? fields.seller_id : '';
       return ID.test(sellerId) ? { tool: name, sellerId } : null;
     }
+    case 'plan_basket': {
+      const raw = fields.items;
+      if (!Array.isArray(raw) || raw.length < 1 || raw.length > MAX_BASKET_ITEMS) return null;
+      const items = raw.map(parsePlanItem);
+      return items.every((item): item is BasketItem => item !== null)
+        ? { tool: name, items }
+        : null;
+    }
     case 'list_categories':
     case 'support_contact':
     case 'suggest_cart_change':
@@ -209,3 +283,12 @@ export function parseToolCall(name: string, input: unknown): ToolRequest | null 
       return null;
   }
 }
+
+/**
+ * The tools sent to the model for a Market's settings: `plan_basket` only while the admin switch
+ * "Basket proposals from a list" is on. The switch is checked again when the tool is run.
+ */
+export const toolDeclarationsFor = (settings: { readonly basketProposals: boolean }) =>
+  settings.basketProposals
+    ? TOOL_DECLARATIONS
+    : TOOL_DECLARATIONS.filter((declaration) => declaration.name !== 'plan_basket');

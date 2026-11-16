@@ -195,6 +195,9 @@ export class FacadeAssistantTools implements AssistantTools {
           cards: [{ kind: 'page', page: 'cart', categoryId: null }],
           notices: ['cart-actions-not-ready'],
         };
+      case 'plan_basket':
+        // Planned by BasketAssistantTools, which wraps this class; never reached through it.
+        return failed;
       case 'open_support_form': {
         const email = await this.support.publicEmail(context);
         return {

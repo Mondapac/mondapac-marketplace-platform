@@ -52,6 +52,7 @@ import { SendGuestMessage } from '../application/use-cases/send-guest-message.us
 import { SendMessage } from '../application/use-cases/send-message.use-case';
 import type { AssistantCard } from '../domain/cards';
 import { PREVIEW_HEADER, SendMessageRequest } from './assistant.dto';
+import { basketCardBody } from './basket-card-body';
 import { guestCookie, guestTokenOf } from './guest-cookie';
 import { closedBody, fail, refusal } from './http-answers';
 
@@ -59,6 +60,7 @@ const ERROR = { type: Object };
 
 /** A card as JSON: Money with its amount as a string of minor units. */
 function cardBody(card: AssistantCard) {
+  if (card.kind === 'basket-proposal') return basketCardBody(card.proposal);
   if (card.kind !== 'product') return card;
   const money = (value: typeof card.price) =>
     value === null ? null : { amount: value.amount.toString(), currency: value.currency };
@@ -222,7 +224,9 @@ export class ConversationController {
       'id is a new or existing conversation id (a canonical UUID v7 the widget generates); a ' +
       "guest's conversation answers only the guest cookie that started it, a customer's only " +
       'its account. The stream carries events conversation, card, text, notice and done. Prices ' +
-      'and stock appear only on cards; certification only as the badge of a product card.',
+      'and stock appear only on cards; certification only as the badge of a product card. A ' +
+      'basket-proposal card (a planned shopping list: stores, packs, prices and totals) comes ' +
+      'only while the admin switch "Basket proposals from a list" is on.',
   })
   @ApiParam({ name: 'id', type: String })
   @ApiHeader({

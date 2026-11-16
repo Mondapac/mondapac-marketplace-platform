@@ -117,8 +117,21 @@ describe('parseAssistantSettings', () => {
       dailySpendCapUsdCents: 1_000,
       monthlySpendCapUsdCents: 20_000,
       supportHandoff: 'email-link',
+      basketProposals: false,
       welcomeText: null,
     });
+  });
+
+  it('keeps "Basket proposals from a list" off by default and checks it is a boolean', () => {
+    expect(DEFAULT_ASSISTANT_SETTINGS.basketProposals).toBe(false);
+    expect(
+      parseAssistantSettings({ ...DEFAULT_ASSISTANT_SETTINGS, basketProposals: true }),
+    ).toEqual(ok({ ...DEFAULT_ASSISTANT_SETTINGS, basketProposals: true }));
+    for (const bad of ['true', 1, null, undefined]) {
+      expect(
+        parseAssistantSettings({ ...DEFAULT_ASSISTANT_SETTINGS, basketProposals: bad }),
+      ).toEqual({ ok: false, error: [{ path: 'basketProposals', code: 'type' }] });
+    }
   });
 
   it.each([

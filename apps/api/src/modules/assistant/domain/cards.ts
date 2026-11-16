@@ -1,4 +1,5 @@
 import type { Money } from '@mondapac/shared-kernel';
+import type { BasketProposal } from './plan-basket';
 import type { SitePage } from './tools';
 
 /**
@@ -48,6 +49,12 @@ export type AssistantCard =
       /** How many products the store has on sale; null means unknown, never zero. */
       readonly productCount: number | null;
     }
+  /**
+   * A shopping list planned by the server (`plan_basket`): the products, packs, stores and totals
+   * all come from {@link BasketProposal}, never from model text. The storefront shows it with an
+   * edit step and adds to the cart only when the buyer clicks, with the buyer's own session.
+   */
+  | { readonly kind: 'basket-proposal'; readonly proposal: BasketProposal }
   | { readonly kind: 'page'; readonly page: SitePage; readonly categoryId: string | null }
   | { readonly kind: 'support'; readonly email: string | null };
 
@@ -74,6 +81,8 @@ export const cardRefOf = (card: AssistantCard): string =>
     ? `product:${card.offerId}`
     : card.kind === 'seller'
       ? `seller:${card.sellerId}`
-      : card.kind === 'page'
-        ? `page:${card.page}`
-        : 'support';
+      : card.kind === 'basket-proposal'
+        ? 'basket'
+        : card.kind === 'page'
+          ? `page:${card.page}`
+          : 'support';

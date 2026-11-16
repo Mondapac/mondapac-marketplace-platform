@@ -25,7 +25,7 @@ import { AssistantSpendCapReached } from '../domain/events';
 import { instructionsFor } from '../domain/instructions';
 import { maskPersonalData } from '../domain/personal-data';
 import { guardReply } from '../domain/reply-guard';
-import { parseToolCall, TOOL_DECLARATIONS } from '../domain/tools';
+import { parseToolCall, toolDeclarationsFor } from '../domain/tools';
 import type { AssistantDependencies } from './assistant-dependencies';
 import type {
   ConversationOwner,
@@ -198,7 +198,7 @@ async function runModel(
       {
         system: instructionsFor(settings.replyLanguage),
         messages,
-        tools: TOOL_DECLARATIONS,
+        tools: toolDeclarationsFor(settings),
         maxOutputTokens: MAX_OUTPUT_TOKENS,
       },
       Math.min(MODEL_TIMEOUT_MS, left),
@@ -231,7 +231,8 @@ async function runModel(
     for (const [index, call] of calls.entries()) {
       const request =
         index < MAX_TOOL_CALLS_PER_ROUND ? parseToolCall(call.name, call.input) : null;
-      if (request === null) {
+      // A tool the Market's settings do not offer is refused even if the model asks for it.
+      if (request === null || (request.tool === 'plan_basket' && !settings.basketProposals)) {
         results.push({
           type: 'tool-result',
           callId: call.id,

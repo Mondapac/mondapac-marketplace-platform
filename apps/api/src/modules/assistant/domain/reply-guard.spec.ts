@@ -1,4 +1,9 @@
-import { EVALUATION_SET, EVALUATION_VERSION } from './evaluation-set';
+import {
+  EVALUATION_SET,
+  EVALUATION_VERSION,
+  INVALID_PLAN_CALLS,
+  LIST_PARSING_CASES,
+} from './evaluation-set';
 import { maskPersonalData, MASKED } from './personal-data';
 import { guardReply, MAX_REPLY_CHARACTERS } from './reply-guard';
 import { parseToolCall, TOOL_DECLARATIONS } from './tools';
@@ -96,6 +101,7 @@ describe('parseToolCall (R9: model output is schema-validated)', () => {
       'support_contact',
       'suggest_cart_change',
       'open_support_form',
+      'plan_basket',
     ]);
   });
 
@@ -158,4 +164,38 @@ describe(`evaluation set ${EVALUATION_VERSION} against the reply guard (decision
       for (const text of item.mustNotShow) expect(shown).not.toContain(text.toLowerCase());
     },
   );
+});
+
+describe(`list parsing of ${EVALUATION_VERSION} (plan_basket)`, () => {
+  it.each(LIST_PARSING_CASES.map((item) => [item.id, item] as const))(
+    '%s: the expected call passes the tool schema',
+    (_id, item) => {
+      const parsed = parseToolCall('plan_basket', { items: item.lines });
+      expect(parsed).toEqual({
+        tool: 'plan_basket',
+        items: item.lines.map((line) => ({ ...line, unit: line.unit ?? null })),
+      });
+    },
+  );
+
+  it.each(INVALID_PLAN_CALLS.map((item) => [item.id, item.input] as const))(
+    '%s: is refused',
+    (_id, input) => {
+      expect(parseToolCall('plan_basket', input)).toBeNull();
+    },
+  );
+
+  it('accepts 40 lines and keeps Persian text with the zero-width non-joiner', () => {
+    const forty = Array.from({ length: 40 }, () => ({ text: 'برنج', quantity: 1 }));
+    expect(parseToolCall('plan_basket', { items: forty })).not.toBeNull();
+    const joined = parseToolCall('plan_basket', {
+      items: [{ text: 'می\u200Cخواهم نان', quantity: 1 }],
+    });
+    expect(joined).toMatchObject({ items: [{ text: 'می\u200Cخواهم نان' }] });
+  });
+
+  it('declares the tool with the same limit as the parser', () => {
+    const declared = TOOL_DECLARATIONS.find((tool) => tool.name === 'plan_basket');
+    expect(JSON.stringify(declared?.inputSchema)).toContain('"maxItems":40');
+  });
 });
