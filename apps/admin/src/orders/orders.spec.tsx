@@ -740,33 +740,50 @@ describe('order tax', () => {
     expect(screen.queryByText(/Tax included/)).toBeNull();
   });
 
-  it('shows the discounts of a line and a seller part only when there are any', () => {
-    const discounted = part({
-      discount: money('300'),
-      shippingDiscount: money('500'),
-      tax: money('155'),
-      total: money('1700'),
-      lines: part().lines.map((line) => ({ ...line, discount: money('300'), tax: money('155') })),
-    });
-    render(
-      wrap(
-        <OrderDetail
-          {...DETAIL_PROPS}
-          canViewCustomer={false}
-          order={order({ total: money('1700'), sellerOrders: [discounted] })}
-        />,
-      ),
-    );
-    expect(screen.getByText(/Discount: \$3\.00/)).toBeTruthy();
-    expect(screen.getByText('Discount')).toBeTruthy();
-    expect(screen.getByText('−$3.00')).toBeTruthy();
-    expect(screen.getByText('Delivery discount')).toBeTruthy();
-    expect(screen.getByText('−$5.00')).toBeTruthy();
-    cleanup();
-    render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
-    expect(screen.queryByText(/Discount/)).toBeNull();
-    expect(screen.queryByText('Delivery discount')).toBeNull();
-  });
+  it.each([
+    ['AUD', '$'],
+    ['NZD', 'NZD '],
+  ])(
+    'shows the discounts of a line and a seller part only when there are any (%s)',
+    (currency, sign) => {
+      const cash = (amount: string) => ({ amount, currency });
+      const discounted = part({
+        subtotal: cash('2000'),
+        shipping: cash('500'),
+        shippingGross: cash('0'),
+        discount: cash('300'),
+        shippingDiscount: cash('500'),
+        tax: cash('155'),
+        total: cash('1700'),
+        lines: part().lines.map((line) => ({
+          ...line,
+          unitPrice: cash('1000'),
+          lineAmount: cash('2000'),
+          discount: cash('300'),
+          tax: cash('155'),
+        })),
+      });
+      render(
+        wrap(
+          <OrderDetail
+            {...DETAIL_PROPS}
+            canViewCustomer={false}
+            order={order({ total: cash('1700'), tax: cash('155'), sellerOrders: [discounted] })}
+          />,
+        ),
+      );
+      const escaped = sign.replace('$', '\\$');
+      expect(screen.getByText(new RegExp(`Discount: ${escaped}3\\.00`))).toBeTruthy();
+      expect(screen.getByText('Discount')).toBeTruthy();
+      expect(screen.getByText(`−${sign}3.00`)).toBeTruthy();
+      expect(screen.getByText('Delivery discount')).toBeTruthy();
+      expect(screen.getByText(`−${sign}5.00`)).toBeTruthy();
+      cleanup();
+      render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
+      expect(screen.queryByText(/Discount/)).toBeNull();
+      expect(screen.queryByText('Delivery discount')).toBeNull();
+    },
+  );
 
   it('says the tax was not recorded on an older order, never zero', () => {
     const old = part({

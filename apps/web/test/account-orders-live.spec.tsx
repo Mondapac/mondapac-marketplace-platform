@@ -156,6 +156,8 @@ describe('order page', () => {
     expect(within(summary).getByText('Delivery discount')).toBeTruthy();
     expect(within(summary).getByText('−A$7.50')).toBeTruthy();
     expect(within(summary).getByText('A$20.00')).toBeTruthy();
+    // The seller's part names its own delivery discount too.
+    expect(within(page).getAllByText('Delivery discount')).toHaveLength(2);
   });
 
   it('says nothing about charges on a cancelled order, and no GST without a tax record', async () => {

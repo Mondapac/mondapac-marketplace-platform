@@ -136,7 +136,7 @@ describe.each(['AUD', 'JPY'])('a paid order in %s', (currency) => {
     });
   });
 
-  it('refuses a part whose discount it cannot read or that exceeds the delivery fee', () => {
+  it('refuses a part whose discount it cannot read or that exceeds what it comes off', () => {
     const bad: { sellerOrders: Record<string, unknown>[] } = orderBody(currency);
     bad.sellerOrders[0] = {
       ...bad.sellerOrders[0]!,
@@ -149,6 +149,15 @@ describe.each(['AUD', 'JPY'])('a paid order in %s', (currency) => {
       shippingDiscount: money('751', currency),
     };
     expect(accountOrderOf(over, LABELS)).toBeNull();
+    const text: { sellerOrders: Record<string, unknown>[] } = orderBody(currency);
+    text.sellerOrders[0] = { ...text.sellerOrders[0]!, discount: money('5.00', currency) };
+    expect(accountOrderOf(text, LABELS)).toBeNull();
+    const goods: { sellerOrders: Record<string, unknown>[] } = orderBody(currency);
+    goods.sellerOrders[0] = { ...goods.sellerOrders[0]!, discount: money('2501', currency) };
+    expect(accountOrderOf(goods, LABELS)).toBeNull();
+    const whole: { sellerOrders: Record<string, unknown>[] } = orderBody(currency);
+    whole.sellerOrders[0] = { ...whole.sellerOrders[0]!, discount: money('2500', currency) };
+    expect(accountOrderOf(whole, LABELS)?.parts[0].discount).toEqual({ amount: 2500, currency });
   });
 
   it('has no GST line without a tax record', () => {

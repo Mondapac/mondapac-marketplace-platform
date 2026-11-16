@@ -115,6 +115,11 @@ export function accountOrderOf(
     if (discount === null || deliveryDiscount === null) return null;
     if (deliveryDiscount !== undefined && deliveryDiscount.amount > deliveryFee.amount) return null;
     if (lines.length === 0 || lines.some((line) => line === null)) return null;
+    const items = (lines as OrderLine[]).reduce(
+      (sum, line) => sum + line.unitPrice.amount * line.quantity,
+      0,
+    );
+    if (discount !== undefined && discount.amount > items) return null;
     const deliveredOn = status === 'delivered' ? dayOf(seller.deliveredAt) : null;
     const note = text(notes[sellerId], 200);
     parts.push({

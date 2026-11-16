@@ -163,6 +163,12 @@ export function OrderDetails({
               <dt>{t('order.seller-delivery')}</dt>
               <dd className="num">{money(part.deliveryFee)}</dd>
             </div>
+            {part.deliveryDiscount ? (
+              <div>
+                <dt>{t('order.delivery-discount')}</dt>
+                <dd className="num">−{money(part.deliveryDiscount)}</dd>
+              </div>
+            ) : null}
           </dl>
         </section>
       ))}
