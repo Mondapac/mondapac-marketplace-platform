@@ -126,13 +126,15 @@ export class SellerOrdersController {
     required: false,
     enum: ['pages', 'prev-next'],
     description:
-      'The Market’s List paging setting, with `page`: `pages` answers the total, `prev-next` ' +
-      'answers `hasNext` and no total. Default `pages`.',
+      'The Market’s List paging setting, only with `page` (else 422 `needs-page`): `pages` answers ' +
+      'the total, `prev-next` answers `hasNext` and no total. Default `pages`. Both stop at row ' +
+      '10,000 (`too-deep`); `hasNext` is false on the last reachable page.',
   })
   @ApiQuery({
     name: 'q',
     required: false,
-    description: 'A seller order id or an order id (the reference in the order emails), exact.',
+    description:
+      'A seller order id or an order id (the reference in the order emails), exact: trimmed and case-insensitive; any other text is 422 `format` on `q`.',
   })
   @ApiQuery({ name: 'from', required: false, description: 'ISO instant: paid at or after it.' })
   @ApiQuery({ name: 'to', required: false, description: 'ISO instant: paid before it.' })

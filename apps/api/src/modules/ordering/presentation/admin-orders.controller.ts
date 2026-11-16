@@ -147,8 +147,9 @@ export class AdminOrdersController {
     required: false,
     enum: ['pages', 'prev-next'],
     description:
-      'The Market’s List paging setting, with `page`: `pages` answers the total, `prev-next` ' +
-      'answers `hasNext` and no total. Default `pages`.',
+      'The Market’s List paging setting, only with `page` (else 422 `needs-page`): `pages` answers ' +
+      'the total, `prev-next` answers `hasNext` and no total. Default `pages`. Both stop at row ' +
+      '10,000 (`too-deep`); `hasNext` is false on the last reachable page.',
   })
   @ApiQuery({
     name: 'paymentState',

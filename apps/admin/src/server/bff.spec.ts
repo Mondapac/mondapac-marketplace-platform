@@ -983,6 +983,14 @@ describe('relay of the orders list', () => {
     expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/admin/orders?${q}`);
   });
 
+  it('forwards the search, the reference, the customer account and the paging mode', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'status=confirmed&q=0190a000-0000-7000-8000-000000000001&search=rice&accountId=0190a000-0000-7000-8000-000000000002&page=1&paging=prev-next';
+    await relay(config, get(`?${q}&x=1`), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/admin/orders?${q}`);
+  });
+
   it('refuses other paths and methods', async () => {
     const upstream = upstreamOk();
     const other = ['ordering', 'admin', 'orders', '0190a000-0000-7000-8000-000000000001'];

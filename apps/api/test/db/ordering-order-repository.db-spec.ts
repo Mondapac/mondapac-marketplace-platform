@@ -344,6 +344,18 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     expect((await find(order.id)).map((o) => o.id)).toEqual([order.id]);
     expect((await find(order.sellerOrders[0]!.id)).map((o) => o.id)).toEqual([order.id]);
     expect(await find(ids.next<'Order'>())).toEqual([]);
+
+    // A cursor and a reference together keep both: the reference is not replaced by the cursor.
+    const [newer, older] = [order, unrelated].sort(
+      (x, y) => Temporal.Instant.compare(y.createdAt, x.createdAt) || (x.id < y.id ? 1 : -1),
+    );
+    const afterNewer = { createdAt: newer!.createdAt, id: newer!.id };
+    const both = (reference: string, after: typeof afterNewer | null) =>
+      value(market, () =>
+        repository.listAll(market, filterOf({ reference }), { limit: 100, after }),
+      ).then((rows) => rows.map((o) => o.id));
+    expect(await both(older!.id, afterNewer)).toEqual([older!.id]);
+    expect(await both(newer!.id, afterNewer)).toEqual([]);
   });
 
   const rawOrder = async (overrides: Record<string, unknown>): Promise<string | null> => {
@@ -989,7 +1001,8 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     ).then((rows) => rows.find((r) => r.sellerOrder.id === parts[1]!.id)!.orderId);
     expect(
       await idsOf({ ...window, reference: orderIdOf }, { key: 'paid', direction: 'asc' }),
-    ).toContain(parts[1]!.id);
+    ).toEqual([parts[1]!.id]);
+    expect(await count({ ...window, reference: orderIdOf })).toBe(1);
     expect(await count({ ...window, reference: parts[2]!.id })).toBe(1);
     expect(await count({ ...window, reference: parts[2]!.id }, market, rival)).toBe(0);
     // The cursor list takes the same range.
@@ -1002,6 +1015,21 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
       ),
     );
     expect(cursorList.map((r) => r.sellerOrder.id)).toEqual([parts[3]!.id, parts[2]!.id]);
+    // A cursor and a reference together keep both (the cursor does not replace the reference).
+    const afterNewest = await value(market, () =>
+      repository.listForSeller(market, mine, all, { limit: 1, after: null }),
+    ).then((rows) => ({ confirmedAt: rows[0]!.confirmedAt, id: rows[0]!.sellerOrder.id }));
+    const withCursor = (reference: string) =>
+      value(market, () =>
+        repository.listForSeller(
+          market,
+          mine,
+          { ...window, reference },
+          { limit: 10, after: afterNewest },
+        ),
+      ).then((rows) => rows.map((r) => r.sellerOrder.id));
+    expect(await withCursor(parts[2]!.id)).toEqual([parts[2]!.id]);
+    expect(await withCursor(afterNewest.id)).toEqual([]);
   });
 
   it('queues shipped orders for inventory once and marks them recorded', async () => {

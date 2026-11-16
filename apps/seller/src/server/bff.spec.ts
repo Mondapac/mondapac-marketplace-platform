@@ -804,6 +804,16 @@ describe('relay of the seller order routes', () => {
     expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/seller/orders?${q}`);
   });
 
+  it('forwards the reference and the paging mode, and drops a paging mode it does not know', async () => {
+    const upstream = upstreamOk();
+    const q = 'page=1&paging=prev-next&q=0190a000-0000-7000-8000-000000000001';
+    await relay(config, get(`?${q}&x=1`), list, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/seller/orders?${q}`);
+    const refused = upstreamOk();
+    await relay(config, get('?page=1&paging=infinite'), list, refused);
+    expect(refused.mock.calls[0]?.[0]).not.toContain('paging=infinite');
+  });
+
   it('posts ship and deliver by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     for (const action of ['ship', 'deliver']) {

@@ -267,7 +267,7 @@ export async function listSellerOrders(
           nextCursor: null,
           total,
           hasNext: prevNext
-            ? read.length > request.pageSize
+            ? read.length > request.pageSize && request.page * request.pageSize < MAX_PAGED_ROWS
             : request.page * request.pageSize < Math.min(total ?? 0, MAX_PAGED_ROWS),
         });
       }

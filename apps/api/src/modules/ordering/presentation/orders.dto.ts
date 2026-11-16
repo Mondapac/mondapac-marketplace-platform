@@ -456,7 +456,10 @@ export class AdminOrderPageBody {
     description: PAGING_DESCRIPTION,
   })
   paging!: 'pages' | 'prev-next' | null;
-  @ApiProperty({ type: Boolean, description: 'Whether a page after this one exists.' })
+  @ApiProperty({
+    type: Boolean,
+    description: 'Whether a page after this one exists (cursor mode: whether nextCursor is set).',
+  })
   hasNext!: boolean;
   @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: this page, from 1.' })
   page!: number | null;
@@ -641,7 +644,10 @@ export class SellerOrderPageBody {
     description: PAGING_DESCRIPTION,
   })
   paging!: 'pages' | 'prev-next' | null;
-  @ApiProperty({ type: Boolean, description: 'Whether a page after this one exists.' })
+  @ApiProperty({
+    type: Boolean,
+    description: 'Whether a page after this one exists (cursor mode: whether nextCursor is set).',
+  })
   hasNext!: boolean;
   @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: this page, from 1.' })
   page!: number | null;

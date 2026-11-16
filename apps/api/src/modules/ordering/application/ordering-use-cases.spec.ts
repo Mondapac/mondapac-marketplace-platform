@@ -1813,6 +1813,23 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       ]);
     });
 
+    it('never lets another seller find an order through q', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+
+      const byOther = await list(sellerB, { q: sellerOrderId, page: 1 });
+      const byOtherOrder = await list(sellerB, { q: order.id });
+
+      expect(byOther.ok && [byOther.value.sellerOrders, byOther.value.paging?.total]).toEqual([
+        [],
+        0,
+      ]);
+      // The order id finds only seller B's own part of the order, never seller A's.
+      expect(
+        byOtherOrder.ok && byOtherOrder.value.sellerOrders.map((o) => o.sellerOrderId),
+      ).toEqual([sellerOrderIdOf(order.id, SELLER_B)]);
+    });
+
     it('answers Previous and Next without a total', async () => {
       const order = await paid();
       await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
