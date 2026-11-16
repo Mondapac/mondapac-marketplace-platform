@@ -25,7 +25,7 @@ export interface SearchRouteOptions {
 
 /** Routes the trimmed text of a search box. */
 export function routeSearch(text: string, options: SearchRouteOptions = {}): SearchRoute {
-  const value = text.trim().slice(0, SEARCH_MAX);
+  const value = Array.from(text.trim()).slice(0, SEARCH_MAX).join('');
   if (value === '') return { kind: 'none' };
   if (options.exact === true) return { kind: 'q', value };
   if (isUuid(value) || (options.exactPrefixes ?? []).some((prefix) => value.startsWith(prefix))) {

@@ -42,3 +42,12 @@ describe('routeSearch', () => {
     expect(routeSearch('rex', options)).toEqual({ kind: 'search', value: 'rex' });
   });
 });
+
+describe('routeSearch code points', () => {
+  it('cuts at 80 code points, never in the middle of an emoji', () => {
+    const route = routeSearch(`${'a'.repeat(79)}😀tail`);
+    expect(route.kind).toBe('search');
+    expect(route.kind === 'search' ? Array.from(route.value).length : 0).toBe(80);
+    expect(route.kind === 'search' ? route.value.endsWith('😀') : false).toBe(true);
+  });
+});

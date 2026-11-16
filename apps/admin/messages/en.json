@@ -9605,7 +9605,8 @@
       "scope-tracking": "Tracking reference",
       "placeholder-name": "Customer, store, or order ID",
       "placeholder-tracking": "Tracking reference, exact",
-      "too-short": "Type at least 2 characters."
+      "too-short": "Type at least 2 characters.",
+      "tracking-invalid": "Tracking references use letters, digits, spaces and . _ # -."
     },
     "chip-search": "Search: \"{text}\"",
     "chip-tracking": "Tracking: \"{text}\"",
@@ -9699,6 +9700,7 @@
     "loading": "Loading shipments...",
     "error": {
       "unavailable": "Shipments couldn't be loaded.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them.",
       "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
     },
     "empty": {
