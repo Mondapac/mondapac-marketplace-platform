@@ -58,7 +58,8 @@ export interface AttributeAdminListInput {
 
 /** The sorts of the attribute list: by code (default), by name in the default locale, type, status. */
 export const ATTRIBUTE_SORTS = ['code', 'name', 'type', 'status'] as const;
-export const ATTRIBUTE_MAX_PAGE = 1000;
+export const ATTRIBUTE_MAX_PAGE = 100;
+const COLLATOR = new Intl.Collator('en');
 
 /** What each row action needs (the plan's table, row 5): the key its use case checks and the state. */
 export const ATTRIBUTE_ACTION_RULES: readonly RowActionRule<{ readonly status: string }>[] = [
@@ -85,7 +86,7 @@ export interface AttributeAdminListOutput {
   /** The `afterId` of the next page; null on the last page. */
   readonly nextAfterId: string | null;
   /** The definitions that match the filters, across every page (always known: read in memory). */
-  readonly total: number;
+  readonly total: number | null;
   readonly page: number;
   readonly pageSize: number;
   readonly paging: ListPagingMode;
@@ -240,7 +241,7 @@ export class AttributeAdminList extends UseCase<
           // The order is the sort, then the code, so a page never repeats or skips a row.
           .sort(
             (a, b) =>
-              sign * keyOf(a).localeCompare(keyOf(b), 'en') ||
+              sign * COLLATOR.compare(keyOf(a), keyOf(b)) ||
               (a.code < b.code ? -1 : a.code > b.code ? 1 : 0),
           );
         const window = pageWindow(paged.value);
@@ -274,7 +275,7 @@ export class AttributeAdminList extends UseCase<
             ).size,
           })),
           nextAfterId: page.nextAfterId,
-          total: matching.length,
+          total: result === null ? matching.length : result.total,
           page: legacy ? 1 : paged.value.page,
           pageSize: legacy ? limit : paged.value.pageSize,
           paging: paged.value.paging,

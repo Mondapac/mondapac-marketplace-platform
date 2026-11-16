@@ -49,7 +49,7 @@ import {
   SuggestionMapRequest,
   SuggestionRejectRequest,
 } from './attribute-suggestion.dto';
-import { closedBody, numericQuery, refusalWith, type Refusal } from './http-answers';
+import { closedBody, numericQuery, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 
 /**
@@ -136,7 +136,7 @@ export class AttributeSuggestionController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<SuggestionListBody> {
-    const result = await this.listOpen.execute(context, numericQuery(query));
+    const result = await this.listOpen.execute(context, numericQuery(pageQuery(query)));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as SuggestionListBody)
       : refusal(result.error, response, context);

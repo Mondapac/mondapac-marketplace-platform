@@ -454,6 +454,22 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
       });
     });
 
+    it('takes limit as an alias of pageSize, with null and empty as absent, and sorts descending', async () => {
+      await opened();
+      const aliased = await build().list.execute(context('admin'), { limit: 5 });
+      expect(aliased).toMatchObject({ ok: true, value: { pageSize: 5 } });
+      const absent = await build().list.execute(context('admin'), { limit: null, pageSize: 7 });
+      expect(absent).toMatchObject({ ok: true, value: { pageSize: 7 } });
+      const empty = await build().list.execute(context('admin'), { limit: '', pageSize: 7 });
+      expect(empty).toMatchObject({ ok: true, value: { pageSize: 7 } });
+      expect(
+        await build().list.execute(context('admin'), { direction: 'desc', paging: 'prev-next' }),
+      ).toMatchObject({ ok: true, value: { total: null, hasNext: false } });
+      expect(
+        await build().list.execute(context('admin'), { paging: 'prev-next', page: 5 }),
+      ).toMatchObject({ ok: true, value: { items: [], hasNext: false } });
+    });
+
     it.each<[Record<string, unknown>, string]>([
       [{ limit: 0 }, 'limit'],
       [{ limit: 5, pageSize: 5 }, 'limit'],
@@ -468,6 +484,11 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
       const answer = await build().list.execute(context('admin'), input);
       expect(answer.ok).toBe(false);
       expect(JSON.stringify(answer)).toContain(field);
+    });
+
+    it('names the conflict code when limit and pageSize are both sent', async () => {
+      const answer = await build().list.execute(context('admin'), { limit: 5, pageSize: 5 });
+      expect(JSON.stringify(answer)).toContain('conflict');
     });
   });
 

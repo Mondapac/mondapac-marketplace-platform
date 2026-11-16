@@ -290,6 +290,13 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
     expect(byStatus.items[0]?.status).toBe('archived');
     const cheap = await read({ paging: 'prev-next', pageSize: 2 });
     expect(cheap).toMatchObject({ paging: 'prev-next', hasNext: true });
+    expect(cheap.items).toHaveLength(2);
+    expect(cheap.total).toBeNull();
+    const byName = await read({ sort: 'name', direction: 'desc' });
+    expect(byName.items).toHaveLength(3);
+    expect(await read({ afterId: '', limit: null, page: 2, pageSize: 2 })).toMatchObject({
+      page: 2,
+    });
   });
 
   it('filters and pages', async () => {

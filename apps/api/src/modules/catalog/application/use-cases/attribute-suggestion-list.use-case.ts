@@ -19,10 +19,10 @@ import type { AttributeValueSuggestionStore } from '../ports/attribute-value-sug
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRepository } from '../ports/product.repository';
 
-export const SUGGESTION_PAGE_DEFAULT = 25;
+export const SUGGESTION_PAGE_DEFAULT = 50;
 export const SUGGESTION_PAGE_MAX = 100;
 
-export const SUGGESTION_MAX_PAGE = 1000;
+export const SUGGESTION_MAX_PAGE = 100;
 /** One sort, by the time of the suggestion: `asc` (default) puts the one waiting longest first. */
 export const SUGGESTION_SORTS = ['created'] as const;
 const MAX_TEXT = 100;
