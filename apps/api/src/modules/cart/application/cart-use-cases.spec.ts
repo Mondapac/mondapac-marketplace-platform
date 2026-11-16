@@ -45,6 +45,9 @@ import { MoveSavedToCart } from './use-cases/move-saved-to-cart.use-case';
 import { RemoveSaved } from './use-cases/remove-saved.use-case';
 import { SaveForLater } from './use-cases/save-for-later.use-case';
 import { ViewSaved } from './use-cases/view-saved.use-case';
+import { ReadAssistantOfferUnits } from './use-cases/read-assistant-offer-units.use-case';
+import { ViewAssistantCart } from './use-cases/view-assistant-cart.use-case';
+import { CartAssistantFacadeImplementation } from '../presentation/cart-assistant.facade';
 
 // The cart use cases in memory on both Market fixtures (AU 99 per line, AUD; ZZ 50, another
 // currency): add with limits, stock clamp, guest cookie lifecycle, merge, price change, fail
@@ -141,6 +144,7 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
   let counters: InMemoryRateCounters;
   let deps: SavedDependencies;
   let saved: InMemorySavedItems;
+  let offerUnits: Awaited<ReturnType<LineFactsSource['offerSellUnits']>>;
 
   const buyable = (
     amount: bigint,
@@ -202,12 +206,14 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
       Promise.resolve(
         new Map(factsDown ? [] : sellerIds.map((sellerId) => [sellerId, 'Halal Corner'] as const)),
       ),
+    offerSellUnits: () => Promise.resolve(factsDown ? null : offerUnits),
   };
 
   beforeEach(() => {
     carts = new MemoryCarts();
     clock.set(T0);
     factsDown = false;
+    offerUnits = { sellerId: SELLER, productId: DISPLAY.productId, variantIds: [VARIANT] };
     factCalls = 0;
     minimumCalls = 0;
     minimums = new Map<Id<'Seller'>, SellerMinimum>([[SELLER, { kind: 'none' }]]);
@@ -516,6 +522,181 @@ describe.each([['AU'], ['ZZ']] as const)('cart use cases in market %s', (code) =
     const down = await read.execute(customerCtx, {});
     expect(down.ok && down.value.every((l) => l.state === 'check-unavailable')).toBe(true);
     expect(await read.execute(guestCtx, {})).toMatchObject({ ok: false });
+  });
+
+  describe('assistant cart reads (buyer assistant S1-B1)', () => {
+    const VARIANT_B = id<'Variant'>(30);
+    const SELLER_B = id<'Seller'>(31);
+    const facade = () =>
+      new CartAssistantFacadeImplementation(
+        new ViewAssistantCart(gate, deps),
+        new ReadAssistantOfferUnits(gate, deps),
+      );
+
+    it("answers the customer's own cart by store, with subtotals, the total and each line's max", async () => {
+      verdicts.set(verdictKey({ offerId: OFFER_B, variantId: VARIANT }), {
+        ...buyable(250n, { status: 'low', onlyLeft: 3 }),
+        sellerId: SELLER_B,
+      });
+      const add = new AddItem(gate, deps);
+      await add.execute(customerCtx, { ...line, quantity: 2 });
+      await add.execute(customerCtx, { offerId: OFFER_B, variantId: VARIANT, quantity: 1 });
+      minimums.set(SELLER_B, { kind: 'none' });
+
+      const cart = await facade().ownCart(customerCtx);
+
+      expect(cart.ok && cart.value.lineCount).toBe(2);
+      expect(cart.ok && cart.value.total).toEqual(money(2250n, currency));
+      expect(cart.ok && cart.value.groups.map((group) => group.subtotal)).toEqual([
+        money(2000n, currency),
+        money(250n, currency),
+      ]);
+      expect(cart.ok && cart.value.groups[0]?.lines[0]).toMatchObject({
+        offerId: OFFER,
+        variantId: VARIANT,
+        productName: 'Lamb mince',
+        variantLabel: '500 g',
+        quantity: 2,
+        state: 'buyable',
+        unitPrice: money(1000n, currency),
+        maxQuantity: ceiling,
+      });
+      expect(cart.ok && cart.value.groups[1]?.lines[0]?.maxQuantity).toBe(3);
+    });
+
+    it('answers an empty cart with no groups and no total', async () => {
+      const cart = await facade().ownCart(customerCtx);
+      expect(cart.ok && cart.value).toEqual({ groups: [], lineCount: 0, total: null });
+    });
+
+    it('gives no max to a line that cannot be bought, and leaves its store out of the total', async () => {
+      await new AddItem(gate, deps).execute(customerCtx, { ...line, quantity: 1 });
+      verdicts.set(verdictKey(line), {
+        ...buyable(1000n),
+        state: 'unavailable',
+        reason: 'out-of-stock',
+      });
+
+      const cart = await facade().ownCart(customerCtx);
+
+      expect(cart.ok && cart.value.groups[0]?.lines[0]?.maxQuantity).toBeNull();
+      expect(cart.ok && cart.value.total).toBeNull();
+    });
+
+    it('refuses the cart to a guest and a seller, and never shows one customer another cart', async () => {
+      await new AddItem(gate, deps).execute(customerCtx, { ...line, quantity: 1 });
+      for (const context of [guestCtx, sellerCtx]) {
+        const refused = await facade().ownCart(context);
+        expect(!refused.ok && refused.error.code).toBe(
+          context === guestCtx ? 'access.unauthenticated' : 'access.denied',
+        );
+      }
+      const other = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'customer',
+          accountId: id<'Account'>(40),
+          sessionId: id<'Session'>(41),
+          sellerId: null,
+        }),
+        'cart-0040-abcd',
+      );
+      const theirs = await facade().ownCart(other);
+      expect(theirs.ok && theirs.value.lineCount).toBe(0);
+    });
+
+    it('answers the units of an Offer that can be added, with price, label and max, to anyone', async () => {
+      offerUnits = {
+        sellerId: SELLER,
+        productId: DISPLAY.productId,
+        variantIds: [VARIANT, VARIANT_B],
+      };
+      verdicts.set(
+        verdictKey({ offerId: OFFER, variantId: VARIANT_B }),
+        buyable(1200n, { status: 'low', onlyLeft: 2 }),
+      );
+      for (const context of [guestCtx, customerCtx]) {
+        const units = await facade().offerUnits(context, OFFER);
+        expect(units.ok && units.value).toEqual({
+          offerId: OFFER,
+          sellerId: SELLER,
+          sellerName: 'Halal Corner',
+          productId: DISPLAY.productId,
+          productName: 'Lamb mince',
+          units: [
+            {
+              variantId: VARIANT,
+              label: '500 g',
+              unitPrice: money(1000n, currency),
+              taxInclusive: true,
+              maxQuantity: ceiling,
+            },
+            {
+              variantId: VARIANT_B,
+              label: '500 g',
+              unitPrice: money(1200n, currency),
+              taxInclusive: true,
+              maxQuantity: 2,
+            },
+          ],
+        });
+      }
+      // A read only: no cart was created or changed.
+      expect(carts.rows.size).toBe(0);
+    });
+
+    it('leaves out a unit that cannot be bought, and refuses an Offer with none left', async () => {
+      offerUnits = {
+        sellerId: SELLER,
+        productId: DISPLAY.productId,
+        variantIds: [VARIANT, VARIANT_B],
+      };
+      const units = await facade().offerUnits(guestCtx, OFFER);
+      expect(units.ok && units.value.units.map((unit) => unit.variantId)).toEqual([VARIANT]);
+
+      verdicts.set(verdictKey(line), {
+        ...buyable(1000n),
+        state: 'unavailable',
+        reason: 'out-of-stock',
+      });
+      const none = await facade().offerUnits(guestCtx, OFFER);
+      expect(!none.ok && none.error.code).toBe('cart.offer-not-purchasable');
+    });
+
+    it('refuses a malformed id, an Offer that is not listed, and fails closed when a check is down', async () => {
+      const malformed = await facade().offerUnits(guestCtx, 'not-an-id');
+      expect(!malformed.ok && malformed.error.code).toBe('validation.failed');
+      offerUnits = 'absent';
+      const absent = await facade().offerUnits(guestCtx, OFFER);
+      expect(!absent.ok && absent.error.code).toBe('cart.offer-not-purchasable');
+      factsDown = true;
+      const down = await facade().offerUnits(guestCtx, OFFER);
+      expect(!down.ok && down.error.code).toBe('cart.check-unavailable');
+      offerUnits = { sellerId: SELLER, productId: DISPLAY.productId, variantIds: [VARIANT] };
+      factsDown = false;
+      const throwing = new CartAssistantFacadeImplementation(
+        { execute: () => Promise.reject(new Error('down')) } as unknown as ViewAssistantCart,
+        { execute: () => Promise.reject(new Error('down')) } as unknown as ReadAssistantOfferUnits,
+      );
+      expect(await throwing.offerUnits(guestCtx, OFFER)).toEqual({
+        ok: false,
+        error: { code: 'cart.check-unavailable' },
+      });
+      expect(await throwing.ownCart(customerCtx)).toEqual({
+        ok: false,
+        error: { code: 'cart.check-unavailable' },
+      });
+    });
+
+    it('answers at most ten units of one Offer', async () => {
+      const many = Array.from({ length: 12 }, (_, index) => id<'Variant'>(100 + index));
+      offerUnits = { sellerId: SELLER, productId: DISPLAY.productId, variantIds: many };
+      for (const variantId of many) {
+        verdicts.set(verdictKey({ offerId: OFFER, variantId }), buyable(500n));
+      }
+      const units = await facade().offerUnits(guestCtx, OFFER);
+      expect(units.ok && units.value.units).toHaveLength(10);
+    });
   });
 
   describe('saved for later (cart v4)', () => {

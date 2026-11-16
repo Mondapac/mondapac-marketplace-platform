@@ -31,22 +31,26 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
 
 - Cards: `product` (offer, product, seller ids, name, short text, `price` and `regularPrice` as
   `{ amount: "<minor units>", currency }`, `taxInclusive`), `page` (a site page the storefront
-  builds the link for), `support` (the public support email).
+  builds the link for), `support` (the public support email), and under the `cart-suggestions`
+  scope `cart-action` and `cart` (see "Cart cards" below).
 - Notices: `see-cards` (a price, stock, delivery or minimum-order sentence was dropped),
   `see-certification` (a certification sentence was dropped), `tool-failed`, `unavailable` (the
-  model failed or timed out: a support card comes with it), `refused`, `cart-actions-not-ready`,
-  `support-form-not-ready`.
+  model failed or timed out: a support card comes with it), `refused`, `cart-actions-not-ready`
+  (the Market's scope is `read-only`), `cart-sign-in` (a cart line or the cart was asked for by a
+  buyer who is not signed in; the cart page link comes with it), `support-form-not-ready`.
 
 ## What the model gets and does
 
 - One model entry point (`platform/ai`, `ModelGateway`); only the files on the boundary rule's
   allow-list import it, and no provider SDK is imported anywhere (plain HTTPS to the Messages
   API). Provider failures are logged with the Market, tier and failure kind only.
-- Instructions version `buyer-assistant-3`; the last 12 messages; read-only tools that call the
+- Instructions version `buyer-assistant-4`; the last 12 messages; read-only tools that call the
   `search`, `catalog`, `sellers`, `certification` and `notifications` facades with the buyer's own
   `CallContext`: `search_products`, `list_bestsellers`, `list_specials`, `get_product`,
-  `get_seller`, `list_categories`, `show_page`, `support_contact`. `suggest_cart_change` and
-  `open_support_form` answer "not ready yet".
+  `get_seller`, `list_categories`, `show_page`, `support_contact`. `open_support_form` answers
+  "not ready yet"; `suggest_cart_change` too under the `read-only` scope. Under `cart-suggestions`
+  the model also gets `get_cart` and the real `suggest_cart_change`, and the cart rules are added
+  to the instructions (same prompt version).
 - Product cards carry the seller's public store name and the lowest buyer price of the Offer from
   pricing (`price`, `taxInclusive`, `priceFrom` when the Variants differ; `regularPrice` only on a
   special), read through the product page use case (one read per distinct product). A price that
@@ -76,6 +80,45 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
   card always fits. The turn and its spend commit in their own unit, before the text is stored,
   so a storage failure never loses the count. A call cut at its timeout is counted at the most it
   can cost. A guest request with no client origin is refused (`assistant.unavailable`).
+
+## Cart cards (stage 1, S1-B1)
+
+Only under the Market's `cart-suggestions` scope (default `read-only`). The assistant never
+changes a cart: both tools are reads through `cart`'s `CartAssistantFacade` with the buyer's own
+`CallContext`, and the storefront changes the cart through the cart's own routes, with the buyer's
+session and CSRF token, only after the buyer clicks (ADR-0019 R4).
+
+- `suggest_cart_change` takes `action` (`add`, `set_quantity`, `remove`), `offer_id` (add; the model
+  now gets the `offerId` of each listed product), `line_id` (from `get_cart`) and `quantity` (1 to
+  999; add defaults to 1). Any other field, a malformed id or quantity is refused.
+- `add` asks `cart.read-assistant-offer-units` (rule `anonymous`): the Offer's units on sale now,
+  checked as the cart's add checks them (catalog, sellers, pricing, inventory; fail closed), at
+  most 10, each with its price, Variant label and `maxQuantity` (the Market's line ceiling, lowered
+  by the stock read only while stock is low: the "max N" of the brief, never a stock count). The
+  proposed quantity is lowered to the largest max (`limited: true`). A signed-in buyer's cart is
+  read too: each unit's `lineId` and `inCart`. The buyer picks the unit when there are several.
+- `set_quantity` and `remove` need the signed-in buyer's own line (`cart.view-assistant-cart`, rule
+  `own-resources`): a line id not in that cart is "not found"; a guest gets the cart page link and
+  `cart-sign-in`. A line that cannot be bought now can be lowered or removed, never raised; a
+  raise above the max is lowered to it.
+- Cart mode (`settings.read-cart-mode` through `SettingsFacade.cartMode`, `multi-store` on any
+  failure): in `single-store`, `otherStore` is true when the buyer's cart holds lines of another
+  store (the widget then asks to move them to saved items or remove them first), null for a guest
+  (the widget reads its own cart), false in `multi-store`. Enforcement stays in `cart`/`ordering`.
+- `get_cart` shows the `cart` card: lines grouped by store with the cart evaluator's subtotal and
+  minimum-order state, each line's price and max, and the total of the stores with something
+  buyable (null when one is unknown or currencies mix).
+- The model reads line ids, offer ids, names and sizes (as seller text), quantities in the buyer's
+  own cart and whether each line can be bought now: never a price, subtotal, total, minimum or max.
+  Its descriptions and the cart rules say it changes nothing and must not say a change was made.
+- Card JSON: every Money is `{ amount: "<minor units>", currency }`. `cart-action`: `action`,
+  `offerId`, `productId`, `sellerId`, `sellerName`, `name`, `lineId` and `currentQuantity` (line
+  changes), `quantity` (add: how many more; set: the new total; remove: 0), `limited`, `units[]`
+  (`variantId`, `label`, `price`, `taxInclusive`, `maxQuantity`, `lineId`, `inCart`), `cartMode`,
+  `otherStore`. `cart`: `lineCount`, `total`, `groups[]` (`sellerId`, `sellerName`, `subtotal`,
+  `minimumOrder {state, minimum}`, `lines[]`).
+- History keeps a `cart-action` card as its product card and a `cart` card as the cart page link:
+  an old action button or an old cart is never replayed.
 
 ## Limits, spend and storage
 

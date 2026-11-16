@@ -57,12 +57,34 @@ import { closedBody, fail, refusal } from './http-answers';
 
 const ERROR = { type: Object };
 
+type Money = { readonly amount: bigint; readonly currency: string };
+const money = (value: Money | null) =>
+  value === null ? null : { amount: value.amount.toString(), currency: value.currency };
+
 /** A card as JSON: Money with its amount as a string of minor units. */
 function cardBody(card: AssistantCard) {
-  if (card.kind !== 'product') return card;
-  const money = (value: typeof card.price) =>
-    value === null ? null : { amount: value.amount.toString(), currency: value.currency };
-  return { ...card, price: money(card.price), regularPrice: money(card.regularPrice) };
+  switch (card.kind) {
+    case 'product':
+      return { ...card, price: money(card.price), regularPrice: money(card.regularPrice) };
+    case 'cart-action':
+      return {
+        ...card,
+        units: card.units.map((unit) => ({ ...unit, price: money(unit.price) })),
+      };
+    case 'cart':
+      return {
+        ...card,
+        total: money(card.total),
+        groups: card.groups.map((group) => ({
+          ...group,
+          subtotal: money(group.subtotal),
+          minimumOrder: { ...group.minimumOrder, minimum: money(group.minimumOrder.minimum) },
+          lines: group.lines.map((line) => ({ ...line, unitPrice: money(line.unitPrice) })),
+        })),
+      };
+    default:
+      return card;
+  }
 }
 
 const listItemBody = (item: ConversationListItem) => ({

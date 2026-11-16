@@ -1,7 +1,7 @@
 import { EVALUATION_SET, EVALUATION_VERSION } from './evaluation-set';
 import { maskPersonalData, MASKED } from './personal-data';
 import { guardReply, MAX_REPLY_CHARACTERS } from './reply-guard';
-import { parseToolCall, TOOL_DECLARATIONS } from './tools';
+import { parseToolCall, TOOL_DECLARATIONS, toolDeclarationsFor } from './tools';
 
 // The deterministic checks around a model (plan section 5; ADR-0019 R1, R5, R9): what a buyer
 // typed is masked before it is kept or sent; what a model wrote is checked before a buyer sees it.
@@ -97,6 +97,60 @@ describe('parseToolCall (R9: model output is schema-validated)', () => {
       'suggest_cart_change',
       'open_support_form',
     ]);
+  });
+
+  it('declares the cart tools only under the cart-suggestions scope', () => {
+    expect(toolDeclarationsFor('read-only')).toBe(TOOL_DECLARATIONS);
+    const names = toolDeclarationsFor('cart-suggestions').map((tool) => tool.name);
+    expect(names).toContain('get_cart');
+    expect(names.filter((name) => name === 'suggest_cart_change')).toHaveLength(1);
+  });
+
+  describe('cart calls (stage 1, S1-B1)', () => {
+    const OFFER = '0199aaaa-0000-7000-8000-0000000000f1';
+    const LINE = '0199aaaa-0000-7000-8000-0000000000c1';
+    const cart = (input: unknown) =>
+      parseToolCall('suggest_cart_change', input, 'cart-suggestions');
+
+    it('answers "not ready" and reads nothing under the read-only scope', () => {
+      expect(parseToolCall('suggest_cart_change', { action: 'add', offer_id: OFFER })).toEqual({
+        tool: 'suggest_cart_change',
+        change: null,
+      });
+      expect(parseToolCall('get_cart', {})).toBeNull();
+      expect(parseToolCall('get_cart', {}, 'cart-suggestions')).toEqual({ tool: 'get_cart' });
+    });
+
+    it('accepts an add (default quantity 1), a quantity change and a removal', () => {
+      expect(cart({ action: 'add', offer_id: OFFER })).toEqual({
+        tool: 'suggest_cart_change',
+        change: { action: 'add', offerId: OFFER, quantity: 1 },
+      });
+      expect(cart({ action: 'set_quantity', line_id: LINE, quantity: 999 })).toEqual({
+        tool: 'suggest_cart_change',
+        change: { action: 'set-quantity', lineId: LINE, quantity: 999 },
+      });
+      expect(cart({ action: 'remove', line_id: LINE })).toEqual({
+        tool: 'suggest_cart_change',
+        change: { action: 'remove', lineId: LINE },
+      });
+    });
+
+    it.each([
+      ['no action', { offer_id: OFFER }],
+      ['an unknown action', { action: 'checkout', offer_id: OFFER }],
+      ['a bad offer id', { action: 'add', offer_id: 'ghee' }],
+      ['a zero quantity', { action: 'add', offer_id: OFFER, quantity: 0 }],
+      ['a fractional quantity', { action: 'add', offer_id: OFFER, quantity: 1.5 }],
+      ['a string quantity', { action: 'add', offer_id: OFFER, quantity: '2' }],
+      ['a quantity over 999', { action: 'add', offer_id: OFFER, quantity: 1000 }],
+      ['a set without quantity', { action: 'set_quantity', line_id: LINE }],
+      ['a removal of an offer', { action: 'remove', offer_id: OFFER }],
+      ['an extra field (a price)', { action: 'add', offer_id: OFFER, price: 1 }],
+      ['an account id', { action: 'remove', line_id: LINE, account_id: LINE }],
+    ])('refuses %s', (_name, input) => {
+      expect(cart(input)).toBeNull();
+    });
   });
 
   it('accepts well-formed calls', () => {

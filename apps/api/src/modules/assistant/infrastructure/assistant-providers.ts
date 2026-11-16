@@ -1,8 +1,10 @@
 import type { FactoryProvider } from '@nestjs/common';
+import { CART_ASSISTANT_FACADE, type CartAssistantFacade } from '../../cart';
 import { CATALOG_ASSISTANT_FACADE, type CatalogAssistantFacade } from '../../catalog';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { SUPPORT_CONTACT_FACADE, type SupportContactFacade } from '../../notifications';
 import { SEARCH_ASSISTANT_FACADE, type SearchAssistantFacade } from '../../search';
+import { SETTINGS_FACADE, type SettingsFacade } from '../../settings';
 import { ModelGateway } from '../../../platform/ai/model-gateway';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { APP_CONFIG } from '../../../platform/config/config.module';
@@ -74,6 +76,8 @@ export const assistantProviders: readonly FactoryProvider[] = [
       SUPPORT_CONTACT_FACADE,
       SELLERS_FACADE,
       ServiceAreaDirectory,
+      CART_ASSISTANT_FACADE,
+      SETTINGS_FACADE,
     ],
     useFactory: (
       search: SearchAssistantFacade,
@@ -81,7 +85,10 @@ export const assistantProviders: readonly FactoryProvider[] = [
       support: SupportContactFacade,
       sellers: SellersFacade,
       areas: ServiceAreaDirectory,
-    ): AssistantTools => new FacadeAssistantTools(search, catalog, support, sellers, areas),
+      cart: CartAssistantFacade,
+      settings: SettingsFacade,
+    ): AssistantTools =>
+      new FacadeAssistantTools(search, catalog, support, sellers, areas, cart, settings),
   },
   {
     provide: MESSAGE_LIMITS,
