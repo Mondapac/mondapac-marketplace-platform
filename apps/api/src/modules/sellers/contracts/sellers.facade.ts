@@ -1,6 +1,7 @@
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { SellerSummary } from '../domain/seller-summary';
+import type { PublishedStore } from '../domain/published-store';
 
 /** One answer per distinct requested seller (sellers design 7.2). */
 export type SellingEligibilityMap = ReadonlyMap<Id<'Seller'>, { readonly eligible: boolean }>;
@@ -247,6 +248,23 @@ export interface SellersFacade {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, AccessDenied | SellersUnavailable>>;
+
+  /**
+   * `publishedStore` (buyer assistant): the public store page of `slug` (allow-listed fields only),
+   * under the rules of the public store page: an approved revision, a `held` slug and the may-sell
+   * contract says yes. An unknown, retired or not-selling slug is `sellers.store-not-found`,
+   * byte-identical. A request actor only (rule `anonymous`); a fault is `sellers.unavailable`: the
+   * caller fails closed. In-process only.
+   */
+  publishedStore(
+    context: CallContext,
+    slug: string,
+  ): Promise<
+    Result<
+      PublishedStore,
+      AccessDenied | SellersUnavailable | { readonly code: 'sellers.store-not-found' }
+    >
+  >;
 
   /**
    * `reviewerBusinessDetails` (sellers design 7.1; board 13 item 3): legal name, trading name and

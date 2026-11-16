@@ -586,7 +586,7 @@ The last sections of the customer page and the review events on the timeline (ha
   `helpful-votes`, `review-reports` are back in `CUSTOMER_SECTIONS` and the catalogue snapshot).
   customers mirrors reviews' status lists (it cannot import reviews: reviews reaches ordering,
   which imports customers); the admin-facade-permission contract pins them.
-- **Index.** `20261116130000_reviews_reports_reporter_idx`:
+- **Index.** `20261116200300_reviews_reports_reporter_idx`:
   `review_reports(market_id, reporter_account_id, created_at DESC)`, plain `CREATE INDEX` with
   `lock_timeout` (no deployed environment; not partial, so not in the partial-index list; no grant,
   so no change to the expected privileges), reversible. The reports about a customer's reviews and
@@ -646,7 +646,7 @@ Follow-up of Hassan's review of #969 (findings L2, L3, I3).
 - **Counters.** The platform's shared per-subject counters (`SubjectRateLimits`), new classes
   `admin-customer-password-reset` and `admin-customer-pii-reveal` (3600-second windows), subject
   `<market>:<admin account id>` stored as its keyed hash. Migration
-  `20261116140000_platform_rate_limit_admin_customer_classes` widens
+  `20261116200400_platform_rate_limit_admin_customer_classes` widens
   `platform.rate_limit_counters_key_check` (no grant or index change), reversible.
 - **What counts.** Counted in the application layer after the gate allowed the call and the body
   is closed, before the customer is looked up: a refused key, an acting-as session or a stray body

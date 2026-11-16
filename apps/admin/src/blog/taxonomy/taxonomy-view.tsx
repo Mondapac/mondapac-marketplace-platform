@@ -28,6 +28,8 @@ import {
 
 type Load = 'loading' | 'ready' | 'failed';
 type Category = Taxonomy['categories'][number];
+/** A write of this page: saving a category, adding a tag, or a delete. */
+type Write = 'category' | 'tag' | 'delete';
 
 const API_CATEGORIES = `${API_BLOG_TAXONOMY}/categories`;
 const API_TAGS = `${API_BLOG_TAXONOMY}/tags`;
@@ -74,7 +76,9 @@ export function TaxonomyView({
   const [load, setLoad] = useState<Load>('loading');
   const [data, setData] = useState<Taxonomy | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  // The write that is running, so only its own button shows the spinner; every write button waits.
+  const [running, setRunning] = useState<Write | null>(null);
+  const busy = running !== null;
   // The category being edited, or 'new'.
   const [editing, setEditing] = useState<string | null>(null);
   const [form, setForm] = useState<CategoryForm>(blankCategory());
@@ -111,16 +115,17 @@ export function TaxonomyView({
 
   /** Runs a write, then reads the lists again; true when it went through. */
   async function write(
+    action: Write,
     method: 'POST' | 'PUT' | 'DELETE',
     path: string,
     body: unknown,
   ): Promise<boolean> {
     if (busy) return false;
-    setBusy(true);
+    setRunning(action);
     setError(null);
     const result = await callApi<unknown>(method, path, body, csrfToken);
     if (!result.ok) {
-      setBusy(false);
+      setRunning(null);
       if (result.failure.status === 401) window.location.assign('/session-ended');
       else {
         const key = errorKey(result.failure.status, result.failure.code);
@@ -134,7 +139,7 @@ export function TaxonomyView({
       return false;
     }
     await fetchAll();
-    setBusy(false);
+    setRunning(null);
     return true;
   }
 
@@ -195,8 +200,13 @@ export function TaxonomyView({
     }
     setFormError(null);
     const ok = isNew
-      ? await write('POST', API_CATEGORIES, categoryBody(form, true))
-      : await write('PUT', `${API_CATEGORIES}/${editing ?? ''}`, categoryBody(form, false));
+      ? await write('category', 'POST', API_CATEGORIES, categoryBody(form, true))
+      : await write(
+          'category',
+          'PUT',
+          `${API_CATEGORIES}/${editing ?? ''}`,
+          categoryBody(form, false),
+        );
     if (ok) {
       closeForm();
       toast.success(t(isNew ? 'category-added' : 'category-saved'));
@@ -204,7 +214,7 @@ export function TaxonomyView({
   }
 
   async function remove(path: string, done: string, heading: 'categories' | 'tags') {
-    const ok = await write('DELETE', path, undefined);
+    const ok = await write('delete', 'DELETE', path, undefined);
     setConfirming(null);
     if (ok) {
       toast.success(t(done));
@@ -219,7 +229,7 @@ export function TaxonomyView({
       return;
     }
     setTagSlugBad(false);
-    if (await write('POST', API_TAGS, tagBody(tagName, tagSlug))) {
+    if (await write('tag', 'POST', API_TAGS, tagBody(tagName, tagSlug))) {
       setTagName('');
       setTagSlug('');
       toast.success(t('tag-added'));
@@ -238,7 +248,8 @@ export function TaxonomyView({
         <span className="text-sm">{t('delete-sure', { name: label })}</span>
         <Button
           variant="destructive-solid"
-          disabled={busy}
+          loading={running === 'delete'}
+          disabled={busy && running !== 'delete'}
           aria-label={t('delete-confirm-named', { name: label })}
           onClick={() => void remove(path, done, heading)}
         >
@@ -388,7 +399,11 @@ export function TaxonomyView({
               onChange={(event) => setForm({ ...form, position: event.target.value })}
             />
             <div className="flex gap-2">
-              <Button type="submit" loading={busy}>
+              <Button
+                type="submit"
+                loading={running === 'category'}
+                disabled={busy && running !== 'category'}
+              >
                 {t('save')}
               </Button>
               <Button variant="secondary" disabled={busy} onClick={closeForm}>
@@ -453,7 +468,11 @@ export function TaxonomyView({
               onChange={(event) => setTagSlug(event.target.value)}
             />
             <div>
-              <Button type="submit" loading={busy} disabled={tagName.trim() === ''}>
+              <Button
+                type="submit"
+                loading={running === 'tag'}
+                disabled={(busy && running !== 'tag') || tagName.trim() === ''}
+              >
                 {t('add-tag')}
               </Button>
             </div>

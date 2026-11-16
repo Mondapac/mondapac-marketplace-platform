@@ -354,7 +354,7 @@ column added by that mini-review, not now.
 | `origin` | `inet` | no | **Personal, plain**: the client address. The only place in the database that stores one |
 | `session_id` | `uuid` | yes | Plain id; set on success |
 | `correlation_id` | `text` | no | CHECK as on `audit_log` |
-| `device` | `varchar(32)` | yes | Coarse device of the request, `<browser>.<system>` from fixed lists (as on `sessions.device`); CHECK `device IS NULL OR device ~ '^[a-z]+\.[a-z]+$'`. **Never the raw User-Agent.** NULL when the request sent none and on every record written before migration `20261116110000_identity_sign_in_record_device` (customers phase 2b: the customer page's logins list) |
+| `device` | `varchar(32)` | yes | Coarse device of the request, `<browser>.<system>` from fixed lists (as on `sessions.device`); CHECK `device IS NULL OR device ~ '^[a-z]+\.[a-z]+$'`. **Never the raw User-Agent.** NULL when the request sent none and on every record written before migration `20261116200200_identity_sign_in_record_device` (customers phase 2b: the customer page's logins list) |
 
 - Append-only for the application by privilege: `INSERT`, `SELECT` and `DELETE`, no `UPDATE`
   (section 7; H6). No trigger and no hash chain: unlike `audit_log` it has a retention, and the
