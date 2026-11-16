@@ -433,10 +433,14 @@ admin deletes a buyer's account for them, from a support ticket.
 
 Stacked on PR 2a (#929). What landed, by handoff item:
 
-- **Day filters in the right zone (i).** The Customers list's joined and last-order days and the
-  activity timeline's from and to days are read in the admin's own zone (identity's account
-  setting), falling back to the Market's zone (`AdminDayZone`, ADR-0005). The owning modules'
-  lists take ISO instants, as the admin Orders list does: the panel converts the admin's days.
+- **Day filters in the right zone (i).** Two kinds of date filter, on purpose:
+  - The Customers list (joined and last-order days) and the activity timeline (from and to) take
+    `YYYY-MM-DD` days, resolved on the server in the admin's own zone (identity's account
+    setting), falling back to the Market's zone (`AdminDayZone`, ADR-0005). A zone that is
+    missing, empty, refused, failing or not a valid IANA id falls back to the Market's zone (never
+    a 500). A day whose midnight a DST change skips starts at its first real instant.
+  - The refunds, payments and disputes lists (owned by ordering and payments) take ISO instants,
+    as the admin Orders list does: the panel converts the admin's days.
   The page-open dedup stays "once per UTC day".
 - **Tombstone (h).** `GET customers/admin/customers/:accountId` answers
   `{ accountId, status: 'deleted', deletedAt }` for an account whose erasure completed here
@@ -449,10 +453,15 @@ Stacked on PR 2a (#929). What landed, by handoff item:
 - **Payments and disputes (c, d, f).** `POST payments/admin/customers/:accountId/payments` and
   `.../disputes` (+ `/export`), new key `payments.customer-payment.view` (not seeded to Viewer:
   financial data). Payments reads the orders through ordering's facade; the answer's `paid` (the
-  captured orders' totals per currency) replaces the stats estimate for Money "Paid". No provider
+  gross captured amount: the captured orders' totals per currency, refunds not taken off; refunds
+  are shown in the refunds list) replaces the stats estimate for Money "Paid". No provider
   id but Stripe's payment id; disputes show no provider id, evidence or buyer text. A customer with
   more than 10,000 orders gets `batch.too-large` on disputes.
-- **Exports.** Every owning-module export needs its view key plus the protected
+- **Customers view key on every tab.** The refunds, payments and disputes reads and their exports
+  also need `customers.customers.view`, as every other tab of the customer page does (ordering
+  and payments cast the literal; `test/contracts/admin-facade-permission.contract.spec.ts` pins
+  it). An admin with only `ordering.order.view` or `payments.customer-payment.view` gets 403.
+- **Exports.** Every owning-module export needs its view keys plus the protected
   `customers.customers.export` and spends the customers export step-up in its unit; each writes
   its own audit row (`ordering.customer-refunds.exported`, `payments.customer-payments.exported`,
   `payments.customer-disputes.exported`).
@@ -465,6 +474,11 @@ Stacked on PR 2a (#929). What landed, by handoff item:
   (owned by customers, registered by promotions at start, so customers never imports
   promotions), how many live, waiting or paused promotions name it. Advisory: the answer's
   `liveSegmentUse` and the audit row say `some`, `none` or `unknown`.
+
+Delivered elsewhere:
+
+- **Pending deletion request on GET customer (g).** Delivered by PR #925 (frontend thread), not by
+  this PR.
 
 Not built in 2b (remaining):
 

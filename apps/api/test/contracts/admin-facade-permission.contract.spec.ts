@@ -6,20 +6,28 @@ import {
   BUYER_ACCOUNT_DELETE,
   CUSTOMERS_CUSTOMER_EDIT,
   CUSTOMERS_CUSTOMER_EXPORT,
+  CUSTOMERS_CUSTOMER_VIEW,
   CUSTOMERS_GROUPS_MANAGE,
 } from '../../src/modules/customers/contracts/permissions';
 import { CUSTOMERS_EXPORT_STEP_UP } from '../../src/modules/customers/contracts/step-up';
 import {
   CUSTOMER_DATA_EXPORT_KEY as ORDERING_CUSTOMER_DATA_EXPORT_KEY,
   CUSTOMER_DATA_EXPORT_STEP_UP as ORDERING_CUSTOMER_DATA_EXPORT_STEP_UP,
+  CUSTOMER_DATA_VIEW_KEY as ORDERING_CUSTOMER_DATA_VIEW_KEY,
 } from '../../src/modules/ordering/application/customer-refunds-list-flow';
 import { AdminCustomerRefundsExport } from '../../src/modules/ordering/application/use-cases/admin-customer-refunds-export.use-case';
+import { AdminCustomerRefundsList } from '../../src/modules/ordering/application/use-cases/admin-customer-refunds-list.use-case';
 import { AdminCustomerOrderIds } from '../../src/modules/ordering/application/use-cases/admin-customer-order-ids.use-case';
 import { AdminCustomerPayments as OrderingAdminCustomerPayments } from '../../src/modules/ordering/application/use-cases/admin-customer-payments.use-case';
 import {
   CUSTOMER_DATA_EXPORT_KEY as PAYMENTS_CUSTOMER_DATA_EXPORT_KEY,
   CUSTOMER_DATA_EXPORT_STEP_UP as PAYMENTS_CUSTOMER_DATA_EXPORT_STEP_UP,
+  CUSTOMER_DATA_VIEW_KEY as PAYMENTS_CUSTOMER_DATA_VIEW_KEY,
 } from '../../src/modules/payments/application/customer-payments-flow';
+import { AdminCustomerDisputesExport } from '../../src/modules/payments/application/use-cases/admin-customer-disputes-export.use-case';
+import { AdminCustomerDisputes } from '../../src/modules/payments/application/use-cases/admin-customer-disputes.use-case';
+import { AdminCustomerPaymentsExport } from '../../src/modules/payments/application/use-cases/admin-customer-payments-export.use-case';
+import { AdminCustomerPayments as PaymentsAdminCustomerPayments } from '../../src/modules/payments/application/use-cases/admin-customer-payments.use-case';
 import { PAYMENTS_CUSTOMER_PAYMENT_VIEW } from '../../src/modules/payments/contracts/permissions';
 import {
   CountGroupSegmentUses,
@@ -62,7 +70,50 @@ describe('the customer-page exports of the owning modules', () => {
     expect(ORDERING_CUSTOMER_DATA_EXPORT_STEP_UP).toBe(CUSTOMERS_EXPORT_STEP_UP);
     expect(AdminCustomerRefundsExport.access.rule).toEqual({
       kind: 'permissions',
-      allOf: ['ordering.order.view', CUSTOMERS_CUSTOMER_EXPORT.key],
+      allOf: ['ordering.order.view', CUSTOMERS_CUSTOMER_VIEW.key, CUSTOMERS_CUSTOMER_EXPORT.key],
+    });
+  });
+});
+
+// Customers management phase 2b (Hassan, Low): every tab of the customer page needs customers' view
+// key, so the owning modules' customer-scoped reads and exports declare it beside their own key.
+// Only customers can brand the key, so each module casts the literal; this pins every literal to
+// the declaration and every rule to the pair.
+describe('the customer-page reads of the owning modules', () => {
+  it('cast exactly the customers view key', () => {
+    expect(ORDERING_CUSTOMER_DATA_VIEW_KEY).toBe(CUSTOMERS_CUSTOMER_VIEW.key);
+    expect(PAYMENTS_CUSTOMER_DATA_VIEW_KEY).toBe(CUSTOMERS_CUSTOMER_VIEW.key);
+  });
+
+  it.each([
+    ['ordering.admin-customer-refunds-list', AdminCustomerRefundsList, 'ordering.order.view'],
+    [
+      'payments.admin-customer-payments',
+      PaymentsAdminCustomerPayments,
+      PAYMENTS_CUSTOMER_PAYMENT_VIEW.key,
+    ],
+    ['payments.admin-customer-disputes', AdminCustomerDisputes, PAYMENTS_CUSTOMER_PAYMENT_VIEW.key],
+  ] as const)('%s requires its own view key and customers.customers.view', (name, useCase, own) => {
+    expect(useCase.access).toEqual({
+      name,
+      rule: { kind: 'permissions', allOf: [own, CUSTOMERS_CUSTOMER_VIEW.key] },
+    });
+  });
+
+  it.each([
+    ['payments.admin-customer-payments-export', AdminCustomerPaymentsExport],
+    ['payments.admin-customer-disputes-export', AdminCustomerDisputesExport],
+  ] as const)('%s also requires customers.customers.view and the export key', (name, useCase) => {
+    expect(useCase.access).toEqual({
+      name,
+      rule: {
+        kind: 'permissions',
+        allOf: [
+          PAYMENTS_CUSTOMER_PAYMENT_VIEW.key,
+          CUSTOMERS_CUSTOMER_VIEW.key,
+          CUSTOMERS_CUSTOMER_EXPORT.key,
+        ],
+      },
     });
   });
 });

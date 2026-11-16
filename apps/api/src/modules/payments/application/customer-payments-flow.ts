@@ -49,6 +49,11 @@ import type { DisputeRecord, DisputeStore, OrdersDisputeQuery } from './ports/di
 // facade (declaring this module's key); disputes are payments' own rows, found by the customer's
 // order ids. Filters take ISO instants: the panel works the admin's local days out (ADR-0005).
 
+/**
+ * The customers view key (declared by `customers`; cast here, pinned by a contract test): every
+ * tab of the customer page needs it beside the owning module's own key.
+ */
+export const CUSTOMER_DATA_VIEW_KEY = 'customers.customers.view' as PermissionKey;
 /** The customers export key and its step-up action (declared by customers; pinned by a contract test). */
 export const CUSTOMER_DATA_EXPORT_KEY = 'customers.customers.export' as PermissionKey;
 export const CUSTOMER_DATA_EXPORT_STEP_UP = 'customers.customers.export';

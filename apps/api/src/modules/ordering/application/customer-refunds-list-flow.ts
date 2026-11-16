@@ -36,6 +36,11 @@ import { refundView, type RefundView } from './refund-flow';
 // Ids, codes, amounts and instants only: no Stripe id, no name.
 
 /**
+ * The customers view key (declared by `customers`; cast here, pinned by a contract test): every
+ * tab of the customer page needs it beside the owning module's own key.
+ */
+export const CUSTOMER_DATA_VIEW_KEY = 'customers.customers.view' as PermissionKey;
+/**
  * The customers export key and its step-up action (declared by `customers`; ordering can only cast
  * the literal, and a contract test pins it to the declaration): exporting a customer's data from
  * the customer page needs it, whichever module owns the rows.

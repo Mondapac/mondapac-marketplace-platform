@@ -28,13 +28,19 @@ import { AdminCustomerPayments } from './use-cases/admin-customer-payments.use-c
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const NOW = Temporal.Instant.from('2026-11-16T09:00:00Z');
 const VIEW = 'payments.customer-payment.view';
+const CUSTOMER_VIEW = 'customers.customers.view';
 const EXPORT = 'customers.customers.export';
+/** What a customer-page tab needs: the owning module's key and customers' view key. */
+const READ = [VIEW, CUSTOMER_VIEW];
 const id = <T extends string>(n: number): Id<T> => {
   const parsed = parseId(`01990000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`);
   if (!parsed.ok) throw new Error('bad id');
   return parsed.value as Id<T>;
 };
 const BUYER = id<'Account'>(0xb1);
+/** A customer with more orders than the disputes scan takes, and one with exactly that many. */
+const BULK_BUYER = id<'Account'>(0xb2);
+const FULL_BUYER = id<'Account'>(0xb3);
 const ORDER_A = id<'Order'>(0x2001);
 const ORDER_B = id<'Order'>(0x2002);
 const FOREIGN_ORDER = id<'Order'>(0x2009);
@@ -87,7 +93,12 @@ describe.each(['AU', 'ZZ'] as const)('a customer’s payments and disputes in ma
           (f) =>
             request.query.accountId === BUYER &&
             (request.query.paymentStates === null ||
-              request.query.paymentStates.includes(f.paymentState)),
+              request.query.paymentStates.includes(f.paymentState)) &&
+            (request.query.statuses === null || request.query.statuses.includes(f.status)) &&
+            (request.query.from === null ||
+              Temporal.Instant.compare(f.createdAt, request.query.from) >= 0) &&
+            (request.query.to === null ||
+              Temporal.Instant.compare(f.createdAt, request.query.to) < 0),
         );
         return Promise.resolve(
           ok({
@@ -97,8 +108,15 @@ describe.each(['AU', 'ZZ'] as const)('a customer’s payments and disputes in ma
           }),
         );
       },
-      adminCustomerOrderIds: (_context, request) =>
-        Promise.resolve(ok(request.accountId === BUYER ? [ORDER_B, ORDER_A] : [])),
+      adminCustomerOrderIds: (_context, request) => {
+        const many = (count: number) =>
+          Array.from({ length: Math.min(count, request.limit) }, (_, i) =>
+            id<'Order'>(0x10000 + i),
+          );
+        if (request.accountId === BULK_BUYER) return Promise.resolve(ok(many(10_001)));
+        if (request.accountId === FULL_BUYER) return Promise.resolve(ok(many(10_000)));
+        return Promise.resolve(ok(request.accountId === BUYER ? [ORDER_B, ORDER_A] : []));
+      },
     };
     const disputes = new MemoryDisputeStore();
     const dispute = (n: number, orderId: string, market: string, status = 'needs_response') =>
@@ -189,18 +207,34 @@ describe.each(['AU', 'ZZ'] as const)('a customer’s payments and disputes in ma
     return all;
   };
 
-  it('declares the payments key, and the customers export key on the exports', () => {
+  it('declares the payments and customers view keys, and the customers export key on the exports', () => {
     for (const useCase of [AdminCustomerPayments, AdminCustomerDisputes]) {
-      expect(useCase.access.rule).toEqual({ kind: 'permissions', allOf: [VIEW] });
+      expect(useCase.access.rule).toEqual({ kind: 'permissions', allOf: [VIEW, CUSTOMER_VIEW] });
     }
     for (const useCase of [AdminCustomerPaymentsExport, AdminCustomerDisputesExport]) {
-      expect(useCase.access.rule).toEqual({ kind: 'permissions', allOf: [VIEW, EXPORT] });
+      expect(useCase.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: [VIEW, CUSTOMER_VIEW, EXPORT],
+      });
     }
+  });
+
+  it('refuses an admin who holds the payments key but not the customers view key', async () => {
+    const t = setup();
+    const payments = await t.payments.execute(t.admin([VIEW]), { accountId: BUYER });
+    const disputes = await t.disputes.execute(t.admin([VIEW]), { accountId: BUYER });
+    const exported = await t.disputesExport.execute(t.admin([VIEW, EXPORT]), { accountId: BUYER });
+    expect([payments, disputes, exported].map((r) => (r.ok ? 'ok' : r.error.code))).toEqual([
+      'access.denied',
+      'access.denied',
+      'access.denied',
+    ]);
+    expect(t.asked).toHaveLength(0);
   });
 
   it('pages the payments with their total and what the customer paid', async () => {
     const t = setup();
-    const read = await t.payments.execute(t.admin([VIEW]), {
+    const read = await t.payments.execute(t.admin(READ), {
       accountId: BUYER,
       filters: { paymentState: ['captured'] },
     });
@@ -218,7 +252,7 @@ describe.each(['AU', 'ZZ'] as const)('a customer’s payments and disputes in ma
       },
     ]);
     expect(read.value.paid).toEqual([{ amount: 4500n, currency }]);
-    const prevNext = await t.payments.execute(t.admin([VIEW]), {
+    const prevNext = await t.payments.execute(t.admin(READ), {
       accountId: BUYER,
       paging: 'prev-next',
       pageSize: 1,
@@ -227,9 +261,26 @@ describe.each(['AU', 'ZZ'] as const)('a customer’s payments and disputes in ma
     expect(t.asked[1]).toMatchObject({ window: { offset: 0, limit: 2 }, withTotal: false });
   });
 
+  it('filters the payments by order status and by created between two instants', async () => {
+    const t = setup();
+    const statusOf = async (filters: object) => {
+      const read = await t.payments.execute(t.admin(READ), { accountId: BUYER, filters });
+      if (!read.ok) throw new Error(read.error.code);
+      return read.value.items.map((item) => item.orderId);
+    };
+    expect(await statusOf({ status: ['cancelled'] })).toEqual([ORDER_B]);
+    expect(t.asked[0]).toMatchObject({ query: { statuses: ['cancelled'], from: null, to: null } });
+    const from = NOW.subtract({ hours: 50 }).toString();
+    const to = NOW.subtract({ hours: 24 }).toString();
+    expect(await statusOf({ from, to })).toEqual([ORDER_A]);
+    expect(t.asked[1]).toMatchObject({
+      query: { statuses: null, from: Temporal.Instant.from(from), to: Temporal.Instant.from(to) },
+    });
+  });
+
   it('refuses bad filters and callers without the key, and passes ordering’s denial on', async () => {
     const t = setup();
-    const codeOf = async (input: object, keys = [VIEW]) => {
+    const codeOf = async (input: object, keys = READ) => {
       const read = await t.payments.execute(t.admin(keys), input);
       return read.ok ? 'ok' : read.error.code;
     };
@@ -243,34 +294,47 @@ describe.each(['AU', 'ZZ'] as const)('a customer’s payments and disputes in ma
     expect(await codeOf({ accountId: 'x' })).toBe('validation.failed');
     expect(await codeOf({ accountId: BUYER }, [])).toBe('access.denied');
     const denied = setup(true);
-    const read = await denied.payments.execute(denied.admin([VIEW]), { accountId: BUYER });
+    const read = await denied.payments.execute(denied.admin(READ), { accountId: BUYER });
     expect(read.ok ? 'ok' : read.error.code).toBe('access.denied');
   });
 
   it('lists the disputes of this customer’s orders in this Market only, without provider ids', async () => {
     const t = setup();
-    const read = await t.disputes.execute(t.admin([VIEW]), { accountId: BUYER });
+    const read = await t.disputes.execute(t.admin(READ), { accountId: BUYER });
     if (!read.ok) throw new Error(read.error.code);
     expect(read.value.total).toBe(2);
     expect(read.value.items.map((d) => d.status)).toEqual(['needs_response', 'won']);
     expect(
       JSON.stringify(read.value, (_k, v: unknown) => (typeof v === 'bigint' ? `${v}` : v)),
     ).not.toMatch(/secret/);
-    const open = await t.disputes.execute(t.admin([VIEW]), {
+    const open = await t.disputes.execute(t.admin(READ), {
       accountId: BUYER,
       filters: { status: ['won'] },
       sort: 'amount',
     });
     expect(open.ok && open.value.items.map((d) => d.amount)).toEqual([{ amount: 2000n, currency }]);
-    const none = await t.disputes.execute(t.admin([VIEW]), { accountId: id<'Account'>(0xb9) });
+    const none = await t.disputes.execute(t.admin(READ), { accountId: id<'Account'>(0xb9) });
     expect(none.ok && none.value.total).toBe(0);
+  });
+
+  it('answers batch.too-large on disputes for a customer with more than 10,000 orders', async () => {
+    const t = setup();
+    const bulk = await t.disputes.execute(t.admin(READ), { accountId: BULK_BUYER });
+    expect(bulk.ok ? 'ok' : bulk.error).toEqual({ code: 'batch.too-large', max: 10_000 });
+    const bulkExport = await t.disputesExport.execute(t.admin([...READ, EXPORT]), {
+      accountId: BULK_BUYER,
+    });
+    expect(bulkExport.ok ? 'ok' : bulkExport.error.code).toBe('batch.too-large');
+    expect(t.audits).toHaveLength(0);
+    const full = await t.disputes.execute(t.admin(READ), { accountId: FULL_BUYER });
+    expect(full.ok && full.value.total).toBe(0);
   });
 
   it('exports both lists behind the export key and a fresh proof, audited by count only', async () => {
     const t = setup();
-    const noKey = await t.paymentsExport.execute(t.admin([VIEW]), { accountId: BUYER });
+    const noKey = await t.paymentsExport.execute(t.admin(READ), { accountId: BUYER });
     expect(noKey.ok ? 'ok' : noKey.error.code).toBe('access.denied');
-    const exporter = t.admin([VIEW, EXPORT]);
+    const exporter = t.admin([...READ, EXPORT]);
     t.stepUp.refuse = true;
     const stale = await t.disputesExport.execute(exporter, { accountId: BUYER });
     expect(stale.ok ? 'ok' : stale.error.code).toBe('second-factor.required');

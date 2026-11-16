@@ -25,7 +25,10 @@ import { AdminCustomerRefundsList } from './use-cases/admin-customer-refunds-lis
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const NOW = Temporal.Instant.from('2026-11-16T09:00:00Z');
 const VIEW = 'ordering.order.view';
+const CUSTOMER_VIEW = 'customers.customers.view';
 const EXPORT = 'customers.customers.export';
+/** What a customer-page tab needs: the owning module's key and customers' view key. */
+const READ = [VIEW, CUSTOMER_VIEW];
 const id = <T extends string>(n: number): Id<T> => {
   const parsed = parseId(`01990000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`);
   if (!parsed.ok) throw new Error('bad id');
@@ -190,17 +193,30 @@ describe.each(['AU', 'ZZ'] as const)('the customer refunds super list in market 
   const ids = (result: Result<{ items: readonly { refundId: string }[] }, unknown>) =>
     result.ok ? result.value.items.map((item) => item.refundId) : result;
 
-  it('declares the order view key, and the customers export key on the export', () => {
-    expect(AdminCustomerRefundsList.access.rule).toEqual({ kind: 'permissions', allOf: [VIEW] });
+  it('declares the order and customers view keys, and the customers export key on the export', () => {
+    expect(AdminCustomerRefundsList.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [VIEW, CUSTOMER_VIEW],
+    });
     expect(AdminCustomerRefundsExport.access.rule).toEqual({
       kind: 'permissions',
-      allOf: [VIEW, EXPORT],
+      allOf: [VIEW, CUSTOMER_VIEW, EXPORT],
     });
+  });
+
+  it('refuses an admin who holds the order view key but not the customers view key', async () => {
+    const t = setup();
+    const read = await t.list.execute(t.admin([VIEW]), { accountId: BUYER });
+    const exported = await t.export.execute(t.admin([VIEW, EXPORT]), { accountId: BUYER });
+    expect([read, exported].map((r) => (r.ok ? 'ok' : r.error.code))).toEqual([
+      'access.denied',
+      'access.denied',
+    ]);
   });
 
   it('lists only this customer’s refunds of this Market, newest first, with a total', async () => {
     const t = seeded();
-    const read = await t.list.execute(t.admin([VIEW]), { accountId: BUYER });
+    const read = await t.list.execute(t.admin(READ), { accountId: BUYER });
     expect(read.ok && read.value.total).toBe(3);
     expect(read.ok && read.value.items.map((item) => item.amount)).toEqual([
       { amount: 500n, currency },
@@ -214,7 +230,7 @@ describe.each(['AU', 'ZZ'] as const)('the customer refunds super list in market 
 
   it('filters by state, reason and instants, sorts by amount and pages both ways', async () => {
     const t = seeded();
-    const ctx = t.admin([VIEW]);
+    const ctx = t.admin(READ);
     const all = t.store.rows.filter((r) => r.market === code && r.accountId === BUYER);
     expect(
       ids(await t.list.execute(ctx, { accountId: BUYER, filters: { state: ['failed'] } })),
@@ -247,7 +263,7 @@ describe.each(['AU', 'ZZ'] as const)('the customer refunds super list in market 
 
   it('refuses a closed-body violation, a bad filter and callers without the key', async () => {
     const t = seeded();
-    const ctx = t.admin([VIEW]);
+    const ctx = t.admin(READ);
     const code = async (input: object) => {
       const read = await t.list.execute(ctx, input);
       return read.ok ? 'ok' : read.error.code;
@@ -267,9 +283,9 @@ describe.each(['AU', 'ZZ'] as const)('the customer refunds super list in market 
 
   it('exports behind the export key and a fresh proof, audited without refund data', async () => {
     const t = seeded();
-    const noKey = await t.export.execute(t.admin([VIEW]), { accountId: BUYER });
+    const noKey = await t.export.execute(t.admin(READ), { accountId: BUYER });
     expect(noKey.ok ? 'ok' : noKey.error.code).toBe('access.denied');
-    const exporter = t.admin([VIEW, EXPORT]);
+    const exporter = t.admin([...READ, EXPORT]);
     t.stepUp.refuse = true;
     const stale = await t.export.execute(exporter, { accountId: BUYER });
     expect(stale.ok ? 'ok' : stale.error.code).toBe('second-factor.required');

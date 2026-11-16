@@ -571,6 +571,28 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     expect(
       await read(market, () => reader.count(market, { ...query, paymentStates: ['none'] })),
     ).toBe(0);
+    // The order status filter and the created-between instants, each matching and not.
+    expect(
+      await read(market, () => reader.count(market, { ...query, statuses: [rows[0]!.status] })),
+    ).toBe(1);
+    expect(
+      await read(market, () => reader.count(market, { ...query, statuses: ['pending-payment'] })),
+    ).toBe(0);
+    const created = rows[0]!.createdAt;
+    const around = { from: created.subtract({ minutes: 1 }), to: created.add({ minutes: 1 }) };
+    expect(await read(market, () => reader.count(market, { ...query, ...around }))).toBe(1);
+    const between = await read(market, () =>
+      reader.page(
+        market,
+        { ...query, ...around },
+        { sort: 'created', direction: 'desc' },
+        { offset: 0, limit: 10 },
+      ),
+    );
+    expect(between.map((row) => row.orderId)).toEqual([paid.orderId]);
+    // `to` is exclusive and `from` inclusive.
+    expect(await read(market, () => reader.count(market, { ...query, to: created }))).toBe(0);
+    expect(await read(market, () => reader.count(market, { ...query, from: created }))).toBe(1);
     expect(await read(market, () => reader.paidTotals(market, payer))).toEqual([
       money(total, currency),
     ]);

@@ -3,6 +3,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { ListPage } from '../../../../platform/list-query';
 import { ORDERING_ORDER_VIEW } from '../../contracts/permissions';
 import {
+  CUSTOMER_DATA_VIEW_KEY,
   readCustomerRefunds,
   type CustomerRefundsDependencies,
   type CustomerRefundsFailure,
@@ -12,8 +13,9 @@ import type { RefundView } from '../refund-flow';
 /**
  * `ordering.admin-customer-refunds-list`: the refunds of one customer's orders as a super list
  * (state, reason and requested-between filters; sort by requested or amount; page numbers with a
- * total or Previous and Next). Customers management phase 2b. Rule: `ordering.order.view`, a
- * platform admin not acting as a seller. Ids, codes, amounts and instants only.
+ * total or Previous and Next). Customers management phase 2b. Rule: `ordering.order.view` and
+ * `customers.customers.view` (customers' key: every customer-page tab needs it), a platform admin
+ * not acting as a seller. Ids, codes, amounts and instants only.
  */
 export class AdminCustomerRefundsList extends UseCase<
   unknown,
@@ -22,7 +24,7 @@ export class AdminCustomerRefundsList extends UseCase<
 > {
   static override readonly access: AccessDeclaration = {
     name: 'ordering.admin-customer-refunds-list',
-    rule: { kind: 'permissions', allOf: [ORDERING_ORDER_VIEW.key] },
+    rule: { kind: 'permissions', allOf: [ORDERING_ORDER_VIEW.key, CUSTOMER_DATA_VIEW_KEY] },
   };
 
   constructor(

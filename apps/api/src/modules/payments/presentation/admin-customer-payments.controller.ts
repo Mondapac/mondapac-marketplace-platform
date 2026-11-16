@@ -157,11 +157,13 @@ export class AdminCustomerPaymentsController {
   @ApiOperation({
     summary: 'One customer’s payments (super list, admin)',
     description:
-      'Needs payments.customer-payment.view. Body: `filters` (`paymentState`: an array of none, ' +
+      'Needs payments.customer-payment.view and customers.customers.view. Body: `filters` ' +
+      '(`paymentState`: an array of none, ' +
       `authorised, captured, voided; \`status\`: an array of pending-payment, confirmed, cancelled; ${INSTANTS}, ` +
       `on the order’s creation), \`sort\` (created, the default, or amount), ${PAGING}. Each ` +
       'order’s payment: state, payment state, amount, Stripe’s payment id, created and confirmed. ' +
-      '`paid` is what the customer paid (captured orders), one sum per currency.',
+      '`paid` is the gross captured amount (the captured orders’ totals), one sum per currency; ' +
+      'refunds are not taken off: they are shown in the refunds list.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: Object })
@@ -191,7 +193,8 @@ export class AdminCustomerPaymentsController {
   @ApiOperation({
     summary: 'Export one customer’s payments as a CSV or XLSX file (admin)',
     description:
-      'Needs payments.customer-payment.view and customers.customers.export (protected) and a ' +
+      'Needs payments.customer-payment.view, customers.customers.view and ' +
+      'customers.customers.export (protected) and a ' +
       `fresh two-step proof for \`${EXPORT_STEP_UP}\` (spent by the export). Body: \`format\` ` +
       '(csv, the default, or xlsx), `filters`, `sort` and `direction` as for the list. At most ' +
       '10,000 rows. Audited (format and count).',
@@ -224,7 +227,8 @@ export class AdminCustomerPaymentsController {
   @ApiOperation({
     summary: 'The disputes of one customer’s orders (super list, admin)',
     description:
-      'Needs payments.customer-payment.view. Body: `filters` (`status`: an array of Stripe’s ' +
+      'Needs payments.customer-payment.view and customers.customers.view. Body: `filters` ' +
+      '(`status`: an array of Stripe’s ' +
       `dispute states; ${INSTANTS}, on when it opened), \`sort\` (opened, the default, amount or ` +
       `due), ${PAGING}. Each dispute: state, reason code, amount, opened, evidence due by and ` +
       'outcome; no provider id, no evidence, no buyer text. 413 batch.too-large for a customer ' +
@@ -259,7 +263,8 @@ export class AdminCustomerPaymentsController {
   @ApiOperation({
     summary: 'Export the disputes of one customer’s orders as a CSV or XLSX file (admin)',
     description:
-      'Needs payments.customer-payment.view and customers.customers.export (protected) and a ' +
+      'Needs payments.customer-payment.view, customers.customers.view and ' +
+      'customers.customers.export (protected) and a ' +
       `fresh two-step proof for \`${EXPORT_STEP_UP}\` (spent by the export). Body: \`format\`, ` +
       '`filters`, `sort` and `direction` as for the list. At most 10,000 rows. Audited.',
   })

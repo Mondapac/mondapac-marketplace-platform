@@ -92,7 +92,8 @@ export class AdminCustomerRefundsController {
   @ApiOperation({
     summary: 'The refunds of one customer’s orders (super list, admin)',
     description:
-      `Needs ordering.order.view. Body: ${FILTERS}, \`sort\` (requested, the default, or amount), ` +
+      'Needs ordering.order.view and customers.customers.view. ' +
+      `Body: ${FILTERS}, \`sort\` (requested, the default, or amount), ` +
       '`direction` (desc, the default, or asc), `page`, `pageSize` (at most 100) and `paging` ' +
       '(pages, with the total, or prev-next: the Market’s List paging setting). Each refund with ' +
       'its credit note id when it succeeded; ids, codes, amounts and instants only.',
@@ -138,7 +139,8 @@ export class AdminCustomerRefundsController {
   @ApiOperation({
     summary: 'Export the refunds of one customer’s orders as a CSV or XLSX file (admin)',
     description:
-      'Needs ordering.order.view and customers.customers.export (protected) and a fresh two-step ' +
+      'Needs ordering.order.view, customers.customers.view and customers.customers.export ' +
+      '(protected) and a fresh two-step ' +
       `proof for \`${CUSTOMER_DATA_EXPORT_STEP_UP}\` (spent by the export). Body: \`format\` (csv, ` +
       `the default, or xlsx), ${FILTERS}, \`sort\` and \`direction\`. At most 10,000 refunds. ` +
       'Audited (format and count).',

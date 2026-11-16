@@ -3,6 +3,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { ListPage } from '../../../../platform/list-query';
 import { PAYMENTS_CUSTOMER_PAYMENT_VIEW } from '../../contracts/permissions';
 import {
+  CUSTOMER_DATA_VIEW_KEY,
   readCustomerDisputes,
   type CustomerDisputeView,
   type CustomerPaymentsDependencies,
@@ -10,9 +11,10 @@ import {
 } from '../customer-payments-flow';
 
 /**
- * `payments.admin-customer-disputes`: the disputes of one customer's orders (state, reason,
- * amount, opened, evidence due by, outcome; no provider id) as a super list. Customers management
- * phase 2b. Rule: `payments.customer-payment.view`, a platform admin not acting as a seller.
+ * `payments.admin-customer-disputes`: the disputes of one customer's orders (state, reason, amount,
+ * opened, evidence due by, outcome; no provider id) as a super list. Customers management phase 2b.
+ * Rule: `payments.customer-payment.view` and `customers.customers.view`, a platform admin not
+ * acting as a seller.
  */
 export class AdminCustomerDisputes extends UseCase<
   unknown,
@@ -21,7 +23,10 @@ export class AdminCustomerDisputes extends UseCase<
 > {
   static override readonly access: AccessDeclaration = {
     name: 'payments.admin-customer-disputes',
-    rule: { kind: 'permissions', allOf: [PAYMENTS_CUSTOMER_PAYMENT_VIEW.key] },
+    rule: {
+      kind: 'permissions',
+      allOf: [PAYMENTS_CUSTOMER_PAYMENT_VIEW.key, CUSTOMER_DATA_VIEW_KEY],
+    },
   };
 
   constructor(
