@@ -148,7 +148,12 @@ export async function TeamTable({
                   </Badge>
                 </td>
                 <td className={CARD_TABLE.actions}>
-                  <RowActions target={targetOf(row)} csrfToken={csrfToken} roles={roles} />
+                  <RowActions
+                    target={targetOf(row)}
+                    csrfToken={csrfToken}
+                    roles={roles}
+                    reviewed={page.review?.reviewed === true}
+                  />
                 </td>
               </tr>
             );

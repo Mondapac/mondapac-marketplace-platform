@@ -168,6 +168,12 @@ export interface CustomerRowView {
   readonly spentMinor: string;
   readonly currency: string | null;
   readonly refundCount: number;
+  /** The manual groups the customer is in (the optional "Groups" column). */
+  readonly groups: readonly {
+    readonly groupId: string;
+    readonly name: string;
+    readonly archived: boolean;
+  }[];
 }
 
 export const rowView = (row: CustomerListRow): CustomerRowView => ({
@@ -182,6 +188,7 @@ export const rowView = (row: CustomerListRow): CustomerRowView => ({
   spentMinor: row.spentMinor.toString(),
   currency: row.currency,
   refundCount: row.refundCount,
+  groups: row.groups,
 });
 
 export interface CustomerListOutput {

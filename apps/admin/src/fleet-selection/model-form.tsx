@@ -12,6 +12,7 @@ import {
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { ReviewNoteField, trimmedNote } from '../shared/review-note.tsx';
 import {
   checkForm,
   moved,
@@ -43,6 +44,8 @@ export function ModelFormCard({
   pending,
   problem,
   activeNote,
+  reviewed,
+  noteRejected,
   onSubmit,
   onCancel,
 }: {
@@ -54,13 +57,19 @@ export function ModelFormCard({
   readonly problem: string | null;
   /** Names the methods this model is active for (an edit goes live at once), or null. */
   readonly activeNote: string | null;
-  readonly onSubmit: (body: { name: string; rule: Rule }) => void;
+  /** The edit is reviewed in this Market: the form asks for a note (never on create). */
+  readonly reviewed: boolean;
+  /** The API refused the note of the last save. */
+  readonly noteRejected: boolean;
+  readonly onSubmit: (body: { name: string; rule: Rule }, note: string | null) => void;
   readonly onCancel: () => void;
 }) {
   const t = useTranslations();
   const [form, setForm] = useState(initial);
   const [invalid, setInvalid] = useState<readonly FormField[]>([]);
   const [announce, setAnnounce] = useState('');
+  const [note, setNote] = useState('');
+  const [noteMissing, setNoteMissing] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const pendingFocus = useRef<{ fleet: FleetCode; arrow: Arrow } | null>(null);
@@ -111,7 +120,13 @@ export function ModelFormCard({
       return;
     }
     setInvalid([]);
-    onSubmit({ name: checked.name, rule: checked.rule });
+    const sent = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sent === null) {
+      setNoteMissing(true);
+      field('note')?.focus();
+      return;
+    }
+    onSubmit({ name: checked.name, rule: checked.rule }, sent);
   }
 
   function move(fleet: FleetCode, index: number, by: -1 | 1) {
@@ -287,6 +302,18 @@ export function ModelFormCard({
                 </p>
               ) : null}
             </fieldset>
+          ) : null}
+          {reviewed ? (
+            <div className="px-5 pt-4">
+              <ReviewNoteField
+                value={note}
+                onChange={(next) => {
+                  setNote(next);
+                  setNoteMissing(false);
+                }}
+                error={noteMissing ? 'required' : noteRejected ? 'rejected' : undefined}
+              />
+            </div>
           ) : null}
           {problem === null ? null : (
             <p role="alert" className="px-5 pt-4 text-sm text-critical-fg">

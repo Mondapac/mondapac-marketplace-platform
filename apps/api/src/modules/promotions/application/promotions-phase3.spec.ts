@@ -515,6 +515,85 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       expect(real.totals.goodsDiscount).toBe(rulingConfirmed ? 1000n : 0n);
     });
 
+    describe('manual group segment (customers phase 2)', () => {
+      const GROUP = '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b';
+      const manual = () =>
+        group({
+          segment: { kind: 'MANUAL_GROUP', groupId: GROUP },
+          reward: { kind: 'PERCENT', bps: 500 },
+        });
+
+      it('applies to a customer in the group, and asks once per group', async () => {
+        await adminCreate(manual());
+        p3.groupMembership.members.set(GROUP, new Set([REFERRER]));
+        expect((await quote(cart())).totals.goodsDiscount).toBe(500n);
+        expect(p3.groupMembership.reads).toBe(1);
+        expect(p3.orderHistory.reads).toBe(0);
+      });
+
+      it('is not offered to a non-member, when the read fails or throws, or with no customer', async () => {
+        await adminCreate(manual());
+        expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+        p3.groupMembership.members.set(GROUP, new Set([REFERRER]));
+        p3.groupMembership.broken = true;
+        expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+        p3.groupMembership.broken = false;
+        p3.groupMembership.throws = true;
+        expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+        p3.groupMembership.throws = false;
+        expect(
+          (await quote(request([line(1, 10000n, 1)], { customerAccountId: null }))).totals
+            .goodsDiscount,
+        ).toBe(0n);
+      });
+
+      it('needs a well-formed group id, and takes no days or zones', async () => {
+        expect(
+          fields(
+            await make(CreatePromotion).execute(
+              admin(),
+              group({ segment: { kind: 'MANUAL_GROUP' } }),
+            ),
+          ),
+        ).toContain('segment.groupId:required');
+        expect(
+          fields(
+            await make(CreatePromotion).execute(
+              admin(),
+              group({ segment: { kind: 'MANUAL_GROUP', groupId: 'nope' } }),
+            ),
+          ),
+        ).toContain('segment.groupId:format');
+        expect(
+          fields(
+            await make(CreatePromotion).execute(
+              admin(),
+              group({
+                segment: { kind: 'MANUAL_GROUP', groupId: GROUP, minDaysSinceLastOrder: 30 },
+              }),
+            ),
+          ),
+        ).toContain('segment.minDaysSinceLastOrder:not-allowed');
+        expect(
+          fields(
+            await make(CreatePromotion).execute(
+              admin(),
+              group({ segment: { kind: 'RETURNING_CUSTOMER', groupId: GROUP } }),
+            ),
+          ),
+        ).toContain('segment.groupId:not-allowed');
+      });
+
+      it('shows the group id on the promotion', async () => {
+        const made = await adminCreate(manual());
+        expect(made.segment).toEqual({
+          kind: 'MANUAL_GROUP',
+          minDaysSinceLastOrder: null,
+          groupId: GROUP,
+        });
+      });
+    });
+
     it('lets an admin preview a stated customer without reading any module', async () => {
       await adminCreate(group());
       const result = await make(PreviewQuote).execute(admin(), {
