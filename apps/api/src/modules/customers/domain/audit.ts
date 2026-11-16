@@ -207,6 +207,11 @@ export const CustomerGroupChanged = defineAuditAction({
     archived: auditField.boolean(),
     renamed: auditField.boolean(),
     describedChanged: auditField.boolean(),
+    /**
+     * Phase 2b, on an archive: whether a live promotion's customer-group segment still named the
+     * group (`some`, `none`, or `unknown` when promotions could not say); `not-checked` otherwise.
+     */
+    liveSegmentUse: auditField.enumOf(['not-checked', 'none', 'some', 'unknown'] as const),
   },
 });
 

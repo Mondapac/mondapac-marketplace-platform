@@ -36,6 +36,8 @@ import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
 import { MemoryOrders } from './support/ordering-fakes';
+import { PROMOTION_REPOSITORY } from '../src/modules/promotions/application/ports/promotion.repository';
+import { MemoryPromotions } from './support/promotions-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -140,6 +142,8 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
           .useValue(deletions)
           .overrideProvider(ORDER_REPOSITORY)
           .useValue(orders)
+          .overrideProvider(PROMOTION_REPOSITORY)
+          .useValue(new MemoryPromotions())
           .overrideProvider(ADDRESS_REPOSITORY)
           .useValue(addresses)
           .overrideProvider(ADDRESS_CIPHER)
@@ -262,6 +266,13 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
       .set(manager);
     expect(missing.status).toBe(404);
     expect(missing.body).toMatchObject({ code: 'customers.group-not-found' });
+    // Archiving asks promotions (registered at start) whether a live promotion names the group.
+    const archived = await http()
+      .put(`/customers/admin/groups/${groupId}`)
+      .set(manager)
+      .send({ expectedVersion: 1, archived: true });
+    expect(archived.status).toBe(200);
+    expect(archived.body).toMatchObject({ archived: true, liveSegmentUse: 'none' });
   });
 
   it('answers a tombstone for an erased customer and 404 for an unknown one (phase 2b)', async () => {

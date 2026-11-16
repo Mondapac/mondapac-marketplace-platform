@@ -26,6 +26,7 @@ import {
   InMemoryCustomerNotes,
   InMemoryCustomerTimeline,
 } from './testing/in-memory-customer-management';
+import { CustomerGroupUsageRegistry } from '../contracts/group-usage';
 import { InMemoryAddresses, ReversibleAddressCipher } from './testing/in-memory-address-book';
 import { AdminCustomerAddressReveal } from './use-cases/admin-customer-address-reveal.use-case';
 import { AdminCustomerAddresses } from './use-cases/admin-customer-addresses.use-case';
@@ -147,7 +148,20 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
     const ownZone = { value: null as string | null };
     const addresses = new InMemoryAddresses();
     const addressCipher = new ReversibleAddressCipher();
+    /** What promotions answers for a group's live segment uses: a count, a refusal, or a throw. */
+    const groupUses = { answer: 0 as number | 'refused' | 'throws', asked: [] as string[] };
+    const usageRegistry = new CustomerGroupUsageRegistry();
+    usageRegistry.register({
+      liveUsesOf: (_context, groupId) => {
+        groupUses.asked.push(groupId);
+        if (groupUses.answer === 'throws') return Promise.reject(new Error('down'));
+        return Promise.resolve(
+          groupUses.answer === 'refused' ? err({ code: 'access.denied' }) : ok(groupUses.answer),
+        );
+      },
+    });
     const deps: CustomerManagementDependencies = {
+      groupUsage: usageRegistry,
       addresses,
       addressCipher,
       unitOfWork,
@@ -182,6 +196,7 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
     };
     return {
       deps,
+      groupUses,
       addresses,
       addressCipher,
       listAddresses: new AdminCustomerAddresses(gate, deps),
@@ -281,6 +296,55 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
         archived: true,
       });
       expect(archived.ok && archived.value.archived).toBe(true);
+    });
+
+    it('warns on an archive while a live promotion names the group, and audits the answer (phase 2b)', async () => {
+      const t = setup();
+      const manager = t.admin([VIEW, MANAGE]);
+      const archiveAnswer = async (answer: number | 'refused' | 'throws') => {
+        t.groupUses.answer = answer;
+        const made = await t.create.execute(manager.context, { name: `G ${String(answer)}` });
+        if (!made.ok) throw new Error('create failed');
+        const archived = await t.update.execute(manager.context, {
+          groupId: made.value.groupId,
+          expectedVersion: 1,
+          archived: true,
+        });
+        if (!archived.ok) throw new Error('archive failed');
+        return archived.value.liveSegmentUse;
+      };
+      expect(await archiveAnswer(2)).toBe('some');
+      expect(await archiveAnswer(0)).toBe('none');
+      expect(await archiveAnswer('refused')).toBe('unknown');
+      expect(await archiveAnswer('throws')).toBe('unknown');
+      const changed = t.audits.filter((e) => e.action === 'customers.customer-group.changed');
+      expect(changed.map((e) => (e.after as { liveSegmentUse: string }).liveSegmentUse)).toEqual([
+        'some',
+        'none',
+        'unknown',
+        'unknown',
+      ]);
+      // A rename asks nothing and records `not-checked`.
+      const made = await t.create.execute(manager.context, { name: 'Plain' });
+      if (!made.ok) throw new Error('create failed');
+      const asked = t.groupUses.asked.length;
+      const renamed = await t.update.execute(manager.context, {
+        groupId: made.value.groupId,
+        expectedVersion: 1,
+        name: 'Plainer',
+      });
+      expect(renamed.ok && renamed.value.liveSegmentUse).toBeUndefined();
+      expect(t.groupUses.asked).toHaveLength(asked);
+      expect(t.audits.at(-1)?.after).toMatchObject({ liveSegmentUse: 'not-checked' });
+    });
+
+    it('answers unknown, never none, while no module has registered a usage source', async () => {
+      const registry = new CustomerGroupUsageRegistry();
+      const t = setup();
+      const answer = await registry.liveUsesOf(t.system, 'g');
+      expect(answer.ok).toBe(false);
+      registry.register({ liveUsesOf: () => Promise.resolve(ok(0)) });
+      expect(() => registry.register({ liveUsesOf: () => Promise.resolve(ok(0)) })).toThrow();
     });
 
     it('adds and removes members by ids, skipping ids that are no customer of the Market', async () => {

@@ -6,6 +6,7 @@ import {
   BUYER_ACCOUNT_DELETE,
   CUSTOMERS_CUSTOMER_EDIT,
   CUSTOMERS_CUSTOMER_EXPORT,
+  CUSTOMERS_GROUPS_MANAGE,
 } from '../../src/modules/customers/contracts/permissions';
 import { CUSTOMERS_EXPORT_STEP_UP } from '../../src/modules/customers/contracts/step-up';
 import {
@@ -20,6 +21,10 @@ import {
   CUSTOMER_DATA_EXPORT_STEP_UP as PAYMENTS_CUSTOMER_DATA_EXPORT_STEP_UP,
 } from '../../src/modules/payments/application/customer-payments-flow';
 import { PAYMENTS_CUSTOMER_PAYMENT_VIEW } from '../../src/modules/payments/contracts/permissions';
+import {
+  CountGroupSegmentUses,
+  CUSTOMERS_GROUPS_MANAGE_KEY,
+} from '../../src/modules/promotions/application/use-cases/count-group-segment-uses.use-case';
 
 // Hassan M1 (customers package 5c): the three admin facade use cases the deletion request calls in
 // other modules declare the key customers declared, so a Viewer admin or any other admin that does not
@@ -79,5 +84,17 @@ describe('the payment facade use cases of ordering', () => {
   it('payments casts exactly the customers export key and its step-up action', () => {
     expect(PAYMENTS_CUSTOMER_DATA_EXPORT_KEY).toBe(CUSTOMERS_CUSTOMER_EXPORT.key);
     expect(PAYMENTS_CUSTOMER_DATA_EXPORT_STEP_UP).toBe(CUSTOMERS_EXPORT_STEP_UP);
+  });
+});
+
+// Customers management phase 2b: the count of live promotions that name a manual customer group
+// (the archive warning) is asked under the archive's own key, which promotions casts.
+describe('the group segment count of promotions', () => {
+  it('requires exactly customers.groups.manage', () => {
+    expect(CUSTOMERS_GROUPS_MANAGE_KEY).toBe(CUSTOMERS_GROUPS_MANAGE.key);
+    expect(CountGroupSegmentUses.access).toEqual({
+      name: 'promotions.count-group-segment-uses',
+      rule: { kind: 'permissions', allOf: [CUSTOMERS_GROUPS_MANAGE.key] },
+    });
   });
 });

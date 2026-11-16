@@ -281,6 +281,17 @@ export class MemoryPromotions implements PromotionRepository {
       ) as ReadonlySet<string>,
     );
   }
+  countGroupSegmentUses(_market: MarketContext, groupId: string, now: Temporal.Instant) {
+    return Promise.resolve(
+      [...this.records.values()].filter(
+        (r) =>
+          r.segmentKind === 'MANUAL_GROUP' &&
+          r.segmentGroupId === groupId &&
+          (r.status === 'ACTIVE' || r.status === 'PENDING_APPROVAL' || r.status === 'PAUSED') &&
+          (r.endsAt === null || r.endsAt.epochMilliseconds > now.epochMilliseconds),
+      ).length,
+    );
+  }
   countCounting(_market: MarketContext, sellerId: Id<'Seller'>, now: Temporal.Instant) {
     return Promise.resolve(
       [...this.records.values()].filter(

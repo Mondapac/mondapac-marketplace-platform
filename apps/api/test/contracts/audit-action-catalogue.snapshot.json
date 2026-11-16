@@ -1617,6 +1617,7 @@
     "after": {
       "archived": "boolean",
       "describedChanged": "boolean",
+      "liveSegmentUse": "enumOf(not-checked|none|some|unknown)",
       "renamed": "boolean",
       "version": "integer"
     }

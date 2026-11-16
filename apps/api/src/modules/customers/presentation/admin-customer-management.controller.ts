@@ -241,7 +241,10 @@ export class AdminCustomerManagementController {
       'Needs customers.customers.view and customers.groups.manage. Body: `expectedVersion` (the ' +
       'version shown; a stale one is customers.conflict) and any of `name`, `description` (null ' +
       'or empty clears it) and `archived`. An archived group keeps its members but takes no new ' +
-      'ones and no promotion reaches it. Audited.',
+      'ones and no promotion reaches it. The answer of an archive carries `liveSegmentUse`: ' +
+      '`some` when a live, waiting or paused promotion’s MANUAL_GROUP segment still names the ' +
+      'group (it will match nobody), `none`, or `unknown` when promotions could not say. ' +
+      'Advisory: the archive is done either way. Audited, with the same flag.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: Object })

@@ -2,6 +2,7 @@ import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { CustomerGroupUsageSource } from '../contracts/group-usage';
 import type { AddressCipher } from './ports/address-cipher';
 import type { AddressRepository } from './ports/address.repository';
 import type { AdminDayZone } from './ports/admin-day-zone';
@@ -34,6 +35,8 @@ export interface CustomerManagementDependencies {
   /** The address book, for the customer page's Addresses section (phase 2b). */
   readonly addresses: Pick<AddressRepository, 'list' | 'find'>;
   readonly addressCipher: Pick<AddressCipher, 'open'>;
+  /** Who still names a group (a live promotion's segment); advisory, read when archiving. */
+  readonly groupUsage: CustomerGroupUsageSource;
   /** Bound at start by `CustomersReadModelsModule`; fails closed until then. */
   readonly identity: IdentityManagementPeer;
 }

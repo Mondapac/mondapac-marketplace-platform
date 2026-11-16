@@ -1,4 +1,10 @@
-import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import {
+  Inject,
+  Module,
+  type FactoryProvider,
+  type InjectionToken,
+  type OnModuleInit,
+} from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_TRAIL_READER } from '../../platform/audit/audit-trail-reader';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
@@ -23,7 +29,12 @@ import { registerSubscriptionsFrom } from '../../platform/events/event-subscript
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
 import { CREDIT_REPOSITORY, REFERRAL_REPOSITORY } from './application/ports/credit.repository';
-import { CustomersModule } from '../customers';
+import {
+  CUSTOMER_GROUP_USAGE_REGISTRY,
+  CustomersModule,
+  type CustomerGroupUsageRegistry,
+} from '../customers';
+import { CountGroupSegmentUses } from './application/use-cases/count-group-segment-uses.use-case';
 import {
   CUSTOMER_GROUP_MEMBERSHIP,
   CUSTOMER_ORDER_HISTORY,
@@ -219,6 +230,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewMyReferral,
       CashbackOnDelivery,
       QualifyReferralOnDelivery,
+      CountGroupSegmentUses,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     // Phase 3: cashback and the refer-a-friend reward, after `ordering.seller-order-delivered.v1`.
     registerSubscriptionsFrom(
@@ -236,4 +248,22 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   ],
   exports: [PROMOTIONS_FACADE],
 })
-export class PromotionsModule {}
+export class PromotionsModule implements OnModuleInit {
+  constructor(
+    @Inject(CUSTOMER_GROUP_USAGE_REGISTRY) private readonly groupUsage: CustomerGroupUsageRegistry,
+    private readonly countGroupUses: CountGroupSegmentUses,
+  ) {}
+
+  /**
+   * Tells customers which promotions still name a manual customer group (phase 2b): registered in
+   * the registry customers owns, so customers never imports promotions.
+   */
+  onModuleInit(): void {
+    this.groupUsage.register({
+      liveUsesOf: async (context, groupId) => {
+        const counted = await this.countGroupUses.execute(context, { groupId });
+        return counted.ok ? { ok: true, value: counted.value.uses } : counted;
+      },
+    });
+  }
+}

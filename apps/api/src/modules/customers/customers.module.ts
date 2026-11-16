@@ -58,6 +58,8 @@ import {
   CUSTOMERS_PERMISSIONS,
   CUSTOMERS_READ_FACADE,
   CUSTOMERS_STEP_UP_ACTIONS,
+  CUSTOMER_GROUP_USAGE_REGISTRY,
+  CustomerGroupUsageRegistry,
 } from './contracts';
 import { CUSTOMERS_AUDIT_ACTIONS } from './domain/audit';
 import { CUSTOMERS_EVENTS } from './domain/events';
@@ -310,6 +312,7 @@ const MANAGEMENT_PORTS: readonly [
   ['dayZone', ADMIN_DAY_ZONE],
   ['addresses', ADDRESS_REPOSITORY],
   ['addressCipher', ADDRESS_CIPHER],
+  ['groupUsage', CUSTOMER_GROUP_USAGE_REGISTRY],
 ];
 
 /** The admin's management of customers (phase 2): its ports, plus identity bound at start. */
@@ -366,6 +369,11 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminCustomerManagementController,
   ],
   providers: [
+    {
+      provide: CUSTOMER_GROUP_USAGE_REGISTRY,
+      // A factory, not a value: each application (and each test app) gets its own registry.
+      useFactory: () => new CustomerGroupUsageRegistry(),
+    },
     PersistenceModule.auditWriterFor('customers'),
     PersistenceModule.outboxWriterFor('customers'),
     registerAuditActions('customers', CUSTOMERS_AUDIT_ACTIONS),
@@ -533,6 +541,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ReconcileCustomerReadModels,
     CUSTOMER_MANAGEMENT_PEERS,
     RecordCustomerTimeline,
+    CUSTOMER_GROUP_USAGE_REGISTRY,
   ],
 })
 export class CustomersModule {}
