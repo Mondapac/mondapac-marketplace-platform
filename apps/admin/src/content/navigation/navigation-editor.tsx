@@ -332,7 +332,11 @@ export function NavigationEditor({
               {t('discard')}
             </Button>
             {/* Approve and restore run from their dialog: only the dialog's button spins then. */}
-            <Button type="submit" loading={command.pending && dialog === null} disabled={!dirty}>
+            <Button
+              type="submit"
+              loading={command.pending && dialog === null}
+              disabled={!dirty || (command.pending && dialog !== null)}
+            >
               {t('save-draft')}
             </Button>
           </FormActionBar>

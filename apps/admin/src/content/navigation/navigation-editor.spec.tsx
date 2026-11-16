@@ -234,8 +234,10 @@ describe('the navigation editor', () => {
     await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBe('true'));
     const save = screen.getByRole('button', { name: 'Save to draft', hidden: true });
     expect(save.getAttribute('aria-busy')).toBeNull();
+    expect(save.matches(':disabled')).toBe(true);
     finish(refused('x', 503) as never);
     await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBeNull());
+    expect(save.getAttribute('aria-busy')).toBeNull();
   });
 
   it('words a draft that changed under the approver and offers the reload', async () => {
@@ -269,6 +271,25 @@ describe('the navigation editor', () => {
     expect(within(section('Left menu')).getAllByText('Shown').length).toBe(2);
     fireEvent.click(screen.getByRole('switch', { name: 'Show Offers to buyers' }));
     expect(within(section('Left menu')).getByText('Hidden')).toBeTruthy();
+  });
+
+  it('spins only the dialog button while restoring, not Save to draft behind it', async () => {
+    let finish: (value: never) => void = () => undefined;
+    const reads = call.getMockImplementation()!;
+    call.mockImplementation((method, ...rest) =>
+      method === 'POST' ? new Promise((resolve) => (finish = resolve)) : reads(method, ...rest),
+    );
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Restore version 1' }));
+    const dialog = screen.getByRole('dialog', { name: 'Restore version 1?', hidden: true });
+    const confirm = within(dialog).getByRole('button', { name: 'Restore to draft', hidden: true });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBe('true'));
+    const save = screen.getByRole('button', { name: 'Save to draft', hidden: true });
+    expect(save.getAttribute('aria-busy')).toBeNull();
+    expect(save.matches(':disabled')).toBe(true);
+    finish(refused('x', 503) as never);
+    await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBeNull());
   });
 
   it('restores an earlier version after asking', async () => {
