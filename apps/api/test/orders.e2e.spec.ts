@@ -17,6 +17,11 @@ import { INVENTORY_ORDERING_PORT } from '../src/modules/inventory/contracts/orde
 import { CHECKOUT_GATEWAY } from '../src/modules/ordering/application/ports/checkout-gateway';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
 import {
+  ADMIN_SHIPMENT_LIST_READER,
+  type AdminShipmentListReader,
+} from '../src/modules/ordering/application/ports/admin-shipment-list.reader';
+import type { ShipmentListRecord } from '../src/modules/ordering/domain/admin-shipment-list';
+import {
   ADMIN_REFUND_LIST_READER,
   type AdminRefundListReader,
 } from '../src/modules/ordering/application/ports/admin-refund-list.reader';
@@ -163,6 +168,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let pickupVault: FakePickupVault;
   let refundLimits: MemoryRefundLimits;
   let shipToRetention: MemoryShipToRetention;
+  /** The admin Shipments list's rows, served in memory (the SQL is in the db spec). */
+  let shipmentRows: ShipmentListRecord[];
   /** The admin Refunds list's rows, served in memory (the SQL is in the db spec). */
   let refundRows: RefundListRecord[];
   /** Ordering's audit rows, each checked against its definition. */
@@ -183,6 +190,21 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     pickupVault = new FakePickupVault();
     refundLimits = new MemoryRefundLimits();
     shipToRetention = new MemoryShipToRetention();
+    shipmentRows = [];
+    const shipmentReader: AdminShipmentListReader = {
+      page: (_market, _filter, _sort, offset, limit) =>
+        Promise.resolve(shipmentRows.slice(offset, offset + limit)),
+      count: () => Promise.resolve(shipmentRows.length),
+      countByStage: () =>
+        Promise.resolve({
+          toPrepare: shipmentRows.length,
+          ready: 0,
+          shipped: 0,
+          delivered: 0,
+          refunded: 0,
+          attention: 0,
+        }),
+    };
     refundRows = [];
     const refundReader: AdminRefundListReader = {
       page: (_market, _filter, _sort, offset, limit) =>
@@ -221,6 +243,8 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(new RecordingOutbox())
           .overrideProvider(ORDER_REPOSITORY)
           .useValue(orders)
+          .overrideProvider(ADMIN_SHIPMENT_LIST_READER)
+          .useValue(shipmentReader)
           .overrideProvider(ADMIN_REFUND_LIST_READER)
           .useValue(refundReader)
           .overrideProvider(CHECKOUT_GATEWAY)
@@ -1083,6 +1107,92 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       });
       expect(JSON.stringify(tooShort.body)).not.toContain('"a"');
       expect(noKey.status).toBe(403);
+    });
+
+    it('lists shipments behind ordering.order.view, in pages or Previous/Next', async () => {
+      await seedAdmins();
+      const row = (n: number): ShipmentListRecord => ({
+        sellerOrderId: id<'SellerOrder'>(0x5000 + n),
+        orderId: id<'Order'>(0x6000 + n),
+        sellerId: SELLER,
+        accountId: CUSTOMER,
+        paidAt: START,
+        deliveryMethod: 'instant',
+        deliveryWindow: null,
+        fulfilment: 'shipped',
+        readyAt: START,
+        shippedAt: START,
+        deliveredAt: null,
+        carrier: 'Courier',
+        trackingRef: 'JD 0123 4567',
+        fleet: null,
+        deliveryAttention: null,
+        shipping: money(500n, currency),
+        total: money(1500n, currency),
+        refunded: money(0n, currency),
+      });
+      shipmentRows = [row(1), row(2), row(3)];
+
+      const paged = await http()
+        .get('/ordering/admin/shipments?page=1&pageSize=2')
+        .set(adminHeaders(VIEWER, 41));
+      const walked = await http()
+        .get('/ordering/admin/shipments?limit=2')
+        .set(adminHeaders(VIEWER, 42));
+      const spaced = await http()
+        .get('/ordering/admin/shipments?q=JD%200123%204567')
+        .set(adminHeaders(VIEWER, 43));
+      const bad = await http()
+        .get('/ordering/admin/shipments?stage=lost&page=1&cursor=x')
+        .set(adminHeaders(VIEWER, 44));
+      const noKey = await http().get('/ordering/admin/shipments').set(adminHeaders(NO_KEY, 45));
+      const customerTries = await http()
+        .get('/ordering/admin/shipments')
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), cookie: customer().cookie });
+
+      expect(paged.status).toBe(200);
+      expect(paged.headers['cache-control']).toBe('no-store');
+      expect(body(paged)).toMatchObject({
+        total: 3,
+        page: 1,
+        pageSize: 2,
+        nextCursor: null,
+        counts: { toPrepare: 3, refunded: 0 },
+        shipments: [
+          {
+            sellerOrderId: id<'SellerOrder'>(0x5001),
+            stage: 'shipped',
+            trackingRef: 'JD 0123 4567',
+            shipping: { amount: '500', currency },
+            actions: ['view-order', 'copy-tracking-reference'],
+          },
+          { sellerOrderId: id<'SellerOrder'>(0x5002) },
+        ],
+      });
+      expect(walked.status).toBe(200);
+      expect(body(walked)).toMatchObject({
+        total: null,
+        page: null,
+        pageSize: 2,
+        nextCursor: `${START.epochMilliseconds}.${id<'SellerOrder'>(0x5002)}`,
+      });
+      expect(spaced.status).toBe(200);
+      expect(bad.status).toBe(400);
+      expect(body(bad)).toMatchObject({
+        details: {
+          fields: [
+            { path: 'page', code: 'with-cursor' },
+            { path: 'cursor', code: 'format' },
+            { path: 'stage', code: 'value' },
+          ],
+        },
+      });
+      expect(noKey.status).toBe(403);
+      expect([401, 403]).toContain(customerTries.status);
+      // The route logs its outcome, never the reference typed.
+      const logged = logLines.filter((l) => l['msg'] === 'ordering.admin-list-shipments-route');
+      expect(logged.length).toBeGreaterThanOrEqual(5);
+      expect(JSON.stringify(logged)).not.toContain('0123');
     });
 
     it('lists refunds behind ordering.order.view, in pages or Previous/Next', async () => {
