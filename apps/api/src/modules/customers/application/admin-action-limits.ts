@@ -13,9 +13,13 @@ import type { AdminActionLimits, AdminLimitedAction } from './ports/admin-action
 // too (no free probing). Every counted attempt counts, a refused one included: the windows are
 // fixed, so an admin who keeps trying past the limit does not push the window's end out, and the
 // count stays one atomic step on the shared table. A counter that cannot be read refuses (fail
-// closed). When the reveal count reaches the Market's alert count, one security event is recorded
-// for the admin (rule `admin-bulk-pii-reveal`); only the one attempt that reaches it exactly
-// records it, so the alert is raised once per admin and window.
+// closed). From the Market's alert count on, every admitted reveal records the security event
+// `customers.pii-reveal.bulk` for the admin, and a reveal whose event cannot be recorded is
+// refused: an alert is never lost to one failed write (Hassan L1 on #974), and every reveal past
+// the alert count fails closed while it is unrecorded. The security events have no dedupe key, so
+// the dedupe is the security centre's: rule `admin-bulk-pii-reveal` groups by the admin's account
+// and keeps one live alert per admin, raising its count with each later event. At most
+// `piiRevealsPerHour - piiRevealAlertAt + 1` events per admin and window.
 
 export type AdminActionRefusal =
   | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
@@ -79,7 +83,7 @@ export async function admitAdminAction(
     });
     return err({ code: 'request.throttled', retryAfterSeconds: counted.retryAfterSeconds });
   }
-  if (action === 'pii-reveal' && counted.count === settings.piiRevealAlertAt) {
+  if (action === 'pii-reveal' && counted.count >= settings.piiRevealAlertAt) {
     const recorded = await recordBulkReveal(deps, context, admin, counted.count);
     if (!recorded) {
       // The alert is the point of the count: a reveal whose alert cannot be raised shows nothing.
@@ -94,7 +98,7 @@ export async function admitAdminAction(
     }
     logger.warn({
       msg: name,
-      code: 'bulk-reveal-alert-raised',
+      code: 'bulk-reveal-alert-recorded',
       adminAccountId: admin,
       reveals: counted.count,
       marketId: context.market.marketId,

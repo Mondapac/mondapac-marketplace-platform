@@ -104,11 +104,13 @@
   },
   {
     "code": "admin-bulk-pii-reveal",
-    "kind": "each",
+    "kind": "threshold",
     "severity": "s2",
     "title": "An admin revealed a lot of customer personal data within an hour",
     "types": ["customers.pii-reveal.bulk"],
-    "lookback": "PT1H"
+    "groupBy": "account",
+    "threshold": 1,
+    "window": "PT1H"
   },
   {
     "code": "webhook-signature-failures",

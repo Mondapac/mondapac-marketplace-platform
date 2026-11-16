@@ -32,8 +32,9 @@ import { AdminCustomerSignInReveal } from './use-cases/admin-customer-sign-in-re
 // L2/L3), in both Market fixtures (AU: 20 resets, 60 reveals, alert at 40; ZZ: 5, 10, 6): past the
 // limit `request.throttled` with the seconds left; another admin is not affected; the fixed hour
 // resets; the sign-in address and the delivery address share one count; the bulk-reveal security
-// event is recorded exactly once per admin and window; only calls the gate allowed are counted;
-// a counter that cannot be read, or an alert that cannot be recorded, refuses (fail closed).
+// event is recorded on every reveal from the alert count on, so one failed write loses no alert
+// (the security centre keeps one alert per admin); only calls the gate allowed are counted; a
+// counter that cannot be read, or an alert that cannot be recorded, refuses (fail closed).
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const NOW = Temporal.Instant.from('2026-11-16T12:00:00Z');
@@ -290,15 +291,15 @@ describe.each(['AU', 'ZZ'] as const)('per-admin limits on customer PII actions i
     expect((await t.resetPassword(admin)).ok).toBe(true);
   });
 
-  it('raises the bulk-reveal alert once, when the count reaches the Market’s alert count', async () => {
+  it('records the bulk-reveal event from the Market’s alert count on, naming the admin', async () => {
     const t = setup();
     const admin = t.admin();
+    const adminId = admin.actor.kind === 'authenticated' ? admin.actor.accountId : null;
     const addressId = await t.address();
     await times(limits.piiRevealAlertAt - 1, () => t.revealAddress(admin, addressId));
     expect(t.recorder.events).toEqual([]);
 
     expect((await t.revealSignIn(admin)).ok).toBe(true);
-    const adminId = admin.actor.kind === 'authenticated' ? admin.actor.accountId : null;
     expect(t.recorder.events).toEqual([
       {
         type: 'customers.pii-reveal.bulk',
@@ -310,21 +311,59 @@ describe.each(['AU', 'ZZ'] as const)('per-admin limits on customer PII actions i
       },
     ]);
 
-    // The rest of the window, and the refused attempts past the limit, raise nothing more.
+    // Every later admitted reveal of the window records one more (the security centre keeps one
+    // live alert per admin); the refused attempts past the limit record nothing.
     await times(limits.piiRevealsPerHour - limits.piiRevealAlertAt, () => t.revealSignIn(admin));
     expect((await t.revealSignIn(admin)).ok).toBe(false);
-    expect(t.recorder.events).toHaveLength(1);
+    expect(t.recorder.events.map((event) => event.payload)).toEqual(
+      Array.from(
+        { length: limits.piiRevealsPerHour - limits.piiRevealAlertAt + 1 },
+        (_, index) => ({ reveals: limits.piiRevealAlertAt + index }),
+      ),
+    );
+    expect(new Set(t.recorder.events.map((event) => event.targetId))).toEqual(new Set([adminId]));
 
-    // Another admin reaching it raises their own; a new window raises it again.
+    // Another admin's reveals record their own; a new window starts below the alert count again.
     const other = t.admin();
     await times(limits.piiRevealAlertAt, () => t.revealSignIn(other));
-    t.clock.advance(Temporal.Duration.from({ hours: 1 }));
-    await times(limits.piiRevealAlertAt, () => t.revealSignIn(admin));
-    expect(t.recorder.events.map((event) => event.targetId)).toEqual([
-      adminId,
+    expect(t.recorder.events.at(-1)?.targetId).toBe(
       other.actor.kind === 'authenticated' ? other.actor.accountId : null,
-      adminId,
+    );
+    t.clock.advance(Temporal.Duration.from({ hours: 1 }));
+    const before = t.recorder.events.length;
+    await times(limits.piiRevealAlertAt - 1, () => t.revealSignIn(admin));
+    expect(t.recorder.events).toHaveLength(before);
+  });
+
+  it('loses no alert when its event fails at the alert count: the next reveal records it (Hassan L1)', async () => {
+    const t = setup();
+    const admin = t.admin();
+    await times(limits.piiRevealAlertAt - 1, () => t.revealSignIn(admin));
+    t.failingEvents.on = true;
+    const calls = t.identity.calls;
+    await expect(t.revealSignIn(admin)).resolves.toEqual({
+      ok: false,
+      error: { code: 'access.unavailable' },
+    });
+    expect(t.identity.calls).toBe(calls);
+    expect(t.recorder.events).toEqual([]);
+
+    t.failingEvents.on = false;
+    expect((await t.revealSignIn(admin)).ok).toBe(true);
+    expect(t.recorder.events).toEqual([
+      expect.objectContaining({
+        type: 'customers.pii-reveal.bulk',
+        payload: { reveals: limits.piiRevealAlertAt + 1 },
+      }),
     ]);
+
+    // Past the alert count every reveal must record its event: a failing write refuses it.
+    t.failingEvents.on = true;
+    await expect(t.revealSignIn(admin)).resolves.toEqual({
+      ok: false,
+      error: { code: 'access.unavailable' },
+    });
+    expect(t.identity.calls).toBe(calls + 1);
   });
 
   it('counts only the calls the gate allowed', async () => {
@@ -357,7 +396,7 @@ describe.each(['AU', 'ZZ'] as const)('per-admin limits on customer PII actions i
     expect(t.adminLimits.counted).toHaveLength(1);
   });
 
-  it('refuses when the counter cannot be read or the alert cannot be recorded (fail closed)', async () => {
+  it('refuses when the counter cannot be read (fail closed)', async () => {
     const t = setup();
     const admin = t.admin();
     t.adminLimits.failing = true;
@@ -370,15 +409,5 @@ describe.each(['AU', 'ZZ'] as const)('per-admin limits on customer PII actions i
       error: { code: 'access.unavailable' },
     });
     expect(t.identity.calls).toBe(0);
-
-    t.adminLimits.failing = false;
-    await times(limits.piiRevealAlertAt - 1, () => t.revealSignIn(admin));
-    t.failingEvents.on = true;
-    const calls = t.identity.calls;
-    await expect(t.revealSignIn(admin)).resolves.toEqual({
-      ok: false,
-      error: { code: 'access.unavailable' },
-    });
-    expect(t.identity.calls).toBe(calls);
   });
 });

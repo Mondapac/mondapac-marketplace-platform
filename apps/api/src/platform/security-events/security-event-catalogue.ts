@@ -302,9 +302,10 @@ export const CarrierWebhookSignatureFailed = defineSecurityEvent({
 /**
  * An admin reached the Market's alert count of reveals of customers' personal data (a sign-in's
  * address, a delivery address) within one hour on the customer page (security review of #969,
- * L3): recorded once per admin and window, when the count reaches
- * `customers.adminActionLimits.piiRevealAlertAt`. The target is the admin's account; the count
- * only, never a customer or what was revealed (that stays in the audit log).
+ * L3): recorded on every admitted reveal from `customers.adminActionLimits.piiRevealAlertAt` on,
+ * so one failed write loses no alert (the rule keeps one live alert per admin). The target is the
+ * admin's account; the window's count only, never a customer or what was revealed (that stays in
+ * the audit log).
  */
 export const AdminBulkPiiReveal = defineSecurityEvent({
   type: 'customers.pii-reveal.bulk',

@@ -311,8 +311,8 @@ carry no region. Without the section the address book routes answer `customers.u
 `passwordResetsPerHour` (AU 20) "send password reset" actions on the customer page and
 `piiRevealsPerHour` (AU 60) reveals of a customer's personal data, the sign-in address and the
 delivery address sharing one count; a further attempt answers 429 `request.throttled`.
-`piiRevealAlertAt` (AU 40, at most `piiRevealsPerHour`) is the reveal count at which the security
-centre gets one alert (`admin-bulk-pii-reveal`) for that admin and hour. Each 1 to 1000. Without the
+`piiRevealAlertAt` (AU 40, at most `piiRevealsPerHour`) is the reveal count from which each reveal
+records a security event, kept as one live security-centre alert per admin (`admin-bulk-pii-reveal`). Each 1 to 1000. Without the
 section those admin actions answer `access.unavailable` (503).
 
 ## `search` section (optional)

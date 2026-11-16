@@ -26,7 +26,8 @@ import { panelHeaders, TEST_MARKETS } from './support/test-config';
 // reveal needs its protected key), CSRF on every POST, the closed bodies, `no-store`, that the
 // sign-ins carry no address, the reveal's audit row and timeline entry, "sign out everywhere",
 // "send password reset" and the export's step-up, in both Markets; the per-admin reveal limit's
-// 429 request.throttled with Retry-After and its one bulk-reveal alert (security review of #969).
+// 429 request.throttled with Retry-After and its bulk-reveal events, and the password reset's
+// limit and 429 (security review of #969).
 
 const START = Temporal.Instant.from('2026-11-16T10:00:00Z');
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 };
@@ -307,13 +308,59 @@ describe.each(TEST_MARKETS)('customer page sections over HTTP in market %s', (co
     expect(seconds).toBeLessThanOrEqual(3600);
     expect(refused.headers['retry-after']).toBe(String(seconds));
     expect(JSON.stringify(refused.body)).not.toContain('203.0.113');
-    // Only the admitted reveals were audited; the alert was raised once, naming the admin.
+    // Only the admitted reveals were audited. From the alert count on, each admitted reveal
+    // recorded the bulk-reveal event naming the admin (one alert per admin in the security centre).
     expect(fakes.audits).toHaveLength(limits.piiRevealsPerHour);
-    expect(
-      fakes.recordedSecurityEvents
-        .filter((event) => event.type === 'customers.pii-reveal.bulk' && event.marketId === code)
-        .map((event) => [event.targetId, event.payload, event.actor]),
-    ).toEqual([[SECURITY, { reveals: limits.piiRevealAlertAt }, 'authenticated']]);
+    const bulk = fakes.recordedSecurityEvents.filter(
+      (event) => event.type === 'customers.pii-reveal.bulk' && event.marketId === code,
+    );
+    expect(bulk.map((event) => event.payload)).toEqual(
+      Array.from(
+        { length: limits.piiRevealsPerHour - limits.piiRevealAlertAt + 1 },
+        (_, index) => ({ reveals: limits.piiRevealAlertAt + index }),
+      ),
+    );
+    expect(new Set(bulk.map((event) => `${event.targetId}|${event.actor}`))).toEqual(
+      new Set([`${SECURITY}|authenticated`]),
+    );
+  });
+
+  it('answers 429 request.throttled with Retry-After past the admin’s password reset limit', async () => {
+    await boot();
+    const limit = app!.get(MarketRegistry).get(market.marketId).customers!.adminActionLimits
+      .passwordResetsPerHour;
+    const admin = sessionOf(1, SECURITY, 'admin');
+    const reset = () => http().post(`${base}/password-reset`).set(admin).send({});
+    // The first sends the mail; identity refuses the repeats within five minutes, and every one
+    // of them still counts towards the admin's hour.
+    expect((await reset()).status).toBe(200);
+    for (let index = 1; index < limit; index += 1) {
+      const repeat = await reset();
+      expect(repeat.status).toBe(429);
+      expect(repeat.body).toMatchObject({ code: 'customers.password-reset-recently-requested' });
+      expect(repeat.headers['retry-after']).toBeUndefined();
+    }
+
+    const refused = await reset();
+    expect(refused.status).toBe(429);
+    expect(refused.headers['cache-control']).toBe('no-store');
+    expect(refused.body).toEqual({
+      statusCode: 429,
+      code: 'request.throttled',
+      details: { retryAfterSeconds: expect.any(Number) as number },
+    });
+    const seconds = (refused.body as { details: { retryAfterSeconds: number } }).details
+      .retryAfterSeconds;
+    expect(seconds).toBeGreaterThan(0);
+    expect(seconds).toBeLessThanOrEqual(3600);
+    expect(refused.headers['retry-after']).toBe(String(seconds));
+    expect(fakes.audits.map((audit) => audit.action)).toEqual([
+      'identity.account.password-reset-sent-by-admin',
+    ]);
+
+    // Another admin is not affected by the first one's count.
+    const viewerKeys = sessionOf(2, VIEWER, 'admin');
+    expect((await http().post(`${base}/password-reset`).set(viewerKeys).send({})).status).toBe(403);
   });
 
   it('lists the live sessions and signs the customer out everywhere', async () => {

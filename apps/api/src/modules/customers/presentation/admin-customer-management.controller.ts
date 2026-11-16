@@ -123,8 +123,10 @@ export class AdminCustomerManagementController {
       'data: not cached. 404 customers.customer-not-found or customers.address-not-found. ' +
       'Limited per admin and fixed hour (the Market’s customers.adminActionLimits.piiRevealsPerHour, ' +
       'one count with the sign-in address reveal; every attempt the keys allow counts): past it 429 ' +
-      'request.throttled with details.retryAfterSeconds and Retry-After. Reaching the Market’s ' +
-      'alert count raises one security alert (admin-bulk-pii-reveal) for the admin and hour.',
+      'request.throttled with details.retryAfterSeconds and Retry-After. From the Market’s ' +
+      'alert count on, each reveal records a security event (one live alert ' +
+      'admin-bulk-pii-reveal per admin); a reveal whose event cannot be recorded answers 503 ' +
+      'access.unavailable.',
   })
   @ApiHeader(CSRF)
   @ApiOkResponse({ type: Object })

@@ -176,14 +176,18 @@ export const SECURITY_RULES: readonly SecurityRule[] = Object.freeze([
     lookback: hours(1),
   },
   // Security review of #969 (L3): an admin who reveals many customers' personal data in an hour.
-  // customers records the event once per admin and window, so each event is one alert.
+  // customers records the event on every reveal from the Market's alert count on (Hassan L1 on
+  // #974: a failed write is not lost), with the admin as target; grouping by that account keeps
+  // one live alert per admin, whose count rises with each later event.
   {
     code: 'admin-bulk-pii-reveal',
-    kind: 'each',
+    kind: 'threshold',
     severity: 's2',
     title: 'An admin revealed a lot of customer personal data within an hour',
     types: ['customers.pii-reveal.bulk'],
-    lookback: hours(1),
+    groupBy: 'account',
+    threshold: 1,
+    window: hours(1),
   },
   // S3: plan section 4 row 3.
   {
