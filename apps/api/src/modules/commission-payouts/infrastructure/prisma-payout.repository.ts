@@ -23,7 +23,7 @@ const toInstant = (date: Date): Temporal.Instant =>
 const orNull = (date: Date | null): Temporal.Instant | null =>
   date === null ? null : toInstant(date);
 
-interface PayoutRow {
+export interface PayoutRow {
   readonly id: string;
   readonly sellerId: string;
   readonly currency: string;
@@ -47,7 +47,8 @@ interface PayoutRow {
   readonly version: number;
 }
 
-const toPayout = (row: PayoutRow): Payout => ({
+/** A stored payout row as the domain reads it (also used by the admin list reader). */
+export const toPayout = (row: PayoutRow): Payout => ({
   id: row.id as Id<'Payout'>,
   sellerId: row.sellerId as Id<'Seller'>,
   currency: row.currency,

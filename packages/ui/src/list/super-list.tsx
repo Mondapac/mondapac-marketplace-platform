@@ -27,6 +27,8 @@ export interface SuperListProps {
     /** A page title (h1) above the subtitle; omit it when the shell's top bar already names the page. */
     readonly title?: string;
     readonly subtitle: string;
+    /** A second small muted line under the subtitle (for example the zone the times are in). */
+    readonly note?: string;
     readonly actions?: ReactNode;
   };
   /** A notice between the heading and the tabs (for example a view-only banner). */
@@ -41,15 +43,19 @@ export interface SuperListProps {
     readonly onChange: (value: string) => void;
     /** Enter searches at once, without the typing pause. */
     readonly onSubmit: (value: string) => void;
+    /** The box lost focus (a page can then show a hint about what was typed). */
+    readonly onBlur?: () => void;
+    /** Sits right after the search box (a scope select, a hint line); the page owns its words. */
+    readonly extra?: ReactNode;
   };
+  readonly filter?: SuperListTool;
+  readonly sort?: SuperListTool;
+  readonly columns?: SuperListTool;
   /**
    * The tool buttons in place of `filter`, `sort` and `columns`, for a list whose phone layout
    * opens them in a sheet. Give it the whole `fieldset`, disabled while `status.skeleton` shows.
    */
   readonly toolbar?: ReactNode;
-  readonly filter?: SuperListTool;
-  readonly sort?: SuperListTool;
-  readonly columns?: SuperListTool;
   /** "Sorted by Name, A to Z". */
   readonly sortedLine?: string;
   /** The chips and their buttons; null while nothing is filtered and nothing can be saved. */
@@ -113,10 +119,10 @@ export function SuperList({
   notice,
   views,
   search,
-  toolbar,
   filter,
   sort,
   columns,
+  toolbar,
   sortedLine,
   chips,
   failure,
@@ -137,12 +143,17 @@ export function SuperList({
       <div
         className={`flex flex-wrap justify-between gap-x-4 gap-y-3 ${heading.title === undefined ? 'items-center' : 'items-start'}`}
       >
-        {heading.title === undefined ? (
+        {heading.title === undefined && heading.note === undefined ? (
           <p className="min-w-0 text-sm text-fg-muted">{heading.subtitle}</p>
         ) : (
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold">{heading.title}</h1>
+          <div className={`flex min-w-0 flex-col ${heading.title === undefined ? 'gap-1' : ''}`}>
+            {heading.title === undefined ? null : (
+              <h1 className="text-2xl font-semibold">{heading.title}</h1>
+            )}
             <p className="min-h-5 text-sm text-fg-muted">{heading.subtitle}</p>
+            {heading.note === undefined ? null : (
+              <p className="text-sm text-fg-muted">{heading.note}</p>
+            )}
           </div>
         )}
         {heading.actions === undefined ? null : (
@@ -159,10 +170,12 @@ export function SuperList({
           maxLength={search.maxLength}
           className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
           onChange={(event) => search.onChange(event.target.value)}
+          onBlur={search.onBlur}
           onKeyDown={(event) => {
             if (event.key === 'Enter') search.onSubmit(search.value.trim());
           }}
         />
+        {search.extra}
         {/* The real toolbar shows while the first page loads, but cannot act on rows yet. */}
         {toolbar !== undefined ? toolbar : null}
         {toolbar === undefined && hasTools ? (

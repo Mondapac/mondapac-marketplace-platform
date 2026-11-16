@@ -143,19 +143,6 @@ describe('SuperList', () => {
       expect(html).toContain(text);
   });
 
-  it('shows a page title and a notice, and a page-made toolbar in place of the three tools', () => {
-    const html = list({
-      heading: { title: 'People', subtitle: '143 people' },
-      notice: <p>View only</p>,
-      toolbar: <fieldset>OWN TOOLS</fieldset>,
-    });
-    expect(html).toContain('<h1');
-    expect(html).toContain('People');
-    expect(html).toContain('View only');
-    expect(html).toContain('OWN TOOLS');
-    expect(html).not.toContain('>Columns<');
-  });
-
   it('shows the loading status before the first answer and the banner with Retry on a failure', () => {
     const loadingHtml = list({ ready: false, loading: true });
     expect(loadingHtml).toContain('Loading');
@@ -196,5 +183,54 @@ describe('SuperList', () => {
     });
     expect(html).toContain('aria-busy="true"');
     expect(html).toContain('opacity-60');
+  });
+
+  it('shows a page title and a notice, and a page-made toolbar in place of the three tools', () => {
+    const html = list({
+      heading: { title: 'People', subtitle: '143 people' },
+      notice: <p>View only</p>,
+      toolbar: <fieldset>OWN TOOLS</fieldset>,
+    });
+    expect(html).toContain('<h1');
+    expect(html).toContain('People');
+    expect(html).toContain('View only');
+    expect(html).toContain('OWN TOOLS');
+    expect(html).not.toContain('>Columns<');
+  });
+
+  it('puts a page note under the subtitle, and anything the page gives after the search box', () => {
+    const html = list({
+      heading: { subtitle: '143 people', note: 'Times are in Brisbane.' },
+      search: {
+        label: 'Search',
+        placeholder: 'Search people',
+        value: '',
+        maxLength: 100,
+        onChange: () => {},
+        onSubmit: () => {},
+        extra: <span>SCOPE</span>,
+      },
+    });
+    expect(html).toContain('Times are in Brisbane.');
+    expect(html.indexOf('143 people')).toBeLessThan(html.indexOf('Times are in Brisbane.'));
+    expect(html.indexOf('Search people')).toBeLessThan(html.indexOf('SCOPE'));
+    expect(list()).not.toContain('SCOPE');
+  });
+
+  it('gives a tab its pointer hint when it has one', () => {
+    const html = list({
+      views: {
+        label: 'Views',
+        activeId: 'all',
+        onSelect: () => {},
+        items: [
+          { id: 'all', label: 'All' },
+          { id: 'cut', label: 'Cut', title: 'Cut in full' },
+        ],
+        manage: null,
+      },
+    });
+    expect(html).toContain('title="Cut in full"');
+    expect(html.match(/title=/g)).toHaveLength(1);
   });
 });
