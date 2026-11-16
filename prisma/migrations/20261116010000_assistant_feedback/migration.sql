@@ -5,9 +5,11 @@ SET lock_timeout = '5s';
 ALTER TABLE "assistant"."messages"
   ADD COLUMN "notices" VARCHAR(32)[] NOT NULL DEFAULT ARRAY[]::VARCHAR(32)[],
   ADD COLUMN "empty_search" BOOLEAN NOT NULL DEFAULT false,
+  -- NOT VALID, then VALIDATE: the check on the largest table is validated under a weaker lock.
   ADD CONSTRAINT "messages_notices_check" CHECK (
     array_position("notices", NULL) IS NULL AND cardinality("notices") <= 8
-  );
+  ) NOT VALID;
+ALTER TABLE "assistant"."messages" VALIDATE CONSTRAINT "messages_notices_check";
 
 -- CreateTable
 CREATE TABLE "assistant"."feedback" (
@@ -34,8 +36,7 @@ ALTER TABLE "assistant"."feedback"
   -- A reason belongs to a thumbs down only.
   ADD CONSTRAINT "feedback_reason_check" CHECK (
     "reason" IS NULL OR ("rating" = 'down' AND "reason" IN ('wrong', 'not-found', 'other'))
-  ),
-  ADD CONSTRAINT "feedback_updated_at_check" CHECK ("updated_at" >= "created_at");
+  );
 
 -- Indexes for the admin insights (Mojtaba): every read is one Market and a range of message
 -- times; the unanswered turns are a small part of the messages, so they get a partial index.

@@ -131,6 +131,11 @@ The answer holds:
   most), `count`, `lastAt` and the count per reason. `truncated` says that more than 1000 flagged
   turns existed and only the newest 1000 were grouped. This is the data of the F3 super list.
 
+Retention limits what it shows: a conversation that keeps no text (retention `none`) has no
+messages, so its unavailable, failed or empty turns, hand-offs and thumbs are not in these
+numbers (only its spend day is); and a guest's conversation is purged after 30 days, so a thumbs
+share over a longer range covers the surviving account conversations only.
+
 Buyer text is the masked text that was stored, decrypted per conversation only to build these
 rows; no account, guest or conversation id leaves the module. Only conversations that keep text
 appear (a conversation with retention `none` leaves its spend day only). The route is
@@ -143,7 +148,7 @@ Each assistant message now stores `notices` (the fixed notice codes of the reply
 
 Migration `20261116010000_assistant_feedback`. `feedback`: PK (Market, conversation, position),
 FK to `messages` on the same three columns with `ON DELETE CASCADE`; CHECKs: rating `up|down`,
-reason only with `down` and one of three values, `updated_at >= created_at`; the application role
+reason only with `down` and one of three values, the application role
 can SELECT and INSERT, and UPDATE only `rating`, `reason` and `updated_at`; no DELETE (the cascade
 needs none). `messages` gains `notices VARCHAR(32)[]` and `empty_search`; two partial indexes
 on (`market_id`, `created_at`) for assistant rows: all of them (the range reads) and the flagged

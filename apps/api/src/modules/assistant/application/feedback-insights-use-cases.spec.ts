@@ -286,6 +286,17 @@ describe.each(TEST_MARKET_IDS)('assistant feedback and insights in market %s', (
       expect(feedback.rows.size).toBe(0);
     });
 
+    it('refuses a guest when the Market allows customers only, but not a customer', async () => {
+      const token = await guestChat();
+      settings.current = on({ users: 'customers-only' });
+      expect(await guestThumbs(token)).toEqual({
+        ok: false,
+        error: { code: 'assistant.sign-in-required' },
+      });
+      await chat();
+      expect((await thumbs()).ok).toBe(true);
+    });
+
     it('is off with the Market switch, and never for a seller on the customer route', async () => {
       await chat();
       settings.current = on({ enabled: false });

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
@@ -24,6 +25,8 @@ const dateOf = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
  * here, one conversation key at a time; it was masked before it was stored.
  */
 export class PrismaInsightsRepository implements InsightsRepository {
+  readonly #logger = new Logger('PrismaInsightsRepository');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly keys: SubjectKeyService,
@@ -97,28 +100,44 @@ export class PrismaInsightsRepository implements InsightsRepository {
     limit: number,
   ): Promise<readonly UnansweredCandidate[]> {
     const tx = this.prisma.tx(market);
-    const flagged = await tx.assistantMessage.findMany({
+    const window = { gte: dateOf(from), lt: dateOf(to) };
+    const turn = {
+      conversationId: true,
+      position: true,
+      createdAt: true,
+      notices: true,
+      emptySearch: true,
+    } as const;
+    // Two reads, each served by its own index (one OR over a relation cannot use the partial
+    // index): the replies flagged by the server, and the replies a buyer rated down.
+    const marked = await tx.assistantMessage.findMany({
       where: {
         marketId: market.marketId,
         role: 'assistant',
-        createdAt: { gte: dateOf(from), lt: dateOf(to) },
-        OR: [
-          { notices: { hasSome: ['unavailable', 'tool-failed'] } },
-          { emptySearch: true },
-          { feedback: { is: { rating: 'down' } } },
-        ],
+        createdAt: window,
+        OR: [{ notices: { hasSome: ['unavailable', 'tool-failed'] } }, { emptySearch: true }],
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { position: 'desc' }],
       take: limit,
-      select: {
-        conversationId: true,
-        position: true,
-        createdAt: true,
-        notices: true,
-        emptySearch: true,
-        feedback: { select: { rating: true } },
-      },
+      select: { ...turn, feedback: { select: { rating: true } } },
     });
+    const rated = await tx.assistantFeedback.findMany({
+      where: { marketId: market.marketId, rating: 'down', message: { createdAt: window } },
+      orderBy: [{ message: { createdAt: 'desc' } }, { position: 'desc' }],
+      take: limit,
+      select: { message: { select: turn } },
+    });
+    const merged = new Map<string, (typeof marked)[number]>();
+    for (const row of marked) merged.set(`${row.conversationId}:${row.position}`, row);
+    for (const { message } of rated) {
+      merged.set(`${message.conversationId}:${message.position}`, {
+        ...message,
+        feedback: { rating: 'down' },
+      });
+    }
+    const flagged = [...merged.values()]
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.position - a.position)
+      .slice(0, limit);
     // The buyer's line is the message just before the reply.
     const asked = new Map<string, string>();
     for (let start = 0; start < flagged.length; start += BUYER_CHUNK) {
@@ -135,14 +154,22 @@ export class PrismaInsightsRepository implements InsightsRepository {
         select: { conversationId: true, position: true, textCipher: true },
       });
       for (const row of rows) {
-        const text = await this.keys.decrypt(
-          market,
-          row.conversationId as Id<'Conversation'>,
-          MESSAGE_TEXT,
-          row.textCipher,
-        );
-        // A destroyed key is a purged conversation: nothing to show.
-        if (text.ok) asked.set(`${row.conversationId}:${row.position}`, text.value);
+        try {
+          const text = await this.keys.decrypt(
+            market,
+            row.conversationId as Id<'Conversation'>,
+            MESSAGE_TEXT,
+            row.textCipher,
+          );
+          // A destroyed key is a purged conversation: nothing to show.
+          if (text.ok) asked.set(`${row.conversationId}:${row.position}`, text.value);
+        } catch {
+          // One unreadable row must not take the whole read down; it is left out of the list.
+          this.#logger.warn({
+            msg: 'assistant.insights.unreadable-message',
+            marketId: market.marketId,
+          });
+        }
       }
     }
     const candidates: UnansweredCandidate[] = [];

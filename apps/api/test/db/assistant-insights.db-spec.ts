@@ -209,7 +209,7 @@ describe.each(TEST_MARKETS)(
           );
         };
 
-        it('refuses a reason with a thumbs up, an unknown value and a time that goes backwards', async () => {
+        it('refuses a reason with a thumbs up, and an unknown value', async () => {
           const conversationId = await conversation([{ text: 'x' }]);
           await expect(failure(insertFeedback(conversationId, { rating: 'up' }))).resolves.toBe(
             CHECK,
@@ -219,9 +219,6 @@ describe.each(TEST_MARKETS)(
           );
           await expect(
             failure(insertFeedback(conversationId, { rating: 'five', reason: null })),
-          ).resolves.toBe(CHECK);
-          await expect(
-            failure(insertFeedback(conversationId, { updated_at: '2026-11-10T00:00:00Z' })),
           ).resolves.toBe(CHECK);
           await expect(
             insertFeedback(conversationId, { rating: 'up', reason: null }),

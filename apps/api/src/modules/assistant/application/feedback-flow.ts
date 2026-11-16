@@ -22,6 +22,8 @@ export type SubmitFeedbackFailure =
   | { readonly code: 'validation.failed'; readonly fields: readonly FieldError[] }
   /** The Market's assistant is switched off. */
   | { readonly code: 'assistant.off' }
+  /** The Market allows signed-in customers only: a guest's thumbs are refused too. */
+  | { readonly code: 'assistant.sign-in-required' }
   /** No conversation with this id belongs to the caller in this Market. */
   | { readonly code: 'assistant.conversation-not-found' }
   /** The conversation has no assistant message at that position (or keeps no text). */
@@ -58,6 +60,9 @@ export async function submitFeedback(
   return deps.unitOfWork.run<Feedback, SubmitFeedbackFailure>(market, async () => {
     const settings = (await deps.settings.latest(market))?.settings ?? DEFAULT_ASSISTANT_SETTINGS;
     if (!settings.enabled) return err({ code: 'assistant.off' });
+    if (caller.kind === 'guest' && settings.users === 'customers-only') {
+      return err({ code: 'assistant.sign-in-required' });
+    }
     const conversation = await deps.conversations.find(market, id.value);
     const owned =
       conversation !== null &&
