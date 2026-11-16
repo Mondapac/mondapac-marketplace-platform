@@ -154,7 +154,6 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
       quickPrompts: new FixedQuickPrompts(),
       outbox: new RecordingOutbox(),
       trail: unusedChangeTrail,
-      quickPrompts: new FixedQuickPrompts(),
     };
   });
 
