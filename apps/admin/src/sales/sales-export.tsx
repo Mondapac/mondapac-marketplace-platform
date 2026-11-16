@@ -47,7 +47,12 @@ export function exportQuery(input: {
   params.set('format', input.format);
   params.set('columns', input.columns.join(','));
   params.set('zone', input.zone);
-  if (!input.selection.allMatching) params.set('ids', input.selection.ids.join(','));
+  if (!input.selection.allMatching) {
+    // An empty `ids` would be refused by the relay, and dropping it would widen the file to the
+    // whole filter: with nothing ticked and "Select all matching" off there is nothing to export.
+    if (input.selection.ids.length === 0) throw new Error('export.no-rows-selected');
+    params.set('ids', input.selection.ids.join(','));
+  }
   return params.toString();
 }
 
@@ -98,6 +103,12 @@ export function csvRecords(text: string): number {
   return Math.max(ends - 1, 0);
 }
 
+/** Removes the path separators from a name the server sent, so a file cannot name a folder. */
+export function safeFileName(name: string): string {
+  const cleaned = name.replace(/[/\\]/g, '').trim();
+  return cleaned === '' ? '' : cleaned;
+}
+
 /** The day in the list's zone, for the name of a file the server did not name. */
 function dayIn(zone: string): string {
   try {
@@ -137,8 +148,15 @@ export async function downloadSalesExport(input: {
     const body = (await response.json().catch((): unknown => null)) as ErrorBody | null;
     throw failureOf(response.status, body);
   }
-  const named = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1];
-  const name = named ?? `${input.fallbackName}-${dayIn(input.zone)}.${input.format}`;
+  // A response that is not the file asked for (an HTML error page from a proxy, say) is not saved.
+  const type = (response.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase();
+  if (type !== (input.format === 'xlsx' ? XLSX_TYPE : 'text/csv')) {
+    throw new ExportFailure('unavailable');
+  }
+  const named = safeFileName(
+    /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '')?.[1] ?? '',
+  );
+  const name = named === '' ? `${input.fallbackName}-${dayIn(input.zone)}.${input.format}` : named;
   try {
     if (input.format === 'xlsx') {
       saveFile(new Blob([await response.arrayBuffer()], { type: XLSX_TYPE }), name);
@@ -175,6 +193,8 @@ export function useSalesExport(input: {
   const [busy, setBusy] = useState(false);
   const { selection } = input;
   const count = selection.allMatching ? selection.total : selection.ids.length;
+  // Rows ticked is the only way to name them when "Select all matching" is off.
+  const nothingToExport = !selection.allMatching && selection.ids.length === 0;
   const number = (value: number) => numberFormat(locale, {}).format(value);
 
   function failureText(reason: unknown): string {
@@ -190,6 +210,7 @@ export function useSalesExport(input: {
   }
 
   async function start(format: ExportFormat) {
+    if (nothingToExport) return;
     setBusy(true);
     const work = downloadSalesExport({
       path: input.path,
@@ -229,6 +250,7 @@ export function useSalesExport(input: {
       label: t('menu'),
       description: t('menu-help'),
       icon: 'download' as const,
+      disabled: nothingToExport,
       onSelect: () => setOpen(true),
     },
     dialog: (

@@ -734,6 +734,27 @@ const EXPORT_ZONE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+){0,2}$/;
 /** The columns an export may name, in any order (the list may show none: the server adds the fixed ones). */
 const exportColumns = (keys: readonly string[]): RegExp =>
   new RegExp(`^(?:(?:${keys.join('|')})(?:,(?:${keys.join('|')})){0,${keys.length - 1}})?$`);
+/** The Sales list exports: a malformed key there is refused (400), never dropped. */
+const SALES_EXPORT_PATH = /^ordering\/admin\/(shipments|refunds|documents)\/export$/;
+const SALES_EXPORT_STRICT_KEYS = ['ids', 'columns', 'kind', 'format', 'zone'] as const;
+/**
+ * True when an export key that narrows or shapes the file is present but malformed, repeated or
+ * oversized. Dropping it would widen the export to the whole filter, so the relay answers 400.
+ */
+function malformedSalesExport(target: string, requestUrl: string): boolean {
+  if (!SALES_EXPORT_PATH.test(target)) return false;
+  const source = new URL(requestUrl).searchParams;
+  return SALES_EXPORT_STRICT_KEYS.some((key) => {
+    const values = source.getAll(key);
+    if (values.length === 0) return false;
+    const value = values[0] ?? '';
+    return (
+      values.length > 1 ||
+      value.length > (QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX) ||
+      QUERY_SHAPES[target]?.[key]?.test(value) === false
+    );
+  });
+}
 /** Query values that must have a shape to cross; a value of another shape is dropped. */
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
   'ordering/admin/shipments': {
@@ -1265,6 +1286,9 @@ export async function relay(
     const read = await readCapped(request, bodyCap);
     if (read === null) return jsonError(413, 'request.too-large');
     body = read;
+  }
+  if (request.method === 'GET' && malformedSalesExport(target, request.url)) {
+    return jsonError(400, 'request.invalid');
   }
   let outgoing: Headers;
   try {

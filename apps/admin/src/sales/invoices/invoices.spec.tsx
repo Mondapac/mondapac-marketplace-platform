@@ -976,6 +976,7 @@ describe('Invoices nav', () => {
 });
 
 describe('Invoices Export', () => {
+  const CSV = { 'content-type': 'text/csv; charset=utf-8' };
   const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const bulk = () => screen.getByRole('button', { name: 'Bulk action' });
   const openExport = async () => {
@@ -1064,7 +1065,9 @@ describe('Invoices Export', () => {
     await screen.findAllByText('Cedar Lane Halal Meats');
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all documents on this page' }));
-    answerWith(() => new Response('﻿Order ID\r\nrow 1\r\nrow 2\r\n', { status: 200 }));
+    answerWith(
+      () => new Response('﻿Order ID\r\nrow 1\r\nrow 2\r\n', { status: 200, headers: CSV }),
+    );
     confirm(await openExport());
     expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
     expect(fetched).toHaveLength(1);
@@ -1116,7 +1119,11 @@ describe('Invoices Export', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all documents on this page' }));
     fireEvent.click(screen.getByRole('button', { name: 'Select all matching' }));
     answerWith(
-      () => new Response('Order ID,Note\r\nr1,"two\r\nlines"\r\nr2,x\r\n', { status: 200 }),
+      () =>
+        new Response('Order ID,Note\r\nr1,"two\r\nlines"\r\nr2,x\r\n', {
+          status: 200,
+          headers: CSV,
+        }),
     );
     confirm(await openExport());
     expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
@@ -1219,7 +1226,7 @@ describe('Invoices Export', () => {
               controller.error(new TypeError('network'));
             },
           }),
-          { status: 200 },
+          { status: 200, headers: CSV },
         ),
     );
     confirm(await openExport());
@@ -1260,7 +1267,7 @@ describe('Invoices Export', () => {
     await waitFor(() => expect(lastUrl()).toContain('kind=credit-note'));
     await screen.findAllByText('Cedar Lane Halal Meats');
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all documents on this page' }));
-    answerWith(() => new Response('Credit note ID\r\na\r\nb\r\n', { status: 200 }));
+    answerWith(() => new Response('Credit note ID\r\na\r\nb\r\n', { status: 200, headers: CSV }));
     confirm(await openExport());
     expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
     expect(sent().params).toEqual({
@@ -1271,5 +1278,34 @@ describe('Invoices Export', () => {
       ids: '0190a000-0000-7000-8000-0000000000e1,0190a000-0000-7000-8000-0000000000e2',
     });
     expect(names).toEqual([expect.stringMatching(/^credit-notes-\d{4}-\d{2}-\d{2}\.csv$/)]);
+  });
+
+  // The backend filters `id IN ids`: the seller order id of a confirmation (its document id is that
+  // id) and the credit note id of a credit note (its seller order id is another id).
+  it('sends the id the backend filters on: the seller order id of a confirmation, the credit note id of a credit note', async () => {
+    const OTHER_ORDER = '0190a000-0000-7000-8000-0000000000d9';
+    serve(
+      byKind(
+        [confirmation({ documentId: SELLER_ORDER, sellerOrderId: SELLER_ORDER })],
+        [creditNote({ documentId: CREDIT_ID, sellerOrderId: OTHER_ORDER })],
+      ),
+    );
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all documents on this page' }));
+    answerWith(() => new Response('Order ID\r\na\r\n', { status: 200, headers: CSV }));
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 1 row.')).toBeTruthy();
+    expect(sent().params['ids']).toBe(SELLER_ORDER);
+    toast.dismiss();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Credit notes/ }));
+    await waitFor(() => expect(lastUrl()).toContain('kind=credit-note'));
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all documents on this page' }));
+    confirm(await openExport());
+    await waitFor(() => expect(fetched).toHaveLength(2));
+    expect(sent().params['ids']).toBe(CREDIT_ID);
+    expect(sent().params['ids']).not.toContain(OTHER_ORDER);
   });
 });
