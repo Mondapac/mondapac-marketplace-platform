@@ -3,14 +3,17 @@ import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PayoutHoldRecord } from '../../src/modules/commission-payouts/application/ports/payout-hold.repository';
 import type { LedgerEntry } from '../../src/modules/commission-payouts/domain/ledger';
-import type {
-  HoldListFilter,
-  HoldSort,
-  LedgerListFilter,
+import {
+  HOLD_SORT_KEYS,
+  LEDGER_SORT_KEYS,
+  type HoldListFilter,
+  type HoldSort,
+  type LedgerListFilter,
 } from '../../src/modules/commission-payouts/domain/seller-page-lists';
 import { PrismaLedgerRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-ledger.repository';
 import { PrismaPayoutHoldRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-payout-hold.repository';
 import { PrismaSellerPageListReader } from '../../src/modules/commission-payouts/infrastructure/prisma-seller-page-list.reader';
+import { MemorySellerPageLists } from '../support/commission-payouts-seller-page-fakes';
 import { TEST_MARKETS } from '../support/test-config';
 import {
   createPersistence,
@@ -65,6 +68,7 @@ describe.each(TEST_MARKETS)('the seller page lists in market %s (database)', (co
       readonly kind?: 'sale' | 'shipping';
       readonly amount?: bigint;
       readonly at?: Temporal.Instant;
+      readonly occurred?: Temporal.Instant;
       readonly target?: MarketContext;
     } = {},
   ): Promise<LedgerEntry> {
@@ -82,7 +86,7 @@ describe.each(TEST_MARKETS)('the seller page lists in market %s (database)', (co
       rateBps: null,
       baseAmount: null,
       sourceId: null,
-      occurredAt: at,
+      occurredAt: fields.occurred ?? at,
       recordedAt: at,
     };
     expect(await write(target, () => ledger.append(target, [entry]))).toBe(1);
@@ -233,7 +237,9 @@ describe.each(TEST_MARKETS)('the seller page lists in market %s (database)', (co
     expect(await ids({ sellerOrderId: order, scope: 'seller' })).toEqual([]);
     expect(await ids({ origin: 'system', reason: 'refund-pending' })).toEqual([onOrder.id]);
     expect(await ids({ from: T0.add({ minutes: 30 }) })).toEqual([onOrder.id, done.id]);
+    // Unreleased last in both directions; the parity test below pins the whole order.
     expect((await ids({}, 'released'))[0]).toBe(done.id);
+    expect((await ids({}, 'released', 'asc'))[0]).toBe(done.id);
     expect(await read(market, () => reader.holdCounts(market, s))).toEqual({
       active: 2,
       released: 1,
@@ -272,5 +278,55 @@ describe.each(TEST_MARKETS)('the seller page lists in market %s (database)', (co
       }),
     );
     expect([...first, ...rest].map((h) => h.id)).toEqual([tied[0]!.id, tied[1]!.id, older.id]);
+  });
+
+  it('orders every sort as the in-memory fake does (the fake the flow tests trust)', async () => {
+    const s = seller();
+    // Ledger: recorded and occurred in reverse orders, two amounts tied.
+    const entries = [
+      await entryOf(s, { amount: 700n, at: T0.add({ hours: 1 }), occurred: T0.add({ hours: 9 }) }),
+      await entryOf(s, { amount: 300n, at: T0.add({ hours: 2 }), occurred: T0.add({ hours: 8 }) }),
+      await entryOf(s, { amount: 300n, at: T0.add({ hours: 3 }), occurred: T0.add({ hours: 7 }) }),
+      await entryOf(s, { amount: 900n, at: T0.add({ hours: 3 }), occurred: T0.add({ hours: 7 }) }),
+    ];
+    // Holds: two active (one tied placement), two released in the reverse of their placement.
+    const placed = [1, 2, 2, 3, 4].map((hours) => T0.add({ hours }));
+    const made: PayoutHoldRecord[] = [];
+    for (const at of placed) made.push(await holdOf(s, { placedAt: at }));
+    for (const [index, hours] of [
+      [3, 9],
+      [4, 6],
+    ] as const) {
+      const releasedAt = T0.add({ hours });
+      const releasedBy = randomUUID() as Id<'Account'>;
+      await write(market, () =>
+        holds.release(market, made[index]!.id, { releasedAt, releasedBy, reason: 'resolved' }),
+      );
+      made[index] = { ...made[index]!, releasedAt, releasedBy, releaseReason: 'resolved' };
+    }
+    const fake = new MemorySellerPageLists(
+      (m) => (m.marketId === market.marketId ? entries : []),
+      (m) => (m.marketId === market.marketId ? made : []),
+    );
+    for (const direction of ['asc', 'desc'] as const) {
+      for (const key of LEDGER_SORT_KEYS) {
+        const sort = { key, direction };
+        const real = await read(market, () => reader.ledgerIds(market, ledgerFilter(s), sort, 10));
+        expect([key, direction, real]).toEqual([
+          key,
+          direction,
+          await fake.ledgerIds(market, ledgerFilter(s), sort, 10),
+        ]);
+      }
+      for (const key of HOLD_SORT_KEYS) {
+        const sort = { key, direction };
+        const real = await read(market, () => reader.holdIds(market, holdFilter(s), sort, 10));
+        expect([key, direction, real]).toEqual([
+          key,
+          direction,
+          await fake.holdIds(market, holdFilter(s), sort, 10),
+        ]);
+      }
+    }
   });
 });

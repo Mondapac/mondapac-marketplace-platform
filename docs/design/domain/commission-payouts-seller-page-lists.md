@@ -29,13 +29,18 @@ own route, key (`payout-hold.release`) and step-up. The older cards' queries kee
   sellers cannot answer). `counts` gives active and released holds of the seller.
 - **Filters:** `status` (active, released), `reason`, `origin` (admin, system), `scope` (seller,
   order), `sellerOrderId` (exact), `from`/`to` on the placement.
-- **Sort:** active-first (default: active holds, then the newest released; ascending flips both),
-  placed, released (unreleased last); the id breaks ties.
-- **Paging:** page numbers (default and maximum 100 to a page, what the older card shows in one
-  answer) or Previous/Next, newest placement first.
-- **Row actions:** `open-order` (a hold on one seller order); `release` on an active hold for a
-  caller holding `payout-hold.release` (asked through the probe use case; a failing probe offers
-  nothing).
+- **Sort:** active-first (default: active holds newest placement first, then released holds most
+  recently released first; ascending flips both), placed, released (unreleased last); the id
+  breaks ties.
+- **Paging:** page numbers (default and maximum 100 to a page) or Previous/Next, newest placement
+  first. The older card asks without paging and so shows the first 100 rows. Before, the route
+  sent every active hold plus the newest 100 released ones; now a seller with more than 100
+  active holds shows the first 100 (the answer's `counts` and `total` still say how many). This
+  is accepted until the card becomes a super list (frontend phase 4).
+- **Row actions:** `open-order` (a hold on one seller order); `release` on an active hold an
+  admin placed or a `seller-suspended` hold (the panel's `canReleaseHold`; the system's other
+  holds end by themselves), for a caller holding `payout-hold.release` (asked through the probe
+  use case; a failing probe offers nothing).
 - **Export** `.../payout-holds/export`: as the ledger's; base columns placed, status, reason (the
   panel's words), placed by, covers, seller order id, released; optional release reason, hold id.
 

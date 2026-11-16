@@ -210,6 +210,19 @@ describe.each([['AU'], ['ZZ']] as const)('the seller page lists in market %s', (
       expect(ids(must(await list({ sort: 'amount', direction: 'asc' })))[0]).toBe(low.id);
     });
 
+    it('sorts by occurrence apart from the record time', async () => {
+      // Recorded in one order, occurred in the reverse one.
+      const first = entry({ minutes: 1, occurredAt: T0.add({ minutes: 30 }) });
+      const second = entry({ minutes: 2, occurredAt: T0.add({ minutes: 20 }) });
+      const third = entry({ minutes: 3, occurredAt: T0.add({ minutes: 10 }) });
+      const recorded = [first.id, second.id, third.id];
+      expect(ids(must(await list({ sort: 'recorded', direction: 'asc' })))).toEqual(recorded);
+      expect(ids(must(await list({ sort: 'occurred', direction: 'asc' })))).toEqual(
+        [...recorded].reverse(),
+      );
+      expect(ids(must(await list({ sort: 'occurred', direction: 'desc' })))).toEqual(recorded);
+    });
+
     it('walks Previous and Next as the older card asks, 50 rows by default', async () => {
       const made = [0, 1, 2, 3, 4].map(() => entry({ minutes: 1 }));
       const first = must(await list({ limit: 2 }));
@@ -326,7 +339,7 @@ describe.each([['AU'], ['ZZ']] as const)('the seller page lists in market %s', (
         const theirs = entry({ sellerId: OTHER_SELLER });
         const elsewhere = entry({}, otherMarket);
         const lines = await linesOf(must(await exportOf({ ids: `${a.id},${b.id}` })));
-        expect(lines.slice(1).map((line) => line.split(',').at(-1))).toHaveLength(2);
+        expect(lines).toHaveLength(3);
         expect(lines[1]).toContain(a.orderId);
         expect(lines[2]).toContain(b.orderId);
         for (const other of [theirs, elsewhere]) {
@@ -454,10 +467,46 @@ describe.each([['AU'], ['ZZ']] as const)('the seller page lists in market %s', (
         done.id,
         onOrder.id,
       ]);
-      expect(await of({ sort: 'released', direction: 'desc' })).toEqual(
-        expect.arrayContaining([done.id]) as unknown,
-      );
-      expect((await of({ sort: 'released', direction: 'desc' }))[0]).toBe(done.id);
+    });
+
+    it('orders released holds by release time, apart from placement, in both directions', async () => {
+      const active = hold({ minutes: 1 });
+      // Placed first but released last, and the other way round.
+      const placedFirst = hold({ minutes: 2, ...released(9) });
+      const placedLast = hold({ minutes: 3, ...released(5) });
+      const of = async (input: Record<string, unknown>) => ids(must(await list(input)));
+      expect(await of({})).toEqual([active.id, placedFirst.id, placedLast.id]);
+      expect(await of({ direction: 'asc' })).toEqual([placedLast.id, placedFirst.id, active.id]);
+      expect(await of({ sort: 'released', direction: 'desc' })).toEqual([
+        placedFirst.id,
+        placedLast.id,
+        active.id,
+      ]);
+      expect(await of({ sort: 'released', direction: 'asc' })).toEqual([
+        placedLast.id,
+        placedFirst.id,
+        active.id,
+      ]);
+      expect(await of({ sort: 'placed', direction: 'asc' })).toEqual([
+        active.id,
+        placedFirst.id,
+        placedLast.id,
+      ]);
+    });
+
+    it("offers Release only where the panel does: an admin's hold or a suspended seller's", async () => {
+      const byAdmin = hold({ minutes: 1 });
+      const suspended = hold({
+        minutes: 2,
+        origin: 'system',
+        reason: 'seller-suspended',
+        placedBy: null,
+      });
+      const refund = hold({ minutes: 3, origin: 'system', reason: 'refund-pending', placedBy: null });
+      const dispute = hold({ minutes: 4, origin: 'system', reason: 'dispute', placedBy: null });
+      const page = must(await list({ sort: 'placed', direction: 'asc' }));
+      expect(ids(page)).toEqual([byAdmin.id, suspended.id, refund.id, dispute.id]);
+      expect(page.holds.map((row) => row.actions)).toEqual([['release'], ['release'], [], []]);
     });
 
     it('walks Previous and Next newest placement first', async () => {
