@@ -11,6 +11,7 @@ import {
   FakeTools,
   MemoryLimits,
   SequenceGuestTokens,
+  FixedQuickPrompts,
 } from '../../src/modules/assistant/application/testing/assistant-fakes';
 import { SendGuestMessage } from '../../src/modules/assistant/application/use-cases/send-guest-message.use-case';
 import {
@@ -142,6 +143,8 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
       owner: { kind: 'guest', tokenHash },
       turns: 1,
       retentionDays: 30,
+      startedAt: T0,
+      lastMessageAt: T0,
     });
     await expect(read(other, () => conversations.find(other, conversationId))).resolves.toBeNull();
     await expect(
@@ -162,6 +165,205 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
       expect(row.text_cipher).not.toContain('gift');
       expect(row.text_cipher).not.toContain('Medjool');
     }
+  });
+
+  /** A committed conversation of `accountId` with one buyer message and one reply. */
+  async function accountConversation(
+    accountId: Id<'Account'>,
+    firstText: string,
+    at: Temporal.Instant,
+    retentionDays: 0 | 30 | 365 = 365,
+    target = market,
+  ) {
+    const conversationId: string = ids.next<'Conversation'>();
+    await inUnit(target, async () => {
+      await conversations.create(target, {
+        id: conversationId,
+        owner: { kind: 'account', accountId },
+        turns: 0,
+        retentionDays,
+        startedAt: at,
+      });
+      await conversations.countTurn(target, conversationId, 0, at);
+      if (retentionDays > 0) {
+        await conversations.append(target, conversationId, message('buyer', firstText, at));
+        await conversations.append(target, conversationId, {
+          role: 'assistant',
+          text: 'Here you go.',
+          cards: [`product:${id<'Offer'>(0xd001)}`, 'support'],
+          at,
+        });
+      }
+    });
+    return conversationId;
+  }
+
+  it("lists one account's conversations newest first, within the given windows, by keyset", async () => {
+    const accountId = ids.next<'Account'>();
+    const old = await accountConversation(accountId, 'old question', T0);
+    const recent = await accountConversation(accountId, 'recent question', T0.add({ hours: 5 }));
+    const thirty = await accountConversation(accountId, 'thirty', T0.add({ hours: 3 }), 30);
+    await accountConversation(accountId, 'none', T0.add({ hours: 4 }), 0);
+    await accountConversation(ids.next<'Account'>(), 'someone else', T0.add({ hours: 6 }));
+    await accountConversation(accountId, 'other market', T0.add({ hours: 7 }), 365, other);
+    const everything = new Map([
+      [30, T0.subtract({ hours: 1 })],
+      [365, T0.subtract({ hours: 1 })],
+    ]);
+
+    const { rows: all, next: none } = await read(market, () =>
+      conversations.listByAccount(market, accountId, {
+        visibleSince: everything,
+        after: null,
+        limit: 10,
+      }),
+    );
+    expect(none).toBeNull();
+    expect(all.map((row) => [row.id, row.firstBuyerText, row.turns])).toEqual([
+      [recent, 'recent question', 1],
+      [thirty, 'thirty', 1],
+      [old, 'old question', 1],
+    ]);
+
+    const page = await read(market, () =>
+      conversations.listByAccount(market, accountId, {
+        visibleSince: everything,
+        after: { lastMessageAt: all[0]!.lastMessageAt, id: all[0]!.id },
+        limit: 1,
+      }),
+    );
+    expect(page.rows.map((row) => row.id)).toEqual([thirty]);
+    expect(page.next).toEqual({ lastMessageAt: all[1]!.lastMessageAt, id: thirty });
+
+    // A conversation whose key is already destroyed (a purge or delete in flight) is left out
+    // but still moves the page on, so the older ones stay reachable.
+    await inUnit(market, () => keys.destroyKey(market, recent as Id<'Conversation'>));
+    const skipped = await read(market, () =>
+      conversations.listByAccount(market, accountId, {
+        visibleSince: everything,
+        after: null,
+        limit: 1,
+      }),
+    );
+    expect(skipped.rows).toEqual([]);
+    expect(skipped.next).toEqual({ lastMessageAt: all[0]!.lastMessageAt, id: recent });
+
+    // Only 365-day conversations whose last message is after T0 + 1h: the old one is out.
+    const windowed = await read(market, () =>
+      conversations.listByAccount(market, accountId, {
+        visibleSince: new Map([[365, T0.add({ hours: 1 })]]),
+        after: null,
+        limit: 10,
+      }),
+    );
+    expect(windowed.rows.map((row) => row.id)).toEqual([]);
+    await expect(
+      read(market, () =>
+        conversations.listByAccount(market, accountId, {
+          visibleSince: new Map(),
+          after: null,
+          limit: 10,
+        }),
+      ),
+    ).resolves.toEqual({ rows: [], next: null });
+  });
+
+  it('pages ties on the last message time by id, newest first, as the index orders them', async () => {
+    const accountId = ids.next<'Account'>();
+    const at = T0.add({ hours: 9 });
+    const made = [
+      await accountConversation(accountId, 'one', at),
+      await accountConversation(accountId, 'two', at),
+      await accountConversation(accountId, 'three', at),
+    ];
+    const windows = new Map([[365, at]]);
+
+    const seen: string[] = [];
+    let after: { lastMessageAt: Temporal.Instant; id: string } | null = null;
+    for (let page = 0; page < 4; page += 1) {
+      const result = await read(market, () =>
+        conversations.listByAccount(market, accountId, { visibleSince: windows, after, limit: 1 }),
+      );
+      seen.push(...result.rows.map((row) => row.id));
+      after = result.next;
+      if (after === null) break;
+    }
+
+    // The window edge is inclusive: `at` itself is listed.
+    expect(seen).toEqual([...made].sort().reverse());
+  });
+
+  it('reads a whole transcript in order with its card refs and times', async () => {
+    const accountId = ids.next<'Account'>();
+    const conversationId = await accountConversation(accountId, 'dates?', T0);
+
+    await expect(
+      read(market, () => conversations.transcript(market, conversationId)),
+    ).resolves.toEqual([
+      { position: 1, role: 'buyer', text: 'dates?', cards: [], at: T0 },
+      {
+        position: 2,
+        role: 'assistant',
+        text: 'Here you go.',
+        cards: [`product:${id<'Offer'>(0xd001)}`, 'support'],
+        at: T0,
+      },
+    ]);
+    await expect(
+      read(other, () => conversations.transcript(other, conversationId)),
+    ).resolves.toEqual([]);
+  });
+
+  it("deletes only the owner's conversation, with its messages and key, as the application role", async () => {
+    const accountId = ids.next<'Account'>();
+    const conversationId = await accountConversation(accountId, 'delete me', T0);
+    const noText = await accountConversation(accountId, 'n/a', T0, 0);
+
+    await expect(
+      inUnit(market, () => conversations.deleteOwn(market, conversationId, ids.next<'Account'>())),
+    ).resolves.toBe(false);
+    await expect(
+      inUnit(other, () => conversations.deleteOwn(other, conversationId, accountId)),
+    ).resolves.toBe(false);
+    await expect(
+      inUnit(market, () => conversations.deleteOwn(market, conversationId, accountId)),
+    ).resolves.toBe(true);
+    await expect(
+      inUnit(market, () => conversations.deleteOwn(market, noText, accountId)),
+    ).resolves.toBe(true);
+
+    await expect(
+      read(market, () => conversations.find(market, conversationId)),
+    ).resolves.toBeNull();
+    const left = await sql.query('SELECT 1 FROM assistant.messages WHERE conversation_id = $1', [
+      conversationId,
+    ]);
+    expect(left.rowCount).toBe(0);
+    const encrypted = await read(market, () =>
+      keys.encrypt(market, conversationId as Id<'Conversation'>, 'x' as never, 'y'),
+    );
+    expect(encrypted.ok).toBe(false);
+
+    // The id is spent: a new conversation that keeps text is refused instead of failing its
+    // key (which would roll back the spend of the turn); one that keeps none may reuse it.
+    await expect(read(market, () => conversations.spent(market, conversationId))).resolves.toBe(
+      true,
+    );
+    await expect(read(market, () => conversations.spent(market, noText))).resolves.toBe(false);
+    await expect(
+      inUnit(market, () =>
+        conversations.create(market, {
+          id: conversationId,
+          owner: { kind: 'account', accountId },
+          turns: 0,
+          retentionDays: 30,
+          startedAt: T0,
+        }),
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      read(market, () => conversations.find(market, conversationId)),
+    ).resolves.toBeNull();
   });
 
   it('counts a turn only from the expected count (a concurrent message loses)', async () => {
@@ -307,6 +509,7 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
         limits: new MemoryLimits(),
         guestTokens: new SequenceGuestTokens(),
         calendar: new RegistryMarketCalendar(markets),
+        quickPrompts: new FixedQuickPrompts(),
         trail: unusedChangeTrail,
       },
     );

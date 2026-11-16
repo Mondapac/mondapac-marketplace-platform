@@ -5461,6 +5461,7 @@
       "platform-import-finished": "A <strong>product import</strong> {outcome, select, stopped {stopped part way} other {finished}}",
       "review-held": "A <strong>review</strong> is held for moderation",
       "review-reported": "A seller reported a <strong>review</strong>",
+      "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review",
       "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count cap</strong>} amount {A seller reached the <strong>refund amount cap</strong>} unset {A seller tried to refund with <strong>no refund cap set</strong>} other {A seller reached a <strong>refund cap</strong>}}"
     },
     "category": {
@@ -5471,6 +5472,7 @@
       "delivery": "Delivery",
       "reviews": "Reviews",
       "refunds": "Refunds",
+      "system-requests": "System requests",
       "other": "Other"
     },
     "empty": {

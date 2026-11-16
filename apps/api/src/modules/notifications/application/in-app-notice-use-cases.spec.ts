@@ -42,6 +42,7 @@ import {
   SELLER_REVIEW_RESTORED,
   SELLER_DELIVERY_PROBLEM,
   ADMIN_REVIEW_HELD,
+  ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS,
   ADMIN_REVIEW_REPORTED,
   SELLER_PRICE_HOLD_DECIDED,
   type SellerOrderPaidParams,
@@ -894,6 +895,35 @@ describe.each([['AU'], ['ZZ']] as const)('in-app notices in market %s', (code) =
         ADMIN_REVIEW_HELD,
       ]);
       expect(await list(admin(ADMIN_PRICES))).toEqual(ok({ items: [], next: null }));
+    });
+
+    it('writes a reminder for an overdue system request and shows it to the reviewers of its area only', async () => {
+      const requestId = id<'SystemRequest'>(0x95);
+      const catalogue = ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS.catalogue;
+      const policy = ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS['review-policy'];
+      for (const kind of [catalogue, policy]) {
+        expect(await review({ kind, requestId, number: 12, ageDays: 9 })).toEqual(
+          ok({ code: 'notices.recorded', notices: 1 }),
+        );
+      }
+      // The id, the SR number and the age: nothing else is kept.
+      expect(notices.rows.map((row) => [row.audience, row.kind, row.params])).toEqual([
+        ['admin', catalogue, { requestId, number: 12, ageDays: 9 }],
+        ['admin', policy, { requestId, number: 12, ageDays: 9 }],
+      ]);
+      adminKeys.set(ADMIN_ALL, ['system-requests.catalogue.review']);
+      adminKeys.set(ADMIN_PRICES, ['system-requests.people.review']);
+      const catalogueReviewer = await list(admin(ADMIN_ALL));
+      expect(catalogueReviewer.ok && catalogueReviewer.value.items).toMatchObject([
+        { kind: catalogue, params: { requestId, number: 12, ageDays: 9 } },
+      ]);
+      // The people reviewers also decide the review policy's own requests; no one else sees them.
+      const peopleReviewer = await list(admin(ADMIN_PRICES));
+      expect(peopleReviewer.ok && peopleReviewer.value.items.map((item) => item.kind)).toEqual([
+        policy,
+      ]);
+      expect(await list(admin(ADMIN_NONE))).toEqual(ok({ items: [], next: null }));
+      expect(await list(admin(ADMIN_ALL, other))).toEqual(ok({ items: [], next: null }));
     });
 
     describe('reading', () => {

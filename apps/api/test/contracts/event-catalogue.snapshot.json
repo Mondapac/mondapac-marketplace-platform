@@ -1204,5 +1204,15 @@
     "fields": {
       "version": "integer"
     }
+  },
+  {
+    "type": "system-requests.request-overdue.v1",
+    "aggregateType": "request-reminder",
+    "fields": {
+      "requestId": "id",
+      "number": "integer",
+      "area": "enumOf(people|money|delivery|catalogue|certification|marketplace|content|review-policy)",
+      "ageDays": "integer"
+    }
   }
 ]
