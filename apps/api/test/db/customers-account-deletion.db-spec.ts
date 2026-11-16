@@ -993,6 +993,15 @@ describe.each(TEST_MARKETS)(
       });
 
       it('the super list reads views, counts, filters, sorts and export ids from the table, its Market only', async () => {
+        // A pending request of the other Market, which no read here may count or return.
+        // The table refuses a DELETE to every role, so the row stays: one id per pass.
+        const foreignId = `01990000-0000-7000-8000-0000000f000${TEST_MARKETS.indexOf(code) + 1}`;
+        await sql.query(
+          `INSERT INTO customers.account_deletion_requests
+             (id, market_id, tenant_id, account_id, status, waiting_period_days, requested_at, scheduled_for)
+           VALUES ($1, $2, 'default', $3, 'pending', 30, now(), now() + interval '30 days')`,
+          [foreignId, otherMarketOf(code), foreignId],
+        );
         await adminAsk();
         await adminAsk(OTHER_BUYER, 'SUP-2005');
         const [row] = await adminRow(BUYER);
@@ -1079,6 +1088,18 @@ describe.each(TEST_MARKETS)(
           [code, exported],
         );
         expect(foreign.rowCount).toBe(0);
+        expect(exported).not.toContain(foreignId);
+        expect(
+          await read(() => reader.byIds(market, [foreignId as Id<'AccountDeletionRequest'>])),
+        ).toEqual([]);
+        const mine = await sql.query<{ status: string; n: string }>(
+          `SELECT status, count(*)::text AS n FROM customers.account_deletion_requests
+             WHERE market_id = $1 GROUP BY status`,
+          [code],
+        );
+        const expected = { pending: 0, executing: 0, cancelled: 0, completed: 0 };
+        for (const r of mine.rows) expected[r.status as keyof typeof expected] = Number(r.n);
+        expect(counts).toEqual(expected);
       });
 
       it('the application role cannot rewrite the ticket, reason or admin of an open request', async () => {

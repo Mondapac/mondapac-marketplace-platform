@@ -42,6 +42,13 @@ is refused.
 ## Indexes
 
 The pending view in scheduled order uses `account_deletion_requests_market_id_scheduled_for_pending_idx`.
-The other views scan the Market's rows; the table holds one row per request and closes rows by
-status, so it stays small. If it grows, add an index on (market_id, status, requested_at) in a
-later migration (database-designer).
+The counts and the other views and sorts read the Market's rows without an index. Closed requests
+are kept, so the table only grows. Trigger: when a Market holds more than 50,000 requests, or a
+list read takes more than 200 ms at p95, add an index on (market_id, status, scheduled_for, id) in
+a later migration (database-designer); it serves the counts and every view in the default order.
+
+## Changes for an older caller
+
+A call with neither `cursor` nor `limit` now gets page numbers (25 rows, a total, no
+`nextCursor`). A `status` other than `pending` answers the field code `value` (was `format`). The
+panel sends `cursor` and `limit` only, so it is not affected.
