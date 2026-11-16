@@ -1,4 +1,4 @@
--- Reverses 20261115230009_customers_groups_notes_timeline. Accepted loss: the groups, their
+-- Reverses 20261116060000_customers_groups_notes_timeline. Accepted loss: the groups, their
 -- members, the admin notes and the timeline entries (the timeline is rebuilt only from new events).
 SET lock_timeout = '5s';
 

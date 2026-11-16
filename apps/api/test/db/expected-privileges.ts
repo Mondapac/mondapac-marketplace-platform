@@ -1020,6 +1020,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    // The inbox of the read model subscribers: appended to only (DELETE with the prune job).
+    'customers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Phase 2a: groups are never deleted (a promotion may name one); members are added and
     // removed; notes and timeline rows are written once and go only with the customer's erasure.
     'customers.customer_groups': {
