@@ -16,7 +16,9 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import { DEFAULT_ASSISTANT_SETTINGS, type AssistantSettings } from '../domain/assistant-settings';
 import type { AssistantCard } from '../domain/cards';
 import { MASKED } from '../domain/personal-data';
+import { AssistantSpendCapReached } from '../domain/events';
 import type { AssistantDependencies } from './assistant-dependencies';
+import { spendDayAggregateId } from './conversation-flow';
 import type {
   AssistantSettingsRecord,
   AssistantSettingsRepository,
@@ -28,6 +30,7 @@ import {
   MemoryConversations,
   MemoryLimits,
   MemorySpend,
+  RecordingOutbox,
   SequenceGuestTokens,
   UtcCalendar,
   FixedQuickPrompts,
@@ -102,6 +105,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
   let tools: FakeTools;
   let conversations: MemoryConversations;
   let spend: MemorySpend;
+  let outbox: RecordingOutbox;
   let limits: MemoryLimits;
   let clock: FixedClock;
   let deps: AssistantDependencies;
@@ -137,6 +141,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
     tools = new FakeTools();
     conversations = new MemoryConversations();
     spend = new MemorySpend();
+    outbox = new RecordingOutbox();
     limits = new MemoryLimits();
     clock = new FixedClock(T0);
     deps = {
@@ -151,6 +156,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       limits,
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
+      outbox,
       quickPrompts: new FixedQuickPrompts(),
       trail: unusedChangeTrail,
     };
@@ -508,9 +514,61 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
         conversationsToday: 1,
         lastAutoOff: { at: T0, cap: 'daily' },
       });
+      // One event for the admins' bell notice: which cap, no amount, on the Market's spend day.
+      const today = T0.toZonedDateTimeISO('UTC').toPlainDate();
+      expect(outbox.events).toEqual([
+        expect.objectContaining({
+          type: AssistantSpendCapReached.type,
+          aggregateType: 'assistant-spend-day',
+          aggregateId: spendDayAggregateId(market, today),
+          aggregateVersion: 1,
+          occurredAt: T0,
+          payload: { cap: 'daily' },
+          marketId: market.marketId,
+        }),
+      ]);
       // The next day the daily cap starts again.
       clock.set(T0.add({ hours: 24 }));
       expect((await asCustomer('Next day', SECOND)).ok).toBe(true);
+      expect(outbox.events).toHaveLength(1);
+    });
+
+    it('writes the monthly event when a turn reaches the monthly cap', async () => {
+      settings.current = on({ dailySpendCapUsdCents: 1000, monthlySpendCapUsdCents: 100 });
+      await spend.add(market, Temporal.PlainDate.from('2026-10-01'), {
+        microUsd: 500_000,
+        inputTokens: 0,
+        outputTokens: 0,
+        conversations: 0,
+      });
+      runtime.script.push(answer({ text: 'One.', costMicroUsd: 600_000 }));
+      expect((await asCustomer('One')).ok).toBe(true);
+      expect(outbox.events).toEqual([
+        expect.objectContaining({
+          type: AssistantSpendCapReached.type,
+          payload: { cap: 'monthly' },
+          marketId: market.marketId,
+        }),
+      ]);
+    });
+
+    it('writes no second event when another turn already switched the day off', async () => {
+      settings.current = on({ dailySpendCapUsdCents: 100, monthlySpendCapUsdCents: 1000 });
+      const today = T0.toZonedDateTimeISO('UTC').toPlainDate();
+      // While this turn waits on the model, another turn of the same day reaches the cap first.
+      runtime.script.push(() => {
+        void spend.add(market, today, {
+          microUsd: 1_000_000,
+          inputTokens: 0,
+          outputTokens: 0,
+          conversations: 0,
+        });
+        void spend.markAutoOff(market, today, 'daily', T0);
+        return answer({ text: 'One.', costMicroUsd: 600_000 });
+      });
+      expect((await asCustomer('One')).ok).toBe(true);
+      expect(outbox.events).toEqual([]);
+      expect((await spend.totals(market, today)).lastAutoOff).toEqual({ at: T0, cap: 'daily' });
     });
 
     it('pauses the Market at the monthly cap', async () => {
@@ -522,6 +580,8 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
         conversations: 0,
       });
       expect(await asCustomer('Hi')).toEqual({ ok: false, error: { code: 'assistant.paused' } });
+      // Paused before the turn: no model call, so no new auto-off and no event.
+      expect(outbox.events).toEqual([]);
     });
   });
 

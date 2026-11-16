@@ -33,6 +33,7 @@ import {
   MemoryConversations,
   MemoryLimits,
   MemorySpend,
+  RecordingOutbox,
   FixedQuickPrompts,
   SequenceGuestTokens,
   UtcCalendar,
@@ -272,6 +273,7 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
       limits: new MemoryLimits(),
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
+      outbox: new RecordingOutbox(),
       quickPrompts: new FixedQuickPrompts(),
       trail: changeTrailOf(unitOfWork, audit, actors),
     };

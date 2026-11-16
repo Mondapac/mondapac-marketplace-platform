@@ -29,6 +29,11 @@ const APPROVED_SELLER_ZONES_CONTRACT_FILE =
 // inventory's ordering port: importable by ordering only (rule inventory-ordering-port-is-for-ordering).
 const INVENTORY_ORDERING_PORT_FILE = '^src/modules/inventory/contracts/ordering-port\\.ts$';
 const CULTURE_DEMOTE_PORT_FILE = '^src/modules/sellers/contracts/culture-demote\\.port\\.ts$';
+// assistant's admin-notice contract (the spend-cap event and the permission that reads its
+// notice): importable by notifications only. assistant imports notifications (support contact),
+// so notifications cannot take these from assistant's index.ts without a cycle.
+const ASSISTANT_ADMIN_NOTICE_CONTRACT_FILE =
+  '^src/modules/assistant/contracts/admin-notice\\.contract\\.ts$';
 
 const MARKET_EXEMPTION_FILE = '^src/platform/market-context/no-market-context\\.decorator\\.ts$';
 const MARKET_EXEMPTION_IMPORTERS = [
@@ -350,6 +355,7 @@ module.exports = {
           APPROVED_SELLER_ZONES_CONTRACT_FILE,
           INVENTORY_ORDERING_PORT_FILE,
           CULTURE_DEMOTE_PORT_FILE,
+          ASSISTANT_ADMIN_NOTICE_CONTRACT_FILE,
         ],
       },
     },
@@ -389,6 +395,17 @@ module.exports = {
         ],
       },
       to: { path: CULTURE_DEMOTE_PORT_FILE },
+    },
+    {
+      name: 'assistant-admin-notice-contract-is-for-notifications',
+      comment:
+        "Only assistant and notifications import assistant's admin-notice contract " +
+        '(contracts/admin-notice.contract.ts: the spend-cap event and the permission that reads ' +
+        "its notice). It is not on assistant's index.ts: assistant imports notifications, so " +
+        'this file breaks the cycle a subscriber would otherwise close (stage 0, B4).',
+      severity: 'error',
+      from: { pathNot: ['^src/modules/assistant/', '^src/modules/notifications/'] },
+      to: { path: ASSISTANT_ADMIN_NOTICE_CONTRACT_FILE },
     },
     {
       name: 'approved-seller-zones-contract-is-for-certification',

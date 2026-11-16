@@ -32,11 +32,16 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../suppo
 import {
   createPersistence,
   marketOf,
+  modelMap,
   otherMarketOf,
   randomUUID,
   type Persistence,
 } from './persistence-support';
 import { ids } from './outbox-support';
+import { ASSISTANT_EVENTS } from '../../src/modules/assistant/domain/events';
+import { EventCatalogue } from '../../src/platform/events/event-catalogue';
+import { NO_PERMISSION_KEYS } from '../../src/platform/events/outbox-writer';
+import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
 import { testDatabaseUrl } from './test-database';
 
 // The buyer assistant's conversations and spend as the application role, in both Market
@@ -488,6 +493,71 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
     });
   });
 
+  const outboxWriter = () => {
+    const catalogue = new EventCatalogue();
+    catalogue.register('assistant', ASSISTANT_EVENTS);
+    catalogue.seal();
+    return new PrismaOutboxWriterFactory(
+      modelMap,
+      db.service,
+      catalogue,
+      ids,
+      NO_PERMISSION_KEYS,
+    ).forModule('assistant');
+  };
+
+  it('writes one spend-cap event in the unit of the turn that reached the cap', async () => {
+    const runtime = new FakeRuntime();
+    runtime.script.push(answer({ text: 'One.', costMicroUsd: 2_000_000 }));
+    // A day of its own, so the other tests' spend never reaches this cap first.
+    const day = T0.add({ hours: 24 * 40 });
+    const send = new SendGuestMessage(
+      createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) }),
+      {
+        unitOfWork: db.unitOfWork,
+        settings: new OneSettings({
+          ...DEFAULT_ASSISTANT_SETTINGS,
+          enabled: true,
+          audience: 'all',
+          dailySpendCapUsdCents: 100,
+          monthlySpendCapUsdCents: 2_000_000,
+        }),
+        runtime,
+        audit: new NoAudit(),
+        clock: new FixedClock(day),
+        conversations,
+        spend,
+        tools: new FakeTools(),
+        limits: new MemoryLimits(),
+        guestTokens: new SequenceGuestTokens(),
+        calendar: new RegistryMarketCalendar(markets),
+        outbox: outboxWriter(),
+        quickPrompts: new FixedQuickPrompts(),
+        trail: unusedChangeTrail,
+      },
+    );
+    const context = testCallContext(market, 'anonymous', 'assistant-db-cap-01');
+    const message = () =>
+      send.execute(context, {
+        conversationId: ids.next<'Conversation'>(),
+        text: 'Hi',
+        visitor: undefined,
+        token: null,
+        origin: '203.0.113.9',
+      });
+    expect((await message()).ok).toBe(true);
+    expect(await message()).toEqual({ ok: false, error: { code: 'assistant.paused' } });
+
+    const rows = await sql.query<{ type: string; payload: unknown; aggregate_version: number }>(
+      `SELECT type, payload, aggregate_version FROM assistant.outbox
+        WHERE market_id = $1 AND correlation_id = 'assistant-db-cap-01'`,
+      [market.marketId],
+    );
+    expect(rows.rows).toEqual([
+      { type: 'assistant.spend-cap-reached.v1', payload: { cap: 'daily' }, aggregate_version: 1 },
+    ]);
+  });
+
   it("answers a guest end to end on the real unit of work, keeping the buyer's text masked", async () => {
     const runtime = new FakeRuntime();
     runtime.script.push(answer({ text: 'Happy to help with dates.', costMicroUsd: 1234 }));
@@ -509,6 +579,7 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
         limits: new MemoryLimits(),
         guestTokens: new SequenceGuestTokens(),
         calendar: new RegistryMarketCalendar(markets),
+        outbox: outboxWriter(),
         quickPrompts: new FixedQuickPrompts(),
         trail: unusedChangeTrail,
       },

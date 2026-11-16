@@ -5,6 +5,8 @@ import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
 import { changeTrailProvider, IdentityModule } from '../identity';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
+import { registerEvents } from '../../platform/events/event-catalogue';
+import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { SubjectRateLimits } from '../../platform/rate-limit/subject-rate-limits';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
@@ -34,6 +36,7 @@ import { ViewConversation } from './application/use-cases/view-conversation.use-
 import { ViewStorefrontAssistant } from './application/use-cases/view-storefront-assistant.use-case';
 import { ASSISTANT_PERMISSIONS } from './contracts';
 import { ASSISTANT_AUDIT_ACTIONS } from './domain/audit';
+import { ASSISTANT_EVENTS } from './domain/events';
 import { assistantProviders } from './infrastructure/assistant-providers';
 import { AdminAssistantSettingsController } from './presentation/admin-assistant-settings.controller';
 import { ConversationController } from './presentation/conversation.controller';
@@ -54,6 +57,7 @@ const PORTS: readonly [keyof AssistantDependencies, InjectionToken][] = [
   ['limits', MESSAGE_LIMITS],
   ['guestTokens', GUEST_TOKENS],
   ['calendar', MARKET_CALENDAR],
+  ['outbox', OUTBOX_WRITER],
   ['quickPrompts', QUICK_PROMPTS],
   ['trail', CHANGE_TRAIL],
 ];
@@ -93,6 +97,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   providers: [
     PersistenceModule.auditWriterFor('assistant'),
     PersistenceModule.auditTrailReaderFor('assistant'),
+    PersistenceModule.outboxWriterFor('assistant'),
+    registerEvents('assistant', ASSISTANT_EVENTS),
     changeTrailProvider(),
     registerAuditActions('assistant', ASSISTANT_AUDIT_ACTIONS),
     registerPermissions('assistant', ASSISTANT_PERMISSIONS),

@@ -11,6 +11,7 @@ import {
   FakeTools,
   MemoryConversations,
   MemoryLimits,
+  RecordingOutbox,
   SequenceGuestTokens,
   FixedQuickPrompts,
 } from '../../src/modules/assistant/application/testing/assistant-fakes';
@@ -107,6 +108,7 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
     limits: new MemoryLimits(),
     guestTokens: new SequenceGuestTokens(),
     calendar: new RegistryMarketCalendar(markets),
+    outbox: new RecordingOutbox(),
     quickPrompts: new FixedQuickPrompts(),
     trail: dbChangeTrail('assistant', catalogue, db.unitOfWork, actors),
   });
