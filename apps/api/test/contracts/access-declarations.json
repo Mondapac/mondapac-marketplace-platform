@@ -868,7 +868,7 @@
   { "name": "storefront.view-served-placements", "rule": "anonymous" },
   { "name": "storefront.view-slide-image", "rule": "anonymous" },
   { "name": "system-requests.remind-overdue-system-requests", "rule": "system" },
-  { "name": "tax.calculate-tax","rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "tax.calculate-tax", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "tax.reverse-refund-tax", "rule": "anonymous" },
   { "name": "wallet.balance-of", "rule": "system" },
   { "name": "wallet.capture-hold", "rule": "system" },
