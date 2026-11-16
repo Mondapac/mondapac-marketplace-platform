@@ -459,7 +459,8 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
       quickPrompts: [],
       preview: false,
     };
-    const EN = ['What is on special?'];
+    // The fake answers each fixture's default: English for AU, Japanese for ZZ.
+    const EN = code === 'ZZ' ? FixedQuickPrompts.JA : FixedQuickPrompts.EN;
 
     it('is off by default', async () => {
       expect(await storefront()).toEqual(ok(OFF));
