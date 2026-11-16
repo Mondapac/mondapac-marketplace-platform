@@ -1,6 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { lastChangedBody } from '../../../platform/audit/change-trail';
 import { LastChangedDto } from '../../../platform/audit/change-trail.dto';
+import {
+  DeliveryRequestRef,
+  DeliveryReviewBody,
+  NOTE_DESCRIPTION,
+  REQUEST_DESCRIPTION,
+  requestBody,
+  reviewBody,
+} from './review.dto';
+import type { FleetModelChange } from '../application/use-cases/update-fleet-selection-model.use-case';
 import type { FleetSelectionPage } from '../application/use-cases/view-fleet-selection.use-case';
 import type { FleetSelectionModel } from '../domain/fleet-selection';
 
@@ -93,6 +102,21 @@ export class FleetSelectionBody {
     description: 'Who changed this page last and when; null while nothing was ever changed.',
   })
   lastChanged!: LastChangedDto | null;
+  @ApiProperty({
+    type: DeliveryReviewBody,
+    description: 'Whether a change is reviewed in this Market: the page then asks for a note.',
+  })
+  review!: DeliveryReviewBody;
+}
+
+export class FleetSelectionChangeBody extends FleetSelectionBody {
+  @ApiProperty({ type: DeliveryRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: DeliveryRequestRef | null;
+}
+
+export class FleetModelChangeBody extends FleetModelBody {
+  @ApiProperty({ type: DeliveryRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: DeliveryRequestRef | null;
 }
 
 export class FleetModelRequest {
@@ -106,11 +130,13 @@ export class FleetModelRequest {
 export class UpdateFleetModelRequest extends FleetModelRequest {
   @ApiProperty({ description: 'The version read; a stale value answers 409.' })
   expectedVersion!: number;
+  @ApiPropertyOptional({ description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class SaveFleetSelectionRequest {
   @ApiProperty({ description: 'The page version read; a stale value answers 409.' })
   expectedVersion!: number;
+  @ApiPropertyOptional({ description: NOTE_DESCRIPTION }) note?: string;
   @ApiProperty({
     type: ActiveModelsBody,
     description:
@@ -152,4 +178,15 @@ export const selectionBody = (view: FleetSelectionPage): FleetSelectionBody => (
   defaultOrder: [...view.defaultOrder],
   fleets: view.fleets.map((fleet) => ({ ...fleet, methods: [...fleet.methods] })),
   lastChanged: lastChangedBody(view.lastChanged),
+  review: reviewBody(view.review),
+});
+
+export const selectionChangeBody = (view: FleetSelectionPage): FleetSelectionChangeBody => ({
+  ...selectionBody(view),
+  request: requestBody(view.request),
+});
+
+export const modelChangeBody = (model: FleetModelChange): FleetModelChangeBody => ({
+  ...modelBody(model),
+  request: requestBody(model.request),
 });

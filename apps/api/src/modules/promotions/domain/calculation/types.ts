@@ -61,7 +61,9 @@ export type Audience =
   /** A cart that is delivered to one of these delivery zones (the cart's shipping charges say which). */
   | { readonly kind: 'DELIVERY_ZONE'; readonly zones: readonly string[] }
   /** A customer who follows the promotion's seller (a promotion with a seller owner only). */
-  | { readonly kind: 'STORE_FOLLOWER' };
+  | { readonly kind: 'STORE_FOLLOWER' }
+  /** A customer the admin put in one of the Market's manual groups (live groups only). */
+  | { readonly kind: 'MANUAL_GROUP'; readonly groupId: string };
 
 /**
  * What is known about the customer of the order. A field that is null (or a customer that is
@@ -72,6 +74,11 @@ export interface CustomerFacts {
   readonly daysSinceLastOrder: number | null;
   /** The sellers (of the cart) whose store the customer follows; null when unknown. */
   readonly followedSellerIds: readonly string[] | null;
+  /**
+   * The manual groups (of the promotions in the quote) the customer is known to be in; a group
+   * whose answer is unknown is left out, so its promotion does not apply. Absent: none known.
+   */
+  readonly memberOfGroupIds?: readonly string[] | null;
 }
 
 /** One promotion as the calculation sees it (already filtered to the live ones by the caller). */

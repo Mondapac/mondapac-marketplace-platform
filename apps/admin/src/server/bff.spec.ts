@@ -552,6 +552,28 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${path}/extra`)).status).toBe(404);
   });
 
+  it('forwards the note of a reviewed role edit, role change and enabling unchanged', async () => {
+    const body = '{"note":"Covers nights"}';
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ['PUT', `identity/admin/roles/${ID}`],
+      ['POST', `identity/admin/accounts/${ID}/role`],
+      ['POST', `identity/admin/accounts/${ID}/enable`],
+    ];
+    for (const [method, path] of cases) {
+      const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+      const request = new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        body,
+      });
+      expect((await relay(config, request, path.split('/'), fetchImpl)).status).toBe(200);
+      const sent = fetchImpl.mock.calls[0]?.[1]?.body;
+      const text =
+        sent instanceof ArrayBuffer ? new TextDecoder().decode(sent) : JSON.stringify(sent);
+      expect(text).toContain('Covers nights');
+    }
+  });
+
   it('relays the category editor on its exact paths and methods only (categories C3)', async () => {
     const id = ID;
     const base = 'catalog/admin/categories';

@@ -164,7 +164,9 @@ import {
 } from '../../src/platform/mail/mail-transport';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
+import { SYSTEM_REQUEST_RECORDER } from '../../src/platform/change-review/change-review';
 import { fakeRunOnce } from './fake-run-once';
+import { RecordingReview } from './system-request-fakes';
 
 // In-memory fakes of identity's database ports, for the HTTP suites of `pnpm test` (no
 // database). Units are not isolated: `run` calls `work` once. The fakes keep the rules the
@@ -260,6 +262,7 @@ export class IdentityFakes {
     this.records.length = 0;
     this.events.length = 0;
     this.audits.length = 0;
+    this.review.reset();
     this.links.clear();
     this.sellerAccess.clear();
     this.memberships.clear();
@@ -1827,6 +1830,12 @@ export class IdentityFakes {
   };
 
   /**
+   * System requests' recorder without a database (Admin Inbox › System requests): every area is
+   * off unless a test calls `review.review('people', 'high')`; the openings are kept in `opened`.
+   */
+  readonly review = new RecordingReview();
+
+  /**
    * Identity's audit writer without a database: it records what it is given (the real writer
    * needs an open unit of the persistence layer; test/db/ covers it).
    */
@@ -1888,6 +1897,8 @@ export class IdentityFakes {
       this.subjectKeys.set(subject, 'destroyed');
       return Promise.resolve();
     },
+    hasHadKey: (_market: MarketContext, subject: Id) =>
+      Promise.resolve(this.subjectKeys.has(subject)),
   };
 
   /** The second factor's secrets over the fake subject keys (the real adapter, slice 7b). */
@@ -1934,6 +1945,8 @@ export class IdentityFakes {
     return builder
       .overrideProvider(UNIT_OF_WORK)
       .useValue(this.unitOfWork)
+      .overrideProvider(SYSTEM_REQUEST_RECORDER)
+      .useValue(this.review)
       .overrideProvider(ACCOUNT_REPOSITORY)
       .useValue(this.accountRepository)
       .overrideProvider(SESSION_REPOSITORY)

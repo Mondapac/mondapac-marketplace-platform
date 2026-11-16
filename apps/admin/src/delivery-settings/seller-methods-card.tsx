@@ -4,6 +4,12 @@ import { ActionRow, Banner, Button, Card, CheckboxRow, Dialog, toast } from '@mo
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
+import {
+  isNoteFailure,
+  ReviewNoteField,
+  trimmedNote,
+  useSentForReview,
+} from '../shared/review-note.tsx';
 import { deliveryProblemOf } from './errors.ts';
 import { METHODS, sellerMethodsPath, type Method, type SellerMethods } from './types.ts';
 
@@ -31,6 +37,11 @@ export function SellerMethodsCard({
   const [notice, setNotice] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const busy = useRef(false);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
+  // The note is asked only where the view says a change is reviewed.
+  const reviewed = saved.review?.reviewed === true;
 
   const toggle = (method: Method, on: boolean) => {
     setChosen(METHODS.filter((m) => (m === method ? on : chosen.includes(m))));
@@ -48,24 +59,38 @@ export function SellerMethodsCard({
     if (busy.current || !canManage) return;
     setProblem(null);
     setNotice(false);
+    if (reviewed && changes.length > 0 && trimmedNote(note) === null) {
+      setNoteError('required');
+      return;
+    }
     if (changes.length === 0) void save();
     else setConfirm(true);
   }
 
   async function save() {
+    const sent = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sent === null) {
+      setNoteError('required');
+      return;
+    }
     busy.current = true;
     setPending(true);
-    const result = await callApi<SellerMethods>(
+    setNoteError(null);
+    const result = await callApi<SellerMethods & { request?: unknown }>(
       'PUT',
       sellerMethodsPath(saved.sellerId),
-      { supported: chosen },
+      { supported: chosen, ...(sent === null ? {} : { note: sent }) },
       csrfToken,
     );
     if (result.ok) {
-      setSaved(result.body);
-      setChosen(result.body.supported);
+      const { request, ...rest } = result.body;
+      sentForReview({ request });
+      setSaved(rest);
+      setChosen(rest.supported);
+      setNote('');
       toast.success(t(`${P}.saved`));
     } else if (result.failure.status === 401) window.location.assign('/session-ended');
+    else if (isNoteFailure(result.failure)) setNoteError('rejected');
     else {
       const key = deliveryProblemOf(result.failure);
       if (key === 'conflict') {
@@ -106,6 +131,16 @@ export function SellerMethodsCard({
             );
           })}
         </div>
+        {reviewed && canManage ? (
+          <ReviewNoteField
+            value={note}
+            onChange={(next) => {
+              setNote(next);
+              setNoteError(null);
+            }}
+            error={noteError ?? undefined}
+          />
+        ) : null}
         {canManage ? (
           <ActionRow>
             <Button type="submit" loading={pending}>
