@@ -577,6 +577,22 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
       expect(audit.entries).toEqual([]);
     });
 
+    it('refuses an admin without assistant.settings.manage, asking for that key only', async () => {
+      const asked: unknown[] = [];
+      const denying = createUseCaseGate(markets, {
+        check: (_context, declaration) => {
+          asked.push(declaration.rule);
+          return Promise.resolve({ allowed: false, denial: { code: 'access.denied' } });
+        },
+      });
+      expect(await new IssuePreviewToken(denying, deps).execute(admin(), {})).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(asked).toEqual([{ kind: 'permissions', allOf: ['assistant.settings.manage'] }]);
+      expect(audit.entries).toEqual([]);
+    });
+
     it('shows the assistant to a browser with a valid token while the audience is internal', async () => {
       await set(on({ audience: 'internal', welcomeText: 'Hi' }));
       const token = await tokenOf();
