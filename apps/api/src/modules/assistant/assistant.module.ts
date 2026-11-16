@@ -5,6 +5,8 @@ import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
 import { changeTrailProvider, IdentityModule } from '../identity';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
+import { registerEvents } from '../../platform/events/event-catalogue';
+import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { SubjectRateLimits } from '../../platform/rate-limit/subject-rate-limits';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
@@ -20,9 +22,14 @@ import { CONVERSATION_REPOSITORY } from './application/ports/conversation.reposi
 import { FEEDBACK_REPOSITORY } from './application/ports/feedback.repository';
 import { INSIGHTS_REPOSITORY } from './application/ports/insights.repository';
 import { GUEST_TOKENS } from './application/ports/guest-tokens';
+import { IssuePreviewToken } from './application/use-cases/issue-preview-token.use-case';
 import { MARKET_CALENDAR } from './application/ports/market-calendar';
 import { MESSAGE_LIMITS } from './application/ports/message-limits';
+import { PREVIEW_TOKENS } from './application/ports/preview-tokens';
+import { QUICK_PROMPTS } from './application/ports/quick-prompts';
 import { SPEND_REPOSITORY } from './application/ports/spend.repository';
+import { DeleteConversation } from './application/use-cases/delete-conversation.use-case';
+import { ListConversations } from './application/use-cases/list-conversations.use-case';
 import { PurgeConversations } from './application/use-cases/purge-conversations.use-case';
 import { SendGuestMessage } from './application/use-cases/send-guest-message.use-case';
 import { SendMessage } from './application/use-cases/send-message.use-case';
@@ -32,12 +39,15 @@ import { ViewAssistantInsights } from './application/use-cases/view-assistant-in
 import { SetAssistantSettings } from './application/use-cases/set-assistant-settings.use-case';
 import { ViewAssistantSettingsHistory } from './application/use-cases/view-assistant-settings-history.use-case';
 import { ViewAssistantSettings } from './application/use-cases/view-assistant-settings.use-case';
+import { ViewConversation } from './application/use-cases/view-conversation.use-case';
 import { ViewStorefrontAssistant } from './application/use-cases/view-storefront-assistant.use-case';
 import { ASSISTANT_PERMISSIONS } from './contracts';
 import { ASSISTANT_AUDIT_ACTIONS } from './domain/audit';
+import { ASSISTANT_EVENTS } from './domain/events';
 import { assistantProviders } from './infrastructure/assistant-providers';
 import { AdminAssistantSettingsController } from './presentation/admin-assistant-settings.controller';
 import { AdminAssistantInsightsController } from './presentation/admin-assistant-insights.controller';
+import { AdminPreviewTokenController } from './presentation/admin-preview-token.controller';
 import { ConversationController } from './presentation/conversation.controller';
 import { purgeConversationsJob } from './presentation/jobs/purge-conversations.job';
 import { StorefrontAssistantController } from './presentation/storefront-assistant.controller';
@@ -58,6 +68,9 @@ const PORTS: readonly [keyof AssistantDependencies, InjectionToken][] = [
   ['limits', MESSAGE_LIMITS],
   ['guestTokens', GUEST_TOKENS],
   ['calendar', MARKET_CALENDAR],
+  ['outbox', OUTBOX_WRITER],
+  ['quickPrompts', QUICK_PROMPTS],
+  ['previewTokens', PREVIEW_TOKENS],
   ['trail', CHANGE_TRAIL],
 ];
 
@@ -91,12 +104,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   controllers: [
     AdminAssistantSettingsController,
     AdminAssistantInsightsController,
+    AdminPreviewTokenController,
     StorefrontAssistantController,
     ConversationController,
   ],
   providers: [
     PersistenceModule.auditWriterFor('assistant'),
     PersistenceModule.auditTrailReaderFor('assistant'),
+    PersistenceModule.outboxWriterFor('assistant'),
+    registerEvents('assistant', ASSISTANT_EVENTS),
     changeTrailProvider(),
     registerAuditActions('assistant', ASSISTANT_AUDIT_ACTIONS),
     registerPermissions('assistant', ASSISTANT_PERMISSIONS),
@@ -107,11 +123,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewAssistantSettingsHistory,
       SetAssistantSettings,
       ViewStorefrontAssistant,
+      IssuePreviewToken,
       SendMessage,
       SendGuestMessage,
       SubmitFeedback,
       SubmitGuestFeedback,
       ViewAssistantInsights,
+      ListConversations,
+      ViewConversation,
+      DeleteConversation,
       PurgeConversations,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     registerJobsFrom('assistant', [PurgeConversations], (purge: PurgeConversations) => [

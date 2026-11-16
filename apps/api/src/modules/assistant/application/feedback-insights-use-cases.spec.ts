@@ -23,6 +23,9 @@ import {
   FakeRuntime,
   FakeTools,
   FakeInsights,
+  FakePreviewTokens,
+  FixedQuickPrompts,
+  RecordingOutbox,
   MemoryConversations,
   MemoryFeedback,
   MemoryLimits,
@@ -141,6 +144,9 @@ describe.each(TEST_MARKET_IDS)('assistant feedback and insights in market %s', (
       limits: new MemoryLimits(),
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
+      quickPrompts: new FixedQuickPrompts(),
+      previewTokens: new FakePreviewTokens(),
+      outbox: new RecordingOutbox(),
       trail: unusedChangeTrail,
     };
   });

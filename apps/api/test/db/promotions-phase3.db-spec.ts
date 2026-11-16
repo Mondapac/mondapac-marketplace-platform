@@ -299,6 +299,34 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
       expect(await attempt(promotion({ referee_reward_minor: 5 }))).toBe(CHECK);
     });
 
+    it('holds a manual-group segment to its group id, and the group id to that segment', async () => {
+      const group = { type: 'CUSTOMER_GROUP', cap_minor: null };
+      const groupId = '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b';
+      expect(
+        await attempt(
+          promotion({ ...group, segment_kind: 'MANUAL_GROUP', segment_group_id: groupId }),
+        ),
+      ).toBe('allowed');
+      expect(await attempt(promotion({ ...group, segment_kind: 'MANUAL_GROUP' }))).toBe(CHECK);
+      expect(
+        await attempt(
+          promotion({
+            ...group,
+            segment_kind: 'MANUAL_GROUP',
+            segment_group_id: groupId,
+            segment_min_days: 30,
+          }),
+        ),
+      ).toBe(CHECK);
+      expect(
+        await attempt(
+          promotion({ ...group, segment_kind: 'DELIVERY_ZONE', segment_group_id: groupId }),
+        ),
+      ).toBe(CHECK);
+      expect(await attempt(promotion({ segment_group_id: groupId }))).toBe(CHECK);
+      expect(await attempt(promotion({ ...referralTerms, segment_group_id: groupId }))).toBe(CHECK);
+    });
+
     it('holds a referral to fixed rewards and a per-referrer cap, and a cashback to a percent and a cap', async () => {
       expect(await attempt(promotion({ ...referralTerms, referee_reward_minor: null }))).toBe(
         CHECK,

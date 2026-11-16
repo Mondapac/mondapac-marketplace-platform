@@ -3,6 +3,9 @@ import { CATALOG_ASSISTANT_FACADE, type CatalogAssistantFacade } from '../../cat
 import { SUPPORT_CONTACT_FACADE, type SupportContactFacade } from '../../notifications';
 import { SEARCH_ASSISTANT_FACADE, type SearchAssistantFacade } from '../../search';
 import { ModelGateway } from '../../../platform/ai/model-gateway';
+import type { AppConfig } from '../../../platform/config/app-config';
+import { APP_CONFIG } from '../../../platform/config/config.module';
+import { LocaleCatalogues } from '../../../platform/i18n/locale-catalogues';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { SubjectRateLimits } from '../../../platform/rate-limit/subject-rate-limits';
@@ -23,6 +26,8 @@ import {
 import { GUEST_TOKENS, type GuestTokens } from '../application/ports/guest-tokens';
 import { MARKET_CALENDAR, type MarketCalendar } from '../application/ports/market-calendar';
 import { MESSAGE_LIMITS, type MessageLimits } from '../application/ports/message-limits';
+import { PREVIEW_TOKENS, type PreviewTokens } from '../application/ports/preview-tokens';
+import { QUICK_PROMPTS, type QuickPrompts } from '../application/ports/quick-prompts';
 import { SPEND_REPOSITORY, type SpendRepository } from '../application/ports/spend.repository';
 import {
   FEEDBACK_REPOSITORY,
@@ -32,7 +37,9 @@ import {
   INSIGHTS_REPOSITORY,
   type InsightsRepository,
 } from '../application/ports/insights.repository';
+import { CatalogueQuickPrompts } from './catalogue-quick-prompts';
 import { CryptoGuestTokens } from './crypto-guest-tokens';
+import { HmacPreviewTokens } from './hmac-preview-tokens';
 import { FacadeAssistantTools } from './facade-assistant-tools';
 import { GatewayAssistantRuntime } from './gateway-assistant-runtime';
 import { PrismaAssistantSettingsRepository } from './prisma-assistant-settings.repository';
@@ -100,5 +107,17 @@ export const assistantProviders: readonly FactoryProvider[] = [
     provide: MARKET_CALENDAR,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): MarketCalendar => new RegistryMarketCalendar(markets),
+  },
+  {
+    provide: PREVIEW_TOKENS,
+    inject: [APP_CONFIG],
+    useFactory: (config: AppConfig): PreviewTokens =>
+      new HmacPreviewTokens(config.assistantPreviewTokenKey),
+  },
+  {
+    provide: QUICK_PROMPTS,
+    inject: [MarketRegistry, LocaleCatalogues],
+    useFactory: (markets: MarketRegistry, catalogues: LocaleCatalogues): QuickPrompts =>
+      new CatalogueQuickPrompts(markets, catalogues),
   },
 ];

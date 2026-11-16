@@ -13,15 +13,20 @@ import {
   MemoryConversations,
   MemoryFeedback,
   MemoryLimits,
+  RecordingOutbox,
   SequenceGuestTokens,
+  FakePreviewTokens,
+  FixedQuickPrompts,
 } from '../../src/modules/assistant/application/testing/assistant-fakes';
 import { SetAssistantSettings } from '../../src/modules/assistant/application/use-cases/set-assistant-settings.use-case';
 import { ViewAssistantSettings } from '../../src/modules/assistant/application/use-cases/view-assistant-settings.use-case';
 import { ViewAssistantSettingsHistory } from '../../src/modules/assistant/application/use-cases/view-assistant-settings-history.use-case';
+import { IssuePreviewToken } from '../../src/modules/assistant/application/use-cases/issue-preview-token.use-case';
 import { ViewStorefrontAssistant } from '../../src/modules/assistant/application/use-cases/view-storefront-assistant.use-case';
 import { DEFAULT_ASSISTANT_SETTINGS } from '../../src/modules/assistant/domain/assistant-settings';
 import { ASSISTANT_AUDIT_ACTIONS } from '../../src/modules/assistant/domain/audit';
 import { PrismaAssistantSettingsRepository } from '../../src/modules/assistant/infrastructure/prisma-assistant-settings.repository';
+import { HmacPreviewTokens } from '../../src/modules/assistant/infrastructure/hmac-preview-tokens';
 import { PrismaSpendRepository } from '../../src/modules/assistant/infrastructure/prisma-spend.repository';
 import { RegistryMarketCalendar } from '../../src/modules/assistant/infrastructure/registry-market-calendar';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
@@ -111,6 +116,9 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
     limits: new MemoryLimits(),
     guestTokens: new SequenceGuestTokens(),
     calendar: new RegistryMarketCalendar(markets),
+    outbox: new RecordingOutbox(),
+    quickPrompts: new FixedQuickPrompts(),
+    previewTokens: new FakePreviewTokens(),
     trail: dbChangeTrail('assistant', catalogue, db.unitOfWork, actors),
   });
   const auditRows = async (target: MarketContext) =>
@@ -213,8 +221,60 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
     );
     expect(read).toEqual({
       ok: true,
-      value: { enabled: true, guestsAllowed: true, replyLanguage: 'buyer', welcomeText: 'Hi' },
+      value: {
+        enabled: true,
+        guestsAllowed: true,
+        replyLanguage: 'buyer',
+        welcomeText: 'Hi',
+        retentionDays: { customer: 30, guest: 30 },
+        quickPrompts: code === 'ZZ' ? FixedQuickPrompts.JA : FixedQuickPrompts.EN,
+        preview: false,
+      },
     });
+  });
+
+  it('issues a preview token through the real unit: audit row and s3 event, token kept nowhere', async () => {
+    const previewTokens = new HmacPreviewTokens('db-preview-key_0123456789abcdefghijABCDEF');
+    const correlationId = `assistant-db-preview-${code.toLowerCase()}`;
+    const context = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'admin',
+        accountId: ADMIN,
+        sessionId: id<'Session'>(0x62),
+        sellerId: null,
+      }),
+      correlationId,
+    );
+    const issued = await new IssuePreviewToken(gate, { ...deps(), previewTokens }).execute(
+      context,
+      {},
+    );
+    if (!issued.ok) throw new Error(issued.error.code);
+    expect(issued.value.expiresAt).toBe('2026-10-19T21:30:00Z');
+    expect(previewTokens.verify(market, issued.value.token, T0)).toBe(true);
+    expect(previewTokens.verify(other, issued.value.token, T0)).toBe(false);
+
+    const rows = await sql.query<{ id: string; after: unknown; row: string }>(
+      `SELECT id, after, row_to_json(a)::text AS row FROM platform.audit_log a
+        WHERE market_id = $1 AND action = 'assistant.preview-token.issued'
+          AND correlation_id = $2`,
+      [market.marketId, correlationId],
+    );
+    expect(rows.rows.map((row) => row.after)).toEqual([{ expiresAt: '2026-10-19T21:30:00.000Z' }]);
+    const events = await sql.query<{ type: string; severity: string; row: string }>(
+      `SELECT type, severity, row_to_json(e)::text AS row FROM platform.security_events e
+        WHERE market_id = $1 AND correlation_id = $2`,
+      [market.marketId, correlationId],
+    );
+    expect(events.rows.map(({ type, severity }) => ({ type, severity }))).toEqual([
+      { type: 'assistant.preview-token.issued', severity: 's3' },
+    ]);
+    const [, , nonce, mac] = issued.value.token.split('.');
+    for (const text of [rows.rows[0]!.row, events.rows[0]!.row]) {
+      expect(text).not.toContain(nonce!);
+      expect(text).not.toContain(mac!);
+    }
   });
 
   it('keeps the history insert-only for the application role', async () => {

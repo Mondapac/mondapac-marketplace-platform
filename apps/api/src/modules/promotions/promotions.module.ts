@@ -24,7 +24,11 @@ import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
 import { CREDIT_REPOSITORY, REFERRAL_REPOSITORY } from './application/ports/credit.repository';
 import { CustomersModule } from '../customers';
-import { CUSTOMER_ORDER_HISTORY, STORE_FOLLOWS } from './application/ports/customer-facts';
+import {
+  CUSTOMER_GROUP_MEMBERSHIP,
+  CUSTOMER_ORDER_HISTORY,
+  STORE_FOLLOWS,
+} from './application/ports/customer-facts';
 import { DELIVERED_ORDER_FACTS } from './application/ports/order-facts';
 import { REFERRAL_SIGNALS } from './application/ports/referral-signals';
 import { WALLET_CREDIT } from './application/ports/wallet-credit';
@@ -117,6 +121,7 @@ const PORTS: readonly [keyof PromotionsDependencies, InjectionToken][] = [
   ['sellerCatalogue', SELLER_CATALOGUE],
   ['orderHistory', CUSTOMER_ORDER_HISTORY],
   ['storeFollows', STORE_FOLLOWS],
+  ['groupMembership', CUSTOMER_GROUP_MEMBERSHIP],
   ['orderFacts', DELIVERED_ORDER_FACTS],
   ['referralSignals', REFERRAL_SIGNALS],
   ['walletCredit', WALLET_CREDIT],

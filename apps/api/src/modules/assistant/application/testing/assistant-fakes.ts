@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
-import { Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, MarketContext, MarketId } from '@mondapac/shared-kernel';
+import { encodePayload, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, MarketContext, MarketId, PendingEvent } from '@mondapac/shared-kernel';
+import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
+import { NO_PERMISSION_KEYS } from '../../../../platform/events/outbox-writer';
+import { ASSISTANT_EVENTS } from '../../domain/events';
 import type { ModelRequest, ModelTurn } from '../../../../platform/ai/model-provider';
 import type { ModelTier } from '../../domain/assistant-settings';
 import type { AssistantCard } from '../../domain/cards';
@@ -8,9 +11,13 @@ import type { ToolRequest } from '../../domain/tools';
 import type { AssistantRuntime, ModelAnswer } from '../ports/assistant-runtime';
 import type { AssistantTools, ToolOutcome } from '../ports/assistant-tools';
 import type {
+  ConversationCursor,
+  ConversationListPage,
   ConversationRecord,
   ConversationRepository,
+  ConversationSummary,
   StoredMessage,
+  TranscriptMessage,
 } from '../ports/conversation.repository';
 import type { Feedback } from '../../domain/feedback';
 import type { UnansweredCandidate } from '../../domain/insights';
@@ -19,6 +26,8 @@ import type { DayInsight, FeedbackInsight, InsightsRepository } from '../ports/i
 import type { GuestTokens } from '../ports/guest-tokens';
 import type { MarketCalendar } from '../ports/market-calendar';
 import type { MessageLimits } from '../ports/message-limits';
+import type { PreviewTokens } from '../ports/preview-tokens';
+import type { QuickPrompts } from '../ports/quick-prompts';
 import type { SpendRepository, SpendTotals } from '../ports/spend.repository';
 
 // In-memory ports of the assistant for the use-case specs: the fake model answers from a script
@@ -114,7 +123,7 @@ export class FakeTools implements AssistantTools {
 export class MemoryConversations implements ConversationRepository {
   readonly rows = new Map<
     string,
-    ConversationRecord & { market: string; lastAt: Temporal.Instant }
+    ConversationRecord & { market: string; startedAt: Temporal.Instant; lastAt: Temporal.Instant }
   >();
   readonly messages = new Map<
     string,
@@ -124,16 +133,105 @@ export class MemoryConversations implements ConversationRepository {
       emptySearch: boolean;
     })[]
   >();
+  /** When each stored message was written, in the same order as `messages`. */
+  readonly times = new Map<string, Temporal.Instant[]>();
+  /** Conversations whose key was destroyed (their messages read as nothing). */
+  readonly destroyed = new Set<string>();
 
+  spent(_market: MarketContext, id: string) {
+    return Promise.resolve(this.destroyed.has(id));
+  }
   find(market: MarketContext, id: string) {
     const row = this.rows.get(id);
-    return Promise.resolve(row === undefined || row.market !== market.marketId ? null : row);
+    return Promise.resolve(
+      row === undefined || row.market !== market.marketId
+        ? null
+        : { ...row, lastMessageAt: row.lastAt },
+    );
+  }
+  listByAccount(
+    market: MarketContext,
+    accountId: string,
+    query: {
+      visibleSince: ReadonlyMap<number, Temporal.Instant>;
+      after: ConversationCursor | null;
+      limit: number;
+    },
+  ): Promise<ConversationListPage> {
+    const newestFirst = (a: { lastAt: Temporal.Instant; id: string }, b: typeof a) =>
+      Temporal.Instant.compare(b.lastAt, a.lastAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+    const { after } = query;
+    const rows = [...this.rows.values()]
+      .filter((row) => {
+        if (row.market !== market.marketId) return false;
+        if (row.owner.kind !== 'account' || row.owner.accountId !== accountId) return false;
+        const since = query.visibleSince.get(row.retentionDays);
+        if (row.retentionDays === 0 || since === undefined) return false;
+        if (Temporal.Instant.compare(row.lastAt, since) < 0) return false;
+        return (
+          after === null || newestFirst({ lastAt: after.lastMessageAt, id: after.id }, row) < 0
+        );
+      })
+      .sort(newestFirst);
+    const page = rows.slice(0, Math.max(0, query.limit));
+    const last = rows.length > page.length ? page.at(-1) : undefined;
+    return Promise.resolve({
+      next: last === undefined ? null : { lastMessageAt: last.lastAt, id: last.id },
+      rows: page
+        .filter((row) => !this.destroyed.has(row.id))
+        .map((row): ConversationSummary => ({
+          id: row.id,
+          turns: row.turns,
+          startedAt: row.startedAt,
+          lastMessageAt: row.lastAt,
+          firstBuyerText:
+            (this.messages.get(row.id) ?? []).find((message) => message.role === 'buyer')?.text ??
+            null,
+        })),
+    });
+  }
+  transcript(_market: MarketContext, id: string): Promise<readonly TranscriptMessage[]> {
+    if (this.destroyed.has(id)) return Promise.resolve([]);
+    const row = this.rows.get(id);
+    return Promise.resolve(
+      (this.messages.get(id) ?? []).map((message, index) => ({
+        position: index + 1,
+        role: message.role,
+        text: message.text,
+        cards: message.cards,
+        at: this.timeOf(id, index, row?.lastAt),
+      })),
+    );
+  }
+  private timeOf(id: string, index: number, fallback: Temporal.Instant | undefined) {
+    const at = this.times.get(id)?.[index] ?? fallback;
+    if (at === undefined) throw new Error(`no time stored for message ${index} of ${id}`);
+    return at;
+  }
+  deleteOwn(market: MarketContext, id: string, accountId: string) {
+    const row = this.rows.get(id);
+    if (
+      row === undefined ||
+      row.market !== market.marketId ||
+      row.owner.kind !== 'account' ||
+      row.owner.accountId !== accountId
+    ) {
+      return Promise.resolve(false);
+    }
+    this.rows.delete(id);
+    this.messages.delete(id);
+    this.times.delete(id);
+    if (row.retentionDays > 0) this.destroyed.add(id);
+    return Promise.resolve(true);
   }
   create(
     market: MarketContext,
     conversation: ConversationRecord & { startedAt: Temporal.Instant },
   ) {
     if (this.rows.has(conversation.id)) return Promise.resolve(false);
+    if (conversation.retentionDays > 0 && this.destroyed.has(conversation.id)) {
+      return Promise.resolve(false);
+    }
     this.rows.set(conversation.id, {
       ...conversation,
       market: market.marketId,
@@ -166,6 +264,7 @@ export class MemoryConversations implements ConversationRepository {
       emptySearch: message.emptySearch ?? false,
     });
     this.messages.set(id, list);
+    this.times.set(id, [...(this.times.get(id) ?? []), message.at]);
     return Promise.resolve();
   }
   purgeExpired(
@@ -182,6 +281,7 @@ export class MemoryConversations implements ConversationRepository {
       if (Temporal.Instant.compare(row.lastAt.add({ hours: 24 * days }), now) < 0) {
         this.rows.delete(id);
         this.messages.delete(id);
+        if (row.retentionDays > 0) this.destroyed.add(id);
         purged += 1;
       }
     }
@@ -282,6 +382,60 @@ export class SequenceGuestTokens implements GuestTokens {
     return /^[A-Za-z0-9_-]{43}$/.test(token)
       ? createHash('sha256').update(token).digest('hex')
       : null;
+  }
+}
+
+/** Collects events with their Market, each checked against its definition as the writer does. */
+export class RecordingOutbox implements OutboxWriter {
+  readonly events: (PendingEvent & { marketId: string })[] = [];
+  append(context: CallContext, events: readonly PendingEvent[]): Promise<void> {
+    for (const event of events) {
+      const definition = ASSISTANT_EVENTS.find((d) => d.type === event.type);
+      if (definition === undefined) throw new Error(`outbox: unknown type ${event.type}`);
+      const checked = encodePayload(definition.fields, event.payload, NO_PERMISSION_KEYS);
+      if (!checked.ok) throw new Error(`outbox: ${JSON.stringify(checked.error)}`);
+      this.events.push({ ...event, marketId: context.market.marketId });
+    }
+    return Promise.resolve();
+  }
+}
+
+/**
+ * Fixed prompts shaped like the fixtures: ZZ answers Japanese (its default, with no English
+ * catalogue), AU English unless asked for `ja`; records each tag asked.
+ */
+export class FixedQuickPrompts implements QuickPrompts {
+  static readonly JA = ['今週の特売は？'];
+  static readonly EN = ['What is on special?'];
+  readonly asked: (string | null)[] = [];
+  forBuyer(market: MarketContext, lang: string | null) {
+    this.asked.push(lang);
+    return market.marketId === 'ZZ' || lang?.startsWith('ja')
+      ? FixedQuickPrompts.JA
+      : FixedQuickPrompts.EN;
+  }
+}
+
+/**
+ * Preview tokens: `preview:<Market>:<expiry ms>`, valid until the expiry and for that Market only;
+ * `available` switches the key off.
+ */
+export class FakePreviewTokens implements PreviewTokens {
+  available_ = true;
+  available() {
+    return this.available_;
+  }
+  issue(market: MarketContext, now: Temporal.Instant) {
+    if (!this.available_) return null;
+    const expiresAt = now.add({ minutes: 30 });
+    return { token: `preview:${market.marketId}:${expiresAt.epochMilliseconds}`, expiresAt };
+  }
+  verify(market: MarketContext, token: unknown, now: Temporal.Instant) {
+    if (!this.available_ || typeof token !== 'string') return false;
+    const [kind, marketId, expiry] = token.split(':');
+    return (
+      kind === 'preview' && marketId === market.marketId && Number(expiry) > now.epochMilliseconds
+    );
   }
 }
 

@@ -259,7 +259,11 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
         // may run out of its own retries; only that conflict is retried here, never an answer.
         const target = await admin(low);
         const assigned = await untilNoConflict(() =>
-          app.get(AssignAdminRole).execute(as(actor), { accountId: target, roleId: entry.roleId }),
+          app.get(AssignAdminRole).execute(as(actor), {
+            accountId: target,
+            roleId: entry.roleId,
+            note: 'Parity',
+          }),
         );
         const invited = await untilNoConflict(() =>
           app.get(InviteAdmin).execute(as(actor), {

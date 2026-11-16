@@ -17,6 +17,7 @@ export const ASSISTANT_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'assistant.conversation-full': 409,
   'request.throttled': 429,
   'assistant.paused': 503,
+  'assistant.preview-unavailable': 503,
   'assistant.unavailable': 503,
 });
 

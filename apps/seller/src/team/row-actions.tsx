@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Dialog, Menu, toast, type MenuItem } from '@mondapac/ui';
+import { ConfirmAction, Menu, toast, type MenuItem } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
@@ -168,36 +168,21 @@ export function RowActions({
         />
       ) : null}
       <Menu label={t('actions-for', { name: target.name })} items={items} />
-      <Dialog
+      <ConfirmAction
         open={asking !== null}
+        level={2}
         title={asking === null ? '' : t(`dialog.${asking.id}.title`, { name: target.name })}
-        onClose={() => {
-          if (!pending) setAsking(null);
+        body={asking === null ? null : <p>{t(`dialog.${asking.id}.body`)}</p>}
+        rowName={target.name}
+        confirmLabel={asking === null ? '' : t(`dialog.${asking.id}.action`)}
+        cancelLabel={t(asking?.id === 'revoke' ? 'dialog.keep-invitation' : 'dialog.keep')}
+        pending={pending}
+        error={problem}
+        onConfirm={() => {
+          if (asking !== null) void run(asking);
         }}
-        actions={
-          <>
-            <Button variant="secondary" onClick={() => setAsking(null)} disabled={pending}>
-              {t(asking?.id === 'revoke' ? 'dialog.keep-invitation' : 'dialog.keep')}
-            </Button>
-            <Button
-              variant={asking?.critical === true ? 'destructive' : 'primary'}
-              loading={pending}
-              onClick={() => {
-                if (asking !== null) void run(asking);
-              }}
-            >
-              {asking === null ? '' : t(`dialog.${asking.id}.action`)}
-            </Button>
-          </>
-        }
-      >
-        {asking === null ? null : <p>{t(`dialog.${asking.id}.body`)}</p>}
-        {problem === null ? null : (
-          <div className="mt-3">
-            <Banner tone="critical">{problem}</Banner>
-          </div>
-        )}
-      </Dialog>
+        onCancel={() => setAsking(null)}
+      />
     </>
   );
 }

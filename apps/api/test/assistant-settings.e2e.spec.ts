@@ -7,18 +7,24 @@ import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-ro
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
+import { IssuePreviewToken } from '../src/modules/assistant/application/use-cases/issue-preview-token.use-case';
 import { SetAssistantSettings } from '../src/modules/assistant/application/use-cases/set-assistant-settings.use-case';
 import { ViewAssistantInsights } from '../src/modules/assistant/application/use-cases/view-assistant-insights.use-case';
 import { ViewAssistantSettings } from '../src/modules/assistant/application/use-cases/view-assistant-settings.use-case';
 import { ViewAssistantSettingsHistory } from '../src/modules/assistant/application/use-cases/view-assistant-settings-history.use-case';
 import { ViewStorefrontAssistant } from '../src/modules/assistant/application/use-cases/view-storefront-assistant.use-case';
+import { PREVIEW_TOKENS } from '../src/modules/assistant/application/ports/preview-tokens';
+import type { PreviewTokens } from '../src/modules/assistant/application/ports/preview-tokens';
+import { QUICK_PROMPTS } from '../src/modules/assistant/application/ports/quick-prompts';
+import type { QuickPrompts } from '../src/modules/assistant/application/ports/quick-prompts';
+import { CatalogueQuickPrompts } from '../src/modules/assistant/infrastructure/catalogue-quick-prompts';
 import { DEFAULT_ASSISTANT_SETTINGS } from '../src/modules/assistant/domain/assistant-settings';
 import { ASSISTANT_STATUS } from '../src/modules/assistant/presentation/http-answers';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
-import { createTestApp } from './support/test-app';
+import { completionLineOf, createTestApp, type LogLine } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
 // The buyer assistant settings routes over HTTP: the real guards and controllers; the use cases
@@ -65,7 +71,12 @@ const STOREFRONT = {
   guestsAllowed: true,
   replyLanguage: 'buyer',
   welcomeText: 'Hi',
+  retentionDays: { customer: 30, guest: 30 },
+  quickPrompts: ['What is on special?'],
+  preview: false,
 };
+const PREVIEW_PATH = '/assistant/admin/preview-token';
+const PREVIEW_KEY = 'e2e-preview-key_0123456789abcdefghijABCDEF';
 
 it('maps every refusal code of the assistant routes to its exact status', () => {
   expect(ASSISTANT_STATUS).toEqual({
@@ -78,6 +89,7 @@ it('maps every refusal code of the assistant routes to its exact status', () => 
     'assistant.conversation-full': 409,
     'request.throttled': 429,
     'assistant.paused': 503,
+    'assistant.preview-unavailable': 503,
     'assistant.unavailable': 503,
   });
 });
@@ -99,8 +111,11 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     },
   });
 
-  async function boot() {
-    ({ app } = await createTestApp({
+  let logLines: LogLine[] = [];
+
+  async function boot(env?: Record<string, string>) {
+    ({ app, logLines } = await createTestApp({
+      ...(env === undefined ? {} : { env }),
       panelOrigins: true,
       override: (builder) =>
         fakes
@@ -116,7 +131,9 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
           .overrideProvider(ViewStorefrontAssistant)
           .useValue(stub('public'))
           .overrideProvider(ViewAssistantInsights)
-          .useValue(stub('insights')),
+          .useValue(stub('insights'))
+          .overrideProvider(IssuePreviewToken)
+          .useValue(stub('preview')),
     }));
     await app
       .get(SeedRoles)
@@ -258,19 +275,122 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     expect(calls).toEqual([]);
   });
 
-  it('answers the storefront read with no session, passing only the visitor key', async () => {
+  it('answers the storefront read with no session, passing only the visitor key and the language', async () => {
     await boot();
     next = ok(STOREFRONT);
     const read = await http()
       .get(PUBLIC)
-      .query({ visitor: 'visitor-key-0123456789' })
+      .query({ visitor: 'visitor-key-0123456789', lang: 'en-AU' })
       .set({ 'x-market-id': code, cookie: sessionOf('admin', 3).cookie });
     expect(read.status).toBe(200);
     expect(read.headers['cache-control']).toBe('no-store');
     expect(read.headers['set-cookie']).toBeUndefined();
     expect(read.body).toEqual(STOREFRONT);
-    expect(calls).toEqual([{ name: 'public', input: { visitor: 'visitor-key-0123456789' } }]);
+    expect(calls).toEqual([
+      {
+        name: 'public',
+        input: { visitor: 'visitor-key-0123456789', lang: 'en-AU', preview: undefined },
+      },
+    ]);
     expect(actorKinds).toEqual(['anonymous']);
+  });
+
+  it('passes the preview header of the storefront read to the use case, as sent', async () => {
+    await boot();
+    next = ok({ ...STOREFRONT, preview: true });
+    const read = await http()
+      .get(PUBLIC)
+      .set({ 'x-market-id': code, 'x-assistant-preview': 'ap1.token' });
+    expect(read.status).toBe(200);
+    expect(read.body).toEqual({ ...STOREFRONT, preview: true });
+    expect(calls).toEqual([
+      { name: 'public', input: { visitor: undefined, lang: undefined, preview: 'ap1.token' } },
+    ]);
+  });
+
+  it('issues a preview token to an admin with CSRF, no-store, and maps its refusals', async () => {
+    await boot();
+    const session = sessionOf('admin', 2);
+    const post = (headers: Record<string, string>) =>
+      http()
+        .post(PREVIEW_PATH)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...headers });
+
+    next = ok({ token: 'ap1.x', expiresAt: '2026-10-19T21:30:00Z' });
+    const issued = await post(session);
+    expect(issued.status).toBe(200);
+    expect(issued.headers['cache-control']).toBe('no-store');
+    expect(issued.body).toEqual({ token: 'ap1.x', expiresAt: '2026-10-19T21:30:00Z' });
+    expect(calls).toEqual([{ name: 'preview', input: {} }]);
+    expect(actorKinds).toEqual(['authenticated']);
+
+    expect((await post({ cookie: session.cookie })).status).toBe(403);
+    expect(calls).toHaveLength(1);
+
+    next = err({ code: 'assistant.preview-unavailable' });
+    const off = await post(session);
+    expect(off.status).toBe(503);
+    expect(off.body).toEqual({ statusCode: 503, code: 'assistant.preview-unavailable' });
+    next = err({ code: 'access.denied' });
+    expect((await post(session)).status).toBe(403);
+  });
+
+  it('wires the preview key from the environment: tokens of this Market verify here only', async () => {
+    await boot({ ASSISTANT_PREVIEW_TOKEN_KEY: PREVIEW_KEY });
+    const tokens = app!.get<PreviewTokens>(PREVIEW_TOKENS, { strict: false });
+    expect(tokens.available()).toBe(true);
+    const issued = tokens.issue(marketOf(), START)!;
+    expect(issued.token).toMatch(/^ap1\./);
+    expect(tokens.verify(marketOf(), issued.token, START)).toBe(true);
+    const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', PLATFORM_TENANT_ID);
+    expect(tokens.verify(other, issued.token, START)).toBe(false);
+    await app!.close();
+    app = undefined;
+    await boot();
+    const unset = app!.get<PreviewTokens>(PREVIEW_TOKENS, { strict: false });
+    expect(unset.available()).toBe(false);
+    expect(unset.verify(marketOf(), issued.token, START)).toBe(false);
+  });
+
+  it('never logs the preview key or a token', async () => {
+    await boot({ ASSISTANT_PREVIEW_TOKEN_KEY: PREVIEW_KEY });
+    const session = sessionOf('admin', 2);
+    const token = 'ap1.1792000000.secret-nonce-0123456789.secret-mac';
+    next = ok({ token, expiresAt: '2026-10-19T21:30:00Z' });
+    const issued = await http()
+      .post(PREVIEW_PATH)
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session });
+    expect(issued.status).toBe(200);
+    next = ok({ ...STOREFRONT, preview: true });
+    const read = await http()
+      .get(PUBLIC)
+      .set({ 'x-market-id': code, 'x-assistant-preview': token });
+    expect(read.status).toBe(200);
+    completionLineOf(logLines, issued.headers['x-correlation-id']);
+    completionLineOf(logLines, read.headers['x-correlation-id']);
+    const logs = JSON.stringify(logLines);
+    expect(logs).not.toContain(PREVIEW_KEY);
+    expect(logs).not.toContain('secret-nonce');
+    expect(logs).not.toContain('secret-mac');
+  });
+
+  it("wires the checked-in quick prompts in the Market's locales", async () => {
+    await boot();
+    const prompts = app!.get<QuickPrompts>(QUICK_PROMPTS, { strict: false });
+    expect(prompts).toBeInstanceOf(CatalogueQuickPrompts);
+    const market = marketOf();
+    const plain = prompts.forBuyer(market, null);
+    expect(plain.length).toBeGreaterThan(0);
+    // AU's default is en-AU; ZZ's is ja-JP, and its en-US has no prompts, so it falls back.
+    if (code === 'ZZ') {
+      expect(plain[0]).toBe('今週の特売は？');
+      expect(prompts.forBuyer(market, 'ja')).toEqual(plain);
+      expect(prompts.forBuyer(market, 'en-US')).toEqual(plain);
+    } else {
+      expect(plain[0]).toMatch(/special/);
+      expect(prompts.forBuyer(market, 'en-GB')).toEqual(plain);
+    }
+    expect(prompts.forBuyer(market, '<script>')).toEqual(plain);
   });
 
   it('refuses the storefront read without a Market header', async () => {
