@@ -23,7 +23,12 @@ export interface SuperListTool {
 
 export interface SuperListProps {
   /** Above the tabs: what the list holds in words, then the bulk action menu and page actions. */
-  readonly heading: { readonly subtitle: string; readonly actions?: ReactNode };
+  readonly heading: {
+    readonly subtitle: string;
+    /** A second small muted line under the subtitle (for example the zone the times are in). */
+    readonly note?: string;
+    readonly actions?: ReactNode;
+  };
   /** Built-in tabs with their counts, then the saved filters, and "Manage filters…". */
   readonly views: ListViewsBarProps;
   readonly search: {
@@ -34,6 +39,8 @@ export interface SuperListProps {
     readonly onChange: (value: string) => void;
     /** Enter searches at once, without the typing pause. */
     readonly onSubmit: (value: string) => void;
+    /** Sits right after the search box (a scope select, a hint line); the page owns its words. */
+    readonly extra?: ReactNode;
   };
   readonly filter?: SuperListTool;
   readonly sort?: SuperListTool;
@@ -121,7 +128,14 @@ export function SuperList({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <p className="min-w-0 text-sm text-fg-muted">{heading.subtitle}</p>
+        {heading.note === undefined ? (
+          <p className="min-w-0 text-sm text-fg-muted">{heading.subtitle}</p>
+        ) : (
+          <div className="flex min-w-0 flex-col gap-1">
+            <p className="text-sm text-fg-muted">{heading.subtitle}</p>
+            <p className="text-sm text-fg-muted">{heading.note}</p>
+          </div>
+        )}
         {heading.actions === undefined ? null : (
           <div className="flex flex-wrap items-center gap-2">{heading.actions}</div>
         )}
@@ -139,6 +153,7 @@ export function SuperList({
             if (event.key === 'Enter') search.onSubmit(search.value.trim());
           }}
         />
+        {search.extra}
         {/* The real toolbar shows while the first page loads, but cannot act on rows yet. */}
         {hasTools ? (
           <fieldset disabled={skeleton} className="flex min-w-0 items-center gap-2">

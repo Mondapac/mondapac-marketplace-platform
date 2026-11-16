@@ -184,4 +184,40 @@ describe('SuperList', () => {
     expect(html).toContain('aria-busy="true"');
     expect(html).toContain('opacity-60');
   });
+
+  it('puts a page note under the subtitle, and anything the page gives after the search box', () => {
+    const html = list({
+      heading: { subtitle: '143 people', note: 'Times are in Brisbane.' },
+      search: {
+        label: 'Search',
+        placeholder: 'Search people',
+        value: '',
+        maxLength: 100,
+        onChange: () => {},
+        onSubmit: () => {},
+        extra: <span>SCOPE</span>,
+      },
+    });
+    expect(html).toContain('Times are in Brisbane.');
+    expect(html.indexOf('143 people')).toBeLessThan(html.indexOf('Times are in Brisbane.'));
+    expect(html.indexOf('Search people')).toBeLessThan(html.indexOf('SCOPE'));
+    expect(list()).not.toContain('SCOPE');
+  });
+
+  it('gives a tab its pointer hint when it has one', () => {
+    const html = list({
+      views: {
+        label: 'Views',
+        activeId: 'all',
+        onSelect: () => {},
+        items: [
+          { id: 'all', label: 'All' },
+          { id: 'cut', label: 'Cut', title: 'Cut in full' },
+        ],
+        manage: null,
+      },
+    });
+    expect(html).toContain('title="Cut in full"');
+    expect(html.match(/title=/g)).toHaveLength(1);
+  });
 });
