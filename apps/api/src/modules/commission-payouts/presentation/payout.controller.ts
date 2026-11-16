@@ -1,4 +1,5 @@
 import {
+  applyDecorators,
   Body,
   Controller,
   Get,
@@ -39,7 +40,24 @@ import { ApprovePayout } from '../application/use-cases/approve-payout.use-case'
 import { ListOwnPayoutHolds } from '../application/use-cases/list-own-payout-holds.use-case';
 import { ListOwnPayouts } from '../application/use-cases/list-own-payouts.use-case';
 import { ExportOwnPayouts } from '../application/use-cases/export-own-payouts.use-case';
-import { OWN_PAYOUT_EXPORT_COLUMNS } from '../domain/own-payout-list';
+import { OWN_PAYOUT_EXPORT_COLUMNS, OWN_PAYOUT_SORT_KEYS } from '../domain/own-payout-list';
+
+/** The Earnings list's filter and sort keys (list and export). */
+const OWN_PAYOUT_QUERY = [
+  {
+    name: 'status',
+    required: false,
+    enum: ['scheduled', 'awaiting-approval', 'on-its-way', 'paid', 'not-sent', 'failed', 'settled'],
+  },
+  { name: 'q', required: false, description: 'A payout id, exact.' },
+  { name: 'from', required: false, description: 'Created at or after (ISO instant).' },
+  { name: 'to', required: false, description: 'Created before (ISO instant).' },
+  { name: 'minAmount', required: false, description: 'The transfer, minor units.' },
+  { name: 'maxAmount', required: false, description: 'The transfer, minor units.' },
+  { name: 'sort', required: false, enum: [...OWN_PAYOUT_SORT_KEYS] },
+  { name: 'direction', required: false, enum: ['asc', 'desc'] },
+];
+const ownPayoutQueries = () => applyDecorators(...OWN_PAYOUT_QUERY.map((q) => ApiQuery(q)));
 import { sendExport } from './list-export-route';
 import { ListPayouts } from '../application/use-cases/list-payouts.use-case';
 import { ExportPayouts } from '../application/use-cases/export-payouts.use-case';
@@ -386,6 +404,9 @@ export class SellerPayoutsController {
   })
   @ApiQuery(CURSOR)
   @ApiQuery(LIMIT)
+  @ownPayoutQueries()
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
   @ApiOkResponse({ type: OwnPayoutListBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
@@ -421,6 +442,7 @@ export class SellerPayoutsController {
   @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
   @ApiQuery({ name: 'columns', required: false })
   @ApiQuery({ name: 'ids', required: false })
+  @ownPayoutQueries()
   @ApiOkResponse({ description: 'payouts-<date>.csv or payouts-<date>.xlsx, as an attachment' })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })

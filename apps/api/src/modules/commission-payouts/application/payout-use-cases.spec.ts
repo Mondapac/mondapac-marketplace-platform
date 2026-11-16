@@ -42,6 +42,8 @@ import { ApplyTransferChange } from './use-cases/apply-transfer-change.use-case'
 import { ApprovePayout } from './use-cases/approve-payout.use-case';
 import { ListOwnPayoutHolds } from './use-cases/list-own-payout-holds.use-case';
 import { ListOwnPayouts } from './use-cases/list-own-payouts.use-case';
+import { ExportOwnPayouts } from './use-cases/export-own-payouts.use-case';
+import { COMMISSION_PAYOUTS_EARNINGS_VIEW } from '../contracts/permissions';
 import { ListPayouts } from './use-cases/list-payouts.use-case';
 import { PAYOUT_ROW_KEYS, type AdminPayoutListDependencies } from './admin-payout-list-flow';
 import { ExceljsSheetWriter } from '../../../platform/list-export';
@@ -1270,6 +1272,31 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       }).execute(context, input);
     const held = (context: CallContext = sellerCtx) =>
       new ListOwnPayoutHolds(gate, deps).execute(context, undefined);
+
+    it('needs earnings.view for the payouts file, and the gate refuses a team member without it', async () => {
+      expect(ExportOwnPayouts.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: [COMMISSION_PAYOUTS_EARNINGS_VIEW.key],
+      });
+      // A check that holds no key: the export is refused before anything is read.
+      const withoutKeys = createUseCaseGate(markets, {
+        check: (_context, declaration) =>
+          Promise.resolve(
+            declaration.rule.kind === 'permissions'
+              ? { allowed: false, denial: { code: 'access.denied' } }
+              : { allowed: true },
+          ),
+      });
+      const reader = new MemoryAdminPayoutList(payouts, stores.holds);
+      const exported = await new ExportOwnPayouts(withoutKeys, {
+        unitOfWork: deps.unitOfWork,
+        payouts: reader,
+        sheetWriter: new ExceljsSheetWriter(),
+        clock,
+      }).execute(sellerCtx, {});
+      expect(exported).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(reader.reads).toBe(0);
+    });
 
     it('estimates the next payout with its slot and amount before the slot', async () => {
       await addSeller();

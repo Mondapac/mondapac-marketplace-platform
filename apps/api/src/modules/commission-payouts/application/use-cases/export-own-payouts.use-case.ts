@@ -1,6 +1,7 @@
 import type { CallContext } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { ExportFile } from '../../../../platform/list-export';
+import { COMMISSION_PAYOUTS_EARNINGS_VIEW } from '../../contracts/permissions';
 import {
   exportOwnPayouts,
   type OwnPayoutExportFailure,
@@ -9,11 +10,15 @@ import {
 
 type Input = Readonly<Record<string, unknown>>;
 
-/** `commission-payouts.export-own-payouts`: the signed-in seller downloads its payouts (own resources). */
+/**
+ * `commission-payouts.export-own-payouts`: the signed-in seller downloads its payouts. A bulk
+ * file of money rows needs `commission-payouts.earnings.view` (as the seller's ledger does); the
+ * seller id is always the session's.
+ */
 export class ExportOwnPayouts extends UseCase<Input, ExportFile, OwnPayoutExportFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'commission-payouts.export-own-payouts',
-    rule: { kind: 'own-resources' },
+    rule: { kind: 'permissions', allOf: [COMMISSION_PAYOUTS_EARNINGS_VIEW.key] },
     whenSellerNotApproved: 'allow',
   };
 

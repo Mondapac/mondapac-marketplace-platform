@@ -119,6 +119,7 @@ describe.each(TEST_MARKETS)('the admin Payouts list in market %s (database)', (c
       const next = moveTo(payout, state, at.add({ minutes: step }), {
         ...(state === 'instructed' ? { transferExecutionId: randomUUID() } : {}),
         ...(state === 'not-sent' || state === 'failed' ? { outcomeCode: 'test.refused' } : {}),
+        ...(state === 'voided' ? { outcomeCode: 'voided.hold' } : {}),
       });
       const before = payout;
       expect(await write(target, () => payouts.change(target, before, next))).toBe(true);
@@ -226,6 +227,46 @@ describe.each(TEST_MARKETS)('the admin Payouts list in market %s (database)', (c
       }),
     );
     expect(rest.map((p) => p.id)).toEqual([tied[1]!.id, older.id]);
+  });
+
+  it("walks one seller's shown payouts (the Earnings list): voided hidden, cursor across instants", async () => {
+    const s = seller();
+    // One live payout per seller: each ends before the next is created.
+    const done = ['instructed', 'paid'] as const;
+    const older = await payoutOf(s, { at: T0.add({ hours: 60 }), to: done });
+    await payoutOf(s, { at: T0.add({ hours: 61 }), mode: 'MANUAL', to: ['voided'] });
+    const tied = [
+      await payoutOf(s, { at: T0.add({ hours: 62 }), to: done }),
+      await payoutOf(s, { at: T0.add({ hours: 62 }) }),
+    ].sort((x, y) => (x.id < y.id ? 1 : -1));
+    await payoutOf(seller(), { at: T0.add({ hours: 62 }) });
+    const shown = {
+      ...NO_FILTER,
+      sellerId: s,
+      states: [
+        'pending',
+        'awaiting-approval',
+        'approved',
+        'instructing',
+        'instructed',
+        'paid',
+        'failed',
+        'not-sent',
+        'settled-by-netting',
+      ] as Payout['state'][],
+    };
+    const first = await value(market, () => reader.page(market, shown, NEWEST, 0, 2));
+    expect(first.map((p) => p.id)).toEqual([tied[0]!.id, tied[1]!.id]);
+    const rest = await value(market, () =>
+      reader.page(market, shown, NEWEST, 0, 5, {
+        createdAt: first[1]!.createdAt,
+        payoutId: first[1]!.id,
+      }),
+    );
+    expect(rest.map((p) => p.id)).toEqual([older.id]);
+    expect(await value(market, () => reader.count(market, shown))).toBe(3);
+    const own = await value(market, () => reader.countByState(market, s));
+    expect(own).toMatchObject({ voided: 1, paid: 2, instructing: 1 });
   });
 
   it('counts the Market per state, at least the payouts of this file', async () => {

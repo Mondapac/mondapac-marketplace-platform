@@ -22,6 +22,11 @@ route was). Another seller's payout, another Market's and a voided payout never 
 
 ## Export: `GET /commission-payouts/seller/payouts/export`
 
+- Needs `commission-payouts.earnings.view` (as the seller's ledger does): a bulk file of money
+  rows is not for every team member. The list itself keeps the older route's rule
+  (`own-resources`); whether the list, `payouts/next` and `payout-holds` should also need the key
+  is open for cto (review of #935).
+
 - `format` csv (default) or xlsx; base columns Payout ID, Status (the panel's words), Amount,
   Currency, Created; optional `columns` gross, netted, slot, updated, in the order asked.
 - `ids` (at most 200) writes those rows in the order given; an id that is not one of the
@@ -32,3 +37,8 @@ route was). Another seller's payout, another Market's and a voided payout never 
 The reader is the admin Payouts list's (`AdminPayoutListReader`); `countByState` takes an
 optional seller id. No new index: one seller's payouts read through the existing
 `payouts (market_id, seller_id, created_at DESC, id DESC)` order.
+
+Open follow-ups (review of #935): the BFF drops an export value out of shape instead of refusing
+it (the same in every export relay; to fix once for all); the export's base date column is the
+creation, while the older card shows the slot ("Date"): to settle with the designer and the
+frontend before the list's frontend.

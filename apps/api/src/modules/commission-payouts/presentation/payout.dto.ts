@@ -8,7 +8,6 @@ import type {
 import { PAYOUT_LIST_VIEWS, PAYOUT_ROW_ACTIONS } from '../domain/admin-payout-list';
 import type { OwnHeldView } from '../application/use-cases/list-own-payout-holds.use-case';
 import type {
-  OwnPayoutsView,
   OwnPayoutView,
 } from '../application/use-cases/list-own-payouts.use-case';
 import type { NextPayoutView } from '../application/use-cases/view-next-payout.use-case';
@@ -274,12 +273,6 @@ class OwnPayoutBody {
   @ApiProperty({ enum: BLOCK_REASONS, nullable: true, type: String }) reason!: string | null;
 }
 
-export class OwnPayoutsBody {
-  @ApiProperty({ type: [OwnPayoutBody], description: 'Newest first; voided payouts are hidden.' })
-  payouts!: OwnPayoutBody[];
-  @ApiProperty({ nullable: true, type: String }) nextCursor!: string | null;
-}
-
 class OwnHeldBody {
   @ApiProperty({ format: 'uuid', nullable: true, type: String }) sellerOrderId!: string | null;
   @ApiProperty({ type: MoneyBody, nullable: true }) amount!: MoneyBody | null;
@@ -313,11 +306,6 @@ const ownPayoutBody = (view: OwnPayoutView): OwnPayoutBody => ({
   createdAt: instant(view.createdAt),
   updatedAt: instant(view.updatedAt),
   reason: view.reason,
-});
-
-export const ownPayoutsBody = (view: OwnPayoutsView): OwnPayoutsBody => ({
-  payouts: view.payouts.map(ownPayoutBody),
-  nextCursor: view.nextCursor,
 });
 
 class OwnPayoutRowBody extends OwnPayoutBody {

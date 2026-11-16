@@ -6,9 +6,9 @@ import {
   type OwnPayoutListFailure,
   type OwnPayoutListPage,
 } from '../own-payout-list-flow';
-import type { OwnPayoutsView, OwnPayoutView } from '../payout-seller-flow';
+import type { OwnPayoutView } from '../payout-seller-flow';
 
-export type { OwnPayoutListPage, OwnPayoutsView, OwnPayoutView };
+export type { OwnPayoutListPage, OwnPayoutView };
 
 type Input = Readonly<Record<string, unknown>>;
 

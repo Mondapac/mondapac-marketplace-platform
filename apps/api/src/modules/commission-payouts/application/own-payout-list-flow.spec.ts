@@ -197,6 +197,17 @@ describe.each([['AU'], ['ZZ']] as const)('the seller Payouts list in market %s',
       expect(must(await list({ cursor: first.nextCursor })).pageSize).toBe(50);
     });
 
+    it('walks Previous and Next inside a filter, never leaving it', async () => {
+      const paid = [0, 1, 2].map(() => add({ state: 'paid', minutes: 1 }));
+      [0, 1].map(() => add({ state: 'failed', minutes: 1 }));
+      const newest = paid.map((p) => p.id).reverse();
+      const first = must(await list({ status: 'paid', limit: 2 }));
+      expect(ids(first)).toEqual(newest.slice(0, 2));
+      const next = must(await list({ status: 'paid', limit: 2, cursor: first.nextCursor }));
+      expect(ids(next)).toEqual(newest.slice(2));
+      expect(next.nextCursor).toBeNull();
+    });
+
     it('refuses what it does not know, every field at once, and reads nothing', async () => {
       const refused = await list({
         status: 'voided',
@@ -246,6 +257,18 @@ describe.each([['AU'], ['ZZ']] as const)('the seller Payouts list in market %s',
         `${paid.id},Paid,${decimal},${currency},${paid.createdAt.toString()},${paid.slotAt.toString()},${decimal}`,
       ]);
       expect(await linesOf(must(await exportOf({ status: 'paid' })))).toHaveLength(2);
+    });
+
+    it("writes the selector's rows in the list's sort and direction", async () => {
+      const small = add({ transfer: 100n, minutes: 3 });
+      const big = add({ transfer: 900n, minutes: 1 });
+      const mid = add({ transfer: 500n, minutes: 2 });
+      const order = async (input: Record<string, unknown>) =>
+        (await linesOf(must(await exportOf(input)))).slice(1).map((line) => line.split(',')[0]);
+      expect(await order({})).toEqual([small.id, mid.id, big.id]);
+      expect(await order({ sort: 'amount', direction: 'asc' })).toEqual([small.id, mid.id, big.id]);
+      expect(await order({ sort: 'amount', direction: 'desc' })).toEqual([big.id, mid.id, small.id]);
+      expect(await order({ sort: 'created', direction: 'asc' })).toEqual([big.id, mid.id, small.id]);
     });
 
     it('writes the chosen rows in the order given; a voided payout, another seller or Market refuses the whole file', async () => {

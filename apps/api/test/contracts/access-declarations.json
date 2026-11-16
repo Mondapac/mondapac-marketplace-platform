@@ -250,7 +250,7 @@
   },
   {
     "name": "commission-payouts.export-own-payouts",
-    "rule": "own-resources",
+    "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
   {

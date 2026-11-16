@@ -1263,8 +1263,21 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           },
         ],
       });
-      expect(calls.map((c) => c.name)).toEqual(['next-payout', 'own-payouts', 'own-payout-holds']);
+      // Page numbers arrive as numbers; the filters as text for the use case to check.
+      await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts?page=2&pageSize=25&status=paid&sort=amount',
+        session,
+      );
+      expect(calls.map((c) => c.name)).toEqual([
+        'next-payout',
+        'own-payouts',
+        'own-payout-holds',
+        'own-payouts',
+      ]);
       expect(calls[1]!.input).toEqual({ limit: 5 });
+      expect(calls[3]!.input).toEqual({ page: 2, pageSize: 25, status: 'paid', sort: 'amount' });
     });
 
     it('sends the seller its payouts file, and maps a refusal', async () => {
