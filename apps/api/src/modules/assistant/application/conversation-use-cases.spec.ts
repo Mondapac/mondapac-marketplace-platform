@@ -528,6 +528,45 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       // The next day the daily cap starts again.
       clock.set(T0.add({ hours: 24 }));
       expect((await asCustomer('Next day', SECOND)).ok).toBe(true);
+      expect(outbox.events).toHaveLength(1);
+    });
+
+    it('writes the monthly event when a turn reaches the monthly cap', async () => {
+      settings.current = on({ dailySpendCapUsdCents: 1000, monthlySpendCapUsdCents: 100 });
+      await spend.add(market, Temporal.PlainDate.from('2026-10-01'), {
+        microUsd: 500_000,
+        inputTokens: 0,
+        outputTokens: 0,
+        conversations: 0,
+      });
+      runtime.script.push(answer({ text: 'One.', costMicroUsd: 600_000 }));
+      expect((await asCustomer('One')).ok).toBe(true);
+      expect(outbox.events).toEqual([
+        expect.objectContaining({
+          type: AssistantSpendCapReached.type,
+          payload: { cap: 'monthly' },
+          marketId: market.marketId,
+        }),
+      ]);
+    });
+
+    it('writes no second event when another turn already switched the day off', async () => {
+      settings.current = on({ dailySpendCapUsdCents: 100, monthlySpendCapUsdCents: 1000 });
+      const today = T0.toZonedDateTimeISO('UTC').toPlainDate();
+      // While this turn waits on the model, another turn of the same day reaches the cap first.
+      runtime.script.push(() => {
+        void spend.add(market, today, {
+          microUsd: 1_000_000,
+          inputTokens: 0,
+          outputTokens: 0,
+          conversations: 0,
+        });
+        void spend.markAutoOff(market, today, 'daily', T0);
+        return answer({ text: 'One.', costMicroUsd: 600_000 });
+      });
+      expect((await asCustomer('One')).ok).toBe(true);
+      expect(outbox.events).toEqual([]);
+      expect((await spend.totals(market, today)).lastAutoOff).toEqual({ at: T0, cap: 'daily' });
     });
 
     it('pauses the Market at the monthly cap', async () => {

@@ -201,12 +201,12 @@ const ADMIN_KIND_ACCESS: Readonly<Record<AdminNoticeKind, AccessDeclaration>> = 
     name: 'notifications.see-admin-platform-import-notices',
     rule: { kind: 'permissions', allOf: [CATALOG_PLATFORM_IMPORT_RUN.key] },
   },
-  // The admins who see the caps on seller refunds follow up a seller that reached one.
   // The admins who see the assistant's settings and spend see that a cap switched it off.
   [ADMIN_ASSISTANT_SPEND_CAP_REACHED]: {
     name: 'notifications.see-admin-assistant-spend-cap-notices',
     rule: { kind: 'permissions', allOf: [ASSISTANT_SETTINGS_VIEW.key] },
   },
+  // The admins who see the caps on seller refunds follow up a seller that reached one.
   [ADMIN_SELLER_REFUND_LIMIT_REACHED]: {
     name: 'notifications.see-admin-seller-refund-limit-notices',
     rule: { kind: 'permissions', allOf: [ORDERING_REFUND_LIMITS_VIEW.key] },

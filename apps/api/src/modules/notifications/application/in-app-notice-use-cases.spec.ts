@@ -15,6 +15,7 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { SPEND_CAPS } from '../../assistant/contracts/admin-notice.contract';
 import type { CatalogFacade } from '../../catalog';
 import type { OrderingFacade, OrderNotice } from '../../ordering';
 import {
@@ -22,6 +23,7 @@ import {
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
   ADMIN_SELLER_REFUND_LIMIT_REACHED,
   ADMIN_ASSISTANT_SPEND_CAP_REACHED,
+  ASSISTANT_SPEND_CAPS,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_SELLER_REINSTATED_HOLD_REMAINS,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -269,6 +271,12 @@ describe('parseNoticeParams', () => {
     ],
   ])('refuses %s', (_label, kind, raw) => {
     expect(parseNoticeParams(kind, raw)).toBeNull();
+  });
+});
+
+describe('the assistant spend caps', () => {
+  it("match the caps of assistant's event, both ways", () => {
+    expect([...ASSISTANT_SPEND_CAPS].sort()).toEqual([...SPEND_CAPS].sort());
   });
 });
 

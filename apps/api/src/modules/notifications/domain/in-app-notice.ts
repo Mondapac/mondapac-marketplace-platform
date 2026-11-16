@@ -201,7 +201,7 @@ export const REFUND_LIMIT_KINDS = ['count', 'amount', 'unset'] as const;
  * stage 0, B4). At most one a Market day. Which cap only: no amount.
  */
 export const ADMIN_ASSISTANT_SPEND_CAP_REACHED = 'admin.assistant-spend-cap-reached';
-/** The caps of the assistant; a contract test checks they match assistant's event. */
+/** The caps of the assistant; in-app-notice-use-cases.spec checks they match assistant's event. */
 export const ASSISTANT_SPEND_CAPS = ['daily', 'monthly'] as const;
 
 /** A review waits in the held tab of the moderation queue (buyer reviews, package 4b). */
