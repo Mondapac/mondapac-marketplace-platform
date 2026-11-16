@@ -60,6 +60,15 @@ export {
   type NavSection,
   type NavItem,
 } from './shell/nav.ts';
+export {
+  NavBadgeProvider,
+  NAV_BADGE_CAP,
+  badgeText,
+  sumBadges,
+  useNavBadges,
+  useSetNavBadge,
+  type NavBadgeValue,
+} from './shell/nav-badges.tsx';
 export { AuthLayout, type AuthLayoutProps, type AuthShowcaseCard } from './auth/auth-layout.tsx';
 export { Banner, type BannerProps, type BannerTone } from './form/banner.tsx';
 export {

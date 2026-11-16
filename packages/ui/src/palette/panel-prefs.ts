@@ -7,7 +7,15 @@
 export const PIN_LIMIT = 5;
 export const RECENT_LIMIT = 5;
 
-export type PrefsKind = 'pins' | 'recent' | 'single-key' | 'products-columns' | 'orders-columns';
+export type PrefsKind =
+  | 'pins'
+  | 'recent'
+  | 'single-key'
+  | 'products-columns'
+  | 'orders-columns'
+  | 'system-requests-columns'
+  | 'system-requests-view'
+  | 'system-requests-query';
 
 /** The storage key of one list of one account in one Market of one panel. */
 export function prefsKey(

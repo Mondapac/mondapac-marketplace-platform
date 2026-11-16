@@ -57,6 +57,7 @@ describe('admin nav: Inbox', () => {
       'certificates',
       'review-queue',
       'price-holds',
+      'system-requests',
     ]);
   });
 
@@ -181,6 +182,7 @@ describe('admin nav: daily work only', () => {
       'certificates',
       'review-queue',
       'price-holds',
+      'system-requests',
       'orders',
       'products',
       'categories',
