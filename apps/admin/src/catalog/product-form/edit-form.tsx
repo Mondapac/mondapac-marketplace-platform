@@ -44,6 +44,7 @@ import {
 } from './draft-content.ts';
 import { CertificationsSection } from './certifications-section.tsx';
 import { problemOf, type FormProblem } from './errors.ts';
+import type { StartProblem } from './start-problem.ts';
 import { TagField, topicSentences, useKnownTags } from './tag-field.tsx';
 import { ImagesSection } from './images-section.tsx';
 import { blockersOf, listOf } from './publish-state.ts';
@@ -169,6 +170,14 @@ export function ProductEdit({
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   // Bumped to remount the form on freshly read data.
   const [generation, setGeneration] = useState(0);
+  // The error an Add save left in the URL: held here, apart from the remount counter (a dev
+  // double effect or a re-read must not decide it), and cleared only by reading the product again.
+  const [openingProblem, setOpeningProblem] = useState(startProblem);
+  // The URL is clean once the page has taken the error: a refresh must not bring the old banner back (Next.js keeps its router in step with history.replaceState).
+  useEffect(() => {
+    if (startProblem !== undefined)
+      window.history.replaceState(window.history.state, '', `/catalog/products/${productId}/edit`);
+  }, [startProblem, productId]);
 
   const load = useCallback(async () => {
     setPhase({ kind: 'loading' });
@@ -216,8 +225,11 @@ export function ProductEdit({
       canPause={canPause}
       canReadTags={canReadTags}
       permissionKeys={permissionKeys}
-      startProblem={generation === 1 ? startProblem : undefined}
-      onReload={() => void load()}
+      startProblem={openingProblem}
+      onReload={() => {
+        setOpeningProblem(undefined);
+        void load();
+      }}
     />
   );
 }
@@ -238,8 +250,7 @@ function hasSavedRevision(product: ProductView): boolean {
   return Date.parse(workingCopy.lastSavedAt) > Date.parse(published.submittedAt);
 }
 
-/** The product exists but the page content of its first save did not all arrive. */
-export type StartProblem = 'draft-not-saved' | 'draft-refused';
+export type { StartProblem };
 
 /** What an Add page is, before anything exists: the types to choose from. */
 export interface Creating {
@@ -279,6 +290,7 @@ export function EditForm({
   const locale = useLocale();
   const [typeCode, setTypeCode] = useState('');
   const [typeMissing, setTypeMissing] = useState(false);
+  const typeRef = useRef<HTMLSelectElement>(null);
   const defaultLocale = product.locales.default;
   const { form } = product;
   const configurable = product.variantModel === 'configurable';
@@ -374,8 +386,12 @@ export function EditForm({
     inputs,
   });
   // An Add page has nothing to publish yet: saving the draft comes first.
+  // With no categories to choose from (they could not be loaded) "choose a category" cannot be done here.
+  const categoriesUnavailable = creating !== null && form.categories.length === 0;
   const blockerItems = [
-    ...missing.map((item) => t(`blockers.${item}`)),
+    ...missing
+      .filter((item) => !(item === 'category' && categoriesUnavailable))
+      .map((item) => t(`blockers.${item}`)),
     ...(creating === null ? [] : [t('blockers.save')]),
   ];
   const blockers =
@@ -463,9 +479,16 @@ export function EditForm({
    */
   async function createAndSave() {
     if (typeCode === '') {
-      setTypeMissing(true);
+      // The type sits in a card that can be far from the Save button: say so at the top, then take
+      // the admin to the field.
+      flushSync(() => {
+        setTypeMissing(true);
+        setProblem({ key: 'type-missing', details: [], reload: false });
+        setPending(false);
+      });
       busy.current = false;
-      setPending(false);
+      typeRef.current?.focus();
+      typeRef.current?.scrollIntoView?.({ block: 'center' });
       return;
     }
     const created = await callApi<ProductCreated>('POST', BASE, { typeCode }, csrfToken);
@@ -623,7 +646,12 @@ export function EditForm({
   const variantCount = configurable ? rows.length : fixedVariantIds.length;
 
   return (
-    <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
+    <form
+      // A focused field must not hide under the sticky unsaved bar (WCAG 2.4.11).
+      className="flex flex-col gap-4 [&_:is(input,select,textarea,button,a)]:scroll-mt-[calc(var(--mp-size-topbar)_+_6rem)]"
+      onSubmit={submit}
+      noValidate
+    >
       {guard.dialog}
       {creating !== null ? null : (
         <AddSizesDialog
@@ -793,7 +821,9 @@ export function EditForm({
         </Banner>
       )}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_21.25rem] lg:grid-rows-[auto_1fr] lg:items-start">
-        <div className="lg:col-start-2 lg:row-start-1">
+        <div
+          className={`lg:col-start-2 lg:row-start-1 ${creating === null ? '' : 'max-lg:order-1'}`}
+        >
           <StatusCard
             status={status}
             publishedNo={publishedNo}
@@ -822,7 +852,9 @@ export function EditForm({
             }
           />
         </div>
-        <div className="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-span-2 lg:row-start-1">
+        <div
+          className={`flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-span-2 lg:row-start-1 ${creating === null ? '' : 'max-lg:order-3'}`}
+        >
           {inactive ? (
             <Banner tone="attention" title={t('active.banner-title')}>
               <p>{t('active.banner-body', { count: product.offers.offerCount })}</p>
@@ -896,7 +928,7 @@ export function EditForm({
               name="categoryIds"
               label={t('field.categories')}
               help={
-                creating !== null && form.categories.length === 0
+                categoriesUnavailable
                   ? t('create.categories-unavailable')
                   : t(
                       categoryIds.length === 0
@@ -905,6 +937,7 @@ export function EditForm({
                     )
               }
               placeholder={t('field.categories-placeholder')}
+              disabled={categoriesUnavailable}
               options={categories}
               value={categories.filter((option) => categoryIds.includes(option.value))}
               labels={labels}
@@ -998,7 +1031,9 @@ export function EditForm({
             onReload={onReload}
           />
         </div>
-        <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-2">
+        <div
+          className={`flex flex-col gap-4 lg:col-start-2 lg:row-start-2 ${creating === null ? '' : 'max-lg:order-2'}`}
+        >
           <OrganisationCard
             marketName={marketName}
             typeCode={product.typeCode}
@@ -1010,9 +1045,11 @@ export function EditForm({
                     value: typeCode,
                     missing: typeMissing && typeCode === '',
                     disabled: pending,
+                    selectRef: typeRef,
                     onChange: (value: string) => {
                       setTypeCode(value);
                       setTypeMissing(false);
+                      setProblem((current) => (current?.key === 'type-missing' ? null : current));
                       edited();
                     },
                   },

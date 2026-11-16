@@ -6,6 +6,7 @@ import { panelConfig } from '../../../../../../src/server/config.ts';
 import { requireSession } from '../../../../../../src/server/session.ts';
 import { displayZone } from '../../../../../../src/shared/format.ts';
 import { ProductEdit } from '../../../../../../src/catalog/product-form/edit-form.tsx';
+import { startProblemOf } from '../../../../../../src/catalog/product-form/start-problem.ts';
 import {
   EDIT_PERMISSION,
   PAUSE_PERMISSION,
@@ -29,8 +30,7 @@ export default async function EditProductPage({
   const { id } = await params;
   const { saved } = await searchParams;
   // The first Save draft of the Add page created the product but not all of the page's content.
-  const startProblem =
-    saved === 'failed' ? 'draft-not-saved' : saved === 'refused' ? 'draft-refused' : undefined;
+  const startProblem = startProblemOf(saved);
   if (!UUID.test(id)) notFound();
   const gate = await requireSession();
   const t = await getTranslations();

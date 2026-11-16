@@ -1,6 +1,6 @@
 'use client';
 
-import { LoadError, SkeletonRows } from '@mondapac/ui';
+import { BackLink, LoadError, SkeletonRows } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -74,10 +74,22 @@ export function ProductAdd({
     void load();
   }, [load]);
 
-  if (phase.kind === 'loading') return <SkeletonRows label={t('loading')} rows={6} />;
-  if (phase.kind === 'failed') {
+  // Before the form exists the page still names itself and offers the way back.
+  if (phase.kind === 'loading' || phase.kind === 'failed') {
     return (
-      <LoadError message={t('load-failed')} retryLabel={t('retry')} onRetry={() => void load()} />
+      <div className="flex flex-col gap-4">
+        <BackLink href="/catalog/products" label={t('back')} />
+        <h1 className="text-2xl font-semibold">{t('create.title')}</h1>
+        {phase.kind === 'loading' ? (
+          <SkeletonRows label={t('loading')} rows={6} />
+        ) : (
+          <LoadError
+            message={t('load-failed')}
+            retryLabel={t('retry')}
+            onRetry={() => void load()}
+          />
+        )}
+      </div>
     );
   }
   return (

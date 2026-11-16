@@ -3958,6 +3958,7 @@
         "pause-failed": "The product could not be turned on or off. Read it again, then retry.",
         "second-missing": "Choose the new type's value for every variant before you publish.",
         "draft-not-saved": "The product was created, but what you entered wasn't saved. Enter it again and save the draft.",
+        "type-missing": "Choose a product type.",
         "draft-refused": "The product was created, but some text wasn't saved because it holds a claim or a hidden character. Check the title and description."
       },
       "discard": {
