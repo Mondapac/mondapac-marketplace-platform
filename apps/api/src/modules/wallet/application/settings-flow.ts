@@ -1,10 +1,16 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Result, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { ChangeScope, LastChanged } from '../../../platform/audit/change-trail';
 import type { StepUpRefusal } from '../../../platform/authz';
 import { TransactionConflictError } from '../../../platform/unit-of-work/errors';
 import { WALLET_SETTINGS_CHANGE_STEP_UP } from '../contracts/step-up';
-import { WalletStatusChanged } from '../domain/audit';
+import { WalletStatusChanged, WalletStatusReverted } from '../domain/audit';
+import type { RecordedRequest, RecordFailure } from '../../system-requests';
+import {
+  WALLET_REVIEW_AREA,
+  WALLET_STATUS_SUBJECT_KIND,
+  WALLET_SUBJECT_REF,
+} from './wallet-review';
 import {
   isStatusReason,
   isWalletStatus,
@@ -46,7 +52,8 @@ export type SettingsFailure =
   /** The admin has no active two-step: set it up first. */
   | { readonly code: 'second-factor.enrolment-required'; readonly actionKey: string }
   | { readonly code: 'access.denied' }
-  | { readonly code: 'access.unavailable' };
+  | { readonly code: 'access.unavailable' }
+  | RecordFailure;
 
 export interface SettingsView {
   readonly status: WalletStatus;
@@ -55,6 +62,11 @@ export interface SettingsView {
   readonly updatedAt: Temporal.Instant | null;
   /** 0 while the Market has never been switched; the value to send back as `expectedVersion`. */
   readonly version: number;
+}
+
+/** A switch's answer: the System requests review it opened (null when none). */
+export interface SettingsChange extends SettingsView {
+  readonly request: Pick<RecordedRequest, 'id' | 'number'> | null;
 }
 
 /** The wallet page's read model: the switch and the latest change. */
@@ -68,9 +80,9 @@ export interface SettingsPage extends SettingsView {
  * the change spent is not a setting.
  */
 export const WALLET_SETTINGS_CHANGES: ChangeScope = {
-  actions: [WalletStatusChanged.action],
+  actions: [WalletStatusChanged.action, WalletStatusReverted.action],
   targetId: 'wallet-settings',
-  ignoreKeys: ['stepUpSessionId', 'stepUpVerifiedAt'],
+  ignoreKeys: ['stepUpSessionId', 'stepUpVerifiedAt', 'requestId'],
 };
 
 /** Whether the actor is an acting-as session (Login as Seller): the reserved marker on the actor. */
@@ -122,8 +134,10 @@ export async function setStatus(
     readonly status: unknown;
     readonly reasonCode?: unknown;
     readonly expectedVersion?: unknown;
+    /** The admin's note for the System requests review (needed where area money is reviewed). */
+    readonly note?: unknown;
   },
-): Promise<Result<SettingsView, SettingsFailure>> {
+): Promise<Result<SettingsChange, SettingsFailure>> {
   const actor = context.actor;
   if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAs(context)) {
     return err({ code: 'access.denied' });
@@ -153,7 +167,7 @@ export async function setStatus(
   // The change waits for the journals in flight; it gives up after 3 s instead of queueing the
   // whole Market's wallet writes behind it.
   const attempt = () =>
-    deps.unitOfWork.run<SettingsView, SettingsFailure>(
+    deps.unitOfWork.run<SettingsChange, SettingsFailure>(
       context.market,
       async () => {
         const before = await deps.settings.findForUpdate(context.market);
@@ -168,6 +182,7 @@ export async function setStatus(
             reason: before?.reason ?? null,
             updatedAt: before?.updatedAt ?? null,
             version: currentVersion,
+            request: null,
           });
         }
         if (status === 'off' && (await deps.wallet.hasJournals(context.market))) {
@@ -195,7 +210,30 @@ export async function setStatus(
             },
           }),
         );
-        return ok({ status, reason, updatedAt: now, version: currentVersion + 1 });
+        // The switch is live; its review opens in the same unit (a refusal rolls it back). A pause
+        // or a freeze is an emergency stop: it opens no review, so no decision can lift it (only
+        // an admin with the switch's own key and step-up can; Hassan, PR #913).
+        if (status === 'paused' || status === 'frozen') {
+          return ok({ status, reason, updatedAt: now, version: currentVersion + 1, request: null });
+        }
+        const review = await deps.review.openReview(context, {
+          area: WALLET_REVIEW_AREA,
+          subjectKind: WALLET_STATUS_SUBJECT_KIND,
+          subjectRef: WALLET_SUBJECT_REF,
+          before: { status: was, reason: before?.reason ?? null },
+          after: { status, reason },
+          note: input.note,
+          risk: 'high',
+        });
+        if (!review.ok) return err(review.error);
+        return ok({
+          status,
+          reason,
+          updatedAt: now,
+          version: currentVersion + 1,
+          request:
+            review.value === null ? null : { id: review.value.id, number: review.value.number },
+        });
       },
       { lockTimeoutMs: LOCK_TIMEOUT_MS },
     );
@@ -205,4 +243,64 @@ export async function setStatus(
     if (error instanceof TransactionConflictError) return err({ code: 'wallet.busy' });
     throw error;
   }
+}
+
+/**
+ * Restores the wallet switch before a change a reviewer rejected or its author withdrew, in the
+ * open unit of that decision (System requests), only while the switch still holds the state after
+ * the change. Going back to `off` once the Market has journals is not possible (the wallet moved
+ * on): `changed-since`. A new version, audited as `wallet.market-status.reverted`.
+ */
+export async function revertStatus(
+  deps: WalletDependencies,
+  context: CallContext,
+  request: {
+    readonly requestId: Id<'SystemRequest'>;
+    readonly before: Readonly<Record<string, unknown>>;
+    readonly after: Readonly<Record<string, unknown>>;
+  },
+): Promise<'reverted' | 'changed-since' | 'gone' | 'not-permitted'> {
+  const actor = context.actor;
+  if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAs(context)) {
+    throw new Error('wallet: a revert needs a signed-in admin acting as themselves');
+  }
+  const restore = request.before.status;
+  const restoreReason = request.before.reason ?? null;
+  if (
+    !isWalletStatus(restore) ||
+    (needsReason(restore) ? !isStatusReason(restoreReason) : restoreReason !== null)
+  ) {
+    return 'gone';
+  }
+  const row = await deps.settings.findForUpdate(context.market);
+  const current = row?.status ?? 'off';
+  const currentReason = row?.reason ?? null;
+  if (current !== request.after.status || currentReason !== (request.after.reason ?? null)) {
+    return 'changed-since';
+  }
+  if (restore === 'off' && (await deps.wallet.hasJournals(context.market))) return 'changed-since';
+  // Never lift a pause or a freeze through a decision (requests to them are not opened; this keeps
+  // it so for any older one).
+  if ((current === 'paused' || current === 'frozen') && restore === 'active')
+    return 'not-permitted';
+  const version = (row?.version ?? 0) + 1;
+  await deps.settings.save(context.market, {
+    status: restore,
+    reason: restoreReason as WalletStatusReason | null,
+    updatedAt: deps.clock.now(),
+    updatedBy: actor.accountId,
+    version,
+  });
+  await deps.audit.record(
+    context,
+    WalletStatusReverted.entry('wallet-settings', {
+      before: { status: current, reason: currentReason },
+      after: {
+        status: restore,
+        reason: restoreReason as WalletStatusReason | null,
+        requestId: request.requestId,
+      },
+    }),
+  );
+  return 'reverted';
 }

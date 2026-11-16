@@ -200,6 +200,17 @@ strategy implementation, not in core logic.
     a small PR of its own that is announced on the board first. One slice = one branch =
     one PR. Never check out a branch or write in another track's folder. At the end
     update the board and your track's status doc (project skill mondapac-track-session).
+14. Super list (owner decision 2026-11-15): "super list" («سوپر لیست») is the owner's
+    name for a list with every feature of the admin Products list
+    (apps/admin/src/catalog/products-list.tsx; shared parts in packages/ui/src/list and
+    packages/ui/src/list-views): views bar, search, filter panel with removable chips, sort
+    panel, column picker, saved filters (personal, and shared with a permission), row
+    selection including "select all matching", bulk actions, export (CSV and XLSX), page
+    numbers with a total that follow the Market's "List paging" setting, and the phone
+    layout. Every list in the admin or seller panel that is expected to show more than 50
+    rows must be a super list, whether or not a request says so. A list scoped to one
+    record (for example one customer's orders) counts too. When the Products list gains a
+    feature, the other super lists get it as well.
 
 ## Speed mode (owner decision 2026-10-09, overrides the rules it names)
 The owner approved docs/process/speed-mode.md. Until the owner lifts it:

@@ -26,6 +26,7 @@ import {
 } from '../domain/audit';
 import { refusalFor, type WalletStatus } from '../domain/wallet-status';
 import type { AdminCreditRecord } from './ports/admin-credit.repository';
+import { historyOf, type HistoryInput, type HistoryView } from './customer-flow';
 import { isActingAs } from './settings-flow';
 import type { AdminCreditDependencies } from './wallet-dependencies';
 import {
@@ -756,4 +757,22 @@ export async function viewCustomerWallet(
     },
     { readOnly: true },
   );
+}
+
+/**
+ * `wallet.view-customer-history`: the wallet journal of one customer, newest first, for the
+ * admin customer page. Same guards as the balance read: a signed-in admin (not acting as
+ * someone), an active customer of this Market, and the Market's wallet switch not off.
+ */
+export async function viewCustomerHistory(
+  deps: AdminCreditDependencies,
+  context: CallContext,
+  input: HistoryInput & { readonly customerAccountId: unknown },
+): Promise<Result<HistoryView, AdminCreditFailure>> {
+  if (signedInAdmin(context) === null) return err({ code: 'access.denied' });
+  const customer = idOf<'Account'>(input?.customerAccountId);
+  if (customer === null) return err(invalid([{ path: 'customerAccountId', code: 'format' }]));
+  const unknownCustomer = await customerCheck(deps, context, customer);
+  if (unknownCustomer !== null) return err(unknownCustomer);
+  return historyOf(deps, context, customer, { limit: input.limit, cursor: input.cursor });
 }

@@ -254,6 +254,353 @@ describe('activate and expert approval', () => {
   });
 });
 
+const proposal = (over: Record<string, unknown> = {}) => ({
+  id: '0190a000-0000-7000-8000-0000000000d1',
+  proposedAt: '2026-11-10T01:00:00.000Z',
+  state: 'pending',
+  version: 2,
+  reason: { state: 'given', text: 'Re-audited in October' },
+  actions: {
+    approve: { allowed: true },
+    reject: { allowed: true },
+    withdraw: { allowed: false, code: 'review.second-admin-required' },
+  },
+  ...over,
+});
+const open = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
+const last = (name: string) => fireEvent.click(screen.getAllByRole('button', { name }).at(-1)!);
+
+describe('issuer lifecycle', () => {
+  it('offers the actions that fit the state', () => {
+    wrap(<IssuerActions issuer={detail({ state: 'active' })} csrfToken="c" />);
+    expect(screen.getByRole('button', { name: 'Close to new certificates' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Derecognise' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ask for reactivation' })).toBeNull();
+    cleanup();
+    wrap(<IssuerActions issuer={detail({ state: 'closed-to-new' })} csrfToken="c" />);
+    expect(screen.getByRole('button', { name: 'Ask for reactivation' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Derecognise' })).toBeTruthy();
+    cleanup();
+    wrap(
+      <IssuerActions
+        issuer={detail({ state: 'closed-to-new', pendingReactivation: proposal() })}
+        csrfToken="c"
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Ask for reactivation' })).toBeNull();
+    cleanup();
+    wrap(<IssuerActions issuer={detail({ state: 'derecognised' })} csrfToken="c" />);
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('closes to new with the version read', async () => {
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: {} });
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign });
+    wrap(
+      <IssuerActions
+        issuer={detail({ state: 'active', affectedCertificates: 2 })}
+        csrfToken="c1"
+      />,
+    );
+    open('Close to new certificates');
+    expect(
+      screen.getByText(/2 approved certificates name this issuer and stay valid/),
+    ).toBeTruthy();
+    last('Close to new certificates');
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        `certification/admin/issuers/${ID}/close-to-new`,
+        { version: 3 },
+        'c1',
+      ),
+    );
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(`/certificates/issuers/${ID}?done=closed`),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('derecognises only after the count is typed, and sends it', async () => {
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: {} });
+    vi.stubGlobal('location', { assign: vi.fn() });
+    wrap(
+      <IssuerActions issuer={detail({ state: 'active', affectedCertificates: 4 })} csrfToken="c" />,
+    );
+    open('Derecognise');
+    last('Derecognise');
+    expect(call).not.toHaveBeenCalled();
+    expect(screen.getByText('That is not the number of affected certificates.')).toBeTruthy();
+    type('Type 4 to confirm', '3');
+    last('Derecognise');
+    expect(call).not.toHaveBeenCalled();
+    type('Type 4 to confirm', '4');
+    last('Derecognise');
+    await waitFor(() => expect(call).toHaveBeenCalledOnce());
+    expect(call).toHaveBeenCalledWith(
+      'POST',
+      `certification/admin/issuers/${ID}/derecognise`,
+      { version: 3, affectedCertificates: 4 },
+      'c',
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('asks to reload when the count changed meanwhile', async () => {
+    fail(409, 'issuer.confirmation-count-mismatch');
+    wrap(
+      <IssuerActions issuer={detail({ state: 'active', affectedCertificates: 0 })} csrfToken="c" />,
+    );
+    open('Derecognise');
+    type('Type 0 to confirm', '0');
+    last('Derecognise');
+    expect(await screen.findByText(/number of affected certificates changed/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy();
+  });
+
+  it('asks for reactivation with a new expert approval and an optional reason', async () => {
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: {} });
+    vi.stubGlobal('location', { assign: vi.fn() });
+    wrap(<IssuerActions issuer={detail({ state: 'closed-to-new' })} csrfToken="c" />);
+    open('Ask for reactivation');
+    last('Send for approval');
+    expect(call).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter a reference.')).toBeTruthy();
+    type('Confirmed by', 'Dr B');
+    type('New reference', 'Letter 9');
+    type('Reason (optional)', 'Re-audited');
+    last('Send for approval');
+    await waitFor(() => expect(call).toHaveBeenCalledOnce());
+    expect(call).toHaveBeenCalledWith(
+      'POST',
+      `certification/admin/issuers/${ID}/reactivation`,
+      {
+        version: 3,
+        expertApproval: { confirmedBy: 'Dr B', reference: 'Letter 9' },
+        reason: 'Re-audited',
+      },
+      'c',
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('shows the proposal and sends only the answers the API allows', async () => {
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: {} });
+    vi.stubGlobal('location', { assign: vi.fn() });
+    wrap(
+      <IssuerDetailView
+        issuer={detail({ state: 'closed-to-new', pendingReactivation: proposal() })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+      />,
+    );
+    expect(screen.getByText('Re-audited in October')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Withdraw request' })).toBeNull();
+    open('Approve reactivation');
+    expect(call).not.toHaveBeenCalled();
+    expect(screen.getByText(/sellers can choose it at once/)).toBeTruthy();
+    last('Approve reactivation');
+    await waitFor(() => expect(call).toHaveBeenCalledOnce());
+    expect(call).toHaveBeenCalledWith(
+      'POST',
+      `certification/admin/issuers/${ID}/reactivations/${proposal().id}/approve`,
+      { version: 2 },
+      'c',
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ['reject', 'Reject', 'proposals', { approve: true, reject: true, withdraw: false }],
+    [
+      'withdraw',
+      'Withdraw request',
+      'proposals',
+      { approve: false, reject: false, withdraw: true },
+    ],
+  ] as const)(
+    'confirms, then sends %s with the proposal version',
+    async (kind, label, seg, allowed) => {
+      call.mockResolvedValueOnce({ ok: true, status: 200, body: {} });
+      vi.stubGlobal('location', { assign: vi.fn() });
+      wrap(
+        <IssuerDetailView
+          issuer={detail({
+            state: 'closed-to-new',
+            pendingReactivation: proposal({
+              actions: {
+                approve: { allowed: allowed.approve },
+                reject: { allowed: allowed.reject },
+                withdraw: { allowed: allowed.withdraw },
+              },
+            }),
+          })}
+          typeName="Halal"
+          canEdit
+          csrfToken="c"
+        />,
+      );
+      open(label);
+      expect(call).not.toHaveBeenCalled();
+      last(label);
+      await waitFor(() => expect(call).toHaveBeenCalledOnce());
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        `certification/admin/issuers/${ID}/${seg}/${proposal().id}/${kind}`,
+        { version: 2 },
+        'c',
+      );
+      vi.unstubAllGlobals();
+    },
+  );
+
+  it('cancelling an answer sends nothing, and a closed proposal offers a reload', async () => {
+    fail(409, 'review.proposal-closed');
+    wrap(
+      <IssuerDetailView
+        issuer={detail({ state: 'closed-to-new', pendingReactivation: proposal() })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+      />,
+    );
+    open('Reject');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(call).not.toHaveBeenCalled();
+    open('Reject');
+    last('Reject');
+    expect(await screen.findByText(/already answered/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeTruthy();
+  });
+
+  it('says so when no answer is open to this admin', () => {
+    wrap(
+      <IssuerDetailView
+        issuer={detail({
+          state: 'closed-to-new',
+          pendingReactivation: proposal({
+            actions: {
+              approve: { allowed: false },
+              reject: { allowed: false },
+              withdraw: { allowed: false },
+            },
+          }),
+        })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+      />,
+    );
+    expect(screen.getByText(/Nothing can be done with this request/)).toBeTruthy();
+    expect(screen.getByText('Asked on:')).toBeTruthy();
+  });
+
+  it('keeps a refused new expert approval in the form, without a reload', async () => {
+    fail(422, 'issuer.expert-approval-not-new');
+    wrap(<IssuerActions issuer={detail({ state: 'closed-to-new' })} csrfToken="c" />);
+    open('Ask for reactivation');
+    type('Confirmed by', 'Dr B');
+    type('New reference', 'Letter 9');
+    last('Send for approval');
+    expect(await screen.findByText(/Use a new expert approval/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reload' })).toBeNull();
+  });
+
+  it('opens a destructive confirm with Cancel focused', () => {
+    wrap(
+      <IssuerActions issuer={detail({ state: 'active', affectedCertificates: 1 })} csrfToken="c" />,
+    );
+    open('Derecognise');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Cancel' }));
+  });
+
+  it('shows the closed and derecognised notes', () => {
+    wrap(
+      <IssuerDetailView
+        issuer={detail({ state: 'closed-to-new' })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+      />,
+    );
+    expect(screen.getByText(/Closed to new certificates\. Existing/)).toBeTruthy();
+    cleanup();
+    wrap(
+      <IssuerDetailView
+        issuer={detail({ state: 'derecognised' })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+      />,
+    );
+    expect(screen.getByText(/can't be undone/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Derecognise' })).toBeNull();
+  });
+
+  it('tells the requester that a different admin must answer', () => {
+    wrap(
+      <IssuerDetailView
+        issuer={detail({
+          state: 'closed-to-new',
+          pendingReactivation: proposal({
+            actions: {
+              approve: { allowed: false, code: 'review.second-admin-required' },
+              reject: { allowed: false },
+              withdraw: { allowed: true },
+            },
+          }),
+        })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+      />,
+    );
+    expect(screen.getByText(/a different admin has to answer it/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Withdraw request' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Approve reactivation' })).toBeNull();
+  });
+
+  it('shows the notice after a change, and only for known ones', () => {
+    wrap(
+      <IssuerDetailView
+        issuer={detail({ state: 'derecognised' })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+        done="derecognised"
+      />,
+    );
+    expect(screen.getByText('Issuer derecognised.')).toBeTruthy();
+    cleanup();
+    wrap(
+      <IssuerDetailView
+        issuer={detail({ state: 'derecognised' })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+        done="<b>x</b>"
+      />,
+    );
+    expect(screen.queryByText('Issuer derecognised.')).toBeNull();
+    expect(document.body.innerHTML).not.toContain('<b>x</b>');
+  });
+
+  it('a view-only reader sees the waiting reactivation as a note, with no buttons', () => {
+    wrap(
+      <IssuerDetailView
+        issuer={detail({ state: 'closed-to-new', pendingReactivation: proposal() })}
+        typeName="Halal"
+        canEdit={false}
+        csrfToken="c"
+      />,
+    );
+    expect(screen.getByText('A reactivation is waiting for a second admin.')).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+});
+
 describe('issuer page', () => {
   it('says the issuer was activated after the redirect', () => {
     wrap(
@@ -334,7 +681,7 @@ describe('issuer refusals and relay', () => {
     return { status: response.status, called: upstream.mock.calls.length };
   };
 
-  it('relays exactly the issuer routes this slice uses, and no other issuer action', async () => {
+  it('relays exactly the issuer routes the screens use, and no other issuer action', async () => {
     expect(await send('POST', 'certification/admin/issuers')).toEqual({ status: 200, called: 1 });
     expect(await send('POST', `certification/admin/issuers/${ID}/activate`)).toEqual({
       status: 200,
@@ -345,8 +692,21 @@ describe('issuer refusals and relay', () => {
       called: 1,
     });
     for (const action of ['derecognise', 'close-to-new', 'reactivation']) {
-      expect((await send('POST', `certification/admin/issuers/${ID}/${action}`)).called).toBe(0);
+      expect((await send('POST', `certification/admin/issuers/${ID}/${action}`)).called).toBe(1);
     }
+    const P = '0190a000-0000-7000-8000-0000000000d1';
+    for (const path of [
+      `reactivations/${P}/approve`,
+      `proposals/${P}/reject`,
+      `proposals/${P}/withdraw`,
+    ]) {
+      expect((await send('POST', `certification/admin/issuers/${ID}/${path}`)).called).toBe(1);
+      expect(
+        (await send('POST', `certification/admin/issuers/${ID}/${path.replace(P, 'x')}`)).called,
+      ).toBe(0);
+    }
+    expect((await send('GET', `certification/admin/issuers/${ID}/proposals/${P}`)).called).toBe(0);
+    expect((await send('POST', `certification/admin/issuers/${ID}/delete`)).called).toBe(0);
     expect((await send('POST', 'certification/admin/issuers/not-an-id/activate')).called).toBe(0);
   });
 });

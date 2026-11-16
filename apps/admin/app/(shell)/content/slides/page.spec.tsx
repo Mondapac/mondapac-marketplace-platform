@@ -227,18 +227,15 @@ describe('content area', () => {
     await expect(ContentPage()).rejects.toThrow('redirect:/content/slides');
   });
 
-  it('opens on Pages for a role that can read pages, with both tabs when it can read slides', async () => {
+  it('opens on Pages for a role that can read pages, with no section tabs', async () => {
     signIn(['storefront.page.read', 'storefront.page.create', READ]);
     render(await ContentPage());
-    expect(screen.getByRole('heading', { level: 1, name: 'Storefront content' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Pages' })).toBeTruthy();
     expect(screen.getByTestId('pages').getAttribute('data-edit')).toBe('false');
     expect(screen.getByRole('link', { name: 'New page' }).getAttribute('href')).toBe(
       '/content/pages/new',
     );
-    expect(screen.getByRole('link', { name: 'Pages' }).getAttribute('aria-current')).toBe('page');
-    expect(screen.getByRole('link', { name: 'Slides' }).getAttribute('href')).toBe(
-      '/content/slides',
-    );
+    expect(screen.queryByRole('link', { name: 'Slides' })).toBeNull();
   });
 
   it('shows only the Pages tab, and no New page link, to a role that cannot create or read slides', async () => {
@@ -254,11 +251,10 @@ describe('content area', () => {
     expect(screen.getByRole('heading', { name: 'No access to content' })).toBeTruthy();
   });
 
-  it('shows the Pages tab on the slides page for a role that can read both', async () => {
+  it('shows no section tabs on the slides page for a role that can read both', async () => {
     signIn([READ, 'storefront.page.read']);
     render(await SlidesPage());
-    expect(screen.getByRole('link', { name: 'Pages' }).getAttribute('href')).toBe('/content');
-    expect(screen.getByRole('link', { name: 'Slides' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.queryByRole('link', { name: 'Pages' })).toBeNull();
   });
 });
 
@@ -296,11 +292,10 @@ describe('slides list page', () => {
   it('shows the list with only the read permission, without New slide', async () => {
     signIn([READ]);
     render(await SlidesPage());
-    expect(screen.getByRole('heading', { level: 1, name: 'Storefront content' })).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Slides' })).toBeTruthy();
     expect(screen.getByTestId('list').textContent).toBe('list storefront.slide.read');
     expect(screen.getByTestId('list').getAttribute('data-csrf')).toBe('csrf-9');
     expect(screen.queryByRole('link', { name: 'New slide' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Slides' }).getAttribute('aria-current')).toBe('page');
   });
 
   it('offers the two views, with All slides current', async () => {
@@ -532,7 +527,9 @@ describe('order by position page', () => {
     expect(view.getAttribute('data-edit')).toBe('false');
     expect(view.getAttribute('data-zone')).toBe('Australia/Brisbane');
     expect(placeOf()).toEqual({ position: 'home.hero', scope: 'all', scopeId: null });
-    expect(screen.getByRole('heading', { level: 1, name: 'Storefront content' })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Slides: order by position' }),
+    ).toBeTruthy();
   });
 
   it('opens for editing with the edit permission, with the session token', async () => {

@@ -197,6 +197,9 @@ const filterWhere = (market: MarketContext, filter: OrderFilter) => ({
   marketId: market.marketId,
   ...(filter.status === null ? {} : { status: filter.status }),
   ...(filter.paymentState === null ? {} : { paymentState: filter.paymentState }),
+  ...(filter.accountId === undefined || filter.accountId === null
+    ? {}
+    : { accountId: filter.accountId }),
   ...(filter.reference === null
     ? {}
     : { OR: [{ id: filter.reference }, { sellerOrders: { some: { id: filter.reference } } }] }),
@@ -250,6 +253,10 @@ const afterCursor = (page: OrderPage) =>
         ],
       };
 
+/** The seller orders' `paid_at`: the confirmation time of a confirmed order, else null. */
+const paidAtOf = (order: Pick<OrderState, 'status' | 'confirmedAt'>): Date | null =>
+  order.status === 'confirmed' && order.confirmedAt !== null ? toDate(order.confirmedAt) : null;
+
 /**
  * {@link OrderRepository} on `ordering.orders`, `seller_orders` and `order_lines`, through the
  * Market-scoped client with `marketId` at the top level of every `where`.
@@ -296,6 +303,7 @@ export class PrismaOrderRepository implements OrderRepository {
         shippingTaxInclusive: s.shippingTaxInclusive,
         totalAmount: s.total,
         fulfilment: s.fulfilment,
+        paidAt: paidAtOf(order),
         ledgerState: s.ledgerState,
         deliveryMethod: s.deliveryMethod,
         deliveryWindowStart: s.deliveryWindow === null ? null : toDate(s.deliveryWindow.start),
@@ -354,6 +362,74 @@ export class PrismaOrderRepository implements OrderRepository {
       take: 20,
     });
     return rows.map(toOrder);
+  }
+
+  async totalsOf(market: MarketContext, accountId: Id<'Account'>) {
+    const tx = this.prisma.tx(market);
+    const confirmed = { marketId: market.marketId, accountId, status: 'confirmed' } as const;
+    // The account's own orders first (index market, account, created_at), then the refunds of
+    // their seller orders through the (market, order, seller) and (market, seller order) keys: the
+    // refunds are never scanned by state across the Market.
+    const own = await tx.orderingOrder.findMany({
+      where: { marketId: market.marketId, accountId },
+      select: { id: true },
+    });
+    const [aggregate, latest, refunds] = await Promise.all([
+      tx.orderingOrder.aggregate({
+        where: confirmed,
+        _count: { _all: true },
+        _min: { confirmedAt: true },
+        _max: { confirmedAt: true },
+        _sum: { totalAmount: true },
+      }),
+      tx.orderingOrder.findFirst({
+        where: confirmed,
+        orderBy: [{ confirmedAt: 'desc' }, { id: 'desc' }],
+        select: { currency: true },
+      }),
+      own.length === 0
+        ? Promise.resolve({ _count: { _all: 0 }, _sum: { grossAmount: null } })
+        : tx.orderingRefund.aggregate({
+            where: {
+              marketId: market.marketId,
+              state: 'succeeded',
+              sellerOrder: { orderId: { in: own.map((order) => order.id) } },
+            },
+            _count: { _all: true },
+            _sum: { grossAmount: true },
+          }),
+    ]);
+    const instant = (value: Date | null) =>
+      value === null ? null : Temporal.Instant.fromEpochMilliseconds(value.getTime());
+    // One Market has one currency, so the sum is in the currency of the latest order.
+    return {
+      orderCount: aggregate._count._all,
+      firstConfirmedAt: instant(aggregate._min.confirmedAt),
+      lastConfirmedAt: instant(aggregate._max.confirmedAt),
+      spentMinor: aggregate._count._all === 0 ? null : (aggregate._sum.totalAmount ?? 0n),
+      currency: latest?.currency ?? null,
+      refundCount: refunds._count._all,
+      refundedMinor: refunds._sum.grossAmount ?? 0n,
+    };
+  }
+
+  async accountsWithConfirmedOrders(
+    market: MarketContext,
+    after: Id<'Account'> | null,
+    limit: number,
+  ) {
+    const rows = await this.prisma.tx(market).orderingOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'confirmed',
+        ...(after === null ? {} : { accountId: { gt: after } }),
+      },
+      distinct: ['accountId'],
+      orderBy: { accountId: 'asc' },
+      select: { accountId: true },
+      take: limit,
+    });
+    return rows.map((row) => row.accountId as Id<'Account'>);
   }
 
   async countOpenOf(market: MarketContext, accountId: Id<'Account'>) {
@@ -456,7 +532,17 @@ export class PrismaOrderRepository implements OrderRepository {
         version: order.version + 1,
       },
     });
-    return updated.count === 0 ? 'stale' : 'saved';
+    if (updated.count === 0) return 'stale';
+    const paidAt = paidAtOf(order);
+    if (paidAt !== null) {
+      // The payment time on the seller orders (admin Shipments and Invoices lists), in the unit
+      // that confirms the order; written once, so later saves match no row.
+      await this.prisma.tx(market).orderingSellerOrder.updateMany({
+        where: { marketId: market.marketId, orderId: order.id, paidAt: null },
+        data: { paidAt },
+      });
+    }
+    return 'saved';
   }
 
   async listForSeller(

@@ -7,12 +7,14 @@ import {
   AI_DESCRIPTION_WRITER_TIER_CODE,
 } from '../../domain/definitions';
 import type { SettingsDependencies } from '../settings-dependencies';
-import { changeSetting, type SettingsFailure, type SettingView } from '../settings-flow';
+import { changeSetting, type SettingsFailure, type SettingChangeView } from '../settings-flow';
 
 interface Input {
   readonly code?: unknown;
   readonly value?: unknown;
   readonly expectedVersion?: unknown;
+  /** The note for the reviewer (System requests); needed only where the area is reviewed. */
+  readonly note?: unknown;
 }
 
 const AI_CODES: readonly string[] = [AI_DESCRIPTION_WRITER_CODE, AI_DESCRIPTION_WRITER_TIER_CODE];
@@ -22,7 +24,7 @@ const AI_CODES: readonly string[] = [AI_DESCRIPTION_WRITER_CODE, AI_DESCRIPTION_
  * writer's switch or its model tier) from the version they saw. Protected key; refused in
  * acting-as, audited, idempotent, and a stale version is a conflict.
  */
-export class ChangeAiSetting extends UseCase<Input, SettingView, SettingsFailure> {
+export class ChangeAiSetting extends UseCase<Input, SettingChangeView, SettingsFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'settings.change-ai-setting',
     rule: { kind: 'permissions', allOf: [SETTINGS_AI_MANAGE.key] },
@@ -38,7 +40,7 @@ export class ChangeAiSetting extends UseCase<Input, SettingView, SettingsFailure
   protected handle(
     context: CallContext,
     input: Input,
-  ): Promise<Result<SettingView, SettingsFailure>> {
+  ): Promise<Result<SettingChangeView, SettingsFailure>> {
     const code = input?.code;
     if (typeof code !== 'string' || !AI_CODES.includes(code)) {
       return Promise.resolve(

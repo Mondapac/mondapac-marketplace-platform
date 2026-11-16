@@ -89,6 +89,8 @@ describe('parseToolCall (R9: model output is schema-validated)', () => {
       'search_products',
       'list_bestsellers',
       'list_specials',
+      'get_product',
+      'get_seller',
       'list_categories',
       'show_page',
       'support_contact',
@@ -109,6 +111,14 @@ describe('parseToolCall (R9: model output is schema-validated)', () => {
       categoryId: CATEGORY,
     });
     expect(parseToolCall('list_specials', {})).toEqual({ tool: 'list_specials', categoryId: null });
+    expect(parseToolCall('get_product', { product_id: CATEGORY })).toEqual({
+      tool: 'get_product',
+      productId: CATEGORY,
+    });
+    expect(parseToolCall('get_seller', { seller_id: CATEGORY })).toEqual({
+      tool: 'get_seller',
+      sellerId: CATEGORY,
+    });
   });
 
   it.each([
@@ -119,6 +129,11 @@ describe('parseToolCall (R9: model output is schema-validated)', () => {
     ['show_page', { page: 'category' }],
     ['show_page', { page: 'cart', category_id: CATEGORY }],
     ['list_bestsellers', { category_id: 7 }],
+    ['get_product', {}],
+    ['get_product', { product_id: '../../admin' }],
+    ['get_product', { product_id: 7 }],
+    ['get_seller', { seller_id: 'seller-1' }],
+    ['get_seller', { product_id: CATEGORY }],
   ])('refuses %s with %j', (name, input) => {
     expect(parseToolCall(name, input)).toBeNull();
   });

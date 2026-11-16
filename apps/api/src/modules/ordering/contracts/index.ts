@@ -15,6 +15,7 @@ export {
 } from './permissions';
 export {
   ORDERING_EVENTS,
+  OrderCancelled,
   OrderPaid,
   OrderShipped,
   RefundSucceeded,
@@ -29,6 +30,9 @@ export {
   type DeliveredSellerOrdersFailure,
   type SellerOrderHealthCount,
   type SellerOrderHealthCountsFailure,
+  type CustomerOrderAccounts,
+  type CustomerOrderStats,
+  type CustomerOrderStatsFailure,
   type OrderNotice,
   type OrderNoticeFailure,
   type OwnOpenObligations,

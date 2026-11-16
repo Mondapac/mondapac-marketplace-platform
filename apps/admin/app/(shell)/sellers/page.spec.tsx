@@ -15,10 +15,18 @@ vi.mock('next-intl/server', () => ({
 }));
 vi.mock('../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
 vi.mock('../../../src/server/admin-shell.tsx', () => ({
-  AdminShell: ({ children }: { readonly children: ReactNode }) => <main>{children}</main>,
+  AdminShell: ({
+    children,
+    activeId,
+  }: {
+    readonly children: ReactNode;
+    readonly activeId: string;
+  }) => <main data-active={activeId}>{children}</main>,
 }));
 vi.mock('../../../src/sellers/sellers-list.tsx', () => ({
-  SellersList: () => <p>sellers list</p>,
+  SellersList: ({ initialTab }: { readonly initialTab: string }) => (
+    <p>sellers list on {initialTab}</p>
+  ),
 }));
 vi.mock('../../../src/sellers/orphaned-list.tsx', () => ({
   OrphanedList: () => <p>orphaned list</p>,
@@ -43,26 +51,37 @@ const signedIn = (...keys: string[]) =>
 afterEach(cleanup);
 
 describe('the sellers pages and identity.seller-access.view', () => {
+  it('opens on All under Sellers, and on the review tab under Inbox › Seller requests', async () => {
+    signedIn('sellers.seller.view');
+    render(await SellersPage({ searchParams: Promise.resolve({}) }));
+    expect(screen.getByRole('main').getAttribute('data-active')).toBe('sellers');
+    expect(screen.getByText('sellers list on all')).not.toBeNull();
+    cleanup();
+    render(await SellersPage({ searchParams: Promise.resolve({ tab: 'awaiting-review' }) }));
+    expect(screen.getByRole('main').getAttribute('data-active')).toBe('seller-requests');
+    expect(screen.getByText('sellers list on awaiting-review')).not.toBeNull();
+  });
+
   it('shows the "Sellers without an owner" link on /sellers only with the key', async () => {
     signedIn('sellers.seller.view', 'identity.seller-access.view');
-    render(await SellersPage());
+    render(await SellersPage({ searchParams: Promise.resolve({}) }));
     const link = screen.getByRole('link', { name: 'Sellers without an owner' });
     expect(link.getAttribute('href')).toBe('/sellers/without-owner');
     cleanup();
     signedIn('sellers.seller.view');
-    render(await SellersPage());
+    render(await SellersPage({ searchParams: Promise.resolve({}) }));
     expect(screen.queryByRole('link', { name: 'Sellers without an owner' })).toBeNull();
   });
 
   it('shows the "Sellers that need a look" link only with sellers.seller.view', async () => {
     signedIn('sellers.seller.view');
-    render(await SellersPage());
+    render(await SellersPage({ searchParams: Promise.resolve({}) }));
     expect(
       screen.getByRole('link', { name: 'Sellers that need a look' }).getAttribute('href'),
     ).toBe('/sellers/needs-a-look');
     cleanup();
     signedIn('identity.seller-access.view');
-    render(await SellersPage());
+    render(await SellersPage({ searchParams: Promise.resolve({}) }));
     expect(screen.queryByRole('link', { name: 'Sellers that need a look' })).toBeNull();
   });
 

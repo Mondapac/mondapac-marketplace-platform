@@ -14,6 +14,7 @@ import { SavedFilterShareCheck } from '../../src/modules/ordering/application/us
 import { SellerSavedFilterCreate } from '../../src/modules/ordering/application/use-cases/seller-saved-filter-create.use-case';
 import { MAX_SAVED_FILTERS_PER_OWNER } from '../../src/modules/ordering/domain/saved-view';
 import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit';
+import { PrismaSavedFilterStore } from '../../src/modules/lists/infrastructure/prisma-saved-filter-store';
 import { PrismaSavedFilterRepository } from '../../src/modules/ordering/infrastructure/prisma-saved-filter.repository';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
@@ -109,7 +110,7 @@ describe.each(TEST_MARKETS)('order list saved filters in market %s (database)', 
       { now: () => Temporal.Now.instant() },
       NO_PERMISSION_KEYS,
     ) as AuditWriter;
-    const savedFilters = new PrismaSavedFilterRepository(db.service);
+    const savedFilters = new PrismaSavedFilterRepository(new PrismaSavedFilterStore(db.service));
     const base = { unitOfWork: db.unitOfWork, savedFilters, audit, clock, ids };
     const adminDeps = { ...base, shareCheck: new SavedFilterShareCheck(gate) };
     create = new AdminSavedFilterCreate(gate, adminDeps);
@@ -158,7 +159,7 @@ describe.each(TEST_MARKETS)('order list saved filters in market %s (database)', 
   const rowsOf = async (target: MarketContext, ownerAccountId: string) =>
     (
       await owner.query<{ id: string; name: string; visibility: string; position: number }>(
-        `SELECT id, name, visibility, position FROM ordering.saved_filters
+        `SELECT id, name, visibility, position FROM lists.saved_filters
           WHERE market_id = $1 AND owner_account_id = $2 ORDER BY position`,
         [target.marketId, ownerAccountId],
       )
@@ -284,7 +285,7 @@ describe.each(TEST_MARKETS)('order list saved filters in market %s (database)', 
     const a = admin([VIEW]);
     for (let n = 1; n <= MAX_SAVED_FILTERS_PER_OWNER; n++) {
       await owner.query(
-        `INSERT INTO ordering.saved_filters
+        `INSERT INTO lists.saved_filters
            (id, market_id, tenant_id, owner_account_id, visibility, list_key, name, payload, position, created_at, updated_at)
          VALUES ($1, $2, $3, $4, 'me', $5, $6, $7, $8, $9, $9)`,
         [
@@ -353,7 +354,7 @@ describe.each(TEST_MARKETS)('order list saved filters in market %s (database)', 
       };
       const columns = Object.keys(row);
       return client.query(
-        `INSERT INTO ordering.saved_filters (${columns.join(', ')})
+        `INSERT INTO lists.saved_filters (${columns.join(', ')})
          VALUES (${columns.map((_c, i) => `$${i + 1}`).join(', ')})`,
         Object.values(row),
       );
@@ -400,7 +401,7 @@ describe.each(TEST_MARKETS)('order list saved filters in market %s (database)', 
 
       await expect(
         app.query(
-          `UPDATE ordering.saved_filters SET name = 'Grant renamed', visibility = 'everyone', updated_at = now() WHERE id = $1`,
+          `UPDATE lists.saved_filters SET name = 'Grant renamed', visibility = 'everyone', updated_at = now() WHERE id = $1`,
           [rowId],
         ),
       ).resolves.toMatchObject({ rowCount: 1 });
@@ -414,13 +415,11 @@ describe.each(TEST_MARKETS)('order list saved filters in market %s (database)', 
       };
       for (const [column, value] of Object.entries(forbidden)) {
         await expect(
-          app.query(`UPDATE ordering.saved_filters SET ${column} = ${value} WHERE id = $1`, [
-            rowId,
-          ]),
+          app.query(`UPDATE lists.saved_filters SET ${column} = ${value} WHERE id = $1`, [rowId]),
         ).rejects.toMatchObject({ code: DENIED });
       }
       await expect(
-        app.query(`DELETE FROM ordering.saved_filters WHERE id = $1`, [rowId]),
+        app.query(`DELETE FROM lists.saved_filters WHERE id = $1`, [rowId]),
       ).resolves.toMatchObject({ rowCount: 1 });
     });
   });

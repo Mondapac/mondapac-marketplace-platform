@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import messages from '../../messages/en.json';
 import { SettingsHub } from '@mondapac/ui';
 import { visibleSettings } from './settings-nav.ts';
-import { SettingsSubNav } from '@mondapac/ui';
 
 const text = (key: string): string =>
   key
@@ -38,14 +37,12 @@ describe('SettingsHub', () => {
     hub(OWNER);
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Store',
-      'Money',
       'Team',
     ]);
     expect(screen.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')])).toEqual(
       [
         ['Store profile', '/settings/store-profile'],
         ['Stock locations', '/settings/stock-locations'],
-        ['Payout account', '/settings/payout-account'],
         ['Members', '/settings/team'],
       ],
     );
@@ -61,27 +58,23 @@ describe('SettingsHub', () => {
   });
 
   it('puts a View only chip on a page the caller can see but not change', () => {
-    hub([
-      'payments.payout-account.view',
-      'identity.team-member.view',
-      'identity.team-member.invite',
-    ]);
-    const payout = screen.getByRole('link', { name: /Payout account/ });
-    expect(within(payout).getByText('View only')).toBeTruthy();
+    hub(['inventory.stock.view', 'identity.team-member.view', 'identity.team-member.invite']);
+    const stock = screen.getByRole('link', { name: /Stock locations/ });
+    expect(within(stock).getByText('View only')).toBeTruthy();
     const team = screen.getByRole('link', { name: /Members/ });
     expect(within(team).queryByText('View only')).toBeNull();
   });
 
   it('keeps the chip from shrinking and lets the row wrap', () => {
-    hub(['payments.payout-account.view']);
-    const link = screen.getByRole('link', { name: /Payout account/ });
+    hub(['inventory.stock.view']);
+    const link = screen.getByRole('link', { name: /Stock locations/ });
     expect(link.className).toContain('flex-wrap');
     expect(screen.getByText('View only').parentElement?.className).toContain('shrink-0');
   });
 
   it('names each group card by its heading', () => {
-    hub(['payments.payout-account.view']);
-    expect(screen.getByRole('region', { name: 'Money' })).toBeTruthy();
+    hub(['identity.team-member.view']);
+    expect(screen.getByRole('region', { name: 'Team' })).toBeTruthy();
   });
 
   it('has no personal account card (profile, two-step, sessions live in the account menu)', () => {
@@ -90,43 +83,5 @@ describe('SettingsHub', () => {
       screen.getAllByRole('link').some((a) => a.getAttribute('href')?.startsWith('/account')),
     ).toBe(false);
     expect(screen.queryByText(/two-step|sessions|security/i)).toBeNull();
-  });
-});
-
-describe('SettingsSubNav', () => {
-  const groups = [
-    {
-      id: 'store',
-      label: 'Store',
-      links: [
-        { id: 'store-profile', href: '/settings/store-profile', label: 'Store profile' },
-        { id: 'stock-locations', href: '/settings/stock-locations', label: 'Stock locations' },
-      ],
-    },
-    {
-      id: 'money',
-      label: 'Money',
-      links: [{ id: 'payout-account', href: '/settings/payout-account', label: 'Payout account' }],
-    },
-  ];
-
-  it('lists the groups and links in a named landmark and marks only the current page', () => {
-    render(<SettingsSubNav label="Settings pages" groups={groups} activeId="stock-locations" />);
-    const nav = screen.getByRole('navigation', { name: 'Settings pages' });
-    const links = within(nav).getAllByRole('link');
-    expect(links.map((a) => a.textContent)).toEqual([
-      'Store profile',
-      'Stock locations',
-      'Payout account',
-    ]);
-    expect(links.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page', null]);
-    expect(links[0]?.className).toContain('-outline-offset-2');
-  });
-
-  it('draws nothing when the caller may open no page', () => {
-    const { container } = render(
-      <SettingsSubNav label="Settings pages" groups={[]} activeId="x" />,
-    );
-    expect(container.innerHTML).toBe('');
   });
 });

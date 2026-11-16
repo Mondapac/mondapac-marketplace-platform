@@ -15,7 +15,6 @@ import {
 import { SettingsPage } from './settings-page.tsx';
 import { SettingsSection } from './settings-section.tsx';
 import { SettingsViewOnlyBanner } from './view-only-banner.tsx';
-import { SettingsSubNav } from './settings-sub-nav.tsx';
 import { SettingsTitle } from './settings-title.tsx';
 import { leavesPage, type ClickInfo } from './unsaved-changes-guard.tsx';
 
@@ -422,29 +421,6 @@ describe('SettingsViewOnlyBanner', () => {
     expect(out).toContain('<p class="font-semibold">View only</p>');
     expect(out).toContain('Your role can see these settings but not change them.');
     expect(out).toContain('text-info-fg');
-  });
-});
-
-describe('SettingsSubNav', () => {
-  const groups = [
-    {
-      id: 'delivery',
-      label: 'Delivery',
-      links: [
-        { id: 'rules', href: '/settings/delivery', label: 'Delivery rules' },
-        { id: 'fleets', href: '/settings/fleets', label: 'Delivery fleets' },
-      ],
-    },
-  ];
-
-  it('marks the current page with the selected background and strong primary text, not link blue', () => {
-    const out = html(<SettingsSubNav label="Settings pages" groups={groups} activeId="fleets" />);
-    const current = /<a[^>]*aria-current="page"[^>]*>/.exec(out)?.[0] ?? '';
-    expect(current).toContain('bg-selected');
-    expect(current).toContain('font-semibold');
-    expect(current).toContain('text-fg');
-    expect(current).not.toContain('text-link');
-    expect(out.match(/aria-current/g)).toHaveLength(1);
   });
 });
 

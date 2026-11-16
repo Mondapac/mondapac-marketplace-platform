@@ -5,6 +5,7 @@ import { CATALOG_STEP_UP_ACTIONS } from '../../catalog/contracts/step-up';
 import { SELLERS_STEP_UP_ACTIONS } from '../../sellers/contracts/step-up';
 import { PAYMENTS_STEP_UP_ACTIONS } from '../../payments/contracts/step-up';
 import { WALLET_STEP_UP_ACTIONS } from '../../wallet/contracts/step-up';
+import { CUSTOMERS_STEP_UP_ACTIONS } from '../../customers/contracts/step-up';
 import {
   proofCovers,
   proofIsFresh,
@@ -100,6 +101,7 @@ describe('the audit key list', () => {
       ...SELLERS_STEP_UP_ACTIONS,
       ...PAYMENTS_STEP_UP_ACTIONS,
       ...WALLET_STEP_UP_ACTIONS,
+      ...CUSTOMERS_STEP_UP_ACTIONS,
     ].map((a) => a.key);
 
     for (const key of registered) expect(STEP_UP_ACTION_KEYS as readonly string[]).toContain(key);

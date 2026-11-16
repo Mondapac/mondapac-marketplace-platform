@@ -23,6 +23,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -38,6 +39,10 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { ClearSellerPayoutTerms } from '../application/use-cases/clear-seller-payout-terms.use-case';
 import { ListSellerPayoutHolds } from '../application/use-cases/list-seller-payout-holds.use-case';
+import { ExportSellerPayoutHolds } from '../application/use-cases/export-seller-payout-holds.use-case';
+import { EXPORT_FORMATS } from '../../../platform/list-export';
+import { HOLD_EXPORT_COLUMNS } from '../domain/seller-page-lists';
+import { numbersOf, sendExport } from './list-export-route';
 import { PlacePayoutHold } from '../application/use-cases/place-payout-hold.use-case';
 import { ReleasePayoutHold } from '../application/use-cases/release-payout-hold.use-case';
 import { SetSellerPayoutTerms } from '../application/use-cases/set-seller-payout-terms.use-case';
@@ -45,8 +50,12 @@ import { ViewSellerPayoutTerms } from '../application/use-cases/view-seller-payo
 import {
   payoutHoldBody,
   PayoutHoldBody,
-  PayoutHoldsBody,
+  SellerHoldListBody,
+  sellerHoldListBody,
   payoutTermsBody,
+  payoutTermsChangeBody,
+  PayoutTermsChangeBody,
+  NOTE_DESCRIPTION,
   PayoutTermsBody,
   PlacePayoutHoldRequest,
   ReleasePayoutHoldRequest,
@@ -67,6 +76,7 @@ const TERMS_KEYS = [
   'approvalMode',
   'expectedVersion',
   'reasonCode',
+  'note',
 ];
 
 function logRoute(logger: Logger, msg: string, context: CallContext, outcome: string): void {
@@ -140,7 +150,7 @@ export class AdminPayoutTermsController {
   @ApiHeader(CSRF)
   @ApiParam({ name: 'sellerId', format: 'uuid' })
   @ApiBody({ type: SetPayoutTermsRequest })
-  @ApiOkResponse({ type: PayoutTermsBody })
+  @ApiOkResponse({ type: PayoutTermsChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -160,12 +170,13 @@ export class AdminPayoutTermsController {
     response.setHeader('Cache-Control', 'no-store');
     const invalid = closedBody(request, requestBody, TERMS_KEYS);
     if (invalid !== null) throw invalid;
-    const { expectedVersion, reasonCode, ...terms } = requestBody as Record<string, unknown>;
+    const { expectedVersion, reasonCode, note, ...terms } = requestBody as Record<string, unknown>;
     const result = await this.set.execute(context, {
       sellerId,
       terms,
       expectedVersion,
       reasonCode,
+      note,
     });
     logRoute(
       this.#logger,
@@ -174,7 +185,7 @@ export class AdminPayoutTermsController {
       result.ok ? 'set' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return payoutTermsBody(result.value);
+    return payoutTermsChangeBody(result.value);
   }
 
   @Delete()
@@ -198,7 +209,8 @@ export class AdminPayoutTermsController {
     enum: TERMS_CHANGE_REASONS,
     description: 'Why the terms are removed.',
   })
-  @ApiOkResponse({ type: PayoutTermsBody })
+  @ApiQuery({ name: 'note', required: false, description: NOTE_DESCRIPTION })
+  @ApiOkResponse({ type: PayoutTermsChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -216,6 +228,7 @@ export class AdminPayoutTermsController {
     @Param('sellerId') sellerId: string,
     @Query('expectedVersion') expectedVersion: unknown,
     @Query('reasonCode') reasonCode: unknown,
+    @Query('note') note: unknown,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
@@ -226,6 +239,7 @@ export class AdminPayoutTermsController {
           ? Number(expectedVersion)
           : -1,
       reasonCode,
+      note,
     });
     logRoute(
       this.#logger,
@@ -234,7 +248,7 @@ export class AdminPayoutTermsController {
       result.ok ? 'cleared' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return payoutTermsBody(result.value);
+    return payoutTermsChangeBody(result.value);
   }
 }
 
@@ -251,6 +265,7 @@ export class AdminPayoutHoldsController {
 
   constructor(
     private readonly list: ListSellerPayoutHolds,
+    private readonly exportSellerHolds: ExportSellerPayoutHolds,
     private readonly place: PlacePayoutHold,
     private readonly release: ReleasePayoutHold,
   ) {}
@@ -258,11 +273,17 @@ export class AdminPayoutHoldsController {
   @Get('sellers/:sellerId/payout-holds')
   @ApiOperation({
     summary: "A seller's payout holds (admin)",
-    description: 'Needs commission-payouts.settlement.view. Active holds first, newest first.',
+    description:
+      'Needs commission-payouts.settlement.view. The compact super list of the seller page ' +
+      '(list 28). Filters: status (active, released), reason, origin (admin, system), scope ' +
+      '(seller, order), sellerOrderId (exact), from and to (ISO instants on the placement). ' +
+      'Page numbers: page, pageSize (default 100, at most 100), sort (active-first by default, ' +
+      'placed, released) and direction. Previous/Next: limit and cursor, newest placement ' +
+      'first, with no page, pageSize, sort or direction. counts covers every hold of the seller.',
   })
   @ApiParam({ name: 'sellerId', format: 'uuid' })
-  @ApiOkResponse({ type: PayoutHoldsBody })
-  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed' })
+  @ApiOkResponse({ type: SellerHoldListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
   @ApiNotFoundResponse({ ...ERROR, description: 'commission-payouts.seller-not-found' })
@@ -270,10 +291,11 @@ export class AdminPayoutHoldsController {
   async holds(
     @Call() context: CallContext,
     @Param('sellerId') sellerId: string,
+    @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.list.execute(context, { sellerId });
+    const result = await this.list.execute(context, { ...numbersOf(query), sellerId });
     logRoute(
       this.#logger,
       'commission-payouts.list-seller-payout-holds-route',
@@ -281,7 +303,49 @@ export class AdminPayoutHoldsController {
       result.ok ? 'read' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return { holds: result.value.map(payoutHoldBody) };
+    return sellerHoldListBody(result.value);
+  }
+
+  @Get('sellers/:sellerId/payout-holds/export')
+  @ApiOperation({
+    summary: "Export a seller's payout holds as a file (admin)",
+    description:
+      'Needs commission-payouts.settlement.view. `format` is csv (default) or xlsx. `columns` ' +
+      `is the comma-separated optional columns in the order shown (${HOLD_EXPORT_COLUMNS.join(', ')}); ` +
+      'placed, status, reason, placed by, covers, seller order id and released are always there. ' +
+      "The holds are `ids` (at most 200; a hold that is not this seller's refuses the whole " +
+      'file) or the filter keys of the list with sort and direction, at most 10,000 (more: ' +
+      'batch.too-large with the total). CSV: a text cell that starts with = + - @ gets a ' +
+      'leading quote. XLSX: every cell is a string value.',
+  })
+  @ApiParam({ name: 'sellerId', format: 'uuid' })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({ name: 'columns', required: false })
+  @ApiQuery({ name: 'ids', required: false })
+  @ApiOkResponse({ description: 'seller-payout-holds-<date>.csv or .xlsx, as an attachment' })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({
+    ...ERROR,
+    description: 'commission-payouts.seller-not-found or commission-payouts.hold-not-found',
+  })
+  @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large (details.max, total)' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'commission-payouts.unavailable' })
+  async exportHolds(
+    @Call() context: CallContext,
+    @Param('sellerId') sellerId: string,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportSellerHolds.execute(context, { ...query, sellerId });
+    await sendExport(
+      response,
+      result,
+      context,
+      this.#logger,
+      'commission-payouts.export-seller-payout-holds-route',
+    );
   }
 
   @Post('sellers/:sellerId/payout-holds')

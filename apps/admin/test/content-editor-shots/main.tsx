@@ -3,7 +3,9 @@ import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
 import { PageContent } from '../../src/content/pages/page-content.tsx';
+import { NavigationEditor } from '../../src/content/navigation/navigation-editor.tsx';
 import { PageSettings } from '../../src/content/pages/page-settings.tsx';
+import { PageVersions } from '../../src/content/pages/page-versions.tsx';
 import type { PageDetail, Placement } from '../../src/content/pages/page-types.ts';
 
 const at = (
@@ -83,7 +85,29 @@ const landing: PageDetail = {
     },
   },
   published: null,
-  versions: [],
+  versions: [
+    {
+      id: 'v1',
+      versionNo: 1,
+      state: 'retired',
+      createdAt: '2026-10-01T01:00:00Z',
+      publishedAt: '2026-10-02T01:00:00Z',
+    },
+    {
+      id: 'v2',
+      versionNo: 2,
+      state: 'published',
+      createdAt: '2026-11-01T00:00:00Z',
+      publishedAt: '2026-11-01T01:00:00Z',
+    },
+    {
+      id: 'v3',
+      versionNo: 3,
+      state: 'draft',
+      createdAt: '2026-11-02T01:00:00Z',
+      publishedAt: null,
+    },
+  ],
 };
 
 const system: PageDetail = {
@@ -128,6 +152,57 @@ const system: PageDetail = {
   },
 };
 
+const navigation: PageDetail = {
+  ...system,
+  systemKey: 'navigation',
+  path: '/',
+  templateKey: 'system.navigation',
+  title: 'Navigation',
+  editLevel: 'navigation',
+  status: 'published',
+  hasDraft: true,
+  publishedVersionNo: 1,
+  updatedAt: '2026-11-02T01:00:00Z',
+  slots: [],
+  draft: {
+    versionNo: 2,
+    updatedAt: '2026-11-02T01:00:00Z',
+    settings: null,
+    placements: {
+      rail: [
+        at('r1', 'nav-link', {
+          label: 'Offers',
+          icon: 'tax',
+          target: { kind: 'path', path: '/offers' },
+        }),
+        at('r2', 'nav-link', { label: 'Meat', target: { kind: 'category', id: 'c1' } }, false),
+        at('r3', 'nav-link', { label: 'Cart', target: { kind: 'system-page', key: 'cart' } }),
+      ],
+      'drawer-popular': [at('p1', 'nav-category', { categoryId: 'c2', label: 'Lamb cuts' })],
+      'drawer-categories': [
+        at('d1', 'nav-category', { categoryId: 'c1' }),
+        at('d2', 'nav-category', { categoryId: 'c2' }),
+      ],
+    },
+  },
+  versions: [
+    {
+      id: 'v1',
+      versionNo: 1,
+      state: 'published',
+      createdAt: '2026-10-01T01:00:00Z',
+      publishedAt: '2026-10-02T01:00:00Z',
+    },
+    {
+      id: 'v2',
+      versionNo: 2,
+      state: 'draft',
+      createdAt: '2026-11-02T01:00:00Z',
+      publishedAt: null,
+    },
+  ],
+};
+
 const catalogue = {
   templates: [{ key: 'campaign-landing', scope: 'dynamic', linkable: ['category'] }],
 };
@@ -158,7 +233,19 @@ window.fetch = ((input: string, init?: RequestInit) => {
         { path: 'config.href', code: 'format' },
       ]);
     }
+    if (view === 'nav-errors') {
+      return refuse('validation.failed', 400, [
+        { path: 'slots.rail[0].config.label', code: 'length' },
+        { path: 'slots.drawer-popular[0].config.categoryId', code: 'uuid' },
+      ]);
+    }
+    if (view === 'nav-changed') return refuse('storefront.draft-changed', 409);
     if (view === 'content-stale') return refuse('storefront.placement-not-found', 404);
+    if (view === 'versions-gone') return refuse('storefront.version-not-found', 404);
+    if (view === 'publish-errors') {
+      return refuse('validation.failed', 400, [{ path: 'slots.main', code: 'too-few-modules' }]);
+    }
+    if (view === 'publish-changed') return refuse('storefront.draft-changed', 409);
     if (view === 'settings-errors') {
       return refuse('validation.failed', 400, [
         { path: 'slug', code: 'reserved' },
@@ -172,13 +259,28 @@ window.fetch = ((input: string, init?: RequestInit) => {
       ? catalogue
       : path === 'catalog/admin/categories'
         ? tree
-        : { code: 'not-found' };
+        : path === 'storefront/admin/pages'
+          ? { pages: [] }
+          : { code: 'not-found' };
   return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
 }) as typeof fetch;
 
 const zone = 'Australia/Brisbane';
-const screen = view.startsWith('settings') ? 'settings' : 'content';
-const detail = view.endsWith('system') ? system : landing;
+const screen = view.startsWith('nav')
+  ? 'nav'
+  : view.startsWith('settings')
+    ? 'settings'
+    : view.startsWith('versions')
+      ? 'versions'
+      : 'content';
+const admin = view.startsWith('publish') || view.startsWith('admin') || screen === 'versions';
+const detail = view.endsWith('system')
+  ? system
+  : view === 'admin-nodraft'
+    ? { ...landing, hasDraft: false }
+    : view === 'versions-empty'
+      ? { ...landing, versions: [] }
+      : landing;
 const canEdit = !view.includes('readonly');
 const withPending: PageDetail =
   view === 'settings-pending'
@@ -200,8 +302,44 @@ const withPending: PageDetail =
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     <main className="mx-auto max-w-7xl p-4 md:p-6">
-      {screen === 'content' ? (
-        <PageContent page={withPending} canEdit={canEdit} csrfToken="tok" zone={zone} />
+      {screen === 'nav' ? (
+        <NavigationEditor
+          page={
+            view === 'nav-empty'
+              ? {
+                  ...navigation,
+                  hasDraft: false,
+                  draft: {
+                    ...navigation.draft,
+                    placements: { rail: [], 'drawer-popular': [], 'drawer-categories': [] },
+                  },
+                  versions: [],
+                }
+              : navigation
+          }
+          canEdit={view !== 'nav-readonly'}
+          canApprove={view.startsWith('nav-approve') || view === 'nav-changed'}
+          csrfToken="tok"
+          zone={zone}
+        />
+      ) : screen === 'content' ? (
+        <PageContent
+          page={withPending}
+          canEdit={canEdit}
+          canPublish={admin}
+          canArchive={admin}
+          csrfToken="tok"
+          zone={zone}
+        />
+      ) : screen === 'versions' ? (
+        <PageVersions
+          page={withPending}
+          canEdit={canEdit}
+          canPublish={admin}
+          canArchive={admin}
+          csrfToken="tok"
+          zone={zone}
+        />
       ) : (
         <PageSettings page={withPending} canEdit={canEdit} csrfToken="tok" zone={zone} />
       )}

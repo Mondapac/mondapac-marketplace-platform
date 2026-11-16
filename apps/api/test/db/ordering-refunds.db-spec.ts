@@ -16,6 +16,7 @@ import {
   setRefundLimit,
   viewRefundLimits,
 } from '../../src/modules/ordering/application/refund-limits-flow';
+import { AdminCustomerRefunds } from '../../src/modules/ordering/application/use-cases/admin-customer-refunds.use-case';
 import { AdminRefundOrder } from '../../src/modules/ordering/application/use-cases/admin-refund-order.use-case';
 import { SellerMarkUnavailable } from '../../src/modules/ordering/application/use-cases/seller-mark-unavailable.use-case';
 import type { AdminNoteDependencies } from '../../src/modules/ordering/application/admin-note-flow';
@@ -82,7 +83,28 @@ import {
 } from '../support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
+import {
+  shipmentStage,
+  type ShipmentListFilter,
+} from '../../src/modules/ordering/domain/admin-shipment-list';
+import { PrismaAdminShipmentListReader } from '../../src/modules/ordering/infrastructure/prisma-admin-shipment-list.reader';
+
 import { orderingRefundsTestDatabaseUrl } from './test-database';
+
+const NO_SHIPMENT_FILTER: ShipmentListFilter = {
+  stage: null,
+  reference: null,
+  trackingRef: null,
+  deliveryMethod: null,
+  attention: null,
+  fleet: null,
+  sellerId: null,
+  paidFrom: null,
+  paidTo: null,
+  shippedFrom: null,
+  shippedTo: null,
+  parties: null,
+};
 
 // Refunds of a paid seller order by an admin on PostgreSQL, as the application role, for both
 // Market fixtures (tax step 3): off by the Market switch until it is turned on; the refund is
@@ -329,6 +351,14 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       ...loss,
     });
 
+  /** The seller order's refunded-in-full mark (admin Shipments list, Refunded stage). */
+  const inFull = async (sellerOrderId: string) =>
+    (
+      await sql.query<{ refunded_in_full: boolean }>(
+        'SELECT refunded_in_full FROM ordering.seller_orders WHERE market_id = $1 AND id = $2',
+        [market.marketId, sellerOrderId],
+      )
+    ).rows[0]?.refunded_in_full;
   const rowsOf = async (sellerOrderId: string) => ({
     refunded: (
       await sql.query<{ refunded_amount: string }>(
@@ -445,6 +475,30 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     expect(await refund(o, 0, '1')).toMatchObject({ error: { code: 'ordering.refund-exceeds' } });
   });
 
+  it("lists a customer's refunds across their orders, newest first, and none of anyone else's", async () => {
+    const mine = await paidOrder();
+    const theirs = await paidOrder();
+    expect((await refund(mine, 1)).ok).toBe(true);
+    expect((await refund(mine, 1)).ok).toBe(true);
+    expect((await refund(theirs, 1)).ok).toBe(true);
+    const owner = await sql.query<{ account_id: string }>(
+      'SELECT account_id FROM ordering.orders WHERE market_id = $1 AND id = $2',
+      [market.marketId, mine.orderId],
+    );
+    const accountId = owner.rows[0]!.account_id;
+    const read = await new AdminCustomerRefunds(gate, deps).execute(admin, { accountId });
+    if (!read.ok) throw new Error('read refused');
+    expect(read.value.refunds).toHaveLength(2);
+    const stamps = read.value.refunds.map((r) => r.requestedAt);
+    expect([...stamps].sort().reverse()).toEqual(stamps);
+    expect(read.value.refunds.every((r) => r.creditNoteId !== null)).toBe(true);
+    // A customer id of the other Market, or one with no orders, has none.
+    const none = await new AdminCustomerRefunds(gate, deps).execute(otherMarketAdmin(), {
+      accountId,
+    });
+    expect(none).toEqual({ ok: true, value: { refunds: [] } });
+  });
+
   it('records a refused Stripe refund as failed and lowers the refunded sum again', async () => {
     const o = await paidOrder();
     gateway.refundFails = { code: 'payment.provider-rejected' };
@@ -458,6 +512,26 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     // The failed refund does not count: all three units can still be refunded.
     gateway.refundFails = null;
     expect((await refund(o, 3)).ok).toBe(true);
+  });
+
+  it('marks the seller order refunded in full only when the refunds reach its total', async () => {
+    const o = await paidOrder();
+    const allShipping = (inclusive ? shipping : shipping + shippingTax).toString();
+    expect((await refund(o, 1)).ok).toBe(true);
+    expect(await inFull(o.sellerOrderId)).toBe(false);
+
+    // A refused refund of the rest gives its gross back: still not in full.
+    gateway.refundFails = { code: 'payment.provider-rejected' };
+    expect(await refund(o, 2, allShipping)).toEqual({
+      ok: false,
+      error: { code: 'ordering.refund-rejected' },
+    });
+    expect(await inFull(o.sellerOrderId)).toBe(false);
+
+    gateway.refundFails = null;
+    expect((await refund(o, 2, allShipping)).ok).toBe(true);
+    expect((await rowsOf(o.sellerOrderId)).refunded).toBe(total.toString());
+    expect(await inFull(o.sellerOrderId)).toBe(true);
   });
 
   it('keeps an unknown answer pending, blocks a second refund, and the worker settles it with the same key', async () => {
@@ -1602,6 +1676,10 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         outbox: { append: () => Promise.reject(new Error('not used')) },
         stepUp: { consume: () => Promise.reject(new Error('not used')) },
         audit,
+        review: {
+          openReview: () => Promise.reject(new Error('not used')),
+          areaPolicy: () => Promise.reject(new Error('not used')),
+        },
         ids,
         clock,
       };
@@ -1765,6 +1843,13 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
 
     it('refunds every unit and the whole delivery fee in one step, audited, and lists them on the page', async () => {
       const o = await paidOrder();
+      const shipments = new PrismaAdminShipmentListReader(db.service);
+      const stageCounts = () =>
+        db.unitOfWork.run(market, async () => ok(await shipments.countByStage(market)), {
+          readOnly: true,
+        });
+      const before = await stageCounts();
+      if (!before.ok) throw new Error('shipment counts failed');
 
       const done = await cancel(o.orderId);
 
@@ -1780,6 +1865,60 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       });
       expect(gateway.refunds.map((r) => r.amount)).toEqual([total]);
       expect((await rowsOf(o.sellerOrderId)).refunded).toBe(total.toString());
+      // The Shipments list moves it from To prepare to Refunded (it is still a paid order).
+      expect(await inFull(o.sellerOrderId)).toBe(true);
+      const listed = await db.unitOfWork.run(
+        market,
+        async () =>
+          ok(
+            await shipments.page(
+              market,
+              { ...NO_SHIPMENT_FILTER, reference: o.sellerOrderId },
+              { key: 'paid', direction: 'desc' },
+              0,
+              10,
+            ),
+          ),
+        { readOnly: true },
+      );
+      if (!listed.ok) throw new Error('shipments read failed');
+      expect(listed.value.map(shipmentStage)).toEqual(['refunded']);
+      const tab = await db.unitOfWork.run(
+        market,
+        async () =>
+          ok(
+            await shipments.page(
+              market,
+              { ...NO_SHIPMENT_FILTER, reference: o.sellerOrderId, stage: 'to-prepare' },
+              { key: 'paid', direction: 'desc' },
+              0,
+              10,
+            ),
+          ),
+        { readOnly: true },
+      );
+      expect(tab.ok && tab.value).toEqual([]);
+      // The Refunded tab finds it, and the counts move it from To prepare to Refunded.
+      const refundedTab = await db.unitOfWork.run(
+        market,
+        async () =>
+          ok(
+            await shipments.page(
+              market,
+              { ...NO_SHIPMENT_FILTER, reference: o.sellerOrderId, stage: 'refunded' },
+              { key: 'paid', direction: 'desc' },
+              0,
+              10,
+            ),
+          ),
+        { readOnly: true },
+      );
+      if (!refundedTab.ok) throw new Error('shipments read failed');
+      expect(refundedTab.value.map((r) => r.sellerOrderId)).toEqual([o.sellerOrderId]);
+      const after = await stageCounts();
+      if (!after.ok) throw new Error('shipment counts failed');
+      expect(after.value.refunded).toBe(before.value.refunded + 1);
+      expect(after.value.toPrepare).toBe(before.value.toPrepare - 1);
       const audit = await sql.query<{ action: string; after: unknown }>(
         `SELECT action, after FROM platform.audit_log
           WHERE market_id = $1 AND target_type = 'ordering.order' AND target_id = $2`,
