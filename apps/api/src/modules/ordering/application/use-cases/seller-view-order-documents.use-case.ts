@@ -1,4 +1,4 @@
-import { err, ok } from '@mondapac/shared-kernel';
+import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { ORDERING_SELLER_ORDER_VIEW } from '../../contracts/permissions';
@@ -52,10 +52,22 @@ export class SellerViewOrderDocuments extends UseCase<
     if (!Array.isArray(ids) || ids.length === 0 || ids.length > MAX_BULK_DOCUMENTS) {
       return err({
         code: 'validation.failed',
-        fields: [{ path: 'sellerOrderIds', code: ids === undefined ? 'required' : 'size' }],
+        fields: [
+          {
+            path: 'sellerOrderIds',
+            code: ids === undefined ? 'required' : Array.isArray(ids) ? 'size' : 'type',
+          },
+        ],
       });
     }
     const unique = [...new Set(ids.map((id: unknown) => (typeof id === 'string' ? id : '')))];
+    // Every id is checked before the first read: a bad one costs nothing.
+    if (unique.some((id) => !parseId<'SellerOrder'>(id)?.ok)) {
+      return err({
+        code: 'validation.failed',
+        fields: [{ path: 'sellerOrderIds', code: 'format' }],
+      });
+    }
     const documents: OrderDocumentView[] = [];
     const unavailable: string[] = [];
     for (const id of unique) {

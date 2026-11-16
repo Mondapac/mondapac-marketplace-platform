@@ -88,6 +88,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set(['sellers/store-profile/logo', 'sellers/store-profile/banner']),
   POST: new Set([
+    // The packing slips of a selection of orders (up to 50 ids in the body; a read).
+    'ordering/seller/orders/documents',
     // A description draft from the "Write with AI" modal (catalog, AIS-03): the form's title,
     // category label, details, keywords and note in; plain text out. Nothing is stored.
     'catalog/own/description-writer/drafts',
@@ -182,8 +184,6 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Mark units unavailable and refund them (protected: step-up), and add a note to the order.
     'ordering/seller/orders/:id/unavailable',
     'ordering/seller/orders/:id/notes',
-    // The packing slips of a selection of orders (up to 50 ids in the body; a read).
-    'ordering/seller/orders/documents',
     'pricing/seller/offers/:id/variants/:id/special-price/withdraw',
     'notifications/seller/notices/:id/read',
     // One public reply per review, and a report of a review (buyer reviews, package 4c).
