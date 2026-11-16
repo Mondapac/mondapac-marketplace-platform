@@ -20,12 +20,10 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
-import {
-  AttributeSuggestionBulkDecide,
-  CategoryProposalBulkDecide,
-  TopicSuggestionBulkDecide,
-  VariantRequestBulkDecide,
-} from '../application/use-cases/queue-bulk-decide.use-case';
+import { AttributeSuggestionBulkDecide } from '../application/use-cases/attribute-suggestion-bulk-decide.use-case';
+import { CategoryProposalBulkDecide } from '../application/use-cases/category-proposal-bulk-decide.use-case';
+import { TopicSuggestionBulkDecide } from '../application/use-cases/topic-suggestion-bulk-decide.use-case';
+import { VariantRequestBulkDecide } from '../application/use-cases/variant-request-bulk-decide.use-case';
 import { closedBody, refusalWith, type Refusal } from './http-answers';
 import { BulkDecideBody, BulkDecideRequest } from './queue-bulk.dto';
 import { ApiErrorBody } from './platform-product.dto';

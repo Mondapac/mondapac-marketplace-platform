@@ -82,12 +82,10 @@ import { PlatformProductRetireProbe } from './application/use-cases/platform-pro
 import { BrandEditProbe } from './application/use-cases/brand-edit-probe.use-case';
 import { BusinessActivityEditProbe } from './application/use-cases/business-activity-edit-probe.use-case';
 import { TopicManageProbe } from './application/use-cases/topic-manage-probe.use-case';
-import {
-  AttributeSuggestionBulkDecide,
-  CategoryProposalBulkDecide,
-  TopicSuggestionBulkDecide,
-  VariantRequestBulkDecide,
-} from './application/use-cases/queue-bulk-decide.use-case';
+import { AttributeSuggestionBulkDecide } from './application/use-cases/attribute-suggestion-bulk-decide.use-case';
+import { CategoryProposalBulkDecide } from './application/use-cases/category-proposal-bulk-decide.use-case';
+import { TopicSuggestionBulkDecide } from './application/use-cases/topic-suggestion-bulk-decide.use-case';
+import { VariantRequestBulkDecide } from './application/use-cases/variant-request-bulk-decide.use-case';
 import { QueueBulkController } from './presentation/queue-bulk.controller';
 import { AttributeEditProbe } from './application/use-cases/attribute-edit-probe.use-case';
 import { AttributeRestructureProbe } from './application/use-cases/attribute-restructure-probe.use-case';
