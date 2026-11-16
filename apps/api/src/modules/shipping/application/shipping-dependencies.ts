@@ -1,5 +1,6 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { SystemRequestRecorder } from '../../system-requests';
 import type { ChangeTrail } from '../../../platform/audit/change-trail';
 import type { SecurityEvents } from '../../../platform/security-events/security-events';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
@@ -23,6 +24,8 @@ export interface ShippingDependencies {
   readonly policy: ShippingPolicy;
   readonly sellers: SellerDirectory;
   readonly audit: AuditWriter;
+  /** Opens the review of a delivery change in Admin Inbox › System requests (area delivery). */
+  readonly review: SystemRequestRecorder;
   readonly clock: Clock;
   readonly ids: IdGenerator;
   readonly outbox: OutboxWriter;
