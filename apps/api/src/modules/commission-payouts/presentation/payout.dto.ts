@@ -7,9 +7,7 @@ import type {
 } from '../application/use-cases/list-payouts.use-case';
 import { PAYOUT_LIST_VIEWS, PAYOUT_ROW_ACTIONS } from '../domain/admin-payout-list';
 import type { OwnHeldView } from '../application/use-cases/list-own-payout-holds.use-case';
-import type {
-  OwnPayoutView,
-} from '../application/use-cases/list-own-payouts.use-case';
+import type { OwnPayoutView } from '../application/use-cases/list-own-payouts.use-case';
 import type { NextPayoutView } from '../application/use-cases/view-next-payout.use-case';
 import type { PayoutDetailView } from '../application/use-cases/view-payout.use-case';
 import { BLOCK_REASONS, PAYOUT_STATES } from '../domain/payout';

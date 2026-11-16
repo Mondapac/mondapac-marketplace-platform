@@ -1223,7 +1223,9 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       );
       expect(history.status).toBe(200);
       expect(history.body).toMatchObject({
-        payouts: [{ payoutId: PAYOUT, status: 'not-sent', reason: 'cooling-off', actions: ['open'] }],
+        payouts: [
+          { payoutId: PAYOUT, status: 'not-sent', reason: 'cooling-off', actions: ['open'] },
+        ],
         counts: { all: 1, 'not-sent': 1 },
         total: null,
         page: null,

@@ -267,8 +267,16 @@ describe.each([['AU'], ['ZZ']] as const)('the seller Payouts list in market %s',
         (await linesOf(must(await exportOf(input)))).slice(1).map((line) => line.split(',')[0]);
       expect(await order({})).toEqual([small.id, mid.id, big.id]);
       expect(await order({ sort: 'amount', direction: 'asc' })).toEqual([small.id, mid.id, big.id]);
-      expect(await order({ sort: 'amount', direction: 'desc' })).toEqual([big.id, mid.id, small.id]);
-      expect(await order({ sort: 'created', direction: 'asc' })).toEqual([big.id, mid.id, small.id]);
+      expect(await order({ sort: 'amount', direction: 'desc' })).toEqual([
+        big.id,
+        mid.id,
+        small.id,
+      ]);
+      expect(await order({ sort: 'created', direction: 'asc' })).toEqual([
+        big.id,
+        mid.id,
+        small.id,
+      ]);
     });
 
     it('writes the chosen rows in the order given; a voided payout, another seller or Market refuses the whole file', async () => {
