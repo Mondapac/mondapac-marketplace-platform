@@ -1,7 +1,22 @@
 [
+  {
+    "name": "assistant.delete-conversation",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "assistant.list-conversations",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "assistant.purge-conversations", "rule": "system" },
   { "name": "assistant.send-guest-message", "rule": "anonymous" },
   { "name": "assistant.send-message", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  {
+    "name": "assistant.view-conversation",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "assistant.view-storefront-assistant", "rule": "anonymous" },
   { "name": "blog.pause-seller-posts", "rule": "system" },
   { "name": "blog.publish-due", "rule": "system" },
