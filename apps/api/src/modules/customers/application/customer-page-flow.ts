@@ -1,4 +1,4 @@
-import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, IdGenerator, Result } from '@mondapac/shared-kernel';
 import { parseId } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
@@ -64,7 +64,7 @@ export async function openCustomerPage(
       },
       now,
       // One row per admin, tab and (UTC) day: the audit log keeps every open.
-      { onceSince: Temporal.Instant.from(`${now.toString().slice(0, 10)}T00:00:00Z`) },
+      { onceSince: now.toZonedDateTimeISO('UTC').startOfDay().toInstant() },
     );
     return ok(row);
   });

@@ -832,6 +832,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'reward_bps',
         'reward_kind',
         'segment_kind',
+        'segment_group_id',
         'segment_min_days',
         'special_campaign',
         'starts_at',
