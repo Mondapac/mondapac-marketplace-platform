@@ -16,6 +16,7 @@ import { EditPlatformRole } from '../../src/modules/identity/application/use-cas
 import { EnableAdminAccount } from '../../src/modules/identity/application/use-cases/enable-admin-account.use-case';
 import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { openSession } from '../../src/modules/identity/domain/session';
+import { ApproveSystemRequest } from '../../src/modules/system-requests/application/use-cases/approve-system-request.use-case';
 import { RejectSystemRequest } from '../../src/modules/system-requests/application/use-cases/reject-system-request.use-case';
 import { STEP_UP_CONSUMER } from '../../src/platform/authz';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
@@ -31,7 +32,8 @@ import { testDatabaseUrl } from './test-database';
 // request in the same unit; a reviewer's reject runs identity's reverter in the decision's
 // serializable unit and restores what narrows access, audited with the request id, while a
 // revert that would widen access is refused and the request stays open. A disable opens
-// nothing. The reviewer's step-up proof is stubbed (its spend is system-requests' own test).
+// nothing. A reviewer never decides a change about themselves (their own account, or a role they
+// hold now): approve and reject answer `system-requests.own-subject`. The reviewer's step-up proof is stubbed (its spend is system-requests' own test).
 // Accounts and roles are new per test, so no other spec's rows are met.
 
 const CREATED = '2026-11-15T00:00:00Z';
@@ -316,5 +318,66 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
         after: { status: 'disabled', requestId: enabled.value.request.id },
       },
     ]);
+  });
+  it('refuses a reviewer deciding a change about themselves; another reviewer decides it', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const reviewKeys = [
+      'system-requests.request.view',
+      'system-requests.people.review',
+      'identity.admin-account.view',
+    ];
+    const reviewers = await customRole(root, reviewKeys);
+    const holder = await admin(reviewers);
+    const approve = (reviewer: Id<'Account'>, requestId: Id<'SystemRequest'>) =>
+      app.get(ApproveSystemRequest).execute(as(reviewer), { requestId });
+    const ownSubject = { ok: false, error: { code: 'system-requests.own-subject' } };
+
+    // A role edit of the role the reviewer holds now (identity.platform-role).
+    const edited = await app.get(EditPlatformRole).execute(as(root), {
+      roleId: reviewers,
+      expectedVersion: 1,
+      name: `Reviewers ${randomUUID().slice(0, 8)}`,
+      permissionKeys: [...reviewKeys, 'identity.platform-role.view'],
+      note: 'Let reviewers see roles',
+    });
+    if (!edited.ok || edited.value.request === null) throw new Error('no request opened');
+    const roleRequest = edited.value.request.id;
+    expect(await approve(holder, roleRequest)).toEqual(ownSubject);
+    expect(await reject(holder, roleRequest)).toEqual(ownSubject);
+    expect(await keysOf(reviewers)).toContain('identity.platform-role.view');
+    expect((await requestsOf(reviewers)).map((r) => r.status)).toEqual(['open']);
+
+    // The reviewer's own role change (identity.admin-roles), here to the Platform Administrator.
+    const promoted = await app
+      .get(AssignAdminRole)
+      .execute(as(root), { accountId: holder, roleId: pa, note: 'Covers the weekend' });
+    if (!promoted.ok || promoted.value.request === null) throw new Error('no request opened');
+    expect(await approve(holder, promoted.value.request.id)).toEqual(ownSubject);
+    expect(await reject(holder, promoted.value.request.id)).toEqual(ownSubject);
+    expect(await roleIdOf(holder)).toBe(pa);
+
+    // Not holding the edited role any more, the same admin may decide its edit.
+    expect(await approve(holder, roleRequest)).toMatchObject({
+      ok: true,
+      value: { status: 'approved' },
+    });
+    // Another reviewer decides the admin's own change.
+    expect(await approve(checker, promoted.value.request.id)).toMatchObject({
+      ok: true,
+      value: { status: 'approved' },
+    });
+
+    // The reviewer's own enabling (identity.admin-status).
+    const target = await admin(pa, 'disabled');
+    const enabled = await app
+      .get(EnableAdminAccount)
+      .execute(as(root), { accountId: target, note: 'Back from leave' });
+    if (!enabled.ok || enabled.value.request === null) throw new Error('no request opened');
+    expect(await approve(target, enabled.value.request.id)).toEqual(ownSubject);
+    expect(await reject(target, enabled.value.request.id)).toEqual(ownSubject);
+    expect(await statusOf(target)).toBe('active');
+    expect((await requestsOf(target)).map((r) => r.status)).toEqual(['open']);
   });
 });

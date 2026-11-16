@@ -64,6 +64,11 @@ export type SystemRequestsFailure =
   | { readonly code: 'system-requests.decided' }
   /** Maker-checker: the author cannot approve or reject their own change. */
   | { readonly code: 'system-requests.own-request' }
+  /**
+   * Separation of duties: the change is about the decider (their own account, or a role they
+   * hold), as the owning module's reverter says; they may neither approve nor reject it.
+   */
+  | { readonly code: 'system-requests.own-subject' }
   /** Only the author withdraws a change. */
   | { readonly code: 'system-requests.not-author' }
   /** The caller does not hold the area's review key. */
@@ -500,7 +505,11 @@ async function prepareDecision(
   return ok({ admin, id, reason });
 }
 
-/** The locked open request `admin` may decide this way, or the refusal. */
+/**
+ * The locked open request `admin` may decide this way, or the refusal. An approval or a reject
+ * also asks the owning module whether the change is about the decider (`isInterested`, read in
+ * this unit); a module without that check lets any reviewer but the author decide.
+ */
 async function decidable(
   deps: SystemRequestsDependencies,
   context: CallContext,
@@ -514,6 +523,20 @@ async function decidable(
   const own = request.requestedBy === admin;
   if (kind === 'withdraw' && !own) return err({ code: 'system-requests.not-author' });
   if (kind !== 'withdraw' && own) return err({ code: 'system-requests.own-request' });
+  if (kind !== 'withdraw') {
+    const reverter = deps.reverters.find(request.subjectKind)?.reverter;
+    if (
+      reverter?.isInterested !== undefined &&
+      (await reverter.isInterested(context, {
+        requestId: request.id,
+        subjectRef: request.subjectRef,
+        before: request.before,
+        after: request.after,
+      }))
+    ) {
+      return err({ code: 'system-requests.own-subject' });
+    }
+  }
   return ok(request);
 }
 
