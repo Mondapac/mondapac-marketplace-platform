@@ -134,6 +134,10 @@ const STEM_SOURCES = [
   'dhabih',
   "s[hy]ari'?ah?",
   'islamic',
+  'ritual(?:ly)?[\\s-]*slaughter',
+  'mo[sz]lem',
+  'dha?b?e*i?h+a',
+  'thabih',
   'pareve|parve',
   'gluten',
   'coeliac|celiac',
@@ -173,10 +177,15 @@ const WORDS = [
   'forbidden',
 ].map((word) => `${START}${word}${END}`);
 
+const FOODS = String.raw`(?:pork|swine|alcohol|lard|gelatin|nuts?|dairy|lactose|meat|milk|eggs?|gluten|wheat|sesame|shellfish)`;
 const FREE_FROM = [
   String.raw`(?:pork|alcohol|lard|gelatin|lactose|dairy|nut|egg|soy|meat|milk|wheat|sesame|shellfish|sugar|fat|msg|gmo)[\s-]*free${END}`,
   String.raw`${START}(?:no|without|free\s+from)[\s-]+(?:lactose|dairy|nuts?|pork|alcohol|lard|gelatin|sugar|meat|milk|eggs?)${END}`,
   String.raw`non[\s-]*alcohol`,
+  String.raw`(?:does\s*not|doesn'?t)\s+contain\s+(?:any\s+)?${FOODS}${END}`,
+  String.raw`${START}(?:contains?\s+(?:no|zero)|zero|0%|free\s+of|without\s+any)[\s-]+${FOODS}${END}`,
+  String.raw`${FOODS}[\s-]*less${END}`,
+  String.raw`${START}no[\s-]*(?:pork|swine)`,
   String.raw`allerg`,
   String.raw`sertifi`,
 ];
@@ -198,7 +207,7 @@ const OTHER_SCRIPTS = [
   'گیاهخوار',
   'وگان',
   'وگن',
-  '(?<!با)اسلام',
+  '(?<!ب)اسلام',
   'غلوتین',
   '(?<!روغن )(?<!زیت )نباتی',
   'گلوتن',
@@ -334,6 +343,10 @@ const SKELETON_LETTER = new RegExp(`[${Object.keys(SKELETON).join('')}]`, 'giu')
  * digits or symbols read as the letters they imitate ("h4l4l"). Words split by spaces, dots or
  * hyphens are joined first.
  */
+function replaceLeet(text: string): string {
+  return text.replace(LEET_CHARACTERS, (character) => LEET[character] ?? character);
+}
+
 function skeletonOf(folded: string): string {
   return folded.replace(
     SKELETON_LETTER,
@@ -346,9 +359,12 @@ export function hasClaimWord(text: string): boolean {
   return (
     carriesClaim(folded) ||
     carriesClaim(folded.replace(L_READING, 'l')) ||
+    carriesClaim(foldForClaims(replaceLeet(prepare(text)))) ||
+    carriesClaim(foldForClaims(replaceLeet(prepare(text)).replaceAll('a', 'e'))) ||
+    carriesClaim(foldForClaims(replaceLeet(prepare(text).replaceAll('@', 'e')))) ||
     carriesClaim(skeletonOf(folded)) ||
     carriesClaim(skeletonOf(folded).replace(L_READING, 'l')) ||
-    carriesClaim(folded.replace(LEET_CHARACTERS, (character) => LEET[character] ?? character))
+    carriesClaim(replaceLeet(folded))
   );
 }
 

@@ -115,6 +115,22 @@ const claims = [
   'حڵاڵ',
   'حلٱل',
   'ڪوشر',
+  'h@l@l',
+  'H@L@L',
+  'h @ l @ l',
+  'v€g@n',
+  'or g@n!c',
+  'this lamb is ritually slaughtered',
+  'does not contain pork',
+  'without any pork',
+  'free of pork',
+  'porkless',
+  'free of nuts',
+  '0% alcohol',
+  'meatless',
+  'Moslem',
+  'dhabeeha',
+  'thabiha',
 ];
 
 describe('claim words', () => {
