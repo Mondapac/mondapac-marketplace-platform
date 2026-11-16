@@ -218,7 +218,7 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
         replyLanguage: 'buyer',
         welcomeText: 'Hi',
         retentionDays: { customer: 30, guest: 30 },
-        quickPrompts: ['What is on special?'],
+        quickPrompts: code === 'ZZ' ? FixedQuickPrompts.JA : FixedQuickPrompts.EN,
         preview: false,
       },
     });

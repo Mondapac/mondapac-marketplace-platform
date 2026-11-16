@@ -537,7 +537,7 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
   });
 
   describe('the internal preview', () => {
-    const EN = ['What is on special?'];
+    const EN = code === 'ZZ' ? FixedQuickPrompts.JA : FixedQuickPrompts.EN;
     const OFF = {
       enabled: false,
       guestsAllowed: false,
