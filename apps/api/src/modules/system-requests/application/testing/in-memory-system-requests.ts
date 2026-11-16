@@ -1,5 +1,12 @@
 import { ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, MarketContext, Result } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  Clock,
+  Id,
+  MarketContext,
+  Result,
+  Temporal,
+} from '@mondapac/shared-kernel';
 import type {
   ConsumedStepUp,
   StepUpProofConsumer,
@@ -10,7 +17,8 @@ import type {
   RevertRequest,
   SystemChangeReverter,
 } from '../../../../platform/change-review/change-review';
-import type { PolicyArea, Risk } from '../../domain/areas';
+import type { PolicyArea, ReviewArea, Risk } from '../../domain/areas';
+import { dueForReminder } from '../../domain/overdue';
 import type { SystemRequest } from '../../domain/request';
 import type { AdminNames } from '../ports/admin-names';
 import type {
@@ -81,6 +89,8 @@ export class InMemoryRequests implements RequestRepository {
   readonly lines: (ActivityRecord & { readonly market: string; readonly requestId: string })[] = [];
   readonly counters = new Map<string, number>();
   readonly locked: string[] = [];
+  /** `last_reminded_at` by request id. */
+  readonly reminded = new Map<string, Temporal.Instant>();
 
   private index(market: MarketContext, id: Id<'SystemRequest'>): number {
     return this.rows.findIndex((row) => row.market === market.marketId && row.id === id);
@@ -231,6 +241,56 @@ export class InMemoryRequests implements RequestRepository {
     }
     const start = window.kind === 'offset' ? window.offset : 0;
     return Promise.resolve(from.slice(start, start + window.limit).map((row) => this.plain(row)));
+  }
+
+  dueForReminder(
+    market: MarketContext,
+    query: {
+      readonly now: Temporal.Instant;
+      readonly remindedBefore: Temporal.Instant;
+      readonly areas: readonly ReviewArea[];
+      readonly limit: number;
+    },
+  ) {
+    return Promise.resolve(
+      this.rows
+        .filter(
+          (row) =>
+            row.market === market.marketId &&
+            query.areas.includes(row.area) &&
+            dueForReminder(
+              { ...row, lastRemindedAt: this.reminded.get(row.id) ?? null },
+              query.now,
+              query.remindedBefore,
+            ),
+        )
+        .sort(
+          (a, b) =>
+            a.reviewDueAt.epochMilliseconds - b.reviewDueAt.epochMilliseconds ||
+            a.number - b.number,
+        )
+        .slice(0, query.limit)
+        .map((row) => this.plain(row)),
+    );
+  }
+
+  markReminded(
+    market: MarketContext,
+    id: Id<'SystemRequest'>,
+    at: Temporal.Instant,
+    remindedBefore: Temporal.Instant,
+  ) {
+    const at0 = this.index(market, id);
+    const last = this.reminded.get(id) ?? null;
+    if (
+      at0 < 0 ||
+      this.rows[at0]!.status !== 'open' ||
+      (last !== null && last.epochMilliseconds >= remindedBefore.epochMilliseconds)
+    ) {
+      return Promise.resolve(false);
+    }
+    this.reminded.set(id, at);
+    return Promise.resolve(true);
   }
 
   count(market: MarketContext, filter: RequestFilter, cap: number) {

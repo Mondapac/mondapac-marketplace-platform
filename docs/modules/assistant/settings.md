@@ -10,7 +10,7 @@ assistant ships **off**.
 |---|---|---|
 | `GET /assistant/admin/settings` | admin, `assistant.settings.view` (viewer role, seed version 14) | Settings in force, `version` (0 = defaults), `apiKey: set / not-set`, the model configured per tier, options not available yet |
 | `PUT /assistant/admin/settings` | admin, `assistant.settings.manage` (protected: Platform Administrator only) | `{ expectedVersion, settings }`, every field; stale version answers 409 `assistant.conflict`; same settings again change nothing |
-| `GET /assistant/storefront?visitor=` | anyone, no session read | `{ enabled, guestsAllowed, replyLanguage, welcomeText }` only |
+| `GET /assistant/storefront?visitor=&lang=` | anyone, no session read | `{ enabled, guestsAllowed, replyLanguage, welcomeText, retentionDays, quickPrompts }` only |
 
 Each change is a new row of the insert-only `assistant.settings` (the application role has
 SELECT and INSERT only) and one `assistant.settings.changed` audit row (versions and the switch).
@@ -65,3 +65,15 @@ the change again. A tier whose model the server does not configure is offered di
 Spend today and this month (against the caps), conversations today and the last automatic
 switch-off are now in the read's `spend` (package 4); wiring them into the status card is a
 follow-up of the admin tab. The cost estimate per conversation is not computed by the server.
+
+## Storefront extras (stage 0, B4)
+
+- `retentionDays` is `{ customer, guest }`: how many days a new conversation is kept (0: not
+  kept; a guest 30 at most), so the widget can say so before the first message. The read takes no
+  session, so it gives both. `null` while the assistant is off for the visitor.
+- `quickPrompts` are fixed button texts from `config/locales/<locale>/assistant.json`
+  (`assistant.quick-prompt.1` to `.6`, read in order up to the first gap), never model output and
+  never a setting. `lang` (a BCP 47 tag) picks a locale the Market supports, by exact tag or by
+  language, when it has prompts; anything else gets the Market's default locale. The API refuses
+  to start when a hosted Market's default locale has no prompt or one is over 80 characters.
+  Empty while off.
