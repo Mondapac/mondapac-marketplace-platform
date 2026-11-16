@@ -19,6 +19,7 @@ import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { traceCredentialOrder } from './support/credential-order';
 import { IdentityFakes } from './support/identity-fakes';
+import { wrongTotpCode } from './support/wrong-totp-code';
 import { createTestApp, type LogLine } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -72,6 +73,10 @@ describe('seller second factor over HTTP (integration)', () => {
   /** The code the authenticator app shows now. */
   const codeFor = (secret: string, at: Temporal.Instant = clock.now()) =>
     hotp(decodeBase32Secret(secret)!, Math.floor(at.epochMilliseconds / 1000 / TOTP.periodSeconds));
+
+  /** A code that none of the steps the server accepts now would take (never a chance match). */
+  const wrongCodeFor = (secret: string): string =>
+    wrongTotpCode((at) => codeFor(secret, at), clock.now());
 
   /** Signs up and confirms the email; the seller is approved (AU starts pending). */
   async function signedUpSeller(code: string) {
@@ -230,7 +235,10 @@ describe('seller second factor over HTTP (integration)', () => {
       });
       const challengeToken = (step.body as { challengeToken: string }).challengeToken;
 
-      const wrong = await post('sign-in/second-factor', code, { challengeToken, code: '000000' });
+      const wrong = await post('sign-in/second-factor', code, {
+        challengeToken,
+        code: wrongCodeFor(enrol.secret),
+      });
       expect(wrong.body).toEqual({ statusCode: 400, code: 'second-factor.invalid' });
 
       const done = await post('sign-in/second-factor', code, {
@@ -335,7 +343,12 @@ describe('seller second factor over HTTP (integration)', () => {
       const current = await signedInWithFactor(code, secret);
 
       clock.advance(STEP);
-      const wrong = await post('second-factor/remove', code, { code: '000000' }, current);
+      const wrong = await post(
+        'second-factor/remove',
+        code,
+        { code: wrongCodeFor(secret) },
+        current,
+      );
       expect(wrong.body).toEqual({ statusCode: 400, code: 'second-factor.invalid' });
       const trace = traceCredentialOrder(fakes);
       const removed = await post('second-factor/remove', code, { code: codeFor(secret) }, current);
@@ -415,7 +428,7 @@ describe('seller second factor over HTTP (integration)', () => {
       });
       const factors = [...fakes.factors.values()].length;
       clock.advance(STEP);
-      expect(await facade.confirmSecondFactor(context, '000000')).toEqual({
+      expect(await facade.confirmSecondFactor(context, wrongCodeFor(secret))).toEqual({
         ok: false,
         error: { code: 'second-factor.invalid' },
       });
@@ -460,7 +473,10 @@ describe('seller second factor over HTTP (integration)', () => {
       // The password alone does not tell that the seller is suspended.
       expect(step.body).toMatchObject({ code: 'second-factor-required' });
       const challengeToken = (step.body as { challengeToken: string }).challengeToken;
-      const wrong = await post('sign-in/second-factor', code, { challengeToken, code: '000000' });
+      const wrong = await post('sign-in/second-factor', code, {
+        challengeToken,
+        code: wrongCodeFor(secret),
+      });
       expect(wrong.body).toEqual({ statusCode: 400, code: 'second-factor.invalid' });
 
       const right = await post('sign-in/second-factor', code, {
