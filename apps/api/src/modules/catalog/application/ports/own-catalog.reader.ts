@@ -1,6 +1,6 @@
 import type { Id, MarketContext, MeasureSettings, Temporal } from '@mondapac/shared-kernel';
 import type { Offer, OfferStatus } from '../../domain/offer';
-import type { Product, ProductStatus } from '../../domain/product';
+import type { Product, ProductScope, ProductStatus } from '../../domain/product';
 import type { WorkingCopy } from '../../domain/working-copy';
 
 /** The stored sell-unit row of an Offer as the seller sees it (V5): a variant with none sells. */
@@ -20,6 +20,8 @@ export interface ProductLabel {
   readonly productId: Id<'Product'>;
   readonly productCode: string;
   readonly typeCode: string;
+  /** PLATFORM or SELLER: only an Offer on a PLATFORM product can be deleted on its own. */
+  readonly scope: ProductScope;
   readonly name: string | null;
 }
 
@@ -253,13 +255,6 @@ export interface OwnCatalogReader {
     order: { readonly sort: OwnOfferSort; readonly direction: OwnSortDirection },
     page: { readonly offset: number; readonly limit: number },
   ): Promise<readonly Offer[]>;
-
-  /** How many of the seller's Offers `filter` keeps (the total behind page numbers). */
-  countOffers(
-    market: MarketContext,
-    sellerId: Id<'Seller'>,
-    filter: OwnOffersFilter,
-  ): Promise<number>;
 
   /**
    * The Offers `filter` keeps, per status (one grouped count); `filter.statuses` is ignored and

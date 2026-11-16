@@ -2,7 +2,8 @@ import { rowActions } from '../../../../platform/list-query';
 import { OWN_OFFER_ACTION_RULES, parseOfferListQuery } from './own-offers-list.use-case';
 
 const EDIT = new Set(['catalog.own-product.edit']);
-const row = (status: string) => ({ status }) as never;
+const row = (status: string, productScope: string | null = 'PLATFORM') =>
+  ({ status, productScope }) as never;
 
 describe('own Offer list row actions', () => {
   it('offers edit, submit and delete on a draft', () => {
@@ -14,6 +15,27 @@ describe('own Offer list row actions', () => {
     ]);
   });
 
+  it('offers delete on a live or waiting Offer too, as own-offer.delete allows it', () => {
+    expect(rowActions(row('published'), OWN_OFFER_ACTION_RULES, EDIT)).toEqual([
+      'open',
+      'edit',
+      'delete',
+    ]);
+  });
+
+  it('hides delete on an Offer of the seller own product and when the scope is unknown', () => {
+    expect(rowActions(row('draft', 'SELLER'), OWN_OFFER_ACTION_RULES, EDIT)).toEqual([
+      'open',
+      'edit',
+      'submit',
+    ]);
+    expect(rowActions(row('draft', null), OWN_OFFER_ACTION_RULES, EDIT)).toEqual([
+      'open',
+      'edit',
+      'submit',
+    ]);
+  });
+
   it('offers edit and delete when changes are needed, but not submit', () => {
     expect(rowActions(row('changes-needed'), OWN_OFFER_ACTION_RULES, EDIT)).toEqual([
       'open',
@@ -22,12 +44,12 @@ describe('own Offer list row actions', () => {
     ]);
   });
 
-  it('offers open and edit while the Offer waits for review or is live', () => {
+  it('offers open, edit and delete, never submit, while the Offer waits for review', () => {
     expect(rowActions(row('pending-first-publish'), OWN_OFFER_ACTION_RULES, EDIT)).toEqual([
       'open',
       'edit',
+      'delete',
     ]);
-    expect(rowActions(row('published'), OWN_OFFER_ACTION_RULES, EDIT)).toEqual(['open', 'edit']);
   });
 
   it('offers only open without the edit key', () => {
@@ -77,8 +99,22 @@ describe('own Offer list query', () => {
     expect(parseOfferListQuery({ limit: 5 })).toEqual(fields('limit', 'unknown'));
   });
 
-  it('stops page numbers at row 10,000', () => {
-    expect(parseOfferListQuery({ page: 400, pageSize: 25 })).toMatchObject({ ok: true });
-    expect(parseOfferListQuery({ page: 401, pageSize: 25 })).toEqual(fields('page', 'range'));
+  it('stops page numbers at row 10,000 in both paging modes', () => {
+    for (const paging of ['pages', 'prev-next']) {
+      expect(parseOfferListQuery({ page: 400, pageSize: 25, paging })).toMatchObject({ ok: true });
+      expect(parseOfferListQuery({ page: 401, pageSize: 25, paging })).toEqual(
+        fields('page', 'range'),
+      );
+      expect(parseOfferListQuery({ page: 101, pageSize: 100, paging })).toEqual(
+        fields('page', 'range'),
+      );
+    }
+  });
+
+  it('treats a blank search as no search', () => {
+    expect(parseOfferListQuery({ q: '   ', page: 1 })).toMatchObject({
+      ok: true,
+      value: { text: null },
+    });
   });
 });

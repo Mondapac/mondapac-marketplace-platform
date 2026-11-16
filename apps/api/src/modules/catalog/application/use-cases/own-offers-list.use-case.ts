@@ -14,6 +14,7 @@ import {
   type RowActionRule,
 } from '../../../../platform/list-query';
 import type { OfferStatus } from '../../domain/offer';
+import type { ProductScope } from '../../domain/product';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import {
   OWN_OFFER_SORTS,
@@ -119,7 +120,9 @@ export interface OwnOffersPageOutput {
 export type OwnOffersListResult = OwnOffersListOutput | OwnOffersPageOutput;
 
 /** What each row action needs: the key its use case checks and the state it can run on. */
-export const OWN_OFFER_ACTION_RULES: readonly RowActionRule<Pick<OwnOfferView, 'status'>>[] = [
+export const OWN_OFFER_ACTION_RULES: readonly RowActionRule<
+  Pick<OwnOfferView, 'status'> & { readonly productScope: ProductScope | null }
+>[] = [
   { id: 'open', permission: null },
   {
     id: 'edit',
@@ -134,9 +137,21 @@ export const OWN_OFFER_ACTION_RULES: readonly RowActionRule<Pick<OwnOfferView, '
   {
     id: 'delete',
     permission: CATALOG_OWN_PRODUCT_EDIT.key,
-    when: (row) => row.status === 'draft' || row.status === 'changes-needed',
+    // Same rule as `own-offer.delete`: any open status, but only on a PLATFORM product (an Offer
+    // on the seller's own product goes with the product). An unknown scope fails closed.
+    when: (row) => row.productScope === 'PLATFORM',
   },
 ];
+
+const STATUS_KEYS = {
+  draft: 'draft',
+  'pending-first-publish': 'pendingFirstPublish',
+  'changes-needed': 'changesNeeded',
+  published: 'published',
+} as const;
+
+const countOf = (counts: OfferStatusCounts, status: OfferStatus): number =>
+  status in STATUS_KEYS ? counts[STATUS_KEYS[status as keyof typeof STATUS_KEYS]] : 0;
 
 export type OwnOffersListFailure =
   { readonly code: 'access.denied' } | { readonly code: 'access.unavailable' } | ValidationFailure;
@@ -217,8 +232,11 @@ export class OwnOffersList extends UseCase<
         const reader = this.deps.ownReader;
         // Previous and Next never counts the rows; the tab counts stay (one grouped read).
         const byStatus = await reader.countOffersByStatus(market, sellerId, filter);
+        // The total is the tab counts of the selected statuses: no second scan of the search.
         const total =
-          q.paging === 'pages' ? await reader.countOffers(market, sellerId, filter) : null;
+          q.paging === 'pages'
+            ? filter.statuses.reduce((sum, status) => sum + countOf(byStatus, status), 0)
+            : null;
         const rows =
           total !== null && window.offset >= total
             ? []
@@ -247,14 +265,23 @@ export class OwnOffersList extends UseCase<
     });
     return ok({
       items: paged.items.map((offer): OwnOfferListItem => {
-        const view = offerViewOf(offer, labelOf.get(offer.state.productId));
-        return { ...view, actions: rowActions(view, OWN_OFFER_ACTION_RULES, granted) };
+        const label = labelOf.get(offer.state.productId);
+        const view = offerViewOf(offer, label);
+        return {
+          ...view,
+          actions: rowActions(
+            { ...view, productScope: label?.scope ?? null },
+            OWN_OFFER_ACTION_RULES,
+            granted,
+          ),
+        };
       }),
       total: paged.total,
       page: paged.page,
       pageSize: paged.pageSize,
       paging: paged.paging,
-      hasNext: paged.hasNext,
+      // A page past row 10,000 is refused, so the last page has no Next.
+      hasNext: paged.hasNext && paged.page * paged.pageSize < MAX_OWN_OFFER_ROWS,
       counts: {
         ...byStatus,
         all:
@@ -391,14 +418,8 @@ export function parseOfferListQuery(
     maxPage: MAX_OWN_OFFER_ROWS,
   });
   if (!paged.ok) return paged;
-  // Page numbers stop at row 10,000: past it the seller narrows the list.
-  if (
-    paged.value.paging === 'pages' &&
-    (paged.value.page - 1) * paged.value.pageSize >= MAX_OWN_OFFER_ROWS
-  ) {
-    return invalid('page', 'range');
-  }
-  if (paged.value.page * paged.value.pageSize > MAX_OWN_OFFER_ROWS + paged.value.pageSize) {
+  // Both paging modes stop at row 10,000: past it the seller narrows the list.
+  if ((paged.value.page - 1) * paged.value.pageSize >= MAX_OWN_OFFER_ROWS) {
     return invalid('page', 'range');
   }
   return ok({ view, text, status, listed, ...paged.value });

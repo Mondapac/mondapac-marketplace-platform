@@ -197,7 +197,8 @@ export class OwnOfferController {
     description:
       'List mode (any of view, q, status, listed, sort, direction, page, pageSize, paging selects ' +
       'it; send `page=1` for the first page): one numbered page with row `actions`. `afterId` and ' +
-      '`limit` are then refused.',
+      '`limit` are then refused. Rows stop at 10,000 in both paging modes: a page whose first ' +
+      'row is past it is refused (validation.failed, page).',
   })
   @ApiQuery({ name: 'pageSize', required: false, enum: ['25', '50', '100'] })
   @ApiQuery({
@@ -208,7 +209,10 @@ export class OwnOfferController {
   @ApiQuery({
     name: 'q',
     required: false,
-    description: 'Contained text of the seller SKU, the product code or the product name.',
+    description:
+      'Contained text, up to 100 characters, no control characters, trimmed (empty means no ' +
+      'search), case-insensitive: the seller SKU, the product code, or the product published ' +
+      'name in the Market default locale. Only the seller own Offers are searched.',
   })
   @ApiQuery({
     name: 'status',
@@ -216,15 +220,23 @@ export class OwnOfferController {
     enum: ['draft', 'pending-first-publish', 'changes-needed', 'published'],
   })
   @ApiQuery({ name: 'listed', required: false, enum: ['true', 'false'], description: 'On sale.' })
-  @ApiQuery({ name: 'sort', required: false, enum: ['created', 'sku', 'status'] })
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    enum: ['created', 'sku', 'status'],
+    description:
+      'Default `created` (newest first); `sku` defaults to A to Z. Ties break on the Offer id ' +
+      'in the same direction.',
+  })
   @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
   @ApiQuery({
     name: 'paging',
     required: false,
     enum: ['pages', 'prev-next'],
     description:
-      'The Market’s List paging setting: `pages` answers the total, `prev-next` answers `hasNext` ' +
-      'and no total. Default `pages`.',
+      'The panel sends the Market List paging setting here (the API does not read it): `pages` ' +
+      'answers the total, `prev-next` reads one extra row and answers no total. `hasNext` is ' +
+      'answered in both modes. Default `pages`.',
   })
   @ApiOkResponse({ type: OwnOfferList })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })

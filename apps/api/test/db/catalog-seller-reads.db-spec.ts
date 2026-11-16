@@ -1144,6 +1144,66 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     );
   });
 
+  it('pages the Offer list exactly across ties, searches by product code and hides delete on own products', async () => {
+    const tag = randomUUID().slice(0, 6);
+    const made: Offer[] = [];
+    // 27 Offers of one status tie on every sort key but the id: page 2 holds the last two.
+    for (let n = 0; n < 27; n += 1) {
+      const product = await draftedProduct('PLATFORM', SELLER, `Tie ${n}`);
+      made.push(await offerOn(product.state.id, SELLER, `TIE-${tag}-${n}`));
+    }
+    // Another seller's Offer on another product, with a matching SKU, is never counted or listed.
+    const foreignProduct = await draftedProduct('PLATFORM', OTHER, 'Foreign');
+    const foreign = await offerOn(foreignProduct.state.id, OTHER, `TIE-${tag}-x`);
+    const run = async (input: Record<string, unknown>) => {
+      const answer = await listOffers.execute(sellerContext(), { q: `tie-${tag}`, ...input });
+      if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+      return answer.value;
+    };
+    for (const sort of ['status', 'created', 'sku'] as const) {
+      const one = await run({ sort, direction: 'asc', page: 1, pageSize: 25 });
+      const two = await run({ sort, direction: 'asc', page: 2, pageSize: 25 });
+      expect(one).toMatchObject({ total: 27, hasNext: true });
+      expect(two).toMatchObject({ total: 27, hasNext: false });
+      const seen = [...one.items, ...two.items].map((item) => item.offerId);
+      expect(seen).toHaveLength(27);
+      expect(new Set(seen).size).toBe(27);
+      expect(seen).not.toContain(foreign.state.id);
+      const next = await run({
+        sort,
+        direction: 'asc',
+        page: 2,
+        pageSize: 25,
+        paging: 'prev-next',
+      });
+      expect(next).toMatchObject({ total: null, hasNext: false });
+      expect(next.items.map((item) => item.offerId)).toEqual(two.items.map((item) => item.offerId));
+      expect(
+        await run({ sort, direction: 'asc', page: 1, pageSize: 25, paging: 'prev-next' }),
+      ).toMatchObject({ total: null, hasNext: true });
+    }
+    expect((await run({ page: 1 })).counts).toMatchObject({ draft: 27, all: 27 });
+
+    // A blank search is no search; a product code finds its own Offer only.
+    const blank = await listOffers.execute(sellerContext(), { q: '   ', page: 1 });
+    expect(blank.ok && 'total' in blank.value && blank.value.total).toBeGreaterThanOrEqual(27);
+    const code = made[3]!;
+    const product = await inUnit(() => products.findById(market, code.state.productId));
+    const byCode = await listOffers.execute(sellerContext(), {
+      q: product!.state.productCode.toLowerCase(),
+    });
+    expect(byCode.ok && byCode.value.items.map((item) => item.offerId)).toEqual([code.state.id]);
+
+    // An Offer on the seller's own product cannot be deleted on its own: no delete action.
+    const own = await draftedProduct('SELLER', SELLER, 'Own product');
+    const ownOffer = await offerOn(own.state.id, SELLER, `OWN-${tag}`);
+    const ownList = await listOffers.execute(sellerContext(), { q: `own-${tag}` });
+    const ownRow = ownList.ok
+      ? ownList.value.items.find((i) => i.offerId === ownOffer.state.id)
+      : null;
+    expect(ownRow && 'actions' in ownRow && ownRow.actions).toEqual(['open', 'edit', 'submit']);
+  });
+
   describe('offerTotalsOfProduct', () => {
     const THIRD = '01990000-0000-7000-8000-00000000c5a3' as Id<'Seller'>;
     const actorOf = () => ({ kind: 'seller' as const, accountId: uuid7() as Id<'Account'> });

@@ -152,13 +152,16 @@ function offersWhere(
             {
               product: {
                 is: {
+                  marketId: market.marketId,
                   OR: [
                     { productCode: { contains: part, mode: 'insensitive' } },
                     {
                       publishedRevision: {
                         is: {
+                          marketId: market.marketId,
                           texts: {
                             some: {
+                              marketId: market.marketId,
                               locale: filter.locale,
                               name: { contains: part, mode: 'insensitive' },
                             },
@@ -585,12 +588,6 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
     return rows.map((row) => offerFromRow(row));
   }
 
-  countOffers(market: MarketContext, sellerId: Id<'Seller'>, filter: OwnOffersFilter) {
-    return this.prisma
-      .tx(market)
-      .catalogOffer.count({ where: offersWhere(market, sellerId, filter) });
-  }
-
   async countOffersByStatus(
     market: MarketContext,
     sellerId: Id<'Seller'>,
@@ -746,7 +743,13 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
     const tx = this.prisma.tx(market);
     const products = await tx.catalogProduct.findMany({
       where: { marketId: market.marketId, id: { in: [...productIds].slice(0, MAX_PAGE) } },
-      select: { id: true, productCode: true, typeCode: true, publishedRevisionId: true },
+      select: {
+        id: true,
+        productCode: true,
+        typeCode: true,
+        scope: true,
+        publishedRevisionId: true,
+      },
     });
     const revisionIds = products.flatMap((row) =>
       row.publishedRevisionId === null ? [] : [row.publishedRevisionId],
@@ -763,6 +766,7 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
       productId: row.id as Id<'Product'>,
       productCode: row.productCode,
       typeCode: row.typeCode,
+      scope: row.scope === 'PLATFORM' ? 'PLATFORM' : 'SELLER',
       name: row.publishedRevisionId === null ? null : (nameOf.get(row.publishedRevisionId) ?? null),
     }));
   }
