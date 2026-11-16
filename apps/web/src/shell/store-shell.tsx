@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { AssistantWidget } from '../assistant/assistant-widget.tsx';
-import type { AssistantSetup } from '../assistant/assistant.ts';
+import { AssistantGate } from '../assistant/assistant-gate.tsx';
+import type { AssistantBase } from '../assistant/assistant.ts';
 import { AccountDrawer } from '../account/account-drawer.tsx';
 import { LoginModal } from '../account/login-modal.tsx';
 import { CartDrawer } from '../cart/cart-drawer.tsx';
@@ -60,8 +60,8 @@ export function StoreShell({
   readonly signIn: CheckoutCustomer;
   /** The storefront talks to the API: sign-in, sign-out and the session are real. */
   readonly live?: boolean;
-  /** The buyer assistant's setup; null (off) renders nothing. */
-  readonly assistant?: AssistantSetup | null;
+  /** What the server knows of the buyer assistant; null (off) renders nothing. The browser asks the rest. */
+  readonly assistant?: AssistantBase | null;
   readonly children: ReactNode;
 }) {
   return (
@@ -97,7 +97,7 @@ export function StoreShell({
             <TabBar />
           </Dock>
         </PageFrame>
-        {assistant ? <AssistantWidget setup={assistant} /> : null}
+        {assistant ? <AssistantGate base={assistant} /> : null}
       </div>
     </StoreProvider>
   );

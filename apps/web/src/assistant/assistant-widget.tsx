@@ -1,6 +1,6 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -12,7 +12,9 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import * as customerApi from '../account/customer-api.ts';
 import { useDialog } from '../account/use-dialog.ts';
+import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { under } from '../shell/breakpoints.ts';
 import { useStore } from '../shell/store-context.tsx';
@@ -26,6 +28,7 @@ import {
   sendMessage,
   visitorId,
   type AssistantReply,
+  type CardMoney,
   type AssistantSetup,
   type SendResult,
 } from './assistant.ts';
@@ -149,18 +152,23 @@ function useLift(root: HTMLElement | null) {
  * The buyer assistant (package 5): a round launcher at the bottom right and the chat panel it
  * opens, docked (non-modal) from 700px and a full-screen modal sheet under 700px. Rendered
  * only when the storefront says the assistant is on for this visitor; with no setup nothing shows.
- * Model sentences are shown as plain text; products are a list of links built from server cards,
- * without prices (open point: prices in the list, default none).
+ * Model sentences are shown as plain text; products and stores are lists of links built from server
+ * cards, with the price, seller and badges the card carries (never from model text).
  */
 export function AssistantWidget({
   setup,
   send = sendMessage,
+  previewToken = null,
 }: {
   readonly setup: AssistantSetup;
   /** The conversation call; tests pass a stub. */
   readonly send?: typeof sendMessage;
+  /** The internal preview token in force (memory only; sent as a header, never shown). */
+  readonly previewToken?: string | null;
 }) {
   const t = useTranslations('assistant');
+  const locale = useLocale();
+  const money = (value: CardMoney) => formatMoney(value, locale);
   const router = useRouter();
   const path = usePathname();
   const { customer, setLoginOpen } = useStore();
@@ -308,7 +316,23 @@ export function AssistantWidget({
     const timer = window.setTimeout(() => setSlow(true), SLOW_AFTER_MS);
     let result: SendResult;
     try {
-      result = await send(setup, conversation.current, message, visitor.current, controller.signal);
+      // A signed-in customer's write carries the session's token: the one this tab holds, else the
+      // page's own, else a fresh read of the session. A guest sends none.
+      const csrf =
+        customer === null
+          ? null
+          : (customerApi.knownCsrfToken() ??
+            setup.csrfToken ??
+            (await customerApi.currentCsrfToken()));
+      result = await send(
+        { ...setup, csrfToken: csrf },
+        conversation.current,
+        message,
+        visitor.current,
+        controller.signal,
+        undefined,
+        previewToken,
+      );
     } catch {
       result = { ok: false, refusal: { kind: 'error' } };
     }
@@ -372,7 +396,17 @@ export function AssistantWidget({
     .reverse()
     .find((entry) => entry.role === 'assistant' && entry.kind === 'reply');
   const signedIn = customer !== null;
-  const days = setup.retentionDays === null ? 'unknown' : String(setup.retentionDays);
+  // 0 days means the chat is not kept; null means the number is unknown.
+  const days =
+    setup.retentionDays === null
+      ? 'unknown'
+      : setup.retentionDays === 0
+        ? 'none'
+        : String(setup.retentionDays);
+  const prompts =
+    setup.quickPrompts !== undefined && setup.quickPrompts.length > 0
+      ? setup.quickPrompts
+      : QUICK_PROMPTS.map((key) => t(key));
   const mail = `mailto:${setup.supportEmail}`;
 
   const supportCard = (
@@ -392,11 +426,11 @@ export function AssistantWidget({
     </div>
   );
 
-  const chips = (keys: readonly string[], label: string) => (
+  const chips = (texts: readonly string[], label: string) => (
     <div className="asqp" role="group" aria-label={label}>
-      {keys.map((key) => (
-        <button className="aschip" type="button" key={key} onClick={() => void ask(t(key))}>
-          {t(key)}
+      {texts.map((text) => (
+        <button className="aschip" type="button" key={text} onClick={() => void ask(text)}>
+          {text}
         </button>
       ))}
     </div>
@@ -408,6 +442,7 @@ export function AssistantWidget({
     const nothing =
       said === '' &&
       reply.products.length === 0 &&
+      reply.sellers.length === 0 &&
       reply.pages.length === 0 &&
       reply.notices.length === 0 &&
       !entry.support;
@@ -415,7 +450,10 @@ export function AssistantWidget({
       return (
         <>
           <div className="asb">{t('empty')}</div>
-          {chips(['empty-halal', 'empty-categories', 'empty-offers'], t('empty-label'))}
+          {chips(
+            ['empty-halal', 'empty-categories', 'empty-offers'].map((key) => t(key)),
+            t('empty-label'),
+          )}
         </>
       );
     }
@@ -424,7 +462,7 @@ export function AssistantWidget({
       .filter((page): page is { card: typeof page.card; href: string } => page.href !== null);
     return (
       <>
-        {said !== '' || reply.products.length > 0 ? (
+        {said !== '' || reply.products.length > 0 || reply.sellers.length > 0 ? (
           <div className="asb">
             {said !== '' ? said : t('found')}
             {reply.products.length > 0 ? (
@@ -437,9 +475,68 @@ export function AssistantWidget({
                     >
                       {card.name}
                     </Link>
+                    {card.sellerName ? (
+                      <small>{t('sold-by', { seller: card.sellerName })}</small>
+                    ) : null}
                     {card.shortText ? <small>{card.shortText}</small> : null}
+                    {card.price === null ? null : (
+                      <div className="asprice num">
+                        {card.regularPrice === null ? null : (
+                          <span className="badge">{t('special-price')}</span>
+                        )}
+                        <b className={card.regularPrice === null ? undefined : 'sp'}>
+                          {card.priceFrom
+                            ? t('price-from', { price: money(card.price) })
+                            : money(card.price)}
+                        </b>
+                        {card.regularPrice === null ? null : (
+                          <s>
+                            <span className="asvh">{t('regular-price')}</span>
+                            {money(card.regularPrice)}
+                          </s>
+                        )}
+                        {card.taxInclusive === true ? <small>{t('including-gst')}</small> : null}
+                      </div>
+                    )}
+                    {card.badges.length > 0 ? (
+                      <div className="asbadges">
+                        {card.badges.map((badge) => (
+                          <span
+                            key={badge.typeCode}
+                            className={badge.sellerClaim ? 'badge decl' : 'badge hl'}
+                          >
+                            {badge.sellerClaim
+                              ? t('declared-chip', { name: badge.typeName })
+                              : badge.typeName}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                   </li>
                 ))}
+              </ul>
+            ) : null}
+            {reply.sellers.length > 0 ? (
+              <ul className="aslist" aria-label={t('store-label')}>
+                {reply.sellers.map((card) => {
+                  const meta = [
+                    card.city,
+                    card.sellingSince === null
+                      ? null
+                      : t('store-since', { year: String(card.sellingSince) }),
+                    card.productCount === null
+                      ? null
+                      : t('store-products', { count: card.productCount }),
+                  ].filter((part): part is string => part !== null);
+                  return (
+                    <li key={card.sellerId}>
+                      <Link href={`/s/${card.slug}`} onClick={() => sheet && setOpen(false)}>
+                        {card.name}
+                      </Link>
+                      {meta.length > 0 ? <small>{meta.join(' · ')}</small> : null}
+                    </li>
+                  );
+                })}
               </ul>
             ) : null}
           </div>
@@ -506,7 +603,7 @@ export function AssistantWidget({
         {entry.kind === 'welcome' ? (
           <>
             <div className="asb">{setup.welcomeText ?? t('welcome')}</div>
-            {chips(QUICK_PROMPTS, t('quick-label'))}
+            {chips(prompts, t('quick-label'))}
           </>
         ) : null}
         {entry.kind === 'reply' ? replyBody(entry) : null}
@@ -655,7 +752,14 @@ export function AssistantWidget({
             <Icon name="spark" />
           </span>
           <div className="ashm">
-            <h2 id="as-title">{t('title')}</h2>
+            <h2 id="as-title">
+              {t('title')}
+              {setup.preview === true ? (
+                <span className="aspreview" title={t('preview-note')}>
+                  {t('preview')}
+                </span>
+              ) : null}
+            </h2>
             <button
               className="asai"
               type="button"
