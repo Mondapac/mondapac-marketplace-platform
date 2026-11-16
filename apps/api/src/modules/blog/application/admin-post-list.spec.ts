@@ -15,7 +15,8 @@ import {
   WRITER,
 } from '../../../../test/support/blog-fixtures';
 import { BLOG_POST_READ } from '../contracts/permissions';
-import { encodePostListCursor } from './admin-post-list-flow';
+import { rowActions } from '../../../platform/list-query';
+import { encodePostListCursor, POST_ROW_KEYS, POST_ROW_RULES } from './admin-post-list-flow';
 import type { PostId } from './ports/blog.repository';
 
 // The admin Blog posts super list (phase 4, list 26) and its export, on both Market fixtures.
@@ -115,6 +116,28 @@ describe.each([['AU'], ['ZZ']] as const)('the admin Blog posts list in %s', (cod
         sellerPost.id,
       ]);
       expect(unwrap(await list({ sellerId: sellerPost.sellerId })).total).toBe(1);
+    });
+
+    it('still offers the review actions on a seller’s post in review', async () => {
+      const { draft } = await three();
+      const record = h.repo.allPosts(h.market).find((post) => post.id === draft.id)!;
+      const inReview = {
+        post: {
+          ...record,
+          status: 'in_review' as const,
+          ownerType: 'seller' as const,
+          sellerId: '0197b000-0000-7000-8000-0000000000f2' as Id<'Seller'>,
+        },
+        title: 'Seller sweets',
+        openState: 'in_review' as const,
+      };
+      const actions = rowActions(inReview, POST_ROW_RULES, new Set<string>(POST_ROW_KEYS));
+      expect(actions).toEqual(
+        expect.arrayContaining(['open', 'approve', 'request-changes', 'reviewer-edit']),
+      );
+      expect(actions).not.toEqual(expect.arrayContaining(['edit']));
+      expect(actions).not.toEqual(expect.arrayContaining(['submit']));
+      expect(actions).not.toEqual(expect.arrayContaining(['archive']));
     });
 
     it('shows one status by `view` or the older `status`, and filters by search, kind, featured and dates', async () => {

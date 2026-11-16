@@ -1177,6 +1177,40 @@ describe('relay of the blog posts list', () => {
       dropped,
     );
     expect(dropped.mock.calls[0]?.[0]).toBe('http://api.test/blog/admin/posts');
+    // A ZWNJ (a format character, common in Persian) is forwarded; a control character is not.
+    const zwnj = upstreamOk();
+    await relay(
+      config,
+      request(`blog/admin/posts?q=${encodeURIComponent('می\u200Cخواهم')}`),
+      list,
+      zwnj,
+    );
+    expect(zwnj.mock.calls[0]?.[0]).toBe(
+      `http://api.test/blog/admin/posts?q=${encodeURIComponent('می\u200Cخواهم')}`,
+    );
+    const control = upstreamOk();
+    await relay(config, request('blog/admin/posts?q=eid%07'), list, control);
+    expect(control.mock.calls[0]?.[0]).toBe('http://api.test/blog/admin/posts');
+    const zwnjExport = upstreamOk();
+    await relay(
+      config,
+      request(`blog/admin/posts/export?format=csv&q=${encodeURIComponent('می\u200Cخواهم')}`),
+      [...list, 'export'],
+      zwnjExport,
+    );
+    expect(zwnjExport.mock.calls[0]?.[0]).toBe(
+      `http://api.test/blog/admin/posts/export?format=csv&q=${encodeURIComponent('می\u200Cخواهم')}`,
+    );
+    const controlExport = upstreamOk();
+    await relay(
+      config,
+      request('blog/admin/posts/export?format=csv&q=eid%07'),
+      [...list, 'export'],
+      controlExport,
+    );
+    expect(controlExport.mock.calls[0]?.[0]).toBe(
+      'http://api.test/blog/admin/posts/export?format=csv',
+    );
     const file = upstreamOk();
     await relay(
       config,
