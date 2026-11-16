@@ -3116,18 +3116,31 @@ describe('relay of the refunds export', () => {
     });
   });
 
-  it('passes 200 ids and an empty column list, and drops 201 ids, a bad column, a bad format and a bad zone', async () => {
+  it('passes 200 ids and an empty column list', async () => {
     const upstream = upstreamOk();
     await relay(config, get(`?ids=${ids(200)}&columns=`), path, upstream);
-    await relay(config, get(`?ids=${ids(201)}`), path, upstream);
-    await relay(config, get('?columns=amount,secret'), path, upstream);
-    await relay(config, get('?format=xls&zone=../etc'), path, upstream);
     expect(upstream.mock.calls[0]?.[0]).toBe(
       `${base}?columns=&ids=${encodeURIComponent(ids(200))}`,
     );
-    expect(upstream.mock.calls[1]?.[0]).toBe(base);
-    expect(upstream.mock.calls[2]?.[0]).toBe(base);
-    expect(upstream.mock.calls[3]?.[0]).toBe(base);
+  });
+
+  it.each([
+    ['201 ids', `?ids=${ids(201)}`],
+    ['an empty ids', '?ids='],
+    ['an id that is not a UUID', '?ids=not-an-id'],
+    ['a repeated ids', `?ids=${ids(1)}&ids=${ids(2)}`],
+    ['a column that is not allowed', '?columns=store,secret'],
+    ['a repeated column', `?columns=${Array(16).fill('store').join(',')}`],
+    ['a format that is not allowed', '?format=xls'],
+    ['an upper case format', '?format=CSV'],
+    ['a zone that is a path', '?zone=../etc'],
+    ['an empty zone', '?zone='],
+    ['an oversized zone', `?zone=${'A'.repeat(600)}`],
+  ])('answers 400 and calls nothing for %s', async (_name, query) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
   });
 
   it('relays a file byte for byte with its type and attachment name', async () => {

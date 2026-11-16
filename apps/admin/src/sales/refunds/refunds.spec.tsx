@@ -1142,6 +1142,7 @@ describe('Refunds nav', () => {
 });
 
 describe('Refunds Export', () => {
+  const CSV = { 'content-type': 'text/csv; charset=utf-8' };
   const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const bulk = () => screen.getByRole('button', { name: 'Bulk action' });
   const openExport = async () => {
@@ -1222,7 +1223,9 @@ describe('Refunds Export', () => {
     await waitFor(() => expect(lastUrl()).toContain('state=succeeded'));
     await screen.findAllByText(STORE);
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all refunds on this page' }));
-    answerWith(() => new Response('﻿Order ID\r\nrow 1\r\nrow 2\r\n', { status: 200 }));
+    answerWith(
+      () => new Response('﻿Order ID\r\nrow 1\r\nrow 2\r\n', { status: 200, headers: CSV }),
+    );
     confirm(await openExport());
     expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
     expect(fetched).toHaveLength(1);
@@ -1274,7 +1277,11 @@ describe('Refunds Export', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all refunds on this page' }));
     fireEvent.click(screen.getByRole('button', { name: 'Select all matching' }));
     answerWith(
-      () => new Response('Order ID,Note\r\nr1,"two\r\nlines"\r\nr2,x\r\n', { status: 200 }),
+      () =>
+        new Response('Order ID,Note\r\nr1,"two\r\nlines"\r\nr2,x\r\n', {
+          status: 200,
+          headers: CSV,
+        }),
     );
     confirm(await openExport());
     expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
@@ -1357,7 +1364,7 @@ describe('Refunds Export', () => {
               controller.error(new TypeError('network'));
             },
           }),
-          { status: 200 },
+          { status: 200, headers: CSV },
         ),
     );
     confirm(await openExport());
