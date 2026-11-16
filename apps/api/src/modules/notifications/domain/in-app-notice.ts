@@ -196,10 +196,52 @@ export const ADMIN_SELLER_REFUND_LIMIT_REACHED = 'admin.seller-refund-limit-reac
 /** `unset`: a seller refund was refused because no cap is in force (the admin must set one). */
 export const REFUND_LIMIT_KINDS = ['count', 'amount', 'unset'] as const;
 
+/**
+ * A spend cap switched the Market's buyer assistant off until the next day or month (assistant
+ * stage 0, B4). At most one a Market day. Which cap only: no amount.
+ */
+export const ADMIN_ASSISTANT_SPEND_CAP_REACHED = 'admin.assistant-spend-cap-reached';
+/** The caps of the assistant; in-app-notice-use-cases.spec checks they match assistant's event. */
+export const ASSISTANT_SPEND_CAPS = ['daily', 'monthly'] as const;
+
 /** A review waits in the held tab of the moderation queue (buyer reviews, package 4b). */
 export const ADMIN_REVIEW_HELD = 'admin.review-held';
 /** A seller reported a review; it waits in the reported tab. */
 export const ADMIN_REVIEW_REPORTED = 'admin.review-reported';
+
+/**
+ * The areas of a system request (the same codes as system-requests' `REVIEW_AREAS`; a test holds
+ * the two lists equal). One notice kind per area, so each is shown only to the admins who hold
+ * that area's review key.
+ */
+export const SYSTEM_REQUEST_AREAS = [
+  'people',
+  'money',
+  'delivery',
+  'catalogue',
+  'certification',
+  'marketplace',
+  'content',
+  'review-policy',
+] as const;
+export type SystemRequestArea = (typeof SYSTEM_REQUEST_AREAS)[number];
+
+/**
+ * An open system request is past its review date (reminders for overdue requests): one notice per
+ * reminder, an id, the SR number and the age in days only; never the note or the values.
+ */
+export const ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS = {
+  people: 'admin.system-request-overdue-people',
+  money: 'admin.system-request-overdue-money',
+  delivery: 'admin.system-request-overdue-delivery',
+  catalogue: 'admin.system-request-overdue-catalogue',
+  certification: 'admin.system-request-overdue-certification',
+  marketplace: 'admin.system-request-overdue-marketplace',
+  content: 'admin.system-request-overdue-content',
+  'review-policy': 'admin.system-request-overdue-review-policy',
+} as const satisfies Record<SystemRequestArea, string>;
+export type AdminSystemRequestOverdueKind =
+  (typeof ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS)[SystemRequestArea];
 
 export const PLATFORM_IMPORT_OUTCOMES = ['completed', 'stopped'] as const;
 export const CERTIFICATE_SUBMISSIONS = ['initial', 'resubmission', 'renewal'] as const;
@@ -249,7 +291,9 @@ export type AdminNoticeKind =
   | typeof ADMIN_PLATFORM_IMPORT_FINISHED
   | typeof ADMIN_SELLER_REFUND_LIMIT_REACHED
   | typeof ADMIN_REVIEW_HELD
-  | typeof ADMIN_REVIEW_REPORTED;
+  | typeof ADMIN_REVIEW_REPORTED
+  | typeof ADMIN_ASSISTANT_SPEND_CAP_REACHED
+  | AdminSystemRequestOverdueKind;
 export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_SELLER_CERTIFICATE_SUBMITTED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -261,6 +305,8 @@ export const ADMIN_NOTICE_KINDS: readonly AdminNoticeKind[] = [
   ADMIN_SELLER_REFUND_LIMIT_REACHED,
   ADMIN_REVIEW_HELD,
   ADMIN_REVIEW_REPORTED,
+  ADMIN_ASSISTANT_SPEND_CAP_REACHED,
+  ...SYSTEM_REQUEST_AREAS.map((area) => ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS[area]),
 ];
 
 /**
@@ -342,6 +388,12 @@ const PARAM_SHAPES: Readonly<
     enums: { outcome: IMPORT_FINISH_OUTCOMES },
     counts: ['created', 'updated', 'failed'],
   },
+  ...(Object.fromEntries(
+    SYSTEM_REQUEST_AREAS.map((area) => [
+      ADMIN_SYSTEM_REQUEST_OVERDUE_KINDS[area],
+      { ids: ['requestId'], enums: {}, counts: ['number', 'ageDays'] },
+    ]),
+  ) as unknown as Record<AdminSystemRequestOverdueKind, ParamShape>),
   [ADMIN_REVIEW_HELD]: { ids: ['reviewId'], enums: {} },
   [ADMIN_REVIEW_REPORTED]: { ids: ['reviewId'], enums: {} },
   [ADMIN_SELLER_REINSTATED_HOLD_REMAINS]: { ids: ['sellerId'], enums: {} },
@@ -361,6 +413,7 @@ const PARAM_SHAPES: Readonly<
     enums: { outcome: PLATFORM_IMPORT_OUTCOMES },
   },
   [ADMIN_SELLER_REFUND_LIMIT_REACHED]: { ids: ['sellerId'], enums: { limit: REFUND_LIMIT_KINDS } },
+  [ADMIN_ASSISTANT_SPEND_CAP_REACHED]: { ids: [], enums: { cap: ASSISTANT_SPEND_CAPS } },
 };
 
 /**

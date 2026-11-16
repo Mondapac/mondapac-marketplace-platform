@@ -195,6 +195,8 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
         effectiveReliability: 90,
       },
     ],
+    review: { reviewed: true, risk: 'medium' as const },
+    request: null,
   };
 
   beforeEach(() => {
@@ -220,6 +222,7 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
     expect(body.active).toEqual({ instant: MODEL, same_day: null, scheduled: null });
     expect(body.models[0]).toMatchObject({ id: MODEL, version: 1, rule: { kind: 'cheapest' } });
     expect(body.fleets[0]).toMatchObject({ fleet: 'mondapac_drive', reliability: 90 });
+    expect((res.body as { review: unknown }).review).toEqual({ reviewed: true, risk: 'medium' });
     expect(calls).toEqual([{ name: 'view', input: {} }]);
   });
 
@@ -236,22 +239,31 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
     next = ok(model);
     const created = await call('post', 'admin', `${BASE}/models`, session, { name: 'A', rule });
     expect(created.status).toBe(201);
+    expect(created.body).not.toHaveProperty('request');
+    const opened = { id: id<'SystemRequest'>(0xe1), number: 7 };
+    next = ok({ ...model, request: opened });
     const updated = await call('put', 'admin', `${BASE}/models/${MODEL}`, session, {
       name: 'B',
       rule,
       expectedVersion: 1,
+      note: 'Rename',
     });
     expect(updated.status).toBe(200);
-    next = ok({ ...selection, lastChanged: LAST_CHANGED });
-    const saved = await call('put', 'admin', BASE, session, page);
+    expect(updated.body).toMatchObject({ id: MODEL, request: opened });
+    next = ok({ ...selection, request: opened, lastChanged: LAST_CHANGED });
+    const saved = await call('put', 'admin', BASE, session, { ...page, note: 'Faster' });
     expect(saved.status).toBe(200);
     expect((saved.body as { version: number }).version).toBe(4);
+    expect(saved.body).toMatchObject({ request: opened, review: { reviewed: true } });
     expect(saved.headers['cache-control']).toBe('no-store');
 
     expect(calls).toEqual([
       { name: 'create', input: { name: 'A', rule } },
-      { name: 'update', input: { modelId: MODEL, name: 'B', rule, expectedVersion: 1 } },
-      { name: 'save', input: page },
+      {
+        name: 'update',
+        input: { modelId: MODEL, name: 'B', rule, expectedVersion: 1, note: 'Rename' },
+      },
+      { name: 'save', input: { ...page, note: 'Faster' } },
     ]);
   });
 

@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, Result, Temporal } from '@mondapac/shared-kernel';
 import type { ModelBlock, ModelMessage } from '../../../platform/ai/model-provider';
 import { DEFAULT_ASSISTANT_SETTINGS, inRollout } from '../domain/assistant-settings';
 import type { AssistantSettings } from '../domain/assistant-settings';
@@ -20,6 +21,7 @@ import {
   TURN_BUDGET_MS,
   type FieldError,
 } from '../domain/conversation';
+import { AssistantSpendCapReached } from '../domain/events';
 import { instructionsFor } from '../domain/instructions';
 import { maskPersonalData } from '../domain/personal-data';
 import { guardReply } from '../domain/reply-guard';
@@ -41,6 +43,8 @@ export interface SendMessageInput {
   readonly text: unknown;
   /** The widget's random visitor key, for a percentage rollout (a rollout aid, not a control). */
   readonly visitor: unknown;
+  /** The internal preview token the browser sent, if any (untrusted; verified by the port). */
+  readonly preview?: unknown;
 }
 
 /** What the buyer is sent, in this order: cards, then the checked sentences, then notices. */
@@ -71,6 +75,21 @@ export type SendMessageFailure =
   | { readonly code: 'assistant.unavailable' };
 
 const logger = new Logger('AssistantConversation');
+
+/** Fixed namespace of the spend-day aggregate id; never change it (consumers key on the id). */
+const SPEND_DAY_NAMESPACE = 'assistant.spend-day.v1';
+
+/** The one aggregate id of a Market's spend on one of its days: a UUID v7 shape from a hash. */
+export function spendDayAggregateId(market: MarketContext, day: Temporal.PlainDate): Id {
+  const bytes = createHash('sha256')
+    .update(`${SPEND_DAY_NAMESPACE}:${market.marketId}:${day.toString()}`)
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = (bytes[6]! & 0x0f) | 0x70;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as Id;
+}
 
 const VISITOR_KEY = /^[A-Za-z0-9_-]{16,64}$/;
 
@@ -266,6 +285,9 @@ export async function sendMessage(
   const conversationId = id.value;
   const visitorKey =
     typeof input.visitor === 'string' && VISITOR_KEY.test(input.visitor) ? input.visitor : null;
+  const preview =
+    input.preview !== undefined &&
+    deps.previewTokens.verify(context.market, input.preview, deps.clock.now());
 
   // A guest without a usable token gets a new one; it can only start a new conversation.
   let guestHash: string | null = null;
@@ -295,7 +317,7 @@ export async function sendMessage(
       const on =
         settings.enabled &&
         deps.runtime.configured(market.marketId, settings.modelTier) &&
-        inRollout(settings, market.marketId, visitorKey);
+        inRollout(settings, market.marketId, visitorKey, preview);
       if (!on) return err({ code: 'assistant.off' });
       if (caller.kind === 'guest' && settings.users === 'customers-only') {
         return err({ code: 'assistant.sign-in-required' });
@@ -303,6 +325,11 @@ export async function sendMessage(
       const spend = await deps.spend.totals(market, today);
       if (capReached(settings, spend) !== null) return err({ code: 'assistant.paused' });
       const conversation = await deps.conversations.find(market, conversationId);
+      // A deleted or purged conversation's id is spent: refused before any model call, so a
+      // re-sent id never costs what the caps cannot count (Hassan, PR 947).
+      if (conversation === null && (await deps.conversations.spent(market, conversationId))) {
+        return err({ code: 'assistant.conversation-not-found' });
+      }
       if (conversation !== null) {
         if (!sameOwner(conversation.owner, owner)) {
           return err({ code: 'assistant.conversation-not-found' });
@@ -365,6 +392,17 @@ export async function sendMessage(
     const cap = capReached(settings, await deps.spend.totals(market, today));
     const autoOff =
       cap !== null && (await deps.spend.markAutoOff(market, today, cap, now)) ? cap : null;
+    if (autoOff !== null) {
+      // At most one a Market day (markAutoOff answers true once): the admins' bell notice.
+      await deps.outbox.append(context, [
+        AssistantSpendCapReached.record({
+          aggregateId: spendDayAggregateId(market, today),
+          aggregateVersion: 1,
+          occurredAt: now,
+          payload: { cap: autoOff },
+        }),
+      ]);
+    }
     return ok({ counted, autoOff });
   });
   // A turn another request took first is answered but not stored (the cap still holds).
@@ -386,7 +424,8 @@ export async function sendMessage(
     });
   }
   if (written.ok && written.value.autoOff !== null) {
-    // The admin notice: the settings screen shows the last auto-off, and this line is the alert.
+    // The settings screen shows the last auto-off and the admins get a bell notice (the event
+    // above); this line is the operator's alert.
     logger.warn({
       msg: 'assistant.spend-cap.reached',
       marketId: market.marketId,

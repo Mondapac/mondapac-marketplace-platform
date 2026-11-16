@@ -176,6 +176,22 @@ export function parseSimulatedCustomer(
       }
     }
   }
+  let groups: string[] | null = null;
+  if (raw.memberOfGroupIds !== undefined && raw.memberOfGroupIds !== null) {
+    if (!Array.isArray(raw.memberOfGroupIds) || raw.memberOfGroupIds.length > MAX_LINES) {
+      issues.push({ path: 'customer.memberOfGroupIds', code: 'size' });
+    } else {
+      groups = [];
+      for (const [index, item] of raw.memberOfGroupIds.entries()) {
+        const parsed = typeof item === 'string' ? parseId<'CustomerGroup'>(item) : null;
+        if (parsed === null || !parsed.ok) {
+          issues.push({ path: `customer.memberOfGroupIds.${index}`, code: 'value' });
+        } else {
+          groups.push(parsed.value);
+        }
+      }
+    }
+  }
   if (issues.length > 0) return err(issues);
-  return ok({ daysSinceLastOrder: days, followedSellerIds: followed });
+  return ok({ daysSinceLastOrder: days, followedSellerIds: followed, memberOfGroupIds: groups });
 }

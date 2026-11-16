@@ -19,6 +19,20 @@ export const OrderPaid = defineEvent({
 });
 
 /**
+ * An order was cancelled (promotions package T2): before payment (the page expired, the payment
+ * failed, a later checkout of the customer superseded it, the provider failed) or by an admin.
+ * Once per order, in the unit that cancels it. Ids only. `promotions` releases the discounts the
+ * order had reserved (usage counters, budgets, a single-use code).
+ */
+export const OrderCancelled = defineEvent({
+  type: 'ordering.order-cancelled.v1',
+  aggregateType: 'order',
+  payload: {
+    orderId: eventField.id(),
+  },
+});
+
+/**
  * A seller recorded the shipment of its part of a paid order (Phase 6 package 3), once per
  * seller order, in the unit that records it. Ids only: no carrier, tracking number, email or
  * address reaches the event; `notifications` reads them at send time to mail the customer.
@@ -104,6 +118,7 @@ export const SellerRefundLimitReached = defineEvent({
 /** Every event type ordering publishes, registered with the event catalogue at boot. */
 export const ORDERING_EVENTS: readonly EventDefinition[] = [
   OrderPaid,
+  OrderCancelled,
   OrderShipped,
   SellerOrderReady,
   SellerOrderDelivered,

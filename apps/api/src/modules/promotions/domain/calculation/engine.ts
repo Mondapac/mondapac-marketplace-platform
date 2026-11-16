@@ -604,6 +604,9 @@ export function validatePhase2(promotion: CalculationPromotion): string | null {
     ) {
       return 'promotions.audience';
     }
+    if (audience.kind === 'MANUAL_GROUP' && audience.groupId === '') {
+      return 'promotions.audience';
+    }
     // A store follower offer belongs to a store.
     if (audience.kind === 'STORE_FOLLOWER' && promotion.sellerId === null) {
       return 'promotions.audience';
@@ -735,6 +738,10 @@ function audienceAllows(promotion: CalculationPromotion, input: CalculationInput
       return (
         promotion.sellerId !== null && followed !== null && followed.includes(promotion.sellerId)
       );
+    }
+    case 'MANUAL_GROUP': {
+      const groups = input.customer?.memberOfGroupIds ?? null;
+      return groups !== null && groups.includes(audience.groupId);
     }
   }
 }
