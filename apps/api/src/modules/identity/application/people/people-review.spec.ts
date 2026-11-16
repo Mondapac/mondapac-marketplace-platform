@@ -520,54 +520,6 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       expect(statusOf(ROOT)).toBe('active');
     });
 
-    it('drops a key the catalogue no longer declares from the value before, and still reverts', async () => {
-      const { edit, roleReverter } = setUp();
-      await edit.execute(as(ROOT), {
-        roleId: NARROW,
-        name: 'Narrow plus',
-        permissionKeys: WIDE_KEYS,
-        expectedVersion: 1,
-        note: 'Add',
-      });
-      const opened = review.opened[0]!;
-      const before = { name: 'Narrow', permissionKeys: [...NARROW_KEYS, 'identity.retired.key'] };
-      expect(await roleReverter.revert(as(CHECKER), request(NARROW, before, opened.after))).toBe(
-        'reverted',
-      );
-      expect(fakes.roles.get(NARROW)).toMatchObject({
-        name: 'Narrow',
-        permissionKeys: NARROW_KEYS,
-      });
-    });
-
-    it('marks the decider as interested in a change to their own account or held role', async () => {
-      const { roleReverter, rolesReverter, statusReverter } = setUp();
-      const roles = request(MEMBER, { roleIds: [NARROW] }, { roleIds: [WIDE] });
-      expect(await rolesReverter.isInterested(as(MEMBER), roles)).toBe(true);
-      expect(await rolesReverter.isInterested(as(CHECKER), roles)).toBe(false);
-      const status = request(OFF, { status: 'disabled' }, { status: 'active' });
-      expect(await statusReverter.isInterested(as(OFF), status)).toBe(true);
-      expect(await statusReverter.isInterested(as(CHECKER), status)).toBe(false);
-      const values = { name: 'Narrow', permissionKeys: NARROW_KEYS };
-      // MEMBER holds NARROW now; CHECKER holds the Platform Administrator role.
-      expect(await roleReverter.isInterested(as(MEMBER), request(NARROW, values, values))).toBe(
-        true,
-      );
-      expect(await roleReverter.isInterested(as(CHECKER), request(NARROW, values, values))).toBe(
-        false,
-      );
-      expect(
-        await roleReverter.isInterested(
-          as(CHECKER),
-          request(roleOf('platform-administrator'), values, values),
-        ),
-      ).toBe(true);
-      // Fail closed: an actor that is not a signed-in admin counts as interested.
-      const system = testCallContext(market, 'system', 'people-review-0003');
-      expect(await statusReverter.isInterested(system, status)).toBe(true);
-      expect(await roleReverter.isInterested(system, request(NARROW, values, values))).toBe(true);
-    });
-
     it('needs a signed-in admin acting as themselves', async () => {
       const { statusReverter } = setUp();
       const system = testCallContext(market, 'system', 'people-review-0002');

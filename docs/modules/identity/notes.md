@@ -108,12 +108,6 @@ and revoking are out (owner decision of 15 Nov 2026).
 - **The decider.** The revert runs with the reviewer's (or withdrawing author's) context in
   system-requests' decision unit, after its step-up is spent. The decider's own role-editing keys
   are not asked for: the area's review key is the authority.
-- **No decision about oneself** (Hassan M1). Each reverter answers `isInterested`: the admin is the
-  subject of an `identity.admin-roles` or `identity.admin-status` request, or holds the role of an
-  `identity.platform-role` request now (read in the decision unit). System requests then refuses
-  approve and reject with `system-requests.own-subject`; withdraw by the author is unaffected.
-- **Retired keys.** A key in a role edit's value before that the catalogue no longer declares is
-  dropped before the subset check (it confers nothing), so the revert still runs.
 - **Audit.** `identity.role.reverted` (removed keys, renamed, `requestId`),
   `identity.account-role.reverted` and `identity.account-status.reverted`, each with `requestId`.
 - **Panel hints.** `GET identity/admin/team` and `GET identity/admin/roles` carry

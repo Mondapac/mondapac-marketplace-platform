@@ -213,8 +213,10 @@ export function RoleEditor({
       live.attempt();
       return;
     }
-    const sentNote = reviewed ? trimmedNote(note) : null;
-    if (reviewed && sentNote === null) {
+    // An edit that changes nothing opens no request: no note is asked for or sent.
+    const noted = reviewed && count > 0;
+    const sentNote = noted ? trimmedNote(note) : null;
+    if (noted && sentNote === null) {
       setNoteError('required');
       return;
     }

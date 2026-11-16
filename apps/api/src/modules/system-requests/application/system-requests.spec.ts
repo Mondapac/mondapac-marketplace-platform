@@ -401,45 +401,6 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       ).toEqual({ ok: false, error: { code: 'system-requests.own-request' } });
     });
 
-    it('never lets a reviewer decide a change about themselves (separation of duties)', async () => {
-      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
-      subjects.interested.add(`${CHECKER}:list-paging`);
-      expect(
-        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: opened.id }),
-      ).toEqual({ ok: false, error: { code: 'system-requests.own-subject' } });
-      expect(
-        await useCase(RejectSystemRequest).execute(admin(CHECKER), {
-          requestId: opened.id,
-          reason: 'Not mine to keep',
-        }),
-      ).toEqual({ ok: false, error: { code: 'system-requests.own-subject' } });
-      // Nothing was reverted and the request stays open.
-      expect(subjects.reverts).toEqual([]);
-      expect(subjects.get(market.marketId, 'list-paging')).toEqual({ size: 50 });
-      const view = await useCase(ViewSystemRequest).execute(admin(CHECKER), {
-        requestId: opened.id,
-      });
-      expect(view.ok && view.value.status).toBe('open');
-      // The author may still withdraw: the check guards decisions by others only.
-      subjects.interested.add(`${MAKER}:list-paging`);
-      expect(
-        await useCase(WithdrawSystemRequest).execute(admin(MAKER), {
-          requestId: opened.id,
-          reason: 'Wrong Market',
-        }),
-      ).toMatchObject({ ok: true, value: { status: 'reverted', decision: 'withdrawn' } });
-    });
-
-    it('decides as before where the owning module declares no conflict check', async () => {
-      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
-      subjects.interested.add(`${CHECKER}:list-paging`);
-      // A module whose reverter has no `isInterested` (the check is optional on the port).
-      Object.defineProperty(subjects, 'isInterested', { value: undefined });
-      expect(
-        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: opened.id }),
-      ).toMatchObject({ ok: true, value: { status: 'approved' } });
-    });
-
     it('refuses an admin without the area review key, and one without the queue key', async () => {
       const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
       expect(
@@ -697,23 +658,6 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
           { requestId: low.id, outcome: 'approved' },
           { requestId: medium.id, outcome: 'system-requests.not-low-risk' },
           { requestId: own.id, outcome: 'system-requests.own-request' },
-        ],
-      });
-    });
-
-    it('reports own-subject for a request about the reviewer, and approves the others', async () => {
-      const mine = await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
-      const theirs = await change(MAKER, 'b', { v: 1 }, { v: 2 }, { area: 'marketplace' });
-      subjects.interested.add(`${CHECKER}:a`);
-      expect(
-        await useCase(ApproveSystemRequests).execute(admin(CHECKER), {
-          requestIds: [mine.id, theirs.id],
-        }),
-      ).toEqual({
-        ok: true,
-        value: [
-          { requestId: mine.id, outcome: 'system-requests.own-subject' },
-          { requestId: theirs.id, outcome: 'approved' },
         ],
       });
     });

@@ -137,14 +137,6 @@ export interface RevertRequest {
  */
 export interface SystemChangeReverter {
   revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome>;
-
-  /**
-   * Optional separation-of-duties check: whether the change is about the deciding admin (their
-   * own account, a role they hold, ...), so they may neither approve nor reject it
-   * (`system-requests.own-subject`). Runs inside the decision's open unit and must open none; a
-   * module without it lets any reviewer but the author decide.
-   */
-  isInterested?(context: CallContext, request: RevertRequest): Promise<boolean>;
 }
 
 /**

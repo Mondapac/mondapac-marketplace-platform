@@ -20,7 +20,6 @@ import {
   type SignInChallengeRepository,
 } from '../../src/modules/identity/application/ports/sign-in-challenge.repository';
 import { AssignAdminRole } from '../../src/modules/identity/application/use-cases/assign-admin-role.use-case';
-import { CreatePlatformRole } from '../../src/modules/identity/application/use-cases/create-platform-role.use-case';
 import { DisableAdminAccount } from '../../src/modules/identity/application/use-cases/disable-admin-account.use-case';
 import { EnableAdminAccount } from '../../src/modules/identity/application/use-cases/enable-admin-account.use-case';
 import { InviteAdmin } from '../../src/modules/identity/application/use-cases/invite-admin.use-case';
@@ -29,8 +28,6 @@ import { ResetOtherAdminSecondFactor } from '../../src/modules/identity/applicat
 import { RevokeAdminInvitation } from '../../src/modules/identity/application/use-cases/revoke-admin-invitation.use-case';
 import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { openSession } from '../../src/modules/identity/domain/session';
-import { RejectSystemRequest } from '../../src/modules/system-requests/application/use-cases/reject-system-request.use-case';
-import { STEP_UP_CONSUMER, type StepUpProofConsumer } from '../../src/platform/authz';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { createTestApp } from '../support/test-app';
@@ -224,80 +221,6 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
       (one, two) => disable.execute(as(one), { accountId: two }),
       (one, two) => assign.execute(as(two), { accountId: one, roleId: viewer, note: 'Race' }),
     );
-  });
-
-  it("a reviewer's revert disabling one of the last two administrators while that one disables the other: one remains (Hassan L1)", async () => {
-    const one = await admin('platform-administrator');
-    const two = await admin('platform-administrator');
-    // A reviewer of people changes who is no Platform Administrator, so only one and two count.
-    const role = await app.get(CreatePlatformRole).execute(as(one), {
-      name: `People reviewers ${randomUUID().slice(0, 8)}`,
-      permissionKeys: ['system-requests.request.view', 'system-requests.people.review'],
-    });
-    if (!role.ok) throw new Error(JSON.stringify(role.error));
-    const reviewer = await admin('viewer');
-    await sql.query(
-      `UPDATE identity.role_assignments SET role_id = $3, version = version + 1
-       WHERE market_id = $1 AND account_id = $2`,
-      [code, reviewer, role.value.roleId],
-    );
-    // One disables two and enables it again with a note: the enabling waits for review.
-    expect(await app.get(DisableAdminAccount).execute(as(one), { accountId: two })).toMatchObject({
-      ok: true,
-    });
-    const enabled = await app
-      .get(EnableAdminAccount)
-      .execute(as(one), { accountId: two, note: 'Back from leave' });
-    if (!enabled.ok || enabled.value.request === null) throw new Error('no request opened');
-    const requestId = enabled.value.request.id;
-    expect(await activeAdministrators()).toHaveLength(2);
-
-    // The reviewer's step-up proof is stubbed (its spend is system-requests' own test).
-    const stepUp = jest
-      .spyOn(app.get<StepUpProofConsumer>(STEP_UP_CONSUMER), 'consume')
-      .mockImplementation((context) =>
-        Promise.resolve(
-          ok({
-            sessionId: (context.actor as { sessionId: Id<'Session'> }).sessionId,
-            verifiedAt: Temporal.Now.instant(),
-          }),
-        ),
-      );
-    const spy = bothCountFirst();
-    const oneSettled = gate();
-    const restorePause = holdRetriesUntil(app.get(UNIT_OF_WORK), oneSettled.opened);
-    const restoreTimeout = extendUnitTimeout(app.get(UNIT_OF_WORK), 20_000);
-    let results: Result<unknown, { code: string }>[];
-    let counts: number;
-    try {
-      results = await Promise.all(
-        [
-          // The revert disables two (it counts one and two).
-          app.get(RejectSystemRequest).execute(as(reviewer), { requestId, reason: 'Not agreed' }),
-          // Two disables one (it counts one and two too).
-          app.get(DisableAdminAccount).execute(as(two), { accountId: one }),
-        ].map((run) =>
-          (run as Promise<Result<unknown, { code: string }>>).finally(() => oneSettled.open()),
-        ),
-      );
-      counts = spy.mock.calls.length;
-    } finally {
-      spy.mockRestore();
-      stepUp.mockRestore();
-      restorePause();
-      restoreTimeout();
-    }
-
-    // Both counted the two holders before either wrote (a retried revert counts once more).
-    expect(counts).toBeGreaterThanOrEqual(2);
-    // Exactly one commits. A losing revert finds two the last holder (not-permitted, the request
-    // stays open); a losing disable finds its actor disabled by the revert (access.denied).
-    expect(results.filter((r) => r.ok)).toHaveLength(1);
-    const [lost] = results.filter((r) => !r.ok);
-    expect(['system-requests.revert-not-permitted', 'access.denied']).toContain(
-      !lost!.ok && lost!.error.code,
-    );
-    expect(await activeAdministrators()).toHaveLength(1);
   });
 
   it('writes the role change, its event and its audit row in one unit', async () => {

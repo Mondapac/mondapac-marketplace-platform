@@ -60,11 +60,11 @@ export interface PeopleReverterDependencies {
 
 /** The deciding admin; a revert needs one acting as themselves (System requests checks it too). */
 function decider(context: CallContext): Id<'Account'> {
-  const admin = adminOf(context);
-  if (admin === null) {
+  const actor = context.actor;
+  if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAsSession(actor)) {
     throw new Error('identity: a revert needs a signed-in admin acting as themselves');
   }
-  return admin;
+  return actor.accountId;
 }
 
 const idOf = <K extends string>(value: unknown): Id<K> | null => {
@@ -78,14 +78,6 @@ const singleRoleId = (values: Readonly<Record<string, unknown>>): Id<'Role'> | n
   const ids = values.roleIds;
   return Array.isArray(ids) && ids.length === 1 ? idOf<'Role'>(ids[0]) : null;
 };
-
-/** The signed-in admin acting as themselves, or null (System requests refuses any other). */
-function adminOf(context: CallContext): Id<'Account'> | null {
-  const actor = context.actor;
-  return actor.kind === 'authenticated' && actor.population === 'admin' && !isActingAsSession(actor)
-    ? actor.accountId
-    : null;
-}
 
 const sameList = (a: readonly string[], b: unknown): boolean =>
   Array.isArray(b) && a.length === b.length && a.every((item, index) => item === b[index]);
@@ -105,13 +97,7 @@ export async function revertPlatformRole(
   const { market } = context;
   const roleId = idOf<'Role'>(request.subjectRef);
   const name = parseRoleName(request.before.name);
-  // A key the catalogue no longer declares cannot be restored and confers nothing: drop it rather
-  // than leave the request unrevertable (a dropped key only narrows the restored role further).
-  const before = request.before.permissionKeys;
-  const declaredBefore = Array.isArray(before)
-    ? before.filter((key) => typeof key !== 'string' || deps.permissions.get(key) !== undefined)
-    : before;
-  const keys = parseRoleKeys(declaredBefore, 'platform', deps.permissions);
+  const keys = parseRoleKeys(request.before.permissionKeys, 'platform', deps.permissions);
   if (roleId === null || !name.ok || !keys.ok) return 'gone';
   const role = await deps.roles.findById(market, roleId);
   if (role === null || role.state.scope !== 'platform' || role.state.kind !== 'custom') {
@@ -251,41 +237,12 @@ export async function revertAdminStatus(
   return 'reverted';
 }
 
-// Separation of duties (Hassan M1): System requests asks each reverter whether the decider has a
-// stake in the change, inside the decision's unit, and refuses approve and reject when so
-// (`system-requests.own-subject`). An admin never decides a change to their own account, nor an
-// edit of the role they hold now. Any actor that is not a signed-in admin counts as interested
-// (fail closed; System requests refuses such an actor before asking).
-
-/** The request is about the deciding admin's own account. */
-function isSubject(context: CallContext, subjectRef: string): boolean {
-  const admin = adminOf(context);
-  return admin === null || admin === subjectRef;
-}
-
-/** The deciding admin holds the role `subjectRef` now. */
-async function holdsRole(
-  deps: PeopleReverterDependencies,
-  context: CallContext,
-  subjectRef: string,
-): Promise<boolean> {
-  const admin = adminOf(context);
-  if (admin === null) return true;
-  const assignment = await deps.assignments.findByAccount(context.market, admin);
-  return assignment !== null && assignment.state.roleId === subjectRef;
-}
-
 /** `identity.platform-role`: a custom platform role's name and keys. */
 export class PlatformRoleReverter implements SystemChangeReverter {
   constructor(private readonly deps: PeopleReverterDependencies) {}
 
   revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome> {
     return revertPlatformRole(this.deps, context, request);
-  }
-
-  /** The decider currently holds the role (a change to their own access). */
-  async isInterested(context: CallContext, request: RevertRequest): Promise<boolean> {
-    return holdsRole(this.deps, context, request.subjectRef);
   }
 }
 
@@ -296,11 +253,6 @@ export class AdminRolesReverter implements SystemChangeReverter {
   revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome> {
     return revertAdminRoles(this.deps, context, request);
   }
-
-  /** The change is the decider's own role. */
-  isInterested(context: CallContext, request: RevertRequest): Promise<boolean> {
-    return Promise.resolve(isSubject(context, request.subjectRef));
-  }
 }
 
 /** `identity.admin-status`: an admin's enabling. */
@@ -309,10 +261,5 @@ export class AdminStatusReverter implements SystemChangeReverter {
 
   revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome> {
     return revertAdminStatus(this.deps, context, request);
-  }
-
-  /** The change is the decider's own enabling. */
-  isInterested(context: CallContext, request: RevertRequest): Promise<boolean> {
-    return Promise.resolve(isSubject(context, request.subjectRef));
   }
 }

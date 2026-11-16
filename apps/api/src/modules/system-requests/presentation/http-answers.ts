@@ -13,7 +13,6 @@ export const SYSTEM_REQUESTS_STATUS: Readonly<Record<string, number>> = Object.f
   'system-requests.not-found': 404,
   'system-requests.decided': 409,
   'system-requests.own-request': 403,
-  'system-requests.own-subject': 403,
   'system-requests.not-author': 403,
   'system-requests.not-reviewer': 403,
   'system-requests.changed-since': 409,

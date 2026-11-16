@@ -82,6 +82,30 @@ describe('change role in a reviewed Market', () => {
     expect(screen.queryByLabelText(NOTE_FIELD)).toBeNull();
   });
 
+  it('sends no note when the Market does not review the area', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: { request: null } });
+    row('active', false);
+    choose();
+    fireEvent.click(screen.getByRole('button', { name: 'Change role' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        `identity/admin/accounts/${ID}/role`,
+        { roleId: 'r-finance' },
+        'csrf-1',
+      ),
+    );
+  });
+
+  it('refuses a whitespace-only note', () => {
+    row('active', true);
+    choose();
+    fireEvent.change(screen.getByLabelText(NOTE_FIELD), { target: { value: '   \n ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Change role' }));
+    expect(call).not.toHaveBeenCalled();
+    expect(screen.getByText(/Write a note for the reviewers/)).toBeTruthy();
+  });
+
   it('requires the note and sends nothing without it', () => {
     row('active', true);
     choose();
@@ -157,6 +181,23 @@ describe('reactivate and deactivate in a reviewed Market', () => {
     expect(screen.getByText(/is active again/)).toBeTruthy();
   });
 
+  it('shows a 400 on the note inline in the reactivate dialog', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: {
+        status: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'note' }] },
+      },
+    } as never);
+    row('disabled', true);
+    openMenu();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reactivate account' }));
+    fireEvent.change(screen.getByLabelText(NOTE_FIELD), { target: { value: 'Back' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Reactivate' }));
+    expect(await screen.findByText(/The note was refused/)).toBeTruthy();
+  });
+
   it('reactivates at once, with no note, where the Market does not review', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { request: null } });
     row('disabled', false);
@@ -228,6 +269,15 @@ describe('role editor in a reviewed Market', () => {
     fireEvent.click(screen.getByLabelText('Invite'));
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(call).toHaveBeenCalled());
+    expect(call.mock.calls[0]?.[2]).not.toHaveProperty('note');
+  });
+
+  it('does not demand a note when nothing changed', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'role.unchanged' } });
+    mount(true);
+    fireEvent.submit(document.querySelector('form')!);
+    await waitFor(() => expect(call).toHaveBeenCalled());
+    expect(screen.queryByText(/Write a note for the reviewers/)).toBeNull();
     expect(call.mock.calls[0]?.[2]).not.toHaveProperty('note');
   });
 
