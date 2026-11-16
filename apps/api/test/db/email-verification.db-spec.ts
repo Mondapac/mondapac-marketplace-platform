@@ -177,6 +177,27 @@ describe.each(TEST_MARKETS)(
         )
       ).rows;
 
+    it('copies the new customer into the customers read models through their inbox (B1 subscriber)', async () => {
+      const email = newAddress();
+      expect((await signUp(email)).status).toBe(202);
+      await settle();
+      const account = (await accountOf(email))!;
+      expect(await deliveriesOf('customers.read-model-registered', account.id)).toEqual([
+        { status: 'delivered', attempts: 1, error_code: null },
+      ]);
+      const inbox = await sql.query<{ n: string }>(
+        `SELECT count(*) AS n FROM customers.inbox
+        WHERE market_id = $1 AND handler = 'customers.read-model-registered'`,
+        [code],
+      );
+      expect(Number(inbox.rows[0]!.n)).toBeGreaterThanOrEqual(1);
+      const directory = await sql.query<{ status: string }>(
+        'SELECT status FROM customers.customer_directory WHERE market_id = $1 AND account_id = $2',
+        [code, account.id],
+      );
+      expect(directory.rows).toEqual([{ status: 'active' }]);
+    });
+
     it('signs up, mails a working one-time link in the Market locale, and confirms the email', async () => {
       const email = newAddress();
       expect((await signUp(email)).status).toBe(202);

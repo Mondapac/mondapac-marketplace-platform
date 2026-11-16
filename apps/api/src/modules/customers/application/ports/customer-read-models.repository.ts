@@ -43,7 +43,11 @@ export interface CustomerReadModelRepository {
     limit: number,
   ): Promise<readonly Id<'Account'>[]>;
 
-  /** Removes both rows of one customer (account erasure, or an account identity no longer has). */
+  /**
+   * Removes everything the module keeps about one customer (account erasure, or an account
+   * identity no longer has): both read model rows and, since phase 2, the timeline, the admin
+   * notes and the group memberships.
+   */
   removeAllOf(market: MarketContext, accountId: Id<'Account'>): Promise<void>;
 }
 

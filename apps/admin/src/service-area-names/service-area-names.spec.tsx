@@ -94,6 +94,21 @@ describe('ServiceAreaNamesPanel', () => {
     );
   });
 
+  it('asks before Cancel throws away a typed name, and closes at once when nothing changed', () => {
+    mount(data());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit the names of brisbane' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog', { name: /Names of/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit the names of brisbane' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Somewhere' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('dialog', { name: 'Discard your input?' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByLabelText('Name')).toBeNull();
+    expect(call).not.toHaveBeenCalled();
+  });
+
   it('refuses an empty required name before calling the API', () => {
     mount(data());
     fireEvent.click(screen.getByRole('button', { name: 'Edit the names of brisbane' }));
