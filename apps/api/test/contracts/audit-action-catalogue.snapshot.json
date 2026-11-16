@@ -2323,6 +2323,19 @@
     }
   },
   {
+    "action": "ordering.customer-refunds.exported",
+    "targetType": "ordering.customer-account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
     "action": "payments.payout-change.recorded",
     "targetType": "payments.connected-account",
     "targetId": "id",

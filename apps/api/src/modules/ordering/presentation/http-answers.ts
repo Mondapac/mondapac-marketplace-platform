@@ -54,6 +54,7 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'saved-filter.shared-limit-reached': 409,
   'second-factor.required': 403,
   'second-factor.enrolment-required': 403,
+  'batch.too-large': 413,
   'access.unavailable': 503,
 });
 

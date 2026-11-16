@@ -17,6 +17,7 @@ import {
   viewRefundLimits,
 } from '../../src/modules/ordering/application/refund-limits-flow';
 import { AdminCustomerRefunds } from '../../src/modules/ordering/application/use-cases/admin-customer-refunds.use-case';
+import { AdminCustomerRefundsList } from '../../src/modules/ordering/application/use-cases/admin-customer-refunds-list.use-case';
 import { AdminRefundOrder } from '../../src/modules/ordering/application/use-cases/admin-refund-order.use-case';
 import { SellerMarkUnavailable } from '../../src/modules/ordering/application/use-cases/seller-mark-unavailable.use-case';
 import type { AdminNoteDependencies } from '../../src/modules/ordering/application/admin-note-flow';
@@ -468,6 +469,43 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       accountId,
     });
     expect(none).toEqual({ ok: true, value: { refunds: [] } });
+  });
+
+  it("pages a customer's refunds as a super list: filters, sorts, both paging modes (phase 2b)", async () => {
+    const mine = await paidOrder();
+    const theirs = await paidOrder();
+    expect((await refund(mine, 1)).ok).toBe(true);
+    expect((await refund(mine, 2)).ok).toBe(true);
+    expect((await refund(theirs, 1)).ok).toBe(true);
+    const owner = await sql.query<{ account_id: string }>(
+      'SELECT account_id FROM ordering.orders WHERE market_id = $1 AND id = $2',
+      [market.marketId, mine.orderId],
+    );
+    const accountId = owner.rows[0]!.account_id;
+    const list = new AdminCustomerRefundsList(gate, deps);
+    const page = await list.execute(admin, { accountId, sort: 'amount', direction: 'asc' });
+    if (!page.ok) throw new Error('read refused');
+    expect(page.value.total).toBe(2);
+    const amounts = page.value.items.map((r) => r.amount.amount);
+    expect([...amounts].sort((a, b) => (a < b ? -1 : 1))).toEqual(amounts);
+    expect(page.value.items.every((r) => r.amount.currency === currency)).toBe(true);
+    const failedOnly = await list.execute(admin, { accountId, filters: { state: ['failed'] } });
+    expect(failedOnly.ok && failedOnly.value.total).toBe(0);
+    const later = await list.execute(admin, {
+      accountId,
+      filters: { from: T0.add({ hours: 24 * 365 }).toString() },
+    });
+    expect(later.ok && later.value.items).toEqual([]);
+    const prevNext = await list.execute(admin, { accountId, pageSize: 1, paging: 'prev-next' });
+    expect(prevNext.ok && { n: prevNext.value.items.length, next: prevNext.value.hasNext }).toEqual(
+      {
+        n: 1,
+        next: true,
+      },
+    );
+    // Another Market's admin sees none of them.
+    const none = await list.execute(otherMarketAdmin(), { accountId });
+    expect(none.ok && none.value.total).toBe(0);
   });
 
   it('records a refused Stripe refund as failed and lowers the refunded sum again', async () => {

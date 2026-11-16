@@ -140,6 +140,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'second-factor.required': 403,
     'second-factor.enrolment-required': 403,
     'ordering.search-unavailable': 503,
+    'batch.too-large': 413,
     'access.unavailable': 503,
   });
 });
@@ -1169,6 +1170,32 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       });
       expect(JSON.stringify(paid.body)).not.toMatch(/Rahman|Example Street/);
       expect(noKey.status).toBe(403);
+    });
+
+    it('pages a customer’s refunds for ordering.order.view only, and keeps the export behind the customers export key (phase 2b)', async () => {
+      await seedAdmins();
+      const route = `/ordering/admin/customers/${CUSTOMER}/refunds`;
+      const csrf = (accountId: Id<'Account'>, n: number) => ({
+        'x-market-id': code,
+        ...panelHeaders(code, 'admin'),
+        ...session(accountId, 'admin', n),
+      });
+      const page = await http()
+        .post(route)
+        .set(csrf(VIEWER, 41))
+        .send({ filters: { state: ['succeeded'] }, paging: 'pages' });
+      expect(page.status).toBe(200);
+      expect(page.headers['cache-control']).toBe('no-store');
+      expect(page.body).toMatchObject({ items: [], total: 0, page: 1, paging: 'pages' });
+      const noKey = await http().post(route).set(csrf(NO_KEY, 42)).send({});
+      expect(noKey.status).toBe(403);
+      const unknownField = await http().post(route).set(csrf(VIEWER, 43)).send({ accountId: 'x' });
+      expect(unknownField.status).toBe(400);
+      const noCsrf = await http().post(route).set(adminHeaders(VIEWER, 44)).send({});
+      expect(noCsrf.status).toBe(403);
+      // The Viewer holds no customers export key: the export is refused before any read.
+      const exported = await http().post(`${route}/export`).set(csrf(VIEWER, 45)).send({});
+      expect(exported.status).toBe(403);
     });
 
     it('refunds only for an admin with ordering.order.refund, and not while the Market switch is off', async () => {
