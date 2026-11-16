@@ -221,8 +221,10 @@ export class AdminCustomerActivityController {
     summary: 'The abandoned-cart reminders a customer was sent (super list, admin)',
     description:
       'Needs customers.customers.view and notifications.customer-cart-reminder.view. Body: no ' +
-      `\`filters\`, \`sort\` (sent), ${PAGING}. Each row: when it was sent, the stage (1 or 2) and ` +
-      'the cart change it was about. notifications keeps them 30 days; no mail content.',
+      `\`filters\`, \`sort\` (sent), ${PAGING}. Each row: \`sentAt\`, when notifications took the ` +
+      'stage for sending (not proof of delivery: a send that then failed or was skipped keeps it, ' +
+      'and the stage is not retried), the stage (1 or 2) and the cart change it was about. ' +
+      'notifications keeps them 30 days; no mail content.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: Object })

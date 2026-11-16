@@ -304,6 +304,32 @@ describe.each(['AU', 'ZZ'] as const)('customer page activity sections in market 
     },
   ] as const;
 
+  describe('the cart-additions date range', () => {
+    it('takes ISO instants only: refuses a bare day, junk and an empty range before asking engagement', async () => {
+      const owner = pager(30, (n) => ({ offerId: ID, variantId: ID, addedAt: at(n) }));
+      const { deps, gate, admin, customer } = setup({
+        behaviour: { adminCustomerCartAdditions: owner.call },
+      });
+      const useCase = new AdminCustomerCartAdditionsSection(gate, deps);
+      for (const [filters, path, fieldCode] of [
+        [{ from: '2026-11-14' }, 'filters.from', 'format'],
+        [{ to: '2026-11-14' }, 'filters.to', 'format'],
+        [{ from: 'yesterday' }, 'filters.from', 'format'],
+        [{ to: true }, 'filters.to', 'format'],
+        [{ from: at(48), to: at(48) }, 'filters.to', 'range'],
+        [{ from: at(48), to: at(72) }, 'filters.to', 'range'],
+      ] as const) {
+        await expect(
+          useCase.execute(admin(), { accountId: customer.accountId, filters }),
+        ).resolves.toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path, code: fieldCode }] },
+        });
+      }
+      expect(owner.requests).toEqual([]);
+    });
+  });
+
   describe.each(LISTS)('the $section super list', (spec) => {
     const peerOf = (call: unknown) => ({ [spec.owner]: { [spec.method]: call } });
 

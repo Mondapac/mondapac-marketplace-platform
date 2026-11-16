@@ -50,7 +50,10 @@ describe.each(TEST_MARKETS)('cart reminders in market %s (database)', (code) => 
   });
   beforeEach(async () => {
     await sql.query(`DELETE FROM cart.carts WHERE last_changed_at > '2030-01-01'`);
-    await sql.query(`DELETE FROM notifications.cart_reminders WHERE taken_at > '2030-01-01'`);
+    // This file's window only: customer-activity-sections.db-spec.ts keeps its reminders in 2032.
+    await sql.query(
+      `DELETE FROM notifications.cart_reminders WHERE taken_at > '2030-01-01' AND taken_at < '2031-01-01'`,
+    );
   });
 
   const unit = async <T>(target: MarketContext, work: () => Promise<T>): Promise<T> => {

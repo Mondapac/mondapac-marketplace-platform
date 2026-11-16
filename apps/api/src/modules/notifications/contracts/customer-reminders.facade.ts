@@ -7,7 +7,11 @@ export interface AdminCartReminderSent {
   readonly cartChangedAt: string;
   /** 1 (about 4 hours idle) or 2 (about 24 hours). */
   readonly stage: 1 | 2;
-  /** When it was taken for sending. */
+  /**
+   * When notifications took the stage for sending (`cart_reminders.taken_at`), not proof of
+   * delivery: the claim stays when the send then failed or was skipped (no consent, no address,
+   * unsubscribe or contact not configured), so the stage is never retried.
+   */
   readonly sentAt: string;
 }
 

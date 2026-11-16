@@ -26,6 +26,10 @@ import {
 
 const NOW = Temporal.Instant.from('2026-11-16T10:00:00Z');
 const at = (hoursAgo: number) => NOW.subtract({ hours: hoursAgo });
+// The reminders sit in 2032, past every purge cut-off of cart-reminders.db-spec.ts (2030) and
+// outside the window that file clears, so the two files can run at the same time.
+const REMINDED = Temporal.Instant.from('2032-01-01T10:00:00Z');
+const remindedAt = (hoursAgo: number) => REMINDED.subtract({ hours: hoursAgo });
 
 describe.each(TEST_MARKETS)('customer page activity reads in market %s (database)', (code) => {
   const market = marketOf(code);
@@ -146,7 +150,11 @@ describe.each(TEST_MARKETS)('customer page activity reads in market %s (database
       [market, stranger, 10, 1],
     ] as const) {
       await write(m, () =>
-        reminders.take(m, { accountId, cartChangedAt: at(h + 20), stage }, at(h - stage)),
+        reminders.take(
+          m,
+          { accountId, cartChangedAt: remindedAt(h + 20), stage },
+          remindedAt(h - stage),
+        ),
       );
     }
   });
@@ -229,8 +237,8 @@ describe.each(TEST_MARKETS)('customer page activity reads in market %s (database
       reminders.pageOfAccount(market, customer, 'asc', { offset: 0, limit: 5 }),
     );
     expect(page.ok && page.value.map((row) => [row.stage, row.takenAt])).toEqual([
-      [1, at(9)],
-      [2, at(8)],
+      [1, remindedAt(9)],
+      [2, remindedAt(8)],
     ]);
     expect(await read(market, () => reminders.countOfAccount(market, customer))).toEqual({
       ok: true,

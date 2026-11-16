@@ -100,18 +100,20 @@ export class PrismaBehaviourEventRepository implements BehaviourEventRepository 
       take: window.limit,
       select: { id: true, offerId: true, variantId: true, occurredAt: true },
     });
-    return rows.flatMap((row) =>
-      row.offerId === null || row.variantId === null
-        ? []
-        : [
-            {
-              id: row.id as Id<'BehaviourEvent'>,
-              offerId: row.offerId as Id<'Offer'>,
-              variantId: row.variantId as Id<'Variant'>,
-              occurredAt: Temporal.Instant.fromEpochMilliseconds(row.occurredAt.getTime()),
-            },
-          ],
-    );
+    // `behaviour_events_shape_check` makes `offer_id` and `variant_id` NOT NULL on every
+    // `added-to-cart` row, so no row is dropped here and the page agrees with
+    // `countCartAdditionsOfAccount`. A NULL means the CHECK is gone: fail, never skip silently.
+    return rows.map((row) => {
+      if (row.offerId === null || row.variantId === null) {
+        throw new Error('engagement.behaviour_events: an added-to-cart row without its offer');
+      }
+      return {
+        id: row.id as Id<'BehaviourEvent'>,
+        offerId: row.offerId as Id<'Offer'>,
+        variantId: row.variantId as Id<'Variant'>,
+        occurredAt: Temporal.Instant.fromEpochMilliseconds(row.occurredAt.getTime()),
+      };
+    });
   }
 
   countCartAdditionsOfAccount(
