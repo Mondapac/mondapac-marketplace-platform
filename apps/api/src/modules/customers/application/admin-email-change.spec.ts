@@ -292,6 +292,7 @@ describe.each(['AU', 'ZZ'] as const)(
         currency: null,
         refundCount: 0,
         refundedMinor: 0n,
+        groups: [],
       };
       expect(overviewView(row).pendingEmailChange).toBeNull();
       expect(overviewView(row, { email: NEW_EMAIL, requestedAt: NOW }).pendingEmailChange).toEqual({

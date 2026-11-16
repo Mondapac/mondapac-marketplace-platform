@@ -36,6 +36,26 @@ import {
   type SavedFilterRepository,
 } from '../application/ports/saved-filter.repository';
 import { SHEET_WRITER, type SheetWriter } from '../application/ports/sheet-writer';
+import {
+  CUSTOMER_GROUP_REPOSITORY,
+  type CustomerGroupRepository,
+} from '../application/ports/customer-groups.repository';
+import { CUSTOMER_MANAGEMENT_PEERS } from '../application/ports/customer-management-peers';
+import {
+  CUSTOMER_NOTE_CIPHER,
+  CUSTOMER_NOTE_REPOSITORY,
+  type CustomerNoteCipher,
+  type CustomerNoteRepository,
+} from '../application/ports/customer-notes.repository';
+import {
+  CUSTOMER_TIMELINE_REPOSITORY,
+  type CustomerTimelineRepository,
+} from '../application/ports/customer-timeline.repository';
+import { LateBoundManagementPeers } from './late-bound-management-peers';
+import { PrismaCustomerGroupRepository } from './prisma-customer-groups.repository';
+import { PrismaCustomerNoteRepository } from './prisma-customer-notes.repository';
+import { PrismaCustomerTimelineRepository } from './prisma-customer-timeline.repository';
+import { SubjectKeyNoteCipher } from './subject-key-note-cipher';
 import { PrismaCustomerListReader } from './prisma-customer-list.reader';
 import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
 import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
@@ -109,5 +129,32 @@ export const customersProviders: readonly FactoryProvider[] = [
   {
     provide: SHEET_WRITER,
     useFactory: (): SheetWriter => new ExceljsSheetWriter(),
+  },
+  {
+    provide: CUSTOMER_GROUP_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerGroupRepository =>
+      new PrismaCustomerGroupRepository(prisma),
+  },
+  {
+    provide: CUSTOMER_NOTE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerNoteRepository =>
+      new PrismaCustomerNoteRepository(prisma),
+  },
+  {
+    provide: CUSTOMER_NOTE_CIPHER,
+    inject: [SUBJECT_KEY_SERVICE],
+    useFactory: (keys: SubjectKeyService): CustomerNoteCipher => new SubjectKeyNoteCipher(keys),
+  },
+  {
+    provide: CUSTOMER_TIMELINE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerTimelineRepository =>
+      new PrismaCustomerTimelineRepository(prisma),
+  },
+  {
+    provide: CUSTOMER_MANAGEMENT_PEERS,
+    useFactory: (): LateBoundManagementPeers => new LateBoundManagementPeers(),
   },
 ];

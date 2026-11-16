@@ -26,8 +26,13 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'saved-filter.shared-limit-reached': 409,
   'batch.too-large': 413,
   'customers.customer-not-found': 404,
-  // Customers admin email change.
+  // Phase 2 (PR 2a).
   'customers.customer-not-eligible': 409,
+  'customers.group-not-found': 404,
+  'customers.group-name-taken': 409,
+  'customers.group-limit-reached': 409,
+  'customers.group-archived': 409,
+  // Customers admin email change ('customers.customer-not-eligible' is shared with phase 2).
   'customers.email-taken': 409,
   'customers.account-deletion-pending': 409,
   'customers.email-change-not-found': 404,

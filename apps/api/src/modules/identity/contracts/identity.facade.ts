@@ -363,6 +363,31 @@ export interface IdentityFacade {
   ): Promise<Result<{ readonly revokedSessions: number }, AccessDenied>>;
 
   /**
+   * An admin changes a customer account's display name from the customer page (customers
+   * management phase 2). Rule `permissions [customers.customers.edit]`; only a platform admin that
+   * is not acting as a seller, any other caller `access.denied`. `account.unknown` for an id that
+   * is no customer of the Market, `account.not-eligible` for a disabled or unverified account,
+   * `validation.failed` for a name the holder could not set either. Records the display-name
+   * event and an audit row (never the name). Not exposed over HTTP.
+   */
+  renameCustomerForAdmin(
+    context: CallContext,
+    input: { readonly accountId: Id<'Account'>; readonly displayName: string },
+  ): Promise<
+    Result<
+      { readonly changed: boolean },
+      | AccessDenied
+      | { readonly code: 'access.unavailable' }
+      | { readonly code: 'account.unknown' }
+      | { readonly code: 'account.not-eligible' }
+      | {
+          readonly code: 'validation.failed';
+          readonly fields: readonly { readonly path: string; readonly code: string }[];
+        }
+    >
+  >;
+
+  /**
    * An admin asks to change a customer's sign-in email (customers admin email change). Rule
    * `permissions [customers.customer-email.change]` (protected), checked again in identity's unit;
    * a platform admin that is not acting as a seller only. In one unit: the address parsed, a

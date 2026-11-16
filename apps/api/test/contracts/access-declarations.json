@@ -297,6 +297,7 @@
   { "name": "customers.delete-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.execute-account-deletions", "rule": "system" },
   { "name": "customers.list-addresses", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "customers.read-customer-group-membership", "rule": "system" },
   { "name": "customers.read-customer-last-order", "rule": "system" },
   {
     "name": "customers.read-delivery-address",
@@ -309,6 +310,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "customers.reconcile-customer-read-models", "rule": "system" },
+  { "name": "customers.record-customer-timeline", "rule": "system" },
   {
     "name": "customers.request-account-deletion",
     "rule": "own-resources",

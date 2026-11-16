@@ -308,6 +308,10 @@ admin deletes a buyer's account for them, from a support ticket.
   `ordering.customerOrderStats` (both rule `system`, before any unit opens) and replaces the rows, so a
   repeated or late event changes nothing. `customers` cannot import `ordering`, so the peers are
   bound at start by `CustomersReadModelsModule`, like the deletion flow.
+- **Inbox (fix, 16 Nov 2026).** The subscribers handle each event once through `runOnce`, which
+  needs `customers.inbox`. B1 shipped without it, so every delivery failed and was retried until
+  dead-lettered; migration `20261116000000_customers_inbox` adds it, and
+  `email-verification.db-spec.ts` now checks that a sign-up reaches the directory through it.
 - **Backfill and reconcile.** Job `customers.reconcile-read-models` (daily and at worker start) walks
   `identity.customerDirectoryPage` and `ordering.customerOrderAccounts` by keyset (at most 200 pages of
   200 per phase per run) and replaces every row.
@@ -365,6 +369,66 @@ admin deletes a buyer's account for them, from a support ticket.
   more is a scan of the Market until `pg_trgm` is approved. The two sort indexes on the stats
   table are not used by the left join and can be dropped later.
 
+## Customers management, phase 2, PR 2a: groups, notes, the activity timeline and the name edit (15 Nov 2026)
+
+- **Manual groups.** `customers.customer_groups` and `customer_group_members` (migration
+  `20261116060000_customers_groups_notes_timeline`). A group has a name unique per Market whatever
+  its case (index `customer_groups_name_key` on `lower(name)`), an optional description, a version
+  and an archive instant; it is never deleted (a promotion may name it). Routes under
+  `customers/admin/groups` (`GET`, `POST`, `GET/PUT :groupId`, `POST :groupId/members/add|remove`),
+  key `customers.groups.manage` (protected, owner decision 15 Nov 2026: a group can carry a
+  discount) with `customers.customers.view` to change, the view key to read. At
+  most 500 groups per Market. Members are added or removed by `ids` (at most 1,000) or by the
+  Customers list's `view`, `q` and `filters` ("select all matching", at most 10,000; more is
+  refused whole with the total). Ids that are no customer of the Market are skipped; an archived
+  group takes no new members. Every change is audited (`customers.customer-group.created`,
+  `.changed`, `.members-changed`: how many and how they were picked, no names) and lands on each
+  customer's timeline.
+- **Members list = the Customers super list.** The list gains the filter `group` (a group id) and
+  the column `groups` (names, archived flagged), also in the export. No second list was built.
+- **Promotions.** A `CUSTOMER_GROUP` discount can take the segment `{ kind: "MANUAL_GROUP",
+  groupId }` (column `promotions.segment_group_id`, migration
+  `20261116060001_promotions_manual_group_segment`; a CHECK ties the id to that segment). The quote
+  asks `CustomersReadFacade.isGroupMember` as the system actor, once per group; a refusal, an error,
+  an unknown or archived group is "not a member" (fail closed). The group id is not checked at
+  create (an admin context cannot call the `system` read); an unknown id simply never applies.
+- **Notes.** `customers.customer_notes`: free text about a person, sealed under the customer
+  account's subject key before the unit (`fieldLabel('customers.customer-note.body')`), opened
+  after the read, never logged. Audited as `customers.customer-note.added` (note id and length).
+  Write key `customers.customer-notes.write`; read with the view key (`GET` keyset pages of at most
+  100, newest first). A destroyed key (erased account) shows a note without its text. Notes are
+  never edited or deleted by an admin.
+- **Activity timeline.** `customers.customer_timeline`: one row per event or admin action, with a
+  kind code, the instant, an order, refund, group or note reference, the admin who did it, and the
+  source event id (unique per customer, so an event is written once). From events: signed up,
+  email verified, name changed, disabled, enabled, order paid, refund succeeded (subscriptions
+  `customers.timeline-*`). From admin actions: every customer page open (with the tab), note added,
+  group added or removed, renamed by an admin. A page open is written once per admin, tab and
+  UTC day, so the table does not grow with every click. An event about an account that has no
+  directory row yet is refused with `customers.unavailable` and retried, so it is never lost;
+  a bulk write checks the directory in slices of 1,000. `POST customers/admin/customers/:accountId/activity`
+  is a super list scoped to one customer (filter by category or kinds and by day range, sort by
+  time, both paging modes); each read writes the page-open audit row (tab `activity`).
+  `.../activity/export` (CSV or XLSX, at most 10,000) needs the export key and a fresh two-step
+  proof, and is audited (`customers.customer-timeline.exported`).
+- **Name edit.** `PUT customers/admin/customers/:accountId/display-name` (key
+  `customers.customers.edit`): identity owns the write (`IdentityFacade.renameCustomerForAdmin`,
+  audit `identity.account.renamed-by-admin`, the usual name-changed event). Status changes stay on
+  identity's audited routes (`POST identity/admin/customers/:accountId/disable|enable`, key
+  `identity.customer-account.disable`). Deletion stays on the package 5c path.
+- **Erasure.** The account's erasure and the sweep call `removeAllOf`, which deletes the directory
+  row; foreign keys with ON DELETE CASCADE remove the customer's timeline rows, notes and group
+  memberships with it.
+- **Not in this PR.** The admin email change (identity's pending-email flow with step-up, a mail
+  to the new address and a warning to the old) is a PR of its own (security review). Per-module
+  reads of the customer page tabs are PR 2b.
+- **Known gaps.** Reviews and consent events carry no account id, so they are not on the timeline
+  yet. Status-change entries from identity's events have no admin attached. A rename by an admin writes
+  two entries (`renamed-by-admin` with the admin, and `name-changed` from identity's event, which
+  carries no actor). The notes read writes
+  no audit row of its own (the page open does). No role is seeded with the new keys; the owner
+  assigns them.
+
 ## Customers management: admin changes a customer's sign-in email (16 Nov 2026, API only)
 
 Design note of 16 Nov 2026 with Mohammad's and Hassan's reviews (R1 to R12). The storefront
@@ -413,5 +477,5 @@ confirm page and the admin screen are not part of this change.
   `identity.account-email-changed.v1`.
 - **Known gaps.** (1) The deletion cancel is asynchronous: between the deletion request's commit
   and the dispatch of its event, a confirmation can still swap the address. (2) No timeline
-  entries: the customer timeline is not on main yet; the subscriber and the three entry kinds
-  follow with it.
+  entries yet: the customer timeline (phase 2, PR 2a) merged while this change was open; the
+  subscriber and the three entry kinds follow in a PR of their own.

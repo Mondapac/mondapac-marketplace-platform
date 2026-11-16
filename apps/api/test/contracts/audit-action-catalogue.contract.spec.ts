@@ -311,6 +311,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.account.enabled',
       'identity.account.erased',
       'identity.account.other-sessions-signed-out',
+      'identity.account.renamed-by-admin',
       'identity.account.sessions-ended-for-erasure',
       'identity.admin-session.opened',
       'identity.admin-step-up.refused',

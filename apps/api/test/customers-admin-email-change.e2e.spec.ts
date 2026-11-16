@@ -5,7 +5,9 @@ import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared
 import request from 'supertest';
 import { ACCOUNT_DELETION_REQUEST_REPOSITORY } from '../src/modules/customers/application/ports/account-deletion-request.repository';
 import { CUSTOMER_LIST_READER } from '../src/modules/customers/application/ports/customer-list.reader';
+import { CUSTOMER_TIMELINE_REPOSITORY } from '../src/modules/customers/application/ports/customer-timeline.repository';
 import { InMemoryCustomerList } from '../src/modules/customers/application/testing/in-memory-customer-list';
+import { InMemoryCustomerTimeline } from '../src/modules/customers/application/testing/in-memory-customer-management';
 import { MemoryAccountDeletionRequests } from '../src/modules/customers/application/testing/in-memory-account-deletion';
 import { CancelEmailChangeOnDeletion } from '../src/modules/customers/application/use-cases/cancel-email-change-on-deletion.use-case';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
@@ -91,7 +93,10 @@ describe.each(TEST_MARKETS)('admin customer email change over HTTP in market %s'
           .overrideProvider(ACCOUNT_DELETION_REQUEST_REPOSITORY)
           .useValue(requests)
           .overrideProvider(CUSTOMER_LIST_READER)
-          .useValue(listReader),
+          .useValue(listReader)
+          // The page open is also a timeline entry (customers phase 2); kept in memory here.
+          .overrideProvider(CUSTOMER_TIMELINE_REPOSITORY)
+          .useValue(new InMemoryCustomerTimeline(listReader)),
     }));
     await app
       .get(SeedRoles)
@@ -211,6 +216,7 @@ describe.each(TEST_MARKETS)('admin customer email change over HTTP in market %s'
       currency: null,
       refundCount: 0,
       refundedMinor: 0n,
+      groups: [],
     });
   });
   afterEach(async () => {
