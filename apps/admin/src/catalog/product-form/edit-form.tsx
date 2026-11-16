@@ -821,9 +821,7 @@ export function EditForm({
         </Banner>
       )}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_21.25rem] lg:grid-rows-[auto_1fr] lg:items-start">
-        <div
-          className={`lg:col-start-2 lg:row-start-1 ${creating === null ? '' : 'max-lg:order-1'}`}
-        >
+        <div className="lg:col-start-2 lg:row-start-1">
           <StatusCard
             status={status}
             publishedNo={publishedNo}
@@ -852,9 +850,7 @@ export function EditForm({
             }
           />
         </div>
-        <div
-          className={`flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-span-2 lg:row-start-1 ${creating === null ? '' : 'max-lg:order-3'}`}
-        >
+        <div className="flex min-w-0 flex-col gap-4 lg:col-start-1 lg:row-span-2 lg:row-start-1">
           {inactive ? (
             <Banner tone="attention" title={t('active.banner-title')}>
               <p>{t('active.banner-body', { count: product.offers.offerCount })}</p>
@@ -1031,9 +1027,7 @@ export function EditForm({
             onReload={onReload}
           />
         </div>
-        <div
-          className={`flex flex-col gap-4 lg:col-start-2 lg:row-start-2 ${creating === null ? '' : 'max-lg:order-2'}`}
-        >
+        <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-2">
           <OrganisationCard
             marketName={marketName}
             typeCode={product.typeCode}
