@@ -1,5 +1,12 @@
 [
   {
+    "type": "assistant.spend-cap-reached.v1",
+    "aggregateType": "assistant-spend-day",
+    "fields": {
+      "cap": "enumOf(daily|monthly)"
+    }
+  },
+  {
     "type": "blog.post-approved.v1",
     "aggregateType": "blog-post",
     "fields": {
@@ -914,6 +921,13 @@
     }
   },
   {
+    "type": "ordering.order-cancelled.v1",
+    "aggregateType": "order",
+    "fields": {
+      "orderId": "id"
+    }
+  },
+  {
     "type": "ordering.seller-order-ready.v1",
     "aggregateType": "seller-order",
     "fields": {
@@ -1203,6 +1217,16 @@
     "aggregateType": "seo-settings",
     "fields": {
       "version": "integer"
+    }
+  },
+  {
+    "type": "system-requests.request-overdue.v1",
+    "aggregateType": "request-reminder",
+    "fields": {
+      "requestId": "id",
+      "number": "integer",
+      "area": "enumOf(people|money|delivery|catalogue|certification|marketplace|content|review-policy)",
+      "ageDays": "integer"
     }
   }
 ]

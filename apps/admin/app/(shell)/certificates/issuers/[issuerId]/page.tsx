@@ -28,10 +28,13 @@ export default async function IssuerPage({
   searchParams,
 }: {
   readonly params: Promise<{ readonly issuerId: string }>;
-  readonly searchParams: Promise<{ readonly activated?: string | readonly string[] }>;
+  readonly searchParams: Promise<{
+    readonly activated?: string | readonly string[];
+    readonly done?: string | readonly string[];
+  }>;
 }) {
   const { issuerId } = await params;
-  const { activated } = await searchParams;
+  const { activated, done } = await searchParams;
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
@@ -90,6 +93,7 @@ export default async function IssuerPage({
         canEdit={keys.includes(ISSUER_EDIT_PERMISSION)}
         csrfToken={gate.session.csrfToken}
         activated={activated === '1'}
+        done={typeof done === 'string' ? done : null}
       />
     </>,
   );

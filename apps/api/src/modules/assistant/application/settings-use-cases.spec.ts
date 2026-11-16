@@ -25,7 +25,7 @@ import {
   FakeChangeActors,
   InMemoryAuditTrail,
 } from '../../../../test/support/change-trail-fakes';
-import { AssistantSettingsChanged } from '../domain/audit';
+import { AssistantPreviewTokenIssued, AssistantSettingsChanged } from '../domain/audit';
 import type { AssistantDependencies } from './assistant-dependencies';
 import {
   FakeRuntime,
@@ -33,6 +33,9 @@ import {
   MemoryConversations,
   MemoryLimits,
   MemorySpend,
+  FakePreviewTokens,
+  RecordingOutbox,
+  FixedQuickPrompts,
   SequenceGuestTokens,
   UtcCalendar,
 } from './testing/assistant-fakes';
@@ -43,6 +46,7 @@ import type {
 import { SetAssistantSettings } from './use-cases/set-assistant-settings.use-case';
 import { ViewAssistantSettingsHistory } from './use-cases/view-assistant-settings-history.use-case';
 import { ViewAssistantSettings } from './use-cases/view-assistant-settings.use-case';
+import { IssuePreviewToken } from './use-cases/issue-preview-token.use-case';
 import { ViewStorefrontAssistant } from './use-cases/view-storefront-assistant.use-case';
 
 // The buyer assistant settings in memory on both Market fixtures: defaults (off), validation of
@@ -61,7 +65,12 @@ const VISITOR = 'visitor-key-0123456789';
 
 class RecordingAudit extends InMemoryAuditTrail implements AuditWriter {
   override record(context: CallContext, entry: AuditEntry): Promise<void> {
-    if (entry.action !== AssistantSettingsChanged.action) throw new Error('audit: unknown action');
+    if (
+      entry.action !== AssistantSettingsChanged.action &&
+      entry.action !== AssistantPreviewTokenIssued.action
+    ) {
+      throw new Error('audit: unknown action');
+    }
     return super.record(context, entry);
   }
 }
@@ -216,6 +225,12 @@ describe('the rollout', () => {
     expect(inRollout(DEFAULT_ASSISTANT_SETTINGS, 'AU', VISITOR)).toBe(false);
     expect(inRollout(on({ enabled: false }), 'AU', VISITOR)).toBe(false);
     expect(inRollout(on({ audience: 'internal' }), 'AU', VISITOR)).toBe(false);
+    // A valid preview token puts a browser in whatever the audience, never past the switch.
+    expect(inRollout(on({ audience: 'internal' }), 'AU', null, true)).toBe(true);
+    expect(inRollout(on({ audience: 'percent', audiencePercent: 1 }), 'AU', null, true)).toBe(true);
+    expect(inRollout(on({ enabled: false, audience: 'internal' }), 'AU', VISITOR, true)).toBe(
+      false,
+    );
     expect(inRollout(on(), 'AU', null)).toBe(true);
     expect(inRollout(on({ audience: 'percent', audiencePercent: 100 }), 'AU', VISITOR)).toBe(true);
     expect(inRollout(on({ audience: 'percent', audiencePercent: 100 }), 'AU', null)).toBe(false);
@@ -271,6 +286,9 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
       limits: new MemoryLimits(),
       guestTokens: new SequenceGuestTokens(),
       calendar: new UtcCalendar(),
+      outbox: new RecordingOutbox(),
+      quickPrompts: new FixedQuickPrompts(),
+      previewTokens: new FakePreviewTokens(),
       trail: changeTrailOf(unitOfWork, audit, actors),
     };
   });
@@ -278,8 +296,9 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
   const view = () => new ViewAssistantSettings(gate, deps).execute(admin(), {});
   const set = (next: unknown, expectedVersion: unknown = 0, context = admin()) =>
     new SetAssistantSettings(gate, deps).execute(context, { settings: next, expectedVersion });
-  const storefront = (visitor: unknown = VISITOR) =>
-    new ViewStorefrontAssistant(gate, deps).execute(anonymous(), { visitor });
+  const storefront = (visitor: unknown = VISITOR, lang?: unknown, preview?: unknown) =>
+    new ViewStorefrontAssistant(gate, deps).execute(anonymous(), { visitor, lang, preview });
+  const issue = (context = admin()) => new IssuePreviewToken(gate, deps).execute(context, {});
 
   it('reads the defaults as version 0, with the key status and the model of each tier', async () => {
     const read = await view();
@@ -433,7 +452,17 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
   });
 
   describe('the storefront read', () => {
-    const OFF = { enabled: false, guestsAllowed: false, replyLanguage: 'buyer', welcomeText: null };
+    const OFF = {
+      enabled: false,
+      guestsAllowed: false,
+      replyLanguage: 'buyer',
+      welcomeText: null,
+      retentionDays: null,
+      quickPrompts: [],
+      preview: false,
+    };
+    // The fake answers each fixture's default: English for AU, Japanese for ZZ.
+    const EN = code === 'ZZ' ? FixedQuickPrompts.JA : FixedQuickPrompts.EN;
 
     it('is off by default', async () => {
       expect(await storefront()).toEqual(ok(OFF));
@@ -442,12 +471,50 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
     it('answers the safe subset when on for everyone', async () => {
       await set(on({ users: 'customers-only', replyLanguage: 'english', welcomeText: 'Hi' }));
       expect(await storefront()).toEqual(
-        ok({ enabled: true, guestsAllowed: false, replyLanguage: 'english', welcomeText: 'Hi' }),
+        ok({
+          enabled: true,
+          guestsAllowed: false,
+          replyLanguage: 'english',
+          welcomeText: 'Hi',
+          retentionDays: { customer: 30, guest: 30 },
+          quickPrompts: EN,
+          preview: false,
+        }),
       );
       await set(on({ welcomeText: 'Hi' }), 1);
       expect(await storefront(undefined)).toEqual(
-        ok({ enabled: true, guestsAllowed: true, replyLanguage: 'buyer', welcomeText: 'Hi' }),
+        ok({
+          enabled: true,
+          guestsAllowed: true,
+          replyLanguage: 'buyer',
+          welcomeText: 'Hi',
+          retentionDays: { customer: 30, guest: 30 },
+          quickPrompts: EN,
+          preview: false,
+        }),
       );
+    });
+
+    it.each([
+      ['none', { customer: 0, guest: 0 }],
+      ['30-days', { customer: 30, guest: 30 }],
+      ['12-months', { customer: 365, guest: 30 }],
+    ] as const)(
+      'says how long a conversation is kept with retention %s',
+      async (retention, days) => {
+        await set(on({ retention }));
+        const read = await storefront();
+        expect(read.ok && read.value.retentionDays).toEqual(days);
+      },
+    );
+
+    it("passes the storefront's language to the quick prompts, as sent", async () => {
+      await set(on());
+      const prompts = deps.quickPrompts as FixedQuickPrompts;
+      const read = await storefront(VISITOR, 'ja-JP');
+      expect(read.ok && read.value.quickPrompts).toEqual(['今週の特売は？']);
+      await storefront(VISITOR, 42);
+      expect(prompts.asked).toEqual(['ja-JP', null]);
     });
 
     it('stays off without the API key or a model for the chosen tier', async () => {
@@ -468,6 +535,101 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
       for (const bad of [null, 'short', 'x'.repeat(65), 'bad key with spaces!', ['a']]) {
         expect(await storefront(bad)).toEqual(ok(OFF));
       }
+    });
+  });
+
+  describe('the internal preview', () => {
+    const EN = code === 'ZZ' ? FixedQuickPrompts.JA : FixedQuickPrompts.EN;
+    const OFF = {
+      enabled: false,
+      guestsAllowed: false,
+      replyLanguage: 'buyer',
+      welcomeText: null,
+      retentionDays: null,
+      quickPrompts: [],
+      preview: false,
+    };
+    const tokenOf = async () => {
+      const issued = await issue();
+      if (!issued.ok) throw new Error(issued.error.code);
+      return issued.value.token;
+    };
+
+    it('issues a 30-minute token to an admin, with an audit row of its expiry only', async () => {
+      const issued = await issue();
+      expect(issued).toEqual(
+        ok({ token: expect.any(String) as unknown, expiresAt: '2026-10-19T21:30:00Z' }),
+      );
+      expect(audit.entries).toEqual([
+        AssistantPreviewTokenIssued.entry('assistant-settings', {
+          after: { expiresAt: T0.add({ minutes: 30 }) },
+        }),
+      ]);
+      expect(JSON.stringify(audit.entries)).not.toContain(issued.ok ? issued.value.token : '-');
+    });
+
+    it('refuses a seller or a visitor, and answers unavailable without a key', async () => {
+      expect(await issue(seller())).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect((await issue(anonymous())).ok).toBe(false);
+      (deps.previewTokens as FakePreviewTokens).available_ = false;
+      expect(await issue()).toEqual({
+        ok: false,
+        error: { code: 'assistant.preview-unavailable' },
+      });
+      expect(audit.entries).toEqual([]);
+    });
+
+    it('refuses an admin without assistant.settings.manage, asking for that key only', async () => {
+      const asked: unknown[] = [];
+      const denying = createUseCaseGate(markets, {
+        check: (_context, declaration) => {
+          asked.push(declaration.rule);
+          return Promise.resolve({ allowed: false, denial: { code: 'access.denied' } });
+        },
+      });
+      expect(await new IssuePreviewToken(denying, deps).execute(admin(), {})).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(asked).toEqual([{ kind: 'permissions', allOf: ['assistant.settings.manage'] }]);
+      expect(audit.entries).toEqual([]);
+    });
+
+    it('shows the assistant to a browser with a valid token while the audience is internal', async () => {
+      await set(on({ audience: 'internal', welcomeText: 'Hi' }));
+      const token = await tokenOf();
+      expect(await storefront(VISITOR, undefined, token)).toEqual(
+        ok({
+          enabled: true,
+          guestsAllowed: true,
+          replyLanguage: 'buyer',
+          welcomeText: 'Hi',
+          retentionDays: { customer: 30, guest: 30 },
+          quickPrompts: EN,
+          preview: true,
+        }),
+      );
+      // No visitor key is needed, and a percentage rollout lets the token in too.
+      expect((await storefront(undefined, undefined, token)).ok).toBe(true);
+      await set(on({ audience: 'percent', audiencePercent: 1 }), 1);
+      const read = await storefront('x', undefined, token);
+      expect(read.ok && read.value.enabled && read.value.preview).toBe(true);
+    });
+
+    it('never passes the kill switch, a missing model, an expired token or another Market', async () => {
+      await set(on({ audience: 'internal' }));
+      const token = await tokenOf();
+      for (const bad of ['', 'preview:XX:9999999999999', ['x'], 42, token + 'x']) {
+        expect(await storefront(VISITOR, undefined, bad)).toEqual(ok(OFF));
+      }
+      clock.advance(Temporal.Duration.from({ minutes: 30 }));
+      expect(await storefront(VISITOR, undefined, token)).toEqual(ok(OFF));
+      const fresh = await tokenOf();
+      runtime.key = false;
+      expect(await storefront(VISITOR, undefined, fresh)).toEqual(ok(OFF));
+      runtime.key = true;
+      await set(on({ enabled: false, audience: 'internal' }), 1);
+      expect(await storefront(VISITOR, undefined, fresh)).toEqual(ok(OFF));
     });
   });
 });

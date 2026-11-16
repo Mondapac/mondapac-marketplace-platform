@@ -12,7 +12,8 @@ import {
   type ModelTier,
   type ReplyLanguage,
 } from '../domain/assistant-settings';
-import { AssistantSettingsChanged } from '../domain/audit';
+import { retentionDaysOf } from '../domain/conversation';
+import { AssistantPreviewTokenIssued, AssistantSettingsChanged } from '../domain/audit';
 import type { ChangeScope, LastChanged } from '../../../platform/audit/change-trail';
 import type { AssistantDependencies } from './assistant-dependencies';
 
@@ -24,6 +25,18 @@ export type AssistantSettingsFailure =
    * is the winning save, null when it cannot be read.
    */
   | { readonly code: 'assistant.conflict'; readonly lastChanged?: LastChanged | null };
+
+export type PreviewTokenFailure =
+  | { readonly code: 'access.denied' }
+  /** No signing key is configured on this server: the preview is off. */
+  | { readonly code: 'assistant.preview-unavailable' };
+
+/** A new internal preview token; the admin panel hands it to the storefront, never stores it. */
+export interface PreviewTokenView {
+  readonly token: string;
+  /** ISO 8601 instant (UTC). */
+  readonly expiresAt: string;
+}
 
 /** What the admin settings screen reads. The API key is reported as set or not, never shown. */
 export interface AssistantSettingsView {
@@ -69,13 +82,29 @@ export interface StorefrontAssistantView {
   readonly replyLanguage: ReplyLanguage;
   /** null: the storefront shows its own default text. */
   readonly welcomeText: string | null;
+  /**
+   * How many days a new conversation is kept (0: not kept), so the widget can say so: for a
+   * signed-in customer and for a guest (30 at most). The answer reads no session, so it gives
+   * both. null while off for this visitor.
+   */
+  readonly retentionDays: { readonly customer: number; readonly guest: number } | null;
+  /** Fixed button texts in the buyer's language; empty while off for this visitor. */
+  readonly quickPrompts: readonly string[];
+  /**
+   * The browser sent a valid internal preview token: the widget marks itself as a preview. False
+   * for every other visitor, and while the assistant is off.
+   */
+  readonly preview: boolean;
 }
 
-const OFF: StorefrontAssistantView = Object.freeze({
+export const STOREFRONT_OFF: StorefrontAssistantView = Object.freeze({
   enabled: false,
   guestsAllowed: false,
   replyLanguage: DEFAULT_ASSISTANT_SETTINGS.replyLanguage,
   welcomeText: null,
+  retentionDays: null,
+  quickPrompts: Object.freeze([]),
+  preview: false,
 });
 
 // The key a storefront visitor sends to keep one rollout bucket (the widget's random id).
@@ -211,8 +240,12 @@ export async function setAssistantSettings(
 export async function viewStorefrontAssistant(
   deps: AssistantDependencies,
   context: CallContext,
-  input: { readonly visitor: unknown },
+  input: { readonly visitor: unknown; readonly lang?: unknown; readonly preview?: unknown },
 ): Promise<Result<StorefrontAssistantView, never>> {
+  const lang = typeof input?.lang === 'string' ? input.lang : null;
+  const preview =
+    input?.preview !== undefined &&
+    deps.previewTokens.verify(context.market, input.preview, deps.clock.now());
   const visitorKey =
     typeof input?.visitor === 'string' && VISITOR_KEY.test(input.visitor) ? input.visitor : null;
   return deps.unitOfWork.run<StorefrontAssistantView, never>(
@@ -220,14 +253,48 @@ export async function viewStorefrontAssistant(
     async () => {
       const { settings } = await current(deps, context);
       const configured = deps.runtime.configured(context.market.marketId, settings.modelTier);
-      if (!configured || !inRollout(settings, context.market.marketId, visitorKey)) return ok(OFF);
+      if (!configured || !inRollout(settings, context.market.marketId, visitorKey, preview)) {
+        return ok(STOREFRONT_OFF);
+      }
       return ok({
         enabled: true,
         guestsAllowed: settings.users === 'guests-and-customers',
         replyLanguage: settings.replyLanguage,
         welcomeText: settings.welcomeText,
+        retentionDays: {
+          customer: retentionDaysOf(settings.retention, 'customer'),
+          guest: retentionDaysOf(settings.retention, 'guest'),
+        },
+        quickPrompts: deps.quickPrompts.forBuyer(context.market, lang),
+        preview,
       });
     },
     { readOnly: true },
   );
+}
+
+/**
+ * An admin with `assistant.settings.manage` takes an internal preview token (stage 0, B4): the
+ * storefront sends it with the read and each message, and the assistant then answers that browser
+ * while the audience is `internal` (never past the kill switch, a missing model or a spend cap).
+ * Valid 30 minutes, for this Market only; each issue is an audit row naming the expiry, never the
+ * token. No key configured: `assistant.preview-unavailable`.
+ */
+export async function issuePreviewToken(
+  deps: AssistantDependencies,
+  context: CallContext,
+): Promise<Result<PreviewTokenView, PreviewTokenFailure>> {
+  if (!isAdmin(context)) return err({ code: 'access.denied' });
+  if (!deps.previewTokens.available()) return err({ code: 'assistant.preview-unavailable' });
+  const issued = deps.previewTokens.issue(context.market, deps.clock.now());
+  if (issued === null) return err({ code: 'assistant.preview-unavailable' });
+  return deps.unitOfWork.run<PreviewTokenView, PreviewTokenFailure>(context.market, async () => {
+    await deps.audit.record(
+      context,
+      AssistantPreviewTokenIssued.entry('assistant-settings', {
+        after: { expiresAt: issued.expiresAt },
+      }),
+    );
+    return ok({ token: issued.token, expiresAt: issued.expiresAt.toString() });
+  });
 }

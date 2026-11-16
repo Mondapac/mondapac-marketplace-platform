@@ -6,6 +6,7 @@ import { LIST_PAGING_CODE } from '../../domain/definitions';
 import { viewSettings, type SettingsFailure, type SettingView } from '../settings-flow';
 
 export type { SettingView };
+export type { SettingChangeView } from '../settings-flow';
 
 /** `settings.view-list-paging-setting`: an admin reads the List paging setting (its own view key; each setting has its own keys, ADR-0026 decision 7). */
 export class ViewListPagingSetting extends UseCase<

@@ -10,6 +10,7 @@ export {
 export {
   CUSTOMERS_READ_FACADE,
   type CustomerLastOrderFailure,
+  type CustomerGroupMembershipFailure,
   type CustomersReadFacade,
 } from './customers-read.facade';
 export {

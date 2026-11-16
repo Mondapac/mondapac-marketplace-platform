@@ -149,7 +149,13 @@ describe.each(TEST_MARKETS)('the admin step-up over HTTP in market %s', (code) =
             execute: (_context: unknown, input: unknown) => {
               saves.push(input);
               return Promise.resolve(
-                ok({ status: 'active', reason: null, updatedAt: START, lastChanged: null }),
+                ok({
+                  status: 'active',
+                  reason: null,
+                  updatedAt: START,
+                  lastChanged: null,
+                  request: null,
+                }),
               );
             },
           }),
