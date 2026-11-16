@@ -1186,9 +1186,27 @@
       },
       "tabs": "Offer sections"
     },
+    "add": {
+      "title": "Add product",
+      "subtitle": "Your product · {market}",
+      "unsaved": "Unsaved product",
+      "offer": {
+        "title": "Your offer",
+        "help": "These belong to your offer on this product, not to the product itself."
+      },
+      "later": {
+        "classification": "Save the draft first. Then you can choose the category, tax category and tags here.",
+        "attributes": "Save the draft first. The details to fill in depend on the category you choose.",
+        "variants": "Save the draft first. Then you can choose the sizes or options you sell.",
+        "photos": "Save the draft first. Then you can add photos here."
+      },
+      "error": {
+        "not-saved": "Your product was created, but the page was not saved. {reason} Enter it again and press Save draft.",
+        "refused": "Your product was created, but some text was not saved because it holds a claim or a hidden character."
+      }
+    },
     "create": {
-      "title": "New product",
-      "intro": "Choose what you sell and add your first offer. You can add the product details next.",
+      "title": "Add product",
       "closed": "Your market does not let sellers add products yet.",
       "back": "Back to products",
       "type": "Product type",
@@ -1198,8 +1216,6 @@
       "choose": "Choose",
       "description": "Description ({locale})",
       "optional": "optional",
-      "submit": "Create product",
-      "creating": "Creating",
       "validation": {
         "summary": "Check the fields marked below.",
         "invalid": "This value is not valid.",
@@ -1426,14 +1442,18 @@
         "title-item": "add a title",
         "category-item": "choose a category",
         "tax-item": "choose the tax category",
-        "details-item": "fill in the required details"
+        "details-item": "fill in the required details",
+        "type-item": "choose a product type",
+        "sku-item": "enter your SKU",
+        "save-item": "save the draft first"
       },
       "organisation": {
         "title": "Organisation",
         "market": "Market",
         "scope": "Scope",
         "scope-own": "Your product",
-        "type": "Type"
+        "type": "Type",
+        "type-unset": "Choose it in Your offer"
       },
       "paused": {
         "title": "Mondapac paused this product.",

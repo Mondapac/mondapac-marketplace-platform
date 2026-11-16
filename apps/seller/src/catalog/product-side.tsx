@@ -4,7 +4,7 @@ import { Badge, Button, Card, CheckboxRow } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { readable } from './format.ts';
 
-export type Blocker = 'title' | 'category' | 'tax' | 'details';
+export type Blocker = 'title' | 'type' | 'sku' | 'category' | 'tax' | 'details' | 'save';
 
 const TONE = { draft: 'neutral', published: 'success' } as const;
 
@@ -95,7 +95,7 @@ export function OrganisationCard({
         <dt className="text-fg-muted">{t('scope')}</dt>
         <dd>{t('scope-own')}</dd>
         <dt className="text-fg-muted">{t('type')}</dt>
-        <dd>{readable(typeCode)}</dd>
+        <dd>{typeCode === '' ? t('type-unset') : readable(typeCode)}</dd>
       </dl>
     </Card>
   );
