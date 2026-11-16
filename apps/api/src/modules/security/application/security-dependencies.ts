@@ -2,6 +2,7 @@ import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { SecurityEventFeed } from '../../../platform/security-events/security-event-feed';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { AdminNames } from './ports/admin-names';
 import type { AlertMessenger } from './ports/alert-messenger';
 import type { OnCallRosterSource } from './ports/on-call-roster';
 import type { SecurityAlertRepository } from './ports/security-alert.repository';
@@ -14,6 +15,7 @@ export interface SecurityDependencies {
   readonly roster: OnCallRosterSource;
   readonly messenger: AlertMessenger;
   readonly audit: AuditWriter;
+  readonly names: AdminNames;
   readonly clock: Clock;
   readonly ids: IdGenerator;
 }
