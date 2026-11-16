@@ -234,11 +234,13 @@ describe('seller product list', () => {
   it('is read-only for a seller who may only view: a View only banner, no Add, no Import', async () => {
     serve(() => page([row()]));
     mount({ keys: ['catalog.own-product.view'] });
-    expect(await screen.findByText('View only')).toBeTruthy();
+    // The banner comes from the permission keys and shows at once; the rows come from the list
+    // read. Wait for the row, so the checks below run against the loaded list.
+    expect(await screen.findByRole('link', { name: 'Olive oil 1L' })).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
     expect(screen.getByText('Your role can see products but not add or change them.')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Add product' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Import' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Olive oil 1L' })).toBeTruthy();
   });
 
   it('shows the default columns: product, status, category, code and last changed', async () => {

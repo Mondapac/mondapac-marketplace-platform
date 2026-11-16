@@ -1,9 +1,10 @@
 'use client';
 
-import { Banner, Button, Dialog, Select, TextField, toast } from '@mondapac/ui';
+import { Banner, Button, Select, SettingsDrawer, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { useDrawerLabels } from '../settings/drawer-labels.ts';
 import { areaProblemOf, languageLabel } from './errors.ts';
 import {
   AREA_NAME_MAX,
@@ -13,9 +14,7 @@ import {
   type AreaRow,
 } from './types.ts';
 
-const FORM_ID = 'service-area-names-form';
-
-/** Edit the names of one area, one language at a time (POST sellers/admin/service-areas/names). */
+/** Edit, in the settings drawer, the names of one area, one language at a time (POST sellers/admin/service-areas/names). */
 export function EditNamesDialog({
   area,
   config,
@@ -42,6 +41,10 @@ export function EditNamesDialog({
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const inFlight = useRef(false);
+  const labels = useDrawerLabels(t('save'));
+  const dirty =
+    restores.size > 0 ||
+    languages.some((tag) => (drafts[tag] ?? '') !== (area.names[tag]?.name ?? ''));
 
   const current = area.names[language];
   const draft = drafts[language] ?? '';
@@ -62,8 +65,7 @@ export function EditNamesDialog({
     setError(null);
   }
 
-  async function submit(event?: FormEvent) {
-    event?.preventDefault();
+  async function submit() {
     if (inFlight.current) return;
     setProblem(null);
     const names: Record<string, string | null> = {};
@@ -113,72 +115,57 @@ export function EditNamesDialog({
   }
 
   return (
-    <Dialog
+    <SettingsDrawer
       open
       title={t('title', { code: area.code })}
-      onClose={() => {
-        if (!pending) onClose();
-      }}
-      actions={
-        <>
-          <Button variant="secondary" className="min-h-12" onClick={onClose} disabled={pending}>
-            {t('cancel')}
-          </Button>
-          <Button type="submit" form={FORM_ID} className="min-h-12" loading={pending}>
-            {t('save')}
-          </Button>
-        </>
-      }
+      onClose={onClose}
+      onSubmit={() => void submit()}
+      pending={pending}
+      dirty={dirty}
+      labels={labels}
+      notice={problem === null ? undefined : <Banner tone="critical">{problem}</Banner>}
     >
-      <form
-        id={FORM_ID}
-        onSubmit={(event) => void submit(event)}
-        noValidate
-        className="flex flex-col gap-4"
-      >
-        <Select
-          label={t('language')}
-          value={language}
-          onChange={(event) => {
-            setLanguage(event.target.value);
-            setError(null);
-          }}
-          options={languages.map((tag) => ({
-            value: tag,
-            label:
-              tag === defaultLanguage
-                ? t('language-required', { name: languageLabel(tag) })
-                : languageLabel(tag),
-          }))}
-        />
-        <TextField
-          label={t('name')}
-          name="name"
-          autoComplete="off"
-          maxLength={AREA_NAME_MAX}
-          value={draft}
-          onChange={(event) => change(event.target.value)}
-          error={error ?? undefined}
-          help={
-            current?.configuredName == null
-              ? t('help-none')
-              : t('help-configured', { name: current.configuredName })
-          }
-        />
-        {current?.edited === true || restores.has(language) ? (
-          <div>
-            <Button
-              variant="secondary"
-              className="min-h-12"
-              onClick={restore}
-              disabled={restores.has(language)}
-            >
-              {t('restore')}
-            </Button>
-          </div>
-        ) : null}
-        {problem === null ? null : <Banner tone="critical">{problem}</Banner>}
-      </form>
-    </Dialog>
+      <Select
+        label={t('language')}
+        value={language}
+        onChange={(event) => {
+          setLanguage(event.target.value);
+          setError(null);
+        }}
+        options={languages.map((tag) => ({
+          value: tag,
+          label:
+            tag === defaultLanguage
+              ? t('language-required', { name: languageLabel(tag) })
+              : languageLabel(tag),
+        }))}
+      />
+      <TextField
+        label={t('name')}
+        name="name"
+        autoComplete="off"
+        maxLength={AREA_NAME_MAX}
+        value={draft}
+        onChange={(event) => change(event.target.value)}
+        error={error ?? undefined}
+        help={
+          current?.configuredName == null
+            ? t('help-none')
+            : t('help-configured', { name: current.configuredName })
+        }
+      />
+      {current?.edited === true || restores.has(language) ? (
+        <div>
+          <Button
+            variant="secondary"
+            className="min-h-12"
+            onClick={restore}
+            disabled={restores.has(language)}
+          >
+            {t('restore')}
+          </Button>
+        </div>
+      ) : null}
+    </SettingsDrawer>
   );
 }
