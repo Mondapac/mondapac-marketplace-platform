@@ -1,4 +1,4 @@
-import { normaliseText, parsePackSize, wantedMeasure } from './pack-size';
+import { normaliseText, parsePackSize, statesMultiPack, wantedMeasure } from './pack-size';
 
 describe('parsePackSize', () => {
   it.each([
@@ -16,6 +16,7 @@ describe('parsePackSize', () => {
     ['Rice 1,000 g', { kind: 'mass', amount: 1000 }],
     ['Cola 1,500 ml', { kind: 'volume', amount: 1500 }],
     ['Rice 1,5 kg', { kind: 'mass', amount: 1500 }],
+    ['Rice 1.000 g', { kind: 'mass', amount: 1000 }],
     ['Milk 1l (best before 25 days)', { kind: 'volume', amount: 1000 }],
   ])('%s', (name, expected) => {
     expect(parsePackSize(name)).toEqual(expected);
@@ -50,5 +51,20 @@ describe('wantedMeasure and normaliseText', () => {
   it('puts Persian and Arabic spellings of letters and digits in one form', () => {
     expect(normaliseText('كيلو ۲ ٣')).toBe('کیلو 2 3');
     expect(normaliseText('می‌خواهم')).toBe('می خواهم');
+  });
+});
+
+describe('statesMultiPack', () => {
+  it.each([
+    'Eggs 12 pack',
+    'Tea 100 bags',
+    'Cola 6 x 330 ml',
+    'Pack of 6 rolls',
+    'تخم مرغ ۱۲ عددی',
+  ])('sees a multi-pack in "%s"', (name) => {
+    expect(statesMultiPack(name)).toBe(true);
+  });
+  it.each(['Eggs free range', 'Basmati rice 2 kg', 'Milk 1 L'])('sees none in "%s"', (name) => {
+    expect(statesMultiPack(name)).toBe(false);
   });
 });

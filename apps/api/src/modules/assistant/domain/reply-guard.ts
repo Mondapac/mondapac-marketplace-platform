@@ -43,7 +43,15 @@ const LOGISTICS = new RegExp(
 // Certification claims of any type (CERT-01 types are data; these are the words a model uses).
 const CERTIFICATION = new RegExp(
   [
+    String.raw`\bhe?l?a+l+\b`,
     String.raw`\bhala+l\b`,
+    String.raw`\bkasher\b`,
+    String.raw`\bbio\b`,
+    String.raw`\bbiologi\w*`,
+    String.raw`\böko\w*`,
+    'כשר',
+    'اورگانیک',
+    'ذبیحه',
     String.raw`\bharam\b`,
     String.raw`\bkosher\b`,
     String.raw`\bvegan\b`,
@@ -85,9 +93,13 @@ const LOOK_ALIKES: Readonly<Record<string, string>> = {
   ʜ: 'h',
 };
 const LOOK_ALIKE = new RegExp(`[${Object.keys(LOOK_ALIKES).join('')}]`, 'giu');
+// Default-ignorable characters (combining grapheme joiner, variation selectors, soft hyphen ...)
+// draw nothing: they are dropped before the words are tested, but the Persian ZWNJ stays.
+const IGNORABLE = /(?!\u200C)\p{DI}/gu;
 const folded = (sentence: string): string =>
   sentence
     .normalize('NFKC')
+    .replace(IGNORABLE, '')
     .replace(LOOK_ALIKE, (letter) => LOOK_ALIKES[letter.toLowerCase()] ?? letter);
 
 // Inert rendering (R9): no markup, links or images reach the buyer from a model.
@@ -100,7 +112,7 @@ const MARKUP_CHARACTERS = /[*_`#>|~]/g;
 // A bare domain (an off-platform address without a scheme), with any path (Hassan, M1).
 const BARE_DOMAIN = /\b[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.\p{L}{2,}\b(?:\/\S*)?/gu;
 // Controls and format characters, except the Persian zero-width non-joiner and line breaks.
-const INVISIBLE = /(?![\n‌])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+const INVISIBLE = /(?![\n‌])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{DI}]/gu;
 
 // A sentence ends at . ! ? or ؟ followed by a space, or at a line break ("$12.50" stays whole).
 const SENTENCE_BREAK = /(?<=[.!?؟])\s+|\n+/u;
@@ -152,12 +164,18 @@ export function guardReply(text: string): GuardedReply {
   return { sentences, notices: [...notices] };
 }
 
+// The claim words without word boundaries, for a text reduced to its letters.
+const LETTERS_ONLY_CLAIM =
+  /halal|hallal|helal|kosher|kasher|vegan|organic|certif|zabih|حلال|حرام|ذبح|گواهی|ارگانیک|اورگانیک|ذبیحه|כשר/iu;
+
 /**
  * Whether a short text carries nothing the guard would drop or change: no certification, price,
  * stock, delivery, contact, link or markup. Used for list lines the model passes to a tool, which
  * reach the buyer on a card and so must pass the same checks as a reply (ADR-0019 R1, R9).
  */
 export function isClaimFree(text: string): boolean {
+  // A claim spelled with separators ("h.a.l.a.l", "h a l a l") is read from the letters alone.
+  if (LETTERS_ONLY_CLAIM.test(folded(text).replace(/[^\p{L}]/gu, ''))) return false;
   const guarded = guardReply(text);
   return (
     guarded.notices.length === 0 &&

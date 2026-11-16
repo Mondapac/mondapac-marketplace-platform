@@ -363,6 +363,68 @@ describe.each(CURRENCIES)('planBasket (%s)', (currency) => {
   });
 });
 
+describe('whole-word matching', () => {
+  const only = (text: string, name: string) =>
+    planBasket({
+      items: [{ text, quantity: 1, unit: null }],
+      candidates: [
+        [
+          {
+            offerId: 'o1',
+            productId: 'p1',
+            sellerId: 's',
+            sellerName: null,
+            name,
+            price: money(100n, 'AUD'),
+            priceFrom: false,
+            taxInclusive: true,
+          },
+        ],
+      ],
+      mode: 'multi-store',
+      goal: 'best-match',
+    });
+
+  it.each([
+    ['tea', 'Team jersey'],
+    ['tea', 'Teak table'],
+    ['egg', 'Eggplant'],
+    ['milk', 'Milkshake'],
+    ['oil', 'Oilseed'],
+    ['salt', 'Salted peanuts'],
+    ['شیر', 'شیرین'],
+    ['نان', 'نانوایی'],
+  ])('does not auto-pick "%s" for "%s"; it is an option', (text, name) => {
+    const result = only(text, name);
+    expect(result.stores).toEqual([]);
+    expect(result.uncertain).toHaveLength(1);
+  });
+
+  it.each([
+    ['egg', 'Eggs free range'],
+    ['eggs', 'Egg'],
+    ['tomato', 'Tomatoes'],
+    ['برنج', 'برنج ها'],
+    ['تخم مرغ', 'تخم‌مرغ محلی'],
+  ])('picks "%s" for "%s"', (text, name) => {
+    expect(only(text, name).stores).toHaveLength(1);
+  });
+});
+
+describe('linesAreBuyersOwn words', () => {
+  it('checks single letters too, so a spelled-out word cannot ride along', () => {
+    const lines = [{ text: 'chicken h a l a l', quantity: 1, unit: null }];
+    expect(linesAreBuyersOwn(lines, ['I need chicken and rice'])).toBe(false);
+  });
+
+  const items = (...texts: string[]) => texts.map((text) => ({ text, quantity: 1, unit: null }));
+  it('needs whole words of the buyer, not pieces of them', () => {
+    expect(linesAreBuyersOwn(items('tea'), ['steak and price list'])).toBe(false);
+    expect(linesAreBuyersOwn(items('rice'), ['price list'])).toBe(false);
+    expect(linesAreBuyersOwn(items('egg'), ['12 eggs'])).toBe(true);
+  });
+});
+
 describe('linesAreBuyersOwn', () => {
   const items = (...texts: string[]) => texts.map((text) => ({ text, quantity: 1, unit: null }));
 

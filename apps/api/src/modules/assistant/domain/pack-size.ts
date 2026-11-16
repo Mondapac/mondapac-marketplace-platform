@@ -75,13 +75,13 @@ export const UNIT_WORDS: ReadonlySet<string> = new Set(Object.keys(UNIT_FACTORS)
 
 // "1,000 g" is a thousand grams, "1,5 kg" is one and a half: a comma followed by exactly three
 // digits is a thousands separator when the unit is small (g, ml) and a decimal mark otherwise.
-const THOUSANDS = /^\d{1,3},\d{3}$/;
+const THOUSANDS = /^\d{1,3}[,.]\d{3}$/;
 
 const measureOf = (count: number, amountText: string, unitText: string): Measure | null => {
   const unit = UNIT_FACTORS[unitText];
   const amount =
     unit?.factor === 1 && THOUSANDS.test(amountText)
-      ? Number(amountText.replace(',', ''))
+      ? Number(amountText.replace(/[,.]/, ''))
       : numberOf(amountText);
   if (unit === undefined || !Number.isFinite(amount) || amount <= 0) return null;
   const total = Math.round(amount * unit.factor * count);
@@ -127,7 +127,7 @@ export function wantedMeasure(quantity: number, unit: BasketUnit | null): Measur
 
 // "12 pack", "pack of 6", "6 x 330 ml", "24 pcs", "12 عددی": the name says one product holds several.
 const MULTI_PACK = new RegExp(
-  String.raw`(?<![\d.,])\d{1,3}\s*(?:pack|pk|pcs|pieces|ct|count|عددی|تایی)(?![a-z])|pack of \d+|(?<![\d.,])\d{1,2}\s*[x×]\s*\d`,
+  String.raw`(?<![\d.,])\d{1,3}\s*(?:pack|pk|pcs|pieces|ct|count|bags?|sachets?|sticks?|tablets?|capsules?|عددی|تایی|قوطی|بسته)(?![a-z])|pack of \d+|(?<![\d.,])\d{1,2}\s*[x×]\s*\d`,
   'u',
 );
 

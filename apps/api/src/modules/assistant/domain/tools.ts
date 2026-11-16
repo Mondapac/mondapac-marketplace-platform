@@ -197,10 +197,14 @@ export const TOOL_DECLARATIONS: readonly {
 ]);
 
 const PLAN_ITEM_TEXT_MAX = 80;
-// Controls, invisible format characters (except the Persian zero-width non-joiner) and markup.
-// Also unassigned, private-use and surrogate code points and the invisible Hangul fillers.
-const FORBIDDEN_ITEM_TEXT =
-  /(?!\u200C)[\p{Cc}\p{Cf}\p{Cn}\p{Co}\p{Cs}\p{Zl}\p{Zp}<>\u115F\u1160\u3164\uFFA0]/u;
+// A list line is letters, digits, spaces, the Persian zero-width non-joiner and a little
+// punctuation, nothing else: no combining marks, variation selectors or other invisible or
+// look-alike tricks, and no markup. It reaches the buyer on a card (R1, R9).
+const ALLOWED_ITEM_TEXT = /^[\p{L}\p{N} \u200C.,'/%&()+-]+$/u;
+// Letters spaced out with punctuation ("h.a.l.a.l", "h-a-l") hide a word from the claim check.
+const SPELLED_OUT = /\p{L}[.'/&+-]\p{L}[.'/&+-]\p{L}/u;
+// Two or more single letters between spaces ("h a l a l").
+const SINGLE_LETTERS = /(?:^|\s)\p{L}\s+\p{L}(?:\s|$)/u;
 
 /** One list line as the model wrote it, checked; null when anything is out of shape. */
 function parsePlanItem(value: unknown): BasketItem | null {
@@ -210,7 +214,9 @@ function parsePlanItem(value: unknown): BasketItem | null {
   if (
     Array.from(text).length < 2 ||
     Array.from(text).length > PLAN_ITEM_TEXT_MAX ||
-    FORBIDDEN_ITEM_TEXT.test(text) ||
+    !ALLOWED_ITEM_TEXT.test(text) ||
+    SPELLED_OUT.test(text) ||
+    SINGLE_LETTERS.test(text) ||
     // The line reaches the buyer on a card: no certification, price, stock, contact or link.
     !isClaimFree(text)
   ) {

@@ -227,3 +227,13 @@ describe('basket lines reach the buyer on a card (R1, R9)', () => {
     },
   );
 });
+
+describe('the reply guard reads claims through invisible marks', () => {
+  it('drops a certification claim split by a combining grapheme joiner or a variation selector', () => {
+    for (const text of ['This chicken is h\u034Falal.', 'This chicken is o\uFE0Frganic.']) {
+      const guarded = guardReply(text);
+      expect(guarded.notices).toContain('see-certification');
+      expect(guarded.sentences.join(' ')).not.toMatch(/halal|organic/i);
+    }
+  });
+});

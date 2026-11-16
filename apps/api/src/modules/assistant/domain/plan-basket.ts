@@ -162,19 +162,21 @@ export function tokensOf(text: string): readonly string[] {
     .filter((token) => token.length >= 2 && !/^\d+$/.test(token) && !UNIT_WORDS.has(token));
 }
 
+/** One word of a line against one word of a name: equal, or a plural of it ("egg", "eggs"; "برنج", "برنج‌ها"). */
+function sameWord(token: string, word: string): boolean {
+  if (word === token) return true;
+  for (const ending of ['s', 'es', 'ها', 'های']) {
+    if (word === token + ending || (token.length >= 4 && token === word + ending)) return true;
+  }
+  return false;
+}
+
+// Whole words only ("tea" is not in "steak", "teak" or "teabags"): a product whose name only
+// contains the word inside a longer one is an option for the buyer, never an automatic pick.
 function nameMatches(tokens: readonly string[], name: string): boolean {
   if (tokens.length === 0) return false;
-  // Whole words only ("tea" is not in "steak"); a longer word that starts with the token ("teabags")
-  // and a plural of it ("egg" for "eggs") count.
   const words = normaliseText(name).split(NOISE);
-  return tokens.every((token) =>
-    words.some(
-      (word) =>
-        word === token ||
-        (token.length >= 3 && word.startsWith(token)) ||
-        (token.length >= 4 && token.endsWith('s') && word === token.slice(0, -1)),
-    ),
-  );
+  return tokens.every((token) => words.some((word) => sameWord(token, word)));
 }
 
 /** How a product fits a wish: the packs it takes, or why it cannot be picked on its own. */
@@ -439,9 +441,17 @@ export function linesAreBuyersOwn(
   items: readonly BasketItem[],
   buyerTexts: readonly string[],
 ): boolean {
-  const corpus = normaliseText(buyerTexts.join('\n'));
+  const words = normaliseText(buyerTexts.join('\n')).split(NOISE);
   return items.every((item) => {
-    const tokens = tokensOf(item.text);
-    return tokens.length > 0 && tokens.every((token) => corpus.includes(token));
+    // Every word of any length, so single letters cannot hide a word from the check.
+    const lineWords = normaliseText(item.text)
+      .split(NOISE)
+      .filter((word) => word !== '' && !/^\d+$/.test(word) && !UNIT_WORDS.has(word));
+    return (
+      tokensOf(item.text).length > 0 &&
+      lineWords.every((token) =>
+        words.some((word) => sameWord(token, word) || sameWord(word, token)),
+      )
+    );
   });
 }
