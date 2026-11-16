@@ -22,10 +22,17 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX saved_filters_seller_shared_name_key ON lists.saved_filters USING btree (market_id, seller_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NOT NULL))",
   'lists.saved_filters_shared_name_key':
     "CREATE UNIQUE INDEX saved_filters_shared_name_key ON lists.saved_filters USING btree (market_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NULL))",
+  // Assistant (stage 0, B2): a signed-in buyer's own conversations; guest rows stay out.
+  'assistant.conversations_market_id_account_id_last_message_at_id_idx':
+    'CREATE INDEX conversations_market_id_account_id_last_message_at_id_idx ON assistant.conversations USING btree (market_id, account_id, last_message_at DESC, id DESC) WHERE (account_id IS NOT NULL)',
   // Blog (blog package 1): one open and one live version per post, one featured post per Market,
   // the public list and the worker's due-posts index, and the outbox's unpublished index.
+  'assistant.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON assistant.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'reviews.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON reviews.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'system_requests.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON system_requests.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'blog.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON blog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'blog.post_versions_market_id_category_id_idx':
