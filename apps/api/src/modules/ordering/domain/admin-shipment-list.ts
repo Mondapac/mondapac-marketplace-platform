@@ -100,8 +100,39 @@ export interface ShipmentStageCounts {
   readonly attention: number;
 }
 
+/** Where shipping's real-time carrier delivery stands (shipping's own five progress values). */
+export const SHIPMENT_CARRIER_PROGRESS = [
+  'booked',
+  'picked-up',
+  'delivered',
+  'exception',
+  'cancelled',
+] as const;
+export type ShipmentCarrierProgressValue = (typeof SHIPMENT_CARRIER_PROGRESS)[number];
+
+/**
+ * What the real-time carrier last reported for a seller order, read from shipping after the
+ * list's read unit (advisory, display only). Never the carrier reference or the tracking link.
+ */
+export interface ShipmentCarrierProgress {
+  readonly progress: ShipmentCarrierProgressValue;
+  /** The carrier's last raw status code, of a safe shape only; null otherwise. */
+  readonly carrierStatus: string | null;
+  /** When the platform recorded the last change, not the carrier's event time. */
+  readonly updatedAt: Temporal.Instant;
+  readonly proofOfDelivery: boolean;
+  /** The fleet that holds the booking; it may differ from the row's quoted `fleet`. */
+  readonly fleet: string;
+}
+
 export interface ShipmentListRow extends ShipmentListRecord {
   readonly stage: ShipmentStage;
+  /**
+   * Null when the seller order has no carrier booking (a pickup, a seller-shipped order, not yet
+   * booked) or when the progress is not available (see `carrierProgressAvailable`). Distinct
+   * from `carrier`, the carrier the seller named, which this never touches.
+   */
+  readonly carrierProgress: ShipmentCarrierProgress | null;
   readonly storeName: string | null;
   /** PERSONAL DATA; null without the customer key or when the lookup failed. */
   readonly customer: OrderCustomerView | null;
@@ -121,6 +152,12 @@ export interface ShipmentListPage {
   readonly nextCursor: string | null;
   readonly searchCapped: boolean;
   readonly searchScope: 'customers-and-stores' | 'stores' | null;
+  /**
+   * False when the carrier progress could not be read for this page (the admin lacks
+   * `shipping.carrier-delivery.view`, or shipping failed): every `carrierProgress` is then null
+   * and means "not available", not "no booking".
+   */
+  readonly carrierProgressAvailable: boolean;
 }
 
 export function shipmentStage(

@@ -45,6 +45,7 @@ import { ViewFleetSelection } from './application/use-cases/view-fleet-selection
 import { BookCarrierDelivery } from './application/use-cases/book-carrier-delivery.use-case';
 import { CancelCarrierDelivery } from './application/use-cases/cancel-carrier-delivery.use-case';
 import { CarrierTrackingLinks } from './application/use-cases/carrier-tracking-links.use-case';
+import { CarrierProgressOf } from './application/use-cases/carrier-progress-of.use-case';
 import { CarrierShipmentQuery } from './application/use-cases/carrier-shipment.use-case';
 import { DeliveryArea } from './application/use-cases/delivery-area.use-case';
 import { PickupAvailability } from './application/use-cases/pickup-availability.use-case';
@@ -145,6 +146,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       BookCarrierDelivery,
       CarrierShipmentQuery,
       CarrierTrackingLinks,
+      CarrierProgressOf,
       CancelCarrierDelivery,
       ReceiveCarrierWebhook,
       ReceiveUberWebhook,
@@ -175,6 +177,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         CarrierShipmentQuery,
         CancelCarrierDelivery,
         CarrierTrackingLinks,
+        CarrierProgressOf,
         DeliveryAvailability,
         DeliveryChoice,
         PriceDelivery,
@@ -189,6 +192,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         shipment: CarrierShipmentQuery,
         cancel: CancelCarrierDelivery,
         trackingLinks: CarrierTrackingLinks,
+        progress: CarrierProgressOf,
         availability: DeliveryAvailability,
         choice: DeliveryChoice,
         price: PriceDelivery,
@@ -203,6 +207,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           shipment,
           cancel,
           trackingLinks,
+          progress,
           availability,
           choice,
           price,

@@ -66,6 +66,11 @@ import {
 import { PICKUP_CODE_VAULT, type PickupCodeVault } from '../application/ports/pickup-code-vault';
 import { ConfigOrderingPolicy } from './config-ordering-policy';
 import { FacadeOrderLabels } from './facade-order-labels';
+import { FacadeCarrierProgressReader } from './facade-carrier-progress.reader';
+import {
+  CARRIER_PROGRESS_READER,
+  type CarrierProgressReader,
+} from '../application/ports/carrier-progress.reader';
 import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
 import { ShippingDeliveryMethodPolicy } from './shipping-delivery-method-policy';
 import { PrismaOrderRepository } from './prisma-order.repository';
@@ -248,5 +253,11 @@ export const orderingProviders: readonly FactoryProvider[] = [
       identity: IdentityFacade,
       markets: MarketRegistry,
     ): OrderLabels => new FacadeOrderLabels(catalog, sellers, identity, markets),
+  },
+  {
+    provide: CARRIER_PROGRESS_READER,
+    inject: [SHIPPING_FACADE],
+    useFactory: (shipping: ShippingFacade): CarrierProgressReader =>
+      new FacadeCarrierProgressReader(shipping),
   },
 ];

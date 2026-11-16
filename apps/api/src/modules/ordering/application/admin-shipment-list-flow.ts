@@ -9,6 +9,7 @@ import {
   shipmentStage,
   type ShipmentListFilter,
   type ShipmentListPage,
+  type ShipmentCarrierProgress,
   type ShipmentListRecord,
   type ShipmentSort,
 } from '../domain/admin-shipment-list';
@@ -17,6 +18,7 @@ import { TRACKING } from '../domain/order';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import { settled } from './order-labels';
 import type { AdminShipmentListReader } from './ports/admin-shipment-list.reader';
+import type { CarrierProgressAnswer, CarrierProgressReader } from './ports/carrier-progress.reader';
 import type { OrderLabels } from './ports/order-labels';
 import {
   DEFAULT_PAGE_SIZE,
@@ -33,6 +35,7 @@ export interface AdminShipmentListDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly shipments: AdminShipmentListReader;
   readonly labels: OrderLabels;
+  readonly carrierProgress: CarrierProgressReader;
 }
 
 /** The query of the admin Shipments list; every field is optional and checked here. */
@@ -233,7 +236,9 @@ function parse(input: ShipmentListInput): Result<Parsed, ReadFailure> {
 
 /**
  * The seller orders of the Market's paid orders for the admin Shipments list: one page with its
- * total and the per-stage counts, then the store and customer names (advisory). The search is
+ * total and the per-stage counts, then the store and customer names and the carrier progress
+ * (advisory: one batched call each, in parallel, after the read unit has closed; a refusal or a
+ * failure leaves its fields null and never fails the list). The search is
  * resolved by the owning modules before the read unit and fails closed, as on the Orders list.
  */
 export async function listShipments(
@@ -308,23 +313,33 @@ export async function listShipments(
   );
   if (!read.ok) return read;
   const { records } = read.value;
-  const [storeAnswer, customerAnswer] =
+  const sellerOrderIds = [...new Set(records.map((r) => r.sellerOrderId))];
+  const [storeAnswer, customerAnswer, progressAnswer] =
     records.length === 0
-      ? [undefined, undefined]
+      ? [undefined, undefined, undefined]
       : await Promise.allSettled([
           deps.labels.storeNamesOf(context, [...new Set(records.map((r) => r.sellerId))]),
           deps.labels.customersOf(context, [...new Set(records.map((r) => r.accountId))]),
+          deps.carrierProgress.progressOf(context, sellerOrderIds),
         ]);
   const storeNames =
     storeAnswer === undefined ? undefined : settled(context, 'store-names', storeAnswer);
   const customers =
     customerAnswer === undefined ? undefined : settled(context, 'customers', customerAnswer);
+  const progress: CarrierProgressAnswer | undefined =
+    progressAnswer === undefined
+      ? { available: true, progress: new Map<Id<'SellerOrder'>, ShipmentCarrierProgress>() }
+      : settled(context, 'carrier-progress', progressAnswer);
+  // Only what was asked for: an id the answer adds is never shown.
+  const progressOf = (sellerOrderId: Id<'SellerOrder'>) =>
+    (progress?.available === true ? progress.progress.get(sellerOrderId) : undefined) ?? null;
   return ok({
     rows: records.map((record) => ({
       ...record,
       stage: shipmentStage(record),
       storeName: storeNames?.get(record.sellerId) ?? null,
       customer: customers?.get(record.accountId) ?? null,
+      carrierProgress: progressOf(record.sellerOrderId),
       actions: shipmentRowActions(record),
     })),
     counts: read.value.counts,
@@ -334,6 +349,7 @@ export async function listShipments(
     nextCursor: read.value.nextCursor,
     searchCapped,
     searchScope,
+    carrierProgressAvailable: progress?.available === true,
   });
 }
 

@@ -63,6 +63,10 @@ import { purgeSettledShipToJob } from './presentation/jobs/purge-settled-ship-to
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
 import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-policy';
 import { ORDER_LABELS } from './application/ports/order-labels';
+import {
+  CARRIER_PROGRESS_READER,
+  type CarrierProgressReader,
+} from './application/ports/carrier-progress.reader';
 import { ORDER_TAX_CATEGORIES } from './application/ports/order-tax-categories';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
 import { PAYMENT_ATTEMPT_LIMITS } from './application/ports/payment-attempt-limits';
@@ -422,13 +426,20 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: AdminListShipments,
-      inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_SHIPMENT_LIST_READER, ORDER_LABELS],
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        ADMIN_SHIPMENT_LIST_READER,
+        ORDER_LABELS,
+        CARRIER_PROGRESS_READER,
+      ],
       useFactory: (
         gate: UseCaseGate,
         unitOfWork: UnitOfWork,
         shipments: AdminShipmentListReader,
         labels: OrderLabels,
-      ) => new AdminListShipments(gate, { unitOfWork, shipments, labels }),
+        carrierProgress: CarrierProgressReader,
+      ) => new AdminListShipments(gate, { unitOfWork, shipments, labels, carrierProgress }),
     },
     {
       provide: AdminListDocuments,
