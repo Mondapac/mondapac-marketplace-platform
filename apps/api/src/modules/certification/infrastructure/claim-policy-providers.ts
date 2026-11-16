@@ -3,6 +3,7 @@ import type { IdGenerator } from '@mondapac/shared-kernel';
 import { USE_CASE_GATE, type UseCaseGate } from '../../../platform/authz';
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
+import { registerSystemChangeReverter } from '../../system-requests';
 import {
   CATALOG_REFERENCES,
   type CatalogReferences,
@@ -11,7 +12,12 @@ import {
   CLAIM_POLICY_REPOSITORY,
   type ClaimPolicyRepository,
 } from '../application/ports/claim-policy.repository';
+import {
+  CERTIFICATION_REVIEW_AREA,
+  CLAIM_POLICY_SUBJECT_KIND,
+} from '../application/registry/certification-review';
 import type { ClaimPolicyDependencies } from '../application/registry/claim-policy.shared';
+import { ClaimPolicyReverter } from '../application/registry/registry-reverters';
 import type { RegistryDependencies } from '../application/registry/registry.shared';
 import { ClaimPolicyApproveRelaxation } from '../application/use-cases/claim-policy-approve-relaxation.use-case';
 import { ClaimPolicyProposalReject } from '../application/use-cases/claim-policy-proposal-reject.use-case';
@@ -22,6 +28,7 @@ import { PrismaClaimPolicyRepository } from './prisma-claim-policy.repository';
 import { REGISTRY_DEPENDENCIES } from './registry-providers';
 
 const CLAIM_POLICY_DEPENDENCIES = Symbol('CERTIFICATION_CLAIM_POLICY_DEPENDENCIES');
+const CLAIM_POLICY_REVERTER = Symbol('CERTIFICATION_CLAIM_POLICY_REVERTER');
 
 /** The admin use cases behind the claim-policy page (slice 13). */
 export const claimPolicyUseCases = [
@@ -53,6 +60,17 @@ export const claimPolicyProviders: readonly Provider[] = [
       catalog: CatalogReferences,
     ): ClaimPolicyDependencies => ({ ...registry, policies, catalog }),
   },
+  {
+    provide: CLAIM_POLICY_REVERTER,
+    inject: [CLAIM_POLICY_DEPENDENCIES],
+    useFactory: (deps: ClaimPolicyDependencies) => new ClaimPolicyReverter(deps),
+  },
+  registerSystemChangeReverter(
+    'certification',
+    CLAIM_POLICY_SUBJECT_KIND,
+    CERTIFICATION_REVIEW_AREA,
+    CLAIM_POLICY_REVERTER,
+  ),
   ...claimPolicyUseCases.map((type): FactoryProvider => ({
     provide: type,
     inject: [USE_CASE_GATE, CLAIM_POLICY_DEPENDENCIES],

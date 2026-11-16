@@ -863,6 +863,21 @@
     }
   },
   {
+    "action": "certification.claim-policy.reverted",
+    "targetType": "certification.claim-policy",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "revisionId": "id"
+    },
+    "after": {
+      "requestId": "id",
+      "restoredRevisionId": "optional(id)",
+      "revisionId": "id",
+      "typeId": "id"
+    }
+  },
+  {
     "action": "certification.claim-policy.revised",
     "targetType": "certification.claim-policy",
     "targetId": "id",
@@ -1335,6 +1350,21 @@
     "after": {
       "proposalId": "id",
       "reasonGiven": "boolean",
+      "revisionId": "id"
+    }
+  },
+  {
+    "action": "certification.type.reverted",
+    "targetType": "certification.type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "revisionId": "id"
+    },
+    "after": {
+      "claimTermsChanged": "boolean",
+      "requestId": "id",
+      "restoredRevisionId": "id",
       "revisionId": "id"
     }
   },

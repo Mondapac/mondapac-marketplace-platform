@@ -14,6 +14,11 @@ import {
 } from '../../../platform/subject-keys/subject-key-service';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
+  registerSystemChangeReverter,
+  SYSTEM_REQUEST_RECORDER,
+  type SystemRequestRecorder,
+} from '../../system-requests';
+import {
   SELLER_OWNER_CONTACT,
   type SellerOwnerContact,
 } from '../application/ports/decision-mail.ports';
@@ -26,6 +31,11 @@ import {
   CERTIFICATION_MAIL_POLICY,
   type CertificationMailPolicy,
 } from '../application/ports/review.ports';
+import {
+  CERTIFICATION_REVIEW_AREA,
+  TYPE_REVISION_SUBJECT_KIND,
+} from '../application/registry/certification-review';
+import { TypeRevisionReverter } from '../application/registry/registry-reverters';
 import type { RegistryDependencies } from '../application/registry/registry.shared';
 import { IssuerActivate } from '../application/use-cases/issuer-activate.use-case';
 import { IssuerApproveReactivation } from '../application/use-cases/issuer-approve-reactivation.use-case';
@@ -55,6 +65,7 @@ import { PrismaCertificationRegistryRepository } from './prisma-certification-re
 import { SubjectKeyRegistryCipher } from './subject-key-registry-cipher';
 
 export const REGISTRY_DEPENDENCIES = Symbol('CERTIFICATION_REGISTRY_DEPENDENCIES');
+const TYPE_REVISION_REVERTER = Symbol('CERTIFICATION_TYPE_REVISION_REVERTER');
 const DERECOGNITION_MAIL_DEPENDENCIES = Symbol('CERTIFICATION_DERECOGNITION_MAIL_DEPENDENCIES');
 
 /** The admin use cases behind the type and registry pages (slice 12). */
@@ -128,6 +139,7 @@ export const registryProviders: readonly Provider[] = [
       CLOCK,
       ID_GENERATOR,
       MarketRegistry,
+      SYSTEM_REQUEST_RECORDER,
     ],
     useFactory: (
       unitOfWork: UnitOfWork,
@@ -138,6 +150,7 @@ export const registryProviders: readonly Provider[] = [
       clock: Clock,
       ids: IdGenerator,
       markets: MarketRegistry,
+      review: SystemRequestRecorder,
     ): RegistryDependencies => ({
       unitOfWork,
       registry,
@@ -146,9 +159,21 @@ export const registryProviders: readonly Provider[] = [
       outbox,
       clock,
       ids,
+      review,
       supportedLocales: (market: MarketContext) => markets.get(market.marketId).supportedLocales,
     }),
   },
+  {
+    provide: TYPE_REVISION_REVERTER,
+    inject: [REGISTRY_DEPENDENCIES],
+    useFactory: (deps: RegistryDependencies) => new TypeRevisionReverter(deps),
+  },
+  registerSystemChangeReverter(
+    'certification',
+    TYPE_REVISION_SUBJECT_KIND,
+    CERTIFICATION_REVIEW_AREA,
+    TYPE_REVISION_REVERTER,
+  ),
   {
     provide: DERECOGNITION_MAIL_DEPENDENCIES,
     inject: [

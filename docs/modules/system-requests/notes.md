@@ -76,6 +76,19 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
   `not-permitted`, and the request stays open).
 - Every money opening passes risk `high`, whatever the area's policy says, so the reviewer's
   step-up is spent before a revert writes.
+- **certification** (area certification, the area's risk): kind `certification.type-revision`
+  (subject = type id) and `certification.claim-policy` (subject = type id; a type has one policy),
+  values `{revisionId, revisionNo}` (both null before a type's first policy revision; the values
+  after also list the changed diff paths, at most 100, and their count). Only a save **published**
+  at once opens a request; a relaxing save waits for a second admin (H1) and opens none, nor does
+  its approval. The save routes take `note` and answer `request`; the type and claim-policy views
+  carry `review: {reviewed, risk}`. A revert writes the content before as a new published revision
+  (audited `certification.type.reverted` / `certification.claim-policy.reverted` with the request
+  id, and the save's own event, so catalog re-checks tags after a policy change). **A revert never
+  loosens enforcement** (CERT-21, ADR-0012): it is classified by the save's own rule, and one that
+  relaxes (a setting, a removed claim term or locale, a less strict basis, a removed non-manufacturer
+  row) is `not-permitted`, as is any revert while a relaxation of the subject waits for a second
+  admin. Content the Market's locales no longer allow is `gone`.
 
 ### Known limits (follow-ups)
 
@@ -88,6 +101,16 @@ The queue needs `system-requests.request.view`; the policy page needs `policy.vi
   permission of the subject.
 - On DELETE routes the note travels in the `note` query, so it reaches access logs that keep the
   query string; the API's own logs drop it. A body on DELETE comes with the panel package.
+- A published claim-policy save only tightens, so restoring the rows before always loosens: its
+  request can be approved but never rejected or withdrawn (`not-permitted`, it stays open). Undoing
+  a tightening is a relaxation for a second admin on the claim-policy page; the request then
+  answers `changed-since` and can only be approved. The same holds for a type save that tightened
+  a setting or added a claim term or a locale; text-only type edits (names, descriptions, icon)
+  revert.
+- Issuer changes, type deactivation and reactivation are state changes, not field edits, and are
+  not reviewed; issuers have no field edit to review yet.
+- The admin panel has no type or claim-policy edit page yet, so no panel asks for the note; the
+  page that adds one shows the note field from the view's `review`.
 
 ## Supersession and locks
 
