@@ -100,6 +100,7 @@ import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deli
 import { RecordCarrierProgress } from './application/use-cases/record-carrier-progress.use-case';
 import { RecordDeliveryAnchor } from './application/use-cases/record-delivery-anchor.use-case';
 import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier-after-refund.use-case';
+import { AdminOrderAccountOf } from './application/use-cases/admin-order-account-of.use-case';
 import { AdminOpenObligationsOfQuery } from './application/use-cases/admin-open-obligations-of.use-case';
 import { OpenObligationsOfQuery } from './application/use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
@@ -393,6 +394,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminCancelOrder,
       AdminViewRefundLimits,
       AdminCustomerRefunds,
+      AdminOrderAccountOf,
       AdminSetRefundLimit,
       AdminRemoveRefundLimit,
       SettleRefunds,
@@ -477,6 +479,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         RefundNoticeQuery,
         CustomerOrderStatsQuery,
         CustomerOrderAccountsQuery,
+        AdminOrderAccountOf,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -493,6 +496,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         refundNotice: RefundNoticeQuery,
         customerStats: CustomerOrderStatsQuery,
         customerAccounts: CustomerOrderAccountsQuery,
+        orderAccount: AdminOrderAccountOf,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -509,6 +513,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           refundNotice,
           customerStats,
           customerAccounts,
+          orderAccount,
         ),
     },
     {

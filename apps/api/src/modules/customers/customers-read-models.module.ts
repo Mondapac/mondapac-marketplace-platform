@@ -52,6 +52,6 @@ export class CustomersReadModelsModule implements OnModuleInit {
 
   onModuleInit(): void {
     this.peers.bind({ identity: this.identity, ordering: this.ordering });
-    this.management.bind({ identity: this.identity });
+    this.management.bind({ identity: this.identity, ordering: this.ordering });
   }
 }

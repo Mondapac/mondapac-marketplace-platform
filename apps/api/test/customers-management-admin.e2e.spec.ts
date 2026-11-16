@@ -1,5 +1,5 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { parseId, Temporal } from '@mondapac/shared-kernel';
+import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
@@ -28,6 +28,8 @@ import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
+import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
+import { MemoryOrders } from './support/ordering-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -64,6 +66,7 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
   let clock: FixedClock;
   let list: InMemoryCustomerList;
   let deletions: MemoryAccountDeletionRequests;
+  let orders: MemoryOrders;
   const http = () => request(app!.getHttpServer());
   const market = testMarketContext(code, PLATFORM_TENANT_ID);
 
@@ -102,6 +105,7 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
 
   async function boot() {
     deletions = new MemoryAccountDeletionRequests();
+    orders = new MemoryOrders();
     list = new InMemoryCustomerList();
     list.add(market, row(BUYER));
     ({ app } = await createTestApp({
@@ -122,7 +126,9 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
           .overrideProvider(CUSTOMER_TIMELINE_REPOSITORY)
           .useValue(new InMemoryCustomerTimeline(list))
           .overrideProvider(ACCOUNT_DELETION_REQUEST_REPOSITORY)
-          .useValue(deletions),
+          .useValue(deletions)
+          .overrideProvider(ORDER_REPOSITORY)
+          .useValue(orders),
     }));
     await app
       .get(SeedRoles)
@@ -277,6 +283,71 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
       .set(viewer);
     expect(unknown.status).toBe(404);
     expect(unknown.body).toMatchObject({ code: 'customers.customer-not-found' });
+  });
+
+  it('finds the customer by an order number under ordering’s own key (phase 2b)', async () => {
+    await boot();
+    const orderId = id<'Order'>(0xb001);
+    orders.rows.set(orderId, {
+      id: orderId,
+      marketId: code as AccountState['marketId'],
+      accountId: BUYER,
+      status: 'confirmed',
+      cancelReason: null,
+      paymentState: 'captured',
+      total: money(1000n, code === 'AU' ? 'AUD' : 'JPY'),
+      reservationId: 'r-1',
+      stripeIdempotencyKey: `checkout-${orderId}`,
+      stripeSessionId: null,
+      stripePaymentIntentId: null,
+      paymentExpiresAt: START,
+      createdAt: START,
+      confirmedAt: START,
+      cancelledAt: null,
+      version: 2,
+      taxStrategyId: null,
+      shipToSealed: null,
+      sellerOrders: [],
+      lines: [],
+    });
+    const listed = (headers: Record<string, string>, orderNumber: string) =>
+      http().post('/customers/admin/list').set(headers).send({ orderNumber });
+    // The manager holds the customers keys only: ordering's key is missing, so it is refused.
+    const manager = sessionOf(1, MANAGER);
+    expect((await listed(manager, orderId)).status).toBe(403);
+    fakes.seedRole({
+      id: id<'Role'>(0xe003),
+      marketId: code as AccountState['marketId'],
+      scope: 'platform',
+      kind: 'custom',
+      seedCode: null,
+      seedVersion: null,
+      sellerId: null,
+      name: 'Customers and orders',
+      permissionKeys: ['customers.customers.view', 'ordering.order.view'],
+      version: 1,
+      createdAt: START,
+    });
+    const ORDERS_ADMIN = id<'Account'>(0xa003);
+    account(ORDERS_ADMIN, 'admin', 'orders');
+    fakes.seedAssignment({
+      id: id<'RoleAssignment'>(0xe903),
+      marketId: code as AccountState['marketId'],
+      accountId: ORDERS_ADMIN,
+      roleId: id<'Role'>(0xe003),
+      assignedByAccountId: null,
+      assignedAt: START,
+      version: 1,
+    });
+    const reader = sessionOf(3, ORDERS_ADMIN);
+    const found = await listed(reader, orderId);
+    expect(found.status).toBe(200);
+    expect(
+      (found.body as { items: { accountId: string }[] }).items.map((i) => i.accountId),
+    ).toEqual([BUYER]);
+    const none = await listed(reader, id(0xb002));
+    expect(none.status).toBe(200);
+    expect((none.body as { items: unknown[] }).items).toEqual([]);
   });
 
   it('writes and reads a note without caching, and reads the activity', async () => {

@@ -193,6 +193,7 @@ export class PrismaCustomerListReader implements CustomerListReader {
       }
     }
 
+    if (selector.accountIds != null) and.push({ accountId: { in: [...selector.accountIds] } });
     if (selector.status !== null) and.push({ status: selector.status });
     if (selector.group !== null) {
       and.push({ groupMemberships: { some: { groupId: selector.group } } });

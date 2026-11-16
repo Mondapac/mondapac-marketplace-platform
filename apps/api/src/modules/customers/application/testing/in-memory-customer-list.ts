@@ -53,6 +53,7 @@ export class InMemoryCustomerList implements CustomerListReader {
         case 'all':
           break;
       }
+      if (selector.accountIds != null && !selector.accountIds.includes(row.accountId)) return false;
       if (selector.status !== null && row.status !== selector.status) return false;
       if (selector.verified !== null && row.emailVerified !== selector.verified) return false;
       if (selector.ordersMin !== null && row.orderCount < selector.ordersMin) return false;

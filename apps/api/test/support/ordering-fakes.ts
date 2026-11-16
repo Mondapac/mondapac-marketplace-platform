@@ -327,8 +327,12 @@ export class MemoryOrders implements OrderRepository {
     this.rows.set(order.id, order);
     return Promise.resolve();
   }
-  findById(_m: MarketContext, orderId: Id<'Order'>) {
-    return Promise.resolve(this.rows.get(orderId) ?? null);
+  findById(market: MarketContext, orderId: Id<'Order'>) {
+    // As the database: an order of another Market is not found.
+    const order = this.rows.get(orderId);
+    return Promise.resolve(
+      order !== undefined && order.marketId === market.marketId ? order : null,
+    );
   }
   findOwn(_m: MarketContext, orderId: Id<'Order'>, accountId: Id<'Account'>) {
     const order = this.rows.get(orderId);

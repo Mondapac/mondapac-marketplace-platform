@@ -198,14 +198,22 @@ type ListUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerListDependencie
 function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
-    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_LIST_READER, CLOCK, ADMIN_DAY_ZONE],
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      CUSTOMER_LIST_READER,
+      CLOCK,
+      ADMIN_DAY_ZONE,
+      CUSTOMER_MANAGEMENT_PEERS,
+    ],
     useFactory: (
       gate: UseCaseGate,
       unitOfWork: CustomerListDependencies['unitOfWork'],
       listReader: CustomerListDependencies['listReader'],
       clock: CustomerListDependencies['clock'],
       dayZone: CustomerListDependencies['dayZone'],
-    ) => new type(gate, { unitOfWork, listReader, clock, dayZone }),
+      peers: CustomerManagementPeers,
+    ) => new type(gate, { unitOfWork, listReader, clock, dayZone, orders: peers.ordering }),
   };
 }
 
@@ -225,6 +233,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       ID_GENERATOR,
       ADMIN_DAY_ZONE,
       ACCOUNT_DELETION_REQUEST_REPOSITORY,
+      CUSTOMER_MANAGEMENT_PEERS,
     ],
     useFactory: (
       gate: UseCaseGate,
@@ -236,8 +245,19 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       ids: CustomerPageDependencies['ids'],
       dayZone: CustomerPageDependencies['dayZone'],
       deletions: CustomerPageDependencies['deletions'],
+      peers: CustomerManagementPeers,
     ) =>
-      new type(gate, { unitOfWork, listReader, clock, audit, timeline, ids, dayZone, deletions }),
+      new type(gate, {
+        unitOfWork,
+        listReader,
+        clock,
+        audit,
+        timeline,
+        ids,
+        dayZone,
+        deletions,
+        orders: peers.ordering,
+      }),
   };
 }
 

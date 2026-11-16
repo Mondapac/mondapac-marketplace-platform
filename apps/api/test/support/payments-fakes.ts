@@ -239,6 +239,10 @@ export class FakeOrderingFacade implements OrderingFacade {
     return Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 }));
   }
 
+  adminOrderAccountOf(): ReturnType<OrderingFacade['adminOrderAccountOf']> {
+    return Promise.resolve(err({ code: 'ordering.order-not-found' as const }));
+  }
+
   myDeliveredSellerOrders(): ReturnType<OrderingFacade['myDeliveredSellerOrders']> {
     return Promise.resolve(ok([]));
   }

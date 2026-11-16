@@ -79,6 +79,11 @@ export interface CustomerSelector {
   readonly spentMax: bigint | null;
   /** A manual group's id: only its members. */
   readonly group: string | null;
+  /**
+   * Only these accounts (an empty list matches nobody). Never from a saved document or a filter:
+   * the list sets it when the admin searches by an order number (phase 2b), from ordering's answer.
+   */
+  readonly accountIds?: readonly string[] | null;
 }
 
 export interface CustomerFieldFailure {

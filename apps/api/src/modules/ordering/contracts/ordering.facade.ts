@@ -292,6 +292,23 @@ export interface OrderingFacade {
   ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;
 
   /**
+   * The customer account that placed an order, by the order's id, for the admin Customers search
+   * (customers management phase 2b). Rule `permissions [ordering.order.view]`, a platform admin not
+   * acting as a seller. Unknown, malformed and another Market's ids are `ordering.order-not-found`.
+   */
+  adminOrderAccountOf(
+    context: CallContext,
+    orderId: string,
+  ): Promise<
+    Result<
+      { readonly accountId: Id<'Account'> },
+      | AccessDenied
+      | { readonly code: 'access.unavailable' }
+      | { readonly code: 'ordering.order-not-found' }
+    >
+  >;
+
+  /**
    * The signed-in customer's own seller orders whose fulfilment is `delivered`, delivered at or
    * after `deliveredSince`, newest delivery first, at most {@link MAX_DELIVERED_SELLER_ORDERS}.
    * With `sellerOrderId` only that seller order (the customer's own, else an empty list). Rule

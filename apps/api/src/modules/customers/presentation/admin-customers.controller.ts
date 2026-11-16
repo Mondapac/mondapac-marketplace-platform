@@ -92,7 +92,10 @@ export class AdminCustomersController {
       'email, last-order, orders, spent) and `direction`. With `page` (and `pageSize`, at most 100) ' +
       'the answer carries `paging.total` (the page-number mode of the List paging setting, at most ' +
       '10,000 rows deep); without it `cursor` and `limit` read the next page without a total. ' +
-      '`counts` is the size of every tab. The rows are personal data.',
+      '`counts` is the size of every tab. `orderNumber` (an order’s id, as the panels show it) ' +
+      'narrows the list to the customer who placed it; it also needs ordering.order.view (403 ' +
+      'access.denied without it), and an unknown or another Market’s order matches nobody. The ' +
+      'rows are personal data.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: Object })
@@ -116,6 +119,7 @@ export class AdminCustomersController {
       'pageSize',
       'cursor',
       'limit',
+      'orderNumber',
     ]);
     if (checked instanceof HttpException) throw checked;
     const result = await this.list.execute(context, body);

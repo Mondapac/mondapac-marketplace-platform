@@ -136,7 +136,21 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
     const dayZone = new ActorOrMarketDayZone(markets, {
       describeActor: () => Promise.resolve(ok({ timezone: ownZone.value })),
     });
-    const listDeps: CustomerListDependencies = { unitOfWork, listReader, clock, dayZone };
+    // Orders by id, per Market, and whether the admin holds ordering's key (phase 2b search).
+    const placed = new Map<string, Id<'Account'>>();
+    const orderKey = { held: true };
+    const orders = {
+      adminOrderAccountOf: (context: CallContext, orderId: string) => {
+        if (!orderKey.held) return Promise.resolve(err({ code: 'access.denied' }));
+        const found = placed.get(`${context.market.marketId}:${orderId}`);
+        return Promise.resolve(
+          found === undefined
+            ? err({ code: 'ordering.order-not-found' })
+            : ok({ accountId: found }),
+        );
+      },
+    };
+    const listDeps: CustomerListDependencies = { unitOfWork, listReader, clock, dayZone, orders };
     const timeline = new InMemoryCustomerTimeline(listReader);
     // Completed deletions (the erasure ran), by Market and account: the tombstone's source.
     const erased = new Map<string, Temporal.Instant>();
@@ -174,6 +188,8 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       }),
       ownZone,
       erased,
+      placed,
+      orderKey,
       filters: {
         list: new AdminSavedFiltersList(gate, filterDeps),
         create: new AdminSavedFilterCreate(gate, filterDeps),
@@ -426,6 +442,32 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
         'edge@example.test',
       ]);
       expect(await q({ joinedFrom: '2026-11-02', joinedTo: '2026-11-02' })).toEqual([]);
+    });
+
+    it('narrows to the customer who placed an order number, under ordering’s key (phase 2b)', async () => {
+      const t = seeded();
+      const ctx = t.as(person([VIEW]));
+      const bilal = t.listReader.rowsOf
+        .get(market.marketId)!
+        .find((r) => r.email.startsWith('bilal'))!;
+      const orderId = ids.next<'Order'>();
+      t.placed.set(`${market.marketId}:${orderId}`, bilal.accountId);
+      // Another Market's order of the same id is never found here.
+      const foreignOrder = ids.next<'Order'>();
+      t.placed.set(`${otherMarket.marketId}:${foreignOrder}`, bilal.accountId);
+      const q = async (body: object) => emails(await t.list.execute(ctx, body));
+      expect(await q({ orderNumber: ` ${orderId.toUpperCase()} ` })).toEqual([
+        'bilal@example.test',
+      ]);
+      expect(await q({ orderNumber: orderId, filters: { status: 'disabled' } })).toEqual([]);
+      expect(await q({ orderNumber: foreignOrder })).toEqual([]);
+      expect(await q({ orderNumber: 'not-an-order' })).toEqual([]);
+      expect(failure(await t.list.execute(ctx, { orderNumber: 'x'.repeat(65) }))).toBe(
+        'validation.failed',
+      );
+      expect(failure(await t.list.execute(ctx, { orderNumber: 42 }))).toBe('validation.failed');
+      t.orderKey.held = false;
+      expect(failure(await t.list.execute(ctx, { orderNumber: orderId }))).toBe('access.denied');
     });
 
     it('reads the next page by cursor, without a total', async () => {
