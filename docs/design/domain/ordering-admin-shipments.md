@@ -39,4 +39,7 @@ already show on the admin order page). One row per seller order of a paid order.
   `application/sales-list-export.ts`, columns in `sales-list-export-columns.ts`), so customer name
   and email are filled only with `identity.customer-account.view`. Money is two columns (plain
   decimal in major units, then the currency); times are ISO 8601 with the zone's offset; codes
-  are the API's codes. File: `shipments-<day>.csv|xlsx`.
+  are the API's codes. A name `search` is resolved once per file, and one that matched too many
+  parties is refused (`search` `too-broad`) rather than giving a short file; the tab counts are not
+  read on the streamed pages; a failed customer lookup fails the file (a store name stays advisory:
+  the Seller ID is there). File: `shipments-<day>.csv|xlsx`.

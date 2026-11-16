@@ -9,9 +9,11 @@ import {
   type ExportFile,
   type SheetWriter,
 } from '../../../platform/list-export';
+import { ORDERING_ORDER_VIEW } from '../contracts/permissions';
 import { decimalOf } from './orders-csv';
 import type { MarketZones } from './ports/ship-to-retention.repository';
-import type { ReadFailure } from './read-flow';
+import type { OrderLabels } from './ports/order-labels';
+import type { ListScope, ReadFailure } from './read-flow';
 
 // The export of the admin Sales lists (Shipments, Refunds, Invoices; super list rule 14, Reza's
 // spec 0.8): the selected rows (`ids`) or every row of the list's own filter, as CSV or XLSX, with
@@ -46,6 +48,8 @@ export interface SalesExportPage<Row> {
   readonly rows: readonly Row[];
   readonly total: number | null;
   readonly nextCursor: string | null;
+  /** The name search matched more parties than it could use: the file would miss rows. */
+  readonly searchCapped: boolean;
 }
 
 export interface SalesListExportSpec<Row> {
@@ -58,11 +62,13 @@ export interface SalesListExportSpec<Row> {
   readonly columns: readonly ExportColumnSpec<Row>[];
   /** Column keys accepted but skipped for this filter (a column of the other Invoices tab). */
   readonly skipped?: ReadonlySet<string>;
-  /** One page of the list: `query` is the filter plus paging; `ids` the selected rows or null. */
+  /** One page of the list: `query` is the filter plus paging; `scope` the selection and counts. */
   readonly read: (
     query: Readonly<Record<string, unknown>>,
-    ids: readonly string[] | null,
+    scope: ListScope,
   ) => Promise<Result<SalesExportPage<Row>, ReadFailure>>;
+  /** True once the customer lookup failed: the file stops rather than leave its cells blank. */
+  readonly lookupFailed: () => boolean;
 }
 
 export type SalesExportFailure =
@@ -75,6 +81,64 @@ export interface SalesExportDependencies {
   readonly sheetWriter: SheetWriter;
   readonly zones: MarketZones;
 }
+
+/**
+ * The names an export reads, for one file: the two name searches are answered once per term (the
+ * file is one consistent set of parties, and a 10,000-row file does not search 100 times), and a
+ * failed customer lookup is remembered. The list itself treats such a failure as
+ * advisory (blank names); a file must not, because a blank customer cell would read as "the admin
+ * may not see customers". An admin without the customer key is not a failure: the adapter answers
+ * an empty map.
+ */
+export function exportLabels(labels: OrderLabels): {
+  readonly labels: OrderLabels;
+  readonly failed: () => boolean;
+} {
+  let failed = false;
+  const remember = <T>(answer: Promise<T>): Promise<T> =>
+    answer.catch((error: unknown) => {
+      failed = true;
+      throw error;
+    });
+  const customers = new Map<string, ReturnType<OrderLabels['customerAccountsMatching']>>();
+  const stores = new Map<string, ReturnType<OrderLabels['sellersMatching']>>();
+  const once = <T>(cache: Map<string, T>, term: string, ask: () => T): T => {
+    const known = cache.get(term);
+    if (known !== undefined) return known;
+    const asked = ask();
+    cache.set(term, asked);
+    return asked;
+  };
+  const wrapped: OrderLabels = {
+    unitLabelsOf: (context, keys) => labels.unitLabelsOf(context, keys),
+    // A missing store name still leaves the Seller ID cell: advisory, as on the page.
+    storeNamesOf: (context, ids) => labels.storeNamesOf(context, ids),
+    customersOf: (context, ids) => remember(labels.customersOf(context, ids)),
+    customerAccountsMatching: (context, term) =>
+      once(customers, term, () => labels.customerAccountsMatching(context, term)),
+    sellersMatching: (context, term) =>
+      once(stores, term, () => labels.sellersMatching(context, term)),
+    customerShortNamesOf: (context, ids) => labels.customerShortNamesOf(context, ids),
+    staffNamesOf: (context, ids) => labels.staffNamesOf(context, ids),
+  };
+  return { labels: wrapped, failed: () => failed };
+}
+
+/** The rule of every Sales list export: the list's own, `permissions [ordering.order.view]`. */
+export const SALES_EXPORT_RULE = { kind: 'permissions', allOf: [ORDERING_ORDER_VIEW.key] } as const;
+
+/** The page of a list as the export reads it. */
+export const pageOf = <Row>(page: {
+  readonly rows: readonly Row[];
+  readonly total: number | null;
+  readonly nextCursor: string | null;
+  readonly searchCapped: boolean;
+}) => ({
+  rows: page.rows,
+  total: page.total,
+  nextCursor: page.nextCursor,
+  searchCapped: page.searchCapped,
+});
 
 const invalid = (path: string, code: string) =>
   err({ code: 'validation.failed', fields: [{ path, code }] } as const);
@@ -184,8 +248,12 @@ export async function salesListExport<Row>(
     }
   }
 
-  const first = await spec.read({ ...filter, page: 1, pageSize: 1 }, ids);
+  const scope = { ids };
+  const first = await spec.read({ ...filter, page: 1, pageSize: 1 }, scope);
   if (!first.ok) return first;
+  // A capped name search would leave matching rows out of the file: the admin narrows it.
+  if (first.value.searchCapped) return invalid('search', 'too-broad');
+  if (spec.lookupFailed()) return err({ code: 'access.unavailable' });
   const total = first.value.total ?? 0;
   const size = checkExportSize(total, total);
   if (!size.ok) return size;
@@ -199,9 +267,10 @@ export async function salesListExport<Row>(
     do {
       const page = await spec.read(
         { ...filter, limit: SALES_EXPORT_PAGE, ...(cursor === null ? {} : { cursor }) },
-        ids,
+        { ...scope, skipCounts: true },
       );
       if (!page.ok) throw new Error(`${spec.name}: the read failed (${page.error.code})`);
+      if (spec.lookupFailed()) throw new Error(`${spec.name}: a name lookup failed`);
       yield page.value.rows.map((row) => chosen.flatMap((column) => column.cells(row, at)));
       cursor = page.value.nextCursor;
     } while (cursor !== null);

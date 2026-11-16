@@ -1580,6 +1580,66 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       ).toBeGreaterThanOrEqual(3);
     });
 
+    it('writes customer name and email into an export only for an admin with the customer key', async () => {
+      await seedAdmins();
+      customer();
+      const ORDERS_ONLY = id<'Account'>(0xa00b);
+      const ordersOnlyRole = id<'Role'>(0xc0f3);
+      fakes.seedRole({
+        id: ordersOnlyRole,
+        marketId: code as AccountState['marketId'],
+        scope: 'platform',
+        kind: 'custom',
+        seedCode: null,
+        seedVersion: null,
+        sellerId: null,
+        name: 'Orders, no customers',
+        permissionKeys: ['ordering.order.view'],
+        version: 1,
+        createdAt: START,
+      });
+      seedAccount(ORDERS_ONLY, 'admin', 'admin11');
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(0xe00b),
+        marketId: code as AccountState['marketId'],
+        accountId: ORDERS_ONLY,
+        roleId: ordersOnlyRole,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+      shipmentRows = [
+        {
+          sellerOrderId: id<'SellerOrder'>(0x5001),
+          orderId: id<'Order'>(0x6001),
+          sellerId: SELLER,
+          accountId: CUSTOMER,
+          paidAt: START,
+          deliveryMethod: 'instant',
+          deliveryWindow: null,
+          fulfilment: 'to-ship',
+          readyAt: null,
+          shippedAt: null,
+          deliveredAt: null,
+          carrier: null,
+          trackingRef: null,
+          fleet: null,
+          deliveryAttention: null,
+          shipping: money(500n, currency),
+          total: money(1500n, currency),
+          refunded: money(0n, currency),
+        },
+      ];
+      const route = '/ordering/admin/shipments/export?columns=customer';
+      const withKey = await http().get(route).set(adminHeaders(VIEWER, 81));
+      const withoutKey = await http().get(route).set(adminHeaders(ORDERS_ONLY, 82));
+
+      const rowOf = (text: string) => text.replace('\uFEFF', '').split('\r\n').filter(Boolean)[1]!;
+      expect([withKey.status, withoutKey.status]).toEqual([200, 200]);
+      expect(rowOf(String(withKey.text))).toContain('c1@Example.com');
+      expect(rowOf(String(withoutKey.text))).toBe(`${id<'Order'>(0x6001)},to-prepare,,,`);
+    });
+
     it('gives a role with ordering.order.view the document of a paid order, and no other role', async () => {
       await seedAdmins();
       const orderId = body(await checkout(customer())).orderId;

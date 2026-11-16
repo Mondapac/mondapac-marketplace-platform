@@ -21,6 +21,7 @@ import {
   MAX_PAGED_ROWS,
   MAX_SEARCH_LENGTH,
   MIN_SEARCH_LENGTH,
+  type ListScope,
   type ReadFailure,
 } from './read-flow';
 
@@ -203,13 +204,13 @@ export async function listDocuments(
   deps: AdminDocumentListDependencies,
   context: CallContext,
   input: DocumentListInput,
-  ids: readonly string[] | null = null,
+  scope: ListScope = {},
 ): Promise<Result<DocumentListPage, ReadFailure>> {
   const parsed = parse(input ?? {});
   if (!parsed.ok) return parsed;
   const { sort, paging } = parsed.value;
   // An export's selected rows narrow the list's own filter (an AND).
-  let filter = { ...parsed.value.filter, ids };
+  let filter = { ...parsed.value.filter, ids: scope.ids ?? null };
   let searchCapped = false;
   let searchScope: DocumentListPage['searchScope'] = null;
   if (parsed.value.search !== null) {
@@ -249,7 +250,9 @@ export async function listDocuments(
         // One row more than asked tells whether a next page exists.
         const [rows, counts] = await Promise.all([
           deps.documents.page(context.market, filter, sort, 0, paging.limit + 1, paging.after),
-          deps.documents.countByKind(context.market),
+          scope.skipCounts === true
+            ? Promise.resolve({ orderConfirmations: 0, creditNotes: 0 })
+            : deps.documents.countByKind(context.market),
         ]);
         const records = rows.slice(0, paging.limit);
         const last = records[records.length - 1];

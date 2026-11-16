@@ -18,7 +18,7 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { AdminListRefunds } from '../application/use-cases/admin-list-refunds.use-case';
-import { AdminExportRefunds } from '../application/use-cases/admin-export-sales-lists.use-case';
+import { AdminExportRefunds } from '../application/use-cases/admin-export-refunds.use-case';
 import { sendOrdersExport } from './export-response';
 import { REFUND_SORT_KEYS } from '../domain/admin-refund-list';
 import { LOSS_BEARERS } from '../domain/reason-codes';

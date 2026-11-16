@@ -18,7 +18,7 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { AdminListDocuments } from '../application/use-cases/admin-list-documents.use-case';
-import { AdminExportDocuments } from '../application/use-cases/admin-export-sales-lists.use-case';
+import { AdminExportDocuments } from '../application/use-cases/admin-export-documents.use-case';
 import { sendOrdersExport } from './export-response';
 import { DOCUMENT_KINDS, DOCUMENT_SORT_KEYS } from '../domain/admin-document-list';
 import { DocumentListPageBody, documentListPageBody } from './admin-document-list.dto';

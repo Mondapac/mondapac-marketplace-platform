@@ -18,7 +18,7 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { AdminListShipments } from '../application/use-cases/admin-list-shipments.use-case';
-import { AdminExportShipments } from '../application/use-cases/admin-export-sales-lists.use-case';
+import { AdminExportShipments } from '../application/use-cases/admin-export-shipments.use-case';
 import { sendOrdersExport } from './export-response';
 import { SHIPMENT_SORT_KEYS, SHIPMENT_STAGES } from '../domain/admin-shipment-list';
 import { DELIVERY_METHODS } from '../domain/delivery-method';

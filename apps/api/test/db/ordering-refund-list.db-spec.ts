@@ -539,5 +539,21 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
       { readOnly: true },
     );
     expect(rows.ok && rows.value).toEqual([]);
+    // Nor through an export's selected ids.
+    const selected = await db.unitOfWork.run(
+      other,
+      async () =>
+        ok(
+          await reader.page(
+            other,
+            { ...NO_FILTER, ids: [mine.refundId] },
+            { key: 'requested', direction: 'desc' },
+            0,
+            10,
+          ),
+        ),
+      { readOnly: true },
+    );
+    expect(selected.ok && selected.value).toEqual([]);
   });
 });

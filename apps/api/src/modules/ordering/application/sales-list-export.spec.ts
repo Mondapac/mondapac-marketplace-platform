@@ -31,11 +31,9 @@ import type { AdminDocumentListReader } from './ports/admin-document-list.reader
 import type { AdminRefundListReader } from './ports/admin-refund-list.reader';
 import type { AdminShipmentListReader } from './ports/admin-shipment-list.reader';
 import { SALES_EXPORT_MAX_IDS, SALES_EXPORT_PAGE, zonedText } from './sales-list-export';
-import {
-  AdminExportDocuments,
-  AdminExportRefunds,
-  AdminExportShipments,
-} from './use-cases/admin-export-sales-lists.use-case';
+import { AdminExportDocuments } from './use-cases/admin-export-documents.use-case';
+import { AdminExportRefunds } from './use-cases/admin-export-refunds.use-case';
+import { AdminExportShipments } from './use-cases/admin-export-shipments.use-case';
 
 // The Sales list exports (Shipments, Refunds, Invoices) in memory, on both Market fixtures: the
 // view key, the query checks, the columns and their order, the selected rows, the cap, the zone of
@@ -562,5 +560,73 @@ describe.each(['AU', 'ZZ'] as const)('admin Sales list exports in market %s', (c
       'Order ID,Credit note ID,Refund ID,Reason',
       `${base.orderId},${credit.documentId},${credit.refundId},damaged`,
     ]);
+  });
+
+  it('reads the tab counts once, for the size, and never on the streamed pages', async () => {
+    const { exportShipments, shipments, context } = setup();
+    let counted = 0;
+    const countByStage = shipments.countByStage.bind(shipments);
+    shipments.countByStage = () => {
+      counted += 1;
+      return countByStage();
+    };
+    shipments.records = Array.from({ length: SALES_EXPORT_PAGE * 2 + 1 }, () => shipment());
+    const result = await exportShipments.execute(context, { columns: '' });
+    if (!result.ok) throw new Error(result.error.code);
+    expect(await linesOf(result.value.chunks)).toHaveLength(SALES_EXPORT_PAGE * 2 + 2);
+    expect(counted).toBe(1);
+  });
+
+  it('resolves a name search once for the whole file', async () => {
+    const { exportShipments, shipments, labels, context } = setup();
+    shipments.records = Array.from({ length: SALES_EXPORT_PAGE + 1 }, () => shipment());
+    const result = await exportShipments.execute(context, { search: 'Sara', columns: '' });
+    if (!result.ok) throw new Error(result.error.code);
+    await textOf(result.value.chunks);
+    expect(labels.calls.filter((call) => call.lookup === 'search-customers')).toHaveLength(1);
+    expect(labels.calls.filter((call) => call.lookup === 'search-stores')).toHaveLength(1);
+  });
+
+  it('refuses a name search that matched too many parties, as the file would miss rows', async () => {
+    const { exportShipments, shipments, labels, context } = setup();
+    shipments.records = [shipment()];
+    labels.searchCapped = true;
+    const result = await exportShipments.execute(context, { search: 'Sara' });
+    expect(fieldsOf(result)).toEqual([{ path: 'search', code: 'too-broad' }]);
+  });
+
+  it('refuses before the file, or fails the file, when the customer lookup fails', async () => {
+    const { exportShipments, shipments, labels, context } = setup();
+    shipments.records = Array.from({ length: SALES_EXPORT_PAGE + 1 }, () => shipment());
+    labels.fail.add('customers');
+    const before = await exportShipments.execute(context, {});
+    expect(!before.ok && before.error.code).toBe('access.unavailable');
+
+    labels.fail.clear();
+    const started = await exportShipments.execute(context, {});
+    if (!started.ok) throw new Error(started.error.code);
+    labels.fail.add('customers');
+    await expect(textOf(started.value.chunks)).rejects.toThrow(/lookup failed/);
+
+    // A store name is advisory: the Seller ID cell stays, so the file goes on.
+    labels.fail.clear();
+    labels.fail.add('stores');
+    const stores = await exportShipments.execute(context, { columns: 'store' });
+    if (!stores.ok) throw new Error(stores.error.code);
+    expect(await linesOf(stores.value.chunks)).toHaveLength(SALES_EXPORT_PAGE + 2);
+  });
+
+  it('fails the file when a page read fails while it streams', async () => {
+    const { exportShipments, shipments, context } = setup();
+    shipments.records = [shipment()];
+    const page = shipments.page.bind(shipments);
+    let reads = 0;
+    shipments.page = (...args: Parameters<ShipmentReader['page']>) => {
+      reads += 1;
+      return reads === 1 ? page(...args) : Promise.reject(new Error('database gone'));
+    };
+    const result = await exportShipments.execute(context, {});
+    if (!result.ok) throw new Error(result.error.code);
+    await expect(textOf(result.value.chunks)).rejects.toThrow();
   });
 });

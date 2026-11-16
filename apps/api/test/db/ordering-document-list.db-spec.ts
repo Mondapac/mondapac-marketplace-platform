@@ -566,5 +566,15 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
       );
       expect(rows.ok && rows.value).toEqual([]);
     }
+    // Nor through an export's selected ids, of either kind.
+    const selected = await db.unitOfWork.run(
+      other,
+      async () =>
+        ok(
+          await reader.page(other, { ...CONFIRMATIONS, ids: [mine.sellerOrderId] }, NEWEST, 0, 10),
+        ),
+      { readOnly: true },
+    );
+    expect(selected.ok && selected.value).toEqual([]);
   });
 });
