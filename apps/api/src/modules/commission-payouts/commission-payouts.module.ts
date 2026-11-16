@@ -46,7 +46,7 @@ import { AdminPayoutsController, SellerPayoutsController } from './presentation/
 import { payoutRunJob, reconcileInstructionsJob } from './presentation/jobs/payout-jobs';
 import { DISPUTE_SOURCE, ORDER_PAYMENT_LOOKUP } from './application/ports/dispute-source';
 import { DISPUTE_REPOSITORY } from './application/ports/dispute.repository';
-import { SELLER_NAMES } from './application/ports/seller-names';
+import { SELLER_NAMES, type SellerNames } from './application/ports/seller-names';
 import { DecideDispute } from './application/use-cases/decide-dispute.use-case';
 import { ListDisputes } from './application/use-cases/list-disputes.use-case';
 import { ListOwnDisputes } from './application/use-cases/list-own-disputes.use-case';
@@ -256,13 +256,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerEvents('commission-payouts', COMMISSION_PAYOUTS_EVENTS),
     {
       provide: COMMISSION_RATE_REVERTER,
-      inject: PORTS.map(([, token]) => token),
-      useFactory: (...values: unknown[]) => new CommissionRateReverter(dependenciesOf(values)),
+      inject: [SELLER_NAMES, ...PORTS.map(([, token]) => token)],
+      useFactory: (names: SellerNames, ...values: unknown[]) =>
+        new CommissionRateReverter(dependenciesOf(values), names),
     },
     {
       provide: PAYOUT_TERMS_REVERTER,
-      inject: PORTS.map(([, token]) => token),
-      useFactory: (...values: unknown[]) => new PayoutTermsReverter(dependenciesOf(values)),
+      inject: [SELLER_NAMES, ...PORTS.map(([, token]) => token)],
+      useFactory: (names: SellerNames, ...values: unknown[]) =>
+        new PayoutTermsReverter(dependenciesOf(values), names),
     },
     registerSystemChangeReverter(
       'commission-payouts',

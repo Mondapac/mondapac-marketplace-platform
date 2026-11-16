@@ -8,6 +8,7 @@ import {
   REQUEST_STATUSES,
   REQUEST_VIEWS,
 } from '../domain/request';
+import type { MatchingOutcome } from '../application/use-cases/approve-matching-system-requests.use-case';
 import type { BulkOutcome } from '../application/use-cases/approve-system-requests.use-case';
 import type { BadgeView } from '../application/use-cases/count-system-requests.use-case';
 import type { RequestListView } from '../application/use-cases/list-system-requests.use-case';
@@ -25,8 +26,8 @@ import type {
 import type { RecordedRequest } from '../contracts/recorder';
 
 // The bodies of the System requests routes. Instants are ISO 8601 (UTC); people are account ids
-// (the panel shows names from the admin team list). The values before and after are the owning
-// module's JSON object, rendered by the panel per subject kind.
+// with their display names beside them (identity's facade; null when unknown). The values before
+// and after are the owning module's JSON object, rendered by the panel per subject kind.
 
 export class RequestBody {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -36,6 +37,14 @@ export class RequestBody {
   @ApiProperty({ description: '`<module>.<subject>`, e.g. system-requests.policy-area.' })
   subjectKind!: string;
   @ApiProperty() subjectRef!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The owning module's label of the subject (a store name, a setting's name); null when " +
+      'the module gives none or it cannot be read.',
+  })
+  subjectLabel!: string | null;
   @ApiProperty({ enum: RISKS }) risk!: string;
   @ApiProperty({ enum: REQUEST_STATUSES }) status!: string;
   @ApiProperty({
@@ -54,12 +63,24 @@ export class RequestBody {
   after!: Record<string, unknown> | null;
   @ApiProperty({ description: "The author's note." }) note!: string;
   @ApiProperty({ format: 'uuid' }) requestedBy!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The author's display name; null when it cannot be read.",
+  })
+  requestedByName!: string | null;
   @ApiProperty({ format: 'date-time', description: 'When the change went live.' })
   appliedAt!: string;
   @ApiProperty({ format: 'date-time' }) reviewDueAt!: string;
   @ApiProperty({ description: 'Open and past its review date.' }) overdue!: boolean;
   @ApiProperty({ enum: DECISIONS, nullable: true, type: String }) decision!: string | null;
   @ApiProperty({ format: 'uuid', nullable: true, type: String }) decidedBy!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The decider's display name; null while open or when it cannot be read.",
+  })
+  decidedByName!: string | null;
   @ApiProperty({ format: 'date-time', nullable: true, type: String }) decidedAt!: string | null;
   @ApiProperty({ nullable: true, type: String }) decisionReason!: string | null;
   @ApiProperty({
@@ -69,6 +90,12 @@ export class RequestBody {
     description: 'A later request on the same subject: this one can no longer be reverted.',
   })
   supersededBy!: string | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'The SR number of supersededBy (for the "Superseded by SR-n" link).',
+  })
+  supersededByNumber!: number | null;
   @ApiProperty() commentCount!: number;
   @ApiProperty({ description: 'The permission key a reviewer of this request holds.' })
   reviewPermission!: string;
@@ -84,6 +111,12 @@ export class ActivityBody {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ enum: ACTIVITY_KINDS }) kind!: string;
   @ApiProperty({ format: 'uuid' }) actor!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The actor's display name; null when it cannot be read.",
+  })
+  actorName!: string | null;
   @ApiProperty({ format: 'date-time' }) at!: string;
   @ApiProperty({ nullable: true, type: String, description: 'The comment or the reason.' })
   body!: string | null;
@@ -146,6 +179,49 @@ export class BulkOutcomeBody {
 
 export class BulkApproveBody {
   @ApiProperty({ type: [BulkOutcomeBody] }) results!: BulkOutcomeBody[];
+}
+
+/** The filter of "select all matching": the list's own query fields, as strings. */
+export class BulkApproveMatchingRequest {
+  @ApiPropertyOptional({ enum: REQUEST_VIEWS, description: 'Default all-open.' }) view?: string;
+  @ApiPropertyOptional({ description: 'An SR number or a part of the note, kind or key.' })
+  q?: string;
+  @ApiPropertyOptional({ description: 'Comma list of areas.' }) area?: string;
+  @ApiPropertyOptional({ description: 'Comma list of risks (only low is approved).' })
+  risk?: string;
+  @ApiPropertyOptional({ description: 'Comma list of statuses (only open is approved).' })
+  status?: string;
+  @ApiPropertyOptional({ format: 'uuid' }) requestedBy?: string;
+  @ApiPropertyOptional({ format: 'uuid' }) decidedBy?: string;
+  @ApiPropertyOptional({ format: 'date-time' }) appliedFrom?: string;
+  @ApiPropertyOptional({ format: 'date-time', description: 'Exclusive.' }) appliedTo?: string;
+  @ApiPropertyOptional({ enum: ['true', 'false'] }) overdue?: string;
+  @ApiPropertyOptional() subjectKind?: string;
+  @ApiPropertyOptional() subjectRef?: string;
+}
+
+export class MatchingApprovedBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() number!: number;
+  @ApiProperty({ example: 'SR-1042' }) displayNumber!: string;
+}
+
+export class MatchingFailedBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ description: 'The refusal code for this request, e.g. system-requests.decided.' })
+  code!: string;
+}
+
+export class BulkApproveMatchingBody {
+  @ApiProperty({ type: [MatchingApprovedBody], description: 'Oldest SR number first.' })
+  approved!: MatchingApprovedBody[];
+  @ApiProperty({ type: [MatchingFailedBody] }) failed!: MatchingFailedBody[];
+  @ApiProperty({
+    description:
+      'Approvable requests that still match (at most 10,000). Call again while above 0 and the ' +
+      'last call approved at least one.',
+  })
+  remaining!: number;
 }
 
 export class RecordedRequestBody {
@@ -229,20 +305,24 @@ export const requestBody = (view: RequestView): RequestBody => ({
   area: view.area,
   subjectKind: view.subjectKind,
   subjectRef: view.subjectRef,
+  subjectLabel: view.subjectLabel,
   risk: view.risk,
   status: view.status,
   before: view.before,
   after: view.after,
   note: view.note,
   requestedBy: view.requestedBy,
+  requestedByName: view.requestedByName,
   appliedAt: view.appliedAt.toString(),
   reviewDueAt: view.reviewDueAt.toString(),
   overdue: view.overdue,
   decision: view.decision,
   decidedBy: view.decidedBy,
+  decidedByName: view.decidedByName,
   decidedAt: iso(view.decidedAt),
   decisionReason: view.decisionReason,
   supersededBy: view.supersededBy,
+  supersededByNumber: view.supersededByNumber,
   commentCount: view.commentCount,
   reviewPermission: view.reviewPermission,
   actions: [...view.actions],
@@ -252,6 +332,7 @@ export const activityBody = (line: ActivityView): ActivityBody => ({
   id: line.id,
   kind: line.kind,
   actor: line.actor,
+  actorName: line.actorName,
   at: line.at.toString(),
   body: line.body,
 });
@@ -276,6 +357,16 @@ export const badgeBody = (view: BadgeView): BadgeBody => ({ ...view });
 
 export const bulkApproveBody = (outcomes: readonly BulkOutcome[]): BulkApproveBody => ({
   results: outcomes.map((outcome) => ({ ...outcome })),
+});
+
+export const bulkApproveMatchingBody = (outcome: MatchingOutcome): BulkApproveMatchingBody => ({
+  approved: outcome.approved.map((row) => ({
+    id: row.id,
+    number: row.number,
+    displayNumber: displayNumber(row.number),
+  })),
+  failed: outcome.failed.map((row) => ({ id: row.id, code: row.code })),
+  remaining: outcome.remaining,
 });
 
 const recordedBody = (request: RecordedRequest | null): RecordedRequestBody | null =>

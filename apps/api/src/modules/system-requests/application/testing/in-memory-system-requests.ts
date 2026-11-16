@@ -8,6 +8,7 @@ import type {
 import type { RevertOutcome, RevertRequest, SystemChangeReverter } from '../../contracts/reverters';
 import type { PolicyArea, Risk } from '../../domain/areas';
 import type { SystemRequest } from '../../domain/request';
+import type { AdminNames } from '../ports/admin-names';
 import type {
   AreaPolicyRecord,
   DueDaysRecord,
@@ -339,5 +340,36 @@ export class FakeSubjects implements SystemChangeReverter {
     }
     this.values.set(key, request.before);
     return Promise.resolve('reverted');
+  }
+
+  /** The labels the owning module would give, per Market and ref. */
+  readonly labels = new Map<string, string>();
+  readonly described: (readonly string[])[] = [];
+  describeFails = false;
+
+  describe(context: CallContext, subjectRefs: readonly string[]) {
+    this.described.push([...subjectRefs]);
+    if (this.describeFails) return Promise.reject(new Error('down'));
+    const found = new Map<string, string>();
+    for (const ref of subjectRefs) {
+      const label = this.labels.get(`${context.market.marketId}:${ref}`);
+      if (label !== undefined) found.set(ref, label);
+    }
+    return Promise.resolve(found);
+  }
+}
+
+/** Admin names in memory: the names it was given; `refusing` answers none (a refused read). */
+export class FakeAdminNames implements AdminNames {
+  refusing = false;
+  readonly asked: (readonly string[])[] = [];
+  constructor(private readonly names: Readonly<Record<string, string>> = {}) {}
+
+  namesOf(_context: CallContext, accountIds: readonly string[]) {
+    this.asked.push([...accountIds]);
+    if (this.refusing) return Promise.resolve(new Map<string, string>());
+    return Promise.resolve(
+      new Map(accountIds.flatMap((id) => (this.names[id] ? [[id, this.names[id]] as const] : []))),
+    );
   }
 }

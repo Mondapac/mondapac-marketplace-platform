@@ -36,6 +36,10 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import {
+  ApproveMatchingSystemRequests,
+  MATCHING_FIELDS,
+} from '../application/use-cases/approve-matching-system-requests.use-case';
 import { ApproveSystemRequest } from '../application/use-cases/approve-system-request.use-case';
 import { ApproveSystemRequests } from '../application/use-cases/approve-system-requests.use-case';
 import { ChangeAreaReviewPolicy } from '../application/use-cases/change-area-review-policy.use-case';
@@ -59,6 +63,9 @@ import {
   badgeBody,
   BulkApproveBody,
   bulkApproveBody,
+  BulkApproveMatchingBody,
+  bulkApproveMatchingBody,
+  BulkApproveMatchingRequest,
   BulkApproveRequest,
   ChangeAreaPolicyRequest,
   ChangeDueDaysRequest,
@@ -113,6 +120,7 @@ export class SystemRequestsController {
     private readonly comment: CommentOnSystemRequest,
     private readonly approve: ApproveSystemRequest,
     private readonly approveMany: ApproveSystemRequests,
+    private readonly approveMatching: ApproveMatchingSystemRequests,
     private readonly reject: RejectSystemRequest,
     private readonly withdraw: WithdrawSystemRequest,
     private readonly viewPolicy: ViewReviewPolicy,
@@ -346,6 +354,49 @@ export class SystemRequestsController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return bulkApproveBody(result.value);
+  }
+
+  @Post('requests/bulk-approve-matching')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Approve every low-risk request that matches the list (admin, select all matching)',
+    description:
+      'Needs system-requests.request.view and, per request, its area review key. The body ' +
+      'holds the same view, search and filters as GET requests (strings, as in the query; no ' +
+      'page, cursor or sort). Approves only open low-risk requests in an area whose review key ' +
+      "the caller holds, never the caller's own: at most 100 per call, oldest SR number first, " +
+      'each decided in its own unit (failed lists the refusal code of each one decided in ' +
+      'between). remaining is how many such requests still match: the panel calls again while ' +
+      'it is above 0 and the last call approved at least one. Refused in an acting-as session. ' +
+      'Audited per request.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: BulkApproveMatchingRequest })
+  @ApiOkResponse({ type: BulkApproveMatchingBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  async bulkApproveMatching(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody_: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody_, [...MATCHING_FIELDS]);
+    if (invalid !== null) throw invalid;
+    const result = await this.approveMatching.execute(
+      context,
+      requestBody_ as Record<string, unknown>,
+    );
+    logRoute(
+      this.#logger,
+      'system-requests.bulk-approve-matching-route',
+      context,
+      result.ok ? 'decided' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return bulkApproveMatchingBody(result.value);
   }
 
   @Post('requests/:requestId/reject')

@@ -38,6 +38,17 @@ export const DUE_DAYS_KIND = 'system-requests.review-due-days';
 /** The subject key of the review period (one per Market). */
 export const DUE_DAYS_KEY = 'market';
 
+/** The English names of the policy areas, for the queue's subject label ("Money review"). */
+const POLICY_AREA_LABELS: Readonly<Record<PolicyArea, string>> = Object.freeze({
+  people: 'People',
+  money: 'Money',
+  delivery: 'Delivery',
+  catalogue: 'Catalogue',
+  certification: 'Certification',
+  marketplace: 'Marketplace',
+  content: 'Content',
+});
+
 export interface AreaPolicyView {
   readonly area: PolicyArea;
   readonly enabled: boolean;
@@ -288,6 +299,19 @@ export class PolicyReverter implements SystemChangeReverter {
     return this.kind === POLICY_AREA_KIND
       ? this.revertArea(context, admin, now, request)
       : this.revertDueDays(context, admin, now, request);
+  }
+
+  /** The policy's own labels: the area's name, or "Review period" for the due days. */
+  describe(_context: CallContext, subjectRefs: readonly string[]) {
+    const labels = new Map<string, string>();
+    for (const ref of subjectRefs) {
+      if (this.kind === DUE_DAYS_KIND) {
+        if (ref === DUE_DAYS_KEY) labels.set(ref, 'Review period');
+      } else if (Object.hasOwn(POLICY_AREA_LABELS, ref)) {
+        labels.set(ref, `${POLICY_AREA_LABELS[ref as PolicyArea]} review`);
+      }
+    }
+    return Promise.resolve(labels);
   }
 
   private async revertArea(

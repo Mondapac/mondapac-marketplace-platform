@@ -34,11 +34,13 @@ import { ReverterRegistry, ReverterRegistryError } from './reverter-registry';
 import { SystemRequestRecorderImplementation } from './system-request-recorder';
 import type { SystemRequestsDependencies } from './system-requests-dependencies';
 import {
+  FakeAdminNames,
   FakeStepUp,
   FakeSubjects,
   InMemoryPolicy,
   InMemoryRequests,
 } from './testing/in-memory-system-requests';
+import { ApproveMatchingSystemRequests } from './use-cases/approve-matching-system-requests.use-case';
 import { ApproveSystemRequest } from './use-cases/approve-system-request.use-case';
 import { ApproveSystemRequests } from './use-cases/approve-system-requests.use-case';
 import { ChangeAreaReviewPolicy } from './use-cases/change-area-review-policy.use-case';
@@ -144,6 +146,7 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
   let subjects: FakeSubjects;
   let registry: ReverterRegistry;
   let audit: Audit;
+  let names: FakeAdminNames;
   let deps: SystemRequestsDependencies;
   let recorder: SystemRequestRecorderImplementation;
   const useCase = <U>(type: new (g: typeof gate, d: SystemRequestsDependencies) => U) =>
@@ -157,6 +160,7 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
     subjects = new FakeSubjects();
     registry = new ReverterRegistry();
     audit = new Audit();
+    names = new FakeAdminNames({ [MAKER]: 'Maryam K.', [CHECKER]: 'Ali R.' });
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       requests,
@@ -165,6 +169,7 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       authorisation,
       stepUp,
       audit,
+      adminNames: names,
       ids: new SequenceIdGenerator(clock),
       clock,
     };
@@ -583,6 +588,15 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       expect(view.ok && view.value.status).toBe('open');
     });
 
+    it('approves a change whose subject is gone: approving keeps the change and asks no reverter', async () => {
+      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      subjects.values.clear();
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: opened.id }),
+      ).toMatchObject({ ok: true, value: { status: 'approved', decision: 'approved' } });
+      expect(subjects.reverts).toEqual([]);
+    });
+
     it('lets only the author withdraw, which restores the value before', async () => {
       const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
       expect(
@@ -641,6 +655,113 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
           { requestId: medium.id, outcome: 'system-requests.not-low-risk' },
           { requestId: own.id, outcome: 'system-requests.own-request' },
         ],
+      });
+    });
+
+    describe('select all matching (rule 14)', () => {
+      const matching = (who: Id<'Account'> | CallContext, input: Record<string, unknown> = {}) =>
+        useCase(ApproveMatchingSystemRequests).execute(
+          typeof who === 'string' ? admin(who) : who,
+          input,
+        );
+
+      it('approves the low-risk requests the caller may decide among those that match', async () => {
+        const first = await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        const second = await change(MAKER, 'b', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        const medium = await change(MAKER, 'c', { v: 1 }, { v: 2 });
+        const own = await change(CHECKER, 'd', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        expect(await matching(CHECKER, { view: 'all-open' })).toEqual({
+          ok: true,
+          value: {
+            approved: [
+              { id: first.id, number: first.number },
+              { id: second.id, number: second.number },
+            ],
+            failed: [],
+            remaining: 0,
+          },
+        });
+        expect((await requests.find(market, medium.id))?.status).toBe('open');
+        expect((await requests.find(market, own.id))?.status).toBe('open');
+        expect(
+          audit.rows.filter((row) => row.action === 'system-requests.request.approved'),
+        ).toHaveLength(2);
+        expect(stepUp.spent).toEqual([]);
+      });
+
+      it('takes the same search, filters and view as the list', async () => {
+        await change(MAKER, 'list-paging', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        const cart = await change(MAKER, 'cart-mode', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        const bySearch = await matching(CHECKER, { view: 'needs-my-review', q: 'cart' });
+        expect(bySearch.ok && bySearch.value.approved.map((row) => row.id)).toEqual([cart.id]);
+        // A view of decided requests approves nothing.
+        const decidedView = await matching(CHECKER, { view: 'approved' });
+        expect(decidedView).toEqual({
+          ok: true,
+          value: { approved: [], failed: [], remaining: 0 },
+        });
+        // A filter for medium risk only leaves nothing low to approve.
+        const mediumOnly = await matching(CHECKER, { view: 'all', risk: 'medium' });
+        expect(mediumOnly).toEqual({ ok: true, value: { approved: [], failed: [], remaining: 0 } });
+        const rest = await matching(CHECKER, { view: 'all' });
+        expect(rest.ok && rest.value.approved).toHaveLength(1);
+      });
+
+      it('approves at most 100 per call and says how many remain, so the panel repeats', async () => {
+        for (let n = 0; n < 103; n += 1) {
+          await change(MAKER, `s${n}`, { v: n }, { v: n + 1 }, { area: 'marketplace' });
+        }
+        const first = await matching(CHECKER);
+        expect(first.ok && first.value.approved).toHaveLength(100);
+        expect(first.ok && first.value.approved[0]?.number).toBe(1);
+        expect(first.ok && first.value.remaining).toBe(3);
+        const second = await matching(CHECKER);
+        expect(second.ok && second.value.approved.map((row) => row.number)).toEqual([
+          101, 102, 103,
+        ]);
+        expect(second.ok && second.value.remaining).toBe(0);
+      });
+
+      it('approves nothing in an area the caller does not review', async () => {
+        await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        expect(await matching(OUTSIDER)).toEqual({
+          ok: true,
+          value: { approved: [], failed: [], remaining: 0 },
+        });
+      });
+
+      it('reports a request decided in between as failed, and goes on', async () => {
+        const first = await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        const second = await change(MAKER, 'b', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        const stored = await requests.find(market, first.id);
+        jest
+          .spyOn(requests, 'findForUpdate')
+          .mockResolvedValueOnce({ ...stored!, status: 'approved' });
+        expect(await matching(CHECKER)).toEqual({
+          ok: true,
+          value: {
+            approved: [{ id: second.id, number: second.number }],
+            failed: [{ id: first.id, code: 'system-requests.decided' }],
+            remaining: 1,
+          },
+        });
+      });
+
+      it('refuses a malformed filter, an acting-as session and a caller without the queue key', async () => {
+        await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        expect(await matching(CHECKER, { view: 'everything', risk: 'extreme' })).toMatchObject({
+          ok: false,
+          error: { code: 'validation.failed' },
+        });
+        expect(await matching(actingAs(CHECKER))).toEqual({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+        expect(await matching(STRANGER)).toMatchObject({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+        expect(requests.rows.every((row) => row.status === 'open')).toBe(true);
       });
     });
 
@@ -747,6 +868,78 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       const mineAsOther = await list(MAKER, { view: 'mine', requestedBy: CHECKER });
       expect(mineAsOther.ok && mineAsOther.value.counts.mine).toBe(0);
       expect(mineAsOther.ok && mineAsOther.value.rows).toEqual([]);
+    });
+
+    it('names the author, the decider and each history line, and labels the subject, batched per page', async () => {
+      subjects.labels.set(`${market.marketId}:list-paging`, 'List paging');
+      const decided = await change(MAKER, 'list-paging', { v: 1 }, { v: 2 });
+      await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: decided.id });
+      const open = await change(MAKER, 'cart-mode', { v: 1 }, { v: 2 });
+      names.asked.length = 0;
+      subjects.described.length = 0;
+
+      const listed = await list(CHECKER, { view: 'all', sort: 'number' });
+      if (!listed.ok) throw new Error('list failed');
+      expect(
+        listed.value.rows.map((row) => [
+          row.id,
+          row.requestedByName,
+          row.decidedByName,
+          row.subjectLabel,
+        ]),
+      ).toEqual([
+        [decided.id, 'Maryam K.', 'Ali R.', 'List paging'],
+        [open.id, 'Maryam K.', null, null],
+      ]);
+      // One names read and one describe per kind for the whole page.
+      expect(names.asked).toEqual([[MAKER, CHECKER]]);
+      expect(subjects.described).toEqual([['list-paging', 'cart-mode']]);
+
+      const detail = await useCase(ViewSystemRequest).execute(admin(OUTSIDER), {
+        requestId: decided.id,
+      });
+      expect(detail.ok && detail.value.activity.map((line) => [line.kind, line.actorName])).toEqual(
+        [
+          ['applied', 'Maryam K.'],
+          ['approved', 'Ali R.'],
+        ],
+      );
+      expect(detail.ok && detail.value.subjectLabel).toBe('List paging');
+    });
+
+    it('shows ids without names or labels when the sources fail or give a bad label', async () => {
+      subjects.labels.set(`${market.marketId}:a`, 'Bell\u0007');
+      subjects.labels.set(`${market.marketId}:b`, 'x'.repeat(201));
+      await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      await change(MAKER, 'b', { v: 1 }, { v: 2 });
+      const bad = await list(CHECKER, { view: 'all' });
+      expect(bad.ok && bad.value.rows.map((row) => row.subjectLabel)).toEqual([null, null]);
+      names.refusing = true;
+      subjects.describeFails = true;
+      const failed = await list(CHECKER, { view: 'all' });
+      expect(
+        failed.ok && failed.value.rows.map((row) => [row.requestedByName, row.subjectLabel]),
+      ).toEqual([
+        [null, null],
+        [null, null],
+      ]);
+    });
+
+    it('gives the number of the newer request beside the id that superseded a row', async () => {
+      const first = await change(MAKER, 'list-paging', { v: 1 }, { v: 2 });
+      const second = await change(MAKER, 'list-paging', { v: 2 }, { v: 3 });
+      const listed = await list(CHECKER, { view: 'all', sort: 'number' });
+      expect(
+        listed.ok &&
+          listed.value.rows.map((row) => [row.number, row.supersededBy, row.supersededByNumber]),
+      ).toEqual([
+        [first.number, second.id, second.number],
+        [second.number, null, null],
+      ]);
+      const detail = await useCase(ViewSystemRequest).execute(admin(CHECKER), {
+        requestId: first.id,
+      });
+      expect(detail.ok && detail.value.supersededByNumber).toBe(second.number);
     });
 
     it('refuses a malformed query', async () => {

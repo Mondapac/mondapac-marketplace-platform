@@ -19,9 +19,14 @@ import {
   type RequestSort,
 } from './ports/request.repository';
 import {
+  approveInUnit,
+  decidable,
+  MAX_BULK,
   requestView,
   reviewableAreas,
   signedInAdmin,
+  supersedingNumbers,
+  withLabels,
   type FieldIssue,
   type RequestView,
   type SystemRequestsFailure,
@@ -378,7 +383,7 @@ export async function listRequests(
   const viewer: Viewer = { accountId: admin, reviews: await reviewableAreas(deps, context) };
   const now = deps.clock.now();
   const base = resolveNow(query.filter, now);
-  return deps.unitOfWork.run<RequestListView, SystemRequestsFailure>(
+  const read = await deps.unitOfWork.run<RequestListView, SystemRequestsFailure>(
     context.market,
     async () => {
       const counts = {} as Record<RequestTab, number>;
@@ -398,8 +403,9 @@ export async function listRequests(
           : await deps.requests.page(context.market, filter, query.sort, query.direction, window);
       const rows = query.page === null ? found.slice(0, query.pageSize) : found;
       const more = query.page === null && found.length > query.pageSize;
+      const numbers = await supersedingNumbers(deps, context, rows);
       return ok({
-        rows: rows.map((row) => requestView(row, viewer, now)),
+        rows: rows.map((row) => requestView(row, viewer, now, numbers)),
         counts,
         total: query.page === null ? null : counts[query.view],
         page: query.page,
@@ -412,6 +418,136 @@ export async function listRequests(
     },
     { readOnly: true },
   );
+  if (!read.ok) return read;
+  // Names and subject labels come from other modules' facades, after the unit (P 3.1 row 5).
+  const { views } = await withLabels(deps, context, read.value.rows);
+  return ok({ ...read.value, rows: views });
+}
+
+/** The filter fields of the list that "select all matching" takes (no paging, no sort). */
+export const MATCHING_FIELDS = [
+  'view',
+  'q',
+  'area',
+  'risk',
+  'status',
+  'requestedBy',
+  'decidedBy',
+  'appliedFrom',
+  'appliedTo',
+  'overdue',
+  'subjectKind',
+  'subjectRef',
+] as const;
+
+export type MatchingInput = { readonly [K in (typeof MATCHING_FIELDS)[number]]?: unknown };
+
+export interface MatchingOutcome {
+  /** Approved in this call, oldest SR number first. */
+  readonly approved: readonly { readonly id: Id<'SystemRequest'>; readonly number: number }[];
+  /** Refused in this call (decided by someone else in between, for example), with the code. */
+  readonly failed: readonly {
+    readonly id: Id<'SystemRequest'>;
+    readonly code: SystemRequestsFailure['code'];
+  }[];
+  /** How many approvable requests still match after this call (at most 10,000). */
+  readonly remaining: number;
+}
+
+/**
+ * What "select all matching" may approve among the rows of `view`: open, low risk, in an area
+ * the caller reviews, not the caller's own. Null when nothing can match.
+ */
+function approvableFilter(
+  view: RequestTab,
+  base: RequestFilter,
+  viewer: Viewer,
+  now: Temporal.Instant,
+): RequestFilter | null {
+  const filter = viewFilter(view, base, viewer, now);
+  if (filter === null || filter.requestedBy === viewer.accountId) return null;
+  const narrowed: RequestFilter = {
+    ...filter,
+    statuses: both(filter.statuses, ['open']),
+    risks: both(filter.risks, ['low']),
+    areas: both(filter.areas, [...viewer.reviews]),
+    notRequestedBy: viewer.accountId,
+  };
+  if (
+    narrowed.statuses?.length === 0 ||
+    narrowed.risks?.length === 0 ||
+    narrowed.areas?.length === 0
+  ) {
+    return null;
+  }
+  return narrowed;
+}
+
+/**
+ * `ApproveMatchingSystemRequests` (CLAUDE.md rule 14, "select all matching"): bulk approve of
+ * every request that matches the list's view, search and filters and that the caller may approve
+ * in bulk (open, low risk, an area they review, not their own). At most 100 per call, oldest SR
+ * number first, each in its own unit as `ApproveSystemRequests` does (same checks, same audit);
+ * the answer says how many still match, so the panel calls again while `remaining` is above 0
+ * and the last call approved at least one.
+ */
+export async function approveMatching(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  input: MatchingInput,
+): Promise<Result<MatchingOutcome, SystemRequestsFailure>> {
+  const admin = signedInAdmin(context);
+  if (admin === null) return err({ code: 'access.denied' });
+  // Only the filter fields: paging and sort are not part of "what matches".
+  const only: Record<string, unknown> = {};
+  for (const field of MATCHING_FIELDS) {
+    if (input?.[field] !== undefined) only[field] = input[field];
+  }
+  const parsed = parseQuery(only);
+  if (!parsed.ok) return parsed;
+  const query = parsed.value;
+  const areas = await reviewableAreas(deps, context);
+  const viewer: Viewer = { accountId: admin, reviews: areas };
+  const now = deps.clock.now();
+  const filter = approvableFilter(query.view, resolveNow(query.filter, now), viewer, now);
+  if (filter === null) return ok({ approved: [], failed: [], remaining: 0 });
+
+  const candidates = await deps.unitOfWork.run<readonly SystemRequest[], SystemRequestsFailure>(
+    context.market,
+    async () =>
+      ok(
+        await deps.requests.page(context.market, filter, 'number', 'asc', {
+          kind: 'offset',
+          offset: 0,
+          limit: MAX_BULK,
+        }),
+      ),
+    { readOnly: true },
+  );
+  if (!candidates.ok) return candidates;
+  const approved: { id: Id<'SystemRequest'>; number: number }[] = [];
+  const failed: { id: Id<'SystemRequest'>; code: SystemRequestsFailure['code'] }[] = [];
+  for (const candidate of candidates.value) {
+    const result = await deps.unitOfWork.run<SystemRequest, SystemRequestsFailure>(
+      context.market,
+      async () => {
+        const found = await decidable(deps, context, 'approve', admin, candidate.id);
+        if (!found.ok) return found;
+        if (found.value.risk !== 'low') return err({ code: 'system-requests.not-low-risk' });
+        if (!areas.has(found.value.area)) return err({ code: 'system-requests.not-reviewer' });
+        return ok(await approveInUnit(deps, context, admin, found.value, null));
+      },
+    );
+    if (result.ok) approved.push({ id: candidate.id, number: candidate.number });
+    else failed.push({ id: candidate.id, code: result.error.code });
+  }
+  const remaining = await deps.unitOfWork.run<number, SystemRequestsFailure>(
+    context.market,
+    async () => ok(await deps.requests.count(context.market, filter, MAX_PAGED_ROWS)),
+    { readOnly: true },
+  );
+  if (!remaining.ok) return remaining;
+  return ok({ approved, failed, remaining: remaining.value });
 }
 
 /** `CountSystemRequests`: the menu badge (Needs my review) and the Overdue count. */

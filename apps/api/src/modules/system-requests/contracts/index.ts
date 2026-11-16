@@ -13,6 +13,7 @@ export {
   type SystemRequestRecorder,
 } from './recorder';
 export {
+  MAX_DESCRIBE_REFS,
   registerSystemChangeReverter,
   SYSTEM_CHANGE_REVERTERS,
   type RevertOutcome,

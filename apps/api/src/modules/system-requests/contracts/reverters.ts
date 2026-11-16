@@ -32,7 +32,24 @@ export interface RevertRequest {
  */
 export interface SystemChangeReverter {
   revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome>;
+
+  /**
+   * Optional: a short human label of each subject (a store name, a setting's name), shown in the
+   * System requests queue beside the kind (`subjectLabel`). Called outside any unit (a reverter
+   * that reads opens its own read-only unit or calls a facade), with the viewing admin's
+   * `CallContext` unchanged, once per kind per page, at most {@link MAX_DESCRIBE_REFS} refs per
+   * call. A ref it cannot or may not name is left out. Every admin who sees the queue sees the
+   * label, so it names the subject only: never a value of the change, a secret or a sign-in
+   * address. A throw or a malformed label shows no label; it never fails the page.
+   */
+  describe?(
+    context: CallContext,
+    subjectRefs: readonly string[],
+  ): Promise<ReadonlyMap<string, string>>;
 }
+
+/** The most subject refs one {@link SystemChangeReverter.describe} call is asked for. */
+export const MAX_DESCRIBE_REFS = 100;
 
 /**
  * Where a module registers its kinds, at boot (sealed after it). A kind belongs to one reviewed
