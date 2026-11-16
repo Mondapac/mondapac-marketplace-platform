@@ -11,6 +11,7 @@ import { PRICING_STEP_UP_ACTIONS } from '../../src/modules/pricing/contracts/ste
 import { PROMOTIONS_STEP_UP_ACTIONS } from '../../src/modules/promotions/contracts/step-up';
 import { REVIEWS_STEP_UP_ACTIONS } from '../../src/modules/reviews/contracts/step-up';
 import { SELLERS_STEP_UP_ACTIONS } from '../../src/modules/sellers/contracts/step-up';
+import { SYSTEM_REQUESTS_STEP_UP_ACTIONS } from '../../src/modules/system-requests/contracts/step-up';
 import { WALLET_STEP_UP_ACTIONS } from '../../src/modules/wallet/contracts/step-up';
 
 // Every step-up action is either guarded by `@RequiresStepUp` on a route, or listed here with the
@@ -21,6 +22,7 @@ const ENFORCED_INSIDE_THE_FLOW = [
   'payments.payout-account.change', // the payout-account flow asks for a code in its request
   'blog.post.self-approve', // approvePost spends the code only when the approver wrote or sent the post
   'promotions.platform-funding.approve', // the create, edit and budget use cases spend a code only above the Market step-up amount
+  'system-requests.request.decide-high', // approve, reject and withdraw spend a code only for a high-risk request
 ];
 
 const sourceRoot = path.resolve(__dirname, '../../src');
@@ -46,6 +48,7 @@ describe('step-up enforcement contract', () => {
     ...PROMOTIONS_STEP_UP_ACTIONS,
     ...REVIEWS_STEP_UP_ACTIONS,
     ...SELLERS_STEP_UP_ACTIONS,
+    ...SYSTEM_REQUESTS_STEP_UP_ACTIONS,
     ...WALLET_STEP_UP_ACTIONS,
   ].map((action) => action.key);
   const used = new Set(

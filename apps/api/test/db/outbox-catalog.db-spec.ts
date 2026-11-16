@@ -13,10 +13,26 @@ import { testDatabaseUrl } from './test-database';
  * PostgreSQL prints it. A migration that adds, drops or changes one changes this list.
  */
 const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
+  // Lists (ADR-0049): one saved-filter name per owner and list, and one shared name per list.
+  'lists.saved_filters_owner_name_key':
+    'CREATE UNIQUE INDEX saved_filters_owner_name_key ON lists.saved_filters USING btree (market_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NULL)',
+  'lists.saved_filters_seller_owner_name_key':
+    'CREATE UNIQUE INDEX saved_filters_seller_owner_name_key ON lists.saved_filters USING btree (market_id, seller_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NOT NULL)',
+  'lists.saved_filters_seller_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_seller_shared_name_key ON lists.saved_filters USING btree (market_id, seller_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NOT NULL))",
+  'lists.saved_filters_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON lists.saved_filters USING btree (market_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NULL))",
+  // Assistant (stage 0, B2): a signed-in buyer's own conversations; guest rows stay out.
+  'assistant.conversations_market_id_account_id_last_message_at_id_idx':
+    'CREATE INDEX conversations_market_id_account_id_last_message_at_id_idx ON assistant.conversations USING btree (market_id, account_id, last_message_at DESC, id DESC) WHERE (account_id IS NOT NULL)',
   // Blog (blog package 1): one open and one live version per post, one featured post per Market,
   // the public list and the worker's due-posts index, and the outbox's unpublished index.
+  'assistant.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON assistant.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'reviews.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON reviews.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'system_requests.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON system_requests.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'blog.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON blog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'blog.post_versions_market_id_category_id_idx':
@@ -224,6 +240,10 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX payouts_market_id_transfer_execution_id_key ON commission_payouts.payouts USING btree (market_id, transfer_execution_id) WHERE (transfer_execution_id IS NOT NULL)',
   'customers.addresses_one_default_key':
     'CREATE UNIQUE INDEX addresses_one_default_key ON customers.addresses USING btree (market_id, account_id) WHERE is_default',
+  'customers.customer_directory_email_prefix_idx':
+    "CREATE INDEX customer_directory_email_prefix_idx ON customers.customer_directory USING btree (market_id, email_lower text_pattern_ops) WHERE (email_lower <> ''::text)",
+  'customers.saved_filters_shared_name_key':
+    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON customers.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
   'identity.accounts_market_id_signed_up_at_unverified_idx':
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
   'identity.invitations_market_id_email_pending_platform_key':
@@ -276,6 +296,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'ordering.seller_orders_unrecorded_shipments_idx':
     "CREATE INDEX seller_orders_unrecorded_shipments_idx ON ordering.seller_orders USING btree (market_id, shipped_at) WHERE ((inventory_recorded_at IS NULL) AND (fulfilment <> 'to-ship'::text))",
   // Personalization 1d-2: the bought-together rebuild pages confirmed orders by time.
+  'ordering.orders_market_id_account_id_confirmed_idx':
+    "CREATE INDEX orders_market_id_account_id_confirmed_idx ON ordering.orders USING btree (market_id, account_id) WHERE (status = 'confirmed'::text)",
   'ordering.orders_market_id_confirmed_at_id_idx':
     "CREATE INDEX orders_market_id_confirmed_at_id_idx ON ordering.orders USING btree (market_id, confirmed_at, id) WHERE (status = 'confirmed'::text)",
   // Ship-to retention (owner decision 2026-11-15): the daily purge pages cancelled orders that
@@ -309,6 +331,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX refunds_market_id_seller_id_requested_at_idx ON ordering.refunds USING btree (market_id, seller_id, requested_at) INCLUDE (gross_amount) WHERE ((actor_population = 'seller'::text) AND (state <> 'failed'::text))",
   'ordering.refunds_unrecorded_ledger_idx':
     "CREATE INDEX refunds_unrecorded_ledger_idx ON ordering.refunds USING btree (market_id, ledger_attempts, requested_at, id) WHERE ((state = 'succeeded'::text) AND (ledger_recorded_at IS NULL))",
+  // The admin Shipments and Invoices lists: paid seller orders, and the to-ship working tabs.
+  'ordering.seller_orders_market_id_paid_at_id_idx':
+    'CREATE INDEX seller_orders_market_id_paid_at_id_idx ON ordering.seller_orders USING btree (market_id, paid_at DESC, id DESC) WHERE (paid_at IS NOT NULL)',
+  'ordering.seller_orders_market_id_to_ship_paid_at_idx':
+    "CREATE INDEX seller_orders_market_id_to_ship_paid_at_idx ON ordering.seller_orders USING btree (market_id, paid_at DESC, id DESC) WHERE ((fulfilment = 'to-ship'::text) AND (paid_at IS NOT NULL))",
   'ordering.seller_refund_limits_default_key':
     'CREATE UNIQUE INDEX seller_refund_limits_default_key ON ordering.seller_refund_limits USING btree (market_id) WHERE (seller_id IS NULL)',
   'ordering.seller_refund_limits_seller_key':
@@ -434,6 +461,20 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // Promotions: a promotion has at most one open review entry (a unique key over open rows only).
   'promotions.promotion_reviews_one_open_idx':
     "CREATE UNIQUE INDEX promotion_reviews_one_open_idx ON promotions.promotion_reviews USING btree (market_id, promotion_id) WHERE (status = 'OPEN'::text)",
+  // Promotions T2: the redemption counts read over the rows that hold, the open reservations of the
+  // sweep, and the backstops of one live first-order discount per customer and one live row per code.
+  'promotions.redemptions_code_live_idx':
+    "CREATE UNIQUE INDEX redemptions_code_live_idx ON promotions.redemptions USING btree (market_id, code_hash) WHERE ((code_hash IS NOT NULL) AND (status <> 'RELEASED'::text))",
+  'promotions.redemptions_customer_live_idx':
+    "CREATE INDEX redemptions_customer_live_idx ON promotions.redemptions USING btree (market_id, promotion_id, customer_account_id) WHERE (status <> 'RELEASED'::text)",
+  'promotions.redemptions_first_order_month_idx':
+    "CREATE INDEX redemptions_first_order_month_idx ON promotions.redemptions USING btree (market_id, budget_month, amount_minor) WHERE ((kind = 'FIRST_ORDER'::text) AND (status <> 'RELEASED'::text))",
+  'promotions.redemptions_first_order_once_idx':
+    "CREATE UNIQUE INDEX redemptions_first_order_once_idx ON promotions.redemptions USING btree (market_id, customer_account_id) WHERE ((kind = 'FIRST_ORDER'::text) AND (status <> 'RELEASED'::text))",
+  'promotions.redemptions_reserved_idx':
+    "CREATE INDEX redemptions_reserved_idx ON promotions.redemptions USING btree (market_id, reserved_at, id) WHERE (status = 'RESERVED'::text)",
+  'promotions.redemptions_units_live_idx':
+    "CREATE INDEX redemptions_units_live_idx ON promotions.redemptions USING btree (market_id, promotion_id, units) WHERE ((status <> 'RELEASED'::text) AND (units IS NOT NULL))",
 };
 
 const OUTBOX_COLUMNS = `

@@ -20,6 +20,45 @@ import {
   type AccountDeletionRequestRepository,
 } from '../application/ports/account-deletion-request.repository';
 import { ACCOUNT_DELETION_PEERS } from '../application/ports/account-deletion-peers';
+import {
+  CUSTOMER_READ_MODEL_REPOSITORY,
+  type CustomerReadModelRepository,
+} from '../application/ports/customer-read-models.repository';
+import { CUSTOMER_READ_MODEL_PEERS } from '../application/ports/customer-read-model-peers';
+import {
+  CUSTOMER_LIST_READER,
+  type CustomerListReader,
+} from '../application/ports/customer-list.reader';
+import {
+  SAVED_FILTER_REPOSITORY,
+  type SavedFilterRepository,
+} from '../application/ports/saved-filter.repository';
+import { SHEET_WRITER, type SheetWriter } from '../application/ports/sheet-writer';
+import {
+  CUSTOMER_GROUP_REPOSITORY,
+  type CustomerGroupRepository,
+} from '../application/ports/customer-groups.repository';
+import { CUSTOMER_MANAGEMENT_PEERS } from '../application/ports/customer-management-peers';
+import {
+  CUSTOMER_NOTE_CIPHER,
+  CUSTOMER_NOTE_REPOSITORY,
+  type CustomerNoteCipher,
+  type CustomerNoteRepository,
+} from '../application/ports/customer-notes.repository';
+import {
+  CUSTOMER_TIMELINE_REPOSITORY,
+  type CustomerTimelineRepository,
+} from '../application/ports/customer-timeline.repository';
+import { LateBoundManagementPeers } from './late-bound-management-peers';
+import { PrismaCustomerGroupRepository } from './prisma-customer-groups.repository';
+import { PrismaCustomerNoteRepository } from './prisma-customer-notes.repository';
+import { PrismaCustomerTimelineRepository } from './prisma-customer-timeline.repository';
+import { SubjectKeyNoteCipher } from './subject-key-note-cipher';
+import { PrismaCustomerListReader } from './prisma-customer-list.reader';
+import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
+import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
+import { LateBoundReadModelPeers } from './late-bound-read-model-peers';
+import { PrismaCustomerReadModelRepository } from './prisma-customer-read-models.repository';
 import { LateBoundAccountDeletionPeers } from './late-bound-account-deletion-peers';
 import { PrismaAccountDeletionRequestRepository } from './prisma-account-deletion-request.repository';
 import { PrismaAccountDeletionSettingsRepository } from './prisma-account-deletion-settings.repository';
@@ -59,5 +98,57 @@ export const customersProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AccountDeletionSettingsRepository =>
       new PrismaAccountDeletionSettingsRepository(prisma),
+  },
+  {
+    provide: CUSTOMER_READ_MODEL_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerReadModelRepository =>
+      new PrismaCustomerReadModelRepository(prisma),
+  },
+  {
+    provide: CUSTOMER_READ_MODEL_PEERS,
+    useFactory: (): LateBoundReadModelPeers => new LateBoundReadModelPeers(),
+  },
+  {
+    provide: CUSTOMER_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerListReader => new PrismaCustomerListReader(prisma),
+  },
+  {
+    provide: SAVED_FILTER_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SavedFilterRepository =>
+      new PrismaSavedFilterRepository(prisma),
+  },
+  {
+    provide: SHEET_WRITER,
+    useFactory: (): SheetWriter => new ExceljsSheetWriter(),
+  },
+  {
+    provide: CUSTOMER_GROUP_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerGroupRepository =>
+      new PrismaCustomerGroupRepository(prisma),
+  },
+  {
+    provide: CUSTOMER_NOTE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerNoteRepository =>
+      new PrismaCustomerNoteRepository(prisma),
+  },
+  {
+    provide: CUSTOMER_NOTE_CIPHER,
+    inject: [SUBJECT_KEY_SERVICE],
+    useFactory: (keys: SubjectKeyService): CustomerNoteCipher => new SubjectKeyNoteCipher(keys),
+  },
+  {
+    provide: CUSTOMER_TIMELINE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerTimelineRepository =>
+      new PrismaCustomerTimelineRepository(prisma),
+  },
+  {
+    provide: CUSTOMER_MANAGEMENT_PEERS,
+    useFactory: (): LateBoundManagementPeers => new LateBoundManagementPeers(),
   },
 ];

@@ -19,7 +19,7 @@ export function ListViewsBar({ manage, ...tabs }: ListViewsBarProps) {
       </div>
       {manage === null ? null : (
         <div className="flex shrink-0 items-center border-b border-line ps-3">
-          <Button variant="link" className="min-h-(--mp-size-control-sm)" onClick={manage.onClick}>
+          <Button variant="link" size="sm" onClick={manage.onClick}>
             <Icon name="sliders" />
             <span className="sr-only sm:not-sr-only">{manage.label}</span>
           </Button>

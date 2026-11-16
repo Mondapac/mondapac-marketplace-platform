@@ -4,32 +4,84 @@ import { adminNav } from './nav.ts';
 
 const ids = (keys: string[]) => visibleNavItems(adminNav, new Set(keys)).map((item) => item.id);
 
-describe('admin nav: Content', () => {
-  it('is there for storefront.slide.read, with the layout icon', () => {
-    expect(ids(['storefront.slide.read'])).toContain('content');
-    const item = adminNav.items.find((entry) => entry.id === 'content');
-    expect(item).toMatchObject({ icon: 'layout', href: '/content', labelKey: 'nav.content' });
+describe('admin nav: CMS', () => {
+  it('shows Pages for storefront.page.read, with Menus beside it', () => {
+    expect(ids(['storefront.page.read'])).toEqual(['home', 'content', 'menus']);
+    expect(adminNav.items.find((entry) => entry.id === 'content')).toMatchObject({
+      icon: 'file',
+      href: '/content',
+      labelKey: 'nav.content',
+      group: 'cms',
+    });
+    expect(adminNav.items.find((entry) => entry.id === 'menus')).toMatchObject({
+      href: '/content/navigation',
+      labelKey: 'nav.menus',
+      group: 'cms',
+    });
   });
 
-  it('is there for storefront.page.read too', () => {
-    expect(ids(['storefront.page.read'])).toContain('content');
+  it('shows Slides for storefront.slide.read alone, with the layout icon', () => {
+    expect(ids(['storefront.slide.read'])).toEqual(['home', 'slides']);
+    expect(adminNav.items.find((entry) => entry.id === 'slides')).toMatchObject({
+      icon: 'layout',
+      href: '/content/slides',
+      labelKey: 'nav.slides',
+      group: 'cms',
+    });
   });
 
-  it('is hidden without it, also for the other slide keys', () => {
-    expect(ids([])).not.toContain('content');
-    expect(ids(['storefront.slide.edit', 'storefront.slide.publish'])).not.toContain('content');
+  it('is hidden without the read keys', () => {
+    expect(ids([])).toEqual(['home']);
+    expect(ids(['storefront.slide.edit', 'storefront.slide.publish'])).toEqual(['home']);
+  });
+
+  it('holds Pages, Blog, Slides and Menus in this order', () => {
+    expect(adminNav.items.filter((item) => item.group === 'cms').map((item) => item.id)).toEqual([
+      'content',
+      'blog',
+      'slides',
+      'menus',
+    ]);
+  });
+});
+
+describe('admin nav: Inbox', () => {
+  it('is the first group, holding every queue that waits on an admin, in this order', () => {
+    expect((adminNav.groups ?? [])[0]).toEqual({
+      id: 'inbox',
+      labelKey: 'nav.group.inbox',
+      icon: 'inbox',
+    });
+    expect(adminNav.items.filter((item) => item.group === 'inbox').map((item) => item.id)).toEqual([
+      'seller-requests',
+      'certificates',
+      'review-queue',
+      'price-holds',
+    ]);
+  });
+
+  it('opens Seller requests on the review tab of the sellers list, for sellers.seller.view', () => {
+    expect(ids(['sellers.seller.view']).slice(0, 3)).toEqual([
+      'home',
+      'seller-requests',
+      'sellers',
+    ]);
+    expect(adminNav.items.find((item) => item.id === 'seller-requests')).toMatchObject({
+      href: '/sellers?tab=awaiting-review',
+      labelKey: 'nav.seller-requests',
+    });
   });
 });
 
 describe('admin nav: Blog', () => {
-  it('is there for blog.post.read, in the content group, beside Slides', () => {
+  it('is there for blog.post.read, in the CMS group, beside Pages', () => {
     expect(ids(['blog.post.read'])).toContain('blog');
     const item = adminNav.items.find((entry) => entry.id === 'blog');
     expect(item).toMatchObject({
       icon: 'file',
       href: '/content/blog',
       labelKey: 'nav.blog',
-      group: 'content',
+      group: 'cms',
     });
   });
 
@@ -41,7 +93,7 @@ describe('admin nav: Blog', () => {
 
 describe('admin nav: Catalogue', () => {
   it('shows Products for catalog.product.view, with the package icon, in the catalogue group', () => {
-    expect(ids(['catalog.product.view'])).toEqual(['home', 'products', 'review-queue']);
+    expect(ids(['catalog.product.view'])).toEqual(['home', 'review-queue', 'products']);
     const item = adminNav.items.find((entry) => entry.id === 'products');
     expect(item).toMatchObject({
       icon: 'package',
@@ -71,23 +123,23 @@ describe('admin nav: Catalogue', () => {
       'attributes',
       'variants',
       'brands',
-      'business-activities',
       'tags',
+      'business-activities',
     ]);
   });
 
-  it('is hidden without the key, and the Review queue item stays in Reviews', () => {
+  it('is hidden without the key, and the Review queue item stays in Inbox', () => {
     expect(ids(['catalog.product.approve'])).not.toContain('products');
-    expect(adminNav.items.find((entry) => entry.id === 'review-queue')?.group).toBe('reviews');
+    expect(adminNav.items.find((entry) => entry.id === 'review-queue')?.group).toBe('inbox');
   });
 });
 
 describe('admin nav: Buyer reviews', () => {
-  it('shows the queue for reviews.moderation.queue, in the Reviews group', () => {
+  it('shows the queue for reviews.moderation.queue, in the Customers group', () => {
     expect(ids(['reviews.moderation.queue'])).toEqual(['home', 'review-moderation']);
     expect(adminNav.items.find((entry) => entry.id === 'review-moderation')).toMatchObject({
       href: '/reviews/moderation',
-      group: 'reviews',
+      group: 'customers',
       anyOf: ['reviews.moderation.queue'],
     });
   });
@@ -110,11 +162,11 @@ describe('admin nav: Wallet', () => {
     );
   });
 
-  it('puts the two credit items in Money with their routes and icons', () => {
+  it('puts the two credit items in Accounting with their routes and icons', () => {
     const wallet = adminNav.items.filter((item) => item.id.startsWith('wallet-'));
     expect(wallet.map((item) => [item.id, item.href, item.icon, item.group])).toEqual([
-      ['wallet-credits', '/wallet/credits', 'receipt', 'money'],
-      ['wallet-requests', '/wallet/credit-requests', 'inbox', 'money'],
+      ['wallet-credits', '/wallet/credits', 'receipt', 'accounting'],
+      ['wallet-requests', '/wallet/credit-requests', 'inbox', 'accounting'],
     ]);
   });
 });
@@ -125,27 +177,31 @@ describe('admin nav: daily work only', () => {
       adminNav.items.filter((item) => item.placement !== 'footer').map((item) => item.id),
     ).toEqual([
       'home',
+      'seller-requests',
+      'certificates',
+      'review-queue',
+      'price-holds',
+      'orders',
+      'shipments',
       'products',
       'categories',
       'attributes',
       'variants',
       'brands',
-      'business-activities',
       'tags',
-      'review-queue',
-      'certificates',
-      'review-moderation',
-      'price-holds',
-      'content',
-      'blog',
+      'business-activities',
       'sellers',
-      'orders',
       'customers',
+      'review-moderation',
       'payouts',
       'payout-accounts',
       'disputes',
       'wallet-credits',
       'wallet-requests',
+      'content',
+      'blog',
+      'slides',
+      'menus',
     ]);
   });
 
@@ -205,15 +261,17 @@ describe('admin nav: Settings', () => {
 });
 
 describe('admin nav: Disputes', () => {
-  it('is there for commission-payouts.dispute.view, in Money after the connected accounts', () => {
+  it('is there for commission-payouts.dispute.view, in Accounting after the seller accounts', () => {
     expect(ids(['commission-payouts.dispute.view'])).toEqual(['home', 'disputes']);
-    const money = adminNav.items.filter((item) => item.group === 'money').map((item) => item.id);
+    const money = adminNav.items
+      .filter((item) => item.group === 'accounting')
+      .map((item) => item.id);
     expect(money.indexOf('disputes')).toBe(money.indexOf('payout-accounts') + 1);
     expect(adminNav.items.find((item) => item.id === 'disputes')).toMatchObject({
       icon: 'shield-check',
       href: '/disputes',
       labelKey: 'nav.disputes',
-      group: 'money',
+      group: 'accounting',
     });
   });
 
@@ -224,7 +282,7 @@ describe('admin nav: Disputes', () => {
 });
 
 describe('admin nav: Payouts', () => {
-  it('sits in Money right before Connected accounts, for commission-payouts.payout.view', () => {
+  it('sits in Accounting right before Seller accounts, for commission-payouts.payout.view', () => {
     expect(ids(['commission-payouts.payout.view'])).toEqual(['home', 'payouts']);
     expect(ids(['commission-payouts.payout.approve'])).toEqual(['home']);
     const order = adminNav.items.map((item) => item.id);
@@ -232,7 +290,7 @@ describe('admin nav: Payouts', () => {
     expect(adminNav.items.find((item) => item.id === 'payouts')).toMatchObject({
       icon: 'receipt',
       href: '/payouts',
-      group: 'money',
+      group: 'accounting',
       labelKey: 'nav.payouts',
     });
   });
@@ -334,10 +392,10 @@ describe('admin nav: Tags', () => {
 });
 
 describe('admin nav: Marketing', () => {
-  it('is a group between Sellers and Orders with the tag icon, shown only once it holds an item', () => {
+  it('is a group between Customers and Accounting with the tag icon, shown only once it holds an item', () => {
     const order = (adminNav.groups ?? []).map((group) => group.id);
-    expect(order.indexOf('marketing')).toBe(order.indexOf('sellers') + 1);
-    expect(order.indexOf('orders')).toBe(order.indexOf('marketing') + 1);
+    expect(order.indexOf('marketing')).toBe(order.indexOf('customers') + 1);
+    expect(order.indexOf('accounting')).toBe(order.indexOf('marketing') + 1);
     expect(adminNav.groups).toContainEqual({
       id: 'marketing',
       labelKey: 'nav.group.marketing',

@@ -59,8 +59,6 @@
       "store-banner": "Store banner",
       "stock-locations": "Stock locations",
       "stock-locations-words": "warehouse, pickup address, where stock is kept",
-      "payout-bank": "Payout bank account",
-      "payout-bank-words": "bank, BSB, payments, get paid",
       "team-members": "Team members"
     },
     "empty-hint": "Check the spelling or try a shorter word."
@@ -99,14 +97,18 @@
     "reviews": "Reviews",
     "earnings": "Earnings",
     "group": {
-      "orders": "Orders",
+      "requests": "Requests",
+      "sales": "Sales",
       "catalogue": "Catalogue",
-      "money": "Money"
+      "customers": "Customers",
+      "accounting": "Accounting"
     },
     "settings": "Settings",
     "import": "Import",
     "performance": "Performance",
-    "categories": "Shelves"
+    "categories": "Category proposals",
+    "payoutAccount": "Payout account",
+    "payoutAccountWords": "bank, BSB, payments, get paid"
   },
   "home": {
     "title": "Dashboard",
@@ -2365,8 +2367,8 @@
       "zone": "Time zone",
       "zone-help": "Cut-off times for this location use this zone.",
       "zone-own": "Use my own time zone",
-      "save": "Save",
-      "cancel": "Cancel"
+      "add": "Add location",
+      "save": "Save location"
     },
     "validation": {
       "summary": "Check the fields marked below.",
@@ -2817,7 +2819,8 @@
     }
   },
   "load": {
-    "retry": "Try again"
+    "retry": "Try again",
+    "slow": "Still loading…"
   },
   "security": {
     "title": "Security",
@@ -2987,6 +2990,12 @@
   },
   "route": {
     "loading": "Loading the page",
+    "loading-page": "Loading {page}",
+    "slow": "Still loading…",
+    "stalled": {
+      "title": "This page is taking too long to load",
+      "message": "Check your connection and try again. Nothing you saved was lost."
+    },
     "error": {
       "title": "This page could not be shown",
       "message": "Something went wrong on our side. Try again, or go back to the dashboard. Nothing you saved was lost.",
@@ -3526,13 +3535,11 @@
       "no-access-body": "Your role doesn't include any settings page. Ask the account owner to add one.",
       "group": {
         "store": "Store",
-        "money": "Money",
         "team": "Team"
       },
       "link": {
         "store-profile": "Store profile",
         "stock-locations": "Stock locations",
-        "payout-account": "Payout account",
         "team": "Members"
       }
     },
@@ -3541,8 +3548,13 @@
       "body": "Try again. If it keeps happening, check the status page."
     },
     "sub": {
-      "label": "Settings pages",
       "back": "Back to Settings"
+    },
+    "menu": {
+      "label": "Settings menu",
+      "back": "Back to Dashboard",
+      "search": "Search settings",
+      "empty": "No settings match"
     },
     "view-only": {
       "title": "View only"
@@ -3567,6 +3579,14 @@
       "who-unnamed": "Someone",
       "changed": "Changed: {fields}",
       "saved": "Saved"
+    },
+    "drawer": {
+      "close": "Close",
+      "cancel": "Cancel",
+      "discard-title": "Discard your input?",
+      "discard-message": "You have input that is not saved. If you close now, it is lost.",
+      "keep": "Keep editing",
+      "discard": "Discard"
     }
   },
   "performance": {

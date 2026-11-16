@@ -43,11 +43,15 @@ import { ViewFleetSelection } from '../application/use-cases/view-fleet-selectio
 import { ViewFleetSelectionHistory } from '../application/use-cases/view-fleet-selection-history.use-case';
 import {
   FleetModelBody,
+  FleetModelChangeBody,
   FleetModelRequest,
   FleetSelectionBody,
+  FleetSelectionChangeBody,
   modelBody,
+  modelChangeBody,
   SaveFleetSelectionRequest,
   selectionBody,
+  selectionChangeBody,
   UpdateFleetModelRequest,
 } from './fleet-selection.dto';
 import { closedBody, refusal } from './http-answers';
@@ -174,12 +178,14 @@ export class FleetSelectionController {
     description:
       'Needs shipping.fleet-selection.manage (protected). `expectedVersion` is the version read: ' +
       'a stale one answers 409 shipping.fleet-model-conflict. The edit is audited. An active ' +
-      'model takes effect on the next booking.',
+      'model takes effect on the next booking. The edit goes live at once and is reviewed after ' +
+      'in Admin Inbox › System requests (area delivery): where the Market reviews it, `note` ' +
+      '(1 to 500 characters) is required and `request` names the review it opened.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'modelId', format: 'uuid' })
   @ApiBody({ type: UpdateFleetModelRequest })
-  @ApiOkResponse({ type: FleetModelBody })
+  @ApiOkResponse({ type: FleetModelChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -196,21 +202,28 @@ export class FleetSelectionController {
     @Body() requestBody: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, requestBody, ['name', 'rule', 'expectedVersion']);
+    const invalid = closedBody(request, requestBody, ['name', 'rule', 'expectedVersion', 'note']);
     if (invalid !== null) throw invalid;
-    const { name, rule, expectedVersion } = requestBody as {
+    const { name, rule, expectedVersion, note } = requestBody as {
       name?: unknown;
       rule?: unknown;
       expectedVersion?: unknown;
+      note?: unknown;
     };
-    const result = await this.update.execute(context, { modelId, name, rule, expectedVersion });
+    const result = await this.update.execute(context, {
+      modelId,
+      name,
+      rule,
+      expectedVersion,
+      note,
+    });
     this.log(
       'shipping.update-fleet-selection-model-route',
       context,
       result.ok ? 'updated' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return modelBody(result.value);
+    return modelChangeBody(result.value);
   }
 
   @Put()
@@ -223,11 +236,14 @@ export class FleetSelectionController {
       'null puts the built-in default order back) and `reliability` the 0 to 100 score per ' +
       'fleet code. `expectedVersion` is the page `version` read (0 before the first save): a ' +
       'stale one answers 409 shipping.fleet-selection-conflict and nothing is written. Each ' +
-      'changed item is audited. The answer is the page as saved, with its new version.',
+      'changed item is audited. The answer is the page as saved, with its new version. The save ' +
+      'goes live at once and is reviewed after in Admin Inbox › System requests (area ' +
+      'delivery): where the Market reviews it, `note` (1 to 500 characters) is required and ' +
+      '`request` names the review it opened (null when nothing changed).',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: SaveFleetSelectionRequest })
-  @ApiOkResponse({ type: FleetSelectionBody })
+  @ApiOkResponse({ type: FleetSelectionChangeBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
@@ -240,21 +256,32 @@ export class FleetSelectionController {
     @Body() requestBody: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, requestBody, ['expectedVersion', 'active', 'reliability']);
+    const invalid = closedBody(request, requestBody, [
+      'expectedVersion',
+      'active',
+      'reliability',
+      'note',
+    ]);
     if (invalid !== null) throw invalid;
-    const { expectedVersion, active, reliability } = requestBody as {
+    const { expectedVersion, active, reliability, note } = requestBody as {
       expectedVersion?: unknown;
       active?: unknown;
       reliability?: unknown;
+      note?: unknown;
     };
-    const result = await this.save.execute(context, { expectedVersion, active, reliability });
+    const result = await this.save.execute(context, {
+      expectedVersion,
+      active,
+      reliability,
+      note,
+    });
     this.log(
       'shipping.set-fleet-selection-route',
       context,
       result.ok ? 'saved' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return selectionBody(result.value);
+    return selectionChangeBody(result.value);
   }
 
   private log(msg: string, context: CallContext, outcome: string): void {

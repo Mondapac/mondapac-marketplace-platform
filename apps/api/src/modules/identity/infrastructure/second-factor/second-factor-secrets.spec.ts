@@ -101,6 +101,9 @@ class LabelledKeys implements SubjectKeyService {
     this.destroyed.add(subject);
     return Promise.resolve();
   }
+  hasHadKey(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
 }
 const DESTROYED = { code: 'subject-key.destroyed' } as const;
 

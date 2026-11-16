@@ -22,6 +22,7 @@ import { PROMOTIONS_PERMISSIONS } from '../../src/modules/promotions/contracts/p
 import { REVIEWS_PERMISSIONS } from '../../src/modules/reviews/contracts/permissions';
 import { SECURITY_PERMISSIONS } from '../../src/modules/security/contracts/permissions';
 import { SETTINGS_PERMISSIONS } from '../../src/modules/settings/contracts/permissions';
+import { SYSTEM_REQUESTS_PERMISSIONS } from '../../src/modules/system-requests/contracts/permissions';
 import { WALLET_PERMISSIONS } from '../../src/modules/wallet/contracts/permissions';
 import { TAX_PERMISSIONS } from '../../src/modules/tax/contracts/permissions';
 import { PermissionRegistry } from '../../src/platform/authz/permission-registry';
@@ -55,6 +56,7 @@ export function realPermissionRegistry(): PermissionRegistry {
   registry.register('wallet', WALLET_PERMISSIONS);
   registry.register('storefront', STOREFRONT_PERMISSIONS);
   registry.register('blog', BLOG_PERMISSIONS);
+  registry.register('system-requests', SYSTEM_REQUESTS_PERMISSIONS);
   registry.seal();
   return registry;
 }

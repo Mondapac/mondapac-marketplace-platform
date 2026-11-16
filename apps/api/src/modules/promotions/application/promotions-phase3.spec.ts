@@ -43,10 +43,12 @@ import { CheckWasPrice } from './use-cases/check-was-price.use-case';
 import { CreateOwnPromotion } from './use-cases/create-own-promotion.use-case';
 import { CreatePromotion } from './use-cases/create-promotion.use-case';
 import { EditPromotion } from './use-cases/edit-promotion.use-case';
+import { ListCustomerPromotionCredits } from './use-cases/list-customer-promotion-credits.use-case';
 import { ListPromotionCredits } from './use-cases/list-promotion-credits.use-case';
 import { PreviewQuote } from './use-cases/preview-quote.use-case';
 import { QualifyReferralOnDelivery } from './use-cases/qualify-referral-on-delivery.use-case';
 import { QuoteDiscounts } from './use-cases/quote-discounts.use-case';
+import { RedeemDiscounts } from './use-cases/redeem-discounts.use-case';
 import { SetPromotionBudget } from './use-cases/set-promotion-budget.use-case';
 import { SetPromotionsStatus } from './use-cases/set-promotions-status.use-case';
 import { ViewMyReferral } from './use-cases/view-my-referral.use-case';
@@ -153,7 +155,11 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
   const make = <U>(type: new (g: typeof gate, d: PromotionsDependencies) => U): U =>
     new type(gate, deps);
   const facade = () =>
-    new PromotionsFacadeImplementation(make(QuoteDiscounts), make(CheckWasPrice));
+    new PromotionsFacadeImplementation(
+      make(QuoteDiscounts),
+      make(RedeemDiscounts),
+      make(CheckWasPrice),
+    );
 
   beforeEach(async () => {
     rulingInForce = rulingConfirmed;
@@ -512,6 +518,85 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       p3.orderHistory.lastOrder.set(REFERRER, T0.subtract({ hours: 24 * 90 }));
       const real = await quote(request([line(1, 10000n, 1)], { testMode: false }));
       expect(real.totals.goodsDiscount).toBe(rulingConfirmed ? 1000n : 0n);
+    });
+
+    describe('manual group segment (customers phase 2)', () => {
+      const GROUP = '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b';
+      const manual = () =>
+        group({
+          segment: { kind: 'MANUAL_GROUP', groupId: GROUP },
+          reward: { kind: 'PERCENT', bps: 500 },
+        });
+
+      it('applies to a customer in the group, and asks once per group', async () => {
+        await adminCreate(manual());
+        p3.groupMembership.members.set(GROUP, new Set([REFERRER]));
+        expect((await quote(cart())).totals.goodsDiscount).toBe(500n);
+        expect(p3.groupMembership.reads).toBe(1);
+        expect(p3.orderHistory.reads).toBe(0);
+      });
+
+      it('is not offered to a non-member, when the read fails or throws, or with no customer', async () => {
+        await adminCreate(manual());
+        expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+        p3.groupMembership.members.set(GROUP, new Set([REFERRER]));
+        p3.groupMembership.broken = true;
+        expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+        p3.groupMembership.broken = false;
+        p3.groupMembership.throws = true;
+        expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+        p3.groupMembership.throws = false;
+        expect(
+          (await quote(request([line(1, 10000n, 1)], { customerAccountId: null }))).totals
+            .goodsDiscount,
+        ).toBe(0n);
+      });
+
+      it('needs a well-formed group id, and takes no days or zones', async () => {
+        expect(
+          fields(
+            await make(CreatePromotion).execute(
+              admin(),
+              group({ segment: { kind: 'MANUAL_GROUP' } }),
+            ),
+          ),
+        ).toContain('segment.groupId:required');
+        expect(
+          fields(
+            await make(CreatePromotion).execute(
+              admin(),
+              group({ segment: { kind: 'MANUAL_GROUP', groupId: 'nope' } }),
+            ),
+          ),
+        ).toContain('segment.groupId:format');
+        expect(
+          fields(
+            await make(CreatePromotion).execute(
+              admin(),
+              group({
+                segment: { kind: 'MANUAL_GROUP', groupId: GROUP, minDaysSinceLastOrder: 30 },
+              }),
+            ),
+          ),
+        ).toContain('segment.minDaysSinceLastOrder:not-allowed');
+        expect(
+          fields(
+            await make(CreatePromotion).execute(
+              admin(),
+              group({ segment: { kind: 'RETURNING_CUSTOMER', groupId: GROUP } }),
+            ),
+          ),
+        ).toContain('segment.groupId:not-allowed');
+      });
+
+      it('shows the group id on the promotion', async () => {
+        const made = await adminCreate(manual());
+        expect(made.segment).toEqual({
+          kind: 'MANUAL_GROUP',
+          minDaysSinceLastOrder: null,
+          groupId: GROUP,
+        });
+      });
     });
 
     it('lets an admin preview a stated customer without reading any module', async () => {
@@ -1612,6 +1697,64 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           }),
         ),
       ).toContain('cursor:value');
+    });
+
+    it("lists one customer's credits across promotions for the customer page, newest first and in pages", async () => {
+      const first = await adminCreate(cashback());
+      const second = await adminCreate(cashback());
+      const credit = (n: number, promotionId: typeof first.id, recipient: Id<'Account'>) =>
+        p3.credits.insert(market, {
+          id: id<'PromotionCredit'>(0xd20 + n),
+          promotionId,
+          kind: 'CASHBACK',
+          recipientAccountId: recipient,
+          orderId: id<'Order'>(0x0d00 + n),
+          sourceKind: 'SELLER_ORDER',
+          sourceId: `0299${n}`,
+          amountMinor: BigInt(n),
+          currency,
+          status: 'GRANTED',
+          failureCode: null,
+          walletJournalId: null,
+          idempotencyKey: `promotions:cashback:cust000${n}`,
+          createdAt: T0.add({ hours: n }),
+          settledAt: T0,
+        });
+      await credit(1, first.id, REFERRER);
+      await credit(2, second.id, REFERRER);
+      await credit(3, first.id, REFERRER);
+      await credit(4, first.id, NEWBIE);
+      expect(ListCustomerPromotionCredits.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: ['promotions.promotion.view'],
+      });
+      const page = await make(ListCustomerPromotionCredits).execute(admin(), {
+        customerAccountId: REFERRER,
+        limit: 2,
+      });
+      if (!page.ok) throw new Error('list failed');
+      expect(page.value.items.map((c) => c.amountMinor)).toEqual([3n, 2n]);
+      const rest = await make(ListCustomerPromotionCredits).execute(admin(), {
+        customerAccountId: REFERRER,
+        limit: 2,
+        cursor: page.value.nextCursor!,
+      });
+      expect(rest.ok && rest.value.items.map((c) => c.amountMinor)).toEqual([1n]);
+      expect(rest.ok && rest.value.nextCursor).toBeNull();
+      const nobody = await make(ListCustomerPromotionCredits).execute(admin(), {
+        customerAccountId: NEWBIE_2,
+      });
+      expect(nobody.ok && nobody.value.items).toEqual([]);
+      expect(
+        fields(
+          await make(ListCustomerPromotionCredits).execute(admin(), { customerAccountId: 'x' }),
+        ),
+      ).toContain('customerAccountId:value');
+      expect(
+        await make(ListCustomerPromotionCredits).execute(actingAs(admin()), {
+          customerAccountId: REFERRER,
+        }),
+      ).toMatchObject({ ok: false });
     });
   });
 });

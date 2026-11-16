@@ -16,7 +16,7 @@ import { PrismaAdminVariantsReader } from '../../src/modules/catalog/infrastruct
 import { PrismaVariantAdminReader } from '../../src/modules/catalog/infrastructure/prisma-variant-admin.reader';
 import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
-import { ExceljsSheetWriter } from '../../src/modules/catalog/infrastructure/xlsx/exceljs-sheet-writer';
+import { ExceljsSheetWriter } from '../../src/platform/list-export/exceljs-sheet-writer';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';

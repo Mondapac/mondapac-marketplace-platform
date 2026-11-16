@@ -13,6 +13,7 @@ import { OwnSavedFilterUpdate } from '../../src/modules/catalog/application/use-
 import { OwnSavedFiltersList } from '../../src/modules/catalog/application/use-cases/own-saved-filters-list.use-case';
 import { CATALOG_AUDIT_ACTIONS } from '../../src/modules/catalog/domain/audit';
 import { MAX_SAVED_FILTERS_PER_OWNER } from '../../src/modules/catalog/domain/saved-filter';
+import { PrismaSavedFilterStore } from '../../src/modules/lists/infrastructure/prisma-saved-filter-store';
 import { PrismaSavedFilterRepository } from '../../src/modules/catalog/infrastructure/prisma-saved-filter.repository';
 import { PrismaSellerSavedFilterRepository } from '../../src/modules/catalog/infrastructure/prisma-seller-saved-filter.repository';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
@@ -107,8 +108,8 @@ describe.each(TEST_MARKETS)('seller saved filters in market %s (database)', (cod
       { now: () => Temporal.Now.instant() },
       NO_PERMISSION_KEYS,
     ) as AuditWriter;
-    sellerRepo = new PrismaSellerSavedFilterRepository(db.service);
-    adminRepo = new PrismaSavedFilterRepository(db.service);
+    sellerRepo = new PrismaSellerSavedFilterRepository(new PrismaSavedFilterStore(db.service));
+    adminRepo = new PrismaSavedFilterRepository(new PrismaSavedFilterStore(db.service));
     const ownShareCheck = new OwnSavedFilterShareCheck(gate);
     const base = { unitOfWork: db.unitOfWork, sellerSavedFilters: sellerRepo, ownShareCheck };
     create = new OwnSavedFilterCreate(gate, { ...base, audit, clock, ids });
@@ -156,7 +157,7 @@ describe.each(TEST_MARKETS)('seller saved filters in market %s (database)', (cod
   const rowsOf = async (target: MarketContext, sellerId: string) =>
     (
       await owner.query<{ id: string; name: string; visibility: string; position: number }>(
-        `SELECT id, name, visibility, position FROM catalog.saved_filters
+        `SELECT id, name, visibility, position FROM lists.saved_filters
           WHERE market_id = $1 AND seller_id = $2 ORDER BY position, created_at, id`,
         [target.marketId, sellerId],
       )
@@ -299,7 +300,7 @@ describe.each(TEST_MARKETS)('seller saved filters in market %s (database)', (cod
     const a = member([VIEW], shop);
     for (let n = 1; n <= MAX_SAVED_FILTERS_PER_OWNER; n++) {
       await owner.query(
-        `INSERT INTO catalog.saved_filters
+        `INSERT INTO lists.saved_filters
            (id, market_id, tenant_id, owner_account_id, seller_id, visibility, list_key, name, payload, position, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, 'me', $6, $7, $8, $9, $10, $10)`,
         [
@@ -405,7 +406,7 @@ describe.each(TEST_MARKETS)('seller saved filters in market %s (database)', (cod
     );
     const adminId = uuid7();
     await owner.query(
-      `INSERT INTO catalog.saved_filters
+      `INSERT INTO lists.saved_filters
          (id, market_id, tenant_id, owner_account_id, seller_id, visibility, list_key, name, payload, position, created_at, updated_at)
        VALUES ($1, $2, $3, $4, NULL, 'everyone', $5, $6, $7, 1, now(), now())`,
       [
@@ -490,7 +491,7 @@ describe.each(TEST_MARKETS)('seller saved filters in market %s (database)', (cod
       };
       const columns = Object.keys(row);
       return client.query(
-        `INSERT INTO catalog.saved_filters (${columns.join(', ')})
+        `INSERT INTO lists.saved_filters (${columns.join(', ')})
          VALUES (${columns.map((_c, i) => `$${i + 1}`).join(', ')})`,
         Object.values(row),
       );
@@ -501,10 +502,15 @@ describe.each(TEST_MARKETS)('seller saved filters in market %s (database)', (cod
       await expect(insertAs(app, { seller_id: null, list_key: ADMIN_LIST })).resolves.toMatchObject(
         { rowCount: 1 },
       );
+      // A seller list with no store is personal to the account (the seller order lists).
+      await expect(
+        insertAs(app, { seller_id: null, list_key: 'seller.ordering.orders' }),
+      ).resolves.toMatchObject({ rowCount: 1 });
     });
 
     it.each([
-      ['a seller list key without a store', { seller_id: null }],
+      ['the seller Products list without a store', { seller_id: null }],
+      ['a shared seller list key without a store', { seller_id: null, visibility: 'everyone' }],
       ['an admin list key with a store', { list_key: ADMIN_LIST }],
       ['a list key in upper case', { list_key: 'Seller.Catalog.Products' }],
       ['a name with a leading space', { name: ' dates' }],
@@ -595,21 +601,18 @@ describe.each(TEST_MARKETS)('seller saved filters in market %s (database)', (cod
 
       await expect(
         app.query(
-          `UPDATE catalog.saved_filters SET name = 'Grant renamed', visibility = 'everyone', updated_at = now() WHERE id = $1`,
+          `UPDATE lists.saved_filters SET name = 'Grant renamed', visibility = 'everyone', updated_at = now() WHERE id = $1`,
           [rowId],
         ),
       ).resolves.toMatchObject({ rowCount: 1 });
       await expect(
-        app.query(`UPDATE catalog.saved_filters SET seller_id = $2 WHERE id = $1`, [
-          rowId,
-          store(),
-        ]),
+        app.query(`UPDATE lists.saved_filters SET seller_id = $2 WHERE id = $1`, [rowId, store()]),
       ).rejects.toMatchObject({ code: DENIED });
       await expect(
-        app.query(`UPDATE catalog.saved_filters SET seller_id = NULL WHERE id = $1`, [rowId]),
+        app.query(`UPDATE lists.saved_filters SET seller_id = NULL WHERE id = $1`, [rowId]),
       ).rejects.toMatchObject({ code: DENIED });
       await expect(
-        app.query(`DELETE FROM catalog.saved_filters WHERE id = $1`, [rowId]),
+        app.query(`DELETE FROM lists.saved_filters WHERE id = $1`, [rowId]),
       ).resolves.toMatchObject({ rowCount: 1 });
     });
   });

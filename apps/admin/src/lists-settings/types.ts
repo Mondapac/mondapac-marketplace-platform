@@ -16,6 +16,8 @@ export interface MarketSetting {
   /** 0 while the default is in force, then 1, 2, ... per change. */
   readonly version: number;
   readonly updatedAt: string | null;
+  /** Whether a change is reviewed in this Market (Admin Inbox > System requests). */
+  readonly review?: { readonly reviewed: boolean; readonly risk: string };
 }
 
 export interface MarketSettingsAnswer {
