@@ -45,6 +45,11 @@ import { ReceiveStripeEvent } from './use-cases/receive-stripe-event.use-case';
 import { SyncPayoutSchedules } from './use-cases/sync-payout-schedules.use-case';
 import { ViewPayoutAccount } from './use-cases/view-payout-account.use-case';
 import { RecordingSecurityEvents } from '../../../../test/support/recording-security-events';
+import {
+  FakeAccountSellerNames,
+  MemoryAccountList,
+} from '../../../../test/support/payments-account-list-fakes';
+import { ExceljsSheetWriter } from '../../../platform/list-export';
 
 // The bank-change waiting period, the payout pause, the recent two-step confirmation and the
 // admin read of connected accounts, in memory on both Market fixtures.
@@ -594,8 +599,14 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
   });
 
   describe('admin connected accounts', () => {
-    const list = (input: { status?: unknown; cursor?: unknown } = {}, context = admin) =>
-      new AdminListConnectedAccounts(gate, deps).execute(context, input);
+    const list = (input: Record<string, unknown> = {}, context = admin) =>
+      new AdminListConnectedAccounts(gate, {
+        unitOfWork: deps.unitOfWork,
+        list: new MemoryAccountList(accounts),
+        sellerNames: new FakeAccountSellerNames(),
+        sheetWriter: new ExceljsSheetWriter(),
+        clock,
+      }).execute(context, input);
 
     it('lists newest first with a cursor, by status, without any Stripe id or bank detail', async () => {
       for (let index = 0; index < 27; index += 1) {
@@ -624,6 +635,15 @@ describe.each(['AU', 'ZZ'] as const)('payout account safety in market %s', (code
         payoutsPaused: false,
         lastReadAt: T0,
         createdAt: T0.add({ minutes: 26 }),
+        actions: ['open'],
+      });
+      expect(first.ok && first.value.counts).toEqual({
+        all: 27,
+        'not-started': 26,
+        pending: 0,
+        enabled: 1,
+        restricted: 0,
+        rejected: 0,
       });
       expect(JSON.stringify(first)).not.toContain('acct_');
       const cursor = first.ok ? first.value.nextCursor : null;

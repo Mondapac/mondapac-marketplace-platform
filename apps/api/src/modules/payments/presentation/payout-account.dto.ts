@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { Temporal } from '@mondapac/shared-kernel';
 import type {
-  ConnectedAccountPage,
+  AccountListPage,
   ConnectedAccountRow,
 } from '../application/use-cases/admin-list-connected-accounts.use-case';
 import type { ConnectedAccountDetail } from '../application/use-cases/admin-view-connected-account.use-case';
@@ -68,7 +68,11 @@ export class ConnectedAccountRowBody {
   @ApiProperty({ format: 'uuid' })
   sellerId!: string;
 
-  @ApiProperty({ type: String, nullable: true, description: 'Null: no seller name source yet.' })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: "The seller's public store name; null when sellers cannot say.",
+  })
   sellerName!: string | null;
 
   @ApiProperty({ enum: [...ACCOUNT_STATUSES] })
@@ -101,11 +105,49 @@ export class ConnectedAccountDetailBody extends ConnectedAccountRowBody {
   changes!: PayoutChangeBody[];
 }
 
-export class ConnectedAccountPageBody {
-  @ApiProperty({ type: [ConnectedAccountRowBody] })
-  items!: ConnectedAccountRowBody[];
+export class AccountListRowBody extends ConnectedAccountRowBody {
+  @ApiProperty({
+    type: [String],
+    enum: ['open'],
+    description: 'The row actions the caller may run.',
+  })
+  actions!: string[];
+}
 
-  @ApiProperty({ type: String, nullable: true })
+export class AccountStatusCountsBody {
+  @ApiProperty() all!: number;
+  @ApiProperty({ name: 'not-started' }) 'not-started'!: number;
+  @ApiProperty() pending!: number;
+  @ApiProperty() enabled!: number;
+  @ApiProperty() restricted!: number;
+  @ApiProperty() rejected!: number;
+}
+
+export class ConnectedAccountPageBody {
+  @ApiProperty({ type: [AccountListRowBody] })
+  items!: AccountListRowBody[];
+
+  @ApiProperty({
+    type: AccountStatusCountsBody,
+    nullable: true,
+    description: 'Per status tab for the same search and filters; null in Previous/Next.',
+  })
+  counts!: AccountStatusCountsBody | null;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Null in Previous/Next.' })
+  total!: number | null;
+
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The older card\'s "Show more": set when rows are newest created first and more follow.',
+  })
   nextCursor!: string | null;
 }
 
@@ -154,8 +196,14 @@ export const connectedAccountDetailBody = (
   changes: detail.changes.map(changeBody),
 });
 
-export const connectedAccountPageBody = (page: ConnectedAccountPage): ConnectedAccountPageBody => ({
-  items: page.items.map(connectedAccountRowBody),
+export const connectedAccountPageBody = (page: AccountListPage): ConnectedAccountPageBody => ({
+  items: page.items.map((row) => ({ ...connectedAccountRowBody(row), actions: [...row.actions] })),
+  counts: page.counts === null ? null : { ...page.counts },
+  total: page.total,
+  page: page.page,
+  pageSize: page.pageSize,
+  paging: page.paging,
+  hasNext: page.hasNext,
   nextCursor: page.nextCursor,
 });
 

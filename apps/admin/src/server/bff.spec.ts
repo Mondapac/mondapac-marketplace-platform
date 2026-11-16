@@ -922,25 +922,56 @@ describe('relay allowlist for seller decisions', () => {
 });
 
 describe('relay of the connected accounts list', () => {
-  const get = (query: string) =>
-    new Request(`http://admin.localhost:3002/api/payments/admin/connected-accounts${query}`, {
-      method: 'GET',
-      headers: { host: 'admin.localhost:3002' },
-    });
+  const get = (query: string, suffix = '') =>
+    new Request(
+      `http://admin.localhost:3002/api/payments/admin/connected-accounts${suffix}${query}`,
+      { method: 'GET', headers: { host: 'admin.localhost:3002' } },
+    );
   const path = ['payments', 'admin', 'connected-accounts'];
+  const ID = '01990000-0000-7000-8000-000000000051';
 
-  it('forwards only the status and cursor keys of the query', async () => {
+  it('forwards the list keys in their shapes, and drops the rest', async () => {
     const upstream = upstreamOk();
     const response = await relay(
       config,
-      get('?status=pending&cursor=abc&limit=500&x=1'),
+      get(
+        `?status=pending&ready=no&requirements=past-due&waiting=paused&q=Halal%20Corner&from=2026-11-01T00:00:00Z&sort=last-read&direction=asc&page=2&pageSize=50&paging=pages&limit=500&x=1`,
+      ),
       path,
       upstream,
     );
     expect(response.status).toBe(200);
     expect(upstream.mock.calls[0]?.[0]).toBe(
-      'http://api.test/payments/admin/connected-accounts?status=pending&cursor=abc',
+      'http://api.test/payments/admin/connected-accounts?status=pending&ready=no&requirements=past-due&waiting=paused&q=Halal+Corner&from=2026-11-01T00%3A00%3A00Z&sort=last-read&direction=asc&page=2&pageSize=50&paging=pages',
     );
+    const cursor = `1790000000000.${ID}`;
+    const older = upstreamOk();
+    await relay(config, get(`?status=enabled&cursor=${cursor}&sort=name`), path, older);
+    expect(older.mock.calls[0]?.[0]).toBe(
+      `http://api.test/payments/admin/connected-accounts?status=enabled&cursor=${encodeURIComponent(cursor)}`,
+    );
+  });
+
+  it('forwards the export keys, and refuses an export value out of shape instead of widening the file', async () => {
+    const exportPath = [...path, 'export'];
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      get(`?format=xlsx&columns=paused,seller-id&ids=${ID}&status=enabled&page=2`, '/export'),
+      exportPath,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/payments/admin/connected-accounts/export?format=xlsx&columns=${encodeURIComponent('paused,seller-id')}&ids=${ID}&status=enabled`,
+    );
+    const many = Array.from({ length: 201 }, () => ID).join(',');
+    for (const query of ['?status=open', '?ids=x', `?ids=${many}`, '?columns=stripe']) {
+      const refused = upstreamOk();
+      const response = await relay(config, get(query, '/export'), exportPath, refused);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ code: 'validation.failed' });
+      expect(refused).not.toHaveBeenCalled();
+    }
   });
 
   it('forwards no query when none is given, and refuses other paths and methods', async () => {
