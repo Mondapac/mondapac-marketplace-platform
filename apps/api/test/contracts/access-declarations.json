@@ -848,6 +848,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "settings.read-cart-mode", "rule": "anonymous" },
   {
     "name": "settings.read-list-paging",
     "rule": "own-resources",
