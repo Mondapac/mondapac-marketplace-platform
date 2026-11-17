@@ -12,10 +12,15 @@ import type {
   StepUpProofConsumer,
   StepUpRefusal,
 } from '../../../../platform/authz';
-import type { RevertOutcome, RevertRequest, SystemChangeReverter } from '../../contracts/reverters';
+import type {
+  RevertOutcome,
+  RevertRequest,
+  SystemChangeReverter,
+} from '../../../../platform/change-review/change-review';
 import type { PolicyArea, ReviewArea, Risk } from '../../domain/areas';
 import { dueForReminder } from '../../domain/overdue';
 import type { SystemRequest } from '../../domain/request';
+import type { AdminNames } from '../ports/admin-names';
 import type {
   AreaPolicyRecord,
   DueDaysRecord,
@@ -395,6 +400,11 @@ export class FakeSubjects implements SystemChangeReverter {
     return Promise.resolve(this.checkRefused.has(request.subjectRef) ? 'not-permitted' : 'ok');
   }
 
+  /** The labels the owning module would give, per Market and ref. */
+  readonly labels = new Map<string, string>();
+  readonly described: (readonly string[])[] = [];
+  describeFails = false;
+
   set(market: string, ref: string, value: Readonly<Record<string, unknown>>): void {
     this.values.set(`${market}:${ref}`, value);
   }
@@ -420,5 +430,31 @@ export class FakeSubjects implements SystemChangeReverter {
     const actor = context.actor;
     const account = actor.kind === 'authenticated' ? actor.accountId : '';
     return Promise.resolve(this.interested.has(`${account}:${request.subjectRef}`));
+  }
+
+  describe(context: CallContext, subjectRefs: readonly string[]) {
+    this.described.push([...subjectRefs]);
+    if (this.describeFails) return Promise.reject(new Error('down'));
+    const found = new Map<string, string>();
+    for (const ref of subjectRefs) {
+      const label = this.labels.get(`${context.market.marketId}:${ref}`);
+      if (label !== undefined) found.set(ref, label);
+    }
+    return Promise.resolve(found);
+  }
+}
+
+/** Admin names in memory: the names it was given; `refusing` answers none (a refused read). */
+export class FakeAdminNames implements AdminNames {
+  refusing = false;
+  readonly asked: (readonly string[])[] = [];
+  constructor(private readonly names: Readonly<Record<string, string>> = {}) {}
+
+  namesOf(_context: CallContext, accountIds: readonly string[]) {
+    this.asked.push([...accountIds]);
+    if (this.refusing) return Promise.resolve(new Map<string, string>());
+    return Promise.resolve(
+      new Map(accountIds.flatMap((id) => (this.names[id] ? [[id, this.names[id]] as const] : []))),
+    );
   }
 }

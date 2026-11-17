@@ -9,8 +9,8 @@ import {
   EmptyState,
   LoadError,
   Select,
-  SkeletonRows,
   toast,
+  TableSkeleton,
   type BadgeTone,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -58,6 +58,7 @@ export function RequestsQueue({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('wallet');
+  const tr = useTranslations('route');
   const locale = useLocale();
   const guarded = useGuardedCall();
   const [rows, setRows] = useState<readonly AdminCredit[] | null>(null);
@@ -194,7 +195,25 @@ export function RequestsQueue({
       />
     );
   }
-  if (rows === null) return <SkeletonRows label={t('loading')} rows={4} />;
+  if (rows === null) {
+    return (
+      <TableSkeleton
+        label={t('loading')}
+        slowLabel={tr('slow')}
+        rows={PAGE_SIZE}
+        columns={[
+          { header: t('queue.col.customer'), kind: 'title' },
+          { header: t('queue.col.amount'), kind: 'number' },
+          { header: t('queue.col.reason'), kind: 'text' },
+          { header: t('queue.col.status'), kind: 'status' },
+          { header: t('queue.col.requested-by'), kind: 'text' },
+          { header: t('queue.col.requested'), kind: 'date' },
+          { header: t('queue.col.until'), kind: 'date' },
+          { header: t('queue.col.actions'), kind: 'status', place: 'labelled' },
+        ]}
+      />
+    );
+  }
 
   // Pending shows only requests still waiting; a decided one has left the tab.
   const visible = tab === 'pending' ? rows.filter((row) => row.status === 'pending') : rows;

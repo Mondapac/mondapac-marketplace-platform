@@ -23,6 +23,8 @@ export interface OrderDocumentLine {
   readonly quantity: number;
   readonly unitPrice: Money;
   readonly lineAmount: Money;
+  /** The discount on the line (promotions); zero without one. */
+  readonly discount: Money;
   readonly taxInclusive: boolean;
   readonly taxRateBps: number | null;
   /** Null on a line placed before its tax was recorded. */
@@ -35,6 +37,9 @@ export interface OrderDocumentPart {
   readonly lines: readonly OrderDocumentLine[];
   readonly subtotal: Money;
   readonly shipping: Money;
+  /** The discounts of the goods and of the delivery fee (promotions); zero without any. */
+  readonly discount: Money;
+  readonly shippingDiscount: Money;
   readonly shippingTax: Money | null;
   readonly tax: Money | null;
   readonly total: Money;
@@ -62,6 +67,7 @@ const lineOf = (line: OrderLineView): OrderDocumentLine => ({
   quantity: line.quantity,
   unitPrice: line.unitPrice,
   lineAmount: line.lineAmount,
+  discount: line.discount,
   taxInclusive: line.taxInclusive,
   taxRateBps: line.taxRateBps,
   tax: line.tax,
@@ -72,6 +78,8 @@ const partOf = (seller: SellerOrderView): OrderDocumentPart => ({
   lines: seller.lines.map(lineOf),
   subtotal: seller.subtotal,
   shipping: seller.shipping,
+  discount: seller.discount,
+  shippingDiscount: seller.shippingDiscount,
   shippingTax: seller.shippingTax,
   tax: seller.tax,
   total: seller.total,

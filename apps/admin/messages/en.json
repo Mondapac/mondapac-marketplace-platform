@@ -73,7 +73,10 @@
       "promotions-switch": "Promotions switched on",
       "promotions-switch-words": "discounts, offers, codes, campaigns, turn off"
     },
-    "empty-hint": "Check the spelling or try a shorter word."
+    "empty-hint": "Check the spelling or try a shorter word.",
+    "page": {
+      "system-requests-words": "maker checker, approval, review, change request, revert"
+    }
   },
   "theme": {
     "menu": "Theme",
@@ -138,6 +141,7 @@
     "review-moderation": "Reviews",
     "business-activities": "Business activities",
     "tags": "Tags",
+    "system-requests": "System requests",
     "security": "Security"
   },
   "home": {
@@ -410,13 +414,6 @@
       },
       "dialog": {
         "keep": "Keep as it is",
-        "type-to-confirm": "Type the name to confirm",
-        "step-up-note": "We'll ask for your two-step code next.",
-        "reactivate": {
-          "title": "Reactivate {name}'s admin account?",
-          "body": "The account is active again at once. Another admin reviews this change and can undo it.",
-          "action": "Reactivate"
-        },
         "deactivate": {
           "title": "Deactivate {name}'s admin account?",
           "body": "They're signed out straight away and can't sign in.",
@@ -451,6 +448,13 @@
           "action": "Send invitation",
           "cancel": "Cancel",
           "toast-sent": "Invitation sent to {email}."
+        },
+        "type-to-confirm": "Type the name to confirm",
+        "step-up-note": "We'll ask for your two-step code next.",
+        "reactivate": {
+          "title": "Reactivate {name}'s admin account?",
+          "body": "The account is active again at once. Another admin reviews this change and can undo it.",
+          "action": "Reactivate"
         }
       },
       "toast": {
@@ -617,7 +621,6 @@
         "title-create": "New custom role",
         "title-edit": "Edit role",
         "section-name": "Name",
-        "section-note": "Review",
         "name": "Role name",
         "name-help": "Up to {max} characters. Each custom role needs its own name.",
         "name-required": "Enter a name for the role.",
@@ -632,7 +635,8 @@
         "delete-title": "Delete {name}?",
         "delete-body": "This can't be undone. A role that someone still holds can't be deleted: give those people another role first.",
         "delete-confirm": "Delete role",
-        "keep": "Keep role"
+        "keep": "Keep role",
+        "section-note": "Review"
       },
       "conflict": {
         "title": "Someone saved this role first",
@@ -3025,7 +3029,8 @@
         "roles": "Roles & permissions",
         "lists": "Lists",
         "ai": "AI",
-        "promotions": "Promotions"
+        "promotions": "Promotions",
+        "review-policy": "Review policy"
       }
     },
     "sub": {
@@ -3207,7 +3212,6 @@
   },
   "fleets": {
     "title": "Delivery fleets",
-    "review-section": "Review",
     "permission-view": "View delivery fleets",
     "intro": "The platform picks the fleet for every seller order. Sellers never choose a method or a fleet. Define how it picks, choose the model each delivery method uses, and set how reliable each fleet is.",
     "no-access": "Your role cannot see delivery fleets.",
@@ -3343,11 +3347,12 @@
     "compare": {
       "score": "{fleet} reliability",
       "unset": "not set"
-    }
+    },
+    "review-section": "Review"
   },
   "review-note": {
     "label": "Note for reviewers",
-    "help": "Say why you are making this change. A reviewer reads it in Admin Inbox > System requests.",
+    "help": "Say why you are making this change. It applies at once; a reviewer reads your note in Admin Inbox > System requests and can undo the change.",
     "counter": "{count} / {max}",
     "sent": "Sent for review as {number}",
     "error": {
@@ -3585,47 +3590,8 @@
       "clear-all": "Clear all",
       "match": "{count, plural, one {# product matches} other {# products match}}",
       "range": "{from}–{to} of {total} products",
-      "range-open": "{from}–{to} products",
       "previous": "Previous",
       "next": "Next",
-      "paging": {
-        "rows-per-page": "Rows per page",
-        "previous": "Previous",
-        "next": "Next",
-        "pages": "Pages",
-        "page": "Page {page}",
-        "narrow": "Narrow the list to see more.",
-        "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other products."
-      },
-      "actions": {
-        "header": "Actions",
-        "for": "Actions for {name}"
-      },
-      "row": {
-        "menu": {
-          "open": "Open",
-          "edit": "Edit",
-          "pause": "Deactivate…",
-          "resume": "Activate",
-          "delete": "Delete…"
-        },
-        "type-code": "Type the product code to confirm",
-        "step-up-note": "You may be asked for a security code.",
-        "count-changed": "The product's Offers changed while you were deciding. Check the new count and confirm again.",
-        "nothing-changed": "{name} was not changed.",
-        "pause": {
-          "title": "Deactivate {name}?"
-        },
-        "delete": {
-          "title": "Delete {name}?",
-          "confirm": "Delete product"
-        },
-        "done": {
-          "pause": "{name} deactivated.",
-          "resume": "{name} activated.",
-          "delete": "{name} deleted."
-        }
-      },
       "loading": "Loading products",
       "error": {
         "denied": "You don't have access to products.",
@@ -3771,6 +3737,45 @@
         "archived": "{name} (archived)",
         "more": "+{count}",
         "more-sr": "and {count} more"
+      },
+      "range-open": "{from}–{to} products",
+      "paging": {
+        "rows-per-page": "Rows per page",
+        "previous": "Previous",
+        "next": "Next",
+        "pages": "Pages",
+        "page": "Page {page}",
+        "narrow": "Narrow the list to see more.",
+        "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other products."
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}"
+      },
+      "row": {
+        "menu": {
+          "open": "Open",
+          "edit": "Edit",
+          "pause": "Deactivate…",
+          "resume": "Activate",
+          "delete": "Delete…"
+        },
+        "type-code": "Type the product code to confirm",
+        "step-up-note": "You may be asked for a security code.",
+        "count-changed": "The product's Offers changed while you were deciding. Check the new count and confirm again.",
+        "nothing-changed": "{name} was not changed.",
+        "pause": {
+          "title": "Deactivate {name}?"
+        },
+        "delete": {
+          "title": "Delete {name}?",
+          "confirm": "Delete product"
+        },
+        "done": {
+          "pause": "{name} deactivated.",
+          "resume": "{name} activated.",
+          "delete": "{name} deleted."
+        }
       }
     },
     "import": {
@@ -5705,8 +5710,8 @@
       "platform-import-finished": "A <strong>product import</strong> {outcome, select, stopped {stopped part way} other {finished}}",
       "review-held": "A <strong>review</strong> is held for moderation",
       "review-reported": "A seller reported a <strong>review</strong>",
-      "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review",
-      "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count cap</strong>} amount {A seller reached the <strong>refund amount cap</strong>} unset {A seller tried to refund with <strong>no refund cap set</strong>} other {A seller reached a <strong>refund cap</strong>}}"
+      "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count cap</strong>} amount {A seller reached the <strong>refund amount cap</strong>} unset {A seller tried to refund with <strong>no refund cap set</strong>} other {A seller reached a <strong>refund cap</strong>}}",
+      "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review"
     },
     "category": {
       "certificates": "Certificates",
@@ -5716,8 +5721,8 @@
       "delivery": "Delivery",
       "reviews": "Reviews",
       "refunds": "Refunds",
-      "system-requests": "System requests",
-      "other": "Other"
+      "other": "Other",
+      "system-requests": "System requests"
     },
     "empty": {
       "unread": {
@@ -5739,7 +5744,6 @@
   },
   "deliverySettings": {
     "title": "Delivery rules",
-    "review-section": "Review",
     "permission-view": "View delivery settings",
     "state": {
       "on": "On",
@@ -5856,7 +5860,8 @@
         "margin-percent": "Sellers are not affected: the margin is added on top of the fleet quote.",
         "margin-fixed": "Sellers are not affected: the margin is added on top of the fleet quote."
       }
-    }
+    },
+    "review-section": "Review"
   },
   "sellerDelivery": {
     "title": "Delivery methods",
@@ -9721,6 +9726,433 @@
       "csrf": "The page expired. Reload it and try again.",
       "denied": "You can't change this. You may be acting as a seller; this setting is not available then.",
       "unknown": "The change could not be saved. Try again."
+    }
+  },
+  "system-requests": {
+    "title": "System requests",
+    "subtitle": "Changes already live on the platform that another admin must review.",
+    "no-access": "You do not have access to System requests.",
+    "no-access-body": "Ask an admin who manages roles to give you the permission to view system requests.",
+    "back-home": "Back to the dashboard",
+    "views": "Request views",
+    "view": {
+      "needs-my-review": "Needs my review",
+      "all-open": "All open",
+      "mine": "My requests",
+      "approved": "Approved",
+      "reverted": "Reverted",
+      "overdue": "Overdue",
+      "all": "All"
+    },
+    "area": {
+      "people": "People",
+      "money": "Money",
+      "delivery": "Delivery",
+      "catalogue": "Catalogue",
+      "certification": "Certification",
+      "marketplace": "Marketplace",
+      "content": "Content",
+      "review-policy": "Review policy"
+    },
+    "risk": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "status": {
+      "open": "Open",
+      "approved": "Approved",
+      "reverted": "Reverted"
+    },
+    "decision": {
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "withdrawn": "Withdrawn"
+    },
+    "overdue": "Overdue",
+    "superseded": "Superseded",
+    "overdue-days": "{count, plural, one {# day overdue} other {# days overdue}}",
+    "you": "You",
+    "you-lower": "you",
+    "admin": "Admin",
+    "none": "None",
+    "close": "Close",
+    "search": {
+      "label": "Search requests",
+      "placeholder": "Search SR number or note"
+    },
+    "filter": {
+      "button": "Filters",
+      "title": "Filter requests",
+      "name": {
+        "area": "Area",
+        "risk": "Risk",
+        "status": "Status",
+        "applied": "Applied between"
+      },
+      "from": "From",
+      "to": "To",
+      "backwards": "The last day is before the first day.",
+      "overdue-only": "Overdue only",
+      "apply": "Apply",
+      "cancel": "Cancel",
+      "clear": "Clear filters",
+      "clear-all": "Clear all"
+    },
+    "chip": "{field}: {value}",
+    "chip-applied-between": "Applied: {from} to {to}",
+    "chip-applied-from": "Applied: from {from}",
+    "chip-applied-to": "Applied: until {to}",
+    "chip-subject": "Subject: {ref}",
+    "chip-remove": "Remove filter {filter}",
+    "sort": {
+      "button": "Sort",
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "applied": "Date applied",
+        "due": "Review due",
+        "number": "SR number"
+      },
+      "applied": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      },
+      "due": {
+        "first": "Soonest first",
+        "second": "Latest first"
+      },
+      "number": {
+        "first": "Highest number first",
+        "second": "Lowest number first"
+      }
+    },
+    "sorted": "Sorted by {field}, {order}",
+    "columns": {
+      "button": "Columns",
+      "title": "Columns",
+      "help": "Choose which columns the table shows and in what order. Your choice is kept in this browser.",
+      "always": "Always shown",
+      "up": "Move {column} up",
+      "down": "Move {column} down",
+      "reset": "Reset",
+      "save": "Save"
+    },
+    "col": {
+      "request": "Request",
+      "area": "Area",
+      "risk": "Risk",
+      "status": "Status",
+      "subject": "Subject",
+      "requestedBy": "Requested by",
+      "applied": "Applied",
+      "due": "Review due",
+      "decidedBy": "Decided by",
+      "decided": "Decided",
+      "comments": "Comments",
+      "actions": "Actions"
+    },
+    "select": {
+      "page": "Select all on this page",
+      "page-short": "Select this page",
+      "row": "Select {number}"
+    },
+    "action": {
+      "open": "Open",
+      "copy-link": "Copy link",
+      "approve": "Approve",
+      "reject": "Reject and revert",
+      "withdraw": "Withdraw my change"
+    },
+    "row-actions": "Actions for {number}",
+    "link-copied": "Link copied.",
+    "link-not-copied": "The link could not be copied.",
+    "loading": "Loading requests",
+    "loading-request": "Loading the request",
+    "invalid-filters": "Some filters were not valid and were removed.",
+    "error": {
+      "unavailable": "The requests could not be loaded. Try again."
+    },
+    "empty": {
+      "needs-my-review": {
+        "title": "Nothing waiting for you",
+        "body": "Changes by other admins in your areas appear here."
+      },
+      "all-open": {
+        "title": "No open requests",
+        "body": "Reviewed changes will show up here as soon as an admin makes one."
+      },
+      "mine": {
+        "title": "You have not made any reviewed changes."
+      },
+      "approved": {
+        "title": "No requests yet."
+      },
+      "reverted": {
+        "title": "No requests yet."
+      },
+      "all": {
+        "title": "No requests yet."
+      },
+      "overdue": {
+        "title": "Nothing is overdue."
+      },
+      "filtered": {
+        "title": "No requests match these filters."
+      }
+    },
+    "range": "{from}–{to} of {total}",
+    "paging": {
+      "rows-per-page": "Rows per page",
+      "previous": "Previous",
+      "next": "Next",
+      "pages": "Pages",
+      "page": "Page {page}",
+      "narrow-title": "Narrow the list to see more",
+      "narrow-body": "Only the first 10,000 requests can be paged through. Add a filter to see the rest."
+    },
+    "bulk": {
+      "region": "Bulk actions",
+      "selected": "{count} selected",
+      "selected-all": "All {count} matching selected",
+      "select-all": "Select all {count} matching",
+      "clear": "Clear",
+      "approve-selected": "Approve selected",
+      "approve-matching": "Approve all matching",
+      "not-allowed": "Only low-risk requests you may review can be approved together. Review medium and high risk requests one by one.",
+      "deselect": "Deselect {count} that cannot be approved",
+      "cancel": "Cancel",
+      "confirm": {
+        "title": "{count, plural, one {Approve # request?} other {Approve # requests?}}",
+        "title-matching": "Approve all matching requests?",
+        "body": "The changes stay live. You approve them as they are now; the author's values are not edited.",
+        "body-matching": "Every low-risk request that matches this list and that you may review is approved as it is now, up to 100 at a time. Medium and high risk requests stay open for a one-by-one review.",
+        "action": "{count, plural, one {Approve # request} other {Approve # requests}}",
+        "matching": "Approve matching requests"
+      },
+      "progress": "{count} approved so far",
+      "done": "{count, plural, one {# request approved.} other {# requests approved.}}",
+      "result": {
+        "title": "Approved {approved} of {total}",
+        "done": "Done",
+        "stopped": "The approval stopped before every matching request was handled. The ones below could not be approved; the list shows what is still open.",
+        "unknown": "The number of requests left could not be counted. Run \"Approve all matching\" again to check."
+      },
+      "reason": {
+        "not-low-risk": "Needs a one-by-one review (not low risk).",
+        "decided": "Already decided by someone else.",
+        "own": "You made this change, so another admin must review it.",
+        "not-reviewer": "You do not hold the review permission for this area.",
+        "not-found": "No longer available.",
+        "other": "Could not be approved ({code})."
+      },
+      "error": {
+        "network": "Could not reach the server. Nothing more was changed.",
+        "unavailable": "The requests could not be approved. Try again."
+      },
+      "none": "No matching low-risk requests could be approved."
+    },
+    "decide": {
+      "cancel": "Cancel",
+      "counter": "{count} / {max}",
+      "step-up-note": "High risk: you will be asked for your two-step code.",
+      "approve": {
+        "title": "Approve {number}?",
+        "body": "The change stays live exactly as it is. This cannot be undone.",
+        "high-risk": "High risk: you will be asked for your two-step code.",
+        "confirm": "Approve"
+      },
+      "reject": {
+        "title": "Reject {number} and put the previous value back?",
+        "body": "The platform returns to the value before this change, in one step. This only works if nothing has changed it since. Effects the change already had (for example orders or payouts made while it was live) are not undone.",
+        "reason": "Reason (shown to the author)",
+        "confirm": "Reject and revert"
+      },
+      "withdraw": {
+        "title": "Withdraw your change?",
+        "body": "The previous value is put back now, if nothing has changed it since. The request is closed as withdrawn.",
+        "reason": "Reason",
+        "confirm": "Withdraw change"
+      },
+      "error": {
+        "required": "Enter a reason.",
+        "rejected": "Write 1 to 500 characters."
+      },
+      "toast": {
+        "approve": "{number} approved. The change stays live.",
+        "reject": "{number} rejected. The previous value is back in place.",
+        "withdraw": "Your change was withdrawn. The previous value is back in place."
+      }
+    },
+    "refusal": {
+      "changed-since": "The value was changed again after this request, so it was not reverted and nothing was put back. Review the newer request instead.",
+      "subject-gone": "The item this change was about no longer exists, so there is nothing to put back. You can approve the request to close it.",
+      "revert-not-permitted": "You are not allowed to make the change that reverting would make, so nothing was reverted. The request is still open. Ask an admin with that permission, or approve it.",
+      "own": "You made this change, so you cannot approve or reject it. Another admin must review it.",
+      "not-author": "Only the admin who made this change can withdraw it.",
+      "not-reviewer": "You do not hold the review permission for this area ({permission}).",
+      "decided": "Someone else already decided this request.",
+      "revert-unavailable": "Reverting is not available right now. Nothing was changed. Try again in a moment.",
+      "not-found": "This request does not exist or you cannot see it.",
+      "enrol": "Set up two-step verification on your profile to review high-risk requests.",
+      "denied": "You do not have permission for this.",
+      "csrf": "Your session expired. Reload the page.",
+      "network": "Could not reach the server. Nothing was changed.",
+      "unknown": "Something went wrong. Nothing was changed.",
+      "open-newer": "Open the newer request",
+      "open-profile": "Open your profile",
+      "retry": "Try again",
+      "reload": "Reload the page"
+    },
+    "detail": {
+      "not-found": "This request does not exist or you cannot see it.",
+      "subject": "Subject",
+      "reason": "Reason",
+      "note": "Why this change was made"
+    },
+    "banner": {
+      "live": "This change is already live. Approve to keep it, or reject to put the previous value back.",
+      "superseded": "A later request changed this again, so this one can no longer be reverted. You can still approve it.",
+      "see-later": "See the later request (SR-{number})",
+      "own": "You made this change. Another admin has to approve it. You can withdraw it."
+    },
+    "outcome": {
+      "approved": "Approved by {name} on {date}. The change stayed live.",
+      "rejected": "Rejected by {name} on {date}. Reason: {reason}.",
+      "withdrawn": "Withdrawn by {name} on {date}. Reason: {reason}."
+    },
+    "more-actions": "More actions",
+    "diff": {
+      "title": "What changed",
+      "title-history": "Values at the time of the change",
+      "hidden": "The values are visible only to the author and reviewers of this area.",
+      "before": "Before",
+      "after": "After",
+      "before-help": "restored by a reject",
+      "after-help": "live now",
+      "changed": "changed",
+      "not-set": "Not set",
+      "market-default": "Market default",
+      "on": "On",
+      "off": "Off",
+      "empty": "Empty",
+      "no-changes": "No field changed.",
+      "show-unchanged": "{count, plural, one {# unchanged field} other {# unchanged fields}}",
+      "hide-unchanged": "Hide unchanged fields"
+    },
+    "activity": {
+      "title": "Activity",
+      "none": "No activity yet.",
+      "kind": {
+        "applied": "applied the change",
+        "commented": "commented",
+        "approved": "approved",
+        "rejected": "rejected and reverted",
+        "withdrawn": "withdrew and reverted",
+        "unknown": "updated"
+      },
+      "label": "Add a comment",
+      "counter": "{count} / {max}",
+      "submit": "Comment",
+      "added": "Comment added",
+      "error": {
+        "invalid": "Write 1 to 2000 characters.",
+        "failed": "Could not post the comment. Try again."
+      }
+    },
+    "kind": {
+      "commission-payouts--commission-rate": "Commission rate",
+      "commission-payouts--payout-terms": "Payout terms",
+      "wallet--market-status": "Wallet switch",
+      "settings--market-setting": "Market setting",
+      "system-requests--policy-area": "Review policy",
+      "system-requests--review-due-days": "Review period"
+    },
+    "badge": {
+      "label": "{waiting} waiting for you{overdue, plural, =0 {} other {, # overdue}}"
+    },
+    "policy": {
+      "title": "Review policy",
+      "permission-view": "View review policy",
+      "intro": "Decide which kinds of changes need another admin's review. Changes still go live at once; a reviewer approves them or puts the previous value back.",
+      "always-reviewed": "Changes to this policy are always reviewed, at high risk, by the people reviewers.",
+      "reviewer-key": "Reviewer permission:",
+      "view-only": "You can view the policy but not change it.",
+      "conflict": "Someone else changed this policy first. The latest values were loaded; check them and save again.",
+      "load-failed": "The review policy could not be loaded. Try again.",
+      "areas": {
+        "title": "Areas",
+        "description": "Switch review on or off for each area and set how risky its changes are."
+      },
+      "col": {
+        "area": "Area",
+        "review": "Review",
+        "risk": "Risk",
+        "permission": "Reviewer permission",
+        "changed": "Last changed",
+        "pending": "Pending"
+      },
+      "area-help": {
+        "people": "Admins, roles and access.",
+        "money": "Commission, payouts and the wallet.",
+        "delivery": "Delivery rules and fleets.",
+        "catalogue": "Categories, attributes and brands.",
+        "certification": "Certificate types and issuers.",
+        "marketplace": "Market settings.",
+        "content": "Pages, blog and slides."
+      },
+      "money-note": "Money changes are always reviewed as high risk.",
+      "review-switch": "Review changes in {area}",
+      "risk-select": "Risk for {area}",
+      "unsaved": "Unsaved",
+      "default": "Default",
+      "last-changed": "by {name}, {date}",
+      "awaiting": "Awaiting review {number}",
+      "period": {
+        "title": "Review period",
+        "label": "Days before an open request is overdue",
+        "help": "Applies to requests opened from now on. Default 7. Overdue requests get a flag; they never expire.",
+        "error": "Enter 1 to 90."
+      },
+      "summary": {
+        "turned-on": "review turned on",
+        "turned-off": "review turned off",
+        "review-on": "review on",
+        "review-off": "review off",
+        "risk-change": "risk {from} to {to}",
+        "risk": "risk {risk}",
+        "days": "Review period: {from} to {to} days"
+      },
+      "dialog": {
+        "title": "Save policy change",
+        "warning": "This change goes live now and opens a high-risk review request. You will be asked for your two-step code.",
+        "turning-off": "Changes in this area will no longer be reviewed.",
+        "cancel": "Cancel",
+        "confirm": "Save and send for review"
+      },
+      "toast": {
+        "saved": "Saved. Review request {number} opened.",
+        "open": "Open request",
+        "nothing": "Nothing changed."
+      },
+      "bar": {
+        "region": "Unsaved changes",
+        "summary": "{count, plural, one {# unsaved change} other {# unsaved changes}}",
+        "errors": "{count, plural, one {# needs fixing} other {# need fixing}}",
+        "discard": "Discard",
+        "save": "Save change",
+        "saving": "Saving…"
+      },
+      "leave": {
+        "title": "Leave without saving?",
+        "message": "You have {count, plural, one {# unsaved change on {page}. If you leave now, it is lost.} other {# unsaved changes on {page}. If you leave now, they are lost.}}",
+        "stay": "Stay",
+        "leave": "Leave"
+      }
+    },
+    "export": {
+      "button": "Export",
+      "hint": "Export comes with saved filters"
     }
   },
   "security-centre": {

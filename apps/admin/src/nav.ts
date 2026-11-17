@@ -55,6 +55,16 @@ export const adminNav: NavConfig = {
       anyOf: ['pricing.price-hold.view'],
     },
     {
+      id: 'system-requests',
+      icon: 'clipboard',
+      labelKey: 'nav.system-requests',
+      href: '/system-requests',
+      group: 'inbox',
+      anyOf: ['system-requests.request.view'],
+      keywordsKey: 'palette.page.system-requests-words',
+      badgeSource: 'system-requests',
+    },
+    {
       id: 'orders',
       icon: 'receipt',
       labelKey: 'nav.orders',
