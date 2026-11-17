@@ -4936,7 +4936,7 @@
   "orders": {
     "title": "Orders",
     "page-title": "Orders",
-    "intro": "The Market's orders, newest first.",
+    "intro": "The Market's orders. Open one to see its payment, delivery and notes.",
     "zone-note": "Times and days are in {zone}.",
     "no-access": "You don't have access to orders.",
     "no-access-title": "You don't have access to this page",
@@ -4981,7 +4981,8 @@
       "paid": "Paid",
       "customer": "Customer",
       "sellers": "Sellers",
-      "total": "Total"
+      "total": "Total",
+      "payment": "Payment"
     },
     "reference": "Order {id}",
     "tax": {
@@ -5014,7 +5015,9 @@
       }
     },
     "error": {
-      "unavailable": "We couldn't load the orders. Try again."
+      "unavailable": "We couldn't load the orders. Try again.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them.",
+      "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
     },
     "field": {
       "status": "Status",
@@ -5265,38 +5268,21 @@
     },
     "range": "{from} to {to} of {total}",
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
-    "filters": {
-      "group": "Filters",
-      "payment": "Payment",
-      "fulfilment": "Delivery",
-      "from": "Placed from",
-      "to": "Placed until",
-      "any": "Any",
-      "clear": "Clear filters",
-      "backwards": "The end day is before the start day."
-    },
     "sort": {
-      "label": "Sort by",
-      "newest": "Newest first",
-      "oldest": "Oldest first",
-      "total-high": "Total, high to low",
-      "total-low": "Total, low to high"
-    },
-    "paging": {
-      "nav": "Pages",
-      "previous": "Previous",
-      "next": "Next",
-      "page": "Page {n}"
-    },
-    "columns": {
-      "button": "Columns",
-      "title": "Columns",
-      "help": "Choose which columns the list shows and in what order. Only you see this choice.",
-      "always": "Always shown",
-      "up": "Move {column} up",
-      "down": "Move {column} down",
-      "reset": "Reset",
-      "save": "Save"
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "created": "Placed",
+        "total": "Total"
+      },
+      "date": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      },
+      "amount": {
+        "first": "Highest first",
+        "second": "Lowest first"
+      }
     },
     "saved": {
       "manage-link": "Manage filters",
@@ -5344,7 +5330,60 @@
         "help-share": "Rename, change who can use a filter, or delete it.",
         "help-own": "Rename or delete your filters. Your role can’t share filters."
       }
-    }
+    },
+    "sorted": "Sorted by {field}: {order}",
+    "filter": {
+      "title": "Filter orders",
+      "name": {
+        "paymentState": "Payment",
+        "fulfilment": "Fulfilment",
+        "placed": "Placed"
+      }
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Customer, store, or order ID",
+      "too-short": "Type at least 2 characters."
+    },
+    "chip-search": "Search: \"{text}\"",
+    "match": "{count, plural, one {# order matches} other {# orders match}}",
+    "not-yet": "Not yet",
+    "row-name": "order {id}",
+    "select": {
+      "page": "Select all orders on this page",
+      "page-short": "Select all on this page",
+      "row": "Select {name}"
+    },
+    "selection": {
+      "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+      "all": "{count, plural, one {The # matching order is selected} other {All # matching orders are selected}}",
+      "all-open": "All matching orders are selected",
+      "select-all": "Select all {count, number} matching",
+      "select-all-open": "Select all matching",
+      "clear": "Clear selection"
+    },
+    "bulk": {
+      "button": "Bulk action",
+      "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+      "all-open": "All matching orders selected",
+      "export": "Export all matching as CSV",
+      "export-help": "Exports every order the tab and filters match, not only the ticked ones.",
+      "export-name-search": "A customer or store search cannot be exported. Clear it to export."
+    },
+    "row-actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "open": "Open order",
+      "print": "Print document",
+      "copy-number": "Copy order number",
+      "add-note": "Add note…",
+      "refund": "Refund…",
+      "cancel": "Cancel order…",
+      "copied": "Copied",
+      "copy-failed": "Couldn't copy. Select the text and copy it."
+    },
+    "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
+    "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name."
   },
   "load": {
     "retry": "Try again",
