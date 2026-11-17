@@ -10,6 +10,7 @@ import {
   SORTS,
   TABS,
   filtersOf,
+  filtersOnTab,
   type Direction,
   type Filters,
   type Query,
@@ -35,7 +36,7 @@ export type SavedShipments = SavedFiltersAnswer<SavedPayload>;
 export function somethingToSave(query: Query, paging: 'pages' | 'prev-next'): boolean {
   return (
     query.tab !== DEFAULT_QUERY.tab ||
-    Object.keys(query.filters).length > 0 ||
+    Object.keys(filtersOnTab(query.filters, query.tab)).length > 0 ||
     (paging === 'pages' &&
       (query.sort !== DEFAULT_QUERY.sort || query.direction !== DEFAULT_QUERY.direction))
   );
@@ -43,10 +44,9 @@ export function somethingToSave(query: Query, paging: 'pages' | 'prev-next'): bo
 
 /** The document that saves what the page shows now. */
 export function payloadOf(query: Query, paging: 'pages' | 'prev-next'): SavedPayload {
+  const kept = filtersOnTab(query.filters, query.tab);
   const filters = Object.fromEntries(
-    FILTER_FIELDS.flatMap((field) =>
-      query.filters[field] === undefined ? [] : [[field, query.filters[field]]],
-    ),
+    FILTER_FIELDS.flatMap((field) => (kept[field] === undefined ? [] : [[field, kept[field]]])),
   ) as Filters;
   const sorted = paging === 'pages';
   return {

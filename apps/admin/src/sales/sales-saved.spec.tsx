@@ -32,6 +32,8 @@ interface Case {
   readonly page: object;
   readonly element: (paging: 'pages' | 'prev-next') => ReactElement;
   /** The built-in tab that is not the default, as its button reads, and its canonical id. */
+  /** The sort field to choose in the Sort panel (radio name) and the sort id it saves. */
+  readonly sortChoice: { readonly radio: string; readonly id: string };
   readonly otherTab: { readonly button: RegExp; readonly id: string };
   /** A saved document, and the query parameters opening it must send. */
   readonly open: { readonly payload: object; readonly sends: Record<string, string> };
@@ -52,6 +54,7 @@ const CASES: readonly Case[] = [
       counts: { toPrepare: 5, ready: 4, shipped: 3, delivered: 2, refunded: 1, attention: 7 },
     },
     element: (paging) => <ShipmentsList paging={paging} {...COMMON} />,
+    sortChoice: { radio: 'Total', id: 'total' },
     otherTab: { button: /^Shipped/, id: 'shipped' },
     open: {
       payload: {
@@ -75,6 +78,7 @@ const CASES: readonly Case[] = [
       counts: { pending: 3, succeeded: 20, failed: 2 },
     },
     element: (paging) => <RefundsList paging={paging} {...COMMON} />,
+    sortChoice: { radio: 'Amount', id: 'amount' },
     otherTab: { button: /^Refused by Stripe/, id: 'failed' },
     open: {
       payload: {
@@ -98,6 +102,7 @@ const CASES: readonly Case[] = [
       counts: { orderConfirmations: 4, creditNotes: 2 },
     },
     element: (paging) => <InvoicesList paging={paging} {...COMMON} />,
+    sortChoice: { radio: 'Amount', id: 'amount' },
     otherTab: { button: /^Credit notes/, id: 'credit-note' },
     open: {
       payload: {
@@ -341,6 +346,17 @@ describe.each(CASES)('$name saved filters', (c) => {
         CSRF,
       ),
     );
+    await screen.findByText('Moved “First”');
+    // The row keeps focus: the Move down button it used is now disabled (last own row), so
+    // focus goes to its Move up button.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(dialog).getByRole('button', { name: 'Move First up' }),
+      ),
+    );
+    expect(
+      within(dialog).getByRole('button', { name: 'Move First up' }).getAttribute('title'),
+    ).toBe('Move First up');
     await waitFor(() => {
       const names = within(dialog)
         .getAllByRole('listitem')
@@ -394,6 +410,75 @@ describe.each(CASES)('$name saved filters', (c) => {
       ).toBe('true');
     },
   );
+
+  it('keeps the sort and direction through save and reopen under page numbers', async () => {
+    serve(c, []);
+    mount(c, 'pages');
+    await screen.findByRole('button', { name: 'Manage filters' });
+    fireEvent.click(screen.getByRole('button', { name: 'Sort' }));
+    const sort = await screen.findByRole('dialog', { name: 'Sort' });
+    fireEvent.click(within(sort).getByRole('radio', { name: c.sortChoice.radio }));
+    fireEvent.click(within(sort).getByRole('radio', { name: 'Lowest first' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'By amount' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save filter' }));
+    await screen.findByRole('button', { name: 'By amount' });
+    expect(savedCalls('POST')[0]?.[2]).toMatchObject({
+      payload: { sort: c.sortChoice.id, direction: 'asc' },
+    });
+    // Leave the saved tab, then open it again: the sort comes back from the payload.
+    fireEvent.click(screen.getByRole('button', { name: c.otherTab.button }));
+    await waitFor(() => expect(paramsOf(listUrls(c).at(-1)!)['direction']).toBe('desc'));
+    fireEvent.click(screen.getByRole('button', { name: 'By amount' }));
+    await waitFor(() =>
+      expect(paramsOf(listUrls(c).at(-1)!)).toMatchObject({
+        sort: c.sortChoice.id,
+        direction: 'asc',
+      }),
+    );
+  });
+
+  it('saves and reopens without any sort under Previous and next', async () => {
+    serve(c, []);
+    mount(c, 'prev-next');
+    await screen.findByRole('button', { name: 'Manage filters' });
+    fireEvent.click(screen.getByRole('button', { name: c.otherTab.button }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Tab only' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save filter' }));
+    await screen.findByRole('button', { name: 'Tab only' });
+    expect(savedCalls('POST')[0]?.[2]).toMatchObject({
+      payload: { v: 1, tab: c.otherTab.id },
+    });
+    expect(savedCalls('POST')[0]?.[2]).not.toHaveProperty('payload.sort');
+    const sent = paramsOf(listUrls(c).at(-1)!);
+    expect(sent).not.toHaveProperty('sort');
+    expect(sent).not.toHaveProperty('direction');
+  });
+
+  it('opens the new tab as its own reopen: first page, no cursor, no search', async () => {
+    serve(c, []);
+    mount(c, 'pages');
+    await screen.findByRole('button', { name: 'Manage filters' });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search' }), {
+      target: { value: 'Cedar' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: c.otherTab.button }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Fresh' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save filter' }));
+    await screen.findByRole('button', { name: 'Fresh' });
+    await waitFor(() => {
+      const sent = paramsOf(listUrls(c).at(-1)!);
+      expect(sent['page']).toBe('1');
+      expect(sent).not.toHaveProperty('search');
+      expect(sent).not.toHaveProperty('q');
+    });
+    expect(screen.getByRole<HTMLInputElement>('searchbox', { name: 'Search' }).value).toBe('');
+  });
 
   it('does not save the sort under Previous and next, which has no sort', async () => {
     serve(c, [stored(c.key, { name: 'Mine', payload: c.open.payload })]);

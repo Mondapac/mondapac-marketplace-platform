@@ -10042,13 +10042,13 @@
         "limit": "You can keep up to {max} saved filters. Delete one to save another.",
         "shared-limit": "Up to {max} filters can be shared with everyone. Delete or unshare one first.",
         "denied": "Your role can’t do this.",
-        "unavailable": "The filter could not be saved. Try again."
+        "unavailable": "That didn’t work. Try again."
       },
       "toast": {
         "saved": "Saved “{name}”",
         "updated": "Updated “{name}”",
         "deleted": "Deleted “{name}”",
-        "reordered": "Filter order saved"
+        "moved": "Moved “{name}”"
       },
       "manage": {
         "title": "Manage filters",
@@ -10064,8 +10064,8 @@
         "shared-by-other": "Shared by another admin",
         "empty": "No saved filters yet",
         "empty-help": "Set up filters, then choose Save filter to keep them as a tab.",
-        "help-share": "Rename, reorder, change who can use a filter, or delete it.",
-        "help-own": "Rename, reorder or delete your filters. Your role can’t share filters.",
+        "help-share": "Rename, reorder, change who can use a filter, or delete it. Reordering changes only your own filters.",
+        "help-own": "Rename, reorder or delete your filters. Your role can’t share filters. Reordering changes only your own filters.",
         "move-up": "Move {name} up",
         "move-down": "Move {name} down"
       },

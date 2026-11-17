@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { LISTS_AUDIT_LIST_KEYS } from '../../../lists/domain/audit';
 import { ORDERING_ORDER_VIEW, ORDERING_SAVED_FILTER_SHARE } from '../../contracts/permissions';
 import { SAVED_FILTER_AUDIT_LISTS } from '../../domain/audit';
@@ -374,5 +376,30 @@ describe('the admin Sales lists that keep saved filters', () => {
       });
       expect(parse({ v: 1, direction: 'asc' })).toEqual(refused('payload.direction', 'unknown'));
     });
+  });
+});
+
+// What the admin panel's Sales lists actually save: apps/admin/src/sales/saved-payloads.fixture.json
+// is written by the panel's own test from its payload builders (every tab, filter value, sort and
+// direction). The file is read here by path, never imported as code; each document must be
+// accepted and come back unchanged, so the panel and the parsers cannot drift apart.
+describe('the documents the admin panel saves for the Sales lists', () => {
+  const fixture = JSON.parse(
+    readFileSync(
+      path.resolve(__dirname, '../../../../../../admin/src/sales/saved-payloads.fixture.json'),
+      'utf8',
+    ),
+  ) as Record<string, { listKey: string; payloads: unknown[] }>;
+
+  it('covers the three lists', () => {
+    expect(Object.values(fixture).map((entry) => entry.listKey)).toEqual([...SALES_LISTS]);
+  });
+
+  it.each(Object.entries(fixture))('%s: every document parses and is canonical', (_name, entry) => {
+    const parse = parserOf(entry.listKey);
+    expect(entry.payloads.length).toBeGreaterThan(0);
+    for (const payload of entry.payloads) {
+      expect(parse(payload)).toEqual({ ok: true, value: payload });
+    }
   });
 });

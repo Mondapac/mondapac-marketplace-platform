@@ -3352,6 +3352,22 @@ describe('relay of the saved views of the Sales lists', () => {
     }
   });
 
+  it('refuses a write from another origin', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      request('POST', 'lists/admin/saved-filters', {
+        ...sameOrigin,
+        origin: 'http://evil.test',
+        'sec-fetch-site': 'cross-site',
+      }),
+      ['lists', 'admin', 'saved-filters'],
+      upstream,
+    );
+    expect(response.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
   it('refuses other methods and ids on the saved views', async () => {
     for (const [method, path] of [
       ['PUT', 'lists/admin/saved-filters'],

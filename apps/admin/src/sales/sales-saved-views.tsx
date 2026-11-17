@@ -155,7 +155,7 @@ export function SalesSavedViews<P>({
           onChanged();
           return null;
         }}
-        onReorder={async (ids) => {
+        onReorder={async (ids, movedId) => {
           const result = await callApi<{ ids: readonly string[] }>(
             'PUT',
             'lists/admin/saved-filters/order',
@@ -163,7 +163,10 @@ export function SalesSavedViews<P>({
             csrfToken,
           );
           if (!result.ok) return problemOf(result.failure);
-          toast.success(t('toast.reordered'), TOAST);
+          toast.success(
+            t('toast.moved', { name: saved.items.find((item) => item.id === movedId)?.name ?? '' }),
+            TOAST,
+          );
           onChanged();
           return null;
         }}

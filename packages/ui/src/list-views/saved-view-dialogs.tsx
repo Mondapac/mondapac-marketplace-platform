@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../form/badge.tsx';
 import { Banner } from '../form/banner.tsx';
 import { Button } from '../form/button.tsx';
@@ -276,7 +276,7 @@ function Row({
           </div>
         </div>
         {view.canManage && !editing && !deleting ? (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {move === undefined ||
             labels.manage.moveUp === undefined ||
             labels.manage.moveDown === undefined ? null : (
@@ -284,6 +284,8 @@ function Row({
                 <Button
                   variant="secondary"
                   aria-label={labels.manage.moveUp(view.name)}
+                  title={labels.manage.moveUp(view.name)}
+                  data-move={`${view.id}:up`}
                   disabled={move.up === null || move.busy}
                   onClick={() => move.up?.()}
                 >
@@ -292,6 +294,8 @@ function Row({
                 <Button
                   variant="secondary"
                   aria-label={labels.manage.moveDown(view.name)}
+                  title={labels.manage.moveDown(view.name)}
+                  data-move={`${view.id}:down`}
                   disabled={move.down === null || move.busy}
                   onClick={() => move.down?.()}
                 >
@@ -411,7 +415,10 @@ export function ManageViewsDialog({
   onReorder,
 }: {
   /** Saves a new order of the person's own filters; null when it worked, else the problem. */
-  readonly onReorder?: (ids: readonly string[]) => Promise<SavedViewProblem | null>;
+  readonly onReorder?: (
+    ids: readonly string[],
+    movedId: string,
+  ) => Promise<SavedViewProblem | null>;
   readonly open: boolean;
   readonly onClose: () => void;
   readonly views: readonly SavedViewItem[];
@@ -427,6 +434,8 @@ export function ManageViewsDialog({
 }) {
   const [mode, setMode] = useState<Mode>(null);
   const [moving, setMoving] = useState(false);
+  const focusAfter = useRef<{ id: string; step: -1 | 1 } | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const [moveProblem, setMoveProblem] = useState<SavedViewProblem | null>(null);
 
   useEffect(() => {
@@ -435,6 +444,20 @@ export function ManageViewsDialog({
       setMoveProblem(null);
     }
   }, [open]);
+
+  // After a move the person keeps their place: focus goes back to the button they used, or, when
+  // the row has reached an end and that button is now disabled, to the row's other move button.
+  useEffect(() => {
+    const pending = focusAfter.current;
+    if (pending === null) return;
+    focusAfter.current = null;
+    const find = (dir: string) =>
+      listRef.current?.querySelector<HTMLButtonElement>(`[data-move="${pending.id}:${dir}"]`) ??
+      null;
+    const used = find(pending.step === -1 ? 'up' : 'down');
+    const other = find(pending.step === -1 ? 'down' : 'up');
+    (used !== null && !used.disabled ? used : other)?.focus();
+  }, [views]);
 
   const own = views.filter((view) => view.ownedByMe).map((view) => view.id);
   async function moveBy(id: string, step: -1 | 1) {
@@ -445,9 +468,13 @@ export function ManageViewsDialog({
     ids.splice(at + step, 0, id);
     setMoving(true);
     setMoveProblem(null);
-    const refused = await onReorder(ids);
+    focusAfter.current = { id, step };
+    const refused = await onReorder(ids, id);
     setMoving(false);
-    if (refused !== null) setMoveProblem(refused);
+    if (refused !== null) {
+      focusAfter.current = null;
+      setMoveProblem(refused);
+    }
   }
 
   return (
@@ -476,7 +503,7 @@ export function ManageViewsDialog({
           {moveProblem === null ? null : (
             <Banner tone="critical">{labels.error(moveProblem)}</Banner>
           )}
-          <ul className="divide-y divide-line">
+          <ul ref={listRef} className="divide-y divide-line">
             {views.map((view) => (
               <Row
                 move={

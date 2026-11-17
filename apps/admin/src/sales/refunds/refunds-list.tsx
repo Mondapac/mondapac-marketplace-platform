@@ -600,7 +600,7 @@ export function RefundsList({
               void loadSaved().then((items) => {
                 // Only a filter that is in the reloaded list can be the tab on show.
                 if (items?.some((item) => item.id === filter.id) === true)
-                  openSavedTab(filter.id, query);
+                  openSavedTab(filter.id, queryOf(filter.payload, paging));
               });
             }}
             onChanged={() => void loadSaved()}
