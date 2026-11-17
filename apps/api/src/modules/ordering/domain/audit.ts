@@ -129,7 +129,12 @@ export const ORDERING_SAVED_FILTER_TARGET = 'ordering.saved-filter';
 const savedFilterVisibility = auditField.enumOf(['me', 'everyone'] as const);
 
 /** The lists whose filters can be shared with everyone (the admin ones, see `saved-view-lists.ts`). */
-export const SAVED_FILTER_AUDIT_LISTS = ['admin.ordering.orders'] as const;
+export const SAVED_FILTER_AUDIT_LISTS = [
+  'admin.ordering.orders',
+  'admin.ordering.shipments',
+  'admin.ordering.refunds',
+  'admin.ordering.documents',
+] as const;
 export type SavedFilterAuditList = (typeof SAVED_FILTER_AUDIT_LISTS)[number];
 const savedFilterList = auditField.enumOf(SAVED_FILTER_AUDIT_LISTS);
 

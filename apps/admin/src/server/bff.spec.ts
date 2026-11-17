@@ -3298,6 +3298,77 @@ describe('relay of the category image (categories C3c)', () => {
   });
 });
 
+describe('relay of the saved views of the Sales lists', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+    new Request(`http://admin.localhost:3002/api/${path}`, {
+      method,
+      headers,
+      ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
+    });
+
+  it.each(['shipments', 'refunds', 'documents'])(
+    'relays the saved views of admin.ordering.%s with the list key only',
+    async (name) => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        request('GET', `lists/admin/saved-filters?listKey=admin.ordering.${name}&extra=1`),
+        ['lists', 'admin', 'saved-filters'],
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/lists/admin/saved-filters?listKey=admin.ordering.${name}`,
+      );
+    },
+  );
+
+  it('drops a list key that is not a Sales list', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'lists/admin/saved-filters?listKey=admin.catalog.products'),
+      ['lists', 'admin', 'saved-filters'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/lists/admin/saved-filters');
+  });
+
+  it('relays create, reorder, rename and delete (the list key stays on delete)', async () => {
+    for (const [method, path, expected] of [
+      ['POST', 'lists/admin/saved-filters', 'lists/admin/saved-filters'],
+      ['PUT', 'lists/admin/saved-filters/order', 'lists/admin/saved-filters/order'],
+      ['PUT', `lists/admin/saved-filters/${id}`, `lists/admin/saved-filters/${id}`],
+      [
+        'DELETE',
+        `lists/admin/saved-filters/${id}?listKey=admin.ordering.refunds&x=1`,
+        `lists/admin/saved-filters/${id}?listKey=admin.ordering.refunds`,
+      ],
+    ] as const) {
+      const ok = upstreamOk();
+      const target = path.split('?')[0]!;
+      expect((await relay(config, request(method, path), target.split('/'), ok)).status).toBe(200);
+      expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${expected}`);
+    }
+  });
+
+  it('refuses other methods and ids on the saved views', async () => {
+    for (const [method, path] of [
+      ['PUT', 'lists/admin/saved-filters'],
+      ['DELETE', 'lists/admin/saved-filters'],
+      ['PUT', 'lists/admin/saved-filters/not-a-uuid'],
+      ['POST', `lists/admin/saved-filters/${id}`],
+      ['GET', `lists/admin/saved-filters/${id}`],
+      ['POST', 'lists/admin/saved-filters/order'],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      const response = await relay(config, request(method, path), path.split('/'), fetchImpl);
+      expect(response.status, `${method} ${path}`).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+});
+
 describe('relay of the order list views', () => {
   const id = '0190a000-0000-7000-8000-000000000001';
   const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>

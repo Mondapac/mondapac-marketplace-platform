@@ -23,6 +23,19 @@ Speed mode (CLAUDE.md): no G1/G2 or design document. The owner approved the supe
   `PUT/DELETE /lists/admin/saved-filters/:id`. The old catalog and ordering routes stay until the
   panels move.
 
+## Admin Sales lists (ordering)
+
+`ordering` registers three more admin lists, guarded like Orders (`ordering.order.view`, share
+`ordering.saved-filter.share`); no migration (the `list_key` CHECK is a pattern). Payloads are
+closed (`v: 1`; date filters are relative presets, never dates; search text is never saved):
+
+- `admin.ordering.shipments`: tab `all|attention|to-prepare|ready|shipped|delivered|refunded`;
+  filters `deliveryMethod`, `attention`, `paid`, `shipped`; sort `paid|shipped|delivered|total`.
+- `admin.ordering.refunds`: tab `all|pending|succeeded|failed`; filters `reason`, `actor`,
+  `lossBearer`, `ledger`, `requested`; sort `requested|settled|amount`.
+- `admin.ordering.documents` (the Invoices page): tab `order-confirmation|credit-note`; filter
+  `issued`; sort `issued|amount`.
+
 ## Not here yet
 
 - B0-1b seller side: `/lists/seller/saved-filters` and the seller lists' definitions.

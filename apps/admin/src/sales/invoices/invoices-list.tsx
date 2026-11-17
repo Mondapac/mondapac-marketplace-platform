@@ -35,7 +35,15 @@ import { InvoicesColumnsPanel } from './invoices-columns-panel.tsx';
 import { InvoicesFilterPanel } from './invoices-filter-panel.tsx';
 import { invoiceSearchRoute, queryString } from './invoices-query.ts';
 import { useInvoiceRowActions } from './invoices-row-actions.tsx';
-import { savedInvoices } from './invoices-saved.ts';
+import {
+  LIST_KEY,
+  payloadOf,
+  queryOf,
+  somethingToSave,
+  type SavedPayload,
+} from './invoices-saved.ts';
+import { SalesSavedViews } from '../sales-saved-views.tsx';
+import { useSavedFilters } from '../sales-saved.ts';
 import { InvoicesSortPanel } from './invoices-sort-panel.tsx';
 import { InvoicesTable } from './invoices-table.tsx';
 import {
@@ -100,8 +108,8 @@ function forgetSellerInUrl() {
  * Market's List paging setting: page numbers with a total (and the sort menu), or Previous and
  * next over the API's cursors, newest first. The column choice is the admin's own and lives in
  * this browser's storage. Rows can be selected; the Bulk action button has no action yet (Export
- * follows with its endpoint), and saved filters stay hidden until their list key exists
- * (`savedInvoices`).
+ * follows with its endpoint). Saved filters (the generic lists routes) add tabs after the
+ * built-in ones, Save filter and Manage filters; when the route fails they are hidden.
  */
 export function InvoicesList({
   paging,
@@ -109,6 +117,7 @@ export function InvoicesList({
   marketId,
   zone,
   sellerId = null,
+  csrfToken = '',
 }: {
   /** The Market's "List paging" setting, Previous and next when it could not be read. */
   readonly paging: ListPagingMode;
@@ -118,6 +127,8 @@ export function InvoicesList({
   readonly zone: string;
   /** One seller's documents, from a link; shown as a chip that can be removed. */
   readonly sellerId?: string | null;
+  /** The CSRF token of the session, for saving, renaming, moving and deleting saved filters. */
+  readonly csrfToken?: string;
 }) {
   const t = useTranslations('invoices');
   const ts = useTranslations('sales-lists');
@@ -133,6 +144,7 @@ export function InvoicesList({
     goToPage,
     paginate,
     openView,
+    openSaved: openSavedTab,
     forgetSaved,
     reset,
   } = useSuperListQuery<Query>({
@@ -158,7 +170,10 @@ export function InvoicesList({
   // user starts on the new rows and not on the pager they used.
   const listTop = useRef<HTMLDivElement>(null);
   const focusList = useRef(false);
-  const saved = savedInvoices();
+  // The saved filters: null until they load, and when the route cannot answer (the list then has
+  // its built-in tabs only, no Save filter and no Manage filters).
+  const { saved, reload: loadSaved } = useSavedFilters<SavedPayload>(LIST_KEY);
+  const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
 
   useEffect(() => {
     setColumns(cleanColumns(readIds(browserStorage(), storageKey)));
@@ -318,6 +333,24 @@ export function InvoicesList({
         ]),
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
+  // "Save filter" is offered on a built-in tab that shows something a saved filter can keep.
+  const canSave = saved !== null && savedId === null && somethingToSave(query, paging);
+  const summary = [
+    t(`tab.${query.tab}`),
+    ...chips
+      .filter((chip) => (FILTER_FIELDS as readonly string[]).includes(chip.key))
+      .map((chip) => chip.label),
+    ...(paging === 'pages' &&
+    (query.sort !== DEFAULT_QUERY.sort || query.direction !== DEFAULT_QUERY.direction)
+      ? [
+          ts('saved.summary-sort', {
+            field: `${t(`sort.field.${query.sort}`)}, ${t(
+              `sort.${query.sort === 'amount' ? 'amount' : 'date'}.${query.direction === 'desc' ? 'first' : 'second'}`,
+            )}`,
+          }),
+        ]
+      : []),
+  ].join(' · ');
 
   const total = failure === null && mode === 'pages' ? (answer?.total ?? null) : null;
   const rowActions = useInvoiceRowActions();
@@ -440,20 +473,21 @@ export function InvoicesList({
         label: t('tabs'),
         activeId: savedId ?? query.tab,
         onSelect: (id) => {
-          // Saved tabs open here once saved filters are available (`savedInvoices`).
-          openView(id);
+          const filter = saved?.items.find((item) => item.id === id);
+          if (filter === undefined) openView(id);
+          else openSavedTab(id, queryOf(filter.payload, paging));
         },
         items: [
           ...TABS.map((tab) => ({
             id: tab,
             label: `${t(`tab.${tab}`)}${counts === null ? '' : ` (${number(tabCount(counts, tab))})`}`,
           })),
-          ...(saved?.items ?? []).map((item) => ({
-            id: item.id,
-            label: `${item.name}${item.count === null ? '' : ` (${number(item.count)})`}`,
-          })),
+          ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
         ],
-        manage: null,
+        manage:
+          saved === null
+            ? null
+            : { label: ts('saved.manage-link'), onClick: () => setDialog('manage') },
       }}
       search={{
         label: t('search.label'),
@@ -513,11 +547,13 @@ export function InvoicesList({
           : t('sorted-newest')
       }
       chips={
-        filtered
+        filtered || canSave
           ? {
               chips,
-              clearAll: { label: ts('clear-all'), onClick: clearAll },
-              // "Save filter" joins here once saved filters are available.
+              ...(filtered ? { clearAll: { label: ts('clear-all'), onClick: clearAll } } : {}),
+              ...(canSave
+                ? { save: { label: ts('saved.save-link'), onClick: () => setDialog('save') } }
+                : {}),
               status: total === null || failure !== null ? '' : t('match', { count: total, kind }),
             }
           : null
@@ -539,6 +575,28 @@ export function InvoicesList({
       loadingLabel={t('loading')}
       slowLabel={tl('slow')}
       ready={answer !== null || searchDown}
+      dialogs={
+        saved === null ? undefined : (
+          <SalesSavedViews
+            dialog={dialog}
+            onClose={() => setDialog(null)}
+            listKey={LIST_KEY}
+            payload={payloadOf(query, paging)}
+            summary={summary}
+            saved={saved}
+            csrfToken={csrfToken}
+            idPrefix="invoices"
+            onSaved={(filter) => {
+              void loadSaved().then((items) => {
+                // Only a filter that is in the reloaded list can be the tab on show.
+                if (items?.some((item) => item.id === filter.id) === true)
+                  openSavedTab(filter.id, query);
+              });
+            }}
+            onChanged={() => void loadSaved()}
+          />
+        )
+      }
       table={table}
       pagination={
         answer !== null && answer.documents.length > 0 && failure === null

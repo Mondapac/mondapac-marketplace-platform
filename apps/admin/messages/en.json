@@ -10019,6 +10019,57 @@
       "page": "Page {page}",
       "narrow": "Narrow the list to see more.",
       "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other rows."
+    },
+    "saved": {
+      "manage-link": "Manage filters",
+      "save-link": "Save filter…",
+      "cancel": "Cancel",
+      "save": {
+        "title": "Save this filter",
+        "name": "Name",
+        "who": "Who can use it",
+        "submit": "Save filter",
+        "everyone-help": "Everyone: every admin who can see this list gets it as a tab.",
+        "own-only": "Saved for you only. Your role can’t share filters."
+      },
+      "visibility": {
+        "me": "Only me",
+        "everyone": "Everyone"
+      },
+      "error": {
+        "name-taken": "A filter with this name already exists. Choose another name.",
+        "name-empty": "Enter a name for the filter.",
+        "limit": "You can keep up to {max} saved filters. Delete one to save another.",
+        "shared-limit": "Up to {max} filters can be shared with everyone. Delete or unshare one first.",
+        "denied": "Your role can’t do this.",
+        "unavailable": "The filter could not be saved. Try again."
+      },
+      "toast": {
+        "saved": "Saved “{name}”",
+        "updated": "Updated “{name}”",
+        "deleted": "Deleted “{name}”",
+        "reordered": "Filter order saved"
+      },
+      "manage": {
+        "title": "Manage filters",
+        "close": "Close",
+        "edit": "Edit",
+        "edit-named": "Edit {name}",
+        "delete": "Delete",
+        "delete-named": "Delete {name}",
+        "delete-confirm": "Delete filter",
+        "delete-own": "Delete “{name}”? It is removed from your tabs.",
+        "delete-shared": "Delete “{name}”? It is removed from the tabs of every admin.",
+        "save": "Save changes",
+        "shared-by-other": "Shared by another admin",
+        "empty": "No saved filters yet",
+        "empty-help": "Set up filters, then choose Save filter to keep them as a tab.",
+        "help-share": "Rename, reorder, change who can use a filter, or delete it.",
+        "help-own": "Rename, reorder or delete your filters. Your role can’t share filters.",
+        "move-up": "Move {name} up",
+        "move-down": "Move {name} down"
+      },
+      "summary-sort": "Sorted by {field}"
     }
   },
   "shipments": {
