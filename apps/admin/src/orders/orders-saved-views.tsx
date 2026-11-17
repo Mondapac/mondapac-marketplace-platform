@@ -53,6 +53,8 @@ function useLabels(limits: SavedFiltersAnswer['limits']): SavedViewLabels {
         deleteNamed: (name) => t('manage.delete-named', { name }),
         deleteOwn: (name) => t('manage.delete-own', { name }),
         deleteShared: (name) => t('manage.delete-shared', { name }),
+        moveUp: (name) => t('manage.move-up', { name }),
+        moveDown: (name) => t('manage.move-down', { name }),
       },
       error: (problem) =>
         t(`error.${problem}`, {
@@ -89,7 +91,7 @@ export function OrdersSavedViews({
   readonly csrfToken: string;
   /** A new filter was saved: the list reloads and shows it. */
   readonly onSaved: (filter: SavedFilter) => void;
-  /** A filter was renamed, shared or deleted: the list reloads. */
+  /** A filter was renamed, shared, deleted or moved: the list reloads. */
   readonly onChanged: () => void;
 }) {
   const t = useTranslations('orders.saved');
@@ -150,6 +152,20 @@ export function OrdersSavedViews({
             return problemOf(result.failure);
           }
           toast.success(t('toast.deleted', { name }), TOAST);
+          onChanged();
+          return null;
+        }}
+        onReorder={async (ids, movedId) => {
+          // The order of the admin's own filters (their tabs), through the shared lists route.
+          const result = await callApi<{ ids: readonly string[] }>(
+            'PUT',
+            'lists/admin/saved-filters/order',
+            { listKey: LIST_KEY, ids },
+            csrfToken,
+          );
+          if (!result.ok) return problemOf(result.failure);
+          const name = saved.items.find((item) => item.id === movedId)?.name ?? '';
+          toast.success(t('toast.moved', { name }), TOAST);
           onChanged();
           return null;
         }}

@@ -3769,7 +3769,8 @@
         "toast": {
           "saved": "Saved “{name}”",
           "updated": "Updated “{name}”",
-          "deleted": "Deleted “{name}”"
+          "deleted": "Deleted “{name}”",
+          "moved": "Moved “{name}”"
         },
         "manage": {
           "title": "Manage filters",
@@ -3785,8 +3786,10 @@
           "shared-by-other": "Shared by another admin",
           "empty": "No saved filters yet",
           "empty-help": "Set up a search or filters, then choose Save filter to keep them as a tab.",
-          "help-share": "Rename, change who can use a filter, or delete it.",
-          "help-own": "Rename or delete your filters. Your role can’t share filters."
+          "help-share": "Rename, reorder, change who can use a filter, or delete it. Reordering changes only your own filters.",
+          "help-own": "Rename, reorder or delete your filters. Your role can’t share filters. Reordering changes only your own filters.",
+          "move-up": "Move {name} up",
+          "move-down": "Move {name} down"
         }
       },
       "import": "Import",
@@ -5340,7 +5343,8 @@
       "toast": {
         "saved": "Saved “{name}”",
         "updated": "Updated “{name}”",
-        "deleted": "Deleted “{name}”"
+        "deleted": "Deleted “{name}”",
+        "moved": "Moved “{name}”"
       },
       "manage": {
         "title": "Manage filters",
@@ -5356,8 +5360,10 @@
         "shared-by-other": "Shared by another admin",
         "empty": "No saved filters yet",
         "empty-help": "Set up filters, then choose Save filter to keep them as a tab.",
-        "help-share": "Rename, change who can use a filter, or delete it.",
-        "help-own": "Rename or delete your filters. Your role can’t share filters."
+        "help-share": "Rename, reorder, change who can use a filter, or delete it. Reordering changes only your own filters.",
+        "help-own": "Rename, reorder or delete your filters. Your role can’t share filters. Reordering changes only your own filters.",
+        "move-up": "Move {name} up",
+        "move-down": "Move {name} down"
       }
     },
     "sorted": "Sorted by {field}: {order}",

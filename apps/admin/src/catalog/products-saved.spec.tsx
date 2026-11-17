@@ -107,6 +107,10 @@ function serve() {
     if (path === 'catalog/categories') {
       return Promise.resolve({ ok: true, status: 200, body: { categories: [] } });
     }
+    if (path === 'lists/admin/saved-filters/order') {
+      writes.push({ method, path, body, csrf });
+      return Promise.resolve(writeReply(method, path, body));
+    }
     if (path.startsWith('catalog/admin/saved-filters')) {
       if (method === 'GET') {
         return Promise.resolve(
@@ -444,6 +448,66 @@ describe('saved views of the product list', () => {
         'Delete “Needs review”? It is removed from the tabs of every admin.',
       ),
     ).toBeTruthy();
+  });
+
+  it("moves an own view and saves the new order of the admin's own views", async () => {
+    writeReply = () => ({ ok: true, status: 200, body: { ids: [SHARED, MINE] } });
+    const dialog = await openManage();
+    // The first own view cannot move up, the last cannot move down; another admin's view has none.
+    expect(within(dialog).getByRole('button', { name: 'Move Paused lamb up' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(within(dialog).getByRole('button', { name: 'Move Needs review down' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(within(dialog).queryByRole('button', { name: 'Move Team picks up' })).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Move Team picks down' })).toBeNull();
+    expect(
+      within(dialog).getByRole('button', { name: 'Move Paused lamb down' }).getAttribute('title'),
+    ).toBe('Move Paused lamb down');
+
+    saved = [SAVED[1]!, SAVED[0]!, SAVED[2]!];
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move Paused lamb down' }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]).toEqual({
+      method: 'PUT',
+      path: 'lists/admin/saved-filters/order',
+      csrf: 'csrf-1',
+      body: { listKey: 'admin.catalog.products', ids: [SHARED, MINE] },
+    });
+    expect(await screen.findByText('Moved “Paused lamb”')).toBeTruthy();
+    // The tabs refresh in the new order, and focus stays on the row (its Move up button, since
+    // Move down is now disabled).
+    await waitFor(() => {
+      const names = within(dialog)
+        .getAllByRole('listitem')
+        .map((item) => item.textContent ?? '');
+      expect(names[0]).toContain('Needs review');
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(dialog).getByRole('button', { name: 'Move Paused lamb up' }),
+      ),
+    );
+  });
+
+  it('says a refused move in a banner and keeps the order', async () => {
+    writeReply = () => ({
+      ok: false,
+      failure: { status: 503, code: 'access.unavailable' },
+    });
+    const dialog = await openManage();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move Paused lamb down' }));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(
+      await within(dialog).findByText(messages.catalog.products.saved.error.unavailable),
+    ).toBeTruthy();
+    const names = within(dialog)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '');
+    expect(names[0]).toContain('Paused lamb');
   });
 
   it('says there are no saved filters yet', async () => {

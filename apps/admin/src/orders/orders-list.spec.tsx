@@ -703,6 +703,62 @@ describe('order list saved filters', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete filter' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Captured' })).toBeNull());
   });
+
+  it("moves an own filter and saves the order of the admin's own filters, as tabs", async () => {
+    const A = saved();
+    const B = saved({ id: '0190a000-0000-7000-8000-0000000000ac', name: 'Big orders' });
+    const THEIRS = saved({
+      id: '0190a000-0000-7000-8000-0000000000ab',
+      name: 'Shared by Sam',
+      visibility: 'everyone',
+      ownedByMe: false,
+      canManage: false,
+    });
+    let items = [A, B, THEIRS];
+    call.mockImplementation(((method: string, path: string) => {
+      if (path === 'lists/admin/saved-filters/order') {
+        items = [B, A, THEIRS];
+        return Promise.resolve({ ok: true, status: 200, body: { ids: [B.id, A.id] } });
+      }
+      if (path.startsWith(SAVED_PATH)) return Promise.resolve(savedAnswer(items));
+      return Promise.resolve(ok(pageOf([row()])));
+    }) as never);
+    render(
+      wrap(
+        <>
+          <OrdersList {...LIST} zone="UTC" csrfToken="csrf-2" />
+          <Toaster labels={{ region: 'Action notifications', close: 'Close notification' }} />
+        </>,
+      ),
+    );
+    await screen.findByRole('button', { name: 'Big orders' });
+    fireEvent.click(screen.getByRole('button', { name: 'Manage filters' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Manage filters' });
+    expect(within(dialog).getByRole('button', { name: 'Move Paid, captured up' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(within(dialog).queryByRole('button', { name: 'Move Shared by Sam down' })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move Paid, captured down' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'PUT',
+        'lists/admin/saved-filters/order',
+        { listKey: 'admin.ordering.orders', ids: [B.id, A.id] },
+        'csrf-2',
+      ),
+    );
+    expect(await screen.findByText('Moved “Paid, captured”')).toBeTruthy();
+    // The tabs follow the new order.
+    await waitFor(() => {
+      const tabs = screen
+        .getAllByRole('button')
+        .map((button) => button.textContent ?? '')
+        .filter((text) => text === 'Big orders' || text === 'Paid, captured');
+      expect(tabs).toEqual(['Big orders', 'Paid, captured']);
+    });
+    toast.dismiss();
+  });
 });
 
 describe('order list query and saved documents', () => {
