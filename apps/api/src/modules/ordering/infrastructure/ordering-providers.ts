@@ -108,6 +108,8 @@ import { PrismaSalesRankingReader } from './prisma-sales-ranking.reader';
 import { StripeCheckoutGateway } from './stripe-checkout-gateway';
 import { SubjectKeyPickupCodeVault } from './subject-key-pickup-code-vault';
 import { SubjectKeyShipToCipher } from './subject-key-ship-to-cipher';
+import { SHEET_WRITER, type SheetWriter } from '../../../platform/list-export/sheet-writer';
+import { ExceljsSheetWriter } from '../../../platform/list-export/exceljs-sheet-writer';
 
 /**
  * Binds the ports of ordering. Only this layer may reach `PrismaService`, subject keys and the
@@ -165,6 +167,8 @@ export const orderingProviders: readonly FactoryProvider[] = [
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): MarketZones => new RegistryMarketZones(markets),
   },
+  /** The XLSX writer of the Sales list exports (the shared list-export kit). */
+  { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
   {
     provide: SAVED_FILTER_REPOSITORY,
     inject: [SAVED_FILTER_STORE],

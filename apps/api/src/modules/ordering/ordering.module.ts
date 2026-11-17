@@ -60,6 +60,12 @@ import {
   type AdminRefundListReader,
 } from './application/ports/admin-refund-list.reader';
 import type { OrderLabels } from './application/ports/order-labels';
+import type { MarketZones } from './application/ports/ship-to-retention.repository';
+import { AdminExportDocuments } from './application/use-cases/admin-export-documents.use-case';
+import { AdminExportRefunds } from './application/use-cases/admin-export-refunds.use-case';
+import { AdminExportShipments } from './application/use-cases/admin-export-shipments.use-case';
+import { SHEET_WRITER, type SheetWriter } from '../../platform/list-export/sheet-writer';
+import type { Clock } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { purgeSettledShipToJob } from './presentation/jobs/purge-settled-ship-to.job';
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
@@ -236,6 +242,16 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['pickupVault', PICKUP_CODE_VAULT],
   ['attempts', PAYMENT_ATTEMPT_LIMITS],
 ];
+
+/** What the Sales list exports need beside their list's reader. */
+const EXPORT_PORTS = [ORDER_LABELS, CLOCK, SHEET_WRITER, MARKET_ZONES] as const;
+type ExportPorts = [OrderLabels, Clock, SheetWriter, MarketZones];
+const exportDeps = ([labels, clock, sheetWriter, zones]: ExportPorts) => ({
+  labels,
+  clock,
+  sheetWriter,
+  zones,
+});
 
 type ShipToRetentionUseCaseClass<U> = new (
   gate: UseCaseGate,
@@ -486,6 +502,36 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         refunds: AdminRefundListReader,
         labels: OrderLabels,
       ) => new AdminListRefunds(gate, { unitOfWork, refunds, labels }),
+    },
+    {
+      provide: AdminExportShipments,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_SHIPMENT_LIST_READER, ...EXPORT_PORTS],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        shipments: AdminShipmentListReader,
+        ...ports: ExportPorts
+      ) => new AdminExportShipments(gate, { unitOfWork, shipments, ...exportDeps(ports) }),
+    },
+    {
+      provide: AdminExportRefunds,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_REFUND_LIST_READER, ...EXPORT_PORTS],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        refunds: AdminRefundListReader,
+        ...ports: ExportPorts
+      ) => new AdminExportRefunds(gate, { unitOfWork, refunds, ...exportDeps(ports) }),
+    },
+    {
+      provide: AdminExportDocuments,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_DOCUMENT_LIST_READER, ...EXPORT_PORTS],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        documents: AdminDocumentListReader,
+        ...ports: ExportPorts
+      ) => new AdminExportDocuments(gate, { unitOfWork, documents, ...exportDeps(ports) }),
     },
     ...[AdminListOrderNotes, AdminAddOrderNote].map((type) => ({
       provide: type,
