@@ -2,7 +2,12 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
-import type { VariantRequestStore } from '../application/ports/variant-request.store';
+import type { Prisma } from '../../../generated/prisma/client';
+import type {
+  OpenRequestsFilter,
+  OpenRequestsPage,
+  VariantRequestStore,
+} from '../application/ports/variant-request.store';
 import {
   VariantRequest,
   type VariantRequestNoticeState,
@@ -44,6 +49,24 @@ interface Row {
  * move are each one conditional update at the version read, in the granted columns only; the guard
  * trigger refuses any other change.
  */
+/** Escapes `\`, `%` and `_`, so a search term is matched as typed (LIKE patterns). */
+const literal = (term: string): string => term.replace(/[\\%_]/g, (char) => `\\${char}`);
+
+const openWhere = (
+  market: MarketContext,
+  filter: OpenRequestsFilter,
+): Prisma.CatalogVariantRequestWhereInput => ({
+  marketId: market.marketId,
+  status: 'open',
+  ...(filter.productCode === null
+    ? {}
+    : {
+        product: {
+          is: { productCode: { contains: literal(filter.productCode), mode: 'insensitive' } },
+        },
+      }),
+});
+
 export class PrismaVariantRequestStore implements VariantRequestStore {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -163,13 +186,21 @@ export class PrismaVariantRequestStore implements VariantRequestStore {
     });
   }
 
-  async listOpen(market: MarketContext, limit: number): Promise<readonly VariantRequest[]> {
+  async pageOpen(
+    market: MarketContext,
+    page: OpenRequestsPage,
+  ): Promise<readonly VariantRequest[]> {
     const rows = await this.prisma.tx(market).catalogVariantRequest.findMany({
-      where: { marketId: market.marketId, status: 'open' },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      take: limit,
+      where: openWhere(market, page),
+      orderBy: [{ createdAt: page.direction }, { id: page.direction }],
+      skip: page.offset,
+      take: page.limit,
     });
     return rows.map(requestOf);
+  }
+
+  async countOpen(market: MarketContext, filter: OpenRequestsFilter): Promise<number> {
+    return this.prisma.tx(market).catalogVariantRequest.count({ where: openWhere(market, filter) });
   }
 
   async listOfSeller(

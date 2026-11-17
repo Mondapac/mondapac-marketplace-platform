@@ -11,10 +11,12 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { SubjectRateLimits } from '../../platform/rate-limit/subject-rate-limits';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { CartModule } from '../cart';
 import { CatalogModule } from '../catalog';
 import { SellersModule } from '../sellers';
 import { NotificationsModule } from '../notifications';
 import { SearchModule } from '../search';
+import { SettingsModule } from '../settings';
 import type { AssistantDependencies } from './application/assistant-dependencies';
 import { ASSISTANT_RUNTIME } from './application/ports/assistant-runtime';
 import { ASSISTANT_SETTINGS_REPOSITORY } from './application/ports/assistant-settings.repository';
@@ -96,7 +98,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * and when, never what was said.
  */
 @Module({
-  imports: [SearchModule, CatalogModule, SellersModule, NotificationsModule, IdentityModule],
+  imports: [
+    SearchModule,
+    CatalogModule,
+    SellersModule,
+    NotificationsModule,
+    IdentityModule,
+    CartModule,
+    SettingsModule,
+  ],
   controllers: [
     AdminAssistantSettingsController,
     AdminPreviewTokenController,

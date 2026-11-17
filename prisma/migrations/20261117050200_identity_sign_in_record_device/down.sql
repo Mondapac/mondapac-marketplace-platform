@@ -1,4 +1,4 @@
--- Reverses 20261116200200_identity_sign_in_record_device.
+-- Reverses 20261117050200_identity_sign_in_record_device.
 SET lock_timeout = '5s';
 
 ALTER TABLE "identity"."sign_in_records" DROP CONSTRAINT "sign_in_records_device_check";
