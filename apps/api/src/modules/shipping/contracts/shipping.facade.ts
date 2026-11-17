@@ -1,5 +1,6 @@
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { CarrierProgressView } from '../domain/carrier-progress';
 import type { PricedDelivery } from '../domain/delivery-margin';
 import type { QuotedDelivery, SellerDeliveryQuotes } from '../domain/delivery-quote';
 import type { ChoiceRefusal, SellerDeliveryAvailability } from '../domain/delivery-settings';
@@ -82,6 +83,12 @@ export type CarrierBookingOutcome =
 /** The progress of a carrier delivery as shipping tracks it (see the booking rules). */
 export type CarrierDeliveryProgress =
   'booked' | 'picked-up' | 'delivered' | 'exception' | 'cancelled';
+
+/**
+ * The most seller order ids one {@link ShippingFacade.carrierProgressOf} call takes, after
+ * duplicates are removed: the admin lists' largest page (ordering's `MAX_PAGE_SIZE`).
+ */
+export const MAX_CARRIER_PROGRESS_IDS = 100;
 
 /** A seller order's carrier delivery, for `ordering` to record the shipment and the delivery. */
 export interface CarrierShipment {
@@ -315,6 +322,24 @@ export interface ShippingFacade {
     orderId: string,
     sellerOrderIds: readonly string[],
   ): Promise<Result<ReadonlyMap<string, string>, ShippingFailure>>;
+
+  /**
+   * Where the real-time carrier deliveries of some seller orders stand, for an admin list (the
+   * Shipments list's carrier progress), keyed by seller order id. Each value holds exactly
+   * `fleet` (the fleet that holds the booking), `progress`, `carrierStatus` (the carrier's last
+   * raw code, or null when it is not of the shape `^[A-Za-z0-9_.-]{1,60}$`), `updatedAt` (when
+   * the PLATFORM recorded the last change of progress or status, not the carrier's event time)
+   * and `proofOfDelivery`. Never the carrier reference or the tracking link. A seller order
+   * without a carrier booking, or of another Market, is absent. Duplicates are removed; more
+   * than {@link MAX_CARRIER_PROGRESS_IDS} distinct ids, or one that is not an id, is
+   * `validation.failed`. Rule `permissions [shipping.carrier-delivery.view]` under the admin's
+   * own context: an admin without the key gets `access.denied`, and a seller or customer never
+   * holds it. One read; a failed read is `shipping.unavailable`. Not exposed over HTTP.
+   */
+  carrierProgressOf(
+    context: CallContext,
+    sellerOrderIds: readonly Id<'SellerOrder'>[],
+  ): Promise<Result<ReadonlyMap<Id<'SellerOrder'>, CarrierProgressView>, ShippingFailure>>;
 
   /**
    * Asks the carrier to drop the delivery of a seller order that is not picked up yet. Rule

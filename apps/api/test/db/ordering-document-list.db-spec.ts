@@ -1,3 +1,5 @@
+import { FakeOrderProducts, FakePromotions } from '../support/ordering-promotions-fakes';
+import { testAreas } from '../support/ordering-policy';
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -65,6 +67,7 @@ class RefundsOn extends ConfigOrderingPolicy {
 }
 
 const CONFIRMATIONS: DocumentListFilter = {
+  ids: null,
   kind: 'order-confirmation',
   reference: null,
   sellerId: null,
@@ -123,7 +126,7 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
       orders: new PrismaOrderRepository(db.service),
       refunds: new PrismaRefundRepository(db.service),
       gateway,
-      policy: new RefundsOn(markets),
+      policy: new RefundsOn(markets, testAreas),
       cart: new FakeCart(),
       customers: new FakeCustomers(),
       shipTo: new FakeShipToCipher(),
@@ -132,6 +135,8 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
       commission: new FakeCommission(),
       tax: new FakeTax(),
       taxCategories: new FakeTaxCategories('taxable'),
+      products: new FakeOrderProducts(),
+      promotions: new FakePromotions(),
       outbox: { append: () => Promise.resolve() },
       audit,
       ids,
@@ -196,6 +201,8 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
           sellerId,
           subtotal: goods,
           shipping,
+          discount: 0n,
+          shippingDiscount: 0n,
           shippingTaxRateBps: old ? null : inclusive ? 1000 : 1500,
           shippingTax: old ? null : shippingTax,
           shippingTaxInclusive: old ? null : inclusive,
@@ -224,6 +231,9 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
           quantity: units,
           unitPrice: money(1100n, currency),
           lineAmount: goods,
+          discountAmount: 0n,
+          discountSellerShare: 0n,
+          discountPlatformShare: 0n,
           taxInclusive: inclusive,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
@@ -338,6 +348,22 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
         done.refundId,
       ]);
     }
+  });
+
+  it('narrows each kind to the selected documents of an export', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const done = await refunded(sellerId, 1, 'succeeded');
+    const other = await refunded(sellerId, 1, 'succeeded');
+    const notes = await idsOf({ kind: 'credit-note', sellerId });
+    const note = notes.find((row) => row.refundId === done.refundId)!;
+    expect(
+      (await idsOf({ kind: 'credit-note', ids: [note.documentId] })).map((r) => r.refundId),
+    ).toEqual([done.refundId]);
+    expect(
+      (await idsOf({ sellerId, ids: [other.sellerOrderId] })).map((r) => r.documentId),
+    ).toEqual([other.sellerOrderId]);
+    // A seller order id is not a credit note id: the kinds never mix.
+    expect(await idsOf({ kind: 'credit-note', ids: [done.sellerOrderId] })).toEqual([]);
   });
 
   it('filters by issue time, amount and party, and sorts by amount', async () => {
@@ -549,5 +575,15 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
       );
       expect(rows.ok && rows.value).toEqual([]);
     }
+    // Nor through an export's selected ids, of either kind.
+    const selected = await db.unitOfWork.run(
+      other,
+      async () =>
+        ok(
+          await reader.page(other, { ...CONFIRMATIONS, ids: [mine.sellerOrderId] }, NEWEST, 0, 10),
+        ),
+      { readOnly: true },
+    );
+    expect(selected.ok && selected.value).toEqual([]);
   });
 });

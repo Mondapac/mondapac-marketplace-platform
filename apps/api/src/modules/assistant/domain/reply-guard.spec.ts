@@ -1,6 +1,11 @@
-import { EVALUATION_SET, EVALUATION_VERSION } from './evaluation-set';
+import {
+  EVALUATION_SET,
+  EVALUATION_VERSION,
+  INVALID_PLAN_CALLS,
+  LIST_PARSING_CASES,
+} from './evaluation-set';
 import { maskPersonalData, MASKED } from './personal-data';
-import { guardReply, MAX_REPLY_CHARACTERS } from './reply-guard';
+import { guardReply, isClaimFree, MAX_REPLY_CHARACTERS } from './reply-guard';
 import { cardRefOf } from './cards';
 import { storedCardOf } from './conversation';
 import { parseToolCall, TOOL_DECLARATIONS, toolDeclarationsFor } from './tools';
@@ -98,12 +103,13 @@ describe('parseToolCall (R9: model output is schema-validated)', () => {
       'support_contact',
       'suggest_cart_change',
       'open_support_form',
+      'plan_basket',
     ]);
   });
 
   it('declares the cart tools only under the cart-suggestions scope', () => {
-    expect(toolDeclarationsFor('read-only')).toBe(TOOL_DECLARATIONS);
-    const names = toolDeclarationsFor('cart-suggestions').map((tool) => tool.name);
+    expect(toolDeclarationsFor('read-only', true)).toBe(TOOL_DECLARATIONS);
+    const names = toolDeclarationsFor('cart-suggestions', true).map((tool) => tool.name);
     expect(names).toContain('get_cart');
     expect(names.filter((name) => name === 'suggest_cart_change')).toHaveLength(1);
   });
@@ -246,4 +252,140 @@ describe(`evaluation set ${EVALUATION_VERSION} against the reply guard (decision
       for (const text of item.mustNotShow) expect(shown).not.toContain(text.toLowerCase());
     },
   );
+});
+
+describe(`list parsing of ${EVALUATION_VERSION} (plan_basket)`, () => {
+  it.each(LIST_PARSING_CASES.map((item) => [item.id, item] as const))(
+    '%s: the expected call passes the tool schema',
+    (_id, item) => {
+      const parsed = parseToolCall('plan_basket', { items: item.lines });
+      expect(parsed).toEqual({
+        tool: 'plan_basket',
+        items: item.lines.map((line) => ({ ...line, unit: line.unit ?? null })),
+      });
+    },
+  );
+
+  it.each(INVALID_PLAN_CALLS.map((item) => [item.id, item.input] as const))(
+    '%s: is refused',
+    (_id, input) => {
+      expect(parseToolCall('plan_basket', input)).toBeNull();
+    },
+  );
+
+  it('accepts 40 lines and keeps Persian text with the zero-width non-joiner', () => {
+    const forty = Array.from({ length: 40 }, () => ({ text: 'برنج', quantity: 1 }));
+    expect(parseToolCall('plan_basket', { items: forty })).not.toBeNull();
+    const joined = parseToolCall('plan_basket', {
+      items: [{ text: 'می\u200Cخواهم نان', quantity: 1 }],
+    });
+    expect(joined).toMatchObject({ items: [{ text: 'می\u200Cخواهم نان' }] });
+  });
+
+  it('declares the tool with the same limit as the parser', () => {
+    const declared = TOOL_DECLARATIONS.find((tool) => tool.name === 'plan_basket');
+    expect(JSON.stringify(declared?.inputSchema)).toContain('"maxItems":40');
+  });
+});
+
+describe('basket lines reach the buyer on a card (R1, R9)', () => {
+  const call = (text: string) => parseToolCall('plan_basket', { items: [{ text, quantity: 1 }] });
+
+  it.each([
+    'halal lamb mince',
+    'certified organic flour',
+    'حلال گوشت',
+    'Pay BSB 062-000 acct 12345678',
+    'call 0411 222 333',
+    'deals@cheap.example',
+    'cheap-deals.example/buy',
+    'rice only 3 left in stock',
+    'free delivery rice',
+    'rice ㅤ',
+    'rice ',
+    'rice \uD800',
+  ])('refuses the line "%s"', (text) => {
+    expect(call(text)).toBeNull();
+  });
+
+  it.each(['basmati rice 2 kg', 'برنج ایرانی', 'eggs 12', 'full cream milk 1.5 l'])(
+    'keeps the line "%s"',
+    (text) => {
+      expect(call(text)).not.toBeNull();
+    },
+  );
+});
+
+describe('the reply guard reads claims through invisible marks', () => {
+  it('drops a certification claim split by a combining grapheme joiner or a variation selector', () => {
+    for (const text of ['This chicken is h\u034Falal.', 'This chicken is o\uFE0Frganic.']) {
+      const guarded = guardReply(text);
+      expect(guarded.notices).toContain('see-certification');
+      expect(guarded.sentences.join(' ')).not.toMatch(/halal|organic/i);
+    }
+  });
+});
+
+describe('certification and diet claims in other spellings (shared claim words)', () => {
+  it.each([
+    'This chicken is ḥalāl.',
+    'This chicken is hálal.',
+    'This chicken is haIaI.',
+    'This chicken is ha1al.',
+    'This is h a l a l.',
+    'This is ح ل ا ل.',
+    'This chicken is zabeeha.',
+    'It is dhabiha meat.',
+    'This is Islamic slaughter.',
+    'The meat is شرعی.',
+    'Это халяль.',
+    'It is gluten free.',
+    'It is vegetarian.',
+    'It is glatt and parve.',
+    'It is non-GMO.',
+    'This chicken is h\u034Falal.',
+  ])('drops: %s', (reply) => {
+    const guarded = guardReply(reply);
+    expect(guarded.notices).toContain('see-certification');
+    expect(guarded.sentences).toEqual([]);
+  });
+
+  it.each([
+    'The rice is in the second card.',
+    'Try the basmati rice, a long grain.',
+    'Hall and heal are ordinary words.',
+    'A healthy snack list is on the cards.',
+  ])('keeps: %s', (reply) => {
+    expect(guardReply(reply).notices).toEqual([]);
+  });
+});
+
+// Security review of the shared guard (Hassan, H1, H2, M1 to M3): the look-alikes and the plain
+// phrasings a model writes without being attacked.
+describe('claim spellings the guard must not let through', () => {
+  const spellings = [
+    'This chicken is hal‌al.',
+    'This chicken is Ηalal.',
+    'This chicken is Нalal.',
+    'Lamb حـلال today.',
+    'Suitable for vegans.',
+    'Organically grown.',
+    'It is pareve.',
+    'It is Shari’ah compliant.',
+    'It is gluten‐free.',
+    'It contains no gluten.',
+    'Safe for coeliacs.',
+    'It is plant-based.',
+    'GF bread.',
+    'h. a. l. a. l.',
+    'ha-lal chicken.',
+    'Chicken h4l4l.',
+    'It is k0sher.',
+    'شرعي است.',
+    'گیاه‌خوار است.',
+  ];
+  it.each(spellings)('drops: %s', (reply) => {
+    expect(guardReply(reply).notices).toEqual(['see-certification']);
+    expect(isClaimFree(reply)).toBe(false);
+  });
 });

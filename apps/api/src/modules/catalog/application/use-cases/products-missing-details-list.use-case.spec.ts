@@ -159,6 +159,7 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
       );
     },
   } as unknown as MissingDetailsEmailStore;
+  let editKey = true;
   const useCase = () =>
     new ProductsMissingDetailsList(createUseCaseGate(markets, check), {
       unitOfWork,
@@ -167,6 +168,7 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
       policy,
       familyResolver,
       emailStore,
+      attributeEditProbe: { execute: () => Promise.resolve({ ok: editKey }) },
     });
 
   const product = (
@@ -216,6 +218,7 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
             featureSetCode: 'pantry',
             missing: ['origin', 'storage'],
             lastEmailedAt: SENT.toString(),
+            actions: ['open-product', 'email-seller'],
           },
         ],
         nextAfterId: null,
@@ -267,6 +270,22 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     expect(bySeller.ok && bySeller.value.items.map((i) => i.productCode)).toEqual(['P2']);
     const byFamily = await useCase().execute(context(), { familyCode: 'other' });
     expect(byFamily.ok && byFamily.value.items.map((i) => i.productCode)).toEqual(['P3']);
+  });
+
+  it('offers email-seller only with the edit key and only for a seller product', async () => {
+    reader.rows = [product(1), product(2, { ownerSellerId: null })];
+    const withKey = await useCase().execute(context(), {});
+    expect(withKey.ok && withKey.value.items.map((i) => i.actions)).toEqual([
+      ['open-product', 'email-seller'],
+      ['open-product'],
+    ]);
+    editKey = false;
+    const without = await useCase().execute(context(), {});
+    expect(without.ok && without.value.items.map((i) => i.actions)).toEqual([
+      ['open-product'],
+      ['open-product'],
+    ]);
+    editKey = true;
   });
 
   it('says when each row was last emailed: sent only, never for a PLATFORM product', async () => {

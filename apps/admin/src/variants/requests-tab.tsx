@@ -7,9 +7,9 @@ import {
   EmptyState,
   LoadError,
   Select,
-  SkeletonRows,
   TextAreaField,
   toast,
+  DetailSkeleton,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -132,7 +132,9 @@ function RequestsBody({ csrfToken }: { readonly csrfToken: string }) {
       </Banner>
     );
   }
-  if (load.state === 'loading') return <SkeletonRows label={t('loading')} rows={3} />;
+  if (load.state === 'loading') {
+    return <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={3} />;
+  }
   if (load.state === 'failed') {
     return (
       <LoadError

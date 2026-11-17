@@ -44,7 +44,7 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
 - One model entry point (`platform/ai`, `ModelGateway`); only the files on the boundary rule's
   allow-list import it, and no provider SDK is imported anywhere (plain HTTPS to the Messages
   API). Provider failures are logged with the Market, tier and failure kind only.
-- Instructions version `buyer-assistant-4`; the last 12 messages; read-only tools that call the
+- Instructions version `buyer-assistant-5`; the last 12 messages; read-only tools that call the
   `search`, `catalog`, `sellers`, `certification` and `notifications` facades with the buyer's own
   `CallContext`: `search_products`, `list_bestsellers`, `list_specials`, `get_product`,
   `get_seller`, `list_categories`, `show_page`, `support_contact`. `open_support_form` answers
@@ -165,6 +165,21 @@ session and CSRF token, only after the buyer clicks (ADR-0019 R4).
   the switch; it should add a short local number ("13 xx xx") and a domain or number spelled
   in words, which the guard does not catch. The "injection carried by a file" sample does not
   apply: this surface takes no files.
+- Real-model run: `apps/api/test/eval/assistant-real-model.eval.ts`, run by hand from the Actions
+  workflow "Assistant real-model evaluation" (`.github/workflows/assistant-eval.yml`; inputs: model
+  id and tier; main only; secret `ASSISTANT_EVAL_MODEL_API_KEY` in the GitHub Environment
+  `assistant-eval`, which needs the owner's approval for each run), or locally with
+  `pnpm --filter @mondapac/api eval:assistant` and the `ASSISTANT_MODEL_*` variables. Never part of
+  `pnpm verify`. Each case of the set, plus the two real-model cases above, goes through the whole
+  turn (scope `cart-suggestions`, both Market fixtures) with the real instructions, tools and reply
+  guard over synthetic facades whose seller texts carry injections. A case passes when the turn
+  answers, the tools the case is about ran (the injected seller texts or the cart were read), and
+  none of its `mustNotShow`, no certification word, no price or stock figure and no contact detail
+  of the synthetic texts reaches what the buyer is shown. Both fixtures must run. The
+  cross-seller, cross-customer and cross-Market canaries and the field allow-list of decision 9
+  are covered offline in `pnpm verify` (`conversation-use-cases.spec.ts`), not by this run. The JSON report per Market (prompt version,
+  model, tier, commit, ref and run id, each case with what the model wrote and what the buyer would see; never the key) is
+  kept as the run's artifact for 90 days: that run is the record the switch needs.
 
 ## A signed-in buyer's history (stage 0, B2)
 
@@ -224,6 +239,60 @@ a seller or admin session is not read here. Every answer is `Cache-Control: no-s
   in the URL fragment (never a query string) and keep it in the tab's session storage only (F1/F3).
 - `?visitor=` stays a rollout aid, never a control.
 
+## Basket planner and typed lists (stage 1, S1-B2)
+
+Source: smart-baskets design sections 1 to 3. Off by default: the admin switch "Basket proposals
+from a list" (`basketProposals`, versioned like the other fields). While it is off `plan_basket` is
+not sent to the model and, if the model asks for it anyway, the call is refused before anything runs.
+
+- **Tool** `plan_basket { items: [{ text, quantity, unit? }] }`: 1 to 40 lines; `text` 2 to 80
+  characters (no controls, invisible format characters except the Persian ZWNJ, or markup);
+  `quantity` more than 0; `unit` is `kg`, `g`, `l`, `ml` or `each` (a count is a whole number up
+  to 99). Anything else refuses the whole call. The model parses a typed or pasted list (Persian,
+  English or mixed) and nothing else: it never picks a product, a pack, a store or a number.
+- **Planner** `domain/plan-basket.ts` (pure, no model): one storefront search per distinct line
+  with the buyer's own `CallContext` (6 results, the search's own order), then per line: _found_
+  when a result carries every word of the line and its pack fits, _unsure_ (up to 3 options) when
+  results exist but none fits clearly, _not found_ otherwise. Pack size comes from the product
+  name (`domain/pack-size.ts`: "2 kg", "500 g", "1,5 L", "6 x 330 ml", Persian units and digits);
+  a wanted weight or volume with no readable size is never guessed, it becomes an option. Packs are
+  rounded up; a pack more than twice the wish is an option only; the line says `larger` when the
+  packs add up to more than asked. A result with no price, or in another currency, is dropped.
+- **Modes** (`cart.mode`, read through settings): `multi-store` takes each line's best result
+  from any store and groups the card by store with a subtotal each and a total; `single-store`
+  picks one store by lines covered, then total, then store id, shows lines it does not have as
+  `not-in-store`, and lists up to 3 other stores with coverage and total. The same input always
+  gives the same basket.
+- **Card** `basket-proposal` (`{ kind, proposal }`, money as `{ amount: "<minor units>", currency }`):
+  `stores[]` (lines with `quantity` packs, unit `price`, `lineTotal`, `sizeNote`, up to 2
+  `alternatives`; `subtotal`, `subtotalIsFrom`), `uncertain[]`, `notFound[]`, `alternativeStores[]`,
+  `total`, `totalIsFrom`, `deliveryShownAtCheckout: true`. A price is a "from" price when the Offer's
+  Variants differ. Delivery fees and minimum orders are not read here (no published read): the
+  storefront shows them at checkout. History keeps only the ref `basket`; a proposal is never
+  replayed (prices go stale).
+- **What the model reads**: line counts (found, unsure, not found), the texts of not-found lines
+  and the cart mode, never a product, store, price or total. It cannot change a cart; the
+  storefront adds lines with the buyer's session after a click.
+- **Failure**: a search that cannot be read, or a plan slower than 12 s, gives `tool-failed` and
+  no card: a line is never reported "not found" because a read failed.
+- Evaluation set `buyer-assistant-5`: guard cases for totals, injections and diet claims in a
+  list, four list-parsing cases (English, Persian, mixed, bullets and fractions) whose expected calls
+  must pass the schema, and twelve invalid calls the parser must refuse.
+- **Sell unit** (`variantId`, `maxQuantity`, on every line and option): after planning, the server reads the units of each proposed Offer through the cart's READ facade (`offerUnits`, the buyer's own `CallContext`, at most 60 Offers, 4 at a time, within 4 s after the plan is done; a slow read never fails a plan, the Offers not reached have no unit) and puts on the line the unit whose price is the price shown (for a "from" price the cheapest unit, when it is at that price). `variantId` is null when the units could not be read in time or none has that price: the storefront then does not add that line from the card (it opens the product page). `maxQuantity` is the highest quantity one cart line of that unit may hold now; the cart's add still checks again and the storefront shows its answer. Neither field reaches the model.
+- **Variants**: the card carries `offerId` and, when read, `variantId` (see above); cart lines are keyed by both. A
+  weight or volume line whose Offer has Variants at different prices (`priceFrom`) is never
+  auto-picked (the size is often the Variant): it is an option and the buyer picks. F1 reads the
+  product page and settles the Variant (the buyer picks it when there are several) before it adds
+  any line, whether or not `priceFrom` is set: equal prices do not mean one Variant. A count
+  wish for an item whose name says it holds several ("12 pack", "6 x 330 ml") is also an option.
+- **Rollout**: do not switch "Basket proposals from a list" on before the storefront widget
+  (S1-F1) renders `basket-proposal`: until then the buyer would see no card. `not-in-store` means
+  "not among the store's results for this search", not "the store does not sell it".
+- Known limits: multi-store mode does not group lines by store to save delivery (no fee read);
+  unit and digit tables are metric, English and Persian; pack size is read from the name, so products with no size in the name become
+  options for weight and volume lines; a line's options come from at most 6 search results;
+  coverage in single-store mode is therefore judged on those results; a product whose name only contains the line's word inside a longer word is an option, not a pick. Stage 2 adds `cheapest`.
+
 ## Storefront wiring (stage 0, F1; `apps/web`)
 
 - **Path.** The widget talks to the API through the buyer relay (`app/api/[...path]`, same
@@ -257,12 +326,45 @@ a seller or admin session is not read here. Every answer is `Cache-Control: no-s
   `preview: false`. Never a query string, cookie, localStorage, log, analytics event or error text.
   The GA4 page view reports origin plus path and never the fragment.
 
+
+## Cart cards in the storefront (stage 1, S1-F1; `apps/web`)
+
+- **Cards rendered.** `cart-action` (add, set quantity, remove), `cart` (read only) and
+  `basket-proposal` (`src/assistant/cart-cards.ts` checks every field; `cart-card-views.tsx` shows
+  them). A bad id, mode, state or total drops the card; a bad price only drops that price. Nothing
+  the model wrote is a link or a number: names are seller text rendered as text, links are built
+  from ids.
+- **Click, then the cart's own routes.** A card never changes the cart. The button calls
+  `POST cart/items`, `PUT` or `DELETE cart/items/:lineId` through the buyer relay with the session
+  and CSRF token (the same functions as the product page), then `refreshCart()` of the store reads
+  the cart again, so the header and the cart page agree. A refused change says so and offers
+  "Try again"; nothing is retried by itself.
+- **Quantity.** A card's quantity is clamped to the chosen unit's `addable` (add) or `maxQuantity`
+  (set); "Most you can add: N" shows when it was lowered; a full cart shows no button.
+- **Single-store.** `otherStore` null or old never means safe: the cart on screen is checked too,
+  and when it holds another store (or an unknown one) the card asks first to save those lines for
+  later or remove them, and adds nothing until the buyer chooses. Multi-store never asks.
+- **Basket proposal.** Edit packs, swap to another product, remove a line, choose an unsure line
+  (unsure lines start unselected), then "Add all": one add per line in order, a result per line,
+  "Try the rest again" repeats only the lines not added. Needs the sell unit (`variantId`) on each
+  line and option; a line without one cannot be added. Totals are price x packs of the card's own
+  figures; delivery and minimum orders say "shown at checkout".
+- **Not built here.** "Save for later" of a whole list: the cart's saved route takes only a cart
+  line id, so a list cannot be saved without adding it first. The notice `cart-sign-in` is shown
+  as text.
+
 ## Tables (Mojtaba's sign-off before merge)
+
+Migration `20261116210000_assistant_basket_proposals_setting` adds `settings.basket_proposals`
+(boolean, default false; older versions read as off; the table stays insert-only).
 
 Migration `20261019224946_assistant_conversations`. `conversations`: one owner (account, or a
 32-byte guest token hash), `turns` 0 to 30, `retention_days` 0 or 30 (365 for an account only),
-index on (`market_id`, `retention_days`, `last_message_at`) for the purge; the application role
-updates only `turns` and `last_message_at`. `messages`: PK (Market, conversation,
+index on (`market_id`, `retention_days`, `last_message_at`) for the purge (the admin customer
+page's assistant section, customers phase 2b, reads one account's conversation count and dates
+through the buyer list's partial (`market_id`, `account_id`, `last_message_at` DESC, `id` DESC)
+index; it adds no index of its own); the application role updates only `turns` and
+`last_message_at`. `messages`: PK (Market, conversation,
 position 1 to 60), `text_cipher`, card refs (ids only, at most 40), cascade delete with the
 conversation; the application role can neither UPDATE nor DELETE them. `spend_days`: PK (Market, day), counts
 never negative, one auto-off record per day; never deleted by the application role.

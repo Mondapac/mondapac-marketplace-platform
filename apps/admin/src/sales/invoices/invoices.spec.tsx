@@ -79,11 +79,17 @@ const pageOf = (documents: DocumentRow[], over: Partial<DocumentsPage> = {}): Do
 const cursorPage = (documents: DocumentRow[], nextCursor: string | null = null) =>
   pageOf(documents, { total: null, page: null, nextCursor });
 
+type SavedRoute = (method: string, path: string, body: unknown, csrf?: string) => Promise<never>;
+/** Until a test says otherwise the saved-filter route is not there: the controls stay hidden. */
+const noSavedRoute: SavedRoute = () =>
+  Promise.resolve({ ok: false, failure: { status: 404, code: 'not-found' } } as never);
+
 type Answer = DocumentsPage | 'fail' | 'denied' | 'unauthenticated' | 'search-down';
 
 /** The list answers by URL, so the order of the calls does not matter. */
-function serve(answer: (url: string) => Answer) {
-  call.mockImplementation((_method, path) => {
+function serve(answer: (url: string) => Answer, saved: SavedRoute = noSavedRoute) {
+  call.mockImplementation((method, path, body, csrf) => {
+    if (path.startsWith('lists/admin/saved-filters')) return saved(method, path, body, csrf);
     const result = answer(path);
     if (result === 'fail') {
       return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
@@ -108,7 +114,11 @@ const byKind =
   (confirmations: DocumentRow[], notes: DocumentRow[], over: Partial<DocumentsPage> = {}) =>
   (url: string) =>
     pageOf(paramsOf(url)['kind'] === 'credit-note' ? notes : confirmations, over);
-const urls = () => call.mock.calls.map((entry) => entry[1]);
+/** The list's own requests (the saved-filter routes have their own helper). */
+const urls = () =>
+  call.mock.calls
+    .map((entry) => entry[1])
+    .filter((url) => !url.startsWith('lists/admin/saved-filters'));
 const lastUrl = () => urls()[urls().length - 1]!;
 const paramsOf = (url: string) => Object.fromEntries(new URL(`http://x/${url}`).searchParams);
 const headers = () => screen.getAllByRole('columnheader').map((th) => th.textContent);
@@ -930,6 +940,7 @@ describe('Invoices out-of-order answers', () => {
   function held() {
     const waiting: ((reply: Reply) => void)[] = [];
     call.mockImplementation((_method, path) => {
+      if (path.startsWith('lists/admin/saved-filters')) return noSavedRoute('GET', path, undefined);
       if (path.includes('kind=order-confirmation') && !path.includes('search=')) {
         return Promise.resolve({ ok: true, status: 200, body: pageOf([confirmation()]) } as never);
       }

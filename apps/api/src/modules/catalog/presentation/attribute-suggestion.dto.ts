@@ -38,6 +38,11 @@ export class SuggestionAttributeBody {
 }
 
 export class SuggestionItemBody {
+  @ApiProperty({
+    type: [String],
+    description: 'The row actions of the Actions menu: approve, map, reject.',
+  })
+  actions!: string[];
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ description: 'The version a decision must name.' }) version!: number;
   @ApiProperty({ description: "The seller's own words. Plain text; never render as markup." })
@@ -56,6 +61,16 @@ export class SuggestionLocalesBody {
 
 export class SuggestionListBody {
   @ApiProperty({ type: [SuggestionItemBody] }) items!: SuggestionItemBody[];
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Open suggestions matching over all pages; null in prev-next mode.',
+  })
+  total!: number | null;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty({ description: 'Whether a page after this one exists.' }) hasNext!: boolean;
   @ApiProperty({
     type: [String],
     description: 'The locales an approval must name the value in.',

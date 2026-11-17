@@ -18,6 +18,20 @@ export interface CartReminderRepository {
    */
   take(market: MarketContext, key: CartReminderKey, at: Temporal.Instant): Promise<boolean>;
 
+  /**
+   * One page of the reminder stages taken for one account's cart (customers management phase 2b),
+   * by `takenAt` then the cart change and stage in `direction`. Read-only. The rows are kept 30 days.
+   */
+  pageOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    direction: 'asc' | 'desc',
+    window: { readonly offset: number; readonly limit: number },
+  ): Promise<readonly (CartReminderKey & { readonly takenAt: Temporal.Instant })[]>;
+
+  /** How many reminder stages were taken for the account (kept 30 days). Read-only. */
+  countOfAccount(market: MarketContext, accountId: Id<'Account'>): Promise<number>;
+
   /** Deletes up to `limit` rows taken before `cutoff`, oldest first; answers how many. */
   purgeTakenBefore(market: MarketContext, cutoff: Temporal.Instant, limit: number): Promise<number>;
 }
