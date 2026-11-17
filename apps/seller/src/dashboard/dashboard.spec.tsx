@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -18,7 +18,21 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../server/server-fetch.ts', () => ({ serverGet: mocks.get }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 
-import { loadSellerDashboard } from './load.ts';
+import { startSellerDashboard } from './load.ts';
+
+/** Every read of the dashboard, awaited. */
+async function loadSellerDashboard(session: SellerSession): Promise<SellerDashboardData> {
+  const sources = startSellerDashboard(session);
+  const [orders, offers, ledger, payout, sourcesView, lowStock] = await Promise.all([
+    sources.orders,
+    sources.offers,
+    sources.ledger,
+    sources.payout,
+    sources.sources,
+    sources.lowStock,
+  ]);
+  return { orders, offers, ledger, payout, sources: sourcesView, lowStock };
+}
 
 const wrap = (node: React.ReactNode, locale = 'en-AU') => (
   <NextIntlClientProvider locale={locale} messages={messages}>
@@ -381,7 +395,32 @@ const session = (permissionKeys: string[]): SellerSession => ({
   csrfToken: 'c',
 });
 
-describe('loadSellerDashboard', () => {
+describe('seller dashboard while it streams', () => {
+  it('says there is nothing to show when every read is refused after the skeletons', async () => {
+    await act(async () => {
+      render(
+        wrap(
+          <SellerDashboard
+            data={{
+              orders: Promise.resolve(null),
+              offers: Promise.resolve(null),
+              ledger: null,
+              payout: null,
+              sources: null,
+              lowStock: null,
+            }}
+            permissionKeys={['ordering.seller-order.view', 'catalog.own-product.view']}
+          />,
+        ),
+      );
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('Nothing to show here yet')).toBeTruthy();
+    expect(document.querySelector('[data-skeleton]')).toBeNull();
+  });
+});
+
+describe('startSellerDashboard', () => {
   beforeEach(() => {
     mocks.get.mockReset();
     mocks.redirect.mockClear();

@@ -25,10 +25,24 @@ export interface IdentityManagementPeer {
       Failure
     >
   >;
+  /** The calling admin's own panel zone (`timezone`), for day filters (ADR-0005). */
+  describeActor(
+    context: CallContext,
+  ): Promise<Result<{ readonly timezone?: string | null }, Failure>>;
+}
+
+/** What the Customers search asks of `ordering` (phase 2b): who placed an order. */
+export interface OrderAccountPeer {
+  /** Rule `permissions [ordering.order.view]`; unknown and foreign ids `ordering.order-not-found`. */
+  adminOrderAccountOf(
+    context: CallContext,
+    orderId: string,
+  ): Promise<Result<{ readonly accountId: Id<'Account'> }, Failure>>;
 }
 
 export interface CustomerManagementPeers {
   readonly identity: IdentityManagementPeer;
+  readonly ordering: OrderAccountPeer;
 }
 
 export const CUSTOMER_MANAGEMENT_PEERS = Symbol('CUSTOMER_MANAGEMENT_PEERS');

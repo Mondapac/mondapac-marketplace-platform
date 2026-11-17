@@ -322,8 +322,10 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // for the responders only (SOC package 2, docs/design/data/security.md 6).
     // `customers.customers.view` is left out too: the Customers list and a customer's page show
     // names, sign-in addresses and order totals, so the Platform Administrator grants it role by
-    // role (customers phase 1, package B2).
+    // role (customers phase 1, package B2). `payments.customer-payment.view` is left out for the
+    // same reason: one customer's payments and disputes (customers phase 2b).
     const DECRYPTING_VIEW_KEYS = [
+      'payments.customer-payment.view',
       'security.centre.view',
       'customers.customers.view',
       'sellers.business-details.view',

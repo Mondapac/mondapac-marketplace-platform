@@ -351,6 +351,42 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
       expect(await attempt(promotion({ ...exclusive, segment_kind: 'DELIVERY_ZONE' }))).toBe(CHECK);
     });
 
+    it('counts the live and paused promotions that name a manual group, in its Market only (customers phase 2b)', async () => {
+      const groupId = ids.next<'CustomerGroup'>();
+      const manual = (overrides: Record<string, unknown> = {}) =>
+        promotion({
+          type: 'CUSTOMER_GROUP',
+          cap_minor: null,
+          segment_kind: 'MANUAL_GROUP',
+          segment_group_id: groupId,
+          ...overrides,
+        });
+      // Waiting and rejected need a seller owner (promotions_review_status_check); a platform row here.
+      for (const status of ['ACTIVE', 'PAUSED']) {
+        expect(
+          await attempt(manual(status === 'PAUSED' ? { status, paused_by: 'ADMIN' } : { status })),
+        ).toBe('allowed');
+      }
+      // Ended, or naming another group: not counted.
+      expect(await attempt(manual({ ends_at: new Date('2026-10-20T00:00:00Z') }))).toBe('allowed');
+      expect(await attempt(manual({ segment_group_id: ids.next<'CustomerGroup'>() }))).toBe(
+        'allowed',
+      );
+      const count = async (target: typeof market) => {
+        const read = await db.unitOfWork.run(
+          target,
+          async () => ({
+            ok: true as const,
+            value: await deps.promotions.countGroupSegmentUses(target, groupId, clock.now()),
+          }),
+          { readOnly: true },
+        );
+        return read.ok ? read.value : -1;
+      };
+      expect(await count(market)).toBe(2);
+      expect(await count(marketOf(code === 'AU' ? 'ZZ' : 'AU'))).toBe(0);
+    });
+
     it('holds a referral to fixed rewards and a per-referrer cap, and a cashback to a percent and a cap', async () => {
       expect(await attempt(promotion({ ...referralTerms, referee_reward_minor: null }))).toBe(
         CHECK,

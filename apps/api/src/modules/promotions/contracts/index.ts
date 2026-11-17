@@ -36,6 +36,8 @@ export {
   type RedeemFacadeFailure,
   type RedeemRequest,
   type RedeemResult,
+  type RedemptionSettlement,
+  type RedemptionSweepFailure,
   type QuoteLine,
   type QuoteRequest,
   type QuoteResult,

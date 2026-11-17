@@ -75,7 +75,7 @@ export class CustomersReadModelsModule implements OnModuleInit {
       ordering: this.ordering,
       engagement: this.engagement,
     });
-    this.management.bind({ identity: this.identity });
+    this.management.bind({ identity: this.identity, ordering: this.ordering });
     this.invitations.bind({
       identity: this.identity,
       engagement: this.engagement,
