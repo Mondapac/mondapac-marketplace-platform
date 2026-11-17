@@ -11,3 +11,14 @@ export {
   type CartReminderFacade,
   type IdleCart,
 } from './cart-reminder.facade';
+export {
+  CART_ASSISTANT_FACADE,
+  MAX_ASSISTANT_SELL_UNITS,
+  type AssistantCart,
+  type AssistantCartFailure,
+  type AssistantCartGroup,
+  type AssistantCartLine,
+  type AssistantOfferUnits,
+  type AssistantSellUnit,
+  type CartAssistantFacade,
+} from './cart-assistant.facade';

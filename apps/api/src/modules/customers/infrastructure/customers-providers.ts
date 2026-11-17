@@ -54,6 +54,17 @@ import { PrismaCustomerGroupRepository } from './prisma-customer-groups.reposito
 import { PrismaCustomerNoteRepository } from './prisma-customer-notes.repository';
 import { PrismaCustomerTimelineRepository } from './prisma-customer-timeline.repository';
 import { SubjectKeyNoteCipher } from './subject-key-note-cipher';
+import {
+  CUSTOMER_CODES,
+  SELLER_CUSTOMER_REPOSITORY,
+  TREND_ZONES,
+  type CustomerCodes,
+  type SellerCustomerRepository,
+  type TrendZones,
+} from '../application/ports/seller-customers.repository';
+import { PrismaSellerCustomerRepository } from './prisma-seller-customers.repository';
+import { RandomCustomerCodes } from './random-customer-codes';
+import { RegistryTrendZones } from './registry-trend-zones';
 import { PrismaCustomerListReader } from './prisma-customer-list.reader';
 import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
 import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
@@ -150,5 +161,20 @@ export const customersProviders: readonly FactoryProvider[] = [
   {
     provide: CUSTOMER_MANAGEMENT_PEERS,
     useFactory: (): LateBoundManagementPeers => new LateBoundManagementPeers(),
+  },
+  {
+    provide: SELLER_CUSTOMER_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerCustomerRepository =>
+      new PrismaSellerCustomerRepository(prisma),
+  },
+  {
+    provide: CUSTOMER_CODES,
+    useFactory: (): CustomerCodes => new RandomCustomerCodes(),
+  },
+  {
+    provide: TREND_ZONES,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): TrendZones => new RegistryTrendZones(markets),
   },
 ];

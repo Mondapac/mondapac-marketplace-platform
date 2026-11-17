@@ -25,11 +25,12 @@ export type ReplyLanguage = (typeof REPLY_LANGUAGES)[number];
 export type SupportHandoff = (typeof SUPPORT_HANDOFFS)[number];
 
 /**
- * Options shown in the panel but not selectable yet: cart suggestions wait for cart PR 2 and
- * Hassan's review; the in-window support form waits for its own package.
+ * Options shown in the panel but not selectable yet: the in-window support form waits for its
+ * own package. Cart suggestions became selectable with stage 1 S1-B1 (the default stays
+ * `read-only`).
  */
 export const UNAVAILABLE_OPTIONS = Object.freeze({
-  scope: ['cart-suggestions'] as readonly Scope[],
+  scope: [] as readonly Scope[],
   supportHandoff: ['in-panel-form'] as readonly SupportHandoff[],
 });
 
@@ -253,16 +254,19 @@ export function rolloutBucket(marketId: string, visitorKey: string): number {
 }
 
 /**
- * Whether the rollout shows the assistant to this storefront visitor. `internal` reaches no
- * storefront visitor yet: internal testing goes through the admin panel until a preview route
- * exists. A percentage rollout needs a visitor key; without one the visitor is left out.
+ * Whether the rollout shows the assistant to this storefront visitor. `internal` reaches only a
+ * browser that carries a valid preview token (`preview`); the token puts a browser in whatever
+ * the audience, but never past the kill switch. A percentage rollout needs a visitor key; without
+ * one the visitor is left out.
  */
 export function inRollout(
   settings: AssistantSettings,
   marketId: string,
   visitorKey: string | null,
+  preview = false,
 ): boolean {
   if (!settings.enabled) return false;
+  if (preview) return true;
   switch (settings.audience) {
     case 'all':
       return true;
