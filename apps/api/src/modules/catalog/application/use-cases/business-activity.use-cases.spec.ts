@@ -75,7 +75,33 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       return Promise.resolve(null);
     },
   };
+  let editKey = true;
+  const matching = (filter: { status: string | null; search: string | null }) =>
+    [...rows.values()]
+      .filter((r) => filter.status === null || r.status === filter.status)
+      .filter(
+        (r) =>
+          filter.search === null ||
+          r.code.includes(filter.search.toLowerCase()) ||
+          r.names.some((n) => n.name.toLowerCase().includes(filter.search!.toLowerCase())),
+      );
   const activityReader: BusinessActivityReader = {
+    page: (_m, query) => {
+      const sign = query.direction === 'asc' ? 1 : -1;
+      const keyOf = (r: BusinessActivityState): string =>
+        query.sort === 'code'
+          ? r.code
+          : query.sort === 'status'
+            ? r.status
+            : query.sort === 'created'
+              ? r.createdAt.toString()
+              : r.updatedAt.toString();
+      const sorted = matching(query).sort(
+        (a, b) => sign * (keyOf(a).localeCompare(keyOf(b)) || a.id.localeCompare(b.id)),
+      );
+      return Promise.resolve(sorted.slice(query.offset, query.offset + query.limit));
+    },
+    count: (_m, filter) => Promise.resolve(matching(filter).length),
     activeIds: (_m, ids) =>
       Promise.resolve(new Set(ids.filter((id) => rows.get(id)?.status === 'active'))),
     list: (_m, query: BusinessActivityListQuery) =>
@@ -139,7 +165,12 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       contentFilter: new ContentFilter(markets),
     }),
     get: new BusinessActivityGet(gate, { unitOfWork, activities }),
-    list: new BusinessActivityList(gate, { unitOfWork, activityReader, policy }),
+    list: new BusinessActivityList(gate, {
+      unitOfWork,
+      activityReader,
+      policy,
+      activityEditProbe: { execute: () => Promise.resolve({ ok: editKey }) },
+    }),
   });
 
   const contextOf = (population: 'admin' | 'seller'): CallContext =>
@@ -413,9 +444,28 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       value: {
         items: [],
         nextAfterId: null,
+        total: 0,
+        page: 1,
+        pageSize: 25,
+        paging: 'pages',
+        hasNext: false,
         locales: { default: main, supported: [...locales.supported] },
       },
     });
+    expect(all.ok && all.value.items[0]?.actions).toEqual(['edit', 'deactivate']);
+    editKey = false;
+    const noEdit = await list.execute(admin, { paging: 'prev-next' });
+    expect(noEdit).toMatchObject({ ok: true, value: { total: null, hasNext: false } });
+    expect(noEdit.ok && noEdit.value.items[0]?.actions).toEqual([]);
+    editKey = true;
+    expect(
+      await list.execute(admin, { q: 'groc', sort: 'status', direction: 'desc' }),
+    ).toMatchObject({ ok: true, value: { total: 1 } });
+    expect(await list.execute(admin, { limit: 5, page: 2 })).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'page', code: 'conflict' }] },
+    });
+    expect(await list.execute(admin, { q: 'a', search: 'b' })).toMatchObject({ ok: false });
     expect(await list.execute(admin, { limit: 0 })).toEqual({
       ok: false,
       error: { code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] },

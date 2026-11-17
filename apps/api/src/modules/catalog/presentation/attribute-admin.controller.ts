@@ -73,7 +73,7 @@ import {
   CategoryLinksSetRequest,
   CategoryLinksSetWrapBody,
 } from './attribute-admin.dto';
-import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
+import { closedBody, numericQuery, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 
 /**
@@ -431,18 +431,25 @@ export class AttributeAdminController {
   @ApiOperation({
     summary: 'List attributes',
     description:
-      `${NEEDS} By code, keyset-paged: send \`nextAfterId\` of the previous page as ` +
-      '`afterId`. `search` matches the code or a name in any locale; `type`, `status`, ' +
-      '`usedIn` (a feature set id) and `missing` (a Market locale) filter. `limit` is 1 to 50 ' +
-      '(default 25).',
+      `${NEEDS} By code by default, each row with its \`actions\`. \`sort\` is code, name, type ` +
+      'or status with `direction`; paged by `page` and `pageSize` (1 to 100, default 25) in the ' +
+      'mode `paging` names (pages or prev-next). `search` matches the code or a name in any ' +
+      'locale; `type`, `status`, `usedIn` (a feature set id) and `missing` (a Market locale) ' +
+      'filter. The older keyset read (`afterId` from `nextAfterId`, `limit` 1 to 50) still works ' +
+      'and cannot be mixed with the page keys.',
   })
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'type', required: false, enum: ATTRIBUTE_DATA_TYPES })
   @ApiQuery({ name: 'status', required: false, enum: ['draft', 'active', 'archived'] })
   @ApiQuery({ name: 'usedIn', required: false, description: 'A feature set id.' })
   @ApiQuery({ name: 'missing', required: false, description: 'A locale of the Market.' })
-  @ApiQuery({ name: 'afterId', required: false })
-  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'sort', required: false, enum: ['code', 'name', 'type', 'status'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'pageSize', required: false })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
+  @ApiQuery({ name: 'afterId', required: false, deprecated: true })
+  @ApiQuery({ name: 'limit', required: false, deprecated: true })
   @ApiOkResponse({ type: AttributeListBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -453,7 +460,7 @@ export class AttributeAdminController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<AttributeListBody> {
-    const result = await this.listAttributes.execute(context, pageQuery(query));
+    const result = await this.listAttributes.execute(context, numericQuery(pageQuery(query)));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as AttributeListBody)
       : refusal(result.error, response, context);

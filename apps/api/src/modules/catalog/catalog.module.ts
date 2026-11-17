@@ -79,6 +79,11 @@ import { AdminProductPause } from './application/use-cases/admin-product-pause.u
 import { ProductPauseProbe } from './application/use-cases/product-pause-probe.use-case';
 import { ProductDeleteProbe } from './application/use-cases/product-delete-probe.use-case';
 import { PlatformProductRetireProbe } from './application/use-cases/platform-product-retire-probe.use-case';
+import { BrandEditProbe } from './application/use-cases/brand-edit-probe.use-case';
+import { BusinessActivityEditProbe } from './application/use-cases/business-activity-edit-probe.use-case';
+import { TopicManageProbe } from './application/use-cases/topic-manage-probe.use-case';
+import { AttributeEditProbe } from './application/use-cases/attribute-edit-probe.use-case';
+import { AttributeRestructureProbe } from './application/use-cases/attribute-restructure-probe.use-case';
 import { PlatformProductEditProbe } from './application/use-cases/platform-product-edit-probe.use-case';
 import { OwnProductEditProbe } from './application/use-cases/own-product-edit-probe.use-case';
 import { IMPORT_FILE_STORE } from './application/ports/import-file-store';
@@ -618,6 +623,11 @@ const PORT = {
   deleteProbe: ProductDeleteProbe,
   retireProbe: PlatformProductRetireProbe,
   platformEditProbe: PlatformProductEditProbe,
+  attributeEditProbe: AttributeEditProbe,
+  attributeRestructureProbe: AttributeRestructureProbe,
+  brandEditProbe: BrandEditProbe,
+  activityEditProbe: BusinessActivityEditProbe,
+  topicManageProbe: TopicManageProbe,
   ownEditProbe: OwnProductEditProbe,
   resume: AdminProductResume,
   withdraw: AdminProductWithdraw,
@@ -1004,6 +1014,7 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       activityReader: true,
       policy: true,
+      activityEditProbe: true,
     }),
     // The activity ids that are active, for sellers' assignment check (ADR-0040 decision 4).
     useCaseProvider(BusinessActivitiesActiveQuery, { unitOfWork: true, activityReader: true }),
@@ -1033,7 +1044,12 @@ const RESTRUCTURE_DEPS = {
       matcher: true,
       clock: true,
     }),
-    useCaseProvider(TopicList, { unitOfWork: true, topicReader: true, policy: true }),
+    useCaseProvider(TopicList, {
+      unitOfWork: true,
+      topicReader: true,
+      policy: true,
+      topicManageProbe: true,
+    }),
     useCaseProvider(OwnTopicList, { unitOfWork: true, topicReader: true, policy: true }),
     useCaseProvider(TopicGet, { unitOfWork: true, topics: true }),
     useCaseProvider(TopicCreate, {
@@ -1167,11 +1183,13 @@ const RESTRUCTURE_DEPS = {
       clock: true,
       ids: true,
     }),
-    useCaseProvider(BrandList, { unitOfWork: true, brandReader: true }),
+    useCaseProvider(BrandList, { unitOfWork: true, brandReader: true, brandEditProbe: true }),
     useCaseProvider(AttributeAdminList, {
       unitOfWork: true,
       attributeAdminReader: true,
       policy: true,
+      attributeEditProbe: true,
+      attributeRestructureProbe: true,
     }),
     useCaseProvider(AttributeAdminGet, {
       unitOfWork: true,
@@ -1450,6 +1468,7 @@ const RESTRUCTURE_DEPS = {
       topicSuggestions: true,
       products: true,
       policy: true,
+      topicManageProbe: true,
     }),
     useCaseProvider(TopicSuggestionApprove, {
       unitOfWork: true,
@@ -1549,6 +1568,7 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       familyResolver: true,
       emailStore: true,
+      attributeEditProbe: true,
     }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,
@@ -2084,6 +2104,11 @@ const RESTRUCTURE_DEPS = {
     useCaseProvider(ProductDeleteProbe, {}),
     useCaseProvider(PlatformProductRetireProbe, {}),
     useCaseProvider(PlatformProductEditProbe, {}),
+    useCaseProvider(AttributeEditProbe, {}),
+    useCaseProvider(AttributeRestructureProbe, {}),
+    useCaseProvider(BrandEditProbe, {}),
+    useCaseProvider(BusinessActivityEditProbe, {}),
+    useCaseProvider(TopicManageProbe, {}),
     useCaseProvider(OwnProductEditProbe, {}),
     useCaseProvider(AdminProductsList, {
       unitOfWork: true,

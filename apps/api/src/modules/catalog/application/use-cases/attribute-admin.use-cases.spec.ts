@@ -55,6 +55,8 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
   let reader: MemoryAttributeAdminReader;
   let units: { market: string; options: UnitOfWorkOptions | undefined }[];
   let allow: boolean;
+  let editKey: boolean;
+  let restructureKey: boolean;
   let unitFails: boolean;
 
   const check: AuthorisationCheck = {
@@ -71,7 +73,13 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
   } as unknown as UnitOfWork;
   const gate = () => createUseCaseGate(markets, check);
   const list = () =>
-    new AttributeAdminList(gate(), { unitOfWork, attributeAdminReader: reader, policy });
+    new AttributeAdminList(gate(), {
+      unitOfWork,
+      attributeAdminReader: reader,
+      policy,
+      attributeEditProbe: { execute: () => Promise.resolve({ ok: editKey }) },
+      attributeRestructureProbe: { execute: () => Promise.resolve({ ok: restructureKey }) },
+    });
   const get = () =>
     new AttributeAdminGet(gate(), { unitOfWork, attributeAdminReader: reader, policy });
   const sets = () => new FeatureSetAdminList(gate(), { unitOfWork, attributeAdminReader: reader });
@@ -240,6 +248,57 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
     expect(result.value.locales.supported[0]).toBe(locale);
   });
 
+  it('names the row actions the caller may run, from the keys and the status', async () => {
+    editKey = true;
+    restructureKey = true;
+    const all = await list().execute(context(), {});
+    if (!all.ok) throw new Error(all.error.code);
+    // brand and pack-size are active, storage is archived.
+    expect(all.value.items.map((i) => i.actions)).toEqual([
+      ['edit', 'view-links', 'deactivate'],
+      ['edit', 'view-links', 'deactivate'],
+      ['view-links'],
+    ]);
+    editKey = false;
+    const viewer = await list().execute(context(), {});
+    if (!viewer.ok) throw new Error(viewer.error.code);
+    expect(viewer.value.items[0]?.actions).toEqual(['view-links', 'deactivate']);
+    restructureKey = false;
+    const reader2 = await list().execute(context(), {});
+    if (!reader2.ok) throw new Error(reader2.error.code);
+    expect(reader2.value.items[0]?.actions).toEqual(['view-links']);
+  });
+
+  it('pages by number in the sort asked, with a total, in either paging mode', async () => {
+    const read = async (input: Record<string, unknown>) => {
+      const result = await list().execute(context(), input);
+      if (!result.ok) throw new Error(JSON.stringify(result.error));
+      return result.value;
+    };
+    const first = await read({ pageSize: 2 });
+    expect(first.items.map((i) => i.code)).toEqual(['brand', 'pack-size']);
+    expect(first).toMatchObject({ total: 3, page: 1, pageSize: 2, paging: 'pages', hasNext: true });
+    const second = await read({ pageSize: 2, page: 2 });
+    expect(second.items.map((i) => i.code)).toEqual(['storage']);
+    expect(second.hasNext).toBe(false);
+    expect((await read({ page: 9 })).items).toEqual([]);
+    const desc = await read({ sort: 'code', direction: 'desc' });
+    expect(desc.items.map((i) => i.code)).toEqual(['storage', 'pack-size', 'brand']);
+    const byType = await read({ sort: 'type' });
+    expect(byType.items).toHaveLength(3);
+    const byStatus = await read({ sort: 'status', direction: 'desc' });
+    expect(byStatus.items[0]?.status).toBe('archived');
+    const cheap = await read({ paging: 'prev-next', pageSize: 2 });
+    expect(cheap).toMatchObject({ paging: 'prev-next', hasNext: true });
+    expect(cheap.items).toHaveLength(2);
+    expect(cheap.total).toBeNull();
+    const byName = await read({ sort: 'name', direction: 'desc' });
+    expect(byName.items).toHaveLength(3);
+    expect(await read({ afterId: '', limit: null, page: 2, pageSize: 2 })).toMatchObject({
+      page: 2,
+    });
+  });
+
   it('filters and pages', async () => {
     const codes = async (input: Record<string, unknown>) => {
       const result = await list().execute(context(), input);
@@ -274,6 +333,12 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
     [{ search: `${' '.repeat(100)}spicy${' '.repeat(20)}` }, 'search', 'too-long'],
     [{ afterId: 'x' }, 'afterId', 'format'],
     [{ colour: 'red' }, 'colour', 'unknown'],
+    [{ sort: 'price' }, 'sort', 'value'],
+    [{ page: 0 }, 'page', 'range'],
+    [{ pageSize: 101 }, 'pageSize', 'range'],
+    [{ paging: 'infinite' }, 'paging', 'value'],
+    [{ limit: 5, sort: 'code' }, 'sort', 'conflict'],
+    [{ afterId: ID(1), page: 2 }, 'page', 'conflict'],
     [{ missing: 'xx-XX' }, 'missing', 'unknown'],
   ])('refuses the query %j', async (input, path, code) => {
     await expect(list().execute(context(), input as never)).resolves.toEqual({

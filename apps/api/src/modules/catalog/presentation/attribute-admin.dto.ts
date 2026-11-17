@@ -41,6 +41,12 @@ export class AttributeSummaryBody {
 }
 
 export class AttributeListItemBody extends AttributeSummaryBody {
+  @ApiProperty({
+    type: [String],
+    description:
+      'The row actions of the Actions menu the caller may run: edit, view-links, deactivate.',
+  })
+  actions!: string[];
   @ApiProperty({ description: 'Published products whose current revision has a value for it.' })
   productCount!: number;
   @ApiProperty({ description: 'Feature sets that use it.' }) featureSetCount!: number;
@@ -57,6 +63,10 @@ export class AttributeListBody {
   nextAfterId!: string | null;
   @ApiProperty({ description: 'Attributes that match the filters, across every page.' })
   total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty({ description: 'Whether a page after this one exists.' }) hasNext!: boolean;
   @ApiProperty({ description: 'Every attribute of the Market, whatever the filters.' })
   totalAll!: number;
   @ApiProperty({ type: MarketLocalesBody }) locales!: MarketLocalesBody;
@@ -503,6 +513,12 @@ export class CategoryLinksSetWrapBody {
 }
 
 export class MissingDetailsItemBody {
+  @ApiProperty({
+    type: [String],
+    description:
+      'The row actions of the Actions menu the caller may run: open-product, email-seller.',
+  })
+  actions!: string[];
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty() productCode!: string;
   @ApiProperty({ nullable: true, type: String, description: 'The name in the default locale.' })
