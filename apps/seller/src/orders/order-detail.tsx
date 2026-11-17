@@ -327,6 +327,28 @@ export function OrderDetail({
           </Card>
         </div>
         <div className="flex min-w-0 flex-col gap-6">
+          {order.customer === undefined ? null : (
+            <Card title={t('customer.title')}>
+              <div className="flex flex-col gap-3">
+                {order.customer === null ? (
+                  <p className="text-sm text-fg-muted">{t('customer.pending')}</p>
+                ) : (
+                  <DataList
+                    variant="stacked"
+                    missing={t('not-given')}
+                    rows={[
+                      {
+                        label: t('customer.code'),
+                        value: <span className="font-mono">{order.customer.code}</span>,
+                      },
+                      { label: t('customer.first-name'), value: order.customer.firstName },
+                    ]}
+                  />
+                )}
+                <p className="text-xs text-fg-muted">{t('customer.hint')}</p>
+              </div>
+            </Card>
+          )}
           <Card title={t('totals')}>
             <DataList
               variant="totals"

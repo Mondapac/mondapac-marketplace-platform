@@ -164,9 +164,10 @@ describe.each(TEST_MARKETS)('admin customers list in market %s (database)', (cod
     );
   });
 
-  const query = (over: Partial<CustomerSelector>) => ({
+  const query = (over: Partial<CustomerSelector>, zone = 'UTC') => ({
     selector: { ...BLANK, text: tag, ...over },
     now: T0,
+    zone,
   });
   const emails = async (
     over: Partial<CustomerSelector>,
@@ -235,15 +236,47 @@ describe.each(TEST_MARKETS)('admin customers list in market %s (database)', (cod
     ).toEqual(['bilal']);
   });
 
+  it('reads the day filters in the zone it is given (ADR-0005), not in UTC', async () => {
+    // Amina signed up at 2026-11-10T12:00Z: the 10th in UTC, already the 11th at UTC+14.
+    const rows = async (over: Partial<CustomerSelector>, zone: string) =>
+      (
+        await inUnit(market, () =>
+          reader.rows(
+            market,
+            query(over, zone),
+            { sort: 'joined', direction: 'desc' },
+            {
+              offset: 0,
+              limit: 50,
+            },
+          ),
+        )
+      ).map((row) => row.accountId);
+    const eleventh = { joinedFrom: '2026-11-11', joinedTo: '2026-11-11' };
+    expect(await rows(eleventh, 'Pacific/Kiritimati')).toEqual([accounts.amina]);
+    expect(await rows(eleventh, 'UTC')).toEqual([]);
+    const tenth = { joinedFrom: '2026-11-10', joinedTo: '2026-11-10' };
+    expect(await rows(tenth, 'UTC')).toEqual([accounts.amina]);
+    expect(await rows(tenth, 'Pacific/Kiritimati')).toEqual([]);
+  });
+
   it('searches an address prefix and part of a name, whatever the case', async () => {
     expect(
       await inUnit(market, () =>
-        reader.count(market, { selector: { ...BLANK, text: tag.toUpperCase() }, now: T0 }),
+        reader.count(market, {
+          selector: { ...BLANK, text: tag.toUpperCase() },
+          now: T0,
+          zone: 'UTC',
+        }),
       ),
     ).toBe(4);
     expect(
       await inUnit(market, () =>
-        reader.count(market, { selector: { ...BLANK, text: `${tag} BILAL` }, now: T0 }),
+        reader.count(market, {
+          selector: { ...BLANK, text: `${tag} BILAL` },
+          now: T0,
+          zone: 'UTC',
+        }),
       ),
     ).toBe(1);
   });
@@ -251,7 +284,9 @@ describe.each(TEST_MARKETS)('admin customers list in market %s (database)', (cod
   it('matches a search wildcard as itself, never as a pattern', async () => {
     for (const text of ['%%', '%%%', '__', '___', '\\']) {
       expect(
-        await inUnit(market, () => reader.count(market, { selector: { ...BLANK, text }, now: T0 })),
+        await inUnit(market, () =>
+          reader.count(market, { selector: { ...BLANK, text }, now: T0, zone: 'UTC' }),
+        ),
       ).toBe(0);
     }
   });

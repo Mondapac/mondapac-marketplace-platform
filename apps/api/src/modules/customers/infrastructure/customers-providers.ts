@@ -1,5 +1,7 @@
 import type { FactoryProvider } from '@nestjs/common';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { ADMIN_DAY_ZONE, type AdminDayZone } from '../application/ports/admin-day-zone';
+import { ActorOrMarketDayZone } from './actor-or-market-day-zone';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
   SUBJECT_KEY_SERVICE,
@@ -161,6 +163,12 @@ export const customersProviders: readonly FactoryProvider[] = [
   {
     provide: CUSTOMER_MANAGEMENT_PEERS,
     useFactory: (): LateBoundManagementPeers => new LateBoundManagementPeers(),
+  },
+  {
+    provide: ADMIN_DAY_ZONE,
+    inject: [MarketRegistry, CUSTOMER_MANAGEMENT_PEERS],
+    useFactory: (markets: MarketRegistry, peers: LateBoundManagementPeers): AdminDayZone =>
+      new ActorOrMarketDayZone(markets, peers.identity),
   },
   {
     provide: SELLER_CUSTOMER_REPOSITORY,

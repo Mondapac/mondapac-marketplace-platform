@@ -10,6 +10,8 @@ const DONE_NOTICES: ReadonlySet<string> = new Set([
   'approved',
   'rejected',
   'withdrawn',
+  'revision-published',
+  'revision-pending',
 ]);
 
 function Row({ label, children }: { readonly label: string; readonly children: React.ReactNode }) {
@@ -57,16 +59,26 @@ export function TypeDetailView({
             <span>{t('revision', { n: type.published.revisionNo })}</span>
           </p>
         </div>
-        {canEdit ? (
-          <TypeActions
-            typeId={type.typeId}
-            version={type.version}
-            status={type.status}
-            name={name}
-            reactivationWaiting={type.pendingReactivation !== null}
-            csrfToken={csrfToken}
-          />
-        ) : null}
+        <div className="flex flex-wrap items-center gap-3">
+          {canEdit ? (
+            <a
+              className="inline-flex items-center font-medium text-link underline"
+              href={`/certificates/types/${type.typeId}/edit`}
+            >
+              {t('revise')}
+            </a>
+          ) : null}
+          {canEdit ? (
+            <TypeActions
+              typeId={type.typeId}
+              version={type.version}
+              status={type.status}
+              name={name}
+              reactivationWaiting={type.pendingReactivation !== null}
+              csrfToken={csrfToken}
+            />
+          ) : null}
+        </div>
       </div>
       {done !== null && DONE_NOTICES.has(done) ? (
         <div role="status">

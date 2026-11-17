@@ -3,6 +3,16 @@
 // the parts of a reply the widget renders. Model text arrives as plain sentences and is rendered
 // as text only; every link and number the buyer sees is built here or by the server's cards (R9).
 
+import {
+  cartCardOf,
+  type BasketProposalView,
+  type CartAction,
+  type CartSummary,
+} from './cart-cards.ts';
+import { id, isRecord, moneyOf, optionalMoney, text, type CardMoney } from './card-values.ts';
+
+export { moneyOf, type CardMoney };
+
 /**
  * What the server render knows about the assistant: the parts that need no visitor id. null from
  * the source means the assistant is off. The widget asks the API the rest in the browser
@@ -79,9 +89,6 @@ export function validChatUrl(value: unknown): string | null {
   return `${url.origin}${path}`;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
-
 const retentionDay = (value: unknown): number | null =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 3650
     ? value
@@ -139,12 +146,6 @@ export const MESSAGE_LIMIT = 500;
 export type SitePage =
   'home' | 'search' | 'category' | 'cart' | 'checkout' | 'account' | 'personalization' | 'cookies';
 
-/** Integer minor units plus an ISO 4217 code, as a card carries it. */
-export interface CardMoney {
-  readonly amount: number;
-  readonly currency: string;
-}
-
 export interface CardBadge {
   readonly typeCode: string;
   readonly typeName: string;
@@ -183,6 +184,9 @@ export type SellerCard = {
 export type AssistantCard =
   | ProductCard
   | SellerCard
+  | CartAction
+  | CartSummary
+  | BasketProposalView
   | { readonly kind: 'page'; readonly page: SitePage; readonly categoryId: string | null }
   | { readonly kind: 'support'; readonly email: string | null };
 
@@ -191,6 +195,7 @@ export type AssistantNotice =
   | 'see-certification'
   | 'cart-actions-not-ready'
   | 'support-form-not-ready'
+  | 'cart-sign-in'
   | 'unavailable'
   | 'refused'
   | 'tool-failed';
@@ -200,6 +205,7 @@ const NOTICES: readonly AssistantNotice[] = [
   'see-certification',
   'cart-actions-not-ready',
   'support-form-not-ready',
+  'cart-sign-in',
   'unavailable',
   'refused',
   'tool-failed',
@@ -224,6 +230,9 @@ export interface AssistantReply {
   /** Cards in the order they arrived: the stores come after the products. */
   readonly sellers: readonly SellerCard[];
   readonly pages: readonly Extract<AssistantCard, { kind: 'page' }>[];
+  readonly cartActions: readonly CartAction[];
+  readonly carts: readonly CartSummary[];
+  readonly baskets: readonly BasketProposalView[];
   readonly support: boolean;
   readonly notices: readonly AssistantNotice[];
 }
@@ -242,38 +251,13 @@ export type SendResult =
   | { readonly ok: true; readonly reply: AssistantReply }
   | { readonly ok: false; readonly refusal: AssistantRefusal };
 
-const text = (value: unknown, max: number): string | null =>
-  typeof value === 'string' && value.length > 0 ? value.slice(0, max) : null;
-
-/** Ids on cards are UUIDs; anything else is dropped, so no id can bend a path (`..`, `/`). */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const id = (value: unknown): string | null =>
-  typeof value === 'string' && UUID.test(value) ? value : null;
-
 /** The store slug the storefront's own store page accepts (`/s/<slug>`, at most 50 characters). */
 const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const BADGE_CODE = /^[A-Za-z0-9_-]{1,40}$/;
-const CURRENCY = /^[A-Z]{3}$/;
 const BADGES_MAX = 6;
 
-/**
- * Money as the API sends it (the amount is a string of digits, minor units): a whole non-negative
- * amount in safe-integer range and an ISO 4217 code, else null. Nothing is assumed about the currency.
- */
-export function moneyOf(value: unknown): CardMoney | null {
-  if (!isRecord(value)) return null;
-  const { amount, currency } = value;
-  if (typeof currency !== 'string' || !CURRENCY.test(currency)) return null;
-  let minor: number;
-  if (typeof amount === 'string' && /^(0|[1-9][0-9]{0,15})$/.test(amount)) minor = Number(amount);
-  else if (typeof amount === 'number' && Number.isInteger(amount) && amount >= 0) minor = amount;
-  else return null;
-  return Number.isSafeInteger(minor) ? { amount: minor, currency } : null;
-}
-
 /** A price field that is absent or null is none; present but malformed drops the price (`undefined`). */
-const priceOf = (value: unknown): CardMoney | null | undefined =>
-  value === null || value === undefined ? null : (moneyOf(value) ?? undefined);
+const priceOf = optionalMoney;
 
 function badgesOf(value: unknown): CardBadge[] {
   if (!Array.isArray(value)) return [];
@@ -365,7 +349,7 @@ export function cardOf(data: unknown): AssistantCard | null {
     return { kind: 'page', page: card.page as SitePage, categoryId };
   }
   if (card.kind === 'support') return { kind: 'support', email: text(card.email, 254) };
-  return null;
+  return cartCardOf(card);
 }
 
 /** Reads a whole `text/event-stream` body into a reply; null when it is cut off or malformed. */
@@ -412,6 +396,9 @@ export function replyOf(body: string): AssistantReply | null {
     products: cards.filter((card) => card.kind === 'product'),
     sellers: cards.filter((card) => card.kind === 'seller'),
     pages: cards.filter((card) => card.kind === 'page'),
+    cartActions: cards.filter((card) => card.kind === 'cart-action'),
+    carts: cards.filter((card) => card.kind === 'cart'),
+    baskets: cards.filter((card) => card.kind === 'basket-proposal'),
     support: cards.some((card) => card.kind === 'support'),
     notices: [...new Set(notices)],
   };

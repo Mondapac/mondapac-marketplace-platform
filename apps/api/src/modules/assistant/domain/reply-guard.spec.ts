@@ -1,4 +1,9 @@
-import { EVALUATION_SET, EVALUATION_VERSION } from './evaluation-set';
+import {
+  EVALUATION_SET,
+  EVALUATION_VERSION,
+  INVALID_PLAN_CALLS,
+  LIST_PARSING_CASES,
+} from './evaluation-set';
 import { maskPersonalData, MASKED } from './personal-data';
 import { guardReply, MAX_REPLY_CHARACTERS } from './reply-guard';
 import { cardRefOf } from './cards';
@@ -98,12 +103,13 @@ describe('parseToolCall (R9: model output is schema-validated)', () => {
       'support_contact',
       'suggest_cart_change',
       'open_support_form',
+      'plan_basket',
     ]);
   });
 
   it('declares the cart tools only under the cart-suggestions scope', () => {
-    expect(toolDeclarationsFor('read-only')).toBe(TOOL_DECLARATIONS);
-    const names = toolDeclarationsFor('cart-suggestions').map((tool) => tool.name);
+    expect(toolDeclarationsFor('read-only', true)).toBe(TOOL_DECLARATIONS);
+    const names = toolDeclarationsFor('cart-suggestions', true).map((tool) => tool.name);
     expect(names).toContain('get_cart');
     expect(names.filter((name) => name === 'suggest_cart_change')).toHaveLength(1);
   });
@@ -246,4 +252,76 @@ describe(`evaluation set ${EVALUATION_VERSION} against the reply guard (decision
       for (const text of item.mustNotShow) expect(shown).not.toContain(text.toLowerCase());
     },
   );
+});
+
+describe(`list parsing of ${EVALUATION_VERSION} (plan_basket)`, () => {
+  it.each(LIST_PARSING_CASES.map((item) => [item.id, item] as const))(
+    '%s: the expected call passes the tool schema',
+    (_id, item) => {
+      const parsed = parseToolCall('plan_basket', { items: item.lines });
+      expect(parsed).toEqual({
+        tool: 'plan_basket',
+        items: item.lines.map((line) => ({ ...line, unit: line.unit ?? null })),
+      });
+    },
+  );
+
+  it.each(INVALID_PLAN_CALLS.map((item) => [item.id, item.input] as const))(
+    '%s: is refused',
+    (_id, input) => {
+      expect(parseToolCall('plan_basket', input)).toBeNull();
+    },
+  );
+
+  it('accepts 40 lines and keeps Persian text with the zero-width non-joiner', () => {
+    const forty = Array.from({ length: 40 }, () => ({ text: 'برنج', quantity: 1 }));
+    expect(parseToolCall('plan_basket', { items: forty })).not.toBeNull();
+    const joined = parseToolCall('plan_basket', {
+      items: [{ text: 'می\u200Cخواهم نان', quantity: 1 }],
+    });
+    expect(joined).toMatchObject({ items: [{ text: 'می\u200Cخواهم نان' }] });
+  });
+
+  it('declares the tool with the same limit as the parser', () => {
+    const declared = TOOL_DECLARATIONS.find((tool) => tool.name === 'plan_basket');
+    expect(JSON.stringify(declared?.inputSchema)).toContain('"maxItems":40');
+  });
+});
+
+describe('basket lines reach the buyer on a card (R1, R9)', () => {
+  const call = (text: string) => parseToolCall('plan_basket', { items: [{ text, quantity: 1 }] });
+
+  it.each([
+    'halal lamb mince',
+    'certified organic flour',
+    'حلال گوشت',
+    'Pay BSB 062-000 acct 12345678',
+    'call 0411 222 333',
+    'deals@cheap.example',
+    'cheap-deals.example/buy',
+    'rice only 3 left in stock',
+    'free delivery rice',
+    'rice ㅤ',
+    'rice ',
+    'rice \uD800',
+  ])('refuses the line "%s"', (text) => {
+    expect(call(text)).toBeNull();
+  });
+
+  it.each(['basmati rice 2 kg', 'برنج ایرانی', 'eggs 12', 'full cream milk 1.5 l'])(
+    'keeps the line "%s"',
+    (text) => {
+      expect(call(text)).not.toBeNull();
+    },
+  );
+});
+
+describe('the reply guard reads claims through invisible marks', () => {
+  it('drops a certification claim split by a combining grapheme joiner or a variation selector', () => {
+    for (const text of ['This chicken is h\u034Falal.', 'This chicken is o\uFE0Frganic.']) {
+      const guarded = guardReply(text);
+      expect(guarded.notices).toContain('see-certification');
+      expect(guarded.sentences.join(' ')).not.toMatch(/halal|organic/i);
+    }
+  });
 });

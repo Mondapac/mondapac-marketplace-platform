@@ -84,6 +84,9 @@ const ok = (
     products: [],
     sellers: [],
     pages: [],
+    cartActions: [],
+    carts: [],
+    baskets: [],
     support: false,
     notices: [],
     ...extra,
@@ -128,6 +131,9 @@ describe('assistant stream', () => {
   it('reads the cards, sentences and notices of a whole answer, prices included', () => {
     const reply = replyOf(STREAM);
     expect(reply).toEqual({
+      cartActions: [],
+      carts: [],
+      baskets: [],
       conversationId: '0192f000-0000-7000-8000-000000000001',
       sentences: ['Here are two products.'],
       products: [

@@ -68,6 +68,13 @@ export class AssistantSettingsFields {
   })
   supportHandoff!: string;
   @ApiProperty({
+    type: Boolean,
+    description:
+      'Basket proposals from a list: the assistant may plan a typed or pasted shopping list ' +
+      'into a basket card the buyer reviews. Default false. Adds nothing to a cart by itself.',
+  })
+  basketProposals!: boolean;
+  @ApiProperty({
     nullable: true,
     type: String,
     maxLength: BOUNDS.welcomeTextLength,

@@ -19,6 +19,7 @@ import {
   viewRefundLimits,
 } from '../../src/modules/ordering/application/refund-limits-flow';
 import { AdminCustomerRefunds } from '../../src/modules/ordering/application/use-cases/admin-customer-refunds.use-case';
+import { AdminCustomerRefundsList } from '../../src/modules/ordering/application/use-cases/admin-customer-refunds-list.use-case';
 import { AdminRefundOrder } from '../../src/modules/ordering/application/use-cases/admin-refund-order.use-case';
 import { SellerMarkUnavailable } from '../../src/modules/ordering/application/use-cases/seller-mark-unavailable.use-case';
 import type { AdminNoteDependencies } from '../../src/modules/ordering/application/admin-note-flow';
@@ -61,6 +62,7 @@ import { ConfigOrderingPolicy } from '../../src/modules/ordering/infrastructure/
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
 import { PrismaPickupCodeRepository } from '../../src/modules/ordering/infrastructure/prisma-pickup-code.repository';
 import { PrismaRefundRepository } from '../../src/modules/ordering/infrastructure/prisma-refund.repository';
+import { PrismaCustomerPaymentsReader } from '../../src/modules/ordering/infrastructure/prisma-customer-payments.reader';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
@@ -96,6 +98,7 @@ import { PrismaAdminShipmentListReader } from '../../src/modules/ordering/infras
 import { orderingRefundsTestDatabaseUrl } from './test-database';
 
 const NO_SHIPMENT_FILTER: ShipmentListFilter = {
+  ids: null,
   stage: null,
   reference: null,
   trackingRef: null,
@@ -537,6 +540,122 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       accountId,
     });
     expect(none).toEqual({ ok: true, value: { refunds: [] } });
+  });
+
+  it("pages a customer's refunds as a super list: filters, sorts, both paging modes (phase 2b)", async () => {
+    const mine = await paidOrder();
+    const theirs = await paidOrder();
+    expect((await refund(mine, 1)).ok).toBe(true);
+    expect((await refund(mine, 2)).ok).toBe(true);
+    expect((await refund(theirs, 1)).ok).toBe(true);
+    const owner = await sql.query<{ account_id: string }>(
+      'SELECT account_id FROM ordering.orders WHERE market_id = $1 AND id = $2',
+      [market.marketId, mine.orderId],
+    );
+    const accountId = owner.rows[0]!.account_id;
+    const list = new AdminCustomerRefundsList(gate, deps);
+    const page = await list.execute(admin, { accountId, sort: 'amount', direction: 'asc' });
+    if (!page.ok) throw new Error('read refused');
+    expect(page.value.total).toBe(2);
+    const amounts = page.value.items.map((r) => r.amount.amount);
+    expect([...amounts].sort((a, b) => (a < b ? -1 : 1))).toEqual(amounts);
+    expect(page.value.items.every((r) => r.amount.currency === currency)).toBe(true);
+    const failedOnly = await list.execute(admin, { accountId, filters: { state: ['failed'] } });
+    expect(failedOnly.ok && failedOnly.value.total).toBe(0);
+    const later = await list.execute(admin, {
+      accountId,
+      filters: { from: T0.add({ hours: 24 * 365 }).toString() },
+    });
+    expect(later.ok && later.value.items).toEqual([]);
+    const prevNext = await list.execute(admin, { accountId, pageSize: 1, paging: 'prev-next' });
+    expect(prevNext.ok && { n: prevNext.value.items.length, next: prevNext.value.hasNext }).toEqual(
+      {
+        n: 1,
+        next: true,
+      },
+    );
+    // Another Market's admin sees none of them.
+    const none = await list.execute(otherMarketAdmin(), { accountId });
+    expect(none.ok && none.value.total).toBe(0);
+  });
+
+  it("reads a customer's orders as payments with the paid total, in its own Market only (phase 2b)", async () => {
+    const paid = await paidOrder();
+    const unpaid = await paidOrder(undefined, false);
+    const reader = new PrismaCustomerPaymentsReader(db.service);
+    const accountOf = async (orderId: string) =>
+      (
+        await sql.query<{ account_id: string }>(
+          'SELECT account_id FROM ordering.orders WHERE market_id = $1 AND id = $2',
+          [market.marketId, orderId],
+        )
+      ).rows[0]!.account_id as Id<'Account'>;
+    const read = async <T>(target: typeof market, work: () => Promise<T>): Promise<T> => {
+      const result = await db.unitOfWork.run(target, async () => ok(await work()));
+      if (!result.ok) throw new Error('unit failed');
+      return result.value;
+    };
+    const payer = await accountOf(paid.orderId);
+    const query = { accountId: payer, paymentStates: null, statuses: null, from: null, to: null };
+
+    const rows = await read(market, () =>
+      reader.page(market, query, { sort: 'created', direction: 'desc' }, { offset: 0, limit: 10 }),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      orderId: paid.orderId,
+      paymentState: 'captured',
+      amount: money(total, currency),
+      providerPaymentId: `pi_${paid.orderId.replaceAll('-', '')}`,
+    });
+    expect(await read(market, () => reader.count(market, query))).toBe(1);
+    expect(
+      await read(market, () => reader.count(market, { ...query, paymentStates: ['none'] })),
+    ).toBe(0);
+    // The order status filter and the created-between instants, each matching and not.
+    expect(
+      await read(market, () => reader.count(market, { ...query, statuses: [rows[0]!.status] })),
+    ).toBe(1);
+    expect(
+      await read(market, () => reader.count(market, { ...query, statuses: ['pending-payment'] })),
+    ).toBe(0);
+    const created = rows[0]!.createdAt;
+    const around = { from: created.subtract({ minutes: 1 }), to: created.add({ minutes: 1 }) };
+    expect(await read(market, () => reader.count(market, { ...query, ...around }))).toBe(1);
+    const between = await read(market, () =>
+      reader.page(
+        market,
+        { ...query, ...around },
+        { sort: 'created', direction: 'desc' },
+        { offset: 0, limit: 10 },
+      ),
+    );
+    expect(between.map((row) => row.orderId)).toEqual([paid.orderId]);
+    // `to` is exclusive and `from` inclusive.
+    expect(await read(market, () => reader.count(market, { ...query, to: created }))).toBe(0);
+    expect(await read(market, () => reader.count(market, { ...query, from: created }))).toBe(1);
+    expect(await read(market, () => reader.paidTotals(market, payer))).toEqual([
+      money(total, currency),
+    ]);
+    expect(await read(market, () => reader.orderIds(market, payer, 10))).toEqual([paid.orderId]);
+
+    const waiting = await accountOf(unpaid.orderId);
+    expect(await read(market, () => reader.paidTotals(market, waiting))).toEqual([]);
+    const pending = await read(market, () =>
+      reader.page(
+        market,
+        { ...query, accountId: waiting },
+        { sort: 'amount', direction: 'asc' },
+        { offset: 0, limit: 10 },
+      ),
+    );
+    expect(pending.map((row) => [row.paymentState, row.providerPaymentId])).toEqual([
+      ['none', null],
+    ]);
+
+    const elsewhere = marketOf(TEST_MARKETS.find((other) => other !== code)!);
+    expect(await read(elsewhere, () => reader.count(elsewhere, query))).toBe(0);
+    expect(await read(elsewhere, () => reader.paidTotals(elsewhere, payer))).toEqual([]);
   });
 
   it('records a refused Stripe refund as failed and lowers the refunded sum again', async () => {
