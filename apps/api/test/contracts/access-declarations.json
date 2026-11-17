@@ -31,6 +31,7 @@
   { "name": "cart.merge-guest-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.move-saved-to-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.purge-inactive-carts", "rule": "system" },
+  { "name": "cart.read-assistant-offer-units", "rule": "anonymous" },
   { "name": "cart.read-checkout-lines", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.remove-guest-item", "rule": "anonymous" },
   { "name": "cart.remove-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -38,6 +39,7 @@
   { "name": "cart.save-for-later", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.set-guest-line-quantity", "rule": "anonymous" },
   { "name": "cart.set-line-quantity", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "cart.view-assistant-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.view-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.view-guest-cart", "rule": "anonymous" },
   { "name": "cart.view-saved", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -867,6 +869,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "settings.read-cart-mode", "rule": "anonymous" },
   {
     "name": "settings.read-list-paging",
     "rule": "own-resources",
