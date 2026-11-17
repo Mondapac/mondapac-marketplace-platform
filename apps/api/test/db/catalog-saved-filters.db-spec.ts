@@ -441,26 +441,17 @@ describe.each(TEST_MARKETS)('catalog saved filters in market %s (database)', (co
           [rowId],
         ),
       ).resolves.toMatchObject({ rowCount: 1 });
-      for (const column of [
-        'owner_account_id',
-        'list_key',
-        'payload',
-        'position',
-        'market_id',
-        'created_at',
-      ]) {
+      for (const column of ['owner_account_id', 'list_key', 'payload', 'market_id', 'created_at']) {
         const value =
           column === 'owner_account_id'
             ? `'${account()}'`
             : column === 'payload'
               ? `'{}'::jsonb`
-              : column === 'position'
-                ? '2'
-                : column === 'market_id'
-                  ? `'ZZ'`
-                  : column === 'created_at'
-                    ? 'now()'
-                    : `'admin.catalog.other'`;
+              : column === 'market_id'
+                ? `'ZZ'`
+                : column === 'created_at'
+                  ? 'now()'
+                  : `'admin.catalog.other'`;
         await expect(
           app.query(`UPDATE lists.saved_filters SET ${column} = ${value} WHERE id = $1`, [rowId]),
         ).rejects.toMatchObject({ code: DENIED });

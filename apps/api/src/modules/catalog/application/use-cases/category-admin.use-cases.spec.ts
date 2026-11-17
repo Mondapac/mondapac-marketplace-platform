@@ -25,6 +25,7 @@ import { categoryActions } from '../categories/category-admin-views';
 import { CategoryAdminGet } from './category-admin-get.use-case';
 import { CategoryAdminTree } from './category-admin-tree.use-case';
 import { CategoryImpact } from './category-impact.use-case';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 
 // The admin category reads in memory, on both Market fixtures: the tree with its counts, the detail
 // with path, history and allowed actions, the impact, the 404 rule, the admin-only rule and the
@@ -151,6 +152,7 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
     adminCategoryReader: reader,
     policy,
     categoryProbes,
+    review: new RecordingReview(),
   });
   const impact = new CategoryImpact(gate, {
     unitOfWork,

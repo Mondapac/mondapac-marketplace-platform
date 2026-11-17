@@ -7,8 +7,8 @@ import {
   EmptyState,
   LoadError,
   Select,
-  SkeletonRows,
   toast,
+  DetailSkeleton,
   type BadgeTone,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
@@ -121,7 +121,9 @@ export function ProposalsTab({
   }
 
   if (load.state === 'denied') return <Banner tone="info">{t('denied')}</Banner>;
-  if (load.state === 'loading') return <SkeletonRows label={t('loading')} rows={3} />;
+  if (load.state === 'loading') {
+    return <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={3} />;
+  }
   if (load.state === 'failed') {
     return (
       <LoadError

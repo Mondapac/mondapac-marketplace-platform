@@ -1,3 +1,7 @@
+import { QuoteOwnDiscounts } from '../../src/modules/promotions/application/use-cases/quote-own-discounts.use-case';
+import { RedeemOwnDiscounts } from '../../src/modules/promotions/application/use-cases/redeem-own-discounts.use-case';
+import { ListStaleRedemptions } from '../../src/modules/promotions/application/use-cases/list-stale-redemptions.use-case';
+import { SettleRedemptions } from '../../src/modules/promotions/application/use-cases/settle-redemptions.use-case';
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, Result } from '@mondapac/shared-kernel';
 import {
@@ -174,6 +178,10 @@ describe.each(TEST_MARKETS)('promotions redemptions in market %s (database)', (c
       make(QuoteDiscounts),
       make(RedeemDiscounts),
       make(CheckWasPrice),
+      make(QuoteOwnDiscounts),
+      make(RedeemOwnDiscounts),
+      make(ListStaleRedemptions),
+      make(SettleRedemptions),
     );
   const state = (promise: Promise<unknown>) =>
     promise.then(
@@ -446,6 +454,51 @@ describe.each(TEST_MARKETS)('promotions redemptions in market %s (database)', (c
         fields.month ?? null,
       ],
     );
+
+  it("lists the safety sweep's stale orders in pages by order id, and settles one (package T2)", async () => {
+    const productId = ids.next<'Product'>();
+    await created(
+      make(CreateOwnPromotion).execute(seller, {
+        type: 'SELLER_SALE',
+        name: 'Sweep',
+        funding: 'SELLER',
+        startsAt: startsAt(),
+        reward: { kind: 'PERCENT', bps: 1000 },
+        productIds: [productId],
+      }),
+    );
+    const placed = [];
+    for (let n = 0; n < 3; n += 1) {
+      const o = await pricedOrder(request(productId, 5000n, 1, { testMode: false }));
+      expect(await o.redeem()).toEqual({ ok: true, value: { outcome: 'redeemed' } });
+      placed.push(o.orderId);
+    }
+    const mine = new Set<string>(placed);
+    const later = clock.now().add({ hours: 1 });
+    const stale = async (after?: Id<'Order'>) => {
+      const listed = await facade().staleRedemptions(system, {
+        before: later,
+        limit: 100,
+        ...(after === undefined ? {} : { after }),
+      });
+      if (!listed.ok) throw new Error(listed.error.code);
+      return listed.value.filter((orderId) => mine.has(orderId));
+    };
+    const sorted = [...placed].sort();
+    expect(await stale()).toEqual(sorted);
+    expect(await stale(sorted[0])).toEqual(sorted.slice(1));
+    expect(
+      await facade().staleRedemptions(system, {
+        before: clock.now().subtract({ hours: 1 }),
+        limit: 100,
+      }),
+    ).toMatchObject({ ok: true });
+
+    expect(
+      await facade().settleRedemptions(system, { orderId: sorted[1]!, outcome: 'cancelled' }),
+    ).toEqual({ ok: true, value: { outcome: 'released' } });
+    expect(await stale()).toEqual([sorted[0], sorted[2]]);
+  });
 
   it('backs the per-customer first-order rule and the codes with constraints', async () => {
     const customer = ids.next<'Account'>();

@@ -1,3 +1,7 @@
+import {
+  FakeOrderProducts,
+  FakePromotions,
+} from '../../../../test/support/ordering-promotions-fakes';
 import { err, money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -34,7 +38,7 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { CheckoutLine } from '../../cart';
 import { PAYMENT_ATTEMPTS_PER_WINDOW } from '../domain/card-payment';
-import { ConfigOrderingPolicy } from '../infrastructure/config-ordering-policy';
+import { testOrderingPolicy } from '../../../../test/support/ordering-policy';
 import type { OrderingDependencies } from './checkout-flow';
 import { CancelPayment } from './use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
@@ -125,7 +129,7 @@ describe.each([['AU'], ['ZZ']] as const)('card payment in market %s', (code) => 
       refunds: NO_REFUNDS,
       audit: NO_AUDIT,
       gateway,
-      policy: new ConfigOrderingPolicy(markets),
+      policy: testOrderingPolicy(markets),
       cart,
       customers,
       shipTo: new FakeShipToCipher(),
@@ -134,6 +138,8 @@ describe.each([['AU'], ['ZZ']] as const)('card payment in market %s', (code) => 
       commission: new FakeCommission(),
       tax: new FakeTax(),
       taxCategories: new FakeTaxCategories(code === 'AU' ? 'taxable' : 'zz_standard'),
+      products: new FakeOrderProducts(),
+      promotions: new FakePromotions(),
       outbox: { append: () => Promise.resolve() },
       ids: new SequenceIdGenerator(clock),
       clock,

@@ -603,6 +603,32 @@ describe('relay allowlist for seller decisions', () => {
     }
   });
 
+  it('relays Move products as a POST and its progress as a GET on the exact path only (categories C5a)', async () => {
+    const path = `catalog/admin/categories/${ID}/move-products`;
+    const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, path.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('POST', path)).status).toBe(200);
+    expect((await call('PUT', path)).status).toBe(404);
+    expect((await call('DELETE', path)).status).toBe(404);
+    expect((await call('POST', `${path}/extra`)).status).toBe(404);
+    expect((await call('POST', 'catalog/admin/categories/not-a-uuid/move-products')).status).toBe(
+      404,
+    );
+  });
+
+  it('relays the platform product category picker as a GET on its exact path only (categories C5a)', async () => {
+    const path = 'catalog/admin/platform-products/category-picker';
+    const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, path.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('POST', path)).status).toBe(404);
+    const extra = new Request(`http://admin.localhost:3002/api/${path}/extra`, {
+      headers: sameOrigin,
+    });
+    expect((await relay(config, extra, [...path.split('/'), 'extra'], fetchImpl)).status).toBe(404);
+  });
+
   it('relays the assistant settings read and write on their exact path only', async () => {
     const path = 'assistant/admin/settings';
     const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
@@ -1051,7 +1077,7 @@ describe('relay of the customers list and customer page', () => {
     const target = `ordering/admin/orders?accountId=${ID}&page=1`;
     await relay(config, get(target), pathOf(target), upstream);
     expect(upstream.mock.calls[0]?.[0]).toBe(
-      `http://api.test/ordering/admin/orders?page=1&accountId=${ID}`,
+      `http://api.test/ordering/admin/orders?accountId=${ID}&page=1`,
     );
     // A malformed scope is refused, never dropped (that would list the whole Market's orders).
     const bad = 'ordering/admin/orders?accountId=someone&page=1';
@@ -1134,6 +1160,14 @@ describe('relay of the orders list', () => {
     const upstream = upstreamOk();
     const q =
       'page=2&pageSize=25&sort=total&direction=desc&paymentState=paid&from=2026-10-01T00%3A00%3A00.000Z';
+    await relay(config, get(`?${q}&x=1`), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/admin/orders?${q}`);
+  });
+
+  it('forwards the search, the reference, the customer account and the paging mode', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'status=confirmed&q=0190a000-0000-7000-8000-000000000001&search=rice&accountId=0190a000-0000-7000-8000-000000000002&page=1&paging=prev-next';
     await relay(config, get(`?${q}&x=1`), path, upstream);
     expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/admin/orders?${q}`);
   });
@@ -1882,6 +1916,9 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', 'catalog/admin/categories'],
     ['GET', `catalog/admin/categories/${id}`],
     ['GET', `catalog/admin/categories/${id}/impact`],
+    ['GET', `catalog/admin/categories/${id}/move-products`],
+    ['POST', `catalog/admin/categories/${id}/move-products`],
+    ['GET', 'catalog/admin/platform-products/category-picker'],
     ['GET', 'catalog/admin/business-activities'],
     ['GET', `catalog/admin/business-activities/${id}`],
     ['POST', 'catalog/admin/business-activities'],

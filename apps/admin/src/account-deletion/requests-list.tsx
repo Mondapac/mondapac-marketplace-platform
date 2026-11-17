@@ -7,7 +7,7 @@ import {
   Button,
   EmptyState,
   LoadError,
-  SkeletonRows,
+  TableSkeleton,
   type ActivityColumn,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -35,6 +35,7 @@ export function RequestsList({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('account-deletion');
+  const tr = useTranslations('route');
   const locale = useLocale();
   const [rows, setRows] = useState<readonly DeletionRequestEntry[] | null>(null);
   const [next, setNext] = useState<string | null>(null);
@@ -120,7 +121,37 @@ export function RequestsList({
       />
     );
   }
-  if (rows === null) return <SkeletonRows label={t('requests.loading')} rows={4} />;
+  if (rows === null) {
+    return (
+      <TableSkeleton
+        label={t('requests.loading')}
+        slowLabel={tr('slow')}
+        rows={4}
+        columns={[
+          { header: t('requests.col.account'), kind: 'title' },
+          {
+            header: t('requests.col.requested-by'),
+            kind: 'status',
+            place: 'labelled',
+            className: 'w-44',
+          },
+          { header: t('requests.col.requested'), kind: 'date', className: 'w-48' },
+          { header: t('requests.col.deletes-on'), kind: 'date', className: 'w-48' },
+          { header: t('requests.col.status'), kind: 'status', className: 'w-44' },
+          ...(canCancel
+            ? [
+                {
+                  header: t('requests.col.actions'),
+                  kind: 'status' as const,
+                  place: 'labelled' as const,
+                  className: 'w-44',
+                },
+              ]
+            : []),
+        ]}
+      />
+    );
+  }
   if (rows.length === 0 && notice === null) {
     return (
       <EmptyState icon="inbox" title={t('requests.empty.title')} body={t('requests.empty.body')} />
