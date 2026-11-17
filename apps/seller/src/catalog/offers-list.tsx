@@ -37,6 +37,8 @@ import {
   type View,
 } from './offers-query.ts';
 import { useOfferRowActions } from './offers-row-actions.tsx';
+import { OffersSavedViews } from './offers-saved-views.tsx';
+import { LIST_KEY, queryOf, type SavedFilter, type SavedFiltersAnswer } from './offers-saved.ts';
 import { OffersTable } from './offers-table.tsx';
 import type { OfferListCounts, OfferListPage } from './types.ts';
 
@@ -78,8 +80,8 @@ function countOf(counts: OfferListCounts, tab: View): number {
  * code or product name), the filter, sort and column panels with their chips, then one page of
  * Offers with a row Actions menu. It follows the Market's List paging setting: page numbers with a
  * total, or Previous and next. Rows can be selected, for Export. The column choice is the seller's
- * own and lives in this browser's storage. Saved filters are not offered yet: the API keeps them
- * for the Products list only.
+ * own and lives in this browser's storage. A saved filter keeps the tab, search, filters and sort
+ * on the server and is its own tab.
  */
 export function OffersList({
   initial,
@@ -103,14 +105,25 @@ export function OffersList({
   const ts = useTranslations('catalog.offers.list');
   const tl = useTranslations('load');
   const locale = useLocale();
-  const { query, draft, setDraft, change, goToPage, paginate, openView, reset } =
-    useSuperListQuery<Query>({
-      defaultQuery: DEFAULT_QUERY,
-      forView,
-      withView,
-      searchOf,
-      withSearch,
-    });
+  const {
+    query,
+    draft,
+    setDraft,
+    savedId,
+    change,
+    goToPage,
+    paginate,
+    openView,
+    openSaved: openSavedTab,
+    forgetSaved,
+    reset,
+  } = useSuperListQuery<Query>({
+    defaultQuery: DEFAULT_QUERY,
+    forView,
+    withView,
+    searchOf,
+    withSearch,
+  });
 
   // The page the server read opens the list: no first request for the same query.
   const [answer, setAnswer] = useState<OfferListPage | null>(initial);
@@ -118,6 +131,10 @@ export function OffersList({
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [columns, setColumns] = useState<readonly OfferColumn[]>(DEFAULT_COLUMNS);
+  // The saved filters: null until they load, and when they cannot (the page then has the stage
+  // tabs only).
+  const [saved, setSaved] = useState<SavedFiltersAnswer | null>(null);
+  const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
   const latest = useRef(0);
   const storageKey = prefsKey('seller', marketId, accountId, 'offers-columns');
   // After a page change the focus moves to the top of the list, so a keyboard or screen reader
@@ -128,6 +145,28 @@ export function OffersList({
   useEffect(() => {
     setColumns(cleanColumns(readIds(browserStorage(), storageKey)));
   }, [storageKey]);
+
+  const loadSaved = useCallback(async (): Promise<readonly SavedFilter[] | null> => {
+    const result = await callApi<SavedFiltersAnswer>(
+      'GET',
+      `catalog/seller/saved-filters?listKey=${LIST_KEY}`,
+    );
+    if (!result.ok || !Array.isArray(result.body?.items)) return null;
+    setSaved(result.body);
+    const items: readonly SavedFilter[] = result.body.items;
+    return items;
+  }, []);
+
+  useEffect(() => {
+    void loadSaved();
+  }, [loadSaved]);
+
+  // A saved tab that was deleted (here or by its owner) is no longer the one on show.
+  useEffect(() => {
+    if (savedId !== null && saved !== null && !saved.items.some((item) => item.id === savedId)) {
+      forgetSaved();
+    }
+  }, [saved, savedId, forgetSaved]);
 
   const load = useCallback(
     async (asked: Query) => {
@@ -260,6 +299,16 @@ export function OffersList({
         ]),
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
+  // Saved filters keep a tab, search, filters and a sort; a list nobody changed has nothing to save.
+  const somethingToSave =
+    filtered ||
+    query.tab !== 'all' ||
+    query.sort !== DEFAULT_QUERY.sort ||
+    query.direction !== DEFAULT_QUERY.direction;
+  const summary = [
+    ts(`tab.${query.tab}`),
+    ...chips.filter((chip) => chip.key !== 'search').map((chip) => chip.label),
+  ].join(' · ');
 
   const total = failure === null && mode === 'pages' ? (answer?.total ?? null) : null;
   const shown = answer?.items ?? [];
@@ -359,13 +408,23 @@ export function OffersList({
       }}
       views={{
         label: ts('tabs'),
-        activeId: query.tab,
-        onSelect: openView,
-        items: VIEWS.map((id) => ({
-          id,
-          label: `${ts(`tab.${id}`)}${counts === null ? '' : ` (${number(countOf(counts, id))})`}`,
-        })),
-        manage: null,
+        activeId: savedId ?? query.tab,
+        onSelect: (id) => {
+          const filter = saved?.items.find((item) => item.id === id);
+          if (filter !== undefined) openSavedTab(id, queryOf(filter.payload, query.pageSize));
+          else openView(id);
+        },
+        items: [
+          ...VIEWS.map((id) => ({
+            id,
+            label: `${ts(`tab.${id}`)}${counts === null ? '' : ` (${number(countOf(counts, id))})`}`,
+          })),
+          ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
+        ],
+        manage:
+          saved === null
+            ? null
+            : { label: ts('saved.manage-link'), onClick: () => setDialog('manage') },
       }}
       search={{
         label: ts('search.label'),
@@ -404,10 +463,13 @@ export function OffersList({
       }}
       sortedLine={ts('sorted', { field: ts(`sort.field.${query.sort}`), order: sortOrder })}
       chips={
-        filtered
+        filtered || (saved !== null && savedId === null && somethingToSave)
           ? {
               chips,
               clearAll: { label: ts('clear-all'), onClick: clearAll },
+              ...(saved === null || savedId !== null || !somethingToSave
+                ? {}
+                : { save: { label: ts('saved.save-link'), onClick: () => setDialog('save') } }),
               status: total === null || failure !== null ? '' : ts('match', { count: total }),
             }
           : null
@@ -473,7 +535,30 @@ export function OffersList({
             }
           : null
       }
-      dialogs={rowActions.dialogs}
+      dialogs={
+        <>
+          {rowActions.dialogs}
+          {saved === null ? null : (
+            <OffersSavedViews
+              dialog={dialog}
+              onClose={() => setDialog(null)}
+              query={query}
+              summary={summary}
+              saved={saved}
+              csrfToken={csrfToken}
+              onSaved={(filter) => {
+                void loadSaved().then((items) => {
+                  // Only a filter that is in the reloaded list can be the tab on show.
+                  if (items?.some((item) => item.id === filter.id) === true) {
+                    openSavedTab(filter.id, queryOf(filter.payload, query.pageSize));
+                  }
+                });
+              }}
+              onChanged={() => void loadSaved()}
+            />
+          )}
+        </>
+      }
     />
   );
 }

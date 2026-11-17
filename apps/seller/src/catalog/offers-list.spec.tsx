@@ -14,6 +14,7 @@ import { callApi } from '../api/client.ts';
 import { exportFailure, exportQuery } from './offers-bulk.tsx';
 import { OffersList } from './offers-list.tsx';
 import { DEFAULT_QUERY, filtersOf, queryString } from './offers-query.ts';
+import type { SavedFilter, SavedFiltersAnswer } from './offers-saved.ts';
 import type { OfferListPage, OfferListRow } from './types.ts';
 
 const call = vi.mocked(callApi);
@@ -57,9 +58,11 @@ const pageOf = (rows: OfferListRow[], over: Partial<OfferListPage> = {}): OfferL
 });
 const ok = (body: OfferListPage) => ({ ok: true as const, status: 200, body });
 
-function serve(make: (url: string) => OfferListPage) {
+const SAVED_PATH = 'catalog/seller/saved-filters';
+const savedFailure = { ok: false as const, failure: { status: 503, code: 'access.unavailable' } };
+function serve(make: (url: string) => OfferListPage, savedBody: unknown = savedFailure) {
   call.mockImplementation(((_method: string, path: string) =>
-    Promise.resolve(ok(make(path)))));
+    Promise.resolve(path.startsWith(SAVED_PATH) ? savedBody : ok(make(path)))) as never);
 }
 const lastUrl = (): string => {
   const calls = call.mock.calls.filter(
@@ -124,7 +127,7 @@ describe('seller offers list', () => {
     expect(within(rows[2]!).getByText('Changes needed')).toBeTruthy();
     expect(within(rows[2]!).getByText('Yes')).toBeTruthy();
     // The server's page is the first answer: the list asks for nothing more.
-    expect(call).not.toHaveBeenCalled();
+    expect(call.mock.calls.filter(([, path]) => !path.startsWith(SAVED_PATH))).toHaveLength(0);
   });
 
   it('says so when the seller has no offer at all', () => {
@@ -292,7 +295,7 @@ describe('seller offers row actions', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Submit for review…' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Submit offer RICE-5KG for review?')).toBeTruthy();
-    expect(call).not.toHaveBeenCalled();
+    expect(call.mock.calls.filter(([, path]) => !path.startsWith(SAVED_PATH))).toHaveLength(0);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Submit' }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(
@@ -451,5 +454,103 @@ describe('offers query and export rules', () => {
     expect(exportFailure(404, 'offer.not-found', null).key).toBe('not-found');
     expect(exportFailure(403, 'access.denied', null).key).toBe('denied');
     expect(exportFailure(503, 'access.unavailable', null).key).toBe('unavailable');
+  });
+});
+
+const saved = (over: Partial<SavedFilter> = {}): SavedFilter => ({
+  id: '0190a000-0000-7000-8000-0000000000aa',
+  listKey: 'seller.catalog.offers',
+  name: 'Live rice',
+  visibility: 'me',
+  payload: { v: 1, view: 'live', q: 'rice', listed: true, sort: 'sku', direction: 'asc' },
+  ownedByMe: true,
+  canManage: true,
+  createdAt: '2026-11-06T00:00:00Z',
+  updatedAt: '2026-11-06T00:00:00Z',
+  ...over,
+});
+const savedAnswer = (items: SavedFilter[]) => ({
+  ok: true as const,
+  status: 200,
+  body: {
+    items,
+    canShare: false,
+    limits: { perOwner: 50, shared: 20 },
+  } satisfies SavedFiltersAnswer,
+});
+
+describe('seller offers saved filters', () => {
+  it('opens a saved tab with its tab, search, filters and sort', async () => {
+    serve(() => pageOf([row()]), savedAnswer([saved()]));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Live rice' }));
+    await waitFor(() =>
+      expect(paramsOf(lastUrl())).toMatchObject({
+        view: 'live',
+        q: 'rice',
+        listed: 'true',
+        sort: 'sku',
+        direction: 'asc',
+      }),
+    );
+    expect(screen.getByRole('button', { name: 'Live rice' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+  });
+
+  it('never carries the saved filter over to a built-in tab (john: a saved filter belongs to its own tab)', async () => {
+    serve(() => pageOf([row()]), savedAnswer([saved()]));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Live rice' }));
+    await waitFor(() => expect(paramsOf(lastUrl())['q']).toBe('rice'));
+    fireEvent.click(screen.getByRole('button', { name: /^Drafts/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())['view']).toBe('drafts'));
+    expect(paramsOf(lastUrl())).toEqual({
+      view: 'drafts',
+      sort: 'created',
+      direction: 'desc',
+      page: '1',
+      pageSize: '25',
+      paging: 'prev-next',
+    });
+  });
+
+  it('saves the current tab and sort as a private filter and shows it as the open tab', async () => {
+    let items: SavedFilter[] = [];
+    call.mockImplementation(((method: string, path: string, body?: unknown) => {
+      if (path.startsWith(SAVED_PATH) && method === 'POST') {
+        const sent = body as { name: string; payload: SavedFilter['payload'] };
+        items = [saved({ name: sent.name, payload: sent.payload })];
+        return Promise.resolve({ ok: true, status: 201, body: items[0] });
+      }
+      if (path.startsWith(SAVED_PATH)) return Promise.resolve(savedAnswer(items));
+      return Promise.resolve(ok(pageOf([row()])));
+    }) as never);
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: /^Drafts/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: ' Mine ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save filter' }));
+    await screen.findByRole('button', { name: 'Mine' });
+    expect(call).toHaveBeenCalledWith(
+      'POST',
+      SAVED_PATH,
+      {
+        listKey: 'seller.catalog.offers',
+        name: 'Mine',
+        visibility: 'me',
+        payload: { v: 1, view: 'drafts', sort: 'created', direction: 'desc' },
+      },
+      'csrf',
+    );
+  });
+
+  it('offers neither Save filter nor Manage filters when the filters cannot load', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: /^Drafts/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())['view']).toBe('drafts'));
+    expect(screen.queryByRole('button', { name: 'Save filter…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Manage filters' })).toBeNull();
   });
 });
