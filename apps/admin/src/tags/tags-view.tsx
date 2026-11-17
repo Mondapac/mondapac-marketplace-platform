@@ -8,9 +8,9 @@ import {
   EmptyState,
   LoadError,
   Select,
-  SkeletonRows,
   TextField,
   toast,
+  TableSkeleton,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -52,6 +52,7 @@ export function TagsView({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('tags');
+  const tr = useTranslations('route');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [group, setGroup] = useState<GroupFilter>('all');
   const [search, setSearch] = useState('');
@@ -187,7 +188,19 @@ export function TagsView({
           />
         </div>
       </div>
-      {load === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
+      {load === 'loading' ? (
+        <TableSkeleton
+          label={t('loading')}
+          slowLabel={tr('slow')}
+          rows={6}
+          columns={[
+            { header: t('col.name'), kind: 'title' },
+            { header: t('col.group'), kind: 'text' },
+            { header: t('col.synonyms'), kind: 'text' },
+            { header: t('col.status'), kind: 'status' },
+          ]}
+        />
+      ) : null}
       {load === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"
