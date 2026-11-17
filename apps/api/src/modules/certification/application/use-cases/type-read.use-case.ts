@@ -6,6 +6,7 @@ import type { TypeStatus } from '../../domain/registry';
 import type { TypeRevisionContent } from '../../domain/type-revision';
 import type { ChangeReasonRead } from '../ports/registry-cipher';
 import type { StoredProposal, StoredType, StoredTypeRevision } from '../ports/registry.repository';
+import { certificationReview, type CertificationReview } from '../registry/certification-review';
 import {
   adminOf,
   invalid,
@@ -38,6 +39,8 @@ export interface TypeReadOutput {
   readonly pendingRevision: RelaxationProposalView | null;
   /** A reactivation of this inactive type waiting for a second admin (H1). */
   readonly pendingReactivation: RelaxationProposalView | null;
+  /** Whether a published save is reviewed in the Market (the page then asks for a note). */
+  readonly review: CertificationReview;
 }
 
 export type TypeReadFailure =
@@ -85,6 +88,8 @@ export class TypeRead extends UseCase<TypeReadInput, TypeReadOutput, TypeReadFai
     if (typeId === null) return invalid('typeId', 'format');
     const { market } = context;
     const { deps } = this;
+    // Its own read-only unit, before this one (units do not nest).
+    const review = await certificationReview(deps, context);
     const read = await deps.unitOfWork
       .run<Snapshot | null, never>(
         market,
@@ -148,6 +153,7 @@ export class TypeRead extends UseCase<TypeReadInput, TypeReadOutput, TypeReadFai
                 based: null,
                 proposed: null,
               }),
+        review,
       });
     } catch (error) {
       return registryFailure(context, 'certification.type-read.reason', error);

@@ -3,6 +3,7 @@ import type { Clock, Id, IdGenerator, MarketContext } from '@mondapac/shared-ker
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
+import type { SystemRequestRecorder } from '../../../system-requests';
 import { closeProposal, type ProposalAction } from '../../domain/registry';
 import { typeRevisionDiff, type TypeRevisionDiffEntry } from '../../domain/type-revision';
 import type { ChangeReasonRead, RegistryCipher } from '../ports/registry-cipher';
@@ -22,6 +23,11 @@ export interface RegistryDependencies {
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  /**
+   * Admin Inbox › System requests (area certification): a published revision of a type or of a
+   * claim policy opens its review in the unit of the save (certification-review.ts).
+   */
+  readonly review: SystemRequestRecorder;
   /** The Market's `supportedLocales` (a type revision names every one). */
   readonly supportedLocales: (market: MarketContext) => readonly string[];
 }
