@@ -266,6 +266,37 @@ export const CustomerAddressRevealed = defineAuditAction({
   after: { addressId: auditField.id() },
 });
 
+/**
+ * The sections of the customer page that are super lists of another module's data (phase 2b),
+ * as an export's audit row names them.
+ */
+export const CUSTOMER_SECTIONS = [
+  'sign-ins',
+  'saved-items',
+  'cart-reminders',
+  'cart-additions',
+  'consent-history',
+  'assistant-conversations',
+] as const;
+export type CustomerSectionName = (typeof CUSTOMER_SECTIONS)[number];
+
+/**
+ * An admin exported one section of a customer's page (phase 2b) as a file. Target: the customer;
+ * the row names the section, the format, the count and the step-up proof spent. No row content.
+ */
+export const CustomerSectionExported = defineAuditAction({
+  action: 'customers.customer-section.exported',
+  targetType: CUSTOMER_PAGE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    section: auditField.enumOf(CUSTOMER_SECTIONS),
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rowCount: auditField.integer(),
+    stepUpSessionId: auditField.id(),
+    stepUpVerifiedAt: auditField.instant(),
+  },
+});
+
 /** The audit target type of one seller's Customers list (customers management phase 3). */
 export const SELLER_CUSTOMERS_TARGET = 'customers.seller-customers';
 
@@ -352,6 +383,7 @@ export const CUSTOMERS_AUDIT_ACTIONS = [
   CustomerNoteAdded,
   CustomerTimelineExported,
   CustomerAddressRevealed,
+  CustomerSectionExported,
   SellerCustomersExported,
   SellerInviteLinkDrawn,
   SellerAttributionDecided,

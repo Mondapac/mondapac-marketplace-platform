@@ -1,6 +1,24 @@
 import type { CallContext, Id, Population, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { StepUpFailure } from './step-up';
+import type {
+  AdminPasswordResetFailure,
+  CustomerSecurityFailure,
+  CustomerSessionsView,
+  CustomerSignInsPage,
+  CustomerSignInsRequest,
+} from './customer-security';
+
+export type {
+  AdminPasswordResetFailure,
+  CustomerSecurityFailure,
+  CustomerSessionFact,
+  CustomerSessionsView,
+  CustomerSignInFact,
+  CustomerSignInsPage,
+  CustomerSignInsRequest,
+} from './customer-security';
+export { CUSTOMER_SIGN_IN_RESULTS, type CustomerSignInResult } from './customer-security';
 
 /**
  * Who the calling actor is (identity design 8.1 `describeActor`): ids and codes only, never a
@@ -357,6 +375,56 @@ export interface IdentityFacade {
         }
     >
   >;
+
+  /**
+   * One page of a customer's sign-ins of the last 90 days (time, outcome, result, device; never the
+   * address), for the customer page (customers management phase 2b). Rule `permissions
+   * [identity.customer-sign-in.view]`, a platform admin not acting as anyone. Not over HTTP.
+   */
+  adminCustomerSignIns(
+    context: CallContext,
+    request: CustomerSignInsRequest,
+  ): Promise<Result<CustomerSignInsPage, CustomerSecurityFailure | AccessDenied>>;
+
+  /**
+   * The full client address of one of a customer's sign-ins of the last 90 days. Rule
+   * `permissions [identity.customer-sign-in.view, identity.customer-sign-in.reveal]` (protected).
+   * Audited before it is answered. `account.unknown` for a record that is not that customer's.
+   * PERSONAL DATA. Not over HTTP.
+   */
+  adminRevealCustomerSignIn(
+    context: CallContext,
+    input: { readonly accountId: Id<'Account'>; readonly signInId: Id<'SignInRecord'> },
+  ): Promise<
+    Result<
+      { readonly address: string; readonly occurredAt: string },
+      CustomerSecurityFailure | AccessDenied
+    >
+  >;
+
+  /** A customer's live sessions (device and times), at most 50. Rule as `adminCustomerSignIns`. */
+  adminCustomerSessions(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<CustomerSessionsView, CustomerSecurityFailure | AccessDenied>>;
+
+  /**
+   * "Sign out everywhere": every session of the customer account ends. Rule `permissions
+   * [identity.customer-session.end]`, a platform admin not acting as anyone. Audited.
+   */
+  adminSignOutCustomer(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly revokedSessions: number }, CustomerSecurityFailure | AccessDenied>>;
+
+  /**
+   * Sends the customer the password reset mail ("Forgot password?" for them). Rule `permissions
+   * [identity.customer-password-reset.send]`, a platform admin not acting as anyone. Audited.
+   */
+  adminSendCustomerPasswordReset(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly sent: true }, AdminPasswordResetFailure | AccessDenied>>;
 
   /**
    * The directory fields of customer accounts by id, for the `customers` read model. Rule `system`;

@@ -24,6 +24,19 @@ export interface ExclusiveSellerAnswer {
   readonly since: Temporal.Instant;
 }
 
+export type SellerOrderCustomersFailure =
+  AccessDenied | { readonly code: 'validation.failed' } | { readonly code: 'access.unavailable' };
+
+/**
+ * A customer as one shop may know them on its own order pages: the customer's code for that shop
+ * and their first name, nothing else (owner decision 2026-11-17).
+ */
+export interface SellerOrderCustomer {
+  readonly code: string;
+  /** The first word of the display name; null when the account has none. */
+  readonly firstName: string | null;
+}
+
 /** What `customers` publishes to other modules about a customer's orders (ids and instants only). */
 export interface CustomersReadFacade {
   /**
@@ -65,6 +78,16 @@ export interface CustomersReadFacade {
     accountId: Id<'Account'>,
     at: Temporal.Instant,
   ): Promise<Result<ExclusiveSellerAnswer | null, ExclusiveSellerFailure>>;
+
+  /**
+   * The calling shop's code and first name of each customer account, for the shop's own order
+   * pages. Rule `permissions [ordering.seller-order.view]`, a seller session only (not a Login as
+   * Seller session); at most 100 accounts. An account the shop has no customer row for is absent.
+   */
+  sellerOrderCustomers(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<Result<ReadonlyMap<Id<'Account'>, SellerOrderCustomer>, SellerOrderCustomersFailure>>;
 }
 
 /** Nest token of the {@link CustomersReadFacade}, provided and exported by `CustomersModule`. */

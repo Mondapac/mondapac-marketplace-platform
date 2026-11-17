@@ -32,6 +32,11 @@ import {
   type AssistantSetup,
   type SendResult,
 } from './assistant.ts';
+import {
+  BasketProposalCardView,
+  CartActionCardView,
+  CartSummaryCardView,
+} from './cart-card-views.tsx';
 import { dockForLauncher, launcherHidden, launcherLift, movingBarBox } from './launcher-lift.ts';
 
 /** After this long without an answer the widget says it is slow (the server gives up at 25 s). */
@@ -444,6 +449,9 @@ export function AssistantWidget({
       reply.products.length === 0 &&
       reply.sellers.length === 0 &&
       reply.pages.length === 0 &&
+      reply.cartActions.length === 0 &&
+      reply.carts.length === 0 &&
+      reply.baskets.length === 0 &&
       reply.notices.length === 0 &&
       !entry.support;
     if (nothing) {
@@ -545,6 +553,27 @@ export function AssistantWidget({
             ) : null}
           </div>
         ) : null}
+        {reply.baskets.map((card, at) => (
+          <BasketProposalCardView
+            key={`basket-${at}`}
+            card={card}
+            onNavigate={() => sheet && setOpen(false)}
+          />
+        ))}
+        {reply.cartActions.map((card, at) => (
+          <CartActionCardView
+            key={`action-${at}-${card.offerId}`}
+            card={card}
+            onNavigate={() => sheet && setOpen(false)}
+          />
+        ))}
+        {reply.carts.map((card, at) => (
+          <CartSummaryCardView
+            key={`cart-${at}`}
+            card={card}
+            onNavigate={() => sheet && setOpen(false)}
+          />
+        ))}
         {reply.products.length > 0 || pages.length > 0 ? (
           <div className="aslinks">
             {reply.products.length > 0 ? (

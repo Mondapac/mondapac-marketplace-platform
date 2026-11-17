@@ -30,6 +30,24 @@ export const SELLER_ACCOUNT_RESET_SECOND_FACTOR = platform(
 export const CUSTOMER_ACCOUNT_VIEW = platform('identity.customer-account.view', false);
 /** Disable and re-enable a customer account. */
 export const CUSTOMER_ACCOUNT_DISABLE = platform('identity.customer-account.disable', false);
+/**
+ * See one customer's sign-ins of the last 90 days (time, result, device; never the address) and
+ * live sessions (device and times) on the customer page (customers management phase 2b).
+ */
+export const CUSTOMER_SIGN_IN_VIEW = platform('identity.customer-sign-in.view', false);
+/**
+ * See the full client address of one customer sign-in record. Protected: only the Platform
+ * Administrator holds it, or a custom role it grants it to. Every reveal is audited and lands on
+ * the customer's timeline.
+ */
+export const CUSTOMER_SIGN_IN_REVEAL = platform('identity.customer-sign-in.reveal', true);
+/** Sign a customer out of every device (ends every session of the account). Audited. */
+export const CUSTOMER_SESSION_END = platform('identity.customer-session.end', false);
+/** Send a customer the password reset mail to their own verified address. Audited. */
+export const CUSTOMER_PASSWORD_RESET_SEND = platform(
+  'identity.customer-password-reset.send',
+  false,
+);
 /** List admin accounts, their roles and open invitations. */
 export const ADMIN_ACCOUNT_VIEW = platform('identity.admin-account.view', false);
 /** Invite an admin; re-send or revoke. */
@@ -88,6 +106,10 @@ export const IDENTITY_PERMISSIONS = declarePermissions('identity', [
   SELLER_ACCOUNT_RESET_SECOND_FACTOR,
   CUSTOMER_ACCOUNT_VIEW,
   CUSTOMER_ACCOUNT_DISABLE,
+  CUSTOMER_SIGN_IN_VIEW,
+  CUSTOMER_SIGN_IN_REVEAL,
+  CUSTOMER_SESSION_END,
+  CUSTOMER_PASSWORD_RESET_SEND,
   ADMIN_ACCOUNT_VIEW,
   ADMIN_ACCOUNT_INVITE,
   ADMIN_ACCOUNT_DISABLE,

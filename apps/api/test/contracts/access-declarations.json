@@ -611,6 +611,21 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "legal.withdraw-marketing-email-by-link", "rule": "anonymous" },
+  {
+    "name": "lists.column-preference-get",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "lists.column-preference-reset",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "lists.column-preference-save",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "lists.saved-filter-create", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "lists.saved-filter-delete", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "lists.saved-filter-update", "rule": "own-resources", "whenSellerNotApproved": "deny" },

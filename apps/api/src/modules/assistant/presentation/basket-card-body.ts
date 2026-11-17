@@ -26,6 +26,8 @@ const optionBody = (option: BasketOption) => ({
   taxInclusive: option.taxInclusive,
   quantity: option.quantity,
   sizeNote: option.sizeNote,
+  variantId: option.variantId,
+  maxQuantity: option.maxQuantity,
 });
 
 const lineBody = (line: BasketLine) => ({
@@ -41,6 +43,8 @@ const lineBody = (line: BasketLine) => ({
   priceFrom: line.priceFrom,
   taxInclusive: line.taxInclusive,
   sizeNote: line.sizeNote,
+  variantId: line.variantId,
+  maxQuantity: line.maxQuantity,
   alternatives: line.alternatives.map(optionBody),
 });
 

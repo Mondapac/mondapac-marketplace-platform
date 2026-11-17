@@ -1771,6 +1771,20 @@
     }
   },
   {
+    "action": "customers.customer-section.exported",
+    "targetType": "customers.customer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "section": "enumOf(sign-ins|saved-items|cart-reminders|cart-additions|consent-history|assistant-conversations)",
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
     "action": "customers.customers.exported",
     "targetType": "customers.customers-export",
     "targetId": "enumOf(customers-export)",
@@ -1979,6 +1993,16 @@
     }
   },
   {
+    "action": "identity.account.password-reset-sent-by-admin",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "linkId": "id"
+    }
+  },
+  {
     "action": "identity.account.renamed-by-admin",
     "targetType": "identity.account",
     "targetId": "id",
@@ -1986,6 +2010,16 @@
     "before": null,
     "after": {
       "population": "enumOf(customer)"
+    }
+  },
+  {
+    "action": "identity.account.sessions-ended-by-admin",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "revokedSessions": "integer"
     }
   },
   {
@@ -1997,6 +2031,16 @@
     "after": {
       "requestId": "id",
       "revokedSessions": "integer"
+    }
+  },
+  {
+    "action": "identity.account.sign-in-address-revealed",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "signInId": "id"
     }
   },
   {
@@ -2352,7 +2396,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -2364,7 +2408,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -2378,7 +2422,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -2482,7 +2526,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.ordering.orders)",
+      "listKey": "enumOf(admin.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -2495,7 +2539,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.ordering.orders)",
+      "listKey": "enumOf(admin.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -2507,7 +2551,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.ordering.orders)",
+      "listKey": "enumOf(admin.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {

@@ -32,6 +32,9 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'customers.group-name-taken': 409,
   'customers.group-limit-reached': 409,
   'customers.group-archived': 409,
+  // Phase 2b: the sections other modules own.
+  'customers.sign-in-not-found': 404,
+  'customers.password-reset-recently-requested': 429,
   'customers.seller-customer-not-found': 404,
   // Phase 4a.
   'customers.invitation-not-found': 404,
