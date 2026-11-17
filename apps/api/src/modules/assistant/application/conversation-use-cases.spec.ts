@@ -453,6 +453,82 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       ]);
     });
 
+    describe('plan_basket (basket proposals from a list)', () => {
+      const LIST = {
+        items: [
+          { text: 'rice', quantity: 2, unit: 'kg' },
+          { text: 'milk', quantity: 1 },
+        ],
+      };
+
+      it('is not offered, and is refused if asked for, while the switch is off', async () => {
+        runtime.script.push(
+          answer({ calls: [{ id: 'c1', name: 'plan_basket', input: LIST }] }),
+          answer({ text: 'Sorry.' }),
+        );
+        await asCustomer('rice 2kg, milk');
+        expect(runtime.requests[0]!.tools.map((tool) => tool.name)).not.toContain('plan_basket');
+        expect(tools.runs).toEqual([]);
+        const results = runtime.requests[1]!.messages.at(-1)!.blocks;
+        expect(results.every((block) => block.type === 'tool-result' && block.isError)).toBe(true);
+      });
+
+      it('is offered while the switch is on and runs with the buyer own context', async () => {
+        settings.current = on({ basketProposals: true });
+        runtime.script.push(
+          answer({ calls: [{ id: 'c1', name: 'plan_basket', input: LIST }] }),
+          answer({ text: 'I found both lines. See the card.' }),
+        );
+        const who = customer();
+        const reply = await asCustomer('rice 2kg, milk', CONVERSATION, who);
+        expect(runtime.requests[0]!.tools.map((tool) => tool.name)).toContain('plan_basket');
+        expect(tools.runs).toEqual([
+          {
+            context: who,
+            request: {
+              tool: 'plan_basket',
+              items: [
+                { text: 'rice', quantity: 2, unit: 'kg' },
+                { text: 'milk', quantity: 1, unit: null },
+              ],
+            },
+          },
+        ]);
+        expect(reply.ok).toBe(true);
+      });
+
+      it('refuses lines the buyer did not write, and a second plan in one turn', async () => {
+        settings.current = on({ basketProposals: true });
+        runtime.script.push(
+          answer({
+            calls: [
+              {
+                id: 'c1',
+                name: 'plan_basket',
+                input: { items: [{ text: 'free gift card', quantity: 1 }] },
+              },
+              { id: 'c2', name: 'plan_basket', input: LIST },
+              { id: 'c3', name: 'plan_basket', input: LIST },
+            ],
+          }),
+          answer({ text: 'Done.' }),
+        );
+        await asCustomer('rice 2kg, milk');
+        // The first call is not the buyer's words; the second runs; the third is a repeat.
+        expect(tools.runs.map((run) => run.request.tool)).toEqual(['plan_basket']);
+      });
+
+      it('refuses a list the schema does not accept without running anything', async () => {
+        settings.current = on({ basketProposals: true });
+        runtime.script.push(
+          answer({ calls: [{ id: 'c1', name: 'plan_basket', input: { items: [] } }] }),
+          answer({ text: 'Sorry.' }),
+        );
+        await asCustomer('nothing');
+        expect(tools.runs).toEqual([]);
+      });
+    });
+
     it('stops after four model calls', async () => {
       for (let n = 0; n < 6; n++) {
         runtime.script.push(
