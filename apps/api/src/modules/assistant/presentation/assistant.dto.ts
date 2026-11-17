@@ -28,7 +28,8 @@ export class AssistantSettingsFields {
   audiencePercent!: number | null;
   @ApiProperty({
     enum: SCOPES,
-    description: 'Default read-only; cart-suggestions is not available yet.',
+    description:
+      'Default read-only. cart-suggestions adds the cart card and cart-action cards (the buyer confirms each change).',
   })
   scope!: string;
   @ApiProperty({

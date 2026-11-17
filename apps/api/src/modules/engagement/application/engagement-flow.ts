@@ -305,6 +305,9 @@ export async function forgetAccount(
     await deps.settings.lockAccount(context.market, input.accountId, 'exclusive');
     const events = await deps.events.deleteForAccount(context.market, input.accountId);
     await deps.settings.delete(context.market, input.accountId);
+    // The store follows go too (phase 3). No unfollow event: `customers` removes the account's
+    // per-seller rows in its own erasure unit.
+    await deps.follows.deleteForAccount(context.market, input.accountId);
     return ok({ events });
   });
 }

@@ -48,9 +48,10 @@ import {
 import {
   AdminVariantsList,
   VARIANT_ISSUES,
+  VARIANT_SORTS,
 } from '../application/use-cases/admin-variants-list.use-case';
 import { VariantTypeSettingsEdit } from '../application/use-cases/variant-type-settings-edit.use-case';
-import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
+import { closedBody, numericQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 import {
   AdminVariantIssueCountsDto,
@@ -242,14 +243,21 @@ export class VariantAdminController {
     summary: 'List variants',
     description:
       `${NEEDS} The variants of every live product of the Market (paused included), newest ` +
-      `first, with their issues. ${FILTER_DOC} Paged by \`after\` (nextAfter of the last page) ` +
-      'and `limit` (1 to 100, default 25).',
+      `first by default, with their issues and the row \`actions\` of the Actions menu. ${FILTER_DOC} ` +
+      `\`sort\` is one of ${VARIANT_SORTS.join(', ')} with \`direction\`; paged by \`page\` and ` +
+      '`pageSize` (1 to 100, default 25) in the mode `paging` names: `pages` (with a total) or ' +
+      '`prev-next` (no total).',
   })
   @ApiQuery({ name: 'q', required: false })
   @ApiQuery({ name: 'typeCode', required: false })
   @ApiQuery({ name: 'issue', required: false, enum: VARIANT_ISSUES })
-  @ApiQuery({ name: 'after', required: false })
-  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'sort', required: false, enum: VARIANT_SORTS })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'pageSize', required: false })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
+  @ApiQuery({ name: 'after', required: false, deprecated: true })
+  @ApiQuery({ name: 'limit', required: false, deprecated: true })
   @ApiOkResponse({ type: AdminVariantListDto })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -260,7 +268,7 @@ export class VariantAdminController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<AdminVariantListDto> {
-    const result = await this.listVariants.execute(context, pageQuery(query));
+    const result = await this.listVariants.execute(context, numericQuery(query));
     return this.#settle(
       'catalog.admin-variants-list',
       context,

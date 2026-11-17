@@ -4,7 +4,9 @@ import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/test
 import { TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { PublishedStore, SellersFacade } from '../../sellers';
 import type { AssistantProduct, AssistantProductDetail, SearchAssistantFacade } from '../../search';
+import type { CartAssistantFacade } from '../../cart';
 import type { CatalogAssistantFacade } from '../../catalog';
+import type { SettingsFacade } from '../../settings';
 import type { SupportContactFacade } from '../../notifications';
 import type { ServiceAreaDirectory } from '../../../platform/market-config/service-area-directory';
 import { FacadeAssistantTools, sellerText } from './facade-assistant-tools';
@@ -120,6 +122,8 @@ describe.each(TEST_MARKET_IDS)(
         {} as SupportContactFacade,
         sellers,
         areas,
+        {} as CartAssistantFacade,
+        {} as SettingsFacade,
       );
 
     beforeEach(() => {
@@ -155,6 +159,7 @@ describe.each(TEST_MARKET_IDS)(
       const forModel = JSON.parse(outcome.forModel) as { products: Record<string, unknown>[] };
       expect(forModel.products).toEqual([
         {
+          offerId: OFFER,
           productId: PRODUCT,
           sellerId: SELLER,
           name: '<<seller-text Ghee 500 g seller-text>>',

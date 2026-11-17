@@ -19,7 +19,8 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CART_CHECKOUT_FACADE, CartModule } from '../cart';
 import { CatalogModule } from '../catalog';
-import { ListsModule } from '../lists';
+import { ListsModule, registerLists } from '../lists';
+import { ORDERING_LISTS } from './application/saved-views/list-definitions';
 import { COMMISSION_PAYOUTS_FACADE, CommissionPayoutsModule } from '../commission-payouts';
 import { CUSTOMERS_CHECKOUT_FACADE, CustomersModule } from '../customers';
 import { IdentityModule } from '../identity';
@@ -133,6 +134,8 @@ import { OpenObligationsOfQuery } from './application/use-cases/open-obligations
 import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
 import { CustomerOrderAccountsQuery } from './application/use-cases/customer-order-accounts.use-case';
 import { CustomerOrderStatsQuery } from './application/use-cases/customer-order-stats.use-case';
+import { CustomerSellerStatsQuery } from './application/use-cases/customer-seller-stats.use-case';
+import { SellerCustomerOrdersQuery } from './application/use-cases/seller-customer-orders.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { OrderPaymentRefQuery } from './application/use-cases/order-payment-ref.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
@@ -360,6 +363,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.outboxWriterFor('ordering'),
     PersistenceModule.auditWriterFor('ordering'),
     registerAuditActions('ordering', ORDERING_AUDIT_ACTIONS),
+    registerLists('ordering', ORDERING_LISTS),
     registerEvents('ordering', ORDERING_EVENTS),
     // SHP-02/03: the real-time carrier's booking and progress (ordering.inbox).
     registerSubscriptionsFrom(
@@ -418,6 +422,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OrderNoticeQuery,
       CustomerOrderStatsQuery,
       CustomerOrderAccountsQuery,
+      CustomerSellerStatsQuery,
+      SellerCustomerOrdersQuery,
       OrderPaymentRefQuery,
       ShipmentNoticeQuery,
       RefundNoticeQuery,
@@ -580,6 +586,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         RefundNoticeQuery,
         CustomerOrderStatsQuery,
         CustomerOrderAccountsQuery,
+        CustomerSellerStatsQuery,
+        SellerCustomerOrdersQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -596,6 +604,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         refundNotice: RefundNoticeQuery,
         customerStats: CustomerOrderStatsQuery,
         customerAccounts: CustomerOrderAccountsQuery,
+        customerSellers: CustomerSellerStatsQuery,
+        sellerCustomerOrders: SellerCustomerOrdersQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -612,6 +622,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           refundNotice,
           customerStats,
           customerAccounts,
+          customerSellers,
+          sellerCustomerOrders,
         ),
     },
     {
