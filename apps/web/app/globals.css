@@ -10785,3 +10785,230 @@ button.login {
   font-weight: 700;
   vertical-align: middle;
 }
+
+/* Assistant cart cards (S1-F1): a proposed cart change, the buyer's cart and a planned list. */
+.ascc {
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-white);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  font-size: calc(13.5px * var(--cfs));
+  color: var(--sf-ink);
+}
+.ascc small {
+  color: var(--sf-slate);
+  font-size: calc(12.5px * var(--cfs));
+}
+.ascc a:not(.btn) {
+  color: var(--sf-teal);
+  font-weight: 700;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+.ascc-h {
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+.ascc-t {
+  margin: 0;
+  font-weight: 700;
+}
+.ascc-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.ascc-price b {
+  font-size: calc(15px * var(--cfs));
+  font-weight: 800;
+}
+.ascc-units {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.ascc-units legend {
+  padding: 0;
+  font-weight: 700;
+  margin-block-end: 4px;
+}
+.ascc-unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.ascc-unit input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  accent-color: var(--sf-teal);
+}
+.ascc-unit span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ascc-qty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.ascc-qty > div {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--sf-line);
+  border-radius: 999px;
+}
+.ascc-qty button {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: none;
+  color: var(--sf-ink);
+  font-size: 20px;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 999px;
+}
+.ascc-qty button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.ascc-qty output {
+  min-width: 28px;
+  text-align: center;
+  font-weight: 700;
+}
+.ascc-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.ascc-acts .btn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.ascc-choice {
+  display: grid;
+  gap: 8px;
+  border-inline-start: 3px solid var(--sf-saffron);
+  padding-inline-start: 10px;
+}
+.ascc-choice p {
+  margin: 0;
+}
+.ascc-ok,
+.ascc-err {
+  margin: 0;
+  font-weight: 600;
+}
+.ascc-ok {
+  color: var(--sf-teal);
+}
+.ascc-err,
+.ascc-flag {
+  color: var(--sf-error);
+}
+.ascc-group {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--sf-line);
+  padding-top: 8px;
+}
+.ascc-gh,
+.ascc-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+.ascc-total {
+  border-top: 1px solid var(--sf-line);
+  padding-top: 8px;
+  font-weight: 800;
+}
+.ascc-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.ascc-lines > li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  overflow-wrap: anywhere;
+}
+.ascb .ascc-lines > li {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--sf-line);
+  padding-top: 8px;
+}
+.ascb .ascc-lines > li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.ascb-main {
+  display: grid;
+  gap: 2px;
+}
+.ascb-wish {
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--cfs));
+}
+.ascb-off .ascb-main {
+  opacity: 0.6;
+}
+.ascb-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.ascb-swap summary {
+  cursor: pointer;
+  color: var(--sf-teal);
+  font-weight: 700;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.ascb-swap ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.ascb-swap li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.ascb-nf {
+  display: grid;
+  gap: 4px;
+}
+.ascb-nf ul {
+  margin: 0;
+  padding-inline-start: 18px;
+}
