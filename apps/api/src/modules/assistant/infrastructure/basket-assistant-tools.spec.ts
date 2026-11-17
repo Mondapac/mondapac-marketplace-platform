@@ -4,6 +4,7 @@ import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/test
 import { TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AssistantTools, ToolOutcome } from '../application/ports/assistant-tools';
 import type { BasketSources } from '../application/ports/basket-sources';
+import type { SellUnit } from '../domain/basket-units';
 import type { BasketCandidate, CartMode } from '../domain/plan-basket';
 import type { ToolRequest } from '../domain/tools';
 import { BasketAssistantTools } from './basket-assistant-tools';
@@ -40,6 +41,8 @@ describe.each(TEST_MARKET_IDS)('BasketAssistantTools in market %s', (marketCode)
   };
   const results: Record<string, readonly BasketCandidate[] | 'unavailable'> = {};
   const searched: string[] = [];
+  const unitReads: string[] = [];
+  const unitsOf: Record<string, readonly SellUnit[]> = {};
   let mode: CartMode = 'multi-store';
   const sources: BasketSources = {
     candidates: (_context, text) => {
@@ -47,6 +50,13 @@ describe.each(TEST_MARKET_IDS)('BasketAssistantTools in market %s', (marketCode)
       const found = results[text] ?? [];
       return Promise.resolve(
         found === 'unavailable' ? err({ code: 'unavailable' as const }) : ok(found),
+      );
+    },
+    units: (_context, offerId) => {
+      unitReads.push(offerId);
+      const found = unitsOf[offerId];
+      return Promise.resolve(
+        found === undefined ? err({ code: 'unavailable' as const }) : ok(found),
       );
     },
     cartMode: () => Promise.resolve(mode),
@@ -149,6 +159,7 @@ describe.each(TEST_MARKET_IDS)('BasketAssistantTools in market %s', (marketCode)
   it('fails closed when the plan is too slow', async () => {
     const slow: BasketSources = {
       candidates: () => new Promise(() => undefined),
+      units: () => Promise.resolve(err({ code: 'unavailable' as const })),
       cartMode: () => Promise.resolve('multi-store'),
     };
     const outcome = await new BasketAssistantTools(inner, slow, 5).run(
@@ -156,6 +167,32 @@ describe.each(TEST_MARKET_IDS)('BasketAssistantTools in market %s', (marketCode)
       plan([{ text: 'rice', quantity: 1 }]),
     );
     expect(outcome).toMatchObject({ isError: true, cards: [], notices: ['tool-failed'] });
+  });
+
+  it('fills in the sell unit whose price is the price shown, and leaves it null when unread', async () => {
+    unitReads.length = 0;
+    results['rice'] = [cand('o1', 'A', 'Rice', 500, currency)];
+    results['tea'] = [cand('o2', 'A', 'Tea', 300, currency)];
+    unitsOf['o1'] = [
+      { variantId: 'v-big', unitPrice: money(900n, currency), maxQuantity: 3 },
+      { variantId: 'v-one', unitPrice: money(500n, currency), maxQuantity: 7 },
+    ];
+    // o2 has no entry: its units cannot be read, which does not fail the plan.
+    const outcome = await tools().run(
+      context,
+      plan([
+        { text: 'rice', quantity: 1 },
+        { text: 'tea', quantity: 1 },
+      ]),
+    );
+    const card = outcome.cards[0];
+    if (card?.kind !== 'basket-proposal') throw new Error('no card');
+    const lines = card.proposal.stores.flatMap((store) => store.lines);
+    expect(lines.map((line) => [line.offerId, line.variantId, line.maxQuantity])).toEqual([
+      ['o1', 'v-one', 7],
+      ['o2', null, null],
+    ]);
+    expect(unitReads.sort()).toEqual(['o1', 'o2']);
   });
 
   it('never changes anything: the only outcome is a card', async () => {
@@ -183,6 +220,7 @@ describe('BasketAssistantTools load limits', () => {
         new Promise((resolve) => {
           release.push(() => resolve(ok([])));
         }),
+      units: () => Promise.resolve(err({ code: 'unavailable' as const })),
       cartMode: () => Promise.resolve('multi-store'),
     };
     const tools = new BasketAssistantTools(inner, slow, 5_000);
@@ -205,6 +243,7 @@ describe('BasketAssistantTools load limits', () => {
         await new Promise((resolve) => setTimeout(resolve, 30));
         return ok([]);
       },
+      units: () => Promise.resolve(err({ code: 'unavailable' as const })),
       cartMode: () => Promise.resolve('multi-store'),
     };
     const many: ToolRequest = {

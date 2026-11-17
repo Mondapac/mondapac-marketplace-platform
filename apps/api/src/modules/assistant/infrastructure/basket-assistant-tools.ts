@@ -1,6 +1,12 @@
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { AssistantTools, ToolOutcome } from '../application/ports/assistant-tools';
 import type { BasketSources } from '../application/ports/basket-sources';
+import {
+  attachSellUnits,
+  offerIdsOf,
+  type SellUnit,
+  type SellUnitsByOffer,
+} from '../domain/basket-units';
 import { planBasket, type BasketItem, type BasketProposal } from '../domain/plan-basket';
 import { normaliseText } from '../domain/pack-size';
 import type { ToolRequest } from '../domain/tools';
@@ -10,6 +16,8 @@ const SEARCH_CONCURRENCY = 4;
 export const PLAN_TIMEOUT_MS = 12_000;
 /** Plans running at once in this process; more are refused as failed (load shed, not queued). */
 export const MAX_CONCURRENT_PLANS = 8;
+/** Offers whose sell units one plan reads (a 40-line list has at most 40 picks and 80 options). */
+const MAX_UNIT_READS = 60;
 
 const failed: ToolOutcome = Object.freeze({
   forModel: JSON.stringify({ error: 'could not read the store; say so and do not guess' }),
@@ -100,12 +108,35 @@ export class BasketAssistantTools implements AssistantTools {
       candidates.push(answer.value);
     }
     const mode = await this.sources.cartMode(context);
-    const proposal = planBasket({ items, candidates, mode, goal: 'best-match' });
+    const planned = planBasket({ items, candidates, mode, goal: 'best-match' });
+    const units = await this.readUnits(context, offerIdsOf(planned), state);
+    if (state.stopped) return failed;
+    const proposal = attachSellUnits(planned, units);
     return {
       forModel: JSON.stringify(summaryForModel(proposal)),
       isError: false,
       cards: [{ kind: 'basket-proposal', proposal }],
       notices: [],
     };
+  }
+
+  /** The sell units of the proposed offers, a few at a time; an offer that cannot be read has none. */
+  private async readUnits(
+    context: CallContext,
+    offerIds: readonly string[],
+    state: { stopped: boolean },
+  ): Promise<SellUnitsByOffer> {
+    const units = new Map<string, readonly SellUnit[]>();
+    const wanted = offerIds.slice(0, MAX_UNIT_READS);
+    for (let start = 0; start < wanted.length; start += SEARCH_CONCURRENCY) {
+      if (state.stopped) break;
+      const batch = wanted.slice(start, start + SEARCH_CONCURRENCY);
+      const answers = await Promise.all(batch.map((id) => this.sources.units(context, id)));
+      batch.forEach((id, index) => {
+        const answer = answers[index]!;
+        if (answer.ok) units.set(id, answer.value);
+      });
+    }
+    return units;
   }
 }

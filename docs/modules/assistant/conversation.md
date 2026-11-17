@@ -278,7 +278,8 @@ not sent to the model and, if the model asks for it anyway, the call is refused 
 - Evaluation set `buyer-assistant-5`: guard cases for totals, injections and diet claims in a
   list, four list-parsing cases (English, Persian, mixed, bullets and fractions) whose expected calls
   must pass the schema, and twelve invalid calls the parser must refuse.
-- **Variants**: the card carries `offerId`, not `variantId`; cart lines are keyed by both. A
+- **Sell unit** (`variantId`, `maxQuantity`, on every line and option): after planning, the server reads the units of each proposed Offer through the cart's READ facade (`offerUnits`, the buyer's own `CallContext`, at most 60 Offers, 4 at a time, inside the 12 s limit) and puts on the line the unit whose price is the price shown (the cheapest unit for a "from" price). `variantId` is null when the units could not be read or none has that price: the storefront then does not add that line from the card (it opens the product page). `maxQuantity` is the highest quantity one cart line of that unit may hold now; the cart's add still checks again and the storefront shows its answer. Neither field reaches the model.
+- **Variants**: the card carries `offerId` and, when read, `variantId` (see above); cart lines are keyed by both. A
   weight or volume line whose Offer has Variants at different prices (`priceFrom`) is never
   auto-picked (the size is often the Variant): it is an option and the buyer picks. F1 reads the
   product page and settles the Variant (the buyer picks it when there are several) before it adds
