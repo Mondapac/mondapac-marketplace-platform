@@ -6,10 +6,12 @@ import messages from '../../messages/en.json';
 import { expectToast } from '../../test/toast-spy.ts';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+}));
 
 import { callApi, type ApiResult } from '../api/client.ts';
 import { suggestionProblemOf } from './suggestion-errors.ts';
-import type { SuggestionList } from './suggestion-types.ts';
 import { SuggestionsView } from './suggestions-view.tsx';
 import type { Locales } from './types.ts';
 
@@ -22,12 +24,20 @@ const MARKETS: readonly { readonly name: string; readonly locales: Locales }[] =
   { name: 'ZZ', locales: { default: 'ja-JP', supported: ['ja-JP', 'fa-IR'] } },
 ];
 
+let granted: readonly string[] = ['approve', 'map', 'reject'];
 const list = (
   locales: Locales,
   labels: readonly string[] = ['<b>Eid</b> gifts'],
-): SuggestionList => ({
+  total: number = labels.length,
+  hasNext = false,
+) => ({
   locales,
   requiredLocales: [locales.default],
+  total,
+  page: 1,
+  pageSize: 25,
+  paging: 'pages',
+  hasNext,
   items: labels.map((label, index) => ({
     id: id(index + 1),
     version: 3 + index,
@@ -37,6 +47,7 @@ const list = (
     productId: id(8),
     productCode: index === 0 ? 'SKU-1' : null,
     suggestedSlug: 'eid-gifts',
+    actions: granted,
   })),
 });
 
@@ -52,17 +63,24 @@ const fail = (
 const decided = (status: 'approved' | 'mapped' | 'rejected') =>
   ok({ suggestion: { id: id(1), status, version: 4, topicId: null } });
 
-function mount(canApprove = true, noAccess: React.ReactNode = <p>no access here</p>) {
+function mount() {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <SuggestionsView canApprove={canApprove} csrfToken="csrf-1" noAccess={noAccess} />
+      <SuggestionsView csrfToken="csrf-1" paging="pages" accountId={id(99)} marketId="AU" />
     </NextIntlClientProvider>,
   );
 }
 const LABEL = '<b>Eid</b> gifts';
 const click = async (name: string) => fireEvent.click(await screen.findByRole('button', { name }));
+/** Opens the row's Actions menu and picks an item: no row action is a button in the row. */
+async function act(label: string, item: string) {
+  fireEvent.click(await screen.findByRole('button', { name: `Actions for ${label}` }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: item }));
+}
+const posts = () => call.mock.calls.filter(([method]) => method === 'POST');
 
 beforeEach(() => {
+  granted = ['approve', 'map', 'reject'];
   // The search select asks whether the screen is a phone (jsdom has no matchMedia).
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
@@ -70,102 +88,115 @@ beforeEach(() => {
     addEventListener() {},
     removeEventListener() {},
   }));
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
-describe.each(MARKETS)('tag suggestions queue ($name)', ({ locales }) => {
+describe.each(MARKETS)('tag suggestions list ($name)', ({ locales }) => {
   beforeEach(() => {
     vi.clearAllMocks();
     call.mockReset();
   });
 
-  it('shows a skeleton while loading, then the card as plain text with meta and count', async () => {
+  it('shows the seller words as plain text with product, seller and the section tabs', async () => {
     call.mockResolvedValue(ok(list(locales)));
     mount();
-    expect(screen.getByText('Loading tag suggestions')).toBeTruthy();
-    expect(await screen.findByText(`“${LABEL}”`)).toBeTruthy();
+    expect(await screen.findByText(LABEL)).toBeTruthy();
     expect(document.querySelector('b')).toBeNull();
     expect(screen.getByRole('heading', { level: 1, name: 'Tag suggestions' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 3 }).textContent).toBe(`“${LABEL}”`);
-    expect(screen.getByRole('list', { name: 'Open tag suggestions' })).toBeTruthy();
-    expect(screen.getByText('1 waiting')).toBeTruthy();
-    expect(screen.getByText('Open')).toBeTruthy();
-    expect(screen.getByText('Product SKU-1')).toBeTruthy();
+    expect(screen.getByText('SKU-1')).toBeTruthy();
     const seller = screen.getByRole('link', { name: id(9).slice(0, 8) });
     expect(seller.getAttribute('href')).toBe(`/sellers/${id(9)}`);
-    expect(screen.getByRole('link', { name: 'Suggestions (1)' }).getAttribute('href')).toBe(
+    expect(screen.getByRole('link', { name: 'Suggestions' }).getAttribute('href')).toBe(
       '/catalog/tags/suggestions',
     );
     expect(screen.getByRole('link', { name: 'Tags' }).getAttribute('href')).toBe('/catalog/tags');
-    expect(call.mock.calls[0]).toEqual(['GET', 'catalog/admin/topic-suggestions']);
+    const first = new URLSearchParams(call.mock.calls[0]?.[1].split('?')[1]);
+    expect(first.get('page')).toBe('1');
+    expect(first.get('paging')).toBe('pages');
+    expect(first.get('sort')).toBe('created');
+    expect(first.get('direction')).toBe('asc');
   });
 
-  it('names an unknown product and never says topic in the page text', async () => {
+  it('names a suggestion without a product, and never says topic in the page text', async () => {
     call.mockResolvedValue(ok(list(locales, ['A', 'B'])));
     mount();
-    expect(await screen.findByText('Product unknown product')).toBeTruthy();
+    expect(await screen.findByText('No product code')).toBeTruthy();
     expect(document.body.textContent?.toLowerCase()).not.toContain('topic');
-    expect(
-      Array.from(document.querySelectorAll('[aria-label]')).some((element) =>
-        /topic/i.test(element.getAttribute('aria-label') ?? ''),
-      ),
-    ).toBe(false);
   });
 
-  it('shows the empty state', async () => {
-    call.mockResolvedValue(ok({ ...list(locales), items: [] }));
+  it('shows the empty state and a load error', async () => {
+    call.mockResolvedValue(ok(list(locales, [])));
     mount();
     expect(await screen.findByText('No tag suggestions waiting')).toBeTruthy();
-    expect(screen.getByText('When a seller suggests a tag you will see it here.')).toBeTruthy();
-  });
-
-  it('shows a retry when the list cannot be read', async () => {
-    call.mockResolvedValueOnce(fail(500, 'unknown'));
-    mount();
-    expect(await screen.findByText('Could not load tag suggestions.')).toBeTruthy();
-    call.mockResolvedValueOnce(ok(list(locales)));
-    await click('Try again');
-    expect(await screen.findByText(`“${LABEL}”`)).toBeTruthy();
-  });
-
-  it('renders the no-access block on a 403 and sends an ended session to sign-in', async () => {
-    call.mockResolvedValueOnce(fail(403, 'access.denied'));
-    mount();
-    expect(await screen.findByText('no access here')).toBeTruthy();
-    expect(screen.queryByRole('list')).toBeNull();
     cleanup();
-    const assign = vi.fn();
-    vi.stubGlobal('location', { ...window.location, assign });
-    call.mockResolvedValueOnce(fail(401, 'session.invalid'));
+    call.mockResolvedValue(fail(500, 'unknown'));
     mount();
-    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
-    vi.unstubAllGlobals();
+    expect(await screen.findByText(/Could not load tag suggestions/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+
+  it('searches the seller words on the server and moves to the next page', async () => {
+    call.mockResolvedValue(ok(list(locales, ['One'], 40, true)));
+    mount();
+    await screen.findByText('One');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search suggestions' }), {
+      target: { value: 'eid' },
+    });
+    await waitFor(() => expect(call.mock.calls.at(-1)?.[1]).toContain('q=eid'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(call.mock.calls.at(-1)?.[1]).toContain('page=2'));
+  });
+
+  it('keeps every decision in the Actions menu, as many as the API names for the row', async () => {
+    call.mockResolvedValue(ok(list(locales)));
+    mount();
+    await screen.findByText(LABEL);
+    expect(screen.queryByRole('button', { name: /^(Approve|Reject|Map)/ })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: `Actions for ${LABEL}` }));
+    expect(await screen.findByRole('menuitem', { name: 'Approve…' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Map to existing tag…' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Reject…' })).toBeTruthy();
+    cleanup();
+    granted = ['map', 'reject'];
+    call.mockResolvedValue(ok(list(locales)));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: `Actions for ${LABEL}` }));
+    expect(await screen.findByRole('menuitem', { name: 'Map to existing tag…' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Approve…' })).toBeNull();
   });
 
   it('approves with the group, name and slug, the version seen, and the CSRF token', async () => {
     call.mockResolvedValueOnce(ok(list(locales)));
     mount();
-    await click(`Approve “${LABEL}”`);
-    await waitFor(() =>
-      expect((document.activeElement as HTMLInputElement).getAttribute('name')).toBe('name'),
-    );
-    expect(screen.getByLabelText<HTMLInputElement>(/Tag name/).value).toBe(LABEL);
-    expect(screen.getByLabelText<HTMLInputElement>('Slug').value).toBe('eid-gifts');
-    expect(screen.getByText(/default language/)).toBeTruthy();
-    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: 'Create tag' });
+    await act(LABEL, 'Approve…');
+    const dialog = await screen.findByRole('dialog', { name: `Approve “${LABEL}”?` });
+    // Focus starts on Cancel, not on the red button.
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(within(dialog).getByLabelText<HTMLInputElement>(/Tag name/).value).toBe(LABEL);
+    expect(within(dialog).getByLabelText<HTMLInputElement>('Slug').value).toBe('eid-gifts');
+    expect(within(dialog).getByText(/default language/)).toBeTruthy();
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Create tag' });
     expect(confirm.disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText(/Tag name/), { target: { value: ' Eid gifts ' } });
-    fireEvent.change(screen.getByLabelText(/Group/), { target: { value: 'occasion' } });
-    fireEvent.change(screen.getByLabelText('Slug'), { target: { value: ' Eid-Gifts ' } });
+    fireEvent.change(within(dialog).getByLabelText(/Tag name/), {
+      target: { value: ' Eid gifts ' },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/Group/), { target: { value: 'occasion' } });
+    fireEvent.change(within(dialog).getByLabelText('Slug'), { target: { value: ' Eid-Gifts ' } });
     expect(confirm.disabled).toBe(false);
     call.mockResolvedValueOnce(decided('approved'));
-    call.mockResolvedValueOnce(ok({ ...list(locales), items: [] }));
+    call.mockResolvedValueOnce(ok(list(locales, [])));
     fireEvent.click(confirm);
     await waitFor(() => expect(screen.getByText('No tag suggestions waiting')).toBeTruthy());
-    expect(call.mock.calls[1]).toEqual([
+    expect(posts()[0]).toEqual([
       'POST',
       `catalog/admin/topic-suggestions/${id(1)}/approve`,
       { version: 3, group: 'occasion', name: 'Eid gifts', slug: 'eid-gifts' },
@@ -177,29 +208,22 @@ describe.each(MARKETS)('tag suggestions queue ($name)', ({ locales }) => {
   it('omits an emptied slug and blocks a bad one', async () => {
     call.mockResolvedValueOnce(ok(list(locales)));
     mount();
-    await click(`Approve “${LABEL}”`);
-    fireEvent.change(screen.getByLabelText(/Group/), { target: { value: 'use' } });
-    fireEvent.change(screen.getByLabelText('Slug'), { target: { value: 'bad--slug' } });
-    expect(screen.getByText('Use lower case letters, digits and single hyphens.')).toBeTruthy();
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Create tag' }).disabled).toBe(
-      true,
-    );
-    fireEvent.change(screen.getByLabelText('Slug'), { target: { value: '' } });
+    await act(LABEL, 'Approve…');
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/Group/), { target: { value: 'use' } });
+    fireEvent.change(within(dialog).getByLabelText('Slug'), { target: { value: 'bad--slug' } });
+    expect(
+      within(dialog).getByText('Use lower case letters, digits and single hyphens.'),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Create tag' }).disabled,
+    ).toBe(true);
+    fireEvent.change(within(dialog).getByLabelText('Slug'), { target: { value: '' } });
     call.mockResolvedValueOnce(decided('approved'));
-    call.mockResolvedValueOnce(ok({ ...list(locales), items: [] }));
-    await click('Create tag');
-    await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
-    expect(call.mock.calls[1]?.[2]).toEqual({ version: 3, group: 'use', name: LABEL });
-  });
-
-  it('disables Approve with a help line when the admin may not manage tags', async () => {
-    call.mockResolvedValueOnce(ok(list(locales)));
-    mount(false);
-    const approve = await screen.findByRole<HTMLButtonElement>('button', {
-      name: `Approve “${LABEL}”`,
-    });
-    expect(approve.disabled).toBe(true);
-    expect(screen.getByText('Approving needs permission to manage tags.')).toBeTruthy();
+    call.mockResolvedValueOnce(ok(list(locales, [])));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create tag' }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0]?.[2]).toEqual({ version: 3, group: 'use', name: LABEL });
   });
 
   it('maps to an existing active tag found by search', async () => {
@@ -226,18 +250,19 @@ describe.each(MARKETS)('tag suggestions queue ($name)', ({ locales }) => {
       maxSynonyms: 10,
     };
     call.mockResolvedValue(ok(tags));
-    await click(`Map “${LABEL}” to an existing tag`);
+    await act(LABEL, 'Map to existing tag…');
+    const dialog = await screen.findByRole('dialog');
     await waitFor(() =>
       expect(call.mock.calls[1]?.[1]).toBe('catalog/admin/topics?status=active&limit=25'),
     );
-    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: 'Map tag' });
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Map tag' });
     expect(confirm.disabled).toBe(true);
-    fireEvent.click(screen.getByRole('combobox'));
+    fireEvent.click(within(dialog).getByRole('combobox'));
     fireEvent.click(await screen.findByRole('option', { name: /Eid/ }));
     expect(confirm.disabled).toBe(false);
     call.mockReset();
     call.mockResolvedValueOnce(decided('mapped'));
-    call.mockResolvedValueOnce(ok({ ...list(locales), items: [] }));
+    call.mockResolvedValueOnce(ok(list(locales, [])));
     fireEvent.click(confirm);
     await waitFor(() => expect(screen.getByText('No tag suggestions waiting')).toBeTruthy());
     expect(call.mock.calls[0]).toEqual([
@@ -249,41 +274,39 @@ describe.each(MARKETS)('tag suggestions queue ($name)', ({ locales }) => {
     await expectToast('Suggestion mapped to the tag. The seller has been emailed.');
   });
 
-  it('disables mapping when there is no active tag', async () => {
+  it('disables mapping when there is no active tag, and shows a picker error', async () => {
     call.mockResolvedValueOnce(ok(list(locales)));
     mount();
     call.mockResolvedValue(
       ok({ items: [], nextAfterId: null, locales, groups: [], maxSynonyms: 10 }),
     );
-    await click(`Map “${LABEL}” to an existing tag`);
+    await act(LABEL, 'Map to existing tag…');
     expect(await screen.findByText('There are no active tags to map to.')).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Map tag' }).disabled).toBe(true);
-  });
-
-  it('shows a picker error when the tags cannot be loaded', async () => {
-    call.mockResolvedValueOnce(ok(list(locales)));
-    mount();
+    await click('Cancel');
     call.mockResolvedValue(fail(500, 'unknown'));
-    await click(`Map “${LABEL}” to an existing tag`);
-    fireEvent.click(screen.getByRole('combobox'));
+    await act(LABEL, 'Map to existing tag…');
+    fireEvent.click(await screen.findByRole('combobox'));
     expect(await screen.findByText('Could not load tags. Try again.')).toBeTruthy();
   });
 
   it('rejects with a reason, counted, and sends the trimmed reason', async () => {
     call.mockResolvedValueOnce(ok(list(locales)));
     mount();
-    await click(`Reject “${LABEL}”`);
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('textbox')));
-    expect(screen.getByText('0 / 300')).toBeTruthy();
-    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: 'Reject suggestion' });
+    await act(LABEL, 'Reject…');
+    const dialog = await screen.findByRole('dialog', { name: `Reject “${LABEL}”?` });
+    expect(within(dialog).getByText('0 / 300')).toBeTruthy();
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', {
+      name: 'Reject suggestion',
+    });
     expect(confirm.disabled).toBe(true);
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: '  Too broad ' } });
-    expect(screen.getByText('12 / 300')).toBeTruthy();
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: '  Too broad ' } });
+    expect(within(dialog).getByText('12 / 300')).toBeTruthy();
     call.mockResolvedValueOnce(decided('rejected'));
-    call.mockResolvedValueOnce(ok({ ...list(locales), items: [] }));
+    call.mockResolvedValueOnce(ok(list(locales, [])));
     fireEvent.click(confirm);
     await waitFor(() => expect(screen.getByText('No tag suggestions waiting')).toBeTruthy());
-    expect(call.mock.calls[1]).toEqual([
+    expect(posts()[0]).toEqual([
       'POST',
       `catalog/admin/topic-suggestions/${id(1)}/reject`,
       { version: 3, reason: 'Too broad' },
@@ -292,51 +315,29 @@ describe.each(MARKETS)('tag suggestions queue ($name)', ({ locales }) => {
     await expectToast('Suggestion rejected. The seller has been emailed.');
   });
 
-  it('cancels with Escape or Cancel and returns focus to the first action', async () => {
+  it('sends nothing when the dialog is cancelled', async () => {
     call.mockResolvedValueOnce(ok(list(locales)));
     mount();
-    await click(`Reject “${LABEL}”`);
-    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
-    expect(screen.queryByRole('textbox')).toBeNull();
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        screen.getByRole('button', { name: `Approve “${LABEL}”` }),
-      ),
-    );
-    await click(`Reject “${LABEL}”`);
+    await act(LABEL, 'Reject…');
     await click('Cancel');
-    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /Reject/ })).toBeNull();
+    expect(posts()).toHaveLength(0);
   });
 
   it('sends a decision once on a double click and locks the field while it runs', async () => {
     call.mockResolvedValueOnce(ok(list(locales)));
     mount();
-    await click(`Reject “${LABEL}”`);
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'No' } });
+    await act(LABEL, 'Reject…');
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'No' } });
     call.mockResolvedValueOnce(decided('rejected'));
-    call.mockResolvedValue(ok({ ...list(locales), items: [] }));
-    const button = screen.getByRole('button', { name: 'Reject suggestion' });
+    call.mockResolvedValue(ok(list(locales, [])));
+    const button = within(dialog).getByRole('button', { name: 'Reject suggestion' });
     fireEvent.click(button);
     fireEvent.click(button);
-    expect(screen.getByRole<HTMLTextAreaElement>('textbox').readOnly).toBe(true);
+    expect(within(dialog).getByRole<HTMLTextAreaElement>('textbox').readOnly).toBe(true);
     await waitFor(() => expect(screen.getByText('No tag suggestions waiting')).toBeTruthy());
-    expect(call.mock.calls.filter(([method]) => method === 'POST')).toHaveLength(1);
-  });
-
-  it('moves focus to the next card after a decision', async () => {
-    call.mockResolvedValueOnce(ok(list(locales, ['First', 'Second'])));
-    mount();
-    await click('Reject “First”');
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'No' } });
-    call.mockResolvedValueOnce(decided('rejected'));
-    const rest = list(locales, ['Second']);
-    call.mockResolvedValueOnce(
-      ok({ ...rest, items: rest.items.map((item) => ({ ...item, id: id(2), version: 4 })) }),
-    );
-    await click('Reject suggestion');
-    await waitFor(() =>
-      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Approve “Second”' })),
-    );
+    expect(posts()).toHaveLength(1);
   });
 
   it.each([
@@ -346,70 +347,57 @@ describe.each(MARKETS)('tag suggestions queue ($name)', ({ locales }) => {
   ])('refreshes the list with a notice on %s', async (code, status) => {
     call.mockResolvedValueOnce(ok(list(locales)));
     mount();
-    await click(`Reject “${LABEL}”`);
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'No' } });
+    await act(LABEL, 'Reject…');
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'No' } });
     call.mockResolvedValueOnce(fail(status, code));
-    call.mockResolvedValueOnce(ok({ ...list(locales), items: [] }));
-    await click('Reject suggestion');
-    expect(
-      await screen.findByText(
-        'That suggestion was already decided or changed by someone else. The list has been refreshed.',
-      ),
-    ).toBeTruthy();
+    call.mockResolvedValueOnce(ok(list(locales, [])));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reject suggestion' }));
+    await expectToast(
+      'That suggestion was already decided or changed by someone else. The list has been refreshed.',
+      'error',
+    );
     await waitFor(() => expect(screen.getByText('No tag suggestions waiting')).toBeTruthy());
-    expect(call.mock.calls[2]?.[0]).toBe('GET');
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('says the list may be out of date when the refresh fails', async () => {
+  it('keeps the dialog and its inputs open on a refusal the admin can fix', async () => {
     call.mockResolvedValueOnce(ok(list(locales)));
     mount();
-    await click(`Reject “${LABEL}”`);
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'No' } });
-    call.mockResolvedValueOnce(decided('rejected'));
-    call.mockResolvedValueOnce(fail(500, 'unknown'));
-    await click('Reject suggestion');
-    expect(
-      await screen.findByText(/The list may be out of date. Reload to see the latest./),
-    ).toBeTruthy();
-    expect(screen.getByRole('list', { name: 'Open tag suggestions' })).toBeTruthy();
-    call.mockResolvedValueOnce(ok(list(locales, ['Fresh'])));
-    fireEvent.click(within(screen.getByRole('alert')).getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByText('“Fresh”')).toBeTruthy();
-  });
-
-  it('keeps the form and its inputs open on a refusal the admin can fix', async () => {
-    call.mockResolvedValueOnce(ok(list(locales)));
-    mount();
-    await click(`Approve “${LABEL}”`);
-    fireEvent.change(screen.getByLabelText(/Group/), { target: { value: 'use' } });
+    await act(LABEL, 'Approve…');
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/Group/), { target: { value: 'use' } });
     call.mockResolvedValueOnce(
       fail(422, 'topic.claim-word', [{ path: 'name', code: 'claim-word' }]),
     );
-    await click('Create tag');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create tag' }));
     expect(
-      await screen.findByText(
+      await within(dialog).findByText(
         'A tag name cannot claim a certification such as halal or organic. Change the name or slug.',
       ),
     ).toBeTruthy();
-    expect(screen.getByText('Check this field.')).toBeTruthy();
-    expect(screen.getByLabelText<HTMLInputElement>(/Tag name/).value).toBe(LABEL);
+    expect(within(dialog).getByText('Check this field.')).toBeTruthy();
+    expect(within(dialog).getByLabelText<HTMLInputElement>(/Tag name/).value).toBe(LABEL);
   });
 
-  it('offers Map to existing tag when the name is taken', async () => {
+  it('offers Map to existing tag when the name is taken, and switches the dialog to it', async () => {
     call.mockResolvedValueOnce(ok(list(locales)));
     mount();
-    await click(`Approve “${LABEL}”`);
-    fireEvent.change(screen.getByLabelText(/Group/), { target: { value: 'use' } });
+    await act(LABEL, 'Approve…');
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/Group/), { target: { value: 'use' } });
     call.mockResolvedValueOnce(fail(409, 'topic.term-taken'));
-    await click('Create tag');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create tag' }));
     expect(
-      await screen.findByText(/already exists. Map the suggestion to it instead/),
+      await within(dialog).findByText(/already exists. Map the suggestion to it instead/),
     ).toBeTruthy();
-    await waitFor(() =>
-      expect(document.activeElement).toBe(
-        screen.getByRole('button', { name: `Map “${LABEL}” to an existing tag` }),
-      ),
+    call.mockResolvedValue(
+      ok({ items: [], nextAfterId: null, locales, groups: [], maxSynonyms: 10 }),
     );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Map to existing tag…' }));
+    expect(
+      await screen.findByRole('dialog', { name: `Map “${LABEL}” to an existing tag?` }),
+    ).toBeTruthy();
   });
 });
 
