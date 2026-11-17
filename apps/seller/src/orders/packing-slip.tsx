@@ -145,10 +145,13 @@ export function PackingSlip({ order }: { readonly order: SellerOrderView }) {
 export function PackingSlips({
   orders,
   skipped,
+  unreadable = 0,
 }: {
   readonly orders: readonly SellerOrderView[];
   /** How many of the selected orders have no slip. */
   readonly skipped: number;
+  /** How many could not be read just now; the page can be reloaded to try again. */
+  readonly unreadable?: number;
 }) {
   const t = useTranslations('orders.slip');
   return (
@@ -162,6 +165,11 @@ export function PackingSlips({
         <p className="text-fg-muted">{t('many-count', { count: orders.length })}</p>
         {skipped === 0 ? null : (
           <p className="text-fg-muted">{t('many-skipped', { count: skipped })}</p>
+        )}
+        {unreadable === 0 ? null : (
+          <p role="status" className="text-fg-muted">
+            {t('many-unreadable', { count: unreadable })}
+          </p>
         )}
       </div>
       {orders.map((order) => (

@@ -2639,7 +2639,8 @@
       "back-to-list": "Back to orders",
       "many-title": "Packing slips",
       "many-count": "{count, plural, one {# packing slip} other {# packing slips}}",
-      "many-skipped": "{count, plural, one {# order was left out: it was sent or refunded in full.} other {# orders were left out: they were sent or refunded in full.}}"
+      "many-skipped": "{count, plural, one {# order was left out: it was sent or refunded in full.} other {# orders were left out: they were sent or refunded in full.}}",
+      "many-unreadable": "{count, plural, one {# order could not be read just now.} other {# orders could not be read just now.}} Reload this page to try again."
     },
     "unavailable": {
       "card": "Cannot supply an item?",

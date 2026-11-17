@@ -49,5 +49,5 @@ export default async function PackingSlipsPage({
     );
   }
   if (page.kind === 'no-access') return message('no-access');
-  return <PackingSlips orders={page.orders} skipped={page.skipped} />;
+  return <PackingSlips orders={page.orders} skipped={page.skipped} unreadable={page.unreadable} />;
 }

@@ -71,6 +71,21 @@ describe('loadPackingSlips', () => {
     mocks.serverGet.mockResolvedValue({ kind: 'not-found' });
     const result = await loadPackingSlips([id(1), id(2)]);
     expect(result.kind === 'ok' && result.skipped).toBe(2);
+    expect(result.kind === 'ok' && result.unreadable).toBe(0);
+  });
+
+  it('counts a failed read apart from a missing slip, so the seller can retry', async () => {
+    mocks.serverGet.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith(id(1))
+          ? { kind: 'unavailable' }
+          : path.endsWith(id(2))
+            ? { kind: 'not-found' }
+            : { kind: 'ok', body: paid(3) },
+      ),
+    );
+    const result = await loadPackingSlips([id(1), id(2), id(3)]);
+    expect(result.kind === 'ok' && [result.skipped, result.unreadable]).toEqual([1, 1]);
   });
 
   it('shows no access without the order view key, and reads nothing', async () => {

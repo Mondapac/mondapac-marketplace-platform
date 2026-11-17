@@ -105,6 +105,8 @@ export type PackingSlipsPage =
       readonly orders: readonly SellerOrderView[];
       /** How many of the asked orders have none (sent, refunded in full, not the shop's). */
       readonly skipped: number;
+      /** How many could not be read now (a failed read, not a missing slip): reload to try again. */
+      readonly unreadable: number;
     }
   | { readonly kind: 'no-access'; readonly session: SellerSession }
   | { readonly kind: 'unavailable' };
@@ -130,5 +132,13 @@ export async function loadPackingSlips(ids: readonly string[]): Promise<PackingS
   const orders = results.flatMap((result) =>
     result.kind === 'ok' && packingSlipAvailable(result.body) ? [result.body] : [],
   );
-  return { kind: 'ok', session, orders, skipped: unique.length - orders.length };
+  // A read that failed says nothing about the order: it is counted apart from "no slip".
+  const unreadable = results.filter((result) => result.kind === 'unavailable').length;
+  return {
+    kind: 'ok',
+    session,
+    orders,
+    skipped: unique.length - orders.length - unreadable,
+    unreadable,
+  };
 }
