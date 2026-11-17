@@ -647,7 +647,9 @@ export class AttributeAdminController {
       'product code and name) judges the published products up to 10,000 and gives `total` ' +
       '(null in prev-next mode); `complete: false` says the cap was hit and `total` is partial. ' +
       'The older keyset read (`afterId`, `limit`) reads at most 2000 products a call: follow ' +
-      '`nextAfterId` until it is null. It cannot be mixed with the page keys.',
+      '`nextAfterId` until it is null; it starts only when `afterId` or `limit` is sent, so a call with no ' +
+      'keys is a page read. It cannot be mixed with the page keys. When `complete` is false the ' +
+      'order and `total` cover only the first 10,000 products by id.',
   })
   @ApiQuery({ name: 'sellerId', required: false })
   @ApiQuery({ name: 'familyCode', required: false, description: 'A feature set code.' })

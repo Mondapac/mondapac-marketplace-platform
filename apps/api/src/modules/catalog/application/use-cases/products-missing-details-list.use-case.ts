@@ -333,6 +333,7 @@ export class ProductsMissingDetailsList extends UseCase<
         exhausted = true;
         break;
       }
+      let pageFull = false;
       for (const [index, product] of batch.entries()) {
         const resolved = await session.resolve(product.primaryCategoryId);
         const familyCode = resolved.ok ? resolved.familyCode : product.revisionFamilyCode;
@@ -365,9 +366,22 @@ export class ProductsMissingDetailsList extends UseCase<
         if (!filter.all && items.length >= filter.limit) {
           // The page is full; the rest of this batch is read by the next call.
           exhausted = index === batch.length - 1 && batch.length < requested;
+          pageFull = true;
           break;
         }
       }
+      // A short batch is the end of the Market: no empty read is needed to know it.
+      if (!pageFull && batch.length < requested) exhausted = true;
+    }
+    if (filter.all && !exhausted && scanned >= scanMax) {
+      // The cap was reached on a full batch: one row past it tells whether the Market ended there.
+      const probe = await this.deps.detailsGapReader.published(market, {
+        afterId: cursor,
+        sellerId: filter.sellerId,
+        limit: 1,
+        locale,
+      });
+      exhausted = probe.length === 0;
     }
     return {
       items,
