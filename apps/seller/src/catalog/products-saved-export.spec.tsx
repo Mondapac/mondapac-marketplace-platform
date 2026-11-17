@@ -287,7 +287,9 @@ describe('row selection and Bulk action', () => {
 });
 
 describe('export', () => {
-  const day = dayInZone(new Date(), 'Australia/Brisbane');
+  // Read when asserting, not when the file loads: a run that crosses the seller's midnight
+  // would otherwise compare two different days.
+  const today = () => dayInZone(new Date(), 'Australia/Brisbane');
   const fetched: string[] = [];
   let saveNames: string[];
   let made: Blob[];
@@ -362,7 +364,7 @@ describe('export', () => {
       paused: 'false',
       typeCode: 'grocery',
     });
-    expect(saveNames).toEqual([`products-${day}.csv`]);
+    expect(saveNames).toEqual([`products-${today()}.csv`]);
     expect(made[0]!.type).toBe('text/csv;charset=utf-8');
     expect(click).toHaveBeenCalledTimes(1);
     click.mockRestore();
@@ -375,7 +377,7 @@ describe('export', () => {
     );
     const click = stubDownload(fileOk);
     const dialog = await exportFromHeader();
-    await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(6));
+    await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(7));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
     await screen.findByText('143 products exported.');
     expect(params().get('columns')).toBe('product,offers,created');
@@ -410,7 +412,7 @@ describe('export', () => {
       direction: 'desc',
       productIds: `${ID},${ID2}`,
     });
-    expect(saveNames).toEqual([`products-${day}.xlsx`]);
+    expect(saveNames).toEqual([`products-${today()}.xlsx`]);
     expect(made[0]!.type).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     expect(new Uint8Array(await made[0]!.arrayBuffer())).toEqual(bytes);
     // An export changes nothing: the selection stays.
