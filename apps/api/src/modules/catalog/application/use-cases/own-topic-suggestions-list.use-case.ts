@@ -2,20 +2,15 @@ import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import { pageWindow, type ListPagingMode } from '../../../../platform/list-query';
+import { readOwnSuggestionList } from '../lists/own-suggestion-list-input';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_VIEW } from '../../contracts/permissions';
 import {
   MAX_OPEN_SUGGESTIONS_PER_SELLER,
   type SuggestionStatus,
 } from '../../domain/topic-suggestion';
-import {
-  DEFAULT_PAGE_SIZE,
-  invalid,
-  isoOf,
-  MAX_PAGE_SIZE,
-  sellerOf,
-  type ValidationFailure,
-} from '../own-reads/own-reads.shared';
+import { isoOf, sellerOf, type ValidationFailure } from '../own-reads/own-reads.shared';
 import type { TopicReader } from '../ports/topic.reader';
 import type { TopicSuggestionStore } from '../ports/topic-suggestion.store';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
@@ -23,10 +18,15 @@ import type { OwnCatalogReader } from '../ports/own-catalog.reader';
 import type { ProductRepository } from '../ports/product.repository';
 import { draftNameOf } from './own-products-list.use-case';
 
-const STATUSES: readonly SuggestionStatus[] = ['open', 'approved', 'mapped', 'rejected'];
-
 export interface OwnTopicSuggestionsListInput {
   readonly status?: unknown;
+  readonly q?: unknown;
+  readonly search?: unknown;
+  readonly sort?: unknown;
+  readonly direction?: unknown;
+  readonly page?: unknown;
+  readonly pageSize?: unknown;
+  readonly paging?: unknown;
   readonly afterId?: unknown;
   readonly limit?: unknown;
 }
@@ -60,6 +60,12 @@ export interface OwnTopicSuggestionsListOutput {
   readonly items: readonly OwnSuggestionItem[];
   /** The `afterId` of the next page; null on the last page. */
   readonly nextAfterId: string | null;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly paging: ListPagingMode;
+  readonly hasNext: boolean;
+  /** The suggestions the filters keep, over all pages; null in `prev-next` mode and on a cursor read. */
+  readonly total: number | null;
   /** How many of the seller's suggestions wait for a decision, whatever the filter. */
   readonly openCount: number;
   readonly maxOpen: number;
@@ -76,52 +82,6 @@ export interface OwnTopicSuggestionsListDependencies {
   readonly products: ProductRepository;
   readonly ownReader: OwnCatalogReader;
   readonly policy: CatalogMarketPolicy;
-}
-
-interface Page {
-  readonly status: SuggestionStatus | null;
-  readonly afterId: Id<'TopicSuggestion'> | null;
-  readonly limit: number;
-}
-
-/** A closed query: an optional status, previous-page id and size in 1 to 50. */
-function parseQuery(input: unknown): Result<Page, ValidationFailure> {
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-    return invalid('query', 'type');
-  }
-  const record = input as Record<string, unknown>;
-  for (const key of Object.keys(record)) {
-    if (key !== 'status' && key !== 'afterId' && key !== 'limit') return invalid(key, 'unknown');
-  }
-  let status: SuggestionStatus | null = null;
-  const rawStatus = record['status'];
-  if (rawStatus !== undefined && rawStatus !== null) {
-    if (typeof rawStatus !== 'string' || !STATUSES.includes(rawStatus as SuggestionStatus)) {
-      return invalid('status', 'enum');
-    }
-    status = rawStatus as SuggestionStatus;
-  }
-  let afterId: Id<'TopicSuggestion'> | null = null;
-  const rawAfter = record['afterId'];
-  if (rawAfter !== undefined && rawAfter !== null) {
-    const parsed = typeof rawAfter === 'string' ? parseId<'TopicSuggestion'>(rawAfter) : null;
-    if (parsed === null || !parsed.ok) return invalid('afterId', 'format');
-    afterId = parsed.value;
-  }
-  let limit = DEFAULT_PAGE_SIZE;
-  const rawLimit = record['limit'];
-  if (rawLimit !== undefined && rawLimit !== null) {
-    if (
-      typeof rawLimit !== 'number' ||
-      !Number.isInteger(rawLimit) ||
-      rawLimit < 1 ||
-      rawLimit > MAX_PAGE_SIZE
-    ) {
-      return invalid('limit', 'range');
-    }
-    limit = rawLimit;
-  }
-  return ok({ status, afterId, limit });
 }
 
 /**
@@ -171,8 +131,12 @@ export class OwnTopicSuggestionsList extends UseCase<
   ): Promise<Result<OwnTopicSuggestionsListOutput, OwnTopicSuggestionsListFailure>> {
     const sellerId = sellerOf(context);
     if (sellerId === null) return err({ code: 'access.denied' });
-    const page = parseQuery(input ?? {});
-    if (!page.ok) return page;
+    const query = readOwnSuggestionList(input ?? {}, (value) => {
+      const parsed = typeof value === 'string' ? parseId<'TopicSuggestion'>(value) : null;
+      return parsed !== null && parsed.ok ? parsed.value : null;
+    });
+    if (!query.ok) return query;
+    const { status, read: listRead } = query.value;
     const { market } = context;
     let locales: { default: string; supported: readonly string[] };
     try {
@@ -185,12 +149,50 @@ export class OwnTopicSuggestionsList extends UseCase<
       market,
       async () => {
         const { topicSuggestions: suggestions, topicReader, products, ownReader } = this.deps;
-        // One extra row tells whether another page follows.
-        const rows = await suggestions.listOfSeller(market, sellerId, {
-          ...page.value,
-          limit: page.value.limit + 1,
-        });
-        const shown = rows.slice(0, page.value.limit);
+        const q = listRead.q;
+        let rows: Awaited<ReturnType<typeof suggestions.listOfSeller>>;
+        let shown: typeof rows;
+        let total: number | null = null;
+        let pageNo = 1;
+        let pageSize: number;
+        let paging: 'pages' | 'prev-next' = 'prev-next';
+        let hasNext: boolean;
+        let sorted = true;
+        if (listRead.mode === 'cursor') {
+          // One extra row tells whether another page follows.
+          rows = await suggestions.listOfSeller(market, sellerId, {
+            status,
+            afterId: listRead.afterId as Id<'TopicSuggestion'> | null,
+            limit: listRead.limit + 1,
+          });
+          shown = rows.slice(0, listRead.limit);
+          pageSize = listRead.limit;
+          hasNext = rows.length > shown.length;
+        } else {
+          const paged = listRead.paged;
+          const window = pageWindow(paged);
+          const filter = { status, text: q };
+          if (paged.paging === 'pages')
+            total = await suggestions.countOfSeller(market, sellerId, filter);
+          rows =
+            total !== null && window.offset >= total
+              ? []
+              : await suggestions.pageOfSeller(market, sellerId, {
+                  ...filter,
+                  sort: paged.sort,
+                  direction: paged.direction,
+                  offset: window.offset,
+                  limit: window.limit,
+                });
+          shown = rows.slice(0, paged.pageSize);
+          pageNo = paged.page;
+          pageSize = paged.pageSize;
+          paging = paged.paging;
+          hasNext =
+            total !== null ? window.offset + paged.pageSize < total : rows.length > shown.length;
+          // The current panel walks newest first by cursor; any other order has no cursor.
+          sorted = paged.sort === 'created' && paged.direction === 'desc' && q === null;
+        }
         const openCount = await suggestions.openCountOfSeller(market, sellerId);
 
         const topicIds = [
@@ -247,9 +249,13 @@ export class OwnTopicSuggestionsList extends UseCase<
         });
         return ok({
           items,
-          nextAfterId:
-            rows.length > shown.length ? (shown[shown.length - 1]?.state.id ?? null) : null,
+          nextAfterId: hasNext && sorted ? (shown[shown.length - 1]?.state.id ?? null) : null,
           openCount,
+          page: pageNo,
+          pageSize,
+          paging,
+          hasNext,
+          total,
         });
       },
       { readOnly: true },
