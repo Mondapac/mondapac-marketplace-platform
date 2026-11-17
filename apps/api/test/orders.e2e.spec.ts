@@ -31,6 +31,7 @@ import {
   type AdminRefundListReader,
 } from '../src/modules/ordering/application/ports/admin-refund-list.reader';
 import type { RefundListRecord } from '../src/modules/ordering/domain/admin-refund-list';
+import { XLSX_CONTENT_TYPE } from '../src/platform/list-export';
 import { PICKUP_CODE_REPOSITORY } from '../src/modules/ordering/application/ports/pickup-code.repository';
 import { REFUND_REPOSITORY } from '../src/modules/ordering/application/ports/refund.repository';
 import { SHIP_TO_RETENTION_REPOSITORY } from '../src/modules/ordering/application/ports/ship-to-retention.repository';
@@ -1194,6 +1195,22 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
         refunded: money(0n, currency),
       });
       shipmentRows = [row(1), row(2), row(3)];
+      // shipping's carrier progress, through the real adapter over the (fake) facade; an id the
+      // page did not ask about is ignored.
+      shipping.carrierProgress.set(id<'SellerOrder'>(0x5001), {
+        fleet: 'uber_direct',
+        progress: 'picked-up',
+        carrierStatus: 'EN_ROUTE',
+        updatedAt: START,
+        proofOfDelivery: false,
+      });
+      shipping.carrierProgress.set(id<'SellerOrder'>(0x5fff), {
+        fleet: 'uber_direct',
+        progress: 'delivered',
+        carrierStatus: 'DELIVERED',
+        updatedAt: START,
+        proofOfDelivery: true,
+      });
 
       const paged = await http()
         .get('/ordering/admin/shipments?page=1&pageSize=2')
@@ -1227,10 +1244,42 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
             trackingRef: 'JD 0123 4567',
             shipping: { amount: '500', currency },
             actions: ['view-order', 'copy-tracking-reference'],
+            carrier: 'Courier',
+            carrierProgress: {
+              progress: 'picked-up',
+              carrierStatus: 'EN_ROUTE',
+              updatedAt: START.toString(),
+              proofOfDelivery: false,
+              fleet: 'uber_direct',
+            },
           },
-          { sellerOrderId: id<'SellerOrder'>(0x5002) },
+          { sellerOrderId: id<'SellerOrder'>(0x5002), carrierProgress: null },
         ],
+        carrierProgressAvailable: true,
       });
+      expect(shipping.carrierProgressAsked[0]).toEqual([
+        id<'SellerOrder'>(0x5001),
+        id<'SellerOrder'>(0x5002),
+      ]);
+      expect(JSON.stringify(body(paged))).not.toContain(id<'SellerOrder'>(0x5fff));
+      // An admin without shipping's key: the list still answers, the column is not available
+      // and the seller's carrier stays.
+      shipping.carrierProgressRefusal = 'access.denied';
+      const denied = await http()
+        .get('/ordering/admin/shipments?page=1&pageSize=2')
+        .set(adminHeaders(VIEWER, 46));
+      shipping.carrierProgressRefusal = 'shipping.unavailable';
+      const down = await http()
+        .get('/ordering/admin/shipments?page=1&pageSize=2')
+        .set(adminHeaders(VIEWER, 47));
+      shipping.carrierProgressRefusal = null;
+      for (const res of [denied, down]) {
+        expect(res.status).toBe(200);
+        expect(body(res)).toMatchObject({
+          carrierProgressAvailable: false,
+          shipments: [{ carrier: 'Courier', carrierProgress: null }, { carrierProgress: null }],
+        });
+      }
       expect(walked.status).toBe(200);
       expect(body(walked)).toMatchObject({
         total: null,
@@ -1531,6 +1580,164 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(customerTries.status).toBeLessThanOrEqual(403);
       expect([paged, xlsx, badFilter].map((r) => r.status)).toEqual([400, 400, 400]);
       expect(body(paged)).toMatchObject({ details: { fields: [{ path: 'page' }] } });
+    });
+
+    it('exports shipments, refunds and documents as CSV or XLSX behind ordering.order.view', async () => {
+      await seedAdmins();
+      shipmentRows = [1, 2].map((n) => ({
+        sellerOrderId: id<'SellerOrder'>(0x5000 + n),
+        orderId: id<'Order'>(0x6000 + n),
+        sellerId: SELLER,
+        accountId: CUSTOMER,
+        paidAt: START,
+        deliveryMethod: 'instant',
+        deliveryWindow: null,
+        fulfilment: 'shipped',
+        readyAt: START,
+        shippedAt: START,
+        deliveredAt: null,
+        carrier: 'Courier',
+        trackingRef: `=TR${n}`,
+        fleet: null,
+        deliveryAttention: null,
+        shipping: money(500n, currency),
+        total: money(1500n, currency),
+        refunded: money(0n, currency),
+      }));
+      refundRows = [];
+      documentRows = [];
+
+      const csv = await http()
+        .get('/ordering/admin/shipments/export?columns=carrier,total&zone=UTC')
+        .set(adminHeaders(VIEWER, 71));
+      const xlsx = await http()
+        .get('/ordering/admin/shipments/export?format=xlsx')
+        .set(adminHeaders(VIEWER, 72))
+        .buffer(true)
+        .parse((res, done) => {
+          const parts: Buffer[] = [];
+          res.on('data', (part: Buffer) => parts.push(part));
+          res.on('end', () => done(null, Buffer.concat(parts)));
+        });
+      const refunds = await http()
+        .get('/ordering/admin/refunds/export')
+        .set(adminHeaders(VIEWER, 73));
+      const notes = await http()
+        .get('/ordering/admin/documents/export?kind=credit-note')
+        .set(adminHeaders(VIEWER, 74));
+      const paged = await http()
+        .get('/ordering/admin/shipments/export?page=2')
+        .set(adminHeaders(VIEWER, 75));
+      const tooMany = await http()
+        .get(
+          `/ordering/admin/refunds/export?ids=${Array.from({ length: 201 }, (_, n) =>
+            id<'Refund'>(0xa000 + n),
+          ).join(',')}`,
+        )
+        .set(adminHeaders(VIEWER, 76));
+      const noKey = await http()
+        .get('/ordering/admin/documents/export')
+        .set(adminHeaders(NO_KEY, 77));
+      const customerTries = await http()
+        .get('/ordering/admin/shipments/export')
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), cookie: customer().cookie });
+
+      expect(csv.status).toBe(200);
+      expect(csv.headers['content-type']).toContain('text/csv');
+      expect(csv.headers['content-disposition']).toMatch(
+        /^attachment; filename="shipments-\d{4}-\d{2}-\d{2}\.csv"$/,
+      );
+      expect(csv.headers['cache-control']).toBe('no-store');
+      expect(csv.headers['x-content-type-options']).toBe('nosniff');
+      const lines = String(csv.text).replace('\uFEFF', '').split('\r\n').filter(Boolean);
+      expect(lines[0]).toBe(
+        'Order ID,Stage,Delivery problem,Carrier,Tracking reference,' +
+          'Total (incl. tax),Total (incl. tax) currency',
+      );
+      // A typed reference that starts like a formula is defused.
+      expect(lines[1]).toBe(
+        `${id<'Order'>(0x6001)},shipped,,Courier,'=TR1,${currency === 'AUD' ? '15.00' : '1500'},${currency}`,
+      );
+      expect(lines).toHaveLength(3);
+      expect(xlsx.status).toBe(200);
+      expect(xlsx.headers['content-type']).toBe(XLSX_CONTENT_TYPE);
+      expect(xlsx.headers['content-disposition']).toMatch(/filename="shipments-.*\.xlsx"$/);
+      expect((xlsx.body as Buffer).subarray(0, 2).toString()).toBe('PK');
+      expect(refunds.status).toBe(200);
+      expect(refunds.headers['content-disposition']).toMatch(/filename="refunds-/);
+      expect(notes.status).toBe(200);
+      expect(notes.headers['content-disposition']).toMatch(/filename="credit-notes-/);
+      expect(notes.headers['content-disposition']).not.toMatch(/invoice/i);
+      expect(paged.status).toBe(400);
+      expect(body(paged)).toMatchObject({ details: { fields: [{ path: 'page' }] } });
+      expect(tooMany.status).toBe(413);
+      expect(body(tooMany)).toMatchObject({ code: 'batch.too-large', details: { max: 200 } });
+      expect(noKey.status).toBe(403);
+      expect(customerTries.status).toBeGreaterThanOrEqual(401);
+      expect(customerTries.status).toBeLessThanOrEqual(403);
+      expect(
+        logLines.filter((l) => l['msg'] === 'ordering.admin-export-shipments-route').length,
+      ).toBeGreaterThanOrEqual(3);
+    });
+
+    it('writes customer name and email into an export only for an admin with the customer key', async () => {
+      await seedAdmins();
+      customer();
+      const ORDERS_ONLY = id<'Account'>(0xa00b);
+      const ordersOnlyRole = id<'Role'>(0xc0f3);
+      fakes.seedRole({
+        id: ordersOnlyRole,
+        marketId: code as AccountState['marketId'],
+        scope: 'platform',
+        kind: 'custom',
+        seedCode: null,
+        seedVersion: null,
+        sellerId: null,
+        name: 'Orders, no customers',
+        permissionKeys: ['ordering.order.view'],
+        version: 1,
+        createdAt: START,
+      });
+      seedAccount(ORDERS_ONLY, 'admin', 'admin11');
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(0xe00b),
+        marketId: code as AccountState['marketId'],
+        accountId: ORDERS_ONLY,
+        roleId: ordersOnlyRole,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+      shipmentRows = [
+        {
+          sellerOrderId: id<'SellerOrder'>(0x5001),
+          orderId: id<'Order'>(0x6001),
+          sellerId: SELLER,
+          accountId: CUSTOMER,
+          paidAt: START,
+          deliveryMethod: 'instant',
+          deliveryWindow: null,
+          fulfilment: 'to-ship',
+          readyAt: null,
+          shippedAt: null,
+          deliveredAt: null,
+          carrier: null,
+          trackingRef: null,
+          fleet: null,
+          deliveryAttention: null,
+          shipping: money(500n, currency),
+          total: money(1500n, currency),
+          refunded: money(0n, currency),
+        },
+      ];
+      const route = '/ordering/admin/shipments/export?columns=customer';
+      const withKey = await http().get(route).set(adminHeaders(VIEWER, 81));
+      const withoutKey = await http().get(route).set(adminHeaders(ORDERS_ONLY, 82));
+
+      const rowOf = (text: string) => text.replace('\uFEFF', '').split('\r\n').filter(Boolean)[1]!;
+      expect([withKey.status, withoutKey.status]).toEqual([200, 200]);
+      expect(rowOf(String(withKey.text))).toContain('c1@Example.com');
+      expect(rowOf(String(withoutKey.text))).toBe(`${id<'Order'>(0x6001)},to-prepare,,,`);
     });
 
     it('gives a role with ordering.order.view the document of a paid order, and no other role', async () => {

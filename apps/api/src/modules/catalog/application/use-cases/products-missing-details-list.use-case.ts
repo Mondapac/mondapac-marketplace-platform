@@ -9,8 +9,14 @@ import type {
   Result,
 } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import {
+  heldKeys,
+  rowActions,
+  type PermissionProbe,
+  type RowActionRule,
+} from '../../../../platform/list-query';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { CATALOG_ATTRIBUTE_VIEW } from '../../contracts/permissions';
+import { CATALOG_ATTRIBUTE_EDIT, CATALOG_ATTRIBUTE_VIEW } from '../../contracts/permissions';
 import { closedInput, invalid, type ValidationFailure } from '../brands/brand-views';
 import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
@@ -47,7 +53,21 @@ export interface MissingDetailsItem {
    * never, or while a newer request for it waits (the store keeps the latest request only).
    */
   readonly lastEmailedAt: string | null;
+  /** The row actions of the Actions menu the caller may run: `open-product`, `email-seller`. */
+  readonly actions: readonly string[];
 }
+
+/** What each row action needs (the plan's table, row 6); a PLATFORM product has no seller to mail. */
+export const MISSING_DETAILS_ACTION_RULES: readonly RowActionRule<
+  Pick<MissingDetailsItem, 'sellerId'>
+>[] = [
+  { id: 'open-product', permission: null },
+  {
+    id: 'email-seller',
+    permission: CATALOG_ATTRIBUTE_EDIT.key,
+    when: (row) => row.sellerId !== null,
+  },
+];
 
 export interface ProductsMissingDetailsListOutput {
   readonly items: readonly MissingDetailsItem[];
@@ -69,6 +89,8 @@ export interface ProductsMissingDetailsListDependencies {
   readonly policy: CatalogMarketPolicy;
   readonly familyResolver: ProductFamilyResolver;
   readonly emailStore: MissingDetailsEmailStore;
+  /** The gate's answer to "does the caller hold `catalog.attribute.edit`", for `email-seller`. */
+  readonly attributeEditProbe: PermissionProbe;
 }
 
 /**
@@ -167,7 +189,16 @@ export class ProductsMissingDetailsList extends UseCase<
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
-    return ok(read.value);
+    const granted = await heldKeys(context, {
+      [CATALOG_ATTRIBUTE_EDIT.key]: this.deps.attributeEditProbe,
+    });
+    return ok({
+      ...read.value,
+      items: read.value.items.map((item) => ({
+        ...item,
+        actions: rowActions(item, MISSING_DETAILS_ACTION_RULES, granted),
+      })),
+    });
   }
 
   async #scan(
@@ -186,7 +217,7 @@ export class ProductsMissingDetailsList extends UseCase<
     // product is judged against the feature set its revision was frozen under.
     const session = await this.deps.familyResolver.open(market);
     const schemas = new Map<string, AttributeSchema | null>();
-    const items: Omit<MissingDetailsItem, 'lastEmailedAt'>[] = [];
+    const items: Omit<MissingDetailsItem, 'lastEmailedAt' | 'actions'>[] = [];
     let cursor = filter.afterId;
     let scanned = 0;
     let exhausted = false;
@@ -251,6 +282,7 @@ export class ProductsMissingDetailsList extends UseCase<
       items: items.map((item) => ({
         ...item,
         lastEmailedAt: sentAt.get(`${item.sellerId}/${item.productId}`) ?? null,
+        actions: [],
       })),
       nextAfterId,
       scanned,

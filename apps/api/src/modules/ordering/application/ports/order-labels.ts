@@ -1,5 +1,5 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
-import type { OrderCustomerView } from '../../domain/order-views';
+import type { OrderCustomerView, SellerOrderCustomerView } from '../../domain/order-views';
 
 // Display-only lookups for the panel order pages (frontend batch 3 gaps). Every lookup is
 // advisory: a failure or an absent key never fails the read; the field shows null.
@@ -76,6 +76,14 @@ export interface OrderLabels {
     context: CallContext,
     accountIds: readonly Id<'Account'>[],
   ): Promise<ReadonlyMap<Id<'Account'>, string>>;
+  /**
+   * customers' `sellerOrderCustomers`: the calling shop's code and first name of each customer
+   * account, never more. An account the shop has no customer row for yet is absent.
+   */
+  sellerCustomersOf(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, SellerOrderCustomerView>>;
   /**
    * identity's `changeActors`: the names of the admins who wrote notes, as the asking admin may
    * see them (identity decides who is named). An account without a name is absent.

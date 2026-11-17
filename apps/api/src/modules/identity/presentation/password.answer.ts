@@ -6,6 +6,7 @@ import { csrfTokenFor } from '../../../platform/call-context/csrf';
 import { clearedSessionCookie, sessionCookie } from '../../../platform/call-context/session-cookie';
 import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientAddressOf, clientOriginOf } from '../../../platform/rate-limit/client-origin';
+import { deviceOf } from '../domain/device';
 import type { ChangePassword } from '../application/use-cases/change-password.use-case';
 import type {
   RequestPasswordReset,
@@ -103,7 +104,7 @@ export async function answerResetPassword(
     population,
     token: fields.token,
     password: fields.password,
-    client: { origin, address },
+    client: { origin, address, device: deviceOf(request.get('user-agent')) },
   });
   if (result.ok) {
     response.setHeader('Cache-Control', 'no-store');
@@ -171,7 +172,7 @@ export async function answerChangePassword(
     currentPassword: fields.currentPassword,
     newPassword: fields.newPassword,
     ...(fields.code === undefined ? {} : { code: fields.code }),
-    client: { origin, address },
+    client: { origin, address, device: deviceOf(request.get('user-agent')) },
   });
   if (result.ok) {
     const { token, cookieMaxAgeSeconds } = result.value;

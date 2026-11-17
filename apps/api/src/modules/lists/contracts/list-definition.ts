@@ -25,6 +25,11 @@ export interface ListDefinition {
   readonly viewKey: PermissionKey;
   /** The key that lets the caller share a filter with everyone or manage a shared one. */
   readonly shareKey: PermissionKey;
+  /**
+   * The ids of the columns a user may show, hide and reorder in this list (the ones after the
+   * columns that are always shown). Absent: the list has no column choice and refuses one.
+   */
+  readonly columns?: readonly string[];
   /** Reads the closed document of a request; returns it in its canonical form. */
   parsePayload(raw: unknown): Result<unknown, ListPayloadFailure>;
 }

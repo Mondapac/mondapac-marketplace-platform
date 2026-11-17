@@ -264,6 +264,7 @@ export class ResetPassword extends UseCase<
           address: input.client.address,
           sessionId: null,
           correlationId: context.correlationId,
+          device: input.client.device ?? null,
         };
         await this.deps.records.add(market, record);
         await recordSignInSecurityEvent(this.deps.securityEvents, context, record);

@@ -36,6 +36,11 @@ import { AdminSellerCustomersList } from './use-cases/admin-seller-customers-lis
 import { AdminSellerCustomersSummary } from './use-cases/admin-seller-customers-summary.use-case';
 import { ReconcileSellerCustomers } from './use-cases/reconcile-seller-customers.use-case';
 import { SellerCustomerDetail } from './use-cases/seller-customer-detail.use-case';
+import { ORDERING_SELLER_ORDER_VIEW } from '../../ordering';
+import {
+  SELLER_ORDER_VIEW_KEY,
+  SellerOrderCustomers,
+} from './use-cases/seller-order-customers.use-case';
 import { SellerCustomersCodes } from './use-cases/seller-customers-codes.use-case';
 import { SellerCustomersExport } from './use-cases/seller-customers-export.use-case';
 import { SellerCustomersList } from './use-cases/seller-customers-list.use-case';
@@ -226,6 +231,7 @@ describe.each([
     codes: SellerCustomersCodes;
     export: SellerCustomersExport;
     detail: SellerCustomerDetail;
+    orderCustomers: SellerOrderCustomers;
     adminList: AdminSellerCustomersList;
     summary: AdminSellerCustomersSummary;
   };
@@ -286,6 +292,7 @@ describe.each([
       codes: new SellerCustomersCodes(gate, deps),
       export: new SellerCustomersExport(gate, deps),
       detail: new SellerCustomerDetail(gate, deps),
+      orderCustomers: new SellerOrderCustomers(gate, deps),
       adminList: new AdminSellerCustomersList(gate, deps),
       summary: new AdminSellerCustomersSummary(gate, deps),
     };
@@ -423,6 +430,64 @@ describe.each([
     expect(await uc.reconcile.execute(system, {})).toEqual({
       ok: true,
       value: { accounts: 1, rows: 1, failed: 1, capped: false },
+    });
+  });
+
+  describe('the customer of a seller order (2026-11-17)', () => {
+    beforeEach(async () => {
+      peers.totals.set(ALICE, [bought(SHOP, 2, 4500n), bought(RIVAL, 7, 99_000n)]);
+      await sync(ALICE);
+    });
+
+    it('answers the shop its own code and first name only, and nothing for an account it lacks', async () => {
+      const shopCode = rows.rows.find((r) => r.sellerId === SHOP && r.accountId === ALICE)!.code;
+      const answer = await uc.orderCustomers.execute(seller(SHOP), { accountIds: [ALICE, BOB] });
+      if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+      expect([...answer.value]).toEqual([[ALICE, { code: shopCode, firstName: 'Maryam' }]]);
+      const text = JSON.stringify([...answer.value.values()]);
+      for (const secret of ['Rahimi', '@example.test', '4500']) expect(text).not.toContain(secret);
+      // The rival shop gets its own code, never the shop's.
+      const rival = await uc.orderCustomers.execute(seller(RIVAL), { accountIds: [ALICE] });
+      expect(rival.ok && rival.value.get(ALICE)?.code).not.toBe(shopCode);
+      // Another Market's rows are not read.
+      const elsewhere = await uc.orderCustomers.execute(seller(SHOP, {}, other), {
+        accountIds: [ALICE],
+      });
+      expect(elsewhere.ok && elsewhere.value.size).toBe(0);
+    });
+
+    it("asks for ordering's order view key, as the order page itself", () => {
+      expect(SELLER_ORDER_VIEW_KEY).toBe(ORDERING_SELLER_ORDER_VIEW.key);
+      expect(SellerOrderCustomers.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: [ORDERING_SELLER_ORDER_VIEW.key],
+      });
+    });
+
+    it('refuses an admin, a Login as Seller session, a bad id and too many accounts', async () => {
+      expect(await uc.orderCustomers.execute(admin, { accountIds: [ALICE] })).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(
+        await uc.orderCustomers.execute(seller(SHOP, { actingAs: { adminAccountId: 'x' } }), {
+          accountIds: [ALICE],
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      expect(
+        await uc.orderCustomers.execute(seller(SHOP), {
+          accountIds: ['not-an-id' as Id<'Account'>],
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      expect(
+        await uc.orderCustomers.execute(seller(SHOP), {
+          accountIds: Array.from({ length: 101 }, () => ALICE),
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      expect(await uc.orderCustomers.execute(seller(SHOP), { accountIds: [] })).toEqual({
+        ok: true,
+        value: new Map(),
+      });
     });
   });
 
