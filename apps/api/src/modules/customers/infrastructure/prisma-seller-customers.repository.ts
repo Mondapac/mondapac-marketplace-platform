@@ -217,6 +217,19 @@ export class PrismaSellerCustomerRepository implements SellerCustomerRepository 
     return row === null ? null : recordOf(row);
   }
 
+  async findByAccounts(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    accountIds: readonly Id<'Account'>[],
+  ) {
+    if (accountIds.length === 0) return [];
+    const rows = await this.prisma.tx(market).customersSellerCustomer.findMany({
+      where: { marketId: market.marketId, sellerId, accountId: { in: [...accountIds] } },
+      include: INCLUDE,
+    });
+    return rows.map(recordOf);
+  }
+
   async findByCodes(market: MarketContext, sellerId: Id<'Seller'>, codes: readonly string[]) {
     if (codes.length === 0) return [];
     const rows = await this.prisma.tx(market).customersSellerCustomer.findMany({

@@ -67,7 +67,15 @@ export class OrderLineBody {
   @ApiProperty({ format: 'uuid' }) variantId!: string;
   @ApiProperty() quantity!: number;
   @ApiProperty({ type: MoneyView }) unitPrice!: MoneyView;
-  @ApiProperty({ type: MoneyView }) lineAmount!: MoneyView;
+  @ApiProperty({ type: MoneyView, description: 'The unit price times the quantity.' })
+  lineAmount!: MoneyView;
+  @ApiProperty({
+    type: MoneyView,
+    description:
+      'The discount on the line from promotions, frozen at placement; zero without one. The ' +
+      'buyer paid lineAmount less discount, and the tax is the tax of that amount.',
+  })
+  discount!: MoneyView;
   @ApiProperty({ description: 'True when the unit price already includes GST.' })
   taxInclusive!: boolean;
   @ApiProperty({
@@ -95,6 +103,16 @@ export class SellerOrderBody {
   @ApiProperty({ type: MoneyView }) subtotal!: MoneyView;
   @ApiProperty({ type: MoneyView, description: "The seller's flat delivery fee at placement." })
   shipping!: MoneyView;
+  @ApiProperty({
+    type: MoneyView,
+    description: "The sum of the lines' discounts (promotions); zero without any.",
+  })
+  discount!: MoneyView;
+  @ApiProperty({
+    type: MoneyView,
+    description: 'The discount on the delivery fee (promotions); zero without one.',
+  })
+  shippingDiscount!: MoneyView;
   @ApiProperty({
     type: MoneyView,
     nullable: true,
@@ -158,7 +176,14 @@ export class OrderBody {
   @ApiProperty({ format: 'uuid' }) orderId!: string;
   @ApiProperty({ enum: ['pending-payment', 'confirmed', 'cancelled'] }) status!: string;
   @ApiProperty({
-    enum: ['expired', 'payment-failed', 'stock-unavailable', 'superseded', 'provider-failed'],
+    enum: [
+      'expired',
+      'payment-failed',
+      'stock-unavailable',
+      'superseded',
+      'provider-failed',
+      'discount-changed',
+    ],
     nullable: true,
   })
   cancelReason!: string | null;
@@ -192,6 +217,18 @@ export class ShipToBody {
   @ApiProperty({ type: String, nullable: true, description: 'A note for the courier.' })
   deliveryNotes!: string | null;
   @ApiProperty({ description: 'ISO 3166 country of the address.' }) countryCode!: string;
+}
+
+/** How a shop knows the customer of its own order (owner decision 2026-11-17). */
+export class SellerOrderCustomerBody {
+  @ApiProperty({ example: 'K7QM-2XTR', description: "The customer's code for this shop." })
+  code!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The first word of the display name (escape it); null when there is none.',
+  })
+  firstName!: string | null;
 }
 
 const SHIP_TO_DESCRIPTION =
@@ -308,6 +345,18 @@ export class CheckoutRequest {
     string,
     { method: string; windowStart?: string; windowEnd?: string; quoteId?: string }
   >;
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    type: String,
+    maxLength: 64,
+    description:
+      'The one discount code the buyer typed, printable characters, 64 at most; absent, null or ' +
+      'empty for none. The server works out what it is worth; a code that gives nothing is ' +
+      'refused (ordering.discount-code-not-applied) before anything is reserved.',
+  })
+  code?: string | null;
 }
 
 export class PayByCardRequest extends CheckoutRequest {
@@ -491,6 +540,7 @@ const lineBody = (line: SellerOrderLike['lines'][number]): OrderLineBody => ({
   quantity: line.quantity,
   unitPrice: moneyBody(line.unitPrice),
   lineAmount: moneyBody(line.lineAmount),
+  discount: moneyBody(line.discount),
   taxInclusive: line.taxInclusive,
   taxRateBps: line.taxRateBps,
   taxCategoryCode: line.taxCategoryCode,
@@ -509,6 +559,8 @@ const sellerOrderBody = (seller: SellerOrderLike): SellerOrderBody => ({
   sellerId: seller.sellerId,
   subtotal: moneyBody(seller.subtotal),
   shipping: moneyBody(seller.shipping),
+  discount: moneyBody(seller.discount),
+  shippingDiscount: moneyBody(seller.shippingDiscount),
   shippingTax: seller.shippingTax === null ? null : moneyBody(seller.shippingTax),
   tax: seller.tax === null ? null : moneyBody(seller.tax),
   total: moneyBody(seller.total),
@@ -585,24 +637,23 @@ export class SellerOrderShipBody extends SellerOrderDetailBody {
   refunds!: SellerOrderRefundBody[];
 
   @ApiProperty({
-    type: ShipToBody,
+    type: SellerOrderCustomerBody,
     nullable: true,
     description:
-      `${SHIP_TO_DESCRIPTION} Recipient name, phone and address only. Also null once every ` +
-      'unit is refunded (refunds not failed), 30 days after the order was delivered (or ' +
-      'collected, for a pickup order), and 60 days after it was shipped when it was never ' +
-      'delivered.',
+      "The customer as this shop knows them: the customer's code for the shop and first name " +
+      'only, as on the Customers list. Never the delivery address, the full name, the phone or ' +
+      'the email: the platform books the delivery. Null while the code is not given yet (it ' +
+      'follows the payment) or when it could not be read.',
   })
-  shipTo!: ShipToBody | null;
+  customer!: SellerOrderCustomerBody | null;
 
   @ApiProperty({
     type: String,
     nullable: true,
     description:
       "The customer's note to this seller (plain text, 200 characters at most; escape it). " +
-      'Null when none was written, on older orders, once the account was erased, and ' +
-      'whenever `shipTo` is withheld (refunded in full, 30 days after delivery, 60 days after ' +
-      'an undelivered shipment).',
+      'Null when none was written, on older orders, once the account was erased, once every ' +
+      'unit is refunded, 30 days after delivery and 60 days after an undelivered shipment.',
   })
   buyerNote!: string | null;
 
@@ -683,7 +734,10 @@ const shipToBody = (shipTo: ShipTo | null): ShipToBody | null =>
 
 export const sellerOrderShipBody = (order: LabelledSellerOrderShipView): SellerOrderShipBody => ({
   ...sellerOrderDetailBody(order),
-  shipTo: shipToBody(order.shipTo),
+  customer:
+    order.customer === null
+      ? null
+      : { code: order.customer.code, firstName: order.customer.firstName },
   refunds: order.refunds.map((refund) => ({
     refundId: refund.refundId,
     requestedBy: refund.requestedBy,
@@ -695,8 +749,8 @@ export const sellerOrderShipBody = (order: LabelledSellerOrderShipView): SellerO
     requestedAt: refund.requestedAt.toString(),
     settledAt: refund.settledAt?.toString() ?? null,
   })),
-  // A seller reads its own note only.
-  buyerNote: order.shipTo?.sellerNotes?.[order.sellerId] ?? null,
+  // A seller reads its own note only (picked in the flow).
+  buyerNote: order.buyerNote,
   pickup:
     order.pickup === null
       ? null

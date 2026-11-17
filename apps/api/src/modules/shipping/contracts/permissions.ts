@@ -47,7 +47,20 @@ export const SHIPPING_DELIVERY_SETTINGS_MANAGE = definePermission('shipping', {
   protected: true,
 });
 
+/**
+ * See where each seller order's real-time carrier delivery stands: the fleet that carries it, its
+ * progress, the carrier's last status code, when the platform recorded the last change, and
+ * whether proof of delivery exists (the admin Shipments list). Never the carrier reference or the
+ * tracking link. A plain platform key: the Market comes from the caller's context, not the key.
+ */
+export const SHIPPING_CARRIER_DELIVERY_VIEW = definePermission('shipping', {
+  key: 'shipping.carrier-delivery.view',
+  scope: 'platform',
+  protected: false,
+});
+
 export const SHIPPING_PERMISSIONS = declarePermissions('shipping', [
+  SHIPPING_CARRIER_DELIVERY_VIEW,
   SHIPPING_DELIVERY_SETTINGS_MANAGE,
   SHIPPING_DELIVERY_SETTINGS_VIEW,
   SHIPPING_FLEET_SELECTION_MANAGE,

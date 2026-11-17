@@ -208,6 +208,24 @@ export class InMemorySellerCustomers implements SellerCustomerRepository {
     return Promise.resolve(row === undefined ? null : this.record(row));
   }
 
+  findByAccounts(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<readonly SellerCustomerRecord[]> {
+    const wanted = new Set<string>(accountIds);
+    return Promise.resolve(
+      this.rows
+        .filter(
+          (row) =>
+            row.marketId === market.marketId &&
+            row.sellerId === sellerId &&
+            wanted.has(row.accountId),
+        )
+        .map((row) => this.record(row)),
+    );
+  }
+
   async findByCodes(market: MarketContext, sellerId: Id<'Seller'>, codes: readonly string[]) {
     const found: SellerCustomerRecord[] = [];
     for (const code of codes) {

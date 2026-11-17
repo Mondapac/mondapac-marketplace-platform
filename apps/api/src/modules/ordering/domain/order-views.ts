@@ -24,6 +24,8 @@ export interface OrderLineView {
   readonly quantity: number;
   readonly unitPrice: Money;
   readonly lineAmount: Money;
+  /** The line's discount from promotions (package T2); zero without one. */
+  readonly discount: Money;
   readonly taxInclusive: boolean;
   /** The tax rate frozen at placement; null on lines placed before tax was recorded. */
   readonly taxRateBps: number | null;
@@ -39,11 +41,14 @@ export interface SellerOrderView {
   readonly sellerId: Id<'Seller'>;
   readonly subtotal: Money;
   readonly shipping: Money;
+  /** The discounts of the goods and of the delivery fee (package T2); zero without any. */
+  readonly discount: Money;
+  readonly shippingDiscount: Money;
   /** The tax on the delivery fee, frozen at placement; null on older orders. */
   readonly shippingTax: Money | null;
   /**
-   * The delivery fee as the customer paid it, tax included: what a refund can give back of it at
-   * most. Null when the delivery tax was not recorded (an older order).
+   * The delivery fee as the customer paid it (after its discount), tax included: what a refund
+   * can give back of it at most. Null when the delivery tax was not recorded (an older order).
    */
   readonly shippingGross: Money | null;
   /**
@@ -187,13 +192,31 @@ export interface SellerOrderRefundView {
 }
 
 /**
- * One seller order as its seller handles it: the detail plus where to send it (recipient name,
- * phone and address only; never the customer's email). Null as in {@link OwnOrderView}, and
- * whenever `sellerMaySeeShipTo` says so: once refunded in full, 30 days after delivery or 60 days
- * after an undelivered shipment (owner decisions 2026-11-14 and 2026-11-15).
+ * How a shop knows the customer of its own order: the customer's code for that shop and their
+ * first name, nothing else (owner decision 2026-11-17, as the shop's Customers list).
+ */
+export interface SellerOrderCustomerView {
+  readonly code: string;
+  readonly firstName: string | null;
+}
+
+/**
+ * One seller order as its seller handles it. The shop never gets the delivery address, the
+ * recipient's full name or phone: the platform books the delivery (owner decision 2026-11-17).
  */
 export interface LabelledSellerOrderShipView extends LabelledSellerOrderDetailView {
-  readonly shipTo: ShipTo | null;
+  /**
+   * The customer's code for this shop and first name; null while the shop's customer row is not
+   * written yet (it follows the payment) or when it could not be read.
+   */
+  readonly customer: SellerOrderCustomerView | null;
+  /**
+   * The customer's note to this shop, from the sealed delivery details. Null when none was
+   * written, on older orders, once the account was erased and whenever `sellerMaySeeShipTo`
+   * says no: once refunded in full, 30 days after delivery or 60 days after an undelivered
+   * shipment (owner decisions 2026-11-14 and 2026-11-15).
+   */
+  readonly buyerNote: string | null;
   /** Every refund of the seller order, oldest first (failed ones too: nothing went back). */
   readonly refunds: readonly SellerOrderRefundView[];
   /**
@@ -285,6 +308,7 @@ const lineView = (line: OrderLine, currency: string): OrderLineView => ({
   quantity: line.quantity,
   unitPrice: line.unitPrice,
   lineAmount: makeMoney(line.lineAmount, currency),
+  discount: makeMoney(line.discountAmount, currency),
   taxInclusive: line.taxInclusive,
   taxRateBps: line.taxRateBps,
   taxCategoryCode: line.taxCategoryCode,
@@ -304,7 +328,9 @@ const shippingGrossView = (seller: SellerOrder, currency: string): Money | null 
   seller.shippingTax === null || seller.shippingTaxInclusive === null
     ? null
     : makeMoney(
-        seller.shipping + (seller.shippingTaxInclusive ? 0n : seller.shippingTax),
+        seller.shipping -
+          seller.shippingDiscount +
+          (seller.shippingTaxInclusive ? 0n : seller.shippingTax),
         currency,
       );
 
@@ -337,6 +363,8 @@ export function sellerOrderDetailView(record: {
     sellerId: seller.sellerId,
     subtotal: makeMoney(seller.subtotal, currency),
     shipping: makeMoney(seller.shipping, currency),
+    discount: makeMoney(seller.discount, currency),
+    shippingDiscount: makeMoney(seller.shippingDiscount, currency),
     shippingTax: shippingTaxView(seller, currency),
     shippingGross: shippingGrossView(seller, currency),
     tax: taxOf(lines, currency, shippingTaxOf(seller)),
@@ -379,6 +407,8 @@ export function orderView(order: OrderState): OrderView {
         sellerId: seller.sellerId,
         subtotal: money(seller.subtotal),
         shipping: money(seller.shipping),
+        discount: money(seller.discount),
+        shippingDiscount: money(seller.shippingDiscount),
         shippingTax: shippingTaxView(seller, currency),
         shippingGross: shippingGrossView(seller, currency),
         tax: taxOf(lines, currency, shippingTaxOf(seller)),

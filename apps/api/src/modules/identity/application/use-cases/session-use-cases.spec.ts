@@ -175,6 +175,11 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         ownAccountTiedToSeller: undefined as never,
         eraseCustomerAccount: undefined as never,
         adminRenameCustomer: undefined as never,
+        adminCustomerSignIns: undefined as never,
+        adminCustomerSessions: undefined as never,
+        adminRevealCustomerSignIn: undefined as never,
+        adminSignOutCustomer: undefined as never,
+        adminSendCustomerPasswordReset: undefined as never,
       });
 
     it("answers the actor's ids, email and session times; the facade drops the email", async () => {
@@ -215,6 +220,8 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
           permissionKeys: [],
           sellerAccessState: null,
           secondFactorActive: false,
+          // The account's own zone (customers phase 2b: an admin's day filters); none set here.
+          timezone: null,
         },
       });
       expect(JSON.stringify(facade)).not.toContain('Example.com');
@@ -233,6 +240,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
           address: '203.0.113.9',
           sessionId,
           correlationId: 'correlation-1',
+          device: null,
         });
       const OLDER = id<'Session'>('01990000-0000-7000-8000-00000000a002');
       await record(OLDER, 'signed-in', START.subtract({ hours: 30 }));

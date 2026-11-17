@@ -28,6 +28,15 @@ export {
 } from './loading/navigation-progress.tsx';
 export { Spinner } from './loading/spinner.tsx';
 export {
+  DetailSkeleton,
+  FormSkeleton,
+  TableSkeleton,
+  type DetailSkeletonProps,
+  type FormSkeletonProps,
+  type TableSkeletonColumn,
+  type TableSkeletonProps,
+} from './loading/section-skeletons.tsx';
+export {
   SettingsSkeleton,
   type SettingsSkeletonProps,
   type SkeletonSection,
@@ -60,6 +69,15 @@ export {
   type NavSection,
   type NavItem,
 } from './shell/nav.ts';
+export {
+  NavBadgeProvider,
+  NAV_BADGE_CAP,
+  badgeText,
+  sumBadges,
+  useNavBadges,
+  useSetNavBadge,
+  type NavBadgeValue,
+} from './shell/nav-badges.tsx';
 export { AuthLayout, type AuthLayoutProps, type AuthShowcaseCard } from './auth/auth-layout.tsx';
 export { Banner, type BannerProps, type BannerTone } from './form/banner.tsx';
 export {
@@ -97,6 +115,19 @@ export {
   type SearchSelectProps,
   type SearchSelectSingleProps,
 } from './select/search-select.tsx';
+export {
+  CategoryChooser,
+  type CategoryChooserLabels,
+  type CategoryChooserProps,
+} from './select/category-chooser.tsx';
+export {
+  MAX_PRODUCT_CATEGORIES,
+  addCategory,
+  choiceLabel,
+  makePrimary,
+  removeCategory,
+  type CategoryChoice,
+} from './select/category-chooser-logic.ts';
 export { LoadError, type LoadErrorProps } from './form/load-error.tsx';
 export { Badge, type BadgeProps, type BadgeTone } from './form/badge.tsx';
 export { EmptyState, type EmptyStateProps, type EmptyStateSize } from './form/empty-state.tsx';

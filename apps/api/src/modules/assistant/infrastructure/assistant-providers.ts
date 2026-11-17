@@ -1,3 +1,4 @@
+import { ok } from '@mondapac/shared-kernel';
 import type { FactoryProvider } from '@nestjs/common';
 import { CART_ASSISTANT_FACADE, type CartAssistantFacade } from '../../cart';
 import { CATALOG_ASSISTANT_FACADE, type CatalogAssistantFacade } from '../../catalog';
@@ -36,7 +37,9 @@ import { SPEND_REPOSITORY, type SpendRepository } from '../application/ports/spe
 import { CatalogueQuickPrompts } from './catalogue-quick-prompts';
 import { CryptoGuestTokens } from './crypto-guest-tokens';
 import { HmacPreviewTokens } from './hmac-preview-tokens';
+import { BasketAssistantTools } from './basket-assistant-tools';
 import { FacadeAssistantTools } from './facade-assistant-tools';
+import { FacadeBasketSources } from './facade-basket-sources';
 import { GatewayAssistantRuntime } from './gateway-assistant-runtime';
 import { PrismaAssistantSettingsRepository } from './prisma-assistant-settings.repository';
 import { PrismaConversationRepository } from './prisma-conversation.repository';
@@ -88,7 +91,27 @@ export const assistantProviders: readonly FactoryProvider[] = [
       cart: CartAssistantFacade,
       settings: SettingsFacade,
     ): AssistantTools =>
-      new FacadeAssistantTools(search, catalog, support, sellers, areas, cart, settings),
+      // `plan_basket` wraps the read tools: the list is searched with the buyer's own context and
+      // the Market's cart mode comes from settings (an unreadable store answers multi-store).
+      new BasketAssistantTools(
+        new FacadeAssistantTools(search, catalog, support, sellers, areas, cart, settings),
+        new FacadeBasketSources(
+          search,
+          (context) => settings.cartMode(context),
+          async (context, offerId) => {
+            const read = await cart.offerUnits(context, offerId);
+            return read.ok
+              ? ok(
+                  read.value.units.map((unit) => ({
+                    variantId: unit.variantId,
+                    unitPrice: unit.unitPrice,
+                    maxQuantity: unit.maxQuantity,
+                  })),
+                )
+              : read;
+          },
+        ),
+      ),
   },
   {
     provide: MESSAGE_LIMITS,

@@ -1,5 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { CarrierBooking } from '../../domain/carrier-booking';
+import type { CarrierProgressRecord } from '../../domain/carrier-progress';
 import type { FleetCode } from '../../domain/fleet';
 
 /**
@@ -12,6 +13,17 @@ export interface CarrierBookingRepository {
     market: MarketContext,
     sellerOrderId: Id<'SellerOrder'>,
   ): Promise<CarrierBooking | null>;
+
+  /**
+   * The progress columns of the bookings of the given seller orders (at most 100 distinct ids)
+   * in ONE read: the seller order id, fleet, progress, carrier status, `updatedAt` and
+   * `podRecordedAt` only, never the carrier reference or the tracking link. A seller order
+   * without a booking, or another Market's, is absent.
+   */
+  progressOfSellerOrders(
+    market: MarketContext,
+    sellerOrderIds: readonly Id<'SellerOrder'>[],
+  ): Promise<CarrierProgressRecord[]>;
 
   /** The booking a fleet holds under its own id of the delivery (a webhook names that id). */
   findByCarrierReference(

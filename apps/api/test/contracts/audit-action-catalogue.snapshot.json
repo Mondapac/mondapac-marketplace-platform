@@ -74,6 +74,29 @@
     }
   },
   {
+    "action": "catalog.attribute-definition.reverted",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "requestId": "id",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
     "action": "catalog.attribute-definition.revised",
     "targetType": "catalog.attribute-definition",
     "targetId": "id",
@@ -452,6 +475,23 @@
     "after": {
       "filterCount": "integer",
       "hasFeatureSet": "boolean",
+      "revisionNo": "integer"
+    }
+  },
+  {
+    "action": "catalog.category-attributes.reverted",
+    "targetType": "catalog.category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "filterCount": "integer",
+      "hasFeatureSet": "boolean",
+      "revisionNo": "integer"
+    },
+    "after": {
+      "filterCount": "integer",
+      "hasFeatureSet": "boolean",
+      "requestId": "id",
       "revisionNo": "integer"
     }
   },
@@ -1647,6 +1687,16 @@
     }
   },
   {
+    "action": "customers.customer-address.revealed",
+    "targetType": "customers.customer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "addressId": "id"
+    }
+  },
+  {
     "action": "customers.customer-group.changed",
     "targetType": "customers.customer-group",
     "targetId": "id",
@@ -1658,6 +1708,7 @@
     "after": {
       "archived": "boolean",
       "describedChanged": "boolean",
+      "liveSegmentUse": "enumOf(not-checked|none|some|unknown)",
       "renamed": "boolean",
       "version": "integer"
     }
@@ -1713,6 +1764,20 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "customers.customer-section.exported",
+    "targetType": "customers.customer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "section": "enumOf(sign-ins|saved-items|cart-reminders|cart-additions|consent-history|assistant-conversations)",
       "format": "enumOf(csv|xlsx)",
       "rowCount": "integer",
       "stepUpSessionId": "id",
@@ -1889,6 +1954,16 @@
     }
   },
   {
+    "action": "identity.account.password-reset-sent-by-admin",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "linkId": "id"
+    }
+  },
+  {
     "action": "identity.account.renamed-by-admin",
     "targetType": "identity.account",
     "targetId": "id",
@@ -1896,6 +1971,16 @@
     "before": null,
     "after": {
       "population": "enumOf(customer)"
+    }
+  },
+  {
+    "action": "identity.account.sessions-ended-by-admin",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "revokedSessions": "integer"
     }
   },
   {
@@ -1907,6 +1992,16 @@
     "after": {
       "requestId": "id",
       "revokedSessions": "integer"
+    }
+  },
+  {
+    "action": "identity.account.sign-in-address-revealed",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "signInId": "id"
     }
   },
   {
@@ -2262,7 +2357,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -2274,7 +2369,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -2288,7 +2383,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -2392,7 +2487,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.ordering.orders)",
+      "listKey": "enumOf(admin.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -2405,7 +2500,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.ordering.orders)",
+      "listKey": "enumOf(admin.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -2417,7 +2512,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.ordering.orders)",
+      "listKey": "enumOf(admin.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -2463,6 +2558,19 @@
       "complete": "boolean",
       "cutoff": "instant",
       "months": "integer"
+    }
+  },
+  {
+    "action": "ordering.customer-refunds.exported",
+    "targetType": "ordering.customer-account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
     }
   },
   {
@@ -2516,6 +2624,32 @@
     "before": null,
     "after": {
       "sellerId": "optional(id)"
+    }
+  },
+  {
+    "action": "payments.customer-payments.exported",
+    "targetType": "payments.customer-account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "payments.customer-disputes.exported",
+    "targetType": "payments.customer-account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
     }
   },
   {
@@ -3826,6 +3960,29 @@
     "after": {
       "localeCount": "integer",
       "noindex": "boolean",
+      "revisionNo": "integer",
+      "seoDescriptionSet": "boolean",
+      "seoTitleSet": "boolean",
+      "showInMenu": "boolean"
+    }
+  },
+  {
+    "action": "catalog.platform-category.details-reverted",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "localeCount": "integer",
+      "noindex": "boolean",
+      "revisionNo": "integer",
+      "seoDescriptionSet": "boolean",
+      "seoTitleSet": "boolean",
+      "showInMenu": "boolean"
+    },
+    "after": {
+      "localeCount": "integer",
+      "noindex": "boolean",
+      "requestId": "id",
       "revisionNo": "integer",
       "seoDescriptionSet": "boolean",
       "seoTitleSet": "boolean",

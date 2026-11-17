@@ -1,7 +1,13 @@
+import {
+  FakeOrderProducts,
+  FakePromotions,
+} from '../../../../test/support/ordering-promotions-fakes';
+import { testAreas, testOrderingPolicy } from '../../../../test/support/ordering-policy';
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, PendingEvent } from '@mondapac/shared-kernel';
 import type { RefundRepository } from './ports/refund.repository';
 import type { Refund } from '../domain/refund';
+import type { QuoteRequest } from '../../promotions';
 import {
   FixedClock,
   SequenceIdGenerator,
@@ -46,9 +52,11 @@ import { CancelCarrierAfterRefund } from './use-cases/cancel-carrier-after-refun
 import { AdminViewOrderDocument } from './use-cases/admin-view-order-document.use-case';
 import { AdminViewOrder } from './use-cases/admin-view-order.use-case';
 import { CancelPayment } from './use-cases/cancel-payment.use-case';
+import { SettleStaleRedemptions } from './use-cases/settle-stale-redemptions.use-case';
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { ListOrders } from './use-cases/list-orders.use-case';
 import { AdminCustomerRefunds } from './use-cases/admin-customer-refunds.use-case';
+import { AdminOrderAccountOf } from './use-cases/admin-order-account-of.use-case';
 import { AdminOpenObligationsOfQuery } from './use-cases/admin-open-obligations-of.use-case';
 import { OpenObligationsOfQuery } from './use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './use-cases/own-open-obligations.use-case';
@@ -129,6 +137,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
   let commission: FakeCommission;
   let tax: FakeTax;
   let taxCategories: FakeTaxCategories;
+  let promotions: FakePromotions;
   let labels: FakeLabels;
   let customers: FakeCustomers;
   let shipToCipher: FakeShipToCipher;
@@ -161,6 +170,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     commission = new FakeCommission();
     tax = new FakeTax();
     taxCategories = new FakeTaxCategories(code === 'AU' ? 'taxable' : 'zz_standard');
+    promotions = new FakePromotions();
     labels = new FakeLabels();
     customers = new FakeCustomers();
     customers.addresses.set(ADDRESS, { accountId: ACCOUNT, address: TEST_DELIVERY_ADDRESS });
@@ -182,7 +192,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       refunds: NO_REFUNDS,
       audit: NO_AUDIT,
       gateway,
-      policy: new ConfigOrderingPolicy(markets),
+      policy: testOrderingPolicy(markets),
       cart,
       customers,
       shipTo: shipToCipher,
@@ -191,6 +201,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       commission,
       tax,
       taxCategories,
+      products: new FakeOrderProducts(),
+      promotions,
       outbox: {
         append: (_context, events) => {
           written.push(...events);
@@ -617,7 +629,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
 
       const ready = await new SellerMarkOrderReady(gate, deps).execute(seller, { sellerOrderId });
       expect(ready.ok && ready.value.readyAt).toEqual(T0);
-      expect(ready.ok && ready.value.shipTo).toBeNull();
+      expect(ready.ok && ready.value.customer).toBeNull();
     });
   });
 
@@ -2158,13 +2170,25 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           variantLabel: null,
         });
       }
-      // Two distinct units of seller A, asked once per answer; never a store or a customer.
-      expect(labels.calls).toEqual(Array(4).fill({ lookup: 'units', count: 2 }));
+      // Two distinct units of seller A, asked once per answer; never a store or a customer's
+      // name. One order's page also asks customers for the shop's code of its one customer.
+      const units = { lookup: 'units', count: 2 };
+      const customer = { lookup: 'seller-customers', count: 1 };
+      expect(labels.calls).toEqual([units, units, customer, units, customer, units, customer]);
     });
 
-    it('shows the seller where to send its order on the detail and each step, not the list', async () => {
+    it('never gives the seller the delivery address: code and first name only (2026-11-17)', async () => {
       const order = await paid();
       const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      labels.sellerCustomers.set(`${SELLER_A}:${order.accountId}`, {
+        code: 'K7QM-2XTR',
+        firstName: 'Sara',
+      });
+      // Another shop's code for the same customer never reaches seller A.
+      labels.sellerCustomers.set(`${SELLER_B}:${order.accountId}`, {
+        code: 'ZZZZ-9999',
+        firstName: 'Sara',
+      });
 
       const page = await list(sellerA);
       const view = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
@@ -2172,7 +2196,17 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const delivered = await deliver(sellerA, sellerOrderId);
 
       for (const answer of [view, shipped, delivered]) {
-        expect(answer.ok && answer.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(answer.ok && 'shipTo' in answer.value).toBe(false);
+        expect(answer.ok && answer.value.customer).toEqual({
+          code: 'K7QM-2XTR',
+          firstName: 'Sara',
+        });
+        const text = JSON.stringify(answer.ok && answer.value, (_k, v: unknown) =>
+          typeof v === 'bigint' ? v.toString() : v,
+        );
+        for (const secret of [TEST_DELIVERY_ADDRESS.line1, TEST_DELIVERY_ADDRESS.phone, 'ZZZZ']) {
+          expect(text).not.toContain(secret);
+        }
       }
       // The list carries no address, and the seller's answer never names the customer's account.
       expect(page.ok && 'shipTo' in page.value.sellerOrders[0]!).toBe(false);
@@ -2183,10 +2217,13 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const order = await paid();
       const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
       const view = () => new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+      // Whether the view opened the sealed details (for the customer's note): the retention rule.
       const shipTo = async () => {
+        const before = shipToCipher.opened;
         const answer = await view();
         if (!answer.ok) throw new Error('seller view failed');
-        return answer.value.shipTo;
+        expect('shipTo' in answer.value).toBe(false);
+        return shipToCipher.opened > before;
       };
       const admin = testCallContext(
         market,
@@ -2201,25 +2238,25 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       try {
         // Before delivery: paid long ago, then shipped but not delivered.
         clock.advance(Temporal.Duration.from({ hours: 24 * 400 }));
-        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(await shipTo()).toBe(true);
         const shipped = await ship(sellerA, sellerOrderId);
         expect(shipped.ok && shipped.value.deliveredAt).toBeNull();
-        expect(shipped.ok && shipped.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(shipped.ok && 'shipTo' in shipped.value).toBe(false);
         // Shipped 59 days ago, not delivered: still inside the 60-day limit.
         clock.advance(Temporal.Duration.from({ hours: 24 * 59 }));
-        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(await shipTo()).toBe(true);
 
         const delivered = await deliver(sellerA, sellerOrderId);
         expect(delivered.ok && delivered.value.deliveredAt).toEqual(clock.now());
-        expect(delivered.ok && delivered.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(delivered.ok && 'shipTo' in delivered.value).toBe(false);
 
         // 29 days 23 hours after delivery: still shown.
         clock.advance(Temporal.Duration.from({ hours: 30 * 24 - 1 }));
-        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(await shipTo()).toBe(true);
         // Exactly 30 days after delivery: withheld, and the address is not even opened.
         clock.advance(Temporal.Duration.from({ hours: 1 }));
         const openedBefore = shipToCipher.opened;
-        expect(await shipTo()).toBeNull();
+        expect(await shipTo()).toBe(false);
         expect(shipToCipher.opened).toBe(openedBefore);
         const later = await view();
         expect(later.ok && later.value.fulfilment).toBe('delivered');
@@ -2239,10 +2276,13 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     it('withholds the address 60 days after a shipment that was never delivered (2026-11-15)', async () => {
       const order = await paid();
       const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      // Whether the view opened the sealed details (for the customer's note): the retention rule.
       const shipTo = async () => {
+        const before = shipToCipher.opened;
         const answer = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
         if (!answer.ok) throw new Error('seller view failed');
-        return answer.value.shipTo;
+        expect('shipTo' in answer.value).toBe(false);
+        return shipToCipher.opened > before;
       };
       try {
         clock.advance(Temporal.Duration.from({ hours: 5 }));
@@ -2252,9 +2292,9 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         expect(shipped.ok && shipped.value.deliveredAt).toBeNull();
 
         clock.set(shippedAt.add({ hours: 60 * 24 - 1 }));
-        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(await shipTo()).toBe(true);
         clock.set(shippedAt.add({ hours: 60 * 24 }));
-        expect(await shipTo()).toBeNull();
+        expect(await shipTo()).toBe(false);
         // The buyer still sees it.
         const own = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
         expect(own.ok && own.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
@@ -2289,7 +2329,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
 
       const view = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
 
-      expect(view.ok && view.value.shipTo).toBeNull();
+      expect(view.ok && view.value.buyerNote).toBeNull();
       expect(view.ok && view.value.refunds).toEqual([]);
       expect(shipToCipher.opened).toBe(openedBefore);
     });
@@ -2342,23 +2382,26 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           taxInclusive: true,
         })),
       });
+      // Whether the view opened the sealed details (for the customer's note): the retention rule.
       const shipTo = async () => {
+        const before = shipToCipher.opened;
         const answer = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
         if (!answer.ok) throw new Error('seller view failed');
-        return answer.value.shipTo;
+        expect('shipTo' in answer.value).toBe(false);
+        return shipToCipher.opened > before;
       };
 
       // One unit of the first line only: still something to send.
       listed = [refundOf(1, 'succeeded', [{ line: lines[0]!, quantity: 1 }])];
-      expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+      expect(await shipTo()).toBe(true);
       // Every unit, but by a refund that failed: nothing went back.
       const all = lines.map((line) => ({ line, quantity: line.quantity }));
       listed = [refundOf(2, 'failed', all)];
-      expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+      expect(await shipTo()).toBe(true);
       // Every unit by refunds not failed (one still pending): withheld at once, not opened.
       listed = [refundOf(3, 'pending', all)];
       const openedBefore = shipToCipher.opened;
-      expect(await shipTo()).toBeNull();
+      expect(await shipTo()).toBe(false);
       expect(shipToCipher.opened).toBe(openedBefore);
       // The buyer still sees it.
       const own = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
@@ -3512,6 +3555,394 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     });
   });
 
+  describe('discounts (promotions package T2)', () => {
+    // A postcode in a ServiceArea of the Market under test: its code is the promotions zone.
+    const postcode = code === 'AU' ? '4109' : '1000001';
+    const zone = code === 'AU' ? 'greater-brisbane' : 'zz-central';
+    const provisional = markets.get(market.marketId).commissionPayouts!.provisionalTaxRateBps;
+    const lineKey = (l: { offerId: string }) => l.offerId;
+    const emptyQuote = (): QuoteRequest => ({
+      lines: [],
+      shipping: [],
+      code: null,
+      isFirstOrder: false,
+      customerAccountId: null,
+      testMode: false,
+      orderCommission: money(0n, currency),
+    });
+    const startWith = (extra: Record<string, unknown>) =>
+      new StartCheckout(gate, deps).execute(customer, { addressId: ADDRESS, ...extra });
+    /** Seller A's 2 × 1000 line: the seller funds 100 of a discount. */
+    const sellerFundedOnOffer1 = () => {
+      promotions.lineDiscount = (l) =>
+        l.productId === (OFFER_1 as string) ? { sellerShare: 100n, platformShare: 0n } : null;
+    };
+
+    beforeEach(() => {
+      customers.addresses.set(ADDRESS, {
+        accountId: ACCOUNT,
+        address: { ...TEST_DELIVERY_ADDRESS, postcode },
+      });
+    });
+
+    it('asks promotions as the customer, with the products, the zone, no test mode and the commission', async () => {
+      const order = await placed();
+
+      expect(promotions.quotes).toHaveLength(1);
+      const { context, request } = promotions.quotes[0]!;
+      expect(context).toBe(customer);
+      expect(request.testMode).toBe(false);
+      expect(request.customerAccountId).toBe(ACCOUNT);
+      expect(request.isFirstOrder).toBe(true);
+      expect(request.code).toBeNull();
+      expect(request.lines.map((l) => [l.sellerId, l.productId, l.unitPrice, l.quantity])).toEqual(
+        order.lines.map((l) => [
+          order.sellerOrders.find((s) => s.id === l.sellerOrderId)!.sellerId,
+          l.offerId,
+          l.unitPrice,
+          l.quantity,
+        ]),
+      );
+      // Only seller A's delivery costs something; it carries the address's ServiceArea code.
+      expect(request.shipping.map((c) => [c.sellerId, c.zoneCode, c.amount])).toEqual([
+        [SELLER_A, zone, money(500n, currency)],
+      ]);
+      // The commission as the ledger posts it: the provisional tax out of each inclusive line.
+      const halfUp = (n: bigint, d: bigint) => (n * 2n + d) / (d * 2n);
+      const commissionOf = (amount: bigint) =>
+        halfUp(halfUp(amount * 10_000n, 10_000n + BigInt(provisional)) * 1500n, 10_000n);
+      expect(request.orderCommission).toEqual(
+        money(commissionOf(2000n) + commissionOf(750n) + commissionOf(99n), currency),
+      );
+      // Nothing was discounted, so nothing is redeemed.
+      expect(promotions.redeems).toEqual([]);
+    });
+
+    it('freezes the discount on the line, taxes and charges the net amount, then redeems it', async () => {
+      sellerFundedOnOffer1();
+      const started = await start();
+      expect(started.ok).toBe(true);
+      if (!started.ok) return;
+      const order = orders.rows.get(started.value.orderId)!;
+
+      const discounted = order.lines.find((l) => lineKey(l) === OFFER_1)!;
+      expect([
+        discounted.lineAmount,
+        discounted.discountAmount,
+        discounted.discountSellerShare,
+        discounted.discountPlatformShare,
+      ]).toEqual([2000n, 100n, 100n, 0n]);
+      expect(
+        order.lines.filter((l) => l !== discounted).every((l) => l.discountAmount === 0n),
+      ).toBe(true);
+      // The tax of the line is the tax of what the buyer pays for it: 1900 holding 10% is 173.
+      expect(discounted.taxAmount).toBe(173n);
+      expect(tax.calls[0]![0]!.amount).toBe(1900n);
+      const sellerA = order.sellerOrders.find((s) => s.sellerId === SELLER_A)!;
+      expect([sellerA.subtotal, sellerA.discount, sellerA.shipping, sellerA.total]).toEqual([
+        2099n,
+        100n,
+        500n,
+        2499n,
+      ]);
+      expect(started.value.total).toEqual(money(2000n + 750n + 99n + 500n - 100n, currency));
+      expect(gateway.sessions[0]!.packages.map((p) => p.amount)).toEqual([1999n, 500n, 750n]);
+
+      // Redeemed once, after the order was stored, as the customer, with what the order holds.
+      expect(promotions.redeems).toHaveLength(1);
+      const redeemed = promotions.redeems[0]!;
+      expect(redeemed.context).toBe(customer);
+      expect(redeemed.request).toMatchObject({ orderId: order.id, customerAccountId: ACCOUNT });
+      expect(redeemed.request.request).toBe(promotions.quotes[0]!.request);
+      expect(redeemed.request.expected.lines.map((l) => l.discount)).toEqual([100n]);
+    });
+
+    it('pays the seller the line less its own share of the discount, never the platform share', async () => {
+      promotions.lineDiscount = (l) =>
+        l.productId === (OFFER_1 as string) ? { sellerShare: 100n, platformShare: 50n } : null;
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      expect(await new RecordLedger(gate, deps).execute(system, {})).toMatchObject({
+        ok: true,
+        value: { recorded: 2 },
+      });
+      const sellerA = order.sellerOrders.find((s) => s.sellerId === SELLER_A)!;
+      const sent = commission.recorded.find((r) => r.sellerOrderId === sellerA.id)!;
+      expect(sent.lines.map((l) => l.lineAmount).sort()).toEqual([1900n, 99n].sort());
+    });
+
+    it('quotes again with the commission left after the seller share when the platform funds part', async () => {
+      promotions.lineDiscount = (l) =>
+        l.productId === (OFFER_1 as string) ? { sellerShare: 1000n, platformShare: 10n } : null;
+      const order = await placed();
+
+      expect(promotions.quotes).toHaveLength(2);
+      const [first, second] = promotions.quotes.map((q) => q.request.orderCommission.amount);
+      expect(second).toBeLessThan(first!);
+      // The order holds the second quote, and the redemption repeats it.
+      expect(promotions.redeems[0]!.request.request).toBe(promotions.quotes[1]!.request);
+      expect(order.lines.find((l) => lineKey(l) === OFFER_1)!.discountAmount).toBe(1010n);
+    });
+
+    it('takes the discount off the delivery price and charges no zero-priced delivery', async () => {
+      promotions.shippingDiscount = () => 500n;
+      const order = await placed();
+
+      const sellerA = order.sellerOrders.find((s) => s.sellerId === SELLER_A)!;
+      expect([
+        sellerA.shipping,
+        sellerA.shippingDiscount,
+        sellerA.shippingTax,
+        sellerA.total,
+      ]).toEqual([500n, 500n, 0n, 2099n]);
+      expect(gateway.sessions[0]!.packages.map((p) => p.amount)).toEqual([2099n, 750n]);
+    });
+
+    it('asks with the first-order flag off once the customer has a paid order', async () => {
+      const first = await placed();
+      expect(await confirm(first.id)).toEqual(ok('confirmed'));
+      await placed();
+      expect(promotions.quotes.map((q) => q.request.isFirstOrder)).toEqual([true, false]);
+    });
+
+    it('passes the typed code; refuses one that gives nothing or is malformed, taking nothing', async () => {
+      promotions.codes.add('WELCOME10');
+      sellerFundedOnOffer1();
+      expect((await startWith({ code: ' WELCOME10 ' })).ok).toBe(true);
+      expect(promotions.quotes[0]!.request.code).toBe('WELCOME10');
+
+      inventory.calls.length = 0;
+      expect(await startWith({ code: 'NOPE' })).toEqual(
+        err({ code: 'ordering.discount-code-not-applied' }),
+      );
+      expect(await startWith({ code: 42 })).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'code', code: 'format' }] }),
+      );
+      expect(await startWith({ code: 'x'.repeat(65) })).toEqual(
+        err({ code: 'validation.failed', fields: [{ path: 'code', code: 'format' }] }),
+      );
+      expect(inventory.calls).toEqual([]);
+      // An empty code is no code.
+      expect((await startWith({ code: '' })).ok).toBe(true);
+    });
+
+    it('fails closed, taking nothing, when promotions cannot answer', async () => {
+      promotions.quoteFailure = { code: 'promotions.unavailable' };
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      expect(inventory.calls).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+    });
+
+    it('cancels the order and shows the new total when the discounts no longer hold', async () => {
+      sellerFundedOnOffer1();
+      promotions.redeemAnswers.push(
+        err({ code: 'promotions.quote-changed', quote: promotions.calculate(emptyQuote()) }),
+      );
+      // The discount is gone by the time the order is priced again.
+      const quoteOnce = promotions.lineDiscount;
+      let asked = 0;
+      promotions.lineDiscount = (l) => (asked++ < 3 ? quoteOnce(l) : null);
+
+      const answer = await start();
+
+      expect(answer).toEqual(
+        err({ code: 'ordering.price-changed', total: money(2000n + 750n + 99n + 500n, currency) }),
+      );
+      const [order] = [...orders.rows.values()];
+      expect(order).toMatchObject({ status: 'cancelled', cancelReason: 'discount-changed' });
+      expect(inventory.calls).toEqual(['reserve', 'release-own']);
+      expect(gateway.sessions).toEqual([]);
+      // The cancellation is announced, so promotions releases whatever it held.
+      expect(written.map((e) => [e.type, e.aggregateId])).toEqual([
+        ['ordering.order-cancelled.v1', order!.id],
+      ]);
+    });
+
+    it('counts checkouts with a code per account and throttles the eleventh in a window', async () => {
+      for (let n = 0; n < 10; n += 1) {
+        expect(await startWith({ code: `GUESS${n}` })).toEqual(
+          err({ code: 'ordering.discount-code-not-applied' }),
+        );
+      }
+      promotions.codes.add('REAL');
+      // Even a code that applies is refused once the window is spent: the limit tells nothing.
+      expect(await startWith({ code: 'REAL' })).toEqual(
+        err({ code: 'request.throttled', retryAfterSeconds: 120 }),
+      );
+      expect(promotions.quotes).toHaveLength(10);
+      // A checkout without a code is not counted.
+      expect((await start()).ok).toBe(true);
+    });
+
+    it('charges no line for a seller part discounted to nothing', async () => {
+      promotions.lineDiscount = (l) =>
+        l.productId === (OFFER_2 as string)
+          ? { sellerShare: l.unitPrice.amount * BigInt(l.quantity), platformShare: 0n }
+          : null;
+
+      expect((await start()).ok).toBe(true);
+      expect(gateway.sessions[0]!.packages.map((p) => p.amount)).toEqual([2099n, 500n]);
+      expect(promotions.redeems).toHaveLength(1);
+    });
+
+    it('refuses an order the discounts make free before anything is reserved or redeemed', async () => {
+      promotions.lineDiscount = (l) => ({
+        sellerShare: l.unitPrice.amount * BigInt(l.quantity),
+        platformShare: 0n,
+      });
+      promotions.shippingDiscount = (charge) => charge.amount.amount;
+
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      expect(inventory.calls).toEqual([]);
+      expect(promotions.redeems).toEqual([]);
+      expect(orders.rows.size).toBe(0);
+    });
+
+    it('tries a redemption that met a lock again, and gives up after three', async () => {
+      sellerFundedOnOffer1();
+      promotions.redeemAnswers.push(err({ code: 'conflict.retry' }));
+      expect((await start()).ok).toBe(true);
+      expect(promotions.redeems).toHaveLength(2);
+
+      promotions.redeems.length = 0;
+      promotions.redeemAnswers.push(
+        err({ code: 'conflict.retry' }),
+        err({ code: 'conflict.retry' }),
+        err({ code: 'conflict.retry' }),
+      );
+      expect(await start()).toEqual(err({ code: 'conflict.retry' }));
+      expect(promotions.redeems).toHaveLength(3);
+      expect([...orders.rows.values()].filter((o) => o.status === 'cancelled')).toHaveLength(1);
+    });
+  });
+
+  describe('settle-stale-redemptions (promotions package T2)', () => {
+    const sweep = () => new SettleStaleRedemptions(gate, deps).execute(system, {});
+
+    it('is system only', async () => {
+      expect((await new SettleStaleRedemptions(gate, deps).execute(customer, {})).ok).toBe(false);
+      expect(promotions.staleRequests).toEqual([]);
+    });
+
+    it('asks for redemptions older than the payment window plus an hour, 50 at a time', async () => {
+      expect(await sweep()).toEqual(
+        ok({ confirmed: 0, released: 0, expired: 0, waiting: 0, failed: 0 }),
+      );
+      expect(promotions.staleRequests).toEqual([
+        { before: T0.subtract({ minutes: 30 }).subtract({ hours: 1 }), limit: 50 },
+      ]);
+    });
+
+    it('confirms a paid order, releases a cancelled or unknown one', async () => {
+      const paid = await placed();
+      await confirm(paid.id);
+      const cancelled = await placed();
+      await new CancelPayment(gate, deps).execute(system, {
+        orderId: cancelled.id,
+        cause: 'payment-failed',
+      });
+      const unknown = '01JUNKNOWN0RDER0000000000' as Id<'Order'>;
+      promotions.stale.push(paid.id, cancelled.id, unknown);
+
+      expect(await sweep()).toEqual(
+        ok({ confirmed: 1, released: 2, expired: 0, waiting: 0, failed: 0 }),
+      );
+      // promotions lists them in order id order.
+      expect(promotions.settlements).toHaveLength(3);
+      expect(promotions.settlements).toEqual(
+        expect.arrayContaining([
+          { orderId: paid.id, outcome: 'paid' },
+          { orderId: cancelled.id, outcome: 'cancelled' },
+          { orderId: unknown, outcome: 'cancelled' },
+        ]),
+      );
+    });
+
+    it('cancels a pending order whose payment page expired over an hour ago', async () => {
+      const order = await placed();
+      promotions.stale.push(order.id);
+
+      clock.advance(Temporal.Duration.from({ minutes: 30 + 59 }));
+      expect(await sweep()).toEqual(
+        ok({ confirmed: 0, released: 0, expired: 0, waiting: 1, failed: 0 }),
+      );
+      expect(orders.rows.get(order.id)?.status).toBe('pending-payment');
+
+      clock.advance(Temporal.Duration.from({ minutes: 2 }));
+      expect(await sweep()).toEqual(
+        ok({ confirmed: 0, released: 1, expired: 1, waiting: 0, failed: 0 }),
+      );
+      expect(orders.rows.get(order.id)).toMatchObject({
+        status: 'cancelled',
+        cancelReason: 'expired',
+      });
+      expect(inventory.calls).toContain('release:cancelled');
+      // The cancellation is announced (promotions releases the redemptions on that event), and
+      // the second pass releases them at once too: both are idempotent.
+      expect(written.map((e) => [e.type, e.aggregateId])).toContainEqual([
+        'ordering.order-cancelled.v1',
+        order.id,
+      ]);
+      expect(promotions.settlements).toEqual([{ orderId: order.id, outcome: 'cancelled' }]);
+    });
+
+    it('cancels an expired unpaid order that holds no redemption (a checkout that never got a page)', async () => {
+      const order = await placed();
+      clock.advance(Temporal.Duration.from({ minutes: 30 + 61 }));
+
+      expect(await sweep()).toEqual(
+        ok({ confirmed: 0, released: 0, expired: 1, waiting: 0, failed: 0 }),
+      );
+      expect(orders.rows.get(order.id)).toMatchObject({
+        status: 'cancelled',
+        cancelReason: 'expired',
+        paymentState: 'none',
+      });
+      expect(gateway.voided).toEqual([]);
+    });
+
+    it('never cancels or voids a pending order with a payment held on the card', async () => {
+      const order = await placed();
+      orders.rows.set(order.id, {
+        ...order,
+        paymentState: 'authorised',
+        stripePaymentIntentId: 'pi_held_1',
+      });
+      promotions.stale.push(order.id);
+      clock.advance(Temporal.Duration.from({ hours: 5 }));
+
+      expect(await sweep()).toEqual(
+        ok({ confirmed: 0, released: 0, expired: 0, waiting: 1, failed: 0 }),
+      );
+      expect(orders.rows.get(order.id)).toMatchObject({
+        status: 'pending-payment',
+        paymentState: 'authorised',
+      });
+      expect(gateway.voided).toEqual([]);
+      expect(promotions.settlements).toEqual([]);
+      expect(written.map((e) => e.type)).not.toContain('ordering.order-cancelled.v1');
+    });
+
+    it('pages past orders it cannot settle yet, so they never block the ones after them', async () => {
+      const waiting = await placed();
+      orders.rows.set(waiting.id, { ...waiting, paymentState: 'authorised' });
+      // 54 unknown orders after the waiting one: two pages of 50.
+      const unknown = Array.from(
+        { length: 54 },
+        (_, n) => `ffffffff-ffff-7fff-bfff-${String(n).padStart(12, '0')}` as Id<'Order'>,
+      );
+      promotions.stale.push(waiting.id, ...unknown);
+
+      expect(await sweep()).toEqual(
+        ok({ confirmed: 0, released: 54, expired: 0, waiting: 1, failed: 0 }),
+      );
+      expect(promotions.staleRequests.map((r) => r.after ?? null)).toEqual([
+        null,
+        [waiting.id, ...unknown].sort()[49],
+      ]);
+    });
+  });
+
   describe('tax on the order', () => {
     // A category code the Market under test knows (the real tax module checks it).
     const category = code === 'AU' ? 'taxable' : 'zz_standard';
@@ -3990,6 +4421,57 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     });
   });
 
+  describe('the account behind an order number (customers phase 2b search)', () => {
+    const adminActor = () =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xad),
+          sessionId: id<'Session'>(0x62),
+          sellerId: null,
+        }),
+        'order-account-admin',
+      );
+
+    it('declares the order view key', () => {
+      expect(AdminOrderAccountOf.access).toEqual({
+        name: 'ordering.admin-order-account-of',
+        rule: { kind: 'permissions', allOf: ['ordering.order.view'] },
+      });
+    });
+
+    it('answers the placing account to an admin, in the Market only, and refuses anyone else', async () => {
+      const order = await placed();
+      const read = new AdminOrderAccountOf(gate, deps);
+      expect(await read.execute(adminActor(), { orderId: order.id })).toEqual({
+        ok: true,
+        value: { accountId: ACCOUNT },
+      });
+      for (const orderId of [id<'Order'>(0xdead), 'nope', 42]) {
+        expect(await read.execute(adminActor(), { orderId })).toEqual({
+          ok: false,
+          error: { code: 'ordering.order-not-found' },
+        });
+      }
+      const elsewhere = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+      const foreignAdmin = testCallContext(
+        elsewhere,
+        testAuthenticatedActor(elsewhere, {
+          population: 'admin',
+          accountId: id<'Account'>(0xae),
+          sessionId: id<'Session'>(0x63),
+          sellerId: null,
+        }),
+        'order-account-foreign',
+      );
+      expect(await read.execute(foreignAdmin, { orderId: order.id })).toMatchObject({
+        ok: false,
+      });
+      expect(await read.execute(customer, { orderId: order.id })).toMatchObject({ ok: false });
+    });
+  });
+
   describe('order documents', () => {
     const adminContext = testCallContext(
       market,
@@ -4110,7 +4592,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           return true;
         }
       }
-      deps = { ...deps, policy: new InvoicesOn(markets) };
+      deps = { ...deps, policy: new InvoicesOn(markets, testAreas) };
       const numbering = err({ code: 'ordering.invoice-numbering-unavailable' });
       expect(await own(customer, order.id)).toEqual(numbering);
       expect(await any(order.id)).toEqual(numbering);

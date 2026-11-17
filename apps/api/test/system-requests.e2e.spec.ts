@@ -10,6 +10,7 @@ import type {
   RequestView,
   SystemRequestsFailure,
 } from '../src/modules/system-requests/application/request-flow';
+import { ApproveMatchingSystemRequests } from '../src/modules/system-requests/application/use-cases/approve-matching-system-requests.use-case';
 import { ApproveSystemRequest } from '../src/modules/system-requests/application/use-cases/approve-system-request.use-case';
 import { ApproveSystemRequests } from '../src/modules/system-requests/application/use-cases/approve-system-requests.use-case';
 import { ChangeAreaReviewPolicy } from '../src/modules/system-requests/application/use-cases/change-area-review-policy.use-case';
@@ -118,6 +119,8 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
           .useValue(stub('approve'))
           .overrideProvider(ApproveSystemRequests)
           .useValue(stub('bulk'))
+          .overrideProvider(ApproveMatchingSystemRequests)
+          .useValue(stub('matching'))
           .overrideProvider(RejectSystemRequest)
           .useValue(stub('reject'))
           .overrideProvider(WithdrawSystemRequest)
@@ -232,6 +235,10 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     supersededBy: null,
     commentCount: 0,
     overdue: false,
+    requestedByName: 'Maryam K.',
+    decidedByName: null,
+    subjectLabel: 'List paging',
+    supersededByNumber: null,
     reviewPermission: 'system-requests.catalogue.review',
     actions: ['open', 'copy-link', 'approve', 'reject'],
   };
@@ -269,7 +276,17 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     expect(listed.status).toBe(200);
     expect(listed.headers['cache-control']).toBe('no-store');
     expect(listed.body).toMatchObject({
-      rows: [{ id: REQUEST, displayNumber: 'SR-12', appliedAt: START.toString() }],
+      rows: [
+        {
+          id: REQUEST,
+          displayNumber: 'SR-12',
+          appliedAt: START.toString(),
+          requestedByName: 'Maryam K.',
+          decidedByName: null,
+          subjectLabel: 'List paging',
+          supersededByNumber: null,
+        },
+      ],
       total: 1,
     });
     expect(calls).toEqual([{ name: 'list', input: { view: 'all', page: '1' } }]);
@@ -293,9 +310,29 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     const badge = await send('get', '/system-requests/admin/requests-count', session);
     expect(badge.status).toBe(200);
     expect(badge.body).toEqual({ needsMyReview: 3, overdue: 1 });
-    next = ok({ ...view, activity: [] });
+    next = ok({
+      ...view,
+      supersededBy: NEWER,
+      supersededByNumber: 13,
+      activity: [
+        {
+          id: id<'SystemRequestActivity'>(0x7e01),
+          kind: 'applied',
+          actor: AUTHOR,
+          actorName: 'Maryam K.',
+          at: START,
+          body: null,
+        },
+      ],
+    });
     const detail = await send('get', `/system-requests/admin/requests/${REQUEST}`, session);
     expect(detail.status).toBe(200);
+    expect(detail.body).toMatchObject({
+      supersededBy: NEWER,
+      supersededByNumber: 13,
+      subjectLabel: 'List paging',
+      activity: [{ actor: AUTHOR, actorName: 'Maryam K.', at: START.toString() }],
+    });
     expect(calls.map((call) => call.name)).toEqual(['count', 'view']);
   });
 
@@ -326,6 +363,43 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
       { name: 'approve', input: { requestId: REQUEST } },
       { name: 'bulk', input: { requestIds: [REQUEST] } },
     ]);
+  });
+
+  it('approves all matching through its own route, with the list filter as the body', async () => {
+    await boot();
+    const session = sessionOf('admin');
+    next = ok({
+      approved: [{ id: REQUEST, number: 12 }],
+      failed: [{ id: NEWER, code: 'system-requests.decided' }],
+      remaining: 4,
+    });
+    const filter = { view: 'needs-my-review', q: 'paging', risk: 'low', area: 'marketplace' };
+    const path = '/system-requests/admin/requests/bulk-approve-matching';
+    const matched = await send('post', path, session, filter);
+    expect(matched.status).toBe(200);
+    expect(matched.headers['cache-control']).toBe('no-store');
+    expect(matched.body).toEqual({
+      approved: [{ id: REQUEST, number: 12, displayNumber: 'SR-12' }],
+      failed: [{ id: NEWER, code: 'system-requests.decided' }],
+      remaining: 4,
+    });
+    expect(calls).toEqual([{ name: 'matching', input: filter }]);
+    // A count that failed after the approvals committed is null: the panel stops.
+    next = ok({ approved: [{ id: REQUEST, number: 12 }], failed: [], remaining: null });
+    const uncounted = await send('post', path, session, filter);
+    expect(uncounted.status).toBe(200);
+    expect(uncounted.body).toMatchObject({ remaining: null });
+    calls.length = 0;
+    // Paging and sort are not part of what matches; no CSRF is no write.
+    const paged = await send('post', path, session, { view: 'all', page: '2' });
+    expect(paged.status).toBe(400);
+    expect(paged.body).toMatchObject({
+      details: { fields: [{ path: 'page', code: 'unknown-field' }] },
+    });
+    expect((await send('post', path, { cookie: session.cookie }, {})).status).toBe(403);
+    next = err({ code: 'access.denied' });
+    expect((await send('post', path, session, {})).status).toBe(403);
+    expect(calls.map((call) => call.name)).toEqual(['matching']);
   });
 
   it('refuses a write without CSRF, with a stray field, or not as JSON', async () => {
@@ -421,16 +495,24 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
         version: 1,
         updatedAt: START,
         updatedBy: ADMIN,
+        updatedByName: 'Ali R.',
       },
       request: { id: REQUEST, number: 12, risk: 'high', reviewDueAt: START.add({ hours: 168 }) },
     });
     const changed = await send('put', areaPath, session, body);
     expect(changed.status).toBe(200);
+    expect(changed.body).toMatchObject({ value: { updatedBy: ADMIN, updatedByName: 'Ali R.' } });
     expect(calls).toEqual([{ name: 'area', input: { area: 'content', ...body } }]);
     // The guard asks for a fresh proof; spending it is the use case's (unit spec), so the
     // still unspent proof lets the due-days write through to its use case here.
     next = ok({
-      value: { reviewDueDays: 3, version: 1, updatedAt: START, updatedBy: ADMIN },
+      value: {
+        reviewDueDays: 3,
+        version: 1,
+        updatedAt: START,
+        updatedBy: ADMIN,
+        updatedByName: null,
+      },
       request: null,
     });
     const days = await send(
@@ -444,6 +526,7 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
       },
     );
     expect(days.status).toBe(200);
+    expect(days.body).toMatchObject({ value: { updatedByName: null } });
     expect(calls.map((call) => call.name)).toEqual(['area', 'days']);
   });
 });

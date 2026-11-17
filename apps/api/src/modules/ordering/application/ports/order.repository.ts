@@ -169,8 +169,24 @@ export interface OrderRepository {
     accountId: Id<'Account'>,
   ): Promise<OrderState | null>;
 
+  /**
+   * Whether the account has a paid order in the Market (status confirmed): checkout's answer to
+   * "is this the customer's first order" for promotions (package T2). Ordering's own history only.
+   */
+  hasPaidOrder(market: MarketContext, accountId: Id<'Account'>): Promise<boolean>;
+
   /** The account's orders still waiting for payment (to supersede on a new checkout). */
   findPending(market: MarketContext, accountId: Id<'Account'>): Promise<readonly OrderState[]>;
+
+  /**
+   * Orders of the Market still waiting for payment with no money moved whose payment page
+   * expired before `before`, oldest expiry first: the safety sweep cancels them (package T2).
+   */
+  findExpiredUnpaid(
+    market: MarketContext,
+    before: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly Id<'Order'>[]>;
 
   /**
    * What is still open for the account, for a decision that must not strand a customer (account
