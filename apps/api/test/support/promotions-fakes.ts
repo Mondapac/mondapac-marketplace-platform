@@ -900,6 +900,9 @@ export class FakeOrderFacts implements DeliveredOrderFacts {
 /** The payout release of each seller order; by default every seller order is released already. */
 export class FakePayoutAnchors implements PayoutAnchors {
   readonly anchors = new Map<string, { sellerId: Id<'Seller'>; eligibleAt: Temporal.Instant }>();
+  /** Seller orders a payout hold covers now, and those a chargeback took. */
+  readonly held = new Set<string>();
+  readonly disputesLost = new Set<string>();
   /** The release of a seller order with no anchor of its own (null: unknown, so a retry). */
   fallback: Temporal.Instant | null = Temporal.Instant.from('2000-01-01T00:00:00Z');
   broken = false;
@@ -914,7 +917,14 @@ export class FakePayoutAnchors implements PayoutAnchors {
         ? null
         : { sellerId: seller, eligibleAt: this.fallback });
     if (this.broken || value === null) return Promise.resolve({ known: false } as const);
-    return Promise.resolve({ known: true as const, value });
+    return Promise.resolve({
+      known: true as const,
+      value: {
+        ...value,
+        onHold: this.held.has(sellerOrderId),
+        disputeLost: this.disputesLost.has(sellerOrderId),
+      },
+    });
   }
   /** Who sells a seller order with no anchor of its own (the order facts' seller, by default). */
   sellerOf: (sellerOrderId: Id<'SellerOrder'>) => Id<'Seller'> | undefined = () => undefined;
@@ -1064,6 +1074,19 @@ export class MemoryCredits implements CreditRepository {
       return Promise.resolve(false);
     }
     this.rows.set(id, { ...row, amountMinor, grantAfter: null });
+    return Promise.resolve(true);
+  }
+  postpone(_market: MarketContext, id: Id<'PromotionCredit'>, until: Temporal.Instant) {
+    const row = this.rows.get(id);
+    if (
+      row === undefined ||
+      row.status !== 'PENDING' ||
+      row.grantAfter === null ||
+      row.grantAfter.epochMilliseconds >= until.epochMilliseconds
+    ) {
+      return Promise.resolve(false);
+    }
+    this.rows.set(id, { ...row, grantAfter: until });
     return Promise.resolve(true);
   }
   reservedTotal(_market: MarketContext, promotionId: Id<'Promotion'>) {

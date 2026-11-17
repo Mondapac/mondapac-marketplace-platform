@@ -56,6 +56,16 @@ export interface CreditRepository {
     id: Id<'PromotionCredit'>,
     amountMinor: bigint,
   ): Promise<boolean>;
+  /**
+   * Moves a waiting PENDING credit's wait later (never earlier), so the grant job comes back to it
+   * then (a payout hold, facts that cannot be read). False when it is not waiting, or already waits
+   * as long.
+   */
+  postpone(
+    market: MarketContext,
+    id: Id<'PromotionCredit'>,
+    until: Temporal.Instant,
+  ): Promise<boolean>;
   /** The money a promotion has reserved or paid: its PENDING and GRANTED credits. */
   reservedTotal(market: MarketContext, promotionId: Id<'Promotion'>): Promise<bigint>;
   /** PENDING and GRANTED credits of one promotion, optionally of one recipient. */

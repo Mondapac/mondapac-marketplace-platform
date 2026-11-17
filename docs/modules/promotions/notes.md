@@ -421,6 +421,14 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   one move (PENDING to PENDING: end the wait, amount kept or lowered) and grants GRANTED only after
   the wait; the app role may update `amount_minor` and `grant_after`. A cashback PENDING with no
   wait for an hour is finished by the job as it is (its amount is final).
+- A payout hold and a lost chargeback stop the cashback (Hassan M-2): the anchor also answers
+  `onHold` (an active hold on the seller order or the whole seller) and `disputeLost` (dispute
+  debits above what was reinstated). A held credit is put back for 6 hours, one whose facts cannot
+  be read for an hour (`postpone`: the wait only grows, migration
+  `20261117140000_promotions_credit_postpone`), so a credit the job cannot finish never keeps newer
+  ones out of a run (Hassan L-4). A lost chargeback fails the credit `order-disputed`, and none is
+  reserved for a seller order already lost; a currency that no longer matches fails it
+  `currency-changed`.
 - Migration `20261117100001_promotions_seller_cashback`: `promotions_type_funding_check` makes a
   cashback the seller's money exactly with the segment; `promotions_phase3_check` lets a cashback
   carry no segment or this one. `down.sql` refuses while such rows exist.

@@ -102,6 +102,13 @@ export interface SellerOrderPayoutAnchor {
   readonly sellerOrderId: Id<'SellerOrder'>;
   readonly sellerId: Id<'Seller'>;
   readonly eligibleAt: Temporal.Instant;
+  /**
+   * An active payout hold covers the seller order now (on the seller order, such as a dispute's,
+   * or on the whole seller): the seller's money is frozen, so a cashback waits too (Hassan M-2).
+   */
+  readonly onHold: boolean;
+  /** A chargeback took the seller order's money: dispute debits exceed what was reinstated. */
+  readonly disputeLost: boolean;
 }
 
 /** Who bears the loss of a refund (ordering's closed list). */
