@@ -31,6 +31,7 @@
   { "name": "cart.merge-guest-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.move-saved-to-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.purge-inactive-carts", "rule": "system" },
+  { "name": "cart.read-assistant-offer-units", "rule": "anonymous" },
   { "name": "cart.read-checkout-lines", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.remove-guest-item", "rule": "anonymous" },
   { "name": "cart.remove-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -38,6 +39,7 @@
   { "name": "cart.save-for-later", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.set-guest-line-quantity", "rule": "anonymous" },
   { "name": "cart.set-line-quantity", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "cart.view-assistant-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.view-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.view-guest-cart", "rule": "anonymous" },
   { "name": "cart.view-saved", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -324,6 +326,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "customers.reconcile-customer-read-models", "rule": "system" },
+  { "name": "customers.reconcile-seller-customers", "rule": "system" },
   { "name": "customers.record-customer-timeline", "rule": "system" },
   {
     "name": "customers.request-account-deletion",
@@ -336,6 +339,7 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "customers.sync-customer-read-model", "rule": "system" },
+  { "name": "customers.sync-seller-customers", "rule": "system" },
   { "name": "customers.update-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
     "name": "customers.view-account-deletion-availability",
@@ -347,7 +351,16 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "engagement.follow-store", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "engagement.followed-among", "rule": "system" },
+  { "name": "engagement.follows-of-account", "rule": "system" },
   { "name": "engagement.forget-account", "rule": "system" },
+  { "name": "engagement.list-my-stores", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  {
+    "name": "engagement.own-followed-among",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "engagement.purge-expired-block-counts", "rule": "system" },
   { "name": "engagement.purge-expired-events", "rule": "system" },
   { "name": "engagement.recent-views", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -360,8 +373,14 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "engagement.unfollow-store", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
     "name": "engagement.view-personalization",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "engagement.view-store-follow",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
@@ -604,6 +623,7 @@
   { "name": "ordering.confirm-payment", "rule": "system" },
   { "name": "ordering.customer-order-accounts", "rule": "system" },
   { "name": "ordering.customer-order-stats", "rule": "system" },
+  { "name": "ordering.customer-seller-stats", "rule": "system" },
   { "name": "ordering.delivery-quotes", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
@@ -684,6 +704,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "promotions.view-store-follow-gift", "rule": "anonymous" },
   {
     "name": "reviews.cast-helpful-vote",
     "rule": "own-resources",
@@ -848,6 +869,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "settings.read-cart-mode", "rule": "anonymous" },
   {
     "name": "settings.read-list-paging",
     "rule": "own-resources",

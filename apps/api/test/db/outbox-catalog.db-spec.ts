@@ -389,6 +389,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // Multi-culture package 1: at most one default culture per Market.
   'catalog.cultures_one_default_key':
     'CREATE UNIQUE INDEX cultures_one_default_key ON catalog.cultures USING btree (market_id) WHERE is_default',
+  // Customers phase 3: the relay's claim index of engagement.outbox.
+  'engagement.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON engagement.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   // Customers (package 5a): the relay's claim index of customers.outbox.
   'customers.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON customers.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',

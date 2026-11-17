@@ -23,10 +23,19 @@ export class InMemoryCustomerList implements CustomerListReader {
     return this.rowsOf.get(market.marketId) ?? [];
   }
 
+  /** `sellerId:accountId` of the follows the "store followed" filter matches. */
+  readonly followers = new Set<string>();
+
   #match(market: MarketContext, query: CustomerListQuery): CustomerListRow[] {
     const { selector, now } = query;
     const day = 24 * 3_600_000;
     return this.#all(market).filter((row) => {
+      if (
+        selector.followsSellerId != null &&
+        !this.followers.has(`${selector.followsSellerId}:${row.accountId}`)
+      ) {
+        return false;
+      }
       switch (selector.view) {
         case 'new':
           if (row.signedUpAt.epochMilliseconds < now.epochMilliseconds - NEW_WINDOW_DAYS * day)

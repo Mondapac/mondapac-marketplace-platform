@@ -13,6 +13,7 @@ import {
 } from '../../../../../test/support/blog-fixtures';
 import { blogHarness, quietLogs } from '../../../../../test/support/blog-harness';
 import {
+  BLOG_MEDIA_EDIT,
   BLOG_POST_EDIT,
   BLOG_POST_PAUSE,
   BLOG_POST_PUBLISH,
@@ -58,6 +59,9 @@ const ADMIN_CASES: readonly [string, string, (h: Harness) => unknown][] = [
   ['deleteCategory', BLOG_TAXONOMY_EDIT.key, () => ({ category: POST })],
   ['createTag', BLOG_TAXONOMY_EDIT.key, () => ({ body: {} })],
   ['deleteTag', BLOG_TAXONOMY_EDIT.key, () => ({ tag: POST })],
+  ['uploadMedia', BLOG_MEDIA_EDIT.key, () => ({ body: {} })],
+  ['listMedia', BLOG_POST_READ.key, () => ({})],
+  ['viewMediaFile', BLOG_POST_READ.key, () => ({ media: POST, size: 'thumb' })],
 ];
 
 const SELLER_CASES: readonly [string, (h: Harness) => unknown][] = [
@@ -94,6 +98,7 @@ describe.each([['AU'], ['ZZ']] as const)('blog permissions in %s', (code) => {
         BLOG_POST_PUBLISH,
         BLOG_POST_PAUSE,
         BLOG_TAXONOMY_EDIT,
+        BLOG_MEDIA_EDIT,
       ]
         .map((permission) => permission.key)
         .filter((other) => other !== key);
