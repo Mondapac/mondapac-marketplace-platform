@@ -407,6 +407,8 @@ export class PrismaRedemptionRepository implements RedemptionRepository {
         ...(after === null
           ? {}
           : {
+              // The redundant bound gives the index scan its start; the OR is the exact keyset.
+              reservedAt: { lte: toDate(after.reservedAt) },
               OR: [
                 { reservedAt: { lt: toDate(after.reservedAt) } },
                 { reservedAt: toDate(after.reservedAt), id: { lt: after.id } },
