@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
 import { encodePayload, Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, Id, MarketContext, MarketId, PendingEvent } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  Id,
+  MarketContext,
+  MarketId,
+  PendingEvent,
+} from '@mondapac/shared-kernel';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { NO_PERMISSION_KEYS } from '../../../../platform/events/outbox-writer';
 import { ASSISTANT_EVENTS } from '../../domain/events';
