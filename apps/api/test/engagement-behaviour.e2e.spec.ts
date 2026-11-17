@@ -110,7 +110,12 @@ describe('engagement routes over HTTP', () => {
   });
 
   it('maps every refusal code of the use cases to its exact status', () => {
-    expect(ENGAGEMENT_STATUS).toEqual({ 'validation.failed': 400 });
+    expect(ENGAGEMENT_STATUS).toEqual({
+      'validation.failed': 400,
+      'engagement.store-not-found': 404,
+      'engagement.follow-limit': 409,
+      'engagement.unavailable': 503,
+    });
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {

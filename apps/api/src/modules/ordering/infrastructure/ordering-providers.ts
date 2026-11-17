@@ -6,7 +6,13 @@ import { SHIPPING_FACADE, type ShippingFacade } from '../../shipping';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { ServiceAreaDirectory } from '../../../platform/market-config/service-area-directory';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
+import {
+  CUSTOMER_PAYMENTS_READER,
+  type CustomerPaymentsReader,
+} from '../application/ports/customer-payments.reader';
+import { PrismaCustomerPaymentsReader } from './prisma-customer-payments.reader';
 import {
   SUBJECT_KEY_SERVICE,
   type SubjectKeyService,
@@ -72,6 +78,8 @@ import {
   type CarrierProgressReader,
 } from '../application/ports/carrier-progress.reader';
 import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
+import { FacadeOrderProducts } from './facade-order-products';
+import { ORDER_PRODUCTS, type OrderProducts } from '../application/ports/order-products';
 import { ShippingDeliveryMethodPolicy } from './shipping-delivery-method-policy';
 import { PrismaOrderRepository } from './prisma-order.repository';
 import { PrismaPickupCodeRepository } from './prisma-pickup-code.repository';
@@ -229,8 +237,9 @@ export const orderingProviders: readonly FactoryProvider[] = [
   },
   {
     provide: ORDERING_POLICY,
-    inject: [MarketRegistry],
-    useFactory: (markets: MarketRegistry): OrderingPolicy => new ConfigOrderingPolicy(markets),
+    inject: [MarketRegistry, ServiceAreaDirectory],
+    useFactory: (markets: MarketRegistry, areas: ServiceAreaDirectory): OrderingPolicy =>
+      new ConfigOrderingPolicy(markets, areas),
   },
   {
     provide: DELIVERY_METHOD_POLICY,
@@ -243,6 +252,11 @@ export const orderingProviders: readonly FactoryProvider[] = [
     inject: [CATALOG_FACADE],
     useFactory: (catalog: CatalogFacade): OrderTaxCategories =>
       new FacadeOrderTaxCategories(catalog),
+  },
+  {
+    provide: ORDER_PRODUCTS,
+    inject: [CATALOG_FACADE],
+    useFactory: (catalog: CatalogFacade): OrderProducts => new FacadeOrderProducts(catalog),
   },
   {
     provide: ORDER_LABELS,
@@ -259,5 +273,11 @@ export const orderingProviders: readonly FactoryProvider[] = [
     inject: [SHIPPING_FACADE],
     useFactory: (shipping: ShippingFacade): CarrierProgressReader =>
       new FacadeCarrierProgressReader(shipping),
+  },
+  {
+    provide: CUSTOMER_PAYMENTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerPaymentsReader =>
+      new PrismaCustomerPaymentsReader(prisma),
   },
 ];

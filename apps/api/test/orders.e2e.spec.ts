@@ -68,10 +68,17 @@ import {
   MemoryAdminNotes,
   OrderingAuditWriter,
 } from './support/ordering-fakes';
-import { FakeUnitOfWork, RecordingOutbox } from './support/pricing-fakes';
+import { FakeUnitOfWork } from './support/pricing-fakes';
 import { STORE_PROFILE_REPOSITORY } from '../src/modules/sellers/application/ports/store-profile.repository';
 import { InMemoryStoreProfiles } from '../src/modules/sellers/application/testing/in-memory-store-profiles';
 import { createTestApp } from './support/test-app';
+import {
+  FakeOrderProducts,
+  FakePromotions,
+  RecordingOrderingOutbox,
+} from './support/ordering-promotions-fakes';
+import { PROMOTIONS_FACADE } from '../src/modules/promotions';
+import { ORDER_PRODUCTS } from '../src/modules/ordering/application/ports/order-products';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 import { encodeCursor } from '../src/modules/ordering/application/read-flow';
 
@@ -125,6 +132,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.check-unavailable': 503,
     'ordering.delivery-quote-changed': 409,
     'ordering.price-changed': 409,
+    'ordering.discount-code-not-applied': 422,
     'ordering.card-not-accepted': 422,
     'ordering.card-declined': 402,
     'ordering.seller-order-not-found': 404,
@@ -148,6 +156,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.refund-limit-not-found': 404,
     'ordering.document-not-available': 409,
     'ordering.invoice-numbering-unavailable': 503,
+    'batch.too-large': 413,
     'saved-filter.not-found': 404,
     'saved-filter.name-taken': 409,
     'saved-filter.limit-reached': 409,
@@ -168,6 +177,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let inventory: FakeInventory;
   let cart: FakeCart;
   let shipping: FakeShipping;
+  let promotions: FakePromotions;
   let pickupCodes: MemoryPickupCodes;
   let notes: MemoryAdminNotes;
   let pickupVault: FakePickupVault;
@@ -192,6 +202,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     inventory = new FakeInventory();
     cart = new FakeCart();
     shipping = new FakeShipping();
+    promotions = new FakePromotions();
     pickupCodes = new MemoryPickupCodes();
     notes = new MemoryAdminNotes();
     pickupVault = new FakePickupVault();
@@ -255,7 +266,7 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .overrideProvider(AUDIT_WRITER)
           .useValue(audit)
           .overrideProvider(OUTBOX_WRITER)
-          .useValue(new RecordingOutbox())
+          .useValue(new RecordingOrderingOutbox())
           .overrideProvider(ORDER_REPOSITORY)
           .useValue(orders)
           .overrideProvider(ADMIN_SHIPMENT_LIST_READER)
@@ -295,7 +306,11 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .overrideProvider(ORDER_TAX_CATEGORIES)
           .useValue(new FakeTaxCategories(code === 'AU' ? 'taxable' : 'zz_standard'))
           .overrideProvider(COMMISSION_PAYOUTS_FACADE)
-          .useValue(new FakeCommission()),
+          .useValue(new FakeCommission())
+          .overrideProvider(PROMOTIONS_FACADE)
+          .useValue(promotions)
+          .overrideProvider(ORDER_PRODUCTS)
+          .useValue(new FakeOrderProducts()),
     }));
   });
   afterEach(async () => {
@@ -508,6 +523,36 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
         accountId: CUSTOMER,
         status: 'pending-payment',
       });
+    });
+
+    it('takes the discounts promotions gives, and a discount code (promotions package T2)', async () => {
+      promotions.lineDiscount = () => ({ sellerShare: 100n, platformShare: 0n });
+      promotions.codes.add('SPRING10');
+
+      const res = await checkout(customer(), { addressId: ADDRESS, code: '  SPRING10 ' });
+
+      expect(res.status).toBe(200);
+      const [order] = [...orders.rows.values()];
+      const discount = order!.lines.reduce((sum, l) => sum + l.discountAmount, 0n);
+      expect(discount).toBe(100n * BigInt(order!.lines.length));
+      expect(res.body).toMatchObject({ total: { amount: String(3500n - discount), currency } });
+      expect(promotions.quotes[0]!.request).toMatchObject({ code: 'SPRING10', testMode: false });
+      expect(promotions.redeems).toHaveLength(1);
+    });
+
+    it('refuses a code that does not apply with a coded 422, and a bad code with 400', async () => {
+      const notApplied = await checkout(customer(), { addressId: ADDRESS, code: 'NOPE' });
+      expect(notApplied.status).toBe(422);
+      expect(body(notApplied).code).toBe('ordering.discount-code-not-applied');
+      expect(inventory.calls).not.toContain('reserve');
+
+      const bad = await checkout(customer(), { addressId: ADDRESS, code: 'x'.repeat(65) });
+      expect(bad.status).toBe(400);
+      expect(bad.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'code' }] },
+      });
+      expect(orders.rows.size).toBe(0);
     });
 
     it('needs a session and the CSRF token', async () => {
@@ -1492,6 +1537,50 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(badFilter.status).toBe(400);
     });
 
+    it('exports the orders of the filter as a CSV attachment, for ordering.order.view only', async () => {
+      await seedAdmins();
+      const started = await checkout(customer());
+      const orderId = body(started).orderId;
+
+      const file = await http()
+        .get('/ordering/admin/orders/export?status=pending-payment')
+        .set(adminHeaders(VIEWER, 31));
+      const empty = await http()
+        .get('/ordering/admin/orders/export?status=cancelled')
+        .set(adminHeaders(VIEWER, 32));
+      const noKey = await http().get('/ordering/admin/orders/export').set(adminHeaders(NO_KEY, 33));
+      const customerTries = await http()
+        .get('/ordering/admin/orders/export')
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), cookie: customer().cookie });
+      const paged = await http()
+        .get('/ordering/admin/orders/export?page=1')
+        .set(adminHeaders(VIEWER, 34));
+      const xlsx = await http()
+        .get('/ordering/admin/orders/export?format=xlsx')
+        .set(adminHeaders(VIEWER, 35));
+      const badFilter = await http()
+        .get('/ordering/admin/orders/export?status=shipped')
+        .set(adminHeaders(VIEWER, 36));
+
+      expect(file.status).toBe(200);
+      expect(file.headers['content-type']).toContain('text/csv');
+      expect(file.headers['content-disposition']).toMatch(
+        /^attachment; filename="orders-\d{4}-\d{2}-\d{2}\.csv"$/,
+      );
+      expect(file.headers['cache-control']).toBe('no-store');
+      expect(file.headers['x-content-type-options']).toBe('nosniff');
+      const lines = String(file.text).replace('\uFEFF', '').split('\r\n').filter(Boolean);
+      expect(lines[0]).toMatch(/^Order,Placed,Status,Payment,/);
+      expect(lines).toHaveLength(2);
+      expect(lines[1]).toContain(orderId);
+      expect(String(empty.text).split('\r\n').filter(Boolean)).toHaveLength(1);
+      expect(noKey.status).toBe(403);
+      expect(customerTries.status).toBeGreaterThanOrEqual(401);
+      expect(customerTries.status).toBeLessThanOrEqual(403);
+      expect([paged, xlsx, badFilter].map((r) => r.status)).toEqual([400, 400, 400]);
+      expect(body(paged)).toMatchObject({ details: { fields: [{ path: 'page' }] } });
+    });
+
     it('gives a role with ordering.order.view the document of a paid order, and no other role', async () => {
       await seedAdmins();
       const orderId = body(await checkout(customer())).orderId;
@@ -1513,6 +1602,64 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       });
       expect(JSON.stringify(paid.body)).not.toMatch(/Rahman|Example Street/);
       expect(noKey.status).toBe(403);
+    });
+
+    it('pages a customer’s refunds for ordering.order.view with customers.customers.view, and keeps the export behind the customers export key (phase 2b)', async () => {
+      await seedAdmins();
+      // A customer-page reader: the order view key and customers' view key (Viewer lacks the latter).
+      const PAGE_READER = id<'Account'>(0xa00b);
+      const PAGE_READER_ROLE = id<'Role'>(0xc0f3);
+      fakes.seedRole({
+        id: PAGE_READER_ROLE,
+        marketId: code as AccountState['marketId'],
+        scope: 'platform',
+        kind: 'custom',
+        seedCode: null,
+        seedVersion: null,
+        sellerId: null,
+        name: 'Customer page reader',
+        permissionKeys: ['ordering.order.view', 'customers.customers.view'],
+        version: 1,
+        createdAt: START,
+      });
+      seedAccount(PAGE_READER, 'admin', 'admin11');
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(0xe00b),
+        marketId: code as AccountState['marketId'],
+        accountId: PAGE_READER,
+        roleId: PAGE_READER_ROLE,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+      const route = `/ordering/admin/customers/${CUSTOMER}/refunds`;
+      const csrf = (accountId: Id<'Account'>, n: number) => ({
+        'x-market-id': code,
+        ...panelHeaders(code, 'admin'),
+        ...session(accountId, 'admin', n),
+      });
+      // The Viewer holds ordering.order.view but not customers.customers.view.
+      const viewerOnly = await http().post(route).set(csrf(VIEWER, 46)).send({});
+      expect(viewerOnly.status).toBe(403);
+      const page = await http()
+        .post(route)
+        .set(csrf(PAGE_READER, 41))
+        .send({ filters: { state: ['succeeded'] }, paging: 'pages' });
+      expect(page.status).toBe(200);
+      expect(page.headers['cache-control']).toBe('no-store');
+      expect(page.body).toMatchObject({ items: [], total: 0, page: 1, paging: 'pages' });
+      const noKey = await http().post(route).set(csrf(NO_KEY, 42)).send({});
+      expect(noKey.status).toBe(403);
+      const unknownField = await http()
+        .post(route)
+        .set(csrf(PAGE_READER, 43))
+        .send({ accountId: 'x' });
+      expect(unknownField.status).toBe(400);
+      const noCsrf = await http().post(route).set(adminHeaders(PAGE_READER, 44)).send({});
+      expect(noCsrf.status).toBe(403);
+      // The reader holds no customers export key: the export is refused before any read.
+      const exported = await http().post(`${route}/export`).set(csrf(PAGE_READER, 45)).send({});
+      expect(exported.status).toBe(403);
     });
 
     it('refunds only for an admin with ordering.order.refund, and not while the Market switch is off', async () => {

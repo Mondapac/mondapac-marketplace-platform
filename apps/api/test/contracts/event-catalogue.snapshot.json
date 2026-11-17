@@ -682,6 +682,22 @@
     "fields": {}
   },
   {
+    "type": "engagement.store-followed.v1",
+    "aggregateType": "store-follow",
+    "fields": {
+      "accountId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "engagement.store-unfollowed.v1",
+    "aggregateType": "store-follow",
+    "fields": {
+      "accountId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
     "type": "identity.account-disabled.v1",
     "aggregateType": "account",
     "fields": {

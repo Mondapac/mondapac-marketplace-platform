@@ -207,6 +207,11 @@ export const CustomerGroupChanged = defineAuditAction({
     archived: auditField.boolean(),
     renamed: auditField.boolean(),
     describedChanged: auditField.boolean(),
+    /**
+     * Phase 2b, on an archive: whether a live promotion's customer-group segment still named the
+     * group (`some`, `none`, or `unknown` when promotions could not say); `not-checked` otherwise.
+     */
+    liveSegmentUse: auditField.enumOf(['not-checked', 'none', 'some', 'unknown'] as const),
   },
 });
 
@@ -247,6 +252,36 @@ export const CustomerTimelineExported = defineAuditAction({
   },
 });
 
+/**
+ * An admin revealed one of a customer's full delivery addresses (phase 2b). Target: the customer;
+ * the row names the address, never its content.
+ */
+export const CustomerAddressRevealed = defineAuditAction({
+  action: 'customers.customer-address.revealed',
+  targetType: CUSTOMER_PAGE_TARGET,
+  actors: ['authenticated'],
+  after: { addressId: auditField.id() },
+});
+
+/** The audit target type of one seller's Customers list (customers management phase 3). */
+export const SELLER_CUSTOMERS_TARGET = 'customers.seller-customers';
+
+/**
+ * A seller's team member exported the shop's Customers list. Target: the seller. Codes and first
+ * names only are in the file; the row holds the format, the count and how the rows were picked,
+ * never a code, a search text or a filter value.
+ */
+export const SellerCustomersExported = defineAuditAction({
+  action: 'customers.seller-customers.exported',
+  targetType: SELLER_CUSTOMERS_TARGET,
+  actors: ['authenticated'],
+  after: {
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rowCount: auditField.integer(),
+    selection: auditField.enumOf(['codes', 'filter'] as const),
+  },
+});
+
 export const CUSTOMERS_AUDIT_ACTIONS = [
   AccountDeletionSettingsChanged,
   AccountDeletionRequested,
@@ -264,4 +299,6 @@ export const CUSTOMERS_AUDIT_ACTIONS = [
   CustomerGroupMembersChanged,
   CustomerNoteAdded,
   CustomerTimelineExported,
+  CustomerAddressRevealed,
+  SellerCustomersExported,
 ] as const;

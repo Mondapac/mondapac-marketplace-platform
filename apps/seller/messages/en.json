@@ -115,6 +115,7 @@
     "intro": "Welcome, {name}. Here is what needs attention in your shop and your latest activity."
   },
   "dashboard": {
+    "loading": "Loading the dashboard",
     "view-all": "View all",
     "unnamed-product": "Unnamed product",
     "error": {
@@ -1021,6 +1022,16 @@
         }
       },
       "export-button": "Export",
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}"
+      },
+      "row": {
+        "menu": {
+          "open": "Open",
+          "edit": "Edit"
+        }
+      },
       "select": {
         "page": "Select all products on this page",
         "page-short": "Select all on this page",
@@ -2622,6 +2633,15 @@
       "more": "Show more"
     },
     "range": "{from} to {to} of {total}",
+    "export": {
+      "button": "Export CSV",
+      "busy": "Preparing the file…",
+      "done": "The file of the orders on this list was downloaded.",
+      "too-large": "{matching} orders match, and one file holds at most {max}. Narrow the filters and export again.",
+      "too-large-plain": "Too many orders match for one file. Narrow the filters and export again.",
+      "invalid": "These filters cannot be exported. Change them and try again.",
+      "unavailable": "The file could not be created. Try again."
+    },
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the dates to reach the rest, or ask your platform admin to switch List paging to Previous and next.",
     "slip": {
       "open": "Print packing slip",

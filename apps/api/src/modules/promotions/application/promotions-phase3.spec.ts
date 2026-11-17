@@ -1,3 +1,7 @@
+import { QuoteOwnDiscounts } from './use-cases/quote-own-discounts.use-case';
+import { RedeemOwnDiscounts } from './use-cases/redeem-own-discounts.use-case';
+import { ListStaleRedemptions } from './use-cases/list-stale-redemptions.use-case';
+import { SettleRedemptions } from './use-cases/settle-redemptions.use-case';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -52,6 +56,8 @@ import { RedeemDiscounts } from './use-cases/redeem-discounts.use-case';
 import { SetPromotionBudget } from './use-cases/set-promotion-budget.use-case';
 import { SetPromotionsStatus } from './use-cases/set-promotions-status.use-case';
 import { ViewMyReferral } from './use-cases/view-my-referral.use-case';
+import { ViewStoreFollowGift } from './use-cases/view-store-follow-gift.use-case';
+import type { PromotionRecord } from '../domain/promotion';
 
 // The phase 3 types through the use cases, in memory, on both Market fixtures (AU: platform money
 // in test mode, GST ruling open; ZZ: ruling confirmed, other limits and alphabet): who may make
@@ -159,6 +165,10 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       make(QuoteDiscounts),
       make(RedeemDiscounts),
       make(CheckWasPrice),
+      make(QuoteOwnDiscounts),
+      make(RedeemOwnDiscounts),
+      make(ListStaleRedemptions),
+      make(SettleRedemptions),
     );
 
   beforeEach(async () => {
@@ -654,6 +664,60 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       p3.storeFollows.throws = false;
       p3.storeFollows.broken = true;
       expect((await quote(request([line(1, 10000n, 1)]))).totals.goodsDiscount).toBe(0n);
+    });
+  });
+
+  describe('the Follow gift (store page)', () => {
+    const anonymous = () => testCallContext(market, 'anonymous', 'promo3-anon-abcdef');
+    const gifts = (sellerId: string, context: CallContext = anonymous()) =>
+      make(ViewStoreFollowGift).execute(context, { sellerId });
+    const edit = (promotionId: string, over: Partial<PromotionRecord>) => {
+      const record = promotions.records.get(promotionId as Id<'Promotion'>)!;
+      promotions.records.set(record.id, { ...record, ...over });
+    };
+
+    it("lists the store's live follower offers, anonymously, and no other store's", async () => {
+      const made = await sellerCreate(follower());
+      const answer = await gifts(SELLER);
+      expect(answer).toEqual({
+        ok: true,
+        value: {
+          gifts: [
+            {
+              promotionId: made.id,
+              name: 'For followers',
+              reward: { kind: 'PERCENT', bps: 1000 },
+              currency,
+              minSpendMinor: null,
+              endsAt: null,
+            },
+          ],
+        },
+      });
+      expect(await gifts(SELLER_2)).toEqual({ ok: true, value: { gifts: [] } });
+    });
+
+    it('leaves out test-mode, coded, paused and ended offers', async () => {
+      for (const over of [
+        { testMode: true },
+        { code: 'FOLLOW10' },
+        { status: 'PAUSED' as const },
+        { endsAt: T0.subtract({ hours: 1 }) },
+      ]) {
+        const made = await sellerCreate(follower());
+        edit(made.id, over);
+      }
+      expect(await gifts(SELLER)).toEqual({ ok: true, value: { gifts: [] } });
+    });
+
+    it('answers no gift with promotions off, and refuses a bad store id', async () => {
+      await sellerCreate(follower());
+      await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
+      expect(await gifts(SELLER)).toEqual({ ok: true, value: { gifts: [] } });
+      expect(await gifts('not-a-store')).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
     });
   });
 

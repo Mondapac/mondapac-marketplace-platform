@@ -171,7 +171,7 @@ describe.each(TEST_MARKETS)('customers management in market %s (database)', (cod
       const found = await inUnit(market, () => groups.find(market, made.id));
       expect(found?.memberCount).toBe(2);
       const listed = await inUnit(market, () =>
-        reader.ids(market, { selector: { ...BLANK, group: made.id }, now: T0 }, 100),
+        reader.ids(market, { selector: { ...BLANK, group: made.id }, now: T0, zone: 'UTC' }, 100),
       );
       expect([...listed].sort()).toEqual([a, b].sort());
       const [row] = await inUnit(market, () => reader.rowsByIds(market, [a]));

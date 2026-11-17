@@ -4,7 +4,7 @@ import { isAcceptedCard } from '../domain/card-payment';
 import { cancelOrder, confirmOrder, type OrderState, type PaymentState } from '../domain/order';
 import type { AuthorisedPayment, PaymentFailure } from '../contracts';
 import { OutboxWriteRefusedError } from '../../../platform/events/outbox-writer';
-import { OrderPaid } from '../domain/events';
+import { OrderPaid, orderCancelledEvent } from '../domain/events';
 import type { OrderingDependencies } from './checkout-flow';
 
 // The internal path package 2 (the Stripe webhook receiver) calls, as the system actor, after it
@@ -189,8 +189,12 @@ export async function confirmPayment(
     for (const line of authorised.lines) {
       await deps.inventory.cancelCommittedLine(context, { orderLineId: line.id });
     }
-    const settled = await update(deps, context, orderId, (o) =>
-      cancelOrder(o, 'payment-failed', 'voided', deps.clock.now()),
+    const settled = await update(
+      deps,
+      context,
+      orderId,
+      (o) => cancelOrder(o, 'payment-failed', 'voided', deps.clock.now()),
+      (cancelled) => [orderCancelledEvent(cancelled, deps.clock.now())],
     );
     return settled.ok ? ok('voided') : settled;
   }
@@ -258,8 +262,19 @@ async function release(
   });
   // Committed meanwhile: a confirm is in progress, so this cancel must not win.
   if (!released.ok && released.error.code === 'inventory.reservation.committed') return RETRY;
-  const settled = await update(deps, context, order.id, (o) =>
-    cancelOrder(o, reason, paymentState === 'voided' ? 'voided' : o.paymentState, deps.clock.now()),
+  const settled = await update(
+    deps,
+    context,
+    order.id,
+    (o) =>
+      cancelOrder(
+        o,
+        reason,
+        paymentState === 'voided' ? 'voided' : o.paymentState,
+        deps.clock.now(),
+      ),
+    // Promotions releases what the order reserved (package T2).
+    (cancelled) => [orderCancelledEvent(cancelled, deps.clock.now())],
   );
   if (!settled.ok || settled.value !== null) return settled;
   // Nothing changed: either it was settled meanwhile, or a payment was authorised on it.
@@ -298,4 +313,24 @@ export async function cancelPayment(
   }
   const settled = await release(deps, context, order, input.cause, paymentState);
   return settled.ok ? ok('cancelled') : settled;
+}
+
+/**
+ * The safety sweep's cancel of an order whose payment page expired long ago (package T2): only
+ * while no money moved on it. Unlike {@link cancelPayment} it never voids or stops a payment: an
+ * order with a payment held, or one authorised meanwhile, is left for its payment events
+ * (`cancelOrder` refuses an authorised order unless the payment is voided). Answers whether it
+ * cancelled the order.
+ */
+export async function expireUnpaid(
+  deps: OrderingDependencies,
+  context: CallContext,
+  orderId: Id<'Order'>,
+): Promise<Result<CancelOutcome, PaymentFailure>> {
+  const order = await reload(deps, context, orderId);
+  if (order === null) return err({ code: 'ordering.order-not-found' });
+  if (order.status !== 'pending-payment' || order.paymentState !== 'none') return ok('ignored');
+  const settled = await release(deps, context, order, 'expired', 'none');
+  if (!settled.ok) return settled;
+  return ok(settled.value === null ? 'ignored' : 'cancelled');
 }

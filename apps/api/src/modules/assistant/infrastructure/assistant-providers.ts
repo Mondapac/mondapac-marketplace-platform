@@ -1,8 +1,10 @@
 import type { FactoryProvider } from '@nestjs/common';
+import { CART_ASSISTANT_FACADE, type CartAssistantFacade } from '../../cart';
 import { CATALOG_ASSISTANT_FACADE, type CatalogAssistantFacade } from '../../catalog';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { SUPPORT_CONTACT_FACADE, type SupportContactFacade } from '../../notifications';
 import { SEARCH_ASSISTANT_FACADE, type SearchAssistantFacade } from '../../search';
+import { SETTINGS_FACADE, type SettingsFacade } from '../../settings';
 import { ModelGateway } from '../../../platform/ai/model-gateway';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { APP_CONFIG } from '../../../platform/config/config.module';
@@ -34,7 +36,9 @@ import { SPEND_REPOSITORY, type SpendRepository } from '../application/ports/spe
 import { CatalogueQuickPrompts } from './catalogue-quick-prompts';
 import { CryptoGuestTokens } from './crypto-guest-tokens';
 import { HmacPreviewTokens } from './hmac-preview-tokens';
+import { BasketAssistantTools } from './basket-assistant-tools';
 import { FacadeAssistantTools } from './facade-assistant-tools';
+import { FacadeBasketSources } from './facade-basket-sources';
 import { GatewayAssistantRuntime } from './gateway-assistant-runtime';
 import { PrismaAssistantSettingsRepository } from './prisma-assistant-settings.repository';
 import { PrismaConversationRepository } from './prisma-conversation.repository';
@@ -74,6 +78,8 @@ export const assistantProviders: readonly FactoryProvider[] = [
       SUPPORT_CONTACT_FACADE,
       SELLERS_FACADE,
       ServiceAreaDirectory,
+      CART_ASSISTANT_FACADE,
+      SETTINGS_FACADE,
     ],
     useFactory: (
       search: SearchAssistantFacade,
@@ -81,7 +87,15 @@ export const assistantProviders: readonly FactoryProvider[] = [
       support: SupportContactFacade,
       sellers: SellersFacade,
       areas: ServiceAreaDirectory,
-    ): AssistantTools => new FacadeAssistantTools(search, catalog, support, sellers, areas),
+      cart: CartAssistantFacade,
+      settings: SettingsFacade,
+    ): AssistantTools =>
+      // `plan_basket` wraps the read tools: the list is searched with the buyer's own context and
+      // the Market's cart mode comes from settings (an unreadable store answers multi-store).
+      new BasketAssistantTools(
+        new FacadeAssistantTools(search, catalog, support, sellers, areas, cart, settings),
+        new FacadeBasketSources(search, (context) => settings.cartMode(context)),
+      ),
   },
   {
     provide: MESSAGE_LIMITS,

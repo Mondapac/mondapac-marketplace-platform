@@ -9740,6 +9740,30 @@ button.login {
 .aslist li {
   display: grid;
 }
+.aslist li + li {
+  border-top: 1px solid var(--sf-line);
+  padding-top: 6px;
+}
+.aslist + .aslist {
+  margin-top: 10px;
+  border-top: 1px solid var(--sf-line);
+  padding-top: 8px;
+}
+.aslist .astag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  color: var(--sf-slate);
+  font-size: calc(11.5px * var(--cfs));
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.aslist .astag .ico {
+  width: 13px;
+  height: 13px;
+}
 .aslist a {
   color: var(--sf-teal);
   font-weight: 700;
@@ -10715,4 +10739,49 @@ button.login {
   .br-body .br-mark.lg {
     margin-block-start: -48px;
   }
+}
+/* Buyer assistant: price, badges and the Preview marker of a card row (F1). */
+.aslist .asprice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.aslist .asprice b {
+  font-size: calc(15px * var(--cfs));
+  font-weight: 800;
+  color: var(--sf-ink);
+}
+.aslist .asprice b.sp {
+  color: var(--sf-error);
+}
+.aslist .asprice s {
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--cfs));
+}
+.aslist .asprice .badge {
+  font-size: calc(11.5px * var(--cfs));
+  line-height: calc(16px * var(--cfs));
+}
+.aslist .asbadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+.aslist .asbadges .badge {
+  font-size: calc(11.5px * var(--cfs));
+  line-height: calc(16px * var(--cfs));
+}
+.aspreview {
+  display: inline-block;
+  margin-inline-start: 8px;
+  padding: 1px 8px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-pill);
+  background: var(--sf-mist-soft);
+  color: var(--sf-slate);
+  font-size: calc(11.5px * var(--cfs));
+  font-weight: 700;
+  vertical-align: middle;
 }
