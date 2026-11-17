@@ -52,6 +52,7 @@ import type { PromotionsDependencies } from './application/promotions-dependenci
 import { ApplyReferralCode } from './application/use-cases/apply-referral-code.use-case';
 import { CashbackOnDelivery } from './application/use-cases/cashback-on-delivery.use-case';
 import { ListCustomerPromotionCredits } from './application/use-cases/list-customer-promotion-credits.use-case';
+import { ListCustomerPromotionUsages } from './application/use-cases/list-customer-promotion-usages.use-case';
 import { ListPromotionCredits } from './application/use-cases/list-promotion-credits.use-case';
 import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
 import { ViewMyReferral } from './application/use-cases/view-my-referral.use-case';
@@ -238,6 +239,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CheckWasPrice,
       ListPromotionCredits,
       ListCustomerPromotionCredits,
+      ListCustomerPromotionUsages,
       ApplyReferralCode,
       ViewMyReferral,
       ViewStoreFollowGift,

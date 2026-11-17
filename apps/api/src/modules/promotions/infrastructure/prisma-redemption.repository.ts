@@ -3,7 +3,9 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
   RedemptionTakenError,
+  type CustomerUsage,
   type RedemptionRepository,
+  type UsageCursor,
   type UsageDelta,
 } from '../application/ports/redemption.repository';
 import { LockContendedError } from '../application/ports/promotion.repository';
@@ -388,5 +390,36 @@ export class PrismaRedemptionRepository implements RedemptionRepository {
       take: limit,
     });
     return groups.map((group) => group.orderId as Id<'Order'>);
+  }
+
+  async forCustomer(
+    market: MarketContext,
+    customerAccountId: Id<'Account'>,
+    limit: number,
+    after: UsageCursor | null,
+  ): Promise<readonly CustomerUsage[]> {
+    // Through redemptions_customer_newest_idx (market, customer, reserved_at DESC, id DESC).
+    const rows = await this.prisma.tx(market).promotionsRedemption.findMany({
+      where: {
+        marketId: market.marketId,
+        customerAccountId,
+        kind: { not: 'ORDER' },
+        ...(after === null
+          ? {}
+          : {
+              OR: [
+                { reservedAt: { lt: toDate(after.reservedAt) } },
+                { reservedAt: toDate(after.reservedAt), id: { lt: after.id } },
+              ],
+            }),
+      },
+      orderBy: [{ reservedAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+      include: { promotion: { select: { name: true } } },
+    });
+    return rows.map((row) => ({
+      record: toRecord(row),
+      promotionName: row.promotion?.name ?? null,
+    }));
   }
 }
