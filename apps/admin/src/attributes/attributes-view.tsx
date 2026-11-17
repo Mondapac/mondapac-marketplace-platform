@@ -92,6 +92,7 @@ export function AttributesView({
           accountId={accountId}
           marketId={marketId}
           canEdit={canEdit}
+          canRestructure={canRestructure}
           csrfToken={csrfToken}
         />
       ) : null}

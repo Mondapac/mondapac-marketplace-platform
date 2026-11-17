@@ -23,6 +23,7 @@ import { callApi } from '../api/client.ts';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
 import { AttributeEditForm } from './attribute-edit-form.tsx';
+import { usePhone } from './use-phone.ts';
 import {
   ArchiveDialog,
   CONVERSIONS,
@@ -75,6 +76,7 @@ export function AttributeDetailPanel({
   csrfToken = '',
   onChanged,
   onOpenWaiting,
+  startEditing = false,
 }: {
   readonly attributeId: string | null;
   readonly onClose: () => void;
@@ -86,6 +88,8 @@ export function AttributeDetailPanel({
   readonly onChanged?: () => void;
   /** Opens the Waiting for you tab, where an already open request is. */
   readonly onOpenWaiting?: () => void;
+  /** Open the editor as soon as the attribute is read (the list's Edit… item). */
+  readonly startEditing?: boolean;
 }) {
   const t = useTranslations('attributes.detail');
   const tl = useTranslations('load');
@@ -95,6 +99,8 @@ export function AttributeDetailPanel({
   const [editErrors, setEditErrors] = useState<FieldErrors | undefined>(undefined);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const latest = useRef(0);
+  const first = useRef(true);
+  const phone = usePhone();
   const panel = useRef<HTMLElement>(null);
   useRevealWhenStacked(panel, attributeId, load.state === 'ready');
 
@@ -109,6 +115,10 @@ export function AttributeDetailPanel({
     if (ticket !== latest.current) return;
     if (result.ok) {
       setLoad({ state: 'ready', detail: result.body });
+      if (first.current) {
+        first.current = false;
+        if (startEditing && canEdit && result.body.status !== 'archived') setEditing(true);
+      }
       return;
     }
     if (result.failure.status === 401) {
@@ -116,7 +126,7 @@ export function AttributeDetailPanel({
       return;
     }
     setLoad({ state: result.failure.status === 404 ? 'missing' : 'failed' });
-  }, [attributeId]);
+  }, [attributeId, startEditing, canEdit]);
 
   useEffect(() => {
     setTab('details');
@@ -356,6 +366,26 @@ export function AttributeDetailPanel({
                 void fetchDetail();
               }}
             />
+          ) : phone ? (
+            <div className="flex flex-col gap-2" aria-label={t('tabs')} role="group">
+              {DETAIL_TABS.map((id) => (
+                <details
+                  key={id}
+                  open={id === 'details'}
+                  className="rounded-md border border-line bg-surface px-3 py-2"
+                >
+                  <summary className="cursor-pointer py-1 font-medium text-fg">
+                    {t(`tab.${id}`)}
+                  </summary>
+                  <div className="pt-2">
+                    {id === 'details' ? <DetailsTab detail={load.detail} /> : null}
+                    {id === 'values' ? <ValuesTab detail={load.detail} /> : null}
+                    {id === 'used-in' ? <UsedInTab detail={load.detail} /> : null}
+                    {id === 'history' ? <HistoryTab detail={load.detail} /> : null}
+                  </div>
+                </details>
+              ))}
+            </div>
           ) : (
             <>
               <Tabs
@@ -547,7 +577,7 @@ function measureRows(
  * Ask a second administrator to turn off Material on a published attribute (catalog design 8.2,
  * attributes A2 part 3). Nothing changes until another admin confirms under Waiting for you.
  */
-function RelaxDialog({
+export function RelaxDialog({
   detail,
   csrfToken,
   onClose,

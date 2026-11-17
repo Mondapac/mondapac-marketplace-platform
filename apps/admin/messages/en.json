@@ -9670,7 +9670,12 @@
       "actions": {
         "header": "Actions",
         "for": "Actions for {name}",
-        "open": "Open"
+        "open": "Open",
+        "edit": "Edit…",
+        "merge-attribute": "Merge into attribute…",
+        "convert": "Convert type…",
+        "relax": "Turn off Material…",
+        "archive": "Archive…"
       },
       "bulk": {
         "button": "Bulk action",

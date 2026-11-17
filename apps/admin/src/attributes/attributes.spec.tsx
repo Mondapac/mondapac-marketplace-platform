@@ -256,6 +256,8 @@ function mount(
     canEdit?: boolean;
     canSeeBrands?: boolean;
     canDecide?: boolean;
+    canRestructure?: boolean;
+    startEditing?: boolean;
     initialTab?: Tab;
     initialId?: string | null;
   } = {},
@@ -267,7 +269,8 @@ function mount(
         <AttributeDetailPage
           attributeId={detail}
           canEdit={options.canEdit ?? false}
-          canRestructure={false}
+          canRestructure={options.canRestructure ?? false}
+          startEditing={options.startEditing ?? false}
           csrfToken="csrf-1"
         />
       ) : (
@@ -276,6 +279,7 @@ function mount(
           csrfToken="csrf-1"
           canSeeBrands={options.canSeeBrands ?? true}
           canDecide={options.canDecide ?? false}
+          canRestructure={options.canRestructure ?? false}
           initialTab={options.initialTab ?? 'attributes'}
           initialId={options.initialId ?? null}
           paging="pages"
@@ -360,6 +364,156 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Open' }));
     expect(assign).toHaveBeenCalledWith(`/catalog/attributes/${id(1)}`);
     if (original !== undefined) Object.defineProperty(window, 'location', original);
+  });
+
+  const menuOf = async (name: string) => {
+    fireEvent.click(await screen.findByRole('button', { name: `Actions for ${name}` }));
+    await screen.findByRole('menu');
+    return screen.getAllByRole('menuitem').map((item) => item.textContent);
+  };
+
+  it('offers in the row menu what the attribute page offers, and no more than the role may do', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(
+        page(locales, [
+          row(locales, 1),
+          row(locales, 2, { material: true }),
+          row(locales, 3, { status: 'draft' }),
+          row(locales, 4, { dataType: 'text' }),
+        ]),
+      ),
+    });
+    mount({ canEdit: true, canRestructure: true });
+    await screen.findByRole('link', { name: 'Attribute 1' });
+    expect(await menuOf('Attribute 1')).toEqual([
+      'Open',
+      'Edit…',
+      'Merge into attribute…',
+      'Convert type…',
+      'Archive…',
+    ]);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    expect(await menuOf('Attribute 2')).toEqual([
+      'Open',
+      'Edit…',
+      'Turn off Material…',
+      'Archive…',
+    ]);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    expect(await menuOf('Attribute 3')).toEqual(['Open', 'Edit…']);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    expect(await menuOf('Attribute 4')).toEqual([
+      'Open',
+      'Edit…',
+      'Merge into attribute…',
+      'Archive…',
+    ]);
+    cleanup();
+    mount({ canEdit: false, canRestructure: false });
+    await screen.findByRole('link', { name: 'Attribute 1' });
+    expect(await menuOf('Attribute 1')).toEqual(['Open']);
+  });
+
+  it('opens the editor from Edit…', async () => {
+    const spy = spyOnAssign();
+    serve({ 'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])) });
+    mount({ canEdit: true });
+    await menuOf('Attribute 1');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit…' }));
+    expect(spy.assign).toHaveBeenCalledWith(`/catalog/attributes/${id(1)}?edit=1`);
+    spy.restore();
+  });
+
+  it('opens the editor at once on the attribute page for ?edit=1', async () => {
+    serve({ [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1)) });
+    mount({ canEdit: true, initialId: id(1), startEditing: true });
+    expect(await screen.findByRole('button', { name: 'Save' })).toBeTruthy();
+    cleanup();
+    mount({ canEdit: false, initialId: id(1), startEditing: true });
+    await screen.findByRole('heading', { name: 'Attribute 1' });
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+  });
+
+  it('archives from the row after typing the code, and reads the list again', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+      [`GET catalog/admin/attributes/${id(1)}/impact`]: ok({
+        attribute: {
+          id: id(1),
+          code: 'attr-1',
+          status: 'active',
+          version: 4,
+          material: false,
+          isVariantOption: false,
+          dataType: 'select',
+        },
+        impact: {
+          publishedProducts: { count: 12, atLeast: false },
+          drafts: { count: 3, atLeast: false },
+          featureSetCount: 0,
+          featureSets: [],
+          categories: { count: 0, atLeast: false },
+          filters: { count: 1, atLeast: false },
+          liveVariantProducts: { count: 0, atLeast: false },
+        },
+      }),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1)),
+      [`POST catalog/admin/attributes/${id(1)}/archive`]: ok({
+        attribute: { id: id(1), code: 'attr-1', status: 'archived', version: 5, revisionNo: 3 },
+      }),
+    });
+    mount({ canEdit: true, canRestructure: true });
+    await menuOf('Attribute 1');
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Archive…' }));
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('Published products');
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', {
+      name: 'Archive attribute',
+    });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Type attr-1 to confirm' }), {
+      target: { value: 'attr-1' },
+    });
+    fireEvent.click(confirm);
+    await expectToast('Attribute archived.');
+    expect(call).toHaveBeenCalledWith(
+      'POST',
+      `catalog/admin/attributes/${id(1)}/archive`,
+      { version: 4 },
+      'csrf-1',
+    );
+    await waitFor(() => expect(calls('catalog/admin/attributes?').length).toBeGreaterThan(1));
+    // The attribute is read once for the dialog, not again by a new render.
+    expect(
+      call.mock.calls.filter(
+        ([m, path]) => m === 'GET' && path === `catalog/admin/attributes/${id(1)}`,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('shows the sections of an attribute as accordions on a phone, with Back kept in reach', async () => {
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes('639'),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    serve({ [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1)) });
+    mount({ initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    await within(panel).findByRole('heading', { name: 'Attribute 1' });
+    const sections = Array.from(panel.querySelectorAll('details'));
+    expect(sections.map((section) => section.querySelector('summary')?.textContent)).toEqual([
+      'Details',
+      'Values',
+      'Used in',
+      'History',
+    ]);
+    expect(sections.map((section) => section.open)).toEqual([true, false, false, false]);
+    expect(within(panel).queryByRole('tablist')).toBeNull();
+    expect(
+      screen.getByRole('link', { name: 'Back to attributes' }).parentElement?.className,
+    ).toContain('sticky');
   });
 
   it('shows the view-only notice without catalog.attribute.edit, and not with it', async () => {

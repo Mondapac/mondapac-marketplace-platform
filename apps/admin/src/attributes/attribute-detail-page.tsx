@@ -30,16 +30,19 @@ export function AttributeDetailPage({
   canEdit,
   canRestructure,
   csrfToken,
+  startEditing = false,
 }: {
   readonly attributeId: string;
   readonly canEdit: boolean;
   readonly canRestructure: boolean;
   readonly csrfToken: string;
+  /** `?edit=1`: the editor opens at once (the list's Edit… item). */
+  readonly startEditing?: boolean;
 }) {
   const t = useTranslations('attributes');
   return (
     <div className="mt-1 flex flex-col gap-4">
-      <p>
+      <p className="sticky top-0 z-10 -mx-1 bg-page px-1 py-2 sm:static sm:py-0">
         <a className="font-medium text-link underline" href={ATTRIBUTES_PATH} onClick={backToList}>
           {t('detail-page.back')}
         </a>
@@ -50,6 +53,7 @@ export function AttributeDetailPage({
         canEdit={canEdit}
         canRestructure={canRestructure}
         csrfToken={csrfToken}
+        startEditing={startEditing}
         onOpenWaiting={() => window.location.assign(`${ATTRIBUTES_PATH}?tab=waiting`)}
       />
     </div>
