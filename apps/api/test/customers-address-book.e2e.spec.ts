@@ -109,6 +109,8 @@ describe('customer address book routes over HTTP', () => {
       'customers.customer-not-found': 404,
       'customers.customer-not-eligible': 409,
       'customers.group-not-found': 404,
+      'customers.invitation-not-eligible': 409,
+      'customers.invitation-not-found': 404,
       'customers.group-name-taken': 409,
       'customers.group-limit-reached': 409,
       'customers.group-archived': 409,

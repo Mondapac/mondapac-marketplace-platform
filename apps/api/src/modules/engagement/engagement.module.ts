@@ -153,6 +153,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         FollowedAmong,
         OwnFollowedAmong,
         FollowsOfAccount,
+        FollowStore,
       ],
       useFactory: (
         forgetAccount: ForgetAccount,
@@ -161,6 +162,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         followedAmong: FollowedAmong,
         ownFollowedAmong: OwnFollowedAmong,
         followsOfAccount: FollowsOfAccount,
+        followStore: FollowStore,
       ) =>
         new EngagementFacadeImplementation({
           forgetAccount,
@@ -169,6 +171,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           followedAmong,
           ownFollowedAmong,
           followsOfAccount,
+          followStore,
         }),
     },
     registerJobsFrom('engagement', [PurgeExpiredEvents], (purge: PurgeExpiredEvents) => [

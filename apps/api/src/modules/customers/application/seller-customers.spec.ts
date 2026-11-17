@@ -27,6 +27,7 @@ import type {
 import { trendMonths, type SellerCustomerDependencies } from './seller-customers-flow';
 import { RecordingAudit } from './testing/in-memory-account-deletion';
 import { InMemoryReadModels } from './testing/in-memory-read-models';
+import { InMemorySellerAttributions } from './testing/in-memory-seller-invitations';
 import {
   InMemorySellerCustomers,
   ScriptedCustomerCodes,
@@ -217,6 +218,7 @@ describe.each([
   let readModels: InMemoryReadModels;
   let audit: RecordingAudit;
   let codes: ScriptedCustomerCodes;
+  let attributions: InMemorySellerAttributions;
   let uc: {
     sync: SyncSellerCustomers;
     reconcile: ReconcileSellerCustomers;
@@ -257,6 +259,7 @@ describe.each([
     readModels = new InMemoryReadModels();
     audit = new RecordingAudit();
     codes = new ScriptedCustomerCodes();
+    attributions = new InMemorySellerAttributions(readModels.directory);
     const deps: SellerCustomerDependencies = {
       ...peers,
       identity: peers.identity,
@@ -274,6 +277,7 @@ describe.each([
         },
       },
       zones: { zoneOf: () => markets.get(market.marketId).timezone },
+      attributions,
     };
     uc = {
       sync: new SyncSellerCustomers(gate, deps),
@@ -370,6 +374,48 @@ describe.each([
     });
   });
 
+  it('marks the customer exclusive to the seller they joined through while it is active', async () => {
+    const attribution = {
+      accountId: BOB,
+      sellerId: SHOP,
+      linkId: id<'SellerInviteLink'>(0x11),
+      attributedAt: T0,
+      status: 'active' as const,
+      rejectReason: null,
+      flags: [],
+      decidedByAccountId: null,
+      decidedAt: null,
+      version: 1,
+    };
+    await attributions.insert(market, attribution);
+    peers.totals.set(BOB, [bought(RIVAL, 1, 100n)]);
+    await sync(BOB);
+    // The referring shop gets a row even before any order or follow; the other shop's is plain.
+    expect(rows.rows.map((row) => [row.sellerId, row.exclusive]).sort()).toEqual(
+      [
+        [SHOP, true],
+        [RIVAL, false],
+      ].sort(),
+    );
+    const referred = await uc.list.execute(seller(SHOP), { view: 'referred' });
+    expect(referred).toMatchObject({ ok: true, value: { counts: { referred: 1 } } });
+    expect(referred.ok && referred.value.items).toEqual([
+      expect.objectContaining({ exclusive: true, firstName: 'Omar' }),
+    ]);
+    expect(await uc.list.execute(seller(RIVAL), { view: 'referred' })).toMatchObject({
+      value: { items: [], counts: { referred: 0 } },
+    });
+
+    // An admin rejected it: the row leaves the referred view (the shop keeps nothing else of it).
+    await attributions.update(
+      market,
+      { ...attribution, status: 'rejected', rejectReason: 'admin', version: 2 },
+      1,
+    );
+    await sync(BOB);
+    expect(rows.rows.map((row) => row.sellerId)).toEqual([RIVAL]);
+  });
+
   it('goes on past an account whose sync fails, and counts it', async () => {
     peers.totals.set(ALICE, [bought(SHOP, 1, 100n)]);
     peers.follows.set(BOB, [{ sellerId: SHOP, followedAt: T0 }]);
@@ -391,7 +437,7 @@ describe.each([
     it('shows the seller its own customers by code and first name only', async () => {
       const page = await uc.list.execute(seller(SHOP), { page: 1 });
       if (!page.ok) throw new Error(JSON.stringify(page.error));
-      expect(page.value.counts).toEqual({ all: 2, buyers: 1, followers: 1 });
+      expect(page.value.counts).toEqual({ all: 2, buyers: 1, followers: 1, referred: 0 });
       expect(page.value.paging).toMatchObject({ total: 2, page: 1, pageSize: 25 });
       const alice = page.value.items.find((row) => row.orderCount > 0)!;
       expect(alice.code).toMatch(/^\d{4}-\d{4}$/);
@@ -531,7 +577,7 @@ describe.each([
       });
       const summary = await uc.summary.execute(admin, { sellerId: SHOP });
       if (!summary.ok) throw new Error('summary refused');
-      expect(summary.value.counts).toEqual({ all: 2, buyers: 1, followers: 1 });
+      expect(summary.value.counts).toEqual({ all: 2, buyers: 1, followers: 1, referred: 0 });
       expect(summary.value.months).toHaveLength(12);
       expect(summary.value.months.at(-1)).toMatchObject({ newBuyers: 1, newFollowers: 1 });
     });

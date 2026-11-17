@@ -64,6 +64,26 @@ import {
 } from '../application/ports/seller-customers.repository';
 import { PrismaSellerCustomerRepository } from './prisma-seller-customers.repository';
 import { RandomCustomerCodes } from './random-customer-codes';
+import {
+  INVITE_LINK_REPOSITORY,
+  INVITE_TOKENS,
+  SELLER_ATTRIBUTION_REPOSITORY,
+  type InviteLinkRepository,
+  type InviteTokens,
+  type SellerAttributionRepository,
+} from '../application/ports/seller-invitations.repository';
+import { INVITATION_PEERS } from '../application/ports/invitation-peers';
+import {
+  INVITATION_RULES,
+  type InvitationRulesSource,
+} from '../application/seller-invitations-flow';
+import { ConfigInvitationRules } from './config-invitation-rules';
+import { LateBoundInvitationPeers } from './late-bound-invitation-peers';
+import {
+  PrismaInviteLinkRepository,
+  PrismaSellerAttributionRepository,
+} from './prisma-seller-invitations.repository';
+import { RandomInviteTokens } from './random-invite-tokens';
 import { RegistryTrendZones } from './registry-trend-zones';
 import { PrismaCustomerListReader } from './prisma-customer-list.reader';
 import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
@@ -176,5 +196,31 @@ export const customersProviders: readonly FactoryProvider[] = [
     provide: TREND_ZONES,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): TrendZones => new RegistryTrendZones(markets),
+  },
+  {
+    provide: INVITE_LINK_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): InviteLinkRepository =>
+      new PrismaInviteLinkRepository(prisma),
+  },
+  {
+    provide: SELLER_ATTRIBUTION_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerAttributionRepository =>
+      new PrismaSellerAttributionRepository(prisma),
+  },
+  {
+    provide: INVITE_TOKENS,
+    useFactory: (): InviteTokens => new RandomInviteTokens(),
+  },
+  {
+    provide: INVITATION_RULES,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): InvitationRulesSource =>
+      new ConfigInvitationRules(markets),
+  },
+  {
+    provide: INVITATION_PEERS,
+    useFactory: (): LateBoundInvitationPeers => new LateBoundInvitationPeers(),
   },
 ];

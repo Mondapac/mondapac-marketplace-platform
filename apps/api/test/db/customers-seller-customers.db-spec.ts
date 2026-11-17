@@ -33,6 +33,7 @@ const ALL: SellerCustomerSelector = {
   view: 'all',
   codePrefix: null,
   follower: null,
+  exclusive: null,
   lastOrderFrom: null,
   lastOrderTo: null,
   ordersMin: null,
@@ -146,6 +147,7 @@ describe.each(TEST_MARKETS)(
         currency: orderCount > 0 ? currency : null,
         follower,
         followedAt: follower ? (over.followedAt ?? T0.subtract({ hours: 1 })) : null,
+        exclusive: false,
       };
     };
 
@@ -364,6 +366,7 @@ describe.each(TEST_MARKETS)(
           all: 3,
           buyers: 2,
           followers: 2,
+          referred: 0,
         });
         expect(
           (
@@ -382,6 +385,7 @@ describe.each(TEST_MARKETS)(
           all: 0,
           buyers: 0,
           followers: 0,
+          referred: 0,
         });
       });
     });

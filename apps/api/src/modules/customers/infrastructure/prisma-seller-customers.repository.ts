@@ -56,6 +56,8 @@ function tabWhere(tab: SellerCustomerTab): Where {
       return { orderCount: { gt: 0 } };
     case 'followers':
       return { follower: true };
+    case 'referred':
+      return { exclusive: true };
   }
 }
 
@@ -64,6 +66,7 @@ function whereOf(market: MarketContext, query: SellerCustomerQuery): Where {
   const and: Where[] = [tabWhere(selector.view)];
   if (selector.codePrefix !== null) and.push({ customerCode: { startsWith: selector.codePrefix } });
   if (selector.follower !== null) and.push({ follower: selector.follower });
+  if (selector.exclusive !== null) and.push({ exclusive: selector.exclusive });
   if (selector.lastOrderFrom !== null || selector.lastOrderTo !== null) {
     and.push({
       lastOrderAt: {
@@ -139,6 +142,7 @@ export class PrismaSellerCustomerRepository implements SellerCustomerRepository 
       currency: entry.currency,
       follower: entry.follower,
       followedAt: entry.followedAt === null ? null : toDate(entry.followedAt),
+      exclusive: entry.exclusive,
       updatedAt: toDate(now),
     };
     // Replace when present, else insert: the Market guard takes no `upsert`. The insert does not

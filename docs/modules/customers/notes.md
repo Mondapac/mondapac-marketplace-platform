@@ -481,3 +481,40 @@ admin deletes a buyer's account for them, from a support ticket.
   orders and takes the latest order's currency, which holds while a Market has one currency.
 - **Database.** The sort indexes on `last_order_at` and `followed_at` are `DESC NULLS LAST`, as the
   list sorts them; a CHECK ties `currency` to `order_count > 0`.
+
+## Phase 4a, PR 4a-1: sellers' invite links and the exclusive customer (2026-11-17)
+
+Plan sections 6, 7 and 7b (customers-management-plan-fa.html). API only; the seller panel's link
+card, the storefront's invite banner and the admin list's screens follow in the frontend phase.
+
+- **Tables** (`customers` schema): `seller_invite_links` (one live link per seller by a partial
+  unique index; a token of 26 Crockford symbols unique in the Market; a refresh revokes the old
+  link, whose customers stay attributed) and `seller_attributions` (one per account, foreign key to
+  the directory with cascade, so erasure removes it; status `active` or `rejected` with a reason
+  `seller-team` or `admin`; `flags` holds `link-burst`; a decision is a conditional update on
+  `version`). No raw SQL: concurrency rests on the unique indexes and the versioned update.
+- **Where the link lives**: in `customers`, not `sellers`, so the link and the attribution share
+  one module and one unit. Permission `customers.seller-invite-link.manage` (seller scope) for the
+  link; `customers.seller-attributions.manage` (platform, protected) for an admin decision.
+- **The claim**: the storefront resolves a token anonymously to the store's address only
+  (`GET customers/store-invitations/:token`). After sign-up and email verification the signed-in
+  customer claims it (`POST customers/me/store-invitation`). New sign-ups only: signed up within
+  the Market's `customers.invitations.signUpWindowDays`, no order, no attribution yet. Then the
+  store is followed for the customer (best effort, after the commit) and
+  `customers.seller-attribution-changed.v1` marks the customer `exclusive` in the seller's
+  customers read model (new view `referred`, filter `exclusive`).
+- **Abuse checks**: a customer whose sign-in address is on the seller's team (identity's
+  `ownAccountTiedToSeller`) is recorded as rejected (`seller-team`) and refused; an admin cannot
+  restore it. More attributions through one link in 24 hours than `burstPerDay` flag the new one
+  `link-burst`. Household and payment-method matches are not built: the platform has no such
+  signal (promotions' referral signals answer "unknown" too). The admin's manual reject or
+  restore covers the rest.
+- **Admin list** (`customers/admin/seller-attributions`): a super list (views suspicious, all,
+  active, rejected; email prefix search; filters seller, status, reject reason, flag, day range;
+  both paging modes; select all matching up to 10,000; saved filters under
+  `admin.customers.seller-attributions`; CSV/XLSX export behind the Customers export step-up,
+  audited without personal data). Rows show the seller id, not the store name.
+- **Market settings**: `customers.invitations` (AU: 7 days, 50 a day; ZZ: 3 days, 2 a day). A
+  Market without it has the feature off.
+- **For 4b**: `exclusiveSellerOf` (the seller of an active attribution recorded at or before an
+  instant) is ready for checkout's order-line freeze; the facade method comes with 4b.

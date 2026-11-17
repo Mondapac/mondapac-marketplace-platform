@@ -127,7 +127,9 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'customers.read-model-order-paid',
       'customers.read-model-refund-succeeded',
       'customers.read-model-registered',
-      // Customers phase 3: the per-seller customers, from orders, refunds and store follows.
+      // Customers phase 3: the per-seller customers, from orders, refunds and store follows
+      // (phase 4a: and from the seller a customer joined through).
+      'customers.seller-customers-attribution-changed',
       'customers.seller-customers-order-paid',
       'customers.seller-customers-refund-succeeded',
       'customers.seller-customers-store-followed',

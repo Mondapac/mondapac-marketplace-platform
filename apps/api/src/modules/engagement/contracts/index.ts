@@ -7,6 +7,7 @@ export {
   type AccountStoreFollow,
   type EngagementFacade,
   type StoreFollowReadFailure,
+  type StoreFollowWriteFailure,
   type RecentViews,
   type RecentViewsRequest,
 } from './engagement.facade';
