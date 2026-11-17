@@ -621,6 +621,23 @@ export class PrismaPromotionRepository implements PromotionRepository {
     return rows.map(toRecord);
   }
 
+  countGroupSegmentUses(
+    market: MarketContext,
+    groupId: string,
+    now: Temporal.Instant,
+  ): Promise<number> {
+    const at = toDate(now);
+    return this.prisma.tx(market).promotionsPromotion.count({
+      where: {
+        marketId: market.marketId,
+        segmentKind: 'MANUAL_GROUP',
+        segmentGroupId: groupId,
+        status: { in: ['ACTIVE', 'PENDING_APPROVAL', 'PAUSED'] },
+        OR: [{ endsAt: null }, { endsAt: { gt: at } }],
+      },
+    });
+  }
+
   countCounting(
     market: MarketContext,
     sellerId: Id<'Seller'>,

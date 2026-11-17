@@ -236,6 +236,9 @@ export class FacadeAssistantTools implements AssistantTools {
         return request.change === null ? notReady : this.cartChange(context, request.change);
       case 'get_cart':
         return this.ownCart(context);
+      case 'plan_basket':
+        // Planned by BasketAssistantTools, which wraps this class; never reached through it.
+        return failed;
       case 'open_support_form': {
         const email = await this.support.publicEmail(context);
         return {

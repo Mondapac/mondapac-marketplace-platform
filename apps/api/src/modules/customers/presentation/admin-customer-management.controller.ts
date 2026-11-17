@@ -35,6 +35,8 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { AdminCustomerAddressReveal } from '../application/use-cases/admin-customer-address-reveal.use-case';
+import { AdminCustomerAddresses } from '../application/use-cases/admin-customer-addresses.use-case';
 import { AdminCustomerGroupCreate } from '../application/use-cases/admin-customer-group-create.use-case';
 import { AdminCustomerGroupMembersAdd } from '../application/use-cases/admin-customer-group-members-add.use-case';
 import { AdminCustomerGroupMembersRemove } from '../application/use-cases/admin-customer-group-members-remove.use-case';
@@ -80,7 +82,81 @@ export class AdminCustomerManagementController {
     private readonly timeline: AdminCustomerTimeline,
     private readonly timelineExport: AdminCustomerTimelineExport,
     private readonly rename: AdminCustomerRename,
+    private readonly addresses: AdminCustomerAddresses,
+    private readonly addressReveal: AdminCustomerAddressReveal,
   ) {}
+
+  @Get('customers/:accountId/addresses')
+  @ApiOperation({
+    summary: 'A customer’s delivery addresses, as suburb and country (phase 2b)',
+    description:
+      'Needs customers.customers.view. Each address: id, suburb, country, whether it is the ' +
+      'default, created. Nothing else: the full address needs the reveal route and its key. ' +
+      '`suburb` is null once the customer’s key is destroyed. 404 customers.customer-not-found.',
+  })
+  @ApiOkResponse({ type: Object })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'customers.customer-not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async listAddresses(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('accountId') accountId: string,
+  ): Promise<unknown> {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.addresses.execute(context, { accountId });
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return result.value;
+  }
+
+  @Post('customers/:accountId/addresses/:addressId/reveal')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Reveal one of a customer’s delivery addresses in full (phase 2b)',
+    description:
+      'Needs customers.customers.view and the protected customers.customer-address.reveal. No ' +
+      'body (or `{}`). Answers the recipient, phone, street lines, suburb, region, postcode, ' +
+      'country and courier note. Every reveal is audited (customers.customer-address.revealed, ' +
+      'the address id only) and lands on the customer’s timeline before it is answered. Personal ' +
+      'data: not cached. 404 customers.customer-not-found or customers.address-not-found.',
+  })
+  @ApiHeader(CSRF)
+  @ApiOkResponse({ type: Object })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({
+    ...ERROR,
+    description: 'customers.customer-not-found or customers.address-not-found',
+  })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async revealAddress(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('accountId') accountId: string,
+    @Param('addressId') addressId: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    response.setHeader('Cache-Control', 'no-store');
+    if (
+      body !== undefined &&
+      body !== null &&
+      (typeof body !== 'object' || Array.isArray(body) || Object.keys(body).length > 0)
+    ) {
+      throw new HttpException(
+        {
+          statusCode: 400,
+          code: 'validation.failed',
+          details: { fields: [{ path: '', code: 'unknown-field' }] },
+        },
+        400,
+      );
+    }
+    const result = await this.addressReveal.execute(context, { accountId, addressId });
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return result.value;
+  }
 
   @Get('groups')
   @ApiOperation({
@@ -165,7 +241,10 @@ export class AdminCustomerManagementController {
       'Needs customers.customers.view and customers.groups.manage. Body: `expectedVersion` (the ' +
       'version shown; a stale one is customers.conflict) and any of `name`, `description` (null ' +
       'or empty clears it) and `archived`. An archived group keeps its members but takes no new ' +
-      'ones and no promotion reaches it. Audited.',
+      'ones and no promotion reaches it. The answer of an archive carries `liveSegmentUse`: ' +
+      '`some` when a live, waiting or paused promotion’s MANUAL_GROUP segment still names the ' +
+      'group (it will match nobody), `none`, or `unknown` when promotions could not say. ' +
+      'Advisory: the archive is done either way. Audited, with the same flag.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: Object })
@@ -329,7 +408,7 @@ export class AdminCustomerManagementController {
     summary: 'A customer’s activity timeline (super list)',
     description:
       'Needs customers.customers.view. Body: `filters` (`category`: account, orders or admin; ' +
-      '`kinds`: an array of event kinds; `from`, `to`: YYYY-MM-DD in UTC), `direction` (desc, the ' +
+      '`kinds`: an array of event kinds; `from`, `to`: YYYY-MM-DD in the admin’s own zone, else the Market’s), `direction` (desc, the ' +
       'default, or asc), `page`, `pageSize` (at most 100) and `paging` (pages, with the total, or ' +
       'prev-next, the Market’s List paging setting). Codes and ids only; an admin action names ' +
       'the admin. Every read is an audited open of the page (tab activity).',
