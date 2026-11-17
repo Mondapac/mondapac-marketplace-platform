@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NO_FILTERS, queryOf, startOfDay } from './orders-query.ts';
+import { startOfDay } from './day-start.ts';
 
 describe('startOfDay (local days, ADR-0005)', () => {
   it('starts a day at local midnight in the zone, not at UTC midnight', () => {
@@ -33,16 +33,5 @@ describe('startOfDay (local days, ADR-0005)', () => {
     expect(startOfDay('2026-02-30', 'UTC')).toBeNull();
     expect(startOfDay('2026-13-01', 'UTC')).toBeNull();
     expect(startOfDay('2026-10-01', 'Mars/Olympus')).toBeNull();
-  });
-});
-
-describe('queryOf', () => {
-  it('sends the local days as instants and leaves a bad day out', () => {
-    const query = queryOf(
-      { ...NO_FILTERS, from: '2026-10-01', to: 'not-a-day' },
-      'Australia/Brisbane',
-      { paging: 'prev-next', cursor: null },
-    );
-    expect(query).toBe('from=2026-09-30T14%3A00%3A00.000Z');
   });
 });

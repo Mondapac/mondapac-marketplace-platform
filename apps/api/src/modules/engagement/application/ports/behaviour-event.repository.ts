@@ -20,6 +20,31 @@ export interface RecentViews {
   readonly categoryIds: readonly Id<'Category'>[];
 }
 
+/** One `added-to-cart` event of an account, for the admin's customer page. */
+export interface CartAdditionRow {
+  readonly id: Id<'BehaviourEvent'>;
+  readonly offerId: Id<'Offer'>;
+  readonly variantId: Id<'Variant'>;
+  readonly occurredAt: Temporal.Instant;
+}
+
+/** The instants an admin's read covers: `from` included, `to` excluded (null: no end). */
+export interface BehaviourRange {
+  readonly from: Temporal.Instant;
+  readonly to: Temporal.Instant | null;
+}
+
+/** An account's behaviour in counts: never the search text. */
+export interface BehaviourSummary {
+  readonly productViews: number;
+  readonly categoryViews: number;
+  readonly cartAdditions: number;
+  readonly topCategories: readonly {
+    readonly categoryId: Id<'Category'>;
+    readonly views: number;
+  }[];
+}
+
 /**
  * `engagement.behaviour_events`. Every read and delete is scoped by the Market; runs inside the
  * caller's unit of work.
@@ -37,6 +62,37 @@ export interface BehaviourEventRepository {
     subject: BehaviourSubject,
     limit: number,
   ): Promise<RecentViews>;
+
+  /**
+   * One account's `added-to-cart` events of the Market in the range, by time then id in the
+   * direction given, through the (market, account, occurred_at) index (customers management
+   * phase 2b).
+   */
+  cartAdditionsOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    range: BehaviourRange,
+    direction: 'asc' | 'desc',
+    window: { readonly offset: number; readonly limit: number },
+  ): Promise<CartAdditionRow[]>;
+
+  /** How many `added-to-cart` events of one account of the Market fall in the range. */
+  countCartAdditionsOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    range: BehaviourRange,
+  ): Promise<number>;
+
+  /**
+   * One account's events of the Market from `since`, counted by kind, and its `top` most viewed
+   * categories (by views, then id). Never reads the search text.
+   */
+  summaryOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    since: Temporal.Instant,
+    top: number,
+  ): Promise<BehaviourSummary>;
 
   /** Deletes every event of one account in the Market; answers how many went. */
   deleteForAccount(market: MarketContext, accountId: Id<'Account'>): Promise<number>;

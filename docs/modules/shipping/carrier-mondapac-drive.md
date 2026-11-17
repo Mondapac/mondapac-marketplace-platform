@@ -187,6 +187,17 @@ others (`CarrierGateway`: `fleet`, `capabilities(market)`, `book`, `quote`, `can
   version (`shipping.fleet_selection_settings`, one row per Market, 0 before the first save; `GET`
   returns it as `version`); a stale `expectedVersion` answers 409
   `shipping.fleet-selection-conflict`. The per-method and per-fleet PUTs are removed.
+- **Carrier progress for admin lists (2026-11-16).** Facade `carrierProgressOf(context,
+  sellerOrderIds)` (use case `shipping.carrier-progress-of`, rule `permissions
+  [shipping.carrier-delivery.view]`: a plain platform key held by the Viewer seed role from
+  version 36). Ids are deduplicated, then capped at `MAX_CARRIER_PROGRESS_IDS` (100), else
+  `validation.failed`. One `findMany` in a read-only unit on the unique
+  `(market_id, seller_order_id)` index, selecting only the seller order id, `fleet`, `progress`,
+  `carrier_status`, `updated_at` and `pod_recorded_at` (never `carrier_reference` or
+  `tracking_url`). Each answer holds exactly `fleet`, `progress`, `carrierStatus` (null unless it
+  matches `^[A-Za-z0-9_.-]{1,60}$`), `updatedAt` (when the platform recorded the last change of
+  progress or status, not the carrier's event time; a poll that changes nothing leaves it) and
+  `proofOfDelivery` (from `pod_recorded_at`).
 - **Assumed Drive fields** (not in Drive's contract yet; read when present, ignored otherwise):
   `GET /delivery/deliveries/:id` for `status()`, and `etaMinutes`, `expiresAt` and `trackingUrl`
   in answers. The Drive quote request is unchanged (postcode only).

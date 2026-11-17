@@ -28,8 +28,24 @@ already show on the admin order page). One row per seller order of a paid order.
   stores by their owning modules first and fails closed (`ordering.search-unavailable`).
 - **Money:** `shipping` is what the buyer paid for delivery, tax included (the fee plus its tax
   where the price excluded it); `total` and `refunded` as stored.
-- **Not here:** the carrier's own progress (in `shipping`, a follow-up through its facade), and
-  any admin action on a shipment (row actions are `view-order` and `copy-tracking-reference`).
+- **Carrier progress (2026-11-16):** after the read unit closes, beside the store and customer
+  names, ONE call per page to shipping's `carrierProgressOf` with the page's distinct seller order
+  ids (port `CarrierProgressReader`, adapter `FacadeCarrierProgressReader`, logged through
+  `settled()` as lookup `carrier-progress` with no ids). Row field `carrierProgress`:
+  `{ progress, carrierStatus, updatedAt, proofOfDelivery, fleet } | null`, where `fleet` is the
+  fleet that holds the booking (it may differ from the row's quoted `fleet`), `carrierStatus` is
+  the carrier's raw code of a safe shape only (else null), and `updatedAt` is when the platform
+  recorded the last change ("Carrier update received"), not the carrier's event time. It is never
+  the carrier reference or the tracking link, and never touches `carrier` (the carrier the seller
+  named). Page flag `carrierProgressAvailable`: false when the admin lacks
+  `shipping.carrier-delivery.view` (shipping answers `access.denied`) or the lookup failed; then
+  every `carrierProgress` is null and the column shows "Not available". With the flag true, null
+  means no carrier booking (a pickup, a seller-shipped order, not booked yet) and shows "—". The
+  lookup never fails the list. Only ids the page asked about are shown. The export columns follow
+  separately.
+- **Not here:** filtering or sorting by carrier progress (it would need a mirror column on
+  `seller_orders`, never a join into `shipping`), and any admin action on a shipment (row actions
+  are `view-order` and `copy-tracking-reference`).
 - **Export (2026-11-16):** `GET ordering/admin/shipments/export`, the same rule, with the list's
   own filter keys (no paging or sort keys), `format` (`csv` default, `xlsx`), `columns` (the
   column picker's keys in the order shown; the fixed ones are always first; absent = every

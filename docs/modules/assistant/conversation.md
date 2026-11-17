@@ -278,7 +278,8 @@ not sent to the model and, if the model asks for it anyway, the call is refused 
 - Evaluation set `buyer-assistant-5`: guard cases for totals, injections and diet claims in a
   list, four list-parsing cases (English, Persian, mixed, bullets and fractions) whose expected calls
   must pass the schema, and twelve invalid calls the parser must refuse.
-- **Variants**: the card carries `offerId`, not `variantId`; cart lines are keyed by both. A
+- **Sell unit** (`variantId`, `maxQuantity`, on every line and option): after planning, the server reads the units of each proposed Offer through the cart's READ facade (`offerUnits`, the buyer's own `CallContext`, at most 60 Offers, 4 at a time, within 4 s after the plan is done; a slow read never fails a plan, the Offers not reached have no unit) and puts on the line the unit whose price is the price shown (for a "from" price the cheapest unit, when it is at that price). `variantId` is null when the units could not be read in time or none has that price: the storefront then does not add that line from the card (it opens the product page). `maxQuantity` is the highest quantity one cart line of that unit may hold now; the cart's add still checks again and the storefront shows its answer. Neither field reaches the model.
+- **Variants**: the card carries `offerId` and, when read, `variantId` (see above); cart lines are keyed by both. A
   weight or volume line whose Offer has Variants at different prices (`priceFrom`) is never
   auto-picked (the size is often the Variant): it is an option and the buyer picks. F1 reads the
   product page and settles the Variant (the buyer picks it when there are several) before it adds
@@ -332,8 +333,11 @@ Migration `20261116210000_assistant_basket_proposals_setting` adds `settings.bas
 
 Migration `20261019224946_assistant_conversations`. `conversations`: one owner (account, or a
 32-byte guest token hash), `turns` 0 to 30, `retention_days` 0 or 30 (365 for an account only),
-index on (`market_id`, `retention_days`, `last_message_at`) for the purge; the application role
-updates only `turns` and `last_message_at`. `messages`: PK (Market, conversation,
+index on (`market_id`, `retention_days`, `last_message_at`) for the purge (the admin customer
+page's assistant section, customers phase 2b, reads one account's conversation count and dates
+through the buyer list's partial (`market_id`, `account_id`, `last_message_at` DESC, `id` DESC)
+index; it adds no index of its own); the application role updates only `turns` and
+`last_message_at`. `messages`: PK (Market, conversation,
 position 1 to 60), `text_cipher`, card refs (ids only, at most 40), cascade delete with the
 conversation; the application role can neither UPDATE nor DELETE them. `spend_days`: PK (Market, day), counts
 never negative, one auto-off record per day; never deleted by the application role.
