@@ -1,3 +1,4 @@
+import type { SellerOrderCustomerView } from '../../src/modules/ordering/domain/order-views';
 import { err, ok } from '@mondapac/shared-kernel';
 import type {
   AdminNoteCipher,
@@ -1344,7 +1345,11 @@ export class FakeLabels implements OrderLabels {
   readonly customers = new Map<Id<'Account'>, OrderCustomer>();
   readonly shortNames = new Map<Id<'Account'>, string>();
   readonly staff = new Map<Id<'Account'>, string>();
-  readonly fail = new Set<'units' | 'stores' | 'customers' | 'short-names' | 'staff'>();
+  /** `sellerId:accountId` → the code and first name that shop knows the customer by. */
+  readonly sellerCustomers = new Map<string, SellerOrderCustomerView>();
+  readonly fail = new Set<
+    'units' | 'stores' | 'customers' | 'short-names' | 'staff' | 'seller-customers'
+  >();
   readonly calls: { readonly lookup: string; readonly count: number }[] = [];
   /** What both searches answer for `capped`. */
   searchCapped = false;
@@ -1418,6 +1423,23 @@ export class FakeLabels implements OrderLabels {
     this.calls.push({ lookup: 'short-names', count: accountIds.length });
     if (this.fail.has('short-names')) return Promise.reject(new Error('short-names'));
     return Promise.resolve(this.shortNames);
+  }
+
+  sellerCustomersOf(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, SellerOrderCustomerView>> {
+    this.calls.push({ lookup: 'seller-customers', count: accountIds.length });
+    if (this.fail.has('seller-customers')) return Promise.reject(new Error('seller-customers'));
+    const { actor } = context;
+    const sellerId =
+      actor.kind === 'authenticated' && typeof actor.sellerId === 'string' ? actor.sellerId : '';
+    const found = new Map<Id<'Account'>, SellerOrderCustomerView>();
+    for (const accountId of accountIds) {
+      const customer = this.sellerCustomers.get(`${sellerId}:${accountId}`);
+      if (customer !== undefined) found.set(accountId, customer);
+    }
+    return Promise.resolve(found);
   }
 
   staffNamesOf(

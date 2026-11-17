@@ -41,6 +41,7 @@ const SELECT = {
 /** The WHERE of a filter; every branch keeps the Market's own rows only. */
 function where(market: MarketContext, filter: RefundListFilter) {
   const and: object[] = [];
+  if (filter.ids !== null) and.push({ id: { in: [...filter.ids] } });
   if (filter.reference !== null) {
     and.push({
       OR: [

@@ -7,8 +7,9 @@ import { shortId } from './status.ts';
 import { packingSlipAvailable, remainingUnits, type SellerOrderView } from './types.ts';
 
 /**
- * A printable packing slip of one paid order: the order reference, the units still to send and
- * where they go, as the seller detail already allows. No prices, no payment data. The screen
+ * A printable packing slip of one paid order: the order reference, the customer by code and first
+ * name, and the units still to send. No address (the platform's courier has it), no prices, no
+ * payment data. The screen
  * shows a Print button; the printed page shows the slip only.
  */
 export function PackingSlip({ order }: { readonly order: SellerOrderView }) {
@@ -27,7 +28,7 @@ export function PackingSlip({ order }: { readonly order: SellerOrderView }) {
   const rows = order.lines
     .map((line) => ({ line, quantity: remainingUnits(order, line.lineId) }))
     .filter((row) => row.quantity > 0);
-  const shipTo = order.shipTo ?? null;
+  const customer = order.customer ?? null;
   const note = order.buyerNote?.trim() ?? '';
   return (
     <main className="mx-auto flex max-w-3xl flex-col gap-6 bg-surface p-6 text-fg print:max-w-none print:p-0">
@@ -48,22 +49,13 @@ export function PackingSlip({ order }: { readonly order: SellerOrderView }) {
         <h2 id="slip-ship-to" className="text-base font-semibold">
           {t('ship-to')}
         </h2>
-        {shipTo === null ? (
-          <p className="text-fg-muted">{t('no-address')}</p>
+        {customer === null ? (
+          <p className="text-fg-muted">{t('no-customer')}</p>
         ) : (
-          <address className="not-italic">
-            <div>
-              {shipTo.recipientFirstName} {shipTo.recipientLastName}
-            </div>
-            <div>{shipTo.line1}</div>
-            {shipTo.line2 === null || shipTo.line2 === '' ? null : <div>{shipTo.line2}</div>}
-            <div>
-              {[shipTo.suburb, shipTo.region, shipTo.postcode]
-                .filter((part) => part !== null && part !== '')
-                .join(' ')}
-            </div>
-            <div>{t('phone', { phone: shipTo.phone })}</div>
-          </address>
+          <p>
+            <span className="font-mono">{customer.code}</span>
+            {customer.firstName === null ? null : ` · ${customer.firstName}`}
+          </p>
         )}
       </section>
       <section aria-labelledby="slip-items" className="flex flex-col gap-2">

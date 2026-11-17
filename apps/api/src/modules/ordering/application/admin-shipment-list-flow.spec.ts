@@ -198,6 +198,7 @@ describe.each(['AU', 'ZZ'] as const)('admin shipment list in market %s', (code) 
     expect(result.ok).toBe(true);
     expect(reader.asked[0]).toEqual({
       filter: {
+        ids: null,
         stage: 'ready',
         reference,
         trackingRef: null,

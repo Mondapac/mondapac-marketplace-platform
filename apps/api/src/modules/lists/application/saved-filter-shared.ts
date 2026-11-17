@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { AuthorisationCheck } from '../../../platform/authz';
+import { MAX_PREFERRED_COLUMNS } from '../contracts';
 import type { ListDefinition, ListPayloadFailure, StoredFilter } from '../contracts';
 import {
   mayManage,
@@ -47,6 +48,15 @@ export class ListRegistry {
       }
       if (!(LISTS_AUDIT_LIST_KEYS as readonly string[]).includes(definition.listKey)) {
         throw new Error(`list ${definition.listKey} is missing from the lists audit vocabulary`);
+      }
+      const columns = definition.columns;
+      if (
+        columns !== undefined &&
+        (new Set(columns).size !== columns.length ||
+          columns.length > MAX_PREFERRED_COLUMNS ||
+          Buffer.byteLength(JSON.stringify(columns)) > 1024)
+      ) {
+        throw new Error(`list ${definition.listKey} has an invalid column vocabulary`);
       }
       this.#byKey.set(definition.listKey, definition);
     }

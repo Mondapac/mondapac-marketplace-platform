@@ -26,6 +26,7 @@ import {
   MAX_PAGED_ROWS,
   MAX_SEARCH_LENGTH,
   MIN_SEARCH_LENGTH,
+  type ListScope,
   type ReadFailure,
 } from './read-flow';
 
@@ -215,6 +216,7 @@ function parse(input: ShipmentListInput): Result<Parsed, ReadFailure> {
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
   return ok({
     filter: {
+      ids: null,
       stage,
       reference,
       trackingRef,
@@ -245,11 +247,13 @@ export async function listShipments(
   deps: AdminShipmentListDependencies,
   context: CallContext,
   input: ShipmentListInput,
+  scope: ListScope = {},
 ): Promise<Result<ShipmentListPage, ReadFailure>> {
   const parsed = parse(input ?? {});
   if (!parsed.ok) return parsed;
   const { sort, paging } = parsed.value;
-  let filter = parsed.value.filter;
+  // An export's selected rows narrow the list's own filter (an AND).
+  let filter = { ...parsed.value.filter, ids: scope.ids ?? null };
   let searchCapped = false;
   let searchScope: ShipmentListPage['searchScope'] = null;
   if (parsed.value.search !== null) {
@@ -289,7 +293,16 @@ export async function listShipments(
         // One row more than asked tells whether a next page exists.
         const [rows, counts] = await Promise.all([
           deps.shipments.page(context.market, filter, sort, 0, paging.limit + 1, paging.after),
-          deps.shipments.countByStage(context.market),
+          scope.skipCounts === true
+            ? Promise.resolve({
+                toPrepare: 0,
+                ready: 0,
+                shipped: 0,
+                delivered: 0,
+                refunded: 0,
+                attention: 0,
+              })
+            : deps.shipments.countByStage(context.market),
         ]);
         const records = rows.slice(0, paging.limit);
         const last = records[records.length - 1];
