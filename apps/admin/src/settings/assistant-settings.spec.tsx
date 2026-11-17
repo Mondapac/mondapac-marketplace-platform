@@ -150,6 +150,45 @@ describe('AssistantSettingsPanel', () => {
     });
   });
 
+  it('discards the basket proposals switch and saves it back to off', async () => {
+    mount(answer());
+    const box = screen.getByLabelText<HTMLInputElement>('Basket proposals from a list');
+    fireEvent.click(box);
+    expect(box.checked).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(box.checked).toBe(false);
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    cleanup();
+
+    call.mockResolvedValue({ ok: true, status: 200, body: answer({}, { version: 3 }) });
+    mount(answer({ basketProposals: true }, { version: 2 }));
+    fireEvent.click(screen.getByLabelText('Basket proposals from a list'));
+    save();
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call.mock.calls[0]![2]).toMatchObject({
+      expectedVersion: 2,
+      settings: { ...DEFAULTS, basketProposals: false },
+    });
+  });
+
+  it('compares the basket proposals switch after a conflict', async () => {
+    call
+      .mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'assistant.conflict' } })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: answer({ basketProposals: true }, { version: 4 }),
+      });
+    mount(answer());
+    fireEvent.click(screen.getByLabelText('Basket proposals from a list'));
+    fireEvent.click(screen.getByLabelText('Basket proposals from a list'));
+    fireEvent.click(screen.getByLabelText('Assistant switched on'));
+    save();
+    expect(await screen.findByText('Someone else saved these settings first')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Show what changed' }));
+    expect(compared('Basket proposals from a list')).toMatchObject({ saved: 'On', yours: 'Off' });
+  });
+
   it('offers a tier without a server model disabled', () => {
     mount(answer());
     const balanced = screen.getByRole<HTMLOptionElement>('option', {
