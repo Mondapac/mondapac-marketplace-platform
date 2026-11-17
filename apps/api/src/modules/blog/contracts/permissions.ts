@@ -49,6 +49,16 @@ export const BLOG_TAXONOMY_EDIT = definePermission('blog', {
   protected: false,
 });
 
+/**
+ * Upload a picture to the blog media library of the Market (a cover or an image block). Seeing the
+ * library and its pictures needs only `blog.post.read`.
+ */
+export const BLOG_MEDIA_EDIT = definePermission('blog', {
+  key: 'blog.media.edit',
+  scope: 'platform',
+  protected: false,
+});
+
 /** A seller writes, sends and archives its own posts. Effective only while its blog switch is on. */
 export const BLOG_SELLER_POST_EDIT = definePermission('blog', {
   key: 'blog.seller-post.edit',
@@ -57,6 +67,7 @@ export const BLOG_SELLER_POST_EDIT = definePermission('blog', {
 });
 
 export const BLOG_PERMISSIONS = declarePermissions('blog', [
+  BLOG_MEDIA_EDIT,
   BLOG_POST_EDIT,
   BLOG_POST_PAUSE,
   BLOG_POST_PUBLISH,

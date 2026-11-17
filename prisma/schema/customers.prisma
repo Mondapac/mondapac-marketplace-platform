@@ -172,6 +172,8 @@ model CustomersCustomerDirectory {
   /// The admins' notes and the activity timeline (phase 2); the rows go with this one.
   notes            CustomersCustomerNote[]
   timeline         CustomersCustomerTimelineEntry[]
+  /// The customer's relation with each seller (phase 3); deleted with the directory row.
+  sellerCustomers  CustomersSellerCustomer[]
 
   @@id([marketId, accountId])
   @@index([marketId, signedUpAt(sort: Desc), accountId(sort: Desc)])
@@ -336,5 +338,44 @@ model CustomersCustomerTimelineEntry {
   @@unique([marketId, accountId, sourceEventId])
   @@index([marketId, accountId, occurredAt(sort: Desc), id(sort: Desc)])
   @@map("customer_timeline")
+  @@schema("customers")
+}
+
+/// One customer as one seller sees them (customers management phase 3): a read model kept by the
+/// customer's confirmed orders with that seller (through `ordering`) and the customer's follow of
+/// the store (through `engagement`), replaced, never incremented, by the sync and the nightly
+/// reconcile. A row exists only while there is a relation (CHECK): bought, follows, or (phase 4)
+/// exclusive. `customer_code` is drawn at random when the row is first written and never changes;
+/// it is unique per seller and unrelated between sellers, so two sellers cannot match their lists.
+/// The seller sees the code and the first name (from the directory), never the account id or the
+/// email. Deleted with the customer's directory row (foreign key, ON DELETE CASCADE).
+model CustomersSellerCustomer {
+  marketId     String                     @map("market_id") @db.VarChar(8)
+  tenantId     String                     @map("tenant_id")
+  sellerId     String                     @map("seller_id") @db.Uuid
+  accountId    String                     @map("account_id") @db.Uuid
+  /// XXXX-XXXX in Crockford base32 (CHECK).
+  customerCode String                     @map("customer_code") @db.VarChar(9)
+  orderCount   Int                        @map("order_count")
+  firstOrderAt DateTime?                  @map("first_order_at") @db.Timestamptz(6)
+  lastOrderAt  DateTime?                  @map("last_order_at") @db.Timestamptz(6)
+  /// The confirmed seller orders' totals less the refunds that succeeded, minor units of `currency`.
+  spentMinor   BigInt                     @map("spent_minor")
+  currency     String?                    @db.VarChar(3)
+  follower     Boolean
+  /// When the current follow started; set exactly when `follower` (CHECK).
+  followedAt   DateTime?                  @map("followed_at") @db.Timestamptz(6)
+  /// Reserved for phase 4 (signed up through the seller's invite link); false until then.
+  exclusive    Boolean                    @default(false)
+  createdAt    DateTime                   @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime                   @map("updated_at") @db.Timestamptz(6)
+  directory    CustomersCustomerDirectory @relation(fields: [marketId, accountId], references: [marketId, accountId], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, sellerId, accountId])
+  @@unique([marketId, sellerId, customerCode])
+  @@index([marketId, accountId])
+  @@index([marketId, sellerId, lastOrderAt(sort: Desc), accountId(sort: Desc)])
+  @@index([marketId, sellerId, followedAt(sort: Desc), accountId(sort: Desc)])
+  @@map("seller_customers")
   @@schema("customers")
 }

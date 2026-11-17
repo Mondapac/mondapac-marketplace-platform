@@ -1,7 +1,11 @@
-import { Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
+import { encodePayload, err, ok, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, PendingEvent } from '@mondapac/shared-kernel';
+import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { BlockCountIncrement, BlockCountRow } from '../../domain/block-count';
 import type { BlockCountRepository } from '../ports/block-count.repository';
+import { ENGAGEMENT_EVENTS, type StoreFollow } from '../../domain/store-follow';
+import type { PublishedStores } from '../ports/published-stores';
+import type { StoreFollowCursor, StoreFollowRepository } from '../ports/store-follow.repository';
 import type { ServedPlacements } from '../ports/served-placements';
 import type {
   BehaviourEventRecord,
@@ -327,5 +331,116 @@ export class FakeEngagementGuestTokens implements EngagementGuestTokens {
 
   hashOf(token: string): string | null {
     return /^[A-Za-z0-9_-]{43}$/.test(token) ? `h:${token}` : null;
+  }
+}
+
+/** The store follows per (Market, account, seller), as the unique key keeps them. */
+export class InMemoryStoreFollows implements StoreFollowRepository {
+  readonly rows: (StoreFollow & { readonly marketId: string })[] = [];
+
+  private of(market: MarketContext, accountId: Id<'Account'>) {
+    return this.rows
+      .filter((row) => row.marketId === market.marketId && row.accountId === accountId)
+      .sort(
+        (a, b) =>
+          b.followedAt.epochMilliseconds - a.followedAt.epochMilliseconds ||
+          (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+      );
+  }
+
+  find(market: MarketContext, accountId: Id<'Account'>, sellerId: Id<'Seller'>) {
+    return Promise.resolve(
+      this.of(market, accountId).find((row) => row.sellerId === sellerId) ?? null,
+    );
+  }
+
+  insert(market: MarketContext, follow: StoreFollow) {
+    if (this.of(market, follow.accountId).some((row) => row.sellerId === follow.sellerId)) {
+      return Promise.resolve('exists' as const);
+    }
+    this.rows.push({ ...follow, marketId: market.marketId });
+    return Promise.resolve('inserted' as const);
+  }
+
+  remove(market: MarketContext, accountId: Id<'Account'>, id: Id<'StoreFollow'>) {
+    const index = this.rows.findIndex(
+      (row) => row.marketId === market.marketId && row.accountId === accountId && row.id === id,
+    );
+    if (index >= 0) this.rows.splice(index, 1);
+    return Promise.resolve(index >= 0);
+  }
+
+  countOf(market: MarketContext, accountId: Id<'Account'>) {
+    return Promise.resolve(this.of(market, accountId).length);
+  }
+
+  pageOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    after: StoreFollowCursor | null,
+    limit: number,
+  ) {
+    const rows = this.of(market, accountId).filter(
+      (row) =>
+        after === null ||
+        row.followedAt.epochMilliseconds < after.followedAt.epochMilliseconds ||
+        (row.followedAt.epochMilliseconds === after.followedAt.epochMilliseconds &&
+          row.id < after.id),
+    );
+    return Promise.resolve(rows.slice(0, limit));
+  }
+
+  followedAmong(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    sellerIds: readonly Id<'Seller'>[],
+  ) {
+    return Promise.resolve(
+      this.of(market, accountId).filter((row) => sellerIds.includes(row.sellerId)),
+    );
+  }
+
+  allOf(market: MarketContext, accountId: Id<'Account'>) {
+    return Promise.resolve(this.of(market, accountId));
+  }
+
+  deleteForAccount(market: MarketContext, accountId: Id<'Account'>) {
+    const mine = this.of(market, accountId);
+    for (const row of mine) this.rows.splice(this.rows.indexOf(row), 1);
+    return Promise.resolve(mine.length);
+  }
+}
+
+/** Published stores the test names; `down` makes every read fail. */
+export class FakePublishedStores implements PublishedStores {
+  readonly slugs = new Map<string, string>();
+  down = false;
+
+  slugsOf(_context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
+    if (this.down) return Promise.resolve(err({ code: 'engagement.unavailable' as const }));
+    const found = new Map<Id<'Seller'>, string>();
+    for (const id of sellerIds) {
+      const slug = this.slugs.get(id);
+      if (slug !== undefined) found.set(id, slug);
+    }
+    return Promise.resolve(ok(found as ReadonlyMap<Id<'Seller'>, string>));
+  }
+}
+
+/** Collects engagement's events, each checked against its definition as the outbox writer does. */
+export class RecordingEngagementOutbox implements OutboxWriter {
+  readonly events: PendingEvent[] = [];
+
+  append(_context: CallContext, events: readonly PendingEvent[]): Promise<void> {
+    for (const event of events) {
+      const definition = ENGAGEMENT_EVENTS.find((candidate) => candidate.type === event.type);
+      if (definition === undefined) throw new Error(`outbox: unknown type ${event.type}`);
+      const checked = encodePayload(definition.fields, event.payload, {
+        isKnownPermissionKey: () => false,
+      });
+      if (!checked.ok) throw new Error(`outbox: ${JSON.stringify(checked.error)}`);
+      this.events.push(event);
+    }
+    return Promise.resolve();
   }
 }
