@@ -429,6 +429,18 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   ones out of a run (Hassan L-4). A lost chargeback fails the credit `order-disputed`, and none is
   reserved for a seller order already lost; a currency that no longer matches fails it
   `currency-changed`.
+- A refund claws back unused cashback (customers phase 4c-2): `promotions.claw-back-on-refund`
+  (system) listens to `refund-succeeded.v1`. For a GRANTED cashback of that order it works out the
+  share the refund takes (the cashback the remaining goods would still earn is kept), records it in
+  `promotions_credit_clawbacks` (one row per credit and refund, and per credit and `seq`: two refunds
+  racing on one credit cannot both take the same share), asks the wallet to take it back from that
+  grant's unused lot (`wallet.claw-back-credit`, so spent credit is never taken), and for a
+  seller-funded cashback returns what was taken to the seller's ledger
+  (`refund-cashback-seller`). A row is settled DONE once, with what was actually taken. A credit
+  still waiting is lowered by the job instead; one whose wait ended but is not yet granted makes the
+  refund retry. A credit the grant job throws on is put back an hour (Hassan L-7). Migration
+  `20261117150002_promotions_credit_clawbacks`: insert-only identity, PENDING to DONE only, no
+  delete; `down.sql` refuses while rows exist.
 - Migration `20261117100001_promotions_seller_cashback`: `promotions_type_funding_check` makes a
   cashback the seller's money exactly with the segment; `promotions_phase3_check` lets a cashback
   carry no segment or this one. `down.sql` refuses while such rows exist.

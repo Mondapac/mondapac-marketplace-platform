@@ -55,6 +55,32 @@ export interface GrantCreditResult {
   readonly balance: WalletBalance;
 }
 
+/**
+ * Takes back promo credit a grant gave, up to `amount`, from what is left of that grant's lot
+ * (customers phase 4c: a refund of a seller order whose cashback was credited). Credit already
+ * spent or held is not taken back. System callers only.
+ */
+export interface ClawBackCreditRequest {
+  readonly customerAccountId: Id<'Account'>;
+  /** The journal of the promo grant whose credit is taken back. */
+  readonly grantJournalId: Id<'WalletJournal'>;
+  /** At most this much is taken back. */
+  readonly amount: Money;
+  /** A closed lower-case code, such as `cashback-refund`. */
+  readonly reasonCode: string;
+  readonly orderId?: Id<'Order'>;
+  /** Same key and same request: the first result again. Same key, other request: refused. */
+  readonly idempotencyKey: string;
+}
+
+export interface ClawBackCreditResult {
+  /** The clawback journal; null when nothing was left to take back (no journal is written). */
+  readonly journalId: Id<'WalletJournal'> | null;
+  /** What was taken back: from zero to the amount asked for. */
+  readonly clawedBack: Money;
+  readonly balance: WalletBalance;
+}
+
 export interface PlaceHoldRequest {
   readonly customerAccountId: Id<'Account'>;
   readonly orderId: Id<'Order'>;
@@ -94,6 +120,15 @@ export interface WalletFacade {
     context: CallContext,
     request: GrantCreditRequest,
   ): Promise<Result<GrantCreditResult, WalletFailure>>;
+
+  /**
+   * Takes back what is left of a promo grant, up to the amount (rule `system`). Works while the
+   * wallet is active, paused or frozen: it only lowers what the platform owes.
+   */
+  clawBackCredit(
+    context: CallContext,
+    request: ClawBackCreditRequest,
+  ): Promise<Result<ClawBackCreditResult, WalletFailure>>;
 
   placeHold(
     context: CallContext,

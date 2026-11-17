@@ -56,6 +56,7 @@ import {
 import type { PromotionsDependencies } from './application/promotions-dependencies';
 import { ApplyReferralCode } from './application/use-cases/apply-referral-code.use-case';
 import { CashbackOnDelivery } from './application/use-cases/cashback-on-delivery.use-case';
+import { ClawBackOnRefund } from './application/use-cases/claw-back-on-refund.use-case';
 import { GrantDueCredits } from './application/use-cases/grant-due-credits.use-case';
 import { grantDueCreditsJob } from './presentation/jobs/grant-due-credits.job';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
@@ -112,7 +113,10 @@ import {
   StoreFollowGiftController,
   SellerPromotionsController,
 } from './presentation/promotions.controller';
-import { deliveryCreditSubscriptions } from './presentation/subscribers/delivery-credit.subscriptions';
+import {
+  deliveryCreditSubscriptions,
+  refundClawbackSubscriptions,
+} from './presentation/subscribers/delivery-credit.subscriptions';
 import { redemptionSubscriptions } from './presentation/subscribers/redemption.subscriptions';
 import { PromotionsFacadeImplementation } from './presentation/promotions.facade';
 
@@ -250,6 +254,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CashbackOnDelivery,
       QualifyReferralOnDelivery,
       GrantDueCredits,
+      ClawBackOnRefund,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     // Customers phase 4c: the cashback that waited for its seller order's payout release.
     registerJobsFrom('promotions', [GrantDueCredits], (grantDue: GrantDueCredits) => [
@@ -261,6 +266,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       [CashbackOnDelivery, QualifyReferralOnDelivery],
       (cashback: CashbackOnDelivery, referral: QualifyReferralOnDelivery) =>
         deliveryCreditSubscriptions(cashback, referral),
+    ),
+    // Customers phase 4c-2: a refund after a cashback was credited takes part of it back.
+    registerSubscriptionsFrom('promotions', [ClawBackOnRefund], (clawBack: ClawBackOnRefund) =>
+      refundClawbackSubscriptions(clawBack),
     ),
     // Package T2: an order's redemptions are confirmed when it is paid and released when it is
     // cancelled.

@@ -1,5 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type {
+  ClawbackRecord,
   CreditKind,
   CreditRecord,
   ReferralRecord,
@@ -65,6 +66,23 @@ export interface CreditRepository {
     market: MarketContext,
     id: Id<'PromotionCredit'>,
     until: Temporal.Instant,
+  ): Promise<boolean>;
+  /** The clawbacks of one credit, by `seq` (customers phase 4c-2). */
+  listClawbacks(
+    market: MarketContext,
+    creditId: Id<'PromotionCredit'>,
+  ): Promise<readonly ClawbackRecord[]>;
+  /**
+   * Inserts a PENDING clawback; `duplicate` when the credit already has one for this refund or at
+   * this `seq` (another refund counted from the same total: the caller tries again).
+   */
+  insertClawback(market: MarketContext, record: ClawbackRecord): Promise<'inserted' | 'duplicate'>;
+  /** PENDING to DONE with what the wallet took; false when it was DONE already. */
+  settleClawback(
+    market: MarketContext,
+    id: Id<'CreditClawback'>,
+    result: { readonly clawedMinor: bigint; readonly walletJournalId: string | null },
+    at: Temporal.Instant,
   ): Promise<boolean>;
   /** The money a promotion has reserved or paid: its PENDING and GRANTED credits. */
   reservedTotal(market: MarketContext, promotionId: Id<'Promotion'>): Promise<bigint>;

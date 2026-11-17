@@ -158,6 +158,12 @@ export class MemoryWallet implements WalletRepository {
   findLot(_m: MarketContext, id: Id<'WalletLot'>) {
     return Promise.resolve(this.lots.get(id) ?? null);
   }
+  findLotOfJournal(_m: MarketContext, journalId: Id<'WalletJournal'>) {
+    const found = [...this.lots.values()].find((lot) => lot.journalId === journalId);
+    return Promise.resolve(
+      found === undefined ? null : { lotId: found.id, walletAccountId: found.wallet },
+    );
+  }
   findLotWallet(_m: MarketContext, id: Id<'WalletLot'>) {
     return Promise.resolve(this.lots.get(id)?.wallet ?? null);
   }

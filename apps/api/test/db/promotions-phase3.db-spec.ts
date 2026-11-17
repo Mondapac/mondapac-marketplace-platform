@@ -1,5 +1,5 @@
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
-import type { Result } from '@mondapac/shared-kernel';
+import type { Id, Result } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   testAuthenticatedActor,
@@ -1205,6 +1205,136 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
           }),
         ),
       ).toBe(CHECK);
+    });
+
+    it('records a refund’s clawback of a credited cashback once per refund and per seq, and settles it once (customers phase 4c-2)', async () => {
+      const row = promotionRow();
+      await sql.query(...(insert('promotions', row).slice(0, 2) as [string, unknown[]]));
+      const now = clock.now();
+      const credits = deps.credits;
+      const inUnit = <T>(work: () => Promise<T>) =>
+        db.unitOfWork.run(market, async () => ok(await work()));
+      const credit = {
+        id: ids.next<'PromotionCredit'>(),
+        promotionId: row.id as never,
+        kind: 'CASHBACK' as const,
+        recipientAccountId: ids.next<'Account'>(),
+        orderId: ids.next<'Order'>(),
+        sourceKind: 'SELLER_ORDER' as const,
+        sourceId: ids.next<'SellerOrder'>(),
+        amountMinor: 400n,
+        currency: 'AUD',
+        status: 'PENDING' as const,
+        failureCode: null,
+        walletJournalId: null,
+        idempotencyKey: `promotions:cashback:${ids.next<'x'>()}`,
+        createdAt: now,
+        settledAt: null,
+        grantAfter: null,
+      };
+      await inUnit(() => credits.insert(market, credit));
+      await inUnit(() =>
+        credits.settle(
+          market,
+          credit.id,
+          { status: 'GRANTED', walletJournalId: ids.next<'WalletJournal'>() },
+          now,
+        ),
+      );
+      const clawback = (refundId: string, seq: number, amountMinor: bigint) => ({
+        id: ids.next<'CreditClawback'>(),
+        creditId: credit.id,
+        refundId: refundId as Id<'Refund'>,
+        seq,
+        amountMinor,
+        currency: 'AUD',
+        status: 'PENDING' as const,
+        clawedMinor: null,
+        walletJournalId: null,
+        createdAt: now,
+        settledAt: null,
+      });
+      const refund1 = ids.next<'Refund'>();
+      const refund2 = ids.next<'Refund'>();
+      const first = clawback(refund1, 1, 100n);
+      expect(await inUnit(() => credits.insertClawback(market, first))).toEqual(ok('inserted'));
+      // The same refund again, and another refund counted from the same total: both clash.
+      expect(await inUnit(() => credits.insertClawback(market, clawback(refund1, 2, 50n)))).toEqual(
+        ok('duplicate'),
+      );
+      expect(await inUnit(() => credits.insertClawback(market, clawback(refund2, 1, 50n)))).toEqual(
+        ok('duplicate'),
+      );
+      const second = clawback(refund2, 2, 200n);
+      expect(await inUnit(() => credits.insertClawback(market, second))).toEqual(ok('inserted'));
+      const journal = ids.next<'WalletJournal'>();
+      const settle = (
+        id: Id<'CreditClawback'>,
+        clawedMinor: bigint,
+        walletJournalId: string | null,
+      ) => inUnit(() => credits.settleClawback(market, id, { clawedMinor, walletJournalId }, now));
+      expect(await settle(first.id, 100n, journal)).toEqual(ok(true));
+      expect(await settle(first.id, 100n, journal)).toEqual(ok(false));
+      // Taken more than its share, or taken with no journal: the CHECK refuses.
+      expect(await settle(second.id, 201n, ids.next()).catch(() => 'refused')).toBe('refused');
+      expect(await settle(second.id, 10n, null).catch(() => 'refused')).toBe('refused');
+      expect(await settle(second.id, 0n, null)).toEqual(ok(true));
+      expect(await inUnit(() => credits.listClawbacks(market, credit.id))).toMatchObject({
+        ok: true,
+        value: [
+          {
+            seq: 1,
+            amountMinor: 100n,
+            status: 'DONE',
+            clawedMinor: 100n,
+            walletJournalId: journal,
+          },
+          { seq: 2, amountMinor: 200n, status: 'DONE', clawedMinor: 0n, walletJournalId: null },
+        ],
+      });
+      // Settled once; the share never changes; never deleted, for the application or the owner.
+      for (const change of [
+        `status = 'PENDING', clawed_minor = NULL, settled_at = NULL, wallet_journal_id = NULL`,
+        `amount_minor = 1`,
+      ]) {
+        expect(
+          await state(
+            sql.query(`UPDATE promotions.credit_clawbacks SET ${change} WHERE id = $1`, [first.id]),
+          ),
+        ).toBe(NO_PRIVILEGE === '42501' && change.startsWith('amount') ? NO_PRIVILEGE : RESTRICT);
+        expect(
+          await state(
+            owner.query(`UPDATE promotions.credit_clawbacks SET ${change} WHERE id = $1`, [
+              first.id,
+            ]),
+          ),
+        ).toBe(RESTRICT);
+      }
+      expect(
+        await state(sql.query(`DELETE FROM promotions.credit_clawbacks WHERE id = $1`, [first.id])),
+      ).toBe(NO_PRIVILEGE);
+      expect(
+        await state(
+          owner.query(`DELETE FROM promotions.credit_clawbacks WHERE id = $1`, [first.id]),
+        ),
+      ).toBe(RESTRICT);
+      // A clawback names a credit of its Market.
+      expect(
+        await attempt(
+          insert('credit_clawbacks', {
+            id: ids.next(),
+            market_id: mk,
+            tenant_id: 'default',
+            credit_id: ids.next(),
+            refund_id: ids.next(),
+            seq: 1,
+            amount_minor: 1,
+            currency: 'AUD',
+            status: 'PENDING',
+            created_at: now,
+          }),
+        ),
+      ).toBe(FOREIGN_KEY);
     });
   });
 

@@ -38,6 +38,7 @@ import { ConfigPromotionsPolicy } from '../infrastructure/config-promotions-poli
 import { PromotionsFacadeImplementation } from '../presentation/promotions.facade';
 import type { PromotionsDependencies } from './promotions-dependencies';
 import { ApplyReferralCode } from './use-cases/apply-referral-code.use-case';
+import { ClawBackOnRefund } from './use-cases/claw-back-on-refund.use-case';
 import { GrantDueCredits } from './use-cases/grant-due-credits.use-case';
 import { CashbackOnDelivery } from './use-cases/cashback-on-delivery.use-case';
 import { CheckWasPrice } from './use-cases/check-was-price.use-case';
@@ -1420,6 +1421,201 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           expect(await grantDue()).toEqual({
             ok: true,
             value: { issued: 0, failed: 0, retried: 0, held: 1 },
+          });
+        });
+
+        describe('a refund after the cashback was credited (customers phase 4c-2)', () => {
+          const REFUND_1 = id<'Refund'>(0xf001);
+          const REFUND_2 = id<'Refund'>(0xf002);
+          const refund = (
+            facts: { orderId: Id<'Order'>; sellerOrderId: Id<'SellerOrder'> },
+            refundId: Id<'Refund'>,
+            d = delivery(),
+          ) =>
+            make(ClawBackOnRefund).execute(system, {
+              delivery: d,
+              orderId: facts.orderId,
+              sellerOrderId: facts.sellerOrderId,
+              refundId,
+            });
+          /** A seller's cashback of 400 (5 % of 10000, capped at 400), credited after the hold. */
+          const credited = async () => {
+            await sellerCashback();
+            p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+            const facts = deliverHeld(1);
+            await run(facts);
+            clock.advance(Temporal.Duration.from(HOLD));
+            await grantDue();
+            expect(credits()[0]).toMatchObject({ status: 'GRANTED', amountMinor: 400n });
+            return facts;
+          };
+          const clawbacks = () => p3.credits.clawbacks;
+
+          it('takes back what the goods given back no longer earn, and returns it to the seller', async () => {
+            const facts = await credited();
+            // 4000 of 10000 refunded: 5 % of 6000 is 300, so 100 comes back.
+            p3.orderFacts.add({ ...facts, goodsPaid: money(6000n, currency) });
+            const d = delivery();
+            expect(await refund(facts, REFUND_1, d)).toEqual({
+              ok: true,
+              value: { outcome: 'clawed-back' },
+            });
+            expect(clawbacks()).toMatchObject([
+              { refundId: REFUND_1, seq: 1, amountMinor: 100n, status: 'DONE', clawedMinor: 100n },
+            ]);
+            expect([...p3.walletCredit.clawbacks.values()]).toMatchObject([
+              { asked: 100n, taken: 100n },
+            ]);
+            expect(p3.sellerCashbackLedger.returns).toMatchObject([
+              { clawbackId: clawbacks()[0]!.id, amount: 100n, sellerId: SELLER },
+            ]);
+            // The same delivery again changes nothing.
+            expect(await refund(facts, REFUND_1, d)).toEqual({
+              ok: true,
+              value: { outcome: 'already-handled' },
+            });
+            // A second refund: 2000 left earn 100, so 200 more comes back.
+            p3.orderFacts.add({ ...facts, goodsPaid: money(2000n, currency) });
+            expect((await refund(facts, REFUND_2)).ok).toBe(true);
+            expect(clawbacks().map((c) => [c.seq, c.amountMinor, c.clawedMinor])).toEqual([
+              [1, 100n, 100n],
+              [2, 200n, 200n],
+            ]);
+            expect(p3.sellerCashbackLedger.returns.map((r) => r.amount)).toEqual([100n, 200n]);
+          });
+
+          it('leaves what the customer spent, and returns to the seller only what was taken', async () => {
+            const facts = await credited();
+            const journal = credits()[0]!.walletJournalId!;
+            p3.walletCredit.spent.set(journal, 350n);
+            p3.orderFacts.add({ ...facts, goodsPaid: money(0n, currency) });
+            expect((await refund(facts, REFUND_1)).ok).toBe(true);
+            expect(clawbacks()).toMatchObject([{ amountMinor: 400n, clawedMinor: 50n }]);
+            expect(p3.sellerCashbackLedger.returns.map((r) => r.amount)).toEqual([50n]);
+            // Nothing more is asked for later: the credit is accounted for in full.
+            expect(await refund(facts, REFUND_2)).toEqual({
+              ok: true,
+              value: { outcome: 'nothing' },
+            });
+          });
+
+          it('takes nothing back while the goods kept still earn the whole credit', async () => {
+            const facts = await credited();
+            // 8000 kept earn 400: the cap still holds.
+            p3.orderFacts.add({ ...facts, goodsPaid: money(8000n, currency) });
+            expect(await refund(facts, REFUND_1)).toEqual({
+              ok: true,
+              value: { outcome: 'nothing' },
+            });
+            expect(clawbacks()).toHaveLength(0);
+            expect(p3.walletCredit.clawbacks.size).toBe(0);
+          });
+
+          it('does nothing for a credit still waiting for the release (the grant job nets it), and retries one being paid (Hassan L-5)', async () => {
+            await sellerCashback();
+            p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+            const facts = deliverHeld(1);
+            await run(facts);
+            expect(await refund(facts, REFUND_1)).toEqual({
+              ok: true,
+              value: { outcome: 'nothing' },
+            });
+            // The wait has ended but the wallet has not answered yet.
+            clock.advance(Temporal.Duration.from(HOLD));
+            p3.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
+            p3.walletCredit.always = true;
+            await grantDue();
+            p3.walletCredit.always = false;
+            p3.walletCredit.failure = null;
+            expect(credits()[0]).toMatchObject({ status: 'PENDING', grantAfter: null });
+            expect(await refund(facts, REFUND_2)).toEqual({
+              ok: false,
+              error: { code: 'promotions.try-again' },
+            });
+          });
+
+          it('keeps the clawback pending while the wallet or the ledger cannot answer, and finishes it on the retry with the same key', async () => {
+            const facts = await credited();
+            p3.orderFacts.add({ ...facts, goodsPaid: money(6000n, currency) });
+            const d = delivery();
+            p3.walletCredit.failure = { retry: true, code: 'wallet.unavailable' };
+            expect(await refund(facts, REFUND_1, d)).toEqual({
+              ok: false,
+              error: { code: 'promotions.try-again' },
+            });
+            expect(clawbacks()).toMatchObject([{ status: 'PENDING', amountMinor: 100n }]);
+            p3.sellerCashbackLedger.fails = true;
+            expect((await refund(facts, REFUND_1, d)).ok).toBe(false);
+            p3.sellerCashbackLedger.fails = false;
+            // A later refund read meanwhile changes nothing for this one: its share is fixed.
+            p3.orderFacts.add({ ...facts, goodsPaid: money(2000n, currency) });
+            expect(await refund(facts, REFUND_1, d)).toEqual({
+              ok: true,
+              value: { outcome: 'clawed-back' },
+            });
+            expect(clawbacks()).toMatchObject([
+              { status: 'DONE', amountMinor: 100n, clawedMinor: 100n },
+            ]);
+            expect(p3.walletCredit.clawbacks.size).toBe(1);
+            expect(p3.sellerCashbackLedger.returns).toHaveLength(1);
+          });
+
+          it('settles with nothing taken when the wallet refuses for good', async () => {
+            const facts = await credited();
+            p3.orderFacts.add({ ...facts, goodsPaid: money(6000n, currency) });
+            p3.walletCredit.failure = { retry: false, code: 'wallet.not-found' };
+            expect((await refund(facts, REFUND_1)).ok).toBe(true);
+            expect(clawbacks()).toMatchObject([
+              { status: 'DONE', clawedMinor: 0n, walletJournalId: null },
+            ]);
+            expect(p3.sellerCashbackLedger.returns).toHaveLength(0);
+          });
+
+          if (confirmed) {
+            it('takes back the platform’s cashback too, with nothing for a seller', async () => {
+              await adminCreate(cashback({ testMode: false }));
+              const facts = deliverHeld(1);
+              await run(facts);
+              clock.advance(Temporal.Duration.from(HOLD));
+              await grantDue();
+              expect(credits()[0]).toMatchObject({ status: 'GRANTED', amountMinor: 500n });
+              p3.orderFacts.add({ ...facts, goodsPaid: money(5000n, currency) });
+              expect((await refund(facts, REFUND_1)).ok).toBe(true);
+              expect(clawbacks()).toMatchObject([{ amountMinor: 250n, clawedMinor: 250n }]);
+              expect(p3.sellerCashbackLedger.returns).toHaveLength(0);
+            });
+          }
+
+          it('does nothing without a credited cashback, for another order, and refuses malformed ids', async () => {
+            const facts = deliverOrder(1, REFERRER, 10000n);
+            expect(await refund(facts, REFUND_1)).toEqual({
+              ok: true,
+              value: { outcome: 'nothing' },
+            });
+            const paid = await credited();
+            expect(await refund({ ...paid, orderId: id<'Order'>(0x0dff) }, REFUND_2)).toEqual({
+              ok: true,
+              value: { outcome: 'nothing' },
+            });
+            expect(
+              await make(ClawBackOnRefund).execute(system, {
+                delivery: delivery(),
+                orderId: paid.orderId,
+                sellerOrderId: paid.sellerOrderId,
+                refundId: 'x',
+              }),
+            ).toEqual({ ok: false, error: { code: 'validation.failed' } });
+          });
+
+          it('is for the system only', async () => {
+            const facts = await credited();
+            const result = await make(ClawBackOnRefund).execute(admin(), {
+              delivery: delivery(),
+              orderId: facts.orderId,
+              sellerOrderId: facts.sellerOrderId,
+              refundId: REFUND_1,
+            });
+            expect(result.ok).toBe(false);
           });
         });
 

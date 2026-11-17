@@ -27,6 +27,25 @@ export const REFERRAL_REJECT_REASONS = [
 export type ReferralRejectReason = (typeof REFERRAL_REJECT_REASONS)[number];
 
 /** One credit the platform owes or has paid. */
+/**
+ * What one succeeded refund takes back of a GRANTED cashback (customers phase 4c-2): its share of
+ * what is to be taken back in all, then, once DONE, what the wallet actually took.
+ */
+export interface ClawbackRecord {
+  readonly id: Id<'CreditClawback'>;
+  readonly creditId: Id<'PromotionCredit'>;
+  readonly refundId: Id<'Refund'>;
+  /** 1, 2, … per credit: a running count that makes two refunds of one credit clash. */
+  readonly seq: number;
+  readonly amountMinor: bigint;
+  readonly currency: string;
+  readonly status: 'PENDING' | 'DONE';
+  readonly clawedMinor: bigint | null;
+  readonly walletJournalId: string | null;
+  readonly createdAt: Temporal.Instant;
+  readonly settledAt: Temporal.Instant | null;
+}
+
 export interface CreditRecord {
   readonly id: Id<'PromotionCredit'>;
   readonly promotionId: Id<'Promotion'>;

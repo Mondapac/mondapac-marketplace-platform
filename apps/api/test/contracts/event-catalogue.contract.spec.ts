@@ -211,6 +211,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
       'promotions.cashback-on-delivery',
+      // Customers phase 4c-2: a refund takes back part of a credited cashback.
+      'promotions.claw-back-on-refund',
       // Promotions T2: an order's redemption is confirmed when it is paid, released when cancelled.
       'promotions.confirm-redemptions',
       'promotions.qualify-referral-on-delivery',
@@ -281,6 +283,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'customers.timeline-refund-succeeded',
       'notifications.item-unavailable-refund-mail',
       'ordering.cancel-carrier-after-refund',
+      'promotions.claw-back-on-refund',
     ]);
     expect(subscriptions.subscribersOf('shipping.carrier-delivery-progressed.v1')).toEqual([
       'ordering.record-carrier-progress',

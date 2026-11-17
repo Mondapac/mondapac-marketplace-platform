@@ -39,6 +39,7 @@ import type {
   ReferralRecord,
   ReferralRejectReason,
   ReferralStatus,
+  ClawbackRecord,
 } from '../../src/modules/promotions/domain/credit';
 import type { FlashSales } from '../../src/modules/promotions/application/ports/flash-sales';
 import type {
@@ -942,6 +943,17 @@ export class FakeSellerCashbackLedger implements SellerCashbackLedger {
     if (!this.entries.some((e) => e.creditId === cashback.creditId)) this.entries.push(cashback);
     return Promise.resolve(true);
   }
+  readonly returns: Parameters<SellerCashbackLedger['recordReturn']>[1][] = [];
+  recordReturn(
+    _context: CallContext,
+    returned: Parameters<SellerCashbackLedger['recordReturn']>[1],
+  ) {
+    this.calls += 1;
+    if (this.fails) return Promise.resolve(false);
+    if (!this.returns.some((e) => e.clawbackId === returned.clawbackId))
+      this.returns.push(returned);
+    return Promise.resolve(true);
+  }
 }
 
 export class FakeReferralSignals implements ReferralSignals {
@@ -995,6 +1007,53 @@ export class FakeWalletCredit implements WalletCredit {
     }
     return Promise.resolve({ ok: true, value: { journalId: journal } } as const);
   }
+  /** What the customer spent of each grant (by its journal): not taken back. */
+  readonly spent = new Map<string, bigint>();
+  readonly clawbacks = new Map<
+    string,
+    { readonly grantJournalId: string; readonly asked: bigint; readonly taken: bigint }
+  >();
+  clawBack(
+    _context: CallContext,
+    request: Parameters<WalletCredit['clawBack']>[1],
+  ): ReturnType<WalletCredit['clawBack']> {
+    this.calls += 1;
+    const scripted = this.failWhen?.(request) ?? null;
+    if (scripted !== null) return Promise.resolve(err(scripted));
+    if (this.failure !== null) {
+      const failure = this.failure;
+      if (!this.always) this.failure = null;
+      return Promise.resolve(err(failure));
+    }
+    const answer = (taken: bigint, n: number) =>
+      Promise.resolve(
+        ok({
+          journalId:
+            taken === 0n
+              ? null
+              : `01990000-0000-7000-8000-${(0xb00000 + n).toString(16).padStart(12, '0')}`,
+          clawedBack: taken,
+        }),
+      );
+    const seen = this.clawbacks.get(request.idempotencyKey);
+    if (seen !== undefined)
+      return answer(seen.taken, [...this.clawbacks.keys()].indexOf(request.idempotencyKey) + 1);
+    const key = [...this.journals.entries()].find(([, j]) => j === request.grantJournalId)?.[0];
+    const grant = this.grants.find((g) => g.idempotencyKey === key);
+    if (grant === undefined)
+      return Promise.resolve(err({ retry: false, code: 'wallet.not-found' }));
+    const before = [...this.clawbacks.values()]
+      .filter((c) => c.grantJournalId === request.grantJournalId)
+      .reduce((sum, c) => sum + c.taken, 0n);
+    const left = grant.amount.amount - (this.spent.get(request.grantJournalId) ?? 0n) - before;
+    const taken = left <= 0n ? 0n : left < request.amount.amount ? left : request.amount.amount;
+    this.clawbacks.set(request.idempotencyKey, {
+      grantJournalId: request.grantJournalId,
+      asked: request.amount.amount,
+      taken,
+    });
+    return answer(taken, this.clawbacks.size);
+  }
 }
 
 /**
@@ -1003,6 +1062,44 @@ export class FakeWalletCredit implements WalletCredit {
  */
 export class MemoryCredits implements CreditRepository {
   readonly rows = new Map<Id<'PromotionCredit'>, CreditRecord>();
+  readonly clawbacks: ClawbackRecord[] = [];
+  listClawbacks(_market: MarketContext, creditId: Id<'PromotionCredit'>) {
+    return Promise.resolve(
+      this.clawbacks.filter((c) => c.creditId === creditId).sort((a, b) => a.seq - b.seq),
+    );
+  }
+  insertClawback(_market: MarketContext, record: ClawbackRecord) {
+    const clash = this.clawbacks.some(
+      (c) =>
+        c.creditId === record.creditId && (c.refundId === record.refundId || c.seq === record.seq),
+    );
+    if (clash) return Promise.resolve('duplicate' as const);
+    this.clawbacks.push({
+      ...record,
+      status: 'PENDING',
+      clawedMinor: null,
+      walletJournalId: null,
+      settledAt: null,
+    });
+    return Promise.resolve('inserted' as const);
+  }
+  settleClawback(
+    _market: MarketContext,
+    id: Id<'CreditClawback'>,
+    result: { readonly clawedMinor: bigint; readonly walletJournalId: string | null },
+    at: Temporal.Instant,
+  ) {
+    const index = this.clawbacks.findIndex((c) => c.id === id && c.status === 'PENDING');
+    if (index < 0) return Promise.resolve(false);
+    this.clawbacks[index] = {
+      ...this.clawbacks[index]!,
+      status: 'DONE',
+      clawedMinor: result.clawedMinor,
+      walletJournalId: result.walletJournalId,
+      settledAt: at,
+    };
+    return Promise.resolve(true);
+  }
   insert(_market: MarketContext, record: CreditRecord) {
     const recorded = record.status === 'RECORDED';
     const clash = [...this.rows.values()].some(

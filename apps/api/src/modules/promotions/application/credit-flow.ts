@@ -66,7 +66,9 @@ export interface CreditFlowOutput {
     | 'already-handled'
     | 'pending'
     | 'rejected'
-    | 'expired';
+    | 'expired'
+    /** A refund took part of a credited cashback back (customers phase 4c-2). */
+    | 'clawed-back';
 }
 
 export interface DeliveryInput {
@@ -75,7 +77,8 @@ export interface DeliveryInput {
   readonly sellerOrderId: unknown;
 }
 
-const tryAgain = (): Result<never, CreditFlowFailure> => err({ code: 'promotions.try-again' });
+export const tryAgain = (): Result<never, CreditFlowFailure> =>
+  err({ code: 'promotions.try-again' });
 
 function idsOf(
   input: DeliveryInput,
@@ -88,7 +91,7 @@ function idsOf(
 }
 
 /** Records the event as handled with no work (nothing to do for it). */
-async function handled(
+export async function handled(
   deps: PromotionsDependencies,
   context: CallContext,
   delivery: EventDelivery,
@@ -138,7 +141,7 @@ function toWalletRequest(credit: CreditRecord) {
  * The seller who pays a credit: the owner of a seller-funded cashback (customers phase 4c), else
  * null (the platform's money). `fault` when the promotion cannot be read: the delivery is retried.
  */
-async function sellerFunderOf(
+export async function sellerFunderOf(
   deps: PromotionsDependencies,
   context: CallContext,
   credit: CreditRecord,
@@ -958,6 +961,15 @@ export async function grantDueCredits(
       else retried += 1;
     } catch (error) {
       retried += 1;
+      // A waiting credit that threw is put back too, so it does not stay at the front (Hassan L-7).
+      if (credit.grantAfter !== null) {
+        const until = deps.clock.now().add({ minutes: RETRY_AFTER_MINUTES });
+        await deps.unitOfWork
+          .run(context.market, async () =>
+            ok(await deps.credits.postpone(context.market, credit.id, until)),
+          )
+          .catch(() => null);
+      }
       logger.warn({
         msg: 'promotions.credit.grant-due-error',
         creditId: credit.id,
