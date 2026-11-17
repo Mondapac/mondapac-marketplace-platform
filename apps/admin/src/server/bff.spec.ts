@@ -2073,6 +2073,23 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/attributes');
   });
 
+  it('passes the page keys of the attribute list in their shapes', async () => {
+    const { upstream } = await run(
+      'GET',
+      'catalog/admin/attributes?search=heat&page=2&pageSize=25&paging=pages&sort=type&direction=desc&q=x',
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/attributes?search=heat&page=2&pageSize=25&paging=pages&sort=type&direction=desc',
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/attributes?page=0&pageSize=101&paging=all&sort=material&direction=up',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/attributes');
+  });
+
   it('refuses a cross-site POST to the step-up verify route and to the credit routes', async () => {
     for (const path of [
       'identity/admin/step-up/verify',
