@@ -8,9 +8,9 @@ import { savedFilterListOf } from './saved-view-lists';
 
 /** The columns an admin can show in the Orders list, after the order reference (always shown). */
 export const ADMIN_ORDER_COLUMNS: readonly string[] = [
-  'status',
   'placed',
   'paid',
+  'payment',
   'customer',
   'sellers',
   'total',
