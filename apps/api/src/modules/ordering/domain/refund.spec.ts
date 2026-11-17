@@ -42,6 +42,8 @@ const inclusive: RefundTarget = {
       id: LINE_A,
       quantity: 3,
       unitAmount: 1100n,
+      lineAmount: 3300n,
+      discountAmount: 0n,
       taxInclusive: true,
       taxRateBps: 1000,
       taxAmount: 300n,
@@ -66,6 +68,8 @@ const exclusive: RefundTarget = {
       id: LINE_B,
       quantity: 2,
       unitAmount: 1000n,
+      lineAmount: 2000n,
+      discountAmount: 0n,
       taxInclusive: false,
       taxRateBps: 1500,
       taxAmount: 301n,
@@ -218,6 +222,30 @@ describe('planRefund and priceRefund', () => {
       ],
       state: 'pending',
     });
+  });
+
+  it('gives back what the buyer paid for a discounted line, never its price before the discount', () => {
+    // 3 × 1100 with 300 off: the buyer paid 3000, so the three units give back 1000 each.
+    const discounted: RefundTarget = {
+      ...inclusive,
+      total: 3000n + 550n,
+      lines: [{ ...inclusive.lines[0]!, discountAmount: 300n, taxAmount: 273n }],
+    };
+    const first = price(discounted, [{ orderLineId: LINE_A, quantity: 1 }], 0n, {
+      lines: [91n],
+      charges: [],
+    });
+    expect(first.refund).toMatchObject({ gross: 1000n, lines: [{ gross: 1000n, tax: 91n }] });
+    const rest = priceRefund(
+      { ...discounted, refunded: 1000n, refundedUnits: new Map([[LINE_A, 1]]) },
+      {
+        lines: [{ line: discounted.lines[0]!, unitsBefore: 1, units: 2 }],
+        shipping: null,
+      },
+      { lines: [182n], charges: [] },
+      details,
+    );
+    expect(rest).toMatchObject({ gross: 2000n });
   });
 
   it('adds the reversed tax to a tax-exclusive line and to tax-exclusive shipping', () => {

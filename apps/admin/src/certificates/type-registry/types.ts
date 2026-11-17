@@ -82,3 +82,9 @@ export interface TypeDetail {
   readonly pendingRevision: TypeProposal | null;
   readonly pendingReactivation: TypeProposal | null;
 }
+
+export interface TypeRevisionSaved {
+  readonly outcome: 'published' | 'pending-second-admin';
+  readonly typeId: string;
+  readonly revisionNo: number;
+}

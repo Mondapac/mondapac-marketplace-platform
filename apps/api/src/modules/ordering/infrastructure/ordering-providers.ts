@@ -6,6 +6,7 @@ import { SHIPPING_FACADE, type ShippingFacade } from '../../shipping';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { ServiceAreaDirectory } from '../../../platform/market-config/service-area-directory';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
   CUSTOMER_PAYMENTS_READER,
@@ -72,6 +73,8 @@ import { PICKUP_CODE_VAULT, type PickupCodeVault } from '../application/ports/pi
 import { ConfigOrderingPolicy } from './config-ordering-policy';
 import { FacadeOrderLabels } from './facade-order-labels';
 import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
+import { FacadeOrderProducts } from './facade-order-products';
+import { ORDER_PRODUCTS, type OrderProducts } from '../application/ports/order-products';
 import { ShippingDeliveryMethodPolicy } from './shipping-delivery-method-policy';
 import { PrismaOrderRepository } from './prisma-order.repository';
 import { PrismaPickupCodeRepository } from './prisma-pickup-code.repository';
@@ -229,8 +232,9 @@ export const orderingProviders: readonly FactoryProvider[] = [
   },
   {
     provide: ORDERING_POLICY,
-    inject: [MarketRegistry],
-    useFactory: (markets: MarketRegistry): OrderingPolicy => new ConfigOrderingPolicy(markets),
+    inject: [MarketRegistry, ServiceAreaDirectory],
+    useFactory: (markets: MarketRegistry, areas: ServiceAreaDirectory): OrderingPolicy =>
+      new ConfigOrderingPolicy(markets, areas),
   },
   {
     provide: DELIVERY_METHOD_POLICY,
@@ -243,6 +247,11 @@ export const orderingProviders: readonly FactoryProvider[] = [
     inject: [CATALOG_FACADE],
     useFactory: (catalog: CatalogFacade): OrderTaxCategories =>
       new FacadeOrderTaxCategories(catalog),
+  },
+  {
+    provide: ORDER_PRODUCTS,
+    inject: [CATALOG_FACADE],
+    useFactory: (catalog: CatalogFacade): OrderProducts => new FacadeOrderProducts(catalog),
   },
   {
     provide: ORDER_LABELS,

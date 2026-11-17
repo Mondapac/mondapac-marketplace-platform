@@ -48,6 +48,7 @@ export class PrismaAssistantSettingsRepository implements AssistantSettingsRepos
       dailySpendCapUsdCents: row.dailySpendCapUsdCents,
       monthlySpendCapUsdCents: row.monthlySpendCapUsdCents,
       supportHandoff: stored(SUPPORT_HANDOFFS, row.supportHandoff),
+      basketProposals: row.basketProposals,
       welcomeText: row.welcomeText,
     };
     return {

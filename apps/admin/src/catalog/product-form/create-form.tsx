@@ -1,6 +1,6 @@
 'use client';
 
-import { BackLink, Banner, Button, Card, LoadError, Select, SkeletonRows } from '@mondapac/ui';
+import { BackLink, Banner, Button, Card, LoadError, Select, FormSkeleton } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../../api/client.ts';
@@ -15,6 +15,7 @@ type Phase =
 /** Step one of "Add product": the type. The product is created as a draft and opens for editing. */
 export function ProductCreateForm({ csrfToken }: { readonly csrfToken: string }) {
   const t = useTranslations('catalog.productForm');
+  const tr = useTranslations('route');
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const [typeCode, setTypeCode] = useState('');
   const [missing, setMissing] = useState(false);
@@ -62,7 +63,9 @@ export function ProductCreateForm({ csrfToken }: { readonly csrfToken: string })
         <h1 className="text-2xl font-semibold">{t('create.title')}</h1>
         <p className="text-sm text-fg-muted">{t('create.subtitle')}</p>
       </div>
-      {phase.kind === 'loading' ? <SkeletonRows label={t('loading')} rows={3} /> : null}
+      {phase.kind === 'loading' ? (
+        <FormSkeleton label={t('loading')} slowLabel={tr('slow')} sections={[{ fields: 5 }]} />
+      ) : null}
       {phase.kind === 'failed' ? (
         <LoadError message={t('load-failed')} retryLabel={t('retry')} onRetry={() => void load()} />
       ) : null}

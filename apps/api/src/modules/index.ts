@@ -18,6 +18,7 @@ import { OrderingModule } from './ordering';
 import { PaymentsModule } from './payments';
 import { CommissionPayoutsModule } from './commission-payouts';
 import { CommissionPayoutsDisputesModule } from './commission-payouts/disputes-binding.module';
+import { PromotionsOrderEventsModule } from './promotions/promotions-order-events.module';
 import { TaxModule } from './tax';
 import { ShippingModule } from './shipping';
 import { ReturnsModule } from './returns';
@@ -76,7 +77,8 @@ export const CORE_MODULES = [
  * `CustomersSectionsModule` binds the customer page's sections to the modules that own their data.
  * `SellerHealthModule` binds the three health feeds (ordering, reviews, commission-payouts) to the
  * sellers nightly run. `CommissionPayoutsDisputesModule` binds the dispute consumer of commission-payouts to payments
- * and ordering, which reach commission-payouts.
+ * and ordering, which reach commission-payouts. `PromotionsOrderEventsModule` subscribes promotions
+ * to ordering's events (ordering imports promotions).
  */
 export const BINDING_MODULES = [
   SellerStoreProfileModule,
@@ -85,4 +87,5 @@ export const BINDING_MODULES = [
   CustomersReadModelsModule,
   CustomersSectionsModule,
   CommissionPayoutsDisputesModule,
+  PromotionsOrderEventsModule,
 ];

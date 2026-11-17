@@ -102,6 +102,10 @@ export interface SellerListInput {
   readonly pageSize?: unknown;
   readonly sort?: unknown;
   readonly direction?: unknown;
+  /** A seller order id or its order id, exact (the reference in the order emails). */
+  readonly q?: unknown;
+  /** With `page`: `pages` (default, with the total) or `prev-next` (no count; `hasNext`). */
+  readonly paging?: unknown;
   /** ISO instants: paid at or after `from`, before `to`. */
   readonly from?: unknown;
   readonly to?: unknown;
@@ -130,9 +134,14 @@ const instantOf = (
 function offsetRequest(
   input: SellerListInput,
   fields: { path: string; code: string }[],
-): { page: number; pageSize: number; sort: SellerOrderSort } | null {
+): {
+  page: number;
+  pageSize: number;
+  sort: SellerOrderSort;
+  paging: 'pages' | 'prev-next';
+} | null {
   if (input.page === undefined) {
-    for (const path of ['pageSize', 'sort', 'direction'] as const) {
+    for (const path of ['pageSize', 'sort', 'direction', 'paging'] as const) {
       if (input[path] !== undefined) fields.push({ path, code: 'needs-page' });
     }
     return null;
@@ -166,10 +175,15 @@ function offsetRequest(
     if (input.direction === 'asc' || input.direction === 'desc') direction = input.direction;
     else fields.push({ path: 'direction', code: 'value' });
   }
+  let paging: 'pages' | 'prev-next' = 'pages';
+  if (input.paging !== undefined) {
+    if (input.paging === 'pages' || input.paging === 'prev-next') paging = input.paging;
+    else fields.push({ path: 'paging', code: 'value' });
+  }
   if (page !== null && fields.length === 0 && page * pageSize > MAX_PAGED_ROWS) {
     fields.push({ path: 'page', code: 'too-deep' });
   }
-  return page === null ? null : { page, pageSize, sort: { key, direction } };
+  return page === null ? null : { page, pageSize, sort: { key, direction }, paging };
 }
 
 const FULFILMENTS: readonly Fulfilment[] = ['to-ship', 'shipped', 'delivered'];
@@ -210,35 +224,51 @@ export async function listSellerOrders(
   if (from !== null && to !== null && Temporal.Instant.compare(from, to) >= 0) {
     fields.push({ path: 'to', code: 'range' });
   }
+  let reference: string | null = null;
+  if (input?.q !== undefined) {
+    // Any id of the right shape; a trimmed, lower-cased copy is matched, never echoed.
+    const parsed = typeof input.q === 'string' ? parseId(input.q.trim().toLowerCase()) : null;
+    if (parsed !== null && parsed.ok) reference = parsed.value;
+    else fields.push({ path: 'q', code: 'format' });
+  }
   const request = offsetRequest(input ?? {}, fields);
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
-  const filter = { fulfilment, from, to };
+  const filter = { fulfilment, reference, from, to };
   const read = await deps.unitOfWork.run<
     SellerOrderPageView & {
       readonly counts: SellerOrderCounts;
       readonly total: number | null;
+      readonly hasNext: boolean;
     },
     FulfilmentFailure
   >(
     context.market,
     async () => {
       if (request !== null) {
-        const [records, total] = await Promise.all([
+        // Previous and Next reads one extra row and never counts.
+        const prevNext = request.paging === 'prev-next';
+        const [read, total] = await Promise.all([
           deps.orders.pageForSeller(
             context.market,
             sellerId,
             filter,
             request.sort,
             (request.page - 1) * request.pageSize,
-            request.pageSize,
+            prevNext ? request.pageSize + 1 : request.pageSize,
           ),
-          deps.orders.countMatchingForSeller(context.market, sellerId, filter),
+          prevNext
+            ? Promise.resolve(null)
+            : deps.orders.countMatchingForSeller(context.market, sellerId, filter),
         ]);
+        const records = prevNext ? read.slice(0, request.pageSize) : read;
         return ok({
           sellerOrders: records.map(sellerOrderDetailView),
           counts: await deps.orders.countForSeller(context.market, sellerId),
           nextCursor: null,
           total,
+          hasNext: prevNext
+            ? read.length > request.pageSize && request.page * request.pageSize < MAX_PAGED_ROWS
+            : request.page * request.pageSize < Math.min(total ?? 0, MAX_PAGED_ROWS),
         });
       }
       const rows = await deps.orders.listForSeller(context.market, sellerId, filter, {
@@ -255,6 +285,7 @@ export async function listSellerOrders(
             ? encodeSellerCursor(last.confirmedAt, last.sellerOrder.id)
             : null,
         total: null,
+        hasNext: rows.length > limit,
       });
     },
     { readOnly: true },
@@ -265,9 +296,15 @@ export async function listSellerOrders(
     nextCursor: read.value.nextCursor,
     counts: read.value.counts,
     paging:
-      request === null || read.value.total === null
+      request === null
         ? null
-        : { total: read.value.total, page: request.page, pageSize: request.pageSize },
+        : {
+            mode: request.paging,
+            total: read.value.total,
+            page: request.page,
+            pageSize: request.pageSize,
+            hasNext: read.value.hasNext,
+          },
   });
 }
 

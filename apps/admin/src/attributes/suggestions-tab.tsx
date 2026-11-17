@@ -7,10 +7,10 @@ import {
   EmptyState,
   LoadError,
   Select,
-  SkeletonRows,
   TextAreaField,
   TextField,
   toast,
+  DetailSkeleton,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -122,7 +122,8 @@ function SuggestionsBody({ csrfToken }: { readonly csrfToken: string }) {
 
   // Only an admin who may decide is shown this section; a refusal on the read hides it again.
   if (load.state === 'denied') return null;
-  if (load.state === 'loading') return <SkeletonRows label={t('loading')} rows={3} />;
+  if (load.state === 'loading')
+    return <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={3} />;
   if (load.state === 'failed') {
     return (
       <LoadError
