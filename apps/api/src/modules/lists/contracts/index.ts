@@ -9,3 +9,11 @@ export {
   type StoredFilterVisibility,
   type StoredFilterWrite,
 } from './saved-filter-store';
+export {
+  LIST_REGISTRATION,
+  registerLists,
+  type ListRegistration,
+  type ListDefinition,
+  type ListPayloadFailure,
+  type ListPopulation,
+} from './list-definition';
