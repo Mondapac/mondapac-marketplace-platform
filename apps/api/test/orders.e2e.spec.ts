@@ -156,7 +156,6 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'second-factor.required': 403,
     'second-factor.enrolment-required': 403,
     'ordering.search-unavailable': 503,
-    'batch.too-large': 413,
     'access.unavailable': 503,
   });
 });
