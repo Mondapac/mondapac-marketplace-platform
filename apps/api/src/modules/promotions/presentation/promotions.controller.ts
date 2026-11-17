@@ -40,6 +40,7 @@ import { ApplyReferralCode } from '../application/use-cases/apply-referral-code.
 import { ListCustomerPromotionCredits } from '../application/use-cases/list-customer-promotion-credits.use-case';
 import { ListPromotionCredits } from '../application/use-cases/list-promotion-credits.use-case';
 import { ViewMyReferral } from '../application/use-cases/view-my-referral.use-case';
+import { ViewStoreFollowGift } from '../application/use-cases/view-store-follow-gift.use-case';
 import { GenerateBatchCodes } from '../application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from '../application/use-cases/view-batch-code-summary.use-case';
 import { CreateOwnPromotion } from '../application/use-cases/create-own-promotion.use-case';
@@ -1335,5 +1336,39 @@ export class CustomerReferralController {
     return appliedReferralBody(
       settle(this.#logger, 'promotions.apply-referral-route', context, result, 'applied'),
     );
+  }
+}
+
+/**
+ * A store's "Follow gift" (customers management phase 3): its live store-follower offers, for the
+ * store page and the moment after Follow. Public (no session read); no customer data.
+ */
+@ApiTags('promotions')
+@RoutePopulation('customer')
+@Controller('promotions/stores')
+export class StoreFollowGiftController {
+  readonly #logger = new Logger('StoreFollowGiftController');
+
+  constructor(private readonly gift: ViewStoreFollowGift) {}
+
+  @Get(':sellerId/follow-gift')
+  @ApiOperation({
+    summary: "A store's live follower offers (the Follow gift)",
+    description:
+      'The seller’s ACTIVE store-follower promotions that have started and not ended, not in test ' +
+      'mode and without a code, newest first (at most 5). An empty list while promotions are off ' +
+      'in the Market. Applied at checkout only while the customer follows the store.',
+  })
+  @ApiOkResponse({ type: Object })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async followGift(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('sellerId') sellerId: string,
+  ) {
+    noStore(response);
+    const result = await this.gift.execute(context, { sellerId });
+    return settle(this.#logger, 'promotions.view-store-follow-gift-route', context, result, 'read');
   }
 }

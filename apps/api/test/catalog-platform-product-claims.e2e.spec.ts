@@ -4,6 +4,7 @@ import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
+import { CATEGORY_TREE_READER } from '../src/modules/catalog/application/ports/category-tree.reader';
 import { ProductFamilyResolver } from '../src/modules/catalog/application/attributes/product-family-resolver';
 import { ATTRIBUTE_REPOSITORY } from '../src/modules/catalog/application/ports/attribute.repository';
 import { CATALOG_MARKET_POLICY } from '../src/modules/catalog/application/ports/catalog-market-policy';
@@ -138,6 +139,26 @@ describe('claim-text control behind the platform product routes (integration, sl
                 wanted.map((c) => ({ kind: c.limit.kind, count: 1, windowStartedAt: now })),
               ),
             purgeStartedBefore: () => Promise.resolve(0),
+          })
+          .overrideProvider(CATEGORY_TREE_READER)
+          .useValue({
+            // department > group > category `c1` (level 3): the product's category rules pass.
+            nodes: () =>
+              Promise.resolve(
+                [
+                  ['d', null],
+                  ['g', 'd'],
+                  ['c1', 'g'],
+                ].map(([id, parentId], position) => ({
+                  id,
+                  parentId,
+                  status: 'active',
+                  mergedIntoId: null,
+                  slug: id,
+                  position,
+                  names: [],
+                })),
+              ),
           })
           .overrideProvider(ProductFamilyResolver)
           .useValue({
