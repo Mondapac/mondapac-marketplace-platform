@@ -491,6 +491,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['name', 'position', 'updated_at', 'visibility'],
     },
+    // The column choice of a user per list (super list B0-2): a personal preference the
+    // application writes and deletes; only the columns and the update time change.
+    'lists.column_preferences': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['columns', 'updated_at'],
+    },
     // docs/design/data/ordering.md 3.15: a saved view of an order list; a filter is a preference, so
     // the application deletes it; only the name and who can use it change.
     'ordering.saved_filters': {

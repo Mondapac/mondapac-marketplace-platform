@@ -696,6 +696,42 @@ export const CustomerRenamedByAdminAudit = defineAuditAction({
   after: { population: auditField.enumOf(['customer'] as const) },
 });
 
+/**
+ * An admin revealed the full client address of one of a customer's sign-in records (customers
+ * management phase 2b; key `identity.customer-sign-in.reveal`). Target: the account. `after`
+ * names the record only: never the address (R5). Written in the unit that read the address,
+ * before it is answered.
+ */
+export const CustomerSignInAddressRevealedAudit = defineAuditAction({
+  action: 'identity.account.sign-in-address-revealed',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { signInId: auditField.id() },
+});
+
+/**
+ * An admin signed a customer out of every device from the customer page (customers management
+ * phase 2b; key `identity.customer-session.end`). Target: the account; `after` is the count.
+ */
+export const CustomerSessionsEndedByAdminAudit = defineAuditAction({
+  action: 'identity.account.sessions-ended-by-admin',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { revokedSessions: auditField.integer() },
+});
+
+/**
+ * An admin sent a customer the password reset mail (customers management phase 2b; key
+ * `identity.customer-password-reset.send`). Target: the account; `after` names the link row
+ * requested again, never a token or the address.
+ */
+export const CustomerPasswordResetSentByAdminAudit = defineAuditAction({
+  action: 'identity.account.password-reset-sent-by-admin',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { linkId: auditField.id() },
+});
+
 export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   RoleSeeded,
   RoleSeedApplied,
@@ -733,6 +769,9 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   AccountEmailChangeCancelledAudit,
   AccountEmailChangedAudit,
   CustomerRenamedByAdminAudit,
+  CustomerSignInAddressRevealedAudit,
+  CustomerSessionsEndedByAdminAudit,
+  CustomerPasswordResetSentByAdminAudit,
   SellerAccessApprovedAudit,
   SellerAccessRejectedAudit,
   SellerAccessSuspendedAudit,

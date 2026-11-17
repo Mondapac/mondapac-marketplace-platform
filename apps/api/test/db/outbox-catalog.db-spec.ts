@@ -13,6 +13,11 @@ import { testDatabaseUrl } from './test-database';
  * PostgreSQL prints it. A migration that adds, drops or changes one changes this list.
  */
 const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
+  // Lists (B0-2): one column choice per account and list, in an admin and a store form.
+  'lists.column_preferences_owner_list_key':
+    'CREATE UNIQUE INDEX column_preferences_owner_list_key ON lists.column_preferences USING btree (market_id, owner_account_id, list_key) WHERE (seller_id IS NULL)',
+  'lists.column_preferences_seller_owner_list_key':
+    'CREATE UNIQUE INDEX column_preferences_seller_owner_list_key ON lists.column_preferences USING btree (market_id, seller_id, owner_account_id, list_key) WHERE (seller_id IS NOT NULL)',
   // Lists (ADR-0049): one saved-filter name per owner and list, and one shared name per list.
   'lists.saved_filters_owner_name_key':
     'CREATE UNIQUE INDEX saved_filters_owner_name_key ON lists.saved_filters USING btree (market_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NULL)',

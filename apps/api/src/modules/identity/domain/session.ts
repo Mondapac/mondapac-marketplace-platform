@@ -137,5 +137,7 @@ export const SESSION_REVOKED_REASONS = [
   'account-erasure',
   /** A customer confirmed the sign-in email an admin changed: every session ends (Hassan R6). */
   'email-changed',
+  /** An admin signed the customer out of every device from the customer page (customers phase 2b). */
+  'admin-signed-out',
 ] as const;
 export type SessionRevokedReason = (typeof SESSION_REVOKED_REASONS)[number];

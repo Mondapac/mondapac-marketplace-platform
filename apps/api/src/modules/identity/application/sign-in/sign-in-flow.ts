@@ -850,6 +850,7 @@ export class SignInFlow {
       address: client.address,
       sessionId,
       correlationId: context.correlationId,
+      device: client.device ?? null,
     };
     await this.deps.records.add(context.market, record);
     await recordSignInSecurityEvent(this.deps.securityEvents, context, record);

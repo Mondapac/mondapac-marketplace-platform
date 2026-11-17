@@ -67,6 +67,7 @@ class RefundsOn extends ConfigOrderingPolicy {
 }
 
 const CONFIRMATIONS: DocumentListFilter = {
+  ids: null,
   kind: 'order-confirmation',
   reference: null,
   sellerId: null,
@@ -349,6 +350,22 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
     }
   });
 
+  it('narrows each kind to the selected documents of an export', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const done = await refunded(sellerId, 1, 'succeeded');
+    const other = await refunded(sellerId, 1, 'succeeded');
+    const notes = await idsOf({ kind: 'credit-note', sellerId });
+    const note = notes.find((row) => row.refundId === done.refundId)!;
+    expect(
+      (await idsOf({ kind: 'credit-note', ids: [note.documentId] })).map((r) => r.refundId),
+    ).toEqual([done.refundId]);
+    expect(
+      (await idsOf({ sellerId, ids: [other.sellerOrderId] })).map((r) => r.documentId),
+    ).toEqual([other.sellerOrderId]);
+    // A seller order id is not a credit note id: the kinds never mix.
+    expect(await idsOf({ kind: 'credit-note', ids: [done.sellerOrderId] })).toEqual([]);
+  });
+
   it('filters by issue time, amount and party, and sorts by amount', async () => {
     const sellerA = ids.next<'Seller'>();
     const sellerB = ids.next<'Seller'>();
@@ -558,5 +575,15 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
       );
       expect(rows.ok && rows.value).toEqual([]);
     }
+    // Nor through an export's selected ids, of either kind.
+    const selected = await db.unitOfWork.run(
+      other,
+      async () =>
+        ok(
+          await reader.page(other, { ...CONFIRMATIONS, ids: [mine.sellerOrderId] }, NEWEST, 0, 10),
+        ),
+      { readOnly: true },
+    );
+    expect(selected.ok && selected.value).toEqual([]);
   });
 });

@@ -213,6 +213,10 @@ model IdentitySignInRecord {
   /// Plain id; set on success.
   sessionId     String?  @map("session_id") @db.Uuid
   correlationId String   @map("correlation_id")
+  /// Coarse device of the request, `<browser>.<system>` from fixed lists (as on a session); never
+  /// the raw User-Agent. NULL when the request sent none, and on every record written before it
+  /// was kept (customers management phase 2b: the customer's logins list).
+  device        String?  @db.VarChar(32)
 
   /// The retention purge, one day of occurred_at per statement.
   @@index([marketId, occurredAt])

@@ -34,6 +34,7 @@ const ACCOUNT_BULK_REASONS: readonly SessionRevokedReason[] = [
   'signed-out-elsewhere',
   'account-erasure',
   'email-changed',
+  'admin-signed-out',
 ];
 
 describe.each(TEST_MARKETS)('AdminJobIdentityResolver after a sign-out in market %s', (code) => {

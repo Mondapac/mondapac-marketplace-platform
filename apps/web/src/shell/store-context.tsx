@@ -90,6 +90,12 @@ interface StoreState {
   /** Moves a saved item back to the cart (one unit). */
   readonly moveToCart: (id: string) => void;
   readonly removeSaved: (id: string) => void;
+  /**
+   * Waits for every cart change on its way to the API, then reads the cart (and the saved list of a
+   * signed-in buyer) again, so a change made outside the cart screens (the assistant's cards) shows
+   * at once in the header, the drawer and the cart page. A no-op on sample data.
+   */
+  readonly refreshCart: () => Promise<void>;
   readonly discount: AppliedDiscount | null;
   readonly setDiscount: (discount: AppliedDiscount | null) => void;
   /** Checkout notes to sellers, by seller id. */
@@ -420,6 +426,12 @@ export function StoreProvider({
     },
     [live, source, send, change],
   );
+  const refreshCart = useCallback(async () => {
+    if (!live) return;
+    await queue.current;
+    await readCart();
+    if (customerRef.current !== null) await readSaved();
+  }, [live, readCart, readSaved]);
   const setNote = useCallback(
     (sellerId: string, note: string) => setNotes((current) => ({ ...current, [sellerId]: note })),
     [],
@@ -503,6 +515,7 @@ export function StoreProvider({
       saveForLater,
       moveToCart,
       removeSaved,
+      refreshCart,
       discount,
       setDiscount,
       notes,
@@ -558,6 +571,7 @@ export function StoreProvider({
       saveForLater,
       moveToCart,
       removeSaved,
+      refreshCart,
       discount,
       notes,
       setNote,
