@@ -172,6 +172,39 @@ a seller or admin session is not read here. Every answer is `Cache-Control: no-s
   in the URL fragment (never a query string) and keep it in the tab's session storage only (F1/F3).
 - `?visitor=` stays a rollout aid, never a control.
 
+## Storefront wiring (stage 0, F1; `apps/web`)
+
+- **Path.** The widget talks to the API through the buyer relay (`app/api/[...path]`, same
+  origin, no CORS): `chatUrl` is `/api/assistant`. The relay allows only `GET assistant/storefront`
+  (query `visitor` and `lang`, each only when well shaped) and `POST
+  assistant/conversations/<uuid>/messages` (strict UUID). On these paths, and only these, the
+  assistant guest cookie `__Host-assistant-guest-<MARKET>` and the session cross both ways (the
+  guest-cart cookie does not), the `x-assistant-preview` header crosses when it has the token
+  shape, and the wait is 30 s (the server gives up at 25 s). The answer is buffered, which is
+  what the server sends anyway (one write after the reply guard). The POST keeps the
+  same-origin rule; logs name the route, never the conversation id or the token.
+- **Setup split.** The server render (`loadAssistant`) gives `chatUrl`, the Market support email
+  (the footer's `email` message, validated as a plain address) and, for a customer, the session's
+  CSRF token. The visitor id lives in the browser, so the widget (`assistant-gate.tsx`) calls
+  `GET <chatUrl>/storefront?visitor=&lang=` and renders nothing until it answers `enabled: true`;
+  any failure keeps it off without console output. A signed-in customer's message takes the CSRF
+  token the tab holds (`customer-api.ts`), else the page's, else a fresh session read.
+- **From the answer.** `retentionDays` (customer or guest by who is signed in; 0 is worded as not
+  kept), `quickPrompts` (replace the built-in chips when non-empty and are sent as the message),
+  `welcomeText`, `guestsAllowed`, `preview` (a "Preview" marker in the panel header).
+- **Cards.** Product rows show the seller name, the price (`Intl` money from minor units and the
+  card's own currency), "From" for `priceFrom`, the regular price struck through, "including GST"
+  when `taxInclusive`, and badges as the product page shows them (a seller's declaration in the
+  declared style). No price when `price` is null. The `seller` card is a store row linking to
+  `/s/<slug>`. Every field is validated; text is rendered as text.
+- **Preview token.** Open any storefront URL with `#assistant-preview=<token>`. On load the
+  gate takes it from `location.hash`, keeps it in `sessionStorage` (`sf-assistant-preview`, this
+  tab only) when it has the token shape, and removes it from the address with `history.replaceState`
+  (path, query and any other fragment part kept). It is sent only as the `x-assistant-preview`
+  header of the storefront read and the message POST, and is dropped when the server answers
+  `preview: false`. Never a query string, cookie, localStorage, log, analytics event or error text.
+  The GA4 page view reports origin plus path and never the fragment.
+
 ## Tables (Mojtaba's sign-off before merge)
 
 Migration `20261019224946_assistant_conversations`. `conversations`: one owner (account, or a
