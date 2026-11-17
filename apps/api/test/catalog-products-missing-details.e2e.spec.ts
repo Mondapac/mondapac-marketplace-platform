@@ -271,7 +271,10 @@ describe('products missing required details over HTTP (integration)', () => {
         hasNext: false,
       });
       await http().get(`${REPORT}?sort=nope`).set(viewer).expect(400);
-      await http().get(`${REPORT}?page=2&afterId=${id<'Product'>(0x3001)}`).set(viewer).expect(400);
+      await http()
+        .get(`${REPORT}?page=2&afterId=${id<'Product'>(0x3001)}`)
+        .set(viewer)
+        .expect(400);
       const first = await http().get(`${REPORT}?limit=1`).set(viewer).expect(200);
       expect(first.body).toMatchObject({
         items: [{ productCode: 'P1' }],
