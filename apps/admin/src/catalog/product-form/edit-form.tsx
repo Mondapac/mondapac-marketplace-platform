@@ -10,12 +10,12 @@ import {
   LoadError,
   SearchSelect,
   Select,
-  SkeletonRows,
   TextAreaField,
   TextField,
   UnsavedBar,
   toast,
   useUnsavedChangesGuard,
+  FormSkeleton,
   type SearchSelectLabels,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -161,6 +161,7 @@ export function ProductEdit({
   readonly permissionKeys?: readonly string[];
 }) {
   const t = useTranslations('catalog.productForm');
+  const tr = useTranslations('route');
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   // Bumped to remount the form on freshly read data.
   const [generation, setGeneration] = useState(0);
@@ -186,7 +187,16 @@ export function ProductEdit({
     void load();
   }, [load]);
 
-  if (phase.kind === 'loading') return <SkeletonRows label={t('loading')} rows={6} />;
+  if (phase.kind === 'loading') {
+    return (
+      <FormSkeleton
+        label={t('loading')}
+        slowLabel={tr('slow')}
+        header
+        sections={[{ fields: 4 }, { fields: 3 }, { fields: 3 }]}
+      />
+    );
+  }
   if (phase.kind === 'failed') {
     return (
       <LoadError message={t('load-failed')} retryLabel={t('retry')} onRetry={() => void load()} />
