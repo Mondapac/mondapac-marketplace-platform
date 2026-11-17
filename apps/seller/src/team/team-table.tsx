@@ -110,7 +110,7 @@ export async function TeamTable({
             <th scope="col" className="px-4 py-3 font-medium">
               {t('identity.team.label.status')}
             </th>
-            <th scope="col" className="px-4 py-3 text-end font-medium">
+            <th scope="col" className={CARD_TABLE.actionsHead}>
               {t('identity.team.actions')}
             </th>
           </tr>
@@ -151,7 +151,7 @@ export async function TeamTable({
                     </div>
                   ) : null}
                 </td>
-                <td className={`${CARD_TABLE.corner} text-end`}>
+                <td className={CARD_TABLE.actions}>
                   <RowActions target={targetOf(row)} csrfToken={csrfToken} roles={roles} />
                 </td>
               </tr>

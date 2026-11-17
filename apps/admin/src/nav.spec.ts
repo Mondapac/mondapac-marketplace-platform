@@ -182,6 +182,8 @@ describe('admin nav: daily work only', () => {
       'review-queue',
       'price-holds',
       'orders',
+      'shipments',
+      'refunds',
       'products',
       'categories',
       'attributes',
@@ -201,6 +203,7 @@ describe('admin nav: daily work only', () => {
       'blog',
       'slides',
       'menus',
+      'security',
     ]);
   });
 
@@ -405,5 +408,27 @@ describe('admin nav: Marketing', () => {
     expect(
       sections.some((section) => section.kind === 'group' && section.group.id === 'marketing'),
     ).toBe(false);
+  });
+});
+
+describe('admin nav: Audit Logs > Security', () => {
+  it('is the Security item under Audit Logs, for security.centre.view only', () => {
+    expect(ids(['security.centre.view'])).toEqual(['home', 'security']);
+    expect(ids(['security.alerts.respond'])).toEqual(['home']);
+    expect(adminNav.items.find((item) => item.id === 'security')).toMatchObject({
+      href: '/security/alerts',
+      labelKey: 'nav.security',
+      group: 'audit-logs',
+    });
+  });
+
+  it('keeps the Audit Logs header over its single item', () => {
+    const sections = navSections(
+      adminNav.groups,
+      visibleNavItems(adminNav, new Set(['security.centre.view'])),
+    );
+    expect(
+      sections.map((section) => (section.kind === 'group' ? section.group.id : section.item.id)),
+    ).toEqual(['home', 'audit-logs']);
   });
 });

@@ -4,6 +4,9 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+}));
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
@@ -101,6 +104,7 @@ function mount(
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <ProductsList
+        paging="pages"
         accountId="acc-1"
         marketId={market.id}
         marketName={market.name}
@@ -193,7 +197,7 @@ describe('admin product list', () => {
     await screen.findByText('Lamb cutlets 500 g');
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent);
     // The first header is the select-all box: it has no text.
-    expect(headers).toEqual(['', 'Product', 'Category', 'Status']);
+    expect(headers).toEqual(['', 'Product', 'Category', 'Status', 'Actions']);
     const body = screen.getAllByRole('row')[1]!;
     expect(within(body).getByText('AU-000184')).toBeTruthy();
     expect(within(body).getByText('Meat')).toBeTruthy();
@@ -307,7 +311,15 @@ describe('admin product list', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
 
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent);
-    expect(headers).toEqual(['', 'Product', 'Category', 'Status', 'Last changed', 'Offers']);
+    expect(headers).toEqual([
+      '',
+      'Product',
+      'Category',
+      'Status',
+      'Last changed',
+      'Offers',
+      'Actions',
+    ]);
     expect(JSON.parse(window.localStorage.getItem('mp:admin:AU:acc-1:products-columns')!)).toEqual([
       'updated',
       'offers',
@@ -369,6 +381,7 @@ describe('admin product list', () => {
         'Status',
         'Seller',
         'Scope',
+        'Actions',
       ]),
     );
     expect(within(screen.getAllByRole('row')[1]!).getByText('Cedar Lane Halal Meats')).toBeTruthy();
@@ -377,7 +390,7 @@ describe('admin product list', () => {
       within(await screen.findByRole('dialog')).getByRole('button', { name: 'Reset to default' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(screen.getAllByRole('columnheader')).toHaveLength(4);
+    expect(screen.getAllByRole('columnheader')).toHaveLength(5);
   });
 
   it('still works when storage is missing or refuses', async () => {
@@ -418,7 +431,7 @@ describe('admin product list', () => {
     );
     mount();
     await screen.findByText('Unnamed product');
-    await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(6));
+    await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(7));
     expect(screen.getByText('No category')).toBeTruthy();
     expect(screen.getByText('Unnamed seller')).toBeTruthy();
     expect(screen.getAllByText('Platform').length).toBeGreaterThan(0);
@@ -475,7 +488,7 @@ describe('admin product list', () => {
         [...rows[0]!.querySelectorAll('[data-skeleton]')].map((node) =>
           node.getAttribute('data-skeleton'),
         ),
-      ).toEqual(['select', 'thumb', 'text', 'status']);
+      ).toEqual(['select', 'thumb', 'text', 'status', 'text']);
       // The real header stays, its select-all box disabled; the toolbar cannot act yet.
       expect(screen.getByRole('columnheader', { name: 'Category' })).toBeTruthy();
       expect(
@@ -1006,7 +1019,7 @@ describe('admin product bulk action', () => {
     try {
       mount();
       await screen.findByText('Beef mince');
-      await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(7));
+      await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(8));
       fireEvent.click(rowBox('Lamb cutlets 500 g'));
       fireEvent.click(rowBox('Beef mince'));
 
@@ -1178,10 +1191,34 @@ describe('admin product bulk action', () => {
 });
 
 describe('product list helpers', () => {
+  // Nothing stays mounted past its test: work React schedules for a tree left standing runs
+  // after the environment is torn down (`window is not defined`).
+  afterEach(() => {
+    cleanup();
+  });
+
   it('builds the query string with only what is set, trimmed', () => {
     expect(queryString({ ...DEFAULT_QUERY, q: '  lamb ', filters: { scope: 'PLATFORM' } })).toBe(
       'view=active&sort=updated&direction=desc&page=1&pageSize=25&q=lamb&scope=PLATFORM',
     );
+  });
+
+  it('offers the row Actions the server allows, and asks for the code before Delete', async () => {
+    serve(() => page([row({ actions: ['open', 'pause', 'delete'] })]));
+    mount();
+    await screen.findByText('Lamb cutlets 500 g');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Lamb cutlets 500 g' }));
+    const names = screen.getAllByRole('menuitem').map((item) => item.textContent);
+    expect(names).toEqual(['Open', 'Deactivate…', 'Delete…']);
+  });
+
+  it('pages without a total: an open range, no tab counts, Next only while another page follows', async () => {
+    serve(() => page([row()], { total: null, counts: null, hasNext: true }));
+    mount();
+    await screen.findByText('Lamb cutlets 500 g');
+    expect(screen.getByText('1–1 products')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Active' })).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Next' }).disabled).toBe(false);
   });
 
   it('cleans a saved column list', () => {

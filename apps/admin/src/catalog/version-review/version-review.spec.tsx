@@ -192,6 +192,29 @@ describe('VersionReview decision', () => {
     expect(screen.queryByRole('link', { name: 'Next in queue' })).toBeNull();
   });
 
+  it('spins only the dialog button while sending back, not Approve behind it', async () => {
+    mount({}, true, null);
+    fireEvent.click(screen.getByLabelText('The photos show no certification mark'));
+    fireEvent.click(screen.getByLabelText('The tax category fits the product'));
+    fireEvent.click(screen.getByRole('button', { name: 'Send back' }));
+    const dialog = dialogTitled('Send this version back?');
+    fireEvent.change(dialog.getByLabelText('Reason'), { target: { value: 'photos' } });
+    let finish: (value: never) => void = () => undefined;
+    call.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+    const confirm = dialog.getByRole('button', { name: 'Send back', hidden: true });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBe('true'));
+    const approve = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Approve',
+      hidden: true,
+    });
+    expect(approve.getAttribute('aria-busy')).toBeNull();
+    expect(approve.disabled).toBe(true);
+    finish({ ok: false, failure: { status: 503, code: 'x' } } as never);
+    await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBeNull());
+    expect(approve.disabled).toBe(false);
+  });
+
   it('opens Send back with Description claim when a text claim is refused', async () => {
     mount({ requiredChecks: [] });
     fail(422, 'claim-text.refused');

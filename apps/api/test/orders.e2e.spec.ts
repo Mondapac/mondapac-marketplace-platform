@@ -148,6 +148,7 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.refund-limit-not-found': 404,
     'ordering.document-not-available': 409,
     'ordering.invoice-numbering-unavailable': 503,
+    'batch.too-large': 413,
     'saved-filter.not-found': 404,
     'saved-filter.name-taken': 409,
     'saved-filter.limit-reached': 409,
@@ -1209,7 +1210,15 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       // The route logs its outcome, never the reference typed.
       const logged = logLines.filter((l) => l['msg'] === 'ordering.admin-list-shipments-route');
       expect(logged.length).toBeGreaterThanOrEqual(5);
-      expect(JSON.stringify(logged)).not.toContain('0123');
+      // A random correlation id (UUID), the time, the pid or the host name can hold "0123" by
+      // chance, so those fields are left out of the digit check; the whole line must still never
+      // hold the reference itself.
+      const byChance = new Set(['correlationId', 'time', 'pid', 'hostname']);
+      const withoutChanceFields = JSON.stringify(logged, (key, value: unknown) =>
+        byChance.has(key) ? undefined : value,
+      );
+      expect(withoutChanceFields).not.toContain('0123');
+      expect(JSON.stringify(logged)).not.toMatch(/JD( |%20|\+)0123/);
     });
 
     it('lists order confirmations and credit notes behind ordering.order.view, unnumbered', async () => {
@@ -1434,6 +1443,50 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(customerTries.status).toBeLessThanOrEqual(403);
       expect(unknown.status).toBe(404);
       expect(badFilter.status).toBe(400);
+    });
+
+    it('exports the orders of the filter as a CSV attachment, for ordering.order.view only', async () => {
+      await seedAdmins();
+      const started = await checkout(customer());
+      const orderId = body(started).orderId;
+
+      const file = await http()
+        .get('/ordering/admin/orders/export?status=pending-payment')
+        .set(adminHeaders(VIEWER, 31));
+      const empty = await http()
+        .get('/ordering/admin/orders/export?status=cancelled')
+        .set(adminHeaders(VIEWER, 32));
+      const noKey = await http().get('/ordering/admin/orders/export').set(adminHeaders(NO_KEY, 33));
+      const customerTries = await http()
+        .get('/ordering/admin/orders/export')
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), cookie: customer().cookie });
+      const paged = await http()
+        .get('/ordering/admin/orders/export?page=1')
+        .set(adminHeaders(VIEWER, 34));
+      const xlsx = await http()
+        .get('/ordering/admin/orders/export?format=xlsx')
+        .set(adminHeaders(VIEWER, 35));
+      const badFilter = await http()
+        .get('/ordering/admin/orders/export?status=shipped')
+        .set(adminHeaders(VIEWER, 36));
+
+      expect(file.status).toBe(200);
+      expect(file.headers['content-type']).toContain('text/csv');
+      expect(file.headers['content-disposition']).toMatch(
+        /^attachment; filename="orders-\d{4}-\d{2}-\d{2}\.csv"$/,
+      );
+      expect(file.headers['cache-control']).toBe('no-store');
+      expect(file.headers['x-content-type-options']).toBe('nosniff');
+      const lines = String(file.text).replace('\uFEFF', '').split('\r\n').filter(Boolean);
+      expect(lines[0]).toMatch(/^Order,Placed,Status,Payment,/);
+      expect(lines).toHaveLength(2);
+      expect(lines[1]).toContain(orderId);
+      expect(String(empty.text).split('\r\n').filter(Boolean)).toHaveLength(1);
+      expect(noKey.status).toBe(403);
+      expect(customerTries.status).toBeGreaterThanOrEqual(401);
+      expect(customerTries.status).toBeLessThanOrEqual(403);
+      expect([paged, xlsx, badFilter].map((r) => r.status)).toEqual([400, 400, 400]);
+      expect(body(paged)).toMatchObject({ details: { fields: [{ path: 'page' }] } });
     });
 
     it('gives a role with ordering.order.view the document of a paid order, and no other role', async () => {

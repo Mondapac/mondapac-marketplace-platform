@@ -203,6 +203,30 @@ filters, sort, page numbers with a total (10,000 rows at most) or a cursor, and 
 Other routes: `requests-count` (menu badge), `requests/:id`, comments, approve, bulk-approve,
 reject, withdraw, `review-policy`, and the two policy writes.
 
+## Overdue reminders (package 2)
+
+A worker job, `system-requests.remind-overdue-requests` (hourly, per hosted Market), runs the
+system-rule use case `RemindOverdueSystemRequests`. For each open request past its stored review
+date (`review_due_at`, set when it opened from the Market's review period) whose area is still
+reviewed, it writes one `system-requests.request-overdue.v1` event to this module's outbox
+(ADR-0006). The request id, SR number, area and age in days are the whole payload: never the note
+or the values.
+
+- **At most one per Market day**: `requests.last_reminded_at` is set by a conditional update in the
+  same unit as the outbox write; "day" starts at midnight in the Market's zone (ADR-0005, the
+  injected Clock), not after 24 hours. A restart or two overlapping runs never send twice.
+- **Stops** when the request is decided or withdrawn (status no longer open), or when its area is
+  turned off (`policy_areas.enabled`; the review-policy area is always on); it resumes if the area
+  is turned on again while the request is still open. Changing the review period moves only
+  requests opened afterwards (the date is a snapshot on the request).
+- **Recipients and channel**: notifications subscribes to the event and writes one in-app admin
+  notice, kind `admin.system-request-overdue-<area>` (params: `requestId`, `number`, `ageDays`).
+  There is one kind per area so each is shown only to admins who hold that area's review key
+  (review-policy requests: the people reviewers); the link path for the panel is
+  `/system-requests/<requestId>`. The existing admin notice channel has no email.
+- Migration `20261116100000_system_requests_overdue_reminders`: `requests.last_reminded_at` (with
+  its column grant) and this module's `outbox` table. Reversible (`down.sql`).
+
 ## Not in this package
 
 - Saved filters, column picker and CSV/XLSX export come with the shared super-list kit (phase 0,
@@ -210,5 +234,7 @@ reject, withdraw, `review-policy`, and the two policy writes.
 - The area hooks in the other owning modules (roles, payouts, delivery, catalogue, ...) are
   follow-ups, one per module, for changes that can be reverted only (owner decision of 15 Nov
   2026: creating, deleting, merging, moving and importing get their own design later).
-- Notifications and reminders for overdue requests, and an impact count per request.
+- An impact count per request, and email reminders (the reminder is an in-app admin notice).
+- Excluding the author from their own request's reminder: notices are Market-wide and shown by
+  permission (below), so an author who also holds the area's review key sees it too.
 - The admin panel pages (frontend package).
