@@ -77,7 +77,7 @@ function WhatWillChange({ state }: { readonly state: ImpactState }) {
 }
 
 /** The target as a list of radio choices in tree order, indented by level. No drag. */
-function TargetPicker({
+export function TargetPicker({
   legend,
   rows,
   locale,
