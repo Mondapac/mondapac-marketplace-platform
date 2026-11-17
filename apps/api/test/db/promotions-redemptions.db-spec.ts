@@ -533,6 +533,17 @@ describe.each(TEST_MARKETS)('promotions redemptions in market %s (database)', (c
     expect(
       await facade().settleRedemptions(system, { orderId: orders[1]!, outcome: 'cancelled' }),
     ).toEqual({ ok: true, value: { outcome: 'released' } });
+    // The same account id in another Market never shows here.
+    const elsewhere = TEST_MARKETS.find((m) => m !== code)!;
+    const foreign = await owner.query<{ id: string }>(
+      `INSERT INTO promotions.redemptions (id, market_id, tenant_id, order_id, promotion_key, promotion_id,
+         kind, customer_account_id, code_hash, currency, amount_minor, seller_share_minor,
+         platform_share_minor, units, budget_month, status, reserved_at)
+       VALUES (gen_random_uuid(), $1, 'default', $2, 'first-order', NULL, 'FIRST_ORDER', $3, NULL, $4,
+         500, 0, 500, NULL, '2026-10', 'RESERVED', now() + interval '1 day')
+       RETURNING id`,
+      [marketOf(elsewhere).marketId, ids.next<'Order'>(), customerAccountId, currency],
+    );
     const list = (input: Record<string, unknown>) =>
       make(ListCustomerPromotionUsages).execute(admin, { customerAccountId, ...input });
     const first = await list({ limit: 2 });
@@ -549,6 +560,7 @@ describe.each(TEST_MARKETS)('promotions redemptions in market %s (database)', (c
         .reverse(),
     );
     expect(new Set(all.map((u) => u.record.orderId))).toEqual(new Set(orders));
+    expect(all.map((u) => u.record.id)).not.toContain(foreign.rows[0]!.id);
     for (const usage of all) {
       expect(usage.record.status).toBe(
         usage.record.orderId === orders[1] ? 'RELEASED' : 'RESERVED',

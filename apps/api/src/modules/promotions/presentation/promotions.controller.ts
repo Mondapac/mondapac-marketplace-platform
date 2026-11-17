@@ -791,8 +791,9 @@ export class AdminPromotionsController {
   @ApiOperation({
     summary: 'The promotions one customer used (admin viewer)',
     description:
-      'Needs promotions.promotion.view. One row per discount an order took (stored promotion, ' +
-      'first-order offer or free delivery), newest first, a page at a time (pass nextCursor as ' +
+      'Needs promotions.promotion.view and customers.customers.view. One row per discount an ' +
+      'order took (stored promotion, first-order offer or free delivery), newest first, a page ' +
+      'at a time (pass nextCursor as ' +
       'cursor). RESERVED rows can still be released; only CONFIRMED rows count as used. Works ' +
       'while promotions are switched off. A customer with none gets an empty page.',
   })

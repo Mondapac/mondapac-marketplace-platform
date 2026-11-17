@@ -1877,7 +1877,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       ]);
       expect(ListCustomerPromotionUsages.access.rule).toEqual({
         kind: 'permissions',
-        allOf: ['promotions.promotion.view'],
+        allOf: ['promotions.promotion.view', 'customers.customers.view'],
       });
       const page = await make(ListCustomerPromotionUsages).execute(admin(), {
         customerAccountId: REFERRER,
@@ -1927,6 +1927,20 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           customerAccountId: REFERRER,
         }),
       ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      // An admin without the customers view key (or the promotions view key) is refused.
+      const asked: unknown[] = [];
+      gate = createUseCaseGate(markets, {
+        check: (_context, declaration): Promise<AccessDecision> => {
+          asked.push(declaration.rule);
+          return Promise.resolve({ allowed: false, denial: { code: 'access.denied' } });
+        },
+      });
+      expect(
+        await make(ListCustomerPromotionUsages).execute(admin(), {
+          customerAccountId: REFERRER,
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      expect(asked).toEqual([ListCustomerPromotionUsages.access.rule]);
     });
   });
 });
