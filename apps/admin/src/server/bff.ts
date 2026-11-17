@@ -348,6 +348,14 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/product-certificates/:id/submit',
     // Activate an issuer with the expert's approval, under the version read (certification).
     'certification/admin/issuers/:id/activate',
+    // A certificate type (certification): stop new certificates, ask for reactivation, and a second
+    // admin's answer to a waiting revision or reactivation. Each names the version read.
+    'certification/admin/types/:id/deactivate',
+    'certification/admin/types/:id/reactivation',
+    'certification/admin/types/:id/relaxations/:id/approve',
+    'certification/admin/types/:id/reactivations/:id/approve',
+    'certification/admin/types/:id/proposals/:id/reject',
+    'certification/admin/types/:id/proposals/:id/withdraw',
     // The rest of an issuer's life (certification): close to new, derecognise (names the number of
     // certificates the form showed), ask for reactivation, and a second admin's answer to it.
     'certification/admin/issuers/:id/close-to-new',
