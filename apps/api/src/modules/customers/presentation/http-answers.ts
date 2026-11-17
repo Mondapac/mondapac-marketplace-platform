@@ -32,6 +32,7 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'customers.group-name-taken': 409,
   'customers.group-limit-reached': 409,
   'customers.group-archived': 409,
+  'customers.seller-customer-not-found': 404,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {

@@ -16,6 +16,7 @@ export const COMMISSION_PAYOUTS_STATUS: Readonly<Record<string, number>> = Objec
   'commission-payouts.version-conflict': 409,
   'commission-payouts.seller-order-not-found': 404,
   'commission-payouts.hold-not-found': 404,
+  'commission-payouts.ledger-entry-not-found': 404,
   'commission-payouts.hold-already-released': 409,
   'commission-payouts.dispute-not-found': 404,
   'commission-payouts.dispute.not-decidable': 409,

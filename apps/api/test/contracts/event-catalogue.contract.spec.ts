@@ -127,6 +127,11 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'customers.read-model-order-paid',
       'customers.read-model-refund-succeeded',
       'customers.read-model-registered',
+      // Customers phase 3: the per-seller customers, from orders, refunds and store follows.
+      'customers.seller-customers-order-paid',
+      'customers.seller-customers-refund-succeeded',
+      'customers.seller-customers-store-followed',
+      'customers.seller-customers-store-unfollowed',
       // Customers phase 2 (PR 2a): the same events copied onto the customer's activity timeline.
       'customers.timeline-disabled',
       'customers.timeline-email-verified',
@@ -204,7 +209,10 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
       'promotions.cashback-on-delivery',
+      // Promotions T2: an order's redemption is confirmed when it is paid, released when cancelled.
+      'promotions.confirm-redemptions',
       'promotions.qualify-referral-on-delivery',
+      'promotions.release-cancelled-redemptions',
       'search.index-approved-seller',
       'search.index-availability-changed',
       'search.index-category-archived',
@@ -249,11 +257,13 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('ordering.order-paid.v1')).toEqual([
       'customers.read-model-order-paid',
+      'customers.seller-customers-order-paid',
       'customers.timeline-order-paid',
       'notifications.order-confirmation-mail',
       'notifications.seller-new-order-mail',
       'notifications.seller-order-notice',
       'ordering.book-carrier-deliveries',
+      'promotions.confirm-redemptions',
     ]);
     expect(subscriptions.subscribersOf('ordering.seller-order-ready.v1')).toEqual([
       'ordering.book-ready-carrier-delivery',
@@ -265,6 +275,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
       'customers.read-model-refund-succeeded',
+      'customers.seller-customers-refund-succeeded',
       'customers.timeline-refund-succeeded',
       'notifications.item-unavailable-refund-mail',
       'ordering.cancel-carrier-after-refund',

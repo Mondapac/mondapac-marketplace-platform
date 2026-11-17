@@ -15,6 +15,7 @@ export {
 } from './permissions';
 export {
   ORDERING_EVENTS,
+  OrderCancelled,
   OrderPaid,
   OrderShipped,
   RefundSucceeded,
@@ -24,7 +25,12 @@ export {
 export { SELLER_UNAVAILABLE_REASON, type RefundReason } from '../domain/refund';
 export {
   MAX_DELIVERED_SELLER_ORDERS,
+  MAX_SELLER_CUSTOMER_ORDERS,
   ORDERING_FACADE,
+  type CustomerSellerStats,
+  type SellerCustomerOrder,
+  type SellerCustomerOrders,
+  type SellerCustomerOrdersFailure,
   type DeliveredSellerOrder,
   type DeliveredSellerOrdersFailure,
   type SellerOrderHealthCount,

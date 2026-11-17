@@ -9,10 +9,10 @@ Source: the buyer assistant plan (sections 4 to 8 and 11), ADR-0019, the setting
 is 400). `id` is a canonical UUID v7 the widget generates for a new conversation and repeats for
 the next messages; the conversation is the subject of its own encryption key.
 
-| Caller | Use case (rule) | Who owns the conversation |
-|---|---|---|
-| Signed-in customer (session cookie and CSRF token) | `assistant.send-message` (`own-resources`) | the account of the session |
-| Anyone else | `assistant.send-guest-message` (`anonymous`) | the assistant's own guest cookie `__Host-assistant-guest-<Market>` (30 days, HttpOnly, Secure, SameSite=Lax; the store keeps only the SHA-256 of the token) |
+| Caller                                             | Use case (rule)                              | Who owns the conversation                                                                                                                                   |
+| -------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Signed-in customer (session cookie and CSRF token) | `assistant.send-message` (`own-resources`)   | the account of the session                                                                                                                                  |
+| Anyone else                                        | `assistant.send-guest-message` (`anonymous`) | the assistant's own guest cookie `__Host-assistant-guest-<Market>` (30 days, HttpOnly, Secure, SameSite=Lax; the store keeps only the SHA-256 of the token) |
 
 A seller or admin session is not read on this route. A conversation answers only its owner in its
 Market; anything else is 404 `assistant.conversation-not-found`. The owner never comes from the
@@ -31,22 +31,45 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
 
 - Cards: `product` (offer, product, seller ids, name, short text, `price` and `regularPrice` as
   `{ amount: "<minor units>", currency }`, `taxInclusive`), `page` (a site page the storefront
-  builds the link for), `support` (the public support email).
+  builds the link for), `support` (the public support email), and under the `cart-suggestions`
+  scope `cart-action` and `cart` (see "Cart cards" below).
 - Notices: `see-cards` (a price, stock, delivery or minimum-order sentence was dropped),
   `see-certification` (a certification sentence was dropped), `tool-failed`, `unavailable` (the
-  model failed or timed out: a support card comes with it), `refused`, `cart-actions-not-ready`,
-  `support-form-not-ready`.
+  model failed or timed out: a support card comes with it), `refused`, `cart-actions-not-ready`
+  (the Market's scope is `read-only`), `cart-sign-in` (a cart line or the cart was asked for by a
+  buyer who is not signed in; the cart page link comes with it), `support-form-not-ready`.
 
 ## What the model gets and does
 
 - One model entry point (`platform/ai`, `ModelGateway`); only the files on the boundary rule's
   allow-list import it, and no provider SDK is imported anywhere (plain HTTPS to the Messages
   API). Provider failures are logged with the Market, tier and failure kind only.
-- Instructions version `buyer-assistant-2`; the last 12 messages; read-only tools that call the
-  `search`, `catalog` and `notifications` facades with the buyer's own `CallContext`:
-  `search_products`, `list_bestsellers`, `list_specials`, `list_categories`, `show_page`,
-  `support_contact`. `suggest_cart_change` and `open_support_form` answer "not ready yet".
-- The model sees names and short texts only, never a price or stock figure. Its reply is checked
+- Instructions version `buyer-assistant-4`; the last 12 messages; read-only tools that call the
+  `search`, `catalog`, `sellers`, `certification` and `notifications` facades with the buyer's own
+  `CallContext`: `search_products`, `list_bestsellers`, `list_specials`, `get_product`,
+  `get_seller`, `list_categories`, `show_page`, `support_contact`. `open_support_form` answers
+  "not ready yet"; `suggest_cart_change` too under the `read-only` scope. Under `cart-suggestions`
+  the model also gets `get_cart` and the real `suggest_cart_change`, and the cart rules are added
+  to the instructions (same prompt version).
+- Product cards carry the seller's public store name and the lowest buyer price of the Offer from
+  pricing (`price`, `taxInclusive`, `priceFrom` when the Variants differ; `regularPrice` only on a
+  special), read through the product page use case (one read per distinct product). A price that
+  cannot be read leaves the card without one. `get_product` (description, attributes, brand, who
+  sells it) and `get_seller` (store name, city, selling-since year, product count) show a product
+  card (the cheapest Offer, with catalog's live badges and whether each is only a seller claim)
+  and a store card (`kind: 'seller'`). The store card has no certification badge: a store-level
+  certificate is not an Offer claim (R1). An unknown, malformed or not-selling id answers "not
+  found" alike; a failed read answers `tool-failed`. `productCount` null means unknown, never zero.
+  Known limits: the city name is read in English (the ServiceArea directory guarantees `en`; a
+  Market read in another language needs a language source before launch), the store count comes
+  from the store query by name, and each list tool call does one product page read per distinct
+  product (a batched card read is a follow-up).
+- The model gets ids and, for lists, `get_product` and `get_seller`, every seller-entered text
+  (names, short texts, descriptions, attributes, store names) between `<<seller-text` and
+  `seller-text>>` (a forged marker inside the text is removed; 200 characters for names, 1500 for
+  descriptions, 20 attributes, 5 sellers): data, never instructions. It never gets a price,
+  a stock figure or a certification badge: those reach the buyer only on the cards.
+- The model never sees a price, stock figure or badge. Its reply is checked
   sentence by sentence (`domain/reply-guard.ts`): money, stock, delivery, minimum-order and
   certification sentences are dropped with a notice; markup, links, addresses and invisible
   characters are removed. Tool calls are schema-checked; at most 4 model rounds and 25 s a turn,
@@ -57,6 +80,54 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
   card always fits. The turn and its spend commit in their own unit, before the text is stored,
   so a storage failure never loses the count. A call cut at its timeout is counted at the most it
   can cost. A guest request with no client origin is refused (`assistant.unavailable`).
+
+## Cart cards (stage 1, S1-B1)
+
+Only under the Market's `cart-suggestions` scope (default `read-only`). The assistant never
+changes a cart: both tools are reads through `cart`'s `CartAssistantFacade` with the buyer's own
+`CallContext`, and the storefront changes the cart through the cart's own routes, with the buyer's
+session and CSRF token, only after the buyer clicks (ADR-0019 R4).
+
+- `suggest_cart_change` takes `action` (`add`, `set_quantity`, `remove`), `offer_id` (add; the model
+  now gets the `offerId` of each listed product), `line_id` (from `get_cart`) and `quantity` (1 to
+  999; add defaults to 1). Any other field, a malformed id or quantity is refused.
+- `add` asks `cart.read-assistant-offer-units` (rule `anonymous`): the Offer's units on sale now,
+  checked as the cart's add checks them (catalog, sellers, pricing, inventory; fail closed), at
+  most 10, each with its price, Variant label and `maxQuantity` (the Market's line ceiling, lowered
+  by the stock read only while stock is low: the "max N" of the brief, never a stock count). A
+  signed-in buyer's cart is read too: each unit's `lineId`, `inCart` and `addable` (`maxQuantity -
+  inCart`, since the cart's add caps the sum; 0 for a unit with no line when the cart holds its
+  most lines, `cartFull`). The proposed quantity is lowered to the unit's `addable` (to the largest
+  one when the buyer picks among several; the widget clamps to the chosen unit's), with
+  `limited: true`; when nothing more fits there is no card. The cart and the mode are read once per
+  turn; the Offer read runs beside them.
+- `set_quantity` and `remove` need the signed-in buyer's own line (`cart.view-assistant-cart`, rule
+  `own-resources`): a line id not in that cart is "not found"; a guest gets the cart page link and
+  `cart-sign-in`. A line that cannot be bought now can be lowered or removed, never raised; a
+  raise above the max is lowered to it.
+- Cart mode (`settings.read-cart-mode` through `SettingsFacade.cartMode`, `multi-store` on any
+  failure): in `single-store`, `otherStore` is true when the buyer's cart holds lines of another
+  store (the widget then asks to move them to saved items or remove them first), null when not
+  known (a guest's cart is not read here, or a line's store could not be checked: the widget reads
+  the cart itself first; null never means "safe"), false in `multi-store`. Enforcement stays in `cart`/`ordering`.
+- `get_cart` shows the `cart` card: lines grouped by store with the cart evaluator's subtotal and
+  minimum-order state, each line's price and max, and the total of the stores with something
+  buyable (null when one is unknown or currencies mix).
+- The model reads line ids, offer ids, names and sizes (as seller text), quantities in the buyer's
+  own cart and whether each line can be bought now: never a price, subtotal, total, minimum or max.
+  Its descriptions and the cart rules say it changes nothing and must not say a change was made.
+- Card JSON: every Money is `{ amount: "<minor units>", currency }`. `cart-action`: `action`,
+  `offerId`, `productId`, `sellerId`, `sellerName`, `name`, `lineId` and `currentQuantity` (line
+  changes), `quantity` (add: how many more; set: the new total; remove: 0), `limited`, `cartFull`
+  (add only), `units[]` (`variantId`, `label`, `price`, `taxInclusive`, `maxQuantity`, `lineId`,
+  `inCart`, `addable`), `cartMode`, `otherStore`. `cart`: `lineCount`, `total`, `groups[]` (`sellerId`, `sellerName`, `subtotal`,
+  `minimumOrder {state, minimum}`, `lines[]`).
+- Before `cart-suggestions` is switched on in a Market: the storefront widget renders the new
+  cards (S1-F1; until then the scope stays off everywhere), the owner records "buyer cart
+  contents" (product names and quantities) as an approved data category for the provider (R7),
+  and the real-model evaluation of `buyer-assistant-4` passes, cart cases included.
+- History keeps a `cart-action` card as its product card and a `cart` card as the cart page link:
+  an old action button or an old cart is never replayed.
 
 ## Limits, spend and storage
 
@@ -101,11 +172,11 @@ Three routes on the same controller, for a signed-in customer only (session cook
 needs the CSRF token). A guest is answered 403 `assistant.sign-in-required` before any use case;
 a seller or admin session is not read here. Every answer is `Cache-Control: no-store`.
 
-| Route | Use case (`own-resources`) | Answer |
-|---|---|---|
-| `GET /assistant/conversations?cursor&limit` | `assistant.list-conversations` | `{ items: [{ id, title, turns, full, startedAt, lastMessageAt }], nextCursor }`, newest activity first, 20 a page (at most 50), keyset cursor |
-| `GET /assistant/conversations/:id` | `assistant.view-conversation` | the same fields plus `messages: [{ position, role, text, cards, at }]`, oldest first |
-| `DELETE /assistant/conversations/:id` | `assistant.delete-conversation` | 204 |
+| Route                                       | Use case (`own-resources`)      | Answer                                                                                                                                        |
+| ------------------------------------------- | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /assistant/conversations?cursor&limit` | `assistant.list-conversations`  | `{ items: [{ id, title, turns, full, startedAt, lastMessageAt }], nextCursor }`, newest activity first, 20 a page (at most 50), keyset cursor |
+| `GET /assistant/conversations/:id`          | `assistant.view-conversation`   | the same fields plus `messages: [{ position, role, text, cards, at }]`, oldest first                                                          |
+| `DELETE /assistant/conversations/:id`       | `assistant.delete-conversation` | 204                                                                                                                                           |
 
 - Listed: the account's conversations of the Market that keep text and whose last message is
   within the retention in force (the shorter of the stored one and the current setting; `none`
@@ -114,8 +185,8 @@ a seller or admin session is not read here. Every answer is `Cache-Control: no-s
 - Title: the first buyer message (masked before it was stored, masked again), on one line, at
   most 30 user-perceived characters with an ellipsis. A conversation with no stored buyer message
   is not listed.
-- Cards come back as stored: kind and ids only (`product` with `offerId`, `page` with `page`,
-  `support`). A price or product text is never replayed from an old answer; the widget reads the
+- Cards come back as stored: kind and ids only (`product` with `offerId`, `seller` with
+  `sellerId`, `page` with `page`, `support`). A price or product text is never replayed from an old answer; the widget reads the
   product again if it shows one.
 - List and view answer 403 `assistant.off` while the Market's switch is off. Delete works while
   it is off: a buyer can always erase their own conversation. Delete removes the conversation,
@@ -129,12 +200,62 @@ a seller or admin session is not read here. Every answer is `Cache-Control: no-s
   partial `WHERE account_id IS NOT NULL`): (`market_id`, `account_id`, `last_message_at` DESC,
   `id` DESC) for the list.
 
-## Preview for `internal` (designed, not built)
+## Preview for `internal` (stage 0, B4)
 
-`internal` reaches no storefront visitor. Proposed: an admin with `assistant.settings.manage`
-opens the storefront with a short-lived signed preview token issued by an admin route; the
-storefront sends it with each message and the use case treats that visitor as in the rollout.
-`?visitor=` stays a rollout aid, never a control.
+- `POST /assistant/admin/preview-token` (admin session, CSRF, `assistant.settings.manage`,
+  protected) answers `{ token, expiresAt }`: valid 30 minutes, for this Market only. Each issue
+  is an audit row `assistant.preview-token.issued` naming the expiry (a security event, s3); the
+  token is never stored or logged. Without `ASSISTANT_PREVIEW_TOKEN_KEY` the route answers 503
+  `assistant.preview-unavailable` and no token verifies.
+- The storefront sends the token as the `x-assistant-preview` header with
+  `GET /assistant/storefront` and each `POST .../messages`. A valid token puts that browser in
+  the rollout whatever the audience; the kill switch, a missing key or model, the spend caps,
+  customers-only and the message limits still apply. The read answers `preview: true` so the
+  widget can mark itself. Invalid, expired or another Market's token counts as none.
+- Format `ap1.<expiry>.<nonce>.<mac>`: HMAC-SHA-256 under an HKDF key of
+  `ASSISTANT_PREVIEW_TOKEN_KEY` over (purpose, Market, expiry, nonce); constant-time compare; an
+  expiry past the lifetime is refused even with a valid MAC. The token names no account.
+- Replay: a token is a bearer token for its 30 minutes and is not bound to a browser. Accepted
+  because it unlocks only what any visitor gets with `audience: all`, under the same limits and
+  caps. Changing the key revokes every token at once; after a rotation admins take a new token
+  from the panel. Each environment (testbed, staging, production) has its own key, so a token
+  never crosses between them; a `dev-only-` key is refused when `NODE_ENV` is production. The
+  panel should pass it to the storefront
+  in the URL fragment (never a query string) and keep it in the tab's session storage only (F1/F3).
+- `?visitor=` stays a rollout aid, never a control.
+
+## Storefront wiring (stage 0, F1; `apps/web`)
+
+- **Path.** The widget talks to the API through the buyer relay (`app/api/[...path]`, same
+  origin, no CORS): `chatUrl` is `/api/assistant`. The relay allows only `GET assistant/storefront`
+  (query `visitor` and `lang`, each only when well shaped) and `POST
+  assistant/conversations/<uuid>/messages` (strict UUID). On these paths, and only these, the
+  assistant guest cookie `__Host-assistant-guest-<MARKET>` and the session cross both ways (the
+  guest-cart cookie does not), the `x-assistant-preview` header crosses when it has the token
+  shape, and the wait is 30 s (the server gives up at 25 s). The answer is buffered, which is
+  what the server sends anyway (one write after the reply guard). The POST keeps the
+  same-origin rule; logs name the route, never the conversation id or the token.
+- **Setup split.** The server render (`loadAssistant`) gives `chatUrl`, the Market support email
+  (the footer's `email` message, validated as a plain address) and, for a customer, the session's
+  CSRF token. The visitor id lives in the browser, so the widget (`assistant-gate.tsx`) calls
+  `GET <chatUrl>/storefront?visitor=&lang=` and renders nothing until it answers `enabled: true`;
+  any failure keeps it off without console output. A signed-in customer's message takes the CSRF
+  token the tab holds (`customer-api.ts`), else the page's, else a fresh session read.
+- **From the answer.** `retentionDays` (customer or guest by who is signed in; 0 is worded as not
+  kept), `quickPrompts` (replace the built-in chips when non-empty and are sent as the message),
+  `welcomeText`, `guestsAllowed`, `preview` (a "Preview" marker in the panel header).
+- **Cards.** Product rows show the seller name, the price (`Intl` money from minor units and the
+  card's own currency), "From" for `priceFrom`, the regular price struck through, "including GST"
+  when `taxInclusive`, and badges as the product page shows them (a seller's declaration in the
+  declared style). No price when `price` is null. The `seller` card is a store row linking to
+  `/s/<slug>`. Every field is validated; text is rendered as text.
+- **Preview token.** Open any storefront URL with `#assistant-preview=<token>`. On load the
+  gate takes it from `location.hash`, keeps it in `sessionStorage` (`sf-assistant-preview`, this
+  tab only) when it has the token shape, and removes it from the address with `history.replaceState`
+  (path, query and any other fragment part kept). It is sent only as the `x-assistant-preview`
+  header of the storefront read and the message POST, and is dropped when the server answers
+  `preview: false`. Never a query string, cookie, localStorage, log, analytics event or error text.
+  The GA4 page view reports origin plus path and never the fragment.
 
 ## Tables (Mojtaba's sign-off before merge)
 

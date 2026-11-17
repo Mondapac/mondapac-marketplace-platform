@@ -746,19 +746,50 @@ describe('relay allowlist for seller decisions', () => {
     expect((await send('POST', 'sellers/admin/nope/health/recalculate')).status).toBe(404);
   });
 
-  it('forwards only limit and cursor of the ledger query', async () => {
-    const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
-    const path = `commission-payouts/admin/sellers/${ID}/ledger`;
-    await relay(
-      config,
-      new Request(`http://admin.localhost:3002/api/${path}?limit=20&cursor=c1&x=1`, {
-        method: 'GET',
-        headers: { host: 'admin.localhost:3002' },
-      }),
-      path.split('/'),
-      upstream,
+  it('forwards the seller page lists and their exports only in the shapes the API takes', async () => {
+    const send = async (path: string) => {
+      const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+      const [route] = path.split('?');
+      const response = await relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, {
+          method: 'GET',
+          headers: { host: 'admin.localhost:3002' },
+        }),
+        route!.split('/'),
+        upstream,
+      );
+      return { status: response.status, url: upstream.mock.calls[0]?.[0] };
+    };
+    const ledger = `commission-payouts/admin/sellers/${ID}/ledger`;
+    const holds = `commission-payouts/admin/sellers/${ID}/payout-holds`;
+    const cursor = `1762041600000.${ID}`;
+    expect((await send(`${ledger}?limit=20&cursor=${cursor}&x=1`)).url).toBe(
+      `http://api.test/${ledger}?limit=20&cursor=${encodeURIComponent(cursor)}`,
     );
-    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}?limit=20&cursor=c1`);
+    expect(
+      (await send(`${ledger}?cursor=c1&kind=tip&side=debit&q=${ID}&sort=amount&page=2`)).url,
+    ).toBe(`http://api.test/${ledger}?side=debit&q=${ID}&sort=amount&page=2`);
+    const ids = Array.from({ length: 200 }, () => ID).join(',');
+    const file = await send(`${ledger}/export?format=xlsx&columns=rate,entry-id&ids=${ids}`);
+    expect(file.status).toBe(200);
+    expect(file.url).toBe(
+      `http://api.test/${ledger}/export?format=xlsx&columns=rate%2Centry-id&ids=${encodeURIComponent(ids)}`,
+    );
+    expect(
+      (
+        await send(
+          `${holds}?status=active&scope=order&reason=dispute&origin=system&sort=active-first&page=1&pageSize=100&x=1`,
+        )
+      ).url,
+    ).toBe(
+      `http://api.test/${holds}?status=active&reason=dispute&origin=system&scope=order&sort=active-first&page=1&pageSize=100`,
+    );
+    expect((await send(`${holds}?status=lost&pageSize=500`)).url).toBe(`http://api.test/${holds}`);
+    expect((await send(`${holds}/export?columns=hold-id&sellerOrderId=${ID}`)).url).toBe(
+      `http://api.test/${holds}/export?columns=hold-id&sellerOrderId=${ID}`,
+    );
+    expect((await send(`commission-payouts/admin/sellers/nope/ledger/export`)).status).toBe(404);
   });
 
   it('relays approve, reject and the manual check for a seller UUID only', async () => {
