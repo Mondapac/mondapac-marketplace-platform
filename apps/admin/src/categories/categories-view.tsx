@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, EmptyState, LoadError, SkeletonRows, Select, TextField } from '@mondapac/ui';
+import { Banner, EmptyState, LoadError, Select, TextField, DetailSkeleton } from '@mondapac/ui';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -193,7 +193,9 @@ export function CategoriesView({
     });
   }
 
-  if (load === 'loading' && tree === null) return <SkeletonRows label={t('loading')} rows={6} />;
+  if (load === 'loading' && tree === null) {
+    return <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={6} title={false} />;
+  }
   if (load === 'failed' || tree === null) {
     return (
       <LoadError

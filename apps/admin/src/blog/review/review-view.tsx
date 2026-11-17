@@ -7,9 +7,9 @@ import {
   Button,
   LinkButton,
   LoadError,
-  SkeletonRows,
   TextAreaField,
   toast,
+  DetailSkeleton,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -78,6 +78,7 @@ export function ReviewView({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('blog.review');
+  const tr = useTranslations('route');
   const te = useTranslations('blog.editor');
   const tc = useTranslations('blog');
   const guarded = useGuardedCall();
@@ -123,7 +124,9 @@ export function ReviewView({
     if (asking) form.current?.querySelector('textarea')?.focus();
   }, [asking]);
 
-  if (load === 'loading') return <SkeletonRows rows={6} label={t('loading')} />;
+  if (load === 'loading') {
+    return <DetailSkeleton label={t('loading')} slowLabel={tr('slow')} rows={6} />;
+  }
   if (load === 'failed' || post === null) {
     return (
       <LoadError

@@ -1,6 +1,14 @@
 'use client';
 
-import { Badge, Button, EmptyState, LoadError, SkeletonRows, TextField, toast } from '@mondapac/ui';
+import {
+  Badge,
+  Button,
+  EmptyState,
+  LoadError,
+  TextField,
+  toast,
+  DetailSkeleton,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -83,7 +91,13 @@ export function FeatureSetsTab({
         </div>
         {load.state === 'loading' ? (
           <div className="p-4">
-            <SkeletonRows label={t('loading')} rows={4} />
+            <DetailSkeleton
+              label={t('loading')}
+              slowLabel={tl('slow')}
+              rows={4}
+              title={false}
+              framed={false}
+            />
           </div>
         ) : null}
         {load.state === 'failed' ? (
@@ -218,7 +232,12 @@ function FeatureSetDetailPanel({
       className="flex min-w-0 flex-col gap-4 rounded-lg border border-line bg-surface p-4 sm:p-5"
     >
       {load.state === 'loading' ? (
-        <SkeletonRows label={t('feature-sets.loading-one')} rows={5} />
+        <DetailSkeleton
+          label={t('feature-sets.loading-one')}
+          slowLabel={tl('slow')}
+          rows={5}
+          framed={false}
+        />
       ) : null}
       {load.state === 'failed' ? (
         <LoadError

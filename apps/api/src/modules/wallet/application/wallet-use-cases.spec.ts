@@ -506,6 +506,14 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
         after: after as Record<string, null>,
       });
 
+    it('labels the switch for the queue, and nothing else', async () => {
+      const labels = await new WalletStatusReverter(deps).describe(adminCtx(), [
+        'wallet-settings',
+        'other',
+      ]);
+      expect([...labels]).toEqual([['wallet-settings', 'Wallet status']]);
+    });
+
     it('opens nothing where the Market does not review money', async () => {
       expect(await turn('active')).toMatchObject({ ok: true, value: { request: null } });
       expect(review.opened).toHaveLength(0);
