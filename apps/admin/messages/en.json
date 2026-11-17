@@ -106,6 +106,8 @@
     "customers": "Customers",
     "sellers": "Sellers",
     "orders": "Orders",
+    "shipments": "Shipments",
+    "refunds": "Refunds",
     "price-holds": "Pricing",
     "review-queue": "Catalogue requests",
     "certificates": "Certification",
@@ -124,7 +126,8 @@
       "customers": "Customers",
       "marketing": "Marketing",
       "accounting": "Accounting",
-      "cms": "CMS"
+      "cms": "CMS",
+      "audit-logs": "Audit Logs"
     },
     "wallet-credits": "Issue credit",
     "wallet-requests": "Credit approvals",
@@ -139,13 +142,14 @@
     "business-activities": "Business activities",
     "tags": "Tags",
     "system-requests": "System requests",
-    "shipments": "Shipments"
+    "security": "Security"
   },
   "home": {
     "title": "Dashboard",
     "intro": "Welcome, {name}. Here is what needs attention and the latest activity you can see."
   },
   "dashboard": {
+    "loading": "Loading the dashboard",
     "view-all": "View all",
     "unnamed-product": "Unnamed product",
     "error": {
@@ -1211,7 +1215,8 @@
       "label": "Certificates sections",
       "queue": "Review queue",
       "issuers": "Issuers",
-      "requests": "Issuer requests"
+      "requests": "Issuer requests",
+      "types": "Types"
     },
     "issuers": {
       "title": "Certificate issuers",
@@ -1553,7 +1558,9 @@
         "unavailable": "The service is not available. Try again.",
         "unknown": "Something went wrong. Nothing was recorded.",
         "zone": "The seller's time zone isn't set yet. Ask the seller to finish their address.",
-        "type-inactive": "This certificate type is no longer in use."
+        "type-inactive": "This certificate type is no longer in use.",
+        "revoked": "This certificate is already revoked. Reload the page.",
+        "not-revocable": "This certificate can't be revoked in its current status. Reload the page."
       },
       "check-code": {
         "holder-name": "The holder name matches the seller's business",
@@ -1575,7 +1582,9 @@
         "signs-of-tampering": "The document shows signs of tampering.",
         "issuer-not-recognised": "The issuer is not recognised.",
         "not-confirmed-by-issuer": "The issuer did not confirm the certificate.",
-        "declaration-not-accepted": "The self-declaration was not accepted."
+        "declaration-not-accepted": "The self-declaration was not accepted.",
+        "withdrawn-by-issuer": "The issuer has withdrawn or suspended this certificate.",
+        "approved-in-error": "The certificate was approved in error."
       },
       "next-step": {
         "upload-clearer-file": "The seller uploads a clearer file.",
@@ -1608,6 +1617,34 @@
         "seller": "the seller",
         "admin": "an admin",
         "system": "the system"
+      },
+      "revoke": {
+        "button": "Revoke certificate",
+        "title": "Revoke this certificate?",
+        "body": "Offers with this badge can't be bought until {store} has a valid certificate. The seller is emailed.",
+        "body-pending": "If a renewal is waiting for review, it is withdrawn too.",
+        "reason": "Prepared reason",
+        "reason-placeholder": "Choose a reason",
+        "reason-required": "Choose a reason.",
+        "no-reasons": "This Market has no prepared reasons for revoking. It can't be recorded.",
+        "note": "Note for the seller",
+        "optional": "optional",
+        "note-help": "Plain text. It goes to the seller with the reason.",
+        "text-long": "At most {max} characters.",
+        "cancel": "Cancel",
+        "confirm": "Revoke certificate",
+        "reload": "Reload the page",
+        "done": "Certificate revoked. The seller has been emailed."
+      },
+      "full-history": {
+        "title": "Full history",
+        "recorded": "Viewing this is recorded.",
+        "show": "Show history",
+        "none": "No history yet.",
+        "entry": "{from} → {to} · by {by}",
+        "started": "Created",
+        "older": "Show older",
+        "loaded": "{count, plural, one {# entry loaded.} other {# entries loaded.}}"
       }
     },
     "requests": {
@@ -1696,6 +1733,162 @@
         "downloads-off": "Downloads are switched off."
       },
       "open-request-from": "Open request from {store}, seller {id}"
+    },
+    "types": {
+      "title": "Certificate types",
+      "no-access": "You don't have access to certificate types.",
+      "unavailable": "Certificate types could not be loaded.",
+      "empty": "This Market has no certificate types yet.",
+      "pending": "Change waiting",
+      "col": {
+        "name": "Name",
+        "status": "Status",
+        "code": "Code",
+        "mode": "Check method",
+        "revision": "Revision"
+      },
+      "status": {
+        "active": "Active",
+        "inactive": "Inactive"
+      },
+      "mode": {
+        "THIRD_PARTY_DOCUMENT": "Certificate from an issuer",
+        "SELF_DECLARATION": "Seller's own declaration"
+      },
+      "basis": {
+        "SELLER_CERT_REQUIRED": "Seller certificate required",
+        "SELLER_OR_MANUFACTURER": "Seller or manufacturer certificate",
+        "NO_BADGE_ALLOWED": "No badge allowed"
+      },
+      "detail": {
+        "title": "Certificate type",
+        "back": "Back to types",
+        "no-access": "You don't have access to certificate types.",
+        "not-found": "This type was not found.",
+        "unavailable": "This type could not be loaded.",
+        "status": {
+          "active": "Active",
+          "inactive": "Inactive"
+        },
+        "revision": "Revision {n}",
+        "mode": "Check method",
+        "none": "-",
+        "yes": "Yes",
+        "no": "No",
+        "mode-unknown": "-",
+        "needs-issuer": "Needs an issuer from the registry",
+        "needs-document": "Needs a document",
+        "needs-expiry": "Needs an expiry date",
+        "default-basis": "Default basis",
+        "auto-approve": "Approve without a person",
+        "icon": "Icon",
+        "published": "Published",
+        "locale": "Wording in {locale}",
+        "locale-name": "Name",
+        "locale-description": "Description for customers",
+        "locale-terms": "Claim terms",
+        "inactive-note": "No new certificates of this type can be added. Existing certificates and badges stay.",
+        "revision-waiting": "A change to this type is waiting for a second admin.",
+        "reactivation-waiting": "A reactivation is waiting for a second admin.",
+        "view-only": "Your role can't change certificate types.",
+        "done": {
+          "deactivated": "Type deactivated.",
+          "reactivation-asked": "Reactivation sent. A second admin has to approve it.",
+          "approved": "Change approved and published.",
+          "rejected": "Change rejected.",
+          "withdrawn": "Proposal withdrawn."
+        }
+      },
+      "actions": {
+        "deactivate": "Deactivate",
+        "reactivate": "Ask for reactivation"
+      },
+      "dialog": {
+        "cancel": "Cancel",
+        "reload": "Reload the page"
+      },
+      "deactivate": {
+        "title": "Deactivate this type?",
+        "body": "No new {name} certificates can be added. Existing certificates and badges stay.",
+        "confirm": "Deactivate"
+      },
+      "reactivate": {
+        "title": "Ask for reactivation",
+        "note": "A second admin has to approve this. {name} stays inactive until then.",
+        "reason": "Reason",
+        "optional": "optional",
+        "reason-help": "Up to {max} characters. The second admin sees it.",
+        "reason-long": "Use {max} characters or fewer.",
+        "confirm": "Send for approval"
+      },
+      "proposal": {
+        "title": {
+          "revision": "A change waiting for a second admin",
+          "reactivation": "Reactivation waiting for a second admin"
+        },
+        "sent": "Asked on",
+        "reason": "Reason",
+        "before": "Before",
+        "after": "After",
+        "empty": "Empty",
+        "on": "On",
+        "off": "Off",
+        "relaxes": "This part needs a second admin.",
+        "approve": "Approve change",
+        "reject": "Reject change",
+        "withdraw": "Withdraw proposal",
+        "cancel": "Cancel",
+        "reload": "Reload the page",
+        "second-admin": "You proposed this, so a different admin has to answer it.",
+        "no-actions": "Nothing can be done with this proposal from your account right now.",
+        "confirm": {
+          "approve": {
+            "title": "Approve this change",
+            "button": "Approve change",
+            "body": {
+              "revision": "The change is published at once. Certificates already approved keep the rules they were approved under.",
+              "reactivation": "The type becomes active again and sellers can add new certificates of it."
+            }
+          },
+          "reject": {
+            "title": "Reject this change",
+            "button": "Reject change",
+            "body": {
+              "revision": "The proposal is closed for good. The published revision stays.",
+              "reactivation": "The proposal is closed for good. The type stays inactive."
+            }
+          },
+          "withdraw": {
+            "title": "Withdraw your proposal",
+            "button": "Withdraw proposal",
+            "body": {
+              "revision": "The proposal is closed. You can propose it again later.",
+              "reactivation": "The proposal is closed. You can ask again later."
+            }
+          }
+        },
+        "policy-row": "Policy row",
+        "reason-erased": "Reason removed"
+      },
+      "error": {
+        "invalid": "Check the details and try again.",
+        "gone": "This type no longer exists. Reload the page.",
+        "already-inactive": "This type is already inactive. Reload the page.",
+        "already-active": "This type is already active. Reload the page.",
+        "proposal-gone": "This proposal no longer exists. Reload the page.",
+        "proposal-pending": "A proposal is already waiting. Reload the page.",
+        "proposal-closed": "This proposal was already answered. Reload the page.",
+        "second-admin": "A different admin has to answer this proposal.",
+        "stale": "This type changed while you were looking. Reload the page.",
+        "retry": "Something changed at the same time. Try again.",
+        "denied": "Your role can't change certificate types.",
+        "acting-as": "This can't be done while you're signed in as the seller.",
+        "throttled": "Too many requests. Try again in a minute.",
+        "csrf": "Your session needs a refresh. Reload the page.",
+        "unavailable": "The service is not available right now. Try again in a few minutes.",
+        "unknown": "Something went wrong. Try again.",
+        "not-proposer": "Only the admin who proposed this can withdraw it."
+      }
     }
   },
   "pricing": {
@@ -5002,6 +5195,15 @@
       "unit-price": "Unit price",
       "amount": "Amount",
       "tax-included": "Tax incl."
+    },
+    "export": {
+      "button": "Export CSV",
+      "busy": "Preparing the file…",
+      "done": "The file of the orders on this list was downloaded.",
+      "too-large": "{matching} orders match, and one file holds at most {max}. Narrow the filters and export again.",
+      "too-large-plain": "Too many orders match for one file. Narrow the filters and export again.",
+      "invalid": "These filters cannot be exported. Change them and try again.",
+      "unavailable": "The file could not be created. Try again."
     },
     "range": "{from} to {to} of {total}",
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
@@ -9953,6 +10155,255 @@
       "hint": "Export comes with saved filters"
     }
   },
+  "security-centre": {
+    "title": "Security",
+    "intro": "Alerts from the security rules, and who responds to them.",
+    "tabs": {
+      "label": "Security pages",
+      "alerts": "Alerts",
+      "on-call": "On call"
+    },
+    "no-access-title": "You don't have access to Security",
+    "no-access": "It needs the View security centre permission (security.centre.view). Ask an admin who manages roles to add it to your role.",
+    "not-found-title": "Alert not found",
+    "not-found": "This alert does not exist in this Market.",
+    "back-home": "Go to the dashboard",
+    "zone-note": "Times are in {zone}.",
+    "rules-ran": "Rules ran {when}",
+    "rules-never": "The rules have not run yet",
+    "updates": "Updates every 30 seconds",
+    "refresh-failed": "Couldn't refresh. Showing alerts as of {time}.",
+    "banner": {
+      "no-roster-title": "No on-call roster is set up. Alerts are not being sent.",
+      "no-roster": "No one gets an email about any alert, and critical alerts can't be resolved until the roster file is on the server. Ask DevOps to set it up.",
+      "stale-title": "The security rules have not run for {minutes} minutes.",
+      "stale": "New alerts may not be created. The rules normally run every minute. Ask DevOps to check the background jobs."
+    },
+    "tiles": {
+      "label": "Live alerts",
+      "s1": "Critical (S1)",
+      "s2": "High (S2)",
+      "s34": "Medium and low",
+      "none": "None live",
+      "s1-oldest": "Oldest open {minutes} min · {left} min left",
+      "s2-sub": "Sent by email in business hours",
+      "s34-sub": "In the daily and weekly digest",
+      "on-call": "On call now",
+      "nobody": "Nobody",
+      "no-roster": "No roster on the server",
+      "s1-overdue": "Oldest overdue by {minutes} min"
+    },
+    "severity": {
+      "s1": "S1 · Critical",
+      "s2": "S2 · High",
+      "s3": "S3 · Medium",
+      "s4": "S4 · Low"
+    },
+    "state": {
+      "open": "Open",
+      "acknowledged": "Acknowledged",
+      "resolved": "Resolved"
+    },
+    "key": {
+      "account": "Account",
+      "ip": "IP address",
+      "market": "Market",
+      "event": "Event"
+    },
+    "resolution": {
+      "contained": "Contained",
+      "false-positive": "False positive",
+      "duplicate": "Duplicate",
+      "accepted-risk": "Accepted risk"
+    },
+    "resolution-help": {
+      "contained": "The threat was real and has been stopped.",
+      "false-positive": "Nothing was wrong; the rule fired on normal activity.",
+      "duplicate": "Another alert covers the same thing.",
+      "accepted-risk": "Real, but we have decided to live with it."
+    },
+    "channel": {
+      "email": "Email",
+      "sms": "SMS",
+      "call": "Call",
+      "team-chat": "Team chat"
+    },
+    "filters": {
+      "state": "State",
+      "severity": "Severity",
+      "live": "Live",
+      "open": "Open",
+      "acknowledged": "Acknowledged",
+      "resolved": "Resolved",
+      "all": "All",
+      "clear": "Clear filters"
+    },
+    "col": {
+      "alert": "Alert",
+      "severity": "Severity",
+      "state": "State",
+      "key": "Key",
+      "events": "Events",
+      "opened": "Opened",
+      "response": "Response"
+    },
+    "response": {
+      "acknowledged-by": "Acknowledged by {name}",
+      "acknowledged": "Acknowledged",
+      "resolved": "{resolution}",
+      "s1-left": "Open {minutes} min · {left} min left",
+      "s1-overdue": "Overdue by {minutes} min",
+      "s2": "Email at the next business start",
+      "s2-sent": "Emailed",
+      "s3": "In daily digest",
+      "s4": "In weekly report",
+      "not-sent": "Not sent (no roster)"
+    },
+    "events-count": "{count, plural, one {# event} other {# events}}",
+    "list-foot": "{count, plural, one {# alert} other {# alerts}} · by severity, then newest",
+    "masked-note": "IP addresses are masked in the list. Open an alert to see it in full.",
+    "load-more": "Load more",
+    "empty": {
+      "live-title": "No live alerts",
+      "live": "The rules ran {when} and found nothing.",
+      "filtered-title": "No alerts match these filters",
+      "filtered": "Change the state or severity filters to see more."
+    },
+    "error": {
+      "alerts-title": "Couldn't load alerts",
+      "alerts": "The server did not answer. Alert emails are sent by the server whether or not this page loads.",
+      "on-call-title": "Couldn't load the on-call view"
+    },
+    "ago": {
+      "now": "just now",
+      "minutes": "{count} min ago",
+      "hours": "{count} h ago",
+      "days": "{count} d ago"
+    },
+    "detail": {
+      "page-title": "Security alert",
+      "back": "Alerts",
+      "details": "Details",
+      "events": "Events",
+      "first-event": "First event",
+      "last-event": "Last event",
+      "opened": "Opened",
+      "rule": "Rule",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copy-key": "Copy the key",
+      "respond-title": "Respond within 15 minutes",
+      "respond-left": "Open {minutes} min · {left} min left",
+      "respond-overdue": "Open {minutes} min · overdue by {over} min",
+      "escalation": "Escalation step {step} of {max}. Next message {when} unless someone acknowledges.",
+      "escalation-done": "Escalation step {step} of {max}. No more messages will be sent; the alert stays open here.",
+      "no-roster": "Not sent: there is no on-call roster, so nobody has been told about this alert.",
+      "waiting-title": "Waiting for business hours",
+      "waiting": "Email at {when}.",
+      "stopped-title": "Escalation stopped",
+      "stopped": "Acknowledged by {name}, {when}. Resolve it when the work is done.",
+      "timeline": "Timeline",
+      "tl-opened": "Opened by the rule",
+      "tl-opened-sub": "{count, plural, one {# event} other {# events}} since {first}",
+      "tl-delivery": "{channel} to {recipient}",
+      "tl-outcome": {
+        "sent": "sent",
+        "failed": "failed",
+        "not-configured": "not set up yet",
+        "no-contact": "no contact details"
+      },
+      "tl-step": "Step {step}",
+      "tl-acknowledged": "Acknowledged by {name}",
+      "tl-resolved": "Resolved by {name} · {resolution}",
+      "tl-digest-s3": "Will be in the daily digest",
+      "tl-digest-s4": "Will be in the weekly report",
+      "channels-note": "SMS, calls and team chat are not connected yet. Only email is sent today.",
+      "resolution": "Resolution",
+      "resolved-by": "By {name}, {when}",
+      "someone": "an admin",
+      "acknowledge": "Acknowledge",
+      "resolve": "Resolve…",
+      "hint-open": "Acknowledge stops the escalation. A resolved alert can't be changed.",
+      "hint-no-permission": "You need the Respond to security alerts permission to act on alerts.",
+      "hint-s1": "Only {commander} (incident commander) or {owner} (security owner) can resolve a critical alert. Acknowledge it to stop the escalation.",
+      "hint-s1-unnamed": "Only the incident commander or the security owner can resolve a critical alert. Acknowledge it to stop the escalation.",
+      "hint-no-roster": "Critical alerts can't be resolved until the on-call roster is set up.",
+      "acknowledged-toast": "Acknowledged. Escalation stopped.",
+      "resolved-toast": "Alert resolved.",
+      "conflict-acknowledged": "{name} acknowledged this alert {when}, before your change. Your change was not saved.",
+      "conflict-resolved": "{name} resolved this alert {when}, before your change. Your change was not saved.",
+      "conflict": "This alert changed while you were looking. Your change was not saved; this is the latest version.",
+      "error": "Couldn't save. Try again.",
+      "refresh-failed": "Couldn't refresh. Showing this alert as of {time}.",
+      "changed-acknowledged": "{name} acknowledged this alert {when}.",
+      "changed-resolved": "{name} resolved this alert {when}.",
+      "acknowledged-plain": "Acknowledged.",
+      "denied": "You can't act on this alert. Your role may have changed, or you are signed in as a seller; leave that session or ask an admin who manages roles.",
+      "s1-only": "Only the incident commander or the security owner can resolve a critical alert.",
+      "copy-failed": "Couldn't copy. Select the text and copy it yourself."
+    },
+    "resolve": {
+      "title": "Resolve alert",
+      "intro": "{title}. A resolved alert is final and can't be reopened or edited.",
+      "outcome": "Outcome",
+      "note": "What happened and what you did",
+      "note-help": "Shown on the alert. Not sent in emails.",
+      "note-short": "Write at least 10 characters.",
+      "counter": "{count} / 1000",
+      "cancel": "Cancel",
+      "submit": "Resolve alert",
+      "submit-why": "Choose an outcome and write at least 10 characters to resolve.",
+      "conflict-acknowledged": "{name} acknowledged this alert meanwhile. Your outcome and note are kept; you can still resolve it.",
+      "conflict-resolved": "{name} resolved this alert {when}. Your note was not saved.",
+      "copy-note": "Copy your note"
+    },
+    "badge": {
+      "label": "{count, plural, one {# critical alert. Open the security alerts} other {# critical alerts. Open the security alerts}}",
+      "text": "{count, plural, one {# critical alert} other {# critical alerts}}",
+      "announce": "New critical security alert."
+    },
+    "on-call": {
+      "now": "On call now",
+      "since": "Week started {start} · hands over {end}",
+      "clock": "Local time in {zone} is {time}.",
+      "in-hours": "Inside business hours ({start} to {end}).",
+      "out-hours": "Outside business hours ({start} to {end}). Only critical alerts are sent now; high alerts wait for the next business start.",
+      "commander": "Incident commander",
+      "owner": "Security owner",
+      "resolves": "Resolves critical alerts",
+      "or": "{a} or {b}",
+      "escalation": "Critical escalation",
+      "escalation-help": "Until someone acknowledges, the next person is contacted every {minutes} minutes, for up to {steps} steps.",
+      "escalation-after": "After the last person the chain starts again from the top.",
+      "step-now": "Now",
+      "step-plus": "+{minutes} min",
+      "rotation": "Rotation",
+      "this-week": "This week",
+      "from": "From {date}",
+      "roster-note": "The roster is server configuration. To change it, ask DevOps. Only names are shown here; contact details stay on the server.",
+      "channels": "Who hears what",
+      "col-severity": "Severity",
+      "col-who": "Who hears",
+      "col-when": "When",
+      "col-channels": "Channels",
+      "who-s1": "On call, then the chain",
+      "who-s2": "On call and security owner",
+      "who-digest": "Security owner",
+      "when-s1": "24/7",
+      "when-s2": "Business hours",
+      "when-s3": "Daily digest",
+      "when-s4": "Weekly report",
+      "working": "{channel} · working",
+      "not-set-up": "{channel} · not set up",
+      "page": "This page",
+      "digest": "Email digest",
+      "empty-title": "No on-call roster",
+      "empty": "The roster is a file on the server. It names who is on call each week, the escalation order, the incident commander and the security owner. Until it is there, no alert is sent. Ask DevOps to add it."
+    },
+    "loading": "Loading alerts",
+    "announce": "New critical alert: {title}",
+    "retrying": "Trying again in 30 seconds."
+  },
   "sales-lists": {
     "chip": "{field} is {value}",
     "chip-remove": "Remove filter {filter}",
@@ -10171,6 +10622,144 @@
       "refunded": {
         "title": "No cancelled shipments",
         "body": "Seller orders refunded in full before shipping show here."
+      }
+    }
+  },
+  "refunds": {
+    "title": "Refunds",
+    "page-title": "Refunds",
+    "intro": "Every refund in this Market. To refund an order, open the order.",
+    "no-access": "You don't have access to refunds.",
+    "back-home": "Back to home",
+    "tabs": "Refund views",
+    "tab": {
+      "all": "All"
+    },
+    "actor": {
+      "admin": "Admin",
+      "seller": "Seller",
+      "unknown": "Unknown"
+    },
+    "ledger": {
+      "waiting": "Waiting",
+      "waiting-title": "Refunded, but not yet recorded in the seller's ledger."
+    },
+    "ledger-filter": {
+      "waiting": "Waiting",
+      "recorded": "Recorded"
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Customer, store, order or refund ID, or Stripe ID",
+      "too-short": "Type at least 2 characters."
+    },
+    "chip-search": "Search: \"{text}\"",
+    "chip-seller": "Seller is {name}",
+    "filter": {
+      "title": "Filter refunds",
+      "name": {
+        "reason": "Reason",
+        "actor": "Requested by",
+        "lossBearer": "Loss borne by",
+        "ledger": "Seller ledger",
+        "requested": "Requested"
+      }
+    },
+    "sort": {
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "requested": "Requested",
+        "settled": "Settled",
+        "amount": "Amount"
+      },
+      "date": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      },
+      "amount": {
+        "first": "Highest first",
+        "second": "Lowest first"
+      }
+    },
+    "sorted": "Sorted by {field}: {order}",
+    "sorted-newest": "Newest first",
+    "match": "{count, plural, one {# refund matches} other {# refunds match}}",
+    "col": {
+      "order": "Order",
+      "state": "State",
+      "amount": "Amount (incl. tax)",
+      "reason": "Reason",
+      "actor": "Requested by",
+      "store": "Store",
+      "customer": "Customer",
+      "requested": "Requested",
+      "lossBearer": "Loss borne by",
+      "ledger": "Seller ledger",
+      "tax": "Tax",
+      "shipping": "Delivery part (incl. tax)",
+      "settled": "Settled",
+      "stripeRefundId": "Stripe refund ID",
+      "creditNote": "Credit note",
+      "refundId": "Refund ID",
+      "sellerOrderId": "Seller order ID"
+    },
+    "not-yet": "Not yet",
+    "stripe-not-made": "Not made yet",
+    "none": "None",
+    "unknown": "Unknown",
+    "row-name": "order {id}",
+    "select": {
+      "page": "Select all refunds on this page",
+      "page-short": "Select all on this page",
+      "row": "Select {name}"
+    },
+    "selection": {
+      "selected": "{count, plural, one {# refund selected} other {# refunds selected}}",
+      "all": "{count, plural, one {The # matching refund is selected} other {All # matching refunds are selected}}",
+      "all-open": "All matching refunds are selected",
+      "select-all": "Select all {count, number} matching",
+      "select-all-open": "Select all matching",
+      "clear": "Clear selection"
+    },
+    "bulk": {
+      "button": "Bulk action",
+      "selected": "{count, plural, one {# refund selected} other {# refunds selected}}",
+      "all-open": "All matching refunds selected",
+      "none-yet": "No bulk actions are available for refunds yet."
+    },
+    "actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "view-order": "View order",
+      "copy-stripe": "Copy Stripe refund ID",
+      "copied": "Copied",
+      "copy-failed": "Couldn't copy. Select the text and copy it."
+    },
+    "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
+    "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name.",
+    "too-many": "Page numbers stop at the first {limit} refunds. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
+    "loading": "Loading refunds...",
+    "error": {
+      "unavailable": "Refunds couldn't be loaded.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them.",
+      "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
+    },
+    "empty": {
+      "no-match": "No refunds match",
+      "no-match-help": "Try other filters or clear them.",
+      "all": {
+        "title": "No refunds yet",
+        "body": "Refunds made from an order page show here."
+      },
+      "pending": {
+        "title": "Nothing waiting for Stripe"
+      },
+      "succeeded": {
+        "title": "No completed refunds"
+      },
+      "failed": {
+        "title": "No refused refunds"
       }
     }
   }

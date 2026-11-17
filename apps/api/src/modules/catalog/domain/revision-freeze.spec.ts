@@ -1,5 +1,10 @@
 import type { Id } from '@mondapac/shared-kernel';
-import { buildTaxOverrideContent, freezeWorkingCopy, optionKeyOf } from './revision-freeze';
+import {
+  buildCategoryOverrideContent,
+  buildTaxOverrideContent,
+  freezeWorkingCopy,
+  optionKeyOf,
+} from './revision-freeze';
 import type { FreezeInput } from './revision-freeze';
 import type { RevisionContent } from './revision-content';
 
@@ -381,6 +386,38 @@ describe.each(MARKETS)('revision freeze in market $code', ({ locale, tax }) => {
         error: { code: 'tax-category.unchanged' },
       });
     });
+  });
+});
+
+describe('buildCategoryOverrideContent (C5a)', () => {
+  const content = (categoryIds: string[]): RevisionContent =>
+    ({ categoryIds, taxCategoryCode: 'GST', topicIds: ['t1'] }) as unknown as RevisionContent;
+  const ids = (r: ReturnType<typeof buildCategoryOverrideContent>) =>
+    r.ok ? r.value.categoryIds : r.error.code;
+
+  it('replaces the category in place and keeps the rest of the content', () => {
+    const result = buildCategoryOverrideContent(content(['a', 'b']), 'b', 'y');
+    expect(ids(result)).toEqual(['a', 'y']);
+    expect(result.ok && result.value.topicIds).toEqual(['t1']);
+  });
+  it('makes the target primary when the source was primary', () => {
+    expect(ids(buildCategoryOverrideContent(content(['a', 'b']), 'a', 'y'))).toEqual(['y', 'b']);
+  });
+  it('inserts the target once when it is already on the revision', () => {
+    expect(ids(buildCategoryOverrideContent(content(['a', 'b', 'y']), 'b', 'y'))).toEqual([
+      'a',
+      'y',
+    ]);
+  });
+  it('moves an existing target to primary when the source was primary', () => {
+    expect(ids(buildCategoryOverrideContent(content(['a', 'b', 'y']), 'a', 'y'))).toEqual([
+      'y',
+      'b',
+    ]);
+  });
+  it('refuses a source that is not on the revision, and the same category', () => {
+    expect(ids(buildCategoryOverrideContent(content(['a']), 'x', 'y'))).toBe('category.unchanged');
+    expect(ids(buildCategoryOverrideContent(content(['a']), 'a', 'a'))).toBe('category.unchanged');
   });
 });
 

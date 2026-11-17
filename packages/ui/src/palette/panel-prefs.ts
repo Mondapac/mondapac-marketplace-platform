@@ -14,6 +14,7 @@ export type PrefsKind =
   | 'products-columns'
   | 'orders-columns'
   | 'shipments-columns'
+  | 'refunds-columns'
   | 'system-requests-columns'
   | 'system-requests-view'
   | 'system-requests-query';

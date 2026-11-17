@@ -10,6 +10,8 @@ import { ReviewView } from '../../../../src/certificates/review/review-view.tsx'
 import {
   API_CERTIFICATES,
   APPROVE_PERMISSION,
+  HISTORY_PERMISSION,
+  REVOKE_PERMISSION,
   REVIEW_PERMISSION,
   type ReviewPage,
 } from '../../../../src/certificates/review/types.ts';
@@ -32,10 +34,13 @@ export default async function ReviewPageRoute({
   searchParams,
 }: {
   readonly params: Promise<{ readonly certificateId: string }>;
-  readonly searchParams: Promise<{ readonly reason?: string | readonly string[] }>;
+  readonly searchParams: Promise<{
+    readonly reason?: string | readonly string[];
+    readonly revoked?: string | readonly string[];
+  }>;
 }) {
   const { certificateId } = await params;
-  const { reason } = await searchParams;
+  const { reason, revoked } = await searchParams;
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
@@ -89,6 +94,9 @@ export default async function ReviewPageRoute({
       typeName={names.get(result.body.certificate.typeCode) ?? result.body.certificate.typeCode}
       canReview
       canDecide={keys.includes(APPROVE_PERMISSION)}
+      canRevoke={keys.includes(REVOKE_PERMISSION)}
+      canHistory={keys.includes(HISTORY_PERMISSION)}
+      revoked={revoked === '1'}
       csrfToken={gate.session.csrfToken}
     />,
   );
