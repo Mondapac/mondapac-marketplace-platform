@@ -21,6 +21,12 @@ import { LISTS_AUDIT_ACTIONS } from './domain/audit';
 import { listsProviders } from './infrastructure/lists-providers';
 import { AdminColumnPreferenceController } from './presentation/column-preference.controller';
 import { AdminSavedFilterController } from './presentation/saved-filter.controller';
+import { SellerSavedFilterController } from './presentation/seller-saved-filter.controller';
+import { SellerSavedFilterCreate } from './application/use-cases/seller-saved-filter-create.use-case';
+import { SellerSavedFilterDelete } from './application/use-cases/seller-saved-filter-delete.use-case';
+import { SellerSavedFilterUpdate } from './application/use-cases/seller-saved-filter-update.use-case';
+import { SellerSavedFiltersList } from './application/use-cases/seller-saved-filters-list.use-case';
+import { SellerSavedFiltersReorder } from './application/use-cases/seller-saved-filters-reorder.use-case';
 
 const PORTS: Readonly<Record<string, InjectionToken>> = {
   unitOfWork: UNIT_OF_WORK,
@@ -73,7 +79,11 @@ function columnUseCase<D, U>(
  */
 @Module({
   imports: [IdentityModule],
-  controllers: [AdminSavedFilterController, AdminColumnPreferenceController],
+  controllers: [
+    AdminSavedFilterController,
+    SellerSavedFilterController,
+    AdminColumnPreferenceController,
+  ],
   providers: [
     PersistenceModule.auditWriterFor('lists'),
     registerAuditActions('lists', LISTS_AUDIT_ACTIONS),
@@ -106,6 +116,37 @@ function columnUseCase<D, U>(
       'audit',
     ]),
     useCaseProvider(SavedFiltersReorder, ['unitOfWork', 'store', 'registry', 'authorisation']),
+    useCaseProvider(SellerSavedFiltersList, ['unitOfWork', 'store', 'registry', 'authorisation']),
+    useCaseProvider(SellerSavedFilterCreate, [
+      'unitOfWork',
+      'store',
+      'registry',
+      'authorisation',
+      'audit',
+      'clock',
+      'ids',
+    ]),
+    useCaseProvider(SellerSavedFilterUpdate, [
+      'unitOfWork',
+      'store',
+      'registry',
+      'authorisation',
+      'audit',
+      'clock',
+    ]),
+    useCaseProvider(SellerSavedFilterDelete, [
+      'unitOfWork',
+      'store',
+      'registry',
+      'authorisation',
+      'audit',
+    ]),
+    useCaseProvider(SellerSavedFiltersReorder, [
+      'unitOfWork',
+      'store',
+      'registry',
+      'authorisation',
+    ]),
     columnUseCase(ColumnPreferenceGet, []),
     columnUseCase(ColumnPreferenceSave, ['clock', 'ids']),
     columnUseCase(ColumnPreferenceReset, []),
