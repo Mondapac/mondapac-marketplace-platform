@@ -13,6 +13,8 @@ export class OrderDocumentLineBody {
   @ApiProperty() quantity!: number;
   @ApiProperty({ type: MoneyView }) unitPrice!: MoneyView;
   @ApiProperty({ type: MoneyView }) lineAmount!: MoneyView;
+  @ApiProperty({ type: MoneyView, description: 'The discount on the line; zero without one.' })
+  discount!: MoneyView;
   @ApiProperty() taxInclusive!: boolean;
   @ApiProperty({ nullable: true, type: Number }) taxRateBps!: number | null;
   @ApiProperty({ type: MoneyView, nullable: true, description: 'Null when not recorded.' })
@@ -24,6 +26,10 @@ export class OrderDocumentPartBody {
   @ApiProperty({ type: [OrderDocumentLineBody] }) lines!: OrderDocumentLineBody[];
   @ApiProperty({ type: MoneyView }) subtotal!: MoneyView;
   @ApiProperty({ type: MoneyView }) shipping!: MoneyView;
+  @ApiProperty({ type: MoneyView, description: "The lines' discounts; zero without any." })
+  discount!: MoneyView;
+  @ApiProperty({ type: MoneyView, description: 'The delivery discount; zero without one.' })
+  shippingDiscount!: MoneyView;
   @ApiProperty({ type: MoneyView, nullable: true }) shippingTax!: MoneyView | null;
   @ApiProperty({ type: MoneyView, nullable: true }) tax!: MoneyView | null;
   @ApiProperty({ type: MoneyView }) total!: MoneyView;
@@ -62,12 +68,15 @@ export const orderDocumentBody = (document: OrderDocumentView): OrderDocumentBod
       quantity: line.quantity,
       unitPrice: moneyBody(line.unitPrice),
       lineAmount: moneyBody(line.lineAmount),
+      discount: moneyBody(line.discount),
       taxInclusive: line.taxInclusive,
       taxRateBps: line.taxRateBps,
       tax: orNull(line.tax),
     })),
     subtotal: moneyBody(part.subtotal),
     shipping: moneyBody(part.shipping),
+    discount: moneyBody(part.discount),
+    shippingDiscount: moneyBody(part.shippingDiscount),
     shippingTax: orNull(part.shippingTax),
     tax: orNull(part.tax),
     total: moneyBody(part.total),

@@ -58,6 +58,8 @@ import {
   CUSTOMERS_PERMISSIONS,
   CUSTOMERS_READ_FACADE,
   CUSTOMERS_STEP_UP_ACTIONS,
+  CUSTOMER_GROUP_USAGE_REGISTRY,
+  CustomerGroupUsageRegistry,
 } from './contracts';
 import { CUSTOMERS_AUDIT_ACTIONS } from './domain/audit';
 import { CUSTOMERS_EVENTS } from './domain/events';
@@ -73,6 +75,7 @@ import { AddressBookController } from './presentation/address-book.controller';
 import { CustomersCheckoutFacadeImplementation } from './presentation/customers-checkout.facade';
 import { AdminCustomersController } from './presentation/admin-customers.controller';
 import { CUSTOMER_LIST_READER } from './application/ports/customer-list.reader';
+import { ADMIN_DAY_ZONE } from './application/ports/admin-day-zone';
 import { SAVED_FILTER_REPOSITORY } from './application/ports/saved-filter.repository';
 import { SHEET_WRITER } from './application/ports/sheet-writer';
 import type { CustomerListDependencies } from './application/customer-list-flow';
@@ -89,6 +92,77 @@ import { AdminSavedFilterDelete } from './application/use-cases/admin-saved-filt
 import { AdminSavedFilterUpdate } from './application/use-cases/admin-saved-filter-update.use-case';
 import { AdminSavedFiltersList } from './application/use-cases/admin-saved-filters-list.use-case';
 import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
+import type { CustomerManagementDependencies } from './application/customer-management-dependencies';
+import { CUSTOMER_GROUP_REPOSITORY } from './application/ports/customer-groups.repository';
+import {
+  CUSTOMER_MANAGEMENT_PEERS,
+  type CustomerManagementPeers,
+} from './application/ports/customer-management-peers';
+import {
+  CUSTOMER_NOTE_CIPHER,
+  CUSTOMER_NOTE_REPOSITORY,
+} from './application/ports/customer-notes.repository';
+import { CUSTOMER_TIMELINE_REPOSITORY } from './application/ports/customer-timeline.repository';
+import { AdminCustomerGroupCreate } from './application/use-cases/admin-customer-group-create.use-case';
+import { AdminCustomerGroupMembersAdd } from './application/use-cases/admin-customer-group-members-add.use-case';
+import { AdminCustomerGroupMembersRemove } from './application/use-cases/admin-customer-group-members-remove.use-case';
+import { AdminCustomerGroupUpdate } from './application/use-cases/admin-customer-group-update.use-case';
+import { AdminCustomerGroupView } from './application/use-cases/admin-customer-group-view.use-case';
+import { AdminCustomerGroupsList } from './application/use-cases/admin-customer-groups-list.use-case';
+import { AdminCustomerNoteAdd } from './application/use-cases/admin-customer-note-add.use-case';
+import { AdminCustomerAddressReveal } from './application/use-cases/admin-customer-address-reveal.use-case';
+import { AdminCustomerPasswordReset } from './application/use-cases/admin-customer-password-reset.use-case';
+import { AdminCustomerSessions } from './application/use-cases/admin-customer-sessions.use-case';
+import { AdminCustomerSignInReveal } from './application/use-cases/admin-customer-sign-in-reveal.use-case';
+import { AdminCustomerSignInsExport } from './application/use-cases/admin-customer-sign-ins-export.use-case';
+import { AdminCustomerSignIns } from './application/use-cases/admin-customer-sign-ins.use-case';
+import { AdminCustomerSignOut } from './application/use-cases/admin-customer-sign-out.use-case';
+import { AdminCustomerCartSection } from './application/use-cases/admin-customer-cart.use-case';
+import { AdminCustomerSavedItemsSection } from './application/use-cases/admin-customer-saved-items.use-case';
+import { AdminCustomerSavedItemsSectionExport } from './application/use-cases/admin-customer-saved-items-export.use-case';
+import { AdminCustomerCartRemindersSection } from './application/use-cases/admin-customer-cart-reminders.use-case';
+import { AdminCustomerCartRemindersSectionExport } from './application/use-cases/admin-customer-cart-reminders-export.use-case';
+import { AdminCustomerCartAdditionsSection } from './application/use-cases/admin-customer-cart-additions.use-case';
+import { AdminCustomerCartAdditionsSectionExport } from './application/use-cases/admin-customer-cart-additions-export.use-case';
+import { AdminCustomerBehaviourSection } from './application/use-cases/admin-customer-behaviour.use-case';
+import { AdminCustomerConsentSection } from './application/use-cases/admin-customer-consent.use-case';
+import { AdminCustomerConsentHistorySection } from './application/use-cases/admin-customer-consent-history.use-case';
+import { AdminCustomerConsentHistorySectionExport } from './application/use-cases/admin-customer-consent-history-export.use-case';
+import { AdminCustomerAssistantConversationsSection } from './application/use-cases/admin-customer-assistant-conversations.use-case';
+import { AdminCustomerAssistantConversationsSectionExport } from './application/use-cases/admin-customer-assistant-conversations-export.use-case';
+import type { CustomerSectionDependencies } from './application/customer-section-lists';
+import { CUSTOMER_SECTION_PEERS } from './application/ports/customer-section-peers';
+import { LateBoundSectionPeers } from './infrastructure/late-bound-section-peers';
+import { AdminCustomerActivityController } from './presentation/admin-customer-activity.controller';
+import { AdminCustomerSectionsController } from './presentation/admin-customer-sections.controller';
+import { AdminCustomerAddresses } from './application/use-cases/admin-customer-addresses.use-case';
+import { AdminCustomerNotesList } from './application/use-cases/admin-customer-notes-list.use-case';
+import { AdminCustomerRename } from './application/use-cases/admin-customer-rename.use-case';
+import { AdminCustomerTimelineExport } from './application/use-cases/admin-customer-timeline-export.use-case';
+import { AdminCustomerTimeline } from './application/use-cases/admin-customer-timeline.use-case';
+import {
+  RecordCustomerTimeline,
+  type TimelineRecordDependencies,
+} from './application/use-cases/record-customer-timeline.use-case';
+import { ReadCustomerGroupMembership } from './application/use-cases/read-customer-group-membership.use-case';
+import { AdminCustomerManagementController } from './presentation/admin-customer-management.controller';
+import type { SellerCustomerDependencies } from './application/seller-customers-flow';
+import {
+  CUSTOMER_CODES,
+  SELLER_CUSTOMER_REPOSITORY,
+  TREND_ZONES,
+} from './application/ports/seller-customers.repository';
+import { AdminSellerCustomersList } from './application/use-cases/admin-seller-customers-list.use-case';
+import { AdminSellerCustomersSummary } from './application/use-cases/admin-seller-customers-summary.use-case';
+import { ReconcileSellerCustomers } from './application/use-cases/reconcile-seller-customers.use-case';
+import { SellerCustomerDetail } from './application/use-cases/seller-customer-detail.use-case';
+import { SellerOrderCustomers } from './application/use-cases/seller-order-customers.use-case';
+import { SellerCustomersCodes } from './application/use-cases/seller-customers-codes.use-case';
+import { SellerCustomersExport } from './application/use-cases/seller-customers-export.use-case';
+import { SellerCustomersList } from './application/use-cases/seller-customers-list.use-case';
+import { SyncSellerCustomers } from './application/use-cases/sync-seller-customers.use-case';
+import { AdminSellerCustomersController } from './presentation/admin-seller-customers.controller';
+import { SellerCustomersController } from './presentation/seller-customers.controller';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: CustomersDependencies) => U;
 
@@ -163,19 +237,63 @@ function readModelUseCaseProvider<U>(type: ReadModelUseCaseClass<U>): FactoryPro
   };
 }
 
+type SellerCustomerUseCaseClass<U> = new (gate: UseCaseGate, deps: SellerCustomerDependencies) => U;
+
+const SELLER_CUSTOMER_PORTS: readonly [
+  Exclude<keyof SellerCustomerDependencies, 'identity' | 'ordering' | 'engagement'>,
+  InjectionToken,
+][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['sellerCustomers', SELLER_CUSTOMER_REPOSITORY],
+  ['codes', CUSTOMER_CODES],
+  ['readModels', CUSTOMER_READ_MODEL_REPOSITORY],
+  ['clock', CLOCK],
+  ['audit', AUDIT_WRITER],
+  ['sheetWriter', SHEET_WRITER],
+  ['zones', TREND_ZONES],
+];
+
+/** The per-seller customers use cases (phase 3): their ports, plus the peers bound at start. */
+function sellerCustomerUseCaseProvider<U>(type: SellerCustomerUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      CUSTOMER_READ_MODEL_PEERS,
+      ...SELLER_CUSTOMER_PORTS.map(([, token]) => token),
+    ],
+    useFactory: (gate: UseCaseGate, peers: CustomerReadModelPeers, ...values: unknown[]) =>
+      new type(gate, {
+        ...Object.fromEntries(SELLER_CUSTOMER_PORTS.map(([name], index) => [name, values[index]])),
+        identity: peers.identity,
+        ordering: peers.ordering,
+        engagement: peers.engagement,
+      } as unknown as SellerCustomerDependencies),
+  };
+}
+
 type ListUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerListDependencies) => U;
 
 /** The Customers list reads: the unit of work, the list reader and the clock. */
 function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
-    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_LIST_READER, CLOCK],
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      CUSTOMER_LIST_READER,
+      CLOCK,
+      ADMIN_DAY_ZONE,
+      CUSTOMER_MANAGEMENT_PEERS,
+    ],
     useFactory: (
       gate: UseCaseGate,
       unitOfWork: CustomerListDependencies['unitOfWork'],
       listReader: CustomerListDependencies['listReader'],
       clock: CustomerListDependencies['clock'],
-    ) => new type(gate, { unitOfWork, listReader, clock }),
+      dayZone: CustomerListDependencies['dayZone'],
+      peers: CustomerManagementPeers,
+    ) => new type(gate, { unitOfWork, listReader, clock, dayZone, orders: peers.ordering }),
   };
 }
 
@@ -185,14 +303,41 @@ type PageUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerPageDependencie
 function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
-    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_LIST_READER, CLOCK, AUDIT_WRITER],
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      CUSTOMER_LIST_READER,
+      CLOCK,
+      AUDIT_WRITER,
+      CUSTOMER_TIMELINE_REPOSITORY,
+      ID_GENERATOR,
+      ADMIN_DAY_ZONE,
+      ACCOUNT_DELETION_REQUEST_REPOSITORY,
+      CUSTOMER_MANAGEMENT_PEERS,
+    ],
     useFactory: (
       gate: UseCaseGate,
       unitOfWork: CustomerPageDependencies['unitOfWork'],
       listReader: CustomerPageDependencies['listReader'],
       clock: CustomerPageDependencies['clock'],
       audit: CustomerPageDependencies['audit'],
-    ) => new type(gate, { unitOfWork, listReader, clock, audit }),
+      timeline: CustomerPageDependencies['timeline'],
+      ids: CustomerPageDependencies['ids'],
+      dayZone: CustomerPageDependencies['dayZone'],
+      deletions: CustomerPageDependencies['deletions'],
+      peers: CustomerManagementPeers,
+    ) =>
+      new type(gate, {
+        unitOfWork,
+        listReader,
+        clock,
+        audit,
+        timeline,
+        ids,
+        dayZone,
+        deletions,
+        orders: peers.ordering,
+      }),
   };
 }
 
@@ -220,6 +365,75 @@ function savedViewProvider<U>(type: SavedViewUseCaseClass<U>): FactoryProvider<U
       ids: SavedViewDependencies['ids'],
       shareCheck: SavedFilterShareCheck,
     ) => new type(gate, { unitOfWork, savedFilters, audit, clock, ids, shareCheck }),
+  };
+}
+
+type ManagementUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerManagementDependencies) => U;
+
+const MANAGEMENT_PORTS: readonly [
+  Exclude<keyof CustomerManagementDependencies, 'identity'>,
+  InjectionToken,
+][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['groups', CUSTOMER_GROUP_REPOSITORY],
+  ['notes', CUSTOMER_NOTE_REPOSITORY],
+  ['noteCipher', CUSTOMER_NOTE_CIPHER],
+  ['timeline', CUSTOMER_TIMELINE_REPOSITORY],
+  ['listReader', CUSTOMER_LIST_READER],
+  ['audit', AUDIT_WRITER],
+  ['clock', CLOCK],
+  ['ids', ID_GENERATOR],
+  ['stepUp', STEP_UP_CONSUMER],
+  ['sheetWriter', SHEET_WRITER],
+  ['dayZone', ADMIN_DAY_ZONE],
+  ['addresses', ADDRESS_REPOSITORY],
+  ['addressCipher', ADDRESS_CIPHER],
+  ['groupUsage', CUSTOMER_GROUP_USAGE_REGISTRY],
+];
+
+/** The admin's management of customers (phase 2): its ports, plus identity bound at start. */
+function managementUseCaseProvider<U>(type: ManagementUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      CUSTOMER_MANAGEMENT_PEERS,
+      ...MANAGEMENT_PORTS.map(([, token]) => token),
+    ],
+    useFactory: (gate: UseCaseGate, peers: CustomerManagementPeers, ...values: unknown[]) =>
+      new type(gate, {
+        ...Object.fromEntries(MANAGEMENT_PORTS.map(([name], index) => [name, values[index]])),
+        identity: peers.identity,
+      } as unknown as CustomerManagementDependencies),
+  };
+}
+
+type SectionUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerSectionDependencies) => U;
+
+const SECTION_PORTS: readonly [
+  Exclude<keyof CustomerSectionDependencies, 'peers'>,
+  InjectionToken,
+][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['listReader', CUSTOMER_LIST_READER],
+  ['timeline', CUSTOMER_TIMELINE_REPOSITORY],
+  ['audit', AUDIT_WRITER],
+  ['stepUp', STEP_UP_CONSUMER],
+  ['sheetWriter', SHEET_WRITER],
+  ['clock', CLOCK],
+  ['ids', ID_GENERATOR],
+];
+
+/** The customer page's sections other modules own (phase 2b): its ports, plus the owners bound at start. */
+function sectionUseCaseProvider<U>(type: SectionUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, CUSTOMER_SECTION_PEERS, ...SECTION_PORTS.map(([, token]) => token)],
+    useFactory: (gate: UseCaseGate, peers: LateBoundSectionPeers, ...values: unknown[]) =>
+      new type(gate, {
+        ...Object.fromEntries(SECTION_PORTS.map(([name], index) => [name, values[index]])),
+        peers,
+      } as unknown as CustomerSectionDependencies),
   };
 }
 
@@ -257,8 +471,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminAccountDeletionSettingsController,
     AdminAccountDeletionRequestsController,
     AdminCustomersController,
+    AdminCustomerManagementController,
+    AdminCustomerSectionsController,
+    AdminCustomerActivityController,
+    SellerCustomersController,
+    AdminSellerCustomersController,
   ],
   providers: [
+    {
+      provide: CUSTOMER_GROUP_USAGE_REGISTRY,
+      // A factory, not a value: each application (and each test app) gets its own registry.
+      useFactory: () => new CustomerGroupUsageRegistry(),
+    },
     PersistenceModule.auditWriterFor('customers'),
     PersistenceModule.outboxWriterFor('customers'),
     registerAuditActions('customers', CUSTOMERS_AUDIT_ACTIONS),
@@ -292,9 +516,94 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ReadCustomerLastOrder,
       ReadOwnLastOrder,
     ].map((type) => readModelUseCaseProvider(type as ReadModelUseCaseClass<unknown>)),
+    ...[
+      SyncSellerCustomers,
+      ReconcileSellerCustomers,
+      SellerCustomersList,
+      SellerCustomersCodes,
+      SellerCustomersExport,
+      SellerCustomerDetail,
+      SellerOrderCustomers,
+      AdminSellerCustomersList,
+      AdminSellerCustomersSummary,
+    ].map((type) => sellerCustomerUseCaseProvider(type as SellerCustomerUseCaseClass<unknown>)),
     ...[AdminCustomerOverview, AdminCustomerTabOpened].map((type) =>
       pageUseCaseProvider(type as PageUseCaseClass<unknown>),
     ),
+    ...[
+      AdminCustomerGroupsList,
+      AdminCustomerGroupView,
+      AdminCustomerGroupCreate,
+      AdminCustomerGroupUpdate,
+      AdminCustomerGroupMembersAdd,
+      AdminCustomerGroupMembersRemove,
+      AdminCustomerNotesList,
+      AdminCustomerNoteAdd,
+      AdminCustomerTimeline,
+      AdminCustomerTimelineExport,
+      AdminCustomerRename,
+      AdminCustomerAddresses,
+      AdminCustomerAddressReveal,
+    ].map((type) => managementUseCaseProvider(type as ManagementUseCaseClass<unknown>)),
+    // Phase 2b: the sections other modules own, bound to them by CustomersSectionsModule.
+    { provide: CUSTOMER_SECTION_PEERS, useFactory: () => new LateBoundSectionPeers() },
+    ...[
+      AdminCustomerSignIns,
+      AdminCustomerSignInsExport,
+      AdminCustomerSignInReveal,
+      AdminCustomerSessions,
+      AdminCustomerSignOut,
+      AdminCustomerPasswordReset,
+      AdminCustomerCartSection,
+      AdminCustomerSavedItemsSection,
+      AdminCustomerSavedItemsSectionExport,
+      AdminCustomerCartRemindersSection,
+      AdminCustomerCartRemindersSectionExport,
+      AdminCustomerCartAdditionsSection,
+      AdminCustomerCartAdditionsSectionExport,
+      AdminCustomerBehaviourSection,
+      AdminCustomerConsentSection,
+      AdminCustomerConsentHistorySection,
+      AdminCustomerConsentHistorySectionExport,
+      AdminCustomerAssistantConversationsSection,
+      AdminCustomerAssistantConversationsSectionExport,
+    ].map((type) => sectionUseCaseProvider(type as SectionUseCaseClass<unknown>)),
+    {
+      provide: RecordCustomerTimeline,
+      inject: [
+        USE_CASE_GATE,
+        CUSTOMER_READ_MODEL_PEERS,
+        UNIT_OF_WORK,
+        CUSTOMER_TIMELINE_REPOSITORY,
+        ID_GENERATOR,
+        CLOCK,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        peers: CustomerReadModelPeers,
+        unitOfWork: TimelineRecordDependencies['unitOfWork'],
+        timeline: TimelineRecordDependencies['timeline'],
+        ids: TimelineRecordDependencies['ids'],
+        clock: TimelineRecordDependencies['clock'],
+      ) =>
+        new RecordCustomerTimeline(gate, {
+          identity: peers.identity,
+          ordering: peers.ordering,
+          unitOfWork,
+          timeline,
+          ids,
+          clock,
+        }),
+    },
+    {
+      provide: ReadCustomerGroupMembership,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_GROUP_REPOSITORY],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: CustomerManagementDependencies['unitOfWork'],
+        groups: CustomerManagementDependencies['groups'],
+      ) => new ReadCustomerGroupMembership(gate, { unitOfWork, groups }),
+    },
     ...[AdminCustomersList, AdminCustomersIds].map((type) =>
       listUseCaseProvider(type as ListUseCaseClass<unknown>),
     ),
@@ -308,6 +617,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         AUDIT_WRITER,
         STEP_UP_CONSUMER,
         CLOCK,
+        ADMIN_DAY_ZONE,
       ],
       useFactory: (
         gate: UseCaseGate,
@@ -317,6 +627,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         audit: AdminCustomersExportDependencies['audit'],
         stepUp: AdminCustomersExportDependencies['stepUp'],
         clock: AdminCustomersExportDependencies['clock'],
+        dayZone: AdminCustomersExportDependencies['dayZone'],
       ) =>
         new AdminCustomersExport(gate, {
           unitOfWork,
@@ -325,6 +636,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           audit,
           stepUp,
           clock,
+          dayZone,
         }),
     },
     {
@@ -340,9 +652,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => savedViewProvider(type as SavedViewUseCaseClass<unknown>)),
     {
       provide: CUSTOMERS_READ_FACADE,
-      inject: [ReadCustomerLastOrder, ReadOwnLastOrder],
-      useFactory: (read: ReadCustomerLastOrder, own: ReadOwnLastOrder) =>
-        new CustomersReadFacadeImplementation(read, own),
+      inject: [
+        ReadCustomerLastOrder,
+        ReadOwnLastOrder,
+        ReadCustomerGroupMembership,
+        SellerOrderCustomers,
+      ],
+      useFactory: (
+        read: ReadCustomerLastOrder,
+        own: ReadOwnLastOrder,
+        membership: ReadCustomerGroupMembership,
+        orderCustomers: SellerOrderCustomers,
+      ) => new CustomersReadFacadeImplementation(read, own, membership, orderCustomers),
     },
     {
       provide: CUSTOMERS_ACCOUNT_DELETION_FACADE,
@@ -367,6 +688,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     CUSTOMER_READ_MODEL_PEERS,
     SyncCustomerReadModel,
     ReconcileCustomerReadModels,
+    CUSTOMER_MANAGEMENT_PEERS,
+    RecordCustomerTimeline,
+    CUSTOMER_GROUP_USAGE_REGISTRY,
+    CUSTOMER_SECTION_PEERS,
+    SyncSellerCustomers,
+    ReconcileSellerCustomers,
   ],
 })
 export class CustomersModule {}

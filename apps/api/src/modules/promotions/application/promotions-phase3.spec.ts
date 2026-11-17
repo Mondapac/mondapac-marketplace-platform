@@ -1,3 +1,7 @@
+import { QuoteOwnDiscounts } from './use-cases/quote-own-discounts.use-case';
+import { RedeemOwnDiscounts } from './use-cases/redeem-own-discounts.use-case';
+import { ListStaleRedemptions } from './use-cases/list-stale-redemptions.use-case';
+import { SettleRedemptions } from './use-cases/settle-redemptions.use-case';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -44,13 +48,18 @@ import { CreateOwnPromotion } from './use-cases/create-own-promotion.use-case';
 import { CreatePromotion } from './use-cases/create-promotion.use-case';
 import { EditPromotion } from './use-cases/edit-promotion.use-case';
 import { ListCustomerPromotionCredits } from './use-cases/list-customer-promotion-credits.use-case';
+import { ListCustomerPromotionUsages } from './use-cases/list-customer-promotion-usages.use-case';
+import type { RedemptionRecord } from '../domain/redemption';
 import { ListPromotionCredits } from './use-cases/list-promotion-credits.use-case';
 import { PreviewQuote } from './use-cases/preview-quote.use-case';
 import { QualifyReferralOnDelivery } from './use-cases/qualify-referral-on-delivery.use-case';
 import { QuoteDiscounts } from './use-cases/quote-discounts.use-case';
+import { RedeemDiscounts } from './use-cases/redeem-discounts.use-case';
 import { SetPromotionBudget } from './use-cases/set-promotion-budget.use-case';
 import { SetPromotionsStatus } from './use-cases/set-promotions-status.use-case';
 import { ViewMyReferral } from './use-cases/view-my-referral.use-case';
+import { ViewStoreFollowGift } from './use-cases/view-store-follow-gift.use-case';
+import type { PromotionRecord } from '../domain/promotion';
 
 // The phase 3 types through the use cases, in memory, on both Market fixtures (AU: platform money
 // in test mode, GST ruling open; ZZ: ruling confirmed, other limits and alphabet): who may make
@@ -154,7 +163,15 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
   const make = <U>(type: new (g: typeof gate, d: PromotionsDependencies) => U): U =>
     new type(gate, deps);
   const facade = () =>
-    new PromotionsFacadeImplementation(make(QuoteDiscounts), make(CheckWasPrice));
+    new PromotionsFacadeImplementation(
+      make(QuoteDiscounts),
+      make(RedeemDiscounts),
+      make(CheckWasPrice),
+      make(QuoteOwnDiscounts),
+      make(RedeemOwnDiscounts),
+      make(ListStaleRedemptions),
+      make(SettleRedemptions),
+    );
 
   beforeEach(async () => {
     rulingInForce = rulingConfirmed;
@@ -515,6 +532,85 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       expect(real.totals.goodsDiscount).toBe(rulingConfirmed ? 1000n : 0n);
     });
 
+    describe('manual group segment (customers phase 2)', () => {
+      const GROUP = '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b';
+      const manual = () =>
+        group({
+          segment: { kind: 'MANUAL_GROUP', groupId: GROUP },
+          reward: { kind: 'PERCENT', bps: 500 },
+        });
+
+      it('applies to a customer in the group, and asks once per group', async () => {
+        await adminCreate(manual());
+        p3.groupMembership.members.set(GROUP, new Set([REFERRER]));
+        expect((await quote(cart())).totals.goodsDiscount).toBe(500n);
+        expect(p3.groupMembership.reads).toBe(1);
+        expect(p3.orderHistory.reads).toBe(0);
+      });
+
+      it('is not offered to a non-member, when the read fails or throws, or with no customer', async () => {
+        await adminCreate(manual());
+        expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+        p3.groupMembership.members.set(GROUP, new Set([REFERRER]));
+        p3.groupMembership.broken = true;
+        expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+        p3.groupMembership.broken = false;
+        p3.groupMembership.throws = true;
+        expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+        p3.groupMembership.throws = false;
+        expect(
+          (await quote(request([line(1, 10000n, 1)], { customerAccountId: null }))).totals
+            .goodsDiscount,
+        ).toBe(0n);
+      });
+
+      it('needs a well-formed group id, and takes no days or zones', async () => {
+        expect(
+          fields(
+            await make(CreatePromotion).execute(
+              admin(),
+              group({ segment: { kind: 'MANUAL_GROUP' } }),
+            ),
+          ),
+        ).toContain('segment.groupId:required');
+        expect(
+          fields(
+            await make(CreatePromotion).execute(
+              admin(),
+              group({ segment: { kind: 'MANUAL_GROUP', groupId: 'nope' } }),
+            ),
+          ),
+        ).toContain('segment.groupId:format');
+        expect(
+          fields(
+            await make(CreatePromotion).execute(
+              admin(),
+              group({
+                segment: { kind: 'MANUAL_GROUP', groupId: GROUP, minDaysSinceLastOrder: 30 },
+              }),
+            ),
+          ),
+        ).toContain('segment.minDaysSinceLastOrder:not-allowed');
+        expect(
+          fields(
+            await make(CreatePromotion).execute(
+              admin(),
+              group({ segment: { kind: 'RETURNING_CUSTOMER', groupId: GROUP } }),
+            ),
+          ),
+        ).toContain('segment.groupId:not-allowed');
+      });
+
+      it('shows the group id on the promotion', async () => {
+        const made = await adminCreate(manual());
+        expect(made.segment).toEqual({
+          kind: 'MANUAL_GROUP',
+          minDaysSinceLastOrder: null,
+          groupId: GROUP,
+        });
+      });
+    });
+
     it('lets an admin preview a stated customer without reading any module', async () => {
       await adminCreate(group());
       const result = await make(PreviewQuote).execute(admin(), {
@@ -570,6 +666,60 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       p3.storeFollows.throws = false;
       p3.storeFollows.broken = true;
       expect((await quote(request([line(1, 10000n, 1)]))).totals.goodsDiscount).toBe(0n);
+    });
+  });
+
+  describe('the Follow gift (store page)', () => {
+    const anonymous = () => testCallContext(market, 'anonymous', 'promo3-anon-abcdef');
+    const gifts = (sellerId: string, context: CallContext = anonymous()) =>
+      make(ViewStoreFollowGift).execute(context, { sellerId });
+    const edit = (promotionId: string, over: Partial<PromotionRecord>) => {
+      const record = promotions.records.get(promotionId as Id<'Promotion'>)!;
+      promotions.records.set(record.id, { ...record, ...over });
+    };
+
+    it("lists the store's live follower offers, anonymously, and no other store's", async () => {
+      const made = await sellerCreate(follower());
+      const answer = await gifts(SELLER);
+      expect(answer).toEqual({
+        ok: true,
+        value: {
+          gifts: [
+            {
+              promotionId: made.id,
+              name: 'For followers',
+              reward: { kind: 'PERCENT', bps: 1000 },
+              currency,
+              minSpendMinor: null,
+              endsAt: null,
+            },
+          ],
+        },
+      });
+      expect(await gifts(SELLER_2)).toEqual({ ok: true, value: { gifts: [] } });
+    });
+
+    it('leaves out test-mode, coded, paused and ended offers', async () => {
+      for (const over of [
+        { testMode: true },
+        { code: 'FOLLOW10' },
+        { status: 'PAUSED' as const },
+        { endsAt: T0.subtract({ hours: 1 }) },
+      ]) {
+        const made = await sellerCreate(follower());
+        edit(made.id, over);
+      }
+      expect(await gifts(SELLER)).toEqual({ ok: true, value: { gifts: [] } });
+    });
+
+    it('answers no gift with promotions off, and refuses a bad store id', async () => {
+      await sellerCreate(follower());
+      await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
+      expect(await gifts(SELLER)).toEqual({ ok: true, value: { gifts: [] } });
+      expect(await gifts('not-a-store')).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
     });
   });
 
@@ -1671,6 +1821,126 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           customerAccountId: REFERRER,
         }),
       ).toMatchObject({ ok: false });
+    });
+
+    it("lists the promotions one customer's orders used, newest first and in pages, never an order's head row (phase 2b, item e)", async () => {
+      const made = await adminCreate(group());
+      p3.redemptions.names.set(made.id, 'Welcome back');
+      const row = (
+        n: number,
+        over: Partial<RedemptionRecord> & Pick<RedemptionRecord, 'customerAccountId'>,
+      ): RedemptionRecord => ({
+        id: id<'Redemption'>(0x900 + n),
+        orderId: id<'Order'>(0x800 + n),
+        promotionKey: made.id,
+        promotionId: made.id,
+        kind: 'PROMOTION',
+        codeHash: null,
+        currency,
+        amount: BigInt(n * 100),
+        sellerShare: 0n,
+        platformShare: BigInt(n * 100),
+        units: null,
+        budgetMonth: null,
+        status: 'CONFIRMED',
+        releaseReason: null,
+        reservedAt: T0.add({ hours: n }),
+        confirmedAt: T0.add({ hours: n + 1 }),
+        releasedAt: null,
+        ...over,
+      });
+      await p3.redemptions.insertMany(market, [
+        row(1, { customerAccountId: REFERRER }),
+        row(2, {
+          customerAccountId: REFERRER,
+          promotionKey: 'first-order',
+          promotionId: null,
+          kind: 'FIRST_ORDER',
+          status: 'RESERVED',
+          confirmedAt: null,
+          codeHash: 'h',
+        }),
+        row(3, {
+          customerAccountId: REFERRER,
+          status: 'RELEASED',
+          releaseReason: 'ORDER_CANCELLED',
+          releasedAt: T0.add({ hours: 5 }),
+        }),
+        // An order's head row and another customer's row are never listed.
+        row(4, {
+          customerAccountId: REFERRER,
+          promotionKey: 'order',
+          promotionId: null,
+          kind: 'ORDER',
+        }),
+        row(5, { customerAccountId: NEWBIE }),
+      ]);
+      expect(ListCustomerPromotionUsages.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: ['promotions.promotion.view', 'customers.customers.view'],
+      });
+      const page = await make(ListCustomerPromotionUsages).execute(admin(), {
+        customerAccountId: REFERRER,
+        limit: 2,
+      });
+      if (!page.ok) throw new Error('list failed');
+      expect(
+        page.value.items.map((u) => [u.record.amount, u.record.status, u.promotionName]),
+      ).toEqual([
+        [300n, 'RELEASED', 'Welcome back'],
+        [200n, 'RESERVED', null],
+      ]);
+      expect(page.value.items.every((u) => u.record.currency === currency)).toBe(true);
+      const rest = await make(ListCustomerPromotionUsages).execute(admin(), {
+        customerAccountId: REFERRER,
+        limit: 2,
+        cursor: page.value.nextCursor!,
+      });
+      expect(rest.ok && rest.value.items.map((u) => u.record.amount)).toEqual([100n]);
+      expect(rest.ok && rest.value.nextCursor).toBeNull();
+      const nobody = await make(ListCustomerPromotionUsages).execute(admin(), {
+        customerAccountId: NEWBIE_2,
+      });
+      expect(nobody.ok && nobody.value.items).toEqual([]);
+      expect(
+        fields(
+          await make(ListCustomerPromotionUsages).execute(admin(), {
+            customerAccountId: 'x',
+            limit: 101,
+            cursor: 'not-a-cursor!',
+          }),
+        ),
+      ).toEqual(['customerAccountId:value', 'limit:value', 'cursor:value']);
+      // Reads work while promotions are switched off; the acting-as session is refused.
+      expect((await make(SetPromotionsStatus).execute(admin(), { status: 'off' })).ok).toBe(true);
+      const off = await make(ListCustomerPromotionUsages).execute(admin(), {
+        customerAccountId: REFERRER,
+      });
+      expect(off.ok && off.value.items).toHaveLength(3);
+      expect(
+        await make(ListCustomerPromotionUsages).execute(actingAs(admin()), {
+          customerAccountId: REFERRER,
+        }),
+      ).toMatchObject({ ok: false });
+      expect(
+        await make(ListCustomerPromotionUsages).execute(seller(), {
+          customerAccountId: REFERRER,
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      // An admin without the customers view key (or the promotions view key) is refused.
+      const asked: unknown[] = [];
+      gate = createUseCaseGate(markets, {
+        check: (_context, declaration): Promise<AccessDecision> => {
+          asked.push(declaration.rule);
+          return Promise.resolve({ allowed: false, denial: { code: 'access.denied' } });
+        },
+      });
+      expect(
+        await make(ListCustomerPromotionUsages).execute(admin(), {
+          customerAccountId: REFERRER,
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      expect(asked).toEqual([ListCustomerPromotionUsages.access.rule]);
     });
   });
 });

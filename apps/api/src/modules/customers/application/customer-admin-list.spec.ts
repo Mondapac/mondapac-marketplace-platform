@@ -18,7 +18,9 @@ import { MAX_SAVED_FILTERS_PER_OWNER, MAX_SHARED_SAVED_FILTERS } from '../domain
 import type { CustomerListRow } from '../domain/customer-list';
 import type { CustomerListDependencies } from './customer-list-flow';
 import type { SheetWriter } from './ports/sheet-writer';
+import { ActorOrMarketDayZone } from '../infrastructure/actor-or-market-day-zone';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
+import { InMemoryCustomerTimeline } from './testing/in-memory-customer-management';
 import { MemorySavedFilters } from './testing/memory-saved-filters';
 import { AdminCustomerOverview } from './use-cases/admin-customer-overview.use-case';
 import { AdminCustomerTabOpened } from './use-cases/admin-customer-tab-opened.use-case';
@@ -66,6 +68,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
 
   const row = (overrides: Partial<CustomerListRow> & { email: string }): CustomerListRow => ({
     accountId: ids.next<'Account'>(),
+    groups: [],
     displayName: null,
     status: 'active',
     emailVerified: true,
@@ -128,8 +131,34 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       },
     };
     const savedFilters = new MemorySavedFilters();
-    const listDeps: CustomerListDependencies = { unitOfWork, listReader, clock };
-    const pageDeps = { ...listDeps, audit };
+    // The admin's own zone, when the test sets one; otherwise the Market's (ADR-0005).
+    const ownZone = { value: null as string | null };
+    const dayZone = new ActorOrMarketDayZone(markets, {
+      describeActor: () => Promise.resolve(ok({ timezone: ownZone.value })),
+    });
+    // Orders by id, per Market, and whether the admin holds ordering's key (phase 2b search).
+    const placed = new Map<string, Id<'Account'>>();
+    const orderKey = { held: true };
+    const orders = {
+      adminOrderAccountOf: (context: CallContext, orderId: string) => {
+        if (!orderKey.held) return Promise.resolve(err({ code: 'access.denied' }));
+        const found = placed.get(`${context.market.marketId}:${orderId}`);
+        return Promise.resolve(
+          found === undefined
+            ? err({ code: 'ordering.order-not-found' })
+            : ok({ accountId: found }),
+        );
+      },
+    };
+    const listDeps: CustomerListDependencies = { unitOfWork, listReader, clock, dayZone, orders };
+    const timeline = new InMemoryCustomerTimeline(listReader);
+    // Completed deletions (the erasure ran), by Market and account: the tombstone's source.
+    const erased = new Map<string, Temporal.Instant>();
+    const deletions = {
+      completedAt: (inMarket: MarketContext, accountId: Id<'Account'>) =>
+        Promise.resolve(erased.get(`${inMarket.marketId}:${accountId}`) ?? null),
+    };
+    const pageDeps = { ...listDeps, audit, timeline, ids, deletions };
     const filterDeps = {
       unitOfWork,
       savedFilters,
@@ -155,7 +184,12 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
         audit,
         stepUp: consumer,
         clock,
+        dayZone,
       }),
+      ownZone,
+      erased,
+      placed,
+      orderKey,
       filters: {
         list: new AdminSavedFiltersList(gate, filterDeps),
         create: new AdminSavedFilterCreate(gate, filterDeps),
@@ -286,6 +320,29 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       expect(t.audits).toHaveLength(0);
     });
 
+    it('answers a tombstone (id and when) for an erased customer, audited, and not for another Market’s', async () => {
+      const t = seeded();
+      const admin = t.as(person([VIEW]));
+      const gone = ids.next<'Account'>();
+      t.erased.set(`${market.marketId}:${gone}`, day(3));
+      const result = await t.overview.execute(admin, { accountId: gone });
+      expect(result.ok && result.value).toEqual({
+        accountId: gone,
+        status: 'deleted',
+        deletedAt: day(3).toString(),
+      });
+      expect(t.audits.map((entry) => entry.action)).toEqual(['customers.customer-page.opened']);
+      const elsewhere = ids.next<'Account'>();
+      t.erased.set(`${otherMarket.marketId}:${elsewhere}`, day(3));
+      expect(failure(await t.overview.execute(admin, { accountId: elsewhere }))).toBe(
+        'customers.customer-not-found',
+      );
+      // Without the view key the gate refuses before any read.
+      expect(failure(await t.overview.execute(t.as(person([])), { accountId: gone }))).toBe(
+        'access.denied',
+      );
+    });
+
     it('refuses an unknown body key', async () => {
       const t = seeded();
       const accountId = pick(t, 'bilal@example.test');
@@ -354,6 +411,84 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       expect(await q({ filters: { status: 'active' }, sort: 'orders', direction: 'desc' })).toEqual(
         ['bilal@example.test', 'amina@example.test', '=cmd@example.test'],
       );
+    });
+
+    it('reads the joined and last-order days in the Market’s zone, or in the admin’s own', async () => {
+      const t = setup();
+      // 14:30Z is already the next day in Brisbane (UTC+10) but not yet in Tokyo (UTC+9).
+      const at = Temporal.Instant.from('2026-11-01T14:30:00Z');
+      t.listReader.add(
+        market,
+        row({ email: 'edge@example.test', signedUpAt: at, lastOrderAt: at }),
+      );
+      const zone = markets.get(market.marketId).timezone;
+      const local = at.toZonedDateTimeISO(zone).toPlainDate();
+      const ctx = t.as(person([VIEW]));
+      const q = async (filters: object) => emails(await t.list.execute(ctx, { filters }));
+      const day = (date: Temporal.PlainDate) => date.toString();
+      expect(local.toString()).toBe(code === 'AU' ? '2026-11-02' : '2026-11-01');
+      expect(await q({ joinedFrom: day(local), joinedTo: day(local) })).toEqual([
+        'edge@example.test',
+      ]);
+      const next = local.add({ days: 1 });
+      expect(await q({ joinedFrom: day(next), joinedTo: day(next) })).toEqual([]);
+      expect(await q({ lastOrderFrom: day(local), lastOrderTo: day(local) })).toEqual([
+        'edge@example.test',
+      ]);
+      expect(await q({ lastOrderTo: day(local.subtract({ days: 1 })) })).toEqual([]);
+      // An admin who chose UTC reads the UTC day.
+      t.ownZone.value = 'UTC';
+      expect(await q({ joinedFrom: '2026-11-01', joinedTo: '2026-11-01' })).toEqual([
+        'edge@example.test',
+      ]);
+      expect(await q({ joinedFrom: '2026-11-02', joinedTo: '2026-11-02' })).toEqual([]);
+    });
+
+    it('narrows to the customer who placed an order number, under ordering’s key (phase 2b)', async () => {
+      const t = seeded();
+      const ctx = t.as(person([VIEW]));
+      const bilal = t.listReader.rowsOf
+        .get(market.marketId)!
+        .find((r) => r.email.startsWith('bilal'))!;
+      const orderId = ids.next<'Order'>();
+      t.placed.set(`${market.marketId}:${orderId}`, bilal.accountId);
+      // Another Market's order of the same id is never found here.
+      const foreignOrder = ids.next<'Order'>();
+      t.placed.set(`${otherMarket.marketId}:${foreignOrder}`, bilal.accountId);
+      const q = async (body: object) => emails(await t.list.execute(ctx, body));
+      expect(await q({ orderNumber: ` ${orderId.toUpperCase()} ` })).toEqual([
+        'bilal@example.test',
+      ]);
+      expect(await q({ orderNumber: orderId, filters: { status: 'disabled' } })).toEqual([]);
+      expect(await q({ orderNumber: foreignOrder })).toEqual([]);
+      expect(await q({ orderNumber: 'not-an-order' })).toEqual([]);
+      expect(failure(await t.list.execute(ctx, { orderNumber: 'x'.repeat(65) }))).toBe(
+        'validation.failed',
+      );
+      expect(failure(await t.list.execute(ctx, { orderNumber: 42 }))).toBe('validation.failed');
+      t.orderKey.held = false;
+      expect(failure(await t.list.execute(ctx, { orderNumber: orderId }))).toBe('access.denied');
+    });
+
+    it('filters by a followed store, and refuses a store id that is not an id', async () => {
+      const t = seeded();
+      const ctx = t.as(person([VIEW]));
+      const shop = ids.next<'Seller'>();
+      const rows = t.listReader.rowsOf.get(market.marketId)!;
+      const amina = rows.find((row) => row.email === 'amina@example.test')!;
+      t.listReader.followers.add(`${shop}:${amina.accountId}`);
+      // A follower of another store, and the same email in another Market, do not match.
+      t.listReader.followers.add(`${ids.next<'Seller'>()}:${rows[1]!.accountId}`);
+      const foreign = t.listReader.rowsOf.get(otherMarket.marketId)![0]!.accountId;
+      t.listReader.followers.add(`${shop}:${foreign}`);
+      expect(emails(await t.list.execute(ctx, { filters: { followsSellerId: shop } }))).toEqual([
+        'amina@example.test',
+      ]);
+      const bad = await t.list.execute(ctx, { filters: { followsSellerId: 'shop-1' } });
+      expect(failure(bad)).toBe('validation.failed');
+      if (!bad.ok && bad.error.code === 'validation.failed') {
+        expect(bad.error.fields[0]?.path).toBe('filters.followsSellerId');
+      }
     });
 
     it('reads the next page by cursor, without a total', async () => {

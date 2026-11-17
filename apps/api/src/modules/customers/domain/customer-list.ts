@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Id, Result, Temporal } from '@mondapac/shared-kernel';
+import { isLocalDay } from './local-day';
 
 // The vocabulary of the admin Customers list (a super list: views, search, filters, sort, paging,
 // saved filters, export). Pure: it reads a request into a closed selector and knows nothing of the
@@ -49,13 +50,18 @@ export const CUSTOMER_FILTER_KEYS = [
   'ordersMax',
   'spentMin',
   'spentMax',
+  // Phase 2: a manual group's id (its members; the group's members page is this filter).
+  'group',
+  'followsSellerId',
 ] as const;
 export type CustomerFilterKey = (typeof CUSTOMER_FILTER_KEYS)[number];
 
-/** A day as a request writes it, `YYYY-MM-DD`; the range is [from 00:00, to + 1 day) in UTC. */
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const isDay = (value: unknown): value is string =>
-  typeof value === 'string' && DAY.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+/**
+ * A day as a request writes it, `YYYY-MM-DD`; the range is [from's first instant, the first instant
+ * after to) in the admin's zone, else the Market's (ADR-0005), worked out by the reader.
+ */
+const isDay = isLocalDay;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** What a request selects: the tab, the search text and the filters, each already validated. */
 export interface CustomerSelector {
@@ -73,6 +79,15 @@ export interface CustomerSelector {
   /** Minor units of the Market's currency. */
   readonly spentMin: bigint | null;
   readonly spentMax: bigint | null;
+  /** A manual group's id: only its members. */
+  readonly group: string | null;
+  /**
+   * Only these accounts (an empty list matches nobody). Never from a saved document or a filter:
+   * the list sets it when the admin searches by an order number (phase 2b), from ordering's answer.
+   */
+  readonly accountIds?: readonly string[] | null;
+  /** Only customers who follow this seller's store now (phase 3); a UUID. */
+  readonly followsSellerId?: string | null;
 }
 
 export interface CustomerFieldFailure {
@@ -112,6 +127,8 @@ function bool(value: unknown, path: string): Result<boolean, CustomerFieldFailur
   if (value === false || value === 'false') return ok(false);
   return fail(path, 'value');
 }
+
+const GROUP_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const present = (value: unknown): boolean => value !== undefined && value !== null && value !== '';
 
@@ -163,6 +180,8 @@ export function parseCustomerSelector(
     ordersMax: null as number | null,
     spentMin: null as bigint | null,
     spentMax: null as bigint | null,
+    group: null as string | null,
+    followsSellerId: null as string | null,
   };
 
   if (present(filters['status'])) {
@@ -192,6 +211,18 @@ export function parseCustomerSelector(
     const value = minor(filters[key], path(key));
     if (!value.ok) return value;
     selector[key] = value.value;
+  }
+
+  if (present(filters['group'])) {
+    const group = filters['group'];
+    if (typeof group !== 'string' || !GROUP_ID.test(group)) return fail(path('group'), 'format');
+    selector.group = group;
+  }
+  if (present(filters['followsSellerId'])) {
+    const value = filters['followsSellerId'];
+    if (typeof value !== 'string' || !UUID.test(value))
+      return fail(path('followsSellerId'), 'format');
+    selector.followsSellerId = value.toLowerCase();
   }
 
   // A range that cannot match anything is a request error, not an empty list.
@@ -243,6 +274,8 @@ export function filtersOf(selector: CustomerSelector): Record<string, string | b
     const value = selector[key];
     if (value !== null) filters[key] = Number(value);
   }
+  if (selector.group !== null) filters['group'] = selector.group;
+  if (selector.followsSellerId != null) filters['followsSellerId'] = selector.followsSellerId;
   return filters;
 }
 
@@ -277,4 +310,13 @@ export interface CustomerListRow {
   readonly currency: string | null;
   readonly refundCount: number;
   readonly refundedMinor: bigint;
+  /** The manual groups the customer is in (phase 2), oldest membership first. */
+  readonly groups: readonly CustomerGroupRef[];
+}
+
+/** A group a customer is in, as a list row names it. */
+export interface CustomerGroupRef {
+  readonly groupId: string;
+  readonly name: string;
+  readonly archived: boolean;
 }

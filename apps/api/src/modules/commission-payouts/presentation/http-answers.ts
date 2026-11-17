@@ -16,6 +16,7 @@ export const COMMISSION_PAYOUTS_STATUS: Readonly<Record<string, number>> = Objec
   'commission-payouts.version-conflict': 409,
   'commission-payouts.seller-order-not-found': 404,
   'commission-payouts.hold-not-found': 404,
+  'commission-payouts.ledger-entry-not-found': 404,
   'commission-payouts.hold-already-released': 409,
   'commission-payouts.dispute-not-found': 404,
   'commission-payouts.dispute.not-decidable': 409,
@@ -25,6 +26,8 @@ export const COMMISSION_PAYOUTS_STATUS: Readonly<Record<string, number>> = Objec
   'commission-payouts.payout-not-found': 404,
   'commission-payouts.payout.not-awaiting-approval': 409,
   'commission-payouts.payout.amount-changed': 409,
+  'commission-payouts.search-unavailable': 503,
+  'batch.too-large': 413,
   'second-factor.required': 403,
   'second-factor.enrolment-required': 403,
 });
@@ -83,6 +86,13 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  // An export over the cap says the cap and, when it was counted, how many rows matched.
+  if (typeof error.max === 'number') {
+    return fail(status, error.code, {
+      max: error.max,
+      ...(typeof error.total === 'number' ? { total: error.total } : {}),
+    });
+  }
   // A refused step-up says which action the panel must present a code for.
   if (typeof error.actionKey === 'string') {
     return fail(status, error.code, { actionKey: error.actionKey });

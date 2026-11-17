@@ -14,11 +14,28 @@ import type { PanelConfig, PanelHost } from './config.ts';
 /** The paths this panel may reach, by method (its own population's identity routes). */
 const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   GET: new Set([
+    // System requests (system-requests): the queue, the menu badge and the review policy.
+    'system-requests/admin/requests',
+    'system-requests/admin/requests-count',
+    'system-requests/admin/review-policy',
     'identity/admin/session',
     'identity/admin/sellers',
+    // The Seller accounts list (super list 22) and the same rows as a file (CSV or XLSX).
     'payments/admin/connected-accounts',
+    'payments/admin/connected-accounts/export',
     // The Market's orders (ordering), read-only: the list; one order is read by the page server.
     'ordering/admin/orders',
+    // The export of the order list as a CSV file (ordering): the list's own filter.
+    'ordering/admin/orders/export',
+    // The Market's shipments (ordering, Sales > Shipments), read-only: the list (query: the tab,
+    // search, filters and paging; see QUERY_KEYS).
+    'ordering/admin/shipments',
+    // The export of the Shipments list as a CSV or XLSX file (ordering): the list's own filter,
+    // the visible columns, the chosen ids and the zone (see QUERY_KEYS).
+    'ordering/admin/shipments/export',
+    // The Market's refunds (ordering, Sales > Refunds), read-only: the list (query: the tab,
+    // search, filters and paging; see QUERY_KEYS).
+    'ordering/admin/refunds',
     // The Market's buyer assistant settings, read again after another admin saved first.
     'assistant/admin/settings',
     // The Market's support email, read again after another admin saved first.
@@ -56,9 +73,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The buyer-review moderation queue (reviews), read-only list (query: `tab`, `cursor`,
     // `limit`); one review is read by its dialog and again after an action.
     'reviews/admin/moderation',
-    // The seller payouts (commission-payouts, package 6d), read-only list (query: `status`,
-    // `cursor`, `limit`); one payout is read by the page server and again by the approve dialog.
+    // The seller payouts (commission-payouts, package 6d; the Payouts super list), read-only list
+    // (query: `view`, `status`, `q`, `search`, the filters, `sort`, `direction`, `page`,
+    // `pageSize`, or `cursor` and `limit`); one payout is read by the page server and again by the
+    // approve dialog. The export of the list as a file: the chosen ids or the list's own query.
     'commission-payouts/admin/payouts',
+    'commission-payouts/admin/payouts/export',
     // The delivery settings of the Market (shipping), read again after a conflict.
     'shipping/admin/delivery-settings',
     // The service areas with their names (sellers, ADR-0041), read-only.
@@ -72,6 +92,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/categories',
     // What the platform product create form offers (catalog): the Market's types and languages.
     'catalog/admin/platform-products/options',
+    // The category choices of the platform product form (catalog, categories C5a).
+    'catalog/admin/platform-products/category-picker',
     // The export of the product list as a file (catalog): the chosen ids or the list's own query.
     'catalog/admin/products/export',
     // Import products (catalog): the CSV and XLSX templates and the admin's current import.
@@ -151,6 +173,16 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
+    // The review policy (system-requests): one area at a time, and the review period; each
+    // behind a fresh two-step code. The area is a closed list, so each path is spelled out.
+    'system-requests/admin/review-policy/areas/people',
+    'system-requests/admin/review-policy/areas/money',
+    'system-requests/admin/review-policy/areas/delivery',
+    'system-requests/admin/review-policy/areas/catalogue',
+    'system-requests/admin/review-policy/areas/certification',
+    'system-requests/admin/review-policy/areas/marketplace',
+    'system-requests/admin/review-policy/areas/content',
+    'system-requests/admin/review-policy/review-due-days',
     // The navigation draft of the buyer site, replaced as a whole (storefront; editor key).
     'storefront/admin/navigation/draft',
     'notifications/admin/support-contact',
@@ -190,6 +222,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set([]),
   POST: new Set([
+    // Approve several low-risk system requests: by ids, or every one a list filter matches.
+    'system-requests/admin/requests/bulk-approve',
+    'system-requests/admin/requests/bulk-approve-matching',
     // An earlier navigation version copied into the draft (storefront; editor key), and the draft
     // approved (storefront.navigation.approve, protected): the API judges the keys.
     'storefront/admin/navigation/restore',
@@ -282,6 +317,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
  */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   POST: [
+    // One system request (system-requests): a comment, and the three decisions.
+    'system-requests/admin/requests/:id/comments',
+    'system-requests/admin/requests/:id/approve',
+    'system-requests/admin/requests/:id/reject',
+    'system-requests/admin/requests/:id/withdraw',
     // One order (ordering, order detail decisions 1 and 3): cancel and refund the whole order,
     // refund one seller order, and write an internal note. The notes and the order are read by the
     // page server.
@@ -294,6 +334,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/seller-certificates/:id/approve',
     'certification/admin/seller-certificates/:id/request-changes',
     'certification/admin/seller-certificates/:id/decline',
+    // Revoke an approved or expired certificate (certification; protected permission).
+    'certification/admin/seller-certificates/:id/revoke',
     // Start, resume or discard one checked import (catalog).
     'catalog/admin/platform-imports/:id/start',
     'catalog/admin/platform-imports/:id/resume',
@@ -333,6 +375,15 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/product-certificates/:id/submit',
     // Activate an issuer with the expert's approval, under the version read (certification).
     'certification/admin/issuers/:id/activate',
+    // A certificate type (certification): stop new certificates, ask for reactivation, and a second
+    // admin's answer to a waiting revision or reactivation. Each names the version read.
+    'certification/admin/types/:id/deactivate',
+    'certification/admin/types/:id/revisions',
+    'certification/admin/types/:id/reactivation',
+    'certification/admin/types/:id/relaxations/:id/approve',
+    'certification/admin/types/:id/reactivations/:id/approve',
+    'certification/admin/types/:id/proposals/:id/reject',
+    'certification/admin/types/:id/proposals/:id/withdraw',
     // The rest of an issuer's life (certification): close to new, derecognise (names the number of
     // certificates the form showed), ask for reactivation, and a second admin's answer to it.
     'certification/admin/issuers/:id/close-to-new',
@@ -368,6 +419,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/move',
     'catalog/admin/categories/:id/merge',
     'catalog/admin/categories/:id/archive',
+    // Move all the products of a category to another one (catalog, categories C5a: protected key
+    // `catalog.category-tree.restructure` and `catalog.product.approve`; a job runs it).
+    'catalog/admin/categories/:id/move-products',
     // Approve or reject a seller's category proposal with the version seen (catalog, categories
     // C9a: key `catalog.category-proposal.decide`, a prepared reason code on reject), and promote
     // or merge a seller's shelf (protected key `catalog.seller-category.promote-merge`).
@@ -529,10 +583,14 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
+    // One system request with its values and its history (system-requests).
+    'system-requests/admin/requests/:id',
     // One category with its path and history, and the impact of a change on its subtree
     // (catalog, read-only; the impact takes the `action`).
     'catalog/admin/categories/:id',
     'catalog/admin/categories/:id/impact',
+    // The state and counts of the jobs that move a category's products (catalog, categories C5a).
+    'catalog/admin/categories/:id/move-products',
     // One seller's shelves, every status (catalog, categories C9a), read-only.
     'catalog/admin/sellers/:id/shelves',
     // One blog post with its working and live versions, and its automatic checks (blog).
@@ -549,6 +607,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/issuers/:id/expert-reference',
     'certification/admin/product-certificates/:id',
     'certification/admin/product-certificates/:id/history',
+    // The full status history of one seller certificate (certification): an audited read that
+    // needs the protected document view permission (query: `beforeId`, `limit`).
+    'certification/admin/seller-certificates/:id/history',
     // The photo library of a platform product, for the form's images card (catalog, P1).
     'catalog/admin/platform-products/:id/images',
     // The primary photo of a listed product, thumbnail size only (catalog).
@@ -574,7 +635,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // One variant type with its options and settings (catalog, variants V6).
     'catalog/admin/variant-types/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
+    // The seller page's commission ledger (a compact super list) and its export.
     'commission-payouts/admin/sellers/:id/ledger',
+    'commission-payouts/admin/sellers/:id/ledger/export',
     // A storefront slide as a package to create in another Market (storefront).
     'storefront/admin/slides/:id/copy',
     // One customer's wallet and the caller's credit caps (wallet), for the issue screen.
@@ -588,6 +651,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A seller's payout terms and holds (commission-payouts), read again after a change.
     'commission-payouts/admin/sellers/:id/payout-terms',
     'commission-payouts/admin/sellers/:id/payout-holds',
+    // The seller page's payout holds list (a compact super list) as a file.
+    'commission-payouts/admin/sellers/:id/payout-holds/export',
     // The delivery methods of a seller (shipping), read again after a conflict.
     'shipping/admin/sellers/:id/delivery-methods',
   ],
@@ -596,18 +661,139 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
+  // The System requests queue: the view, search, filters, sort and either page numbers or a
+  // cursor (the API validates every value as well).
+  'system-requests/admin/requests': [
+    'view',
+    'q',
+    'area',
+    'risk',
+    'status',
+    'requestedBy',
+    'decidedBy',
+    'appliedFrom',
+    'appliedTo',
+    'overdue',
+    'subjectKind',
+    'subjectRef',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'cursor',
+  ],
   'identity/admin/sellers': ['state', 'limit', 'after'],
-  'payments/admin/connected-accounts': ['status', 'cursor'],
+  'payments/admin/connected-accounts': [
+    'status',
+    'ready',
+    'requirements',
+    'waiting',
+    'q',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'paging',
+    'cursor',
+  ],
+  'payments/admin/connected-accounts/export': [
+    'format',
+    'columns',
+    'ids',
+    'status',
+    'ready',
+    'requirements',
+    'waiting',
+    'q',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   // The page mode and the filters of the orders list (the API validates every value).
   'ordering/admin/orders': [
     'status',
+    'q',
+    'search',
+    'accountId',
     'cursor',
     'page',
     'pageSize',
     'sort',
     'direction',
+    'paging',
     'paymentState',
     'fulfilment',
+    'sellerId',
+    'from',
+    'to',
+  ],
+  'ordering/admin/orders/export': [
+    'format',
+    'status',
+    'q',
+    'paymentState',
+    'fulfilment',
+    'sellerId',
+    'from',
+    'to',
+  ],
+  // The Shipments list: the tab (`stage`, `attention`), the search (`q` or `search`), the filters
+  // and the paging of either List paging mode (the API refuses the two modes mixed).
+  'ordering/admin/shipments': [
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+    'sort',
+    'direction',
+    'stage',
+    'q',
+    'search',
+    'deliveryMethod',
+    'attention',
+    'sellerId',
+    'paidFrom',
+    'paidTo',
+    'shippedFrom',
+    'shippedTo',
+  ],
+  // The Shipments export: the list's filter keys (no paging or sort), the file's format and
+  // columns, the chosen ids and the zone of its times.
+  'ordering/admin/shipments/export': [
+    'format',
+    'columns',
+    'ids',
+    'zone',
+    'stage',
+    'q',
+    'search',
+    'deliveryMethod',
+    'attention',
+    'sellerId',
+    'paidFrom',
+    'paidTo',
+    'shippedFrom',
+    'shippedTo',
+  ],
+  // The Refunds list: the tab (`state`), the search (`q` or `search`), the filters and the paging
+  // of either List paging mode. No amount filters: the panel has no input for them (spec Q3).
+  'ordering/admin/refunds': [
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+    'sort',
+    'direction',
+    'state',
+    'q',
+    'search',
+    'reason',
+    'actor',
+    'lossBearer',
+    'ledger',
     'sellerId',
     'from',
     'to',
@@ -647,7 +833,42 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'typeCode',
     'sellerId',
   ],
-  'commission-payouts/admin/payouts': ['status', 'cursor', 'limit'],
+  // The view, search, filters and page mode of the Payouts super list (the API validates them).
+  'commission-payouts/admin/payouts': [
+    'view',
+    'status',
+    'q',
+    'search',
+    'sellerId',
+    'approvalMode',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+  ],
+  'commission-payouts/admin/payouts/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'status',
+    'q',
+    'search',
+    'sellerId',
+    'approvalMode',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+  ],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
   // The category tree, narrowed to the categories of one feature set (categories, A4).
@@ -663,9 +884,191 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
   'ordering/admin/refund-limits': ['sellerId'],
 };
-/** Query values that must have a shape to cross; a value of another shape is dropped. */
+/** Free text typed in a list's search box: 1 to 80 characters. */
+const SEARCH_TEXT = /^[\s\S]{1,80}$/;
+/** An instant as the API takes it: ISO 8601 date and time with a zone (`Z` or an offset). */
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+/** At most 200 ids, the cap of a selection. */
+const UUID_LIST_200 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i;
+/** The filters of the seller page's ledger list: the API validates them again. */
+const LEDGER_FILTER_SHAPES: Readonly<Record<string, RegExp>> = {
+  kind: /^(sale|shipping|commission|refund-sale|refund-shipping|refund-commission|dispute-debit|dispute-reinstate)$/,
+  side: /^(credit|debit)$/,
+  // An order or seller order id.
+  q: UUID,
+  from: ISO_INSTANT,
+  to: ISO_INSTANT,
+  // The row amount in minor units.
+  minAmount: /^[0-9]{1,15}$/,
+  maxAmount: /^[0-9]{1,15}$/,
+};
+/** The filters of the seller page's payout holds list. */
+const HOLD_FILTER_SHAPES: Readonly<Record<string, RegExp>> = {
+  status: /^(active|released)$/,
+  reason: /^(seller-suspended|refund-pending|dispute|admin-review|bank-change)$/,
+  origin: /^(admin|system)$/,
+  scope: /^(seller|order)$/,
+  sellerOrderId: UUID,
+  from: ISO_INSTANT,
+  to: ISO_INSTANT,
+};
+/** The ids of an export: up to 200 UUIDs, the cap of the bulk action. */
+const EXPORT_IDS =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i;
+/** An IANA time zone name such as `Australia/Brisbane` or `Etc/GMT+10`. */
+const EXPORT_ZONE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+){0,2}$/;
+/** The columns an export may name, in any order (the list may show none: the server adds the fixed ones). */
+const exportColumns = (keys: readonly string[]): RegExp =>
+  new RegExp(`^(?:(?:${keys.join('|')})(?:,(?:${keys.join('|')})){0,${keys.length - 1}})?$`);
+/** The Sales list exports: a malformed key there is refused (400), never dropped. */
+const SALES_EXPORT_PATH = /^ordering\/admin\/(shipments|refunds|documents)\/export$/;
+const SALES_EXPORT_STRICT_KEYS = ['ids', 'columns', 'kind', 'format', 'zone'] as const;
+/**
+ * True when an export key that narrows or shapes the file is present but malformed, repeated or
+ * oversized. Dropping it would widen the export to the whole filter, so the relay answers 400.
+ */
+function malformedSalesExport(target: string, requestUrl: string): boolean {
+  if (!SALES_EXPORT_PATH.test(target)) return false;
+  const source = new URL(requestUrl).searchParams;
+  return SALES_EXPORT_STRICT_KEYS.some((key) => {
+    const values = source.getAll(key);
+    if (values.length === 0) return false;
+    const value = values[0] ?? '';
+    return (
+      values.length > 1 ||
+      value.length > (QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX) ||
+      QUERY_SHAPES[target]?.[key]?.test(value) === false
+    );
+  });
+}
+/** The Seller accounts list's filters and sort (payments validates every value again). */
+const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
+  status: /^(not-started|pending|enabled|restricted|rejected)$/,
+  ready: /^(yes|no)$/,
+  requirements: /^(past-due|due|none)$/,
+  waiting: /^(cooling-off|paused)$/,
+  // A seller id or part of a store name (payments refuses control characters and the length).
+  // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+  q: /^[^\u0000-\u001f\u007f]{1,80}$/u,
+  from: ISO_INSTANT,
+  to: ISO_INSTANT,
+  sort: /^(created|last-read|requirements)$/,
+  direction: /^(asc|desc)$/,
+};
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'system-requests/admin/requests': {
+    view: /^(needs-my-review|all-open|mine|approved|reverted|overdue|all)$/,
+    q: /^.{1,100}$/,
+    area: /^[a-z-]{1,24}(,[a-z-]{1,24}){0,7}$/,
+    risk: /^(low|medium|high)(,(low|medium|high)){0,2}$/,
+    status: /^(open|approved|reverted)(,(open|approved|reverted)){0,2}$/,
+    requestedBy: UUID,
+    decidedBy: UUID,
+    // ISO 8601 instants, as the day filter builds them.
+    appliedFrom: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]{5,12}Z$/,
+    appliedTo: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]{5,12}Z$/,
+    overdue: /^true$/,
+    subjectKind: /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/,
+    subjectRef: /^[A-Za-z0-9._:-]{1,64}$/,
+    sort: /^(applied|due|number)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    // The API's own cursor: base64url, 200 characters at most.
+    cursor: /^[A-Za-z0-9_-]{1,200}$/,
+  },
+  'ordering/admin/shipments': {
+    stage: /^(to-prepare|ready|shipped|delivered|refunded)$/,
+    sort: /^(paid|shipped|delivered|total)$/,
+    direction: /^(asc|desc)$/,
+    deliveryMethod: /^(pickup|instant|same_day|scheduled)$/,
+    attention: /^(any|no-carrier|carrier-unknown|cancel-unknown)$/,
+    sellerId: UUID,
+    page: /^[0-9]{1,4}$/,
+    pageSize: /^[0-9]{1,3}$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the payment, a dot and the seller order id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+    // An id, a tracking reference or a name: free text, up to the box's 80 characters.
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    paidFrom: ISO_INSTANT,
+    paidTo: ISO_INSTANT,
+    shippedFrom: ISO_INSTANT,
+    shippedTo: ISO_INSTANT,
+  },
+  'ordering/admin/shipments/export': {
+    format: /^(csv|xlsx)$/,
+    columns: exportColumns([
+      'store',
+      'customer',
+      'sellerOrderId',
+      'paid',
+      'delivery',
+      'carrier',
+      'fleet',
+      'ready',
+      'shipped',
+      'delivered',
+      'shipping',
+      'total',
+      'refunded',
+    ]),
+    ids: EXPORT_IDS,
+    zone: EXPORT_ZONE,
+    stage: /^(to-prepare|ready|shipped|delivered|refunded)$/,
+    deliveryMethod: /^(pickup|instant|same_day|scheduled)$/,
+    attention: /^(any|no-carrier|carrier-unknown|cancel-unknown)$/,
+    sellerId: UUID,
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    paidFrom: ISO_INSTANT,
+    paidTo: ISO_INSTANT,
+    shippedFrom: ISO_INSTANT,
+    shippedTo: ISO_INSTANT,
+  },
+  'ordering/admin/refunds': {
+    state: /^(pending|succeeded|failed)$/,
+    sort: /^(requested|settled|amount)$/,
+    direction: /^(asc|desc)$/,
+    reason:
+      /^(not-received|damaged|wrong-item|not-as-described|seller-cancelled|item-unavailable|other)$/,
+    actor: /^(admin|seller)$/,
+    lossBearer: /^(seller|platform)$/,
+    ledger: /^(waiting|recorded)$/,
+    sellerId: UUID,
+    page: /^[0-9]{1,4}$/,
+    pageSize: /^[0-9]{1,3}$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the request, a dot and the refund id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+    // An id, a Stripe refund id or a name: free text, up to the box's 80 characters.
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
+  },
+  'payments/admin/connected-accounts': {
+    ...ACCOUNT_LIST_SHAPES,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    // The API's own cursor: epoch milliseconds of the creation, a dot and the seller id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'payments/admin/connected-accounts/export': {
+    ...ACCOUNT_LIST_SHAPES,
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(cooling-off|paused|last-read|seller-id)(,(cooling-off|paused|last-read|seller-id)){0,3}$/,
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+  },
   'ordering/admin/refund-limits': { sellerId: UUID },
+  'certification/admin/seller-certificates/:id/history': {
+    beforeId: UUID,
+    limit: /^[0-9]{1,3}$/,
+  },
   // The cursor is the API's own: epoch milliseconds, a dot and a request id.
   'wallet/admin/credit-requests': {
     status: /^(pending|decided|granted)$/,
@@ -695,6 +1098,16 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     direction: /^(asc|desc)$/,
     page: /^[1-9][0-9]{0,3}$/,
     pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'ordering/admin/orders/export': {
+    format: /^csv$/,
+    status: /^(pending-payment|confirmed|cancelled)$/,
+    q: /^[0-9a-f-]{36}$/i,
+    paymentState: /^(none|authorised|captured|voided)$/,
+    fulfilment: /^(to-ship|shipped|delivered)$/,
+    sellerId: UUID,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
   },
   'catalog/admin/products/export': {
     format: /^(csv|xlsx)$/,
@@ -729,10 +1142,83 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'ordering/admin/saved-filters': { listKey: /^admin\.ordering\.orders$/ },
   'commission-payouts/admin/payouts': {
-    status: /^(awaiting-approval|approved|instructing|instructed|paid|failed|not-sent)$/,
+    view: /^(all|awaiting-approval|sending|paid|failed|not-sent)$/,
+    status:
+      /^(pending|awaiting-approval|approved|instructing|instructed|paid|failed|not-sent|voided|settled-by-netting)$/,
+    q: UUID,
+    sellerId: UUID,
+    approvalMode: /^(AUTO|MANUAL)$/,
+    // ISO instants: the creation time, `to` excluded.
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The transfer in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(created|amount|state-changed|slot)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the creation, a dot and the payout id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'commission-payouts/admin/payouts/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(gross|netted|approval-mode|approval-reason|slot|state-changed|outcome|seller-id)(,(gross|netted|approval-mode|approval-reason|slot|state-changed|outcome|seller-id)){0,7}$/,
+    // At most 200 payout ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(all|awaiting-approval|sending|paid|failed|not-sent)$/,
+    status:
+      /^(pending|awaiting-approval|approved|instructing|instructed|paid|failed|not-sent|voided|settled-by-netting)$/,
+    q: UUID,
+    sellerId: UUID,
+    approvalMode: /^(AUTO|MANUAL)$/,
+    // ISO instants: the creation time, `to` excluded.
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The transfer in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(created|amount|state-changed|slot)$/,
+    direction: /^(asc|desc)$/,
+  },
+  'commission-payouts/admin/sellers/:id/ledger': {
+    ...LEDGER_FILTER_SHAPES,
+    sort: /^(recorded|occurred|amount)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the record, a dot and the entry id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'commission-payouts/admin/sellers/:id/ledger/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(occurred|order-line|rate|base|source|entry-id)(,(occurred|order-line|rate|base|source|entry-id)){0,5}$/,
+    ids: UUID_LIST_200,
+    ...LEDGER_FILTER_SHAPES,
+    sort: /^(recorded|occurred|amount)$/,
+    direction: /^(asc|desc)$/,
+  },
+  'commission-payouts/admin/sellers/:id/payout-holds': {
+    ...HOLD_FILTER_SHAPES,
+    sort: /^(active-first|placed|released)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the placement, a dot and the hold id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'commission-payouts/admin/sellers/:id/payout-holds/export': {
+    format: /^(csv|xlsx)$/,
+    columns: /^(release-reason|hold-id)(,(release-reason|hold-id))?$/,
+    ids: UUID_LIST_200,
+    ...HOLD_FILTER_SHAPES,
+    sort: /^(active-first|placed|released)$/,
+    direction: /^(asc|desc)$/,
   },
   'customers/admin/deletion-requests': {
     limit: /^[0-9]{1,3}$/,
@@ -798,9 +1284,69 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
 };
 /** GET templates with a resource id whose query crosses, and the keys that may cross. */
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
-  'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
+  // The seller page's compact super lists (ledger 27, payout holds 28) and their exports.
+  'commission-payouts/admin/sellers/:id/ledger': [
+    'kind',
+    'side',
+    'q',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'limit',
+    'cursor',
+  ],
+  'commission-payouts/admin/sellers/:id/ledger/export': [
+    'format',
+    'columns',
+    'ids',
+    'kind',
+    'side',
+    'q',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+  ],
+  'commission-payouts/admin/sellers/:id/payout-holds': [
+    'status',
+    'reason',
+    'origin',
+    'scope',
+    'sellerOrderId',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'limit',
+    'cursor',
+  ],
+  'commission-payouts/admin/sellers/:id/payout-holds/export': [
+    'format',
+    'columns',
+    'ids',
+    'status',
+    'reason',
+    'origin',
+    'scope',
+    'sellerOrderId',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/platform-imports/:id/report': ['kind'],
   'catalog/admin/categories/:id/impact': ['action', 'targetId'],
+  // The older page of a certificate's history: the API's own entry id and a small page size.
+  'certification/admin/seller-certificates/:id/history': ['beforeId', 'limit'],
 };
 /** A note for reviewers in a query: 1 to 500 characters (any, newlines included). */
 const NOTE_SHAPE = /^[\s\S]{1,500}$/;
@@ -819,8 +1365,36 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
+  'ordering/admin/shipments/export:ids': 7400,
+  'commission-payouts/admin/payouts/export:ids': 7400,
+  'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
+  'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
+  'payments/admin/connected-accounts/export:ids': 7400,
   'catalog/admin/attributes:search': 120,
 };
+
+/**
+ * Exports whose query is checked strictly: a known key whose value is out of shape or too long
+ * refuses the request (400), instead of being dropped. Dropping a filter of an export would send
+ * a wider file than the one asked for.
+ */
+const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
+  'payments/admin/connected-accounts/export',
+]);
+
+/** The first known key of a strict target whose value cannot cross, or null. */
+function strictQueryRefusal(method: string, target: string, requestUrl: string): string | null {
+  if (method !== 'GET' || !STRICT_QUERY_TARGETS.has(target)) return null;
+  const shapes = QUERY_SHAPES[target] ?? {};
+  const source = new URL(requestUrl).searchParams;
+  for (const key of QUERY_KEYS[target] ?? []) {
+    const value = source.get(key);
+    if (value === null) continue;
+    const max = QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX;
+    if (value.length > max || shapes[key]?.test(value) === false) return key;
+  }
+  return null;
+}
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
 function upstreamQuery(method: string, target: string, requestUrl: string): string {
@@ -845,7 +1419,10 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
     const value = source.get(key);
     if (
       value === null ||
-      value.length > (QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX)
+      value.length >
+        (QUERY_VALUE_MAX_FOR[`${target}:${key}`] ??
+          QUERY_VALUE_MAX_FOR[`${template}:${key}`] ??
+          QUERY_VALUE_MAX)
     ) {
       continue;
     }
@@ -955,7 +1532,7 @@ const FORWARDED_REQUEST_HEADERS = [
 const FORWARDED_RESPONSE_HEADERS = [
   'content-type',
   'retry-after',
-  // The product export (CSV or XLSX) and the import report CSV arrive as attachments with a file name the API made.
+  // The product, payout and Sales list exports (CSV or XLSX) and the import report CSV arrive as attachments with a file name the API made.
   'content-disposition',
 ] as const;
 
@@ -1134,6 +1711,20 @@ export async function relay(
     const read = await readCapped(request, bodyCap);
     if (read === null) return jsonError(413, 'request.too-large');
     body = read;
+  }
+  if (request.method === 'GET' && malformedSalesExport(target, request.url)) {
+    return jsonError(400, 'request.invalid');
+  }
+  const refused = strictQueryRefusal(request.method, target, request.url);
+  if (refused !== null) {
+    return new Response(
+      JSON.stringify({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: refused, code: 'format' }] },
+      }),
+      { status: 400, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } },
+    );
   }
   let outgoing: Headers;
   try {

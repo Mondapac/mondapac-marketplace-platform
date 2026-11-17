@@ -50,7 +50,8 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  * reviews switch, reviews package 1; promotions: the Market switch, the promotion changes, reviews and
  * settings, promotions package T1; customers: the account deletion setting change, package 5a;
  * settings: the change of an admin-editable Market setting, ADR-0026 and ADR-0042; system-requests:
- * the review requests and the review policy, Admin Inbox › System requests).
+ * the review requests and the review policy, Admin Inbox › System requests; lists: the sharing,
+ * changing and deleting of a saved filter shared with everyone, super list B0-1b).
  */
 const AUDITING_MODULES = [
   'AssistantModule',
@@ -60,6 +61,7 @@ const AUDITING_MODULES = [
   'CommissionPayoutsModule',
   'CustomersModule',
   'IdentityModule',
+  'ListsModule',
   'NotificationsModule',
   'OrderingModule',
   'PaymentsModule',
@@ -304,11 +306,17 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
     expect(actions).toEqual([
       'identity.account-role.assigned',
       'identity.account-role.changed',
+      'identity.account-role.reverted',
+      'identity.account-status.reverted',
       'identity.account.disabled',
       'identity.account.enabled',
       'identity.account.erased',
       'identity.account.other-sessions-signed-out',
+      'identity.account.password-reset-sent-by-admin',
+      'identity.account.renamed-by-admin',
+      'identity.account.sessions-ended-by-admin',
       'identity.account.sessions-ended-for-erasure',
+      'identity.account.sign-in-address-revealed',
       'identity.admin-session.opened',
       'identity.admin-step-up.refused',
       'identity.admin-step-up.verified',
@@ -318,6 +326,7 @@ describe('audit action catalogue of the booted application (PA 3.2)', () => {
       'identity.invitation.revoked',
       'identity.role.created',
       'identity.role.deleted',
+      'identity.role.reverted',
       'identity.role.seed-applied',
       'identity.role.seeded',
       'identity.role.updated',
@@ -504,6 +513,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['CommissionPayoutsModule', 'commission-payouts'],
       ['CustomersModule', 'customers'],
       ['IdentityModule', 'identity'],
+      ['ListsModule', 'lists'],
       ['NotificationsModule', 'notifications'],
       ['OrderingModule', 'ordering'],
       ['PaymentsModule', 'payments'],
@@ -553,6 +563,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['CustomersModule', 'writer'],
       ['IdentityModule', 'actions'],
       ['IdentityModule', 'writer'],
+      ['ListsModule', 'actions'],
+      ['ListsModule', 'writer'],
       ['NotificationsModule', 'actions'],
       ['NotificationsModule', 'writer'],
       ['OrderingModule', 'actions'],
@@ -674,6 +686,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'customers', 'customers.module.ts')}: registerAuditActions('customers')`,
       `${path.join('modules', 'identity', 'identity.module.ts')}: auditWriterFor('identity')`,
       `${path.join('modules', 'identity', 'identity.module.ts')}: registerAuditActions('identity')`,
+      `${path.join('modules', 'lists', 'lists.module.ts')}: auditWriterFor('lists')`,
+      `${path.join('modules', 'lists', 'lists.module.ts')}: registerAuditActions('lists')`,
       `${path.join('modules', 'notifications', 'notifications.module.ts')}: auditWriterFor('notifications')`,
       `${path.join('modules', 'notifications', 'notifications.module.ts')}: registerAuditActions('notifications')`,
       `${path.join('modules', 'ordering', 'ordering.module.ts')}: auditWriterFor('ordering')`,

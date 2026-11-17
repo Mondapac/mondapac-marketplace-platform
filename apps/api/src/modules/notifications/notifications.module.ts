@@ -13,7 +13,7 @@ import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
-import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { CART_REMINDER_FACADE, CartModule } from '../cart';
 import { CATALOG_FACADE, CatalogModule } from '../catalog';
 import { changeTrailProvider, IDENTITY_FACADE, IdentityModule } from '../identity';
@@ -24,7 +24,10 @@ import type { MarketingDependencies } from './application/marketing-mail-flow';
 import type { InAppNoticeDependencies } from './application/in-app-notice-flow';
 import type { OrderMailDependencies } from './application/order-mail-flow';
 import type { NotificationsDependencies } from './application/notifications-dependencies';
-import { CART_REMINDER_REPOSITORY } from './application/ports/cart-reminder.repository';
+import {
+  CART_REMINDER_REPOSITORY,
+  type CartReminderRepository,
+} from './application/ports/cart-reminder.repository';
 import { IN_APP_NOTICE_REPOSITORY } from './application/ports/in-app-notice.repository';
 import { NOTIFICATIONS_POLICY } from './application/ports/notifications-policy';
 import { SUPPORT_CONTACT_REPOSITORY } from './application/ports/support-contact.repository';
@@ -50,6 +53,9 @@ import { SetSupportContact } from './application/use-cases/set-support-contact.u
 import { UnsubscribeMarketingEmail } from './application/use-cases/unsubscribe-marketing-email.use-case';
 import { ViewPublicSupportContact } from './application/use-cases/view-public-support-contact.use-case';
 import { SUPPORT_CONTACT_FACADE } from './contracts/support-contact.facade';
+import { CUSTOMER_REMINDERS_FACADE } from './contracts/customer-reminders.facade';
+import { AdminCustomerCartReminders } from './application/use-cases/admin-customer-cart-reminders.use-case';
+import { CustomerRemindersFacadeImplementation } from './presentation/customer-reminders.facade';
 import { SupportContactFacadeImplementation } from './presentation/support-contact.facade';
 import { ViewSupportContactHistory } from './application/use-cases/view-support-contact-history.use-case';
 import { ViewSupportContact } from './application/use-cases/view-support-contact.use-case';
@@ -61,6 +67,7 @@ import { AdminNoticesController } from './presentation/admin-notices.controller'
 import { purgeExpiredNoticesJob } from './presentation/jobs/purge-expired-notices.job';
 import { sendCartRemindersJob } from './presentation/jobs/send-cart-reminders.job';
 import { SellerNoticesController } from './presentation/seller-notices.controller';
+import { systemRequestNoticeSubscriptions } from './presentation/subscribers/system-request-notice.subscriptions';
 import { reviewNoticeSubscriptions } from './presentation/subscribers/review-notice.subscriptions';
 import { payoutNoticeSubscriptions } from './presentation/subscribers/payout-notice.subscriptions';
 import { inAppNoticeSubscriptions } from './presentation/subscribers/in-app-notice.subscriptions';
@@ -296,6 +303,12 @@ function inAppNoticeProvider<U>(
       (sellerNotice: RecordSellerNotice, adminNotice: RecordAdminReviewNotice) =>
         reviewNoticeSubscriptions(sellerNotice, adminNotice),
     ),
+    // System requests: an open request past its review date (reminder for its area's reviewers).
+    registerSubscriptionsFrom(
+      'notifications',
+      [RecordAdminReviewNotice],
+      (adminNotice: RecordAdminReviewNotice) => systemRequestNoticeSubscriptions(adminNotice),
+    ),
     registerJobsFrom(
       'notifications',
       [PurgeExpiredNotices, SendCartReminders],
@@ -309,7 +322,20 @@ function inAppNoticeProvider<U>(
       inject: [ViewPublicSupportContact],
       useFactory: (view: ViewPublicSupportContact) => new SupportContactFacadeImplementation(view),
     },
+    // Customers management phase 2b: the reminders one customer was sent, for the customer page.
+    {
+      provide: AdminCustomerCartReminders,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, CART_REMINDER_REPOSITORY],
+      useFactory: (gate: UseCaseGate, unitOfWork: UnitOfWork, reminders: CartReminderRepository) =>
+        new AdminCustomerCartReminders(gate, { unitOfWork, reminders }),
+    },
+    {
+      provide: CUSTOMER_REMINDERS_FACADE,
+      inject: [AdminCustomerCartReminders],
+      useFactory: (reminders: AdminCustomerCartReminders) =>
+        new CustomerRemindersFacadeImplementation(reminders),
+    },
   ],
-  exports: [SUPPORT_CONTACT_FACADE],
+  exports: [SUPPORT_CONTACT_FACADE, CUSTOMER_REMINDERS_FACADE],
 })
 export class NotificationsModule {}

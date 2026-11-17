@@ -39,6 +39,8 @@ export type AiModelTierSetting = (typeof AI_MODEL_TIER_VALUES)[number];
 
 export interface SettingDefinition {
   readonly code: string;
+  /** The English name admins know it by, as the System requests queue labels its changes. */
+  readonly label: string;
   readonly values: readonly string[];
   /** In force while the Market has no row. */
   readonly defaultValue: string;
@@ -49,12 +51,14 @@ export interface SettingDefinition {
 export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
   {
     code: LIST_PAGING_CODE,
+    label: 'List paging',
     values: LIST_PAGING_VALUES,
     defaultValue: 'pages',
     safeValue: 'prev-next',
   },
   {
     code: CART_MODE_CODE,
+    label: 'Cart mode',
     values: CART_MODE_VALUES,
     defaultValue: 'multi-store',
     // An unreadable store keeps today's behaviour; the cart's own read decides what to enforce.
@@ -62,12 +66,14 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
   },
   {
     code: AI_DESCRIPTION_WRITER_CODE,
+    label: 'AI description writer',
     values: AI_DESCRIPTION_WRITER_VALUES,
     defaultValue: 'off',
     safeValue: 'off',
   },
   {
     code: AI_DESCRIPTION_WRITER_TIER_CODE,
+    label: 'AI description writer tier',
     values: AI_MODEL_TIER_VALUES,
     defaultValue: 'fast',
     // The cheaper tier.

@@ -90,6 +90,26 @@ export interface SavedFilterStore {
    */
   change(market: MarketContext, filter: StoredFilter): Promise<StoredFilterWrite | 'gone'>;
 
+  /**
+   * Gives the account's own filters of the list the positions 1..n in the order of `ids`. The
+   * caller has checked that `ids` is exactly the account's own set. False when a row is gone.
+   */
+  reposition(
+    market: MarketContext,
+    sellerId: Id<'Seller'> | null,
+    listKey: string,
+    ownerAccountId: Id<'Account'>,
+    ids: readonly Id<'SavedFilter'>[],
+  ): Promise<boolean>;
+
+  /** The filters the account owns in the list, in position order. */
+  ownedBy(
+    market: MarketContext,
+    sellerId: Id<'Seller'> | null,
+    listKey: string,
+    accountId: Id<'Account'>,
+  ): Promise<readonly StoredFilter[]>;
+
   /** False when the scope has no such row of one of `listKeys` any more. */
   remove(
     market: MarketContext,

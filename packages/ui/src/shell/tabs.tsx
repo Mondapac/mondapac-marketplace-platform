@@ -5,8 +5,12 @@ import { useEffect, useRef, useState } from 'react';
 export interface TabItem {
   readonly id: string;
   readonly label: string;
+  /** A longer explanation of the tab, as a pointer hint. */
+  readonly title?: string;
   /** A link tab (a page of its own). Without it the tab is a button and calls `onSelect`. */
   readonly href?: string;
+  /** `critical` draws the label in the danger colour (an Overdue count); the text still says it. */
+  readonly tone?: 'critical';
 }
 
 export interface TabsProps {
@@ -76,12 +80,18 @@ export function Tabs({ label, items, activeId, onSelect }: TabsProps) {
     >
       {items.map((item) => {
         const active = item.id === activeId;
-        const className = active ? ACTIVE : IDLE;
+        const className =
+          item.tone === 'critical'
+            ? `${BASE} text-critical-fg ${active ? 'border-accent font-medium' : 'border-transparent'}`
+            : active
+              ? ACTIVE
+              : IDLE;
         return item.href === undefined ? (
           <button
             key={item.id}
             type="button"
             aria-pressed={active}
+            {...(item.title === undefined ? {} : { title: item.title })}
             onClick={() => onSelect?.(item.id)}
             className={className}
           >
@@ -92,6 +102,7 @@ export function Tabs({ label, items, activeId, onSelect }: TabsProps) {
             key={item.id}
             href={item.href}
             aria-current={active ? 'page' : undefined}
+            {...(item.title === undefined ? {} : { title: item.title })}
             className={className}
           >
             {item.label}

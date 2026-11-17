@@ -17,6 +17,8 @@ export const adminNav: NavConfig = {
     { id: 'marketing', labelKey: 'nav.group.marketing', icon: 'tag' },
     { id: 'accounting', labelKey: 'nav.group.accounting', icon: 'wallet' },
     { id: 'cms', labelKey: 'nav.group.cms', icon: 'layout' },
+    // The security centre (SOC package 5; john 2026-11-15: a group of its own, Security first).
+    { id: 'audit-logs', labelKey: 'nav.group.audit-logs', icon: 'lock', alwaysGroup: true },
   ],
   items: [
     { id: 'home', icon: 'home', labelKey: 'nav.home', href: '/' },
@@ -53,10 +55,37 @@ export const adminNav: NavConfig = {
       anyOf: ['pricing.price-hold.view'],
     },
     {
+      id: 'system-requests',
+      icon: 'clipboard',
+      labelKey: 'nav.system-requests',
+      href: '/system-requests',
+      group: 'inbox',
+      anyOf: ['system-requests.request.view'],
+      keywordsKey: 'palette.page.system-requests-words',
+      badgeSource: 'system-requests',
+    },
+    {
       id: 'orders',
       icon: 'receipt',
       labelKey: 'nav.orders',
       href: '/orders',
+      group: 'sales',
+      anyOf: ['ordering.order.view'],
+    },
+    {
+      id: 'shipments',
+      icon: 'package',
+      labelKey: 'nav.shipments',
+      href: '/shipments',
+      group: 'sales',
+      anyOf: ['ordering.order.view'],
+    },
+    // The Transactions item goes between Shipments and Refunds when its page ships.
+    {
+      id: 'refunds',
+      icon: 'wallet',
+      labelKey: 'nav.refunds',
+      href: '/refunds',
       group: 'sales',
       anyOf: ['ordering.order.view'],
     },
@@ -211,6 +240,14 @@ export const adminNav: NavConfig = {
       href: '/content/navigation',
       group: 'cms',
       anyOf: ['storefront.page.read'],
+    },
+    {
+      id: 'security',
+      icon: 'shield-check',
+      labelKey: 'nav.security',
+      href: '/security/alerts',
+      group: 'audit-logs',
+      anyOf: ['security.centre.view'],
     },
     {
       id: 'settings',

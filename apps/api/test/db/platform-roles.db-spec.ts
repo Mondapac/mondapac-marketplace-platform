@@ -182,7 +182,7 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
       grantable: false,
     });
     expect(entry(await seededRole('viewer'))).toMatchObject({
-      permissionCount: 34,
+      permissionCount: 35,
       grantable: false,
     });
     expect(entry(await seededRole('platform-administrator'))).toMatchObject({
@@ -259,7 +259,11 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
         // may run out of its own retries; only that conflict is retried here, never an answer.
         const target = await admin(low);
         const assigned = await untilNoConflict(() =>
-          app.get(AssignAdminRole).execute(as(actor), { accountId: target, roleId: entry.roleId }),
+          app.get(AssignAdminRole).execute(as(actor), {
+            accountId: target,
+            roleId: entry.roleId,
+            note: 'Parity',
+          }),
         );
         const invited = await untilNoConflict(() =>
           app.get(InviteAdmin).execute(as(actor), {
@@ -305,6 +309,6 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
       ]);
     }
     const viewer = read.value.all.find((role) => role.state.seedCode === 'viewer')!;
-    expect(viewer.state.permissionKeys).toHaveLength(34);
+    expect(viewer.state.permissionKeys).toHaveLength(35);
   });
 });
