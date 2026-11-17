@@ -13,9 +13,13 @@ SET statement_timeout = '60s';
 ALTER TABLE "promotions"."credit_issuances" ADD COLUMN "grant_after" TIMESTAMPTZ(6);
 
 ALTER TABLE "promotions"."credit_issuances"
-  ADD CONSTRAINT "credit_issuances_grant_after_check" CHECK ("grant_after" IS NULL OR "kind" = 'CASHBACK');
+  ADD CONSTRAINT "credit_issuances_grant_after_check" CHECK (
+    "grant_after" IS NULL OR ("kind" = 'CASHBACK' AND "status" IN ('PENDING', 'FAILED'))
+  );
 
--- The grant job's read: PENDING cashback only (a handful of rows at any time).
+-- The grant job's read: PENDING cashback only (a handful of rows at any time). A plain CREATE INDEX
+-- is fine while the table holds no production data; a later index on it is built CONCURRENTLY in a
+-- hand-written migration of its own.
 CREATE INDEX "credit_issuances_pending_cashback_idx" ON "promotions"."credit_issuances"("market_id", "created_at", "id")
   WHERE "status" = 'PENDING' AND "kind" = 'CASHBACK';
 

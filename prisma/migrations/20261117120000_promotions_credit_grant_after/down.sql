@@ -1,11 +1,12 @@
 -- Reverses 20261117120000_promotions_credit_grant_after. A waiting credit would lose its wait and
--- be granted at once, so the down refuses while one exists.
+-- be granted at once, so the down refuses while one exists. A FAILED cashback keeps its old
+-- wait; dropping it loses only history.
 SET lock_timeout = '5s';
 SET statement_timeout = '60s';
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM "promotions"."credit_issuances" WHERE "grant_after" IS NOT NULL) THEN
+  IF EXISTS (SELECT 1 FROM "promotions"."credit_issuances" WHERE "status" = 'PENDING' AND "grant_after" IS NOT NULL) THEN
     RAISE EXCEPTION 'promotions.credit_issuances: credits still wait for a payout release';
   END IF;
 END $$;
