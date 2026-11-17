@@ -67,7 +67,7 @@ const ID_PARAM = { name: 'id', description: 'The saved filter id (a UUID v7).' }
 @ApiTags('lists')
 @RoutePopulation('seller')
 @Controller('lists/seller/saved-filters')
-export class SellerSavedFilterController {
+export class ListsSellerSavedFilterController {
   constructor(
     private readonly list: SellerSavedFiltersList,
     private readonly create: SellerSavedFilterCreate,

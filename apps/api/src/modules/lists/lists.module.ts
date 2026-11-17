@@ -21,7 +21,7 @@ import { LISTS_AUDIT_ACTIONS } from './domain/audit';
 import { listsProviders } from './infrastructure/lists-providers';
 import { AdminColumnPreferenceController } from './presentation/column-preference.controller';
 import { AdminSavedFilterController } from './presentation/saved-filter.controller';
-import { SellerSavedFilterController } from './presentation/seller-saved-filter.controller';
+import { ListsSellerSavedFilterController } from './presentation/seller-saved-filter.controller';
 import { SellerSavedFilterCreate } from './application/use-cases/seller-saved-filter-create.use-case';
 import { SellerSavedFilterDelete } from './application/use-cases/seller-saved-filter-delete.use-case';
 import { SellerSavedFilterUpdate } from './application/use-cases/seller-saved-filter-update.use-case';
@@ -81,7 +81,7 @@ function columnUseCase<D, U>(
   imports: [IdentityModule],
   controllers: [
     AdminSavedFilterController,
-    SellerSavedFilterController,
+    ListsSellerSavedFilterController,
     AdminColumnPreferenceController,
   ],
   providers: [
