@@ -692,6 +692,31 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       expect(rejected.ok && rejected.value.status).toBe('reverted');
     });
 
+    it('fails closed when the pre-unit check throws: not-permitted, nothing written, still open', async () => {
+      const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      subjects.checkThrows.add('list-paging');
+      const refused = { ok: false, error: { code: 'system-requests.revert-not-permitted' } };
+      expect(
+        await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+          requestId: opened.id,
+          reason: 'No',
+        }),
+      ).toEqual(refused);
+      expect(
+        await useCase(WithdrawSystemRequest).execute(admin(MAKER), {
+          requestId: opened.id,
+          reason: 'No',
+        }),
+      ).toEqual(refused);
+      expect(subjects.checks).toHaveLength(2);
+      expect(subjects.reverts).toEqual([]);
+      expect(subjects.get(market.marketId, 'list-paging')).toEqual({ size: 50 });
+      const view = await useCase(ViewSystemRequest).execute(admin(CHECKER), {
+        requestId: opened.id,
+      });
+      expect(view.ok && view.value.status).toBe('open');
+    });
+
     it('does not run the check for a withdraw by someone who is not the author (not-author)', async () => {
       const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
       subjects.checkRefused.add('list-paging');

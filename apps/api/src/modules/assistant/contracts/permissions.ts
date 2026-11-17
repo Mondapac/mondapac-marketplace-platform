@@ -18,7 +18,18 @@ export const ASSISTANT_SETTINGS_MANAGE = definePermission('assistant', {
   protected: true,
 });
 
+/**
+ * See how many assistant conversations one customer had and when (started, last message) on the
+ * customer page (customers management phase 2b). Never the messages, their cards or the turns.
+ */
+export const ASSISTANT_CUSTOMER_CONVERSATION_VIEW = definePermission('assistant', {
+  key: 'assistant.customer-conversation.view',
+  scope: 'platform',
+  protected: false,
+});
+
 export const ASSISTANT_PERMISSIONS = declarePermissions('assistant', [
+  ASSISTANT_CUSTOMER_CONVERSATION_VIEW,
   ASSISTANT_SETTINGS_MANAGE,
   ASSISTANT_SETTINGS_VIEW,
 ]);

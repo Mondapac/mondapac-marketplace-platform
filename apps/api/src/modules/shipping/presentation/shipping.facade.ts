@@ -1,6 +1,7 @@
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import type { BookCarrierDelivery } from '../application/use-cases/book-carrier-delivery.use-case';
 import type { CancelCarrierDelivery } from '../application/use-cases/cancel-carrier-delivery.use-case';
+import type { CarrierProgressOf } from '../application/use-cases/carrier-progress-of.use-case';
 import type { CarrierShipmentQuery } from '../application/use-cases/carrier-shipment.use-case';
 import type { CarrierTrackingLinks } from '../application/use-cases/carrier-tracking-links.use-case';
 import type { DeliveryAvailability } from '../application/use-cases/delivery-availability.use-case';
@@ -27,6 +28,7 @@ export interface ShippingFacadeUseCases {
   readonly shipment: CarrierShipmentQuery;
   readonly cancel: CancelCarrierDelivery;
   readonly trackingLinks: CarrierTrackingLinks;
+  readonly progress: CarrierProgressOf;
   readonly availability: DeliveryAvailability;
   readonly choice: DeliveryChoice;
   readonly price: PriceDelivery;
@@ -152,6 +154,10 @@ export class ShippingFacadeImplementation implements ShippingFacade {
                 ? ({ code: 'validation.failed' } as const)
                 : ({ code: 'shipping.unavailable' } as const),
         } as const);
+  }
+
+  async carrierProgressOf(context: CallContext, sellerOrderIds: readonly Id<'SellerOrder'>[]) {
+    return failuresOf(await this.useCases.progress.execute(context, { sellerOrderIds }));
   }
 
   cancelCarrierDelivery(context: CallContext, sellerOrderId: string) {

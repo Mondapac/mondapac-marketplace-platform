@@ -1,6 +1,8 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type {
+  ColumnPreferenceStore,
   SavedFilterStore,
+  StoredColumnPreference,
   StoredFilter,
   StoredFilterWrite,
 } from '../../src/modules/lists/contracts';
@@ -164,5 +166,49 @@ export class MemorySavedFilterStore implements SavedFilterStore {
     }
     this.rows.delete(id);
     return Promise.resolve(true);
+  }
+}
+
+/** The in-memory column-preference store (unit and HTTP tests): Market and store in every key. */
+export class MemoryColumnPreferenceStore implements ColumnPreferenceStore {
+  readonly rows = new Map<string, StoredColumnPreference & { marketId: string }>();
+  #key = (
+    market: MarketContext,
+    sellerId: Id<'Seller'> | null,
+    listKey: string,
+    accountId: Id<'Account'>,
+  ) => `${market.marketId}/${sellerId ?? '-'}/${listKey}/${accountId}`;
+
+  find(
+    market: MarketContext,
+    sellerId: Id<'Seller'> | null,
+    listKey: string,
+    accountId: Id<'Account'>,
+  ) {
+    return Promise.resolve(this.rows.get(this.#key(market, sellerId, listKey, accountId)) ?? null);
+  }
+  put(market: MarketContext, preference: StoredColumnPreference) {
+    const key = this.#key(
+      market,
+      preference.sellerId,
+      preference.listKey,
+      preference.ownerAccountId,
+    );
+    const before = this.rows.get(key);
+    this.rows.set(key, {
+      ...preference,
+      marketId: market.marketId,
+      ...(before === undefined ? {} : { id: before.id, createdAt: before.createdAt }),
+    });
+    return Promise.resolve();
+  }
+  remove(
+    market: MarketContext,
+    sellerId: Id<'Seller'> | null,
+    listKey: string,
+    accountId: Id<'Account'>,
+  ) {
+    this.rows.delete(this.#key(market, sellerId, listKey, accountId));
+    return Promise.resolve();
   }
 }

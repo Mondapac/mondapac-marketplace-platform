@@ -26,11 +26,13 @@ export default async function OrderPage({
   searchParams,
 }: {
   readonly params: Promise<{ readonly orderId: string }>;
-  readonly searchParams?: Promise<Record<string, string | string[] | undefined>>;
+  readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { orderId } = await params;
-  const query = (await searchParams) ?? {};
+  const query = await searchParams;
   const from = customerOriginOf(query['customer'], query['from']);
+  // "Cancel order…" in the list's Actions menu lands here with the cancel dialog ready.
+  const startCancel = query['do'] === 'cancel';
   if (!UUID.test(orderId)) notFound();
   const gate = await requireSession();
   const t = await getTranslations();
@@ -73,6 +75,7 @@ export default async function OrderPage({
         notes={notes.kind === 'ok' ? notes.body.notes : null}
         csrfToken={gate.session.csrfToken}
         {...(from === undefined ? {} : { from })}
+        startCancel={startCancel}
       />,
     );
   if (result.kind === 'forbidden') return message('no-access');
