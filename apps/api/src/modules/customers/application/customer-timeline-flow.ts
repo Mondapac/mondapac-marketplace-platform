@@ -1,4 +1,5 @@
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import { localDayEnd, localDayStart } from '../domain/local-day';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { CSV_BOM, csvLine } from '@mondapac/platform-import';
 import {
@@ -65,23 +66,16 @@ const SPEC = {
 };
 
 const FILTER_KEYS = ['category', 'kinds', 'from', 'to'] as const;
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** The start of a calendar day (UTC); null for anything that is not a real day (31 February). */
-const dayStart = (day: string): Temporal.Instant | null => {
-  if (!DAY.test(day)) return null;
-  try {
-    const date = Temporal.PlainDate.from(day, { overflow: 'reject' });
-    return Temporal.Instant.from(`${date.toString()}T00:00:00Z`);
-  } catch {
-    return null;
-  }
-};
-
-/** Reads the filters of a timeline request (closed). */
+/**
+ * Reads the filters of a timeline request (closed). `from` and `to` are calendar days in `zone`
+ * (the admin's own zone, else the Market's; ADR-0005): [from's first instant, the first instant
+ * after to).
+ */
 export function timelineFiltersOf(
   accountId: Id<'Account'>,
   raw: unknown,
+  zone: string,
 ): Result<TimelineQuery, ListValidationFailure> {
   if (raw === undefined || raw === null) {
     return ok({ accountId, kinds: null, from: null, to: null });
@@ -114,13 +108,12 @@ export function timelineFiltersOf(
   let from: Temporal.Instant | null = null;
   let to: Temporal.Instant | null = null;
   if (raw['from'] !== undefined && raw['from'] !== null && raw['from'] !== '') {
-    from = typeof raw['from'] === 'string' ? dayStart(raw['from']) : null;
+    from = typeof raw['from'] === 'string' ? localDayStart(raw['from'], zone) : null;
     if (from === null) return invalidField('filters.from', 'format');
   }
   if (raw['to'] !== undefined && raw['to'] !== null && raw['to'] !== '') {
-    const start = typeof raw['to'] === 'string' ? dayStart(raw['to']) : null;
-    if (start === null) return invalidField('filters.to', 'format');
-    to = start.add({ hours: 24 });
+    to = typeof raw['to'] === 'string' ? localDayEnd(raw['to'], zone) : null;
+    if (to === null) return invalidField('filters.to', 'format');
   }
   if (from !== null && to !== null && Temporal.Instant.compare(to, from) <= 0) {
     return invalidField('filters.to', 'range');
@@ -171,7 +164,7 @@ export async function readTimeline(
   }
   const accountId = accountIdOf(input['accountId']);
   if (accountId === null) return err({ code: 'customers.customer-not-found' });
-  const query = timelineFiltersOf(accountId, input['filters']);
+  const query = timelineFiltersOf(accountId, input['filters'], await deps.dayZone.zoneOf(context));
   if (!query.ok) return query;
   const list = parseListQuery(input, SPEC);
   if (!list.ok) return list;
@@ -240,7 +233,7 @@ export async function exportTimeline(
   if (direction !== 'asc' && direction !== 'desc') return invalidField('direction', 'value');
   const accountId = accountIdOf(input['accountId']);
   if (accountId === null) return err({ code: 'customers.customer-not-found' });
-  const query = timelineFiltersOf(accountId, input['filters']);
+  const query = timelineFiltersOf(accountId, input['filters'], await deps.dayZone.zoneOf(context));
   if (!query.ok) return query;
   const now = deps.clock.now();
   const read = await deps.unitOfWork.run<readonly TimelineEntry[], TimelineFailure>(

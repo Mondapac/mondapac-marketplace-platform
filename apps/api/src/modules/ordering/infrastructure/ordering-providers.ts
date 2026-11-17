@@ -9,6 +9,11 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import { ServiceAreaDirectory } from '../../../platform/market-config/service-area-directory';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
+  CUSTOMER_PAYMENTS_READER,
+  type CustomerPaymentsReader,
+} from '../application/ports/customer-payments.reader';
+import { PrismaCustomerPaymentsReader } from './prisma-customer-payments.reader';
+import {
   SUBJECT_KEY_SERVICE,
   type SubjectKeyService,
 } from '../../../platform/subject-keys/subject-key-service';
@@ -257,5 +262,11 @@ export const orderingProviders: readonly FactoryProvider[] = [
       identity: IdentityFacade,
       markets: MarketRegistry,
     ): OrderLabels => new FacadeOrderLabels(catalog, sellers, identity, markets),
+  },
+  {
+    provide: CUSTOMER_PAYMENTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerPaymentsReader =>
+      new PrismaCustomerPaymentsReader(prisma),
   },
 ];

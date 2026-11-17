@@ -1556,6 +1556,64 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(noKey.status).toBe(403);
     });
 
+    it('pages a customer’s refunds for ordering.order.view with customers.customers.view, and keeps the export behind the customers export key (phase 2b)', async () => {
+      await seedAdmins();
+      // A customer-page reader: the order view key and customers' view key (Viewer lacks the latter).
+      const PAGE_READER = id<'Account'>(0xa00b);
+      const PAGE_READER_ROLE = id<'Role'>(0xc0f3);
+      fakes.seedRole({
+        id: PAGE_READER_ROLE,
+        marketId: code as AccountState['marketId'],
+        scope: 'platform',
+        kind: 'custom',
+        seedCode: null,
+        seedVersion: null,
+        sellerId: null,
+        name: 'Customer page reader',
+        permissionKeys: ['ordering.order.view', 'customers.customers.view'],
+        version: 1,
+        createdAt: START,
+      });
+      seedAccount(PAGE_READER, 'admin', 'admin11');
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(0xe00b),
+        marketId: code as AccountState['marketId'],
+        accountId: PAGE_READER,
+        roleId: PAGE_READER_ROLE,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+      const route = `/ordering/admin/customers/${CUSTOMER}/refunds`;
+      const csrf = (accountId: Id<'Account'>, n: number) => ({
+        'x-market-id': code,
+        ...panelHeaders(code, 'admin'),
+        ...session(accountId, 'admin', n),
+      });
+      // The Viewer holds ordering.order.view but not customers.customers.view.
+      const viewerOnly = await http().post(route).set(csrf(VIEWER, 46)).send({});
+      expect(viewerOnly.status).toBe(403);
+      const page = await http()
+        .post(route)
+        .set(csrf(PAGE_READER, 41))
+        .send({ filters: { state: ['succeeded'] }, paging: 'pages' });
+      expect(page.status).toBe(200);
+      expect(page.headers['cache-control']).toBe('no-store');
+      expect(page.body).toMatchObject({ items: [], total: 0, page: 1, paging: 'pages' });
+      const noKey = await http().post(route).set(csrf(NO_KEY, 42)).send({});
+      expect(noKey.status).toBe(403);
+      const unknownField = await http()
+        .post(route)
+        .set(csrf(PAGE_READER, 43))
+        .send({ accountId: 'x' });
+      expect(unknownField.status).toBe(400);
+      const noCsrf = await http().post(route).set(adminHeaders(PAGE_READER, 44)).send({});
+      expect(noCsrf.status).toBe(403);
+      // The reader holds no customers export key: the export is refused before any read.
+      const exported = await http().post(`${route}/export`).set(csrf(PAGE_READER, 45)).send({});
+      expect(exported.status).toBe(403);
+    });
+
     it('refunds only for an admin with ordering.order.refund, and not while the Market switch is off', async () => {
       await seedAdmins();
       const rootRole = [...fakes.roles.values()].find(
