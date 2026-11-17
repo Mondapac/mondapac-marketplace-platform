@@ -33,8 +33,11 @@ import { ClearOrderedLines } from './application/use-cases/clear-ordered-lines.u
 import { PurgeInactiveCarts } from './application/use-cases/purge-inactive-carts.use-case';
 import { ReadCheckoutLines } from './application/use-cases/read-checkout-lines.use-case';
 import { ListIdleAccountCarts } from './application/use-cases/list-idle-account-carts.use-case';
-import { CART_CHECKOUT_FACADE, CART_REMINDER_FACADE } from './contracts';
+import { ReadAssistantOfferUnits } from './application/use-cases/read-assistant-offer-units.use-case';
+import { ViewAssistantCart } from './application/use-cases/view-assistant-cart.use-case';
+import { CART_ASSISTANT_FACADE, CART_CHECKOUT_FACADE, CART_REMINDER_FACADE } from './contracts';
 import { cartProviders } from './infrastructure/cart-providers';
+import { CartAssistantFacadeImplementation } from './presentation/cart-assistant.facade';
 import { CartCheckoutFacadeImplementation } from './presentation/cart-checkout.facade';
 import { CartReminderFacadeImplementation } from './presentation/cart-reminder.facade';
 import { CartController } from './presentation/cart.controller';
@@ -98,6 +101,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       MoveSavedToCart,
       RemoveSaved,
       ListIdleAccountCarts,
+      ViewAssistantCart,
+      ReadAssistantOfferUnits,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: PurgeInactiveCarts,
@@ -134,7 +139,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       inject: [ListIdleAccountCarts],
       useFactory: (list: ListIdleAccountCarts) => new CartReminderFacadeImplementation(list),
     },
+    {
+      provide: CART_ASSISTANT_FACADE,
+      inject: [ViewAssistantCart, ReadAssistantOfferUnits],
+      useFactory: (view: ViewAssistantCart, units: ReadAssistantOfferUnits) =>
+        new CartAssistantFacadeImplementation(view, units),
+    },
   ],
-  exports: [CART_CHECKOUT_FACADE, CART_REMINDER_FACADE],
+  exports: [CART_CHECKOUT_FACADE, CART_REMINDER_FACADE, CART_ASSISTANT_FACADE],
 })
 export class CartModule {}

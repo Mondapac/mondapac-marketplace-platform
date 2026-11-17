@@ -364,6 +364,74 @@ export class PrismaOrderRepository implements OrderRepository {
     return rows.map(toOrder);
   }
 
+  async sellerTotalsOf(market: MarketContext, accountId: Id<'Account'>) {
+    const tx = this.prisma.tx(market);
+    // The account's confirmed orders (index market, account, created_at), then their seller orders
+    // and the succeeded refunds of those through the (market, order, seller) key.
+    const orders = await tx.orderingOrder.findMany({
+      where: { marketId: market.marketId, accountId, status: 'confirmed' },
+      select: { id: true, confirmedAt: true, currency: true },
+    });
+    if (orders.length === 0) return [];
+    const orderIds = orders.map((order) => order.id);
+    const [sellerOrders, refunds] = await Promise.all([
+      tx.orderingSellerOrder.findMany({
+        where: { marketId: market.marketId, orderId: { in: orderIds } },
+        select: { sellerId: true, orderId: true, totalAmount: true },
+      }),
+      tx.orderingRefund.groupBy({
+        by: ['sellerId'],
+        where: {
+          marketId: market.marketId,
+          state: 'succeeded',
+          sellerOrder: { orderId: { in: orderIds } },
+        },
+        _sum: { grossAmount: true },
+      }),
+    ]);
+    const orderOf = new Map(orders.map((order) => [order.id, order]));
+    const refunded = new Map(refunds.map((row) => [row.sellerId, row._sum.grossAmount ?? 0n]));
+    const bySeller = new Map<
+      string,
+      { count: number; first: Date; last: Date; gross: bigint; currency: string }
+    >();
+    for (const row of sellerOrders) {
+      const order = orderOf.get(row.orderId);
+      if (order === undefined || order.confirmedAt === null) continue;
+      const at = order.confirmedAt;
+      const seen = bySeller.get(row.sellerId);
+      if (seen === undefined) {
+        bySeller.set(row.sellerId, {
+          count: 1,
+          first: at,
+          last: at,
+          gross: row.totalAmount,
+          currency: order.currency,
+        });
+        continue;
+      }
+      seen.count += 1;
+      seen.gross += row.totalAmount;
+      if (at < seen.first) seen.first = at;
+      if (at >= seen.last) {
+        seen.last = at;
+        seen.currency = order.currency;
+      }
+    }
+    const instant = (value: Date) => Temporal.Instant.fromEpochMilliseconds(value.getTime());
+    return [...bySeller.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([sellerId, totals]) => ({
+        sellerId: sellerId as Id<'Seller'>,
+        orderCount: totals.count,
+        firstConfirmedAt: instant(totals.first),
+        lastConfirmedAt: instant(totals.last),
+        grossMinor: totals.gross,
+        refundedMinor: refunded.get(sellerId) ?? 0n,
+        currency: totals.currency,
+      }));
+  }
+
   async totalsOf(market: MarketContext, accountId: Id<'Account'>) {
     const tx = this.prisma.tx(market);
     const confirmed = { marketId: market.marketId, accountId, status: 'confirmed' } as const;
@@ -859,6 +927,7 @@ const sellerWhere = (market: MarketContext, sellerId: Id<'Seller'>, filter: Sell
     : { OR: [{ id: filter.reference }, { orderId: filter.reference }] }),
   order: {
     status: 'confirmed',
+    ...(filter.accountId == null ? {} : { accountId: filter.accountId }),
     ...(filter.from === null && filter.to === null
       ? {}
       : {

@@ -112,7 +112,9 @@ import { AdminRemoveRefundLimit } from './application/use-cases/admin-remove-ref
 import { AdminSetRefundLimit } from './application/use-cases/admin-set-refund-limit.use-case';
 import { AdminViewRefundLimits } from './application/use-cases/admin-view-refund-limits.use-case';
 import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
+import { AdminExportOrders } from './application/use-cases/admin-export-orders.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
+import { SellerExportOrders } from './application/use-cases/seller-export-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
 import { AdminViewOrderDocument } from './application/use-cases/admin-view-order-document.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
@@ -131,6 +133,8 @@ import { OpenObligationsOfQuery } from './application/use-cases/open-obligations
 import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
 import { CustomerOrderAccountsQuery } from './application/use-cases/customer-order-accounts.use-case';
 import { CustomerOrderStatsQuery } from './application/use-cases/customer-order-stats.use-case';
+import { CustomerSellerStatsQuery } from './application/use-cases/customer-seller-stats.use-case';
+import { SellerCustomerOrdersQuery } from './application/use-cases/seller-customer-orders.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { OrderPaymentRefQuery } from './application/use-cases/order-payment-ref.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
@@ -386,6 +390,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminViewOrder,
       AdminViewOrderActivity,
       AdminViewOrderDocument,
+      AdminExportOrders,
+      SellerExportOrders,
       ConfirmPayment,
       CancelPayment,
       SellerViewOrder,
@@ -402,6 +408,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OrderNoticeQuery,
       CustomerOrderStatsQuery,
       CustomerOrderAccountsQuery,
+      CustomerSellerStatsQuery,
+      SellerCustomerOrdersQuery,
       OrderPaymentRefQuery,
       ShipmentNoticeQuery,
       RefundNoticeQuery,
@@ -587,6 +595,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         RefundNoticeQuery,
         CustomerOrderStatsQuery,
         CustomerOrderAccountsQuery,
+        CustomerSellerStatsQuery,
+        SellerCustomerOrdersQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -603,6 +613,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         refundNotice: RefundNoticeQuery,
         customerStats: CustomerOrderStatsQuery,
         customerAccounts: CustomerOrderAccountsQuery,
+        customerSellers: CustomerSellerStatsQuery,
+        sellerCustomerOrders: SellerCustomerOrdersQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -619,6 +631,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           refundNotice,
           customerStats,
           customerAccounts,
+          customerSellers,
+          sellerCustomerOrders,
         ),
     },
     {

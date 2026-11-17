@@ -52,6 +52,8 @@ export interface SellerOrderFilter {
   readonly fulfilment: Fulfilment | null;
   /** A seller order id or its order id, matched exactly (the reference in the order emails). */
   readonly reference?: string | null;
+  /** Only the seller orders of this customer (the seller's customer page); absent or null: every customer. */
+  readonly accountId?: Id<'Account'> | null;
   /** Paid at or after `from` and before `to`; null keeps every payment time. */
   readonly from: Temporal.Instant | null;
   readonly to: Temporal.Instant | null;
@@ -118,7 +120,30 @@ export interface AccountOrderTotals {
   readonly refundedMinor: bigint;
 }
 
+/** What an account's confirmed orders add up to with one seller (the seller's customers read model). */
+export interface AccountSellerTotals {
+  readonly sellerId: Id<'Seller'>;
+  readonly orderCount: number;
+  readonly firstConfirmedAt: Temporal.Instant;
+  readonly lastConfirmedAt: Temporal.Instant;
+  /** Sum of the seller orders' totals, minor units of `currency`. */
+  readonly grossMinor: bigint;
+  /** Sum of the refunds of those seller orders that succeeded. */
+  readonly refundedMinor: bigint;
+  /** The currency of the latest of those orders. */
+  readonly currency: string;
+}
+
 export interface OrderRepository {
+  /**
+   * One row per seller the account has a confirmed order with: how many seller orders, the first
+   * and last payment, the gross and the refunds that succeeded. Read in one unit.
+   */
+  sellerTotalsOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+  ): Promise<readonly AccountSellerTotals[]>;
+
   /** The totals of one account's confirmed orders and succeeded refunds, read in one unit. */
   totalsOf(market: MarketContext, accountId: Id<'Account'>): Promise<AccountOrderTotals>;
 
