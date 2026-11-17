@@ -528,7 +528,8 @@ import {
   OwnDescriptionWriterController,
 } from './presentation/description-writer.controller';
 import { SettingsModule } from '../settings';
-import { ListsModule } from '../lists';
+import { ListsModule, registerLists } from '../lists';
+import { CATALOG_LISTS } from './application/saved-filters/list-definitions';
 import { VARIANT_ADMIN_READER } from './application/ports/variant-admin.reader';
 import { VARIANT_TYPE_SETTINGS_STORE } from './application/ports/variant-type-settings.store';
 import { AdminVariantTypeGet } from './application/use-cases/admin-variant-type-get.use-case';
@@ -855,6 +856,7 @@ const RESTRUCTURE_DEPS = {
     PersistenceModule.outboxWriterFor('catalog'),
     PersistenceModule.auditWriterFor('catalog'),
     registerAuditActions('catalog', CATALOG_AUDIT_ACTIONS),
+    registerLists('catalog', CATALOG_LISTS),
     registerEvents('catalog', CATALOG_EVENTS),
     productTypeProvider,
     {

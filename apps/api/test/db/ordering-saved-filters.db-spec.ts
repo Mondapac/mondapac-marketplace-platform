@@ -409,7 +409,6 @@ describe.each(TEST_MARKETS)('order list saved filters in market %s (database)', 
         owner_account_id: `'${account()}'`,
         list_key: `'admin.ordering.other'`,
         payload: `'{}'::jsonb`,
-        position: '2',
         market_id: `'ZZ'`,
         created_at: 'now()',
       };

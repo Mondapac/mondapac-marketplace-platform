@@ -19,7 +19,8 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CART_CHECKOUT_FACADE, CartModule } from '../cart';
 import { CatalogModule } from '../catalog';
-import { ListsModule } from '../lists';
+import { ListsModule, registerLists } from '../lists';
+import { ORDERING_LISTS } from './application/saved-views/list-definitions';
 import { COMMISSION_PAYOUTS_FACADE, CommissionPayoutsModule } from '../commission-payouts';
 import { CUSTOMERS_CHECKOUT_FACADE, CustomersModule } from '../customers';
 import { IdentityModule } from '../identity';
@@ -346,6 +347,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.outboxWriterFor('ordering'),
     PersistenceModule.auditWriterFor('ordering'),
     registerAuditActions('ordering', ORDERING_AUDIT_ACTIONS),
+    registerLists('ordering', ORDERING_LISTS),
     registerEvents('ordering', ORDERING_EVENTS),
     // SHP-02/03: the real-time carrier's booking and progress (ordering.inbox).
     registerSubscriptionsFrom(
