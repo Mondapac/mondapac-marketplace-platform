@@ -1313,6 +1313,96 @@ describe('relay of the refunds list', () => {
   });
 });
 
+describe('relay of the invoices list (documents)', () => {
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/documents${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['ordering', 'admin', 'documents'];
+  const SELLER = '0190a000-0000-7000-8000-0000000000b1';
+  const CURSOR = '1763300000000.0190a000-0000-7000-8000-0000000000aa';
+  const urlOf = (upstream: ReturnType<typeof upstreamOk>) => {
+    const target = upstream.mock.calls[0]?.[0];
+    return typeof target === 'string' ? target : '';
+  };
+  const sent = async (query: string) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(200);
+    return new URL(urlOf(upstream)).searchParams;
+  };
+
+  it('forwards the page mode, the kind, the search, the seller and the dates', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'kind=credit-note&page=2&pageSize=25&sort=amount&direction=asc&search=Cedar+Lane' +
+      '&from=2026-11-16T14%3A00%3A00.000Z&to=2026-11-17T14%3A00%3A00%2B10%3A00' +
+      `&sellerId=${SELLER}`;
+    await relay(config, get(`?${q}&x=1`), path, upstream);
+    const url = new URL(urlOf(upstream));
+    expect(url.origin + url.pathname).toBe('http://api.test/ordering/admin/documents');
+    expect(Object.fromEntries(url.searchParams)).toEqual(
+      Object.fromEntries(new URLSearchParams(q)),
+    );
+  });
+
+  it('forwards the Previous and next mode: limit, cursor, and an exact q', async () => {
+    const params = await sent(`?kind=order-confirmation&limit=25&cursor=${CURSOR}&q=${SELLER}`);
+    expect(Object.fromEntries(params)).toEqual({
+      kind: 'order-confirmation',
+      limit: '25',
+      cursor: CURSOR,
+      q: SELLER,
+    });
+  });
+
+  it('drops the amount filters and every unknown key', async () => {
+    const params = await sent('?kind=credit-note&minAmount=1&maxAmount=9&fleet=x&x=1');
+    expect(Object.fromEntries(params)).toEqual({ kind: 'credit-note' });
+  });
+
+  it('drops a value of the wrong shape and keeps the rest', async () => {
+    const params = await sent(
+      '?kind=tax-invoice&sort=name&direction=up&sellerId=nope&page=0x&pageSize=1000' +
+        '&limit=-1&cursor=abc&from=yesterday&to=2026-11-16&q=ok',
+    );
+    expect(Object.fromEntries(params)).toEqual({ q: 'ok' });
+  });
+
+  it('accepts each kind and sort the API names', async () => {
+    for (const kind of ['order-confirmation', 'credit-note']) {
+      expect((await sent(`?kind=${kind}`)).get('kind')).toBe(kind);
+    }
+    for (const sort of ['issued', 'amount']) {
+      expect((await sent(`?sort=${sort}`)).get('sort')).toBe(sort);
+    }
+  });
+
+  it('keeps free text up to 80 characters for q and search, and drops more', async () => {
+    const eighty = 'x'.repeat(80);
+    expect((await sent(`?q=${eighty}`)).get('q')).toBe(eighty);
+    expect((await sent(`?search=${eighty}`)).get('search')).toBe(eighty);
+    expect((await sent(`?q=${eighty}y`)).has('q')).toBe(false);
+    expect((await sent(`?search=${eighty}y`)).has('search')).toBe(false);
+  });
+
+  it('refuses other paths and methods', async () => {
+    const upstream = upstreamOk();
+    const other = ['ordering', 'admin', 'documents', '0190a000-0000-7000-8000-000000000001'];
+    expect((await relay(config, get(''), other, upstream)).status).toBe(404);
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const request = new Request('http://admin.localhost:3002/api/ordering/admin/documents', {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      });
+      expect((await relay(config, request, path, upstream)).status).toBe(404);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
 describe('relay of the sellers without an owner', () => {
   const id = '0190a000-0000-7000-8000-000000000001';
   const get = (query: string) =>
@@ -3213,6 +3303,93 @@ describe('relay of the category image (categories C3c)', () => {
       expect((await relay(config, get(other.join('/')), other, upstream)).status).toBe(404);
     }
     expect(upstream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('relay of the saved views of the Sales lists', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+    new Request(`http://admin.localhost:3002/api/${path}`, {
+      method,
+      headers,
+      ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
+    });
+
+  it.each(['shipments', 'refunds', 'documents'])(
+    'relays the saved views of admin.ordering.%s with the list key only',
+    async (name) => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        request('GET', `lists/admin/saved-filters?listKey=admin.ordering.${name}&extra=1`),
+        ['lists', 'admin', 'saved-filters'],
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/lists/admin/saved-filters?listKey=admin.ordering.${name}`,
+      );
+    },
+  );
+
+  it('drops a list key that is not a Sales list', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'lists/admin/saved-filters?listKey=admin.catalog.products'),
+      ['lists', 'admin', 'saved-filters'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/lists/admin/saved-filters');
+  });
+
+  it('relays create, reorder, rename and delete (the list key stays on delete)', async () => {
+    for (const [method, path, expected] of [
+      ['POST', 'lists/admin/saved-filters', 'lists/admin/saved-filters'],
+      ['PUT', 'lists/admin/saved-filters/order', 'lists/admin/saved-filters/order'],
+      ['PUT', `lists/admin/saved-filters/${id}`, `lists/admin/saved-filters/${id}`],
+      [
+        'DELETE',
+        `lists/admin/saved-filters/${id}?listKey=admin.ordering.refunds&x=1`,
+        `lists/admin/saved-filters/${id}?listKey=admin.ordering.refunds`,
+      ],
+    ] as const) {
+      const ok = upstreamOk();
+      const target = path.split('?')[0]!;
+      expect((await relay(config, request(method, path), target.split('/'), ok)).status).toBe(200);
+      expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${expected}`);
+    }
+  });
+
+  it('refuses a write from another origin', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      request('POST', 'lists/admin/saved-filters', {
+        ...sameOrigin,
+        origin: 'http://evil.test',
+        'sec-fetch-site': 'cross-site',
+      }),
+      ['lists', 'admin', 'saved-filters'],
+      upstream,
+    );
+    expect(response.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('refuses other methods and ids on the saved views', async () => {
+    for (const [method, path] of [
+      ['PUT', 'lists/admin/saved-filters'],
+      ['DELETE', 'lists/admin/saved-filters'],
+      ['PUT', 'lists/admin/saved-filters/not-a-uuid'],
+      ['POST', `lists/admin/saved-filters/${id}`],
+      ['GET', `lists/admin/saved-filters/${id}`],
+      ['POST', 'lists/admin/saved-filters/order'],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      const response = await relay(config, request(method, path), path.split('/'), fetchImpl);
+      expect(response.status, `${method} ${path}`).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
   });
 });
 

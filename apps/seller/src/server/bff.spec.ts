@@ -491,6 +491,33 @@ describe('relay allowlist for stock locations', () => {
     }
   });
 
+  it('relays the category picker read (GET) on its exact path, without a query, and no write', async () => {
+    const upstream = upstreamOk();
+    const path = ['catalog', 'seller', 'products', 'category-picker'];
+    const read = (init: RequestInit = {}, query = '') =>
+      new Request(
+        `http://seller.localhost:3001/api/catalog/seller/products/category-picker${query}`,
+        {
+          headers: sameOrigin,
+          ...init,
+        },
+      );
+    expect((await relay(config, read(), path, upstream)).status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/seller/products/category-picker',
+    );
+    // A query never crosses.
+    await relay(config, read({}, '?includeHidden=true'), path, upstream);
+    expect(upstream.mock.calls[1]?.[0]).toBe(
+      'http://api.test/catalog/seller/products/category-picker',
+    );
+    // Not a write, and not a longer path.
+    const post = await relay(config, read({ method: 'POST' }), path, upstreamOk());
+    expect(post.status).toBe(404);
+    const longer = await relay(config, read(), [...path, 'extra'], upstreamOk());
+    expect(longer.status).toBe(404);
+  });
+
   it('relays a location edit by UUID and the order, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     expect((await relay(config, put(`inventory/seller/sources/${ID}`), [], upstream)).status).toBe(

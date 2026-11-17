@@ -26,6 +26,16 @@ export class OrderFilterConditionsDto {
   to?: string;
 }
 
+/**
+ * The payload shown is the Orders document. The admin Sales lists (admin.ordering.shipments,
+ * admin.ordering.refunds, admin.ordering.documents) keep another closed document through the
+ * generic lists routes: { v: 1, tab, filters?: { <field>: <word> }, sort?, direction?: asc | desc }.
+ */
+const PAYLOAD_NOTE =
+  'The closed document of the list. Orders: as shown. The Sales lists (admin.ordering.shipments, ' +
+  'admin.ordering.refunds, admin.ordering.documents) use { v: 1, tab, filters?: { field: word }, ' +
+  'sort?, direction?: asc | desc } with the vocabulary of that list; see the lists saved-filter routes.';
+
 export class OrderFilterPayloadDto {
   @ApiProperty({ enum: [1] })
   v!: 1;
@@ -48,7 +58,8 @@ export class SavedFilterDto {
   @ApiProperty({ enum: SAVED_FILTER_LIST_KEYS }) listKey!: string;
   @ApiProperty({ maxLength: SAVED_FILTER_NAME_MAX }) name!: string;
   @ApiProperty({ enum: SAVED_FILTER_VISIBILITIES }) visibility!: string;
-  @ApiProperty({ type: OrderFilterPayloadDto }) payload!: OrderFilterPayloadDto;
+  @ApiProperty({ type: OrderFilterPayloadDto, description: PAYLOAD_NOTE })
+  payload!: OrderFilterPayloadDto;
   @ApiProperty() ownedByMe!: boolean;
   @ApiProperty() canManage!: boolean;
   @ApiProperty() createdAt!: string;
@@ -75,7 +86,8 @@ export class SavedFilterCreateRequest {
     description: 'Required on the admin list; the seller list is always me.',
   })
   visibility?: string;
-  @ApiProperty({ type: OrderFilterPayloadDto }) payload!: OrderFilterPayloadDto;
+  @ApiProperty({ type: OrderFilterPayloadDto, description: PAYLOAD_NOTE })
+  payload!: OrderFilterPayloadDto;
 }
 
 export class SavedFilterUpdateRequest {
