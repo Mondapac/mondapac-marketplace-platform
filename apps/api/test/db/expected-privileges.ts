@@ -489,7 +489,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // one table. The two old tables stay until they are dropped one release later.
     'lists.saved_filters': {
       table: ['DELETE', 'INSERT', 'SELECT'],
-      columnUpdate: ['name', 'updated_at', 'visibility'],
+      columnUpdate: ['name', 'position', 'updated_at', 'visibility'],
     },
     // docs/design/data/ordering.md 3.15: a saved view of an order list; a filter is a preference, so
     // the application deletes it; only the name and who can use it change.
@@ -1486,6 +1486,38 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // go by cascade) and inserts the new one, so neither table is ever updated.
     'catalog.category_images': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.category_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Categories package C5a (Move products): the job moves through its states by column; its
+    // source, target, reason and author are written once. An item is written once and only its
+    // outcome and seller-notice tries change. No DELETE: the jobs are the audit trail of a bulk
+    // publish.
+    'catalog.category_product_move_jobs': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'cursor_product_id',
+        'failed_count',
+        'finished_at',
+        'lease_expires_at',
+        'lease_holder',
+        'moved_count',
+        'scan_outcome',
+        'skipped_count',
+        'started_at',
+        'state',
+        'total_count',
+        'version',
+      ],
+    },
+    'catalog.category_product_move_items': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'notice_attempts',
+        'notice_failed_at',
+        'notice_next_attempt_at',
+        'revision_id',
+        'seller_notified_at',
+        'state',
+      ],
+    },
     // docs/design/data/catalog.md section 7 (slice 3): definitions and families are never deleted;
     // code, type and the localizable flag stay on the root, fixed by the column grant; the
     // material and variant-option flags live in insert-only revisions.

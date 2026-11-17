@@ -80,9 +80,13 @@ export class FakeTools implements AssistantTools {
   readonly runs: { context: CallContext; request: ToolRequest }[] = [];
   failing = false;
   products: AssistantCard[] = [];
+  /** A fixed outcome per tool name, for the tools without a built-in answer here. */
+  readonly outcomes = new Map<string, ToolOutcome>();
 
   run(context: CallContext, request: ToolRequest): Promise<ToolOutcome> {
     this.runs.push({ context, request });
+    const fixed = this.outcomes.get(request.tool);
+    if (fixed !== undefined) return Promise.resolve(fixed);
     if (this.failing) {
       return Promise.resolve({
         forModel: '{"error":"x"}',

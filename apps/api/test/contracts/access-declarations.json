@@ -31,6 +31,7 @@
   { "name": "cart.merge-guest-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.move-saved-to-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.purge-inactive-carts", "rule": "system" },
+  { "name": "cart.read-assistant-offer-units", "rule": "anonymous" },
   { "name": "cart.read-checkout-lines", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.remove-guest-item", "rule": "anonymous" },
   { "name": "cart.remove-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -38,6 +39,7 @@
   { "name": "cart.save-for-later", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.set-guest-line-quantity", "rule": "anonymous" },
   { "name": "cart.set-line-quantity", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "cart.view-assistant-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.view-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.view-guest-cart", "rule": "anonymous" },
   { "name": "cart.view-saved", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -46,6 +48,7 @@
   { "name": "catalog.brand-product-ids", "rule": "anonymous" },
   { "name": "catalog.business-activities-active", "rule": "anonymous" },
   { "name": "catalog.cancel-pending-proposals", "rule": "system" },
+  { "name": "catalog.category-move-products-run", "rule": "system" },
   { "name": "catalog.category-slug-resolve", "rule": "anonymous" },
   { "name": "catalog.category-tree", "rule": "anonymous" },
   { "name": "catalog.cultures-by-ids", "rule": "anonymous" },
@@ -63,6 +66,11 @@
   { "name": "catalog.offer-tax-categories", "rule": "anonymous" },
   {
     "name": "catalog.own-attribute-suggestions-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-category-picker",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
@@ -589,6 +597,15 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "legal.withdraw-marketing-email-by-link", "rule": "anonymous" },
+  { "name": "lists.saved-filter-create", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "lists.saved-filter-delete", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "lists.saved-filter-update", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "lists.saved-filters-list", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  {
+    "name": "lists.saved-filters-reorder",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   {
     "name": "notifications.count-own-unread-notices",
     "rule": "own-resources",
@@ -872,6 +889,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "settings.read-cart-mode", "rule": "anonymous" },
   {
     "name": "settings.read-list-paging",
     "rule": "own-resources",

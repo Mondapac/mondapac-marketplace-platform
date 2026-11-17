@@ -14,6 +14,7 @@ import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
+import { SYSTEM_REQUEST_RECORDER } from '../src/modules/system-requests';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { OUTBOX_WRITER } from '../src/platform/events/outbox-writer';
 import { loadMarketConfigs } from '../src/platform/market-config/market-config';
@@ -25,6 +26,7 @@ import {
 } from './support/certification-claim-policy-fakes';
 import { FakeRegistryCipher, MemoryRegistry } from './support/certification-registry-fakes';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
+import { RecordingReview } from './support/system-request-fakes';
 import { createTestApp } from './support/test-app';
 import {
   panelHeaders,
@@ -70,6 +72,8 @@ describe('claim basis policy routes over HTTP (integration)', () => {
   let policies: MemoryClaimPolicies;
   let catalog: FakeCatalogReferences;
   let outbox: MemoryOutbox;
+  /** System requests' recorder; area certification is not reviewed unless a test says so. */
+  let review: RecordingReview;
   let logged: string[];
   const http = () => request(app.getHttpServer());
 
@@ -91,7 +95,9 @@ describe('claim basis policy routes over HTTP (integration)', () => {
           .overrideProvider(CATALOG_REFERENCES)
           .useValue(catalog)
           .overrideProvider(REGISTRY_CIPHER)
-          .useValue(new FakeRegistryCipher()),
+          .useValue(new FakeRegistryCipher())
+          .overrideProvider(SYSTEM_REQUEST_RECORDER)
+          .useValue(review),
     }));
     const out = process.stdout.write.bind(process.stdout);
     jest.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown, ...rest: unknown[]) => {
@@ -214,6 +220,7 @@ describe('claim basis policy routes over HTTP (integration)', () => {
     policies = new MemoryClaimPolicies(registry);
     catalog = new FakeCatalogReferences();
     outbox = new MemoryOutbox();
+    review = new RecordingReview();
     logged = [];
   });
   afterEach(async () => {
@@ -372,6 +379,58 @@ describe('claim basis policy routes over HTTP (integration)', () => {
         .send({ version: 0, rows: [] })
         .expect(409);
       expect(stale.body).toMatchObject({ code: 'conflict.stale' });
+    }, 30_000);
+
+    it('asks for a note while area certification is reviewed and answers the request it opened', async () => {
+      review.review('certification', 'medium');
+      await boot();
+      await seeded(code);
+      const a = sessionOf(code, EDITOR_A, 6);
+      const read = await http().get(`${base}/${TYPE}`).set(a).expect(200);
+      expect(read.body).toMatchObject({ review: { reviewed: true, risk: 'medium' } });
+
+      const noNote = await http()
+        .post(`${base}/${TYPE}/revisions`)
+        .set(a)
+        .send({ version: 0, rows: [row('NOT_APPLICABLE')] })
+        .expect(400);
+      expect(noNote.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'note', code: 'required' }] },
+      });
+      // The unit here does not roll the memory stores back; the unit spec and
+      // test/db/certification-system-requests.db-spec.ts prove the refusal leaves nothing behind.
+      expect(review.opened).toEqual([]);
+      policies.state = { policies: new Map(), revisions: new Map() };
+      outbox.events.length = 0;
+
+      const saved = await http()
+        .post(`${base}/${TYPE}/revisions`)
+        .set(a)
+        .send({ version: 0, rows: [row('NOT_APPLICABLE')], note: 'Food needs a seller' })
+        .expect(200);
+      expect(saved.body).toMatchObject({
+        outcome: 'published',
+        request: { id: expect.any(String) as string, number: 1 },
+      });
+      expect(review.opened).toEqual([
+        expect.objectContaining({
+          area: 'certification',
+          subjectKind: 'certification.claim-policy',
+          subjectRef: TYPE,
+          before: { revisionId: null, revisionNo: null },
+          note: 'Food needs a seller',
+        }),
+      ]);
+
+      // A relaxing save waits for a second admin: it opens no request, the note is ignored.
+      const relaxing = await http()
+        .post(`${base}/${TYPE}/revisions`)
+        .set(a)
+        .send({ version: 2, rows: [row('SELLER_OR_MANUFACTURER')], note: 'Sealed goods' })
+        .expect(200);
+      expect(relaxing.body).toMatchObject({ outcome: 'pending-second-admin', request: null });
+      expect(review.opened).toHaveLength(1);
     }, 30_000);
 
     it('takes a closed JSON body with the CSRF token only', async () => {

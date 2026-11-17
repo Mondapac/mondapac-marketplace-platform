@@ -108,7 +108,10 @@ export class AdminClaimPolicyController {
       `${EDIT} Under the policy version read (0 before the first save). The whole row set; at ` +
       'most one row per selector; SELLER_OR_MANUFACTURER only on a platform category. A ' +
       'revision that only tightens is published at once (claim-policy-changed.v1); one that ' +
-      'relaxes waits pending until a second admin approves it.',
+      'relaxes waits pending until a second admin approves it. A published revision opens a ' +
+      'review in Admin Inbox › System requests while the Market reviews area certification ' +
+      '(then `note` is required; 400 on note without it); a reviewer who rejects it restores ' +
+      'the rows before only when that relaxes nothing.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: ClaimPolicyRevisionRequest })
@@ -143,13 +146,14 @@ export class AdminClaimPolicyController {
       request,
       response,
       body,
-      { required: ['version', 'rows'], optional: ['reason'] },
+      { required: ['version', 'rows'], optional: ['reason', 'note'] },
       (input) =>
         this.save.execute(context, {
           typeId,
           version: input.version,
           rows: input.rows,
           reason: input.reason,
+          note: input.note,
         }),
     ) as Promise<ClaimPolicyRevisionSavedView>;
   }

@@ -19,7 +19,8 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CART_CHECKOUT_FACADE, CartModule } from '../cart';
 import { CatalogModule } from '../catalog';
-import { ListsModule } from '../lists';
+import { ListsModule, registerLists } from '../lists';
+import { ORDERING_LISTS } from './application/saved-views/list-definitions';
 import { COMMISSION_PAYOUTS_FACADE, CommissionPayoutsModule } from '../commission-payouts';
 import { CUSTOMERS_CHECKOUT_FACADE, CustomersModule } from '../customers';
 import { IdentityModule } from '../identity';
@@ -106,7 +107,9 @@ import { AdminRemoveRefundLimit } from './application/use-cases/admin-remove-ref
 import { AdminSetRefundLimit } from './application/use-cases/admin-set-refund-limit.use-case';
 import { AdminViewRefundLimits } from './application/use-cases/admin-view-refund-limits.use-case';
 import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
+import { AdminExportOrders } from './application/use-cases/admin-export-orders.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
+import { SellerExportOrders } from './application/use-cases/seller-export-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
 import { AdminViewOrderDocument } from './application/use-cases/admin-view-order-document.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
@@ -344,6 +347,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.outboxWriterFor('ordering'),
     PersistenceModule.auditWriterFor('ordering'),
     registerAuditActions('ordering', ORDERING_AUDIT_ACTIONS),
+    registerLists('ordering', ORDERING_LISTS),
     registerEvents('ordering', ORDERING_EVENTS),
     // SHP-02/03: the real-time carrier's booking and progress (ordering.inbox).
     registerSubscriptionsFrom(
@@ -383,6 +387,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminViewOrderActivity,
       AdminViewOrderDocument,
       AdminListOrders,
+      AdminExportOrders,
+      SellerExportOrders,
       ConfirmPayment,
       CancelPayment,
       SellerListOrders,
