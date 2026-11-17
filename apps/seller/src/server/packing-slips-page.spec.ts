@@ -28,7 +28,7 @@ const paid = (n: number, fulfilment = 'to-ship') => ({
   lines: [{ lineId: `l${n}`, quantity: 1 }],
 });
 const session = (over: Record<string, unknown> = {}) => ({
-  kind: 'signed-in' as const,
+  kind: 'ok' as const,
   session: {
     sellerAccessState: 'approved',
     permissionKeys: ['ordering.seller-order.view'],
@@ -38,7 +38,7 @@ const session = (over: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.requireSession.mockResolvedValue({ kind: 'ok', ...session() });
+  mocks.requireSession.mockResolvedValue(session());
 });
 
 describe('loadPackingSlips', () => {
@@ -74,7 +74,7 @@ describe('loadPackingSlips', () => {
   });
 
   it('shows no access without the order view key, and reads nothing', async () => {
-    mocks.requireSession.mockResolvedValue({ kind: 'ok', ...session({ permissionKeys: [] }) });
+    mocks.requireSession.mockResolvedValue(session({ permissionKeys: [] }));
     const result = await loadPackingSlips([id(1)]);
     expect(result.kind).toBe('no-access');
     expect(mocks.serverGet).not.toHaveBeenCalled();
