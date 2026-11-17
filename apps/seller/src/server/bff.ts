@@ -177,7 +177,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/imports/:id/resume',
     'catalog/seller/imports/:id/discard',
     'catalog/seller/imports/:id/photos',
+    // The seller's steps on an order: mark ready, hand over a pickup, mark delivered.
     'ordering/seller/orders/:id/ship',
+    'ordering/seller/orders/:id/ready',
+    'ordering/seller/orders/:id/confirm-pickup',
     'ordering/seller/orders/:id/deliver',
     // Mark units unavailable and refund them (protected: step-up), and add a note to the order.
     'ordering/seller/orders/:id/unavailable',

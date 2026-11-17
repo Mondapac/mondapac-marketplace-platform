@@ -320,7 +320,7 @@ describe('seller orders selection, row actions and bulk', () => {
     ).toEqual([
       'Open',
       'Print packing slip',
-      'Copy order number',
+      'Copy order ID',
       'Mark ready…',
       'Report unavailable…',
     ]);
@@ -347,7 +347,40 @@ describe('seller orders selection, row actions and bulk', () => {
     await waitFor(() => expect(lastUrl()).toContain('page=1'));
   });
 
-  it('copies the order number and says so', async () => {
+  it('asks before Mark as delivered, then marks the order', async () => {
+    mount(pageOf([row({ fulfilment: 'shipped' }, ['open', 'mark-delivered'])]));
+    call.mockImplementation(((method: string, path: string) => {
+      if (path.startsWith(SAVED_PATH)) return Promise.resolve(savedFailure);
+      if (method === 'POST') return Promise.resolve({ ok: true, status: 200, body: row() });
+      return Promise.resolve(ok(pageOf([row()])));
+    }) as never);
+    fireEvent.click(OPEN('Actions for order 000000A1'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Mark as delivered…' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(call.mock.calls.some(([m]) => m === 'POST')).toBe(false);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Mark as delivered' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith('POST', `ordering/seller/orders/${ID1}/deliver`, {}, ''),
+    );
+  });
+
+  it('sends Hand over to the order page, where the pickup is confirmed', async () => {
+    mount(pageOf([row({}, ['open', 'hand-over'])]));
+    fireEvent.click(OPEN('Actions for order 000000A1'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Hand over…' }));
+    expect(push).toHaveBeenCalledWith(`/orders/${ID1}`);
+    expect(call.mock.calls.some(([m]) => m === 'POST')).toBe(false);
+  });
+
+  it('opens the report dialog for Report unavailable and sends nothing yet', async () => {
+    mount(pageOf([row({}, ['open', 'report-unavailable'])]));
+    fireEvent.click(OPEN('Actions for order 000000A1'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Report unavailable…' }));
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    expect(call.mock.calls.some(([m]) => m === 'POST')).toBe(false);
+  });
+
+  it('copies the whole order ID, which the search accepts, and says so', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     render(
@@ -359,8 +392,8 @@ describe('seller orders selection, row actions and bulk', () => {
       ),
     );
     fireEvent.click(OPEN('Actions for order 000000A1'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy order number' }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith('000000A1'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy order ID' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(ID1));
     expect(await screen.findByText('Order number copied')).toBeTruthy();
     toast.dismiss();
   });

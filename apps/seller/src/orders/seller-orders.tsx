@@ -19,7 +19,7 @@ import { callApi } from '../api/client.ts';
 import { resolveZone } from '../price/zone-time.ts';
 import { numberFormat } from '../shared/intl.ts';
 import { OrdersBoard } from './orders-board.tsx';
-import { OrdersBulk } from './orders-bulk.tsx';
+import { OrdersBulk, SLIPS_MAX } from './orders-bulk.tsx';
 import { DEFAULT_COLUMNS, cleanColumns, type OrderColumn } from './orders-columns.ts';
 import { OrdersColumnsPanel, OrdersFilterPanel, OrdersSortPanel } from './orders-panels.tsx';
 import {
@@ -50,8 +50,8 @@ import {
 
 export type OrdersView = 'table' | 'board';
 
-/** Rows that can be ticked one by one; "Select all matching" has no such limit. */
-const SELECTION_MAX = 200;
+/** Rows that can be ticked one by one: the most packing slips one print takes. "Select all matching" has no such limit. */
+const SELECTION_MAX = SLIPS_MAX;
 const OPEN_ENDED = Number.MAX_SAFE_INTEGER;
 /** The API's order id search: nothing shorter than a whole id finds an order. */
 const SEARCH_MAX = 64;

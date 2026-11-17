@@ -2812,7 +2812,7 @@
       "for": "Actions for {name}",
       "open": "Open",
       "packing-slip": "Print packing slip",
-      "copy-number": "Copy order number",
+      "copy-number": "Copy order ID",
       "ready": "Mark ready…",
       "hand-over": "Hand over…",
       "mark-delivered": "Mark as delivered…",

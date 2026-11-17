@@ -90,7 +90,7 @@ export function useOrderRowActions(
           return {
             id: action,
             label: t('copy-number'),
-            onSelect: () => void copy(shortId(row.sellerOrderId)),
+            onSelect: () => void copy(row.sellerOrderId),
           };
         case 'ready':
           return {
