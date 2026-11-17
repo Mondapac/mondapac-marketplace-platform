@@ -195,6 +195,25 @@ export const TypeRevisedAudit = defineAuditAction({
   },
 });
 
+/**
+ * A reviewer rejected, or its author withdrew, a published type revision in Admin Inbox › System
+ * requests, and the content before came back as a new published revision (`revisionId`) copied
+ * from `restoredRevisionId`. Only a revert that relaxes nothing runs. `requestId` names the System
+ * request, so a revert is never mistaken for an admin's own save.
+ */
+export const TypeRevisionRevertedAudit = defineAuditAction({
+  action: 'certification.type.reverted',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  before: { revisionId: auditField.id() },
+  after: {
+    revisionId: auditField.id(),
+    restoredRevisionId: auditField.id(),
+    claimTermsChanged: auditField.boolean(),
+    requestId: auditField.id(),
+  },
+});
+
 /** A relaxing type revision saved `pending`, waiting for a second admin (design 3.6; H1). */
 export const TypeRelaxationRequestedAudit = defineAuditAction({
   action: 'certification.type.relaxation-requested',
@@ -336,6 +355,25 @@ export const ClaimPolicyRevisedAudit = defineAuditAction({
     typeId: auditField.id(),
     revisionId: auditField.id(),
     reasonGiven: auditField.boolean(),
+  },
+});
+
+/**
+ * A reviewer rejected, or its author withdrew, a published policy revision in Admin Inbox › System
+ * requests, and the rows before came back as a new published revision (`revisionId`), copied from
+ * `restoredRevisionId` (null: the type had no published rows before). Only a revert that relaxes
+ * nothing runs. `requestId` names the System request.
+ */
+export const ClaimPolicyRevertedAudit = defineAuditAction({
+  action: 'certification.claim-policy.reverted',
+  targetType: CLAIM_POLICY_TARGET,
+  actors: ['authenticated'],
+  before: { revisionId: auditField.id() },
+  after: {
+    typeId: auditField.id(),
+    revisionId: auditField.id(),
+    restoredRevisionId: auditField.optional(auditField.id()),
+    requestId: auditField.id(),
   },
 });
 
@@ -540,6 +578,7 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   IssuerRequestViewed,
   IssuerRequestDocumentDownloaded,
   TypeRevisedAudit,
+  TypeRevisionRevertedAudit,
   TypeRelaxationRequestedAudit,
   TypeRelaxationApprovedAudit,
   TypeDeactivatedAudit,
@@ -555,6 +594,7 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   RelaxationProposalRejectedAudit,
   RelaxationProposalWithdrawnAudit,
   ClaimPolicyRevisedAudit,
+  ClaimPolicyRevertedAudit,
   ClaimPolicyRelaxationRequestedAudit,
   ClaimPolicyRelaxationApprovedAudit,
   ProductCertificationRecordedAudit,

@@ -163,6 +163,16 @@ export const BlogTagDeleted = defineAuditAction({
   after: { deleted: auditField.boolean() },
 });
 
+export const BLOG_MEDIA_TARGET = 'blog.media';
+
+/** A picture was added to the blog media library; the size of its `large` rendition. */
+export const BlogMediaUploaded = defineAuditAction({
+  action: 'blog.media.upload',
+  targetType: BLOG_MEDIA_TARGET,
+  actors: ['authenticated'],
+  after: { width: auditField.integer(), height: auditField.integer() },
+});
+
 export const BLOG_AUDIT_ACTIONS = [
   BlogPostCreated,
   BlogPostDraftSaved,
@@ -181,4 +191,5 @@ export const BLOG_AUDIT_ACTIONS = [
   BlogCategoryDeleted,
   BlogTagSaved,
   BlogTagDeleted,
+  BlogMediaUploaded,
 ] as const;

@@ -623,6 +623,36 @@ export async function approveRequest(
 }
 
 /**
+ * Runs the owning module's optional pre-unit `check` of a revert (see `SystemChangeReverter`),
+ * before the decision unit opens. The values before and after of a request never change, so the
+ * look taken here is the one the unit decides on; a request that is gone or no longer open is left
+ * to the unit, which answers it. A check that throws fails the decision, as a revert does.
+ */
+async function checkBeforeRevert(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  id: Id<'SystemRequest'>,
+): Promise<Result<null, SystemRequestsFailure>> {
+  const seen = await deps.unitOfWork.run<SystemRequest | null, SystemRequestsFailure>(
+    context.market,
+    async () => ok(await deps.requests.find(context.market, id)),
+    { readOnly: true },
+  );
+  if (!seen.ok) return seen;
+  const request = seen.value;
+  if (request === null || request.status !== 'open') return ok(null);
+  const reverter = deps.reverters.find(request.subjectKind)?.reverter;
+  if (reverter?.check === undefined) return ok(null);
+  const answer = await reverter.check(context, {
+    requestId: request.id,
+    subjectRef: request.subjectRef,
+    before: request.before,
+    after: request.after,
+  });
+  return answer === 'ok' ? ok(null) : err({ code: 'system-requests.revert-not-permitted' });
+}
+
+/**
  * Restores the value before the change (reject or withdraw), in one unit with the decision: the
  * subject must still hold the value after the change, and no later request may exist for it.
  *
@@ -639,6 +669,8 @@ async function revertRequest(
   const prepared = await prepareDecision(deps, context, kind, input);
   if (!prepared.ok) return prepared;
   const { admin, id, reason } = prepared.value;
+  const checked = await checkBeforeRevert(deps, context, id);
+  if (!checked.ok) return checked;
   const areas = await reviewableAreas(deps, context);
   return deps.unitOfWork.run<RequestView, SystemRequestsFailure>(
     context.market,

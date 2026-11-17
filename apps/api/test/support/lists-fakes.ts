@@ -1,8 +1,12 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type {
+<<<<<<< HEAD
   ColumnPreferenceStore,
   SavedFilterStore,
   StoredColumnPreference,
+=======
+  SavedFilterStore,
+>>>>>>> origin/main
   StoredFilter,
   StoredFilterWrite,
 } from '../../src/modules/lists/contracts';
@@ -168,6 +172,7 @@ export class MemorySavedFilterStore implements SavedFilterStore {
     return Promise.resolve(true);
   }
 }
+<<<<<<< HEAD
 
 /** The in-memory column-preference store (unit and HTTP tests): Market and store in every key. */
 export class MemoryColumnPreferenceStore implements ColumnPreferenceStore {
@@ -212,3 +217,5 @@ export class MemoryColumnPreferenceStore implements ColumnPreferenceStore {
     return Promise.resolve();
   }
 }
+=======
+>>>>>>> origin/main
