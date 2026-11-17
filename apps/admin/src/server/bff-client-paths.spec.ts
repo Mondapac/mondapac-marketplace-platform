@@ -38,18 +38,25 @@ const files = [
   ...readdirSync(path.join(src, 'orders'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'orders', name)),
+  // The helper the three Sales lists share (their saved filters).
+  ...readdirSync(path.join(src, 'sales'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'sales', name)),
   ...readdirSync(path.join(src, 'sales', 'shipments'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'sales', 'shipments', name)),
   ...readdirSync(path.join(src, 'sales', 'refunds'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'sales', 'refunds', name)),
+  ...readdirSync(path.join(src, 'sales', 'invoices'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'sales', 'invoices', name)),
   ...readdirSync(path.join(src, 'lists-settings'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'lists-settings', name)),
   path.join(src, 'step-up', 'step-up.tsx'),
 ];
-const CALL = /(?:callApi|guarded)(?:<[^>]*>)?\(\s*'(GET|PUT|POST|DELETE)',\s*(['`])([^'`]+)\2/g;
+const CALL = /(?:callApi|guarded)(?:<[^(]*>)?\(\s*'(GET|PUT|POST|DELETE)',\s*(['`])([^'`]+)\2/g;
 
 function calls(): { method: string; target: string }[] {
   const found: { method: string; target: string }[] = [];
@@ -77,7 +84,7 @@ function calls(): { method: string; target: string }[] {
   return found;
 }
 
-describe('every path the wallet, dispute, review moderation, account deletion, shipments, refunds and step-up client code calls passes the relay allowlist', () => {
+describe('every path the wallet, dispute, review moderation, account deletion, shipments, refunds, invoices and step-up client code calls passes the relay allowlist', () => {
   const found = calls();
 
   it('finds the calls it is meant to check', () => {
@@ -117,10 +124,16 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'GET ordering/admin/orders',
         'GET ordering/admin/shipments',
         'GET ordering/admin/refunds',
+        'GET ordering/admin/documents',
         'GET ordering/admin/saved-filters',
         'POST ordering/admin/saved-filters',
         'PUT ordering/admin/saved-filters/:id',
         'DELETE ordering/admin/saved-filters/:id',
+        'GET lists/admin/saved-filters',
+        'POST lists/admin/saved-filters',
+        'PUT lists/admin/saved-filters/order',
+        'PUT lists/admin/saved-filters/:id',
+        'DELETE lists/admin/saved-filters/:id',
         'GET customers/admin/account-deletion-settings',
         'PUT customers/admin/account-deletion-settings',
         'GET customers/admin/deletion-requests',
