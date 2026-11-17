@@ -125,6 +125,8 @@ import { OpenObligationsOfQuery } from './application/use-cases/open-obligations
 import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
 import { CustomerOrderAccountsQuery } from './application/use-cases/customer-order-accounts.use-case';
 import { CustomerOrderStatsQuery } from './application/use-cases/customer-order-stats.use-case';
+import { CustomerSellerStatsQuery } from './application/use-cases/customer-seller-stats.use-case';
+import { SellerCustomerOrdersQuery } from './application/use-cases/seller-customer-orders.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { OrderPaymentRefQuery } from './application/use-cases/order-payment-ref.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
@@ -398,6 +400,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OrderNoticeQuery,
       CustomerOrderStatsQuery,
       CustomerOrderAccountsQuery,
+      CustomerSellerStatsQuery,
+      SellerCustomerOrdersQuery,
       OrderPaymentRefQuery,
       ShipmentNoticeQuery,
       RefundNoticeQuery,
@@ -530,6 +534,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         RefundNoticeQuery,
         CustomerOrderStatsQuery,
         CustomerOrderAccountsQuery,
+        CustomerSellerStatsQuery,
+        SellerCustomerOrdersQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -546,6 +552,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         refundNotice: RefundNoticeQuery,
         customerStats: CustomerOrderStatsQuery,
         customerAccounts: CustomerOrderAccountsQuery,
+        customerSellers: CustomerSellerStatsQuery,
+        sellerCustomerOrders: SellerCustomerOrdersQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -562,6 +570,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           refundNotice,
           customerStats,
           customerAccounts,
+          customerSellers,
+          sellerCustomerOrders,
         ),
     },
     {

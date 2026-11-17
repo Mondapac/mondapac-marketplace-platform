@@ -1743,6 +1743,18 @@
     }
   },
   {
+    "action": "customers.seller-customers.exported",
+    "targetType": "customers.seller-customers",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "selection": "enumOf(codes|filter)"
+    }
+  },
+  {
     "action": "identity.account-role.assigned",
     "targetType": "identity.account",
     "targetId": "id",
