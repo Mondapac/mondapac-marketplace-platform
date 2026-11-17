@@ -141,6 +141,7 @@ import {
   type TimelineRecordDependencies,
 } from './application/use-cases/record-customer-timeline.use-case';
 import { ReadCustomerGroupMembership } from './application/use-cases/read-customer-group-membership.use-case';
+import { ReadExclusiveSeller } from './application/use-cases/read-exclusive-seller.use-case';
 import { AdminCustomerManagementController } from './presentation/admin-customer-management.controller';
 import type { SellerCustomerDependencies } from './application/seller-customers-flow';
 import {
@@ -495,6 +496,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => sellerCustomerUseCaseProvider(type as SellerCustomerUseCaseClass<unknown>)),
     ...[
       SellerInviteLinkView,
+      ReadExclusiveSeller,
       SellerInviteLinkRefresh,
       ResolveStoreInvitation,
       JoinStoreByInvitation,
@@ -601,12 +603,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => savedViewProvider(type as SavedViewUseCaseClass<unknown>)),
     {
       provide: CUSTOMERS_READ_FACADE,
-      inject: [ReadCustomerLastOrder, ReadOwnLastOrder, ReadCustomerGroupMembership],
+      inject: [
+        ReadCustomerLastOrder,
+        ReadOwnLastOrder,
+        ReadCustomerGroupMembership,
+        ReadExclusiveSeller,
+      ],
       useFactory: (
         read: ReadCustomerLastOrder,
         own: ReadOwnLastOrder,
         membership: ReadCustomerGroupMembership,
-      ) => new CustomersReadFacadeImplementation(read, own, membership),
+        exclusive: ReadExclusiveSeller,
+      ) => new CustomersReadFacadeImplementation(read, own, membership, exclusive),
     },
     {
       provide: CUSTOMERS_ACCOUNT_DELETION_FACADE,

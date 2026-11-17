@@ -27,6 +27,7 @@ import { CustomersModule } from '../customers';
 import { EngagementModule } from '../engagement';
 import {
   CUSTOMER_GROUP_MEMBERSHIP,
+  EXCLUSIVE_CUSTOMERS,
   CUSTOMER_ORDER_HISTORY,
   STORE_FOLLOWS,
 } from './application/ports/customer-facts';
@@ -131,6 +132,7 @@ const PORTS: readonly [keyof PromotionsDependencies, InjectionToken][] = [
   ['orderHistory', CUSTOMER_ORDER_HISTORY],
   ['storeFollows', STORE_FOLLOWS],
   ['groupMembership', CUSTOMER_GROUP_MEMBERSHIP],
+  ['exclusiveCustomers', EXCLUSIVE_CUSTOMERS],
   ['orderFacts', DELIVERED_ORDER_FACTS],
   ['referralSignals', REFERRAL_SIGNALS],
   ['walletCredit', WALLET_CREDIT],

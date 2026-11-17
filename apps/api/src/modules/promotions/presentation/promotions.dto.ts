@@ -65,7 +65,10 @@ export class FlashBody {
 }
 
 export class SegmentBody {
-  @ApiProperty({ enum: ['RETURNING_CUSTOMER', 'DELIVERY_ZONE', 'MANUAL_GROUP'] }) kind!: string;
+  @ApiProperty({
+    enum: ['RETURNING_CUSTOMER', 'DELIVERY_ZONE', 'MANUAL_GROUP', 'SELLER_EXCLUSIVE'],
+  })
+  kind!: string;
   @ApiProperty({
     nullable: true,
     type: Number,
@@ -302,7 +305,9 @@ export class PromotionRequest {
       'CUSTOMER_GROUP (admin): `{ kind: "RETURNING_CUSTOMER", minDaysSinceLastOrder? }` (the ' +
       'Market\'s default days when left out), `{ kind: "DELIVERY_ZONE" }` with `zones`, or ' +
       '`{ kind: "MANUAL_GROUP", groupId }` (a manual customer group; a customer gets it only ' +
-      'while the group is live and they are in it, fail closed).',
+      'while the group is live and they are in it, fail closed). CUSTOMER_GROUP (seller): ' +
+      '`{ kind: "SELLER_EXCLUSIVE" }` only: the seller\'s own discount, on its items and with its ' +
+      'money, for the customers who joined through its invite link (fail closed).',
   })
   segment?: object;
   @ApiProperty({
@@ -519,7 +524,8 @@ export class QuoteRequestBody {
     type: Object,
     description:
       'Customer facts to try a customer-group or store-follower promotion with: ' +
-      '`{ daysSinceLastOrder?, followedSellerIds?, memberOfGroupIds? }`. A field left out is ' +
+      '`{ daysSinceLastOrder?, followedSellerIds?, memberOfGroupIds?, exclusiveSellerId? }`. A ' +
+      'field left out is ' +
       'unknown, so the ' +
       'promotions that need it do not apply.',
   })

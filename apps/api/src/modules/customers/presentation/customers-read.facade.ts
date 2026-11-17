@@ -1,6 +1,7 @@
-import type { CallContext, Id } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Temporal } from '@mondapac/shared-kernel';
 import type { ReadCustomerLastOrder } from '../application/use-cases/read-customer-last-order.use-case';
 import type { ReadCustomerGroupMembership } from '../application/use-cases/read-customer-group-membership.use-case';
+import type { ReadExclusiveSeller } from '../application/use-cases/read-exclusive-seller.use-case';
 import type { ReadOwnLastOrder } from '../application/use-cases/read-own-last-order.use-case';
 import type { CustomersReadFacade } from '../contracts';
 
@@ -10,6 +11,7 @@ export class CustomersReadFacadeImplementation implements CustomersReadFacade {
     private readonly lastOrder: ReadCustomerLastOrder,
     private readonly ownLastOrder: ReadOwnLastOrder,
     private readonly membership: ReadCustomerGroupMembership,
+    private readonly exclusive: ReadExclusiveSeller,
   ) {}
 
   lastOrderAt(context: CallContext, accountId: Id<'Account'>) {
@@ -22,5 +24,9 @@ export class CustomersReadFacadeImplementation implements CustomersReadFacade {
 
   isGroupMember(context: CallContext, groupId: string, accountId: Id<'Account'>) {
     return this.membership.execute(context, { groupId, accountId });
+  }
+
+  exclusiveSellerOf(context: CallContext, accountId: Id<'Account'>, at: Temporal.Instant) {
+    return this.exclusive.execute(context, { accountId, at });
   }
 }

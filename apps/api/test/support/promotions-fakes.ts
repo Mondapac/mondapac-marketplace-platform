@@ -19,6 +19,7 @@ import type {
   Known,
   StoreFollows,
   CustomerGroupMembership,
+  ExclusiveCustomers,
 } from '../../src/modules/promotions/application/ports/customer-facts';
 import type {
   DeliveredOrderFacts,
@@ -822,6 +823,23 @@ export class FakeCustomerOrderHistory implements CustomerOrderHistory {
 
 /** Which sellers a customer follows: unknown until a test says otherwise. */
 /** Manual customer groups as the quote reads them: unknown unless a test puts the customer in. */
+/** Whose exclusive customer each account is; `broken` answers unknown, `throws` rejects. */
+export class FakeExclusiveCustomers implements ExclusiveCustomers {
+  readonly sellers = new Map<string, Id<'Seller'>>();
+  broken = false;
+  throws = false;
+  reads = 0;
+  exclusiveSellerOf(_context: CallContext, accountId: Id<'Account'>) {
+    this.reads += 1;
+    if (this.throws) return Promise.reject(new Error('customers unreachable'));
+    if (this.broken) return Promise.resolve({ known: false } as Known<Id<'Seller'> | null>);
+    return Promise.resolve({
+      known: true,
+      value: this.sellers.get(accountId) ?? null,
+    } as Known<Id<'Seller'> | null>);
+  }
+}
+
 export class FakeGroupMembership implements CustomerGroupMembership {
   readonly members = new Map<string, Set<Id<'Account'>>>();
   broken = false;
@@ -1165,6 +1183,7 @@ export function phase3Fakes() {
     orderHistory: new FakeCustomerOrderHistory(),
     storeFollows: new FakeStoreFollows(),
     groupMembership: new FakeGroupMembership(),
+    exclusiveCustomers: new FakeExclusiveCustomers(),
     orderFacts: new FakeOrderFacts(),
     referralSignals: new FakeReferralSignals(),
     walletCredit: new FakeWalletCredit(),

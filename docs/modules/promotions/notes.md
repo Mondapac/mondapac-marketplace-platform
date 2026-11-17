@@ -389,3 +389,18 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   Stripe, the ledger and refunds on the net amounts), the refund release (owner's decision pending), and a sweep
   of reservations whose order never settles (the order is stored before the redemption, so every row has an
   order that ordering cancels or confirms; the sweep covers a crash between them).
+
+## Customers phase 4a, PR 4a-2: the seller's exclusive-customer discount (2026-11-17)
+
+- New segment `SELLER_EXCLUSIVE` of the `CUSTOMER_GROUP` type: a seller's own discount for the
+  customers who joined through its invite link (customers 4a-1). Seller-funded, on the seller's
+  own lines (layer `SELLER_CART`), held to the Market's seller maximum like any seller promotion,
+  and reviewed after publish like the store-follower offer. No days, group or zones.
+- A seller may make `CUSTOMER_GROUP` only with this segment (any other: `segment.kind`
+  not-allowed); an admin may not use this segment.
+- The quote asks `customers.exclusiveSellerOf` (port `ExclusiveCustomers`, system actor only) once
+  per quote, only when such a discount is live; unknown or failing answers fail closed (no
+  discount). The admin preview takes `customer.exclusiveSellerId` and reads nothing.
+- Migration `20261117060000_promotions_seller_exclusive_segment`: `promotions_type_funding_check`
+  lets the seller pay a customer-group discount exactly for this segment; `promotions_phase3_check`
+  accepts the segment with no days and no group. `down.sql` refuses while such rows exist.

@@ -522,3 +522,6 @@ card, the storefront's invite banner and the admin list's screens follow in the 
   Market without it has the feature off.
 - **For 4b**: `exclusiveSellerOf` (the seller of an active attribution recorded at or before an
   instant) is ready for checkout's order-line freeze; the facade method comes with 4b.
+- PR 4a-2: use case `customers.read-exclusive-seller` (rule `system`) and the read facade method
+  `exclusiveSellerOf(context, accountId, at)` for promotions' exclusive-customer discount (and
+  for 4b's checkout freeze). Ids and the instant only.

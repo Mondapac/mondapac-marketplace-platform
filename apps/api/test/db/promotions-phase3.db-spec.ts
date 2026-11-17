@@ -327,6 +327,30 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
       expect(await attempt(promotion({ ...referralTerms, segment_group_id: groupId }))).toBe(CHECK);
     });
 
+    it('lets the seller pay a customer-group discount exactly for its exclusive customers (customers phase 4a)', async () => {
+      const exclusive = {
+        type: 'CUSTOMER_GROUP',
+        segment_kind: 'SELLER_EXCLUSIVE',
+        funding: 'SELLER',
+        owner_seller_id: sellerId,
+        budget_minor: null,
+        cap_minor: null,
+        test_mode: false,
+      };
+      expect(await attempt(promotion(exclusive))).toBe('allowed');
+      expect(
+        await attempt(promotion({ ...exclusive, funding: 'PLATFORM', owner_seller_id: null })),
+      ).toBe(CHECK);
+      expect(await attempt(promotion({ ...exclusive, segment_min_days: 30 }))).toBe(CHECK);
+      expect(
+        await attempt(
+          promotion({ ...exclusive, segment_group_id: '0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b' }),
+        ),
+      ).toBe(CHECK);
+      // Every other segment stays the platform's money.
+      expect(await attempt(promotion({ ...exclusive, segment_kind: 'DELIVERY_ZONE' }))).toBe(CHECK);
+    });
+
     it('holds a referral to fixed rewards and a per-referrer cap, and a cashback to a percent and a cap', async () => {
       expect(await attempt(promotion({ ...referralTerms, referee_reward_minor: null }))).toBe(
         CHECK,

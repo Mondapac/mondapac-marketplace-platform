@@ -13,6 +13,17 @@ export type CustomerGroupMembershipFailure =
   /** No such manual group in the caller's Market: the caller treats it as "not a member". */
   | { readonly code: 'customers.group-not-found' };
 
+export type ExclusiveSellerFailure =
+  | AccessDenied
+  | { readonly code: 'validation.failed' }
+  | { readonly code: 'customers.unavailable' };
+
+/** The seller whose exclusive customer an account is, and since when (customers phase 4a). */
+export interface ExclusiveSellerAnswer {
+  readonly sellerId: Id<'Seller'>;
+  readonly since: Temporal.Instant;
+}
+
 /** What `customers` publishes to other modules about a customer's orders (ids and instants only). */
 export interface CustomersReadFacade {
   /**
@@ -42,6 +53,18 @@ export interface CustomersReadFacade {
     groupId: string,
     accountId: Id<'Account'>,
   ): Promise<Result<{ readonly member: boolean }, CustomerGroupMembershipFailure>>;
+
+  /**
+   * The seller whose exclusive customer the account is at `at`: the customer joined through the
+   * seller's invite link at or before `at`, and the attribution is active (customers phase 4a).
+   * Null otherwise. Rule `system`; ids and an instant only. A caller that gets a failure treats the
+   * customer as nobody's exclusive customer (fail closed).
+   */
+  exclusiveSellerOf(
+    context: CallContext,
+    accountId: Id<'Account'>,
+    at: Temporal.Instant,
+  ): Promise<Result<ExclusiveSellerAnswer | null, ExclusiveSellerFailure>>;
 }
 
 /** Nest token of the {@link CustomersReadFacade}, provided and exported by `CustomersModule`. */
