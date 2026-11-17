@@ -82,6 +82,11 @@ import { PlatformProductRetireProbe } from './application/use-cases/platform-pro
 import { BrandEditProbe } from './application/use-cases/brand-edit-probe.use-case';
 import { BusinessActivityEditProbe } from './application/use-cases/business-activity-edit-probe.use-case';
 import { TopicManageProbe } from './application/use-cases/topic-manage-probe.use-case';
+import { AttributeSuggestionBulkDecide } from './application/use-cases/attribute-suggestion-bulk-decide.use-case';
+import { CategoryProposalBulkDecide } from './application/use-cases/category-proposal-bulk-decide.use-case';
+import { TopicSuggestionBulkDecide } from './application/use-cases/topic-suggestion-bulk-decide.use-case';
+import { VariantRequestBulkDecide } from './application/use-cases/variant-request-bulk-decide.use-case';
+import { QueueBulkController } from './presentation/queue-bulk.controller';
 import { AttributeEditProbe } from './application/use-cases/attribute-edit-probe.use-case';
 import { AttributeRestructureProbe } from './application/use-cases/attribute-restructure-probe.use-case';
 import { PlatformProductEditProbe } from './application/use-cases/platform-product-edit-probe.use-case';
@@ -626,6 +631,14 @@ const PORT = {
   attributeEditProbe: AttributeEditProbe,
   attributeRestructureProbe: AttributeRestructureProbe,
   brandEditProbe: BrandEditProbe,
+  variantApprove: VariantRequestApprove,
+  variantDecline: VariantRequestDecline,
+  attributeApprove: AttributeSuggestionApprove,
+  attributeReject: AttributeSuggestionReject,
+  topicApprove: TopicSuggestionApprove,
+  topicReject: TopicSuggestionReject,
+  proposalApprove: CategoryProposalApprove,
+  proposalReject: CategoryProposalReject,
   activityEditProbe: BusinessActivityEditProbe,
   topicManageProbe: TopicManageProbe,
   ownEditProbe: OwnProductEditProbe,
@@ -828,6 +841,7 @@ const RESTRUCTURE_DEPS = {
     OwnVariantRequestsController,
     VariantRequestController,
     TopicSuggestionController,
+    QueueBulkController,
     OwnTopicSuggestController,
     OwnTopicSuggestionsController,
     CategoryAdminController,
@@ -2107,6 +2121,16 @@ const RESTRUCTURE_DEPS = {
     useCaseProvider(AttributeEditProbe, {}),
     useCaseProvider(AttributeRestructureProbe, {}),
     useCaseProvider(BrandEditProbe, {}),
+    useCaseProvider(VariantRequestBulkDecide, { variantApprove: true, variantDecline: true }),
+    useCaseProvider(AttributeSuggestionBulkDecide, {
+      attributeApprove: true,
+      attributeReject: true,
+      suggestions: true,
+      policy: true,
+      unitOfWork: true,
+    }),
+    useCaseProvider(TopicSuggestionBulkDecide, { topicApprove: true, topicReject: true }),
+    useCaseProvider(CategoryProposalBulkDecide, { proposalApprove: true, proposalReject: true }),
     useCaseProvider(BusinessActivityEditProbe, {}),
     useCaseProvider(TopicManageProbe, {}),
     useCaseProvider(OwnProductEditProbe, {}),
