@@ -74,6 +74,29 @@
     }
   },
   {
+    "action": "catalog.attribute-definition.reverted",
+    "targetType": "catalog.attribute-definition",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    },
+    "after": {
+      "activeOptionCount": "integer",
+      "isVariantOption": "boolean",
+      "material": "boolean",
+      "optionCount": "integer",
+      "requestId": "id",
+      "revisionNo": "integer",
+      "status": "enumOf(draft|active|archived)"
+    }
+  },
+  {
     "action": "catalog.attribute-definition.revised",
     "targetType": "catalog.attribute-definition",
     "targetId": "id",
@@ -452,6 +475,23 @@
     "after": {
       "filterCount": "integer",
       "hasFeatureSet": "boolean",
+      "revisionNo": "integer"
+    }
+  },
+  {
+    "action": "catalog.category-attributes.reverted",
+    "targetType": "catalog.category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "filterCount": "integer",
+      "hasFeatureSet": "boolean",
+      "revisionNo": "integer"
+    },
+    "after": {
+      "filterCount": "integer",
+      "hasFeatureSet": "boolean",
+      "requestId": "id",
       "revisionNo": "integer"
     }
   },
@@ -3826,6 +3866,29 @@
     "after": {
       "localeCount": "integer",
       "noindex": "boolean",
+      "revisionNo": "integer",
+      "seoDescriptionSet": "boolean",
+      "seoTitleSet": "boolean",
+      "showInMenu": "boolean"
+    }
+  },
+  {
+    "action": "catalog.platform-category.details-reverted",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "localeCount": "integer",
+      "noindex": "boolean",
+      "revisionNo": "integer",
+      "seoDescriptionSet": "boolean",
+      "seoTitleSet": "boolean",
+      "showInMenu": "boolean"
+    },
+    "after": {
+      "localeCount": "integer",
+      "noindex": "boolean",
+      "requestId": "id",
       "revisionNo": "integer",
       "seoDescriptionSet": "boolean",
       "seoTitleSet": "boolean",
