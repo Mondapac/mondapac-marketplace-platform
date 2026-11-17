@@ -145,7 +145,34 @@ export interface SystemChangeReverter {
    * module without it lets any reviewer but the author decide.
    */
   isInterested?(context: CallContext, request: RevertRequest): Promise<boolean>;
+
+  /**
+   * Optional: the checks of the owning module's own edit that cannot run inside the decision unit
+   * because they open a unit of their own (the decider holding the subject's edit permission,
+   * reference checks against another module, Market data that can change over time). Called by
+   * system-requests before the decision unit opens, for a reject or a withdraw only; it must fail
+   * closed. `not-permitted` writes nothing and leaves the request open. `revert` still checks what
+   * it can inside the unit.
+   */
+  check?(context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'>;
+
+  /**
+   * Optional: a short human label of each subject (a store name, a setting's name), shown in the
+   * System requests queue beside the kind (`subjectLabel`). Called outside any unit (a reverter
+   * that reads opens its own read-only unit or calls a facade), with the viewing admin's
+   * `CallContext` unchanged, once per kind per page, at most {@link MAX_DESCRIBE_REFS} refs per
+   * call. A ref it cannot or may not name is left out. Every admin who sees the queue sees the
+   * label, so it names the subject only: never a value of the change, a secret or a sign-in
+   * address. A throw or a malformed label shows no label; it never fails the page.
+   */
+  describe?(
+    context: CallContext,
+    subjectRefs: readonly string[],
+  ): Promise<ReadonlyMap<string, string>>;
 }
+
+/** The most subject refs one {@link SystemChangeReverter.describe} call is asked for. */
+export const MAX_DESCRIBE_REFS = 100;
 
 /**
  * Where a module registers its kinds, at boot (sealed after it). A kind belongs to one reviewed

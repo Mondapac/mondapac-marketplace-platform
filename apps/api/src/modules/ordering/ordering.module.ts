@@ -19,13 +19,15 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CART_CHECKOUT_FACADE, CartModule } from '../cart';
 import { CatalogModule } from '../catalog';
-import { ListsModule } from '../lists';
+import { ListsModule, registerLists } from '../lists';
+import { ORDERING_LISTS } from './application/saved-views/list-definitions';
 import { COMMISSION_PAYOUTS_FACADE, CommissionPayoutsModule } from '../commission-payouts';
 import { CUSTOMERS_CHECKOUT_FACADE, CustomersModule } from '../customers';
 import { IdentityModule } from '../identity';
 import { InventoryModule } from '../inventory';
 import { INVENTORY_ORDERING_PORT } from '../inventory/contracts/ordering-port';
 import { SellersModule } from '../sellers';
+import { PROMOTIONS_FACADE, PromotionsModule } from '../promotions';
 import { SHIPPING_FACADE, ShippingModule } from '../shipping';
 import { TAX_FACADE, TaxModule } from '../tax';
 import type { OrderingDependencies } from './application/checkout-flow';
@@ -64,6 +66,7 @@ import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
 import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-policy';
 import { ORDER_LABELS } from './application/ports/order-labels';
 import { ORDER_TAX_CATEGORIES } from './application/ports/order-tax-categories';
+import { ORDER_PRODUCTS } from './application/ports/order-products';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
 import { PAYMENT_ATTEMPT_LIMITS } from './application/ports/payment-attempt-limits';
 import { PICKUP_CODE_REPOSITORY } from './application/ports/pickup-code.repository';
@@ -112,7 +115,10 @@ import { AdminRemoveRefundLimit } from './application/use-cases/admin-remove-ref
 import { AdminSetRefundLimit } from './application/use-cases/admin-set-refund-limit.use-case';
 import { AdminViewRefundLimits } from './application/use-cases/admin-view-refund-limits.use-case';
 import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
+import { SettleStaleRedemptions } from './application/use-cases/settle-stale-redemptions.use-case';
+import { AdminExportOrders } from './application/use-cases/admin-export-orders.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
+import { SellerExportOrders } from './application/use-cases/seller-export-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
 import { AdminViewOrderDocument } from './application/use-cases/admin-view-order-document.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
@@ -131,6 +137,8 @@ import { OpenObligationsOfQuery } from './application/use-cases/open-obligations
 import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
 import { CustomerOrderAccountsQuery } from './application/use-cases/customer-order-accounts.use-case';
 import { CustomerOrderStatsQuery } from './application/use-cases/customer-order-stats.use-case';
+import { CustomerSellerStatsQuery } from './application/use-cases/customer-seller-stats.use-case';
+import { SellerCustomerOrdersQuery } from './application/use-cases/seller-customer-orders.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { OrderPaymentRefQuery } from './application/use-cases/order-payment-ref.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
@@ -176,6 +184,7 @@ import { recordLedgerJob } from './presentation/jobs/record-ledger.job';
 import { recordRefundLedgerJob } from './presentation/jobs/record-refund-ledger.job';
 import { recordShipmentsJob } from './presentation/jobs/record-shipments.job';
 import { settleRefundsJob } from './presentation/jobs/settle-refunds.job';
+import { settleStaleRedemptionsJob } from './presentation/jobs/settle-stale-redemptions.job';
 import { OrdersController } from './presentation/orders.controller';
 import { SellerOrdersController } from './presentation/seller-orders.controller';
 import { AdminCustomerRefundsController } from './presentation/admin-customer-refunds.controller';
@@ -201,6 +210,8 @@ const PORTS: readonly [keyof OrderingDependencies, InjectionToken][] = [
   ['commission', COMMISSION_PAYOUTS_FACADE],
   ['tax', TAX_FACADE],
   ['taxCategories', ORDER_TAX_CATEGORIES],
+  ['products', ORDER_PRODUCTS],
+  ['promotions', PROMOTIONS_FACADE],
   ['outbox', OUTBOX_WRITER],
   ['audit', AUDIT_WRITER],
   ['ids', ID_GENERATOR],
@@ -329,6 +340,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     SellersModule,
     ShippingModule,
     CommissionPayoutsModule,
+    PromotionsModule,
     TaxModule,
   ],
   controllers: [
@@ -348,6 +360,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.outboxWriterFor('ordering'),
     PersistenceModule.auditWriterFor('ordering'),
     registerAuditActions('ordering', ORDERING_AUDIT_ACTIONS),
+    registerLists('ordering', ORDERING_LISTS),
     registerEvents('ordering', ORDERING_EVENTS),
     // SHP-02/03: the real-time carrier's booking and progress (ordering.inbox).
     registerSubscriptionsFrom(
@@ -386,6 +399,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminViewOrder,
       AdminViewOrderActivity,
       AdminViewOrderDocument,
+      AdminExportOrders,
+      SellerExportOrders,
       ConfirmPayment,
       CancelPayment,
       SellerViewOrder,
@@ -402,6 +417,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OrderNoticeQuery,
       CustomerOrderStatsQuery,
       CustomerOrderAccountsQuery,
+      CustomerSellerStatsQuery,
+      SellerCustomerOrdersQuery,
       OrderPaymentRefQuery,
       ShipmentNoticeQuery,
       RefundNoticeQuery,
@@ -423,6 +440,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminSetRefundLimit,
       AdminRemoveRefundLimit,
       SettleRefunds,
+      SettleStaleRedemptions,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: AdminListShipments,
@@ -587,6 +605,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         RefundNoticeQuery,
         CustomerOrderStatsQuery,
         CustomerOrderAccountsQuery,
+        CustomerSellerStatsQuery,
+        SellerCustomerOrdersQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -603,6 +623,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         refundNotice: RefundNoticeQuery,
         customerStats: CustomerOrderStatsQuery,
         customerAccounts: CustomerOrderAccountsQuery,
+        customerSellers: CustomerSellerStatsQuery,
+        sellerCustomerOrders: SellerCustomerOrdersQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -619,6 +641,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           refundNotice,
           customerStats,
           customerAccounts,
+          customerSellers,
+          sellerCustomerOrders,
         ),
     },
     {
@@ -665,6 +689,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         SettleRefunds,
         RebuildOfferPairs,
         PurgeSettledShipTo,
+        SettleStaleRedemptions,
       ],
       (
         shipments: RecordShipments,
@@ -673,6 +698,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         refunds: SettleRefunds,
         pairs: RebuildOfferPairs,
         purgeShipTo: PurgeSettledShipTo,
+        staleRedemptions: SettleStaleRedemptions,
       ) => [
         recordShipmentsJob(shipments),
         recordLedgerJob(ledger),
@@ -680,6 +706,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         settleRefundsJob(refunds),
         rebuildOfferPairsJob(pairs),
         purgeSettledShipToJob(purgeShipTo),
+        settleStaleRedemptionsJob(staleRedemptions),
       ],
     ),
   ],

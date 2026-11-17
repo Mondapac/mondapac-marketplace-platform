@@ -340,7 +340,7 @@ describe('orders list search, filters and sort', () => {
 });
 
 describe('orders list selection, actions and bulk', () => {
-  it('selects rows, offers Select all matching, and has no bulk action yet', async () => {
+  it('selects rows and offers Select all matching', async () => {
     serve(() => pageOf([row()], { hasNext: true }));
     mount();
     await screen.findByRole('table');
@@ -348,9 +348,8 @@ describe('orders list selection, actions and bulk', () => {
     expect(screen.getByText('1 order selected')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Select all matching' }));
     expect(screen.getByText('All matching orders are selected')).toBeTruthy();
-    expect(screen.getByText("Export for orders isn't available yet.")).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Bulk action' }).disabled).toBe(
-      true,
+      false,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
     expect(screen.queryByText(/selected/)).toBeNull();
@@ -790,5 +789,99 @@ describe('order list query and saved documents', () => {
       }),
     ).toBe('name-empty');
     expect(problemOf({ status: 503, code: 'access.unavailable' })).toBe('unavailable');
+  });
+});
+
+describe('orders export', () => {
+  const csv = (status: number, body: BodyInit | null, headers: Record<string, string> = {}) =>
+    new Response(body, { status, headers });
+  const click = vi.fn();
+  const mountWithToasts = () =>
+    render(
+      wrap(
+        <>
+          <OrdersList {...LIST} zone="UTC" />
+          <Toaster labels={{ region: 'Action notifications', close: 'Close notification' }} />
+        </>,
+      ),
+    );
+  const runExport = async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export all matching as CSV' }));
+  };
+
+  beforeEach(() => {
+    click.mockReset();
+    URL.createObjectURL = vi.fn(() => 'blob:orders');
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(click);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    toast.dismiss();
+  });
+
+  it('downloads the file of the filter, not only the page on screen', async () => {
+    serve(() => pageOf([row()], { total: 60 }));
+    const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      csv(200, 'Order\r\n', {
+        'content-disposition': 'attachment; filename="orders-2026-11-06.csv"',
+      }),
+    );
+    mountWithToasts();
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: /^Paid/ }));
+    await waitFor(() => expect(lastUrl()).toContain('status=confirmed'));
+    await runExport();
+    expect(
+      await screen.findByText('The file of the orders on this list was downloaded.'),
+    ).toBeTruthy();
+    const url = fetched.mock.calls[0]?.[0] as string;
+    expect(url.startsWith('/api/ordering/admin/orders/export?')).toBe(true);
+    const params = Object.fromEntries(new URL(`http://x${url}`).searchParams);
+    expect(params['status']).toBe('confirmed');
+    expect(params).not.toHaveProperty('page');
+    expect(params).not.toHaveProperty('sort');
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the admin to narrow the filter when the file would be too large', async () => {
+    serve(() => pageOf([row()], { total: 60 }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      csv(
+        413,
+        JSON.stringify({ code: 'batch.too-large', details: { max: 10000, matching: 12345 } }),
+      ),
+    );
+    mountWithToasts();
+    await screen.findByRole('table');
+    await runExport();
+    expect(
+      await screen.findByText(
+        '12,345 orders match, and one file holds at most 10,000. Narrow the filters and export again.',
+      ),
+    ).toBeTruthy();
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it('says the file could not be created after any other failure', async () => {
+    serve(() => pageOf([row()], { total: 60 }));
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(csv(503, '{}'));
+    mountWithToasts();
+    await screen.findByRole('table');
+    await runExport();
+    expect(await screen.findByText('The file could not be created. Try again.')).toBeTruthy();
+  });
+
+  it('offers no export with no rows, and none while a customer or store name is searched', async () => {
+    serve(() => pageOf([], { total: 0 }));
+    mountWithToasts();
+    await screen.findByText(/No orders/);
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    expect(
+      (await screen.findByRole('menuitem', { name: 'Export all matching as CSV' })).getAttribute(
+        'aria-disabled',
+      ),
+    ).toBe('true');
   });
 });

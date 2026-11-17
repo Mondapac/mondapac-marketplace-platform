@@ -18,9 +18,12 @@ import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
+import { OBJECT_STORE } from '../../platform/storage/object-store';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import type { BlogDependencies } from './application/blog-dependencies';
+import { BLOG_IMAGE_PROCESSOR } from './application/ports/blog-image-processor';
 import { BLOG_LINKS } from './application/ports/blog-links';
+import { BLOG_MEDIA_STORE } from './application/ports/blog-media.store';
 import { BLOG_POLICY } from './application/ports/blog-policy';
 import { BLOG_REPOSITORY } from './application/ports/blog.repository';
 import { ApproveBlogPost } from './application/use-cases/approve-post.use-case';
@@ -32,6 +35,7 @@ import { CreateBlogTag } from './application/use-cases/create-tag.use-case';
 import { DeleteBlogCategory } from './application/use-cases/delete-category.use-case';
 import { DeleteBlogTag } from './application/use-cases/delete-tag.use-case';
 import { FeatureBlogPost } from './application/use-cases/feature-post.use-case';
+import { ListBlogMedia } from './application/use-cases/list-media.use-case';
 import { ListBlogPosts } from './application/use-cases/list-posts.use-case';
 import { ListBlogTaxonomy } from './application/use-cases/list-taxonomy.use-case';
 import { PauseBlogPost } from './application/use-cases/pause-post.use-case';
@@ -57,6 +61,8 @@ import { SubmitBlogPost } from './application/use-cases/submit-post.use-case';
 import { UnscheduleBlogPost } from './application/use-cases/unschedule-post.use-case';
 import { UpdateBlogCategory } from './application/use-cases/update-category.use-case';
 import { UpdateBlogPostDraft } from './application/use-cases/update-draft.use-case';
+import { UploadBlogMedia } from './application/use-cases/upload-media.use-case';
+import { ViewBlogMediaFile } from './application/use-cases/view-media-file.use-case';
 import { ViewBlogPost } from './application/use-cases/view-post.use-case';
 import { ViewPublicBlogTaxonomy } from './application/use-cases/view-public-taxonomy.use-case';
 import { ViewPublishedBlogPost } from './application/use-cases/view-published-post.use-case';
@@ -68,6 +74,7 @@ import { BLOG_AUDIT_ACTIONS } from './domain/audit';
 import { BLOG_EVENTS } from './domain/events';
 import { blogProviders } from './infrastructure/blog-providers';
 import { AdminBlogController } from './presentation/admin-blog.controller';
+import { AdminBlogMediaController } from './presentation/admin-blog-media.controller';
 import { AdminBlogTaxonomyController } from './presentation/admin-blog-taxonomy.controller';
 import { publishDueJob } from './presentation/jobs/publish-due.job';
 import { PublicBlogController } from './presentation/public-blog.controller';
@@ -86,6 +93,9 @@ const PORTS: readonly [keyof BlogDependencies, InjectionToken][] = [
   ['stepUp', STEP_UP_CONSUMER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
+  ['media', BLOG_MEDIA_STORE],
+  ['imageProcessor', BLOG_IMAGE_PROCESSOR],
+  ['objectStore', OBJECT_STORE],
 ];
 
 /** Every blog use case shares one dependency object, built from the same ports. */
@@ -110,13 +120,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Every change is a version; a version is checked automatically, reviewed by a person other than
  * its author and made live by a person who holds the protected publish key (now, or at a scheduled
  * time by the worker). A published post can be paused at once; an old address redirects, and an
- * address taken off the site answers 410. Buyers read the live version with no session.
+ * address taken off the site answers 410. Buyers read the live version with no session. A post's
+ * cover and image blocks name pictures of the blog's own media library, uploaded by admins.
  */
 @Module({
   imports: [CatalogModule, CertificationModule, SellersModule],
   controllers: [
     AdminBlogController,
     AdminBlogTaxonomyController,
+    AdminBlogMediaController,
     SellerBlogController,
     PublicBlogController,
   ],
@@ -168,6 +180,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewUpcomingBlogEvents,
       PublishDueBlogPosts,
       PauseSellerBlogPosts,
+      UploadBlogMedia,
+      ListBlogMedia,
+      ViewBlogMediaFile,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     registerJobsFrom('blog', [PublishDueBlogPosts], (publishDue: PublishDueBlogPosts) => [
       publishDueJob(publishDue),

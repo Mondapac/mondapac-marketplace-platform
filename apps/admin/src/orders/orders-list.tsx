@@ -434,6 +434,18 @@ export function OrdersList({
         actions: (
           <OrdersBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}
+            exportQuery={() => {
+              // The route takes the filters only; the relay drops the rest, but say it here too.
+              const params = new URLSearchParams(
+                queryString(query, { paging: 'prev-next', zone, now: new Date() }),
+              );
+              for (const key of ['page', 'pageSize', 'paging', 'sort', 'direction', 'search']) {
+                params.delete(key);
+              }
+              return params.toString();
+            }}
+            nameSearch={routeSearch(query.q).kind === 'search'}
+            empty={answer !== null && shown.length === 0}
           />
         ),
       }}

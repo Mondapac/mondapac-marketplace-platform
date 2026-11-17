@@ -65,6 +65,7 @@ import type {
   OrderSort,
   OrderPage,
   OrderRepository,
+  AccountSellerTotals,
   SellerOrderFilter,
   SellerOrderSort,
   SellerOrderPage,
@@ -183,6 +184,9 @@ class EmptyRefunds implements RefundRepository {
   }
   findPending() {
     return this.unexpected('findPending');
+  }
+  findExpiredUnpaid() {
+    return this.unexpected('findExpiredUnpaid');
   }
   guardSellerRefunds() {
     return this.unexpected('guardSellerRefunds');
@@ -334,6 +338,25 @@ export class MemoryOrders implements OrderRepository {
     const order = this.rows.get(orderId);
     return Promise.resolve(order?.accountId === accountId ? order : null);
   }
+  hasPaidOrder(_m: MarketContext, accountId: Id<'Account'>) {
+    return Promise.resolve(
+      [...this.rows.values()].some((o) => o.accountId === accountId && o.status === 'confirmed'),
+    );
+  }
+  findExpiredUnpaid(_m: MarketContext, before: Temporal.Instant, limit: number) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (o) =>
+            o.status === 'pending-payment' &&
+            o.paymentState === 'none' &&
+            Temporal.Instant.compare(o.paymentExpiresAt, before) < 0,
+        )
+        .sort((a, b) => Temporal.Instant.compare(a.paymentExpiresAt, b.paymentExpiresAt))
+        .slice(0, limit)
+        .map((o) => o.id),
+    );
+  }
   findPending(_m: MarketContext, accountId: Id<'Account'>) {
     return Promise.resolve(
       [...this.rows.values()].filter(
@@ -341,6 +364,34 @@ export class MemoryOrders implements OrderRepository {
       ),
     );
   }
+  sellerTotalsOf(_m: MarketContext, accountId: Id<'Account'>) {
+    const confirmed = [...this.rows.values()]
+      .filter(
+        (o) => o.accountId === accountId && o.status === 'confirmed' && o.confirmedAt !== null,
+      )
+      .sort((a, b) => a.confirmedAt!.epochMilliseconds - b.confirmedAt!.epochMilliseconds);
+    const bySeller = new Map<string, AccountSellerTotals>();
+    for (const order of confirmed) {
+      for (const seller of order.sellerOrders) {
+        const seen = bySeller.get(seller.sellerId);
+        bySeller.set(seller.sellerId, {
+          sellerId: seller.sellerId,
+          orderCount: (seen?.orderCount ?? 0) + 1,
+          firstConfirmedAt: seen?.firstConfirmedAt ?? order.confirmedAt!,
+          lastConfirmedAt: order.confirmedAt!,
+          grossMinor: (seen?.grossMinor ?? 0n) + seller.total,
+          refundedMinor:
+            (seen?.refundedMinor ?? 0n) + (this.refundedBySellerOrder.get(seller.id) ?? 0n),
+          currency: order.total.currency,
+        });
+      }
+    }
+    return Promise.resolve(
+      [...bySeller.values()].sort((a, b) => (a.sellerId < b.sellerId ? -1 : 1)),
+    );
+  }
+  /** Succeeded refund gross per seller order, for `sellerTotalsOf` (tests set it). */
+  readonly refundedBySellerOrder = new Map<string, bigint>();
   totalsOf(_m: MarketContext, accountId: Id<'Account'>) {
     const confirmed = [...this.rows.values()].filter(
       (o) => o.accountId === accountId && o.status === 'confirmed',
@@ -486,6 +537,7 @@ export class MemoryOrders implements OrderRepository {
         filter.reference === null ||
         r.sellerOrder.id === filter.reference ||
         r.orderId === filter.reference) &&
+      (filter.accountId == null || r.accountId === filter.accountId) &&
       (filter.from === null || Temporal.Instant.compare(r.confirmedAt, filter.from) >= 0) &&
       (filter.to === null || Temporal.Instant.compare(r.confirmedAt, filter.to) < 0)
     );

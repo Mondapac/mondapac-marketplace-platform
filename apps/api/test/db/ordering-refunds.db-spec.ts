@@ -1,3 +1,5 @@
+import { FakeOrderProducts, FakePromotions } from '../support/ordering-promotions-fakes';
+import { testAreas, testOrderingPolicy } from '../support/ordering-policy';
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, PendingEvent } from '@mondapac/shared-kernel';
 import {
@@ -47,6 +49,8 @@ import { PrismaLedgerRepository } from '../../src/modules/commission-payouts/inf
 import { PrismaSellerRateRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-seller-rate.repository';
 import { RecordLedger } from '../../src/modules/ordering/application/use-cases/record-ledger.use-case';
 import { RecordRefundLedger } from '../../src/modules/ordering/application/use-cases/record-refund-ledger.use-case';
+import { CustomerSellerStatsQuery } from '../../src/modules/ordering/application/use-cases/customer-seller-stats.use-case';
+import { SellerCustomerOrdersQuery } from '../../src/modules/ordering/application/use-cases/seller-customer-orders.use-case';
 import { ConfirmPayment } from '../../src/modules/ordering/application/use-cases/confirm-payment.use-case';
 import { SettleRefunds } from '../../src/modules/ordering/application/use-cases/settle-refunds.use-case';
 import { LOSS_BEARERS, LOSS_REASON_CODES } from '../../src/modules/ordering/domain/reason-codes';
@@ -221,7 +225,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         new PrismaRefundRepository(db.service),
       ),
       gateway,
-      policy: new RefundsOn(markets),
+      policy: new RefundsOn(markets, testAreas),
       cart: new FakeCart(),
       customers: new FakeCustomers(),
       shipTo: new FakeShipToCipher(),
@@ -230,6 +234,8 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       commission,
       tax: new FakeTax(),
       taxCategories: new FakeTaxCategories('taxable'),
+      products: new FakeOrderProducts(),
+      promotions: new FakePromotions(),
       outbox: { append: () => Promise.resolve() },
       audit,
       ids,
@@ -251,7 +257,13 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
   const total = inclusive ? 3300n + 550n : 3300n + 451n + 500n + 75n;
 
   /** A paid order of one seller with one line of three units; answers its ids. */
-  const paidOrder = async (sellerId: Id<'Seller'> = ids.next<'Seller'>(), pay = true) => {
+  const paidOrder = async (
+    sellerId: Id<'Seller'> = ids.next<'Seller'>(),
+    pay = true,
+    accountId: Id<'Account'> = ids.next<'Account'>(),
+    /** The discounts the order was placed with (package T2): the seller funds the line's. */
+    discounts: { readonly line: bigint; readonly shipping: bigint } = { line: 0n, shipping: 0n },
+  ) => {
     const orderId = ids.next<'Order'>();
     const sellerOrderId = ids.next<'SellerOrder'>();
     const lineId = ids.next<'OrderLine'>();
@@ -259,11 +271,11 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     const order: OrderState = {
       id: orderId,
       marketId: market.marketId,
-      accountId: ids.next<'Account'>(),
+      accountId,
       status: 'pending-payment',
       cancelReason: null,
       paymentState: 'none',
-      total: money(total, currency),
+      total: money(total - discounts.line - discounts.shipping, currency),
       reservationId: ids.next<'Reservation'>(),
       stripeIdempotencyKey: `checkout-${orderId}`,
       stripeSessionId: `cs_${orderId.replaceAll('-', '')}`,
@@ -281,10 +293,12 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           sellerId,
           subtotal: 3300n,
           shipping,
+          discount: discounts.line,
+          shippingDiscount: discounts.shipping,
           shippingTaxRateBps: inclusive ? 1000 : 1500,
           shippingTax,
           shippingTaxInclusive: inclusive,
-          total,
+          total: total - discounts.line - discounts.shipping,
           fulfilment: 'to-ship',
           carrier: null,
           trackingRef: null,
@@ -309,6 +323,9 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           quantity: 3,
           unitPrice: money(unit, currency),
           lineAmount: 3300n,
+          discountAmount: discounts.line,
+          discountSellerShare: discounts.line,
+          discountPlatformShare: 0n,
           taxInclusive: inclusive,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
@@ -390,7 +407,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
 
   it('refuses while the Market switch is off: nothing written, Stripe never called', async () => {
     const o = await paidOrder();
-    const off = { ...deps, policy: new ConfigOrderingPolicy(markets) };
+    const off = { ...deps, policy: testOrderingPolicy(markets) };
 
     const result = await refund(o, 1, undefined, off);
 
@@ -472,6 +489,29 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     const grossBack = rows.notes.reduce((sum, n) => sum + BigInt(n.gross_amount), 0n);
     expect(taxBack).toBe(lineTax + shippingTax);
     expect(grossBack).toBe(total);
+    expect(await refund(o, 0, '1')).toMatchObject({ error: { code: 'ordering.refund-exceeds' } });
+  });
+
+  it('gives back what the buyer paid for a discounted order: the net line and the net delivery (package T2)', async () => {
+    const o = await paidOrder(ids.next<'Seller'>(), true, ids.next<'Account'>(), {
+      line: 300n,
+      shipping: 50n,
+    });
+    const paid = total - 350n;
+    // The delivery as paid: the fee less its discount, plus its tax when the fee excluded it.
+    const netShippingGross = shipping - 50n + (inclusive ? 0n : shippingTax);
+
+    expect(await refund(o, 3, (netShippingGross + 1n).toString())).toMatchObject({
+      ok: false,
+      error: { code: 'ordering.refund-exceeds' },
+    });
+    const all = await refund(o, 3, netShippingGross.toString());
+    expect(all.ok).toBe(true);
+    if (!all.ok) return;
+    // Every unit gives back its share of the line after the discount, never its price before.
+    expect(all.value.amount).toEqual(money(paid, currency));
+    expect((await rowsOf(o.sellerOrderId)).refunded).toBe(paid.toString());
+    expect(await inFull(o.sellerOrderId)).toBe(true);
     expect(await refund(o, 0, '1')).toMatchObject({ error: { code: 'ordering.refund-exceeds' } });
   });
 
@@ -1080,7 +1120,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         denied,
       );
       expect(await sellerUnavailableRefund(deps, admin, input)).toEqual(denied);
-      const off = { ...deps, policy: new ConfigOrderingPolicy(markets) };
+      const off = { ...deps, policy: testOrderingPolicy(markets) };
       expect(await sellerUnavailableRefund(off, sellerOf(o.sellerId), input)).toEqual({
         ok: false,
         error: { code: 'ordering.refund-disabled' },
@@ -2035,7 +2075,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
 
     it('refuses while the switch is off, and a body off the closed lists', async () => {
       const o = await paidOrder();
-      const off = { ...deps, policy: new ConfigOrderingPolicy(markets) };
+      const off = { ...deps, policy: testOrderingPolicy(markets) };
       expect(await cancel(o.orderId, off)).toEqual({
         ok: false,
         error: { code: 'ordering.refund-disabled' },
@@ -2467,6 +2507,140 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         [market.marketId, o.sellerOrderId],
       );
       expect(stored.rows).toHaveLength(0);
+    });
+  });
+
+  describe('per-seller totals and orders of one customer (customers management phase 3)', () => {
+    const stats = (accountId: Id<'Account'>) =>
+      new CustomerSellerStatsQuery(gate, deps).execute(system, { accountId });
+    const sellerMember = (sellerId: Id<'Seller'>) =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: ids.next<'Account'>(),
+          sessionId: ids.next<'Session'>(),
+          sellerId,
+        }),
+      );
+
+    it('nets succeeded refunds per seller, ignores failed ones and never goes below zero', async () => {
+      const account = ids.next<'Account'>();
+      const [kept, refunded] = [ids.next<'Seller'>(), ids.next<'Seller'>()].sort() as [
+        Id<'Seller'>,
+        Id<'Seller'>,
+      ];
+      const first = await paidOrder(kept, true, account);
+      await paidOrder(kept, true, account);
+      const whole = await paidOrder(refunded, true, account);
+      // Another customer of the same seller and an unpaid order of this one do not count.
+      await paidOrder(kept, true);
+      await paidOrder(kept, false, account);
+
+      const part = await refund(first, 1);
+      if (!part.ok) throw new Error(`refund: ${part.error.code}`);
+      gateway.refundFails = { code: 'payment.provider-rejected' };
+      expect((await refund(first, 1)).ok).toBe(false);
+      gateway.refundFails = null;
+      const shippingGross = inclusive ? shipping : shipping + shippingTax;
+      expect((await refund(whole, 3, shippingGross.toString())).ok).toBe(true);
+
+      const answer = await stats(account);
+      expect(answer.ok).toBe(true);
+      if (!answer.ok) return;
+      const plain = answer.value.map((row) => ({
+        ...row,
+        firstOrderAt: row.firstOrderAt.epochMilliseconds,
+        lastOrderAt: row.lastOrderAt.epochMilliseconds,
+      }));
+      expect(plain).toEqual([
+        {
+          sellerId: kept,
+          orderCount: 2,
+          firstOrderAt: T0.epochMilliseconds,
+          lastOrderAt: T0.epochMilliseconds,
+          spentMinor: total * 2n - part.value.amount.amount,
+          currency,
+        },
+        {
+          sellerId: refunded,
+          orderCount: 1,
+          firstOrderAt: T0.epochMilliseconds,
+          lastOrderAt: T0.epochMilliseconds,
+          spentMinor: 0n,
+          currency,
+        },
+      ]);
+    });
+
+    it('answers nothing for another Market, and refuses a bad account id', async () => {
+      const account = ids.next<'Account'>();
+      await paidOrder(ids.next<'Seller'>(), true, account);
+      const elsewhere = marketOf(TEST_MARKETS.find((other) => other !== code)!);
+      expect(
+        await new CustomerSellerStatsQuery(gate, deps).execute(
+          testCallContext(elsewhere, 'system'),
+          { accountId: account },
+        ),
+      ).toEqual({ ok: true, value: [] });
+      expect(await stats('not-an-id' as Id<'Account'>)).toEqual({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+    });
+
+    it("lists only the calling seller's paid orders of that customer, paged", async () => {
+      const account = ids.next<'Account'>();
+      const shop = ids.next<'Seller'>();
+      const a = await paidOrder(shop, true, account);
+      const b = await paidOrder(shop, true, account);
+      // The same customer at another seller, another customer here, and an unpaid order.
+      await paidOrder(ids.next<'Seller'>(), true, account);
+      await paidOrder(shop, true);
+      await paidOrder(shop, false, account);
+      const read = (page: number, pageSize: number, as = sellerMember(shop)) =>
+        new SellerCustomerOrdersQuery(gate, deps).execute(as, {
+          accountId: account,
+          page,
+          pageSize,
+        });
+
+      const all = await read(1, 20);
+      expect(all.ok).toBe(true);
+      if (!all.ok) return;
+      expect(all.value.total).toBe(2);
+      expect(all.value.items.map((item) => item.sellerOrderId).sort()).toEqual(
+        [a.sellerOrderId, b.sellerOrderId].sort(),
+      );
+      expect(all.value.items[0]).toMatchObject({ total: money(total, currency) });
+      expect(all.value.items[0]!.paidAt.epochMilliseconds).toBe(T0.epochMilliseconds);
+      expect(
+        JSON.stringify(all.value, (_k, v: unknown) => (typeof v === 'bigint' ? String(v) : v)),
+      ).not.toContain(account);
+      const one = await read(2, 1);
+      expect(one.ok && one.value.items).toHaveLength(1);
+      expect(one.ok && one.value.total).toBe(2);
+
+      const stranger = await read(1, 20, sellerMember(ids.next<'Seller'>()));
+      expect(stranger).toEqual({ ok: true, value: { total: 0, items: [] } });
+      expect(await read(0, 20)).toEqual({ ok: false, error: { code: 'validation.failed' } });
+      expect(await read(1, 0)).toEqual({ ok: false, error: { code: 'validation.failed' } });
+      expect(
+        await new SellerCustomerOrdersQuery(gate, deps).execute(admin, {
+          accountId: account,
+          page: 1,
+          pageSize: 20,
+        }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      const member = sellerMember(shop);
+      const actingAs = {
+        ...member,
+        actor: { ...member.actor, actingAs: { accountId: ids.next<'Account'>(), sellerId: shop } },
+      } as unknown as CallContext;
+      expect(await read(1, 20, actingAs)).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
     });
   });
 });

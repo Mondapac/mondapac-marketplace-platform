@@ -11,6 +11,7 @@ import type {
 } from '../ports/claim-policy.repository';
 import type { ChangeReasonRead } from '../ports/registry-cipher';
 import type { StoredProposal } from '../ports/registry.repository';
+import { certificationReview, type CertificationReview } from '../registry/certification-review';
 import {
   policyProposalView,
   rowView,
@@ -63,6 +64,8 @@ export interface ClaimPolicyReadOutput {
     readonly reasonGiven: boolean;
     readonly published: boolean;
   }[];
+  /** Whether a published save is reviewed in the Market (the page then asks for a note). */
+  readonly review: CertificationReview;
 }
 
 export type ClaimPolicyReadFailure =
@@ -117,6 +120,8 @@ export class ClaimPolicyRead extends UseCase<
     if (typeId === null) return invalid('typeId', 'format');
     const { market } = context;
     const { deps } = this;
+    // Its own read-only unit, before this one (units do not nest).
+    const review = await certificationReview(deps, context);
     const read = await deps.unitOfWork
       .run<Snapshot | null, never>(
         market,
@@ -217,6 +222,7 @@ export class ClaimPolicyRead extends UseCase<
           reasonGiven: entry.reasonGiven,
           published: entry.id === policy?.publishedRevisionId,
         })),
+        review,
       });
     } catch (error) {
       return registryFailure(context, 'certification.claim-policy-read.reason', error);
