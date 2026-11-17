@@ -11,6 +11,7 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { SubjectRateLimits } from '../../platform/rate-limit/subject-rate-limits';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { CartModule } from '../cart';
 import { CatalogModule } from '../catalog';
 import { SellersModule } from '../sellers';
 import { NotificationsModule } from '../notifications';
@@ -100,6 +101,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     SellersModule,
     NotificationsModule,
     IdentityModule,
+    CartModule,
     SettingsModule,
   ],
   controllers: [

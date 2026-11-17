@@ -1,4 +1,5 @@
 import type { FactoryProvider } from '@nestjs/common';
+import { CART_ASSISTANT_FACADE, type CartAssistantFacade } from '../../cart';
 import { CATALOG_ASSISTANT_FACADE, type CatalogAssistantFacade } from '../../catalog';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { SUPPORT_CONTACT_FACADE, type SupportContactFacade } from '../../notifications';
@@ -77,6 +78,7 @@ export const assistantProviders: readonly FactoryProvider[] = [
       SUPPORT_CONTACT_FACADE,
       SELLERS_FACADE,
       ServiceAreaDirectory,
+      CART_ASSISTANT_FACADE,
       SETTINGS_FACADE,
     ],
     useFactory: (
@@ -85,12 +87,13 @@ export const assistantProviders: readonly FactoryProvider[] = [
       support: SupportContactFacade,
       sellers: SellersFacade,
       areas: ServiceAreaDirectory,
+      cart: CartAssistantFacade,
       settings: SettingsFacade,
     ): AssistantTools =>
       // `plan_basket` wraps the read tools: the list is searched with the buyer's own context and
       // the Market's cart mode comes from settings (an unreadable store answers multi-store).
       new BasketAssistantTools(
-        new FacadeAssistantTools(search, catalog, support, sellers, areas),
+        new FacadeAssistantTools(search, catalog, support, sellers, areas, cart, settings),
         new FacadeBasketSources(search, (context) => settings.cartMode(context)),
       ),
   },

@@ -22,7 +22,7 @@ SELECT and INSERT only) and one `assistant.settings.changed` audit row (versions
 | ----------------------------- | ----------------------------------------------------------------------------------- | ------------------------- |
 | `enabled`                     | true / false                                                                        | false                     |
 | `audience`, `audiencePercent` | `internal` / `percent` (1 to 100) / `all`                                           | `internal`                |
-| `scope`                       | `read-only` / `cart-suggestions` (not available yet)                                | `read-only`               |
+| `scope`                       | `read-only` / `cart-suggestions` (cart cards, stage 1 S1-B1)                        | `read-only`               |
 | `modelTier`                   | `fast` / `balanced`                                                                 | `fast`                    |
 | `users`                       | `guests-and-customers` / `customers-only`                                           | `guests-and-customers`    |
 | `guestMessageLimit`           | 5 to 60 per 10 minutes                                                              | 20                        |

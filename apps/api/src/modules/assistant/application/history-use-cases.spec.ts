@@ -609,6 +609,9 @@ describe.each(TEST_MARKET_IDS)('assistant conversation history in market %s', (c
     ['page:cart', { kind: 'page', page: 'cart' }],
     ['page:admin', null],
     ['product:not-an-id', null],
+    [`seller:${id<'Seller'>(2)}`, { kind: 'seller', sellerId: id<'Seller'>(2) }],
+    ['seller:not-an-id', null],
+    [`seller:${id<'Seller'>(2)}:x`, null],
     [`product:${id<'Offer'>(1)}:x`, null],
     ['coupon:x', null],
   ])('reads the stored card ref %s', (ref, card) => {

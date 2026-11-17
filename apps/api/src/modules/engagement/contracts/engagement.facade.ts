@@ -1,4 +1,4 @@
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 
 /**
@@ -48,6 +48,42 @@ export interface EngagementFacade {
     context: CallContext,
     request: RecentViewsRequest,
   ): Promise<Result<RecentViews, AccessDenied>>;
+
+  /**
+   * Which of `sellerIds` (at most 100) the account follows, for the store-follower offer
+   * (customers management phase 3). Two use cases behind this method, chosen by the call's actor:
+   * `system` (any account, the quote at checkout) and `own-resources` (a customer about their own
+   * account only; any other account is `access.denied`). Ids only. A store that is no longer public
+   * still counts as followed until the customer unfollows it.
+   */
+  followedAmong(
+    context: CallContext,
+    accountId: Id<'Account'>,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<Result<readonly Id<'Seller'>[], StoreFollowReadFailure>>;
+
+  /**
+   * Every store an account follows with the instant the follow started (at most 1000), for
+   * `customers`' per-seller read model. Rule `system`. Ids and instants only.
+   */
+  followsOfAccount(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<readonly AccountStoreFollow[], StoreFollowReadFailure>>;
 }
+
+/** One store an account follows. */
+export interface AccountStoreFollow {
+  readonly sellerId: Id<'Seller'>;
+  readonly followedAt: Temporal.Instant;
+}
+
+export type StoreFollowReadFailure =
+  | AccessDenied
+  | {
+      readonly code: 'validation.failed';
+      readonly fields: readonly { readonly path: string; readonly code: string }[];
+    }
+  | { readonly code: string };
 
 export const ENGAGEMENT_FACADE = Symbol('ENGAGEMENT_FACADE');

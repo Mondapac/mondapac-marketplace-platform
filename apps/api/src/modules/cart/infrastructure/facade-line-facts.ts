@@ -207,6 +207,22 @@ export class FacadeLineFacts implements LineFactsSource {
     return verdicts;
   }
 
+  async offerSellUnits(context: CallContext, offerId: Id<'Offer'>) {
+    const answer = await this.safe(() => this.catalog.offerSellUnits(context, [offerId]));
+    if (answer === null || !answer.ok) return null;
+    const offer = answer.value.get(offerId);
+    if (offer === undefined || offer.status !== 'published' || !offer.listed) {
+      return 'absent' as const;
+    }
+    return {
+      sellerId: offer.sellerId,
+      productId: offer.productId,
+      variantIds: offer.sellUnits
+        .filter((unit) => unit.state === 'published' && unit.selling)
+        .map((unit) => unit.variantId),
+    };
+  }
+
   async sellerMinimums(
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
