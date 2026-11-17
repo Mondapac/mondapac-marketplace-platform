@@ -93,6 +93,28 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
   once the Market has journals is `changed-since`. A switch to `paused` or `frozen` is a stop and
   opens no request; a revert never lifts a stop (restoring `active` over `paused` or `frozen` is
   `not-permitted`, and the request stays open).
+- **catalog** (area `catalogue`, on by default, risk medium): field edits of existing PLATFORM
+  catalogue structure. Three kinds, each with the id of the record as subject:
+  `catalog.category-details` (names, short descriptions, keywords per locale, SEO, show in menu),
+  `catalog.attribute-definition` (a summary of the definition with `revisionNo` and `version`; the
+  full content is read back from the revision history) and `catalog.category-attribute-links`
+  (`{featureSetId, filters}`). The edit routes take `note` and answer `request`; the three admin
+  read views carry `review`. A revert writes the before fields as a new revision through the same
+  domain path and audits `catalog.platform-category.details-reverted`,
+  `catalog.attribute-definition.reverted` or `catalog.category-attributes.reverted` with the
+  request id. It answers `changed-since` when the record no longer matches the `after` values, is
+  no longer active, or the domain refuses the write, and `gone` only when the record is not found
+  (including a record of another Market) or the request values are not ours. Before the unit
+  opens, an optional `check` on the reverter (item 4 of "For a module that adds a reviewed area") runs the claim-text
+  check on the text a revert would write back, the content filter and locale checks, the units
+  and publish rules of an active attribute, and that the decider holds the subject's edit key
+  (`catalog.category-tree.edit` or `catalog.attribute.edit`); any refusal, or a check that cannot
+  be answered, is `not-permitted` with nothing written and the request left open.
+  Left out (owner decision): create, delete, merge, move, import, seller-scoped content and
+  ClaimBasisPolicy. Slug change, image set or remove, and feature-set edits are not hooked either:
+  a slug change and an image carry redirect and storage effects a revert cannot undo cleanly.
+  Imports run unreviewed.
+
 - **shipping** (area delivery, medium risk by default, on by default): only changes that can be
   put back are reviewed; creating, deleting, merging, moving and importing are not.
   - `shipping.delivery-settings` (subject `delivery-settings`): the save of the Market's delivery
@@ -157,6 +179,13 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
 - A request that turned the AI description writer off cannot be withdrawn into a revert that turns
   it back on: the reverter answers `not-permitted`, because a permission check cannot run inside
   the decision unit. The author changes the setting again instead.
+- Catalogue: a revert of an attribute edit keeps the options the edit added (revisions never
+  remove an option) and switches them off; cancelling an open relaxation request that the edit
+  triggered is not undone; a revert that would clear `material` on a published attribute is
+  refused by the domain (`changed-since`: that needs the two-person request); a revert reads at
+  most the newest 200 revisions of an attribute, an older one is `changed-since`; category values too
+  large for a request (over 10 KB) are refused with `too-large-for-review` where the area is
+  reviewed; a category revert restores details only, never image, slug, position or status.
 - A rate set for a seller with no rate row yet can race with a second first-time set (no row to
   lock); this predates the review hook.
 - Withdraw checks that the caller is the author, not that the author still holds the edit
