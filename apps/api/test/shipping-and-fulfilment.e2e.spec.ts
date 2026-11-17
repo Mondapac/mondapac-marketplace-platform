@@ -47,6 +47,7 @@ const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
 const detail = (currency: string, patch: object = {}) => ({
+  actions: ['open'],
   sellerOrderId: SELLER_ORDER,
   orderId: ORDER,
   paidAt: START,
@@ -279,7 +280,7 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
       next = ok({
         sellerOrders: [detail(currency)],
         nextCursor: null,
-        paging: { total: 41, page: 2, pageSize: 20 },
+        paging: { mode: 'pages', total: 41, page: 2, pageSize: 20, hasNext: true },
       });
 
       const res = await call(

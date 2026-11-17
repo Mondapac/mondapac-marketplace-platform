@@ -539,7 +539,9 @@ export class PrismaOrderRepository implements OrderRepository {
 
   async listAll(market: MarketContext, filter: OrderFilter, page: OrderPage) {
     const rows = await this.prisma.tx(market).orderingOrder.findMany({
-      where: { ...filterWhere(market, filter), ...afterCursor(page) },
+      // Each clause is its own `AND` entry: both use a top-level `OR` (reference, cursor), and a spread
+      // would let the cursor's replace the filter's.
+      where: { marketId: market.marketId, AND: [filterWhere(market, filter), afterCursor(page)] },
       include: INCLUDE,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: page.limit,
@@ -620,7 +622,11 @@ export class PrismaOrderRepository implements OrderRepository {
     page: SellerOrderPage,
   ) {
     const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
-      where: { ...sellerWhere(market, sellerId, filter), ...sellerCursor(page) },
+      // Each clause is its own `AND` entry: both use a top-level `OR` (reference, cursor).
+      where: {
+        marketId: market.marketId,
+        AND: [sellerWhere(market, sellerId, filter), sellerCursor(page)],
+      },
       include: SELLER_INCLUDE,
       orderBy: [{ order: { confirmedAt: 'desc' } }, { id: 'desc' }],
       take: page.limit,
@@ -916,6 +922,9 @@ const sellerWhere = (market: MarketContext, sellerId: Id<'Seller'>, filter: Sell
   marketId: market.marketId,
   sellerId,
   ...(filter.fulfilment === null ? {} : { fulfilment: filter.fulfilment }),
+  ...(filter.reference === undefined || filter.reference === null
+    ? {}
+    : { OR: [{ id: filter.reference }, { orderId: filter.reference }] }),
   order: {
     status: 'confirmed',
     ...(filter.accountId == null ? {} : { accountId: filter.accountId }),

@@ -222,6 +222,8 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     pageSize: null,
     sort: null,
     direction: null,
+    paging: /^(pages|prev-next)$/,
+    q: null,
     status: null,
     from: null,
     to: null,

@@ -40,7 +40,7 @@ import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { RecordShipments } from './use-cases/record-shipments.use-case';
 import { RegeneratePickupCode } from './use-cases/regenerate-pickup-code.use-case';
 import { SellerConfirmPickup } from './use-cases/seller-confirm-pickup.use-case';
-import { SellerListOrders } from './use-cases/seller-list-orders.use-case';
+import { sellerListOrders } from '../../../../test/support/order-list-fakes';
 import { SellerMarkOrderReady } from './use-cases/seller-mark-order-ready.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { StartCheckout } from './use-cases/start-checkout.use-case';
@@ -291,7 +291,7 @@ describe.each([['AU'], ['ZZ']] as const)('pickup code in market %s', (code) => {
       const seller = await new SellerViewOrder(gate, deps).execute(sellerA, {
         sellerOrderId: pickup.id,
       });
-      const list = await new SellerListOrders(gate, deps).execute(sellerA, {});
+      const list = await sellerListOrders(gate, deps).execute(sellerA, {});
       expect(JSON.stringify(seller, bigint)).not.toContain('0427');
       expect(JSON.stringify(list, bigint)).not.toContain('0427');
       expect(seller.ok && seller.value.pickup).toEqual({ attemptsLeft: 5, locked: false });

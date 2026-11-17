@@ -1,11 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type {
-  AdminOrderPageView,
+  AdminOrderListRow,
+  AdminOrderListView,
   LabelledAdminOrderView,
   OrderPageView,
   OrderView,
   LabelledSellerOrderDetailView,
-  LabelledSellerOrderPageView,
+  SellerOrderListView,
   LabelledSellerOrderShipView,
   LabelledOrderView,
   LabelledOwnOrderView,
@@ -404,6 +405,24 @@ export class OwnOrderListItemBody extends OrderBody {
   @ApiProperty({ type: [OwnSellerOrderBody] }) declare sellerOrders: OwnSellerOrderBody[];
 }
 
+const ACTIONS_DESCRIPTION =
+  'The row Actions menu: the ids of the actions the caller may run on this row, in menu order, ' +
+  'from the caller’s permissions and the row’s state. The action checks its key again when it runs.';
+
+/** One row of the admin Orders list: the order with the actions the caller may run on it. */
+export class AdminOrderListItemBody extends AdminOrderBody {
+  @ApiProperty({
+    type: [String],
+    enum: ['open', 'print-document', 'copy-number', 'add-note', 'refund', 'cancel'],
+    description: ACTIONS_DESCRIPTION,
+  })
+  actions!: string[];
+}
+
+const PAGING_DESCRIPTION =
+  'Page mode: `pages` (page numbers with the total) or `prev-next` (Previous and Next, no total). ' +
+  'Null in cursor mode.';
+
 export class OrderPageBody {
   @ApiProperty({ type: [OwnOrderListItemBody] }) orders!: OwnOrderListItemBody[];
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
@@ -416,7 +435,7 @@ export class OrderStatusCountsBody {
 }
 
 export class AdminOrderPageBody {
-  @ApiProperty({ type: [AdminOrderBody] }) orders!: AdminOrderBody[];
+  @ApiProperty({ type: [AdminOrderListItemBody] }) orders!: AdminOrderListItemBody[];
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
   @ApiProperty({
     type: OrderStatusCountsBody,
@@ -426,9 +445,22 @@ export class AdminOrderPageBody {
   @ApiProperty({
     type: Number,
     nullable: true,
-    description: 'Page mode only: the orders that match the filter. Null in cursor mode.',
+    description:
+      'Page mode `pages` only: the orders that match the filter. Null in `prev-next` and cursor mode.',
   })
   total!: number | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: ['pages', 'prev-next'],
+    description: PAGING_DESCRIPTION,
+  })
+  paging!: 'pages' | 'prev-next' | null;
+  @ApiProperty({
+    type: Boolean,
+    description: 'Whether a page after this one exists (cursor mode: whether nextCursor is set).',
+  })
+  hasNext!: boolean;
   @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: this page, from 1.' })
   page!: number | null;
   @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: rows per page.' })
@@ -498,6 +530,24 @@ export class SellerOrderDetailBody extends SellerOrderBody {
   @ApiProperty({ format: 'uuid' }) sellerOrderId!: string;
   @ApiProperty({ format: 'uuid' }) orderId!: string;
   @ApiProperty({ format: 'date-time', description: 'When the customer paid.' }) paidAt!: string;
+}
+
+/** One row of the seller Orders list: the seller order with the actions the caller may run. */
+export class SellerOrderListItemBody extends SellerOrderDetailBody {
+  @ApiProperty({
+    type: [String],
+    enum: [
+      'open',
+      'packing-slip',
+      'copy-number',
+      'ready',
+      'hand-over',
+      'mark-delivered',
+      'report-unavailable',
+    ],
+    description: ACTIONS_DESCRIPTION,
+  })
+  actions!: string[];
 }
 
 export class SellerOrderRefundLineBody {
@@ -573,7 +623,7 @@ export class SellerOrderCountsBody {
 }
 
 export class SellerOrderPageBody {
-  @ApiProperty({ type: [SellerOrderDetailBody] }) sellerOrders!: SellerOrderDetailBody[];
+  @ApiProperty({ type: [SellerOrderListItemBody] }) sellerOrders!: SellerOrderListItemBody[];
   @ApiProperty({ type: String, nullable: true }) nextCursor!: string | null;
   @ApiProperty({
     type: SellerOrderCountsBody,
@@ -583,9 +633,22 @@ export class SellerOrderPageBody {
   @ApiProperty({
     type: Number,
     nullable: true,
-    description: 'Page mode only: how many orders match the filter.',
+    description:
+      'Page mode `pages` only: how many orders match the filter. Null in `prev-next` and cursor mode.',
   })
   total!: number | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: ['pages', 'prev-next'],
+    description: PAGING_DESCRIPTION,
+  })
+  paging!: 'pages' | 'prev-next' | null;
+  @ApiProperty({
+    type: Boolean,
+    description: 'Whether a page after this one exists (cursor mode: whether nextCursor is set).',
+  })
+  hasNext!: boolean;
   @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: this page, from 1.' })
   page!: number | null;
   @ApiProperty({ type: Number, nullable: true, description: 'Page mode only: rows per page.' })
@@ -640,11 +703,16 @@ export const sellerOrderShipBody = (order: LabelledSellerOrderShipView): SellerO
       : { attemptsLeft: order.pickup.attemptsLeft, locked: order.pickup.locked },
 });
 
-export const sellerOrderPageBody = (page: LabelledSellerOrderPageView): SellerOrderPageBody => ({
-  sellerOrders: page.sellerOrders.map(sellerOrderDetailBody),
+export const sellerOrderPageBody = (page: SellerOrderListView): SellerOrderPageBody => ({
+  sellerOrders: page.sellerOrders.map((order) => ({
+    ...sellerOrderDetailBody(order),
+    actions: [...order.actions],
+  })),
   nextCursor: page.nextCursor,
   counts: { ...page.counts },
   total: page.paging?.total ?? null,
+  paging: page.paging?.mode ?? null,
+  hasNext: page.paging?.hasNext ?? page.nextCursor !== null,
   page: page.paging?.page ?? null,
   pageSize: page.paging?.pageSize ?? null,
 });
@@ -713,10 +781,15 @@ export const adminOrderBody = (order: LabelledAdminOrderView): AdminOrderBody =>
   })),
 });
 
-export const adminOrderPageBody = (page: AdminOrderPageView): AdminOrderPageBody => ({
-  ...pageBody(page, adminOrderBody),
+export const adminOrderPageBody = (page: AdminOrderListView): AdminOrderPageBody => ({
+  ...pageBody(page, (order: AdminOrderListRow) => ({
+    ...adminOrderBody(order),
+    actions: [...order.actions],
+  })),
   counts: { ...page.counts },
   total: page.paging?.total ?? null,
+  paging: page.paging?.mode ?? null,
+  hasNext: page.paging?.hasNext ?? page.nextCursor !== null,
   page: page.paging?.page ?? null,
   pageSize: page.paging?.pageSize ?? null,
   searchCapped: page.searchCapped,
