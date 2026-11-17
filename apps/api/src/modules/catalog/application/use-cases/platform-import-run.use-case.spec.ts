@@ -23,6 +23,7 @@ import type {
   ImportRowRecord,
   StopReason,
 } from '../../domain/platform-import/platform-import-job';
+import { checkProductCategories } from '../../domain/product-category-rules';
 import { configurableProductType } from '../../domain/product-types/configurable';
 import { csvParser } from '../../domain/platform-import/import-file';
 import { simpleProductType } from '../../domain/product-types/simple';
@@ -304,6 +305,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
     return {
       useCase,
       job,
+      nodes,
       rows,
       events,
       calls,
@@ -356,6 +358,34 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
       'imageIds',
       'taxCategoryCode',
       'texts',
+    ]);
+  });
+
+  it('fails each row whose category is a department or a group: the submit refuses it (C5a)', async () => {
+    // The file's "Meat" is a root (level 1). The submit applies the product category rules as
+    // FreezeRevision does at every submit; the run fails the row and goes on, publishing nothing.
+    const ref: { current?: ReturnType<typeof rig> } = {};
+    const r = rig({
+      submit: (call) => {
+        const saved = ref.current!.saves[call - 1] as { content: { categoryIds: string[] } };
+        expect(saved.content.categoryIds).toEqual([idOf<'Category'>(1)]);
+        const issues = checkProductCategories(
+          ref.current!.nodes,
+          saved.content.categoryIds,
+          policy.maxCategoryDepth(market),
+        );
+        return issues.length > 0
+          ? ({ ok: false, error: { code: 'revision.not-ready', issues } } as never)
+          : { ok: true, value: { published: true } };
+      },
+    });
+    ref.current = r;
+    const result = await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    expect(result).toMatchObject({ ok: true, value: { outcome: 'finished', added: 0, failed: 2 } });
+    expect(r.rows.map((row) => [row.runState, row.runCode])).toEqual([
+      ['failed', 'revision.not-ready'],
+      ['failed', 'revision.not-ready'],
+      ['skipped', null],
     ]);
   });
 

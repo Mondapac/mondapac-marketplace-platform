@@ -147,6 +147,16 @@ export interface SystemChangeReverter {
   isInterested?(context: CallContext, request: RevertRequest): Promise<boolean>;
 
   /**
+   * Optional: the checks of the owning module's own edit that cannot run inside the decision unit
+   * because they open a unit of their own (the decider holding the subject's edit permission,
+   * reference checks against another module, Market data that can change over time). Called by
+   * system-requests before the decision unit opens, for a reject or a withdraw only; it must fail
+   * closed. `not-permitted` writes nothing and leaves the request open. `revert` still checks what
+   * it can inside the unit.
+   */
+  check?(context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'>;
+
+  /**
    * Optional: a short human label of each subject (a store name, a setting's name), shown in the
    * System requests queue beside the kind (`subjectLabel`). Called outside any unit (a reverter
    * that reads opens its own read-only unit or calls a facade), with the viewing admin's

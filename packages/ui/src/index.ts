@@ -200,6 +200,18 @@ export {
 } from './data/ledger.tsx';
 export { ActivityTable, formatCount, type ActivityColumn } from './dashboard/activity-table.tsx';
 export {
+  ActivityCardSkeleton,
+  DashboardLoading,
+  DistributionCardSkeleton,
+  StatCardSkeleton,
+  activitySkeletonColumns,
+  type ActivityCardSkeletonProps,
+  type ActivitySkeletonColumn,
+  type DistributionCardSkeletonProps,
+  type StatCardSkeletonProps,
+} from './dashboard/dashboard-loading.tsx';
+export { DashboardSlot, type DashboardSource } from './dashboard/dashboard-slot.tsx';
+export {
   DashboardCard,
   DistributionBar,
   StatCard,

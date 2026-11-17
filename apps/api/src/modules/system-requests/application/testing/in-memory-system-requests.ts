@@ -386,6 +386,14 @@ export class FakeSubjects implements SystemChangeReverter {
   readonly refused = new Set<string>();
   /** `account:ref` pairs where the account has a stake in the subject (separation of duties). */
   readonly interested = new Set<string>();
+  /** Refs whose pre-unit `check` refuses the decider; every check asked is kept in `checks`. */
+  readonly checkRefused = new Set<string>();
+  readonly checks: RevertRequest[] = [];
+
+  check(_context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'> {
+    this.checks.push(request);
+    return Promise.resolve(this.checkRefused.has(request.subjectRef) ? 'not-permitted' : 'ok');
+  }
 
   /** The labels the owning module would give, per Market and ref. */
   readonly labels = new Map<string, string>();

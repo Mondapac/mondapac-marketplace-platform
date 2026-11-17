@@ -46,6 +46,10 @@ export const VARIANT_ISSUES = [
 ] as const;
 export type VariantIssue = (typeof VARIANT_ISSUES)[number];
 
+/** The sorts of the Variants list (super list phase 2): newest first by default. */
+export const VARIANT_SORTS = ['newest', 'code', 'gtin'] as const;
+export type VariantSort = (typeof VARIANT_SORTS)[number];
+
 /** What the Variants tab and its export ask for. */
 export interface VariantsQuery {
   /** Product name (in `locale`), product or variant code, GTIN digits or seller SKU; null: all. */
@@ -56,6 +60,12 @@ export interface VariantsQuery {
   /** The variant id the previous page ended on (newest first); null: the first page. */
   readonly after: string | null;
   readonly limit: number;
+  /** Page reads (the list): rows to skip, and the order. Absent: the cursor read, newest first. */
+  readonly window?: {
+    readonly offset: number;
+    readonly sort: VariantSort;
+    readonly direction: 'asc' | 'desc';
+  };
   /** The Market's default locale: names are searched and shown in it. */
   readonly locale: string;
   /** Every supported locale: a variant label missing in one is `missing-language`. */
@@ -132,8 +142,18 @@ export interface VariantAdminReader {
     codes: readonly string[],
   ): Promise<ReadonlyMap<string, readonly VariantTypeFeatureSet[]>>;
 
-  /** One page of live variants, newest first. */
+  /**
+   * One page of live variants: by the cursor `after`, newest first, or, when `query.window` is
+   * set, by its offset and order (the list's page numbers). `limit` rows at most plus one, so a
+   * cursor read knows whether a next page exists.
+   */
   variantsPage(market: MarketContext, query: VariantsQuery): Promise<VariantsPage>;
+
+  /** How many live variants the filter matches (the page total of the `pages` mode). */
+  variantsCount(
+    market: MarketContext,
+    query: Pick<VariantsQuery, 'text' | 'typeCode' | 'issue' | 'locale' | 'locales'>,
+  ): Promise<number>;
 
   /** How many live variants each issue filter holds, with the same type filter. */
   issueCounts(
