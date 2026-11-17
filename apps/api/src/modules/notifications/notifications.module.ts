@@ -61,6 +61,7 @@ import { AdminNoticesController } from './presentation/admin-notices.controller'
 import { purgeExpiredNoticesJob } from './presentation/jobs/purge-expired-notices.job';
 import { sendCartRemindersJob } from './presentation/jobs/send-cart-reminders.job';
 import { SellerNoticesController } from './presentation/seller-notices.controller';
+import { systemRequestNoticeSubscriptions } from './presentation/subscribers/system-request-notice.subscriptions';
 import { reviewNoticeSubscriptions } from './presentation/subscribers/review-notice.subscriptions';
 import { payoutNoticeSubscriptions } from './presentation/subscribers/payout-notice.subscriptions';
 import { inAppNoticeSubscriptions } from './presentation/subscribers/in-app-notice.subscriptions';
@@ -295,6 +296,12 @@ function inAppNoticeProvider<U>(
       [RecordSellerNotice, RecordAdminReviewNotice],
       (sellerNotice: RecordSellerNotice, adminNotice: RecordAdminReviewNotice) =>
         reviewNoticeSubscriptions(sellerNotice, adminNotice),
+    ),
+    // System requests: an open request past its review date (reminder for its area's reviewers).
+    registerSubscriptionsFrom(
+      'notifications',
+      [RecordAdminReviewNotice],
+      (adminNotice: RecordAdminReviewNotice) => systemRequestNoticeSubscriptions(adminNotice),
     ),
     registerJobsFrom(
       'notifications',

@@ -40,9 +40,17 @@ export interface InvitationRow {
 
 export type TeamRow = AccountRow | InvitationRow;
 
+/** Whether the Market reviews people changes; a change then needs a note for the reviewers. */
+export interface PeopleReview {
+  readonly reviewed: boolean;
+  readonly risk: 'low' | 'medium' | 'high';
+}
+
 export interface TeamPage {
   readonly items: readonly TeamRow[];
   readonly next: string | null;
+  /** Absent only in an answer from an older API: read as not reviewed. */
+  readonly review?: PeopleReview;
 }
 
 /** One entry of `GET identity/admin/roles`. `grantable` is a hint; the commands check again. */

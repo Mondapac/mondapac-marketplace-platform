@@ -41,6 +41,11 @@ export interface SubjectKeyService {
   decrypt(market: MarketContext, subject: Id, field: FieldLabel, cipher: string): Keyed<string>;
   hmac(market: MarketContext, subject: Id, purpose: HashPurpose, data: Uint8Array): Keyed<string>;
   destroyKey(market: MarketContext, subject: Id): Promise<void>;
+  /**
+   * Whether the subject has, or once had, a key in this Market (a tombstone counts): a subject
+   * id that answers true can never get a new key (guarantee 5). Reads like a data operation.
+   */
+  hasHadKey(market: MarketContext, subject: Id): Promise<boolean>;
 }
 
 /** Nest token of the {@link SubjectKeyService}. */

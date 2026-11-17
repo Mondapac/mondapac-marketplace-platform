@@ -346,6 +346,48 @@ export class PrismaRequestRepository implements RequestRepository {
     return rows.map(toRequest);
   }
 
+  async dueForReminder(
+    market: MarketContext,
+    query: {
+      readonly now: Temporal.Instant;
+      readonly remindedBefore: Temporal.Instant;
+      readonly areas: readonly ReviewArea[];
+      readonly limit: number;
+    },
+  ) {
+    if (query.areas.length === 0) return [];
+    const rows = await this.prisma.tx(market).systemRequestsRequest.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'open',
+        area: { in: [...query.areas] },
+        reviewDueAt: { lte: toDate(query.now) },
+        OR: [{ lastRemindedAt: null }, { lastRemindedAt: { lt: toDate(query.remindedBefore) } }],
+      },
+      orderBy: [{ reviewDueAt: 'asc' }, { number: 'asc' }],
+      take: query.limit,
+    });
+    return rows.map(toRequest);
+  }
+
+  async markReminded(
+    market: MarketContext,
+    id: Id<'SystemRequest'>,
+    at: Temporal.Instant,
+    remindedBefore: Temporal.Instant,
+  ) {
+    const updated = await this.prisma.tx(market).systemRequestsRequest.updateMany({
+      where: {
+        marketId: market.marketId,
+        id,
+        status: 'open',
+        OR: [{ lastRemindedAt: null }, { lastRemindedAt: { lt: toDate(remindedBefore) } }],
+      },
+      data: { lastRemindedAt: toDate(at) },
+    });
+    return updated.count === 1;
+  }
+
   async count(market: MarketContext, filter: RequestFilter, cap: number) {
     return this.prisma.tx(market).systemRequestsRequest.count({
       where: whereOf(market, filter),
