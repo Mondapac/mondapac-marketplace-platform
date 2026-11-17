@@ -284,6 +284,17 @@ export class MemoryPromotions implements PromotionRepository {
       ) as ReadonlySet<string>,
     );
   }
+  countGroupSegmentUses(_market: MarketContext, groupId: string, now: Temporal.Instant) {
+    return Promise.resolve(
+      [...this.records.values()].filter(
+        (r) =>
+          r.segmentKind === 'MANUAL_GROUP' &&
+          r.segmentGroupId === groupId &&
+          (r.status === 'ACTIVE' || r.status === 'PENDING_APPROVAL' || r.status === 'PAUSED') &&
+          (r.endsAt === null || r.endsAt.epochMilliseconds > now.epochMilliseconds),
+      ).length,
+    );
+  }
   countCounting(_market: MarketContext, sellerId: Id<'Seller'>, now: Temporal.Instant) {
     return Promise.resolve(
       [...this.records.values()].filter(
@@ -773,7 +784,12 @@ export class MemoryRedemptions implements RedemptionRepository {
     }
     return Promise.resolve();
   }
-  staleReservations(_market: MarketContext, before: Temporal.Instant, limit: number) {
+  staleReservations(
+    _market: MarketContext,
+    before: Temporal.Instant,
+    limit: number,
+    after: Id<'Order'> | null,
+  ) {
     const ids = [
       ...new Set(
         this.rows
@@ -783,7 +799,9 @@ export class MemoryRedemptions implements RedemptionRepository {
           )
           .map((row) => row.orderId as Id<'Order'>),
       ),
-    ];
+    ]
+      .filter((id) => after === null || id > after)
+      .sort();
     return Promise.resolve(ids.slice(0, limit));
   }
 }

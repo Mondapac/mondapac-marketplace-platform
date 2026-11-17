@@ -93,8 +93,9 @@ model CustomersAccountDeletionRequest {
   /// request and while an admin's is open. CHECK: set if and only if an admin request has no reason.
   redactedAt         DateTime? @map("redacted_at") @db.Timestamptz(6)
 
-  // Hand-written partial indexes (the migration): one open request per account, the due query
-  // (pending, by date) and the stale-claim query (executing, by claim time).
+  // Hand-written partial indexes (the migrations): one open request per account, the due query
+  // (pending, by date), the stale-claim query (executing, by claim time) and the customer page's
+  // tombstone lookup (completed, by account; phase 2b).
   @@map("account_deletion_requests")
   @@schema("customers")
 }

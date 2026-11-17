@@ -7,9 +7,9 @@ import {
   FormActionBar,
   LoadError,
   Select,
-  SkeletonRows,
   TextField,
   toast,
+  FormSkeleton,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -249,7 +249,9 @@ export function NewPageFormView({
         <h1 className="text-2xl font-semibold">{t('title')}</h1>
         <p className="text-fg-muted">{t('intro')}</p>
       </div>
-      {load === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
+      {load === 'loading' ? (
+        <FormSkeleton label={t('loading')} slowLabel={tl('slow')} sections={[{ fields: 4 }]} />
+      ) : null}
       {load === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"

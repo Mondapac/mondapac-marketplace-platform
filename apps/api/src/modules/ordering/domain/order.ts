@@ -19,7 +19,13 @@ export type OrderStatus = 'pending-payment' | 'confirmed' | 'cancelled';
 /** `none`: no money moved; `authorised`: held on the card; `captured`: taken; `voided`: released. */
 export type PaymentState = 'none' | 'authorised' | 'captured' | 'voided';
 export type CancelReason =
-  'expired' | 'payment-failed' | 'stock-unavailable' | 'superseded' | 'provider-failed';
+  | 'expired'
+  | 'payment-failed'
+  | 'stock-unavailable'
+  | 'superseded'
+  | 'provider-failed'
+  /** The order's discounts no longer held when promotions redeemed them (package T2). */
+  | 'discount-changed';
 
 export interface OrderLine {
   readonly id: Id<'OrderLine'>;
@@ -28,7 +34,18 @@ export interface OrderLine {
   readonly variantId: Id<'Variant'>;
   readonly quantity: number;
   readonly unitPrice: Money;
+  /** The unit price times the quantity, before any discount. */
   readonly lineAmount: bigint;
+  /**
+   * The discount on the line from promotions (package T2), frozen at placement, and who funds it:
+   * the seller's share lowers what the seller is paid for the line, the platform's share comes out
+   * of the platform's commission. `discountAmount` = seller share + platform share, at most
+   * `lineAmount`; all 0 on a line with no discount and on lines placed before discounts existed.
+   * The line's tax is the tax of `lineAmount - discountAmount`.
+   */
+  readonly discountAmount: bigint;
+  readonly discountSellerShare: bigint;
+  readonly discountPlatformShare: bigint;
   readonly taxInclusive: boolean;
   readonly reservationLineId: string;
   /**
@@ -95,8 +112,16 @@ export interface ChargedDeliveryQuote {
 export interface SellerOrder {
   readonly id: Id<'SellerOrder'>;
   readonly sellerId: Id<'Seller'>;
+  /** The goods before discounts: the sum of the lines' `lineAmount`. */
   readonly subtotal: bigint;
   readonly shipping: bigint;
+  /**
+   * The discounts of the seller order (package T2), frozen at placement: `discount` is the sum of
+   * its lines' discounts, `shippingDiscount` what promotions took off the delivery price (always
+   * platform-funded). `total` is the goods and the delivery net of both, plus any tax added on top.
+   */
+  readonly discount: bigint;
+  readonly shippingDiscount: bigint;
   /**
    * The tax on the shipping fee, frozen at placement with its rate and price basis. All three
    * are null on seller orders placed before it was recorded (unknown, never zero).

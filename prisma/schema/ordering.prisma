@@ -13,7 +13,8 @@ model OrderingOrder {
   accountId             String                @map("account_id") @db.Uuid
   /// pending-payment, confirmed or cancelled (CHECK).
   status                String
-  /// Set when cancelled: expired, payment-failed, stock-unavailable, superseded, provider-failed (CHECK).
+  /// Set when cancelled: expired, payment-failed, stock-unavailable, superseded, provider-failed,
+  /// discount-changed (CHECK).
   cancelReason          String?               @map("cancel_reason")
   /// none, authorised, captured or voided (CHECK). Moves only forward.
   paymentState          String                @map("payment_state")
@@ -65,6 +66,10 @@ model OrderingSellerOrder {
   sellerId               String              @map("seller_id") @db.Uuid
   subtotalAmount         BigInt              @map("subtotal_amount")
   shippingAmount         BigInt              @map("shipping_amount")
+  /// The discounts of the seller order (promotions package T2), frozen at placement: the sum of
+  /// its lines' discounts, and the discount on the delivery price (CHECK: within the amounts).
+  discountAmount         BigInt              @default(0) @map("discount_amount")
+  shippingDiscountAmount BigInt              @default(0) @map("shipping_discount_amount")
   /// The tax on the flat shipping fee, frozen at placement beside the rate and the price basis
   /// (ADR-0039 decision 4). All three are null on orders placed before it was recorded (CHECK).
   shippingTaxRateBps     Int?                @map("shipping_tax_rate_bps")
@@ -154,6 +159,11 @@ model OrderingOrderLine {
   quantity          Int
   unitAmount        BigInt               @map("unit_amount")
   lineAmount        BigInt               @map("line_amount")
+  /// The line's discount from promotions (package T2) and its funding, frozen at placement: the
+  /// seller's share plus the platform's share, at most `lineAmount` (CHECK). 0 without discount.
+  discountAmount        BigInt               @default(0) @map("discount_amount")
+  discountSellerShare   BigInt               @default(0) @map("discount_seller_share")
+  discountPlatformShare BigInt               @default(0) @map("discount_platform_share")
   /// True when the unit price already includes GST (AU).
   taxInclusive      Boolean              @map("tax_inclusive")
   /// The reservation line this order line commits.

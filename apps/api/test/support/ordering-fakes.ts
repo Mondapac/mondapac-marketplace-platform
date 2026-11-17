@@ -152,6 +152,12 @@ class EmptyRefunds implements RefundRepository {
   listForAccount() {
     return Promise.resolve([]);
   }
+  pageForAccount() {
+    return Promise.resolve([]);
+  }
+  countForAccount() {
+    return Promise.resolve(0);
+  }
   findSellerTarget() {
     return Promise.resolve(null);
   }
@@ -187,6 +193,9 @@ class EmptyRefunds implements RefundRepository {
   }
   findPending() {
     return this.unexpected('findPending');
+  }
+  findExpiredUnpaid() {
+    return this.unexpected('findExpiredUnpaid');
   }
   guardSellerRefunds() {
     return this.unexpected('guardSellerRefunds');
@@ -331,12 +340,35 @@ export class MemoryOrders implements OrderRepository {
     this.rows.set(order.id, order);
     return Promise.resolve();
   }
-  findById(_m: MarketContext, orderId: Id<'Order'>) {
-    return Promise.resolve(this.rows.get(orderId) ?? null);
+  findById(market: MarketContext, orderId: Id<'Order'>) {
+    // As the database: an order of another Market is not found.
+    const order = this.rows.get(orderId);
+    return Promise.resolve(
+      order !== undefined && order.marketId === market.marketId ? order : null,
+    );
   }
   findOwn(_m: MarketContext, orderId: Id<'Order'>, accountId: Id<'Account'>) {
     const order = this.rows.get(orderId);
     return Promise.resolve(order?.accountId === accountId ? order : null);
+  }
+  hasPaidOrder(_m: MarketContext, accountId: Id<'Account'>) {
+    return Promise.resolve(
+      [...this.rows.values()].some((o) => o.accountId === accountId && o.status === 'confirmed'),
+    );
+  }
+  findExpiredUnpaid(_m: MarketContext, before: Temporal.Instant, limit: number) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (o) =>
+            o.status === 'pending-payment' &&
+            o.paymentState === 'none' &&
+            Temporal.Instant.compare(o.paymentExpiresAt, before) < 0,
+        )
+        .sort((a, b) => Temporal.Instant.compare(a.paymentExpiresAt, b.paymentExpiresAt))
+        .slice(0, limit)
+        .map((o) => o.id),
+    );
   }
   findPending(_m: MarketContext, accountId: Id<'Account'>) {
     return Promise.resolve(
@@ -514,6 +546,10 @@ export class MemoryOrders implements OrderRepository {
   private matches(r: SellerOrderRecord, filter: SellerOrderFilter): boolean {
     return (
       (filter.fulfilment === null || r.sellerOrder.fulfilment === filter.fulfilment) &&
+      (filter.reference === undefined ||
+        filter.reference === null ||
+        r.sellerOrder.id === filter.reference ||
+        r.orderId === filter.reference) &&
       (filter.accountId == null || r.accountId === filter.accountId) &&
       (filter.from === null || Temporal.Instant.compare(r.confirmedAt, filter.from) >= 0) &&
       (filter.to === null || Temporal.Instant.compare(r.confirmedAt, filter.to) < 0)
