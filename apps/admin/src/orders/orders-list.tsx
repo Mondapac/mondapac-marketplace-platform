@@ -11,17 +11,22 @@ import {
   PrevNext,
   Popover,
   Select,
-  SkeletonRows,
   Tabs,
   TextField,
   browserStorage,
   prefsKey,
   readIds,
   writeIds,
+  ListLoadingStatus,
+  ListRefreshing,
+  TableSkeleton,
+  useListLoading,
+  type TableSkeletonColumn,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { downloadOrders } from './export-file.ts';
 import {
   DEFAULT_COLUMNS,
   OPTIONAL_COLUMNS,
@@ -46,6 +51,15 @@ import {
   type SortId,
 } from './orders-query.ts';
 import { FILTERS, type AdminOrder, type AdminOrderPage } from './types.ts';
+
+const SKELETON_KIND: Readonly<Record<OrderColumn, TableSkeletonColumn['kind']>> = {
+  status: 'status',
+  placed: 'date',
+  paid: 'date',
+  customer: 'text',
+  sellers: 'text',
+  total: 'number',
+};
 
 /**
  * The Market's orders (read-only): a tab for each status and for each saved filter, filters, a
@@ -82,6 +96,12 @@ export function OrdersList({
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const listLoading = useListLoading(loading, rows.length > 0);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<{
+    readonly tone: 'info' | 'critical';
+    readonly text: string;
+  } | null>(null);
   const latest = useRef(0);
   const [columns, setColumns] = useState<readonly OrderColumn[]>(DEFAULT_COLUMNS);
   // The saved filters: null until they load, and when they cannot (the page then has the status
@@ -181,6 +201,7 @@ export function OrdersList({
   // Any change of what is asked for starts again at the first page, and leaves the saved filter
   // on show (the page is no longer it).
   const change = (patch: Partial<OrderFilters>) => {
+    setExportNote(null);
     setSavedId(null);
     setFilters((current) => ({ ...current, ...patch }));
     setPage(1);
@@ -198,6 +219,34 @@ export function OrdersList({
     setSavedId(id);
   };
   const number = (n: number) => n.toLocaleString(locale);
+  // The file holds every order the filters match, not only the page on screen.
+  async function exportFile() {
+    setExporting(true);
+    setExportNote(null);
+    const outcome = await downloadOrders(
+      'ordering/admin/orders/export',
+      queryOf(filters, zone, { paging: 'prev-next', cursor: null }),
+    );
+    setExporting(false);
+    if (outcome.ok) {
+      setExportNote({ tone: 'info', text: t('export.done') });
+    } else if (outcome.reason === 'session') {
+      window.location.assign('/session-ended');
+    } else if (outcome.reason === 'too-large') {
+      setExportNote({
+        tone: 'critical',
+        text:
+          outcome.matching === undefined || outcome.max === undefined
+            ? t('export.too-large-plain')
+            : t('export.too-large', {
+                matching: number(outcome.matching),
+                max: number(outcome.max),
+              }),
+      });
+    } else {
+      setExportNote({ tone: 'critical', text: t(`export.${outcome.reason}`) });
+    }
+  }
   const pageCount = total === null ? 1 : pageCountOf(total);
   const first = total === null ? 0 : (page - 1) * PAGE_SIZE + 1;
   const cut = total !== null && total > MAX_PAGED_ROWS;
@@ -344,7 +393,19 @@ export function OrdersList({
             {t('saved.save-link')}
           </Button>
         )}
+        <Button
+          variant="secondary"
+          disabled={exporting || loading || failed || backwards || rows.length === 0}
+          onClick={() => void exportFile()}
+        >
+          {exporting ? t('export.busy') : t('export.button')}
+        </Button>
       </div>
+      {exportNote !== null ? (
+        <div role="status">
+          <Banner tone={exportNote.tone}>{exportNote.text}</Banner>
+        </div>
+      ) : null}
       {failed ? (
         <LoadError
           className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"
@@ -363,9 +424,11 @@ export function OrdersList({
         </p>
       ) : null}
       {rows.length > 0 ? (
-        <div ref={listTop} tabIndex={-1} className="outline-none">
-          <OrdersTable rows={rows} columns={columns} zone={zone} />
-        </div>
+        <ListRefreshing refreshing={listLoading.refreshing} busy={loading}>
+          <div ref={listTop} tabIndex={-1} className="outline-none">
+            <OrdersTable rows={rows} columns={columns} zone={zone} />
+          </div>
+        </ListRefreshing>
       ) : null}
       {!loading && !failed && rows.length === 0 ? (
         <EmptyState
@@ -374,7 +437,23 @@ export function OrdersList({
           body={t(filtered || backwards ? 'empty.filtered.body' : `empty.${status}.body`)}
         />
       ) : null}
-      {loading ? <SkeletonRows label={t('loading')} rows={rows.length > 0 ? 1 : 3} /> : null}
+      {loading && rows.length === 0 ? (
+        <TableSkeleton
+          label={t('loading')}
+          slowLabel={tl('slow')}
+          rows={PAGE_SIZE}
+          columns={[
+            { header: t('col.order'), kind: 'title' },
+            ...columns.map((column) => ({
+              header: t(`col.${column}`),
+              kind: SKELETON_KIND[column],
+            })),
+          ]}
+        />
+      ) : null}
+      {loading && rows.length > 0 ? (
+        <ListLoadingStatus label={t('loading')} slow={false} slowLabel={tl('slow')} />
+      ) : null}
       {cut ? <Banner tone="info">{t('too-many', { limit: number(MAX_PAGED_ROWS) })}</Banner> : null}
       {paging === 'pages' ? (
         <Pagination

@@ -1,6 +1,10 @@
-import type { CallContext, Id, Money } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Money, Temporal } from '@mondapac/shared-kernel';
 import type { CheckWasPrice } from '../application/use-cases/check-was-price.use-case';
 import type { QuoteDiscounts } from '../application/use-cases/quote-discounts.use-case';
+import type { QuoteOwnDiscounts } from '../application/use-cases/quote-own-discounts.use-case';
+import type { RedeemOwnDiscounts } from '../application/use-cases/redeem-own-discounts.use-case';
+import type { ListStaleRedemptions } from '../application/use-cases/list-stale-redemptions.use-case';
+import type { SettleRedemptions } from '../application/use-cases/settle-redemptions.use-case';
 import type {
   RedeemDiscounts,
   RedeemFailure,
@@ -15,6 +19,7 @@ import type {
   RedeemFacadeFailure,
   RedeemRequest,
   RedeemResult,
+  RedemptionSettlement,
 } from '../contracts';
 
 /** What other modules see: anything a caller cannot act on is "unavailable", and callers fail closed. */
@@ -54,14 +59,42 @@ export class PromotionsFacadeImplementation implements PromotionsFacade {
     private readonly quoteDiscounts: QuoteDiscounts,
     private readonly redeemDiscounts: RedeemDiscounts,
     private readonly wasPrice: CheckWasPrice,
+    private readonly quoteOwnDiscounts: QuoteOwnDiscounts,
+    private readonly redeemOwnDiscounts: RedeemOwnDiscounts,
+    private readonly listStale: ListStaleRedemptions,
+    private readonly settle: SettleRedemptions,
   ) {}
 
+  staleRedemptions(
+    context: CallContext,
+    request: {
+      readonly before: Temporal.Instant;
+      readonly limit: number;
+      readonly after?: Id<'Order'>;
+    },
+  ) {
+    return this.listStale.execute(context, request);
+  }
+
+  settleRedemptions(
+    context: CallContext,
+    request: { readonly orderId: Id<'Order'>; readonly outcome: RedemptionSettlement },
+  ) {
+    return this.settle.execute(context, request);
+  }
+
+  // The one decision of the facade for `quote` and `redeem`: which of the pair. The system actor
+  // gets the `system` use case; anyone else the customer's own (checkout under the customer's
+  // CallContext). The gate still checks the rule of the one chosen.
   redeem(context: CallContext, request: RedeemRequest) {
-    return this.redeemDiscounts.execute(context, request).then(outwardRedeem);
+    const useCase =
+      context.actor.kind === 'system' ? this.redeemDiscounts : this.redeemOwnDiscounts;
+    return useCase.execute(context, request).then(outwardRedeem);
   }
 
   quote(context: CallContext, request: QuoteRequest) {
-    return this.quoteDiscounts.execute(context, request).then(outward);
+    const useCase = context.actor.kind === 'system' ? this.quoteDiscounts : this.quoteOwnDiscounts;
+    return useCase.execute(context, request).then(outward);
   }
 
   wasPriceEligible(

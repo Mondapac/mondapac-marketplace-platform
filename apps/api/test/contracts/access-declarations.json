@@ -48,6 +48,7 @@
   { "name": "catalog.brand-product-ids", "rule": "anonymous" },
   { "name": "catalog.business-activities-active", "rule": "anonymous" },
   { "name": "catalog.cancel-pending-proposals", "rule": "system" },
+  { "name": "catalog.category-move-products-run", "rule": "system" },
   { "name": "catalog.category-slug-resolve", "rule": "anonymous" },
   { "name": "catalog.category-tree", "rule": "anonymous" },
   { "name": "catalog.cultures-by-ids", "rule": "anonymous" },
@@ -65,6 +66,11 @@
   { "name": "catalog.offer-tax-categories", "rule": "anonymous" },
   {
     "name": "catalog.own-attribute-suggestions-list",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "catalog.own-category-picker",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
@@ -586,6 +592,15 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "legal.withdraw-marketing-email-by-link", "rule": "anonymous" },
+  { "name": "lists.saved-filter-create", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "lists.saved-filter-delete", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "lists.saved-filter-update", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "lists.saved-filters-list", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  {
+    "name": "lists.saved-filters-reorder",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   {
     "name": "notifications.count-own-unread-notices",
     "rule": "own-resources",
@@ -655,6 +670,7 @@
   },
   { "name": "ordering.seller-health-counts", "rule": "system" },
   { "name": "ordering.settle-refunds", "rule": "system" },
+  { "name": "ordering.settle-stale-redemptions", "rule": "system" },
   { "name": "ordering.shipment-notice", "rule": "system" },
   { "name": "ordering.start-checkout", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.view-order", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -695,10 +711,22 @@
   { "name": "promotions.cashback-on-delivery", "rule": "system" },
   { "name": "promotions.check-was-price", "rule": "anonymous" },
   { "name": "promotions.confirm-redemptions", "rule": "system" },
+  { "name": "promotions.list-stale-redemptions", "rule": "system" },
   { "name": "promotions.qualify-referral-on-delivery", "rule": "system" },
   { "name": "promotions.quote-discounts", "rule": "system" },
+  {
+    "name": "promotions.quote-own-discounts",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "promotions.redeem-discounts", "rule": "system" },
+  {
+    "name": "promotions.redeem-own-discounts",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "promotions.release-cancelled-redemptions", "rule": "system" },
+  { "name": "promotions.settle-redemptions", "rule": "system" },
   {
     "name": "promotions.view-my-referral",
     "rule": "own-resources",

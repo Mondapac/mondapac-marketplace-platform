@@ -162,7 +162,8 @@ const FILL: Record<DistributionPart['tone'], string> = {
   critical: 'fill-critical-fg',
   neutral: 'fill-neutral-fg',
 };
-const SWATCH: Record<DistributionPart['tone'], string> = {
+/** The legend dot of each tone; the chart's skeleton uses the same. */
+export const SWATCH: Record<DistributionPart['tone'], string> = {
   success: 'bg-success-fg',
   attention: 'bg-attention-fg',
   info: 'bg-info-fg',

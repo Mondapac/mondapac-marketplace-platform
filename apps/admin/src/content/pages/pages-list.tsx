@@ -6,8 +6,8 @@ import {
   EmptyState,
   LoadError,
   Select,
-  SkeletonRows,
   TextField,
+  TableSkeleton,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -107,7 +107,21 @@ export function PagesList({ canEdit, zone }: { readonly canEdit: boolean; readon
           </div>
         </div>
       )}
-      {load === 'loading' ? <SkeletonRows label={t('loading')} rows={5} /> : null}
+      {load === 'loading' ? (
+        <TableSkeleton
+          label={t('loading')}
+          slowLabel={tl('slow')}
+          rows={6}
+          columns={[
+            { header: t('col.page'), kind: 'title' },
+            { header: t('col.address'), kind: 'text' },
+            { header: t('col.template'), kind: 'text' },
+            { header: t('col.editing'), kind: 'status' },
+            { header: t('col.status'), kind: 'status' },
+            { header: t('col.published'), kind: 'date' },
+          ]}
+        />
+      ) : null}
       {load === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"
