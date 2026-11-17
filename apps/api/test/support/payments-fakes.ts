@@ -32,7 +32,6 @@ import type {
   StripeSessionReader,
 } from '../../src/modules/payments/application/ports/stripe-session-reader';
 import type {
-  AccountPage,
   AppliedSchedule,
   ConnectedAccountRecord,
   ConnectedAccountStore,
@@ -253,6 +252,14 @@ export class FakeOrderingFacade implements OrderingFacade {
 
   sellerHealthCounts(): ReturnType<OrderingFacade['sellerHealthCounts']> {
     return Promise.resolve(ok([]));
+  }
+
+  customerSellerStats(): ReturnType<OrderingFacade['customerSellerStats']> {
+    return Promise.resolve(ok([]));
+  }
+
+  sellerCustomerOrders(): ReturnType<OrderingFacade['sellerCustomerOrders']> {
+    return Promise.resolve(ok({ items: [], total: 0 }));
   }
 }
 
@@ -503,23 +510,6 @@ export class MemoryAccountStore implements ConnectedAccountStore {
       payoutScheduleRevision: expectedRevision + 1,
     });
     return Promise.resolve(true);
-  }
-  list(market: MarketContext, status: AccountStatus | null, page: AccountPage) {
-    const rows = [...this.rows.values()]
-      .filter((row) => row.market === market.marketId && (status === null || row.status === status))
-      .sort(
-        (a, b) =>
-          b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds ||
-          (a.sellerId < b.sellerId ? 1 : -1),
-      )
-      .filter(
-        (row) =>
-          page.after === null ||
-          row.createdAt.epochMilliseconds < page.after.createdAt.epochMilliseconds ||
-          (row.createdAt.epochMilliseconds === page.after.createdAt.epochMilliseconds &&
-            row.sellerId < page.after.sellerId),
-      );
-    return Promise.resolve(rows.slice(0, page.limit + 1));
   }
 }
 

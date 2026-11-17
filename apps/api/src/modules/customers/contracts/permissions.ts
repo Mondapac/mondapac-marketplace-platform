@@ -70,7 +70,62 @@ export const CUSTOMERS_SAVED_FILTER_SHARE = definePermission('customers', {
   protected: false,
 });
 
+/**
+ * Edit a customer's account from the customer page (phase 2): the display name today (identity
+ * owns the write; status stays on identity's `identity.customer-account.disable`). Unprotected;
+ * also needs `customers.customers.view`. Every change is audited by identity and shown on the
+ * customer's timeline.
+ */
+export const CUSTOMERS_CUSTOMER_EDIT = definePermission('customers', {
+  key: 'customers.customers.edit',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Make, rename and archive manual customer groups and add or remove their members, one by one or
+ * in bulk (phase 2). Protected (owner decision, 15 Nov 2026): a group can carry a promotion's
+ * discount, so only a protected role grants it. Also needs `customers.customers.view`. Audited.
+ */
+export const CUSTOMERS_GROUPS_MANAGE = definePermission('customers', {
+  key: 'customers.groups.manage',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
+ * Write an internal note about a customer (phase 2). Reading the notes needs only
+ * `customers.customers.view`. Unprotected. Audited (id and length; the text is sealed).
+ */
+export const CUSTOMERS_NOTES_WRITE = definePermission('customers', {
+  key: 'customers.customer-notes.write',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * See the shop's own Customers list (customers management phase 3): who bought from the shop or
+ * follows it, by the customer's code for this shop and first name only, never an email, an account
+ * id or what they did with another shop. A seller key, not protected; no default seller role lists
+ * it yet, so the Seller Owner holds it and grants it to a role.
+ */
+export const CUSTOMERS_SELLER_CUSTOMERS_VIEW = definePermission('customers', {
+  key: 'customers.seller-customers.view',
+  scope: 'seller',
+  protected: false,
+});
+
+/** Export the shop's Customers list as CSV or XLSX (codes and first names). Audited. */
+export const CUSTOMERS_SELLER_CUSTOMERS_EXPORT = definePermission('customers', {
+  key: 'customers.seller-customers.export',
+  scope: 'seller',
+  protected: false,
+});
+
 export const CUSTOMERS_PERMISSIONS = declarePermissions('customers', [
+  CUSTOMERS_CUSTOMER_EDIT,
+  CUSTOMERS_GROUPS_MANAGE,
+  CUSTOMERS_NOTES_WRITE,
   CUSTOMERS_CUSTOMER_EXPORT,
   CUSTOMERS_CUSTOMER_VIEW,
   CUSTOMERS_SAVED_FILTER_SHARE,
@@ -78,4 +133,6 @@ export const CUSTOMERS_PERMISSIONS = declarePermissions('customers', [
   ACCOUNT_DELETION_SETTINGS_MANAGE,
   ACCOUNT_DELETION_SETTINGS_VIEW,
   BUYER_ACCOUNT_DELETE,
+  CUSTOMERS_SELLER_CUSTOMERS_EXPORT,
+  CUSTOMERS_SELLER_CUSTOMERS_VIEW,
 ]);

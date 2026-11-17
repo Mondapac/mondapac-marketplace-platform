@@ -1,8 +1,9 @@
 import 'server-only';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { apiGet, apiGetBytes, type ApiRead } from './api.ts';
 import { sessionGet } from './session.ts';
+import { sessionCookieNames } from './session-relay.ts';
 import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
 import {
   publicStoreOf,
@@ -11,7 +12,7 @@ import {
   shopOf,
   type PublicStore,
 } from './real-sellers.ts';
-import type { AssistantSetup } from '../assistant/assistant.ts';
+import { validChatUrl, validSupportEmail, type AssistantBase } from '../assistant/assistant.ts';
 import { liveCartOf, type LiveCart } from '../cart/live-cart.ts';
 import { categoriesOf, loadHome, type HomeContent } from './home-source.ts';
 import { photoUrls } from './photo-source.ts';
@@ -580,14 +581,41 @@ export async function loadClosedStore(slug: string): Promise<ClosedStore | undef
   return Promise.resolve(sampleClosedStore(slug));
 }
 
+/** The buyer relay's route to the assistant (app/api/[...path]): same-origin, so no CORS. */
+export const ASSISTANT_CHAT_URL = '/api/assistant';
+
 /**
- * Whether the buyer assistant shows, and what the widget needs: null while it is off. Always null
- * for now: the assistant ships switched off in every Market, and the storefront does not call the
- * API yet. Once it does, this asks `GET /assistant/storefront` and adds the conversation route,
- * the Market's support address and retention, and the session's CSRF token.
+ * What the server render knows about the buyer assistant: where the browser reaches it (the buyer
+ * relay), the Market's support address and, for a signed-in customer, the session's CSRF token.
+ * Whether the assistant is on for this visitor needs the visitor id, which only the browser has,
+ * so the widget asks `GET /assistant/storefront` itself and shows nothing until it says on (see
+ * assistant-gate.tsx). Null (off) with the API off, an unlisted host, or a support address or
+ * route that is not a plain, valid one; never throws. The layout stays dynamic.
  */
-export async function loadAssistant(): Promise<AssistantSetup | null> {
-  return Promise.resolve(null);
+export async function loadAssistant(): Promise<AssistantBase | null> {
+  try {
+    const config = storefrontApiConfig();
+    if (config === null) return null;
+    const incoming = await headers();
+    const host = storefrontHostFor(config, incoming.get('host'));
+    if (host === undefined) return null;
+    const chatUrl = validChatUrl(ASSISTANT_CHAT_URL);
+    // The Market's support address is the footer's: the storefront has no other Market config for it.
+    const supportEmail = validSupportEmail((await getTranslations('footer'))('email'));
+    if (chatUrl === null || supportEmail === null) return null;
+    // Only a browser that holds a session cookie has a customer to read.
+    const jar = await cookies();
+    let csrfToken: string | null = null;
+    if (jar.has(sessionCookieNames(host.marketId).session)) {
+      const session = await sessionGet<{ csrfToken?: unknown }>('identity/customer/session');
+      if (session.kind === 'ok' && typeof session.body.csrfToken === 'string') {
+        csrfToken = session.body.csrfToken;
+      }
+    }
+    return { chatUrl, supportEmail, csrfToken };
+  } catch {
+    return null;
+  }
 }
 
 /** A store picture (logo or banner) as the buyer site's image route serves it. */

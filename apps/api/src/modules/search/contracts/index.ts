@@ -2,7 +2,10 @@
 // Other modules may import only what this file exports, through ../index.ts.
 export {
   SEARCH_ASSISTANT_FACADE,
+  type AssistantBadge,
+  type AssistantOffer,
   type AssistantProduct,
+  type AssistantProductDetail,
   type AssistantSearchFailure,
   type AssistantSpecial,
   type SearchAssistantFacade,

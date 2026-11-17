@@ -7,15 +7,23 @@ Speed mode (CLAUDE.md): no G1/G2 or design document. The owner approved the supe
 
 - `lists.saved_filters` holds the saved filters of every list. `SAVED_FILTER_STORE`
   (`modules/lists/contracts`) is the only way in: `visibleTo`, `find`, `countOwnedBy`, `countShared`,
-  `nextPosition`, `add`, `change`, `remove`, each with an explicit store (`sellerId`, or `null` for
+  `nextPosition`, `add`, `change`, `remove`, `ownedBy`, `reposition`, each with an explicit store (`sellerId`, or `null` for
   the rows that have none).
 - `catalog` (admin and seller Products) and `ordering` (admin and seller Orders) use the store
   through their old repository ports; their routes, use cases and rules are unchanged.
 - The migration `20261115160000_lists_saved_filters` copies the rows of `catalog.saved_filters` and
   `ordering.saved_filters`; the old tables are dropped one release later.
 
+## B0-1b (admin)
+
+- `registerLists(owner, definitions)` registers a module's lists (ADR-0049, "B0-1b"). A new admin
+  list adds one `ListDefinition` (key `admin.<module>.<list>`, `viewKey`, `shareKey`, payload
+  parser) and the key to `LISTS_AUDIT_LIST_KEYS`; it never reads `lists.saved_filters` itself.
+- Routes: `GET/POST /lists/admin/saved-filters`, `PUT /lists/admin/saved-filters/order`,
+  `PUT/DELETE /lists/admin/saved-filters/:id`. The old catalog and ordering routes stay until the
+  panels move.
+
 ## Not here yet
 
-- B0-1b: the generic endpoints (list, create, update, delete, share-check, reorder) and the
-  registration of list definitions (view permission, share permission, payload validator).
+- B0-1b seller side: `/lists/seller/saved-filters` and the seller lists' definitions.
 - B0-2: column preferences per user per list.

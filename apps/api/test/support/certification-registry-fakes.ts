@@ -191,6 +191,21 @@ export class MemoryRegistry implements CertificationRegistryRepository {
     return row;
   }
 
+  /** Called once before the next type lock: a test commits a concurrent change here. */
+  beforeTypeLock: (() => void) | null = null;
+
+  lockType(
+    market: MarketContext,
+    typeId: Id<'CertificationType'>,
+    expectedVersion: number,
+  ): Promise<void> {
+    const hook = this.beforeTypeLock;
+    this.beforeTypeLock = null;
+    hook?.();
+    this.typeAt(market, typeId, expectedVersion);
+    return Promise.resolve();
+  }
+
   publishRevision(
     market: MarketContext,
     typeId: Id<'CertificationType'>,

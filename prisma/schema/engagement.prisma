@@ -71,3 +71,53 @@ model EngagementBlockCount {
   @@map("block_counts")
   @@schema("engagement")
 }
+
+/// A customer follows a seller's store (customers management phase 3). Added and removed by the
+/// customer (one row per account and store; following again after an unfollow is a new row),
+/// removed with everything engagement holds when the account is erased. Never updated. The seller is
+/// `sellers`' id with no foreign key. The CHECKs and the grants are hand-written in the migration.
+model EngagementStoreFollow {
+  id         String   @id @db.Uuid
+  marketId   String   @map("market_id") @db.VarChar(8)
+  tenantId   String   @map("tenant_id")
+  accountId  String   @map("account_id") @db.Uuid
+  sellerId   String   @map("seller_id") @db.Uuid
+  followedAt DateTime @map("followed_at") @db.Timestamptz(6)
+
+  @@unique([marketId, accountId, sellerId])
+  /// The customer's "My stores", newest first.
+  @@index([marketId, accountId, followedAt(sort: Desc), id(sort: Desc)])
+  /// A store's followers (counts).
+  @@index([marketId, sellerId, followedAt(sort: Desc)])
+  @@map("store_follows")
+  @@schema("engagement")
+}
+
+/// Engagement's outbox: `engagement.store-followed.v1` and `engagement.store-unfollowed.v1`.
+model EngagementOutbox {
+  /// UUIDv7 stamped by the outbox writer.
+  eventId          String    @id @map("event_id") @db.Uuid
+  /// "engagement.<subject>-<verb>.v<N>"; the CHECK refuses another module's type.
+  type             String
+  /// The instant the use case took from Clock (UTC).
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  /// Market of the unit that wrote the event (ADR-0003); stamped by the writer.
+  marketId         String    @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); stamped by the writer, no database default.
+  tenantId         String    @map("tenant_id")
+  aggregateType    String    @map("aggregate_type")
+  aggregateId      String    @map("aggregate_id") @db.Uuid
+  /// The aggregate's version after the change; unique per aggregate (P 10).
+  aggregateVersion Int       @map("aggregate_version")
+  correlationId    String    @map("correlation_id")
+  /// The consumed event that caused this one, or null.
+  causationId      String?   @map("causation_id") @db.Uuid
+  payload          Json      @db.JsonB
+  /// Set by the relay when the event was handed to the bus; the only column that changes.
+  publishedAt      DateTime? @map("published_at") @db.Timestamptz(6)
+
+  /// No two events of one aggregate share a version (I7); led by market_id (data design C7).
+  @@unique([marketId, aggregateId, aggregateVersion])
+  @@map("outbox")
+  @@schema("engagement")
+}

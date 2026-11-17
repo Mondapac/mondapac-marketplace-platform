@@ -7,7 +7,7 @@
   {
     "name": "assistant.view-storefront-assistant",
     "rule": "anonymous",
-    "reason": "The storefront asks whether to show the buyer assistant to a visitor who may have no session; the answer is the safe subset only (on for this visitor, guests allowed, reply language, welcome text) and changes nothing."
+    "reason": "The storefront asks whether to show the buyer assistant to a visitor who may have no session; the answer is the safe subset only (on for this visitor, guests allowed, reply language, welcome text, retention days, quick prompts, whether a valid internal preview token was sent) and changes nothing."
   },
   {
     "name": "blog.view-public-taxonomy",
@@ -218,6 +218,11 @@
     "name": "payments.receive-stripe-event",
     "rule": "anonymous",
     "reason": "Stripe calls the webhook without a session: the Stripe-Signature over the raw body, checked first in the use case, authenticates the event; it only stores the event for the worker."
+  },
+  {
+    "name": "promotions.view-store-follow-gift",
+    "rule": "anonymous",
+    "reason": "A store page asks for the store's live follower offers (the Follow gift) for any visitor; the answer is the offer's name, reward, minimum spend and end only, of ACTIVE store-follower promotions without a code and not in test mode. No customer data is read and nothing changes."
   },
   {
     "name": "reviews.list-product-reviews",

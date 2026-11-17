@@ -1,7 +1,9 @@
 import { EVALUATION_SET, EVALUATION_VERSION } from './evaluation-set';
 import { maskPersonalData, MASKED } from './personal-data';
 import { guardReply, MAX_REPLY_CHARACTERS } from './reply-guard';
-import { parseToolCall, TOOL_DECLARATIONS } from './tools';
+import { cardRefOf } from './cards';
+import { storedCardOf } from './conversation';
+import { parseToolCall, TOOL_DECLARATIONS, toolDeclarationsFor } from './tools';
 
 // The deterministic checks around a model (plan section 5; ADR-0019 R1, R5, R9): what a buyer
 // typed is masked before it is kept or sent; what a model wrote is checked before a buyer sees it.
@@ -89,12 +91,100 @@ describe('parseToolCall (R9: model output is schema-validated)', () => {
       'search_products',
       'list_bestsellers',
       'list_specials',
+      'get_product',
+      'get_seller',
       'list_categories',
       'show_page',
       'support_contact',
       'suggest_cart_change',
       'open_support_form',
     ]);
+  });
+
+  it('declares the cart tools only under the cart-suggestions scope', () => {
+    expect(toolDeclarationsFor('read-only')).toBe(TOOL_DECLARATIONS);
+    const names = toolDeclarationsFor('cart-suggestions').map((tool) => tool.name);
+    expect(names).toContain('get_cart');
+    expect(names.filter((name) => name === 'suggest_cart_change')).toHaveLength(1);
+  });
+
+  describe('cart calls (stage 1, S1-B1)', () => {
+    const OFFER = '0199aaaa-0000-7000-8000-0000000000f1';
+    const LINE = '0199aaaa-0000-7000-8000-0000000000c1';
+    const cart = (input: unknown) =>
+      parseToolCall('suggest_cart_change', input, 'cart-suggestions');
+
+    it('answers "not ready" and reads nothing under the read-only scope', () => {
+      expect(parseToolCall('suggest_cart_change', { action: 'add', offer_id: OFFER })).toEqual({
+        tool: 'suggest_cart_change',
+        change: null,
+      });
+      expect(parseToolCall('get_cart', {})).toBeNull();
+      expect(parseToolCall('get_cart', {}, 'cart-suggestions')).toEqual({ tool: 'get_cart' });
+    });
+
+    it('accepts an add (default quantity 1), a quantity change and a removal', () => {
+      expect(cart({ action: 'add', offer_id: OFFER })).toEqual({
+        tool: 'suggest_cart_change',
+        change: { action: 'add', offerId: OFFER, quantity: 1 },
+      });
+      expect(cart({ action: 'set_quantity', line_id: LINE, quantity: 999 })).toEqual({
+        tool: 'suggest_cart_change',
+        change: { action: 'set-quantity', lineId: LINE, quantity: 999 },
+      });
+      expect(cart({ action: 'remove', line_id: LINE })).toEqual({
+        tool: 'suggest_cart_change',
+        change: { action: 'remove', lineId: LINE },
+      });
+    });
+
+    it.each([
+      ['no action', { offer_id: OFFER }],
+      ['an unknown action', { action: 'checkout', offer_id: OFFER }],
+      ['a bad offer id', { action: 'add', offer_id: 'ghee' }],
+      ['a zero quantity', { action: 'add', offer_id: OFFER, quantity: 0 }],
+      ['a fractional quantity', { action: 'add', offer_id: OFFER, quantity: 1.5 }],
+      ['a string quantity', { action: 'add', offer_id: OFFER, quantity: '2' }],
+      ['a quantity over 999', { action: 'add', offer_id: OFFER, quantity: 1000 }],
+      ['a set without quantity', { action: 'set_quantity', line_id: LINE }],
+      ['a removal of an offer', { action: 'remove', offer_id: OFFER }],
+      ['an extra field (a price)', { action: 'add', offer_id: OFFER, price: 1 }],
+      ['an account id', { action: 'remove', line_id: LINE, account_id: LINE }],
+      ['a negative quantity', { action: 'add', offer_id: OFFER, quantity: -2 }],
+      ['a set with an offer id', { action: 'set_quantity', offer_id: OFFER, quantity: 2 }],
+      ['a removal with a quantity', { action: 'remove', line_id: LINE, quantity: 1 }],
+      ['an array', [{ action: 'add', offer_id: OFFER }]],
+      ['a string', 'add ghee'],
+      ['null', null],
+    ])('refuses %s', (_name, input) => {
+      expect(cart(input)).toBeNull();
+    });
+
+    it('stores a cart-action card as its product and a cart card as the cart page link', () => {
+      const units = [] as const;
+      expect(
+        cardRefOf({
+          kind: 'cart-action',
+          action: 'add',
+          offerId: OFFER,
+          productId: null,
+          sellerId: null,
+          sellerName: null,
+          name: null,
+          lineId: null,
+          currentQuantity: null,
+          quantity: 1,
+          limited: false,
+          cartFull: null,
+          units,
+          cartMode: 'multi-store',
+          otherStore: false,
+        }),
+      ).toBe(`product:${OFFER}`);
+      expect(cardRefOf({ kind: 'cart', lineCount: 0, total: null, groups: [] })).toBe('page:cart');
+      expect(storedCardOf(`product:${OFFER}`)).toEqual({ kind: 'product', offerId: OFFER });
+      expect(storedCardOf('page:cart')).toEqual({ kind: 'page', page: 'cart' });
+    });
   });
 
   it('accepts well-formed calls', () => {
@@ -109,6 +199,14 @@ describe('parseToolCall (R9: model output is schema-validated)', () => {
       categoryId: CATEGORY,
     });
     expect(parseToolCall('list_specials', {})).toEqual({ tool: 'list_specials', categoryId: null });
+    expect(parseToolCall('get_product', { product_id: CATEGORY })).toEqual({
+      tool: 'get_product',
+      productId: CATEGORY,
+    });
+    expect(parseToolCall('get_seller', { seller_id: CATEGORY })).toEqual({
+      tool: 'get_seller',
+      sellerId: CATEGORY,
+    });
   });
 
   it.each([
@@ -119,6 +217,11 @@ describe('parseToolCall (R9: model output is schema-validated)', () => {
     ['show_page', { page: 'category' }],
     ['show_page', { page: 'cart', category_id: CATEGORY }],
     ['list_bestsellers', { category_id: 7 }],
+    ['get_product', {}],
+    ['get_product', { product_id: '../../admin' }],
+    ['get_product', { product_id: 7 }],
+    ['get_seller', { seller_id: 'seller-1' }],
+    ['get_seller', { product_id: CATEGORY }],
   ])('refuses %s with %j', (name, input) => {
     expect(parseToolCall(name, input)).toBeNull();
   });

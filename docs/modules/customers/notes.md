@@ -308,6 +308,10 @@ admin deletes a buyer's account for them, from a support ticket.
   `ordering.customerOrderStats` (both rule `system`, before any unit opens) and replaces the rows, so a
   repeated or late event changes nothing. `customers` cannot import `ordering`, so the peers are
   bound at start by `CustomersReadModelsModule`, like the deletion flow.
+- **Inbox (fix, 16 Nov 2026).** The subscribers handle each event once through `runOnce`, which
+  needs `customers.inbox`. B1 shipped without it, so every delivery failed and was retried until
+  dead-lettered; migration `20261116000000_customers_inbox` adds it, and
+  `email-verification.db-spec.ts` now checks that a sign-up reaches the directory through it.
 - **Backfill and reconcile.** Job `customers.reconcile-read-models` (daily and at worker start) walks
   `identity.customerDirectoryPage` and `ordering.customerOrderAccounts` by keyset (at most 200 pages of
   200 per phase per run) and replaces every row.
@@ -364,3 +368,116 @@ admin deletes a buyer's account for them, from a support ticket.
   (make it a full `text_pattern_ops` index in a new migration). A name search of three characters or
   more is a scan of the Market until `pg_trgm` is approved. The two sort indexes on the stats
   table are not used by the left join and can be dropped later.
+
+## Customers management, phase 2, PR 2a: groups, notes, the activity timeline and the name edit (15 Nov 2026)
+
+- **Manual groups.** `customers.customer_groups` and `customer_group_members` (migration
+  `20261116060000_customers_groups_notes_timeline`). A group has a name unique per Market whatever
+  its case (index `customer_groups_name_key` on `lower(name)`), an optional description, a version
+  and an archive instant; it is never deleted (a promotion may name it). Routes under
+  `customers/admin/groups` (`GET`, `POST`, `GET/PUT :groupId`, `POST :groupId/members/add|remove`),
+  key `customers.groups.manage` (protected, owner decision 15 Nov 2026: a group can carry a
+  discount) with `customers.customers.view` to change, the view key to read. At
+  most 500 groups per Market. Members are added or removed by `ids` (at most 1,000) or by the
+  Customers list's `view`, `q` and `filters` ("select all matching", at most 10,000; more is
+  refused whole with the total). Ids that are no customer of the Market are skipped; an archived
+  group takes no new members. Every change is audited (`customers.customer-group.created`,
+  `.changed`, `.members-changed`: how many and how they were picked, no names) and lands on each
+  customer's timeline.
+- **Members list = the Customers super list.** The list gains the filter `group` (a group id) and
+  the column `groups` (names, archived flagged), also in the export. No second list was built.
+- **Promotions.** A `CUSTOMER_GROUP` discount can take the segment `{ kind: "MANUAL_GROUP",
+  groupId }` (column `promotions.segment_group_id`, migration
+  `20261116060001_promotions_manual_group_segment`; a CHECK ties the id to that segment). The quote
+  asks `CustomersReadFacade.isGroupMember` as the system actor, once per group; a refusal, an error,
+  an unknown or archived group is "not a member" (fail closed). The group id is not checked at
+  create (an admin context cannot call the `system` read); an unknown id simply never applies.
+- **Notes.** `customers.customer_notes`: free text about a person, sealed under the customer
+  account's subject key before the unit (`fieldLabel('customers.customer-note.body')`), opened
+  after the read, never logged. Audited as `customers.customer-note.added` (note id and length).
+  Write key `customers.customer-notes.write`; read with the view key (`GET` keyset pages of at most
+  100, newest first). A destroyed key (erased account) shows a note without its text. Notes are
+  never edited or deleted by an admin.
+- **Activity timeline.** `customers.customer_timeline`: one row per event or admin action, with a
+  kind code, the instant, an order, refund, group or note reference, the admin who did it, and the
+  source event id (unique per customer, so an event is written once). From events: signed up,
+  email verified, name changed, disabled, enabled, order paid, refund succeeded (subscriptions
+  `customers.timeline-*`). From admin actions: every customer page open (with the tab), note added,
+  group added or removed, renamed by an admin. A page open is written once per admin, tab and
+  UTC day, so the table does not grow with every click. An event about an account that has no
+  directory row yet is refused with `customers.unavailable` and retried, so it is never lost;
+  a bulk write checks the directory in slices of 1,000. `POST customers/admin/customers/:accountId/activity`
+  is a super list scoped to one customer (filter by category or kinds and by day range, sort by
+  time, both paging modes); each read writes the page-open audit row (tab `activity`).
+  `.../activity/export` (CSV or XLSX, at most 10,000) needs the export key and a fresh two-step
+  proof, and is audited (`customers.customer-timeline.exported`).
+- **Name edit.** `PUT customers/admin/customers/:accountId/display-name` (key
+  `customers.customers.edit`): identity owns the write (`IdentityFacade.renameCustomerForAdmin`,
+  audit `identity.account.renamed-by-admin`, the usual name-changed event). Status changes stay on
+  identity's audited routes (`POST identity/admin/customers/:accountId/disable|enable`, key
+  `identity.customer-account.disable`). Deletion stays on the package 5c path.
+- **Erasure.** The account's erasure and the sweep call `removeAllOf`, which deletes the directory
+  row; foreign keys with ON DELETE CASCADE remove the customer's timeline rows, notes and group
+  memberships with it.
+- **Not in this PR.** The admin email change (identity's pending-email flow with step-up, a mail
+  to the new address and a warning to the old) is a PR of its own (security review). Per-module
+  reads of the customer page tabs are PR 2b.
+- **Known gaps.** Reviews and consent events carry no account id, so they are not on the timeline
+  yet. Status-change entries from identity's events have no admin attached. A rename by an admin writes
+  two entries (`renamed-by-admin` with the admin, and `name-changed` from identity's event, which
+  carries no actor). The notes read writes
+  no audit row of its own (the page open does). No role is seeded with the new keys; the owner
+  assigns them.
+
+## Phase 3: per-seller customers and store follows (2026-11-16)
+
+- **Store follows live in `engagement`** (`engagement.store_follows`, one row per account and store,
+  at most 1000 per account). `PUT/DELETE/GET customers/me/followed-stores/:sellerId` and
+  `GET customers/me/followed-stores` (My stores, newest first, cursor `<epochMs>.<id>`). Only a
+  published store can be followed (`sellers.publishedStoreSlugs`). Each change writes
+  `engagement.store-followed.v1` or `store-unfollowed.v1` (account and seller ids only) to the new
+  `engagement.outbox`. Erasure removes the follows with no event.
+- **`customers.seller_customers`** is one row per (seller, customer) while there is a relation:
+  an order with the seller (count, first and last order, spent net of refunds) or a follow. The
+  `exclusive` flag is reserved for phase 4. The customer code (`XXXX-XXXX`, Crockford base32, 40
+  random bits) is drawn when the row is created, is unique per seller (a code taken at the seller is
+  drawn again) and is kept while the row exists; a seller whose relation ends loses the row and the
+  code. The foreign key to `customer_directory` cascades, so erasure leaves nothing.
+- **Sync.** `customers.sync-seller-customers` from `ordering.order-paid.v1`, `refund-succeeded.v1`
+  and the two follow events re-reads `ordering.customerSellerStats` and
+  `engagement.followsOfAccount` (both `system`) and replaces the customer's rows, once per delivery.
+  `customers.reconcile-seller-customers` (daily, and at worker start) syncs every customer of the
+  directory again. Two syncs of one account racing on stale reads is accepted: the next event or
+  the nightly run converges (as B1).
+- **What a seller sees.** `customers/seller/customers` (`list`, `list/codes`, `export`, `:code`):
+  the code, the first name (first word of the display name) and the numbers with that seller only.
+  Never an account id, an email, a full name or anything done at another shop. Keys
+  `customers.seller-customers.view` and `.export` (seller scope, unprotected; no default seller role
+  lists them, so the Seller Owner grants them). A Login as Seller session is refused. The customer
+  page reads the seller's own paid seller orders through `ordering.sellerCustomerOrders`, which
+  checks `ordering.seller-order.view` itself (`orders: null` without it). The export is audited
+  (`customers.seller-customers.exported`: format, count, how picked).
+- **Admin.** The seller page's Customers tab: `customers/admin/sellers/:sellerId/customers/summary`
+  (tab counts and 12 months of new buyers and new followers) and `.../list` (rows with the account
+  id), under `customers.customers.view`. The admin Customers list has the filter `followsSellerId`.
+- **Promotions.** `STORE_FOLLOWER` now reads `engagement.followedAmong` (system for the quote, own
+  for the customer; anything else is unknown, so the offer is not made). The Follow gift is
+  `GET promotions/stores/:sellerId/follow-gift` (anonymous): the seller's live store-follower
+  promotions without a code and not in test mode.
+- **Known gaps.** (1) The SEL-15 store setting "let the seller see its customers" does not exist in
+  code; access is by key only. (2) The trend is cut in the Market's zone: a seller has no zone of its
+  own yet (ADR-0005 fallback). (3) The `lastOrderFrom/To` filter days are UTC days. (4) Seller saved filters wait for the shared list kit's generic endpoints (B0-1b). (5) The
+  reconcile syncs at most 40,000 customers per run; a larger Market relies on the events. The run
+  answers `failed` and `capped`, goes on past an account whose sync fails, and the job logs a warning
+  when either is set.
+- **Accepted from the reviews (2026-11-16).** (1) Two syncs of one account can interleave on stale
+  peer reads (an order event and a follow event at once); the older read can land last and stays
+  until the next event or the nightly reconcile (at most a day). No lock is taken for it.
+  (2) The Follow gift does not check that the store is published: the live follower offers of a
+  hidden store can be read by its seller id, but nothing about a customer is in it and nothing can be
+  bought there. (3) A seller's order page still shows the recipient's name and address while an
+  order is fulfilled (the existing fulfilment design); "code and first name only" applies to the
+  Customers list, its export and the customer page. (4) Spent adds up seller order totals across
+  orders and takes the latest order's currency, which holds while a Market has one currency.
+- **Database.** The sort indexes on `last_order_at` and `followed_at` are `DESC NULLS LAST`, as the
+  list sorts them; a CHECK ties `currency` to `order_count > 0`.

@@ -172,6 +172,10 @@
   ],
   "projected": [
     {
+      "action": "assistant.preview-token.issued",
+      "severity": "s3"
+    },
+    {
       "action": "assistant.settings.changed",
       "severity": "s3"
     },

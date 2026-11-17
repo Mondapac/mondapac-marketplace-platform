@@ -29,6 +29,7 @@ import { ChangeAiSetting } from './use-cases/change-ai-setting.use-case';
 import { ChangeCartModeSetting } from './use-cases/change-cart-mode-setting.use-case';
 import { ChangeListPagingSetting } from './use-cases/change-list-paging-setting.use-case';
 import { ReadAiDescriptionWriter } from './use-cases/read-ai-description-writer.use-case';
+import { ReadCartMode } from './use-cases/read-cart-mode.use-case';
 import { ReadListPaging } from './use-cases/read-list-paging.use-case';
 import { ViewAiSettings } from './use-cases/view-ai-settings.use-case';
 import { ViewCartModeSetting } from './use-cases/view-cart-mode-setting.use-case';
@@ -340,6 +341,42 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       expect(store.history).toHaveLength(0);
     });
 
+    it('answers the mode through the facade to a guest, a customer and a panel user', async () => {
+      const facade = new SettingsFacadeImplementation(
+        new ReadAiDescriptionWriter(gate, deps),
+        new ReadCartMode(gate, deps),
+      );
+      for (const context of [anonymous, sellerCtx(), adminCtx()]) {
+        expect(await facade.cartMode(context)).toBe('multi-store');
+      }
+      await changeCart({ code: 'cart-mode', value: 'single-store', expectedVersion: 0 });
+      for (const context of [anonymous, sellerCtx(), adminCtx()]) {
+        expect(await facade.cartMode(context)).toBe('single-store');
+      }
+      const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+      expect(await store.find(other, 'cart-mode')).toBeNull();
+    });
+
+    it('answers multi-store when the store cannot be read or the read throws', async () => {
+      await changeCart({ code: 'cart-mode', value: 'single-store', expectedVersion: 0 });
+      store.failReads = true;
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        const facade = new SettingsFacadeImplementation(
+          new ReadAiDescriptionWriter(gate, deps),
+          new ReadCartMode(gate, deps),
+        );
+        expect(await facade.cartMode(anonymous)).toBe('multi-store');
+      } finally {
+        warn.mockRestore();
+      }
+      const throwing = new SettingsFacadeImplementation(
+        { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadAiDescriptionWriter,
+        { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadCartMode,
+      );
+      expect(await throwing.cartMode(anonymous)).toBe('multi-store');
+    });
+
     it('keeps one Market from seeing the value of another', async () => {
       await changeCart({ code: 'cart-mode', value: 'single-store', expectedVersion: 0 });
       const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
@@ -350,7 +387,11 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
   describe('AI description writer', () => {
     const changeAi = (input: Record<string, unknown>, context = adminCtx()) =>
       new ChangeAiSetting(gate, deps).execute(context, input);
-    const facade = () => new SettingsFacadeImplementation(new ReadAiDescriptionWriter(gate, deps));
+    const facade = () =>
+      new SettingsFacadeImplementation(
+        new ReadAiDescriptionWriter(gate, deps),
+        new ReadCartMode(gate, deps),
+      );
 
     it('is off on the fast tier before any change, for the admin view and the facade', async () => {
       const view = await new ViewAiSettings(gate, deps).execute(adminCtx(), {});
@@ -438,9 +479,10 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       } finally {
         warn.mockRestore();
       }
-      const throwing = new SettingsFacadeImplementation({
-        execute: () => Promise.reject(new Error('boom')),
-      } as unknown as ReadAiDescriptionWriter);
+      const throwing = new SettingsFacadeImplementation(
+        { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadAiDescriptionWriter,
+        { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadCartMode,
+      );
       expect(await throwing.aiDescriptionWriter(sellerCtx())).toEqual({
         enabled: false,
         tier: 'fast',

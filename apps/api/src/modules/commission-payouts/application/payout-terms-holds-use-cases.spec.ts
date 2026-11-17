@@ -8,6 +8,10 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { payoutStores } from '../../../../test/support/commission-payouts-fakes';
+import {
+  holdsOf,
+  sellerPageDepsOf,
+} from '../../../../test/support/commission-payouts-seller-page-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
@@ -580,9 +584,15 @@ describe.each([['AU'], ['ZZ']] as const)('payout terms and holds in market %s', 
     it('lists a seller holds and refuses every caller but an admin', async () => {
       await place({ sellerId: SELLER_A, reason: 'admin-review' });
       const list = (sellerId: unknown, context = admin) =>
-        new ListSellerPayoutHolds(gate, deps).execute(context, { sellerId });
-      expect(await list(SELLER_A)).toMatchObject({ ok: true, value: [{ reason: 'admin-review' }] });
-      expect(await list(SELLER_B)).toEqual(ok([]));
+        new ListSellerPayoutHolds(
+          gate,
+          sellerPageDepsOf(deps, { holds: holdsOf(stores.holds) }),
+        ).execute(context, { sellerId });
+      expect(await list(SELLER_A)).toMatchObject({
+        ok: true,
+        value: { holds: [{ reason: 'admin-review', actions: ['release'] }], total: 1 },
+      });
+      expect(await list(SELLER_B)).toMatchObject({ ok: true, value: { holds: [], total: 0 } });
       expect(await list(GHOST)).toEqual(err({ code: 'commission-payouts.seller-not-found' }));
       expect(await list(SELLER_A, sellerA)).toEqual(err({ code: 'access.denied' }));
       expect(await place({ sellerId: SELLER_A, reason: 'admin-review' }, sellerA)).toEqual(

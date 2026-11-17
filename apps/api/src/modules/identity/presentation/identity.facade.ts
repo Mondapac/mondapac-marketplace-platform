@@ -13,6 +13,7 @@ import type { CustomerDirectoryPage } from '../application/use-cases/customer-di
 import type { CustomerDirectoryRecords } from '../application/use-cases/customer-directory-records.use-case';
 import type { CustomerAccountExists } from '../application/use-cases/customer-account-exists.use-case';
 import type { AdminEndCustomerSessions } from '../application/use-cases/admin-end-customer-sessions.use-case';
+import type { AdminRenameCustomer } from '../application/use-cases/admin-rename-customer.use-case';
 import type { EndAllCustomerSessions } from '../application/use-cases/end-all-customer-sessions.use-case';
 import type { EndOtherCustomerSessions } from '../application/use-cases/end-other-customer-sessions.use-case';
 import type { EraseCustomerAccount } from '../application/use-cases/erase-customer-account.use-case';
@@ -62,6 +63,7 @@ export interface IdentityFacadeUseCases {
   readonly customerDirectoryPage: CustomerDirectoryPage;
   readonly ownAccountTiedToSeller: OwnAccountTiedToSeller;
   readonly eraseCustomerAccount: EraseCustomerAccount;
+  readonly adminRenameCustomer: AdminRenameCustomer;
 }
 
 /**
@@ -257,5 +259,12 @@ export class IdentityFacadeImplementation implements IdentityFacade {
       requestId,
     });
     return result.ok ? ok({ code: result.value.code }) : err(result.error);
+  }
+
+  renameCustomerForAdmin(
+    context: CallContext,
+    input: { readonly accountId: Id<'Account'>; readonly displayName: string },
+  ) {
+    return this.useCases.adminRenameCustomer.execute(context, input);
   }
 }

@@ -21,9 +21,9 @@ export interface CustomerOrderHistory {
 export const CUSTOMER_ORDER_HISTORY = Symbol('PROMOTIONS_CUSTOMER_ORDER_HISTORY');
 
 /**
- * Which of the given sellers' stores a customer follows, for the store-follower offer. No module
- * owns a store follow yet (`engagement` has behaviour signals, `sellers` has stores, neither has
- * followers), so the adapter answers "unknown" and the offer is not made (fail closed).
+ * Which of the given sellers' stores a customer follows, for the store-follower offer. `engagement`
+ * owns store follows (customers management phase 3); a refusal is "unknown" and the offer is not
+ * made (fail closed).
  */
 export interface StoreFollows {
   followedAmong(
@@ -34,3 +34,19 @@ export interface StoreFollows {
 }
 
 export const STORE_FOLLOWS = Symbol('PROMOTIONS_STORE_FOLLOWS');
+
+/**
+ * Whether a customer is in one of the Market's manual customer groups, for the customer-group
+ * discount of the manual-group segment. On `customers`' read facade (customers phase 2): the quote
+ * asks as the Market's system actor. Any other caller, a refusal, an unknown or archived group is
+ * "unknown" or "no": the discount is not offered (fail closed).
+ */
+export interface CustomerGroupMembership {
+  isMember(
+    context: CallContext,
+    groupId: string,
+    accountId: Id<'Account'>,
+  ): Promise<Known<boolean>>;
+}
+
+export const CUSTOMER_GROUP_MEMBERSHIP = Symbol('PROMOTIONS_CUSTOMER_GROUP_MEMBERSHIP');
