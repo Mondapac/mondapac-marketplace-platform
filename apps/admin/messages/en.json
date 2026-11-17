@@ -9053,7 +9053,8 @@
       "archive": "Archive",
       "merged": "Values merged.",
       "archived": "Attribute archived.",
-      "archive-requested": "Request sent. A different administrator can confirm it under Waiting for you."
+      "archive-requested": "Request sent. A different administrator can confirm it under Waiting for you.",
+      "more": "More"
     },
     "values": {
       "not-choice": "This attribute has no list of values: sellers type or pick its value.",
@@ -9450,7 +9451,8 @@
       "blocked": {
         "in-feature-set": "It is still in an active feature set. Remove it from those feature sets first.",
         "live-variants": "Live products use it as a variant option, so it cannot be archived."
-      }
+      },
+      "type-code": "Type {code} to confirm"
     },
     "suggestions": {
       "list-label": "Value suggestions",

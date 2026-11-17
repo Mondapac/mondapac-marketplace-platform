@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ActionMenu,
   Badge,
   Banner,
   Button,
@@ -12,6 +13,7 @@ import {
   SkeletonRows,
   Tabs,
   toast,
+  type ActionMenuItem,
   type DataListRow,
   type SearchSelectOption,
 } from '@mondapac/ui';
@@ -136,6 +138,58 @@ export function AttributeDetailPanel({
     return <EmptyState size="card" icon="sliders" title={t('none')} body={t('none-body')} />;
   }
 
+  // The rarely used or risky changes sit in the More menu; each opens its own dialog.
+  const moreItems: ActionMenuItem[] = [];
+  if (load.state === 'ready') {
+    const current = load.detail;
+    if (canRestructure && current.status === 'active') {
+      if (
+        CHOICE_TYPES.has(current.dataType) &&
+        current.options.filter((option) => option.active && (option.mergedInto ?? null) === null)
+          .length >= 2
+      ) {
+        moreItems.push({
+          id: 'merge-values',
+          label: `${t('merge-values')}…`,
+          onSelect: () => setConfirm('merge'),
+        });
+      }
+      if (!current.material) {
+        moreItems.push({
+          id: 'merge-attribute',
+          label: `${t('merge-attribute')}…`,
+          onSelect: () => setConfirm('merge-attribute'),
+        });
+      }
+      if (
+        CONVERSIONS[current.dataType] !== undefined &&
+        !current.material &&
+        !current.isVariantOption
+      ) {
+        moreItems.push({
+          id: 'convert',
+          label: `${t('convert-type')}…`,
+          onSelect: () => setConfirm('convert'),
+        });
+      }
+    }
+    if (canEdit && current.status === 'active' && current.material) {
+      moreItems.push({
+        id: 'relax',
+        label: `${t('turn-off-material')}…`,
+        onSelect: () => setConfirm('relax'),
+      });
+    }
+    if (canRestructure && current.status === 'active') {
+      moreItems.push({
+        id: 'archive',
+        label: `${t('archive')}…`,
+        tone: 'critical',
+        onSelect: () => setConfirm('archive'),
+      });
+    }
+  }
+
   return (
     <section
       ref={panel}
@@ -179,38 +233,7 @@ export function AttributeDetailPanel({
                       {t('edit')}
                     </Button>
                   ) : null}
-                  {canRestructure && load.detail.status === 'active' ? (
-                    <>
-                      {CHOICE_TYPES.has(load.detail.dataType) &&
-                      load.detail.options.filter(
-                        (option) => option.active && (option.mergedInto ?? null) === null,
-                      ).length >= 2 ? (
-                        <Button variant="secondary" onClick={() => setConfirm('merge')}>
-                          {t('merge-values')}
-                        </Button>
-                      ) : null}
-                      {load.detail.material ? null : (
-                        <Button variant="secondary" onClick={() => setConfirm('merge-attribute')}>
-                          {t('merge-attribute')}
-                        </Button>
-                      )}
-                      {CONVERSIONS[load.detail.dataType] !== undefined &&
-                      !load.detail.material &&
-                      !load.detail.isVariantOption ? (
-                        <Button variant="secondary" onClick={() => setConfirm('convert')}>
-                          {t('convert-type')}
-                        </Button>
-                      ) : null}
-                      <Button variant="secondary" onClick={() => setConfirm('archive')}>
-                        {t('archive')}
-                      </Button>
-                    </>
-                  ) : null}
-                  {canEdit && load.detail.status === 'active' && load.detail.material ? (
-                    <Button variant="secondary" onClick={() => setConfirm('relax')}>
-                      {t('turn-off-material')}
-                    </Button>
-                  ) : null}
+                  {moreItems.length > 0 ? <ActionMenu label={t('more')} items={moreItems} /> : null}
                   {canEdit && load.detail.status === 'draft' ? (
                     <>
                       <Button onClick={() => setConfirm('publish')}>{t('publish')}</Button>

@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Dialog, LoadError, Select, SkeletonRows } from '@mondapac/ui';
+import { Banner, Button, Dialog, LoadError, Select, SkeletonRows, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
@@ -15,6 +15,28 @@ import {
   type ImpactAnswer,
   type ImpactCount,
 } from './types.ts';
+
+/**
+ * Confirmation level 3 (an irreversible change): the admin types the attribute's code. Returns
+ * the field and whether what was typed is the code, so the red button stays off until it is.
+ */
+function useTypedCode(code: string) {
+  const t = useTranslations('attributes.restructure');
+  const [typed, setTyped] = useState('');
+  return {
+    matches: typed.trim() === code,
+    field: (
+      <TextField
+        name="confirm-code"
+        label={t('type-code', { code })}
+        value={typed}
+        autoComplete="off"
+        spellCheck={false}
+        onChange={(event) => setTyped(event.target.value)}
+      />
+    ),
+  };
+}
 
 type ImpactLoad =
   | { readonly state: 'loading' }
@@ -253,6 +275,7 @@ export function ConvertTypeDialog({
   const { load, retry } = useImpact(detail.id);
   const name = textIn(detail.names, detail.locales.default, detail.locales.default, detail.code);
   const to = CONVERSIONS[detail.dataType];
+  const typed = useTypedCode(detail.code);
 
   async function convert(version: number) {
     if (to === undefined) return;
@@ -283,8 +306,11 @@ export function ConvertTypeDialog({
             <Button onClick={onReload}>{te('reload')}</Button>
           ) : (
             <Button
+              variant="destructive-solid"
               loading={call.pending}
-              disabled={call.pending || load.state !== 'ready' || to === undefined}
+              disabled={
+                call.pending || load.state !== 'ready' || to === undefined || !typed.matches
+              }
               onClick={() => {
                 if (load.state === 'ready') void convert(load.answer.attribute.version);
               }}
@@ -310,6 +336,7 @@ export function ConvertTypeDialog({
         <ImpactBody load={load} retry={retry}>
           {(answer) => <ImpactList answer={answer} />}
         </ImpactBody>
+        {typed.field}
       </div>
     </Dialog>
   );
@@ -344,6 +371,7 @@ export function ArchiveDialog({
   const { load, retry } = useImpact(detail.id);
   const name = textIn(detail.names, detail.locales.default, detail.locales.default, detail.code);
   const material = detail.material;
+  const typed = useTypedCode(detail.code);
 
   const block =
     load.state !== 'ready'
@@ -382,7 +410,12 @@ export function ArchiveDialog({
             <Button
               variant={material ? 'primary' : 'destructive-solid'}
               loading={call.pending}
-              disabled={call.pending || load.state !== 'ready' || block !== null}
+              disabled={
+                call.pending ||
+                load.state !== 'ready' ||
+                block !== null ||
+                (!material && !typed.matches)
+              }
               onClick={() => {
                 if (load.state === 'ready') void send(load.answer.attribute.version);
               }}
@@ -411,6 +444,7 @@ export function ArchiveDialog({
             </>
           )}
         </ImpactBody>
+        {material ? null : typed.field}
       </div>
     </Dialog>
   );
@@ -535,6 +569,7 @@ export function MergeAttributesDialog({
     if (answer.ok) onDone();
   }
 
+  const typed = useTypedCode(detail.code);
   const problem = call.problem;
   return (
     <Dialog
@@ -550,8 +585,9 @@ export function MergeAttributesDialog({
             <Button onClick={onReload}>{te('reload')}</Button>
           ) : (
             <Button
+              variant="destructive-solid"
               loading={call.pending}
-              disabled={call.pending || !ready}
+              disabled={call.pending || !ready || !typed.matches}
               onClick={() => {
                 if (load.state === 'ready' && target.state === 'ready') {
                   void merge(load.answer.attribute.version, target.detail.version);
@@ -637,6 +673,7 @@ export function MergeAttributesDialog({
         <ImpactBody load={load} retry={retry}>
           {(answer) => <ImpactList answer={answer} />}
         </ImpactBody>
+        {typed.field}
       </div>
     </Dialog>
   );

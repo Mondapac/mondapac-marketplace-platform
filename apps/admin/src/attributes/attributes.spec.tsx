@@ -1143,7 +1143,8 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     });
     mount({ canEdit: true, initialId: id(1) });
     const panel = await screen.findByRole('region', { name: 'Attribute details' });
-    fireEvent.click(await within(panel).findByRole('button', { name: 'Turn off Material' }));
+    fireEvent.click(await within(panel).findByRole('button', { name: 'More' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Turn off Material…' }));
     const dialog = await screen.findByRole('dialog', {
       name: 'Ask to turn off Material for Attribute 1?',
     });
@@ -1174,7 +1175,8 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const spy = spyOnAssign();
     mount({ canEdit: true, initialId: id(1) });
     const panel = await screen.findByRole('region', { name: 'Attribute details' });
-    fireEvent.click(await within(panel).findByRole('button', { name: 'Turn off Material' }));
+    fireEvent.click(await within(panel).findByRole('button', { name: 'More' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Turn off Material…' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Send request' }));
     expect(
@@ -1189,7 +1191,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     mount({ canEdit: true, initialId: id(2) });
     const plain = await screen.findByRole('region', { name: 'Attribute details' });
     await within(plain).findByRole('button', { name: 'Edit' });
-    expect(within(plain).queryByRole('button', { name: 'Turn off Material' })).toBeNull();
+    expect(within(plain).queryByRole('button', { name: 'More' })).toBeNull();
   });
 
   it("lists waiting requests: confirms another admin's, withdraws one's own", async () => {
@@ -1312,12 +1314,12 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     mount({ initialId: id(1) });
     const panel = await screen.findByRole('region', { name: 'Attribute details' });
     await within(panel).findByRole('heading', { name: 'Attribute 1' });
-    expect(within(panel).queryByRole('button', { name: 'Turn off Material' })).toBeNull();
+    expect(within(panel).queryByRole('button', { name: 'More' })).toBeNull();
     cleanup();
     mount({ canEdit: true, initialId: id(2) });
     const draft = await screen.findByRole('region', { name: 'Attribute details' });
     await within(draft).findByRole('button', { name: 'Publish' });
-    expect(within(draft).queryByRole('button', { name: 'Turn off Material' })).toBeNull();
+    expect(within(draft).queryByRole('button', { name: 'More' })).toBeNull();
   });
 
   it('sends a signed-out admin to the session-ended page from Waiting for you', async () => {
