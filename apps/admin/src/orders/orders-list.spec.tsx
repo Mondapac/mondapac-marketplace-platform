@@ -106,14 +106,13 @@ describe('orders list', () => {
     const table = await screen.findByRole('table');
     const link = within(table).getByRole('link', { name: 'Order 00000001' });
     expect(link.getAttribute('href')).toBe('/orders/0190a000-0000-7000-8000-000000000001');
-    // "Paid" is the column header and the status badge.
-    expect(within(table).getAllByText('Paid')).toHaveLength(2);
+    // "Paid" is the status badge: the Paid column is off until the admin shows it.
+    expect(within(table).getAllByText('Paid')).toHaveLength(1);
     expect(within(table).getByText('Awaiting payment')).toBeTruthy();
     expect(within(table).getByText('$25.00')).toBeTruthy();
     expect(within(table).getByText('$50.00')).toBeTruthy();
     expect(within(table).getByText('Amira Haddad')).toBeTruthy();
     expect(within(table).getByText('Al Noor Butchery')).toBeTruthy();
-    expect(within(table).getByText('Not yet')).toBeTruthy();
     // The first page asks for page mode with Previous and next, newest first.
     expect(paramsOf(lastUrl())).toEqual({
       page: '1',
@@ -429,9 +428,23 @@ describe('order list columns', () => {
         .getAllByRole('columnheader')
         .map((header) => header.textContent),
     ).toEqual(
-      expect.arrayContaining(['Order', 'Status', 'Placed', 'Paid', 'Customer', 'Sellers', 'Total']),
+      expect.arrayContaining(['Order', 'Status', 'Placed', 'Customer', 'Sellers', 'Total']),
     );
+    expect(within(table).queryByRole('columnheader', { name: 'Paid' })).toBeNull();
     expect(within(table).queryByRole('columnheader', { name: 'Payment' })).toBeNull();
+  });
+
+  it('shows the Paid column, with "Not yet" for an unpaid order, once the admin turns it on', async () => {
+    serve(() => pageOf([row({ status: 'pending-payment', confirmedAt: null })]));
+    mount();
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Paid' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    const table = screen.getByRole('table');
+    expect(within(table).getByRole('columnheader', { name: 'Paid' })).toBeTruthy();
+    expect(within(table).getByText('Not yet')).toBeTruthy();
   });
 
   it('keeps the choice in this browser, in the chosen order, and reads it back', async () => {
@@ -440,7 +453,7 @@ describe('order list columns', () => {
     await screen.findByRole('table');
     fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
     const panel = await screen.findByRole('dialog', { name: 'Columns' });
-    for (const name of ['Placed', 'Paid', 'Customer', 'Sellers']) {
+    for (const name of ['Placed', 'Customer', 'Sellers']) {
       fireEvent.click(within(panel).getByRole('checkbox', { name }));
     }
     fireEvent.click(within(panel).getByRole('button', { name: 'Move Total up' }));
