@@ -9396,28 +9396,49 @@
       }
     },
     "list": {
-      "label": "Variants",
-      "filters": "Filter variants",
-      "search": "Search",
-      "search-placeholder": "Product, code, GTIN or SKU",
-      "type": "Variant type",
-      "type-all": "All variant types",
-      "issues": "Issues",
-      "issue-count": "{issue} · {count}",
-      "issue": {
+      "title": "Variants",
+      "intro": "Every variant of the live products in this Market, with what needs fixing. Stock is not shown here yet.",
+      "tabs": "Variant views",
+      "tab": {
+        "all": "All variants",
         "no-seller-selling": "No seller selling",
         "missing-gtin": "Missing GTIN",
         "duplicate-gtin": "Duplicate GTIN",
         "no-image": "No image",
         "missing-language": "Missing language"
       },
-      "stock-note": "Stock is not shown here yet.",
-      "loading": "Loading variants",
-      "load-error": "The variants could not be loaded.",
-      "more-error": "More variants could not be loaded.",
-      "empty": "No variants yet",
-      "empty-filtered": "No variants match",
-      "clear": "Clear filters",
+      "search": {
+        "label": "Search variants",
+        "placeholder": "Product, code, GTIN or SKU"
+      },
+      "filter": {
+        "title": "Filter variants",
+        "name": {
+          "typeCode": "Variant type"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "newest": "Date added",
+          "code": "Variant code",
+          "gtin": "GTIN"
+        },
+        "newest": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "az": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "low": {
+          "first": "Lowest first",
+          "second": "Highest first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
       "col": {
         "variant": "Product · variant",
         "code": "Code",
@@ -9425,13 +9446,60 @@
         "sellers": "Sellers",
         "issues": "Issues"
       },
+      "chip-search": "Search: {text}",
       "no-label": "No label",
       "paused": "Paused",
-      "shown": "{count, plural, one {# variant shown} other {# variants shown}}",
-      "more": "Show more",
+      "loading": "Loading variants",
+      "match": "{count, plural, one {# variant matches} other {# variants match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} variants match. Add a search or a filter to see the rest.",
+      "no-access": "You do not have access to the variants.",
+      "error": {
+        "unavailable": "The variants could not be loaded.",
+        "refused": "The search or filter cannot be used. Change it and try again."
+      },
+      "empty": {
+        "title": "No variants yet",
+        "no-match": "No variants match",
+        "no-match-help": "Change the search or the filters, or clear them."
+      },
+      "select": {
+        "page": "Select all variants on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# variant selected} other {# variants selected}}",
+        "all": "{count, plural, one {The # matching variant is selected} other {All # matching variants are selected}}",
+        "all-open": "All matching variants are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "open-product": "Open product",
+        "copy-code": "Copy variant code",
+        "copied": "Copied",
+        "copy-failed": "Couldn't copy. Select the text and copy it."
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# variant selected} other {# variants selected}}",
+        "all-open": "All matching variants selected",
+        "export": "Export…"
+      },
       "export": {
-        "csv": "Export CSV",
-        "xlsx": "Export XLSX",
+        "title": "Export variants",
+        "body": "The file holds every variant the current view, search and filters match.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "confirm": "Export",
+        "cancel": "Cancel",
         "pending": "Preparing the file",
         "done": "File downloaded",
         "too-large": "More than {max} variants match. Narrow the filter and export again.",

@@ -8,7 +8,14 @@ export const PIN_LIMIT = 5;
 export const RECENT_LIMIT = 5;
 
 export type PrefsKind =
-  'pins' | 'recent' | 'single-key' | 'products-columns' | 'orders-columns' | 'shipments-columns';
+  | 'pins'
+  | 'recent'
+  | 'single-key'
+  | 'products-columns'
+  | 'orders-columns'
+  | 'shipments-columns'
+  // The column choice of any other super list, named after the list (`variants.list-columns`).
+  | `${string}-columns`;
 
 /** The storage key of one list of one account in one Market of one panel. */
 export function prefsKey(
