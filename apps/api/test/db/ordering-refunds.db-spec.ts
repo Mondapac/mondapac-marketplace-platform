@@ -98,6 +98,7 @@ import { PrismaAdminShipmentListReader } from '../../src/modules/ordering/infras
 import { orderingRefundsTestDatabaseUrl } from './test-database';
 
 const NO_SHIPMENT_FILTER: ShipmentListFilter = {
+  ids: null,
   stage: null,
   reference: null,
   trackingRef: null,

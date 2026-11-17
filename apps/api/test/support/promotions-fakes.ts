@@ -79,6 +79,7 @@ import { displayStatusOf } from '../../src/modules/promotions/domain/display-sta
 import {
   RedemptionTakenError,
   type RedemptionRepository,
+  type UsageCursor,
   type UsageDelta,
 } from '../../src/modules/promotions/application/ports/redemption.repository';
 import type {
@@ -623,6 +624,35 @@ export class FakeBatchCodeCrypto implements BatchCodeCrypto {
  */
 export class MemoryRedemptions implements RedemptionRepository {
   readonly rows: RedemptionRecord[] = [];
+  /** Promotion names by id, for {@link forCustomer} (a test sets them). */
+  readonly names = new Map<string, string>();
+  forCustomer(
+    _market: MarketContext,
+    customerAccountId: Id<'Account'>,
+    limit: number,
+    after: UsageCursor | null,
+  ) {
+    const newestFirst = (a: RedemptionRecord, b: RedemptionRecord) =>
+      Temporal.Instant.compare(b.reservedAt, a.reservedAt) ||
+      (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+    const rows = this.rows
+      .filter((row) => row.kind !== 'ORDER' && row.customerAccountId === customerAccountId)
+      .filter(
+        (row) =>
+          after === null ||
+          Temporal.Instant.compare(row.reservedAt, after.reservedAt) < 0 ||
+          (Temporal.Instant.compare(row.reservedAt, after.reservedAt) === 0 && row.id < after.id),
+      )
+      .sort(newestFirst)
+      .slice(0, limit);
+    return Promise.resolve(
+      rows.map((record) => ({
+        record,
+        promotionName:
+          record.promotionId === null ? null : (this.names.get(record.promotionId) ?? null),
+      })),
+    );
+  }
   readonly claims = new Map<string, string>();
   /** The rows of the discounts, without the orders' head rows. */
   get discounts(): RedemptionRecord[] {

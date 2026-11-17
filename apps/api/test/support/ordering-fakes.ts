@@ -1,3 +1,4 @@
+import type { SellerOrderCustomerView } from '../../src/modules/ordering/domain/order-views';
 import { err, ok } from '@mondapac/shared-kernel';
 import type {
   AdminNoteCipher,
@@ -118,7 +119,13 @@ import type {
   SellerDeliveryQuotes,
   ShippingFacade,
   ShippingFailure,
+  CarrierProgressView,
 } from '../../src/modules/shipping';
+import type {
+  CarrierProgressAnswer,
+  CarrierProgressReader,
+} from '../../src/modules/ordering/application/ports/carrier-progress.reader';
+import type { ShipmentCarrierProgress } from '../../src/modules/ordering/domain/admin-shipment-list';
 import type {
   CommitFailure,
   InventoryOrderingPort,
@@ -814,6 +821,21 @@ export class MemoryOrders implements OrderRepository {
  * the delivery area: every postcode is delivered to except those in `outside`.
  */
 export class FakeShipping implements ShippingFacade {
+  /** What `carrierProgressOf` answers, by seller order id (an id not asked is answered too). */
+  carrierProgress = new Map<Id<'SellerOrder'>, CarrierProgressView>();
+  carrierProgressRefusal: ShippingFailure['code'] | null = null;
+  /** Every id list `carrierProgressOf` was asked about. */
+  carrierProgressAsked: (readonly Id<'SellerOrder'>[])[] = [];
+  carrierProgressOf(
+    _c: CallContext,
+    sellerOrderIds: readonly Id<'SellerOrder'>[],
+  ): Promise<Result<ReadonlyMap<Id<'SellerOrder'>, CarrierProgressView>, ShippingFailure>> {
+    this.carrierProgressAsked.push(sellerOrderIds);
+    if (this.carrierProgressRefusal !== null) {
+      return Promise.resolve(err({ code: this.carrierProgressRefusal } as ShippingFailure));
+    }
+    return Promise.resolve(ok(this.carrierProgress));
+  }
   outside = new Set<string>();
   down = false;
   /** The sellers with an approved pickup address (delivery models, package 2). */
@@ -1343,7 +1365,11 @@ export class FakeLabels implements OrderLabels {
   readonly customers = new Map<Id<'Account'>, OrderCustomer>();
   readonly shortNames = new Map<Id<'Account'>, string>();
   readonly staff = new Map<Id<'Account'>, string>();
-  readonly fail = new Set<'units' | 'stores' | 'customers' | 'short-names' | 'staff'>();
+  /** `sellerId:accountId` → the code and first name that shop knows the customer by. */
+  readonly sellerCustomers = new Map<string, SellerOrderCustomerView>();
+  readonly fail = new Set<
+    'units' | 'stores' | 'customers' | 'short-names' | 'staff' | 'seller-customers'
+  >();
   readonly calls: { readonly lookup: string; readonly count: number }[] = [];
   /** What both searches answer for `capped`. */
   searchCapped = false;
@@ -1417,6 +1443,23 @@ export class FakeLabels implements OrderLabels {
     this.calls.push({ lookup: 'short-names', count: accountIds.length });
     if (this.fail.has('short-names')) return Promise.reject(new Error('short-names'));
     return Promise.resolve(this.shortNames);
+  }
+
+  sellerCustomersOf(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, SellerOrderCustomerView>> {
+    this.calls.push({ lookup: 'seller-customers', count: accountIds.length });
+    if (this.fail.has('seller-customers')) return Promise.reject(new Error('seller-customers'));
+    const { actor } = context;
+    const sellerId =
+      actor.kind === 'authenticated' && typeof actor.sellerId === 'string' ? actor.sellerId : '';
+    const found = new Map<Id<'Account'>, SellerOrderCustomerView>();
+    for (const accountId of accountIds) {
+      const customer = this.sellerCustomers.get(`${sellerId}:${accountId}`);
+      if (customer !== undefined) found.set(accountId, customer);
+    }
+    return Promise.resolve(found);
   }
 
   staffNamesOf(
@@ -1793,5 +1836,29 @@ export class FakeAttemptLimits implements PaymentAttemptLimits {
     const count = (this.counts.get(subject) ?? 0) + 1;
     this.counts.set(subject, count);
     return Promise.resolve({ count, retryAfterSeconds: 120 });
+  }
+}
+
+/**
+ * The carrier progress of a page of seller orders (the admin Shipments list): answers from
+ * `progress` (including any id not asked, which the flow must ignore), or as an admin without
+ * shipping's key (`denied`), or throws (`fail`). Records each call and the moment it was made.
+ */
+export class FakeCarrierProgress implements CarrierProgressReader {
+  readonly progress = new Map<Id<'SellerOrder'>, ShipmentCarrierProgress>();
+  denied = false;
+  fail = false;
+  readonly calls: (readonly Id<'SellerOrder'>[])[] = [];
+  /** Called before each answer, to note what else had happened by then. */
+  onCall: () => void = () => undefined;
+  progressOf(
+    _context: CallContext,
+    sellerOrderIds: readonly Id<'SellerOrder'>[],
+  ): Promise<CarrierProgressAnswer> {
+    this.calls.push(sellerOrderIds);
+    this.onCall();
+    if (this.fail) return Promise.reject(new Error('carrier-progress'));
+    if (this.denied) return Promise.resolve({ available: false, progress: new Map() });
+    return Promise.resolve({ available: true, progress: this.progress });
   }
 }
