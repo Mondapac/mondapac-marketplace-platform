@@ -6,39 +6,40 @@
 /// One order: a checkout of one customer's cart, paid in one Stripe Checkout session. The order id
 /// is also the `checkoutRef` of the inventory reservation and the client reference of the session.
 model OrderingOrder {
-  id                    String                   @id @db.Uuid
-  marketId              String                   @map("market_id") @db.VarChar(8)
-  tenantId              String                   @map("tenant_id")
+  id                    String                @id @db.Uuid
+  marketId              String                @map("market_id") @db.VarChar(8)
+  tenantId              String                @map("tenant_id")
   /// The customer's account id (a plain id, no foreign key).
-  accountId             String                   @map("account_id") @db.Uuid
+  accountId             String                @map("account_id") @db.Uuid
   /// pending-payment, confirmed or cancelled (CHECK).
   status                String
-  /// Set when cancelled: expired, payment-failed, stock-unavailable, superseded, provider-failed (CHECK).
-  cancelReason          String?                  @map("cancel_reason")
+  /// Set when cancelled: expired, payment-failed, stock-unavailable, superseded, provider-failed,
+  /// discount-changed (CHECK).
+  cancelReason          String?               @map("cancel_reason")
   /// none, authorised, captured or voided (CHECK). Moves only forward.
-  paymentState          String                   @map("payment_state")
-  currency              String                   @db.VarChar(3)
+  paymentState          String                @map("payment_state")
+  currency              String                @db.VarChar(3)
   /// Sum of the seller orders (prices as pricing gives them, plus any tax a price excludes).
-  totalAmount           BigInt                   @map("total_amount")
+  totalAmount           BigInt                @map("total_amount")
   /// The inventory reservation holding the stock while the order is pending.
-  reservationId         String                   @map("reservation_id") @db.Uuid
+  reservationId         String                @map("reservation_id") @db.Uuid
   /// Stored before Stripe is called; never replaced by a new key (hybrid handoff, hard rules).
-  stripeIdempotencyKey  String                   @map("stripe_idempotency_key")
-  stripeSessionId       String?                  @map("stripe_session_id")
-  stripePaymentIntentId String?                  @map("stripe_payment_intent_id")
+  stripeIdempotencyKey  String                @map("stripe_idempotency_key")
+  stripeSessionId       String?               @map("stripe_session_id")
+  stripePaymentIntentId String?               @map("stripe_payment_intent_id")
   /// When the Checkout session stops accepting payment.
-  paymentExpiresAt      DateTime                 @map("payment_expires_at") @db.Timestamptz(6)
-  createdAt             DateTime                 @map("created_at") @db.Timestamptz(6)
-  confirmedAt           DateTime?                @map("confirmed_at") @db.Timestamptz(6)
-  cancelledAt           DateTime?                @map("cancelled_at") @db.Timestamptz(6)
+  paymentExpiresAt      DateTime              @map("payment_expires_at") @db.Timestamptz(6)
+  createdAt             DateTime              @map("created_at") @db.Timestamptz(6)
+  confirmedAt           DateTime?             @map("confirmed_at") @db.Timestamptz(6)
+  cancelledAt           DateTime?             @map("cancelled_at") @db.Timestamptz(6)
   /// Optimistic version of the aggregate; 1 at insert, +1 per change.
   version               Int
   /// The tax strategy the order's tax was worked out under (a plain id, no foreign key); null for
   /// the Market's built-in strategy and on orders placed before tax was recorded (ADR-0039).
-  taxStrategyId         String?                  @map("tax_strategy_id") @db.Uuid
+  taxStrategyId         String?               @map("tax_strategy_id") @db.Uuid
   /// Personal; the canonical JSON of the delivery address chosen at checkout, sealed under the
   /// customer account's subject key (customers package 2). Written once; null on older orders.
-  shipToCiphertext      String?                  @map("ship_to_ciphertext")
+  shipToCiphertext      String?               @map("ship_to_ciphertext")
   sellerOrders          OrderingSellerOrder[]
   lines                 OrderingOrderLine[]
   adminNotes            OrderingAdminOrderNote[]
@@ -58,73 +59,77 @@ model OrderingOrder {
 /// The part of an order that belongs to one seller (the sub-order). `shippingAmount` is the
 /// seller's flat fee at placement (SHP-01). The seller records the shipment and then the delivery.
 model OrderingSellerOrder {
-  id                     String                    @id @db.Uuid
-  marketId               String                    @map("market_id") @db.VarChar(8)
-  tenantId               String                    @map("tenant_id")
-  orderId                String                    @map("order_id") @db.Uuid
-  sellerId               String                    @map("seller_id") @db.Uuid
-  subtotalAmount         BigInt                    @map("subtotal_amount")
-  shippingAmount         BigInt                    @map("shipping_amount")
+  id                     String              @id @db.Uuid
+  marketId               String              @map("market_id") @db.VarChar(8)
+  tenantId               String              @map("tenant_id")
+  orderId                String              @map("order_id") @db.Uuid
+  sellerId               String              @map("seller_id") @db.Uuid
+  subtotalAmount         BigInt              @map("subtotal_amount")
+  shippingAmount         BigInt              @map("shipping_amount")
+  /// The discounts of the seller order (promotions package T2), frozen at placement: the sum of
+  /// its lines' discounts, and the discount on the delivery price (CHECK: within the amounts).
+  discountAmount         BigInt              @default(0) @map("discount_amount")
+  shippingDiscountAmount BigInt              @default(0) @map("shipping_discount_amount")
   /// The tax on the flat shipping fee, frozen at placement beside the rate and the price basis
   /// (ADR-0039 decision 4). All three are null on orders placed before it was recorded (CHECK).
-  shippingTaxRateBps     Int?                      @map("shipping_tax_rate_bps")
-  shippingTaxAmount      BigInt?                   @map("shipping_tax_amount")
-  shippingTaxInclusive   Boolean?                  @map("shipping_tax_inclusive")
-  totalAmount            BigInt                    @map("total_amount")
+  shippingTaxRateBps     Int?                @map("shipping_tax_rate_bps")
+  shippingTaxAmount      BigInt?             @map("shipping_tax_amount")
+  shippingTaxInclusive   Boolean?            @map("shipping_tax_inclusive")
+  totalAmount            BigInt              @map("total_amount")
   /// to-ship, shipped or delivered (CHECK). Moves only forward.
   fulfilment             String
   /// The carrier the seller named when shipping (1 to 60 characters, CHECK).
   carrier                String?
   /// The tracking reference, if the seller had one (1 to 80 characters, CHECK).
-  trackingRef            String?                   @map("tracking_ref")
-  shippedAt              DateTime?                 @map("shipped_at") @db.Timestamptz(6)
-  deliveredAt            DateTime?                 @map("delivered_at") @db.Timestamptz(6)
+  trackingRef            String?             @map("tracking_ref")
+  shippedAt              DateTime?           @map("shipped_at") @db.Timestamptz(6)
+  deliveredAt            DateTime?           @map("delivered_at") @db.Timestamptz(6)
   /// When the order was paid (its confirmation time), copied here in the unit that confirms the
   /// order so that the admin Shipments and Invoices lists read seller_orders alone; null while
   /// the order is unpaid and on cancelled orders.
-  paidAt                 DateTime?                 @map("paid_at") @db.Timestamptz(6)
+  paidAt                 DateTime?           @map("paid_at") @db.Timestamptz(6)
   /// Set by the worker once inventory has recorded the lines as shipped.
-  inventoryRecordedAt    DateTime?                 @map("inventory_recorded_at") @db.Timestamptz(6)
+  inventoryRecordedAt    DateTime?           @map("inventory_recorded_at") @db.Timestamptz(6)
   /// pending, recorded or not-applicable (CHECK): whether the worker has written the seller
   /// order into the seller ledger (commission-payouts). Orders placed before the commission rate
   /// was frozen on their lines are not-applicable.
-  ledgerState            String                    @map("ledger_state")
+  ledgerState            String              @map("ledger_state")
   /// How many times the ledger refused this seller order; the worker takes the fewest first.
-  ledgerAttempts         Int                       @default(0) @map("ledger_attempts")
+  ledgerAttempts         Int                 @default(0) @map("ledger_attempts")
   /// The gross of the refunds not failed (pending or succeeded); never above the total (CHECK).
   /// Raised under the value read, so two refunds of one seller order cannot both pass (tax step 3).
-  refundedAmount         BigInt                    @default(0) @map("refunded_amount")
+  refundedAmount         BigInt              @default(0) @map("refunded_amount")
   /// Refunded in full: a positive total whose refunded gross reached it (CHECK holds it to the two
   /// amounts). Kept by the refund unit; the admin Shipments list's Refunded stage reads it.
-  refundedInFull         Boolean                   @default(false) @map("refunded_in_full")
+  refundedInFull         Boolean             @default(false) @map("refunded_in_full")
   /// The buyer's delivery method, chosen at checkout: pickup, instant, same_day or scheduled
   /// (CHECK). Orders placed before it was recorded are instant (they were booked at payment).
-  deliveryMethod         String                    @map("delivery_method")
+  deliveryMethod         String              @map("delivery_method")
   /// The buyer's window for a scheduled delivery, UTC instants; both set exactly when the method
   /// is scheduled, and the end is after the start (CHECK).
-  deliveryWindowStart    DateTime?                 @map("delivery_window_start") @db.Timestamptz(6)
-  deliveryWindowEnd      DateTime?                 @map("delivery_window_end") @db.Timestamptz(6)
+  deliveryWindowStart    DateTime?           @map("delivery_window_start") @db.Timestamptz(6)
+  deliveryWindowEnd      DateTime?           @map("delivery_window_end") @db.Timestamptz(6)
   /// When the seller told the platform the order is ready; set once, while the order is to-ship.
-  readyAt                DateTime?                 @map("ready_at") @db.Timestamptz(6)
+  readyAt                DateTime?           @map("ready_at") @db.Timestamptz(6)
   /// The minutes the Market gave the seller to get the order ready, frozen at placement (5 to
   /// 2880, CHECK). The promised ready-by time derives from it. Null on orders placed before it.
-  readyPrepMinutes       Int?                      @map("ready_prep_minutes")
+  readyPrepMinutes       Int?                @map("ready_prep_minutes")
   /// Set by the platform when the order needs an admin: no-carrier (nothing can serve it),
   /// carrier-unknown (a booking whose answer was lost, so it may exist) or cancel-unknown (a
   /// cancel whose answer was lost) (CHECK). The seller
   /// never delivers instead; an admin follows it up.
-  deliveryAttention      String?                   @map("delivery_attention")
+  deliveryAttention      String?             @map("delivery_attention")
   /// The delivery quote charged for this seller order (delivery models, package 5), frozen at
   /// placement: shipping's quote id (a plain id), the fleet quoted, the fleet's price, the
   /// platform's margin and when the quote stopped holding. `shipping_amount` is what the buyer paid
   /// (price + margin). All null for a pickup and for orders placed before quotes were kept (CHECK).
-  deliveryQuoteId        String?                   @map("delivery_quote_id") @db.Uuid
-  deliveryQuoteFleet     String?                   @map("delivery_quote_fleet")
-  deliveryQuoteAmount    BigInt?                   @map("delivery_quote_amount")
-  deliveryMarginAmount   BigInt?                   @map("delivery_margin_amount")
-  deliveryQuotedAt       DateTime?                 @map("delivery_quoted_at") @db.Timestamptz(6)
-  deliveryQuoteExpiresAt DateTime?                 @map("delivery_quote_expires_at") @db.Timestamptz(6)
-  order                  OrderingOrder             @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  deliveryQuoteId        String?             @map("delivery_quote_id") @db.Uuid
+  deliveryQuoteFleet     String?             @map("delivery_quote_fleet")
+  deliveryQuoteAmount    BigInt?             @map("delivery_quote_amount")
+  deliveryMarginAmount   BigInt?             @map("delivery_margin_amount")
+  deliveryQuotedAt       DateTime?           @map("delivery_quoted_at") @db.Timestamptz(6)
+  deliveryQuoteExpiresAt DateTime?           @map("delivery_quote_expires_at") @db.Timestamptz(6)
+  order                  OrderingOrder       @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   lines                  OrderingOrderLine[]
   refunds                OrderingRefund[]
   pickupCode             OrderingPickupCode?
@@ -144,39 +149,44 @@ model OrderingSellerOrder {
 
 /// One line of an order: a sell unit, a quantity and the unit price the customer was shown.
 model OrderingOrderLine {
-  id                   String               @id @db.Uuid
-  marketId             String               @map("market_id") @db.VarChar(8)
-  tenantId             String               @map("tenant_id")
-  orderId              String               @map("order_id") @db.Uuid
-  sellerOrderId        String               @map("seller_order_id") @db.Uuid
-  offerId              String               @map("offer_id") @db.Uuid
-  variantId            String               @map("variant_id") @db.Uuid
-  quantity             Int
-  unitAmount           BigInt               @map("unit_amount")
-  lineAmount           BigInt               @map("line_amount")
+  id                String               @id @db.Uuid
+  marketId          String               @map("market_id") @db.VarChar(8)
+  tenantId          String               @map("tenant_id")
+  orderId           String               @map("order_id") @db.Uuid
+  sellerOrderId     String               @map("seller_order_id") @db.Uuid
+  offerId           String               @map("offer_id") @db.Uuid
+  variantId         String               @map("variant_id") @db.Uuid
+  quantity          Int
+  unitAmount        BigInt               @map("unit_amount")
+  lineAmount        BigInt               @map("line_amount")
+  /// The line's discount from promotions (package T2) and its funding, frozen at placement: the
+  /// seller's share plus the platform's share, at most `lineAmount` (CHECK). 0 without discount.
+  discountAmount        BigInt               @default(0) @map("discount_amount")
+  discountSellerShare   BigInt               @default(0) @map("discount_seller_share")
+  discountPlatformShare BigInt               @default(0) @map("discount_platform_share")
   /// True when the unit price already includes GST (AU).
-  taxInclusive         Boolean              @map("tax_inclusive")
+  taxInclusive      Boolean              @map("tax_inclusive")
   /// The reservation line this order line commits.
-  reservationLineId    String               @map("reservation_line_id") @db.Uuid
+  reservationLineId String               @map("reservation_line_id") @db.Uuid
   /// The commission rate in basis points, frozen when the order was placed (COM-04); null only
   /// on lines placed before the rate was frozen.
-  commissionRateBps    Int?                 @map("commission_rate_bps")
+  commissionRateBps Int?                 @map("commission_rate_bps")
   /// Why the line carries its rate (customers phase 4b): `standard`, or `exclusive` (the Market's
   /// lower rate for the seller's exclusive customer). CHECK: `exclusive` needs `exclusiveSeller`.
-  commissionRateReason String               @default("standard") @map("commission_rate_reason")
+  commissionRateReason String           @default("standard") @map("commission_rate_reason")
   /// True when the buyer was the exclusive customer of this line's seller at placement (joined
   /// through its invite link), whether or not a lower rate applied.
-  exclusiveSeller      Boolean              @default(false) @map("exclusive_seller")
+  exclusiveSeller   Boolean              @default(false) @map("exclusive_seller")
   /// The tax rate in basis points and the tax of the line in minor units, frozen when the order
   /// was placed (ADR-0039); both null only on lines placed before tax was recorded (CHECK).
-  taxRateBps           Int?                 @map("tax_rate_bps")
-  taxAmount            BigInt?              @map("tax_amount")
+  taxRateBps        Int?                 @map("tax_rate_bps")
+  taxAmount         BigInt?              @map("tax_amount")
   /// The tax category code of the product at placement (catalog's published revision), frozen
   /// beside the rate; null only on lines placed before it was recorded (CHECK with the rate).
-  taxCategoryCode      String?              @map("tax_category_code") @db.VarChar(64)
-  order                OrderingOrder        @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  sellerOrder          OrderingSellerOrder  @relation(fields: [marketId, sellerOrderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  refundLines          OrderingRefundLine[]
+  taxCategoryCode   String?              @map("tax_category_code") @db.VarChar(64)
+  order             OrderingOrder        @relation(fields: [marketId, orderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  sellerOrder       OrderingSellerOrder  @relation(fields: [marketId, sellerOrderId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  refundLines       OrderingRefundLine[]
 
   /// The foreign-key target of the refund lines: a refund line names a line of its own seller
   /// order and copies the line's quantity, which caps the units it refunds (CHECK).

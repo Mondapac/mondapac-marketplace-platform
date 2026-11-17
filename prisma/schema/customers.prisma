@@ -93,8 +93,9 @@ model CustomersAccountDeletionRequest {
   /// request and while an admin's is open. CHECK: set if and only if an admin request has no reason.
   redactedAt         DateTime? @map("redacted_at") @db.Timestamptz(6)
 
-  // Hand-written partial indexes (the migration): one open request per account, the due query
-  // (pending, by date) and the stale-claim query (executing, by claim time).
+  // Hand-written partial indexes (the migrations): one open request per account, the due query
+  // (pending, by date), the stale-claim query (executing, by claim time) and the customer page's
+  // tombstone lookup (completed, by account; phase 2b).
   @@map("account_deletion_requests")
   @@schema("customers")
 }
@@ -151,19 +152,19 @@ model CustomersInbox {
 /// never logged, never in an event, an audit row or an error; the row is deleted when the account
 /// is erased. `emailLower` is the prefix-search key.
 model CustomersCustomerDirectory {
-  marketId         String                           @map("market_id") @db.VarChar(8)
-  tenantId         String                           @map("tenant_id")
+  marketId         String                         @map("market_id") @db.VarChar(8)
+  tenantId         String                         @map("tenant_id")
   /// The customer account (identity), a plain id with no foreign key.
-  accountId        String                           @map("account_id") @db.Uuid
+  accountId        String                         @map("account_id") @db.Uuid
   email            String
   /// The sign-in address, trimmed and lower-cased (the prefix-search key).
-  emailLower       String                           @map("email_lower")
-  displayName      String?                          @map("display_name")
+  emailLower       String                         @map("email_lower")
+  displayName      String?                        @map("display_name")
   /// active or disabled (CHECK).
   status           String
-  emailVerified    Boolean                          @map("email_verified")
-  signedUpAt       DateTime                         @map("signed_up_at") @db.Timestamptz(6)
-  updatedAt        DateTime                         @map("updated_at") @db.Timestamptz(6)
+  emailVerified    Boolean                        @map("email_verified")
+  signedUpAt       DateTime                       @map("signed_up_at") @db.Timestamptz(6)
+  updatedAt        DateTime                       @map("updated_at") @db.Timestamptz(6)
   /// What the customer's orders add up to; every customer has a row (all zero until the first order); the sync and the reconcile write it with the directory row.
   stats            CustomersCustomerStats?
   /// The manual groups the customer is in (phase 2); the rows go with this one.
@@ -294,12 +295,12 @@ model CustomersCustomerGroupMember {
 /// so erasing the customer makes it unreadable; the erasure also deletes the rows. Only the author
 /// and the time are in clear. The CHECKs and the grants are hand-written in the migration.
 model CustomersCustomerNote {
-  id              String                     @id @db.Uuid
-  marketId        String                     @map("market_id") @db.VarChar(8)
-  tenantId        String                     @map("tenant_id")
-  accountId       String                     @map("account_id") @db.Uuid
+  id              String   @id @db.Uuid
+  marketId        String   @map("market_id") @db.VarChar(8)
+  tenantId        String   @map("tenant_id")
+  accountId       String   @map("account_id") @db.Uuid
   /// The admin who wrote it (identity account id, no foreign key).
-  authorAccountId String                     @map("author_account_id") @db.Uuid
+  authorAccountId String   @map("author_account_id") @db.Uuid
   bodyCiphertext  String                     @map("body_ciphertext")
   createdAt       DateTime                   @map("created_at") @db.Timestamptz(6)
   /// The customer must have a directory row; the note goes with it when the account is erased.
@@ -316,22 +317,22 @@ model CustomersCustomerNote {
 /// only: no name, address, amount or free text. `source_event_id` makes a repeated delivery a
 /// no-op. Deleted when the account is erased. The CHECKs and the grants are hand-written.
 model CustomersCustomerTimelineEntry {
-  id             String                     @id @db.Uuid
-  marketId       String                     @map("market_id") @db.VarChar(8)
-  tenantId       String                     @map("tenant_id")
-  accountId      String                     @map("account_id") @db.Uuid
-  occurredAt     DateTime                   @map("occurred_at") @db.Timestamptz(6)
+  id             String   @id @db.Uuid
+  marketId       String   @map("market_id") @db.VarChar(8)
+  tenantId       String   @map("tenant_id")
+  accountId      String   @map("account_id") @db.Uuid
+  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(6)
   /// What happened: a code of the pattern the CHECK holds; the application owns the list.
   kind           String
   /// The kind of thing `ref_id` names (order, refund, group, note), or NULL.
-  refType        String?                    @map("ref_type")
-  refId          String?                    @map("ref_id") @db.Uuid
+  refType        String?  @map("ref_type")
+  refId          String?  @map("ref_id") @db.Uuid
   /// The admin who did it (an admin action), or NULL for the customer's own or the system's.
-  actorAccountId String?                    @map("actor_account_id") @db.Uuid
+  actorAccountId String?  @map("actor_account_id") @db.Uuid
   /// A short code of detail (the tab opened, the field changed), or NULL.
   detail         String?
   /// The event this entry was copied from, or NULL for an admin action written directly.
-  sourceEventId  String?                    @map("source_event_id") @db.Uuid
+  sourceEventId  String?  @map("source_event_id") @db.Uuid
   recordedAt     DateTime                   @map("recorded_at") @db.Timestamptz(6)
   /// The customer must have a directory row; the entry goes with it when the account is erased.
   customer       CustomersCustomerDirectory @relation(fields: [marketId, accountId], references: [marketId, accountId], onDelete: Cascade, onUpdate: Restrict)

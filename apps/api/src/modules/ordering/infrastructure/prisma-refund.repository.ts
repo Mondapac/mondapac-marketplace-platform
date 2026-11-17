@@ -1,7 +1,10 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
+  AccountRefundQuery,
+  AccountRefundSort,
   CreditNoteRecord,
   PendingRefund,
   RefundForLedger,
@@ -11,6 +14,7 @@ import type {
 } from '../application/ports/refund.repository';
 import type { RefundLimit } from '../domain/refund-limits';
 import type { Fulfilment, LedgerState, OrderStatus, PaymentState } from '../domain/order';
+import { ledgerLineAmount } from '../domain/discounts';
 import type {
   LossBearer,
   LossReasonCode,
@@ -136,6 +140,27 @@ function toRefund(row: RefundRow): Refund {
  * sum of `seller_orders`, through the Market-scoped client with `marketId` at the top level of
  * every `where`.
  */
+/** The refunds of one customer's orders, as the customer page's Refunds list filters them. */
+function accountRefundsWhere(
+  market: MarketContext,
+  query: AccountRefundQuery,
+): Prisma.OrderingRefundWhereInput {
+  return {
+    marketId: market.marketId,
+    sellerOrder: { is: { order: { is: { accountId: query.accountId } } } },
+    ...(query.states === null ? {} : { state: { in: [...query.states] } }),
+    ...(query.reasons === null ? {} : { reason: { in: [...query.reasons] } }),
+    ...(query.from === null && query.to === null
+      ? {}
+      : {
+          requestedAt: {
+            ...(query.from === null ? {} : { gte: new Date(query.from.epochMilliseconds) }),
+            ...(query.to === null ? {} : { lt: new Date(query.to.epochMilliseconds) }),
+          },
+        }),
+  };
+}
+
 export class PrismaRefundRepository implements RefundRepository {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -369,7 +394,8 @@ export class PrismaRefundRepository implements RefundRepository {
       paymentIntentId: row.order.stripePaymentIntentId,
       fulfilment: row.fulfilment as Fulfilment,
       readyAt: row.readyAt === null ? null : toInstant(row.readyAt),
-      shipping: row.shippingAmount,
+      // The delivery price the buyer paid: net of its discount (package T2).
+      shipping: row.shippingAmount - row.shippingDiscountAmount,
       shippingTax: row.shippingTaxAmount,
       shippingTaxRateBps: row.shippingTaxRateBps,
       shippingTaxInclusive: row.shippingTaxInclusive,
@@ -383,6 +409,8 @@ export class PrismaRefundRepository implements RefundRepository {
           id: l.id as Id<'OrderLine'>,
           quantity: l.quantity,
           unitAmount: l.unitAmount,
+          lineAmount: l.lineAmount,
+          discountAmount: l.discountAmount,
           taxInclusive: l.taxInclusive,
           taxRateBps: l.taxRateBps,
           taxAmount: l.taxAmount,
@@ -429,6 +457,35 @@ export class PrismaRefundRepository implements RefundRepository {
       refund: toRefund(row),
       creditNoteId: (row.creditNote?.id ?? null) as Id<'CreditNote'> | null,
     }));
+  }
+
+  async pageForAccount(
+    market: MarketContext,
+    query: AccountRefundQuery,
+    order: { readonly sort: AccountRefundSort; readonly direction: 'asc' | 'desc' },
+    window: { readonly offset: number; readonly limit: number },
+  ) {
+    const { direction } = order;
+    const rows = await this.prisma.tx(market).orderingRefund.findMany({
+      where: accountRefundsWhere(market, query),
+      include: { lines: true, creditNote: { select: { id: true } } },
+      orderBy:
+        order.sort === 'amount'
+          ? [{ grossAmount: direction }, { requestedAt: direction }, { id: direction }]
+          : [{ requestedAt: direction }, { id: direction }],
+      skip: window.offset,
+      take: window.limit,
+    });
+    return rows.map((row) => ({
+      refund: toRefund(row),
+      creditNoteId: (row.creditNote?.id ?? null) as Id<'CreditNote'> | null,
+    }));
+  }
+
+  countForAccount(market: MarketContext, query: AccountRefundQuery): Promise<number> {
+    return this.prisma
+      .tx(market)
+      .orderingRefund.count({ where: accountRefundsWhere(market, query) });
   }
 
   async reserve(
@@ -632,13 +689,18 @@ export class PrismaRefundRepository implements RefundRepository {
       found.push({
         refund: toRefund(row),
         freeLines: new Set(
-          seller.lines.filter((l) => l.lineAmount === 0n).map((l) => l.id as Id<'OrderLine'>),
+          seller.lines
+            .filter((l) => ledgerLineAmount(l) === 0n)
+            .map((l) => l.id as Id<'OrderLine'>),
         ),
         sellerOrderLedgerState: seller.ledgerState as LedgerState,
         shippingCharge:
           seller.shippingTaxAmount === null || seller.shippingTaxInclusive === null
             ? null
-            : seller.shippingAmount + (seller.shippingTaxInclusive ? 0n : seller.shippingTaxAmount),
+            : // What the buyer paid for delivery: net of its discount (package T2), as refunds cap it.
+              seller.shippingAmount -
+              seller.shippingDiscountAmount +
+              (seller.shippingTaxInclusive ? 0n : seller.shippingTaxAmount),
       });
     }
     return found;

@@ -116,7 +116,8 @@ model CatalogProduct {
   images               CatalogProductImage[]
   offers               CatalogOffer[]
   attributeSuggestions CatalogAttributeValueSuggestion[] @relation("ProductValueSuggestions")
-  variantRequests      CatalogVariantRequest[]           @relation("ProductVariantRequests")
+  categoryMoveItems    CatalogCategoryProductMoveItem[]
+  variantRequests CatalogVariantRequest[] @relation("ProductVariantRequests")
   topicSuggestions     CatalogTopicSuggestion[]          @relation("ProductTopicSuggestions")
 
   /// The target of composite foreign keys (C3).
@@ -155,7 +156,7 @@ model CatalogProductVariant {
   product          CatalogProduct                  @relation(fields: [marketId, productId, variantModel], references: [marketId, id, variantModel], onDelete: Restrict, onUpdate: Cascade)
   revisionVariants CatalogProductRevisionVariant[]
   offerSellUnits   CatalogOfferSellUnit[]
-  variantRequests  CatalogVariantRequest[]         @relation("VariantRequestsResolved")
+  variantRequests  CatalogVariantRequest[] @relation("VariantRequestsResolved")
 
   @@unique([marketId, id])
   /// The count path of the variant limit and the target of a same-product foreign key (3.10).
@@ -240,6 +241,8 @@ model CatalogPlatformCategory {
   cultureMarks                  CatalogCultureCategory[]             @relation("CultureCategory")
   slugHistory                   CatalogPlatformCategorySlugHistory[]
   catalogCategoryAttributeLinks CatalogCategoryAttributeLink[]
+  moveJobsFrom                  CatalogCategoryProductMoveJob[]      @relation("MoveJobSource")
+  moveJobsTo                    CatalogCategoryProductMoveJob[]      @relation("MoveJobTarget")
   sellerCategories              CatalogSellerCategory[]              @relation("SellerCategoryParent")
   sellerCategoriesMergedHere    CatalogSellerCategory[]              @relation("SellerCategoryMergedInto")
   categoryProposals             CatalogCategoryProposal[]
@@ -678,7 +681,7 @@ model CatalogProductRevision {
   tenantId               String                           @map("tenant_id")
   productId              String                           @map("product_id") @db.Uuid
   revisionNo             Int                              @map("revision_no")
-  /// submission | revert | tax-override.
+  /// submission | revert | tax-override | category-override.
   revisionKind           String                           @map("revision_kind")
   /// The product type the revision was frozen with (Add sizes changes the product's later).
   typeCode               String                           @map("type_code")
@@ -720,6 +723,7 @@ model CatalogProductRevision {
   decision               CatalogProductRevisionDecision?
   tagCopies              CatalogOfferTag[]
   reevaluationRequests   CatalogTagReevaluationRequest[]
+  categoryMoveItems      CatalogCategoryProductMoveItem[]
 
   @@unique([marketId, productId, revisionNo])
   @@unique([marketId, id])
@@ -872,51 +876,51 @@ model CatalogRateCounter {
 /// the two partial indexes and the grants are hand-written in the migration. The shelf column
 /// (`shelf_category_id`) and its same-seller foreign key arrived with seller categories (C9a).
 model CatalogOffer {
-  id                          String                  @id @db.Uuid
-  marketId                    String                  @map("market_id") @db.VarChar(8)
-  tenantId                    String                  @map("tenant_id")
+  id                          String                 @id @db.Uuid
+  marketId                    String                 @map("market_id") @db.VarChar(8)
+  tenantId                    String                 @map("tenant_id")
   /// Never updated (no column grant; PRC 2.3).
-  sellerId                    String                  @map("seller_id") @db.Uuid
+  sellerId                    String                 @map("seller_id") @db.Uuid
   /// Changed only by a CAT-45 match (the Offer moves, D 4.5).
-  productId                   String                  @map("product_id") @db.Uuid
+  productId                   String                 @map("product_id") @db.Uuid
   /// 1 to 64 printable ASCII characters, no space (CHECK); collation "C" is set in the migration.
   /// Unique per seller among non-deleted Offers.
-  sellerSku                   String                  @map("seller_sku")
+  sellerSku                   String                 @map("seller_sku")
   /// A Market `conditions` code (CA4).
-  conditionCode               String                  @map("condition_code")
+  conditionCode               String                 @map("condition_code")
   /// Locale to text, an object (CHECK, CA6); nothing queries inside it.
-  description                 Json                    @db.JsonB
+  description                 Json                   @db.JsonB
   /// SEALED_ORIGINAL | REPACKED | PREPARED | FRESH; null only while `draft` or `deleted`.
   handling                    String?
   /// Both or neither (CHECK); written only by own-offer.record-attestation.
-  attestationRecordedAt       DateTime?               @map("attestation_recorded_at") @db.Timestamptz(6)
-  attestationAccountId        String?                 @map("attestation_account_id") @db.Uuid
+  attestationRecordedAt       DateTime?              @map("attestation_recorded_at") @db.Timestamptz(6)
+  attestationAccountId        String?                @map("attestation_account_id") @db.Uuid
   /// draft | pending-first-publish | changes-needed | published | deleted.
   status                      String
   /// The stored off-sale causes (M-5): type-not-allowed, product-retired, product-not-listed,
   /// product-paused, tag-suspended, description-claim-text.
-  offSaleTypeNotAllowed       Boolean                 @map("off_sale_type_not_allowed")
-  offSaleProductRetired       Boolean                 @map("off_sale_product_retired")
-  offSaleProductNotListed     Boolean                 @map("off_sale_product_not_listed")
+  offSaleTypeNotAllowed       Boolean                @map("off_sale_type_not_allowed")
+  offSaleProductRetired       Boolean                @map("off_sale_product_retired")
+  offSaleProductNotListed     Boolean                @map("off_sale_product_not_listed")
   /// The admin paused the product (catalog design 4.1a); added on pause, cleared on resume.
-  offSaleProductPaused        Boolean                 @map("off_sale_product_paused")
-  offSaleTagSuspended         Boolean                 @map("off_sale_tag_suspended")
-  offSaleDescriptionClaimText Boolean                 @map("off_sale_description_claim_text")
+  offSaleProductPaused        Boolean                @map("off_sale_product_paused")
+  offSaleTagSuspended         Boolean                @map("off_sale_tag_suspended")
+  offSaleDescriptionClaimText Boolean                @map("off_sale_description_claim_text")
   /// Exactly `status = 'published'` and no cause (CHECK offers_listed_check).
   listed                      Boolean
   /// The last submit for review; required while `pending-first-publish` (CHECK); queue sort key.
-  submittedAt                 DateTime?               @map("submitted_at") @db.Timestamptz(6)
-  firstPublishedAt            DateTime?               @map("first_published_at") @db.Timestamptz(6)
+  submittedAt                 DateTime?              @map("submitted_at") @db.Timestamptz(6)
+  firstPublishedAt            DateTime?              @map("first_published_at") @db.Timestamptz(6)
   /// Set exactly when `status = 'deleted'` (CHECK).
-  deletedAt                   DateTime?               @map("deleted_at") @db.Timestamptz(6)
+  deletedAt                   DateTime?              @map("deleted_at") @db.Timestamptz(6)
   /// The seller's own shelf (categories C9; data design 3.13): a seller category of the same
   /// seller (composite foreign key), never a platform category (CAT-52).
-  shelfCategoryId             String?                 @map("shelf_category_id") @db.Uuid
+  shelfCategoryId             String?                @map("shelf_category_id") @db.Uuid
   /// Optimistic version of the aggregate (P 10); 1 at insert.
   version                     Int
-  createdAt                   DateTime                @map("created_at") @db.Timestamptz(6)
-  product                     CatalogProduct          @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
-  shelf                       CatalogSellerCategory?  @relation(fields: [marketId, shelfCategoryId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  createdAt                   DateTime               @map("created_at") @db.Timestamptz(6)
+  product                     CatalogProduct         @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  shelf                       CatalogSellerCategory? @relation(fields: [marketId, shelfCategoryId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
   history                     CatalogOfferHistory[]
   tags                        CatalogOfferTag[]
   sellUnits                   CatalogOfferSellUnit[]
@@ -1820,6 +1824,84 @@ model CatalogTopicTerm {
   @@id([marketId, topicId, locale, position])
   @@unique([marketId, locale, termKey])
   @@map("topic_terms")
+  @@schema("catalog")
+}
+
+/// Move products (categories C5; decision 8): an admin job that replaces the platform category X
+/// (source) by Y (target) on the published revision of every product whose published revision names
+/// X, as a `category-override` revision published at once. Runs in batches under a lease; at most
+/// one queued or running job per source category (partial unique, hand-written). The CHECKs, the
+/// partial indexes and the column grants are hand-written in the migration.
+model CatalogCategoryProductMoveJob {
+  id                 String                           @id @db.Uuid
+  marketId           String                           @map("market_id") @db.VarChar(8)
+  tenantId           String                           @map("tenant_id")
+  sourceCategoryId   String                           @map("source_category_id") @db.Uuid
+  /// Level 3 or 4, live, same Market (checked by the use case); never the source (CHECK).
+  targetCategoryId   String                           @map("target_category_id") @db.Uuid
+  /// The admin's reason, 10 to 500 characters (CHECK).
+  reason             String
+  /// queued | running | done | failed.
+  state              String
+  /// The identity account of the admin who started the job; no foreign key (other schema).
+  createdByAccountId String                           @map("created_by_account_id") @db.Uuid
+  createdAt          DateTime                         @map("created_at") @db.Timestamptz(6)
+  startedAt          DateTime?                        @map("started_at") @db.Timestamptz(6)
+  finishedAt         DateTime?                        @map("finished_at") @db.Timestamptz(6)
+  /// The last product id the runner handled (keyset cursor); null before the first batch.
+  cursorProductId    String?                          @map("cursor_product_id") @db.Uuid
+  totalCount         Int                              @map("total_count")
+  movedCount         Int                              @map("moved_count")
+  skippedCount       Int                              @map("skipped_count")
+  failedCount        Int                              @map("failed_count")
+  /// The runner turn that holds the job; set together with `leaseExpiresAt`, exactly while running.
+  leaseHolder        String?                          @map("lease_holder") @db.Uuid
+  leaseExpiresAt     DateTime?                        @map("lease_expires_at") @db.Timestamptz(6)
+  /// done | failed: how the job's one product pass ended; null until then. Set once (CHECK); a
+  /// later turn only drains the seller notices.
+  scanOutcome        String?                          @map("scan_outcome")
+  version            Int
+  sourceCategory     CatalogPlatformCategory          @relation("MoveJobSource", fields: [marketId, sourceCategoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  targetCategory     CatalogPlatformCategory          @relation("MoveJobTarget", fields: [marketId, targetCategoryId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  items              CatalogCategoryProductMoveItem[]
+
+  @@unique([marketId, id])
+  /// The jobs of one category, newest first (the impact read and the dialog's progress).
+  @@index([marketId, sourceCategoryId, createdAt(sort: Desc)], map: "category_product_move_jobs_market_id_source_created_at_idx")
+  @@map("category_product_move_jobs")
+  @@schema("catalog")
+}
+
+/// One product of a Move products job (insert-only but for its outcome): the guard that a product is
+/// moved, and its seller emailed, once per job. `revision_id` names the `category-override` revision
+/// the move published (the item is written `pending` first and turned `moved` once that revision row
+/// exists, in the same unit); `seller_notified_at` is set once the seller's email is queued, or
+/// `notice_failed_at` once it is given up after its last attempt. The partial index of the open
+/// notices is hand-written in the migration.
+model CatalogCategoryProductMoveItem {
+  marketId            String                        @map("market_id") @db.VarChar(8)
+  tenantId            String                        @map("tenant_id")
+  jobId               String                        @map("job_id") @db.Uuid
+  productId           String                        @map("product_id") @db.Uuid
+  /// pending | moved | skipped | failed.
+  state               String
+  /// Set exactly when moved (CHECK).
+  revisionId          String?                       @map("revision_id") @db.Uuid
+  /// Only on a moved product (CHECK).
+  sellerNotifiedAt    DateTime?                     @map("seller_notified_at") @db.Timestamptz(6)
+  /// Failed sends of the seller email so far.
+  noticeAttempts      Int                           @default(0) @map("notice_attempts")
+  /// When a failed send is tried again; null when no retry is waiting.
+  noticeNextAttemptAt DateTime?                     @map("notice_next_attempt_at") @db.Timestamptz(6)
+  /// Set when the email is given up after the last attempt; never with `sellerNotifiedAt` (CHECK).
+  noticeFailedAt      DateTime?                     @map("notice_failed_at") @db.Timestamptz(6)
+  createdAt           DateTime                      @map("created_at") @db.Timestamptz(6)
+  job                 CatalogCategoryProductMoveJob @relation(fields: [marketId, jobId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  product             CatalogProduct                @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  revision            CatalogProductRevision?       @relation(fields: [marketId, productId, revisionId], references: [marketId, productId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, jobId, productId])
+  @@map("category_product_move_items")
   @@schema("catalog")
 }
 

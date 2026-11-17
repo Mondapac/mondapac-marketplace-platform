@@ -1,3 +1,5 @@
+import { FakeOrderProducts, FakePromotions } from '../support/ordering-promotions-fakes';
+import { testAreas } from '../support/ordering-policy';
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -123,7 +125,7 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
       orders: new PrismaOrderRepository(db.service),
       refunds: new PrismaRefundRepository(db.service),
       gateway,
-      policy: new RefundsOn(markets),
+      policy: new RefundsOn(markets, testAreas),
       cart: new FakeCart(),
       customers: new FakeCustomers(),
       shipTo: new FakeShipToCipher(),
@@ -132,6 +134,8 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
       commission: new FakeCommission(),
       tax: new FakeTax(),
       taxCategories: new FakeTaxCategories('taxable'),
+      products: new FakeOrderProducts(),
+      promotions: new FakePromotions(),
       outbox: { append: () => Promise.resolve() },
       audit,
       ids,
@@ -196,6 +200,8 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
           sellerId,
           subtotal: goods,
           shipping,
+          discount: 0n,
+          shippingDiscount: 0n,
           shippingTaxRateBps: old ? null : inclusive ? 1000 : 1500,
           shippingTax: old ? null : shippingTax,
           shippingTaxInclusive: old ? null : inclusive,
@@ -224,6 +230,9 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
           quantity: units,
           unitPrice: money(1100n, currency),
           lineAmount: goods,
+          discountAmount: 0n,
+          discountSellerShare: 0n,
+          discountPlatformShare: 0n,
           taxInclusive: inclusive,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,

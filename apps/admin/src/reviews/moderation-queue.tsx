@@ -1,6 +1,16 @@
 'use client';
 
-import { Banner, Button, CARD_TABLE, EmptyState, LoadError, SkeletonRows } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  CARD_TABLE,
+  EmptyState,
+  LoadError,
+  ListLoadingStatus,
+  ListRefreshing,
+  TableSkeleton,
+  useListLoading,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -42,6 +52,8 @@ export function ModerationQueue({
   const [next, setNext] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState<'first' | 'more' | null>(null);
+  const status = useListLoading(loading, rows.length > 0);
+  const tr = useTranslations('route');
   const [open, setOpen] = useState<string | null>(null);
   const latest = useRef(0);
 
@@ -119,59 +131,77 @@ export function ModerationQueue({
         />
       ) : null}
       {rows.length > 0 ? (
-        <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
-          <table className={CARD_TABLE.table}>
-            <caption className="sr-only">{t('title')}</caption>
-            <thead className={CARD_TABLE.head}>
-              <tr>
-                {(['review', 'rating', 'status', 'flags', 'submitted'] as const).map((col) => (
-                  <th key={col} scope="col" className="whitespace-nowrap px-4 py-3 font-medium">
-                    {t(`col.${col}`)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className={CARD_TABLE.body}>
-              {rows.map((row) => (
-                <tr key={row.id} className={CARD_TABLE.row}>
-                  <td className={`${CARD_TABLE.cell} lg:max-w-md`}>
-                    <button
-                      type="button"
-                      className="break-words text-start font-medium text-link underline"
-                      onClick={() => setOpen(row.id)}
-                    >
-                      {excerpt(row) === '' ? t('no-text') : excerpt(row)}
-                    </button>
-                  </td>
-                  <td className={CARD_TABLE.labelled} data-label={t('col.rating')}>
-                    <Stars rating={row.rating} />
-                  </td>
-                  <td className={CARD_TABLE.corner}>
-                    <StatusBadge status={row.status} />
-                  </td>
-                  <td className={CARD_TABLE.labelled} data-label={t('col.flags')}>
-                    <span>
-                      {[
-                        ...row.signalCodes.map((code) => labelOr(t, `signal.${code}`, code)),
-                        ...(row.openReports > 0
-                          ? [t('open-reports', { count: row.openReports })]
-                          : []),
-                      ].join(', ') || '-'}
-                    </span>
-                  </td>
-                  <td className={CARD_TABLE.labelled} data-label={t('col.submitted')}>
-                    <span>{shortInstant(row.createdAt, locale)}</span>
-                  </td>
+        <ListRefreshing refreshing={status.refreshing} busy={loading}>
+          <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
+            <table className={CARD_TABLE.table}>
+              <caption className="sr-only">{t('title')}</caption>
+              <thead className={CARD_TABLE.head}>
+                <tr>
+                  {(['review', 'rating', 'status', 'flags', 'submitted'] as const).map((col) => (
+                    <th key={col} scope="col" className="whitespace-nowrap px-4 py-3 font-medium">
+                      {t(`col.${col}`)}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className={CARD_TABLE.body}>
+                {rows.map((row) => (
+                  <tr key={row.id} className={CARD_TABLE.row}>
+                    <td className={`${CARD_TABLE.cell} lg:max-w-md`}>
+                      <button
+                        type="button"
+                        className="break-words text-start font-medium text-link underline"
+                        onClick={() => setOpen(row.id)}
+                      >
+                        {excerpt(row) === '' ? t('no-text') : excerpt(row)}
+                      </button>
+                    </td>
+                    <td className={CARD_TABLE.labelled} data-label={t('col.rating')}>
+                      <Stars rating={row.rating} />
+                    </td>
+                    <td className={CARD_TABLE.corner}>
+                      <StatusBadge status={row.status} />
+                    </td>
+                    <td className={CARD_TABLE.labelled} data-label={t('col.flags')}>
+                      <span>
+                        {[
+                          ...row.signalCodes.map((code) => labelOr(t, `signal.${code}`, code)),
+                          ...(row.openReports > 0
+                            ? [t('open-reports', { count: row.openReports })]
+                            : []),
+                        ].join(', ') || '-'}
+                      </span>
+                    </td>
+                    <td className={CARD_TABLE.labelled} data-label={t('col.submitted')}>
+                      <span>{shortInstant(row.createdAt, locale)}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </ListRefreshing>
       ) : null}
       {!loading && failed === null && rows.length === 0 ? (
         <EmptyState icon="shield-check" title={t(`empty.${tab}`)} />
       ) : null}
-      {loading ? <SkeletonRows label={t('loading')} rows={rows.length > 0 ? 1 : 3} /> : null}
+      {loading && rows.length === 0 ? (
+        <TableSkeleton
+          label={t('loading')}
+          slowLabel={tr('slow')}
+          rows={PAGE_SIZE}
+          columns={[
+            { header: t('col.review'), kind: 'title' },
+            { header: t('col.rating'), kind: 'text' },
+            { header: t('col.status'), kind: 'status' },
+            { header: t('col.flags'), kind: 'text' },
+            { header: t('col.submitted'), kind: 'date' },
+          ]}
+        />
+      ) : null}
+      {loading && rows.length > 0 ? (
+        <ListLoadingStatus label={t('loading')} slow={false} slowLabel={tr('slow')} />
+      ) : null}
       {failed === 'more' ? <Banner tone="critical">{t('error.unavailable')}</Banner> : null}
       {next !== null && !loading ? (
         <div>
