@@ -123,6 +123,7 @@ import {
   AdminRolesReverter,
   AdminStatusReverter,
   PlatformRoleReverter,
+  type PeopleLabelReads,
   type PeopleReverterDependencies,
 } from './application/people/people-reverters';
 import { CreateSellerRole } from './application/use-cases/create-seller-role.use-case';
@@ -388,23 +389,29 @@ const PEOPLE_REVERTER_PORTS = {
 
 /**
  * The reverter of one people subject kind, registered with System requests in the area people:
- * the reverter itself (under its own token) and its registration.
+ * the reverter itself (under its own token, with the label reads of its `describe`) and its
+ * registration.
  */
 function peopleReverter(
   subjectKind: string,
-  type: new (deps: PeopleReverterDependencies) => SystemChangeReverter,
+  type: new (deps: PeopleReverterDependencies, labels: PeopleLabelReads) => SystemChangeReverter,
 ): Provider[] {
   const token = Symbol(`IDENTITY_REVERTER:${subjectKind}`);
   const names = Object.keys(PEOPLE_REVERTER_PORTS) as PortName[];
   return [
     {
       provide: token,
-      inject: names.map((name) => PORT[name]),
-      useFactory: (...values: unknown[]) =>
+      inject: [ChangeActorLabels, ListPlatformRoles, ...names.map((name) => PORT[name])],
+      useFactory: (
+        adminNames: ChangeActorLabels,
+        platformRoles: ListPlatformRoles,
+        ...values: unknown[]
+      ) =>
         new type(
           Object.fromEntries(
             names.map((name, index) => [name, values[index]]),
           ) as unknown as PeopleReverterDependencies,
+          { adminNames, platformRoles },
         ),
     },
     registerSystemChangeReverter('identity', subjectKind, PEOPLE_REVIEW_AREA, token),

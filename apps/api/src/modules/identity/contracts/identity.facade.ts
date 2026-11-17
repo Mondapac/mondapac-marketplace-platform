@@ -16,6 +16,12 @@ export interface ActorDescription {
   readonly permissionKeys: readonly string[];
   readonly sellerAccessState: string | null;
   readonly secondFactorActive: boolean;
+  /**
+   * The holder's own IANA time zone (panel preferences), or null when none was chosen. A day a
+   * panel writes is read in it, the Market's zone being the fallback (ADR-0005). Optional for
+   * callers built before it existed.
+   */
+  readonly timezone?: string | null;
 }
 
 /** Why {@link IdentityFacade.confirmSecondFactor} refused. Codes and field paths only. */

@@ -22,7 +22,6 @@ import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
-import { TEST_DELIVERY_ADDRESS } from './support/ordering-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -47,12 +46,15 @@ const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
 const detail = (currency: string, patch: object = {}) => ({
+  actions: ['open'],
   sellerOrderId: SELLER_ORDER,
   orderId: ORDER,
   paidAt: START,
   sellerId: SELLER,
   subtotal: money(3000n, currency),
   shipping: money(500n, currency),
+  discount: money(0n, currency),
+  shippingDiscount: money(0n, currency),
   shippingTax: money(45n, currency),
   tax: money(273n, currency),
   total: money(3500n, currency),
@@ -75,17 +77,20 @@ const detail = (currency: string, patch: object = {}) => ({
       quantity: 2,
       unitPrice: money(1500n, currency),
       lineAmount: money(3000n, currency),
+      discount: money(0n, currency),
       taxInclusive: true,
       taxRateBps: 1000,
       taxCategoryCode: 'taxable',
       tax: money(273n, currency),
     },
   ],
-  // The customer wrote to this seller and to another one of the order.
-  shipTo: {
-    ...TEST_DELIVERY_ADDRESS,
-    sellerNotes: { [SELLER]: 'Ring twice', [id<'Seller'>(0xb021)]: 'For the other shop' },
+  // The shop knows the customer by code and first name; anything more a view might carry (a
+  // last name here) never reaches the body, which is built field by field.
+  customer: { code: 'K7QM-2XTR', firstName: 'Sara', lastName: 'Khan' } as {
+    code: string;
+    firstName: string;
   },
+  buyerNote: 'Ring twice',
   ...patch,
 });
 
@@ -279,7 +284,7 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
       next = ok({
         sellerOrders: [detail(currency)],
         nextCursor: null,
-        paging: { total: 41, page: 2, pageSize: 20 },
+        paging: { mode: 'pages', total: 41, page: 2, pageSize: 20, hasNext: true },
       });
 
       const res = await call(
@@ -329,11 +334,18 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
 
       const one = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}`, session);
       expect(one.status).toBe(200);
-      // One order's page tells the seller where to send it; the list does not.
-      expect(one.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS, buyerNote: 'Ring twice' });
-      // The seller reads its own note only, and the notes are no part of the address.
-      expect(JSON.stringify(one.body)).not.toContain('For the other shop');
-      expect((one.body as { shipTo: object }).shipTo).not.toHaveProperty('sellerNotes');
+      // One order's page names the customer by code and first name only (2026-11-17), never
+      // the delivery address.
+      expect(one.body).toMatchObject({
+        customer: { code: 'K7QM-2XTR', firstName: 'Sara' },
+        buyerNote: 'Ring twice',
+      });
+      expect(one.body).not.toHaveProperty('shipTo');
+      expect((one.body as { customer: object }).customer).toEqual({
+        code: 'K7QM-2XTR',
+        firstName: 'Sara',
+      });
+      expect(JSON.stringify(one.body)).not.toContain('Khan');
       expect(calls[0]).toEqual({ name: 'view', input: { sellerOrderId: SELLER_ORDER } });
 
       next = err({ code: 'ordering.seller-order-not-found' });
@@ -375,6 +387,7 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
                 quantity: 2,
                 unitPrice: { amount: '1500', currency },
                 lineAmount: { amount: '3000', currency },
+                discount: { amount: '0', currency },
                 taxInclusive: true,
                 taxRateBps: 1000,
                 tax: { amount: '273', currency },
@@ -382,6 +395,8 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
             ],
             subtotal: { amount: '3000', currency },
             shipping: { amount: '500', currency },
+            discount: { amount: '0', currency },
+            shippingDiscount: { amount: '0', currency },
             shippingTax: { amount: '45', currency },
             tax: { amount: '273', currency },
             total: { amount: '3500', currency },

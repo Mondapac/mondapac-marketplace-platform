@@ -4,6 +4,7 @@ import {
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -17,6 +18,8 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { AdminListRefunds } from '../application/use-cases/admin-list-refunds.use-case';
+import { AdminExportRefunds } from '../application/use-cases/admin-export-refunds.use-case';
+import { sendOrdersExport } from './export-response';
 import { REFUND_SORT_KEYS } from '../domain/admin-refund-list';
 import { LOSS_BEARERS } from '../domain/reason-codes';
 import { REFUND_REASONS } from '../domain/refund';
@@ -44,7 +47,10 @@ const parseWhole = (value: unknown): number | undefined =>
 export class AdminRefundsController {
   readonly #logger = new Logger('AdminRefundsController');
 
-  constructor(private readonly list: AdminListRefunds) {}
+  constructor(
+    private readonly list: AdminListRefunds,
+    private readonly exportList: AdminExportRefunds,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -143,5 +149,67 @@ export class AdminRefundsController {
     });
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return refundListPageBody(result.value);
+  }
+
+  @Get('export')
+  @ApiOperation({
+    summary: 'The refunds of the list as a CSV or XLSX file (admin)',
+    description:
+      'Needs ordering.order.view. The selected rows (`ids`) or every row matching ' +
+      'the same filter as the list (state, q, search, reason, actor, lossBearer, ledger, sellerId, from, to, minAmount, maxAmount), ' +
+      'newest request first, at most 10,000: more is 413 batch.too-large (details.max, details.total) and ' +
+      'the filter is narrowed. No paging or sort keys. Columns: the fixed ones (order, state) and ' +
+      'the `columns` given, in that order; without `columns`, every column. A money value is ' +
+      'two columns (a plain decimal in major units, then its currency); times are ISO 8601 ' +
+      'with the offset of `zone`. Customer name and email only with ' +
+      'identity.customer-account.view (empty cells otherwise). Streams as an attachment: ' +
+      'refunds-<day>.csv|xlsx. CSV text cells that start with = + - @ get a leading quote; XLSX cells are ' +
+      'all strings.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: ['csv', 'xlsx'] })
+  @ApiQuery({
+    name: 'columns',
+    required: false,
+    description:
+      'Comma-separated, in the order shown: refundId, sellerOrderId, amount, tax, shipping, reason, actor, lossBearer, store, customer, requested, settled, ledger, stripeRefundId, creditNote.',
+  })
+  @ApiQuery({
+    name: 'ids',
+    required: false,
+    description: 'Comma-separated refund ids, at most 200, with or instead of the filter.',
+  })
+  @ApiQuery({
+    name: 'zone',
+    required: false,
+    description: "IANA time zone of the times and the file's day; default the Market's.",
+  })
+  @ApiOkResponse({ description: 'text/csv; charset=utf-8 or an .xlsx workbook, as an attachment' })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large' })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'access.unavailable, or ordering.search-unavailable when `search` could not run',
+  })
+  async download(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportList.execute(context, { ...query });
+    this.#logger.log({
+      msg: 'ordering.admin-export-refunds-route',
+      outcome: result.ok ? 'exported' : result.error.code,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    await sendOrdersExport(
+      result,
+      context,
+      response,
+      this.#logger,
+      'ordering.admin-export-refunds',
+    );
   }
 }

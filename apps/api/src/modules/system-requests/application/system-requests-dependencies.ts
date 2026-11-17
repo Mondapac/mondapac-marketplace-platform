@@ -2,6 +2,7 @@ import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { AuthorisationCheck, StepUpProofConsumer } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { AdminNames } from './ports/admin-names';
 import type { PolicyRepository } from './ports/policy.repository';
 import type { RequestRepository } from './ports/request.repository';
 import type { ReverterLookup } from './reverter-registry';
@@ -18,6 +19,8 @@ export interface SystemRequestsDependencies {
   /** Spends the admin step-up proof of a high-risk decision or a policy change, in its unit. */
   readonly stepUp: StepUpProofConsumer;
   readonly audit: AuditWriter;
+  /** Admin display names for the views (identity's facade), read outside any unit. */
+  readonly adminNames: AdminNames;
   readonly ids: IdGenerator;
   readonly clock: Clock;
 }

@@ -21,6 +21,8 @@ export interface ApiFailure {
     readonly rows?: number;
     readonly maxBytes?: number;
     readonly detected?: string;
+    /** `system-requests.changed-since`: the later request that changed the value again. */
+    readonly newerRequestId?: string | null;
     /** `category.referenced-by-policy`: the certificate types whose rules use the category. */
     readonly typeCodes?: readonly string[];
   };
