@@ -25,6 +25,7 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { IdentityModule } from '../identity';
+import { ADMIN_NAMES } from './application/ports/admin-names';
 import { MARKET_ZONE, type MarketZone } from './application/ports/market-zone';
 import type { OverdueReminderDependencies } from './application/overdue-reminder-flow';
 import { POLICY_REPOSITORY } from './application/ports/policy.repository';
@@ -33,6 +34,7 @@ import { DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './application/p
 import { ReverterRegistry } from './application/reverter-registry';
 import { SystemRequestRecorderImplementation } from './application/system-request-recorder';
 import type { SystemRequestsDependencies } from './application/system-requests-dependencies';
+import { ApproveMatchingSystemRequests } from './application/use-cases/approve-matching-system-requests.use-case';
 import { ApproveSystemRequest } from './application/use-cases/approve-system-request.use-case';
 import { ApproveSystemRequests } from './application/use-cases/approve-system-requests.use-case';
 import { ChangeAreaReviewPolicy } from './application/use-cases/change-area-review-policy.use-case';
@@ -77,6 +79,7 @@ const PORTS: readonly [keyof SystemRequestsDependencies, InjectionToken][] = [
   ['authorisation', AUTHORISATION_CHECK],
   ['stepUp', STEP_UP_CONSUMER],
   ['audit', AUDIT_WRITER],
+  ['adminNames', ADMIN_NAMES],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
@@ -172,6 +175,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CommentOnSystemRequest,
       ApproveSystemRequest,
       ApproveSystemRequests,
+      ApproveMatchingSystemRequests,
       RejectSystemRequest,
       WithdrawSystemRequest,
       ViewReviewPolicy,

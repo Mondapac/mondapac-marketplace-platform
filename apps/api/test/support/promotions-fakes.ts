@@ -772,7 +772,12 @@ export class MemoryRedemptions implements RedemptionRepository {
     }
     return Promise.resolve();
   }
-  staleReservations(_market: MarketContext, before: Temporal.Instant, limit: number) {
+  staleReservations(
+    _market: MarketContext,
+    before: Temporal.Instant,
+    limit: number,
+    after: Id<'Order'> | null,
+  ) {
     const ids = [
       ...new Set(
         this.rows
@@ -782,7 +787,9 @@ export class MemoryRedemptions implements RedemptionRepository {
           )
           .map((row) => row.orderId as Id<'Order'>),
       ),
-    ];
+    ]
+      .filter((id) => after === null || id > after)
+      .sort();
     return Promise.resolve(ids.slice(0, limit));
   }
 }

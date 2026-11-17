@@ -461,6 +461,18 @@ export function SellerOrders({
           note: ts('zone-note', { zone }),
           actions: (
             <OrdersBulk
+              exportQuery={() => {
+                // The route takes the tab and the paid days only; the relay drops the rest.
+                const params = new URLSearchParams(
+                  queryString(query, { paging: 'prev-next', zone, now: new Date() }),
+                );
+                for (const key of ['q', 'page', 'pageSize', 'paging', 'sort', 'direction']) {
+                  params.delete(key);
+                }
+                return params.toString();
+              }}
+              searching={routeSearch(query.q).kind === 'q'}
+              empty={answer !== null && shown.length === 0}
               selection={{
                 ids: [...selection.selected],
                 allMatching: selection.allMatching,

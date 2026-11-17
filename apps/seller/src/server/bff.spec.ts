@@ -814,6 +814,31 @@ describe('relay of the seller order routes', () => {
     expect(refused.mock.calls[0]?.[0]).not.toContain('paging=infinite');
   });
 
+  it('relays the export with its own filter keys and drops the rest', async () => {
+    const upstream = upstreamOk();
+    const path = ['ordering', 'seller', 'orders', 'export'];
+    const query = (q: string) =>
+      new Request(`http://seller.localhost:3001/api/ordering/seller/orders/export${q}`, {
+        method: 'GET',
+        headers: { host: 'seller.localhost:3001' },
+      });
+    expect(
+      (
+        await relay(
+          config,
+          query('?format=csv&status=shipped&from=2026-10-01T00:00:00.000Z&page=2&limit=5&x=1'),
+          path,
+          upstream,
+        )
+      ).status,
+    ).toBe(200);
+    await relay(config, query('?status=cancelled&format=xlsx&to=yesterday'), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/ordering/seller/orders/export?format=csv&status=shipped&from=2026-10-01T00%3A00%3A00.000Z',
+    );
+    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/ordering/seller/orders/export');
+  });
+
   it('posts ship and deliver by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     for (const action of ['ship', 'deliver']) {
@@ -1421,6 +1446,43 @@ describe('relay of the seller import routes (catalog design 14c)', () => {
     expect(response.headers.get('content-type')).toContain('text/csv');
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     expect(await response.text()).toBe('row,code\n1,ok\n');
+  });
+});
+
+describe('relay of the seller Offer list', () => {
+  const list = ['catalog', 'seller', 'offers'];
+  const get = (query: string) =>
+    new Request(`http://seller.localhost:3001/api/catalog/seller/offers${query}`, {
+      method: 'GET',
+      headers: { host: 'seller.localhost:3001' },
+    });
+
+  it('forwards the list parameters, the paging mode included, and drops everything else', async () => {
+    const upstream = upstreamOk();
+    const query =
+      '?view=drafts&q=olive&status=draft&listed=false&sort=sku&direction=asc&page=2&pageSize=50' +
+      '&paging=prev-next&extra=1';
+    expect((await relay(config, get(query), list, upstream)).status).toBe(200);
+    const sent = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(sent.pathname).toBe('/catalog/seller/offers');
+    expect(Object.fromEntries(sent.searchParams)).toEqual({
+      view: 'drafts',
+      q: 'olive',
+      status: 'draft',
+      listed: 'false',
+      sort: 'sku',
+      direction: 'asc',
+      page: '2',
+      pageSize: '50',
+      paging: 'prev-next',
+    });
+  });
+
+  it('drops a value of the wrong shape', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get('?view=bogus&sort=name&paging=infinite&page=1'), list, upstream);
+    const sent = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(Object.fromEntries(sent.searchParams)).toEqual({ page: '1' });
   });
 });
 

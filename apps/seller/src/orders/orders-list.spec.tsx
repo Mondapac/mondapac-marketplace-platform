@@ -300,7 +300,7 @@ describe('seller orders selection, row actions and bulk', () => {
       ).getAttribute('aria-disabled'),
     ).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
-    expect(screen.queryByText(/selected/)).toBeNull();
+    expect(screen.queryByText('All matching orders are selected')).toBeNull();
     open.mockRestore();
   });
 
@@ -557,5 +557,95 @@ describe('seller orders saved filters', () => {
     await waitFor(() => expect(paramsOf(lastUrl())['status']).toBe('shipped'));
     expect(screen.queryByRole('button', { name: 'Save filter…' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Manage filters' })).toBeNull();
+  });
+});
+
+describe('seller orders export', () => {
+  const csv = (status: number, body: BodyInit | null, headers: Record<string, string> = {}) =>
+    new Response(body, { status, headers });
+  const click = vi.fn();
+  const mountWithToasts = (page: SellerOrderPage) =>
+    render(
+      wrap(
+        <>
+          <SellerOrders initial={page} {...LIST} />
+          <Toaster labels={{ region: 'Action notifications', close: 'Close notification' }} />
+        </>,
+      ),
+    );
+  const runExport = async () => {
+    fireEvent.click(OPEN('Bulk action'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Export all matching as CSV/ }));
+  };
+
+  beforeEach(() => {
+    click.mockReset();
+    URL.createObjectURL = vi.fn(() => 'blob:orders');
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(click);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    toast.dismiss();
+  });
+
+  it('downloads the file of the tab, not only the page on screen', async () => {
+    call.mockImplementation((_m: string, path: string) =>
+      Promise.resolve(
+        path.startsWith(SAVED_PATH) ? savedFailure : ok(pageOf([row()], { total: 60 })),
+      ),
+    );
+    const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      csv(200, 'Order\r\n', {
+        'content-disposition': 'attachment; filename="orders-2026-11-06.csv"',
+      }),
+    );
+    mountWithToasts(pageOf([row()], { total: 60 }));
+    fireEvent.click(screen.getByRole('button', { name: /^Shipped/ }));
+    await waitFor(() => expect(lastUrl()).toContain('status=shipped'));
+    await runExport();
+    expect(
+      await screen.findByText('The file of the orders on this list was downloaded.'),
+    ).toBeTruthy();
+    const url = fetched.mock.calls[0]?.[0] as string;
+    expect(url.startsWith('/api/ordering/seller/orders/export?')).toBe(true);
+    const params = Object.fromEntries(new URL(`http://x${url}`).searchParams);
+    expect(params['status']).toBe('shipped');
+    expect(params).not.toHaveProperty('page');
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells the seller to narrow the filter when the file would be too large', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      csv(
+        413,
+        JSON.stringify({ code: 'batch.too-large', details: { max: 10000, matching: 12345 } }),
+      ),
+    );
+    mountWithToasts(pageOf([row()], { total: 60 }));
+    await runExport();
+    expect(
+      await screen.findByText(
+        '12,345 orders match, and one file holds at most 10,000. Narrow the filters and export again.',
+      ),
+    ).toBeTruthy();
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it('says the file could not be created after any other failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(csv(503, '{}'));
+    mountWithToasts(pageOf([row()], { total: 60 }));
+    await runExport();
+    expect(await screen.findByText('The file could not be created. Try again.')).toBeTruthy();
+  });
+
+  it('offers no export with no rows', async () => {
+    mountWithToasts(pageOf([], { total: 0 }));
+    fireEvent.click(OPEN('Bulk action'));
+    expect(
+      (await screen.findByRole('menuitem', { name: /Export all matching as CSV/ })).getAttribute(
+        'aria-disabled',
+      ),
+    ).toBe('true');
   });
 });

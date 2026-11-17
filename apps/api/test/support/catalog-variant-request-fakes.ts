@@ -90,13 +90,38 @@ export class MemoryVariantRequestStore implements VariantRequestStore {
     );
   }
 
-  listOpen(market: MarketContext, limit: number) {
-    return Promise.resolve(
-      [...this.rows.values()]
-        .filter((row) => row.state.marketId === market.marketId && row.state.status === 'open')
-        .sort((a, b) => a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds)
-        .slice(0, limit),
+  /** Product codes by product id, for the search of the admin list. */
+  readonly productCodes = new Map<string, string>();
+
+  #open(market: MarketContext, productCode: string | null) {
+    return [...this.rows.values()].filter(
+      (row) =>
+        row.state.marketId === market.marketId &&
+        row.state.status === 'open' &&
+        (productCode === null ||
+          (this.productCodes.get(row.state.productId) ?? '')
+            .toLowerCase()
+            .includes(productCode.toLowerCase())),
     );
+  }
+
+  pageOpen(
+    market: MarketContext,
+    page: { productCode: string | null; direction: 'asc' | 'desc'; offset: number; limit: number },
+  ) {
+    const sign = page.direction === 'asc' ? 1 : -1;
+    return Promise.resolve(
+      this.#open(market, page.productCode)
+        .sort(
+          (a, b) =>
+            sign * (a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds),
+        )
+        .slice(page.offset, page.offset + page.limit),
+    );
+  }
+
+  countOpen(market: MarketContext, filter: { productCode: string | null }) {
+    return Promise.resolve(this.#open(market, filter.productCode).length);
   }
 
   listOfSeller(
