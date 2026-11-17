@@ -53,7 +53,7 @@ const VIEW = {
     { tier: 'fast', modelId: null },
     { tier: 'balanced', modelId: null },
   ],
-  unavailableOptions: { scope: ['cart-suggestions'], supportHandoff: ['in-panel-form'] },
+  unavailableOptions: { scope: [], supportHandoff: ['in-panel-form'] },
 };
 const LAST_CHANGED = {
   at: Temporal.Instant.from('2026-10-18T09:30:00Z'),

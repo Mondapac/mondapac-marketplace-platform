@@ -41,6 +41,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/seller/offers',
     // The Offers export (file): the list's selector, the format, the columns and the selected ids.
     'catalog/seller/offers/export',
+    // The export of the order list as a CSV file (ordering): the list's own filter.
+    'ordering/seller/orders/export',
     // The saved views of the order list (ordering; query: `listKey`).
     'ordering/seller/saved-filters',
     'commission-payouts/seller/ledger',
@@ -227,6 +229,12 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     status: null,
     from: null,
     to: null,
+  },
+  'ordering/seller/orders/export': {
+    format: /^csv$/,
+    status: /^(to-ship|shipped|delivered)$/,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
   },
   'ordering/seller/saved-filters': { listKey: /^seller\.ordering\.orders$/ },
   'commission-payouts/seller/ledger': { limit: null, cursor: null },

@@ -12,6 +12,7 @@ import {
   replyOf,
   searchPath,
   sendMessage,
+  type AssistantBase,
   type AssistantSetup,
   type SendResult,
 } from '../src/assistant/assistant.ts';
@@ -36,6 +37,18 @@ const SETUP: AssistantSetup = {
   supportEmail: 'help@example.test',
   retentionDays: 30,
   csrfToken: null,
+  quickPrompts: [],
+  preview: false,
+};
+
+const STOREFRONT_ON = {
+  enabled: true,
+  guestsAllowed: true,
+  replyLanguage: 'en',
+  welcomeText: null,
+  retentionDays: { customer: 365, guest: 30 },
+  quickPrompts: [],
+  preview: false,
 };
 
 const frame = (name: string, data: unknown) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -69,6 +82,7 @@ const ok = (
     conversationId: 'c',
     sentences,
     products: [],
+    sellers: [],
     pages: [],
     support: false,
     notices: [],
@@ -111,7 +125,7 @@ async function say(text: string) {
 }
 
 describe('assistant stream', () => {
-  it('reads the cards, sentences and notices of a whole answer and drops prices', () => {
+  it('reads the cards, sentences and notices of a whole answer, prices included', () => {
     const reply = replyOf(STREAM);
     expect(reply).toEqual({
       conversationId: '0192f000-0000-7000-8000-000000000001',
@@ -124,8 +138,15 @@ describe('assistant stream', () => {
           sellerId: '0192f000-0000-7000-8000-0000000000c1',
           name: 'Free-range chicken',
           shortText: 'Whole bird',
+          sellerName: null,
+          price: { amount: 1299, currency: 'AUD' },
+          regularPrice: null,
+          taxInclusive: true,
+          priceFrom: false,
+          badges: [],
         },
       ],
+      sellers: [],
       pages: [{ kind: 'page', page: 'cart', categoryId: null }],
       support: false,
       notices: ['see-cards'],
@@ -230,7 +251,7 @@ describe('assistant stream', () => {
 });
 
 describe('assistant widget', () => {
-  const shell = (assistant: AssistantSetup | null) =>
+  const shell = (assistant: AssistantBase | null) =>
     render(
       <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
         <StoreShell
@@ -247,13 +268,20 @@ describe('assistant widget', () => {
       </NextIntlClientProvider>,
     );
 
-  it('shows nothing while the assistant is off, and the launcher once it is on', () => {
+  it('shows nothing while the assistant is off, and the launcher once the API says on', async () => {
     shell(null);
     expect(screen.queryByRole('button', { name: 'Ask the assistant' })).toBeNull();
     expect(document.querySelector('.asw')).toBeNull();
     cleanup();
-    shell(SETUP);
-    expect(launcher()).toBeTruthy();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(Response.json(STOREFRONT_ON))),
+    );
+    shell({ chatUrl: '/api/assistant', supportEmail: 'help@example.test', csrfToken: null });
+    // Nothing until the answer arrives.
+    expect(screen.queryByRole('button', { name: 'Ask the assistant' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Ask the assistant' })).toBeTruthy();
+    vi.unstubAllGlobals();
   });
 
   it('opens a docked, non-modal panel with the welcome and quick prompts; Esc closes it', () => {
@@ -318,7 +346,7 @@ describe('assistant widget', () => {
     expect(screen.getByText('Salam! Ask me.')).toBeTruthy();
   });
 
-  it('lists products as links to their pages without a price, then See all results', async () => {
+  it('lists products as links to their pages with the price of the card, then See all results', async () => {
     const send = vi.fn(() => Promise.resolve({ ok: true, reply: replyOf(STREAM)! } as SendResult));
     renderWidget(send);
     fireEvent.click(launcher());
@@ -333,7 +361,8 @@ describe('assistant widget', () => {
     expect(link.getAttribute('href')).toBe(
       '/p/free-range-chicken-0192f000-0000-7000-8000-0000000000b1',
     );
-    expect(log.textContent).not.toMatch(/\$|12\.99|1299/);
+    expect(log.textContent).toContain('A$12.99');
+    expect(log.textContent).toContain('including GST');
     expect(within(log).getByText('Here are two products.')).toBeTruthy();
     // The product note already says it; the notice is not repeated.
     expect(within(log).queryByText(messages.assistant['notice-see-cards'])).toBeNull();
