@@ -19,6 +19,7 @@ import {
   type SavedFilter,
   type SavedFiltersAnswer,
 } from './orders-saved.ts';
+import messages from '../../messages/en.json';
 import { order, part, wrap } from './orders-test-kit.tsx';
 import { FILTERS, type AdminOrder, type AdminOrderPage, type AdminOrderRow } from './types.ts';
 
@@ -758,6 +759,41 @@ describe('order list saved filters', () => {
       expect(tabs).toEqual(['Big orders', 'Paid, captured']);
     });
     toast.dismiss();
+  });
+
+  it('says a refused move in a banner, reads the filters again and keeps their order', async () => {
+    const A = saved();
+    const B = saved({ id: '0190a000-0000-7000-8000-0000000000ac', name: 'Big orders' });
+    let reads = 0;
+    call.mockImplementation(((method: string, path: string) => {
+      if (path === 'lists/admin/saved-filters/order') {
+        return Promise.resolve({
+          ok: false,
+          failure: {
+            status: 422,
+            code: 'validation.failed',
+            details: { fields: [{ path: 'ids' }] },
+          },
+        });
+      }
+      if (path.startsWith(SAVED_PATH)) {
+        reads += 1;
+        return Promise.resolve(savedAnswer([A, B]));
+      }
+      return Promise.resolve(ok(pageOf([row()])));
+    }) as never);
+    mount({ csrfToken: 'csrf-2' });
+    await screen.findByRole('button', { name: 'Big orders' });
+    fireEvent.click(screen.getByRole('button', { name: 'Manage filters' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Manage filters' });
+    const before = reads;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move Paid, captured down' }));
+    expect(await within(dialog).findByText(messages.orders.saved.error.unavailable)).toBeTruthy();
+    await waitFor(() => expect(reads).toBeGreaterThan(before));
+    const names = within(dialog)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '');
+    expect(names[0]).toContain('Paid, captured');
   });
 });
 

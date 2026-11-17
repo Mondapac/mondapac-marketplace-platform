@@ -96,7 +96,11 @@ export function ManageFiltersDialog({
           { listKey: LIST_KEY, ids },
           csrfToken,
         );
-        if (!result.ok) return problemOf(result.failure);
+        if (!result.ok) {
+          // A refused order may mean the filters changed meanwhile: reload them under the banner.
+          onChanged();
+          return problemOf(result.failure);
+        }
         const name = filters.find((filter) => filter.id === movedId)?.name ?? '';
         toast.success(t('toast.moved', { name }), { id: 'products-saved-filter' });
         onChanged();

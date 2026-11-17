@@ -499,8 +499,15 @@ describe('saved views of the product list', () => {
       failure: { status: 503, code: 'access.unavailable' },
     });
     const dialog = await openManage();
+    const reads = () =>
+      call.mock.calls.filter(
+        ([method, path]) => method === 'GET' && path.startsWith('catalog/admin/saved-filters'),
+      ).length;
+    const before = reads();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Move Paused lamb down' }));
     await waitFor(() => expect(writes).toHaveLength(1));
+    // The filters may have changed meanwhile: they are read again under the banner.
+    await waitFor(() => expect(reads()).toBeGreaterThan(before));
     expect(
       await within(dialog).findByText(messages.catalog.products.saved.error.unavailable),
     ).toBeTruthy();
