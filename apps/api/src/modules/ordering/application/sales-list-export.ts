@@ -120,6 +120,7 @@ export function exportLabels(labels: OrderLabels): {
       once(stores, term, () => labels.sellersMatching(context, term)),
     customerShortNamesOf: (context, ids) => labels.customerShortNamesOf(context, ids),
     staffNamesOf: (context, ids) => labels.staffNamesOf(context, ids),
+    sellerCustomersOf: (context, ids) => labels.sellerCustomersOf(context, ids),
   };
   return { labels: wrapped, failed: () => failed };
 }
