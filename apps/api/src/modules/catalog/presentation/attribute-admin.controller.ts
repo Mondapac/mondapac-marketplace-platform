@@ -642,12 +642,21 @@ export class AttributeAdminController {
     description:
       `${NEEDS} Published products whose values leave a required attribute of their feature set ` +
       'empty (the feature set gained it after approval, or its category now holds another one). They stay on sale; the seller is ' +
-      'refused at the next submit until the field is filled. Keyset-paged by product id: one ' +
-      'call reads at most 2000 products, so follow `nextAfterId` until it is null. `limit` is 1 ' +
-      'to 100 (default 50).',
+      'refused at the next submit until the field is filled. A page read (`page`, `pageSize` 1 to ' +
+      '100 default 50, `sort` code, name, family or missing, `direction`, `paging`, `q` in the ' +
+      'product code and name) judges the published products up to 10,000 and gives `total` ' +
+      '(null in prev-next mode); `complete: false` says the cap was hit and `total` is partial. ' +
+      'The older keyset read (`afterId`, `limit`) reads at most 2000 products a call: follow ' +
+      '`nextAfterId` until it is null. It cannot be mixed with the page keys.',
   })
   @ApiQuery({ name: 'sellerId', required: false })
   @ApiQuery({ name: 'familyCode', required: false, description: 'A feature set code.' })
+  @ApiQuery({ name: 'q', required: false, description: 'Search in the product code and name.' })
+  @ApiQuery({ name: 'sort', required: false, enum: ['code', 'name', 'family', 'missing'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number, 1 to 100.' })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 100, default 50.' })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
   @ApiQuery({ name: 'afterId', required: false })
   @ApiQuery({
     name: 'limit',
@@ -664,7 +673,7 @@ export class AttributeAdminController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<MissingDetailsListBody> {
-    const result = await this.listMissingDetails.execute(context, pageQuery(query));
+    const result = await this.listMissingDetails.execute(context, numericQuery(pageQuery(query)));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as MissingDetailsListBody)
       : refusal(result.error, response, context);

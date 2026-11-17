@@ -11,13 +11,16 @@ import type {
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import {
   heldKeys,
+  pageWindow,
   rowActions,
+  type ListPagingMode,
   type PermissionProbe,
   type RowActionRule,
 } from '../../../../platform/list-query';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_ATTRIBUTE_EDIT, CATALOG_ATTRIBUTE_VIEW } from '../../contracts/permissions';
 import { closedInput, invalid, type ValidationFailure } from '../brands/brand-views';
+import { readCatalogListInput } from '../lists/catalog-list-input';
 import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
@@ -27,8 +30,16 @@ import type { ProductDetailsGapReader } from '../ports/product-details-gap.reade
 /** Rows one page may return. */
 export const GAP_PAGE_DEFAULT = 50;
 export const GAP_PAGE_MAX = 100;
-/** Products one call reads at most; a longer scan continues from `nextAfterId`. */
+/** Products one cursor call reads at most; a longer scan continues from `nextAfterId`. */
 export const GAP_SCAN_MAX = 2000;
+/**
+ * Products a page read scans at most. The gaps are judged in memory against the feature sets, so a
+ * numbered page reads the Market's published products up to this cap; past it the answer says
+ * `complete: false` and `total` counts what was read.
+ */
+export const GAP_PAGE_SCAN_MAX = 10_000;
+export const GAP_MAX_PAGE = 100;
+export const GAP_SORTS = ['code', 'name', 'family', 'missing'] as const;
 const GAP_BATCH = 200;
 const CODE = /^[a-z][a-z0-9_-]{0,63}$/;
 const ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -38,6 +49,14 @@ export interface ProductsMissingDetailsListInput {
   readonly limit?: unknown;
   readonly sellerId?: unknown;
   readonly familyCode?: unknown;
+  /** Search in the product code and name (contains, any case). */
+  readonly q?: unknown;
+  readonly search?: unknown;
+  readonly sort?: unknown;
+  readonly direction?: unknown;
+  readonly page?: unknown;
+  readonly pageSize?: unknown;
+  readonly paging?: unknown;
 }
 
 export interface MissingDetailsItem {
@@ -71,10 +90,18 @@ export const MISSING_DETAILS_ACTION_RULES: readonly RowActionRule<
 
 export interface ProductsMissingDetailsListOutput {
   readonly items: readonly MissingDetailsItem[];
-  /** The `afterId` of the next call; null when the whole Market has been read. */
+  /** The `afterId` of the next call; null when the whole Market has been read (always null on a page read). */
   readonly nextAfterId: string | null;
   /** How many published products this call read. */
   readonly scanned: number;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly paging: ListPagingMode;
+  readonly hasNext: boolean;
+  /** The gaps found over all pages; null in `prev-next` mode and on a cursor read. */
+  readonly total: number | null;
+  /** False when a page read hit the scan cap before the end of the Market: `total` is then partial. */
+  readonly complete: boolean;
   /** Feature sets that could not be read (unknown, archived or naming a missing attribute): their products are not judged. */
   readonly unreadableFeatureSets: readonly string[];
 }
@@ -143,10 +170,20 @@ export class ProductsMissingDetailsList extends UseCase<
     if (context.actor.kind !== 'authenticated' || context.actor.population !== 'admin') {
       return err({ code: 'access.denied' });
     }
-    const body = closedInput(input, ['afterId', 'limit', 'sellerId', 'familyCode']);
+    const body = closedInput(input, [
+      'afterId',
+      'limit',
+      'sellerId',
+      'familyCode',
+      'q',
+      'search',
+      'sort',
+      'direction',
+      'page',
+      'pageSize',
+      'paging',
+    ]);
     if (!body.ok) return body;
-    const afterId = optionalId(body.value['afterId']);
-    if (afterId === undefined) return invalid('afterId', 'format');
     const sellerId = optionalId(body.value['sellerId']);
     if (sellerId === undefined) return invalid('sellerId', 'format');
     const rawFamily = body.value['familyCode'];
@@ -157,47 +194,98 @@ export class ProductsMissingDetailsList extends UseCase<
       }
       familyCode = rawFamily;
     }
-    let limit = GAP_PAGE_DEFAULT;
-    const rawLimit = body.value['limit'];
-    if (rawLimit !== undefined && rawLimit !== null) {
-      if (
-        typeof rawLimit !== 'number' ||
-        !Number.isInteger(rawLimit) ||
-        rawLimit < 1 ||
-        rawLimit > GAP_PAGE_MAX
-      ) {
-        return invalid('limit', 'range');
-      }
-      limit = rawLimit;
-    }
+    const { sellerId: _s, familyCode: _f, ...rest } = body.value;
+    void _s;
+    void _f;
+    const read = readCatalogListInput(rest, {
+      sorts: GAP_SORTS,
+      defaultSort: 'code',
+      defaultDirection: (sort) => (sort === 'missing' ? 'desc' : 'asc'),
+      pageDefault: GAP_PAGE_DEFAULT,
+      pageMax: GAP_PAGE_MAX,
+      maxPage: GAP_MAX_PAGE,
+      cursorIdOf: (value) => (typeof value === 'string' && ID.test(value) ? value : null),
+    });
+    if (!read.ok) return read;
+    const text = read.value.q === null ? null : read.value.q.toLowerCase();
 
     const { market } = context;
     const locales = this.deps.policy.locales(market);
     // The validator reads the first locale as the default.
     const ordered = [locales.default, ...locales.supported.filter((l) => l !== locales.default)];
-    const read = await this.deps.unitOfWork.run(
+    const unit = await this.deps.unitOfWork.run(
       market,
       async () =>
         ok(
           await this.#scan(
             market,
-            { afterId, sellerId, familyCode, limit },
+            read.value.mode === 'cursor'
+              ? {
+                  afterId: read.value.afterId,
+                  sellerId,
+                  familyCode,
+                  text,
+                  limit: read.value.limit,
+                  all: false,
+                }
+              : { afterId: null, sellerId, familyCode, text, limit: Infinity, all: true },
             locales.default,
             ordered,
           ),
         ),
       { readOnly: true },
     );
-    if (!read.ok) return err({ code: 'access.unavailable' });
+    if (!unit.ok) return err({ code: 'access.unavailable' });
+    const scanned = unit.value;
+    let items = scanned.items;
+    let paging: ListPagingMode = 'prev-next';
+    let pageNo = 1;
+    let pageSize = read.value.mode === 'cursor' ? read.value.limit : items.length;
+    let hasNext = scanned.nextAfterId !== null;
+    let total: number | null = null;
+    if (read.value.mode === 'page') {
+      const { paged } = read.value;
+      const sign = paged.direction === 'asc' ? 1 : -1;
+      const key = (item: (typeof items)[number]): string | number =>
+        paged.sort === 'name'
+          ? (item.name ?? '').toLowerCase()
+          : paged.sort === 'family'
+            ? item.featureSetCode
+            : paged.sort === 'missing'
+              ? item.missing.length
+              : item.productCode;
+      const sorted = [...items].sort(
+        (a, b) =>
+          sign * (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0) ||
+          (a.productCode < b.productCode ? -1 : a.productCode > b.productCode ? 1 : 0),
+      );
+      const window = pageWindow(paged);
+      items = sorted.slice(window.offset, window.offset + paged.pageSize);
+      pageNo = paged.page;
+      pageSize = paged.pageSize;
+      paging = paged.paging;
+      hasNext = window.offset + paged.pageSize < sorted.length;
+      total = paged.paging === 'pages' ? sorted.length : null;
+    }
+    const emailed = await this.#lastEmailed(market, items);
     const granted = await heldKeys(context, {
       [CATALOG_ATTRIBUTE_EDIT.key]: this.deps.attributeEditProbe,
     });
     return ok({
-      ...read.value,
-      items: read.value.items.map((item) => ({
+      items: items.map((item) => ({
         ...item,
+        lastEmailedAt: emailed.get(`${item.sellerId}/${item.productId}`) ?? null,
         actions: rowActions(item, MISSING_DETAILS_ACTION_RULES, granted),
       })),
+      nextAfterId: read.value.mode === 'cursor' ? scanned.nextAfterId : null,
+      scanned: scanned.scanned,
+      unreadableFeatureSets: scanned.unreadableFeatureSets,
+      page: pageNo,
+      pageSize,
+      paging,
+      hasNext,
+      total,
+      complete: scanned.complete,
     });
   }
 
@@ -207,22 +295,34 @@ export class ProductsMissingDetailsList extends UseCase<
       readonly afterId: string | null;
       readonly sellerId: string | null;
       readonly familyCode: string | null;
+      /** Lower-cased search in the product code and name, or null. */
+      readonly text: string | null;
+      /** Rows wanted (a cursor read); `Infinity` with `all`. */
       readonly limit: number;
+      /** A page read: scan on to the end of the Market or {@link GAP_PAGE_SCAN_MAX}. */
+      readonly all: boolean;
     },
     locale: string,
     ordered: readonly string[],
-  ): Promise<ProductsMissingDetailsListOutput> {
+  ): Promise<{
+    readonly items: readonly Omit<MissingDetailsItem, 'lastEmailedAt' | 'actions'>[];
+    readonly nextAfterId: string | null;
+    readonly scanned: number;
+    readonly unreadableFeatureSets: readonly string[];
+    readonly complete: boolean;
+  }> {
     // The feature set a product is judged against is the one its published revision's primary
     // category holds now: what its next submit will ask (CAT-10). When that cannot be resolved the
     // product is judged against the feature set its revision was frozen under.
     const session = await this.deps.familyResolver.open(market);
     const schemas = new Map<string, AttributeSchema | null>();
     const items: Omit<MissingDetailsItem, 'lastEmailedAt' | 'actions'>[] = [];
+    const scanMax = filter.all ? GAP_PAGE_SCAN_MAX : GAP_SCAN_MAX;
     let cursor = filter.afterId;
     let scanned = 0;
     let exhausted = false;
-    while (items.length < filter.limit && scanned < GAP_SCAN_MAX) {
-      const requested = Math.min(GAP_BATCH, GAP_SCAN_MAX - scanned);
+    while ((filter.all || items.length < filter.limit) && scanned < scanMax) {
+      const requested = Math.min(GAP_BATCH, scanMax - scanned);
       const batch = await this.deps.detailsGapReader.published(market, {
         afterId: cursor,
         sellerId: filter.sellerId,
@@ -244,6 +344,13 @@ export class ProductsMissingDetailsList extends UseCase<
         scanned += 1;
         if (schema === null) continue;
         if (filter.familyCode !== null && familyCode !== filter.familyCode) continue;
+        if (
+          filter.text !== null &&
+          !product.productCode.toLowerCase().includes(filter.text) &&
+          !(product.name ?? '').toLowerCase().includes(filter.text)
+        ) {
+          continue;
+        }
         const missing = missingRequiredCodes(schema, product.attributeValues, ordered);
         if (missing.length > 0) {
           items.push({
@@ -255,16 +362,33 @@ export class ProductsMissingDetailsList extends UseCase<
             missing,
           });
         }
-        if (items.length >= filter.limit) {
+        if (!filter.all && items.length >= filter.limit) {
           // The page is full; the rest of this batch is read by the next call.
           exhausted = index === batch.length - 1 && batch.length < requested;
           break;
         }
       }
     }
-    const nextAfterId = exhausted ? null : cursor;
-    // "Last emailed" (A4-4): the latest "Email sellers" request of the row's seller and product,
-    // when it was sent. PLATFORM products have no seller and are never emailed.
+    return {
+      items,
+      nextAfterId: exhausted ? null : cursor,
+      scanned,
+      unreadableFeatureSets: [...schemas.entries()]
+        .filter(([, schema]) => schema === null)
+        .map(([code]) => code)
+        .sort(),
+      complete: exhausted,
+    };
+  }
+
+  /**
+   * "Last emailed" (A4-4): the latest "Email sellers" request of the row's seller and product, when
+   * it was sent. PLATFORM products have no seller and are never emailed.
+   */
+  async #lastEmailed(
+    market: MarketContext,
+    items: readonly { readonly sellerId: string | null; readonly productId: string }[],
+  ): Promise<Map<string, string>> {
     const pairs = items.flatMap((item) =>
       item.sellerId === null
         ? []
@@ -278,19 +402,7 @@ export class ProductsMissingDetailsList extends UseCase<
         }
       }
     }
-    return {
-      items: items.map((item) => ({
-        ...item,
-        lastEmailedAt: sentAt.get(`${item.sellerId}/${item.productId}`) ?? null,
-        actions: [],
-      })),
-      nextAfterId,
-      scanned,
-      unreadableFeatureSets: [...schemas.entries()]
-        .filter(([, schema]) => schema === null)
-        .map(([code]) => code)
-        .sort(),
-    };
+    return sentAt;
   }
 }
 
