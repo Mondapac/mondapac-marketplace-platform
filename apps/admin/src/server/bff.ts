@@ -21,6 +21,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'payments/admin/connected-accounts/export',
     // The Market's orders (ordering), read-only: the list; one order is read by the page server.
     'ordering/admin/orders',
+    // The export of the order list as a CSV file (ordering): the list's own filter.
+    'ordering/admin/orders/export',
     // The Market's shipments (ordering, Sales > Shipments), read-only: the list (query: the tab,
     // search, filters and paging; see QUERY_KEYS).
     'ordering/admin/shipments',
@@ -86,6 +88,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/categories',
     // What the platform product create form offers (catalog): the Market's types and languages.
     'catalog/admin/platform-products/options',
+    // The category choices of the platform product form (catalog, categories C5a).
+    'catalog/admin/platform-products/category-picker',
     // The export of the product list as a file (catalog): the chosen ids or the list's own query.
     'catalog/admin/products/export',
     // Import products (catalog): the CSV and XLSX templates and the admin's current import.
@@ -308,6 +312,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/seller-certificates/:id/approve',
     'certification/admin/seller-certificates/:id/request-changes',
     'certification/admin/seller-certificates/:id/decline',
+    // Revoke an approved or expired certificate (certification; protected permission).
+    'certification/admin/seller-certificates/:id/revoke',
     // Start, resume or discard one checked import (catalog).
     'catalog/admin/platform-imports/:id/start',
     'catalog/admin/platform-imports/:id/resume',
@@ -347,6 +353,14 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/product-certificates/:id/submit',
     // Activate an issuer with the expert's approval, under the version read (certification).
     'certification/admin/issuers/:id/activate',
+    // A certificate type (certification): stop new certificates, ask for reactivation, and a second
+    // admin's answer to a waiting revision or reactivation. Each names the version read.
+    'certification/admin/types/:id/deactivate',
+    'certification/admin/types/:id/reactivation',
+    'certification/admin/types/:id/relaxations/:id/approve',
+    'certification/admin/types/:id/reactivations/:id/approve',
+    'certification/admin/types/:id/proposals/:id/reject',
+    'certification/admin/types/:id/proposals/:id/withdraw',
     // The rest of an issuer's life (certification): close to new, derecognise (names the number of
     // certificates the form showed), ask for reactivation, and a second admin's answer to it.
     'certification/admin/issuers/:id/close-to-new',
@@ -382,6 +396,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/move',
     'catalog/admin/categories/:id/merge',
     'catalog/admin/categories/:id/archive',
+    // Move all the products of a category to another one (catalog, categories C5a: protected key
+    // `catalog.category-tree.restructure` and `catalog.product.approve`; a job runs it).
+    'catalog/admin/categories/:id/move-products',
     // Approve or reject a seller's category proposal with the version seen (catalog, categories
     // C9a: key `catalog.category-proposal.decide`, a prepared reason code on reject), and promote
     // or merge a seller's shelf (protected key `catalog.seller-category.promote-merge`).
@@ -547,6 +564,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // (catalog, read-only; the impact takes the `action`).
     'catalog/admin/categories/:id',
     'catalog/admin/categories/:id/impact',
+    // The state and counts of the jobs that move a category's products (catalog, categories C5a).
+    'catalog/admin/categories/:id/move-products',
     // One seller's shelves, every status (catalog, categories C9a), read-only.
     'catalog/admin/sellers/:id/shelves',
     // One blog post with its working and live versions, and its automatic checks (blog).
@@ -563,6 +582,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/issuers/:id/expert-reference',
     'certification/admin/product-certificates/:id',
     'certification/admin/product-certificates/:id/history',
+    // The full status history of one seller certificate (certification): an audited read that
+    // needs the protected document view permission (query: `beforeId`, `limit`).
+    'certification/admin/seller-certificates/:id/history',
     // The photo library of a platform product, for the form's images card (catalog, P1).
     'catalog/admin/platform-products/:id/images',
     // The primary photo of a listed product, thumbnail size only (catalog).
@@ -588,7 +610,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // One variant type with its options and settings (catalog, variants V6).
     'catalog/admin/variant-types/:id',
     'commission-payouts/admin/sellers/:id/commission-rate',
+    // The seller page's commission ledger (a compact super list) and its export.
     'commission-payouts/admin/sellers/:id/ledger',
+    'commission-payouts/admin/sellers/:id/ledger/export',
     // A storefront slide as a package to create in another Market (storefront).
     'storefront/admin/slides/:id/copy',
     // One customer's wallet and the caller's credit caps (wallet), for the issue screen.
@@ -602,6 +626,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A seller's payout terms and holds (commission-payouts), read again after a change.
     'commission-payouts/admin/sellers/:id/payout-terms',
     'commission-payouts/admin/sellers/:id/payout-holds',
+    // The seller page's payout holds list (a compact super list) as a file.
+    'commission-payouts/admin/sellers/:id/payout-holds/export',
     // The delivery methods of a seller (shipping), read again after a conflict.
     'shipping/admin/sellers/:id/delivery-methods',
   ],
@@ -648,6 +674,16 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'pageSize',
     'sort',
     'direction',
+    'paymentState',
+    'fulfilment',
+    'sellerId',
+    'from',
+    'to',
+  ],
+  'ordering/admin/orders/export': [
+    'format',
+    'status',
+    'q',
     'paymentState',
     'fulfilment',
     'sellerId',
@@ -802,6 +838,31 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
 const SEARCH_TEXT = /^[\s\S]{1,80}$/;
 /** An instant as the API takes it: ISO 8601 date and time with a zone (`Z` or an offset). */
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+/** At most 200 ids, the cap of a selection. */
+const UUID_LIST_200 =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i;
+/** The filters of the seller page's ledger list: the API validates them again. */
+const LEDGER_FILTER_SHAPES: Readonly<Record<string, RegExp>> = {
+  kind: /^(sale|shipping|commission|refund-sale|refund-shipping|refund-commission|dispute-debit|dispute-reinstate)$/,
+  side: /^(credit|debit)$/,
+  // An order or seller order id.
+  q: UUID,
+  from: ISO_INSTANT,
+  to: ISO_INSTANT,
+  // The row amount in minor units.
+  minAmount: /^[0-9]{1,15}$/,
+  maxAmount: /^[0-9]{1,15}$/,
+};
+/** The filters of the seller page's payout holds list. */
+const HOLD_FILTER_SHAPES: Readonly<Record<string, RegExp>> = {
+  status: /^(active|released)$/,
+  reason: /^(seller-suspended|refund-pending|dispute|admin-review|bank-change)$/,
+  origin: /^(admin|system)$/,
+  scope: /^(seller|order)$/,
+  sellerOrderId: UUID,
+  from: ISO_INSTANT,
+  to: ISO_INSTANT,
+};
 /** The ids of an export: up to 200 UUIDs, the cap of the bulk action. */
 const EXPORT_IDS =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i;
@@ -831,7 +892,6 @@ function malformedSalesExport(target: string, requestUrl: string): boolean {
     );
   });
 }
-/** Query values that must have a shape to cross; a value of another shape is dropped. */
 /** The Seller accounts list's filters and sort (payments validates every value again). */
 const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
   status: /^(not-started|pending|enabled|restricted|rejected)$/,
@@ -937,6 +997,10 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
   },
   'ordering/admin/refund-limits': { sellerId: UUID },
+  'certification/admin/seller-certificates/:id/history': {
+    beforeId: UUID,
+    limit: /^[0-9]{1,3}$/,
+  },
   // The cursor is the API's own: epoch milliseconds, a dot and a request id.
   'wallet/admin/credit-requests': {
     status: /^(pending|decided|granted)$/,
@@ -966,6 +1030,16 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     direction: /^(asc|desc)$/,
     page: /^[1-9][0-9]{0,3}$/,
     pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'ordering/admin/orders/export': {
+    format: /^csv$/,
+    status: /^(pending-payment|confirmed|cancelled)$/,
+    q: /^[0-9a-f-]{36}$/i,
+    paymentState: /^(none|authorised|captured|voided)$/,
+    fulfilment: /^(to-ship|shipped|delivered)$/,
+    sellerId: UUID,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
   },
   'catalog/admin/products/export': {
     format: /^(csv|xlsx)$/,
@@ -1041,6 +1115,43 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^(created|amount|state-changed|slot)$/,
     direction: /^(asc|desc)$/,
   },
+  'commission-payouts/admin/sellers/:id/ledger': {
+    ...LEDGER_FILTER_SHAPES,
+    sort: /^(recorded|occurred|amount)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the record, a dot and the entry id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'commission-payouts/admin/sellers/:id/ledger/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(occurred|order-line|rate|base|source|entry-id)(,(occurred|order-line|rate|base|source|entry-id)){0,5}$/,
+    ids: UUID_LIST_200,
+    ...LEDGER_FILTER_SHAPES,
+    sort: /^(recorded|occurred|amount)$/,
+    direction: /^(asc|desc)$/,
+  },
+  'commission-payouts/admin/sellers/:id/payout-holds': {
+    ...HOLD_FILTER_SHAPES,
+    sort: /^(active-first|placed|released)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the placement, a dot and the hold id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'commission-payouts/admin/sellers/:id/payout-holds/export': {
+    format: /^(csv|xlsx)$/,
+    columns: /^(release-reason|hold-id)(,(release-reason|hold-id))?$/,
+    ids: UUID_LIST_200,
+    ...HOLD_FILTER_SHAPES,
+    sort: /^(active-first|placed|released)$/,
+    direction: /^(asc|desc)$/,
+  },
   'customers/admin/deletion-requests': {
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the scheduled date, a dot and the request id.
@@ -1105,9 +1216,69 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
 };
 /** GET templates with a resource id whose query crosses, and the keys that may cross. */
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
-  'commission-payouts/admin/sellers/:id/ledger': ['limit', 'cursor'],
+  // The seller page's compact super lists (ledger 27, payout holds 28) and their exports.
+  'commission-payouts/admin/sellers/:id/ledger': [
+    'kind',
+    'side',
+    'q',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'limit',
+    'cursor',
+  ],
+  'commission-payouts/admin/sellers/:id/ledger/export': [
+    'format',
+    'columns',
+    'ids',
+    'kind',
+    'side',
+    'q',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+  ],
+  'commission-payouts/admin/sellers/:id/payout-holds': [
+    'status',
+    'reason',
+    'origin',
+    'scope',
+    'sellerOrderId',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'limit',
+    'cursor',
+  ],
+  'commission-payouts/admin/sellers/:id/payout-holds/export': [
+    'format',
+    'columns',
+    'ids',
+    'status',
+    'reason',
+    'origin',
+    'scope',
+    'sellerOrderId',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/platform-imports/:id/report': ['kind'],
   'catalog/admin/categories/:id/impact': ['action', 'targetId'],
+  // The older page of a certificate's history: the API's own entry id and a small page size.
+  'certification/admin/seller-certificates/:id/history': ['beforeId', 'limit'],
 };
 /** A note for reviewers in a query: 1 to 500 characters (any, newlines included). */
 const NOTE_SHAPE = /^[\s\S]{1,500}$/;
@@ -1128,6 +1299,8 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
   'ordering/admin/refunds/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
+  'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
+  'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
   'payments/admin/connected-accounts/export:ids': 7400,
   'catalog/admin/attributes:search': 120,
 };
@@ -1178,7 +1351,10 @@ function upstreamQuery(method: string, target: string, requestUrl: string): stri
     const value = source.get(key);
     if (
       value === null ||
-      value.length > (QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX)
+      value.length >
+        (QUERY_VALUE_MAX_FOR[`${target}:${key}`] ??
+          QUERY_VALUE_MAX_FOR[`${template}:${key}`] ??
+          QUERY_VALUE_MAX)
     ) {
       continue;
     }

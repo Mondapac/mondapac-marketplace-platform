@@ -82,6 +82,11 @@ import { PlatformProductRetireProbe } from './application/use-cases/platform-pro
 import { PlatformProductEditProbe } from './application/use-cases/platform-product-edit-probe.use-case';
 import { OwnProductEditProbe } from './application/use-cases/own-product-edit-probe.use-case';
 import { IMPORT_FILE_STORE } from './application/ports/import-file-store';
+import { CATEGORY_PRODUCT_MOVE_STORE } from './application/ports/category-product-move.store';
+import { CategoryMoveProducts } from './application/use-cases/category-move-products.use-case';
+import { CategoryMoveProductsProgress } from './application/use-cases/category-move-products-progress.use-case';
+import { CategoryMoveProductsRun } from './application/use-cases/category-move-products-run.use-case';
+import { runCategoryProductMovesJob } from './presentation/jobs/run-category-product-moves.job';
 import { PLATFORM_IMPORT_REPOSITORY } from './application/ports/platform-import.repository';
 import { PlatformImportDiscard } from './application/use-cases/platform-import-discard.use-case';
 import { PlatformImportResume } from './application/use-cases/platform-import-resume.use-case';
@@ -149,7 +154,10 @@ import { PRODUCT_LINKING_READER } from './application/ports/product-linking.read
 import { ProductsForLinkingQuery } from './application/use-cases/products-for-linking.use-case';
 import { SELLER_PRODUCT_OWNERS_READER } from './application/ports/seller-product-owners.reader';
 import { SellerProductOwnersQuery } from './application/use-cases/seller-product-owners.use-case';
-import { CATEGORY_TREE_READER } from './application/ports/category-tree.reader';
+import {
+  CATEGORY_TREE_READER,
+  type CategoryTreeReader,
+} from './application/ports/category-tree.reader';
 import { CategoryTreeQuery } from './application/use-cases/category-tree.use-case';
 import { CategorySlugResolveQuery } from './application/use-cases/category-slug-resolve.use-case';
 import { PublicCategoryTreeQuery } from './application/use-cases/public-category-tree.use-case';
@@ -306,6 +314,8 @@ import { OwnProductController } from './presentation/own-product.controller';
 import { OwnTopicController } from './presentation/own-topic.controller';
 import { OwnTopicList } from './application/use-cases/own-topic-list.use-case';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
+import { OwnCategoryPicker } from './application/use-cases/own-category-picker.use-case';
+import { PlatformCategoryPicker } from './application/use-cases/platform-category-picker.use-case';
 import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from './application/use-cases/own-product-save-draft.use-case';
 import { OwnProductSetOwnBrand } from './application/use-cases/own-product-set-own-brand.use-case';
@@ -623,6 +633,7 @@ const PORT = {
   withdraw: AdminProductWithdraw,
   retire: PlatformProductRetire,
   importJobs: PLATFORM_IMPORT_REPOSITORY,
+  moveStore: CATEGORY_PRODUCT_MOVE_STORE,
   sellerJobs: SELLER_IMPORT_REPOSITORY,
   importFacts: SELLER_IMPORT_FACTS_READER,
   ownRowCreate: OwnImportRowCreate,
@@ -905,6 +916,7 @@ const RESTRUCTURE_DEPS = {
         PRODUCT_REVISION_REPOSITORY,
         ProductFamilyResolver,
         TOPIC_READER,
+        CATEGORY_TREE_READER,
       ],
       useFactory: (
         attributes: AttributeRepository,
@@ -915,6 +927,7 @@ const RESTRUCTURE_DEPS = {
         revisions: ProductRevisionRepository,
         familyResolver: ProductFamilyResolver,
         topics: TopicReader,
+        categories: CategoryTreeReader,
       ): FreezeRevision =>
         new FreezeRevision({
           attributes,
@@ -925,6 +938,7 @@ const RESTRUCTURE_DEPS = {
           suggestions,
           revisions,
           topics,
+          categories,
         }),
     },
     serviceProvider(ProductFamilyResolver, {
@@ -1400,6 +1414,7 @@ const RESTRUCTURE_DEPS = {
       attributeStore: true,
       sellerNames: true,
       policy: true,
+      platformEditProbe: true,
     }),
     useCaseProvider(VariantRequestApprove, {
       unitOfWork: true,
@@ -2151,6 +2166,34 @@ const RESTRUCTURE_DEPS = {
       rowSave: true,
       rowSubmit: true,
     }),
+    useCaseProvider(CategoryMoveProducts, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      moveStore: true,
+      policy: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryMoveProductsProgress, { unitOfWork: true, moveStore: true }),
+    useCaseProvider(CategoryMoveProductsRun, {
+      unitOfWork: true,
+      moveStore: true,
+      products: true,
+      revisions: true,
+      familyResolver: true,
+      adminCategoryReader: true,
+      policy: true,
+      offers: true,
+      requests: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      ids: true,
+      ownerContacts: true,
+      mailSettings: true,
+      mailTransport: true,
+    }),
     useCaseProvider(PlatformImportRowSave, { saveDraft: true }),
     useCaseProvider(PlatformImportRowSubmit, { submit: true, authorisation: true }),
     useCaseProvider(PlatformImportPurge, {
@@ -2650,6 +2693,16 @@ const RESTRUCTURE_DEPS = {
       clock: true,
     }),
     useCaseProvider(PlatformProductOptions, { policy: true }),
+    useCaseProvider(OwnCategoryPicker, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      policy: true,
+    }),
+    useCaseProvider(PlatformCategoryPicker, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      policy: true,
+    }),
     useCaseProvider(PlatformProductRead, {
       unitOfWork: true,
       products: true,
@@ -2736,6 +2789,7 @@ const RESTRUCTURE_DEPS = {
         ReconcileTags,
         SendOfferOwnerNotices,
         PlatformImportRun,
+        CategoryMoveProductsRun,
         PlatformImportPurge,
         OwnImportRun,
         OwnImportPurge,
@@ -2755,6 +2809,7 @@ const RESTRUCTURE_DEPS = {
         reconcile: ReconcileTags,
         notices: SendOfferOwnerNotices,
         importRun: PlatformImportRun,
+        categoryMoves: CategoryMoveProductsRun,
         importPurge: PlatformImportPurge,
         sellerRun: OwnImportRun,
         sellerPurge: OwnImportPurge,
@@ -2773,6 +2828,7 @@ const RESTRUCTURE_DEPS = {
         reconcileTagsJob(reconcile),
         sendOfferOwnerNoticesJob(notices),
         platformImportRunJob(importRun),
+        runCategoryProductMovesJob(categoryMoves),
         purgePlatformImportsJob(importPurge),
         ownImportRunJob(sellerRun),
         purgeSellerImportsJob(sellerPurge),

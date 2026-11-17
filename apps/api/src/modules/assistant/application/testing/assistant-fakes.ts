@@ -22,6 +22,7 @@ import type {
 import type { GuestTokens } from '../ports/guest-tokens';
 import type { MarketCalendar } from '../ports/market-calendar';
 import type { MessageLimits } from '../ports/message-limits';
+import type { PreviewTokens } from '../ports/preview-tokens';
 import type { QuickPrompts } from '../ports/quick-prompts';
 import type { SpendRepository, SpendTotals } from '../ports/spend.repository';
 
@@ -79,9 +80,13 @@ export class FakeTools implements AssistantTools {
   readonly runs: { context: CallContext; request: ToolRequest }[] = [];
   failing = false;
   products: AssistantCard[] = [];
+  /** A fixed outcome per tool name, for the tools without a built-in answer here. */
+  readonly outcomes = new Map<string, ToolOutcome>();
 
   run(context: CallContext, request: ToolRequest): Promise<ToolOutcome> {
     this.runs.push({ context, request });
+    const fixed = this.outcomes.get(request.tool);
+    if (fixed !== undefined) return Promise.resolve(fixed);
     if (this.failing) {
       return Promise.resolve({
         forModel: '{"error":"x"}',
@@ -392,6 +397,29 @@ export class FixedQuickPrompts implements QuickPrompts {
     return market.marketId === 'ZZ' || lang?.startsWith('ja')
       ? FixedQuickPrompts.JA
       : FixedQuickPrompts.EN;
+  }
+}
+
+/**
+ * Preview tokens: `preview:<Market>:<expiry ms>`, valid until the expiry and for that Market only;
+ * `available` switches the key off.
+ */
+export class FakePreviewTokens implements PreviewTokens {
+  available_ = true;
+  available() {
+    return this.available_;
+  }
+  issue(market: MarketContext, now: Temporal.Instant) {
+    if (!this.available_) return null;
+    const expiresAt = now.add({ minutes: 30 });
+    return { token: `preview:${market.marketId}:${expiresAt.epochMilliseconds}`, expiresAt };
+  }
+  verify(market: MarketContext, token: unknown, now: Temporal.Instant) {
+    if (!this.available_ || typeof token !== 'string') return false;
+    const [kind, marketId, expiry] = token.split(':');
+    return (
+      kind === 'preview' && marketId === market.marketId && Number(expiry) > now.epochMilliseconds
+    );
   }
 }
 

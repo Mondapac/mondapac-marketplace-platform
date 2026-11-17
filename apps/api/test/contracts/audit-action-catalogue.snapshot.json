@@ -629,6 +629,16 @@
     }
   },
   {
+    "action": "assistant.preview-token.issued",
+    "targetType": "assistant.settings",
+    "targetId": "enumOf(assistant-settings)",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "expiresAt": "instant"
+    }
+  },
+  {
     "action": "assistant.settings.changed",
     "targetType": "assistant.settings",
     "targetId": "enumOf(assistant-settings)",
@@ -669,6 +679,17 @@
     "after": {
       "created": "boolean",
       "localeCount": "integer"
+    }
+  },
+  {
+    "action": "blog.media.upload",
+    "targetType": "blog.media",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "height": "integer",
+      "width": "integer"
     }
   },
   {
@@ -1719,6 +1740,18 @@
     "after": {
       "listKey": "enumOf(admin.customers.customers)",
       "visibility": "enumOf(me|everyone)"
+    }
+  },
+  {
+    "action": "customers.seller-customers.exported",
+    "targetType": "customers.seller-customers",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "selection": "enumOf(codes|filter)"
     }
   },
   {
@@ -3810,6 +3843,36 @@
       "reasonGiven": "boolean",
       "subtreeSize": "integer",
       "tagsMarked": "integer"
+    }
+  },
+  {
+    "action": "catalog.platform-category.products-move-started",
+    "targetType": "catalog.platform-category",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "products": "integer"
+    },
+    "after": {
+      "jobId": "id",
+      "reasonGiven": "boolean",
+      "targetCategoryId": "id"
+    }
+  },
+  {
+    "action": "catalog.product.category-overridden",
+    "targetType": "catalog.product",
+    "targetId": "id",
+    "actors": ["system"],
+    "before": {
+      "fromCategoryId": "id"
+    },
+    "after": {
+      "categoryCount": "integer",
+      "jobId": "id",
+      "requestedBy": "id",
+      "scope": "enumOf(platform|seller)",
+      "toCategoryId": "id"
     }
   },
   {

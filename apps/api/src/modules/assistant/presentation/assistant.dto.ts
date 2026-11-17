@@ -28,7 +28,8 @@ export class AssistantSettingsFields {
   audiencePercent!: number | null;
   @ApiProperty({
     enum: SCOPES,
-    description: 'Default read-only; cart-suggestions is not available yet.',
+    description:
+      'Default read-only. cart-suggestions adds the cart card and cart-action cards (the buyer confirms each change).',
   })
   scope!: string;
   @ApiProperty({
@@ -140,6 +141,20 @@ export class SetAssistantSettingsRequest {
   settings!: AssistantSettingsFields;
 }
 
+/** The request header that carries an internal preview token to the storefront routes. */
+export const PREVIEW_HEADER = 'x-assistant-preview';
+
+export class PreviewTokenBody {
+  @ApiProperty({
+    description:
+      'Send it as the x-assistant-preview header with the storefront read and each message. ' +
+      'Never store it beyond the browser tab; it names no account.',
+  })
+  token!: string;
+  @ApiProperty({ description: 'ISO 8601 instant (UTC), 30 minutes after issue.' })
+  expiresAt!: string;
+}
+
 export class StorefrontRetentionBody {
   @ApiProperty({ description: '0, 30 or 365.' }) customer!: number;
   @ApiProperty({ description: '0 or 30 (a guest is kept 30 days at most).' }) guest!: number;
@@ -169,6 +184,10 @@ export class StorefrontAssistantBody {
       "Market's default); empty while the assistant is off for this visitor.",
   })
   quickPrompts!: string[];
+  @ApiProperty({
+    description: 'A valid internal preview token was sent: the widget marks itself a preview.',
+  })
+  preview!: boolean;
 }
 
 export class SendMessageRequest {

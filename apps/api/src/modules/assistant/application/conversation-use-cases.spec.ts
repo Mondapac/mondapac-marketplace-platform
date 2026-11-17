@@ -33,6 +33,7 @@ import {
   RecordingOutbox,
   SequenceGuestTokens,
   UtcCalendar,
+  FakePreviewTokens,
   FixedQuickPrompts,
 } from './testing/assistant-fakes';
 import { PurgeConversations } from './use-cases/purge-conversations.use-case';
@@ -85,16 +86,19 @@ const on = (overrides: Partial<AssistantSettings> = {}): AssistantSettings => ({
   ...overrides,
 });
 
-const PRODUCT: AssistantCard = {
+const PRODUCT: Extract<AssistantCard, { kind: 'product' }> = {
   kind: 'product',
   offerId: id<'Offer'>(0x0f1),
   productId: id<'Product'>(0x0e1),
   sellerId: id<'Seller'>(0x051),
   name: 'Lamb mince 500 g',
   shortText: null,
+  sellerName: 'Fresh Farm',
   price: null,
   regularPrice: null,
   taxInclusive: null,
+  priceFrom: false,
+  badges: [],
 };
 
 describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', (code) => {
@@ -158,6 +162,7 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       calendar: new UtcCalendar(),
       outbox,
       quickPrompts: new FixedQuickPrompts(),
+      previewTokens: new FakePreviewTokens(),
       trail: unusedChangeTrail,
     };
   });
@@ -212,6 +217,37 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       if (overrides.audience === 'percent' && result.ok) return;
       expect(result).toEqual({ ok: false, error: { code: 'assistant.off' } });
       expect(runtime.requests).toHaveLength(0);
+    });
+
+    it('answers a browser with a valid preview token while the audience is internal', async () => {
+      settings.current = on({ audience: 'internal' });
+      const tokens = deps.previewTokens;
+      const token = tokens.issue(market, T0)!.token;
+      const send = (preview: unknown, context = customer()) =>
+        new SendMessage(gate, deps).execute(context, {
+          conversationId: CONVERSATION,
+          text: 'Hi',
+          visitor: undefined,
+          preview,
+        });
+      expect((await send(token)).ok).toBe(true);
+      const asPreviewGuest = await new SendGuestMessage(gate, deps).execute(guest(), {
+        conversationId: SECOND,
+        text: 'Hi',
+        visitor: undefined,
+        preview: token,
+        token: null,
+        origin: '203.0.113.7',
+      });
+      expect(asPreviewGuest.ok).toBe(true);
+      expect(runtime.requests).toHaveLength(2);
+      for (const bad of [undefined, '', token + 'x', ['x'], 'preview:XX:9999999999999']) {
+        expect(await send(bad)).toEqual({ ok: false, error: { code: 'assistant.off' } });
+      }
+      // The kill switch still wins.
+      settings.current = on({ enabled: false, audience: 'internal' });
+      expect(await send(token)).toEqual({ ok: false, error: { code: 'assistant.off' } });
+      expect(runtime.requests).toHaveLength(2);
     });
 
     it('is off with the built-in defaults, without a key, a model or a price', async () => {
@@ -412,7 +448,9 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
         answer({ text: 'You can change it on the cart page.' }),
       );
       await asCustomer('Add two to my cart');
-      expect(tools.runs.map((run) => run.request)).toEqual([{ tool: 'suggest_cart_change' }]);
+      expect(tools.runs.map((run) => run.request)).toEqual([
+        { tool: 'suggest_cart_change', change: null },
+      ]);
     });
 
     it('stops after four model calls', async () => {
@@ -433,6 +471,8 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
         'search_products',
         'list_bestsellers',
         'list_specials',
+        'get_product',
+        'get_seller',
         'list_categories',
         'show_page',
         'support_contact',
@@ -440,6 +480,100 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
         'open_support_form',
       ]);
       expect(JSON.stringify(request)).not.toContain(CUSTOMER);
+    });
+  });
+
+  describe('the cart-suggestions scope (stage 1, S1-B1)', () => {
+    const OFFER_ID = '01990000-0000-7000-8000-0000000000f1';
+    const LINE_ID = '01990000-0000-7000-8000-0000000000c1';
+
+    it('sends the cart tools and the cart rules only under cart-suggestions', async () => {
+      settings.current = on({ scope: 'cart-suggestions' });
+      await asCustomer('Hi');
+      const request = runtime.requests[0]!;
+      expect(request.system).toContain('You cannot change the cart');
+      expect(request.tools.map((tool) => tool.name)).toEqual([
+        'search_products',
+        'list_bestsellers',
+        'list_specials',
+        'get_product',
+        'get_seller',
+        'list_categories',
+        'show_page',
+        'support_contact',
+        'suggest_cart_change',
+        'get_cart',
+        'open_support_form',
+      ]);
+      const suggest = request.tools.find((tool) => tool.name === 'suggest_cart_change')!;
+      expect(suggest.description).toContain('changes NOTHING');
+    });
+
+    it('keeps the read-only scope free of cart rules and refuses get_cart there', async () => {
+      runtime.script.push(
+        answer({ calls: [{ id: 'c1', name: 'get_cart', input: {} }] }),
+        answer({ text: 'See the cart page.' }),
+      );
+      await asCustomer('What is in my cart?');
+      expect(runtime.requests[0]!.system).not.toContain('Cart rules');
+      expect(tools.runs).toEqual([]);
+    });
+
+    it('runs a checked cart change with the buyer context, and refuses a malformed one', async () => {
+      settings.current = on({ scope: 'cart-suggestions' });
+      runtime.script.push(
+        answer({
+          calls: [
+            { id: 'c1', name: 'suggest_cart_change', input: { action: 'add', offer_id: OFFER_ID } },
+            {
+              id: 'c2',
+              name: 'suggest_cart_change',
+              input: { action: 'set_quantity', line_id: LINE_ID, quantity: 3 },
+            },
+            {
+              id: 'c3',
+              name: 'suggest_cart_change',
+              input: { action: 'add', offer_id: OFFER_ID, quantity: 0 },
+            },
+          ],
+        }),
+        answer({ text: 'You can confirm on the cards.' }),
+      );
+      const context = customer();
+      await asCustomer('Add ghee and make the dates three', CONVERSATION, context);
+      expect(tools.runs.map((run) => run.request)).toEqual([
+        {
+          tool: 'suggest_cart_change',
+          change: { action: 'add', offerId: OFFER_ID, quantity: 1 },
+        },
+        {
+          tool: 'suggest_cart_change',
+          change: { action: 'set-quantity', lineId: LINE_ID, quantity: 3 },
+        },
+      ]);
+      for (const run of tools.runs) expect(run.context.actor).toEqual(context.actor);
+      const results = runtime.requests[1]!.messages.at(-1)!.blocks;
+      expect(results.at(-1)).toMatchObject({ type: 'tool-result', isError: true });
+    });
+    it('shows a cart card and its fixed notice to a guest under cart-suggestions', async () => {
+      settings.current = on({ scope: 'cart-suggestions' });
+      tools.outcomes.set('get_cart', {
+        forModel: '{"error":"sign in"}',
+        isError: true,
+        cards: [{ kind: 'page', page: 'cart', categoryId: null }],
+        notices: ['cart-sign-in'],
+      });
+      runtime.script.push(
+        answer({ calls: [{ id: 'c1', name: 'get_cart', input: {} }] }),
+        answer({ text: 'Please sign in to see your cart here. It costs $12.50 in total.' }),
+      );
+      const reply = await asGuest('What is in my cart?');
+      expect(reply.ok && reply.value).toMatchObject({
+        cards: [{ kind: 'page', page: 'cart', categoryId: null }],
+        sentences: ['Please sign in to see your cart here.'],
+        notices: expect.arrayContaining(['cart-sign-in', 'see-cards']) as string[],
+      });
+      expect(tools.runs[0]?.context.actor.kind).toBe('anonymous');
     });
   });
 

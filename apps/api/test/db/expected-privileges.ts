@@ -805,6 +805,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_at'],
     },
     'blog.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Blog media upload: the picture library is insert-only.
+    'blog.media': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'blog.media_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Promotions (package T1): a promotion changes only the columns named and is never deleted;
     // usage is insert-only; the target list and the zone thresholds may be deleted; the rest
     // change only the columns named (triggers refuse DELETE and TRUNCATE where it is not granted).
@@ -844,15 +847,33 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'promotions.promotion_targets': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
-    'promotions.promotion_usage': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
-    // Phase 2: tiers and bundle items are replaced as a set; generated codes are insert-only here
-    // (package T2 grants the update of used_at).
+    // Package T2: the counters move with each redemption and its release.
+    'promotions.promotion_usage': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'platform_share_minor',
+        'seller_share_minor',
+        'spent_minor',
+        'updated_at',
+        'uses_count',
+      ],
+    },
+    // Phase 2: tiers and bundle items are replaced as a set. Generated codes are inserted; package
+    // T2 claims and gives back a code (used_at with the redeeming order).
     'promotions.promotion_tiers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.promotion_bundle_items': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [],
     },
-    'promotions.promotion_batch_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'promotions.promotion_batch_codes': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['redeemed_order_id', 'used_at'],
+    },
+    // Package T2: a redemption is inserted and then only changes state; it is never deleted.
+    'promotions.redemptions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['confirmed_at', 'release_reason', 'released_at', 'status'],
+    },
     // Phase 3: a referral code is insert-only; a referral and a credit change state only and are
     // never deleted; the inbox of the delivery-credit handlers is appended to.
     'promotions.referral_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
@@ -1031,6 +1052,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'customers.customer_group_members': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'customers.customer_notes': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'customers.customer_timeline': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Customers phase 3: the per-seller customers are replaced by the sync and removed when the
+    // relation ends (the erasure cascades from the directory row); no column is restricted.
+    'customers.seller_customers': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
     'legal.marketing_consents': {
@@ -1041,6 +1068,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Engagement (personalization 1a): behaviour events are inserted and deleted (retention purge,
     // switch off, account deletion), never changed; the switch changes and goes with the account.
     'engagement.behaviour_events': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Customers phase 3: a store follow is inserted and deleted (unfollow, erasure), never changed;
+    // engagement's outbox carries the follow events.
+    'engagement.store_follows': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'engagement.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'engagement.personalization_settings': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['changed_at', 'enabled'],
@@ -1452,6 +1483,38 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // go by cascade) and inserts the new one, so neither table is ever updated.
     'catalog.category_images': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.category_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Categories package C5a (Move products): the job moves through its states by column; its
+    // source, target, reason and author are written once. An item is written once and only its
+    // outcome and seller-notice tries change. No DELETE: the jobs are the audit trail of a bulk
+    // publish.
+    'catalog.category_product_move_jobs': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'cursor_product_id',
+        'failed_count',
+        'finished_at',
+        'lease_expires_at',
+        'lease_holder',
+        'moved_count',
+        'scan_outcome',
+        'skipped_count',
+        'started_at',
+        'state',
+        'total_count',
+        'version',
+      ],
+    },
+    'catalog.category_product_move_items': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'notice_attempts',
+        'notice_failed_at',
+        'notice_next_attempt_at',
+        'revision_id',
+        'seller_notified_at',
+        'state',
+      ],
+    },
     // docs/design/data/catalog.md section 7 (slice 3): definitions and families are never deleted;
     // code, type and the localizable flag stay on the root, fixed by the column grant; the
     // material and variant-option flags live in insert-only revisions.

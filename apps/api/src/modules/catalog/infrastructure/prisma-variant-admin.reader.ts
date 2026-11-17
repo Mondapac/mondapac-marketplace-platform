@@ -56,6 +56,24 @@ const missingLocale = (locales: readonly string[]): VariantWhere => ({
   ]),
 });
 
+type VariantOrder = Prisma.CatalogProductRevisionVariantOrderByWithRelationInput;
+
+/** The order of a page read; ties end on the variant id so a page never repeats or skips a row. */
+function orderOf(window: VariantsQuery['window']): VariantOrder[] {
+  if (window === undefined) return [{ variantId: 'desc' }];
+  const { sort, direction } = window;
+  const tie: VariantOrder = { variantId: direction };
+  if (sort === 'code') {
+    return [
+      { revision: { product: { productCode: direction } } },
+      { variant: { variantNo: direction } },
+      tie,
+    ];
+  }
+  if (sort === 'gtin') return [{ gtin: { sort: direction, nulls: 'last' } }, tie];
+  return [tie];
+}
+
 const VARIANT_CODE = /^(.+)-(\d{2,})$/;
 
 function textWhere(text: string, locale: string): VariantWhere {
@@ -261,7 +279,8 @@ export class PrismaVariantAdminReader implements VariantAdminReader {
         marketId: market.marketId,
         AND: [where, ...(query.after === null ? [] : [{ variantId: { lt: query.after } }])],
       },
-      orderBy: { variantId: 'desc' },
+      orderBy: orderOf(query.window),
+      ...(query.window === undefined ? {} : { skip: query.window.offset }),
       take: query.limit + 1,
       select: {
         variantId: true,
@@ -327,6 +346,16 @@ export class PrismaVariantAdminReader implements VariantAdminReader {
     };
   }
 
+  async variantsCount(
+    market: MarketContext,
+    query: Pick<VariantsQuery, 'text' | 'typeCode' | 'issue' | 'locale' | 'locales'>,
+  ): Promise<number> {
+    const where = await this.#where(market, query);
+    return this.prisma
+      .tx(market)
+      .catalogProductRevisionVariant.count({ where: { marketId: market.marketId, AND: [where] } });
+  }
+
   async issueCounts(
     market: MarketContext,
     query: Pick<VariantsQuery, 'typeCode' | 'locales'>,
@@ -358,7 +387,10 @@ export class PrismaVariantAdminReader implements VariantAdminReader {
     };
   }
 
-  async #where(market: MarketContext, query: VariantsQuery): Promise<VariantWhere> {
+  async #where(
+    market: MarketContext,
+    query: Pick<VariantsQuery, 'text' | 'typeCode' | 'issue' | 'locale' | 'locales'>,
+  ): Promise<VariantWhere> {
     const and: VariantWhere[] = [liveOf(market)];
     if (query.typeCode !== null) and.push(typeWhere(query.typeCode));
     if (query.text !== null) and.push(textWhere(query.text, query.locale));
