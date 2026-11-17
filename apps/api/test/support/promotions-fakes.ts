@@ -67,6 +67,7 @@ import type {
   ReviewEntry,
   ReviewQueueRepository,
 } from '../../src/modules/promotions/application/ports/review-queue.repository';
+import type { PayoutAnchors } from '../../src/modules/promotions/application/ports/payout-anchors';
 import type { SellerCashbackLedger } from '../../src/modules/promotions/application/ports/seller-cashback-ledger';
 import type { SellerActivity } from '../../src/modules/promotions/application/ports/seller-activity';
 import type {
@@ -896,6 +897,29 @@ export class FakeOrderFacts implements DeliveredOrderFacts {
   }
 }
 
+/** The payout release of each seller order; by default every seller order is released already. */
+export class FakePayoutAnchors implements PayoutAnchors {
+  readonly anchors = new Map<string, { sellerId: Id<'Seller'>; eligibleAt: Temporal.Instant }>();
+  /** The release of a seller order with no anchor of its own (null: unknown, so a retry). */
+  fallback: Temporal.Instant | null = Temporal.Instant.from('2000-01-01T00:00:00Z');
+  broken = false;
+  reads = 0;
+  anchorOf(_context: CallContext, sellerOrderId: Id<'SellerOrder'>) {
+    this.reads += 1;
+    const own = this.anchors.get(sellerOrderId);
+    const seller = this.sellerOf(sellerOrderId);
+    const value =
+      own ??
+      (this.fallback === null || seller === undefined
+        ? null
+        : { sellerId: seller, eligibleAt: this.fallback });
+    if (this.broken || value === null) return Promise.resolve({ known: false } as const);
+    return Promise.resolve({ known: true as const, value });
+  }
+  /** Who sells a seller order with no anchor of its own (the order facts' seller, by default). */
+  sellerOf: (sellerOrderId: Id<'SellerOrder'>) => Id<'Seller'> | undefined = () => undefined;
+}
+
 /** The seller ledger: one entry per credit, as the real one answers a repeat as already recorded. */
 export class FakeSellerCashbackLedger implements SellerCashbackLedger {
   readonly entries: Parameters<SellerCashbackLedger['record']>[1][] = [];
@@ -1002,6 +1026,44 @@ export class MemoryCredits implements CreditRepository {
       failureCode: result.status === 'FAILED' ? result.failureCode : null,
       settledAt: at,
     });
+    return Promise.resolve(true);
+  }
+  listDue(
+    _market: MarketContext,
+    now: Temporal.Instant,
+    stalledBefore: Temporal.Instant,
+    limit: number,
+  ) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (r) =>
+            r.status === 'PENDING' &&
+            r.kind === 'CASHBACK' &&
+            (r.grantAfter === null
+              ? r.createdAt.epochMilliseconds <= stalledBefore.epochMilliseconds
+              : r.grantAfter.epochMilliseconds <= now.epochMilliseconds),
+        )
+        .sort(
+          (a, b) =>
+            a.createdAt.epochMilliseconds - b.createdAt.epochMilliseconds ||
+            (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+        )
+        .slice(0, limit),
+    );
+  }
+  fixAmount(_market: MarketContext, id: Id<'PromotionCredit'>, amountMinor: bigint) {
+    const row = this.rows.get(id);
+    if (
+      row === undefined ||
+      row.status !== 'PENDING' ||
+      row.grantAfter === null ||
+      amountMinor > row.amountMinor ||
+      amountMinor < 1n
+    ) {
+      return Promise.resolve(false);
+    }
+    this.rows.set(id, { ...row, amountMinor, grantAfter: null });
     return Promise.resolve(true);
   }
   reservedTotal(_market: MarketContext, promotionId: Id<'Promotion'>) {
@@ -1193,13 +1255,17 @@ const NO_ACTIVITY = {
 };
 
 export function phase3Fakes() {
+  const orderFacts = new FakeOrderFacts();
+  const payoutAnchors = new FakePayoutAnchors();
+  payoutAnchors.sellerOf = (sellerOrderId) => orderFacts.orders.get(sellerOrderId)?.sellerId;
   return {
     ...NO_ACTIVITY,
     orderHistory: new FakeCustomerOrderHistory(),
     storeFollows: new FakeStoreFollows(),
     groupMembership: new FakeGroupMembership(),
     exclusiveCustomers: new FakeExclusiveCustomers(),
-    orderFacts: new FakeOrderFacts(),
+    orderFacts,
+    payoutAnchors,
     referralSignals: new FakeReferralSignals(),
     walletCredit: new FakeWalletCredit(),
     sellerCashbackLedger: new FakeSellerCashbackLedger(),

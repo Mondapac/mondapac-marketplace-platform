@@ -294,6 +294,7 @@
   { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
   { "name": "commission-payouts.run-payouts", "rule": "system" },
   { "name": "commission-payouts.seller-lost-disputes", "rule": "system" },
+  { "name": "commission-payouts.seller-order-payout-anchor", "rule": "system" },
   { "name": "commission-payouts.sync-dispute", "rule": "system" },
   {
     "name": "commission-payouts.view-next-payout",
@@ -714,6 +715,7 @@
   { "name": "promotions.cashback-on-delivery", "rule": "system" },
   { "name": "promotions.check-was-price", "rule": "anonymous" },
   { "name": "promotions.confirm-redemptions", "rule": "system" },
+  { "name": "promotions.grant-due-credits", "rule": "system" },
   { "name": "promotions.qualify-referral-on-delivery", "rule": "system" },
   { "name": "promotions.quote-discounts", "rule": "system" },
   { "name": "promotions.redeem-discounts", "rule": "system" },

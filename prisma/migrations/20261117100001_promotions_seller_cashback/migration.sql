@@ -1,8 +1,10 @@
 -- Customers management phase 4c: a seller's cashback for its exclusive customers. A CASHBACK is
 -- paid by the seller exactly when its segment is SELLER_EXCLUSIVE (so seller-owned, by
 -- promotions_owner_check), otherwise by the platform as before; the segment takes no days and no
--- group. No new column.
+-- group. No new column. A plain ADD is safe: the table is small and no deployed environment holds
+-- promotions yet. Safety: a blocked statement fails instead of queueing.
 SET lock_timeout = '5s';
+SET statement_timeout = '60s';
 
 ALTER TABLE "promotions"."promotions" DROP CONSTRAINT "promotions_type_funding_check";
 

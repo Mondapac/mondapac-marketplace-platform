@@ -1,3 +1,4 @@
+import type { PayoutAnchors } from './ports/payout-anchors';
 import type { SellerCashbackLedger } from './ports/seller-cashback-ledger';
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditTrailReader } from '../../../platform/audit/audit-trail-reader';
@@ -64,6 +65,8 @@ export interface PromotionsDependencies {
   readonly orderFacts: DeliveredOrderFacts;
   /** The seller ledger, for a seller's cashback (customers phase 4c). */
   readonly sellerCashbackLedger: SellerCashbackLedger;
+  /** When a delivered seller order's payout is released: a real cashback waits for it. */
+  readonly payoutAnchors: PayoutAnchors;
   readonly referralSignals: ReferralSignals;
   readonly walletCredit: WalletCredit;
   readonly credits: CreditRepository;

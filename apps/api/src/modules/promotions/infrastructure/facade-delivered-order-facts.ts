@@ -30,7 +30,11 @@ export class FacadeDeliveredOrderFacts implements DeliveredOrderFacts {
         sellerOrderId: facts.sellerOrderId,
         sellerId: facts.sellerId,
         customerAccountId: facts.customerAccountId,
-        goodsPaid: money(facts.goods, facts.currency),
+        goodsPaid: money(
+          facts.goods > facts.refundedGoods ? facts.goods - facts.refundedGoods : 0n,
+          facts.currency,
+        ),
+        exclusiveSeller: facts.exclusiveSeller,
         placedAt: facts.placedAt,
         deliveredAt: facts.deliveredAt,
         testOrder: false,

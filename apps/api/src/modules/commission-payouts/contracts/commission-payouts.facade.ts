@@ -12,7 +12,12 @@ export type CommissionPayoutsFailure =
    * The Market has no usable payout terms (none configured, or a stored value outside the hold
    * bounds): nothing is anchored and the caller tries again later.
    */
-  | { readonly code: 'commission-payouts.terms-unavailable' };
+  | { readonly code: 'commission-payouts.terms-unavailable' }
+  /**
+   * The seller order is not in the ledger, or has no eligibility anchor yet (its delivery is not
+   * recorded): the caller tries again later.
+   */
+  | { readonly code: 'commission-payouts.not-anchored' };
 
 /**
  * Why a line carries its rate: `standard` (the rate in force) or `exclusive` (the lower rate for
@@ -85,6 +90,18 @@ export interface SellerCashback {
   readonly currency: string;
   /** When the customer's wallet was credited. */
   readonly creditedAt: Temporal.Instant;
+}
+
+/**
+ * When a delivered seller order's money is released to the seller (its eligibility anchor), for
+ * promotions' cashback (customers phase 4c): the credit waits for it, so a refund or a dispute
+ * inside the hold can still lower or cancel it. Answered only for a seller order the ledger holds.
+ */
+export interface SellerOrderPayoutAnchor {
+  readonly orderId: Id<'Order'>;
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly eligibleAt: Temporal.Instant;
 }
 
 /** Who bears the loss of a refund (ordering's closed list). */
@@ -202,6 +219,16 @@ export interface CommissionPayoutsFacade {
     context: CallContext,
     cashback: SellerCashback,
   ): Promise<Result<'recorded' | 'already-recorded', CommissionPayoutsFailure>>;
+
+  /**
+   * The eligibility anchor of a seller order the ledger holds (system actor only; customers phase
+   * 4c). `commission-payouts.not-anchored` when the ledger has no such seller order or its
+   * delivery is not anchored yet.
+   */
+  sellerOrderPayoutAnchor(
+    context: CallContext,
+    sellerOrderId: Id<'SellerOrder'>,
+  ): Promise<Result<SellerOrderPayoutAnchor, CommissionPayoutsFailure>>;
 
   /**
    * Writes the ledger reversal rows of a succeeded refund (system actor only), in one unit. When

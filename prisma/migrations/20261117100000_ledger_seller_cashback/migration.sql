@@ -5,7 +5,11 @@
 -- replaced as a group, as 20261025190000 did; existing rows hold only the old kinds, so every new
 -- check holds for them. No new column, index or grant (the fact key already carries the source;
 -- the app role already inserts).
+-- A plain ADD is safe: no deployed environment holds ledger rows yet; a populated table would need
+-- ADD ... NOT VALID in one migration and VALIDATE in the next. Safety: a blocked statement fails
+-- instead of queueing.
 SET lock_timeout = '5s';
+SET statement_timeout = '60s';
 
 ALTER TABLE "commission_payouts"."ledger_entries"
   DROP CONSTRAINT "ledger_entries_kind_check",

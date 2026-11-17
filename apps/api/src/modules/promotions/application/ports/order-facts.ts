@@ -12,8 +12,13 @@ export interface DeliveredSellerOrderFacts {
   readonly sellerId: Id<'Seller'>;
   /** The customer's account. */
   readonly customerAccountId: Id<'Account'>;
-  /** The goods of this seller order the customer paid for, after discounts, before shipping and tax. */
+  /**
+   * The goods of this seller order the customer paid for and kept: after discounts and what
+   * refunds gave back, before shipping and tax.
+   */
   readonly goodsPaid: Money;
+  /** Whether the seller was the customer's exclusive seller at checkout (frozen on its lines). */
+  readonly exclusiveSeller: boolean;
   readonly placedAt: Temporal.Instant;
   readonly deliveredAt: Temporal.Instant;
   /** A test order (a synthetic one): it never earns real credit. */

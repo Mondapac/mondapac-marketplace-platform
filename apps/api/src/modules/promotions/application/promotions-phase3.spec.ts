@@ -38,6 +38,7 @@ import { ConfigPromotionsPolicy } from '../infrastructure/config-promotions-poli
 import { PromotionsFacadeImplementation } from '../presentation/promotions.facade';
 import type { PromotionsDependencies } from './promotions-dependencies';
 import { ApplyReferralCode } from './use-cases/apply-referral-code.use-case';
+import { GrantDueCredits } from './use-cases/grant-due-credits.use-case';
 import { CashbackOnDelivery } from './use-cases/cashback-on-delivery.use-case';
 import { CheckWasPrice } from './use-cases/check-was-price.use-case';
 import { CreateOwnPromotion } from './use-cases/create-own-promotion.use-case';
@@ -441,6 +442,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
         idempotencyKey: 'promotions:cashback:x1',
         createdAt: T0,
         settledAt: T0,
+        grantAfter: null,
       });
       const low = await make(SetPromotionBudget).execute(admin(), {
         promotionId: made.id,
@@ -952,6 +954,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       orderId?: Id<'Order'>;
       goodsCurrency?: string;
       sellerId?: Id<'Seller'>;
+      exclusiveSeller?: boolean;
     } = {},
   ) => {
     const facts = {
@@ -960,6 +963,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       sellerId: over.sellerId ?? SELLER,
       customerAccountId: who,
       goodsPaid: money(goodsMinor, over.goodsCurrency ?? currency),
+      exclusiveSeller: over.exclusiveSeller ?? true,
       placedAt: over.placedAt ?? T0.add({ hours: 1 }),
       deliveredAt: T0.add({ hours: 48 }),
       testOrder: over.testOrder ?? false,
@@ -1178,6 +1182,176 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           await run(deliverOrder(1, REFERRER, 10000n));
           expect(credits().map((c) => c.amountMinor)).toEqual([500n]);
           expect(ledger().entries.map((e) => e.amount)).toEqual([500n]);
+        });
+      });
+
+      describe('waiting for the seller order’s payout release (customers phase 4c, Hassan H-1)', () => {
+        const HOLD = { hours: 24 * 14 };
+        const grantDue = () => make(GrantDueCredits).execute(system, undefined);
+        const sellerCashback = () =>
+          sellerCreate({
+            type: 'CASHBACK',
+            name: 'Our cashback',
+            funding: 'SELLER',
+            startsAt: startsAt(),
+            reward: { kind: 'PERCENT', bps: 500 },
+            capMinor: '400',
+            segment: { kind: 'SELLER_EXCLUSIVE' },
+          });
+        /** Delivered now, released after the hold. */
+        const deliverHeld = (n: number, goods = 10000n) => {
+          const facts = deliverOrder(n, REFERRER, goods);
+          p3.payoutAnchors.anchors.set(facts.sellerOrderId, {
+            sellerId: facts.sellerId,
+            eligibleAt: clock.now().add(HOLD),
+          });
+          return facts;
+        };
+
+        it('reserves the credit at delivery and credits it, with the seller debit, only once the payout is released', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const facts = deliverHeld(1);
+          expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'pending' } });
+          expect(credits()[0]).toMatchObject({ status: 'PENDING', amountMinor: 400n });
+          expect(credits()[0]!.grantAfter).not.toBeNull();
+          expect(p3.walletCredit.calls).toBe(0);
+          // A redelivery waits too.
+          expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'pending' } });
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 0, retried: 0 },
+          });
+          clock.advance(Temporal.Duration.from(HOLD));
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 1, failed: 0, retried: 0 },
+          });
+          expect(credits()[0]).toMatchObject({
+            status: 'GRANTED',
+            amountMinor: 400n,
+            grantAfter: null,
+          });
+          expect(p3.walletCredit.grants.map((g) => g.amount)).toEqual([money(400n, currency)]);
+          expect(p3.sellerCashbackLedger.entries.map((e) => e.amount)).toEqual([400n]);
+          // Done: the next run finds nothing.
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 0, retried: 0 },
+          });
+        });
+
+        it('lowers the credit for what refunds gave back inside the hold, and cancels it when nothing is left', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const kept = deliverHeld(1);
+          const gone = deliverHeld(2);
+          await run(kept);
+          await run(gone);
+          // 6000 of 10000 refunded: 5 % of 4000 is 200, under the 400 reserved.
+          p3.orderFacts.add({ ...kept, goodsPaid: money(4000n, currency) });
+          p3.orderFacts.add({ ...gone, goodsPaid: money(0n, currency) });
+          clock.advance(Temporal.Duration.from(HOLD));
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 1, failed: 1, retried: 0 },
+          });
+          const bySource = new Map(credits().map((c) => [c.sourceId, c]));
+          expect(bySource.get(kept.sellerOrderId)).toMatchObject({
+            status: 'GRANTED',
+            amountMinor: 200n,
+          });
+          expect(bySource.get(gone.sellerOrderId)).toMatchObject({
+            status: 'FAILED',
+            failureCode: 'order-refunded',
+          });
+          expect(p3.walletCredit.grants.map((g) => g.amount)).toEqual([money(200n, currency)]);
+          expect(p3.sellerCashbackLedger.entries.map((e) => e.amount)).toEqual([200n]);
+        });
+
+        it('cancels a seller’s cashback whose customer stopped being its exclusive customer during the hold', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          await run(deliverHeld(1));
+          p3.exclusiveCustomers.sellers.delete(REFERRER);
+          clock.advance(Temporal.Duration.from(HOLD));
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 1, retried: 0 },
+          });
+          expect(credits()[0]).toMatchObject({ status: 'FAILED', failureCode: 'not-exclusive' });
+          expect(p3.walletCredit.calls).toBe(0);
+          expect(p3.sellerCashbackLedger.calls).toBe(0);
+        });
+
+        it('tries again next run when the facts, the attribution or the ledger cannot be reached', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const facts = deliverHeld(1);
+          await run(facts);
+          clock.advance(Temporal.Duration.from(HOLD));
+          p3.orderFacts.orders.delete(facts.sellerOrderId);
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 0, retried: 1 },
+          });
+          p3.orderFacts.add(facts);
+          p3.exclusiveCustomers.broken = true;
+          expect((await grantDue()).ok && credits()[0]!.status).toBe('PENDING');
+          p3.exclusiveCustomers.broken = false;
+          p3.sellerCashbackLedger.fails = true;
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 0, retried: 1 },
+          });
+          // The amount is final now; the wallet holds it under its key, the seller is not debited.
+          expect(credits()[0]).toMatchObject({ status: 'PENDING', grantAfter: null });
+          p3.sellerCashbackLedger.fails = false;
+          // A fixed credit is finished as it is, after a while, with no new check.
+          p3.exclusiveCustomers.sellers.delete(REFERRER);
+          clock.advance(Temporal.Duration.from({ minutes: 61 }));
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 1, failed: 0, retried: 0 },
+          });
+          expect(p3.walletCredit.grants).toHaveLength(1);
+          expect(p3.sellerCashbackLedger.entries).toHaveLength(1);
+        });
+
+        it('makes the platform’s real cashback wait too', async () => {
+          await adminCreate(cashback({ testMode: !confirmed }));
+          const facts = deliverHeld(1);
+          const result = await run(facts);
+          if (confirmed) {
+            expect(result).toEqual({ ok: true, value: { outcome: 'pending' } });
+            clock.advance(Temporal.Duration.from(HOLD));
+            expect((await grantDue()).ok && credits()[0]!.status).toBe('GRANTED');
+          } else {
+            // A test-mode note never waits: it moves no money.
+            expect(result).toEqual({ ok: true, value: { outcome: 'recorded' } });
+          }
+        });
+
+        it('retries while the payout anchor is unknown, and credits nothing on an anchor of another seller', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          p3.payoutAnchors.broken = true;
+          const facts = deliverOrder(1, REFERRER, 10000n);
+          expect(await run(facts)).toEqual({ ok: false, error: { code: 'promotions.try-again' } });
+          p3.payoutAnchors.broken = false;
+          p3.payoutAnchors.anchors.set(facts.sellerOrderId, {
+            sellerId: SELLER_2,
+            eligibleAt: clock.now(),
+          });
+          expect((await run(facts)).ok).toBe(true);
+          expect(credits()).toHaveLength(0);
+        });
+
+        it('gives a seller’s cashback nothing when the order was not flagged exclusive at checkout', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          await run(deliverOrder(1, REFERRER, 10000n, { exclusiveSeller: false }));
+          expect(credits()).toHaveLength(0);
         });
       });
 
@@ -1907,6 +2081,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
         idempotencyKey: 'promotions:cashback:a1234567',
         createdAt: T0,
         settledAt: T0,
+        grantAfter: null,
       });
       const listed = await make(ListPromotionCredits).execute(admin(), { promotionId: made.id });
       expect(listed.ok && listed.value.items).toHaveLength(1);
@@ -1942,6 +2117,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           // Three share an instant: the id breaks the tie.
           createdAt: T0.add({ hours: n <= 3 ? 1 : n }),
           settledAt: T0,
+          grantAfter: null,
         });
       }
       await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
@@ -1991,6 +2167,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           idempotencyKey: `promotions:cashback:cust000${n}`,
           createdAt: T0.add({ hours: n }),
           settledAt: T0,
+          grantAfter: null,
         });
       await credit(1, first.id, REFERRER);
       await credit(2, second.id, REFERRER);

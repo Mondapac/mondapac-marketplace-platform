@@ -415,6 +415,12 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   The facts carry the seller.
 - New port `SellerCashbackLedger` (adapter on commission-payouts' `recordSellerCashback`): after
   the wallet grant of a seller-funded credit; `false` keeps the credit pending (retry).
+- A real cashback waits for the payout release: `credit_issuances.grant_after` (migration
+  `20261117120000_promotions_credit_grant_after`), port `PayoutAnchors` on commission-payouts,
+  job `promotions.grant-due-credits` (use case of the same name, system). The guard trigger gains
+  one move (PENDING to PENDING: end the wait, amount kept or lowered) and grants GRANTED only after
+  the wait; the app role may update `amount_minor` and `grant_after`. A cashback PENDING with no
+  wait for an hour is finished by the job as it is (its amount is final).
 - Migration `20261117100001_promotions_seller_cashback`: `promotions_type_funding_check` makes a
   cashback the seller's money exactly with the segment; `promotions_phase3_check` lets a cashback
   carry no segment or this one. `down.sql` refuses while such rows exist.

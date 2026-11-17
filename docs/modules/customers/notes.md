@@ -550,9 +550,17 @@ card, the storefront's invite banner and the admin list's screens follow in the 
   seller makes a cashback): its own money, a percent between the Market's new
   `promotions.cashback.sellerMinBps` (AU 100 = 1 %, ZZ 50) and `maxBps` (AU 10 %), and a per-order
   cap up to `maxCapMinor`. An admin cashback never takes the segment.
-- On delivery (`promotions.cashback-on-delivery`) it credits the customer's wallet only when the
-  customer was the seller's exclusive customer when the order was placed, and only on that
-  seller's own seller order. Unknown attribution retries. The cap is per seller order; the larger
+- On delivery (`promotions.cashback-on-delivery`) it reserves the credit only when the
+  customer was the seller's exclusive customer when the order was placed (the flag frozen on the
+  lines and the attribution in force then), and only on that seller's own seller order. Unknown
+  attribution retries.
+- Every real cashback (the platform's too) waits for the seller order's payout release
+  (commission-payouts' eligibility anchor: delivery plus the hold days), because a seller can mark
+  its own order delivered (Hassan H-1). The credit is PENDING with `grant_after`; the worker job
+  `promotions.grant-due-credits` (every 15 minutes) then re-reads the order, lowers the amount
+  for what refunds gave back meanwhile (nothing left: FAILED `order-refunded`), cancels a seller's
+  cashback whose customer is no longer its exclusive customer (`not-exclusive`), and credits the
+  wallet. A seller order already released is credited at once. The cap is per seller order; the larger
   of the platform's and the seller's cashback wins (one cashback credit per seller order).
 - The seller pays: after the wallet credit, `commission-payouts.record-seller-cashback` writes a
   `cashback-seller` debit on that seller order (idempotent per credit), shown on the seller's
@@ -562,6 +570,9 @@ card, the storefront's invite banner and the admin list's screens follow in the 
 - Seller money needs no tax-ruling test mode. A wallet that is off (`wallet.disabled`) ends a
   seller's credit as failed, with no debit.
 - Ordering now answers `ordering.delivered-seller-order-facts` (system): goods without tax and
-  shipping, the seller, the customer and the instants. This also wires the platform's cashback,
+  shipping, what refunds (not failed) gave back of them, the frozen exclusive flag, the seller,
+  the customer and the instants. Commission-payouts answers
+  `commission-payouts.seller-order-payout-anchor` (system) only for a seller order its ledger holds,
+  so a seller-funded credit is never made for a seller order the ledger cannot debit. This also wires the platform's cashback,
   which until now never found an order's facts.
 - Not yet (4c-2): a refund claws back the unused cashback pro rata (`refund-cashback-seller`).

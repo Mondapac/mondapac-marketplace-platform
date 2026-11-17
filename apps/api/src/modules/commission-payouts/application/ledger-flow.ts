@@ -549,8 +549,17 @@ export async function recordSellerCashback(
   return deps.unitOfWork.run<'recorded' | 'already-recorded', LedgerFailure>(
     context.market,
     async () => {
-      const owner = await deps.ledger.sellerOfSellerOrder(context.market, cashback.sellerOrderId);
-      if (owner === null || owner !== cashback.sellerId) {
+      // The seller order is the seller's, of that order, and the cashback is at most the goods
+      // it was paid for (Hassan L-2).
+      const rows = await deps.ledger.listSellerOrder(context.market, cashback.sellerOrderId);
+      const sales = rows
+        .filter((row) => row.kind === 'sale')
+        .reduce((sum, row) => sum + row.amount.amount, 0n);
+      if (
+        rows.length === 0 ||
+        rows.some((row) => row.sellerId !== cashback.sellerId || row.orderId !== cashback.orderId) ||
+        cashback.amount > sales
+      ) {
         return err({ code: 'commission-payouts.ledger-inconsistent' } as const);
       }
       const inserted = await deps.ledger.append(context.market, [entry]);

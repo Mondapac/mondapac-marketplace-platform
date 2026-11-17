@@ -41,6 +41,7 @@ import { CommissionRates } from './use-cases/commission-rates.use-case';
 import { OwnCommissionOn } from './use-cases/own-commission-on.use-case';
 import { RecordRefund } from './use-cases/record-refund.use-case';
 import { RecordSellerCashback } from './use-cases/record-seller-cashback.use-case';
+import { SellerOrderPayoutAnchorQuery } from './use-cases/seller-order-payout-anchor.use-case';
 import { RecordSellerOrderPaid } from './use-cases/record-seller-order-paid.use-case';
 import { SetCommissionRate } from './use-cases/set-commission-rate.use-case';
 import { ViewCommissionRate } from './use-cases/view-commission-rate.use-case';
@@ -893,9 +894,16 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       ).toBe('debit');
     });
 
-    it('refuses another seller, or a seller order the ledger does not hold, writing nothing', async () => {
+    it('refuses another seller, another order, more than the goods, or a seller order the ledger does not hold', async () => {
       await record();
       expect(await recordCashback(cashback({ sellerId: SELLER_B }))).toEqual(
+        err({ code: 'commission-payouts.ledger-inconsistent' }),
+      );
+      expect(await recordCashback(cashback({ orderId: id<'Order'>(0xdd) }))).toEqual(
+        err({ code: 'commission-payouts.ledger-inconsistent' }),
+      );
+      // The sales of the seller order are 1435: a cashback above them is refused.
+      expect(await recordCashback(cashback({ amount: 1436n }))).toEqual(
         err({ code: 'commission-payouts.ledger-inconsistent' }),
       );
       expect(await recordCashback(cashback({ sellerOrderId: id<'SellerOrder'>(0x5ff) }))).toEqual(
@@ -925,6 +933,49 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         expect(await recordCashback(cashback(), context)).toMatchObject({ ok: false });
       }
       expect(ledger.rows.some((r) => r.kind === 'cashback-seller')).toBe(false);
+    });
+  });
+
+  describe("a seller order's payout release, for promotions (customers phase 4c)", () => {
+    const anchorOf = (sellerOrderId: unknown, context: CallContext = system) =>
+      new SellerOrderPayoutAnchorQuery(gate, deps).execute(context, sellerOrderId as never);
+    const anchor = (sellerId: Id<'Seller'> = SELLER_A) => ({
+      sellerOrderId: SELLER_ORDER,
+      orderId: ORDER,
+      sellerId,
+      deliveredAt: T0,
+      source: 'seller-click' as const,
+      holdDaysApplied: 14,
+      eligibleAt: T0.add({ hours: 24 * 14 }),
+      recordedAt: T0,
+    });
+
+    it('answers the anchor of a seller order the ledger holds, by its seller', async () => {
+      await record();
+      await deps.anchors.insertIfAbsent(market, anchor());
+      expect(await anchorOf(SELLER_ORDER)).toEqual(
+        ok({
+          orderId: ORDER,
+          sellerOrderId: SELLER_ORDER,
+          sellerId: SELLER_A,
+          eligibleAt: T0.add({ hours: 24 * 14 }),
+        }),
+      );
+    });
+
+    it('is not anchored without the ledger rows, without an anchor, or with another seller', async () => {
+      const notAnchored = err({ code: 'commission-payouts.not-anchored' });
+      await deps.anchors.insertIfAbsent(market, anchor());
+      expect(await anchorOf(SELLER_ORDER)).toEqual(notAnchored);
+      await record();
+      expect(await anchorOf(id<'SellerOrder'>(0x5ff))).toEqual(notAnchored);
+    });
+
+    it('refuses a malformed id and every caller but the system', async () => {
+      expect(await anchorOf('nope')).toEqual(err({ code: 'validation.failed' }));
+      for (const context of [admin, sellerA, customer]) {
+        expect((await anchorOf(SELLER_ORDER, context)).ok).toBe(false);
+      }
     });
   });
 

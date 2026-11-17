@@ -35,6 +35,7 @@ export {
   type SellerLostDisputeCount,
   type SellerLostDisputesFailure,
   type SellerCashback,
+  type SellerOrderPayoutAnchor,
   type SellerOrderDelivered,
 } from './commission-payouts.facade';
 export {

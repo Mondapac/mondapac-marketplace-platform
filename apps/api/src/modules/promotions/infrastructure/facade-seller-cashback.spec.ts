@@ -9,6 +9,7 @@ import { TEST_MARKETS } from '../../../../test/support/test-config';
 import type { CommissionPayoutsFacade } from '../../commission-payouts';
 import type { OrderingFacade } from '../../ordering';
 import { FacadeDeliveredOrderFacts } from './facade-delivered-order-facts';
+import { FacadePayoutAnchors } from './facade-payout-anchors';
 import { FacadeSellerCashbackLedger } from './facade-seller-cashback-ledger';
 
 const id = <T extends string>(n: number): Id<T> => {
@@ -43,6 +44,8 @@ describe.each(TEST_MARKETS)('the seller cashback adapters in market %s', (code) 
     customerAccountId: id<'Account'>(4),
     currency,
     goods: 1234n,
+    refundedGoods: 234n,
+    exclusiveSeller: true,
     placedAt: T0,
     deliveredAt: T0.add({ hours: 30 }),
   };
@@ -50,7 +53,7 @@ describe.each(TEST_MARKETS)('the seller cashback adapters in market %s', (code) 
     ({ deliveredSellerOrderFacts: answer }) as unknown as OrderingFacade;
   const request = { orderId: facts.orderId, sellerOrderId: facts.sellerOrderId };
 
-  it('reads the facts as goods paid, never a test order', async () => {
+  it('reads the facts as the goods kept (less refunds), never a test order', async () => {
     const adapter = new FacadeDeliveredOrderFacts(ordering(() => Promise.resolve(ok(facts))));
     expect(await adapter.read(system, request)).toEqual({
       known: true,
@@ -59,7 +62,8 @@ describe.each(TEST_MARKETS)('the seller cashback adapters in market %s', (code) 
         sellerOrderId: facts.sellerOrderId,
         sellerId: facts.sellerId,
         customerAccountId: facts.customerAccountId,
-        goodsPaid: { amount: 1234n, currency },
+        goodsPaid: { amount: 1000n, currency },
+        exclusiveSeller: true,
         placedAt: T0,
         deliveredAt: T0.add({ hours: 30 }),
         testOrder: false,
@@ -121,5 +125,49 @@ describe.each(TEST_MARKETS)('the seller cashback adapters in market %s', (code) 
       false,
     );
     expect(calls).toEqual([]);
+  });
+
+  it('never reads more refunded goods than were charged', async () => {
+    const adapter = new FacadeDeliveredOrderFacts(
+      ordering(() => Promise.resolve(ok({ ...facts, refundedGoods: 5000n }))),
+    );
+    const read = await adapter.read(system, request);
+    expect(read.known && read.value.goodsPaid.amount).toBe(0n);
+  });
+
+  it('reads the payout release, and answers unknown on a refusal, a throw or a non-system caller', async () => {
+    const anchor = {
+      orderId: facts.orderId,
+      sellerOrderId: facts.sellerOrderId,
+      sellerId: facts.sellerId,
+      eligibleAt: T0.add({ hours: 24 * 14 }),
+    };
+    let asked = 0;
+    const anchors = (answer: () => Promise<unknown>) =>
+      new FacadePayoutAnchors({
+        sellerOrderPayoutAnchor: () => {
+          asked += 1;
+          return answer();
+        },
+      } as unknown as CommissionPayoutsFacade);
+    expect(
+      await anchors(() => Promise.resolve(ok(anchor))).anchorOf(system, facts.sellerOrderId),
+    ).toEqual({
+      known: true,
+      value: { sellerId: facts.sellerId, eligibleAt: T0.add({ hours: 24 * 14 }) },
+    });
+    expect(
+      await anchors(() =>
+        Promise.resolve(err({ code: 'commission-payouts.not-anchored' })),
+      ).anchorOf(system, facts.sellerOrderId),
+    ).toEqual({ known: false });
+    expect(
+      await anchors(() => Promise.reject(new Error('down'))).anchorOf(system, facts.sellerOrderId),
+    ).toEqual({ known: false });
+    asked = 0;
+    expect(
+      await anchors(() => Promise.resolve(ok(anchor))).anchorOf(seller, facts.sellerOrderId),
+    ).toEqual({ known: false });
+    expect(asked).toBe(0);
   });
 });

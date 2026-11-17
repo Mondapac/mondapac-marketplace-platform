@@ -3721,10 +3721,52 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           customerAccountId: ACCOUNT,
           currency,
           goods,
+          refundedGoods: 0n,
+          exclusiveSeller: false,
           placedAt: stored.createdAt,
           deliveredAt: T0.add({ hours: 5 }),
         }),
       );
+    });
+
+    it('nets what refunds that did not fail gave back, and reads the exclusive flag frozen at checkout', async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      deliverAt(order.id, SELLER_A, T0.add({ hours: 5 }));
+      const sellerOrder = sellerOrderOf(order.id, SELLER_A);
+      const stored = orders.rows.get(order.id)!;
+      orders.rows.set(order.id, {
+        ...stored,
+        lines: stored.lines.map((line) =>
+          line.sellerOrderId === sellerOrder.id ? { ...line, exclusiveSeller: true } : line,
+        ),
+      });
+      const refund = (state: string, gross: bigint, tax: bigint, shipping: [bigint, bigint] | null) =>
+        ({
+          state,
+          gross,
+          tax,
+          shipping: shipping === null ? null : { gross: shipping[0], tax: shipping[1] },
+        }) as never;
+      const asked: unknown[] = [];
+      deps = {
+        ...deps,
+        refunds: Object.assign(Object.create(NO_REFUNDS) as RefundRepository, {
+          listOfSellerOrder: (_m: unknown, id: unknown, seller: unknown) => {
+            asked.push([id, seller]);
+            return Promise.resolve([
+              refund('succeeded', 1100n, 100n, null),
+              refund('pending', 750n, 50n, [550n, 50n]),
+              refund('failed', 9999n, 0n, null),
+            ]);
+          },
+        }),
+      };
+      const answer = await facts({ orderId: order.id, sellerOrderId: sellerOrder.id });
+      // 1000 from the first, 700 - 500 = 200 from the second; the failed one counts nothing.
+      expect(answer.ok && answer.value.refundedGoods).toBe(1200n);
+      expect(answer.ok && answer.value.exclusiveSeller).toBe(true);
+      expect(asked).toEqual([[sellerOrder.id, SELLER_A]]);
     });
 
     it('is unavailable before delivery, for an unconfirmed order, or with a line missing its tax', async () => {

@@ -13,7 +13,8 @@ interface DeliveredSellerOrderFactsInput {
  * `ordering.delivered-seller-order-facts`: the facts of one delivered seller order, for
  * promotions' credits on delivery (customers phase 4c: cashback). Rule `system`. The goods are the
  * seller order's lines as charged, without tax (a tax-inclusive line's frozen tax is taken out)
- * and without shipping. A seller order not delivered (or of an order not confirmed), or with a line placed before its tax was
+ * and without shipping, with what its refunds (not failed) gave back of them and the exclusive-seller
+ * flag frozen at checkout. A seller order not delivered (or of an order not confirmed), or with a line placed before its tax was
  * recorded, is `ordering.facts-unavailable`: no amount is guessed.
  */
 export class DeliveredSellerOrderFactsQuery extends UseCase<
@@ -59,13 +60,31 @@ export class DeliveredSellerOrderFactsQuery extends UseCase<
           return err({ code: 'ordering.facts-unavailable' } as const);
         }
         let goods = 0n;
+        let exclusiveSeller = false;
         for (const line of order.lines) {
           if (line.sellerOrderId !== sellerOrder.id) continue;
           if (line.taxInclusive && line.taxAmount === null) {
             return err({ code: 'ordering.facts-unavailable' } as const);
           }
           goods += line.lineAmount - (line.taxInclusive ? line.taxAmount! : 0n);
+          exclusiveSeller ||= line.exclusiveSeller;
         }
+        // What refunds (not failed) gave back of the goods: each refund's gross less its tax,
+        // less its shipping part (gross less tax).
+        let refundedGoods = 0n;
+        const refunds = await this.deps.refunds.listOfSellerOrder(
+          context.market,
+          sellerOrder.id,
+          sellerOrder.sellerId,
+        );
+        for (const refund of refunds) {
+          if (refund.state === 'failed') continue;
+          const shipping =
+            refund.shipping === null ? 0n : refund.shipping.gross - refund.shipping.tax;
+          refundedGoods += refund.gross - refund.tax - shipping;
+        }
+        if (refundedGoods < 0n) refundedGoods = 0n;
+        if (refundedGoods > goods) refundedGoods = goods;
         return ok({
           orderId: order.id,
           sellerOrderId: sellerOrder.id,
@@ -73,6 +92,8 @@ export class DeliveredSellerOrderFactsQuery extends UseCase<
           customerAccountId: order.accountId,
           currency: order.total.currency,
           goods,
+          refundedGoods,
+          exclusiveSeller,
           placedAt: order.createdAt,
           deliveredAt: sellerOrder.deliveredAt,
         });

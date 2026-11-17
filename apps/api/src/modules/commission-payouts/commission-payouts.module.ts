@@ -93,6 +93,7 @@ import { SellerLostDisputes } from './application/use-cases/seller-lost-disputes
 import { RecordSellerOrderDelivered } from './application/use-cases/record-seller-order-delivered.use-case';
 import { RecordSellerOrderPaid } from './application/use-cases/record-seller-order-paid.use-case';
 import { RecordSellerCashback } from './application/use-cases/record-seller-cashback.use-case';
+import { SellerOrderPayoutAnchorQuery } from './application/use-cases/seller-order-payout-anchor.use-case';
 import { ReleasePayoutHold } from './application/use-cases/release-payout-hold.use-case';
 import { SetCommissionRate } from './application/use-cases/set-commission-rate.use-case';
 import { SetSellerPayoutTerms } from './application/use-cases/set-seller-payout-terms.use-case';
@@ -403,6 +404,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       OwnCommissionOn,
       RecordSellerOrderPaid,
       RecordSellerCashback,
+      SellerOrderPayoutAnchorQuery,
       RecordRefund,
       RecordSellerOrderDelivered,
       PlaceSellerSuspendedHold,
@@ -468,6 +470,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         SellerLostDisputes,
         OwnCommissionOn,
         RecordSellerCashback,
+        SellerOrderPayoutAnchorQuery,
       ],
       useFactory: (
         rates: CommissionRates,
@@ -477,6 +480,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         lost: SellerLostDisputes,
         own: OwnCommissionOn,
         cashback: RecordSellerCashback,
+        anchor: SellerOrderPayoutAnchorQuery,
       ) =>
         new CommissionPayoutsFacadeImplementation(
           rates,
@@ -486,6 +490,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           lost,
           own,
           cashback,
+          anchor,
         ),
     },
   ],

@@ -136,5 +136,8 @@ New ledger kind `cashback-seller` (a debit, per seller order, no line, source = 
 credit id, amount > 0), written by `commission-payouts.record-seller-cashback` (system) when
 promotions credits a seller-funded cashback. The seller order must be in the ledger and belong to
 that seller (`ledger-inconsistent` otherwise). Totals gain `sellerCashback`, subtracted from the
-balance. Migration `20261117100000_ledger_seller_cashback` widens the kind, source and line
+balance. The cashback must not exceed the seller order's sales and must name its order.
+`commission-payouts.seller-order-payout-anchor` (system) answers the eligibility anchor of a seller
+order the ledger holds, for promotions' waiting cashback. Migration
+`20261117100000_ledger_seller_cashback` widens the kind, source and line
 CHECKs; `down.sql` refuses while such rows exist.

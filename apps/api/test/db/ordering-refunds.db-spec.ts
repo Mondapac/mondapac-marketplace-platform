@@ -1703,6 +1703,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           sellerLostDisputes: () => Promise.reject(new Error('not used')),
           ownCommissionOn: () => Promise.reject(new Error('not used')),
           recordSellerCashback: () => Promise.reject(new Error('not used')),
+          sellerOrderPayoutAnchor: () => Promise.reject(new Error('not used')),
         },
       };
     });

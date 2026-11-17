@@ -149,6 +149,16 @@ export interface DeliveredSellerOrderFacts {
    * and without shipping: a tax-inclusive line has its frozen tax taken out.
    */
   readonly goods: bigint;
+  /**
+   * The goods given back so far by this seller order's refunds that have not failed (pending ones
+   * count), without tax and without shipping; at most `goods`.
+   */
+  readonly refundedGoods: bigint;
+  /**
+   * Whether the seller was the customer's exclusive seller when the order was placed: the flag
+   * frozen on the seller order's lines at checkout (customers phase 4b).
+   */
+  readonly exclusiveSeller: boolean;
   readonly placedAt: Temporal.Instant;
   readonly deliveredAt: Temporal.Instant;
 }

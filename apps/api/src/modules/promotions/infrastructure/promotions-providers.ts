@@ -73,6 +73,8 @@ import { PrismaReferralRepository } from './prisma-referral.repository';
 import { UnknownReferralSignals } from './unknown-customer-facts';
 import { FacadeDeliveredOrderFacts } from './facade-delivered-order-facts';
 import { FacadeSellerCashbackLedger } from './facade-seller-cashback-ledger';
+import { FacadePayoutAnchors } from './facade-payout-anchors';
+import { PAYOUT_ANCHORS, type PayoutAnchors } from '../application/ports/payout-anchors';
 import {
   SELLER_CASHBACK_LEDGER,
   type SellerCashbackLedger,
@@ -221,6 +223,12 @@ export const promotionsProviders: readonly FactoryProvider[] = [
     inject: [COMMISSION_PAYOUTS_FACADE],
     useFactory: (commission: CommissionPayoutsFacade): SellerCashbackLedger =>
       new FacadeSellerCashbackLedger(commission),
+  },
+  {
+    provide: PAYOUT_ANCHORS,
+    inject: [COMMISSION_PAYOUTS_FACADE],
+    useFactory: (commission: CommissionPayoutsFacade): PayoutAnchors =>
+      new FacadePayoutAnchors(commission),
   },
   {
     provide: WALLET_CREDIT,
