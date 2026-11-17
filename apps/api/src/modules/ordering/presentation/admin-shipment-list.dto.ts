@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  SHIPMENT_CARRIER_PROGRESS,
   SHIPMENT_ROW_ACTIONS,
   SHIPMENT_STAGES,
   type ShipmentListPage,
@@ -15,6 +16,37 @@ import { MoneyView, OrderCustomerBody } from './orders.dto';
 export class ShipmentWindowBody {
   @ApiProperty({ format: 'date-time' }) start!: string;
   @ApiProperty({ format: 'date-time' }) end!: string;
+}
+
+export class ShipmentCarrierProgressBody {
+  @ApiProperty({
+    enum: SHIPMENT_CARRIER_PROGRESS,
+    description: 'Where the real-time carrier delivery stands, as shipping tracks it.',
+  })
+  progress!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The carrier's last raw status code (letters, digits, `_`, `.`, `-`; 1 to 60). Null " +
+      'when the stored code is of any other shape. Carrier text: show it as plain text.',
+  })
+  carrierStatus!: string | null;
+  @ApiProperty({
+    format: 'date-time',
+    description:
+      'Carrier update received: when the platform recorded the last change of progress or ' +
+      "carrier status (a webhook or poll it took), not the carrier's own event time.",
+  })
+  updatedAt!: string;
+  @ApiProperty({ description: 'Whether the fleet reported proof of delivery.' })
+  proofOfDelivery!: boolean;
+  @ApiProperty({
+    description:
+      "The fleet that holds the booking (shipping's code); it may differ from the row's quoted " +
+      '`fleet` when a fallback fleet carried the order.',
+  })
+  fleet!: string;
 }
 
 export class ShipmentListRowBody {
@@ -70,6 +102,16 @@ export class ShipmentListRowBody {
     description: 'Set when the seller order needs an admin.',
   })
   deliveryAttention!: string | null;
+  @ApiProperty({
+    type: ShipmentCarrierProgressBody,
+    nullable: true,
+    description:
+      "What the real-time carrier last reported (shipping's carrier progress; never the " +
+      'carrier reference or tracking link). Null when the seller order has no carrier booking, ' +
+      'or when `carrierProgressAvailable` is false. Unrelated to `carrier`, the carrier the ' +
+      'seller named.',
+  })
+  carrierProgress!: ShipmentCarrierProgressBody | null;
   @ApiProperty({
     type: MoneyView,
     description:
@@ -136,6 +178,13 @@ export class ShipmentListPageBody {
     description: 'What `search` looked in; null without `search`.',
   })
   searchScope!: 'customers-and-stores' | 'stores' | null;
+  @ApiProperty({
+    description:
+      'False when the carrier progress could not be read for this page (no ' +
+      '`shipping.carrier-delivery.view`, or shipping failed): every `carrierProgress` is null ' +
+      'and the column shows "Not available". True: a null `carrierProgress` means no booking.',
+  })
+  carrierProgressAvailable!: boolean;
 }
 
 const instant = (value: { toString(): string } | null) =>
@@ -168,6 +217,16 @@ export function shipmentListPageBody(page: ShipmentListPage): ShipmentListPageBo
       trackingRef: row.trackingRef,
       fleet: row.fleet,
       deliveryAttention: row.deliveryAttention,
+      carrierProgress:
+        row.carrierProgress === null
+          ? null
+          : {
+              progress: row.carrierProgress.progress,
+              carrierStatus: row.carrierProgress.carrierStatus,
+              updatedAt: row.carrierProgress.updatedAt.toString(),
+              proofOfDelivery: row.carrierProgress.proofOfDelivery,
+              fleet: row.carrierProgress.fleet,
+            },
       shipping: moneyBody(row.shipping),
       total: moneyBody(row.total),
       refunded: moneyBody(row.refunded),
@@ -180,5 +239,6 @@ export function shipmentListPageBody(page: ShipmentListPage): ShipmentListPageBo
     nextCursor: page.nextCursor,
     searchCapped: page.searchCapped,
     searchScope: page.searchScope,
+    carrierProgressAvailable: page.carrierProgressAvailable,
   };
 }

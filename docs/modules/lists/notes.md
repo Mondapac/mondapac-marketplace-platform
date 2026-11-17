@@ -23,7 +23,27 @@ Speed mode (CLAUDE.md): no G1/G2 or design document. The owner approved the supe
   `PUT/DELETE /lists/admin/saved-filters/:id`. The old catalog and ordering routes stay until the
   panels move.
 
+## Admin Sales lists (ordering)
+
+`ordering` registers three more admin lists, guarded like Orders (`ordering.order.view`, share
+`ordering.saved-filter.share`); no migration (the `list_key` CHECK is a pattern). Payloads are
+closed (`v: 1`; date filters are relative presets, never dates; search text is never saved):
+
+- `admin.ordering.shipments`: tab `all|attention|to-prepare|ready|shipped|delivered|refunded`;
+  filters `deliveryMethod`, `attention`, `paid`, `shipped`; sort `paid|shipped|delivered|total`.
+- `admin.ordering.refunds`: tab `all|pending|succeeded|failed`; filters `reason`, `actor`,
+  `lossBearer`, `ledger`, `requested`; sort `requested|settled|amount`.
+- `admin.ordering.documents` (the Invoices page): tab `order-confirmation|credit-note`; filter
+  `issued`; sort `issued|amount`.
+
+## B0-2 column preferences
+
+- `lists.column_preferences` keeps the columns a user chose per list (one row per account and list,
+  per store later), behind `COLUMN_PREFERENCE_STORE`. A list opts in with `columns` (its column ids)
+  on its `ListDefinition`; the panel's own column ids must stay the same.
+- Routes: `GET/PUT/DELETE /lists/admin/column-preferences` (`listKey` in the query or body). No
+  audit: it is a personal preference. Ids the list no longer offers are dropped on read.
+
 ## Not here yet
 
 - B0-1b seller side: `/lists/seller/saved-filters` and the seller lists' definitions.
-- B0-2: column preferences per user per list.

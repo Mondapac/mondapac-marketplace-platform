@@ -12,6 +12,7 @@ import { AccountSessionsEndedForErasureAudit } from '../../domain/audit';
 import type { AccountRepository } from '../ports/account.repository';
 import type { SessionRepository } from '../ports/session.repository';
 import { isActingAsSession } from '../sellers/access-decision-reads';
+import { endEveryCustomerSession } from '../accounts/customer-security';
 
 export interface AdminEndCustomerSessionsInput {
   readonly accountId: Id<'Account'>;
@@ -65,47 +66,31 @@ export class AdminEndCustomerSessions extends UseCase<
     super(gate);
   }
 
-  protected handle(
+  protected async handle(
     context: CallContext,
     input: AdminEndCustomerSessionsInput,
   ): Promise<Result<AdminEndCustomerSessionsOutput, AdminEndCustomerSessionsFailure>> {
-    const { actor, market } = context;
+    const { actor } = context;
     if (
       actor.kind !== 'authenticated' ||
       actor.population !== 'admin' ||
       actor.sellerId !== null ||
       isActingAsSession(actor)
     ) {
-      return Promise.resolve(err({ code: 'access.denied' }));
+      return err({ code: 'access.denied' });
     }
-    const { unitOfWork, accounts, sessions, audit, clock } = this.deps;
-    return unitOfWork.run(
-      market,
-      async (): Promise<
-        Result<AdminEndCustomerSessionsOutput, AdminEndCustomerSessionsFailure>
-      > => {
-        if (!(await accounts.lockCredential(market, input.accountId))) {
-          return ok({ code: 'sessions-ended', revokedSessions: 0 });
-        }
-        const account = await accounts.findById(market, input.accountId);
-        if (account === null || account.state.population !== 'customer') {
-          return ok({ code: 'sessions-ended', revokedSessions: 0 });
-        }
-        const revokedSessions = await sessions.revokeAllOf(
-          market,
-          input.accountId,
-          'account-erasure',
-          clock.now(),
-          null,
-        );
-        await audit.record(
-          context,
-          AccountSessionsEndedForErasureAudit.entry(input.accountId, {
-            after: { requestId: input.requestId, revokedSessions },
-          }),
-        );
-        return ok({ code: 'sessions-ended', revokedSessions });
-      },
+    // The shared core of "sign out everywhere" (customers phase 2b), with this request's reason
+    // and audit row; an account that is gone or is not a customer's ends nothing.
+    const revokedSessions = await endEveryCustomerSession(
+      this.deps,
+      context,
+      input.accountId,
+      'account-erasure',
+      (revoked) =>
+        AccountSessionsEndedForErasureAudit.entry(input.accountId, {
+          after: { requestId: input.requestId, revokedSessions: revoked },
+        }),
     );
+    return ok({ code: 'sessions-ended', revokedSessions: revokedSessions ?? 0 });
   }
 }

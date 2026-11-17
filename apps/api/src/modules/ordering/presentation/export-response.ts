@@ -4,11 +4,11 @@ import type { Response } from 'express';
 import { refusal } from './http-answers';
 import { writeChunks } from './write-chunks';
 
-/** The file an order export hands to the route: its name, its type and its chunks of text. */
+/** The file an export hands to the route: its name, its type and its chunks (text or bytes). */
 interface ExportFile {
   readonly filename: string;
   readonly contentType: string;
-  readonly chunks: AsyncIterable<string>;
+  readonly chunks: AsyncIterable<string | Uint8Array>;
 }
 
 /**

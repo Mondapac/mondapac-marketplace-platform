@@ -1,6 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { SearchAssistantFacade } from '../../search';
+import type { SellUnit } from '../domain/basket-units';
 import type { BasketSources } from '../application/ports/basket-sources';
 import type { BasketCandidate, CartMode } from '../domain/plan-basket';
 
@@ -15,7 +16,23 @@ export class FacadeBasketSources implements BasketSources {
   constructor(
     private readonly search: SearchAssistantFacade,
     private readonly readCartMode: (context: CallContext) => Promise<CartMode>,
+    private readonly readUnits: (
+      context: CallContext,
+      offerId: string,
+    ) => Promise<Result<readonly SellUnit[], unknown>>,
   ) {}
+
+  async units(
+    context: CallContext,
+    offerId: string,
+  ): Promise<Result<readonly SellUnit[], { readonly code: 'unavailable' }>> {
+    try {
+      const read = await this.readUnits(context, offerId);
+      return read.ok ? ok(read.value) : err({ code: 'unavailable' });
+    } catch {
+      return err({ code: 'unavailable' });
+    }
+  }
 
   async candidates(
     context: CallContext,

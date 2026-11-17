@@ -5,6 +5,7 @@ import { LegalModule } from './legal';
 import { CustomersModule } from './customers';
 import { CustomersAccountDeletionModule } from './customers/account-deletion.module';
 import { CustomersReadModelsModule } from './customers/customers-read-models.module';
+import { CustomersSectionsModule } from './customers/customers-sections.module';
 import { SellersModule } from './sellers';
 import { SellerHealthModule } from './sellers/seller-health.module';
 import { SellerStoreProfileModule } from './sellers/store-profile.module';
@@ -73,6 +74,7 @@ export const CORE_MODULES = [
  * certification without a module cycle. `CustomersAccountDeletionModule` runs the buyer's account
  * deletion flow, which asks ordering, wallet, identity and engagement (ordering imports customers).
  * `CustomersReadModelsModule` keeps the customers read models from identity's and ordering's events.
+ * `CustomersSectionsModule` binds the customer page's sections to the modules that own their data.
  * `SellerHealthModule` binds the three health feeds (ordering, reviews, commission-payouts) to the
  * sellers nightly run. `CommissionPayoutsDisputesModule` binds the dispute consumer of commission-payouts to payments
  * and ordering, which reach commission-payouts. `PromotionsOrderEventsModule` subscribes promotions
@@ -83,6 +85,7 @@ export const BINDING_MODULES = [
   SellerHealthModule,
   CustomersAccountDeletionModule,
   CustomersReadModelsModule,
+  CustomersSectionsModule,
   CommissionPayoutsDisputesModule,
   PromotionsOrderEventsModule,
 ];
