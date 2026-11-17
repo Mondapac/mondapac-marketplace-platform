@@ -56,6 +56,7 @@ import { SettleStaleRedemptions } from './use-cases/settle-stale-redemptions.use
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { ListOrders } from './use-cases/list-orders.use-case';
 import { AdminCustomerRefunds } from './use-cases/admin-customer-refunds.use-case';
+import { AdminOrderAccountOf } from './use-cases/admin-order-account-of.use-case';
 import { AdminOpenObligationsOfQuery } from './use-cases/admin-open-obligations-of.use-case';
 import { OpenObligationsOfQuery } from './use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './use-cases/own-open-obligations.use-case';
@@ -4356,6 +4357,57 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         ok: false,
         error: { code: 'validation.failed', fields: [{ path: 'accountId', code: 'format' }] },
       });
+    });
+  });
+
+  describe('the account behind an order number (customers phase 2b search)', () => {
+    const adminActor = () =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xad),
+          sessionId: id<'Session'>(0x62),
+          sellerId: null,
+        }),
+        'order-account-admin',
+      );
+
+    it('declares the order view key', () => {
+      expect(AdminOrderAccountOf.access).toEqual({
+        name: 'ordering.admin-order-account-of',
+        rule: { kind: 'permissions', allOf: ['ordering.order.view'] },
+      });
+    });
+
+    it('answers the placing account to an admin, in the Market only, and refuses anyone else', async () => {
+      const order = await placed();
+      const read = new AdminOrderAccountOf(gate, deps);
+      expect(await read.execute(adminActor(), { orderId: order.id })).toEqual({
+        ok: true,
+        value: { accountId: ACCOUNT },
+      });
+      for (const orderId of [id<'Order'>(0xdead), 'nope', 42]) {
+        expect(await read.execute(adminActor(), { orderId })).toEqual({
+          ok: false,
+          error: { code: 'ordering.order-not-found' },
+        });
+      }
+      const elsewhere = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+      const foreignAdmin = testCallContext(
+        elsewhere,
+        testAuthenticatedActor(elsewhere, {
+          population: 'admin',
+          accountId: id<'Account'>(0xae),
+          sessionId: id<'Session'>(0x63),
+          sellerId: null,
+        }),
+        'order-account-foreign',
+      );
+      expect(await read.execute(foreignAdmin, { orderId: order.id })).toMatchObject({
+        ok: false,
+      });
+      expect(await read.execute(customer, { orderId: order.id })).toMatchObject({ ok: false });
     });
   });
 

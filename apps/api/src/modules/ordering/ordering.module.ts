@@ -132,6 +132,20 @@ import { BookCarrierDeliveries } from './application/use-cases/book-carrier-deli
 import { RecordCarrierProgress } from './application/use-cases/record-carrier-progress.use-case';
 import { RecordDeliveryAnchor } from './application/use-cases/record-delivery-anchor.use-case';
 import { CancelCarrierAfterRefund } from './application/use-cases/cancel-carrier-after-refund.use-case';
+import { AdminOrderAccountOf } from './application/use-cases/admin-order-account-of.use-case';
+import { AdminCustomerOrderIds } from './application/use-cases/admin-customer-order-ids.use-case';
+import {
+  AdminCustomerPayments,
+  type CustomerPaymentsDependencies,
+} from './application/use-cases/admin-customer-payments.use-case';
+import { CUSTOMER_PAYMENTS_READER } from './application/ports/customer-payments.reader';
+import { AdminCustomerRefundsExport } from './application/use-cases/admin-customer-refunds-export.use-case';
+import { AdminCustomerRefundsList } from './application/use-cases/admin-customer-refunds-list.use-case';
+import type {
+  CustomerRefundsDependencies,
+  CustomerRefundsExportDependencies,
+} from './application/customer-refunds-list-flow';
+import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../platform/list-export';
 import { AdminOpenObligationsOfQuery } from './application/use-cases/admin-open-obligations-of.use-case';
 import { OpenObligationsOfQuery } from './application/use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './application/use-cases/own-open-obligations.use-case';
@@ -437,6 +451,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminCancelOrder,
       AdminViewRefundLimits,
       AdminCustomerRefunds,
+      AdminOrderAccountOf,
       AdminSetRefundLimit,
       AdminRemoveRefundLimit,
       SettleRefunds,
@@ -588,6 +603,54 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerSavedFilterUpdate,
       SellerSavedFilterDelete,
     ].map((type) => savedViewProvider(type as SavedViewUseCaseClass<unknown>, false)),
+    { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
+    ...[AdminCustomerPayments, AdminCustomerOrderIds].map((type): FactoryProvider => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_PAYMENTS_READER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: CustomerPaymentsDependencies['unitOfWork'],
+        payments: CustomerPaymentsDependencies['payments'],
+      ) => new type(gate, { unitOfWork, payments }),
+    })),
+    {
+      provide: AdminCustomerRefundsList,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, REFUND_REPOSITORY],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: CustomerRefundsDependencies['unitOfWork'],
+        refunds: CustomerRefundsDependencies['refunds'],
+      ) => new AdminCustomerRefundsList(gate, { unitOfWork, refunds }),
+    },
+    {
+      provide: AdminCustomerRefundsExport,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        REFUND_REPOSITORY,
+        AUDIT_WRITER,
+        STEP_UP_CONSUMER,
+        SHEET_WRITER,
+        CLOCK,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: CustomerRefundsExportDependencies['unitOfWork'],
+        refunds: CustomerRefundsExportDependencies['refunds'],
+        audit: CustomerRefundsExportDependencies['audit'],
+        stepUp: CustomerRefundsExportDependencies['stepUp'],
+        sheetWriter: CustomerRefundsExportDependencies['sheetWriter'],
+        clock: CustomerRefundsExportDependencies['clock'],
+      ) =>
+        new AdminCustomerRefundsExport(gate, {
+          unitOfWork,
+          refunds,
+          audit,
+          stepUp,
+          sheetWriter,
+          clock,
+        }),
+    },
     {
       provide: ORDERING_FACADE,
       inject: [
@@ -605,6 +668,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         RefundNoticeQuery,
         CustomerOrderStatsQuery,
         CustomerOrderAccountsQuery,
+        AdminOrderAccountOf,
+        AdminCustomerPayments,
+        AdminCustomerOrderIds,
         CustomerSellerStatsQuery,
         SellerCustomerOrdersQuery,
       ],
@@ -623,6 +689,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         refundNotice: RefundNoticeQuery,
         customerStats: CustomerOrderStatsQuery,
         customerAccounts: CustomerOrderAccountsQuery,
+        orderAccount: AdminOrderAccountOf,
+        customerPayments: AdminCustomerPayments,
+        customerOrderIds: AdminCustomerOrderIds,
         customerSellers: CustomerSellerStatsQuery,
         sellerCustomerOrders: SellerCustomerOrdersQuery,
       ) =>
@@ -641,6 +710,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           refundNotice,
           customerStats,
           customerAccounts,
+          orderAccount,
+          customerPayments,
+          customerOrderIds,
           customerSellers,
           sellerCustomerOrders,
         ),
