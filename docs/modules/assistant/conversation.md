@@ -96,7 +96,7 @@ session and CSRF token, only after the buyer clicks (ADR-0019 R4).
   most 10, each with its price, Variant label and `maxQuantity` (the Market's line ceiling, lowered
   by the stock read only while stock is low: the "max N" of the brief, never a stock count). A
   signed-in buyer's cart is read too: each unit's `lineId`, `inCart` and `addable` (`maxQuantity -
-inCart`, since the cart's add caps the sum; 0 for a unit with no line when the cart holds its
+  inCart`, since the cart's add caps the sum; 0 for a unit with no line when the cart holds its
   most lines, `cartFull`). The proposed quantity is lowered to the unit's `addable` (to the largest
   one when the buyer picks among several; the widget clamps to the chosen unit's), with
   `limited: true`; when nothing more fits there is no card. The cart and the mode are read once per
@@ -298,7 +298,7 @@ not sent to the model and, if the model asks for it anyway, the call is refused 
 - **Path.** The widget talks to the API through the buyer relay (`app/api/[...path]`, same
   origin, no CORS): `chatUrl` is `/api/assistant`. The relay allows only `GET assistant/storefront`
   (query `visitor` and `lang`, each only when well shaped) and `POST
-assistant/conversations/<uuid>/messages` (strict UUID). On these paths, and only these, the
+  assistant/conversations/<uuid>/messages` (strict UUID). On these paths, and only these, the
   assistant guest cookie `__Host-assistant-guest-<MARKET>` and the session cross both ways (the
   guest-cart cookie does not), the `x-assistant-preview` header crosses when it has the token
   shape, and the wait is 30 s (the server gives up at 25 s). The answer is buffered, which is
