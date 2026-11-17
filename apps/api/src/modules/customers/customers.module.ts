@@ -122,6 +122,22 @@ import {
 } from './application/use-cases/record-customer-timeline.use-case';
 import { ReadCustomerGroupMembership } from './application/use-cases/read-customer-group-membership.use-case';
 import { AdminCustomerManagementController } from './presentation/admin-customer-management.controller';
+import type { SellerCustomerDependencies } from './application/seller-customers-flow';
+import {
+  CUSTOMER_CODES,
+  SELLER_CUSTOMER_REPOSITORY,
+  TREND_ZONES,
+} from './application/ports/seller-customers.repository';
+import { AdminSellerCustomersList } from './application/use-cases/admin-seller-customers-list.use-case';
+import { AdminSellerCustomersSummary } from './application/use-cases/admin-seller-customers-summary.use-case';
+import { ReconcileSellerCustomers } from './application/use-cases/reconcile-seller-customers.use-case';
+import { SellerCustomerDetail } from './application/use-cases/seller-customer-detail.use-case';
+import { SellerCustomersCodes } from './application/use-cases/seller-customers-codes.use-case';
+import { SellerCustomersExport } from './application/use-cases/seller-customers-export.use-case';
+import { SellerCustomersList } from './application/use-cases/seller-customers-list.use-case';
+import { SyncSellerCustomers } from './application/use-cases/sync-seller-customers.use-case';
+import { AdminSellerCustomersController } from './presentation/admin-seller-customers.controller';
+import { SellerCustomersController } from './presentation/seller-customers.controller';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: CustomersDependencies) => U;
 
@@ -193,6 +209,41 @@ function readModelUseCaseProvider<U>(type: ReadModelUseCaseClass<U>): FactoryPro
         readModels,
         clock,
       }),
+  };
+}
+
+type SellerCustomerUseCaseClass<U> = new (gate: UseCaseGate, deps: SellerCustomerDependencies) => U;
+
+const SELLER_CUSTOMER_PORTS: readonly [
+  Exclude<keyof SellerCustomerDependencies, 'identity' | 'ordering' | 'engagement'>,
+  InjectionToken,
+][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['sellerCustomers', SELLER_CUSTOMER_REPOSITORY],
+  ['codes', CUSTOMER_CODES],
+  ['readModels', CUSTOMER_READ_MODEL_REPOSITORY],
+  ['clock', CLOCK],
+  ['audit', AUDIT_WRITER],
+  ['sheetWriter', SHEET_WRITER],
+  ['zones', TREND_ZONES],
+];
+
+/** The per-seller customers use cases (phase 3): their ports, plus the peers bound at start. */
+function sellerCustomerUseCaseProvider<U>(type: SellerCustomerUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      CUSTOMER_READ_MODEL_PEERS,
+      ...SELLER_CUSTOMER_PORTS.map(([, token]) => token),
+    ],
+    useFactory: (gate: UseCaseGate, peers: CustomerReadModelPeers, ...values: unknown[]) =>
+      new type(gate, {
+        ...Object.fromEntries(SELLER_CUSTOMER_PORTS.map(([name], index) => [name, values[index]])),
+        identity: peers.identity,
+        ordering: peers.ordering,
+        engagement: peers.engagement,
+      } as unknown as SellerCustomerDependencies),
   };
 }
 
@@ -337,6 +388,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminAccountDeletionRequestsController,
     AdminCustomersController,
     AdminCustomerManagementController,
+    SellerCustomersController,
+    AdminSellerCustomersController,
   ],
   providers: [
     PersistenceModule.auditWriterFor('customers'),
@@ -372,6 +425,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ReadCustomerLastOrder,
       ReadOwnLastOrder,
     ].map((type) => readModelUseCaseProvider(type as ReadModelUseCaseClass<unknown>)),
+    ...[
+      SyncSellerCustomers,
+      ReconcileSellerCustomers,
+      SellerCustomersList,
+      SellerCustomersCodes,
+      SellerCustomersExport,
+      SellerCustomerDetail,
+      AdminSellerCustomersList,
+      AdminSellerCustomersSummary,
+    ].map((type) => sellerCustomerUseCaseProvider(type as SellerCustomerUseCaseClass<unknown>)),
     pageUseCaseProvider(AdminCustomerTabOpened as PageUseCaseClass<unknown>),
     {
       // The overview also reads the pending email change from identity (admin email change).
@@ -561,6 +624,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     CUSTOMER_MANAGEMENT_PEERS,
     RecordCustomerTimeline,
     CancelEmailChangeOnDeletion,
+    SyncSellerCustomers,
+    ReconcileSellerCustomers,
   ],
 })
 export class CustomersModule {}

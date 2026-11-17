@@ -1,6 +1,7 @@
 import { bodyTexts, imagesOf, productsOf } from './body';
 import { linksOf } from './content';
 import type { OwnerType, PostContent, PostKind } from './content';
+import { mediaRefsOf } from './media';
 import { Temporal } from '@mondapac/shared-kernel';
 
 // The automatic checks run when a post is sent for review and again when it is approved. They are
@@ -41,6 +42,11 @@ export interface CheckFacts {
   /** Product id to its facts; `null` when the catalog could not be asked. */
   readonly products: ReadonlyMap<string, ProductFact> | null;
   readonly claims: ClaimAnswer;
+  /**
+   * The ids of the pictures the content names that are in the blog media library of the Market;
+   * `null` when the library could not be read.
+   */
+  readonly media: ReadonlySet<string> | null;
 }
 
 /** The most findings answered. */
@@ -120,6 +126,17 @@ export function runChecks(facts: CheckFacts): readonly Finding[] {
   if (content.excerpt === '') add('warning', 'excerpt-missing', 'excerpt');
   for (const image of imagesOf(content.body)) {
     if (image.alt === '') add('error', 'image-alt-missing', image.path);
+  }
+  // Every picture named must be in the Market's media library (a version stored before the library
+  // existed may name an id that is in none).
+  const pictures = mediaRefsOf(content);
+  if (pictures.length > 0) {
+    if (facts.media === null) add('error', 'images-unverifiable', null);
+    else {
+      for (const picture of pictures) {
+        if (!facts.media.has(picture.id)) add('error', 'image-not-found', picture.path);
+      }
+    }
   }
 
   const links = linksOf(content);

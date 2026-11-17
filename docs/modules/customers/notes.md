@@ -479,3 +479,56 @@ confirm page and the admin screen are not part of this change.
   and the dispatch of its event, a confirmation can still swap the address. (2) No timeline
   entries yet: the customer timeline (phase 2, PR 2a) merged while this change was open; the
   subscriber and the three entry kinds follow in a PR of their own.
+
+## Phase 3: per-seller customers and store follows (2026-11-16)
+
+- **Store follows live in `engagement`** (`engagement.store_follows`, one row per account and store,
+  at most 1000 per account). `PUT/DELETE/GET customers/me/followed-stores/:sellerId` and
+  `GET customers/me/followed-stores` (My stores, newest first, cursor `<epochMs>.<id>`). Only a
+  published store can be followed (`sellers.publishedStoreSlugs`). Each change writes
+  `engagement.store-followed.v1` or `store-unfollowed.v1` (account and seller ids only) to the new
+  `engagement.outbox`. Erasure removes the follows with no event.
+- **`customers.seller_customers`** is one row per (seller, customer) while there is a relation:
+  an order with the seller (count, first and last order, spent net of refunds) or a follow. The
+  `exclusive` flag is reserved for phase 4. The customer code (`XXXX-XXXX`, Crockford base32, 40
+  random bits) is drawn when the row is created, is unique per seller (a code taken at the seller is
+  drawn again) and is kept while the row exists; a seller whose relation ends loses the row and the
+  code. The foreign key to `customer_directory` cascades, so erasure leaves nothing.
+- **Sync.** `customers.sync-seller-customers` from `ordering.order-paid.v1`, `refund-succeeded.v1`
+  and the two follow events re-reads `ordering.customerSellerStats` and
+  `engagement.followsOfAccount` (both `system`) and replaces the customer's rows, once per delivery.
+  `customers.reconcile-seller-customers` (daily, and at worker start) syncs every customer of the
+  directory again. Two syncs of one account racing on stale reads is accepted: the next event or
+  the nightly run converges (as B1).
+- **What a seller sees.** `customers/seller/customers` (`list`, `list/codes`, `export`, `:code`):
+  the code, the first name (first word of the display name) and the numbers with that seller only.
+  Never an account id, an email, a full name or anything done at another shop. Keys
+  `customers.seller-customers.view` and `.export` (seller scope, unprotected; no default seller role
+  lists them, so the Seller Owner grants them). A Login as Seller session is refused. The customer
+  page reads the seller's own paid seller orders through `ordering.sellerCustomerOrders`, which
+  checks `ordering.seller-order.view` itself (`orders: null` without it). The export is audited
+  (`customers.seller-customers.exported`: format, count, how picked).
+- **Admin.** The seller page's Customers tab: `customers/admin/sellers/:sellerId/customers/summary`
+  (tab counts and 12 months of new buyers and new followers) and `.../list` (rows with the account
+  id), under `customers.customers.view`. The admin Customers list has the filter `followsSellerId`.
+- **Promotions.** `STORE_FOLLOWER` now reads `engagement.followedAmong` (system for the quote, own
+  for the customer; anything else is unknown, so the offer is not made). The Follow gift is
+  `GET promotions/stores/:sellerId/follow-gift` (anonymous): the seller's live store-follower
+  promotions without a code and not in test mode.
+- **Known gaps.** (1) The SEL-15 store setting "let the seller see its customers" does not exist in
+  code; access is by key only. (2) The trend is cut in the Market's zone: a seller has no zone of its
+  own yet (ADR-0005 fallback). (3) The `lastOrderFrom/To` filter days are UTC days. (4) Seller saved filters wait for the shared list kit's generic endpoints (B0-1b). (5) The
+  reconcile syncs at most 40,000 customers per run; a larger Market relies on the events. The run
+  answers `failed` and `capped`, goes on past an account whose sync fails, and the job logs a warning
+  when either is set.
+- **Accepted from the reviews (2026-11-16).** (1) Two syncs of one account can interleave on stale
+  peer reads (an order event and a follow event at once); the older read can land last and stays
+  until the next event or the nightly reconcile (at most a day). No lock is taken for it.
+  (2) The Follow gift does not check that the store is published: the live follower offers of a
+  hidden store can be read by its seller id, but nothing about a customer is in it and nothing can be
+  bought there. (3) A seller's order page still shows the recipient's name and address while an
+  order is fulfilled (the existing fulfilment design); "code and first name only" applies to the
+  Customers list, its export and the customer page. (4) Spent adds up seller order totals across
+  orders and takes the latest order's currency, which holds while a Market has one currency.
+- **Database.** The sort indexes on `last_order_at` and `followed_at` are `DESC NULLS LAST`, as the
+  list sorts them; a CHECK ties `currency` to `order_count > 0`.

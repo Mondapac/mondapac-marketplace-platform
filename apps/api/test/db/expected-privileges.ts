@@ -808,6 +808,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_at'],
     },
     'blog.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Blog media upload: the picture library is insert-only.
+    'blog.media': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'blog.media_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Promotions (package T1): a promotion changes only the columns named and is never deleted;
     // usage is insert-only; the target list and the zone thresholds may be deleted; the rest
     // change only the columns named (triggers refuse DELETE and TRUNCATE where it is not granted).
@@ -1052,6 +1055,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'customers.customer_group_members': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'customers.customer_notes': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'customers.customer_timeline': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Customers phase 3: the per-seller customers are replaced by the sync and removed when the
+    // relation ends (the erasure cascades from the directory row); no column is restricted.
+    'customers.seller_customers': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
     'legal.marketing_consents': {
@@ -1062,6 +1071,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Engagement (personalization 1a): behaviour events are inserted and deleted (retention purge,
     // switch off, account deletion), never changed; the switch changes and goes with the account.
     'engagement.behaviour_events': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Customers phase 3: a store follow is inserted and deleted (unfollow, erasure), never changed;
+    // engagement's outbox carries the follow events.
+    'engagement.store_follows': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'engagement.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'engagement.personalization_settings': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['changed_at', 'enabled'],
