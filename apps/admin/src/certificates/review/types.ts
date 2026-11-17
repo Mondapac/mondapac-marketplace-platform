@@ -3,6 +3,8 @@
 
 export const REVIEW_PERMISSION = 'certification.seller-certificate.review';
 export const APPROVE_PERMISSION = 'certification.seller-certificate.approve';
+export const REVOKE_PERMISSION = 'certification.seller-certificate.revoke';
+export const HISTORY_PERMISSION = 'certification.document.view';
 export const API_CERTIFICATES = 'certification/admin/seller-certificates';
 export const REASON_TEXT_MAX = 1000;
 
@@ -73,6 +75,7 @@ export interface ReviewPage {
   readonly reasons: {
     readonly 'changes-requested'?: readonly ReviewReason[];
     readonly declined?: readonly ReviewReason[];
+    readonly revoked?: readonly ReviewReason[];
   };
   readonly duplicateHints: readonly {
     readonly kind: 'number' | 'file';
@@ -96,4 +99,21 @@ export interface ReviewPage {
     readonly reasonCode: string | null;
     readonly decidedAt: string;
   } | null;
+}
+
+/** One change of the full history (GET .../history), newest first. */
+export interface HistoryEntry {
+  readonly id: string;
+  readonly fromStatus: string | null;
+  readonly toStatus: string;
+  readonly actorKind: string;
+  readonly reasonCode: string | null;
+  readonly reasonLabel: string | null;
+  readonly note: string | null;
+  readonly occurredAt: string;
+}
+
+export interface HistoryPage {
+  readonly entries: readonly HistoryEntry[];
+  readonly nextBeforeId: string | null;
 }

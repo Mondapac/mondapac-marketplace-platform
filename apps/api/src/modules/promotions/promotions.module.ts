@@ -23,6 +23,7 @@ import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
 import { CREDIT_REPOSITORY, REFERRAL_REPOSITORY } from './application/ports/credit.repository';
 import { CustomersModule } from '../customers';
+import { EngagementModule } from '../engagement';
 import {
   CUSTOMER_GROUP_MEMBERSHIP,
   CUSTOMER_ORDER_HISTORY,
@@ -54,6 +55,7 @@ import { ListCustomerPromotionCredits } from './application/use-cases/list-custo
 import { ListPromotionCredits } from './application/use-cases/list-promotion-credits.use-case';
 import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
 import { ViewMyReferral } from './application/use-cases/view-my-referral.use-case';
+import { ViewStoreFollowGift } from './application/use-cases/view-store-follow-gift.use-case';
 import { GenerateBatchCodes } from './application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from './application/use-cases/view-batch-code-summary.use-case';
 import { CheckWasPrice } from './application/use-cases/check-was-price.use-case';
@@ -103,6 +105,7 @@ import { promotionsProviders } from './infrastructure/promotions-providers';
 import {
   AdminPromotionsController,
   CustomerReferralController,
+  StoreFollowGiftController,
   SellerPromotionsController,
 } from './presentation/promotions.controller';
 import { PromotionsFacadeImplementation } from './presentation/promotions.facade';
@@ -169,12 +172,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     CatalogModule,
     CommissionPayoutsModule,
     CustomersModule,
+    EngagementModule,
     IdentityModule,
     PricingModule,
     SellersModule,
     WalletModule,
   ],
-  controllers: [AdminPromotionsController, SellerPromotionsController, CustomerReferralController],
+  controllers: [
+    AdminPromotionsController,
+    SellerPromotionsController,
+    CustomerReferralController,
+    StoreFollowGiftController,
+  ],
   providers: [
     PersistenceModule.auditWriterFor('promotions'),
     PersistenceModule.auditTrailReaderFor('promotions'),
@@ -231,6 +240,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ListCustomerPromotionCredits,
       ApplyReferralCode,
       ViewMyReferral,
+      ViewStoreFollowGift,
       CashbackOnDelivery,
       QualifyReferralOnDelivery,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),

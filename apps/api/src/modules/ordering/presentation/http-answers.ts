@@ -49,6 +49,7 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'ordering.refund-limit-not-found': 404,
   'ordering.document-not-available': 409,
   'ordering.invoice-numbering-unavailable': 503,
+  'batch.too-large': 413,
   'saved-filter.not-found': 404,
   'saved-filter.name-taken': 409,
   'saved-filter.limit-reached': 409,
@@ -101,6 +102,7 @@ const DETAILS = [
   'total',
   'limit',
   'max',
+  'matching',
   'actionKey',
 ] as const;
 
