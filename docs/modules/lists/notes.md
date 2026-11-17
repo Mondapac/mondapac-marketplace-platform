@@ -31,6 +31,19 @@ Speed mode (CLAUDE.md): no G1/G2 or design document. The owner approved the supe
 - Routes: `GET/PUT/DELETE /lists/admin/column-preferences` (`listKey` in the query or body). No
   audit: it is a personal preference. Ids the list no longer offers are dropped on read.
 
+## B0-1b (seller)
+
+- Routes: the same five as the admin ones under `/lists/seller/saved-filters`. The use case bodies
+  are shared (`handleSavedFilter*`); the seller classes only declare their own access
+  (`own-resources`, `whenSellerNotApproved: 'allow'`, so a store still onboarding can use them).
+- `ListDefinition.scope`: `store` (default; rows kept per store, shareable with the store through
+  `shareKey`) or `account` (rows kept per seller account across its stores, `seller_id` null).
+  `shareKey` is optional: without it a filter is always private. `seller.catalog.products` is
+  store-scoped with the own-share key; `seller.ordering.orders` is account-scoped with no share key.
+- An acting-as (Login as Seller) session is refused with `access.acting-as-refused` (403) in every
+  use case; admin and seller lists never answer each other's routes.
+
 ## Not here yet
 
-- B0-1b seller side: `/lists/seller/saved-filters` and the seller lists' definitions.
+- Seller column preferences (the seller panels' column vocabulary) and the switch of the panels to
+  the generic routes.

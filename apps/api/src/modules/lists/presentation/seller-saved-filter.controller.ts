@@ -59,8 +59,8 @@ const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthen
 const ID_PARAM = { name: 'id', description: 'The saved filter id (a UUID v7).' };
 
 /**
- * The saved filters of the seller lists over HTTP (super list B0-1b): list, create, rename and set
- * who can use one, delete, reorder. One set of routes for every admin list; the list is named by
+ * The saved filters of the seller lists over HTTP (super list B0-1b, seller side): list, create, rename and set
+ * who can use one, delete, reorder. One set of routes for every seller list; the list is named by
  * `listKey` and its owner's view and share permissions are checked per call. A write needs the
  * CSRF token and the panel's origin. A thin adapter: one use case each does the work.
  */

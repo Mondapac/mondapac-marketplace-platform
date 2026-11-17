@@ -16,7 +16,7 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { ListDefinition } from '../../contracts';
-import { ListRegistry } from '../saved-filter-shared';
+import { callerOf, ListRegistry } from '../saved-filter-shared';
 import { SellerSavedFilterCreate } from './seller-saved-filter-create.use-case';
 import { SellerSavedFilterDelete } from './seller-saved-filter-delete.use-case';
 import { SellerSavedFilterUpdate } from './seller-saved-filter-update.use-case';
@@ -274,17 +274,43 @@ describe.each(['AU', 'ZZ'] as const)('seller saved filters in market %s', (code)
       ).toBe('validation.failed');
     });
 
-    it('refuses an acting-as (Login as Seller) session before anything is written', async () => {
-      const { create, as, store } = setup();
-      const who = member([PRODUCTS_VIEW]);
+    it('refuses a tampered acting-as actor at the gate in every use case, before anything is written', async () => {
+      const { create, update, remove, list, reorder, as, store } = setup();
+      const who = member([PRODUCTS_VIEW, PRODUCTS_SHARE]);
       const acting: CallContext = {
         ...as(who),
         actor: { ...who.context.actor, actingAs: { adminAccountId: ids.next() } } as never,
       };
-      expect(failure(await create.execute(acting, body()))).toMatch(
-        /^access\.(denied|acting-as-refused)$/,
-      );
+      const id = ids.next<'SavedFilter'>();
+      const answers = [
+        await create.execute(acting, body()),
+        await update.execute(acting, { listKey: PRODUCTS, id, name: 'X', visibility: 'me' }),
+        await remove.execute(acting, { listKey: PRODUCTS, id }),
+        await list.execute(acting, { listKey: PRODUCTS }),
+        await reorder.execute(acting, { listKey: PRODUCTS, ids: [id] }),
+      ];
+      expect(answers.map(failure)).toEqual(Array(5).fill('access.denied'));
       expect(store.rows.size).toBe(0);
+    });
+
+    it('names an acting-as marker on a minted seller actor access.acting-as-refused', () => {
+      const who = member([PRODUCTS_VIEW]);
+      const actor = Object.assign(
+        Object.create(Object.getPrototypeOf(who.context.actor) as object | null),
+        {
+          ...who.context.actor,
+          actingAs: { adminAccountId: ids.next() },
+        },
+      ) as CallContext['actor'];
+      expect(callerOf({ ...who.context, actor }, 'seller')).toEqual({
+        ok: false,
+        error: { code: 'access.acting-as-refused' },
+      });
+      expect(callerOf(who.context, 'seller').ok).toBe(true);
+      expect(callerOf(who.context, 'admin')).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
     });
 
     it('refuses a seller who cannot view the list, and fails closed when the port is down', async () => {
