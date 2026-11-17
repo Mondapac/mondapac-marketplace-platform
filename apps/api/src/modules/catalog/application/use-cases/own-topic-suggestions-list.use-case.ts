@@ -190,7 +190,8 @@ export class OwnTopicSuggestionsList extends UseCase<
           paging = paged.paging;
           hasNext =
             total !== null ? window.offset + paged.pageSize < total : rows.length > shown.length;
-          // The current panel walks newest first by cursor; any other order has no cursor.
+          // The current panel walks newest first by cursor (ids are UUID v7 from the same clock as
+          // `createdAt`, so id order and time order agree); any other order has no cursor.
           sorted = paged.sort === 'created' && paged.direction === 'desc' && q === null;
         }
         const openCount = await suggestions.openCountOfSeller(market, sellerId);

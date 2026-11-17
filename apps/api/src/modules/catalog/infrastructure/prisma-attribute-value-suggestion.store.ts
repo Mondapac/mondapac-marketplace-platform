@@ -54,8 +54,6 @@ interface Row {
  * in the granted columns only; the guard trigger refuses any other change.
  */
 /** Escapes `\`, `%` and `_`, so a search term is matched as typed (LIKE patterns). */
-const literal = (term: string): string => term.replace(/[\\%_]/g, (char) => `\\${char}`);
-
 const openWhere = (
   market: MarketContext,
   filter: OpenSuggestionsFilter,
@@ -64,7 +62,7 @@ const openWhere = (
   status: 'open',
   ...(filter.text === null
     ? {}
-    : { label: { contains: literal(filter.text), mode: 'insensitive' } }),
+    : { label: { contains: likeLiteral(filter.text), mode: 'insensitive' } }),
 });
 
 const ownWhere = (

@@ -173,7 +173,7 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
           }
           if (page.sort === 'label') {
             return a.state.label === b.state.label
-              ? sign * created(a, b)
+              ? sign * (a.state.id < b.state.id ? -1 : 1)
               : sign * (a.state.label < b.state.label ? -1 : 1);
           }
           return sign * created(a, b);
@@ -382,7 +382,7 @@ export class MemoryTopicSuggestionStore implements TopicSuggestionStore {
           }
           if (page.sort === 'label') {
             return a.state.label === b.state.label
-              ? sign * created(a, b)
+              ? sign * (a.state.id < b.state.id ? -1 : 1)
               : sign * (a.state.label < b.state.label ? -1 : 1);
           }
           return sign * created(a, b);

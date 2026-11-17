@@ -48,7 +48,7 @@ export function readOwnSuggestionList(
   }
   let status: OwnSuggestionStatusFilter | null = null;
   const rawStatus = record['status'];
-  if (rawStatus !== undefined && rawStatus !== null) {
+  if (rawStatus !== undefined && rawStatus !== null && rawStatus !== '') {
     if (typeof rawStatus !== 'string' || !(STATUSES as readonly string[]).includes(rawStatus)) {
       return listQueryInvalid('status', 'enum');
     }
@@ -67,7 +67,7 @@ export function readOwnSuggestionList(
   });
   if (!read.ok) return read;
   if (read.value.mode === 'cursor' && read.value.q !== null) {
-    return listQueryInvalid('q', 'conflict');
+    return listQueryInvalid(record['q'] === undefined ? 'search' : 'q', 'conflict');
   }
   return ok({ status, read: read.value });
 }

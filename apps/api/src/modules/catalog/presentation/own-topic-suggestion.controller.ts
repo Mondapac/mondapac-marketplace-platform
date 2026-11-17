@@ -183,7 +183,8 @@ export class OwnTopicSuggestionsController {
   @ApiQuery({
     name: 'q',
     required: false,
-    description: 'Search in the label (contains), up to 120 characters.',
+    description:
+      'Search in the label (contains), up to 120 characters; `search` is an older alias.',
   })
   @ApiQuery({ name: 'sort', required: false, enum: ['created', 'status', 'label'] })
   @ApiQuery({
