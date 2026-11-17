@@ -97,7 +97,15 @@ export interface EditDetails {
 }
 
 /** The answer of every category write (apps/api CategoryWriteWrapBody). */
+/** Whether an edit is reviewed in this Market (Admin Inbox > System requests, area catalogue). */
+export interface CatalogueReview {
+  readonly reviewed: boolean;
+  readonly risk: string;
+}
+
 export interface WriteWrap {
+  /** The review a details save opened (Admin Inbox > System requests); absent or null when none. */
+  readonly request?: { readonly id: string; readonly number: number } | null;
   readonly category: {
     readonly id: string;
     readonly slug: string;
@@ -146,6 +154,8 @@ export interface DetailBody {
   readonly details: EditDetails;
   /** The tree version a structural change of this category must name. */
   readonly treeVersion: number;
+  /** Whether a details save is reviewed here: the form then asks for a note. */
+  readonly review?: CatalogueReview;
 }
 
 export const DETAIL_TABS = ['details', 'attribute-links', 'products', 'history'] as const;

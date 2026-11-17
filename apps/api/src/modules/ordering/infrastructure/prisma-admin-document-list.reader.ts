@@ -64,6 +64,7 @@ const CREDIT_NOTE_SELECT = {
  */
 function confirmationWhere(market: MarketContext, filter: DocumentListFilter) {
   const and: object[] = [];
+  if (filter.ids !== null) and.push({ id: { in: [...filter.ids] } });
   if (filter.reference !== null) {
     and.push({ OR: [{ id: filter.reference }, { orderId: filter.reference }] });
   }
@@ -94,6 +95,7 @@ function confirmationWhere(market: MarketContext, filter: DocumentListFilter) {
 /** The Market's credit notes (one per succeeded refund). */
 function creditNoteWhere(market: MarketContext, filter: DocumentListFilter) {
   const and: object[] = [];
+  if (filter.ids !== null) and.push({ id: { in: [...filter.ids] } });
   if (filter.reference !== null) {
     and.push({
       OR: [

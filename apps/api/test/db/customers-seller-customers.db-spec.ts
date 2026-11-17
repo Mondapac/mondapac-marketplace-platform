@@ -250,6 +250,7 @@ describe.each(TEST_MARKETS)(
         const query = (sellerId: string) => ({
           selector: { ...BLANK_LIST, followsSellerId: sellerId },
           now: T0,
+          zone: 'UTC',
         });
         expect(await inUnit(market, () => list.ids(market, query(shop), 100))).toEqual([alice]);
         expect(await inUnit(other, () => list.ids(other, query(shop), 100))).toEqual([]);

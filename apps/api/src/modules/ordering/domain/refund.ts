@@ -1,6 +1,7 @@
 import { parseId } from '@mondapac/shared-kernel';
 import type { Id, Temporal } from '@mondapac/shared-kernel';
 import type { Fulfilment, OrderStatus, PaymentState } from './order';
+import { netGoodsOf } from './discounts';
 import {
   LOSS_BEARERS,
   LOSS_REASON_CODES,
@@ -93,6 +94,9 @@ export interface RefundableLine {
   readonly id: Id<'OrderLine'>;
   readonly quantity: number;
   readonly unitAmount: bigint;
+  /** The unit price times the quantity, and the line's discount (package T2; 0 without one). */
+  readonly lineAmount: bigint;
+  readonly discountAmount: bigint;
   readonly taxInclusive: boolean;
   readonly taxRateBps: number | null;
   readonly taxAmount: bigint | null;
@@ -110,6 +114,7 @@ export interface RefundTarget {
   /** Where the seller order stands, and when the seller said it was ready (null until then). */
   readonly fulfilment: Fulfilment;
   readonly readyAt: Temporal.Instant | null;
+  /** The delivery price the buyer paid, net of its discount (package T2). */
   readonly shipping: bigint;
   readonly shippingTax: bigint | null;
   readonly shippingTaxRateBps: number | null;
@@ -340,7 +345,8 @@ export function priceRefund(
 ): Refund | null {
   const lines: RefundLine[] = plan.lines.map(({ line, unitsBefore, units }, index) => {
     const tax = reversed.lines[index]!;
-    const goods = line.unitAmount * BigInt(units);
+    // What the buyer paid for these units: the line net of its discount, spread over its units.
+    const goods = netGoodsOf(line, unitsBefore, units);
     return {
       orderLineId: line.id,
       quantity: units,

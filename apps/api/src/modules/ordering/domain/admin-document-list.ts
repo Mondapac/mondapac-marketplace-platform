@@ -32,6 +32,11 @@ export interface DocumentSort {
 
 /** Every field is an AND; null leaves it out. `kind` is always set: one tab at a time. */
 export interface DocumentListFilter {
+  /**
+   * The selected rows of an export (document ids, at most 200: seller order ids for confirmations,
+   * credit note ids for credit notes); null on the list itself.
+   */
+  readonly ids: readonly string[] | null;
   readonly kind: DocumentKind;
   /** An order, seller order, credit note or refund id, exact. */
   readonly reference: string | null;
