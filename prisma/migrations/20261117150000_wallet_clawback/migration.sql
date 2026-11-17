@@ -17,8 +17,8 @@ ALTER TABLE "wallet"."journals"
   -- An expiry and a clawback name their lot; no other kind does.
   ADD CONSTRAINT "journals_lot_check" CHECK (("kind" IN ('expire', 'clawback')) = ("lot_id" IS NOT NULL));
 
--- The lot a grant journal made.
-CREATE INDEX "lots_market_id_journal_id_idx" ON "wallet"."lots"("market_id", "journal_id");
+-- The lot a grant journal made: a grant makes one lot, so the database refuses a second.
+CREATE UNIQUE INDEX "lots_market_id_journal_id_key" ON "wallet"."lots"("market_id", "journal_id");
 
 CREATE OR REPLACE FUNCTION "wallet"."check_lot_ledger"() RETURNS trigger LANGUAGE plpgsql
   SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $$

@@ -67,7 +67,7 @@ model WalletJournal {
 
   wallet              WalletAccount?             @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   postings            WalletPosting[]
-  lots                WalletLot[]
+  lot                 WalletLot?
   adminCreditRequests WalletAdminCreditRequest[]
 
   @@unique([marketId, id])
@@ -130,11 +130,11 @@ model WalletLot {
   holdLots WalletHoldLot[]
 
   @@unique([marketId, id])
+  /// The lot a grant journal made (a clawback finds it by the grant): one per grant.
+  @@unique([marketId, journalId])
   @@index([marketId, walletAccountId, remainingMinor])
   /// Partial (source = 'promo' AND remaining_minor > 0) in the migration: the due promo lots.
   @@index([marketId, expiresAt, id])
-  /// The lot a grant journal made (a clawback finds it by the grant).
-  @@index([marketId, journalId])
   @@map("lots")
   @@schema("wallet")
 }

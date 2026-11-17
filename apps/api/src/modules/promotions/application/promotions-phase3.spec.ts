@@ -444,6 +444,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
         createdAt: T0,
         settledAt: T0,
         grantAfter: null,
+        earnedOn: null,
       });
       const low = await make(SetPromotionBudget).execute(admin(), {
         promotionId: made.id,
@@ -1249,7 +1250,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           const gone = deliverHeld(2);
           await run(kept);
           await run(gone);
-          // 6000 of 10000 refunded: 5 % of 4000 is 200, under the 400 reserved.
+          // 6000 of 10000 refunded: 4000 of the 10000 it was earned on keep 400 × 0.4 = 160.
           p3.orderFacts.add({ ...kept, goodsPaid: money(4000n, currency) });
           p3.orderFacts.add({ ...gone, goodsPaid: money(0n, currency) });
           clock.advance(Temporal.Duration.from(HOLD));
@@ -1260,14 +1261,30 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           const bySource = new Map(credits().map((c) => [c.sourceId, c]));
           expect(bySource.get(kept.sellerOrderId)).toMatchObject({
             status: 'GRANTED',
-            amountMinor: 200n,
+            amountMinor: 160n,
           });
           expect(bySource.get(gone.sellerOrderId)).toMatchObject({
             status: 'FAILED',
             failureCode: 'order-refunded',
           });
-          expect(p3.walletCredit.grants.map((g) => g.amount)).toEqual([money(200n, currency)]);
-          expect(p3.sellerCashbackLedger.entries.map((e) => e.amount)).toEqual([200n]);
+          expect(p3.walletCredit.grants.map((g) => g.amount)).toEqual([money(160n, currency)]);
+          expect(p3.sellerCashbackLedger.entries.map((e) => e.amount)).toEqual([160n]);
+        });
+
+        it('pays what was earned at delivery when the seller lowers its rate during the hold (Hassan H-2)', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          await run(deliverHeld(1));
+          const credit = credits()[0]!;
+          expect(credit.earnedOn).toEqual({ reservedMinor: 400n, goodsMinor: 10000n });
+          const promotion = promotions.records.get(credit.promotionId)!;
+          promotions.records.set(promotion.id, {
+            ...promotion,
+            reward: { kind: 'PERCENT', bps: 100 },
+          });
+          clock.advance(Temporal.Duration.from(HOLD));
+          await grantDue();
+          expect(credits()[0]).toMatchObject({ status: 'GRANTED', amountMinor: 400n });
         });
 
         it('cancels a seller’s cashback whose customer stopped being its exclusive customer during the hold', async () => {
@@ -1438,7 +1455,10 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
               sellerOrderId: facts.sellerOrderId,
               refundId,
             });
-          /** A seller's cashback of 400 (5 % of 10000, capped at 400), credited after the hold. */
+          /**
+           * A seller's cashback of 400 (5 % of 10000, capped at 400), credited after the hold: earned
+           * on 10000, so what it keeps is pro rata to the goods kept.
+           */
           const credited = async () => {
             await sellerCashback();
             p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
@@ -1453,7 +1473,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
 
           it('takes back what the goods given back no longer earn, and returns it to the seller', async () => {
             const facts = await credited();
-            // 4000 of 10000 refunded: 5 % of 6000 is 300, so 100 comes back.
+            // 4000 of 10000 refunded: 6000 kept keep 400 × 0.6 = 240, so 160 comes back.
             p3.orderFacts.add({ ...facts, goodsPaid: money(6000n, currency) });
             const d = delivery();
             expect(await refund(facts, REFUND_1, d)).toEqual({
@@ -1461,27 +1481,27 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
               value: { outcome: 'clawed-back' },
             });
             expect(clawbacks()).toMatchObject([
-              { refundId: REFUND_1, seq: 1, amountMinor: 100n, status: 'DONE', clawedMinor: 100n },
+              { refundId: REFUND_1, seq: 1, amountMinor: 160n, status: 'DONE', clawedMinor: 160n },
             ]);
             expect([...p3.walletCredit.clawbacks.values()]).toMatchObject([
-              { asked: 100n, taken: 100n },
+              { asked: 160n, taken: 160n },
             ]);
             expect(p3.sellerCashbackLedger.returns).toMatchObject([
-              { clawbackId: clawbacks()[0]!.id, amount: 100n, sellerId: SELLER },
+              { clawbackId: clawbacks()[0]!.id, amount: 160n, sellerId: SELLER },
             ]);
             // The same delivery again changes nothing.
             expect(await refund(facts, REFUND_1, d)).toEqual({
               ok: true,
               value: { outcome: 'already-handled' },
             });
-            // A second refund: 2000 left earn 100, so 200 more comes back.
+            // A second refund: 2000 kept keep 80, so 160 more comes back.
             p3.orderFacts.add({ ...facts, goodsPaid: money(2000n, currency) });
             expect((await refund(facts, REFUND_2)).ok).toBe(true);
             expect(clawbacks().map((c) => [c.seq, c.amountMinor, c.clawedMinor])).toEqual([
-              [1, 100n, 100n],
-              [2, 200n, 200n],
+              [1, 160n, 160n],
+              [2, 160n, 160n],
             ]);
-            expect(p3.sellerCashbackLedger.returns.map((r) => r.amount)).toEqual([100n, 200n]);
+            expect(p3.sellerCashbackLedger.returns.map((r) => r.amount)).toEqual([160n, 160n]);
           });
 
           it('leaves what the customer spent, and returns to the seller only what was taken', async () => {
@@ -1499,10 +1519,9 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
             });
           });
 
-          it('takes nothing back while the goods kept still earn the whole credit', async () => {
+          it('takes nothing back for a refund that gave no goods back (shipping only)', async () => {
             const facts = await credited();
-            // 8000 kept earn 400: the cap still holds.
-            p3.orderFacts.add({ ...facts, goodsPaid: money(8000n, currency) });
+            p3.orderFacts.add({ ...facts, goodsPaid: money(10000n, currency) });
             expect(await refund(facts, REFUND_1)).toEqual({
               ok: true,
               value: { outcome: 'nothing' },
@@ -1543,7 +1562,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
               ok: false,
               error: { code: 'promotions.try-again' },
             });
-            expect(clawbacks()).toMatchObject([{ status: 'PENDING', amountMinor: 100n }]);
+            expect(clawbacks()).toMatchObject([{ status: 'PENDING', amountMinor: 160n }]);
             p3.sellerCashbackLedger.fails = true;
             expect((await refund(facts, REFUND_1, d)).ok).toBe(false);
             p3.sellerCashbackLedger.fails = false;
@@ -1554,10 +1573,50 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
               value: { outcome: 'clawed-back' },
             });
             expect(clawbacks()).toMatchObject([
-              { status: 'DONE', amountMinor: 100n, clawedMinor: 100n },
+              { status: 'DONE', amountMinor: 160n, clawedMinor: 160n },
             ]);
             expect(p3.walletCredit.clawbacks.size).toBe(1);
             expect(p3.sellerCashbackLedger.returns).toHaveLength(1);
+          });
+
+          it('takes back only the share of the goods given back after the seller lowered its rate (Hassan H-2)', async () => {
+            const facts = await credited();
+            // The seller cuts its cashback to 1 % after the customer earned 400.
+            const credit = credits()[0]!;
+            const promotion = promotions.records.get(credit.promotionId)!;
+            promotions.records.set(promotion.id, {
+              ...promotion,
+              reward: { kind: 'PERCENT', bps: 100 },
+            });
+            // One cheap unit of 100 given back: 9900 kept keep ceil(400 × 0.99) = 396.
+            p3.orderFacts.add({ ...facts, goodsPaid: money(9900n, currency) });
+            expect((await refund(facts, REFUND_1)).ok).toBe(true);
+            expect(clawbacks()).toMatchObject([{ amountMinor: 4n, clawedMinor: 4n }]);
+            expect(p3.sellerCashbackLedger.returns.map((r) => r.amount)).toEqual([4n]);
+          });
+
+          it('counts only refunds that succeeded: a pending one takes nothing back yet (Hassan L-9)', async () => {
+            const facts = await credited();
+            // R1 (pending) gave back 4000, R2 (succeeded) 1000: only R2's goods count.
+            p3.orderFacts.add({
+              ...facts,
+              goodsPaid: money(5000n, currency),
+              goodsKeptSettled: money(9000n, currency),
+            });
+            expect((await refund(facts, REFUND_2)).ok).toBe(true);
+            expect(clawbacks()).toMatchObject([{ refundId: REFUND_2, amountMinor: 40n }]);
+          });
+
+          it('takes nothing back from a cashback with no recorded basis', async () => {
+            const facts = await credited();
+            const credit = credits()[0]!;
+            p3.credits.rows.set(credit.id, { ...credit, earnedOn: null });
+            p3.orderFacts.add({ ...facts, goodsPaid: money(0n, currency) });
+            expect(await refund(facts, REFUND_1)).toEqual({
+              ok: true,
+              value: { outcome: 'nothing' },
+            });
+            expect(p3.walletCredit.clawbacks.size).toBe(0);
           });
 
           it('settles with nothing taken when the wallet refuses for good', async () => {
@@ -2354,6 +2413,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
         createdAt: T0,
         settledAt: T0,
         grantAfter: null,
+        earnedOn: null,
       });
       const listed = await make(ListPromotionCredits).execute(admin(), { promotionId: made.id });
       expect(listed.ok && listed.value.items).toHaveLength(1);
@@ -2390,6 +2450,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           createdAt: T0.add({ hours: n <= 3 ? 1 : n }),
           settledAt: T0,
           grantAfter: null,
+          earnedOn: null,
         });
       }
       await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
@@ -2440,6 +2501,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           createdAt: T0.add({ hours: n }),
           settledAt: T0,
           grantAfter: null,
+          earnedOn: null,
         });
       await credit(1, first.id, REFERRER);
       await credit(2, second.id, REFERRER);

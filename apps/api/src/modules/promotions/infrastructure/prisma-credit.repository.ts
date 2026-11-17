@@ -31,6 +31,8 @@ interface Row {
   readonly createdAt: Date;
   readonly settledAt: Date | null;
   readonly grantAfter: Date | null;
+  readonly reservedMinor: bigint | null;
+  readonly goodsMinor: bigint | null;
 }
 
 const toRecord = (row: Row): CreditRecord => ({
@@ -50,6 +52,10 @@ const toRecord = (row: Row): CreditRecord => ({
   createdAt: fromDate(row.createdAt),
   settledAt: row.settledAt === null ? null : fromDate(row.settledAt),
   grantAfter: row.grantAfter === null ? null : fromDate(row.grantAfter),
+  earnedOn:
+    row.reservedMinor === null || row.goodsMinor === null
+      ? null
+      : { reservedMinor: row.reservedMinor, goodsMinor: row.goodsMinor },
 });
 
 /** {@link CreditRepository} on `promotions.credit_issuances`, scoped by `marketId`. */
@@ -79,6 +85,8 @@ export class PrismaCreditRepository implements CreditRepository {
           createdAt: toDate(record.createdAt),
           settledAt: record.settledAt === null ? null : toDate(record.settledAt),
           grantAfter: record.grantAfter === null ? null : toDate(record.grantAfter),
+          reservedMinor: record.earnedOn?.reservedMinor ?? null,
+          goodsMinor: record.earnedOn?.goodsMinor ?? null,
         },
       ],
       skipDuplicates: true,

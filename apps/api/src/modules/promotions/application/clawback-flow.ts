@@ -2,7 +2,7 @@ import { Logger } from '@nestjs/common';
 import { money, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
-import { shareOf, type ClawbackRecord, type CreditRecord } from '../domain/credit';
+import { keptPart, type ClawbackRecord, type CreditRecord } from '../domain/credit';
 import {
   handled,
   sellerFunderOf,
@@ -22,8 +22,9 @@ import type { PromotionsDependencies } from './promotions-dependencies';
 // The order of work, for each `ordering.refund-succeeded.v1`:
 //   1. read-only: the seller order's cashback and its clawbacks; a clawback already made for this
 //      refund is finished (step 4) and nothing else;
-//   2. outside a unit: the seller order's facts (goods kept, net of every refund so far) and the
-//      promotion; what is to be taken back in all, less what earlier refunds asked for;
+//   2. outside a unit: the seller order's facts (goods kept, net of the refunds that succeeded);
+//      the credit's reserved amount pro rata to the goods it was earned on is what it keeps, and
+//      the rest, less what earlier refunds asked for, is taken back;
 //   3. one unit: the clawback row (PENDING) at the next `seq`; a clash (another refund of the same
 //      credit counted from the same total) retries the delivery, which counts again;
 //   4. outside a unit: the wallet (key from the clawback), then the seller ledger for what it took;
@@ -112,28 +113,25 @@ export async function clawBackOnRefund(
     sellerOrderId: ids.sellerOrderId,
   });
   if (!facts.known) return tryAgain();
-  if (facts.value.goodsPaid.currency !== credit.currency) return nothing();
-  const promotion = await deps.unitOfWork.run(
-    market,
-    async () => ok(await deps.promotions.find(market, credit.promotionId)),
-    { readOnly: true },
-  );
-  if (!promotion.ok || promotion.value === null) return tryAgain();
-  // What the goods kept earn now, at the promotion's percent within the Market's limit; never more
-  // than was credited (the cap and the budget were applied then).
-  const reward = promotion.value.reward;
-  const limits = deps.policy.settings(market)?.rules.cashback ?? null;
-  const goods = facts.value.goodsPaid.amount;
-  let kept = credit.amountMinor;
-  if (reward.kind === 'PERCENT') {
-    const earned = shareOf(
-      goods,
-      limits === null ? reward.bps : Math.min(reward.bps, limits.maxBps),
-    );
-    if (earned < kept) kept = earned;
-  } else if (goods <= 0n) {
-    kept = 0n;
+  const goods = facts.value.goodsKeptSettled;
+  if (goods.currency !== credit.currency) return nothing();
+  // A cashback with no recorded basis (made before it was kept) is never taken back: its share
+  // could only be worked out from the promotion's rate as it is now (Hassan H-2).
+  if (credit.earnedOn === null) {
+    logger.warn({
+      msg: 'promotions.clawback.no-basis',
+      creditId: credit.id,
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return nothing();
   }
+  // What the goods kept earn: the reserved amount pro rata to the goods it was earned on, counting
+  // only refunds that succeeded (Hassan L-9), never more than was credited. The promotion's rate
+  // as it is now plays no part, so a seller who lowered it cannot take back what was earned
+  // (Hassan H-2).
+  let kept = keptPart(credit.earnedOn, goods.amount);
+  if (kept > credit.amountMinor) kept = credit.amountMinor;
   const asked = clawbacks.reduce((sum, clawback) => sum + clawback.amountMinor, 0n);
   const share = credit.amountMinor - kept - asked;
   if (share <= 0n) return nothing();

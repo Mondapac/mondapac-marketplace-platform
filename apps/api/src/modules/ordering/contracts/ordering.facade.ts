@@ -155,6 +155,11 @@ export interface DeliveredSellerOrderFacts {
    */
   readonly refundedGoods: bigint;
   /**
+   * The part of `refundedGoods` given back by refunds that succeeded (a pending one may still
+   * fail): what a cashback clawback may count (Hassan L-9). At most `refundedGoods`.
+   */
+  readonly succeededRefundedGoods: bigint;
+  /**
    * Whether the seller was the customer's exclusive seller when the order was placed: the flag
    * frozen on the seller order's lines at checkout (customers phase 4b).
    */

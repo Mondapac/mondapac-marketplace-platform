@@ -19,7 +19,7 @@ model SystemRequestsRequest {
   /// `system-requests.policy-area`). It also picks the module that restores the value.
   subjectKind           String    @map("subject_kind")
   /// Which one of the kind changed (e.g. the area code or the setting code).
-  subjectRef        String    @map("subject_ref")
+  subjectRef            String    @map("subject_ref")
   /// low, medium or high (CHECK).
   risk                  String
   /// open, approved or reverted (CHECK).
@@ -65,17 +65,17 @@ model SystemRequestsRequest {
 
 /// The insert-only history of a request: applied, commented, approved, rejected, withdrawn.
 model SystemRequestsActivity {
-  id               String                @id @db.Uuid
-  marketId         String                @map("market_id") @db.VarChar(8)
-  tenantId         String                @map("tenant_id")
-  requestId        String                @map("request_id") @db.Uuid
+  id             String                @id @db.Uuid
+  marketId       String                @map("market_id") @db.VarChar(8)
+  tenantId       String                @map("tenant_id")
+  requestId      String                @map("request_id") @db.Uuid
   /// applied, commented, approved, rejected or withdrawn (CHECK).
-  kind             String
-  actorAccountId   String                @map("actor_account_id") @db.Uuid
-  at               DateTime              @db.Timestamptz(6)
+  kind           String
+  actorAccountId String                @map("actor_account_id") @db.Uuid
+  at             DateTime              @db.Timestamptz(6)
   /// The comment or the reason (1 to 2000 characters); null for applied and approved (CHECK).
-  body             String?
-  request          SystemRequestsRequest @relation(fields: [marketId, requestId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  body           String?
+  request        SystemRequestsRequest @relation(fields: [marketId, requestId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([marketId, requestId, at])
   @@map("request_activity")

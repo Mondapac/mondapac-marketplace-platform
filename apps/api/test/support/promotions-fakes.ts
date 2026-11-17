@@ -886,8 +886,16 @@ export class FakeStoreFollows implements StoreFollows {
 export class FakeOrderFacts implements DeliveredOrderFacts {
   readonly orders = new Map<string, DeliveredSellerOrderFacts>();
   reads = 0;
-  add(facts: DeliveredSellerOrderFacts): void {
-    this.orders.set(facts.sellerOrderId, facts);
+  /** `goodsKeptSettled` defaults to `goodsPaid` (every refund so far succeeded). */
+  add(
+    facts: Omit<DeliveredSellerOrderFacts, 'goodsKeptSettled'> & {
+      readonly goodsKeptSettled?: DeliveredSellerOrderFacts['goodsKeptSettled'];
+    },
+  ): void {
+    this.orders.set(facts.sellerOrderId, {
+      ...facts,
+      goodsKeptSettled: facts.goodsKeptSettled ?? facts.goodsPaid,
+    });
   }
   read(_context: CallContext, request: { readonly sellerOrderId: Id<'SellerOrder'> }) {
     this.reads += 1;

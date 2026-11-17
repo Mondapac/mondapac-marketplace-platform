@@ -3722,6 +3722,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           currency,
           goods,
           refundedGoods: 0n,
+          succeededRefundedGoods: 0n,
           exclusiveSeller: false,
           placedAt: stored.createdAt,
           deliveredAt: T0.add({ hours: 5 }),
@@ -3741,7 +3742,12 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           line.sellerOrderId === sellerOrder.id ? { ...line, exclusiveSeller: true } : line,
         ),
       });
-      const refund = (state: string, gross: bigint, tax: bigint, shipping: [bigint, bigint] | null) =>
+      const refund = (
+        state: string,
+        gross: bigint,
+        tax: bigint,
+        shipping: [bigint, bigint] | null,
+      ) =>
         ({
           state,
           gross,
@@ -3765,6 +3771,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const answer = await facts({ orderId: order.id, sellerOrderId: sellerOrder.id });
       // 1000 from the first, 700 - 500 = 200 from the second; the failed one counts nothing.
       expect(answer.ok && answer.value.refundedGoods).toBe(1200n);
+      // Only the first succeeded: a clawback counts 1000 (Hassan L-9).
+      expect(answer.ok && answer.value.succeededRefundedGoods).toBe(1000n);
       expect(answer.ok && answer.value.exclusiveSeller).toBe(true);
       expect(asked).toEqual([[sellerOrder.id, SELLER_A]]);
     });

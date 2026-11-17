@@ -354,35 +354,39 @@ model PromotionsReferral {
 /// refused for good (its code is kept) and the budget is freed. One credit per source, so an
 /// event delivered twice owes the customer once. Never deleted.
 model PromotionsCreditIssuance {
-  id                 String              @id @db.Uuid
-  marketId           String              @map("market_id") @db.VarChar(8)
-  tenantId           String              @map("tenant_id")
-  promotionId        String              @map("promotion_id") @db.Uuid
+  id                 String                     @id @db.Uuid
+  marketId           String                     @map("market_id") @db.VarChar(8)
+  tenantId           String                     @map("tenant_id")
+  promotionId        String                     @map("promotion_id") @db.Uuid
   /// CASHBACK, REFERRER_REWARD or REFEREE_REWARD (CHECK).
   kind               String
-  recipientAccountId String              @map("recipient_account_id") @db.Uuid
+  recipientAccountId String                     @map("recipient_account_id") @db.Uuid
   /// The order that earned the credit (cashback: the delivered order; referral: the qualifying one).
-  orderId            String?             @map("order_id") @db.Uuid
+  orderId            String?                    @map("order_id") @db.Uuid
   /// SELLER_ORDER (cashback) or REFERRAL (the two referral credits) (CHECK), and its id.
-  sourceKind         String              @map("source_kind")
-  sourceId           String              @map("source_id") @db.Uuid
-  amountMinor        BigInt              @map("amount_minor")
-  currency           String              @db.VarChar(3)
+  sourceKind         String                     @map("source_kind")
+  sourceId           String                     @map("source_id") @db.Uuid
+  amountMinor        BigInt                     @map("amount_minor")
+  currency           String                     @db.VarChar(3)
   /// PENDING, GRANTED, RECORDED or FAILED (CHECK).
   status             String
   /// The wallet's refusal code when FAILED.
-  failureCode        String?             @map("failure_code")
+  failureCode        String?                    @map("failure_code")
   /// The wallet journal that holds the credit, once GRANTED.
-  walletJournalId    String?             @map("wallet_journal_id") @db.Uuid
-  idempotencyKey     String              @map("idempotency_key")
-  createdAt          DateTime            @map("created_at") @db.Timestamptz(6)
-  settledAt          DateTime?           @map("settled_at") @db.Timestamptz(6)
+  walletJournalId    String?                    @map("wallet_journal_id") @db.Uuid
+  idempotencyKey     String                     @map("idempotency_key")
+  createdAt          DateTime                   @map("created_at") @db.Timestamptz(6)
+  settledAt          DateTime?                  @map("settled_at") @db.Timestamptz(6)
   /// A PENDING cashback waits until then for the seller order's payout release before the wallet
   /// is called (customers phase 4c); null once its amount is final and for every other credit.
   /// Only a CASHBACK has one (CHECK). The grant job reads the partial index
   /// credit_issuances_pending_cashback_idx (PENDING cashback), declared in the migration.
-  grantAfter         DateTime?           @map("grant_after") @db.Timestamptz(6)
-  promotion          PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  grantAfter         DateTime?                  @map("grant_after") @db.Timestamptz(6)
+  /// What a cashback was earned on (Hassan H-2): the amount reserved at delivery and the goods it
+  /// was earned on. Set on insert for a cashback, never changed; null for every other credit.
+  reservedMinor      BigInt?                    @map("reserved_minor")
+  goodsMinor         BigInt?                    @map("goods_minor")
+  promotion          PromotionsPromotion        @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   clawbacks          PromotionsCreditClawback[]
 
   @@unique([marketId, id])

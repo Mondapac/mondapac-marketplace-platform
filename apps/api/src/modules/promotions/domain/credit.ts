@@ -69,6 +69,27 @@ export interface CreditRecord {
    * amount is final (the wallet may then be called) and for every other credit.
    */
   readonly grantAfter: Temporal.Instant | null;
+  /**
+   * What a cashback was earned on (Hassan H-2): the amount reserved at delivery and the goods
+   * (minor units) it was earned on. A refund lowers the credit pro rata from these, never from
+   * the promotion's rate as it is now. Null for every other credit (and a cashback made before).
+   */
+  readonly earnedOn: { readonly reservedMinor: bigint; readonly goodsMinor: bigint } | null;
+}
+
+/**
+ * What a cashback earned on `basis` keeps when only `goodsKept` of those goods remain: pro rata,
+ * rounded up (a part of a cent stays with the customer), never more than the reserved amount.
+ */
+export function keptPart(
+  basis: { readonly reservedMinor: bigint; readonly goodsMinor: bigint },
+  goodsKept: bigint,
+): bigint {
+  if (goodsKept <= 0n) return 0n;
+  if (goodsKept >= basis.goodsMinor) return basis.reservedMinor;
+  const product = basis.reservedMinor * goodsKept;
+  const kept = product / basis.goodsMinor + (product % basis.goodsMinor === 0n ? 0n : 1n);
+  return kept < basis.reservedMinor ? kept : basis.reservedMinor;
 }
 
 export interface ReferralRecord {

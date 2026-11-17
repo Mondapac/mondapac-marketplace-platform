@@ -87,7 +87,7 @@ BEGIN
     USING ERRCODE = 'restrict_violation';
 END; $$;
 
-DROP INDEX "wallet"."lots_market_id_journal_id_idx";
+DROP INDEX "wallet"."lots_market_id_journal_id_key";
 
 ALTER TABLE "wallet"."journals"
   DROP CONSTRAINT "journals_kind_check",

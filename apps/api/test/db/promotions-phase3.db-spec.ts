@@ -1053,6 +1053,7 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
         createdAt: clock.now(),
         settledAt: null,
         grantAfter: null,
+        earnedOn: null,
       };
       const credits = deps.credits;
       const result = await db.unitOfWork.run(market, async () => {
@@ -1114,6 +1115,8 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
         createdAt: now,
         settledAt: null,
         grantAfter: now.add({ hours: 24 * 14 }),
+        // What it was earned on (Hassan H-2): stored with it, never changed.
+        earnedOn: { reservedMinor: 400n, goodsMinor: 10000n },
       };
       const credits = deps.credits;
       const inUnit = <T>(work: () => Promise<T>) =>
@@ -1165,6 +1168,33 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
           ),
         ).toBe(RESTRICT);
       }
+      // The basis is never changed: the app role may not update it at all, and the guard refuses it
+      // for any role.
+      for (const change of [
+        `reserved_minor = 500`,
+        `goods_minor = 20000`,
+        `grant_after = grant_after + interval '1 hour', goods_minor = NULL, reserved_minor = NULL`,
+      ]) {
+        expect(
+          await state(
+            sql.query(`UPDATE promotions.credit_issuances SET ${change} WHERE id = $1`, [
+              credit.id,
+            ]),
+          ),
+        ).toBe('42501');
+        expect(
+          await state(
+            owner.query(`UPDATE promotions.credit_issuances SET ${change} WHERE id = $1`, [
+              credit.id,
+            ]),
+          ),
+        ).toBe(RESTRICT);
+      }
+      expect(
+        await inUnit(
+          async () => (await credits.findBySource(market, 'CASHBACK', credit.sourceId))?.earnedOn,
+        ),
+      ).toEqual(ok({ reservedMinor: 400n, goodsMinor: 10000n }));
       // Fixed once, never higher; then it is no longer waiting, and may be granted.
       expect(await inUnit(() => credits.fixAmount(market, credit.id, 401n))).toEqual(ok(false));
       expect(await inUnit(() => credits.fixAmount(market, credit.id, 250n))).toEqual(ok(true));
@@ -1231,6 +1261,7 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
         createdAt: now,
         settledAt: null,
         grantAfter: null,
+        earnedOn: null,
       };
       await inUnit(() => credits.insert(market, credit));
       await inUnit(() =>

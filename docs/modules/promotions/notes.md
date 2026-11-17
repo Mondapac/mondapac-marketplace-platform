@@ -438,7 +438,23 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   seller-funded cashback returns what was taken to the seller's ledger
   (`refund-cashback-seller`). A row is settled DONE once, with what was actually taken. A credit
   still waiting is lowered by the job instead; one whose wait ended but is not yet granted makes the
-  refund retry. A credit the grant job throws on is put back an hour (Hassan L-7). Migration
+  refund retry. A credit the grant job throws on is put back an hour (Hassan L-7).
+- What a cashback keeps is pro rata to what it was earned on (Hassan H-2): `reserved_minor` (the
+  amount reserved at delivery) and `goods_minor` (the goods it was earned on) are stored with the
+  cashback and never change (no UPDATE grant, and the guard refuses it for any role; migration
+  `20261117150003_promotions_credit_earned_basis`). The grant job and the clawback keep
+  `ceil(reserved × goods kept / goods)` and never read the promotion's rate or the Market's limit
+  again, so a seller who lowers its rate cannot cut or take back what was earned. A cashback with
+  no basis (made before) is granted as reserved and never clawed back. The clawback counts only
+  refunds that succeeded (`succeededRefundedGoods` from ordering, Hassan L-9); the grant job still
+  counts pending ones too (conservative: a pending refund that later fails leaves the customer
+  that part short, never the platform out of pocket).
+- Known limits, accepted for now: credit held by an open checkout when the clawback runs is not
+  taken later (Hassan L-10, small; the seller has paid it); a lasting seller-ledger failure after
+  the wallet took the credit leaves the row PENDING and the event dead-lettered with an alert, for
+  an operator to finish (L-11); a cashback PENDING with no wait that keeps failing stays at the
+  front of the grant batch (L-13; availability only). The anchor's `disputeLost` reads the
+  seller's dispute decisions and filters by seller order (L-12, fails closed). Migration
   `20261117150002_promotions_credit_clawbacks`: insert-only identity, PENDING to DONE only, no
   delete; `down.sql` refuses while rows exist.
 - Migration `20261117100001_promotions_seller_cashback`: `promotions_type_funding_check` makes a
