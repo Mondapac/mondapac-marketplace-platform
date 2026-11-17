@@ -1326,6 +1326,7 @@
           "cancel": "Cancel",
           "pending": "Preparing your export…",
           "done": "{count, plural, one {# offer exported.} other {# offers exported.}}",
+          "done-open": "The export is saved.",
           "error": {
             "unavailable": "The export didn’t work. Try again.",
             "denied": "You don’t have access to export offers.",

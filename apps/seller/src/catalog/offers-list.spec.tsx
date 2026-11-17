@@ -330,6 +330,24 @@ describe('seller offers row actions', () => {
     );
   });
 
+  it('clears the selection after a delete, so an export never names the deleted offer', async () => {
+    mount(pageOf([row()]));
+    call.mockImplementation(((method: string) =>
+      Promise.resolve(
+        method === 'DELETE' ? { ok: true, status: 204, body: null } : ok(pageOf([row()])),
+      )) as never);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all offers on this page' }));
+    expect(screen.getByText('1 offer selected')).toBeTruthy();
+    fireEvent.click(OPEN('Actions for Aged Basmati Rice'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete…' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Type the SKU to confirm'), {
+      target: { value: 'RICE-5KG' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete offer' }));
+    await waitFor(() => expect(screen.queryByText('1 offer selected')).toBeNull());
+  });
+
   it('says in the dialog why a delete was refused', async () => {
     mount(pageOf([row()]));
     call.mockResolvedValue({

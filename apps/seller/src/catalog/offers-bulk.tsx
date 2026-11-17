@@ -114,9 +114,13 @@ export function OffersBulk({
   const selectedCount = selection.allMatching ? (selection.total ?? 0) : selection.ids.length;
   const anySelected = selection.allMatching || selection.ids.length > 0;
 
-  async function download(format: ExportFormat, ids: readonly string[] | null, rows: number) {
+  async function download(
+    format: ExportFormat,
+    ids: readonly string[] | null,
+    rows: number | null,
+  ) {
     setBusy(true);
-    const work = (async (): Promise<number> => {
+    const work = (async (): Promise<number | null> => {
       let response: Response;
       try {
         response = await fetch(
@@ -155,7 +159,8 @@ export function OffersBulk({
         work,
         {
           pending: t('export.pending'),
-          success: (done) => t('export.done', { count: done }),
+          success: (done) =>
+            done === null ? t('export.done-open') : t('export.done', { count: done }),
           error: (reason) =>
             reason instanceof ExportFailure
               ? t(`export.error.${reason.key}`, {
@@ -232,11 +237,7 @@ export function OffersBulk({
           if (target === 'selected' && !selection.allMatching) {
             void download(format, selection.ids, selection.ids.length);
           } else {
-            void download(
-              format,
-              null,
-              target === 'selected' ? (selection.total ?? 0) : (total ?? 0),
-            );
+            void download(format, null, target === 'selected' ? selection.total : total);
           }
         }}
       />

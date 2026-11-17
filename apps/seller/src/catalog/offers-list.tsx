@@ -214,7 +214,11 @@ export function OffersList({
 
   const number = (value: number) => numberFormat(locale, {}).format(value);
   const refresh = useCallback(() => void load(queryNow.current), [load]);
-  const rowActions = useOfferRowActions(csrfToken, permissionKeys, refresh);
+  const rowActions = useOfferRowActions(csrfToken, permissionKeys, () => {
+    // A deleted or submitted offer must not stay ticked: an export of it would be refused.
+    selection.clear();
+    refresh();
+  });
 
   const saveColumns = (next: readonly OfferColumn[]) => {
     setColumns(next);
