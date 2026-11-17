@@ -5,7 +5,7 @@ import {
   LIST_PARSING_CASES,
 } from './evaluation-set';
 import { maskPersonalData, MASKED } from './personal-data';
-import { guardReply, MAX_REPLY_CHARACTERS } from './reply-guard';
+import { guardReply, isClaimFree, MAX_REPLY_CHARACTERS } from './reply-guard';
 import { cardRefOf } from './cards';
 import { storedCardOf } from './conversation';
 import { parseToolCall, TOOL_DECLARATIONS, toolDeclarationsFor } from './tools';
@@ -323,5 +323,69 @@ describe('the reply guard reads claims through invisible marks', () => {
       expect(guarded.notices).toContain('see-certification');
       expect(guarded.sentences.join(' ')).not.toMatch(/halal|organic/i);
     }
+  });
+});
+
+describe('certification and diet claims in other spellings (shared claim words)', () => {
+  it.each([
+    'This chicken is ḥalāl.',
+    'This chicken is hálal.',
+    'This chicken is haIaI.',
+    'This chicken is ha1al.',
+    'This is h a l a l.',
+    'This is ح ل ا ل.',
+    'This chicken is zabeeha.',
+    'It is dhabiha meat.',
+    'This is Islamic slaughter.',
+    'The meat is شرعی.',
+    'Это халяль.',
+    'It is gluten free.',
+    'It is vegetarian.',
+    'It is glatt and parve.',
+    'It is non-GMO.',
+    'This chicken is h\u034Falal.',
+  ])('drops: %s', (reply) => {
+    const guarded = guardReply(reply);
+    expect(guarded.notices).toContain('see-certification');
+    expect(guarded.sentences).toEqual([]);
+  });
+
+  it.each([
+    'The rice is in the second card.',
+    'Try the basmati rice, a long grain.',
+    'Hall and heal are ordinary words.',
+    'A healthy snack list is on the cards.',
+  ])('keeps: %s', (reply) => {
+    expect(guardReply(reply).notices).toEqual([]);
+  });
+});
+
+// Security review of the shared guard (Hassan, H1, H2, M1 to M3): the look-alikes and the plain
+// phrasings a model writes without being attacked.
+describe('claim spellings the guard must not let through', () => {
+  const spellings = [
+    'This chicken is hal‌al.',
+    'This chicken is Ηalal.',
+    'This chicken is Нalal.',
+    'Lamb حـلال today.',
+    'Suitable for vegans.',
+    'Organically grown.',
+    'It is pareve.',
+    'It is Shari’ah compliant.',
+    'It is gluten‐free.',
+    'It contains no gluten.',
+    'Safe for coeliacs.',
+    'It is plant-based.',
+    'GF bread.',
+    'h. a. l. a. l.',
+    'ha-lal chicken.',
+    'Chicken h4l4l.',
+    'It is k0sher.',
+    'شرعي است.',
+    'گیاه‌خوار است.',
+  ];
+  it.each(spellings)('drops: %s', (reply) => {
+    expect(guardReply(reply).notices).toEqual(['see-certification']);
+    expect(isClaimFree(reply)).toBe(false);
   });
 });
