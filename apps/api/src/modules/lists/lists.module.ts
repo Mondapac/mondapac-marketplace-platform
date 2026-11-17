@@ -8,36 +8,24 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { IdentityModule } from '../identity';
 import { ListRegistry } from './application/saved-filter-shared';
-<<<<<<< HEAD
 import { ColumnPreferenceGet } from './application/use-cases/column-preference-get.use-case';
 import { ColumnPreferenceReset } from './application/use-cases/column-preference-reset.use-case';
 import { ColumnPreferenceSave } from './application/use-cases/column-preference-save.use-case';
-=======
->>>>>>> origin/main
 import { SavedFilterCreate } from './application/use-cases/saved-filter-create.use-case';
 import { SavedFilterDelete } from './application/use-cases/saved-filter-delete.use-case';
 import { SavedFilterUpdate } from './application/use-cases/saved-filter-update.use-case';
 import { SavedFiltersList } from './application/use-cases/saved-filters-list.use-case';
 import { SavedFiltersReorder } from './application/use-cases/saved-filters-reorder.use-case';
-<<<<<<< HEAD
 import { COLUMN_PREFERENCE_STORE, LIST_REGISTRATION, SAVED_FILTER_STORE } from './contracts';
 import { LISTS_AUDIT_ACTIONS } from './domain/audit';
 import { listsProviders } from './infrastructure/lists-providers';
 import { AdminColumnPreferenceController } from './presentation/column-preference.controller';
-=======
-import { LIST_REGISTRATION, SAVED_FILTER_STORE } from './contracts';
-import { LISTS_AUDIT_ACTIONS } from './domain/audit';
-import { listsProviders } from './infrastructure/lists-providers';
->>>>>>> origin/main
 import { AdminSavedFilterController } from './presentation/saved-filter.controller';
 
 const PORTS: Readonly<Record<string, InjectionToken>> = {
   unitOfWork: UNIT_OF_WORK,
   store: SAVED_FILTER_STORE,
-<<<<<<< HEAD
   columnStore: COLUMN_PREFERENCE_STORE,
-=======
->>>>>>> origin/main
   registry: ListRegistry,
   authorisation: AUTHORISATION_CHECK,
   audit: AUDIT_WRITER,
@@ -57,7 +45,6 @@ function useCaseProvider<D, U>(
       new type(gate, Object.fromEntries(ports.map((name, index) => [name, values[index]])) as D),
   };
 }
-<<<<<<< HEAD
 
 /** A column-preference use case: the shared ports (`columnStore` as `store`) plus the named extras. */
 function columnUseCase<D, U>(
@@ -77,8 +64,6 @@ function columnUseCase<D, U>(
       ),
   };
 }
-=======
->>>>>>> origin/main
 
 /**
  * Lists: the shared kit of the super lists (phase 0). It owns the one table of saved filters in
@@ -88,11 +73,7 @@ function columnUseCase<D, U>(
  */
 @Module({
   imports: [IdentityModule],
-<<<<<<< HEAD
   controllers: [AdminSavedFilterController, AdminColumnPreferenceController],
-=======
-  controllers: [AdminSavedFilterController],
->>>>>>> origin/main
   providers: [
     PersistenceModule.auditWriterFor('lists'),
     registerAuditActions('lists', LISTS_AUDIT_ACTIONS),
@@ -125,15 +106,10 @@ function columnUseCase<D, U>(
       'audit',
     ]),
     useCaseProvider(SavedFiltersReorder, ['unitOfWork', 'store', 'registry', 'authorisation']),
-<<<<<<< HEAD
     columnUseCase(ColumnPreferenceGet, []),
     columnUseCase(ColumnPreferenceSave, ['clock', 'ids']),
     columnUseCase(ColumnPreferenceReset, []),
   ],
   exports: [SAVED_FILTER_STORE, COLUMN_PREFERENCE_STORE, LIST_REGISTRATION],
-=======
-  ],
-  exports: [SAVED_FILTER_STORE, LIST_REGISTRATION],
->>>>>>> origin/main
 })
 export class ListsModule {}

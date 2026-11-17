@@ -17,12 +17,9 @@ export {
   type ListPayloadFailure,
   type ListPopulation,
 } from './list-definition';
-<<<<<<< HEAD
 export {
   COLUMN_PREFERENCE_STORE,
   MAX_PREFERRED_COLUMNS,
   type ColumnPreferenceStore,
   type StoredColumnPreference,
 } from './column-preference-store';
-=======
->>>>>>> origin/main
