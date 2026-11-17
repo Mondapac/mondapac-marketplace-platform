@@ -14,6 +14,8 @@ export {
   type ExclusiveSellerAnswer,
   type ExclusiveSellerFailure,
   type CustomersReadFacade,
+  type SellerOrderCustomer,
+  type SellerOrderCustomersFailure,
 } from './customers-read.facade';
 export {
   CUSTOMERS_ACCOUNT_DELETION_FACADE,

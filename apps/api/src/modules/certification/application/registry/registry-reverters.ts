@@ -29,8 +29,8 @@ import { parseTypeId, type RegistryDependencies } from './registry.shared';
 // The reverters of area certification (see certification-review.ts). Each restores the revision
 // before a rejected or withdrawn save, in the open unit of that decision, only while the subject
 // still holds the revision after it. A revert is a new revision with the content before (a save is
-// never an edit), published as an admin's save is: the same event, so catalog re-checks the tags
-// a claim-policy change touches (the type's event is the save's too).
+// never an edit), published as an admin's save is, with the save's own event. Only the
+// claim-policy event makes catalog re-check tags; nothing consumes the type's event yet.
 //
 // Safety (CERT-21, ADR-0012; Hassan): a revert never loosens enforcement. It is classified by the
 // rule an admin's save meets; a revert that save would send to a second admin (it relaxes a

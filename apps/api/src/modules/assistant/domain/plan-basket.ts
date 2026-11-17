@@ -74,6 +74,10 @@ export interface BasketOption {
   /** Packs of this product for the wish; null when the pack size is unknown (buyer chooses). */
   readonly quantity: number | null;
   readonly sizeNote: SizeNote | null;
+  /** The sell unit to add (see `attachSellUnits`); null until read, or when none matches the price. */
+  readonly variantId: string | null;
+  /** The most one cart line of that unit may hold now; null when unknown. */
+  readonly maxQuantity: number | null;
 }
 
 /** `exact`: the packs add up to the wish; `larger`: the buyer gets a bit more than asked. */
@@ -94,6 +98,10 @@ export interface BasketLine {
   readonly priceFrom: boolean;
   readonly taxInclusive: boolean | null;
   readonly sizeNote: SizeNote | null;
+  /** The sell unit to add (see `attachSellUnits`); null until read, or when none matches the price. */
+  readonly variantId: string | null;
+  /** The most one cart line of that unit may hold now; null when unknown. */
+  readonly maxQuantity: number | null;
   /** Up to two other products that fit this line, for the buyer's swap. */
   readonly alternatives: readonly BasketOption[];
 }
@@ -220,6 +228,8 @@ const optionOf = ({ candidate, fit }: Evaluated): BasketOption => ({
   taxInclusive: candidate.taxInclusive,
   quantity: fit.quantity,
   sizeNote: fit.sizeNote,
+  variantId: null,
+  maxQuantity: null,
 });
 
 const isPicked = (entry: Evaluated): boolean => entry.matches && entry.fit.auto;
@@ -274,6 +284,8 @@ function lineOf(
     priceFrom: candidate.priceFrom,
     taxInclusive: candidate.taxInclusive,
     sizeNote: fit.sizeNote,
+    variantId: null,
+    maxQuantity: null,
     alternatives,
   };
 }

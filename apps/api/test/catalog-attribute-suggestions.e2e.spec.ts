@@ -418,6 +418,21 @@ describe('value suggestions over HTTP (integration)', () => {
         .expect(401);
     });
 
+    it('takes the legacy limit over HTTP as an alias of pageSize, and refuses a bad one', async () => {
+      await boot();
+      await seeded(code);
+      waiting();
+      const listed = await http()
+        .get(`${QUEUE}?limit=5`)
+        .set(adminSession(code, MODERATOR, 1))
+        .expect(200);
+      expect(listed.body).toMatchObject({ pageSize: 5, page: 1 });
+      await http()
+        .get(`${QUEUE}?limit=abc`)
+        .set(adminSession(code, MODERATOR, 1))
+        .expect(400);
+    });
+
     it('approves: the value is added, then the same suggestion is 409', async () => {
       await boot();
       await seeded(code);

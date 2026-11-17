@@ -90,6 +90,14 @@ export const adminNav: NavConfig = {
       anyOf: ['ordering.order.view'],
     },
     {
+      id: 'invoices',
+      icon: 'file',
+      labelKey: 'nav.invoices',
+      href: '/invoices',
+      group: 'sales',
+      anyOf: ['ordering.order.view'],
+    },
+    {
       id: 'products',
       icon: 'package',
       labelKey: 'nav.products',

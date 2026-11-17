@@ -291,7 +291,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       ['platform', 'default', 'catalogue-moderator', 21],
       ['platform', 'default', 'operations-support', 9],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 34],
+      ['platform', 'default', 'viewer', 35],
       ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 8],
@@ -323,8 +323,17 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // `customers.customers.view` is left out too: the Customers list and a customer's page show
     // names, sign-in addresses and order totals, so the Platform Administrator grants it role by
     // role (customers phase 1, package B2). `payments.customer-payment.view` is left out for the
-    // same reason: one customer's payments and disputes (customers phase 2b).
+    // same reason: one customer's payments and disputes (customers phase 2b). So is
+    // `identity.customer-sign-in.view`: one customer's sign-ins and sessions (customers phase 2b).
+    // So are the other owners' keys of one customer's page (phase 2b, part 2): the cart, the
+    // reminders sent, the behaviour, the consent and the assistant conversation dates.
     const DECRYPTING_VIEW_KEYS = [
+      'identity.customer-sign-in.view',
+      'cart.customer-cart.view',
+      'notifications.customer-cart-reminder.view',
+      'engagement.customer-behaviour.view',
+      'legal.customer-consent.view',
+      'assistant.customer-conversation.view',
       'payments.customer-payment.view',
       'security.centre.view',
       'customers.customers.view',

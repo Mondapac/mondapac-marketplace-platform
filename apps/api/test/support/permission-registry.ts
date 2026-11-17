@@ -4,6 +4,9 @@ import {
   type EffectiveKeyResolver,
 } from '../../src/modules/identity/application/access/effective-keys';
 import { ASSISTANT_PERMISSIONS } from '../../src/modules/assistant/contracts/permissions';
+import { CART_PERMISSIONS } from '../../src/modules/cart/contracts/permissions';
+import { ENGAGEMENT_PERMISSIONS } from '../../src/modules/engagement/contracts/permissions';
+import { LEGAL_PERMISSIONS } from '../../src/modules/legal/contracts/permissions';
 import { BLOG_PERMISSIONS } from '../../src/modules/blog/contracts/permissions';
 import { CUSTOMERS_PERMISSIONS } from '../../src/modules/customers/contracts/permissions';
 import { CATALOG_PERMISSIONS } from '../../src/modules/catalog/contracts/permissions';
@@ -57,6 +60,9 @@ export function realPermissionRegistry(): PermissionRegistry {
   registry.register('storefront', STOREFRONT_PERMISSIONS);
   registry.register('blog', BLOG_PERMISSIONS);
   registry.register('system-requests', SYSTEM_REQUESTS_PERMISSIONS);
+  registry.register('cart', CART_PERMISSIONS);
+  registry.register('engagement', ENGAGEMENT_PERMISSIONS);
+  registry.register('legal', LEGAL_PERMISSIONS);
   registry.seal();
   return registry;
 }

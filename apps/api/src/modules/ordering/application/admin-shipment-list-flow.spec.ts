@@ -7,7 +7,7 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
-import { FakeLabels } from '../../../../test/support/ordering-fakes';
+import { FakeCarrierProgress, FakeLabels } from '../../../../test/support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuthorisationCheck } from '../../../platform/authz';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
@@ -87,15 +87,27 @@ describe.each(['AU', 'ZZ'] as const)('admin shipment list in market %s', (code) 
         );
       },
     };
+    // What happened in order: each read unit opening and closing, and each progress call.
+    const events: string[] = [];
     const unitOfWork = {
-      run: <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
+      run: async <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => {
+        events.push('unit-open');
+        try {
+          return await work();
+        } finally {
+          events.push('unit-closed');
+        }
+      },
     } as unknown as UnitOfWork;
     const reader = new RecordingReader();
     const labels = new FakeLabels();
+    const carrierProgress = new FakeCarrierProgress();
+    carrierProgress.onCall = () => events.push('carrier-progress');
     const list = new AdminListShipments(createUseCaseGate(markets, check), {
       unitOfWork,
       shipments: reader,
       labels,
+      carrierProgress,
     });
     const context: CallContext = testCallContext(
       market,
@@ -106,7 +118,7 @@ describe.each(['AU', 'ZZ'] as const)('admin shipment list in market %s', (code) 
         sellerId: null,
       }),
     );
-    return { list, reader, labels, context };
+    return { list, reader, labels, carrierProgress, events, context };
   }
 
   const record = (overrides: Partial<ShipmentListRecord> = {}): ShipmentListRecord => ({
@@ -186,6 +198,7 @@ describe.each(['AU', 'ZZ'] as const)('admin shipment list in market %s', (code) 
     expect(result.ok).toBe(true);
     expect(reader.asked[0]).toEqual({
       filter: {
+        ids: null,
         stage: 'ready',
         reference,
         trackingRef: null,
@@ -357,6 +370,84 @@ describe.each(['AU', 'ZZ'] as const)('admin shipment list in market %s', (code) 
     labels.fail.add('stores');
     const unnamed = await list.execute(context, {});
     expect(unnamed.ok && unnamed.value.rows[0]!.storeName).toBeNull();
+  });
+
+  it('reads the carrier progress once per page, after the read unit, for the asked ids only', async () => {
+    const { list, reader, carrierProgress, events, context } = setup();
+    const booked = record({ readyAt: T0, fulfilment: 'shipped', carrier: 'Courier' });
+    const pickup = record({ deliveryMethod: 'pickup' });
+    reader.records = [booked, pickup];
+    const progress = {
+      progress: 'picked-up' as const,
+      carrierStatus: 'EN_ROUTE',
+      updatedAt: T0.add({ minutes: 20 }),
+      proofOfDelivery: false,
+      fleet: 'uber_direct',
+    };
+    carrierProgress.progress.set(booked.sellerOrderId, progress);
+    // An id shipping adds that was not asked for is never shown.
+    const extra = ids.next<'SellerOrder'>();
+    carrierProgress.progress.set(extra, { ...progress, progress: 'delivered' });
+
+    const result = await list.execute(context, {});
+
+    if (!result.ok) throw new Error(result.error.code);
+    expect(carrierProgress.calls).toEqual([[booked.sellerOrderId, pickup.sellerOrderId]]);
+    expect(events).toEqual(['unit-open', 'unit-closed', 'carrier-progress']);
+    expect(result.value.carrierProgressAvailable).toBe(true);
+    expect(result.value.rows.map((row) => row.carrierProgress)).toEqual([progress, null]);
+    expect(result.value.rows[0]!.carrier).toBe('Courier');
+    expect(result.value.rows.map((row) => row.sellerOrderId)).not.toContain(extra);
+
+    // Previous/Next: still one call, for the page's rows only (not the look-ahead row).
+    reader.records = [booked, pickup, record()];
+    carrierProgress.calls.length = 0;
+    const walked = await list.execute(context, { limit: 2 });
+    expect(walked.ok && walked.value.rows).toHaveLength(2);
+    expect(carrierProgress.calls).toEqual([[booked.sellerOrderId, pickup.sellerOrderId]]);
+  });
+
+  it('marks the progress not available when denied or failed, and keeps the seller carrier', async () => {
+    const { list, reader, labels, carrierProgress, context } = setup();
+    const row = record({
+      readyAt: T0,
+      fulfilment: 'shipped',
+      carrier: 'Courier',
+      trackingRef: 'T-1',
+    });
+    reader.records = [row];
+    labels.stores.set(row.sellerId, 'Halal Corner');
+    carrierProgress.progress.set(row.sellerOrderId, {
+      progress: 'booked',
+      carrierStatus: 'SCHEDULED',
+      updatedAt: T0,
+      proofOfDelivery: false,
+      fleet: 'mondapac_drive',
+    });
+
+    carrierProgress.denied = true;
+    const denied = await list.execute(context, {});
+    carrierProgress.denied = false;
+    carrierProgress.fail = true;
+    const failed = await list.execute(context, {});
+
+    for (const result of [denied, failed]) {
+      if (!result.ok) throw new Error(result.error.code);
+      expect(result.value.carrierProgressAvailable).toBe(false);
+      expect(result.value.rows[0]).toMatchObject({
+        carrierProgress: null,
+        carrier: 'Courier',
+        trackingRef: 'T-1',
+        storeName: 'Halal Corner',
+      });
+    }
+  });
+
+  it('makes no progress call for an empty page', async () => {
+    const { list, carrierProgress, context } = setup();
+    const result = await list.execute(context, {});
+    expect(result.ok && result.value.carrierProgressAvailable).toBe(true);
+    expect(carrierProgress.calls).toEqual([]);
   });
 
   it('places each seller order on one stage', () => {

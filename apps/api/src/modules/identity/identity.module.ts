@@ -191,6 +191,11 @@ import { CustomerDirectoryRecords } from './application/use-cases/customer-direc
 import { CustomerAccountExists } from './application/use-cases/customer-account-exists.use-case';
 import { AdminEndCustomerSessions } from './application/use-cases/admin-end-customer-sessions.use-case';
 import { AdminRenameCustomer } from './application/use-cases/admin-rename-customer.use-case';
+import { AdminCustomerSignIns } from './application/use-cases/admin-customer-sign-ins.use-case';
+import { AdminCustomerSessions } from './application/use-cases/admin-customer-sessions.use-case';
+import { AdminRevealCustomerSignIn } from './application/use-cases/admin-reveal-customer-sign-in.use-case';
+import { AdminSignOutCustomer } from './application/use-cases/admin-sign-out-customer.use-case';
+import { AdminSendCustomerPasswordReset } from './application/use-cases/admin-send-customer-password-reset.use-case';
 import { EndAllCustomerSessions } from './application/use-cases/end-all-customer-sessions.use-case';
 import { EndOtherCustomerSessions } from './application/use-cases/end-other-customer-sessions.use-case';
 import { EraseCustomerAccount } from './application/use-cases/erase-customer-account.use-case';
@@ -333,6 +338,16 @@ const PORT = {
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
+
+/** The ports of the customer page's security reads and "sign out everywhere" (customers phase 2b). */
+const CUSTOMER_SECURITY_PORTS = {
+  unitOfWork: true,
+  accounts: true,
+  sessions: true,
+  records: true,
+  audit: true,
+  clock: true,
+} as const;
 
 /** The ports of the Staff invitation re-send and revoke (slice 11): one dependency set. */
 const STAFF_INVITATION_PORTS = {
@@ -1135,6 +1150,20 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
+    // Customers management phase 2b: the customer page's security section, behind the facade.
+    useCaseProvider(AdminCustomerSignIns, CUSTOMER_SECURITY_PORTS),
+    useCaseProvider(AdminCustomerSessions, CUSTOMER_SECURITY_PORTS),
+    useCaseProvider(AdminRevealCustomerSignIn, CUSTOMER_SECURITY_PORTS),
+    useCaseProvider(AdminSignOutCustomer, CUSTOMER_SECURITY_PORTS),
+    useCaseProvider(AdminSendCustomerPasswordReset, {
+      unitOfWork: true,
+      accounts: true,
+      links: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
     useCaseProvider(CustomerDirectoryRecords, {
       unitOfWork: true,
       accounts: true,
@@ -1903,6 +1932,11 @@ function useCaseProvider<D, U>(
         OwnAccountTiedToSeller,
         EraseCustomerAccount,
         AdminRenameCustomer,
+        AdminCustomerSignIns,
+        AdminCustomerSessions,
+        AdminRevealCustomerSignIn,
+        AdminSignOutCustomer,
+        AdminSendCustomerPasswordReset,
       ],
       useFactory: (
         describeActor: DescribeActor,
@@ -1927,6 +1961,11 @@ function useCaseProvider<D, U>(
         ownAccountTiedToSeller: OwnAccountTiedToSeller,
         eraseCustomerAccount: EraseCustomerAccount,
         adminRenameCustomer: AdminRenameCustomer,
+        adminCustomerSignIns: AdminCustomerSignIns,
+        adminCustomerSessions: AdminCustomerSessions,
+        adminRevealCustomerSignIn: AdminRevealCustomerSignIn,
+        adminSignOutCustomer: AdminSignOutCustomer,
+        adminSendCustomerPasswordReset: AdminSendCustomerPasswordReset,
       ) =>
         new IdentityFacadeImplementation({
           describeActor,
@@ -1951,6 +1990,11 @@ function useCaseProvider<D, U>(
           ownAccountTiedToSeller,
           eraseCustomerAccount,
           adminRenameCustomer,
+          adminCustomerSignIns,
+          adminCustomerSessions,
+          adminRevealCustomerSignIn,
+          adminSignOutCustomer,
+          adminSendCustomerPasswordReset,
         }),
     },
     {
