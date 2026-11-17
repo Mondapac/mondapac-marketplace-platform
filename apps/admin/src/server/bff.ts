@@ -21,6 +21,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'payments/admin/connected-accounts/export',
     // The Market's orders (ordering), read-only: the list; one order is read by the page server.
     'ordering/admin/orders',
+    // The export of the order list as a CSV file (ordering): the list's own filter.
+    'ordering/admin/orders/export',
     // The Market's shipments (ordering, Sales > Shipments), read-only: the list (query: the tab,
     // search, filters and paging; see QUERY_KEYS).
     'ordering/admin/shipments',
@@ -655,6 +657,16 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'from',
     'to',
   ],
+  'ordering/admin/orders/export': [
+    'format',
+    'status',
+    'q',
+    'paymentState',
+    'fulfilment',
+    'sellerId',
+    'from',
+    'to',
+  ],
   // The Shipments list: the tab (`stage`, `attention`), the search (`q` or `search`), the filters
   // and the paging of either List paging mode (the API refuses the two modes mixed).
   'ordering/admin/shipments': [
@@ -911,6 +923,16 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     direction: /^(asc|desc)$/,
     page: /^[1-9][0-9]{0,3}$/,
     pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'ordering/admin/orders/export': {
+    format: /^csv$/,
+    status: /^(pending-payment|confirmed|cancelled)$/,
+    q: /^[0-9a-f-]{36}$/i,
+    paymentState: /^(none|authorised|captured|voided)$/,
+    fulfilment: /^(to-ship|shipped|delivered)$/,
+    sellerId: UUID,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
   },
   'catalog/admin/products/export': {
     format: /^(csv|xlsx)$/,

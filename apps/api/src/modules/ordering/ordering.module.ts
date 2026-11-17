@@ -106,7 +106,9 @@ import { AdminRemoveRefundLimit } from './application/use-cases/admin-remove-ref
 import { AdminSetRefundLimit } from './application/use-cases/admin-set-refund-limit.use-case';
 import { AdminViewRefundLimits } from './application/use-cases/admin-view-refund-limits.use-case';
 import { SettleRefunds } from './application/use-cases/settle-refunds.use-case';
+import { AdminExportOrders } from './application/use-cases/admin-export-orders.use-case';
 import { AdminListOrders } from './application/use-cases/admin-list-orders.use-case';
+import { SellerExportOrders } from './application/use-cases/seller-export-orders.use-case';
 import { AdminViewOrder } from './application/use-cases/admin-view-order.use-case';
 import { AdminViewOrderDocument } from './application/use-cases/admin-view-order-document.use-case';
 import { CancelPayment } from './application/use-cases/cancel-payment.use-case';
@@ -383,6 +385,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminViewOrderActivity,
       AdminViewOrderDocument,
       AdminListOrders,
+      AdminExportOrders,
+      SellerExportOrders,
       ConfirmPayment,
       CancelPayment,
       SellerListOrders,
