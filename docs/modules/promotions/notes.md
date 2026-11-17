@@ -428,6 +428,14 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   (ordering imports promotions for checkout): `DELIVERED_ORDER_FACTS` is a
   `BoundDeliveredOrderFacts` that `PromotionsOrderEventsModule` binds to ordering's facade at
   start-up; unbound or failing, it answers unknown and the handlers retry.
+- The line "cashback X will be credited on date Y" (owner decision, 2026-11-17: credit after the
+  payout release, plus a display-only line). `promotions.view-my-upcoming-cashback` (rule
+  `own-resources`, `GET /promotions/cashback/upcoming?orderId=`, `no-store`) answers the signed-in
+  customer's PENDING cashback, newest first (at most 20), optionally of one order: amount, currency
+  and `creditOn` (the payout release; null once that has passed and it is on its way). It never
+  touches a balance; promotions off answers an empty list. The storefront's order page shows one
+  note per item under the summary. The storefront has no wallet page yet, so the wallet side of the
+  line waits for one.
 
 ## Package T2: discounts at checkout (part B, ordering side)
 

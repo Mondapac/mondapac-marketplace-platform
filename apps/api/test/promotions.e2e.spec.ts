@@ -22,6 +22,7 @@ import { PauseOwnPromotion } from '../src/modules/promotions/application/use-cas
 import { ApplyReferralCode } from '../src/modules/promotions/application/use-cases/apply-referral-code.use-case';
 import { ListPromotionCredits } from '../src/modules/promotions/application/use-cases/list-promotion-credits.use-case';
 import { ViewMyReferral } from '../src/modules/promotions/application/use-cases/view-my-referral.use-case';
+import { ViewMyUpcomingCashback } from '../src/modules/promotions/application/use-cases/view-my-upcoming-cashback.use-case';
 import { GenerateBatchCodes } from '../src/modules/promotions/application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from '../src/modules/promotions/application/use-cases/view-batch-code-summary.use-case';
 import { PausePromotion } from '../src/modules/promotions/application/use-cases/pause-promotion.use-case';
@@ -135,6 +136,7 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     ['preview-payout', PreviewSellerPayout],
     ['credits', ListPromotionCredits],
     ['my-referral', ViewMyReferral],
+    ['upcoming-cashback', ViewMyUpcomingCashback],
     ['apply-referral', ApplyReferralCode],
   ] as const;
 
@@ -877,6 +879,51 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
 
   describe('phase 3: referral and credits', () => {
     const CREDIT = id<'PromotionCredit'>(0xc001);
+
+    it('reads the customer’s own upcoming cashback, never cached, display only', async () => {
+      await boot();
+      const ORDER = id<'Order'>(0x0a01);
+      next = ok({
+        cashback: [
+          {
+            orderId: ORDER,
+            amountMinor: 400n,
+            currency: 'AUD',
+            creditOn: START.add({ hours: 24 }),
+          },
+          { orderId: ORDER, amountMinor: 5n, currency: 'AUD', creditOn: null },
+        ],
+      });
+      const response = await http()
+        .get(`/promotions/cashback/upcoming?orderId=${ORDER}`)
+        .set({ 'x-market-id': code, ...customer() });
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({
+        cashback: [
+          {
+            orderId: ORDER,
+            amountMinor: '400',
+            currency: 'AUD',
+            creditOn: START.add({ hours: 24 }).toString(),
+          },
+          { orderId: ORDER, amountMinor: '5', currency: 'AUD', creditOn: null },
+        ],
+      });
+      expect(calls.at(-1)).toEqual({ name: 'upcoming-cashback', input: { orderId: ORDER } });
+      await http()
+        .get('/promotions/cashback/upcoming')
+        .set({ 'x-market-id': code, ...customer() });
+      expect(calls.at(-1)).toEqual({ name: 'upcoming-cashback', input: {} });
+      next = err({ code: 'validation.failed', fields: [{ path: 'orderId', code: 'value' }] });
+      expect(
+        (
+          await http()
+            .get('/promotions/cashback/upcoming?orderId=x')
+            .set({ 'x-market-id': code, ...customer() })
+        ).status,
+      ).toBe(400);
+    });
 
     it('reads the customer’s own referral code, never cached, with amounts as digit strings', async () => {
       await boot();

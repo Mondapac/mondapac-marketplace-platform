@@ -222,6 +222,27 @@ export class PrismaCreditRepository implements CreditRepository {
     return rows.map(toRecord);
   }
 
+  async listWaitingCashback(
+    market: MarketContext,
+    recipient: Id<'Account'>,
+    limit: number,
+    orderId?: Id<'Order'>,
+  ): Promise<readonly CreditRecord[]> {
+    // credit_issuances_recipient_newest_idx: a customer's credits are few.
+    const rows = await this.prisma.tx(market).promotionsCreditIssuance.findMany({
+      where: {
+        marketId: market.marketId,
+        recipientAccountId: recipient,
+        kind: 'CASHBACK',
+        status: 'PENDING',
+        ...(orderId === undefined ? {} : { orderId }),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+    return rows.map(toRecord);
+  }
+
   async listForRecipient(
     market: MarketContext,
     recipient: Id<'Account'>,

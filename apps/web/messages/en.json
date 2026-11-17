@@ -285,6 +285,8 @@
       "delivery": "Delivery",
       "total": "Total",
       "gst": "Prices include GST. Includes {amount} GST.",
+      "cashback-on": "Cashback of {amount} will be added to your wallet on {date}.",
+      "cashback-soon": "Cashback of {amount} is on its way to your wallet.",
       "not-charged": "You cancelled this order before the seller confirmed it. Your card was not charged.",
       "delivered-to": "Delivered to",
       "tax-invoice": "Tax invoice (PDF)",

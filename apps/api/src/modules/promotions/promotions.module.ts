@@ -72,6 +72,7 @@ import { ListCustomerPromotionCredits } from './application/use-cases/list-custo
 import { ListPromotionCredits } from './application/use-cases/list-promotion-credits.use-case';
 import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
 import { ViewMyReferral } from './application/use-cases/view-my-referral.use-case';
+import { ViewMyUpcomingCashback } from './application/use-cases/view-my-upcoming-cashback.use-case';
 import { ViewStoreFollowGift } from './application/use-cases/view-store-follow-gift.use-case';
 import { GenerateBatchCodes } from './application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from './application/use-cases/view-batch-code-summary.use-case';
@@ -122,6 +123,7 @@ import { promotionsProviders } from './infrastructure/promotions-providers';
 import {
   AdminPromotionsController,
   CustomerReferralController,
+  CustomerCashbackController,
   StoreFollowGiftController,
   SellerPromotionsController,
 } from './presentation/promotions.controller';
@@ -202,6 +204,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminPromotionsController,
     SellerPromotionsController,
     CustomerReferralController,
+    CustomerCashbackController,
     StoreFollowGiftController,
   ],
   providers: [
@@ -260,6 +263,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ListCustomerPromotionCredits,
       ApplyReferralCode,
       ViewMyReferral,
+      ViewMyUpcomingCashback,
       ViewStoreFollowGift,
       CashbackOnDelivery,
       QualifyReferralOnDelivery,

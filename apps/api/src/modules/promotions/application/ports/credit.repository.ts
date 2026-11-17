@@ -76,6 +76,16 @@ export interface CreditRepository {
     limit: number,
     after?: CreditCursor,
   ): Promise<readonly CreditRecord[]>;
+  /**
+   * One customer's PENDING cashback credits, newest first, at most `limit`, optionally of one order:
+   * the display line "cashback X will be credited on date Y" (customers phase 4c).
+   */
+  listWaitingCashback(
+    market: MarketContext,
+    recipient: Id<'Account'>,
+    limit: number,
+    orderId?: Id<'Order'>,
+  ): Promise<readonly CreditRecord[]>;
   /** One customer's credits across promotions, newest first (keyset), for the admin customer page. */
   listForRecipient(
     market: MarketContext,
