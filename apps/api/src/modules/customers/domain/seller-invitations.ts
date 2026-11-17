@@ -61,7 +61,10 @@ export interface SellerAttribution {
 export interface InvitationRules {
   /** How long after sign-up an account may still join a store through its link (days). */
   readonly signUpWindowDays: number;
-  /** Attributions through one link in 24 hours above which a new one is flagged `link-burst`. */
+  /**
+   * Attributions to one seller (through any of its links, so a refresh does not reset it) in 24
+   * hours from which a new one is flagged `link-burst`.
+   */
   readonly burstPerDay: number;
 }
 
@@ -76,8 +79,8 @@ export interface ClaimFacts {
   readonly attributed: boolean;
   /** The customer's sign-in address is also a member's of the seller's team. */
   readonly sellerTeam: boolean;
-  /** Attributions through the same link in the last 24 hours. */
-  readonly linkLastDay: number;
+  /** Attributions to the same seller (any of its links) in the last 24 hours. */
+  readonly sellerLastDay: number;
 }
 
 export type ClaimDecision =
@@ -104,7 +107,7 @@ export function decideClaim(facts: ClaimFacts, rules: InvitationRules): ClaimDec
     const limit = facts.signedUpAt.add({ hours: rules.signUpWindowDays * 24 });
     if (facts.now.epochMilliseconds > limit.epochMilliseconds) return { kind: 'refuse' };
   }
-  const flags: AttributionFlag[] = facts.linkLastDay >= rules.burstPerDay ? ['link-burst'] : [];
+  const flags: AttributionFlag[] = facts.sellerLastDay >= rules.burstPerDay ? ['link-burst'] : [];
   if (facts.sellerTeam) {
     return { kind: 'record', status: 'rejected', rejectReason: 'seller-team', flags };
   }

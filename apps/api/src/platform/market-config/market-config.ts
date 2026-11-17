@@ -2083,7 +2083,7 @@ const marketSchema = z
         /**
          * Sellers' invite links (customers management phase 4a). `signUpWindowDays`: how long after
          * sign-up an account may still join a store through its link (AU 7). `burstPerDay`: the
-         * attributions through one link in 24 hours from which a new one is flagged for the admin
+         * attributions to one seller (any of its links) in 24 hours from which a new one is flagged for the admin
          * (AU 50). Without it the invite links are unavailable.
          */
         invitations: z

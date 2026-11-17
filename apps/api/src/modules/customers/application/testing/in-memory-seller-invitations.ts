@@ -42,6 +42,14 @@ export class InMemoryInviteLinks implements InviteLinkRepository {
     );
   }
 
+  lockLive(market: MarketContext, linkId: Id<'SellerInviteLink'>) {
+    return Promise.resolve(
+      this.rows.some(
+        (row) => row.marketId === market.marketId && row.id === linkId && row.revokedAt === null,
+      ),
+    );
+  }
+
   replace(market: MarketContext, link: InviteLink, at: Temporal.Instant) {
     if (this.rows.some((row) => row.marketId === market.marketId && row.token === link.token)) {
       return Promise.resolve('conflict' as const);
@@ -105,12 +113,12 @@ export class InMemorySellerAttributions implements SellerAttributionRepository {
     return Promise.resolve(true);
   }
 
-  countOfLinkSince(market: MarketContext, linkId: Id<'SellerInviteLink'>, since: Temporal.Instant) {
+  countOfSellerSince(market: MarketContext, sellerId: Id<'Seller'>, since: Temporal.Instant) {
     return Promise.resolve(
       this.rows.filter(
         (r) =>
           r.marketId === market.marketId &&
-          r.linkId === linkId &&
+          r.sellerId === sellerId &&
           r.attributedAt.epochMilliseconds >= since.epochMilliseconds,
       ).length,
     );

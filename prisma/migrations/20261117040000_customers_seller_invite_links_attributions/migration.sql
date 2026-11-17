@@ -35,9 +35,6 @@ CREATE TABLE "customers"."seller_attributions" (
 );
 
 -- CreateIndex
-CREATE INDEX "seller_invite_links_market_id_seller_id_created_at_idx" ON "customers"."seller_invite_links"("market_id", "seller_id", "created_at" DESC);
-
--- CreateIndex
 CREATE UNIQUE INDEX "seller_invite_links_market_id_token_key" ON "customers"."seller_invite_links"("market_id", "token");
 
 -- CreateIndex
@@ -65,7 +62,9 @@ CREATE UNIQUE INDEX "seller_invite_links_one_live_per_seller_key"
 -- Hand-written: the admin list of rejected and flagged attributions.
 CREATE INDEX "seller_attributions_market_id_suspicious_idx"
   ON "customers"."seller_attributions" ("market_id", "attributed_at" DESC, "account_id" DESC)
-  WHERE "status" = 'rejected' OR cardinality("flags") > 0;
+  -- Written as Prisma writes the suspicious view's filter (NOT flags = '{}'), so the planner
+  -- matches it; test/db/customers-seller-invitations.db-spec.ts checks the plan.
+  WHERE "status" = 'rejected' OR "flags" <> '{}'::TEXT[];
 
 -- Hand-written: scope and value checks.
 ALTER TABLE "customers"."seller_invite_links"
@@ -80,15 +79,20 @@ ALTER TABLE "customers"."seller_attributions"
   ADD CONSTRAINT "seller_attributions_status_check" CHECK ("status" IN ('active', 'rejected')),
   ADD CONSTRAINT "seller_attributions_reject_reason_check" CHECK (
     ("status" = 'active' AND "reject_reason" IS NULL)
+    -- IS NOT NULL is needed: NULL IN (...) is NULL, and a CHECK lets NULL through.
     OR ("status" = 'rejected' AND "reject_reason" IS NOT NULL
         AND "reject_reason" IN ('seller-team', 'admin'))),
-  ADD CONSTRAINT "seller_attributions_flags_check" CHECK ("flags" <@ ARRAY['link-burst']::TEXT[]),
-  ADD CONSTRAINT "seller_attributions_decided_check" CHECK (("decided_at" IS NULL) = ("decided_by_account_id" IS NULL)),
+  ADD CONSTRAINT "seller_attributions_flags_check" CHECK (
+    "flags" <@ ARRAY['link-burst']::TEXT[] AND cardinality("flags") <= 1),
+  ADD CONSTRAINT "seller_attributions_decided_check" CHECK (
+    ("decided_at" IS NULL) = ("decided_by_account_id" IS NULL)
+    AND ("decided_at" IS NULL OR "decided_at" >= "attributed_at")),
   ADD CONSTRAINT "seller_attributions_version_check" CHECK ("version" >= 1);
 
 -- Grants. A link is drawn and later revoked (only revoked_at changes). An attribution is recorded
--- by the customer's claim, its status changed by an admin, and deleted with the directory row.
+-- by the customer's claim and its status changed by an admin. It goes with the directory row by
+-- the foreign key's cascade, which runs with the owner's rights: the application never deletes it.
 GRANT SELECT, INSERT, UPDATE ("revoked_at") ON TABLE "customers"."seller_invite_links" TO "mondapac_app";
-GRANT SELECT, INSERT, DELETE ON TABLE "customers"."seller_attributions" TO "mondapac_app";
+GRANT SELECT, INSERT ON TABLE "customers"."seller_attributions" TO "mondapac_app";
 GRANT UPDATE ("status", "reject_reason", "decided_by_account_id", "decided_at", "version")
   ON TABLE "customers"."seller_attributions" TO "mondapac_app";

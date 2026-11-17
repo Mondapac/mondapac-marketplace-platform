@@ -77,7 +77,7 @@ describe('invite link rules', () => {
     orderCount: 0,
     attributed: false,
     sellerTeam: false,
-    linkLastDay: 0,
+    sellerLastDay: 0,
   };
 
   it('records a new sign-up, refuses an old, ordering or attributed one, flags a burst', () => {
@@ -95,7 +95,7 @@ describe('invite link rules', () => {
     expect(
       decideClaim({ ...facts, signedUpAt: T0.subtract({ hours: 7 * 24 }) }, rules),
     ).toMatchObject({ kind: 'record' });
-    expect(decideClaim({ ...facts, linkLastDay: 3 }, rules)).toMatchObject({
+    expect(decideClaim({ ...facts, sellerLastDay: 3 }, rules)).toMatchObject({
       status: 'active',
       flags: ['link-burst'],
     });
@@ -499,6 +499,40 @@ describe.each(['AU', 'ZZ'] as const)('invite links in market %s', (code) => {
     const later = signUp();
     await join(later, token);
     expect(attributions.rows.find((row) => row.accountId === later)?.flags).toEqual([]);
+  });
+
+  it('counts the burst per seller, so a refresh does not reset it', async () => {
+    let token = await drawLink();
+    const joined: Id<'Account'>[] = [];
+    for (let n = 0; n <= rules.burstPerDay; n += 1) {
+      // A new link before every claim: the count follows the seller, not the link.
+      if (n > 0) token = await drawLink();
+      const accountId = signUp();
+      joined.push(accountId);
+      expect(await join(accountId, token)).toMatchObject({ ok: true });
+    }
+    const flagged = attributions.rows.filter((row) => row.flags.includes('link-burst'));
+    expect(flagged.map((row) => row.accountId)).toEqual([joined[joined.length - 1]]);
+  });
+
+  it('refuses a Login-as session on every route', async () => {
+    const actingAs = { actingAs: { adminAccountId: id<'Account'>(0xad) } };
+    const as = (context: CallContext): CallContext => ({
+      ...context,
+      actor: { ...context.actor, ...actingAs },
+    });
+    const token = await drawLink();
+    const alice = signUp();
+    expect(failure(await uc.view.execute(as(seller(SHOP)), {}))).toBe('access.denied');
+    expect(failure(await uc.refresh.execute(as(seller(SHOP)), {}))).toBe('access.denied');
+    expect(failure(await uc.join.execute(as(customer(alice)), { token }))).toBe('access.denied');
+    expect(failure(await uc.own.execute(as(customer(alice)), {}))).toBe('access.denied');
+    expect(failure(await uc.list.execute(as(admin), {}))).toBe('access.denied');
+    expect(
+      failure(await uc.decide.execute(as(admin), { decision: 'reject', accountIds: [alice] })),
+    ).toBe('access.denied');
+    expect(failure(await uc.export.execute(as(admin), {}))).toBe('access.denied');
+    expect(attributions.rows).toEqual([]);
   });
 
   it('refuses a revoked link, a hidden store, a malformed body, other actors and other Markets', async () => {

@@ -230,6 +230,13 @@ describe.each(TEST_MARKETS)(
           { status: 'active', rejectReason: 'admin' },
           { decidedAt: T0, decidedByAccountId: null },
           { version: 0 },
+          { flags: ['link-burst', 'link-burst'] },
+          {
+            status: 'rejected',
+            rejectReason: 'admin',
+            decidedByAccountId: ids.next<'Account'>(),
+            decidedAt: T0.subtract({ hours: 1 }),
+          },
         ];
         const seen: unknown[] = [];
         for (const over of bad) {
@@ -250,6 +257,38 @@ describe.each(TEST_MARKETS)(
             ),
           ),
         ).toBe(CHECK);
+      });
+
+      it('serves the suspicious view from its partial index, as Prisma writes the filter', async () => {
+        // The statement shape Prisma sends for the view (bind parameters, NOT flags = '{}'); node-pg
+        // sends it unnamed, so the plan is made with the values, as the application's are.
+        await sql.query('BEGIN');
+        try {
+          await sql.query('SET LOCAL enable_seqscan = off');
+          const plan = await sql.query(
+            `EXPLAIN SELECT "account_id" FROM "customers"."seller_attributions"
+             WHERE ("market_id" = $1 AND ("status" = $2 OR (NOT "flags" = '{}')))
+             ORDER BY "attributed_at" DESC, "account_id" DESC LIMIT $3 OFFSET $4`,
+            [market.marketId, 'rejected', 25, 0],
+          );
+          const text = plan.rows.map((row: Record<string, string>) => row['QUERY PLAN']).join('\n');
+          expect(text).toContain('seller_attributions_market_id_suspicious_idx');
+        } finally {
+          await sql.query('ROLLBACK');
+        }
+      });
+
+      it('locks a live link only, for the claims through it', async () => {
+        const shop = ids.next<'Seller'>();
+        const first = await drawn(market, shop);
+        expect(await inUnit(market, () => links.lockLive(market, first.id))).toBe(true);
+        await drawn(market, shop);
+        expect(await inUnit(market, () => links.lockLive(market, first.id))).toBe(false);
+        expect(await inUnit(other, () => links.lockLive(other, first.id))).toBe(false);
+        // The no-op write leaves the link as it was.
+        expect(await inUnit(market, () => links.findByToken(market, first.token))).toMatchObject({
+          revokedAt: T0,
+        });
       });
 
       it('writes a decision only over the version read', async () => {
@@ -301,7 +340,7 @@ describe.each(TEST_MARKETS)(
         });
         expect(
           await inUnit(market, () =>
-            attributions.countOfLinkSince(market, shopLink.id, T0.add({ hours: 1 })),
+            attributions.countOfSellerSince(market, shop, T0.add({ hours: 1 })),
           ),
         ).toBe(1);
         expect(await inUnit(market, () => attributions.countsOfSeller(market, shop))).toEqual({

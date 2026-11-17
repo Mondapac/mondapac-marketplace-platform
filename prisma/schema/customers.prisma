@@ -400,7 +400,6 @@ model CustomersSellerInviteLink {
   @@unique([marketId, token])
   @@unique([marketId, id])
   /// The partial unique index "one live link per seller" is hand-written in the migration.
-  @@index([marketId, sellerId, createdAt(sort: Desc)])
   @@map("seller_invite_links")
   @@schema("customers")
 }
@@ -431,6 +430,7 @@ model CustomersSellerAttribution {
   @@id([marketId, accountId])
   @@index([marketId, sellerId, attributedAt(sort: Desc), accountId(sort: Desc)])
   @@index([marketId, attributedAt(sort: Desc), accountId(sort: Desc)])
+  /// Serves the foreign key to the link (its RESTRICT check).
   @@index([marketId, linkId, attributedAt])
   @@map("seller_attributions")
   @@schema("customers")

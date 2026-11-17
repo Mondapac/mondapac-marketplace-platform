@@ -265,9 +265,9 @@ export async function joinStoreByInvitation(
   const recorded = await deps.unitOfWork.run<AttributionStatus | 'refused', InvitationFailure>(
     market,
     async () => {
-      // The link again, in the unit: a refresh that revoked it since is seen here.
-      const current = await deps.inviteLinks.findByToken(market, token);
-      if (current === null || current.revokedAt !== null || current.id !== link.id) {
+      // The link again, in the unit, and locked: a refresh that revoked it since is seen here, and
+      // concurrent claims through it wait for each other, so the burst count below is exact.
+      if (!(await deps.inviteLinks.lockLive(market, link.id))) {
         return err({ code: 'customers.invitation-not-found' });
       }
       const now = deps.clock.now();
@@ -275,10 +275,14 @@ export async function joinStoreByInvitation(
       // The directory copies a new account within seconds; until then the claim cannot be
       // recorded (the attribution row needs the directory row) and the storefront asks again.
       if (signedUpAt === null) return err({ code: 'customers.unavailable' });
-      const [existing, stats, linkLastDay] = await Promise.all([
+      const [existing, stats, sellerLastDay] = await Promise.all([
         deps.attributions.findOf(market, accountId),
         deps.readModels.findStats(market, accountId),
-        deps.attributions.countOfLinkSince(market, link.id, now.subtract({ hours: DAY_HOURS })),
+        deps.attributions.countOfSellerSince(
+          market,
+          link.sellerId,
+          now.subtract({ hours: DAY_HOURS }),
+        ),
       ]);
       const decision = decideClaim(
         {
@@ -287,7 +291,7 @@ export async function joinStoreByInvitation(
           orderCount: stats?.orderCount ?? 0,
           attributed: existing !== null,
           sellerTeam: tied.value,
-          linkLastDay,
+          sellerLastDay,
         },
         rules,
       );

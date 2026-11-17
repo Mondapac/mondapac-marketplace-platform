@@ -208,6 +208,29 @@ describe.each(TEST_MARKETS)(
         ).toBe(CHECK);
       });
 
+      it('keeps a referred customer with no order or follow, and refuses a row with no relation', async () => {
+        const shop = ids.next<'Seller'>();
+        const alice = await customer(market, 'Sam');
+        const referred = { ...entry(shop, alice, { orderCount: 0 }), exclusive: true };
+        await inUnit(market, () => customers.upsert(market, referred, 'EEEE-0001', T0));
+        expect(await inUnit(market, () => customers.tabCounts(market, shop))).toMatchObject({
+          all: 1,
+          referred: 1,
+        });
+        // Once the attribution is rejected the relation is gone: the sync removes the row, and the
+        // table refuses to keep it.
+        expect(
+          await failure(market, () =>
+            customers.upsert(market, { ...referred, exclusive: false }, 'EEEE-0001', T0),
+          ),
+        ).toBe(CHECK);
+        await inUnit(market, () => customers.removeSellers(market, alice, [shop]));
+        expect(await inUnit(market, () => customers.tabCounts(market, shop))).toMatchObject({
+          all: 0,
+          referred: 0,
+        });
+      });
+
       it('refuses a currency without orders, and orders without a currency', async () => {
         const shop = ids.next<'Seller'>();
         const alice = await customer(market, 'Sam');

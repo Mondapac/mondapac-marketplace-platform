@@ -62,6 +62,15 @@ export class PrismaInviteLinkRepository implements InviteLinkRepository {
     return row === null ? null : linkOf(row);
   }
 
+  async lockLive(market: MarketContext, linkId: Id<'SellerInviteLink'>) {
+    // An UPDATE that changes nothing still takes the row lock until the unit ends (no raw SQL).
+    const locked = await this.prisma.tx(market).customersSellerInviteLink.updateMany({
+      where: { marketId: market.marketId, id: linkId, revokedAt: null },
+      data: { revokedAt: null },
+    });
+    return locked.count === 1;
+  }
+
   async replace(market: MarketContext, link: InviteLink, at: Temporal.Instant) {
     const tx = this.prisma.tx(market);
     await tx.customersSellerInviteLink.updateMany({
@@ -199,9 +208,9 @@ export class PrismaSellerAttributionRepository implements SellerAttributionRepos
     return updated.count === 1;
   }
 
-  countOfLinkSince(market: MarketContext, linkId: Id<'SellerInviteLink'>, since: Temporal.Instant) {
+  countOfSellerSince(market: MarketContext, sellerId: Id<'Seller'>, since: Temporal.Instant) {
     return this.prisma.tx(market).customersSellerAttribution.count({
-      where: { marketId: market.marketId, linkId, attributedAt: { gte: toDate(since) } },
+      where: { marketId: market.marketId, sellerId, attributedAt: { gte: toDate(since) } },
     });
   }
 

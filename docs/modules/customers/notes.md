@@ -503,6 +503,10 @@ card, the storefront's invite banner and the admin list's screens follow in the 
   store is followed for the customer (best effort, after the commit) and
   `customers.seller-attribution-changed.v1` marks the customer `exclusive` in the seller's
   customers read model (new view `referred`, filter `exclusive`).
+- **Burst count, review fixes**: the count is per seller (any of its links), so a refresh does not
+  reset it; the claim locks the live link's row first (a no-op update, no raw SQL), so concurrent
+  claims through it run one after another and the count is exact. The suspicious view's partial
+  index is written as Prisma writes the filter (`flags <> '{}'`), and a db-spec checks the plan.
 - **Abuse checks**: a customer whose sign-in address is on the seller's team (identity's
   `ownAccountTiedToSeller`) is recorded as rejected (`seller-team`) and refused; an admin cannot
   restore it. More attributions through one link in 24 hours than `burstPerDay` flag the new one

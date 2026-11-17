@@ -19,6 +19,13 @@ export interface InviteLinkRepository {
   findByToken(market: MarketContext, token: string): Promise<InviteLink | null>;
 
   /**
+   * Locks the link's row for the rest of the unit if it is still live (a no-op write), so that the
+   * claims through a link, and a refresh that revokes it, run one after the other: the burst count
+   * a claim reads is then never stale. False when the link is revoked or unknown.
+   */
+  lockLive(market: MarketContext, linkId: Id<'SellerInviteLink'>): Promise<boolean>;
+
+  /**
    * Revokes the seller's live link, if any, and inserts `link` in its place. `conflict` when the
    * token or the seller's live slot was taken meanwhile by a concurrent refresh (the partial unique
    * index "one live link per seller" refuses the insert; the caller rolls the unit back).
@@ -72,10 +79,13 @@ export interface SellerAttributionRepository {
     expectedVersion: number,
   ): Promise<boolean>;
 
-  /** Attributions recorded through the link at or after `since`. */
-  countOfLinkSince(
+  /**
+   * Attributions to the seller (through any of its links, so a refresh does not reset the count)
+   * recorded at or after `since`.
+   */
+  countOfSellerSince(
     market: MarketContext,
-    linkId: Id<'SellerInviteLink'>,
+    sellerId: Id<'Seller'>,
     since: Temporal.Instant,
   ): Promise<number>;
 
