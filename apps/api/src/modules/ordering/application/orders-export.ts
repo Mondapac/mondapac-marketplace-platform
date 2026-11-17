@@ -98,7 +98,7 @@ export async function ordersExport(
   // The place of every column that leaves, in the order of the file.
   const places = [
     ...Array.from({ length: spec.columns.fixed }, (_, index) => index),
-    ...(rawColumns === undefined || rawColumns === ''
+    ...(rawColumns === undefined
       ? optionalKeys.map((key) => spec.columns.optional[key] as number)
       : chosen.value.map((key) => spec.columns.optional[key] as number)),
   ];

@@ -209,6 +209,7 @@ export class SellerOrdersController {
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.seller-order-not-found (a selected id)' })
   @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large' })
   async download(
     @Call() context: CallContext,

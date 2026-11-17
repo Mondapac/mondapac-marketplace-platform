@@ -263,6 +263,7 @@ export class AdminOrdersController {
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ordering.order-not-found (a selected id)' })
   @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large' })
   @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
   async download(

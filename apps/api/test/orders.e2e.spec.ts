@@ -1464,8 +1464,17 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
         .get('/ordering/admin/orders/export?page=1')
         .set(adminHeaders(VIEWER, 34));
       const xlsx = await http()
-        .get('/ordering/admin/orders/export?format=xlsx')
+        .get('/ordering/admin/orders/export?format=pdf')
         .set(adminHeaders(VIEWER, 35));
+      const sheet = await http()
+        .get('/ordering/admin/orders/export?format=xlsx&columns=total,stores')
+        .set(adminHeaders(VIEWER, 37));
+      const picked = await http()
+        .get(`/ordering/admin/orders/export?ids=${orderId}`)
+        .set(adminHeaders(VIEWER, 38));
+      const unknownId = await http()
+        .get('/ordering/admin/orders/export?ids=0190a000-0000-7000-8000-00000000dead')
+        .set(adminHeaders(VIEWER, 39));
       const badFilter = await http()
         .get('/ordering/admin/orders/export?status=shipped')
         .set(adminHeaders(VIEWER, 36));
@@ -1487,6 +1496,14 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(customerTries.status).toBeLessThanOrEqual(403);
       expect([paged, xlsx, badFilter].map((r) => r.status)).toEqual([400, 400, 400]);
       expect(body(paged)).toMatchObject({ details: { fields: [{ path: 'page' }] } });
+      expect(sheet.status).toBe(200);
+      expect(sheet.headers['content-type']).toContain('spreadsheetml');
+      expect(sheet.headers['content-disposition']).toMatch(/\.xlsx"$/);
+      expect(picked.status).toBe(200);
+      const pickedLines = String(picked.text).replace('\uFEFF', '').split('\r\n').filter(Boolean);
+      expect(pickedLines).toHaveLength(2);
+      expect(pickedLines[1]).toContain(orderId);
+      expect(unknownId.status).toBe(404);
     });
 
     it('gives a role with ordering.order.view the document of a paid order, and no other role', async () => {

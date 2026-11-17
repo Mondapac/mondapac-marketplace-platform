@@ -1,6 +1,7 @@
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { csvLine } from '@mondapac/platform-import';
+import { Workbook } from 'exceljs';
 import { LIST_EXPORT_MAX_ROWS } from '../../../platform/list-export';
 import { decimalOf } from './orders-csv';
 import { EXPORT_PAGE, ordersExport, type ExportPage, type PageReader } from './orders-export';
@@ -132,18 +133,23 @@ describe('ordersExport', () => {
         ok<ExportPage>(
           extra['page'] === 1
             ? { rows: [], nextCursor: null, total: 1 }
-            : { rows: [['1', 'x']], nextCursor: null, total: null },
+            : { rows: [['1', 'x', 'y', 'z']], nextCursor: null, total: null },
         ),
       );
-    const none = await ordersExport(clock, { columns: 'b' }, spec(read));
-    if (!none.ok) throw new Error('refused');
-    expect(await text(none.value.chunks)).toBe('﻿A,B\r\n1,x\r\n');
-    const wide = { ...spec(read), columns: { fixed: 1, optional: { b: 1 } } };
-    const fixedOnly = await ordersExport(clock, { columns: '' }, wide);
-    if (!fixedOnly.ok) throw new Error('refused');
-    expect(await text(fixedOnly.value.chunks)).toBe('﻿A,B\r\n1,x\r\n');
-    const refused = await ordersExport(clock, { columns: 'nope' }, spec(read));
-    expect(refused).toEqual({
+    const wide = {
+      ...spec(read),
+      header: ['A', 'B', 'C', 'D'],
+      columns: { fixed: 1, optional: { b: 1, c: 2, d: 3 } },
+    };
+    const run = async (input: Record<string, unknown>) => {
+      const result = await ordersExport(clock, input, wide);
+      if (!result.ok) throw new Error('refused');
+      return text(result.value.chunks);
+    };
+    expect(await run({})).toBe('\uFEFFA,B,C,D\r\n1,x,y,z\r\n');
+    expect(await run({ columns: 'd,b' })).toBe('\uFEFFA,D,B\r\n1,z,x\r\n');
+    expect(await run({ columns: '' })).toBe('\uFEFFA\r\n1\r\n');
+    expect(await ordersExport(clock, { columns: 'nope' }, wide)).toEqual({
       ok: false,
       error: { code: 'validation.failed', fields: [{ path: 'columns', code: 'value' }] },
     });
@@ -162,9 +168,15 @@ describe('ordersExport', () => {
     if (!result.ok) throw new Error('refused');
     expect(result.value.filename).toBe('orders-2026-11-06.xlsx');
     expect(result.value.contentType).toContain('spreadsheetml');
-    let bytes = 0;
-    for await (const chunk of result.value.chunks) bytes += chunk.length;
-    expect(bytes).toBeGreaterThan(100);
+    const parts: Buffer[] = [];
+    for await (const chunk of result.value.chunks) parts.push(Buffer.from(chunk));
+    const workbook = new Workbook();
+    await workbook.xlsx.load(Buffer.concat(parts) as unknown as ArrayBuffer);
+    const rows = workbook.getWorksheet('orders')?.getSheetValues().slice(1);
+    expect(rows).toEqual([
+      [undefined, 'A', 'B'],
+      [undefined, '1', 'x'],
+    ]);
     expect(await ordersExport(clock, { format: 'pdf' }, spec(read))).toEqual({
       ok: false,
       error: { code: 'validation.failed', fields: [{ path: 'format', code: 'value' }] },
@@ -220,6 +232,10 @@ describe('ordersExport', () => {
         { length: 101 },
         (_, n) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`,
       ).join(',');
+      const exactly = many.split(',').slice(0, 100).join(',');
+      expect((await ordersExport(clock, { ids: exactly }, spec(reader({ a: [] }).read))).ok).toBe(
+        false,
+      );
       expect(await ordersExport(clock, { ids: many }, spec(read))).toEqual({
         ok: false,
         error: { code: 'batch.too-large', max: 100 },
