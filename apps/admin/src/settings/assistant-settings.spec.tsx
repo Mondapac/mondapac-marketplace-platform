@@ -37,7 +37,8 @@ const DEFAULTS: AssistantSettings = {
   basketProposals: false,
   welcomeText: null,
 };
-const UNAVAILABLE = { scope: ['cart-suggestions'], supportHandoff: ['in-panel-form'] } as const;
+// Same as the API's UNAVAILABLE_OPTIONS: cart suggestions are selectable since S1-B1.
+const UNAVAILABLE = { scope: [], supportHandoff: ['in-panel-form'] } as const;
 
 const answer = (
   settings: Partial<AssistantSettings> = {},
@@ -82,8 +83,8 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.getByLabelText<HTMLInputElement>('Messages per guest').value).toBe('20');
     expect(screen.getByLabelText<HTMLInputElement>('Daily cap').value).toBe('10');
     expect(screen.getByLabelText<HTMLInputElement>('Monthly cap').value).toBe('200');
-    // The status card and the switch row both say Off.
-    expect(screen.getAllByText('Off')).toHaveLength(2);
+    // The status card and the two switch rows say Off.
+    expect(screen.getAllByText('Off')).toHaveLength(3);
     // Nothing changed: no save bar.
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
@@ -91,14 +92,62 @@ describe('AssistantSettingsPanel', () => {
   it('shows the key only as set or not set, and offers unavailable options disabled', () => {
     mount(answer());
     expect(screen.getByText('Not set')).toBeTruthy();
-    const cart = screen.getByRole<HTMLOptionElement>('option', {
-      name: 'Answer and suggest cart actions (not available yet)',
-    });
-    expect(cart.disabled).toBe(true);
     const form = screen.getByRole<HTMLOptionElement>('option', {
       name: 'Form inside the chat window (not available yet)',
     });
     expect(form.disabled).toBe(true);
+  });
+
+  it('offers cart suggestions and keeps basket proposals off by default', () => {
+    mount(answer());
+    const cart = screen.getByRole<HTMLOptionElement>('option', {
+      name: 'Answer and suggest cart actions',
+    });
+    expect(cart.disabled).toBe(false);
+    expect(screen.getByLabelText<HTMLInputElement>('Basket proposals from a list').checked).toBe(
+      false,
+    );
+  });
+
+  it('saves the basket proposals switch with every other field unchanged', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: answer({ basketProposals: true }, { version: 1 }),
+    });
+    mount(answer());
+    fireEvent.click(screen.getByLabelText('Basket proposals from a list'));
+    expect(screen.getByText('1 unsaved change')).toBeTruthy();
+    save();
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call).toHaveBeenCalledWith(
+      'PUT',
+      'assistant/admin/settings',
+      { expectedVersion: 0, settings: { ...DEFAULTS, basketProposals: true } },
+      'csrf',
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>('Basket proposals from a list').checked).toBe(
+        true,
+      ),
+    );
+  });
+
+  it('saves the cart suggestions scope', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: answer({ scope: 'cart-suggestions' }, { version: 1 }),
+    });
+    mount(answer());
+    fireEvent.change(screen.getByLabelText('What it can do'), {
+      target: { value: 'cart-suggestions' },
+    });
+    save();
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call.mock.calls[0]![2]).toMatchObject({
+      settings: { ...DEFAULTS, scope: 'cart-suggestions' },
+    });
   });
 
   it('offers a tier without a server model disabled', () => {
@@ -143,6 +192,7 @@ describe('AssistantSettingsPanel', () => {
     ).toBeTruthy();
     expect(screen.getByText('25% of visitors')).toBeTruthy();
     expect(screen.getByText("The storefront's default text")).toBeTruthy();
+    expect(screen.getByText('Basket proposals from a list')).toBeTruthy();
   });
 
   it('saves every field with the version it read', async () => {
@@ -341,7 +391,10 @@ describe('assistant form', () => {
 
   it('refuses an option that is not available yet and keeps the percent only for percent', () => {
     const base = formOf(DEFAULTS);
-    const cart = settingsOf({ ...base, scope: 'cart-suggestions' }, UNAVAILABLE);
+    const cart = settingsOf(
+      { ...base, scope: 'cart-suggestions' },
+      { ...UNAVAILABLE, scope: ['cart-suggestions'] },
+    );
     expect(cart.ok ? [] : cart.invalid).toEqual(['scope']);
     const all = settingsOf({ ...base, audience: 'all', audiencePercent: '50' }, UNAVAILABLE);
     expect(all.ok && all.settings.audiencePercent).toBeNull();
