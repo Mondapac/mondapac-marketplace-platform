@@ -9,6 +9,10 @@ import type { Scope } from './assistant-settings';
  * under the Market's `cart-suggestions` scope; under `read-only` the action answers "not ready".
  */
 
+import { isClaimFree } from './reply-guard';
+import { BASKET_UNITS, type BasketUnit } from './pack-size';
+import { MAX_BASKET_ITEMS, type BasketItem } from './plan-basket';
+
 /** The storefront pages the assistant can send the buyer to; the path is built by code (R9). */
 export const SITE_PAGES = [
   'home',
@@ -50,7 +54,8 @@ export type ToolRequest =
   /** `change` is null under the `read-only` scope: the action then answers "not ready". */
   | { readonly tool: 'suggest_cart_change'; readonly change: CartChange | null }
   | { readonly tool: 'get_cart' }
-  | { readonly tool: 'open_support_form' };
+  | { readonly tool: 'open_support_form' }
+  | { readonly tool: 'plan_basket'; readonly items: readonly BasketItem[] };
 
 /** A cart change the model proposes; the server checks it and builds the card (never applies it). */
 export type CartChange =
@@ -179,7 +184,79 @@ export const TOOL_DECLARATIONS: readonly ToolDeclaration[] = Object.freeze([
     description: 'Opens a support form inside the chat window. Not available yet.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: true },
   },
+  {
+    name: 'plan_basket',
+    description:
+      'Plans a whole shopping list for the buyer. Use it when the buyer gives a list of things ' +
+      'to buy (typed or pasted, up to 40 lines, in any language). Split the list into lines yourself: ' +
+      'text is the thing to find in the language the buyer wrote it, quantity is the amount asked ' +
+      '(1 if none), unit is kg, g, l or ml for an amount by weight or volume, each (or leave it ' +
+      'out) for a number of items. The server picks the products, packs, stores and totals and ' +
+      'shows the buyer a basket card; you get only how many lines were found, unsure or not found. ' +
+      'Never state a price or total. Nothing is added to the cart until the buyer clicks.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          minItems: 1,
+          maxItems: MAX_BASKET_ITEMS,
+          items: {
+            type: 'object',
+            properties: {
+              text: { type: 'string', description: 'What to buy, 2 to 80 characters.' },
+              quantity: { type: 'number', description: 'How much, more than 0.' },
+              unit: { type: 'string', enum: [...BASKET_UNITS] },
+            },
+            required: ['text', 'quantity'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['items'],
+      additionalProperties: false,
+    },
+  },
 ]);
+
+const PLAN_ITEM_TEXT_MAX = 80;
+// A list line is letters, digits, spaces, the Persian zero-width non-joiner and a little
+// punctuation, nothing else: no combining marks, variation selectors or other invisible or
+// look-alike tricks, and no markup. It reaches the buyer on a card (R1, R9).
+const ALLOWED_ITEM_TEXT = /^[\p{L}\p{N} \u200C.,'/%&()+-]+$/u;
+// Letters spaced out with punctuation ("h.a.l.a.l", "h-a-l") hide a word from the claim check.
+const SPELLED_OUT = /\p{L}[.'/&+-]\p{L}[.'/&+-]\p{L}/u;
+// Two or more single letters between spaces ("h a l a l").
+const SINGLE_LETTERS = /(?:^|\s)\p{L}\s+\p{L}(?:\s|$)/u;
+
+/** One list line as the model wrote it, checked; null when anything is out of shape. */
+function parsePlanItem(value: unknown): BasketItem | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const fields = value as Record<string, unknown>;
+  const text = typeof fields.text === 'string' ? fields.text.normalize('NFC').trim() : '';
+  if (
+    Array.from(text).length < 2 ||
+    Array.from(text).length > PLAN_ITEM_TEXT_MAX ||
+    !ALLOWED_ITEM_TEXT.test(text) ||
+    SPELLED_OUT.test(text) ||
+    SINGLE_LETTERS.test(text) ||
+    // The line reaches the buyer on a card: no certification, price, stock, contact or link.
+    !isClaimFree(text)
+  ) {
+    return null;
+  }
+  const quantity = fields.quantity;
+  if (typeof quantity !== 'number' || !Number.isFinite(quantity) || quantity <= 0) return null;
+  if (quantity > 100_000) return null;
+  const rawUnit = fields.unit;
+  if (rawUnit !== undefined && rawUnit !== null && typeof rawUnit !== 'string') return null;
+  const unit = rawUnit === undefined || rawUnit === null ? null : rawUnit;
+  if (unit !== null && !(BASKET_UNITS as readonly string[]).includes(unit)) return null;
+  // A count is a whole number of packs.
+  if ((unit === null || unit === 'each') && !Number.isInteger(quantity)) return null;
+  if ((unit === null || unit === 'each') && quantity > 99) return null;
+  return { text, quantity, unit: unit as BasketUnit | null };
+}
 
 const quantityProperty = {
   type: 'integer',
@@ -221,14 +298,22 @@ const CART_DECLARATIONS: readonly ToolDeclaration[] = Object.freeze([
 ]);
 
 /**
- * The tool declarations of one scope: the read-only list (with the "not ready" cart action), or
- * that list with the cart tools in place of it. Both are part of the prompt version.
+ * The tool declarations of one Market's settings: the read-only list (with the "not ready" cart
+ * action), or that list with the cart tools in place of it, and `plan_basket` only while the
+ * admin switch "Basket proposals from a list" is on (checked again when the tool is run). All of
+ * them are part of the prompt version.
  */
-export function toolDeclarationsFor(scope: Scope): readonly ToolDeclaration[] {
-  if (scope !== 'cart-suggestions') return TOOL_DECLARATIONS;
-  return TOOL_DECLARATIONS.flatMap((tool) =>
-    tool.name === 'suggest_cart_change' ? CART_DECLARATIONS : [tool],
-  );
+export function toolDeclarationsFor(
+  scope: Scope,
+  basketProposals: boolean,
+): readonly ToolDeclaration[] {
+  const scoped =
+    scope !== 'cart-suggestions'
+      ? TOOL_DECLARATIONS
+      : TOOL_DECLARATIONS.flatMap((tool) =>
+          tool.name === 'suggest_cart_change' ? CART_DECLARATIONS : [tool],
+        );
+  return basketProposals ? scoped : scoped.filter((tool) => tool.name !== 'plan_basket');
 }
 
 const QUANTITY = /^[1-9][0-9]{0,2}$/;
@@ -323,6 +408,14 @@ export function parseToolCall(
     }
     case 'get_cart':
       return scope === 'cart-suggestions' ? { tool: name } : null;
+    case 'plan_basket': {
+      const raw = fields.items;
+      if (!Array.isArray(raw) || raw.length < 1 || raw.length > MAX_BASKET_ITEMS) return null;
+      const items = raw.map(parsePlanItem);
+      return items.every((item): item is BasketItem => item !== null)
+        ? { tool: name, items }
+        : null;
+    }
     case 'list_categories':
     case 'support_contact':
     case 'open_support_form':

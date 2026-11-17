@@ -66,6 +66,7 @@ import {
   CategoryCreateRequest,
   CategoryDetailBody,
   CategoryEditDetailsRequest,
+  CategoryEditDetailsWrapBody,
   CategoryImageSetRequest,
   CategoryImageWriteBody,
   CategoryImpactBody,
@@ -373,12 +374,15 @@ export class CategoryAdminController {
     summary: 'Save the details of a category',
     description:
       `${EDITS} Not structural: it names the category version the admin saw. The whole content ` +
-      'is sent; a locale or field left out is cleared. Saved as the next revision.',
+      'is sent; a locale or field left out is cleared. Saved as the next revision. It goes live ' +
+      'at once and is reviewed after in Admin Inbox › System requests (area catalogue, on by ' +
+      'default): where the Market reviews it, `note` (1 to 500 characters) is required (400 on ' +
+      'note otherwise) and `request` names the review the save opened. A rejected edit is restored.',
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
   @ApiBody({ type: CategoryEditDetailsRequest })
-  @ApiOkResponse({ type: CategoryWriteWrapBody })
+  @ApiOkResponse({ type: CategoryEditDetailsWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
@@ -399,12 +403,19 @@ export class CategoryAdminController {
     @Res({ passthrough: true }) response: Response,
     @Param('categoryId') categoryId: string,
     @Body() body: unknown,
-  ): Promise<CategoryWriteWrapBody> {
-    return this.write('catalog.category-edit-details', context, response, request, body, {
-      keys: ['version', 'texts'],
-      optional: ['seo', 'showInMenu', 'imageId'],
-      run: (input) => this.editDetails.execute(context, { ...input, categoryId }),
-    });
+  ): Promise<CategoryEditDetailsWrapBody> {
+    return this.write<CategoryEditDetailsWrapBody>(
+      'catalog.category-edit-details',
+      context,
+      response,
+      request,
+      body,
+      {
+        keys: ['version', 'texts'],
+        optional: ['seo', 'showInMenu', 'imageId', 'note'],
+        run: (input) => this.editDetails.execute(context, { ...input, categoryId }),
+      },
+    );
   }
 
   @Post(':categoryId/reorder')
