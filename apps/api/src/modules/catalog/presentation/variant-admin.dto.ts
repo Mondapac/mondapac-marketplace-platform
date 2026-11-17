@@ -197,6 +197,12 @@ export class AdminVariantDto {
 
   @ApiProperty({ type: [String], description: 'Supported locales the label lacks.' })
   missingLocales!: string[];
+
+  @ApiProperty({
+    type: [String],
+    description: 'The row actions of the Actions menu: open-product, copy-code.',
+  })
+  actions!: string[];
 }
 
 export class AdminVariantListDto {
@@ -205,9 +211,29 @@ export class AdminVariantListDto {
 
   @ApiProperty({
     nullable: true,
+    type: Number,
+    description: 'Variants matching over all pages; null in prev-next mode.',
+  })
+  total!: number | null;
+
+  @ApiProperty()
+  page!: number;
+
+  @ApiProperty()
+  pageSize!: number;
+
+  @ApiProperty({ enum: ['pages', 'prev-next'] })
+  paging!: string;
+
+  @ApiProperty({ description: 'Whether a page after this one exists.' })
+  hasNext!: boolean;
+
+  @ApiProperty({
+    nullable: true,
     type: String,
     format: 'uuid',
-    description: 'Pass as after for the next page; null at the end.',
+    description:
+      'Deprecated cursor of the older panel: pass as `after` (with `limit`) for the next page.',
   })
   nextAfter!: string | null;
 }
