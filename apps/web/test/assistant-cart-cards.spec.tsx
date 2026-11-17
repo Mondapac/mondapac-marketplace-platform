@@ -325,7 +325,7 @@ describe('the cart-action card', () => {
       />,
     );
     expect(screen.getByRole('status', { hidden: true })?.textContent).toBe('4');
-    expect(screen.getByText('Most you can add: 4')).toBeTruthy();
+    expect(screen.getByText('Up to 4 can be added')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'One more' }).hasAttribute('disabled')).toBe(true);
   });
 
@@ -382,40 +382,59 @@ describe('the cart-action card', () => {
     await waitFor(() => expect(called('DELETE', `cart/items/${LINE}`)).toHaveLength(1));
   });
 
+  it('takes the ceiling of a set-quantity card from the unit of its own line', () => {
+    const other = unit({
+      variantId: VARIANT_B,
+      label: '1 kg',
+      maxQuantity: 2,
+      lineId: U(30),
+      inCart: 1,
+    });
+    const card = action({
+      action: 'set-quantity',
+      lineId: LINE,
+      currentQuantity: 2,
+      quantity: 6,
+      units: [other, unit({ lineId: LINE, inCart: 2, maxQuantity: 6 })],
+    });
+    wrap(<CartActionCardView card={card} />);
+    expect(screen.getByRole('status', { hidden: true }).textContent).toBe('6');
+  });
+
   it('asks first in single-store mode when the cart holds another store, and adds nothing yet', async () => {
-    const other = liveCartOf(
-      {
-        groups: [
-          {
-            sellerId: OTHER_SELLER,
-            sellerName: 'Other Market',
-            subtotal: aud('1000'),
-            minimumOrder: { state: 'none', minimum: null },
-            lines: [
-              {
-                lineId: U(20),
-                offerId: U(21),
-                variantId: U(22),
-                quantity: 1,
-                state: 'buyable',
-                reason: null,
-                unitPrice: aud('1000'),
-                previousPrice: null,
-                availability: { status: 'in-stock', onlyLeft: null },
-                display: {
-                  productId: null,
-                  productName: 'Dates',
-                  variantLabel: null,
-                  imageId: null,
-                },
+    const otherBody = {
+      groups: [
+        {
+          sellerId: OTHER_SELLER,
+          sellerName: 'Other Market',
+          subtotal: aud('1000'),
+          minimumOrder: { state: 'none', minimum: null },
+          lines: [
+            {
+              lineId: U(20),
+              offerId: U(21),
+              variantId: U(22),
+              quantity: 1,
+              state: 'buyable',
+              reason: null,
+              unitPrice: aud('1000'),
+              previousPrice: null,
+              availability: { status: 'in-stock', onlyLeft: null },
+              display: {
+                productId: null,
+                productName: 'Dates',
+                variantLabel: null,
+                imageId: null,
               },
-            ],
-          },
-        ],
-        lineCount: 1,
-      },
-      null,
-    );
+            },
+          ],
+        },
+      ],
+      lineCount: 1,
+    };
+    const other = liveCartOf(otherBody, null);
+    // The widget reads the cart again before it decides: otherStore true or null is never "safe".
+    answers['GET cart'] = { status: 200, body: otherBody };
     wrap(
       <CartActionCardView card={action({ cartMode: 'single-store', otherStore: true })} />,
       other,
@@ -471,7 +490,7 @@ describe('the cart card', () => {
     wrap(<CartSummaryCardView card={card} />);
     expect(screen.getByText('Halal Corner')).toBeTruthy();
     expect(screen.getByText('Lamb mince')).toBeTruthy();
-    expect(screen.getByText(/Below this store's minimum order of A\$40\.00/)).toBeTruthy();
+    expect(screen.getByText(/minimum order is A\$40\.00/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'View cart' }).getAttribute('href')).toBe('/cart');
   });
 });
@@ -551,7 +570,7 @@ describe('the basket proposal card', () => {
     wrap(<BasketProposalCardView card={proposal()} />);
     expect(called('POST', 'cart/items')).toHaveLength(0);
     expect(screen.getByText('saffron')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Add 1 item to cart' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1 of 3 items to cart' }));
     await waitFor(() => expect(called('POST', 'cart/items')).toHaveLength(1));
     expect(called('POST', 'cart/items')[0]?.body).toEqual({
       offerId: OFFER,
@@ -563,11 +582,11 @@ describe('the basket proposal card', () => {
 
   it('adds an unsure line once the buyer chooses it, and honours the edited packs and a swap', async () => {
     wrap(<BasketProposalCardView card={proposal()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Choose this' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Choose this/ }));
     const groups = screen.getAllByRole('group', { name: 'Quantity' });
     fireEvent.click(within(groups[0]!).getByRole('button', { name: 'One more' })); // lamb 2 -> 3
-    fireEvent.click(screen.getAllByText('Use this')[0]!); // swap lamb for the 1 kg
-    fireEvent.click(screen.getByRole('button', { name: 'Add all 2 items to cart' }));
+    fireEvent.click(screen.getAllByRole('button', { name: /^Use this/ })[0]!); // swap lamb for the 1 kg
+    fireEvent.click(screen.getByRole('button', { name: 'Add 2 of 3 items to cart' }));
     await waitFor(() => expect(called('POST', 'cart/items')).toHaveLength(2));
     const bodies = called('POST', 'cart/items').map((c) => c.body);
     expect(bodies).toContainEqual({ offerId: U(11), variantId: VARIANT_B, quantity: 1 });
@@ -576,10 +595,12 @@ describe('the basket proposal card', () => {
 
   it('removing a line takes it out of the add', () => {
     wrap(<BasketProposalCardView card={proposal()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
-    expect(screen.getByRole('button', { name: /Add .* to cart/ }).hasAttribute('disabled')).toBe(
-      true,
-    );
+    fireEvent.click(screen.getByRole('button', { name: /^Remove from list/ }));
+    expect(
+      screen
+        .getByRole('button', { name: /^Add \d+ of \d+ items to cart/ })
+        .hasAttribute('disabled'),
+    ).toBe(true);
     expect(called('POST', 'cart/items')).toHaveLength(0);
   });
 
@@ -593,16 +614,48 @@ describe('the basket proposal card', () => {
       })),
     };
     wrap(<BasketProposalCardView card={noUnit} />);
-    expect(screen.getByRole('button', { name: /Add .* to cart/ }).hasAttribute('disabled')).toBe(
-      true,
-    );
+    expect(
+      screen
+        .getByRole('button', { name: /^Add \d+ of \d+ items to cart/ })
+        .hasAttribute('disabled'),
+    ).toBe(true);
   });
 
   it('reports the lines the cart refused and lets the buyer retry only those', async () => {
     answers['POST cart/items'] = { status: 422, body: { code: 'cart.offer-not-purchasable' } };
     wrap(<BasketProposalCardView card={proposal()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Add 1 item to cart' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1 of 3 items to cart' }));
     expect(await screen.findByText(/1 item was not added/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try the rest again' })).toBeTruthy();
+  });
+
+  it('does not let an old answer stand for an edited line, and ignores removed lines', async () => {
+    answers['POST cart/items'] = { status: 422, body: { code: 'cart.offer-not-purchasable' } };
+    wrap(<BasketProposalCardView card={proposal()} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Add 1 of 3 items to cart/ }));
+    expect(await screen.findByText(/1 item was not added/)).toBeTruthy();
+    // Removing the refused line clears the alert and the retry label.
+    fireEvent.click(screen.getByRole('button', { name: /^Remove from list/ }));
+    expect(screen.queryByText(/1 item was not added/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try the rest again' })).toBeNull();
+  });
+
+  it('says so on a line the server sent no sell unit for', () => {
+    const card = proposal();
+    const noUnit: BasketProposalView = {
+      ...card,
+      stores: card.stores.map((s) => ({
+        ...s,
+        lines: s.lines.map((l) => ({ ...l, variantId: null })),
+      })),
+    };
+    wrap(<BasketProposalCardView card={noUnit} />);
+    expect(screen.getByText(/cannot be added from here/)).toBeTruthy();
+  });
+
+  it('groups lines under their store with its subtotal', () => {
+    wrap(<BasketProposalCardView card={proposal()} />);
+    expect(screen.getAllByText('Halal Corner')).not.toHaveLength(0);
+    expect(screen.getByText('A$25.00', { selector: '.ascc-gh span' })).toBeTruthy();
   });
 });

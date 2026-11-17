@@ -19,6 +19,7 @@ export const id = (value: unknown): string | null =>
   typeof value === 'string' && UUID.test(value) ? value : null;
 
 const CURRENCY = /^[A-Z]{3}$/;
+const MONEY_MAX = 1e11;
 
 /**
  * Money as the API sends it (the amount is a string of digits, minor units): a whole non-negative
@@ -32,7 +33,8 @@ export function moneyOf(value: unknown): CardMoney | null {
   if (typeof amount === 'string' && /^(0|[1-9][0-9]{0,15})$/.test(amount)) minor = Number(amount);
   else if (typeof amount === 'number' && Number.isInteger(amount) && amount >= 0) minor = amount;
   else return null;
-  return Number.isSafeInteger(minor) ? { amount: minor, currency } : null;
+  // Far above any price, far below the safe-integer edge, so price x quantity stays exact.
+  return Number.isSafeInteger(minor) && minor <= MONEY_MAX ? { amount: minor, currency } : null;
 }
 
 /** A money field that is absent or null is none; present but malformed is `undefined`. */

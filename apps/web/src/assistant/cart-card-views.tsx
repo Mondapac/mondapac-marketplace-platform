@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useId, useMemo, useRef, useState } from 'react';
 import * as api from '../account/customer-api.ts';
 import { formatMoney } from '../format/money.ts';
 import { useStore } from '../shell/store-context.tsx';
@@ -32,20 +32,38 @@ export function outcomeOf(result: api.ApiResult<true>): Outcome {
 /** Cart facts and the "move the other store's lines away" step, shared by the two add cards. */
 function useCartGuard() {
   const { live, cart, cartSource, saveForLater, removeLine, refreshCart } = useStore();
-  const lineKeys = Object.keys(cart);
-  const sellers = lineKeys.map((key) => cartSource.items[key]?.sellerId ?? null);
+  // The newest cart on screen: a step that waits for the API reads it again afterwards.
+  const latest = useRef({ cart, items: cartSource.items });
+  latest.current = { cart, items: cartSource.items };
   /** True when the cart holds a line that is not of this store (or whose store is not known). */
-  const holdsOtherStore = (sellerId: string | null): boolean =>
-    lineKeys.length > 0 && sellers.some((seller) => seller === null || seller !== sellerId);
-  /** Moves every current line to saved items or removes it, then waits until the API has it. */
-  const moveAway = async (how: 'save' | 'remove') => {
-    for (const key of lineKeys) {
+  const holdsOtherStore = (sellerId: string | null): boolean => {
+    const keys = Object.keys(latest.current.cart);
+    return (
+      keys.length > 0 &&
+      keys.some((key) => {
+        const seller = latest.current.items[key]?.sellerId ?? null;
+        return seller === null || seller !== sellerId;
+      })
+    );
+  };
+  /** Waits for the API's cart to reach the screen (a render after the read). */
+  const settle = async () => {
+    await refreshCart();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
+  /**
+   * Moves every current line to saved items or removes it, waits until the API has it, and says
+   * whether the cart is now empty. The add runs only then, so a failed move never adds beside it.
+   */
+  const moveAway = async (how: 'save' | 'remove'): Promise<boolean> => {
+    for (const key of Object.keys(latest.current.cart)) {
       if (how === 'save') saveForLater(key);
       else removeLine(key);
     }
-    await refreshCart();
+    await settle();
+    return Object.keys(latest.current.cart).length === 0;
   };
-  return { live, holdsOtherStore, moveAway, refreshCart };
+  return { live, holdsOtherStore, moveAway, settle, refreshCart };
 }
 
 function useMoney() {
@@ -116,7 +134,9 @@ export function CartActionCardView({
       card.units.findIndex((unit) => (unit.addable ?? 1) > 0),
     ),
   );
-  const unit = card.units[unitAt] ?? card.units[0]!;
+  const lineUnit =
+    card.action === 'add' ? undefined : card.units.find((u) => u.lineId === card.lineId);
+  const unit = lineUnit ?? card.units[unitAt] ?? card.units[0]!;
   const ceiling =
     card.action === 'add'
       ? Math.max(0, unit.addable ?? card.quantity)
@@ -126,6 +146,7 @@ export function CartActionCardView({
     card.action === 'remove' ? 0 : Math.min(Math.max(1, wanted), Math.max(1, ceiling));
   const [step, setStep] = useState<'idle' | 'choose' | 'busy' | 'done' | Outcome>('idle');
   const busy = useRef(false);
+  const uid = useId();
 
   const submit = useCallback(async () => {
     if (busy.current) return;
@@ -150,22 +171,30 @@ export function CartActionCardView({
     }
   }, [card, unit.variantId, quantity, guard]);
 
-  const press = () => {
-    if (
-      card.action === 'add' &&
-      card.cartMode === 'single-store' &&
-      // The server's `otherStore` may be unknown (null) or old: the cart on screen decides too.
-      guard.holdsOtherStore(card.sellerId)
-    ) {
-      setStep('choose');
-      return;
+  const press = async () => {
+    if (card.action === 'add' && card.cartMode === 'single-store') {
+      setStep('busy');
+      // `otherStore` unknown (null) or true is never "safe": read the cart again before deciding.
+      if (card.otherStore !== false) await guard.settle();
+      if (guard.holdsOtherStore(card.sellerId)) {
+        setStep('choose');
+        return;
+      }
     }
-    void submit();
+    await submit();
   };
 
   const choose = async (how: 'save' | 'remove') => {
     setStep('busy');
-    await guard.moveAway(how);
+    try {
+      if (!(await guard.moveAway(how))) {
+        setStep('failed');
+        return;
+      }
+    } catch {
+      setStep('failed');
+      return;
+    }
     await submit();
   };
 
@@ -196,19 +225,25 @@ export function CartActionCardView({
             <label key={option.variantId} className="ascc-unit">
               <input
                 type="radio"
-                name={`unit-${card.offerId}`}
+                name={`unit-${uid}`}
                 checked={at === unitAt}
                 disabled={(option.addable ?? 1) === 0}
                 onChange={() => setUnitAt(at)}
               />
-              <span>{option.label ?? t('cart-unit-default')}</span>
+              <span>
+                <bdi>{option.label ?? t('cart-unit-default')}</bdi>
+              </span>
               {option.price === null ? null : <b className="num">{money(option.price)}</b>}
             </label>
           ))}
         </fieldset>
       ) : (
         <div className="ascc-price num">
-          {unit.label ? <span>{unit.label}</span> : null}
+          {unit.label ? (
+            <span>
+              <bdi>{unit.label}</bdi>
+            </span>
+          ) : null}
           {unit.price === null ? null : <b>{money(unit.price)}</b>}
           {unit.taxInclusive === true ? <small>{t('including-gst')}</small> : null}
         </div>
@@ -216,8 +251,8 @@ export function CartActionCardView({
 
       {card.action !== 'remove' && canAdd ? (
         <div className="ascc-qty">
-          <span id={`q-${card.offerId}`}>{t('cart-quantity')}</span>
-          <div role="group" aria-labelledby={`q-${card.offerId}`}>
+          <span id={`q-${uid}`}>{t('cart-quantity')}</span>
+          <div role="group" aria-labelledby={`q-${uid}`}>
             <button
               type="button"
               aria-label={t('cart-less')}
@@ -280,7 +315,7 @@ export function CartActionCardView({
                 type="button"
                 className={card.action === 'remove' ? 'btn small alt' : 'btn small'}
                 disabled={step === 'busy'}
-                onClick={press}
+                onClick={() => void press()}
               >
                 {step === 'busy'
                   ? t('cart-working')
@@ -333,7 +368,12 @@ export function CartSummaryCardView({
                   ) : (
                     (line.name ?? t('cart-this-product'))
                   )}
-                  {line.variantLabel ? <small> · {line.variantLabel}</small> : null}
+                  {line.variantLabel ? (
+                    <small>
+                      {' · '}
+                      <bdi>{line.variantLabel}</bdi>
+                    </small>
+                  ) : null}
                   {line.state === 'buyable' ? null : (
                     <small className="ascc-flag"> · {t(`cart-line-${line.state}`)}</small>
                   )}
@@ -360,6 +400,9 @@ export function CartSummaryCardView({
           <b className="num">{money(card.total)}</b>
         </div>
       )}
+      {card.groups.some((group) => group.lines.some((line) => line.state !== 'buyable')) ? (
+        <small className="asnote">{t('cart-total-unavailable')}</small>
+      ) : null}
       <small className="asnote">{t('cart-delivery-at-checkout')}</small>
       <div className="ascc-acts">
         <Link className="btn small alt" href="/cart" onClick={onNavigate}>
@@ -388,6 +431,9 @@ type RowState = Readonly<
   >
 >;
 
+const rowKey = (row: { pick: BasketOptionView; packs: number }) =>
+  `${row.pick.offerId}:${row.pick.variantId ?? ''}:${row.packs}`;
+
 /** The most packs of one line the planner ever proposes; the cart route has its own limit. */
 const PACKS_MAX = 99;
 
@@ -403,7 +449,7 @@ export function BasketProposalCardView({
   const money = useMoney();
   const guard = useCartGuard();
   const [edits, setEdits] = useState<RowState>({});
-  const [results, setResults] = useState<Readonly<Record<number, Outcome>>>({});
+  const [results, setResults] = useState<Readonly<Record<string, Outcome>>>({});
   const [step, setStep] = useState<'idle' | 'choose' | 'busy' | 'done'>('idle');
   const busy = useRef(false);
 
@@ -454,15 +500,13 @@ export function BasketProposalCardView({
   const sellers = [...new Set(active.map((row) => row.pick.sellerId))];
   const oneStoreBroken = card.mode === 'single-store' && sellers.length > 1;
   const totals = useMemo(() => {
-    if (active.length === 0) return null;
-    const currency = active[0]!.pick.price.currency;
-    if (active.some((row) => row.pick.price.currency !== currency)) return null;
-    return {
-      amount: active.reduce((sum, row) => sum + row.pick.price.amount * row.packs, 0),
-      currency,
-      from: active.some((row) => row.pick.priceFrom),
-    };
-  }, [active]);
+    if (ready.length === 0) return null;
+    const currency = ready[0]!.pick.price.currency;
+    if (ready.some((row) => row.pick.price.currency !== currency)) return null;
+    const amount = ready.reduce((sum, row) => sum + row.pick.price.amount * row.packs, 0);
+    if (!Number.isSafeInteger(amount)) return null;
+    return { amount, currency, from: ready.some((row) => row.pick.priceFrom) };
+  }, [ready]);
 
   const patch = (itemIndex: number, change: RowState[number]) =>
     setEdits((current) => ({ ...current, [itemIndex]: { ...current[itemIndex], ...change } }));
@@ -471,17 +515,17 @@ export function BasketProposalCardView({
     if (busy.current) return;
     busy.current = true;
     setStep('busy');
-    const next: Record<number, Outcome> = {};
+    const next: Record<string, Outcome> = {};
     try {
       for (const row of ready) {
-        if (results[row.itemIndex] === 'ok') {
-          next[row.itemIndex] = 'ok';
+        if (results[rowKey(row)] === 'ok') {
+          next[rowKey(row)] = 'ok';
           continue;
         }
         const outcome = outcomeOf(
           await api.addCartItem(row.pick.offerId, row.pick.variantId!, row.packs),
         );
-        next[row.itemIndex] = outcome;
+        next[rowKey(row)] = outcome;
         if (outcome === 'failed') break; // The cart is not reachable: do not hammer it.
       }
       setResults((current) => ({ ...current, ...next }));
@@ -492,133 +536,193 @@ export function BasketProposalCardView({
     }
   }, [ready, results, guard]);
 
-  const press = () => {
-    const seller = card.mode === 'single-store' ? (sellers[0] ?? null) : null;
-    if (card.mode === 'single-store' && guard.holdsOtherStore(seller)) {
-      setStep('choose');
-      return;
+  const [moveFailed, setMoveFailed] = useState(false);
+  const press = async () => {
+    setMoveFailed(false);
+    if (card.mode === 'single-store') {
+      setStep('busy');
+      await guard.settle();
+      if (guard.holdsOtherStore(sellers[0] ?? null)) {
+        setStep('choose');
+        return;
+      }
     }
-    void addAll();
+    await addAll();
   };
 
   const chooseAway = async (how: 'save' | 'remove') => {
     setStep('busy');
-    await guard.moveAway(how);
+    try {
+      if (!(await guard.moveAway(how))) {
+        setMoveFailed(true);
+        setStep('idle');
+        return;
+      }
+    } catch {
+      setMoveFailed(true);
+      setStep('idle');
+      return;
+    }
     await addAll();
   };
 
-  const failed = Object.values(results).filter((outcome) => outcome !== 'ok').length;
-  const added = Object.values(results).filter((outcome) => outcome === 'ok').length;
-  const everyLineAdded = ready.length > 0 && ready.every((row) => results[row.itemIndex] === 'ok');
+  // Only the lines still in the list count, and an edit (swap, packs) makes a new key, so an old
+  // answer never stands for a different product or quantity.
+  const failed = ready.filter((row) => (results[rowKey(row)] ?? 'ok') !== 'ok').length;
+  const added = ready.filter((row) => results[rowKey(row)] === 'ok').length;
+  const everyLineAdded = ready.length > 0 && ready.every((row) => results[rowKey(row)] === 'ok');
   const locked = step === 'busy';
 
-  return (
-    <section className="ascc ascb" aria-label={t('basket-title', { count: card.itemCount })}>
-      <p className="ascc-t">{t('basket-title', { count: card.itemCount })}</p>
-      <ul className="ascc-lines">
-        {rows.map((row) => {
-          const result = results[row.itemIndex];
-          return (
-            <li key={row.itemIndex} className={row.off ? 'ascb-off' : undefined}>
-              <div className="ascb-main">
-                <span className="ascb-wish">{row.wish}</span>
-                <Link href={productHref(row.pick.productId, row.pick.name)} onClick={onNavigate}>
-                  {row.pick.name}
-                </Link>
-                <small>
-                  {row.pick.sellerName ?? t('cart-store-unknown')}
-                  {row.pick.sizeNote === 'larger' ? ` · ${t('basket-larger')}` : ''}
-                </small>
-                <span className="num ascb-price">
-                  {row.pick.priceFrom
-                    ? t('price-from', { price: money(row.pick.price) })
-                    : money(row.pick.price)}
-                  {row.pick.taxInclusive === true ? <small> · {t('including-gst')}</small> : null}
-                </span>
-              </div>
-              {row.off ? (
+  // Rows sit under the store of the product they now name, with that store's subtotal of the
+  // lines in the list (the grand total below is the sum, so who is paid is never hidden).
+  const groups = rows.reduce<{ sellerId: string; name: string | null; rows: typeof rows }[]>(
+    (all, row) => {
+      const at = all.find((group) => group.sellerId === row.pick.sellerId);
+      if (at) at.rows = [...at.rows, row];
+      else all.push({ sellerId: row.pick.sellerId, name: row.pick.sellerName, rows: [row] });
+      return all;
+    },
+    [],
+  );
+  const subtotalOf = (list: typeof rows): CardMoney | null => {
+    const on = list.filter((row) => !row.off);
+    if (on.length === 0) return null;
+    return {
+      amount: on.reduce((sum, row) => sum + row.pick.price.amount * row.packs, 0),
+      currency: on[0]!.pick.price.currency,
+    };
+  };
+  const renderRow = (row: (typeof rows)[number]) => {
+    const result = results[rowKey(row)];
+    return (
+      <li key={row.itemIndex} className={row.off ? 'ascb-off' : undefined}>
+        <div className="ascb-main">
+          <span className="ascb-wish">{row.wish}</span>
+          <Link href={productHref(row.pick.productId, row.pick.name)} onClick={onNavigate}>
+            {row.pick.name}
+          </Link>
+          <small>
+            {row.pick.sellerName ?? t('cart-store-unknown')}
+            {row.pick.sizeNote === 'larger' ? ` · ${t('basket-larger')}` : ''}
+          </small>
+          <span className="num ascb-price">
+            {row.pick.priceFrom
+              ? t('price-from', { price: money(row.pick.price) })
+              : money(row.pick.price)}
+            {row.pick.taxInclusive === true ? <small> · {t('including-gst')}</small> : null}
+          </span>
+        </div>
+        {row.off ? (
+          <>
+            <small className="ascb-why">
+              {uncertainIndexes.has(row.itemIndex) && edits[row.itemIndex]?.off === undefined
+                ? t('basket-unsure')
+                : t('basket-removed')}
+            </small>
+            <button
+              type="button"
+              className="aslk"
+              disabled={locked}
+              aria-label={`${t('basket-pick-this')}: ${row.pick.name}`}
+              onClick={() => patch(row.itemIndex, { off: false })}
+            >
+              {t('basket-pick-this')}
+            </button>
+          </>
+        ) : (
+          <div className="ascb-edit">
+            <div className="ascc-qty">
+              <div role="group" aria-label={t('cart-quantity')}>
                 <button
                   type="button"
-                  className="aslk"
-                  disabled={locked}
-                  onClick={() => patch(row.itemIndex, { off: false })}
+                  aria-label={t('cart-less')}
+                  disabled={locked || row.packs <= 1}
+                  onClick={() => patch(row.itemIndex, { packs: row.packs - 1 })}
                 >
-                  {t('basket-pick-this')}
+                  −
                 </button>
-              ) : (
-                <div className="ascb-edit">
-                  <div className="ascc-qty">
-                    <div role="group" aria-label={t('cart-quantity')}>
-                      <button
-                        type="button"
-                        aria-label={t('cart-less')}
-                        disabled={locked || row.packs <= 1}
-                        onClick={() => patch(row.itemIndex, { packs: row.packs - 1 })}
-                      >
-                        −
-                      </button>
-                      <output className="num" aria-live="polite">
-                        {row.packs}
-                      </output>
-                      <button
-                        type="button"
-                        aria-label={t('cart-more')}
-                        disabled={locked || row.packs >= PACKS_MAX}
-                        onClick={() => patch(row.itemIndex, { packs: row.packs + 1 })}
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
+                <output className="num" aria-live="polite">
+                  {row.packs}
+                </output>
+                <button
+                  type="button"
+                  aria-label={t('cart-more')}
+                  disabled={locked || row.packs >= PACKS_MAX}
+                  onClick={() => patch(row.itemIndex, { packs: row.packs + 1 })}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="aslk"
+              disabled={locked}
+              aria-label={`${t('basket-remove')}: ${row.pick.name}`}
+              onClick={() => patch(row.itemIndex, { off: true })}
+            >
+              {t('basket-remove')}
+            </button>
+          </div>
+        )}
+        {!row.off && row.pick.variantId === null ? (
+          <small className="ascb-why">{t('basket-cannot-add')}</small>
+        ) : null}
+        {row.choices.length > 0 ? (
+          <details className="ascb-swap">
+            <summary>{t('basket-swap', { count: row.choices.length })}</summary>
+            <ul>
+              {row.choices.map((option) => (
+                <li key={option.offerId}>
+                  <span>
+                    {option.name}
+                    <small> · {option.sellerName ?? t('cart-store-unknown')}</small>
+                  </span>
+                  <span className="num">{money(option.price)}</span>
                   <button
                     type="button"
                     className="aslk"
                     disabled={locked}
-                    onClick={() => patch(row.itemIndex, { off: true })}
+                    aria-label={`${t('basket-use')}: ${option.name}`}
+                    onClick={() =>
+                      // A swap starts from the new product's own packs, not the old edit.
+                      setEdits((current) => ({
+                        ...current,
+                        [row.itemIndex]: { pick: option },
+                      }))
+                    }
                   >
-                    {t('basket-remove')}
+                    {t('basket-use')}
                   </button>
-                </div>
-              )}
-              {row.choices.length > 0 ? (
-                <details className="ascb-swap">
-                  <summary>{t('basket-swap')}</summary>
-                  <ul>
-                    {row.choices.map((option) => (
-                      <li key={option.offerId}>
-                        <span>
-                          {option.name}
-                          <small> · {option.sellerName ?? t('cart-store-unknown')}</small>
-                        </span>
-                        <span className="num">{money(option.price)}</span>
-                        <button
-                          type="button"
-                          className="aslk"
-                          disabled={locked}
-                          onClick={() =>
-                            // A swap starts from the new product's own packs, not the old edit.
-                            setEdits((current) => ({
-                              ...current,
-                              [row.itemIndex]: { pick: option },
-                            }))
-                          }
-                        >
-                          {t('basket-use')}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </details>
-              ) : null}
-              {result === 'ok' ? (
-                <small className="ascc-ok">{t('basket-line-added')}</small>
-              ) : result ? (
-                <small className="ascc-err">{t(outcomeKey(result))}</small>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {result === 'ok' ? (
+          <small className="ascc-ok">{t('basket-line-added')}</small>
+        ) : result ? (
+          <small className="ascc-err">{t(outcomeKey(result))}</small>
+        ) : null}
+      </li>
+    );
+  };
+
+  return (
+    <section className="ascc ascb" aria-label={t('basket-title', { count: card.itemCount })}>
+      <p className="ascc-t">{t('basket-title', { count: card.itemCount })}</p>
+      {groups.map((group) => {
+        const subtotal = subtotalOf(group.rows);
+        return (
+          <div className="ascc-group" key={group.sellerId}>
+            <div className="ascc-gh">
+              <b>{group.name ?? t('cart-store-unknown')}</b>
+              {subtotal === null ? null : <span className="num">{money(subtotal)}</span>}
+            </div>
+            <ul className="ascc-lines">{group.rows.map(renderRow)}</ul>
+          </div>
+        );
+      })}
 
       {card.notFound.length > 0 ? (
         <div className="ascb-nf">
@@ -685,6 +789,11 @@ export function BasketProposalCardView({
               </Link>
             </p>
           ) : null}
+          {moveFailed ? (
+            <p className="ascc-err" role="alert">
+              {t('cart-failed')}
+            </p>
+          ) : null}
           {failed > 0 ? (
             <p className="ascc-err" role="alert">
               {t('basket-some-failed', { count: failed })}
@@ -698,13 +807,13 @@ export function BasketProposalCardView({
                 type="button"
                 className="btn small"
                 disabled={locked || ready.length === 0 || oneStoreBroken || everyLineAdded}
-                onClick={press}
+                onClick={() => void press()}
               >
                 {locked
                   ? t('cart-working')
                   : failed > 0
                     ? t('basket-retry')
-                    : t('basket-add-all', { count: ready.length })}
+                    : t('basket-add-all', { count: ready.length, total: card.itemCount })}
               </button>
             </div>
           )}

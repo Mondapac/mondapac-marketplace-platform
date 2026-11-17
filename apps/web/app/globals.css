@@ -10915,12 +10915,18 @@ button.login {
   margin: 0;
   font-weight: 600;
 }
-.ascc-ok {
+.ascc .ascc-ok {
   color: var(--sf-teal);
 }
-.ascc-err,
-.ascc-flag {
+.ascc .ascc-err,
+.ascc .ascc-flag {
   color: var(--sf-error);
+}
+.ascc .num {
+  unicode-bidi: isolate;
+}
+.ascc .ascb-why {
+  color: var(--sf-ink);
 }
 .ascc-group {
   display: grid;
@@ -10971,9 +10977,6 @@ button.login {
 .ascb-wish {
   color: var(--sf-slate);
   font-size: calc(12px * var(--cfs));
-}
-.ascb-off .ascb-main {
-  opacity: 0.6;
 }
 .ascb-edit {
   display: flex;
