@@ -392,7 +392,7 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
 
 ## Package T2: discounts at checkout (part B, ordering side)
 
-Migration `20261116130000_ordering_discounts`: `order_lines` gains `discount_amount` with its seller and platform
+Migration `20261117040000_ordering_discounts`: `order_lines` gains `discount_amount` with its seller and platform
 shares (CHECK: shares at zero or above, they add up to the discount, the discount at most the line);
 `seller_orders` gains `discount_amount` and `shipping_discount_amount` (within the goods and the delivery; the
 total covers what is left); the cancel reason `discount-changed`. Existing rows read zero.

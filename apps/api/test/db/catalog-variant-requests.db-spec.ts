@@ -2,7 +2,14 @@ import { randomUUID } from 'node:crypto';
 import { uuidV7 } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { TEST_MARKETS } from '../support/test-config';
-import { marketOf, otherMarketOf } from './persistence-support';
+import { ok } from '@mondapac/shared-kernel';
+import { PrismaVariantRequestStore } from '../../src/modules/catalog/infrastructure/prisma-variant-request.store';
+import {
+  createPersistence,
+  marketOf,
+  otherMarketOf,
+  type Persistence,
+} from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 import { sqlState } from './sql-state';
 
@@ -22,8 +29,10 @@ describe.each(TEST_MARKETS)('catalog variant requests in market %s (database)', 
   const other = marketOf(otherMarketOf(code));
   let sql: Client;
   let owner: Client;
+  let db: Persistence;
 
   beforeAll(async () => {
+    db = createPersistence();
     sql = new Client({ connectionString: testDatabaseUrl() });
     owner = new Client({ connectionString: ownerTestDatabaseUrl() });
     await sql.connect();
@@ -32,6 +41,7 @@ describe.each(TEST_MARKETS)('catalog variant requests in market %s (database)', 
   afterAll(async () => {
     await sql.end();
     await owner.end();
+    await db.close();
   });
 
   const insertSql = (table: string, row: Record<string, unknown>) =>
@@ -258,5 +268,54 @@ describe.each(TEST_MARKETS)('catalog variant requests in market %s (database)', 
       ]),
     ).toBe('42501');
     expect(await sqlState(owner, 'TRUNCATE catalog.variant_requests')).toBe('23001');
+  });
+
+  it('pages the open requests of the Market by time, counts them and searches the product code', async () => {
+    const store = new PrismaVariantRequestStore(db.service);
+    const read = async <T>(target: typeof market, work: () => Promise<T>) => {
+      const result = await db.unitOfWork.run(target, async () => ok(await work()), {
+        readOnly: true,
+      });
+      if (!result.ok) throw new Error('unit failed');
+      return result.value;
+    };
+    const { seller, p, o, row } = await scene();
+    await insert(
+      'variant_requests',
+      requestRow(o, seller, p, {
+        option_key: 'size=s',
+        created_at: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+    const found = await sql.query<{ product_code: string }>(
+      'SELECT product_code FROM catalog.products WHERE id = $1',
+      [p],
+    );
+    const code = found.rows[0]!.product_code;
+    const fragment = code.slice(2, 9).toLowerCase();
+
+    const mine = { productCode: fragment };
+    const count = await read(market, () => store.countOpen(market, mine));
+    expect(count).toBe(2);
+    const oldest = await read(market, () =>
+      store.pageOpen(market, { ...mine, direction: 'asc', offset: 0, limit: 1 }),
+    );
+    const newest = await read(market, () =>
+      store.pageOpen(market, { ...mine, direction: 'desc', offset: 0, limit: 1 }),
+    );
+    const second = await read(market, () =>
+      store.pageOpen(market, { ...mine, direction: 'asc', offset: 1, limit: 5 }),
+    );
+    expect(oldest.map((request) => request.state.id)).toEqual([row.id]);
+    expect(newest[0]?.state.id).toBe(second[0]?.state.id);
+    expect(newest[0]?.state.id).not.toBe(row.id);
+    // A wildcard is matched as typed, never as a pattern.
+    expect(await read(market, () => store.countOpen(market, { productCode: '%' }))).toBe(0);
+    expect(await read(market, () => store.countOpen(market, { productCode: 'no-such' }))).toBe(0);
+    // Another Market's session sees none of them.
+    expect(await read(other, () => store.countOpen(other, mine))).toBe(0);
+    // A decided request leaves the list.
+    await sql.query(decideSql, [market.marketId, row.id, 'declined', null, 'No', uuid7()]);
+    expect(await read(market, () => store.countOpen(market, mine))).toBe(1);
   });
 });

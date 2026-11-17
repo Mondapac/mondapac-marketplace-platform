@@ -2,6 +2,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import type { LocalizedText } from '../../domain/attribute-definition';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { VariantAdminReader, VariantIssue, VariantRow } from '../ports/variant-admin.reader';
+import { rowActions, type RowActionRule } from '../../../../platform/list-query';
 import { issuesOf } from './variant-admin.shared';
 
 // One row of the Variants tab (variants V6), shared by the list and the export.
@@ -30,7 +31,18 @@ export interface AdminVariantView {
   readonly sellers: number;
   readonly issues: readonly VariantIssue[];
   readonly missingLocales: readonly string[];
+  /**
+   * The row actions the Actions menu offers, `open-product` and `copy-code`: both only read, so
+   * the list's own key suffices.
+   */
+  readonly actions: readonly string[];
 }
+
+/** What each row action of the Variants list needs (the plan's table, row 3). */
+export const VARIANT_ACTION_RULES: readonly RowActionRule<VariantRow>[] = [
+  { id: 'open-product', permission: null },
+  { id: 'copy-code', permission: null },
+];
 
 export function viewOf(row: VariantRow, locale: string): AdminVariantView {
   return {
@@ -48,5 +60,6 @@ export function viewOf(row: VariantRow, locale: string): AdminVariantView {
     sellers: row.sellers,
     issues: issuesOf(row),
     missingLocales: row.missingLocales,
+    actions: rowActions(row, VARIANT_ACTION_RULES, new Set()),
   };
 }

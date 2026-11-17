@@ -21,9 +21,9 @@ export interface CustomerOrderHistory {
 export const CUSTOMER_ORDER_HISTORY = Symbol('PROMOTIONS_CUSTOMER_ORDER_HISTORY');
 
 /**
- * Which of the given sellers' stores a customer follows, for the store-follower offer. No module
- * owns a store follow yet (`engagement` has behaviour signals, `sellers` has stores, neither has
- * followers), so the adapter answers "unknown" and the offer is not made (fail closed).
+ * Which of the given sellers' stores a customer follows, for the store-follower offer. `engagement`
+ * owns store follows (customers management phase 3); a refusal is "unknown" and the offer is not
+ * made (fail closed).
  */
 export interface StoreFollows {
   followedAmong(
