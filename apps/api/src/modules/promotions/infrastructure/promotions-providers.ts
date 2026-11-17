@@ -6,7 +6,6 @@ import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { COMMISSION_PAYOUTS_FACADE, type CommissionPayoutsFacade } from '../../commission-payouts';
 import { CUSTOMERS_READ_FACADE, type CustomersReadFacade } from '../../customers';
 import { ENGAGEMENT_FACADE, type EngagementFacade } from '../../engagement';
-import { ORDERING_FACADE, type OrderingFacade } from '../../ordering';
 import { FacadeStoreFollows } from './facade-store-follows';
 import {
   FacadeCustomerGroupMembership,
@@ -38,7 +37,7 @@ import {
   type CustomerOrderHistory,
   type StoreFollows,
 } from '../application/ports/customer-facts';
-import { DELIVERED_ORDER_FACTS, type DeliveredOrderFacts } from '../application/ports/order-facts';
+import { DELIVERED_ORDER_FACTS } from '../application/ports/order-facts';
 import { REFERRAL_SIGNALS, type ReferralSignals } from '../application/ports/referral-signals';
 import { WALLET_CREDIT, type WalletCredit } from '../application/ports/wallet-credit';
 import { FLASH_SALES, type FlashSales } from '../application/ports/flash-sales';
@@ -71,7 +70,7 @@ import { FacadeWalletCredit } from './facade-wallet-credit';
 import { PrismaCreditRepository } from './prisma-credit.repository';
 import { PrismaReferralRepository } from './prisma-referral.repository';
 import { UnknownReferralSignals } from './unknown-customer-facts';
-import { FacadeDeliveredOrderFacts } from './facade-delivered-order-facts';
+import { BoundDeliveredOrderFacts } from './bound-delivered-order-facts';
 import { FacadeSellerCashbackLedger } from './facade-seller-cashback-ledger';
 import { FacadePayoutAnchors } from './facade-payout-anchors';
 import { PAYOUT_ANCHORS, type PayoutAnchors } from '../application/ports/payout-anchors';
@@ -211,12 +210,8 @@ export const promotionsProviders: readonly FactoryProvider[] = [
     inject: [ENGAGEMENT_FACADE],
     useFactory: (engagement: EngagementFacade): StoreFollows => new FacadeStoreFollows(engagement),
   },
-  {
-    provide: DELIVERED_ORDER_FACTS,
-    inject: [ORDERING_FACADE],
-    useFactory: (ordering: OrderingFacade): DeliveredOrderFacts =>
-      new FacadeDeliveredOrderFacts(ordering),
-  },
+  // Bound to ordering's facade by `PromotionsOrderEventsModule` (ordering imports promotions).
+  { provide: DELIVERED_ORDER_FACTS, useFactory: () => new BoundDeliveredOrderFacts() },
   { provide: REFERRAL_SIGNALS, useFactory: (): ReferralSignals => new UnknownReferralSignals() },
   {
     provide: SELLER_CASHBACK_LEDGER,

@@ -7,10 +7,11 @@ import {
   CARD_TABLE,
   EmptyState,
   LoadError,
-  SkeletonRows,
   Tabs,
   TextField,
   toast,
+  DetailSkeleton,
+  TableSkeleton,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -223,7 +224,7 @@ export function BrandsView({
       {notice === null ? null : <Banner tone="info">{notice}</Banner>}
       {tab === 'duplicates' ? (
         queueLoad === 'loading' ? (
-          <SkeletonRows label={t('loading')} rows={3} />
+          <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={3} />
         ) : queueLoad === 'failed' ? (
           <LoadError
             className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"
@@ -251,7 +252,22 @@ export function BrandsView({
               onChange={(event) => setTyped(event.target.value)}
             />
           </div>
-          {load === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
+          {load === 'loading' ? (
+            <TableSkeleton
+              label={t('loading')}
+              slowLabel={tl('slow')}
+              rows={6}
+              columns={[
+                { header: t('col.brand'), kind: 'title' },
+                { header: t('col.origin'), kind: 'text' },
+                { header: t('col.status'), kind: 'status' },
+                { header: t('col.updated'), kind: 'date' },
+                ...(canEdit
+                  ? [{ header: t('col.actions'), kind: 'date' as const, headerHidden: true }]
+                  : []),
+              ]}
+            />
+          ) : null}
           {load === 'failed' ? (
             <LoadError
               className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"

@@ -32,9 +32,13 @@ SELECT and INSERT only) and one `assistant.settings.changed` audit row (versions
 | `dailySpendCapUsdCents`       | 100 to 100,000, at most the monthly cap                                             | 1,000                     |
 | `monthlySpendCapUsdCents`     | 100 to 2,000,000                                                                    | 20,000                    |
 | `supportHandoff`              | `email-link` / `in-panel-form` (not available yet)                                  | `email-link`              |
+| `basketProposals`             | true / false: the assistant may plan a typed or pasted list into a basket card      | false                     |
 | `welcomeText`                 | null, or 1 to 200 characters without control characters, bidi overrides, `<` or `>` | null (storefront default) |
 
 The database CHECKs repeat these bounds.
+
+`basketProposals` is required like every field: a PUT without it answers 400 (a breaking change for
+any client but the admin panel, which carries it; its switch comes with S1-F2).
 
 ## Not settings
 

@@ -21,6 +21,7 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'ordering.cart-not-ready': 409,
   'ordering.delivery-quote-changed': 409,
   'ordering.price-changed': 409,
+  'ordering.discount-code-not-applied': 422,
   'ordering.card-not-accepted': 422,
   'ordering.card-declined': 402,
   'conflict.retry': 409,
