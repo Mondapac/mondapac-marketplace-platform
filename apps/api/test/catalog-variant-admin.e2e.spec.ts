@@ -97,11 +97,18 @@ class MemoryVariantAdmin implements VariantAdminReader, VariantTypeSettingsStore
   featureSetsUsing: VariantAdminReader['featureSetsUsing'] = () => Promise.resolve(new Map());
   variantsPage: VariantAdminReader['variantsPage'] = (m, query) => {
     const all = this.rows.get(m.marketId) ?? [];
-    const start = query.after === null ? 0 : all.findIndex((r) => r.variantId === query.after) + 1;
+    const start =
+      query.window !== undefined
+        ? query.window.offset
+        : query.after === null
+          ? 0
+          : all.findIndex((r) => r.variantId === query.after) + 1;
     const rows = all.slice(start, start + query.limit);
     const more = start + query.limit < all.length;
     return Promise.resolve({ rows, nextAfter: more ? rows.at(-1)!.variantId : null });
   };
+  variantsCount: VariantAdminReader['variantsCount'] = (m) =>
+    Promise.resolve((this.rows.get(m.marketId) ?? []).length);
   issueCounts: VariantAdminReader['issueCounts'] = () =>
     Promise.resolve({
       'no-seller-selling': 0,
@@ -358,11 +365,21 @@ describe('admin Variants routes over HTTP (integration, V6)', () => {
       });
       const one = await http().get(`${TYPES}/${SIZE}`).set(session).expect(200);
       expect(one.body).toMatchObject({ variantType: { settingsVersion: 0 } });
-      const list = await http().get(`${VARIANTS}?limit=10&q=rice`).set(session).expect(200);
+      const list = await http().get(`${VARIANTS}?pageSize=10&q=rice`).set(session).expect(200);
       expect(list.headers['cache-control']).toContain('no-store');
       expect(list.body).toMatchObject({
-        items: [{ variantCode: 'MP-000901-01', issues: ['missing-gtin'] }],
-        nextAfter: null,
+        items: [
+          {
+            variantCode: 'MP-000901-01',
+            issues: ['missing-gtin'],
+            actions: ['open-product', 'copy-code'],
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 10,
+        paging: 'pages',
+        hasNext: false,
       });
       const counts = await http().get(`${VARIANTS}/issue-counts`).set(session).expect(200);
       expect(counts.body).toMatchObject({ counts: { 'missing-gtin': 1 } });

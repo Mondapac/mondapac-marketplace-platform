@@ -220,6 +220,11 @@
     "reason": "Stripe calls the webhook without a session: the Stripe-Signature over the raw body, checked first in the use case, authenticates the event; it only stores the event for the worker."
   },
   {
+    "name": "promotions.view-store-follow-gift",
+    "rule": "anonymous",
+    "reason": "A store page asks for the store's live follower offers (the Follow gift) for any visitor; the answer is the offer's name, reward, minimum spend and end only, of ACTIVE store-follower promotions without a code and not in test mode. No customer data is read and nothing changes."
+  },
+  {
     "name": "reviews.list-product-reviews",
     "rule": "anonymous",
     "reason": "The product page lists a product's published reviews for a visitor with no session: published reviews only, the author shown as a short name or Verified buyer, never an account id, email or order id; reviews are off in a Market until an admin switches them on."

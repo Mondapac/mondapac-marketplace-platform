@@ -2,8 +2,11 @@ import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
+import type { ObjectStore } from '../../../platform/storage/object-store';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { BlogImageProcessor } from './ports/blog-image-processor';
 import type { BlogLinks } from './ports/blog-links';
+import type { BlogMediaStore } from './ports/blog-media.store';
 import type { BlogPolicy } from './ports/blog-policy';
 import type { BlogRepository } from './ports/blog.repository';
 
@@ -18,4 +21,9 @@ export interface BlogDependencies {
   readonly stepUp: StepUpProofConsumer;
   readonly ids: IdGenerator;
   readonly clock: Clock;
+  /** The blog media library (the picture rows). */
+  readonly media: BlogMediaStore;
+  readonly imageProcessor: BlogImageProcessor;
+  /** The picture files. */
+  readonly objectStore: ObjectStore;
 }

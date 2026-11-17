@@ -247,6 +247,25 @@ export const CustomerTimelineExported = defineAuditAction({
   },
 });
 
+/** The audit target type of one seller's Customers list (customers management phase 3). */
+export const SELLER_CUSTOMERS_TARGET = 'customers.seller-customers';
+
+/**
+ * A seller's team member exported the shop's Customers list. Target: the seller. Codes and first
+ * names only are in the file; the row holds the format, the count and how the rows were picked,
+ * never a code, a search text or a filter value.
+ */
+export const SellerCustomersExported = defineAuditAction({
+  action: 'customers.seller-customers.exported',
+  targetType: SELLER_CUSTOMERS_TARGET,
+  actors: ['authenticated'],
+  after: {
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rowCount: auditField.integer(),
+    selection: auditField.enumOf(['codes', 'filter'] as const),
+  },
+});
+
 export const CUSTOMERS_AUDIT_ACTIONS = [
   AccountDeletionSettingsChanged,
   AccountDeletionRequested,
@@ -264,4 +283,5 @@ export const CUSTOMERS_AUDIT_ACTIONS = [
   CustomerGroupMembersChanged,
   CustomerNoteAdded,
   CustomerTimelineExported,
+  SellerCustomersExported,
 ] as const;
