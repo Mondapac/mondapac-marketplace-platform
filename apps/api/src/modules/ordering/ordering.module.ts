@@ -131,6 +131,7 @@ import { CustomerSellerStatsQuery } from './application/use-cases/customer-selle
 import { SellerCustomerOrdersQuery } from './application/use-cases/seller-customer-orders.use-case';
 import { OrderNoticeQuery } from './application/use-cases/order-notice.use-case';
 import { OrderPaymentRefQuery } from './application/use-cases/order-payment-ref.use-case';
+import { DeliveredSellerOrderFactsQuery } from './application/use-cases/delivered-seller-order-facts.use-case';
 import { ListOrders } from './application/use-cases/list-orders.use-case';
 import { RecordLedger } from './application/use-cases/record-ledger.use-case';
 import { RecordRefundLedger } from './application/use-cases/record-refund-ledger.use-case';
@@ -407,6 +408,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CustomerSellerStatsQuery,
       SellerCustomerOrdersQuery,
       OrderPaymentRefQuery,
+      DeliveredSellerOrderFactsQuery,
       ShipmentNoticeQuery,
       RefundNoticeQuery,
       SellerOrderCustomerNames,
@@ -540,6 +542,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         CustomerOrderAccountsQuery,
         CustomerSellerStatsQuery,
         SellerCustomerOrdersQuery,
+        DeliveredSellerOrderFactsQuery,
       ],
       useFactory: (
         confirm: ConfirmPayment,
@@ -558,6 +561,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         customerAccounts: CustomerOrderAccountsQuery,
         customerSellers: CustomerSellerStatsQuery,
         sellerCustomerOrders: SellerCustomerOrdersQuery,
+        deliveredFacts: DeliveredSellerOrderFactsQuery,
       ) =>
         new OrderingFacadeImplementation(
           confirm,
@@ -576,6 +580,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           customerAccounts,
           customerSellers,
           sellerCustomerOrders,
+          deliveredFacts,
         ),
     },
     {

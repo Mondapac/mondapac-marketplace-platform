@@ -71,6 +71,22 @@ export interface PaidSellerOrder {
   readonly lines: readonly PaidLine[];
 }
 
+/**
+ * A seller's cashback, credited to its exclusive customer's wallet on delivery (customers phase
+ * 4c): the seller pays it from the payout of the same seller order.
+ */
+export interface SellerCashback {
+  /** The promotions credit (the ledger row's source: one row per credit). */
+  readonly creditId: Id<'PromotionCredit'>;
+  readonly orderId: Id<'Order'>;
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly amount: bigint;
+  readonly currency: string;
+  /** When the customer's wallet was credited. */
+  readonly creditedAt: Temporal.Instant;
+}
+
 /** Who bears the loss of a refund (ordering's closed list). */
 export type RefundLossBearer = 'seller' | 'platform';
 
@@ -173,6 +189,18 @@ export interface CommissionPayoutsFacade {
   recordSellerOrderPaid(
     context: CallContext,
     paid: PaidSellerOrder,
+  ): Promise<Result<'recorded' | 'already-recorded', CommissionPayoutsFailure>>;
+
+  /**
+   * Debits a seller's cashback from the seller order's payout (system actor only; promotions'
+   * delivery handler). Idempotent per credit: a credit already in the ledger writes nothing and
+   * answers `already-recorded`. The seller order must already be in the ledger, and be the
+   * seller's (otherwise `commission-payouts.ledger-inconsistent`, nothing written; the caller
+   * retries).
+   */
+  recordSellerCashback(
+    context: CallContext,
+    cashback: SellerCashback,
   ): Promise<Result<'recorded' | 'already-recorded', CommissionPayoutsFailure>>;
 
   /**

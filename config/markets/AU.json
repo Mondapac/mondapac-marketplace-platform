@@ -141,7 +141,7 @@
       "codeLength": 12,
       "alphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     },
-    "cashback": { "maxBps": 1000, "maxCapMinor": 5000 },
+    "cashback": { "maxBps": 1000, "maxCapMinor": 5000, "sellerMinBps": 100 },
     "firstOrder": {
       "enabled": true,
       "kind": "FIXED",

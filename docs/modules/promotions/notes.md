@@ -404,3 +404,17 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
 - Migration `20261117060000_promotions_seller_exclusive_segment`: `promotions_type_funding_check`
   lets the seller pay a customer-group discount exactly for this segment; `promotions_phase3_check`
   accepts the segment with no days and no group. `down.sql` refuses while such rows exist.
+
+## Customers phase 4c-1: the seller's cashback (2026-11-17)
+
+- `CASHBACK` takes the segment `SELLER_EXCLUSIVE`: seller-funded, seller-owned, for its exclusive
+  customers on its own seller orders. Market setting `promotions.cashback.sellerMinBps` (optional)
+  is the least such a cashback may credit (`reward.bps` `below-market-minimum`).
+- The order facts port now reads ordering's `deliveredSellerOrderFacts` (adapter
+  `FacadeDeliveredOrderFacts`, system actor only; failures are unknown), so cashback runs for real.
+  The facts carry the seller.
+- New port `SellerCashbackLedger` (adapter on commission-payouts' `recordSellerCashback`): after
+  the wallet grant of a seller-funded credit; `false` keeps the credit pending (retry).
+- Migration `20261117100001_promotions_seller_cashback`: `promotions_type_funding_check` makes a
+  cashback the seller's money exactly with the segment; `promotions_phase3_check` lets a cashback
+  carry no segment or this one. `down.sql` refuses while such rows exist.

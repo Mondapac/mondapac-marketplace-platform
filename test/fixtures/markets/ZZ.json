@@ -88,7 +88,7 @@
       "codeLength": 12,
       "alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     },
-    "cashback": { "maxBps": 500, "maxCapMinor": 3000 }
+    "cashback": { "maxBps": 500, "maxCapMinor": 3000, "sellerMinBps": 50 }
   },
   "tax": {
     "defaultRateBps": 1500,

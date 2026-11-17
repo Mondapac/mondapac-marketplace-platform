@@ -2,6 +2,7 @@ import type { CallContext, Id, Temporal } from '@mondapac/shared-kernel';
 import type { CancelPayment } from '../application/use-cases/cancel-payment.use-case';
 import type { MyDeliveredSellerOrders } from '../application/use-cases/my-delivered-seller-orders.use-case';
 import type { OrderPaymentRefQuery } from '../application/use-cases/order-payment-ref.use-case';
+import type { DeliveredSellerOrderFactsQuery } from '../application/use-cases/delivered-seller-order-facts.use-case';
 import type { CustomerOrderAccountsQuery } from '../application/use-cases/customer-order-accounts.use-case';
 import type { CustomerOrderStatsQuery } from '../application/use-cases/customer-order-stats.use-case';
 import type { CustomerSellerStatsQuery } from '../application/use-cases/customer-seller-stats.use-case';
@@ -36,7 +37,15 @@ export class OrderingFacadeImplementation implements OrderingFacade {
     private readonly customerAccounts: CustomerOrderAccountsQuery,
     private readonly customerSellers: CustomerSellerStatsQuery,
     private readonly sellerCustomerOrdersQuery: SellerCustomerOrdersQuery,
+    private readonly deliveredFacts: DeliveredSellerOrderFactsQuery,
   ) {}
+
+  deliveredSellerOrderFacts(
+    context: CallContext,
+    request: { readonly orderId: string; readonly sellerOrderId: string },
+  ) {
+    return this.deliveredFacts.execute(context, request);
+  }
 
   customerSellerStats(context: CallContext, accountId: Id<'Account'>) {
     return this.customerSellers.execute(context, { accountId });

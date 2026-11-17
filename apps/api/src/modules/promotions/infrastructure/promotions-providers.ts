@@ -6,6 +6,7 @@ import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { COMMISSION_PAYOUTS_FACADE, type CommissionPayoutsFacade } from '../../commission-payouts';
 import { CUSTOMERS_READ_FACADE, type CustomersReadFacade } from '../../customers';
 import { ENGAGEMENT_FACADE, type EngagementFacade } from '../../engagement';
+import { ORDERING_FACADE, type OrderingFacade } from '../../ordering';
 import { FacadeStoreFollows } from './facade-store-follows';
 import {
   FacadeCustomerGroupMembership,
@@ -69,7 +70,13 @@ import { ConfigPromotionsPolicy } from './config-promotions-policy';
 import { FacadeWalletCredit } from './facade-wallet-credit';
 import { PrismaCreditRepository } from './prisma-credit.repository';
 import { PrismaReferralRepository } from './prisma-referral.repository';
-import { UnknownDeliveredOrderFacts, UnknownReferralSignals } from './unknown-customer-facts';
+import { UnknownReferralSignals } from './unknown-customer-facts';
+import { FacadeDeliveredOrderFacts } from './facade-delivered-order-facts';
+import { FacadeSellerCashbackLedger } from './facade-seller-cashback-ledger';
+import {
+  SELLER_CASHBACK_LEDGER,
+  type SellerCashbackLedger,
+} from '../application/ports/seller-cashback-ledger';
 import { FacadeSellerCatalogue, FacadeSellerCommission } from './facade-seller-campaign-reads';
 import { FacadePriceHistory, FacadeSellerActivity } from './facade-seller-price-reads';
 import { PrismaMarketSettingRepository } from './prisma-market-setting.repository';
@@ -204,9 +211,17 @@ export const promotionsProviders: readonly FactoryProvider[] = [
   },
   {
     provide: DELIVERED_ORDER_FACTS,
-    useFactory: (): DeliveredOrderFacts => new UnknownDeliveredOrderFacts(),
+    inject: [ORDERING_FACADE],
+    useFactory: (ordering: OrderingFacade): DeliveredOrderFacts =>
+      new FacadeDeliveredOrderFacts(ordering),
   },
   { provide: REFERRAL_SIGNALS, useFactory: (): ReferralSignals => new UnknownReferralSignals() },
+  {
+    provide: SELLER_CASHBACK_LEDGER,
+    inject: [COMMISSION_PAYOUTS_FACADE],
+    useFactory: (commission: CommissionPayoutsFacade): SellerCashbackLedger =>
+      new FacadeSellerCashbackLedger(commission),
+  },
   {
     provide: WALLET_CREDIT,
     inject: [WALLET_FACADE],

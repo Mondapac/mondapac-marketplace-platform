@@ -134,6 +134,33 @@ export type SellerOrderHealthCountsFailure = AccessDenied | { readonly code: 'va
 
 export type DeliveredSellerOrdersFailure = AccessDenied | { readonly code: 'validation.failed' };
 
+/**
+ * The facts of one delivered seller order, for promotions' credits on delivery (cashback). Ids,
+ * one amount and instants: no name, address or payment detail.
+ */
+export interface DeliveredSellerOrderFacts {
+  readonly orderId: Id<'Order'>;
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly customerAccountId: Id<'Account'>;
+  readonly currency: string;
+  /**
+   * The goods of this seller order as charged (unit price × quantity of its lines), without tax
+   * and without shipping: a tax-inclusive line has its frozen tax taken out.
+   */
+  readonly goods: bigint;
+  readonly placedAt: Temporal.Instant;
+  readonly deliveredAt: Temporal.Instant;
+}
+
+export type DeliveredSellerOrderFactsFailure =
+  | AccessDenied
+  | { readonly code: 'validation.failed' }
+  /** Unknown, another Market's, or a seller order of another order: one answer. */
+  | { readonly code: 'ordering.order-not-found' }
+  /** Not delivered (yet), or placed before its tax was recorded: no amount to give. */
+  | { readonly code: 'ordering.facts-unavailable' };
+
 /** The PaymentIntent an order holds (null before checkout created one). */
 export interface OrderPaymentRef {
   readonly orderId: string;
@@ -305,6 +332,15 @@ export interface OrderingFacade {
     context: CallContext,
     orderId: string,
   ): Promise<Result<OrderPaymentRef, OrderPaymentRefFailure>>;
+
+  /**
+   * The facts of one delivered seller order (rule `system`), for promotions' credits on delivery
+   * (customers phase 4c). See {@link DeliveredSellerOrderFacts}.
+   */
+  deliveredSellerOrderFacts(
+    context: CallContext,
+    request: { readonly orderId: string; readonly sellerOrderId: string },
+  ): Promise<Result<DeliveredSellerOrderFacts, DeliveredSellerOrderFactsFailure>>;
 
   /**
    * The short customer name of each of the seller's own paid seller orders asked for, for the

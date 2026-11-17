@@ -543,3 +543,25 @@ card, the storefront's invite banner and the admin list's screens follow in the 
   force; `exclusive` only when it is lower.
 - Migration `20261117080000_ordering_exclusive_seller_commission`: two columns with constant
   defaults (no rewrite) and a CHECK (`exclusive` needs `exclusive_seller` and a frozen rate).
+
+## Phase 4c-1: the seller's cashback for its exclusive customers (2026-11-17)
+
+- A seller makes a `CASHBACK` promotion with the segment `SELLER_EXCLUSIVE` (the only way a
+  seller makes a cashback): its own money, a percent between the Market's new
+  `promotions.cashback.sellerMinBps` (AU 100 = 1 %, ZZ 50) and `maxBps` (AU 10 %), and a per-order
+  cap up to `maxCapMinor`. An admin cashback never takes the segment.
+- On delivery (`promotions.cashback-on-delivery`) it credits the customer's wallet only when the
+  customer was the seller's exclusive customer when the order was placed, and only on that
+  seller's own seller order. Unknown attribution retries. The cap is per seller order; the larger
+  of the platform's and the seller's cashback wins (one cashback credit per seller order).
+- The seller pays: after the wallet credit, `commission-payouts.record-seller-cashback` writes a
+  `cashback-seller` debit on that seller order (idempotent per credit), shown on the seller's
+  ledger as "Cashback for your customer" and in the totals as `sellerCashback`. Commission stays on
+  the goods before cashback. A ledger failure keeps the credit pending and the delivery retries
+  (the wallet credit is idempotent by key).
+- Seller money needs no tax-ruling test mode. A wallet that is off (`wallet.disabled`) ends a
+  seller's credit as failed, with no debit.
+- Ordering now answers `ordering.delivered-seller-order-facts` (system): goods without tax and
+  shipping, the seller, the customer and the instants. This also wires the platform's cashback,
+  which until now never found an order's facts.
+- Not yet (4c-2): a refund claws back the unused cashback pro rata (`refund-cashback-seller`).

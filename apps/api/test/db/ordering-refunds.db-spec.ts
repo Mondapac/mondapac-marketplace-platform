@@ -1702,6 +1702,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           recordSellerOrderDelivered: () => Promise.reject(new Error('not used')),
           sellerLostDisputes: () => Promise.reject(new Error('not used')),
           ownCommissionOn: () => Promise.reject(new Error('not used')),
+          recordSellerCashback: () => Promise.reject(new Error('not used')),
         },
       };
     });

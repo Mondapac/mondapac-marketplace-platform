@@ -1,3 +1,4 @@
+import type { SellerCashbackLedger } from './ports/seller-cashback-ledger';
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditTrailReader } from '../../../platform/audit/audit-trail-reader';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
@@ -61,6 +62,8 @@ export interface PromotionsDependencies {
   /** Whose exclusive customer the customer is (customer-group segment SELLER_EXCLUSIVE). */
   readonly exclusiveCustomers: ExclusiveCustomers;
   readonly orderFacts: DeliveredOrderFacts;
+  /** The seller ledger, for a seller's cashback (customers phase 4c). */
+  readonly sellerCashbackLedger: SellerCashbackLedger;
   readonly referralSignals: ReferralSignals;
   readonly walletCredit: WalletCredit;
   readonly credits: CreditRepository;

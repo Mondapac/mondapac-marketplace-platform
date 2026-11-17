@@ -8,6 +8,8 @@ import type { Known } from './customer-facts';
 export interface DeliveredSellerOrderFacts {
   readonly orderId: Id<'Order'>;
   readonly sellerOrderId: Id<'SellerOrder'>;
+  /** The seller of the seller order (a seller's own cashback is on its own orders only). */
+  readonly sellerId: Id<'Seller'>;
   /** The customer's account. */
   readonly customerAccountId: Id<'Account'>;
   /** The goods of this seller order the customer paid for, after discounts, before shipping and tax. */
@@ -19,11 +21,10 @@ export interface DeliveredSellerOrderFacts {
 }
 
 /**
- * The facts of the delivered seller order behind an `ordering.seller-order-delivered.v1` event.
- * `ordering` publishes the event with ids only and no read for the amount, the customer or the
- * test flag, so the adapter answers "unknown" and the handlers retry the delivery (it is
- * dead-lettered with an alert after its last attempt), never guessing an amount. Called before any
- * unit opens, with the handler's system context unchanged.
+ * The facts of the delivered seller order behind an `ordering.seller-order-delivered.v1` event,
+ * read from `ordering`'s facade (customers phase 4c). Unknown when the read fails: the handlers
+ * retry the delivery (it is dead-lettered with an alert after its last attempt), never guessing an
+ * amount. Called before any unit opens, with the handler's system context unchanged.
  */
 export interface DeliveredOrderFacts {
   read(

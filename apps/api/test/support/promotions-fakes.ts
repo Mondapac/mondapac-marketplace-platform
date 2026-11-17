@@ -67,6 +67,7 @@ import type {
   ReviewEntry,
   ReviewQueueRepository,
 } from '../../src/modules/promotions/application/ports/review-queue.repository';
+import type { SellerCashbackLedger } from '../../src/modules/promotions/application/ports/seller-cashback-ledger';
 import type { SellerActivity } from '../../src/modules/promotions/application/ports/seller-activity';
 import type {
   FirstOrderSettingsRepository,
@@ -895,6 +896,20 @@ export class FakeOrderFacts implements DeliveredOrderFacts {
   }
 }
 
+/** The seller ledger: one entry per credit, as the real one answers a repeat as already recorded. */
+export class FakeSellerCashbackLedger implements SellerCashbackLedger {
+  readonly entries: Parameters<SellerCashbackLedger['record']>[1][] = [];
+  /** Refuse every call while set (the ledger down or refusing). */
+  fails = false;
+  calls = 0;
+  record(_context: CallContext, cashback: Parameters<SellerCashbackLedger['record']>[1]) {
+    this.calls += 1;
+    if (this.fails) return Promise.resolve(false);
+    if (!this.entries.some((e) => e.creditId === cashback.creditId)) this.entries.push(cashback);
+    return Promise.resolve(true);
+  }
+}
+
 export class FakeReferralSignals implements ReferralSignals {
   verdict: ReferralVerdict = 'clear';
   calls = 0;
@@ -1187,6 +1202,7 @@ export function phase3Fakes() {
     orderFacts: new FakeOrderFacts(),
     referralSignals: new FakeReferralSignals(),
     walletCredit: new FakeWalletCredit(),
+    sellerCashbackLedger: new FakeSellerCashbackLedger(),
     credits: new MemoryCredits(),
     referrals: new MemoryReferrals(),
     redemptions: new MemoryRedemptions(),

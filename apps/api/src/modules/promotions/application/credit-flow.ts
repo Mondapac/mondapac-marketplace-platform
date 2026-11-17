@@ -128,6 +128,26 @@ function toWalletRequest(credit: CreditRecord) {
 }
 
 /**
+ * The seller who pays a credit: the owner of a seller-funded cashback (customers phase 4c), else
+ * null (the platform's money). `fault` when the promotion cannot be read: the delivery is retried.
+ */
+async function sellerFunderOf(
+  deps: PromotionsDependencies,
+  context: CallContext,
+  credit: CreditRecord,
+): Promise<Id<'Seller'> | null | 'fault'> {
+  if (credit.kind !== 'CASHBACK') return null;
+  const read = await deps.unitOfWork.run(
+    context.market,
+    async () => ok(await deps.promotions.find(context.market, credit.promotionId)),
+    { readOnly: true },
+  );
+  if (!read.ok || read.value === null) return 'fault';
+  const promotion = read.value;
+  return promotion.funding === 'SELLER' ? promotion.ownerSellerId : null;
+}
+
+/**
  * Calls the wallet for every PENDING credit, in order, outside any unit. A retryable refusal
  * stops the whole delivery (it is retried; the credits stay reserved); a final refusal settles
  * that credit as FAILED. Returns what to settle, or null when the delivery must be retried.
@@ -148,13 +168,40 @@ async function grantPending(
   const settlements = [];
   for (const credit of credits) {
     if (credit.status !== 'PENDING') continue;
+    // A seller's own cashback (customers phase 4c) is the seller's money: it is debited from the
+    // payout of the same seller order once the wallet holds it, before the credit is settled.
+    const funder = await sellerFunderOf(deps, context, credit);
+    if (funder === 'fault') return null;
     const granted = await deps.walletCredit.grant(context, toWalletRequest(credit));
     if (granted.ok) {
+      if (funder !== null) {
+        const debited = await deps.sellerCashbackLedger.record(context, {
+          creditId: credit.id,
+          orderId: credit.orderId!,
+          sellerOrderId: credit.sourceId as Id<'SellerOrder'>,
+          sellerId: funder,
+          amount: credit.amountMinor,
+          currency: credit.currency,
+          creditedAt: deps.clock.now(),
+        });
+        if (!debited) {
+          logger.warn({
+            msg: 'promotions.credit.seller-ledger-retry',
+            creditId: credit.id,
+            marketId: context.market.marketId,
+            correlationId: context.correlationId,
+          });
+          return null;
+        }
+      }
       settlements.push({
         id: credit.id,
         result: { status: 'GRANTED' as const, walletJournalId: granted.value.journalId },
       });
-    } else if (granted.error.retry) {
+    } else if (
+      granted.error.retry &&
+      !(funder !== null && granted.error.code === 'wallet.disabled')
+    ) {
       logger.warn({
         msg: 'promotions.credit.wallet-retry',
         creditId: credit.id,
@@ -237,6 +284,7 @@ async function reserveCashback(
   settings: PromotionsSettings,
   live: readonly PromotionRecord[],
   facts: DeliveredSellerOrderFacts,
+  exclusiveSellerId: Id<'Seller'> | null,
 ): Promise<Result<CreditRecord | null, CreditFlowFailure>> {
   const now = deps.clock.now();
   const goods = facts.goodsPaid.amount;
@@ -264,10 +312,22 @@ async function reserveCashback(
     ) {
       continue;
     }
+    // A seller's own cashback (customers phase 4c) is for its exclusive customer, on its own seller
+    // order only, and is the seller's money: the platform's tax ruling does not hold it back, and
+    // its cap is per seller order (no other seller's cashback on the order counts against it).
+    const sellerFunded = promotion.funding === 'SELLER';
+    if (
+      sellerFunded &&
+      (promotion.ownerSellerId === null ||
+        promotion.ownerSellerId !== facts.sellerId ||
+        exclusiveSellerId !== promotion.ownerSellerId)
+    ) {
+      continue;
+    }
     const mode = creditModeFor({
       promotionTestMode: promotion.testMode,
       orderIsTest: facts.testOrder,
-      gstRulingConfirmed: settings.rules.gstRulingConfirmed,
+      gstRulingConfirmed: sellerFunded || settings.rules.gstRulingConfirmed,
     });
     if (mode === 'SKIP') continue;
     if (
@@ -288,11 +348,9 @@ async function reserveCashback(
       goodsPaid: goods,
       bps: Math.min(promotion.reward.bps, limits.maxBps),
       capMinor: promotion.capMinor < limits.maxCapMinor ? promotion.capMinor : limits.maxCapMinor,
-      alreadyCreditedForOrder: await deps.credits.creditedForOrder(
-        context.market,
-        facts.orderId,
-        'CASHBACK',
-      ),
+      alreadyCreditedForOrder: sellerFunded
+        ? 0n
+        : await deps.credits.creditedForOrder(context.market, facts.orderId, 'CASHBACK'),
       minSpendMinor: promotion.minSpendMinor,
       budgetLeft:
         promotion.budgetMinor === null
@@ -388,8 +446,18 @@ export async function cashbackOnDelivery(
   ) {
     return noted();
   }
+  // A seller's own cashback needs the customer to be its exclusive customer when the order was
+  // placed (customers phase 4c); asked once, only when such a cashback is live. Unknown is retried.
+  let exclusiveSellerId: Id<'Seller'> | null = null;
+  if (live.value.some((promotion) => promotion.funding === 'SELLER')) {
+    const exclusive = await deps.exclusiveCustomers
+      .exclusiveSellerOf(context, facts.value.customerAccountId, facts.value.placedAt)
+      .catch(() => ({ known: false }) as const);
+    if (!exclusive.known) return tryAgain();
+    exclusiveSellerId = exclusive.value;
+  }
   const reserved = await deps.unitOfWork.run(market, () =>
-    reserveCashback(deps, context, settings, live.value, facts.value),
+    reserveCashback(deps, context, settings, live.value, facts.value, exclusiveSellerId),
   );
   if (!reserved.ok) return reserved;
   if (reserved.value === null) return noted();

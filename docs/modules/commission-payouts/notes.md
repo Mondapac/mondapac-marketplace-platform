@@ -129,3 +129,12 @@ without one). The answer adds `request: {id, number}` (null when nothing was ope
 withdrawn request is restored by `CommissionRateReverter` / `PayoutTermsReverter`
 (application/money-reverters.ts), only while the seller still has the value after. The admin
 panel's note field comes with the panel package: until then a save in such a Market answers 400.
+
+## Seller cashback (customers phase 4c-1, 2026-11-17)
+
+New ledger kind `cashback-seller` (a debit, per seller order, no line, source = the promotion
+credit id, amount > 0), written by `commission-payouts.record-seller-cashback` (system) when
+promotions credits a seller-funded cashback. The seller order must be in the ledger and belong to
+that seller (`ledger-inconsistent` otherwise). Totals gain `sellerCashback`, subtracted from the
+balance. Migration `20261117100000_ledger_seller_cashback` widens the kind, source and line
+CHECKs; `down.sql` refuses while such rows exist.

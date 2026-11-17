@@ -16,6 +16,7 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { CatalogModule } from '../catalog';
 import { CommissionPayoutsModule } from '../commission-payouts';
 import { changeActorSourceOf, IDENTITY_FACADE, IdentityModule } from '../identity';
+import { OrderingModule } from '../ordering';
 import { PricingModule } from '../pricing';
 import { SellersModule } from '../sellers';
 import { WalletModule } from '../wallet';
@@ -32,6 +33,7 @@ import {
   STORE_FOLLOWS,
 } from './application/ports/customer-facts';
 import { DELIVERED_ORDER_FACTS } from './application/ports/order-facts';
+import { SELLER_CASHBACK_LEDGER } from './application/ports/seller-cashback-ledger';
 import { REFERRAL_SIGNALS } from './application/ports/referral-signals';
 import { WALLET_CREDIT } from './application/ports/wallet-credit';
 import { BATCH_CODE_REPOSITORY } from './application/ports/batch-code.repository';
@@ -134,6 +136,7 @@ const PORTS: readonly [keyof PromotionsDependencies, InjectionToken][] = [
   ['groupMembership', CUSTOMER_GROUP_MEMBERSHIP],
   ['exclusiveCustomers', EXCLUSIVE_CUSTOMERS],
   ['orderFacts', DELIVERED_ORDER_FACTS],
+  ['sellerCashbackLedger', SELLER_CASHBACK_LEDGER],
   ['referralSignals', REFERRAL_SIGNALS],
   ['walletCredit', WALLET_CREDIT],
   ['credits', CREDIT_REPOSITORY],
@@ -175,6 +178,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     CustomersModule,
     EngagementModule,
     IdentityModule,
+    OrderingModule,
     PricingModule,
     SellersModule,
     WalletModule,

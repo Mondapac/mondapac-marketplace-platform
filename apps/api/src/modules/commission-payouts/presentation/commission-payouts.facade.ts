@@ -4,12 +4,14 @@ import type { OwnCommissionOn } from '../application/use-cases/own-commission-on
 import type { RecordSellerOrderDelivered } from '../application/use-cases/record-seller-order-delivered.use-case';
 import type { RecordRefund } from '../application/use-cases/record-refund.use-case';
 import type { RecordSellerOrderPaid } from '../application/use-cases/record-seller-order-paid.use-case';
+import type { RecordSellerCashback } from '../application/use-cases/record-seller-cashback.use-case';
 import type { SellerLostDisputes } from '../application/use-cases/seller-lost-disputes.use-case';
 import type {
   CommissionPayoutsFacade,
   ExclusiveBuyer,
   PaidSellerOrder,
   RefundedSellerOrder,
+  SellerCashback,
   SellerOrderDelivered,
 } from '../contracts';
 
@@ -22,7 +24,12 @@ export class CommissionPayoutsFacadeImplementation implements CommissionPayoutsF
     private readonly recordDelivered: RecordSellerOrderDelivered,
     private readonly lostDisputes: SellerLostDisputes,
     private readonly ownCommission: OwnCommissionOn,
+    private readonly recordCashback: RecordSellerCashback,
   ) {}
+
+  recordSellerCashback(context: CallContext, cashback: SellerCashback) {
+    return this.recordCashback.execute(context, cashback);
+  }
 
   commissionRates(
     context: CallContext,

@@ -65,6 +65,7 @@ import type { OrderState } from '../domain/order';
 import { SellerMarkOrderReady } from './use-cases/seller-mark-order-ready.use-case';
 import { SellerHealthCountsQuery } from './use-cases/seller-health-counts.use-case';
 import { BookReadyCarrierDelivery } from './use-cases/book-ready-carrier-delivery.use-case';
+import { DeliveredSellerOrderFactsQuery } from './use-cases/delivered-seller-order-facts.use-case';
 import { MyDeliveredSellerOrders } from './use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './use-cases/seller-order-customer-names.use-case';
 import { SellerViewOrderDocument } from './use-cases/seller-view-order-document.use-case';
@@ -3679,6 +3680,97 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       );
       expect((await delivered(anonymous, {})).ok).toBe(false);
       expect((await delivered(system, {})).ok).toBe(false);
+    });
+  });
+
+  describe('delivered-seller-order-facts (cashback on delivery, customers phase 4c)', () => {
+    const facts = (input: object, context: CallContext = system) =>
+      new DeliveredSellerOrderFactsQuery(gate, deps).execute(context, input as never);
+    const sellerOrderOf = (orderId: string, sellerId: Id<'Seller'>) =>
+      orders.rows.get(orderId)!.sellerOrders.find((s) => s.sellerId === sellerId)!;
+    const deliverAt = (orderId: string, sellerId: Id<'Seller'>, at: Temporal.Instant) => {
+      const order = orders.rows.get(orderId)!;
+      orders.rows.set(orderId, {
+        ...order,
+        sellerOrders: order.sellerOrders.map((s) =>
+          s.sellerId === sellerId
+            ? { ...s, fulfilment: 'delivered' as const, shippedAt: at, deliveredAt: at }
+            : s,
+        ),
+      });
+    };
+
+    it("answers a delivered seller order's goods without tax or shipping, and who placed it", async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      deliverAt(order.id, SELLER_A, T0.add({ hours: 5 }));
+      const sellerOrder = sellerOrderOf(order.id, SELLER_A);
+      const stored = orders.rows.get(order.id)!;
+      const goods = stored.lines
+        .filter((line) => line.sellerOrderId === sellerOrder.id)
+        .reduce(
+          (sum, line) => sum + line.lineAmount - (line.taxInclusive ? line.taxAmount! : 0n),
+          0n,
+        );
+      expect(goods).toBeGreaterThan(0n);
+      expect(await facts({ orderId: order.id, sellerOrderId: sellerOrder.id })).toEqual(
+        ok({
+          orderId: order.id,
+          sellerOrderId: sellerOrder.id,
+          sellerId: SELLER_A,
+          customerAccountId: ACCOUNT,
+          currency,
+          goods,
+          placedAt: stored.createdAt,
+          deliveredAt: T0.add({ hours: 5 }),
+        }),
+      );
+    });
+
+    it('is unavailable before delivery, for an unconfirmed order, or with a line missing its tax', async () => {
+      const order = await placed();
+      const a = sellerOrderOf(order.id, SELLER_A).id;
+      const unavailable = err({ code: 'ordering.facts-unavailable' });
+      deliverAt(order.id, SELLER_A, T0.add({ hours: 5 }));
+      expect(await facts({ orderId: order.id, sellerOrderId: a })).toEqual(unavailable);
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      const b = sellerOrderOf(order.id, SELLER_B).id;
+      expect(await facts({ orderId: order.id, sellerOrderId: b })).toEqual(unavailable);
+      const stored = orders.rows.get(order.id)!;
+      orders.rows.set(order.id, {
+        ...stored,
+        lines: stored.lines.map((line) =>
+          line.sellerOrderId === a ? { ...line, taxInclusive: true, taxAmount: null } : line,
+        ),
+      });
+      expect(await facts({ orderId: order.id, sellerOrderId: a })).toEqual(unavailable);
+    });
+
+    it('answers not found for an unknown order or a seller order of another order', async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      const notFound = err({ code: 'ordering.order-not-found' });
+      expect(
+        await facts({
+          orderId: id<'Order'>(0xdead),
+          sellerOrderId: sellerOrderOf(order.id, SELLER_A).id,
+        }),
+      ).toEqual(notFound);
+      expect(await facts({ orderId: order.id, sellerOrderId: id<'SellerOrder'>(0xdead) })).toEqual(
+        notFound,
+      );
+    });
+
+    it('refuses a malformed id and every caller but the system', async () => {
+      const order = await placed();
+      const a = sellerOrderOf(order.id, SELLER_A).id;
+      expect(await facts({ orderId: 'nope', sellerOrderId: a })).toEqual(
+        err({ code: 'validation.failed' }),
+      );
+      expect(await facts({ orderId: order.id })).toEqual(err({ code: 'validation.failed' }));
+      for (const context of [customer, anonymous]) {
+        expect((await facts({ orderId: order.id, sellerOrderId: a }, context)).ok).toBe(false);
+      }
     });
   });
 
