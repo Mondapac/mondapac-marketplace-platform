@@ -1,3 +1,7 @@
+import { QuoteOwnDiscounts } from './use-cases/quote-own-discounts.use-case';
+import { RedeemOwnDiscounts } from './use-cases/redeem-own-discounts.use-case';
+import { ListStaleRedemptions } from './use-cases/list-stale-redemptions.use-case';
+import { SettleRedemptions } from './use-cases/settle-redemptions.use-case';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import type { PromotionRecord } from '../domain/promotion';
@@ -266,6 +270,10 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
         make(QuoteDiscounts),
         make(RedeemDiscounts),
         make(CheckWasPrice),
+        make(QuoteOwnDiscounts),
+        make(RedeemOwnDiscounts),
+        make(ListStaleRedemptions),
+        make(SettleRedemptions),
       ).quote(system, {
         lines: [
           {
@@ -1352,6 +1360,10 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
         make(QuoteDiscounts),
         make(RedeemDiscounts),
         make(CheckWasPrice),
+        make(QuoteOwnDiscounts),
+        make(RedeemOwnDiscounts),
+        make(ListStaleRedemptions),
+        make(SettleRedemptions),
       );
       const before = await facade.quote(system, request());
       expect(before.ok && before.value.applied).toEqual([]);
@@ -1370,6 +1382,10 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
         make(QuoteDiscounts),
         make(RedeemDiscounts),
         make(CheckWasPrice),
+        make(QuoteOwnDiscounts),
+        make(RedeemOwnDiscounts),
+        make(ListStaleRedemptions),
+        make(SettleRedemptions),
       );
       const created = await make(CreateOwnPromotion).execute(seller(), sale());
       if (!created.ok) throw new Error('create failed');
@@ -1386,6 +1402,10 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
         make(QuoteDiscounts),
         make(RedeemDiscounts),
         make(CheckWasPrice),
+        make(QuoteOwnDiscounts),
+        make(RedeemOwnDiscounts),
+        make(ListStaleRedemptions),
+        make(SettleRedemptions),
       );
       await make(CreateOwnPromotion).execute(
         seller(),
@@ -1409,6 +1429,10 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
         make(QuoteDiscounts),
         make(RedeemDiscounts),
         make(CheckWasPrice),
+        make(QuoteOwnDiscounts),
+        make(RedeemOwnDiscounts),
+        make(ListStaleRedemptions),
+        make(SettleRedemptions),
       );
       await make(CreatePromotion).execute(
         admin(),
@@ -1846,6 +1870,10 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
           make(QuoteDiscounts),
           make(RedeemDiscounts),
           make(CheckWasPrice),
+          make(QuoteOwnDiscounts),
+          make(RedeemOwnDiscounts),
+          make(ListStaleRedemptions),
+          make(SettleRedemptions),
         );
       const mismatch = {
         ok: false,
@@ -2036,6 +2064,10 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
           make(QuoteDiscounts),
           make(RedeemDiscounts),
           make(CheckWasPrice),
+          make(QuoteOwnDiscounts),
+          make(RedeemOwnDiscounts),
+          make(ListStaleRedemptions),
+          make(SettleRedemptions),
         ).quote(system, request);
         expect(quoted.ok).toBe(true);
         expect(promotions.lastScope).toEqual({

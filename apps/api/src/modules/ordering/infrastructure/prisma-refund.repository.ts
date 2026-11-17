@@ -14,6 +14,7 @@ import type {
 } from '../application/ports/refund.repository';
 import type { RefundLimit } from '../domain/refund-limits';
 import type { Fulfilment, LedgerState, OrderStatus, PaymentState } from '../domain/order';
+import { ledgerLineAmount } from '../domain/discounts';
 import type {
   LossBearer,
   LossReasonCode,
@@ -393,7 +394,8 @@ export class PrismaRefundRepository implements RefundRepository {
       paymentIntentId: row.order.stripePaymentIntentId,
       fulfilment: row.fulfilment as Fulfilment,
       readyAt: row.readyAt === null ? null : toInstant(row.readyAt),
-      shipping: row.shippingAmount,
+      // The delivery price the buyer paid: net of its discount (package T2).
+      shipping: row.shippingAmount - row.shippingDiscountAmount,
       shippingTax: row.shippingTaxAmount,
       shippingTaxRateBps: row.shippingTaxRateBps,
       shippingTaxInclusive: row.shippingTaxInclusive,
@@ -407,6 +409,8 @@ export class PrismaRefundRepository implements RefundRepository {
           id: l.id as Id<'OrderLine'>,
           quantity: l.quantity,
           unitAmount: l.unitAmount,
+          lineAmount: l.lineAmount,
+          discountAmount: l.discountAmount,
           taxInclusive: l.taxInclusive,
           taxRateBps: l.taxRateBps,
           taxAmount: l.taxAmount,
@@ -685,13 +689,18 @@ export class PrismaRefundRepository implements RefundRepository {
       found.push({
         refund: toRefund(row),
         freeLines: new Set(
-          seller.lines.filter((l) => l.lineAmount === 0n).map((l) => l.id as Id<'OrderLine'>),
+          seller.lines
+            .filter((l) => ledgerLineAmount(l) === 0n)
+            .map((l) => l.id as Id<'OrderLine'>),
         ),
         sellerOrderLedgerState: seller.ledgerState as LedgerState,
         shippingCharge:
           seller.shippingTaxAmount === null || seller.shippingTaxInclusive === null
             ? null
-            : seller.shippingAmount + (seller.shippingTaxInclusive ? 0n : seller.shippingTaxAmount),
+            : // What the buyer paid for delivery: net of its discount (package T2), as refunds cap it.
+              seller.shippingAmount -
+              seller.shippingDiscountAmount +
+              (seller.shippingTaxInclusive ? 0n : seller.shippingTaxAmount),
       });
     }
     return found;
