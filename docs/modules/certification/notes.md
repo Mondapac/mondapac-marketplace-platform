@@ -15,8 +15,9 @@ contract is in `docs/modules/system-requests/notes.md` ("Hooked areas").
   certificate or a product certification (approve, reject, revoke, suspend, reinstate).
 - The reverters (`application/registry/registry-reverters.ts`) restore the revision before as a
   **new** published revision (a save is never an edit), lock the type or policy row first, and
-  publish the save's own event (`certification-type-revised.v1`, `claim-policy-changed.v1`), so
-  the downstream re-evaluation is the one a save triggers. Audit: `certification.type.reverted`,
+  publish the save's own event (`certification-type-revised.v1`, `claim-policy-changed.v1`). Only
+  `claim-policy-changed.v1` triggers a re-evaluation today (catalog re-checks the tags the policy
+  touches); nothing consumes `certification-type-revised.v1` yet (see Open below). Audit: `certification.type.reverted`,
   `certification.claim-policy.reverted`, each with `requestId`.
 - **Safety**: a revert is classified by the save's own rule (`classifyTypeRevision`,
   `policyRevisionDiff`). One that would relax enforcement is `not-permitted` and the request stays
