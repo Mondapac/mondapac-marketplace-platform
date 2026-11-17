@@ -14,7 +14,7 @@ import {
 } from './types.ts';
 import { useTypeCall } from './use-type-call.ts';
 
-/** The most rows the API takes in one policy. */
+/** The most rows the API takes in one policy (`MAX_POLICY_ROWS` in the certification domain). */
 const MAX_ROWS = 304;
 
 interface RowDraft {
@@ -62,7 +62,11 @@ function changesOf(
   const before = new Map<string, string>();
   for (const row of published)
     before.set(
-      `row:${row.selector === 'platform-category' ? row.categoryId : row.handling}`,
+      keyOf({
+        selector: row.selector,
+        categoryId: row.categoryId ?? '',
+        handling: row.handling ?? '',
+      }),
       row.basis,
     );
   const after = new Map<string, string>();

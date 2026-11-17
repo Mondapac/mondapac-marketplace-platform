@@ -224,6 +224,41 @@ describe('claim policy page', () => {
     ).toContain('SELLER_OR_MANUFACTURER');
   });
 
+  it('puts the first focus on the way back, and Escape closes the dialog', () => {
+    view();
+    fireEvent.change(screen.getAllByLabelText('Basis')[0]!, {
+      target: { value: 'NOT_APPLICABLE' },
+    });
+    click('Review changes');
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('button', { name: 'Back to the form' })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Back to the form' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('stops adding rows at the most the API takes', () => {
+    const rows = Array.from({ length: 304 }, (_, index) => ({
+      selector: 'platform-category' as const,
+      categoryId: `0190a000-0000-7000-8000-${String(index).padStart(12, '0')}`,
+      basis: 'SELLER_REQUIRED',
+    }));
+    view({
+      published: {
+        revisionNo: 1,
+        createdAt: '2026-11-01T01:00:00.000Z',
+        rows,
+        reason: null,
+      },
+    });
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Add a category row' }).disabled,
+    ).toBe(true);
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Add a handling row' }).disabled,
+    ).toBe(true);
+  }, 30_000);
+
   it('lists what the API refused and keeps the dialog open', async () => {
     call.mockResolvedValue({
       ok: false,
@@ -426,5 +461,24 @@ describe('claim policy relay', () => {
     expect(await send('POST', `${base}/proposals/x/reject`)).toBe(0);
     expect(await send('POST', `${base}/reactivation`)).toBe(0);
     expect(await send('DELETE', base)).toBe(0);
+  });
+
+  it('refuses a policy write from another origin', async () => {
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response('{}', { status: 200 })),
+    );
+    const target = `certification/admin/claim-policies/${TYPE}/revisions`;
+    const request = new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'POST',
+      headers: {
+        host: 'admin.localhost:3002',
+        origin: 'http://evil.test',
+        'sec-fetch-site': 'cross-site',
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    });
+    await relay(config, request, target.split('/'), upstream);
+    expect(upstream).not.toHaveBeenCalled();
   });
 });
