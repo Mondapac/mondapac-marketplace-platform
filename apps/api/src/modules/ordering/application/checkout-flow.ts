@@ -9,7 +9,7 @@ import type {
   Temporal,
 } from '@mondapac/shared-kernel';
 import type { CartCheckoutFacade } from '../../cart';
-import type { CommissionPayoutsFacade } from '../../commission-payouts';
+import type { CommissionPayoutsFacade, ExclusiveBuyer } from '../../commission-payouts';
 import type { CustomersCheckoutFacade } from '../../customers';
 import type { QuotedDelivery, ShippingFacade } from '../../shipping';
 import type { TaxFacade } from '../../tax';
@@ -506,10 +506,18 @@ export async function placeOrder<T>(
   });
   // The account was erased between the read and the seal: its address is gone.
   if (!shipToSealed.ok) return err({ code: 'ordering.address-not-found' });
+  // The buyer's exclusive seller (customers phase 4b), asked once. Any failure means none: the
+  // standard rate (fail closed on the platform's side, never a lower rate by mistake).
+  const exclusive: ExclusiveBuyer | null = await deps.customers.ownExclusiveSeller(context).then(
+    (read) => (read.ok ? read.value : null),
+    () => null,
+  );
   // The commission rate of each seller is frozen on its lines now (COM-04); no rate, no order.
+  // The exclusive seller's lines get the Market's lower rate while its window is open.
   const rates = await deps.commission.commissionRates(
     context,
     plan.sellers.map((seller) => seller.sellerId),
+    exclusive,
   );
   if (!rates.ok) {
     return err(
@@ -653,6 +661,8 @@ export async function placeOrder<T>(
         taxInclusive: line.taxInclusive,
         reservationLineId,
         commissionRateBps: rate.rateBps,
+        commissionRateReason: rate.reason,
+        exclusiveSeller: exclusive !== null && exclusive.sellerId === seller.sellerId,
         taxRateBps: tax.rateBps,
         taxAmount: tax.tax,
         taxCategoryCode: categories.get(line.offerId)!,

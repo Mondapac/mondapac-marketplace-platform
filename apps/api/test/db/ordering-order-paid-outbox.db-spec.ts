@@ -170,6 +170,8 @@ describe.each(TEST_MARKETS)(
           taxInclusive: true,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
+          commissionRateReason: 'standard',
+          exclusiveSeller: false,
           taxRateBps: 1000,
           taxAmount: 114n,
           taxCategoryCode: 'taxable',

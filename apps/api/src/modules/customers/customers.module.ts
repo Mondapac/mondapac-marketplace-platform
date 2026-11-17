@@ -50,6 +50,7 @@ import { CreateAddress } from './application/use-cases/create-address.use-case';
 import { DeleteAddress } from './application/use-cases/delete-address.use-case';
 import { ListAddresses } from './application/use-cases/list-addresses.use-case';
 import { ReadDeliveryAddress } from './application/use-cases/read-delivery-address.use-case';
+import { ReadOwnExclusiveSeller } from './application/use-cases/read-own-exclusive-seller.use-case';
 import { SetDefaultAddress } from './application/use-cases/set-default-address.use-case';
 import { UpdateAddress } from './application/use-cases/update-address.use-case';
 import {
@@ -497,6 +498,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ...[
       SellerInviteLinkView,
       ReadExclusiveSeller,
+      ReadOwnExclusiveSeller,
       SellerInviteLinkRefresh,
       ResolveStoreInvitation,
       JoinStoreByInvitation,
@@ -627,8 +629,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ]),
     {
       provide: CUSTOMERS_CHECKOUT_FACADE,
-      inject: [ReadDeliveryAddress],
-      useFactory: (read: ReadDeliveryAddress) => new CustomersCheckoutFacadeImplementation(read),
+      inject: [ReadDeliveryAddress, ReadOwnExclusiveSeller],
+      useFactory: (read: ReadDeliveryAddress, exclusive: ReadOwnExclusiveSeller) =>
+        new CustomersCheckoutFacadeImplementation(read, exclusive),
     },
   ],
   exports: [

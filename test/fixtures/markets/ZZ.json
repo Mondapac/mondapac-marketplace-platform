@@ -19,6 +19,7 @@
   "commissionPayouts": {
     "defaultRateBps": 1200,
     "provisionalTaxRateBps": 1500,
+    "exclusiveCustomer": { "reductionBps": 2500, "floorBps": 500, "months": 6 },
     "payoutTerms": {
       "weekdays": ["THU", "FRI"],
       "localTime": "14:30",

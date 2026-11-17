@@ -227,6 +227,8 @@ describe.each(TEST_MARKETS)('admin document list in market %s (database)', (code
           taxInclusive: inclusive,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
+          commissionRateReason: 'standard',
+          exclusiveSeller: false,
           taxRateBps: options.oldLineTax === true ? null : inclusive ? 1000 : 1500,
           taxAmount: options.oldLineTax === true ? null : taxOfLine,
           taxCategoryCode:

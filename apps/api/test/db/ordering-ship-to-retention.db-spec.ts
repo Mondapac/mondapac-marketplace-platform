@@ -210,6 +210,8 @@ describe.each(TEST_MARKETS)('ship-to retention in market %s (database)', (code) 
         taxInclusive: true,
         reservationLineId: ids.next<'ReservationLine'>(),
         commissionRateBps: 1500,
+        commissionRateReason: 'standard',
+        exclusiveSeller: false,
         taxRateBps: 1000,
         taxAmount: 91n,
         taxCategoryCode: 'taxable',

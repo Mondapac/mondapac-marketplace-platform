@@ -161,6 +161,12 @@ model OrderingOrderLine {
   /// The commission rate in basis points, frozen when the order was placed (COM-04); null only
   /// on lines placed before the rate was frozen.
   commissionRateBps Int?                 @map("commission_rate_bps")
+  /// Why the line carries its rate (customers phase 4b): `standard`, or `exclusive` (the Market's
+  /// lower rate for the seller's exclusive customer). CHECK: `exclusive` needs `exclusiveSeller`.
+  commissionRateReason String           @default("standard") @map("commission_rate_reason")
+  /// True when the buyer was the exclusive customer of this line's seller at placement (joined
+  /// through its invite link), whether or not a lower rate applied.
+  exclusiveSeller   Boolean              @default(false) @map("exclusive_seller")
   /// The tax rate in basis points and the tax of the line in minor units, frozen when the order
   /// was placed (ADR-0039); both null only on lines placed before tax was recorded (CHECK).
   taxRateBps        Int?                 @map("tax_rate_bps")
