@@ -82,6 +82,21 @@ export function pageQuery(query: Record<string, unknown>): Record<string, unknow
   };
 }
 
+/**
+ * The query of a page-numbered list route: `page` and `pageSize` become numbers (a value that is
+ * not 1 to 4 digits becomes -1, which the list refuses).
+ */
+export function numericQuery(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...query };
+  for (const key of ['page', 'pageSize']) {
+    const value = out[key];
+    if (value !== undefined) {
+      out[key] = typeof value === 'string' && /^\d{1,4}$/.test(value) ? Number(value) : -1;
+    }
+  }
+  return out;
+}
+
 /** The JSON-only check and the closed object of a body: no unknown key, no array, no scalar. */
 export function closedBody(
   request: Request,

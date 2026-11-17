@@ -472,14 +472,12 @@ describe('review relay', () => {
     return upstream.mock.calls.length;
   };
 
-  it('relays the checks, scope and three decisions, and not revoke, confirmation or documents', async () => {
+  it('relays the checks, scope, three decisions and revoke, and not confirmation or documents', async () => {
     const base = `certification/admin/seller-certificates/${CERT}`;
-    for (const action of ['checks', 'scope', 'approve', 'request-changes', 'decline']) {
+    for (const action of ['checks', 'scope', 'approve', 'request-changes', 'decline', 'revoke']) {
       expect(await send('POST', `${base}/${action}`)).toBe(1);
     }
-    for (const action of ['revoke', 'issuer-confirmation']) {
-      expect(await send('POST', `${base}/${action}`)).toBe(0);
-    }
+    expect(await send('POST', `${base}/issuer-confirmation`)).toBe(0);
     expect(await send('GET', `${base}/documents/${SUB}`)).toBe(0);
     expect(await send('POST', 'certification/admin/seller-certificates/not-an-id/approve')).toBe(0);
   });
