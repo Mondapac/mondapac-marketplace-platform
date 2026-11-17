@@ -8872,6 +8872,94 @@
         "preview-hi": "Hi {name},",
         "preview-hi-anonymous": "Hi,",
         "preview-lead": "We have added new required details for some product categories. The products below are still on sale, and nothing changes for buyers right now. The next time you update one of them, you will need to fill in these details:"
+      },
+      "list": {
+        "title": "Products missing required details",
+        "intro": "Published products with a required detail still empty. They stay on sale; the seller is refused at the next submit until it is filled.",
+        "tabs": "Report views",
+        "tab": {
+          "all": "All"
+        },
+        "search": {
+          "label": "Search products",
+          "placeholder": "Product name or code"
+        },
+        "filter": {
+          "title": "Filter products"
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "missing": "Missing details",
+            "code": "Product code",
+            "name": "Name",
+            "family": "Feature set"
+          },
+          "count": {
+            "first": "Most missing first",
+            "second": "Fewest missing first"
+          },
+          "az": {
+            "first": "A to Z",
+            "second": "Z to A"
+          }
+        },
+        "sorted": "Sorted by {field}, {order}",
+        "col": {
+          "product": "Product",
+          "seller": "Seller",
+          "family": "Feature set",
+          "missing": "Missing",
+          "emailed": "Last emailed"
+        },
+        "chip-search": "Search: {text}",
+        "loading": "Loading products",
+        "match": "{count, plural, one {# product matches} other {# products match}}",
+        "range": "{from}–{to} of {total}",
+        "too-many": "More than {limit} products match. Add a search to see the rest.",
+        "no-access": "Your role cannot see this report.",
+        "error": {
+          "unavailable": "We could not load the report. Check your connection and try again.",
+          "refused": "The search cannot be used. Change it and try again."
+        },
+        "empty": {
+          "title": "No products are missing required details",
+          "body": "Every published product has a value for each required detail of its feature set.",
+          "no-match": "No products match",
+          "no-match-help": "Change the search or clear it."
+        },
+        "select": {
+          "page": "Select all products on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# product selected} other {# products selected}}",
+          "all": "{count, plural, one {The # matching product is selected} other {All # matching products are selected}}",
+          "all-open": "All matching products are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "actions": {
+          "header": "Actions",
+          "for": "Actions for {name}",
+          "open-product": "Open product",
+          "email-seller": "Email seller…"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# product selected} other {# products selected}}",
+          "all-open": "All matching products selected",
+          "email": "Email sellers…",
+          "email-none": "The selected products have no seller to email.",
+          "export-selected": "Export selected as CSV"
+        },
+        "partial": {
+          "title": "Only part of the Market was read",
+          "body": "The report reads the first 10,000 published products. The total and the order cover those products only; search to narrow it down."
+        }
       }
     },
     "waiting": {

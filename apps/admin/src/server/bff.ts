@@ -869,7 +869,18 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   ],
   'catalog/admin/variants/issue-counts': ['typeCode'],
   'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
-  'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
+  'catalog/admin/reports/products-missing-details': [
+    'sellerId',
+    'familyCode',
+    'afterId',
+    'limit',
+    'q',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'paging',
+  ],
   'ordering/admin/refund-limits': ['sellerId'],
 };
 /** Free text typed in a list's search box: 1 to 80 characters. */
@@ -1190,6 +1201,12 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     familyCode: /^[a-z][a-z0-9_-]{0,63}$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
+    q: SEARCH_TEXT,
+    sort: /^(code|name|family|missing)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
   },
   'catalog/admin/attributes': {
     type: /^(text|long-text|integer|decimal|boolean|date|select|multi-select|measure)$/,
