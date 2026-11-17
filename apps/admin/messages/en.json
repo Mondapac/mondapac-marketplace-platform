@@ -3115,6 +3115,9 @@
         "buyer": "The buyer's language",
         "english": "English only"
       },
+      "basket": {
+        "label": "Basket proposals from a list"
+      },
       "welcome": {
         "label": "Welcome message",
         "help": "Up to {max} characters. Leave it empty to use the storefront's default text.",

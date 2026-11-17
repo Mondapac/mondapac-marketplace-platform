@@ -44,7 +44,7 @@ whole reply: `conversation {id}`, one `card` per card, one `text {text}` per che
 - One model entry point (`platform/ai`, `ModelGateway`); only the files on the boundary rule's
   allow-list import it, and no provider SDK is imported anywhere (plain HTTPS to the Messages
   API). Provider failures are logged with the Market, tier and failure kind only.
-- Instructions version `buyer-assistant-4`; the last 12 messages; read-only tools that call the
+- Instructions version `buyer-assistant-5`; the last 12 messages; read-only tools that call the
   `search`, `catalog`, `sellers`, `certification` and `notifications` facades with the buyer's own
   `CallContext`: `search_products`, `list_bestsellers`, `list_specials`, `get_product`,
   `get_seller`, `list_categories`, `show_page`, `support_contact`. `open_support_form` answers
@@ -224,6 +224,59 @@ a seller or admin session is not read here. Every answer is `Cache-Control: no-s
   in the URL fragment (never a query string) and keep it in the tab's session storage only (F1/F3).
 - `?visitor=` stays a rollout aid, never a control.
 
+## Basket planner and typed lists (stage 1, S1-B2)
+
+Source: smart-baskets design sections 1 to 3. Off by default: the admin switch "Basket proposals
+from a list" (`basketProposals`, versioned like the other fields). While it is off `plan_basket` is
+not sent to the model and, if the model asks for it anyway, the call is refused before anything runs.
+
+- **Tool** `plan_basket { items: [{ text, quantity, unit? }] }`: 1 to 40 lines; `text` 2 to 80
+  characters (no controls, invisible format characters except the Persian ZWNJ, or markup);
+  `quantity` more than 0; `unit` is `kg`, `g`, `l`, `ml` or `each` (a count is a whole number up
+  to 99). Anything else refuses the whole call. The model parses a typed or pasted list (Persian,
+  English or mixed) and nothing else: it never picks a product, a pack, a store or a number.
+- **Planner** `domain/plan-basket.ts` (pure, no model): one storefront search per distinct line
+  with the buyer's own `CallContext` (6 results, the search's own order), then per line: _found_
+  when a result carries every word of the line and its pack fits, _unsure_ (up to 3 options) when
+  results exist but none fits clearly, _not found_ otherwise. Pack size comes from the product
+  name (`domain/pack-size.ts`: "2 kg", "500 g", "1,5 L", "6 x 330 ml", Persian units and digits);
+  a wanted weight or volume with no readable size is never guessed, it becomes an option. Packs are
+  rounded up; a pack more than twice the wish is an option only; the line says `larger` when the
+  packs add up to more than asked. A result with no price, or in another currency, is dropped.
+- **Modes** (`cart.mode`, read through settings): `multi-store` takes each line's best result
+  from any store and groups the card by store with a subtotal each and a total; `single-store`
+  picks one store by lines covered, then total, then store id, shows lines it does not have as
+  `not-in-store`, and lists up to 3 other stores with coverage and total. The same input always
+  gives the same basket.
+- **Card** `basket-proposal` (`{ kind, proposal }`, money as `{ amount: "<minor units>", currency }`):
+  `stores[]` (lines with `quantity` packs, unit `price`, `lineTotal`, `sizeNote`, up to 2
+  `alternatives`; `subtotal`, `subtotalIsFrom`), `uncertain[]`, `notFound[]`, `alternativeStores[]`,
+  `total`, `totalIsFrom`, `deliveryShownAtCheckout: true`. A price is a "from" price when the Offer's
+  Variants differ. Delivery fees and minimum orders are not read here (no published read): the
+  storefront shows them at checkout. History keeps only the ref `basket`; a proposal is never
+  replayed (prices go stale).
+- **What the model reads**: line counts (found, unsure, not found), the texts of not-found lines
+  and the cart mode, never a product, store, price or total. It cannot change a cart; the
+  storefront adds lines with the buyer's session after a click.
+- **Failure**: a search that cannot be read, or a plan slower than 12 s, gives `tool-failed` and
+  no card: a line is never reported "not found" because a read failed.
+- Evaluation set `buyer-assistant-5`: guard cases for totals, injections and diet claims in a
+  list, four list-parsing cases (English, Persian, mixed, bullets and fractions) whose expected calls
+  must pass the schema, and twelve invalid calls the parser must refuse.
+- **Variants**: the card carries `offerId`, not `variantId`; cart lines are keyed by both. A
+  weight or volume line whose Offer has Variants at different prices (`priceFrom`) is never
+  auto-picked (the size is often the Variant): it is an option and the buyer picks. F1 reads the
+  product page and settles the Variant (the buyer picks it when there are several) before it adds
+  any line, whether or not `priceFrom` is set: equal prices do not mean one Variant. A count
+  wish for an item whose name says it holds several ("12 pack", "6 x 330 ml") is also an option.
+- **Rollout**: do not switch "Basket proposals from a list" on before the storefront widget
+  (S1-F1) renders `basket-proposal`: until then the buyer would see no card. `not-in-store` means
+  "not among the store's results for this search", not "the store does not sell it".
+- Known limits: multi-store mode does not group lines by store to save delivery (no fee read);
+  unit and digit tables are metric, English and Persian; pack size is read from the name, so products with no size in the name become
+  options for weight and volume lines; a line's options come from at most 6 search results;
+  coverage in single-store mode is therefore judged on those results; a product whose name only contains the line's word inside a longer word is an option, not a pick. Stage 2 adds `cheapest`.
+
 ## Storefront wiring (stage 0, F1; `apps/web`)
 
 - **Path.** The widget talks to the API through the buyer relay (`app/api/[...path]`, same
@@ -258,6 +311,9 @@ a seller or admin session is not read here. Every answer is `Cache-Control: no-s
   The GA4 page view reports origin plus path and never the fragment.
 
 ## Tables (Mojtaba's sign-off before merge)
+
+Migration `20261116210000_assistant_basket_proposals_setting` adds `settings.basket_proposals`
+(boolean, default false; older versions read as off; the table stays insert-only).
 
 Migration `20261019224946_assistant_conversations`. `conversations`: one owner (account, or a
 32-byte guest token hash), `turns` 0 to 30, `retention_days` 0 or 30 (365 for an account only),
