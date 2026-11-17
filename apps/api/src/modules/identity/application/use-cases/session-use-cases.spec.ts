@@ -215,6 +215,8 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
           permissionKeys: [],
           sellerAccessState: null,
           secondFactorActive: false,
+          // The account's own zone (customers phase 2b: an admin's day filters); none set here.
+          timezone: null,
         },
       });
       expect(JSON.stringify(facade)).not.toContain('Example.com');

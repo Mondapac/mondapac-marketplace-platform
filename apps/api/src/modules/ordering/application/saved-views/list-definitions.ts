@@ -7,6 +7,16 @@ import { savedFilterListOf } from './saved-view-lists';
 // The admin Sales lists (Shipments, Refunds and Invoices) are guarded like the Orders list.
 // The seller order list is account-scoped and cannot be shared; it joins with the seller routes.
 
+/** The columns an admin can show in the Orders list, after the order reference (always shown). */
+export const ADMIN_ORDER_COLUMNS: readonly string[] = [
+  'status',
+  'placed',
+  'paid',
+  'customer',
+  'sellers',
+  'total',
+];
+
 const ADMIN_LIST_KEYS = [
   'admin.ordering.orders',
   'admin.ordering.shipments',
@@ -24,6 +34,9 @@ const definitionOf = (key: (typeof ADMIN_LIST_KEYS)[number]): ListDefinition => 
     population: 'admin',
     viewKey: ORDERING_ORDER_VIEW.key,
     shareKey: ORDERING_SAVED_FILTER_SHARE.key,
+    // Only the Orders list offers a stored column choice so far; the Sales lists keep theirs in
+    // the panel until they move to column preferences.
+    ...(key === 'admin.ordering.orders' ? { columns: ADMIN_ORDER_COLUMNS } : {}),
     parsePayload: (raw) => list.parsePayload(raw),
   };
 };

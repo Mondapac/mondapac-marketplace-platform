@@ -36,7 +36,14 @@ closed (`v: 1`; date filters are relative presets, never dates; search text is n
 - `admin.ordering.documents` (the Invoices page): tab `order-confirmation|credit-note`; filter
   `issued`; sort `issued|amount`.
 
+## B0-2 column preferences
+
+- `lists.column_preferences` keeps the columns a user chose per list (one row per account and list,
+  per store later), behind `COLUMN_PREFERENCE_STORE`. A list opts in with `columns` (its column ids)
+  on its `ListDefinition`; the panel's own column ids must stay the same.
+- Routes: `GET/PUT/DELETE /lists/admin/column-preferences` (`listKey` in the query or body). No
+  audit: it is a personal preference. Ids the list no longer offers are dropped on read.
+
 ## Not here yet
 
 - B0-1b seller side: `/lists/seller/saved-filters` and the seller lists' definitions.
-- B0-2: column preferences per user per list.

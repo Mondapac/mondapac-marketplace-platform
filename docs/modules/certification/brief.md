@@ -564,3 +564,18 @@ total (8 MiB per stream), a dictionary not read within bounds, or a timeout is r
 withdrawn). The document links bind seller and type by composite FKs, and the link trigger requires
 purpose `seller-certificate`. Not in this package: acting-as marker helper, body buffering before
 authentication, orphaned encrypted objects (sweeper), provisional seller zone at submit.
+
+## Change log: admin type revision form (2026-11-17)
+
+The admin panel writes a new type revision at `/certificates/types/:id/edit` (needs
+`certification.type.edit`). Scope and deviations from `ux.md`:
+
+- The check method is shown and cannot change. A revision carries the flags, default basis, icon
+  key and, for each language the published revision already has, name, customer description and
+  claim terms (one per line). Adding a language the Market supports but the type lacks is not in
+  this slice.
+- A review step lists what changes before saving. The client never decides what needs a second
+  admin: whether the revision is published or waits is the API's answer, shown after the redirect.
+- API refusals (`type.revision-invalid` issues, `type.revision-unchanged`, stale version) are
+  shown in words; a stale version offers a reload.
+- Not yet built: the list of past revisions and the claim policy screens (CA8).

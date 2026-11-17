@@ -12,6 +12,11 @@ export interface CustomerListQuery {
   readonly selector: CustomerSelector;
   /** The clock's now: the windows of the New, Active and Inactive tabs count back from it. */
   readonly now: Temporal.Instant;
+  /**
+   * The IANA zone the day filters (joined, last order) are read in: the admin's own, else the
+   * Market's (ADR-0005). A day is [its first instant there, the next day's first instant).
+   */
+  readonly zone: string;
 }
 
 /**
