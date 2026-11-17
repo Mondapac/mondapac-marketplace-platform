@@ -63,6 +63,10 @@ import {
   CUSTOMER_DATA_EXPORT_STEP_UP as PAYMENTS_CUSTOMER_DATA_EXPORT_STEP_UP,
   CUSTOMER_DATA_VIEW_KEY as PAYMENTS_CUSTOMER_DATA_VIEW_KEY,
 } from '../../src/modules/payments/application/customer-payments-flow';
+import {
+  CUSTOMER_DATA_VIEW_KEY as PROMOTIONS_CUSTOMER_DATA_VIEW_KEY,
+  ListCustomerPromotionUsages,
+} from '../../src/modules/promotions/application/use-cases/list-customer-promotion-usages.use-case';
 import { AdminCustomerDisputesExport } from '../../src/modules/payments/application/use-cases/admin-customer-disputes-export.use-case';
 import { AdminCustomerDisputes } from '../../src/modules/payments/application/use-cases/admin-customer-disputes.use-case';
 import { AdminCustomerPaymentsExport } from '../../src/modules/payments/application/use-cases/admin-customer-payments-export.use-case';
@@ -122,6 +126,7 @@ describe('the customer-page reads of the owning modules', () => {
   it('cast exactly the customers view key', () => {
     expect(ORDERING_CUSTOMER_DATA_VIEW_KEY).toBe(CUSTOMERS_CUSTOMER_VIEW.key);
     expect(PAYMENTS_CUSTOMER_DATA_VIEW_KEY).toBe(CUSTOMERS_CUSTOMER_VIEW.key);
+    expect(PROMOTIONS_CUSTOMER_DATA_VIEW_KEY).toBe(CUSTOMERS_CUSTOMER_VIEW.key);
   });
 
   it.each([
@@ -132,6 +137,11 @@ describe('the customer-page reads of the owning modules', () => {
       PAYMENTS_CUSTOMER_PAYMENT_VIEW.key,
     ],
     ['payments.admin-customer-disputes', AdminCustomerDisputes, PAYMENTS_CUSTOMER_PAYMENT_VIEW.key],
+    [
+      'promotions.list-customer-promotion-usages',
+      ListCustomerPromotionUsages,
+      'promotions.promotion.view',
+    ],
   ] as const)('%s requires its own view key and customers.customers.view', (name, useCase, own) => {
     expect(useCase.access).toEqual({
       name,
