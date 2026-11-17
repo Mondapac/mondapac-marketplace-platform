@@ -422,3 +422,8 @@ export {
   type LeftOut,
   type WriterDetail,
 } from './writer/writer-copy.ts';
+
+export { PagedSuperList, pagedQueryString } from './paged-list/paged-super-list.tsx';
+export * from './paged-list/types.ts';
+export { SelectionBar, type SelectionBarLabels } from './paged-list/selection-bar.tsx';
+export { cleanColumnIds } from './paged-list/columns.ts';
