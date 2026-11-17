@@ -103,6 +103,25 @@ export const CUSTOMERS_NOTES_WRITE = definePermission('customers', {
   protected: false,
 });
 
+/**
+ * See the shop's own Customers list (customers management phase 3): who bought from the shop or
+ * follows it, by the customer's code for this shop and first name only, never an email, an account
+ * id or what they did with another shop. A seller key, not protected; no default seller role lists
+ * it yet, so the Seller Owner holds it and grants it to a role.
+ */
+export const CUSTOMERS_SELLER_CUSTOMERS_VIEW = definePermission('customers', {
+  key: 'customers.seller-customers.view',
+  scope: 'seller',
+  protected: false,
+});
+
+/** Export the shop's Customers list as CSV or XLSX (codes and first names). Audited. */
+export const CUSTOMERS_SELLER_CUSTOMERS_EXPORT = definePermission('customers', {
+  key: 'customers.seller-customers.export',
+  scope: 'seller',
+  protected: false,
+});
+
 export const CUSTOMERS_PERMISSIONS = declarePermissions('customers', [
   CUSTOMERS_CUSTOMER_EDIT,
   CUSTOMERS_GROUPS_MANAGE,
@@ -114,4 +133,6 @@ export const CUSTOMERS_PERMISSIONS = declarePermissions('customers', [
   ACCOUNT_DELETION_SETTINGS_MANAGE,
   ACCOUNT_DELETION_SETTINGS_VIEW,
   BUYER_ACCOUNT_DELETE,
+  CUSTOMERS_SELLER_CUSTOMERS_EXPORT,
+  CUSTOMERS_SELLER_CUSTOMERS_VIEW,
 ]);

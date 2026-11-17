@@ -403,6 +403,27 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       );
     });
 
+    it('filters by a followed store, and refuses a store id that is not an id', async () => {
+      const t = seeded();
+      const ctx = t.as(person([VIEW]));
+      const shop = ids.next<'Seller'>();
+      const rows = t.listReader.rowsOf.get(market.marketId)!;
+      const amina = rows.find((row) => row.email === 'amina@example.test')!;
+      t.listReader.followers.add(`${shop}:${amina.accountId}`);
+      // A follower of another store, and the same email in another Market, do not match.
+      t.listReader.followers.add(`${ids.next<'Seller'>()}:${rows[1]!.accountId}`);
+      const foreign = t.listReader.rowsOf.get(otherMarket.marketId)![0]!.accountId;
+      t.listReader.followers.add(`${shop}:${foreign}`);
+      expect(emails(await t.list.execute(ctx, { filters: { followsSellerId: shop } }))).toEqual([
+        'amina@example.test',
+      ]);
+      const bad = await t.list.execute(ctx, { filters: { followsSellerId: 'shop-1' } });
+      expect(failure(bad)).toBe('validation.failed');
+      if (!bad.ok && bad.error.code === 'validation.failed') {
+        expect(bad.error.fields[0]?.path).toBe('filters.followsSellerId');
+      }
+    });
+
     it('reads the next page by cursor, without a total', async () => {
       const t = seeded();
       const ctx = t.as(person([VIEW]));

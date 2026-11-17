@@ -188,6 +188,11 @@ export class PrismaCustomerListReader implements CustomerListReader {
       }
     }
 
+    if (selector.followsSellerId != null) {
+      and.push({
+        sellerCustomers: { some: { sellerId: selector.followsSellerId, follower: true } },
+      });
+    }
     if (selector.status !== null) and.push({ status: selector.status });
     if (selector.group !== null) {
       and.push({ groupMemberships: { some: { groupId: selector.group } } });
