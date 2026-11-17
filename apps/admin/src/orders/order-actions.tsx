@@ -159,16 +159,19 @@ export function OrderMoreMenu({
   order,
   canRefund,
   csrfToken,
+  startOpen = false,
 }: {
   readonly order: AdminOrderDetail;
   readonly canRefund: boolean;
   readonly csrfToken: string;
+  /** The page was reached from the list's "Cancel order…": the dialog is open (when it can be). */
+  readonly startOpen?: boolean;
 }) {
   const t = useTranslations('orders.actions');
-  const [open, setOpen] = useState(false);
+  const block = cancelBlock(order);
+  const [open, setOpen] = useState(startOpen && block === null);
   const [done, setDone] = useState<CancelAnswer | null>(null);
   if (!canRefund) return null;
-  const block = cancelBlock(order);
   return (
     <>
       <div className="ms-auto">

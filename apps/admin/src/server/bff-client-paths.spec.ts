@@ -111,6 +111,7 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'POST ordering/admin/orders/:id/cancel',
         'POST ordering/admin/orders/:id/notes',
         'POST ordering/admin/orders/:id/seller-orders/:id/refunds',
+        'GET ordering/admin/orders',
         'GET ordering/admin/shipments',
         'GET ordering/admin/saved-filters',
         'POST ordering/admin/saved-filters',
