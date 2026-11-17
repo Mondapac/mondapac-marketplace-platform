@@ -186,6 +186,7 @@ describe('admin nav: daily work only', () => {
       'orders',
       'shipments',
       'refunds',
+      'invoices',
       'products',
       'categories',
       'attributes',

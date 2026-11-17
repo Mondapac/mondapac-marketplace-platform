@@ -14,7 +14,13 @@ export type SavedFilterVisibility = (typeof SAVED_FILTER_VISIBILITIES)[number];
 export const SAVED_FILTER_NAME_MAX = 60;
 /** Filters one account keeps in one list (all visibilities). */
 /** The order lists that have saved filters (their vocabulary is in the application layer). */
-export const SAVED_FILTER_LIST_KEYS = ['admin.ordering.orders', 'seller.ordering.orders'] as const;
+export const SAVED_FILTER_LIST_KEYS = [
+  'admin.ordering.orders',
+  'seller.ordering.orders',
+  'admin.ordering.shipments',
+  'admin.ordering.refunds',
+  'admin.ordering.documents',
+] as const;
 export type SavedFilterListKey = (typeof SAVED_FILTER_LIST_KEYS)[number];
 
 /** The sort ids of a saved filter's document. */

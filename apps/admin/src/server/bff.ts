@@ -30,9 +30,15 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Market's shipments (ordering, Sales > Shipments), read-only: the list (query: the tab,
     // search, filters and paging; see QUERY_KEYS).
     'ordering/admin/shipments',
+    // The export of the Shipments list as a CSV or XLSX file (ordering): the list's own filter,
+    // the visible columns, the chosen ids and the zone (see QUERY_KEYS).
+    'ordering/admin/shipments/export',
     // The Market's refunds (ordering, Sales > Refunds), read-only: the list (query: the tab,
     // search, filters and paging; see QUERY_KEYS).
     'ordering/admin/refunds',
+    // The Market's order confirmations and credit notes (ordering, Sales > Invoices), read-only:
+    // the list (query: the kind, search, issued dates and paging; see QUERY_KEYS).
+    'ordering/admin/documents',
     // The Market's buyer assistant settings, read again after another admin saved first.
     'assistant/admin/settings',
     // The Market's support email, read again after another admin saved first.
@@ -100,6 +106,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/saved-filters',
     // The saved views of the order list (ordering; query: `listKey`).
     'ordering/admin/saved-filters',
+    // The saved views of the admin Sales lists (lists; query: `listKey`, see QUERY_SHAPES).
+    'lists/admin/saved-filters',
     // The buyer account deletion setting, read again after a conflict, and the pending deletion
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
@@ -170,6 +178,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
+    // The order of the admin's own saved views of one list (lists): a closed body, `listKey` and
+    // `ids`. A fixed path, so `order` is never read as a filter id.
+    'lists/admin/saved-filters/order',
     // The review policy (system-requests): one area at a time, and the review period; each
     // behind a fresh two-step code. The area is a closed list, so each path is spelled out.
     'system-requests/admin/review-policy/areas/people',
@@ -305,6 +316,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'certification/admin/issuers',
     // Save the order list's current view as a tab (ordering): a closed body, for me or everyone.
     'ordering/admin/saved-filters',
+    // Save the current view of a Sales list as a tab (lists): a closed body, for me or everyone.
+    'lists/admin/saved-filters',
   ]),
 };
 
@@ -505,6 +518,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/admin/roles/:id',
     // A saved view of the order list: its name and who can use it (ordering).
     'ordering/admin/saved-filters/:id',
+    // A saved view of a Sales list: its name and who can use it (lists).
+    'lists/admin/saved-filters/:id',
     'sellers/admin/:id/review/manual-register-check',
     // Whether the seller may propose categories (sellers, SEL-26; categories C9-0).
     'sellers/admin/:id/category-proposals',
@@ -577,6 +592,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'blog/admin/taxonomy/tags/:id',
     // A saved view of the order list (ordering).
     'ordering/admin/saved-filters/:id',
+    // A saved view of a Sales list (lists); the list key is in the query.
+    'lists/admin/saved-filters/:id',
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
@@ -657,6 +674,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
+/** The lists whose saved views cross the generic route: the three Sales lists (and Orders). */
+const SALES_LIST_KEY = /^admin\.ordering\.(orders|shipments|refunds|documents)$/;
+
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   // The System requests queue: the view, search, filters, sort and either page numbers or a
   // cursor (the API validates every value as well).
@@ -757,6 +777,24 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'shippedFrom',
     'shippedTo',
   ],
+  // The Shipments export: the list's filter keys (no paging or sort), the file's format and
+  // columns, the chosen ids and the zone of its times.
+  'ordering/admin/shipments/export': [
+    'format',
+    'columns',
+    'ids',
+    'zone',
+    'stage',
+    'q',
+    'search',
+    'deliveryMethod',
+    'attention',
+    'sellerId',
+    'paidFrom',
+    'paidTo',
+    'shippedFrom',
+    'shippedTo',
+  ],
   // The Refunds list: the tab (`state`), the search (`q` or `search`), the filters and the paging
   // of either List paging mode. No amount filters: the panel has no input for them (spec Q3).
   'ordering/admin/refunds': [
@@ -777,7 +815,24 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'from',
     'to',
   ],
+  // The Invoices list: the tab (`kind`), the search (`q` or `search`), the issued dates and the
+  // paging of either List paging mode (the API refuses the two modes mixed).
+  'ordering/admin/documents': [
+    'kind',
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+    'sort',
+    'direction',
+    'q',
+    'search',
+    'sellerId',
+    'from',
+    'to',
+  ],
   'ordering/admin/saved-filters': ['listKey'],
+  'lists/admin/saved-filters': ['listKey'],
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
@@ -892,6 +947,35 @@ const HOLD_FILTER_SHAPES: Readonly<Record<string, RegExp>> = {
   from: ISO_INSTANT,
   to: ISO_INSTANT,
 };
+/** The ids of an export: up to 200 UUIDs, the cap of the bulk action. */
+const EXPORT_IDS =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i;
+/** An IANA time zone name such as `Australia/Brisbane` or `Etc/GMT+10`. */
+const EXPORT_ZONE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+){0,2}$/;
+/** The columns an export may name, in any order (the list may show none: the server adds the fixed ones). */
+const exportColumns = (keys: readonly string[]): RegExp =>
+  new RegExp(`^(?:(?:${keys.join('|')})(?:,(?:${keys.join('|')})){0,${keys.length - 1}})?$`);
+/** The Sales list exports: a malformed key there is refused (400), never dropped. */
+const SALES_EXPORT_PATH = /^ordering\/admin\/(shipments|refunds|documents)\/export$/;
+const SALES_EXPORT_STRICT_KEYS = ['ids', 'columns', 'kind', 'format', 'zone'] as const;
+/**
+ * True when an export key that narrows or shapes the file is present but malformed, repeated or
+ * oversized. Dropping it would widen the export to the whole filter, so the relay answers 400.
+ */
+function malformedSalesExport(target: string, requestUrl: string): boolean {
+  if (!SALES_EXPORT_PATH.test(target)) return false;
+  const source = new URL(requestUrl).searchParams;
+  return SALES_EXPORT_STRICT_KEYS.some((key) => {
+    const values = source.getAll(key);
+    if (values.length === 0) return false;
+    const value = values[0] ?? '';
+    return (
+      values.length > 1 ||
+      value.length > (QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX) ||
+      QUERY_SHAPES[target]?.[key]?.test(value) === false
+    );
+  });
+}
 /** The Seller accounts list's filters and sort (payments validates every value again). */
 const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
   status: /^(not-started|pending|enabled|restricted|rejected)$/,
@@ -948,6 +1032,36 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     shippedFrom: ISO_INSTANT,
     shippedTo: ISO_INSTANT,
   },
+  'ordering/admin/shipments/export': {
+    format: /^(csv|xlsx)$/,
+    columns: exportColumns([
+      'store',
+      'customer',
+      'sellerOrderId',
+      'paid',
+      'delivery',
+      'carrier',
+      'fleet',
+      'ready',
+      'shipped',
+      'delivered',
+      'shipping',
+      'total',
+      'refunded',
+    ]),
+    ids: EXPORT_IDS,
+    zone: EXPORT_ZONE,
+    stage: /^(to-prepare|ready|shipped|delivered|refunded)$/,
+    deliveryMethod: /^(pickup|instant|same_day|scheduled)$/,
+    attention: /^(any|no-carrier|carrier-unknown|cancel-unknown)$/,
+    sellerId: UUID,
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    paidFrom: ISO_INSTANT,
+    paidTo: ISO_INSTANT,
+    shippedFrom: ISO_INSTANT,
+    shippedTo: ISO_INSTANT,
+  },
   'ordering/admin/refunds': {
     state: /^(pending|succeeded|failed)$/,
     sort: /^(requested|settled|amount)$/,
@@ -964,6 +1078,22 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     // The API's own cursor: epoch milliseconds of the request, a dot and the refund id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
     // An id, a Stripe refund id or a name: free text, up to the box's 80 characters.
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
+  },
+  'ordering/admin/documents': {
+    kind: /^(order-confirmation|credit-note)$/,
+    sort: /^(issued|amount)$/,
+    direction: /^(asc|desc)$/,
+    sellerId: UUID,
+    page: /^[0-9]{1,4}$/,
+    pageSize: /^[0-9]{1,3}$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the issue time, a dot and the document id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+    // An id or a name: free text, up to the box's 80 characters.
     q: SEARCH_TEXT,
     search: SEARCH_TEXT,
     from: ISO_INSTANT,
@@ -1061,6 +1191,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'catalog/admin/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'ordering/admin/saved-filters': { listKey: /^admin\.ordering\.orders$/ },
+  'lists/admin/saved-filters': { listKey: SALES_LIST_KEY },
   'commission-payouts/admin/payouts': {
     view: /^(all|awaiting-approval|sending|paid|failed|not-sent)$/,
     status:
@@ -1272,6 +1403,7 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 const NOTE_SHAPE = /^[\s\S]{1,500}$/;
 /** DELETE templates whose query crosses: the version seen and the closed reason code. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'lists/admin/saved-filters/:id': { listKey: SALES_LIST_KEY },
   'ordering/admin/refund-limits/sellers/:id': { expectedVersion: /^[0-9]{1,9}$/ },
   // The note for the reviewers (System requests), 1 to 500 characters; the API checks it too.
   'commission-payouts/admin/sellers/:id/commission-rate': { note: NOTE_SHAPE },
@@ -1285,6 +1417,7 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
+  'ordering/admin/shipments/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
@@ -1451,7 +1584,7 @@ const FORWARDED_REQUEST_HEADERS = [
 const FORWARDED_RESPONSE_HEADERS = [
   'content-type',
   'retry-after',
-  // The product and payout exports (CSV or XLSX) and the import report CSV arrive as attachments with a file name the API made.
+  // The product, payout and Sales list exports (CSV or XLSX) and the import report CSV arrive as attachments with a file name the API made.
   'content-disposition',
 ] as const;
 
@@ -1630,6 +1763,9 @@ export async function relay(
     const read = await readCapped(request, bodyCap);
     if (read === null) return jsonError(413, 'request.too-large');
     body = read;
+  }
+  if (request.method === 'GET' && malformedSalesExport(target, request.url)) {
+    return jsonError(400, 'request.invalid');
   }
   const refused = strictQueryRefusal(request.method, target, request.url);
   if (refused !== null) {

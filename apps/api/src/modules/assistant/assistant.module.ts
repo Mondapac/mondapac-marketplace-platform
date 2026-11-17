@@ -39,7 +39,9 @@ import { ViewAssistantSettingsHistory } from './application/use-cases/view-assis
 import { ViewAssistantSettings } from './application/use-cases/view-assistant-settings.use-case';
 import { ViewConversation } from './application/use-cases/view-conversation.use-case';
 import { ViewStorefrontAssistant } from './application/use-cases/view-storefront-assistant.use-case';
-import { ASSISTANT_PERMISSIONS } from './contracts';
+import { AdminCustomerConversations } from './application/use-cases/admin-customer-conversations.use-case';
+import { ASSISTANT_PERMISSIONS, CUSTOMER_CONVERSATIONS_FACADE } from './contracts';
+import { CustomerConversationsFacadeImplementation } from './presentation/customer-conversations.facade';
 import { ASSISTANT_AUDIT_ACTIONS } from './domain/audit';
 import { ASSISTANT_EVENTS } from './domain/events';
 import { assistantProviders } from './infrastructure/assistant-providers';
@@ -92,7 +94,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * of `search`, `catalog` and `notifications`, checked by the reply guard and streamed as cards and
  * text; conversations are encrypted per conversation and purged by retention; spend is counted
  * per Market day and stops the assistant at a cap. The guardrails and the model API key are not
- * settings.
+ * settings. Customers management phase 2b: an admin may see how many conversations a customer had
+ * and when, never what was said.
  */
 @Module({
   imports: [
@@ -132,10 +135,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewConversation,
       DeleteConversation,
       PurgeConversations,
+      // Customers management phase 2b: the admin's read of a customer's conversation dates.
+      AdminCustomerConversations,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    {
+      provide: CUSTOMER_CONVERSATIONS_FACADE,
+      inject: [AdminCustomerConversations],
+      useFactory: (conversations: AdminCustomerConversations) =>
+        new CustomerConversationsFacadeImplementation(conversations),
+    },
     registerJobsFrom('assistant', [PurgeConversations], (purge: PurgeConversations) => [
       purgeConversationsJob(purge),
     ]),
   ],
+  exports: [CUSTOMER_CONVERSATIONS_FACADE],
 })
 export class AssistantModule {}

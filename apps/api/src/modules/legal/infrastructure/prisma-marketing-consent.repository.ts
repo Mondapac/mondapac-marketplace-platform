@@ -12,6 +12,16 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 
+const changesWhere = (
+  market: MarketContext,
+  accountId: Id<'Account'>,
+  channels: readonly MarketingChannel[] | null,
+) => ({
+  marketId: market.marketId,
+  accountId,
+  ...(channels === null ? {} : { channel: { in: [...channels] } }),
+});
+
 /**
  * {@link MarketingConsentRepository} on `legal.marketing_consents` and its append-only history
  * `legal.marketing_consent_changes`, scoped by `marketId` and the account in every `where`.
@@ -37,6 +47,47 @@ export class PrismaMarketingConsentRepository implements MarketingConsentReposit
       changedAt: toInstant(row.changedAt),
       createdAt: toInstant(row.createdAt),
     };
+  }
+
+  async changesOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    channels: readonly MarketingChannel[] | null,
+    direction: 'asc' | 'desc',
+    window: { readonly offset: number; readonly limit: number },
+  ): Promise<MarketingConsentChange[]> {
+    const rows = await this.prisma.tx(market).legalMarketingConsentChange.findMany({
+      where: changesWhere(market, accountId, channels),
+      select: {
+        id: true,
+        accountId: true,
+        channel: true,
+        granted: true,
+        source: true,
+        occurredAt: true,
+      },
+      orderBy: [{ occurredAt: direction }, { id: direction }],
+      skip: window.offset,
+      take: window.limit,
+    });
+    return rows.map((row) => ({
+      id: row.id as Id<'MarketingConsentChange'>,
+      accountId: row.accountId as Id<'Account'>,
+      channel: row.channel as MarketingChannel,
+      granted: row.granted,
+      source: row.source as ConsentSource,
+      occurredAt: toInstant(row.occurredAt),
+    }));
+  }
+
+  countChangesOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    channels: readonly MarketingChannel[] | null,
+  ): Promise<number> {
+    return this.prisma.tx(market).legalMarketingConsentChange.count({
+      where: changesWhere(market, accountId, channels),
+    });
   }
 
   async record(

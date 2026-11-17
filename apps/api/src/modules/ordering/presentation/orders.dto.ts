@@ -219,6 +219,18 @@ export class ShipToBody {
   @ApiProperty({ description: 'ISO 3166 country of the address.' }) countryCode!: string;
 }
 
+/** How a shop knows the customer of its own order (owner decision 2026-11-17). */
+export class SellerOrderCustomerBody {
+  @ApiProperty({ example: 'K7QM-2XTR', description: "The customer's code for this shop." })
+  code!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The first word of the display name (escape it); null when there is none.',
+  })
+  firstName!: string | null;
+}
+
 const SHIP_TO_DESCRIPTION =
   'The delivery address chosen at checkout, fixed on the order; null on orders placed before ' +
   'it was recorded and once the account was erased.';
@@ -625,24 +637,23 @@ export class SellerOrderShipBody extends SellerOrderDetailBody {
   refunds!: SellerOrderRefundBody[];
 
   @ApiProperty({
-    type: ShipToBody,
+    type: SellerOrderCustomerBody,
     nullable: true,
     description:
-      `${SHIP_TO_DESCRIPTION} Recipient name, phone and address only. Also null once every ` +
-      'unit is refunded (refunds not failed), 30 days after the order was delivered (or ' +
-      'collected, for a pickup order), and 60 days after it was shipped when it was never ' +
-      'delivered.',
+      "The customer as this shop knows them: the customer's code for the shop and first name " +
+      'only, as on the Customers list. Never the delivery address, the full name, the phone or ' +
+      'the email: the platform books the delivery. Null while the code is not given yet (it ' +
+      'follows the payment) or when it could not be read.',
   })
-  shipTo!: ShipToBody | null;
+  customer!: SellerOrderCustomerBody | null;
 
   @ApiProperty({
     type: String,
     nullable: true,
     description:
       "The customer's note to this seller (plain text, 200 characters at most; escape it). " +
-      'Null when none was written, on older orders, once the account was erased, and ' +
-      'whenever `shipTo` is withheld (refunded in full, 30 days after delivery, 60 days after ' +
-      'an undelivered shipment).',
+      'Null when none was written, on older orders, once the account was erased, once every ' +
+      'unit is refunded, 30 days after delivery and 60 days after an undelivered shipment.',
   })
   buyerNote!: string | null;
 
@@ -723,7 +734,10 @@ const shipToBody = (shipTo: ShipTo | null): ShipToBody | null =>
 
 export const sellerOrderShipBody = (order: LabelledSellerOrderShipView): SellerOrderShipBody => ({
   ...sellerOrderDetailBody(order),
-  shipTo: shipToBody(order.shipTo),
+  customer:
+    order.customer === null
+      ? null
+      : { code: order.customer.code, firstName: order.customer.firstName },
   refunds: order.refunds.map((refund) => ({
     refundId: refund.refundId,
     requestedBy: refund.requestedBy,
@@ -735,8 +749,8 @@ export const sellerOrderShipBody = (order: LabelledSellerOrderShipView): SellerO
     requestedAt: refund.requestedAt.toString(),
     settledAt: refund.settledAt?.toString() ?? null,
   })),
-  // A seller reads its own note only.
-  buyerNote: order.shipTo?.sellerNotes?.[order.sellerId] ?? null,
+  // A seller reads its own note only (picked in the flow).
+  buyerNote: order.buyerNote,
   pickup:
     order.pickup === null
       ? null

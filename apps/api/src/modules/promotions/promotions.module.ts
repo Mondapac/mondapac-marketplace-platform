@@ -70,6 +70,7 @@ import { GrantDueCredits } from './application/use-cases/grant-due-credits.use-c
 import { grantDueCreditsJob } from './presentation/jobs/grant-due-credits.job';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { ListCustomerPromotionCredits } from './application/use-cases/list-customer-promotion-credits.use-case';
+import { ListCustomerPromotionUsages } from './application/use-cases/list-customer-promotion-usages.use-case';
 import { ListPromotionCredits } from './application/use-cases/list-promotion-credits.use-case';
 import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
 import { ViewMyReferral } from './application/use-cases/view-my-referral.use-case';
@@ -259,6 +260,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CheckWasPrice,
       ListPromotionCredits,
       ListCustomerPromotionCredits,
+      ListCustomerPromotionUsages,
       ApplyReferralCode,
       ViewMyReferral,
       ViewStoreFollowGift,
