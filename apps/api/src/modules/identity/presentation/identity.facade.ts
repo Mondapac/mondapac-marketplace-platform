@@ -14,6 +14,12 @@ import type { CustomerDirectoryRecords } from '../application/use-cases/customer
 import type { CustomerAccountExists } from '../application/use-cases/customer-account-exists.use-case';
 import type { AdminEndCustomerSessions } from '../application/use-cases/admin-end-customer-sessions.use-case';
 import type { AdminRenameCustomer } from '../application/use-cases/admin-rename-customer.use-case';
+import type { AdminCustomerSignIns } from '../application/use-cases/admin-customer-sign-ins.use-case';
+import type { AdminCustomerSessions } from '../application/use-cases/admin-customer-sessions.use-case';
+import type { AdminRevealCustomerSignIn } from '../application/use-cases/admin-reveal-customer-sign-in.use-case';
+import type { AdminSignOutCustomer } from '../application/use-cases/admin-sign-out-customer.use-case';
+import type { AdminSendCustomerPasswordReset } from '../application/use-cases/admin-send-customer-password-reset.use-case';
+import type { CustomerSignInsRequest } from '../contracts/customer-security';
 import type { EndAllCustomerSessions } from '../application/use-cases/end-all-customer-sessions.use-case';
 import type { EndOtherCustomerSessions } from '../application/use-cases/end-other-customer-sessions.use-case';
 import type { EraseCustomerAccount } from '../application/use-cases/erase-customer-account.use-case';
@@ -64,6 +70,11 @@ export interface IdentityFacadeUseCases {
   readonly ownAccountTiedToSeller: OwnAccountTiedToSeller;
   readonly eraseCustomerAccount: EraseCustomerAccount;
   readonly adminRenameCustomer: AdminRenameCustomer;
+  readonly adminCustomerSignIns: AdminCustomerSignIns;
+  readonly adminCustomerSessions: AdminCustomerSessions;
+  readonly adminRevealCustomerSignIn: AdminRevealCustomerSignIn;
+  readonly adminSignOutCustomer: AdminSignOutCustomer;
+  readonly adminSendCustomerPasswordReset: AdminSendCustomerPasswordReset;
 }
 
 /**
@@ -87,6 +98,7 @@ export class IdentityFacadeImplementation implements IdentityFacade {
       permissionKeys: summary.permissionKeys,
       sellerAccessState: summary.sellerAccessState,
       secondFactorActive: summary.secondFactorActive,
+      timezone: summary.timezone,
     });
   }
 
@@ -266,5 +278,28 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     input: { readonly accountId: Id<'Account'>; readonly displayName: string },
   ) {
     return this.useCases.adminRenameCustomer.execute(context, input);
+  }
+
+  adminCustomerSignIns(context: CallContext, request: CustomerSignInsRequest) {
+    return this.useCases.adminCustomerSignIns.execute(context, request);
+  }
+
+  adminRevealCustomerSignIn(
+    context: CallContext,
+    input: { readonly accountId: Id<'Account'>; readonly signInId: Id<'SignInRecord'> },
+  ) {
+    return this.useCases.adminRevealCustomerSignIn.execute(context, input);
+  }
+
+  adminCustomerSessions(context: CallContext, accountId: Id<'Account'>) {
+    return this.useCases.adminCustomerSessions.execute(context, { accountId });
+  }
+
+  adminSignOutCustomer(context: CallContext, accountId: Id<'Account'>) {
+    return this.useCases.adminSignOutCustomer.execute(context, { accountId });
+  }
+
+  adminSendCustomerPasswordReset(context: CallContext, accountId: Id<'Account'>) {
+    return this.useCases.adminSendCustomerPasswordReset.execute(context, { accountId });
   }
 }

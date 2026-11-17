@@ -30,6 +30,16 @@ export type ReadFailure =
   | { readonly code: 'ordering.search-unavailable' }
   | { readonly code: 'ordering.order-not-found' };
 
+/**
+ * What an export adds to an admin Sales list read: the selected rows (`ids`, an AND beside the
+ * filter) and, on its Previous/Next pages, no tab counts (`skipCounts`: the file never shows them,
+ * so they are answered as zeros instead of being read on every page).
+ */
+export interface ListScope {
+  readonly ids?: readonly string[] | null;
+  readonly skipCounts?: boolean;
+}
+
 export const DEFAULT_PAGE_SIZE = 25;
 export const MAX_PAGE_SIZE = 100;
 const STATUSES: readonly OrderStatus[] = ['pending-payment', 'confirmed', 'cancelled'];

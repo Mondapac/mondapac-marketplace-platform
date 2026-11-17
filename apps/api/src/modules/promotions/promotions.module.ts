@@ -1,4 +1,10 @@
-import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import {
+  Inject,
+  Module,
+  type FactoryProvider,
+  type InjectionToken,
+  type OnModuleInit,
+} from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_TRAIL_READER } from '../../platform/audit/audit-trail-reader';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
@@ -22,8 +28,13 @@ import { WalletModule } from '../wallet';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
 import { CREDIT_REPOSITORY, REFERRAL_REPOSITORY } from './application/ports/credit.repository';
-import { CustomersModule } from '../customers';
+import {
+  CUSTOMER_GROUP_USAGE_REGISTRY,
+  CustomersModule,
+  type CustomerGroupUsageRegistry,
+} from '../customers';
 import { EngagementModule } from '../engagement';
+import { CountGroupSegmentUses } from './application/use-cases/count-group-segment-uses.use-case';
 import {
   CUSTOMER_GROUP_MEMBERSHIP,
   CUSTOMER_ORDER_HISTORY,
@@ -52,6 +63,7 @@ import type { PromotionsDependencies } from './application/promotions-dependenci
 import { ApplyReferralCode } from './application/use-cases/apply-referral-code.use-case';
 import { CashbackOnDelivery } from './application/use-cases/cashback-on-delivery.use-case';
 import { ListCustomerPromotionCredits } from './application/use-cases/list-customer-promotion-credits.use-case';
+import { ListCustomerPromotionUsages } from './application/use-cases/list-customer-promotion-usages.use-case';
 import { ListPromotionCredits } from './application/use-cases/list-promotion-credits.use-case';
 import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
 import { ViewMyReferral } from './application/use-cases/view-my-referral.use-case';
@@ -238,11 +250,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CheckWasPrice,
       ListPromotionCredits,
       ListCustomerPromotionCredits,
+      ListCustomerPromotionUsages,
       ApplyReferralCode,
       ViewMyReferral,
       ViewStoreFollowGift,
       CashbackOnDelivery,
       QualifyReferralOnDelivery,
+      CountGroupSegmentUses,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: PROMOTIONS_FACADE,
@@ -285,4 +299,22 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ReleaseCancelledRedemptions,
   ],
 })
-export class PromotionsModule {}
+export class PromotionsModule implements OnModuleInit {
+  constructor(
+    @Inject(CUSTOMER_GROUP_USAGE_REGISTRY) private readonly groupUsage: CustomerGroupUsageRegistry,
+    private readonly countGroupUses: CountGroupSegmentUses,
+  ) {}
+
+  /**
+   * Tells customers which promotions still name a manual customer group (phase 2b): registered in
+   * the registry customers owns, so customers never imports promotions.
+   */
+  onModuleInit(): void {
+    this.groupUsage.register({
+      liveUsesOf: async (context, groupId) => {
+        const counted = await this.countGroupUses.execute(context, { groupId });
+        return counted.ok ? { ok: true, value: counted.value.uses } : counted;
+      },
+    });
+  }
+}

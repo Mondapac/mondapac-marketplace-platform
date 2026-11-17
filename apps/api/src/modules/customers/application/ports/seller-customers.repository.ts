@@ -74,6 +74,16 @@ export interface SellerCustomerRepository {
     code: string,
   ): Promise<SellerCustomerRecord | null>;
 
+  /**
+   * The seller's rows of these accounts (accounts the seller has no row for are dropped). For
+   * the seller's own order pages, which know the account and show the code and first name.
+   */
+  findByAccounts(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<readonly SellerCustomerRecord[]>;
+
   /** The seller's rows of these codes (others dropped), in the order given. */
   findByCodes(
     market: MarketContext,

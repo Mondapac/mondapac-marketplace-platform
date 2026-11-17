@@ -3,7 +3,7 @@
 // people are account ids, with an optional name when the API sends one.
 
 import type { ListPaging } from '../orders/orders-query.ts';
-import { startOfDay } from '../orders/orders-query.ts';
+import { startOfDay } from '../sales/day-start.ts';
 
 export type { ListPaging };
 
