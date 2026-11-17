@@ -744,7 +744,18 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'direction',
   ],
   'customers/admin/deletion-requests': ['cursor', 'limit'],
-  'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/brands': [
+    'status',
+    'search',
+    'afterId',
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   // The category tree, narrowed to the categories of one feature set (categories, A4).
   'catalog/admin/categories': ['featureSetId'],
   'catalog/admin/category-proposals': ['afterId', 'limit'],
@@ -1021,6 +1032,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     status: /^(draft|active|archived)$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^(name|status|created|updated)$/,
+    direction: /^(asc|desc)$/,
   },
   // `targetId` is the picked new parent or merge target, or `top` for a department (C4b).
   'catalog/admin/categories/:id/impact': {

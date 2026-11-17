@@ -58,11 +58,14 @@ function failureOf(status: number, code: string): Failure {
 
 /** The query string a list route is asked: the tab, search, filters, sort and page. */
 export function pagedQueryString<Row>(
-  config: Pick<PagedListConfig<Row>, 'tabs' | 'tabParam'>,
+  config: Pick<PagedListConfig<Row>, 'tabs' | 'tabParam' | 'tabParams'>,
   query: PagedQuery,
   paging: ListPagingMode,
 ): string {
   const params = new URLSearchParams();
+  for (const [name, value] of Object.entries(config.tabParams?.(query.tab) ?? {})) {
+    params.set(name, value);
+  }
   if (query.tab !== config.tabs[0] && config.tabParam !== undefined) {
     params.set(config.tabParam, query.tab);
   }
@@ -197,7 +200,7 @@ export function PagedSuperList<Row>({
     return () => {
       current = false;
     };
-  }, [loadCounts, filtersKey]);
+  }, [loadCounts, filtersKey, refreshKey]);
 
   // A new tab, search, filter or sort is another list: the selection does not follow it.
   const listKey = JSON.stringify([query.tab, query.q, query.filters, query.sort, query.direction]);

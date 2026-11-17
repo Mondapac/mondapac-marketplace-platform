@@ -14,6 +14,11 @@ import { BrandsView } from './brands-view.tsx';
 import { defaultTarget } from './merge-queue.tsx';
 import type { BrandRow, QueueBody, QueueBrand } from './types.ts';
 
+const push = vi.fn();
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
+}));
+
 const call = vi.mocked(callApi);
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const brand = (n: number, over: Partial<BrandRow> = {}): BrandRow => ({
@@ -60,19 +65,49 @@ function serve(routes: Record<string, Handler>) {
 }
 
 const emptyQueue: QueueBody = { groups: [] };
+/** What the API names for a row, by status (the caller holds `catalog.brand.edit` or not). */
+let granted = true;
+const actionsOf = (row: BrandRow): string[] =>
+  !granted || row.status === 'archived'
+    ? []
+    : row.status === 'active'
+      ? ['edit', 'merge', 'deactivate']
+      : ['edit', 'deactivate'];
+const page = (items: BrandRow[]) => () =>
+  ok({
+    items: items.map((row) => ({ ...row, actions: actionsOf(row) })),
+    total: items.length,
+    page: 1,
+    pageSize: 25,
+    paging: 'pages',
+    hasNext: false,
+  });
 const lists = (active: BrandRow[] = [], draft: BrandRow[] = [], archived: BrandRow[] = []) => ({
-  'GET catalog/admin/brands?status=active': ok({ items: active, nextAfterId: null }),
-  'GET catalog/admin/brands?status=draft': ok({ items: draft, nextAfterId: null }),
-  'GET catalog/admin/brands?status=archived': ok({ items: archived, nextAfterId: null }),
+  'GET catalog/admin/brands?status=active': page(active),
+  'GET catalog/admin/brands?status=draft': page(draft),
+  'GET catalog/admin/brands?status=archived': page(archived),
   'GET catalog/admin/brands/merge-queue': ok(emptyQueue),
 });
 
 function mount(canEdit = true) {
+  granted = canEdit;
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <BrandsView canEdit={canEdit} csrfToken="csrf-1" />
+      <BrandsView
+        canEdit={canEdit}
+        csrfToken="csrf-1"
+        paging="pages"
+        accountId={id(99)}
+        marketId="AU"
+      />
     </NextIntlClientProvider>,
   );
+}
+
+/** Opens the row's Actions menu and picks an item: no row action is a button in the row. */
+async function act(name: string, item: string) {
+  fireEvent.click(await screen.findByRole('button', { name: `Actions for ${name}` }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: item }));
 }
 const calls = (method: string, prefix: string) =>
   call.mock.calls.filter(([m, path]) => m === method && path.startsWith(prefix));
@@ -94,10 +129,14 @@ describe('admin brands', () => {
     mount();
     expect(await screen.findByText('Saffron & Co')).toBeTruthy();
     expect(screen.getByText('/brands/brand-1')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Proposed 1' })).toBeTruthy();
-    expect(calls('GET', 'catalog/admin/brands?status=active')[0]?.[1]).toBe(
-      'catalog/admin/brands?status=active&limit=25',
+    expect(await screen.findByRole('button', { name: 'Proposed (1)' })).toBeTruthy();
+    const first = new URLSearchParams(
+      calls('GET', 'catalog/admin/brands?status=active')[0]?.[1].split('?')[1],
     );
+    expect(first.get('page')).toBe('1');
+    expect(first.get('paging')).toBe('pages');
+    expect(first.get('sort')).toBe('name');
+    expect(first.get('direction')).toBe('asc');
   });
 
   it('shows a dash that screen readers read as "Not set" for an empty origin', async () => {
@@ -106,14 +145,12 @@ describe('admin brands', () => {
     expect((await screen.findByLabelText('Not set')).textContent).toBe('\u2014');
   });
 
-  it('returns focus to the button that opened a dialog', async () => {
+  it('closes the dialog it opened from the Actions menu', async () => {
     serve(lists([brand(1)]));
     mount();
     await screen.findByText('Brand 1');
-    const opener = screen.getByRole('button', { name: 'Edit Brand 1' });
-    opener.focus();
-    fireEvent.click(opener);
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    await act('Brand 1', 'Edit…');
+    expect(await screen.findByRole('dialog')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
@@ -127,16 +164,14 @@ describe('admin brands', () => {
   it('says so when there is no brand, and when a search finds none', async () => {
     serve(lists());
     mount();
-    expect(await screen.findByText(/No active brands yet/)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Search by name, slug or alias'), {
+    expect(await screen.findByText('No brands here yet')).toBeTruthy();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search brands' }), {
       target: { value: 'zzz' },
     });
     await waitFor(() =>
-      expect(calls('GET', 'catalog/admin/brands?status=active').at(-1)?.[1]).toContain(
-        'search=zzz',
-      ),
+      expect(calls('GET', 'catalog/admin/brands?status=active').at(-1)?.[1]).toContain('q=zzz'),
     );
-    expect(await screen.findByText('No brand matches this search.')).toBeTruthy();
+    expect(await screen.findByText('No brands match')).toBeTruthy();
   });
 
   it('shows a load error with a retry', async () => {
@@ -151,23 +186,28 @@ describe('admin brands', () => {
     expect(await screen.findByText('Brand 1')).toBeTruthy();
   });
 
-  it('appends the next page', async () => {
+  it('moves to the next page with the page buttons', async () => {
     serve({
       ...lists(),
-      'GET catalog/admin/brands?status=active&limit=25&afterId': ok({
-        items: [brand(2)],
-        nextAfterId: null,
-      }),
-      'GET catalog/admin/brands?status=active&limit=25': ok({
-        items: [brand(1)],
-        nextAfterId: id(1),
+      'GET catalog/admin/brands?status=active': ok({
+        items: [{ ...brand(1), actions: [] }],
+        total: 40,
+        page: 1,
+        pageSize: 25,
+        paging: 'pages',
+        hasNext: true,
       }),
     });
     mount();
     await screen.findByText('Brand 1');
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-    expect(await screen.findByText('Brand 2')).toBeTruthy();
-    expect(screen.getByText('Brand 1')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    await waitFor(() =>
+      expect(
+        calls('GET', 'catalog/admin/brands?status=active').some(([, path]) =>
+          path.includes('page=2'),
+        ),
+      ).toBe(true),
+    );
   });
 
   describe('without catalog.brand.edit', () => {
@@ -176,12 +216,10 @@ describe('admin brands', () => {
       mount(false);
       expect(await screen.findByText('Brand 1')).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'New brand' })).toBeNull();
-      expect(screen.queryByRole('button', { name: /Edit/ })).toBeNull();
-      expect(screen.queryByRole('button', { name: /^Archive Brand/ })).toBeNull();
-      expect(screen.queryByRole('button', { name: /Merge/ })).toBeNull();
-      fireEvent.click(screen.getByRole('button', { name: 'Proposed 1' }));
+      expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Proposed (1)' }));
       expect(await screen.findByText('Brand 2')).toBeTruthy();
-      expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
+      expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
     });
 
     it('shows the merge queue as read-only', async () => {
@@ -208,7 +246,7 @@ describe('admin brands', () => {
         'POST catalog/admin/brands': ok({ brand: brand(7, { name: 'Cedar Kitchen' }) }),
       });
       mount();
-      await screen.findByText(/No active brands yet/);
+      await screen.findByText('No brands here yet');
       fireEvent.click(screen.getByRole('button', { name: 'New brand' }));
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: ' Cedar Kitchen ' } });
       fireEvent.change(screen.getByLabelText(/Country of origin/), { target: { value: 'jp' } });
@@ -232,7 +270,7 @@ describe('admin brands', () => {
     it('sends nothing while the form has a mistake', async () => {
       serve(lists());
       mount();
-      await screen.findByText(/No active brands yet/);
+      await screen.findByText('No brands here yet');
       fireEvent.click(screen.getByRole('button', { name: 'New brand' }));
       fireEvent.click(screen.getByRole('button', { name: 'Create brand' }));
       expect(await screen.findByText('Enter the brand name.')).toBeTruthy();
@@ -251,7 +289,7 @@ describe('admin brands', () => {
         }),
       });
       mount();
-      await screen.findByText(/No active brands yet/);
+      await screen.findByText('No brands here yet');
       fireEvent.click(screen.getByRole('button', { name: 'New brand' }));
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'ACME foods' } });
       fireEvent.click(screen.getByRole('button', { name: 'Create brand' }));
@@ -266,7 +304,7 @@ describe('admin brands', () => {
       });
       mount();
       await screen.findByText('Brand 1');
-      fireEvent.click(screen.getByRole('button', { name: 'Edit Brand 1' }));
+      await act('Brand 1', 'Edit…');
       expect(screen.getByLabelText('Page address').hasAttribute('disabled')).toBe(true);
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Brand One' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
@@ -293,9 +331,9 @@ describe('admin brands', () => {
         'PUT catalog/admin/brands/': ok({ brand: brand(2) }),
       });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Proposed 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Proposed (1)' }));
       await screen.findByText('Brand 2');
-      fireEvent.click(screen.getByRole('button', { name: 'Edit Brand 2' }));
+      await act('Brand 2', 'Edit…');
       const slug = screen.getByLabelText('Page address');
       expect(slug.hasAttribute('disabled')).toBe(false);
       fireEvent.change(slug, { target: { value: 'brand-two' } });
@@ -311,7 +349,7 @@ describe('admin brands', () => {
       });
       mount();
       await screen.findByText('Brand 1');
-      fireEvent.click(screen.getByRole('button', { name: 'Edit Brand 1' }));
+      await act('Brand 1', 'Edit…');
       fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
       expect(await screen.findByText(/changed since you opened it/)).toBeTruthy();
       serve(lists([brand(1, { version: 4 })]));
@@ -320,15 +358,13 @@ describe('admin brands', () => {
       expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
     });
 
-    it('has no edit button for an archived brand', async () => {
+    it('has no row action for an archived brand', async () => {
       serve(lists([], [], [brand(3, { status: 'archived', mergedIntoId: id(1) })]));
       mount();
       fireEvent.click(await screen.findByRole('button', { name: 'Archived' }));
       expect(await screen.findByText('Brand 3')).toBeTruthy();
       expect(screen.getByText(/Merged into brand/)).toBeTruthy();
-      expect(
-        screen.queryByRole('button', { name: /^(Edit |Archive Brand|Merge other)/ }),
-      ).toBeNull();
+      expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
     });
   });
 
@@ -341,12 +377,12 @@ describe('admin brands', () => {
         'POST catalog/admin/brands/': ok({ brand: { ...proposal, status: 'active' } }),
       });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Proposed 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Proposed (1)' }));
       expect(await screen.findByText('Brand 2')).toBeTruthy();
       expect(screen.getByRole('link', { name: 'seller 00000077' }).getAttribute('href')).toBe(
         `/sellers/${id(77)}`,
       );
-      fireEvent.click(screen.getByRole('button', { name: 'Approve Brand 2' }));
+      await act('Brand 2', 'Approve…');
       const dialog = screen.getByRole('dialog');
       expect(within(dialog).getByText('Approve Brand 2?')).toBeTruthy();
       expect(calls('POST', 'catalog/admin/brands/')).toHaveLength(0);
@@ -363,9 +399,9 @@ describe('admin brands', () => {
     it('turns a proposal down through the archive route', async () => {
       serve({ ...lists([], [proposal]), 'POST catalog/admin/brands/': ok({ brand: proposal }) });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Proposed 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Proposed (1)' }));
       await screen.findByText('Brand 2');
-      fireEvent.click(screen.getByRole('button', { name: 'Turn down the proposal Brand 2' }));
+      await act('Brand 2', 'Turn down…');
       fireEvent.click(screen.getByRole('button', { name: 'Turn down proposal' }));
       await expectToast('The proposal Brand 2 was turned down.');
       expect(call).toHaveBeenCalledWith(
@@ -382,9 +418,9 @@ describe('admin brands', () => {
         'POST catalog/admin/brands/': refuse(409, 'brand.not-draft'),
       });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Proposed 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Proposed (1)' }));
       await screen.findByText('Brand 2');
-      fireEvent.click(screen.getByRole('button', { name: 'Approve Brand 2' }));
+      await act('Brand 2', 'Approve…');
       fireEvent.click(screen.getByRole('button', { name: 'Approve brand' }));
       expect(await screen.findByText(/changed since you opened it/)).toBeTruthy();
     });
@@ -393,7 +429,7 @@ describe('admin brands', () => {
       serve({ ...lists([brand(1)]), 'POST catalog/admin/brands/': ok({ brand: brand(1) }) });
       mount();
       await screen.findByText('Brand 1');
-      fireEvent.click(screen.getByRole('button', { name: 'Archive Brand 1' }));
+      await act('Brand 1', 'Archive…');
       fireEvent.click(screen.getByRole('button', { name: 'Archive brand' }));
       await expectToast('Brand 1 was archived.');
       expect(call).toHaveBeenCalledWith(
@@ -417,7 +453,7 @@ describe('admin brands', () => {
       });
       mount();
       await screen.findByText('Brand 1');
-      fireEvent.click(screen.getByRole('button', { name: 'Merge other brands into Brand 1' }));
+      await act('Brand 1', 'Merge into this…');
       const dialog = screen.getByRole('dialog');
       const second = await within(dialog).findByLabelText('Brand 2');
       expect(within(dialog).queryByLabelText('Brand 1')).toBeNull();
@@ -447,7 +483,7 @@ describe('admin brands', () => {
       });
       mount();
       await screen.findByText('Brand 1');
-      fireEvent.click(screen.getByRole('button', { name: 'Merge other brands into Brand 1' }));
+      await act('Brand 1', 'Merge into this…');
       fireEvent.click(await screen.findByLabelText('Brand 2'));
       fireEvent.click(screen.getByRole('button', { name: 'Merge 1 brand' }));
       expect(await screen.findByText(/already belongs to another brand/)).toBeTruthy();
