@@ -181,6 +181,13 @@ export class TypeSaveRevision extends UseCase<
         if (current.version !== version.value || current.publishedRevisionId !== published.id) {
           return err({ code: 'conflict.stale' } as const);
         }
+        // A relaxing save does not move the type's pointer, so it locks the row itself before
+        // the pending-proposal check: it then serialises with a revert of the same type (which
+        // locks the row first, too), and neither sees the other half done. A publish-now save
+        // takes the same lock when it moves the pointer under the version guard.
+        if (publication !== 'publish-now') {
+          await deps.registry.lockType(market, typeId, version.value);
+        }
         if ((await deps.registry.pendingProposal(market, 'type-revision', typeId)) !== null) {
           return err({ code: 'review.proposal-pending' } as const);
         }
