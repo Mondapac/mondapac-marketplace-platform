@@ -139,6 +139,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The tag suggestions waiting for a decision (catalog topics, product tags T5; query: `q`,
     // `page`, `pageSize`, `paging`, `sort`, `direction`, `limit`).
     'catalog/admin/topic-suggestions',
+    // The review queue: Offers waiting for their first publication and pending product revisions
+    // (catalog; query: `kind`, `sellerId`, `firstPublication`, `hasImages`, `page`, `pageSize`,
+    // `paging`, `sort`, `direction`).
+    'catalog/admin/review-queue',
     // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
     'catalog/admin/attribute-relaxations',
     // Requests to archive a Material attribute waiting for a second administrator (attributes A8).
@@ -800,6 +804,17 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'direction',
   ],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
+  'catalog/admin/review-queue': [
+    'kind',
+    'sellerId',
+    'firstPublication',
+    'hasImages',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/topic-suggestions': [
     'limit',
     'q',
@@ -957,6 +972,17 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     categoryId: UUID,
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
+  },
+  'catalog/admin/review-queue': {
+    kind: /^(offer-first-publication|product-revision)$/,
+    sellerId: UUID,
+    firstPublication: /^(true|false)$/,
+    hasImages: /^true$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^submitted$/,
+    direction: /^(asc|desc)$/,
   },
   'catalog/admin/topic-suggestions': {
     limit: /^([1-9][0-9]?|100)$/,

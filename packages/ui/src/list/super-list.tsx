@@ -31,7 +31,8 @@ export interface SuperListProps {
   };
   /** Built-in tabs with their counts, then the saved filters, and "Manage filters…". */
   readonly views: ListViewsBarProps;
-  readonly search: {
+  /** Absent for a list whose route has no text search. */
+  readonly search?: {
     readonly label: string;
     readonly placeholder: string;
     readonly value: string;
@@ -144,19 +145,23 @@ export function SuperList({
       </div>
       <ListViewsBar {...views} />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <SearchField
-          label={search.label}
-          placeholder={search.placeholder}
-          value={search.value}
-          maxLength={search.maxLength}
-          className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
-          onChange={(event) => search.onChange(event.target.value)}
-          onBlur={search.onBlur}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') search.onSubmit(search.value.trim());
-          }}
-        />
-        {search.extra}
+        {search === undefined ? null : (
+          <>
+            <SearchField
+              label={search.label}
+              placeholder={search.placeholder}
+              value={search.value}
+              maxLength={search.maxLength}
+              className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
+              onChange={(event) => search.onChange(event.target.value)}
+              onBlur={search.onBlur}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') search.onSubmit(search.value.trim());
+              }}
+            />
+            {search.extra}
+          </>
+        )}
         {/* The real toolbar shows while the first page loads, but cannot act on rows yet. */}
         {hasTools ? (
           <fieldset disabled={skeleton} className="flex min-w-0 items-center gap-2">

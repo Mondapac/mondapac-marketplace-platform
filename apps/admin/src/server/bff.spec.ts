@@ -1959,6 +1959,23 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/topics');
   });
 
+  it('passes the review queue list keys in their shapes, and drops the rest', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/review-queue?kind=product-revision&sellerId=${id}&firstPublication=false&hasImages=true&page=2&pageSize=25&paging=pages&sort=submitted&direction=desc&q=oil&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/review-queue?kind=product-revision&sellerId=${id}&firstPublication=false&hasImages=true&page=2&pageSize=25&paging=pages&sort=submitted&direction=desc`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/review-queue?kind=offers&sellerId=nope&hasImages=false&page=0&sort=name&direction=up',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/review-queue');
+  });
+
   it('passes only the action of the category impact read, in its shape, and no query on the tree', async () => {
     const { upstream } = await run(
       'GET',
