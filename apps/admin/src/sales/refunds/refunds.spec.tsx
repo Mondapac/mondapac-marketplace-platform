@@ -71,11 +71,17 @@ const pageOf = (refunds: RefundRow[], over: Partial<RefundsPage> = {}): RefundsP
 const cursorPage = (refunds: RefundRow[], nextCursor: string | null = null) =>
   pageOf(refunds, { total: null, page: null, nextCursor });
 
+type SavedRoute = (method: string, path: string, body: unknown, csrf?: string) => Promise<never>;
+/** Until a test says otherwise the saved-filter route is not there: the controls stay hidden. */
+const noSavedRoute: SavedRoute = () =>
+  Promise.resolve({ ok: false, failure: { status: 404, code: 'not-found' } } as never);
+
 type Answer = RefundsPage | 'fail' | 'denied' | 'unauthenticated' | 'search-down';
 
 /** The list answers by URL, so the order of the calls does not matter. */
-function serve(answer: (url: string) => Answer) {
-  call.mockImplementation((_method, path) => {
+function serve(answer: (url: string) => Answer, saved: SavedRoute = noSavedRoute) {
+  call.mockImplementation((method, path, body, csrf) => {
+    if (path.startsWith('lists/admin/saved-filters')) return saved(method, path, body, csrf);
     const result = answer(path);
     if (result === 'fail') {
       return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
@@ -95,7 +101,11 @@ function serve(answer: (url: string) => Answer) {
     return Promise.resolve({ ok: true, status: 200, body: result } as never);
   });
 }
-const urls = () => call.mock.calls.map((entry) => entry[1]);
+/** The list's own requests (the saved-filter routes have their own helper). */
+const urls = () =>
+  call.mock.calls
+    .map((entry) => entry[1])
+    .filter((url) => !url.startsWith('lists/admin/saved-filters'));
 const lastUrl = () => urls()[urls().length - 1]!;
 const paramsOf = (url: string) => Object.fromEntries(new URL(`http://x/${url}`).searchParams);
 
