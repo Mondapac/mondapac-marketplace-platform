@@ -1,0 +1,98 @@
+name: Assistant real-model evaluation
+
+# The buyer assistant's real-model evaluation (ADR-0019 decision 9; docs/modules/assistant/
+# conversation.md, "Before the switch is turned on"): the synthetic evaluation set of the current
+# prompt version, sent through the whole turn to the real provider. Run by hand only, from the
+# Actions tab: it calls the provider and costs money. A capability is switched on only after this
+# run is recorded as passed for that provider, model and prompt version.
+#
+# Secret (repository, Actions): ASSISTANT_EVAL_MODEL_API_KEY, the provider API key held under the
+# no-retention, no-training contract the owner approved (R7). It is used for every Market fixture
+# of the run and never printed. All data sent is synthetic.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Provider model id to evaluate (the id the Market will configure)
+        required: true
+        type: string
+      tier:
+        description: Assistant model tier the model is configured for
+        required: true
+        default: fast
+        type: choice
+        options: [fast, balanced]
+
+concurrency:
+  group: assistant-eval
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    name: Real-model evaluation (${{ inputs.model }}, ${{ inputs.tier }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the inputs and the key secret
+        env:
+          MODEL: ${{ inputs.model }}
+          KEY: ${{ secrets.ASSISTANT_EVAL_MODEL_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::Repository secret ASSISTANT_EVAL_MODEL_API_KEY is not set."
+            exit 1
+          fi
+          if ! printf '%s' "$MODEL" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}$'; then
+            echo "::error::The model id may hold letters, digits and . _ : / @ - only."
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate the Prisma client
+        run: pnpm db:generate
+
+      # Both Market fixtures (AU and the synthetic ZZ), one key and one model for both.
+      - name: Run the evaluation
+        env:
+          KEY: ${{ secrets.ASSISTANT_EVAL_MODEL_API_KEY }}
+          MODEL: ${{ inputs.model }}
+          ASSISTANT_EVAL_TIER: ${{ inputs.tier }}
+          ASSISTANT_EVAL_REPORT_DIR: ${{ github.workspace }}/assistant-eval-report
+        run: |
+          export ASSISTANT_MODEL_API_KEY="AU=$KEY,ZZ=$KEY"
+          if [ "$ASSISTANT_EVAL_TIER" = fast ]; then
+            export ASSISTANT_MODEL_FAST="AU=$MODEL,ZZ=$MODEL"
+          else
+            export ASSISTANT_MODEL_BALANCED="AU=$MODEL,ZZ=$MODEL"
+          fi
+          unset KEY
+          pnpm --filter @mondapac/api eval:assistant
+
+      # The report holds the synthetic cases, what the model wrote and what the buyer would see;
+      # never the key. Kept 90 days as the record of the run.
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assistant-eval-report
+          path: assistant-eval-report/
+          if-no-files-found: warn
+          retention-days: 90
