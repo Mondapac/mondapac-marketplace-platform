@@ -20,6 +20,7 @@ import { csrfTokenFor } from '../../../platform/call-context/csrf';
 import { sessionCookie } from '../../../platform/call-context/session-cookie';
 import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientAddressOf, clientOriginOf } from '../../../platform/rate-limit/client-origin';
+import { deviceOf } from '../domain/device';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import { ConfirmCustomerEmail } from '../application/use-cases/confirm-customer-email.use-case';
 import { RequestCustomerVerification } from '../application/use-cases/request-customer-verification.use-case';
@@ -176,7 +177,7 @@ export class CustomerEmailVerificationController {
     const result = await this.confirmCustomerEmail.execute(context, {
       token: fields.token,
       password: fields.password,
-      client: { origin, address },
+      client: { origin, address, device: deviceOf(request.get('user-agent')) },
     });
     if (result.ok) {
       const { token, absoluteLifetimeSeconds } = result.value;

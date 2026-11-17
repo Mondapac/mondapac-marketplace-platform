@@ -8,7 +8,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import ExcelJS from 'exceljs';
-import { FakeLabels } from '../../../../test/support/ordering-fakes';
+import { FakeCarrierProgress, FakeLabels } from '../../../../test/support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuthorisationCheck } from '../../../platform/authz';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
@@ -221,7 +221,11 @@ describe.each(['AU', 'ZZ'] as const)('admin Sales list exports in market %s', (c
       shipments,
       refunds,
       documents,
-      exportShipments: new AdminExportShipments(gate, { ...shared, shipments }),
+      exportShipments: new AdminExportShipments(gate, {
+        ...shared,
+        shipments,
+        carrierProgress: new FakeCarrierProgress(),
+      }),
       exportRefunds: new AdminExportRefunds(gate, { ...shared, refunds }),
       exportDocuments: new AdminExportDocuments(gate, { ...shared, documents }),
     };

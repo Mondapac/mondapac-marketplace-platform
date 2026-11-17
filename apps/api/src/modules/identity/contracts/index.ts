@@ -34,5 +34,15 @@ export {
   type IdentityFacade,
   type IdentityValidationFailed,
   type SellerMembershipSummary,
+  // Customers management phase 2b: the customer page's security section.
+  CUSTOMER_SIGN_IN_RESULTS,
+  type AdminPasswordResetFailure,
+  type CustomerSecurityFailure,
+  type CustomerSessionFact,
+  type CustomerSessionsView,
+  type CustomerSignInFact,
+  type CustomerSignInResult,
+  type CustomerSignInsPage,
+  type CustomerSignInsRequest,
 } from './identity.facade';
 export { changeActorSourceOf, changeTrailProvider } from './change-actor-source';

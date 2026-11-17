@@ -1,9 +1,13 @@
-import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   BehaviourEventRecord,
   BehaviourEventRepository,
+  BehaviourRange,
   BehaviourSubject,
+  BehaviourSummary,
+  CartAdditionRow,
   RecentViews,
 } from '../application/ports/behaviour-event.repository';
 import type { BehaviourFacts } from '../domain/behaviour-event';
@@ -79,6 +83,92 @@ export class PrismaBehaviourEventRepository implements BehaviourEventRepository 
       categoryIds: categories.flatMap((row) =>
         row.categoryId === null ? [] : [row.categoryId as Id<'Category'>],
       ),
+    };
+  }
+
+  async cartAdditionsOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    range: BehaviourRange,
+    direction: 'asc' | 'desc',
+    window: { readonly offset: number; readonly limit: number },
+  ): Promise<CartAdditionRow[]> {
+    const rows = await this.prisma.tx(market).engagementBehaviourEvent.findMany({
+      where: this.#additions(market, accountId, range),
+      orderBy: [{ occurredAt: direction }, { id: direction }],
+      skip: window.offset,
+      take: window.limit,
+      select: { id: true, offerId: true, variantId: true, occurredAt: true },
+    });
+    // `behaviour_events_shape_check` makes `offer_id` and `variant_id` NOT NULL on every
+    // `added-to-cart` row, so no row is dropped here and the page agrees with
+    // `countCartAdditionsOfAccount`. A NULL means the CHECK is gone: fail, never skip silently.
+    return rows.map((row) => {
+      if (row.offerId === null || row.variantId === null) {
+        throw new Error('engagement.behaviour_events: an added-to-cart row without its offer');
+      }
+      return {
+        id: row.id as Id<'BehaviourEvent'>,
+        offerId: row.offerId as Id<'Offer'>,
+        variantId: row.variantId as Id<'Variant'>,
+        occurredAt: Temporal.Instant.fromEpochMilliseconds(row.occurredAt.getTime()),
+      };
+    });
+  }
+
+  countCartAdditionsOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    range: BehaviourRange,
+  ): Promise<number> {
+    return this.prisma.tx(market).engagementBehaviourEvent.count({
+      where: this.#additions(market, accountId, range),
+    });
+  }
+
+  async summaryOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    since: Temporal.Instant,
+    top: number,
+  ): Promise<BehaviourSummary> {
+    const tx = this.prisma.tx(market);
+    const mine = { marketId: market.marketId, accountId, occurredAt: { gte: toDate(since) } };
+    // Counts by kind and by category only: the search text is never selected.
+    const kinds = await tx.engagementBehaviourEvent.groupBy({
+      by: ['kind'],
+      where: mine,
+      _count: { _all: true },
+    });
+    const categories = await tx.engagementBehaviourEvent.groupBy({
+      by: ['categoryId'],
+      where: { ...mine, kind: 'category-viewed' },
+      _count: { id: true },
+      orderBy: [{ _count: { id: 'desc' } }, { categoryId: 'asc' }],
+      take: top,
+    });
+    const count = (kind: string) => kinds.find((row) => row.kind === kind)?._count._all ?? 0;
+    return {
+      productViews: count('product-viewed'),
+      categoryViews: count('category-viewed'),
+      cartAdditions: count('added-to-cart'),
+      topCategories: categories.flatMap((row) =>
+        row.categoryId === null
+          ? []
+          : [{ categoryId: row.categoryId as Id<'Category'>, views: row._count.id }],
+      ),
+    };
+  }
+
+  #additions(market: MarketContext, accountId: Id<'Account'>, range: BehaviourRange) {
+    return {
+      marketId: market.marketId,
+      accountId,
+      kind: 'added-to-cart',
+      occurredAt: {
+        gte: toDate(range.from),
+        ...(range.to === null ? {} : { lt: toDate(range.to) }),
+      },
     };
   }
 

@@ -17,7 +17,7 @@ import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
-import { FakeLabels } from '../support/ordering-fakes';
+import { FakeCarrierProgress, FakeLabels } from '../support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 
@@ -419,6 +419,7 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       unitOfWork: db.unitOfWork,
       shipments: reader,
       labels: new FakeLabels(),
+      carrierProgress: new FakeCarrierProgress(),
     });
     const page = await list.execute(admin, { sellerId, pageSize: 2 });
     if (!page.ok) throw new Error(page.error.code);
@@ -443,6 +444,7 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       unitOfWork: db.unitOfWork,
       shipments: reader,
       labels: new FakeLabels(),
+      carrierProgress: new FakeCarrierProgress(),
     });
     const one = await list.execute(admin, { sellerId, limit: 2 });
     if (!one.ok) throw new Error(one.error.code);
@@ -469,6 +471,7 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       unitOfWork: db.unitOfWork,
       shipments: reader,
       labels: new FakeLabels(),
+      carrierProgress: new FakeCarrierProgress(),
     });
     const seen: string[] = [];
     let cursor: string | null | undefined;

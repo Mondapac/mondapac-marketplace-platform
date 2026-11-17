@@ -487,6 +487,10 @@ export function ShipmentsList({
         actions: (
           <ShipmentsBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}
+            query={query}
+            paging={paging}
+            zone={zone}
+            columns={columns}
           />
         ),
       }}
