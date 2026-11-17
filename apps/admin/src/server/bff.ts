@@ -24,6 +24,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Market's shipments (ordering, Sales > Shipments), read-only: the list (query: the tab,
     // search, filters and paging; see QUERY_KEYS).
     'ordering/admin/shipments',
+    // The Market's refunds (ordering, Sales > Refunds), read-only: the list (query: the tab,
+    // search, filters and paging; see QUERY_KEYS).
+    'ordering/admin/refunds',
     // The Market's buyer assistant settings, read again after another admin saved first.
     'assistant/admin/settings',
     // The Market's support email, read again after another admin saved first.
@@ -672,6 +675,26 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'shippedFrom',
     'shippedTo',
   ],
+  // The Refunds list: the tab (`state`), the search (`q` or `search`), the filters and the paging
+  // of either List paging mode. No amount filters: the panel has no input for them (spec Q3).
+  'ordering/admin/refunds': [
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+    'sort',
+    'direction',
+    'state',
+    'q',
+    'search',
+    'reason',
+    'actor',
+    'lossBearer',
+    'ledger',
+    'sellerId',
+    'from',
+    'to',
+  ],
   'ordering/admin/saved-filters': ['listKey'],
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
@@ -821,6 +844,27 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     paidTo: ISO_INSTANT,
     shippedFrom: ISO_INSTANT,
     shippedTo: ISO_INSTANT,
+  },
+  'ordering/admin/refunds': {
+    state: /^(pending|succeeded|failed)$/,
+    sort: /^(requested|settled|amount)$/,
+    direction: /^(asc|desc)$/,
+    reason:
+      /^(not-received|damaged|wrong-item|not-as-described|seller-cancelled|item-unavailable|other)$/,
+    actor: /^(admin|seller)$/,
+    lossBearer: /^(seller|platform)$/,
+    ledger: /^(waiting|recorded)$/,
+    sellerId: UUID,
+    page: /^[0-9]{1,4}$/,
+    pageSize: /^[0-9]{1,3}$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the request, a dot and the refund id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+    // An id, a Stripe refund id or a name: free text, up to the box's 80 characters.
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
   },
   'payments/admin/connected-accounts': {
     ...ACCOUNT_LIST_SHAPES,
