@@ -98,6 +98,7 @@ export class IdentityFacadeImplementation implements IdentityFacade {
       permissionKeys: summary.permissionKeys,
       sellerAccessState: summary.sellerAccessState,
       secondFactorActive: summary.secondFactorActive,
+      timezone: summary.timezone,
     });
   }
 

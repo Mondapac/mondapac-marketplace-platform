@@ -94,11 +94,15 @@ export class AdminCustomersController {
       'Needs customers.customers.view. Body: `view` (all, new, active, inactive, never-ordered, ' +
       'disabled, pending-deletion), `q` (2 to 80 characters: a sign-in address prefix or a part of ' +
       'the display name), `filters` (status, verified, joinedFrom, joinedTo, lastOrderFrom, ' +
-      'lastOrderTo, ordersMin, ordersMax, spentMin, spentMax in minor units), `sort` (joined, name, ' +
+      'lastOrderTo as YYYY-MM-DD in the admin’s own zone, else the Market’s, ordersMin, ordersMax, ' +
+      'spentMin, spentMax in minor units), `sort` (joined, name, ' +
       'email, last-order, orders, spent) and `direction`. With `page` (and `pageSize`, at most 100) ' +
       'the answer carries `paging.total` (the page-number mode of the List paging setting, at most ' +
       '10,000 rows deep); without it `cursor` and `limit` read the next page without a total. ' +
-      '`counts` is the size of every tab. The rows are personal data.',
+      '`counts` is the size of every tab. `orderNumber` (an order’s id, as the panels show it) ' +
+      'narrows the list to the customer who placed it; it also needs ordering.order.view (403 ' +
+      'access.denied without it), and an unknown or another Market’s order matches nobody. The ' +
+      'rows are personal data.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: Object })
@@ -122,6 +126,7 @@ export class AdminCustomersController {
       'pageSize',
       'cursor',
       'limit',
+      'orderNumber',
     ]);
     if (checked instanceof HttpException) throw checked;
     const result = await this.list.execute(context, body);
@@ -344,7 +349,9 @@ export class AdminCustomersController {
       'read from their owning modules. `pendingEmailChange` (email, requestedAt) is the sign-in ' +
       'email an admin asked for and the customer has not confirmed yet, or null. The others are ' +
       'read from their owning modules, each under its own permission. Every open is audited. ' +
-      '404 customers.customer-not-found for a customer of another Market, or none. Personal data.',
+      'An erased customer (account deletion completed) answers a tombstone, `{ accountId, ' +
+      'status: "deleted", deletedAt }`, and nothing else. 404 customers.customer-not-found for a ' +
+      'customer of another Market, or none. Personal data.',
   })
   @ApiOkResponse({ type: Object })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })

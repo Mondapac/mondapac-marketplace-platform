@@ -12,7 +12,7 @@ SET lock_timeout = '5s';
 -- row passes the CHECKs (the columns are new). They validate under the ALTER's lock, as
 -- 20261021180000_identity_customer_storefront_appearance. accounts already has the table UPDATE
 -- grant for mondapac_app (20261007222007_identity_accounts): no grant change on accounts. The
--- lapse index is 20261117050001 (CONCURRENTLY, in a file of its own).
+-- lapse index is 20261117050601 (CONCURRENTLY, in a file of its own).
 ALTER TABLE "identity"."accounts" ADD COLUMN "pending_email" TEXT;
 ALTER TABLE "identity"."accounts" ADD COLUMN "pending_email_normalized" TEXT;
 ALTER TABLE "identity"."accounts" ADD COLUMN "pending_email_requested_at" TIMESTAMPTZ(6);

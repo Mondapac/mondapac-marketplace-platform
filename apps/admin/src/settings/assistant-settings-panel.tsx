@@ -96,6 +96,7 @@ const CHANGE_LABEL: Record<keyof AssistantForm, string> = {
   dailySpendCap: 'spend.daily',
   monthlySpendCap: 'spend.monthly',
   supportHandoff: 'support.label',
+  basketProposals: 'basket.label',
   welcomeText: 'welcome.label',
 };
 /** Fields whose value is one of a fixed set, with the message group naming each choice. */

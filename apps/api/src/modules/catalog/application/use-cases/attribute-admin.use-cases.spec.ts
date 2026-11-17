@@ -21,6 +21,7 @@ import { AttributeAdminGet } from './attribute-admin-get.use-case';
 import { AttributeAdminList } from './attribute-admin-list.use-case';
 import { FeatureSetAdminGet } from './feature-set-admin-get.use-case';
 import { FeatureSetAdminList } from './feature-set-admin-list.use-case';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 
 // The four admin reads of attributes and feature sets in memory (attributes plan, package A1), on
 // both Market fixtures: the access rule, the admin population, the closed query, the filters and
@@ -73,7 +74,12 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
   const list = () =>
     new AttributeAdminList(gate(), { unitOfWork, attributeAdminReader: reader, policy });
   const get = () =>
-    new AttributeAdminGet(gate(), { unitOfWork, attributeAdminReader: reader, policy });
+    new AttributeAdminGet(gate(), {
+      unitOfWork,
+      attributeAdminReader: reader,
+      policy,
+      review: new RecordingReview(),
+    });
   const sets = () => new FeatureSetAdminList(gate(), { unitOfWork, attributeAdminReader: reader });
   const set = () =>
     new FeatureSetAdminGet(gate(), { unitOfWork, attributeAdminReader: reader, policy });

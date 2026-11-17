@@ -1,4 +1,4 @@
--- Reverses 20261117050000_identity_customer_pending_email (after 20261117050001 is reversed).
+-- Reverses 20261117050600_identity_customer_pending_email (after 20261117050601 is reversed).
 -- Accepted loss: every email change in flight (pending address, its link) and every notice not
 -- yet sent to a previous address are discarded; the customer keeps the current address, and an
 -- unsent "your sign-in email was changed" notice is never sent.
