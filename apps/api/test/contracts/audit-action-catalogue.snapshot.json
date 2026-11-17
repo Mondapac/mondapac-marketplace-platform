@@ -598,7 +598,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|seller.catalog.offers)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -610,7 +610,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|seller.catalog.offers)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -624,7 +624,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|seller.catalog.offers)",
       "visibility": "enumOf(me|everyone)"
     }
   },

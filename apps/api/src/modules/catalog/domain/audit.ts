@@ -145,6 +145,7 @@ const savedFilterVisibility = auditField.enumOf(['me', 'everyone'] as const);
 export const SAVED_FILTER_AUDIT_LISTS = [
   'admin.catalog.products',
   'seller.catalog.products',
+  'seller.catalog.offers',
 ] as const;
 export type SavedFilterAuditList = (typeof SAVED_FILTER_AUDIT_LISTS)[number];
 const savedFilterList = auditField.enumOf(SAVED_FILTER_AUDIT_LISTS);
