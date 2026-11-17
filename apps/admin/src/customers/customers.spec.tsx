@@ -335,6 +335,14 @@ describe('the customer page', () => {
     expect(call).toHaveBeenCalledWith('GET', `customers/admin/customers/${ID}`);
   });
 
+  it('says when an erased customer was deleted, and shows nothing else about them', async () => {
+    routePage(ok({ accountId: ID, status: 'deleted', deletedAt: '2026-11-10T23:30:00Z' }));
+    render(wrap(<CustomerPage {...pageProps} permissionKeys={[VIEW]} />));
+    expect(await screen.findByText('Account deleted')).toBeTruthy();
+    expect(screen.getByText(/was deleted on 11 Nov 2026/)).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+  });
+
   it('is "not found" for a customer of another Market, and a page-level error with Retry otherwise', async () => {
     routePage(refused(404, 'customers.customer-not-found'));
     render(wrap(<CustomerPage {...pageProps} permissionKeys={[VIEW]} />));

@@ -1787,6 +1787,10 @@
         "locale-name": "Name",
         "locale-description": "Description for customers",
         "locale-terms": "Claim terms",
+        "locale-name-in": "Name ({locale})",
+        "locale-description-in": "Description for customers ({locale})",
+        "locale-terms-in": "Claim terms ({locale})",
+        "revise": "Change this type",
         "inactive-note": "No new certificates of this type can be added. Existing certificates and badges stay.",
         "revision-waiting": "A change to this type is waiting for a second admin.",
         "reactivation-waiting": "A reactivation is waiting for a second admin.",
@@ -1796,7 +1800,56 @@
           "reactivation-asked": "Reactivation sent. A second admin has to approve it.",
           "approved": "Change approved and published.",
           "rejected": "Change rejected.",
-          "withdrawn": "Proposal withdrawn."
+          "withdrawn": "Proposal withdrawn.",
+          "revision-published": "Change published.",
+          "revision-pending": "Change saved. A second admin has to approve it before it is published."
+        }
+      },
+      "revise": {
+        "title": "Change a certificate type",
+        "heading": "Change {code}",
+        "back": "Back to the type",
+        "intro": "This saves a new revision. The check method cannot change. A change that makes a rule weaker, or removes a claim term or a language, waits for a second admin before it is published.",
+        "no-changes": "Nothing has changed yet.",
+        "settings": "Settings",
+        "mode-fixed": "cannot be changed",
+        "auto-help": "Only for self-declared types. Turning this on needs a second admin.",
+        "icon-help": "A key of the icon set: lowercase letters, digits and hyphens.",
+        "name-help": "Up to {max} characters.",
+        "description-help": "Up to {max} characters. Customers read this.",
+        "terms-help": "One term per line, up to {term} characters each and {terms} terms. Removing a term needs a second admin.",
+        "reason": "Reason",
+        "optional": "optional",
+        "reason-help": "Up to {max} characters. A second admin sees it.",
+        "review": "Review changes",
+        "cancel": "Cancel",
+        "problem": {
+          "icon": "Use lowercase letters, digits and hyphens, starting with a letter.",
+          "name": "Enter a name of up to {nameMax} characters.",
+          "description": "Enter a description of up to {descriptionMax} characters.",
+          "terms": "Keep each term to {termMax} characters and the list to {termsMax} terms.",
+          "terms-missing": "Add at least one claim term in one language.",
+          "reason": "Use {reasonMax} characters or fewer."
+        },
+        "issue": {
+          "text-invalid": "A name, description or term has characters that are not allowed, or is too long.",
+          "term-unmatchable": "A claim term is too short to be matched.",
+          "terms-missing": "At least one language needs a claim term.",
+          "icon": "The icon key is not valid.",
+          "locale": "The languages do not match the ones this Market supports.",
+          "auto": "Approving without a person is only for self-declared types.",
+          "mode": "The check method cannot be changed.",
+          "basis": "The default basis is not valid."
+        },
+        "confirm": {
+          "title": "Save this change?",
+          "body": "These changes will be saved as a new revision:",
+          "from": "Now:",
+          "to": "New:",
+          "second-admin": "If a change weakens a rule, removes a claim term or drops a language, it waits for a second admin and the published revision stays in use.",
+          "back": "Back to the form",
+          "save": "Save the change",
+          "reload": "Reload the page"
         }
       },
       "actions": {
@@ -1872,6 +1925,8 @@
       },
       "error": {
         "invalid": "Check the details and try again.",
+        "unchanged": "Nothing has changed since the published revision.",
+        "revision-invalid": "The API refused the change. Check the wording and the settings.",
         "gone": "This type no longer exists. Reload the page.",
         "already-inactive": "This type is already inactive. Reload the page.",
         "already-active": "This type is already active. Reload the page.",
@@ -3114,6 +3169,9 @@
         "label": "Reply language",
         "buyer": "The buyer's language",
         "english": "English only"
+      },
+      "basket": {
+        "label": "Basket proposals from a list"
       },
       "welcome": {
         "label": "Welcome message",
@@ -5776,6 +5834,10 @@
           "capped": "The newest {max} promotion credits are shown."
         },
         "not-yet": "Payments per order, chargebacks and discount code usage are not listed here yet."
+      },
+      "deleted": {
+        "title": "Account deleted",
+        "body": "This customer’s account was deleted on {date}. Nothing else about it is kept."
       }
     }
   },

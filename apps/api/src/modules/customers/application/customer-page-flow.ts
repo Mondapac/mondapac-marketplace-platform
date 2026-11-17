@@ -5,8 +5,8 @@ import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import { CustomerPageOpened } from '../domain/audit';
 import type { AccountDeletionRequest } from '../domain/account-deletion-request';
 import type { CustomerListRow } from '../domain/customer-list';
-import type { AccountDeletionRequestRepository } from './ports/account-deletion-request.repository';
 import { rowView, type CustomerRowView, type CustomerListDependencies } from './customer-list-flow';
+import type { AccountDeletionRequestRepository } from './ports/account-deletion-request.repository';
 import type { CustomerTimelineRepository } from './ports/customer-timeline.repository';
 
 export const CUSTOMER_PAGE_TABS = ['overview', 'orders', 'money'] as const;
@@ -19,6 +19,8 @@ export interface CustomerPageDependencies extends CustomerListDependencies {
   /** Phase 2: every open is also an entry on the customer's timeline ("who looked"). */
   readonly timeline: CustomerTimelineRepository;
   readonly ids: IdGenerator;
+  /** Phase 2b: an erased customer's page answers a tombstone (when the erasure completed). */
+  readonly deletions: Pick<AccountDeletionRequestRepository, 'completedAt'>;
 }
 
 export type CustomerPageFailure =
@@ -82,6 +84,42 @@ export async function openCustomerPage(
 export interface CustomerPageRead {
   readonly row: CustomerListRow;
   readonly deletion: AccountDeletionRequest | null;
+}
+
+/**
+ * What the page shows of a customer whose account was erased (account deletion completed): the id
+ * and when, nothing else (no name, no address, no totals). Instead of not-found, so an admin who
+ * follows an old link sees what happened.
+ */
+export interface CustomerTombstoneView {
+  readonly accountId: string;
+  readonly status: 'deleted';
+  /** When the erasure completed (ISO 8601, UTC). */
+  readonly deletedAt: string;
+}
+
+/**
+ * The tombstone of an erased customer, in a unit that also writes the page-open audit row (no
+ * timeline entry: the timeline went with the account). `customers.customer-not-found` when the
+ * account was never erased here (unknown, another Market's).
+ */
+export async function openCustomerTombstone(
+  deps: CustomerPageDependencies,
+  context: CallContext,
+  accountId: Id<'Account'>,
+): Promise<Result<CustomerTombstoneView, CustomerPageFailure>> {
+  return deps.unitOfWork.run<CustomerTombstoneView, CustomerPageFailure>(
+    context.market,
+    async () => {
+      const deletedAt = await deps.deletions.completedAt(context.market, accountId);
+      if (deletedAt === null) return err({ code: 'customers.customer-not-found' });
+      await deps.audit.record(
+        context,
+        CustomerPageOpened.entry(accountId, { after: { tab: 'overview' } }),
+      );
+      return ok({ accountId, status: 'deleted', deletedAt: deletedAt.toString() });
+    },
+  );
 }
 
 /** The overview of one customer: the list row and what the orders add up to. */

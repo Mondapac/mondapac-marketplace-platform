@@ -58,6 +58,8 @@ import {
   CUSTOMERS_PERMISSIONS,
   CUSTOMERS_READ_FACADE,
   CUSTOMERS_STEP_UP_ACTIONS,
+  CUSTOMER_GROUP_USAGE_REGISTRY,
+  CustomerGroupUsageRegistry,
 } from './contracts';
 import { CUSTOMERS_AUDIT_ACTIONS } from './domain/audit';
 import { CUSTOMERS_EVENTS } from './domain/events';
@@ -73,6 +75,7 @@ import { AddressBookController } from './presentation/address-book.controller';
 import { CustomersCheckoutFacadeImplementation } from './presentation/customers-checkout.facade';
 import { AdminCustomersController } from './presentation/admin-customers.controller';
 import { CUSTOMER_LIST_READER } from './application/ports/customer-list.reader';
+import { ADMIN_DAY_ZONE } from './application/ports/admin-day-zone';
 import { SAVED_FILTER_REPOSITORY } from './application/ports/saved-filter.repository';
 import { SHEET_WRITER } from './application/ports/sheet-writer';
 import type { CustomerListDependencies } from './application/customer-list-flow';
@@ -107,6 +110,8 @@ import { AdminCustomerGroupUpdate } from './application/use-cases/admin-customer
 import { AdminCustomerGroupView } from './application/use-cases/admin-customer-group-view.use-case';
 import { AdminCustomerGroupsList } from './application/use-cases/admin-customer-groups-list.use-case';
 import { AdminCustomerNoteAdd } from './application/use-cases/admin-customer-note-add.use-case';
+import { AdminCustomerAddressReveal } from './application/use-cases/admin-customer-address-reveal.use-case';
+import { AdminCustomerAddresses } from './application/use-cases/admin-customer-addresses.use-case';
 import { AdminCustomerNotesList } from './application/use-cases/admin-customer-notes-list.use-case';
 import { AdminCustomerRename } from './application/use-cases/admin-customer-rename.use-case';
 import { AdminCustomerTimelineExport } from './application/use-cases/admin-customer-timeline-export.use-case';
@@ -248,13 +253,22 @@ type ListUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerListDependencie
 function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
-    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_LIST_READER, CLOCK],
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      CUSTOMER_LIST_READER,
+      CLOCK,
+      ADMIN_DAY_ZONE,
+      CUSTOMER_MANAGEMENT_PEERS,
+    ],
     useFactory: (
       gate: UseCaseGate,
       unitOfWork: CustomerListDependencies['unitOfWork'],
       listReader: CustomerListDependencies['listReader'],
       clock: CustomerListDependencies['clock'],
-    ) => new type(gate, { unitOfWork, listReader, clock }),
+      dayZone: CustomerListDependencies['dayZone'],
+      peers: CustomerManagementPeers,
+    ) => new type(gate, { unitOfWork, listReader, clock, dayZone, orders: peers.ordering }),
   };
 }
 
@@ -273,6 +287,9 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       ACCOUNT_DELETION_REQUEST_REPOSITORY,
       CUSTOMER_TIMELINE_REPOSITORY,
       ID_GENERATOR,
+      ADMIN_DAY_ZONE,
+      ACCOUNT_DELETION_REQUEST_REPOSITORY,
+      CUSTOMER_MANAGEMENT_PEERS,
     ],
     useFactory: (
       gate: UseCaseGate,
@@ -283,7 +300,22 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       deletionRequests: CustomerPageDependencies['deletionRequests'],
       timeline: CustomerPageDependencies['timeline'],
       ids: CustomerPageDependencies['ids'],
-    ) => new type(gate, { unitOfWork, listReader, clock, audit, deletionRequests, timeline, ids }),
+      dayZone: CustomerPageDependencies['dayZone'],
+      deletions: CustomerPageDependencies['deletions'],
+      peers: CustomerManagementPeers,
+    ) =>
+      new type(gate, {
+        unitOfWork,
+        listReader,
+        clock,
+        audit,
+        deletionRequests,
+        timeline,
+        ids,
+        dayZone,
+        deletions,
+        orders: peers.ordering,
+      }),
   };
 }
 
@@ -331,6 +363,10 @@ const MANAGEMENT_PORTS: readonly [
   ['ids', ID_GENERATOR],
   ['stepUp', STEP_UP_CONSUMER],
   ['sheetWriter', SHEET_WRITER],
+  ['dayZone', ADMIN_DAY_ZONE],
+  ['addresses', ADDRESS_REPOSITORY],
+  ['addressCipher', ADDRESS_CIPHER],
+  ['groupUsage', CUSTOMER_GROUP_USAGE_REGISTRY],
 ];
 
 /** The admin's management of customers (phase 2): its ports, plus identity bound at start. */
@@ -389,6 +425,11 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminSellerCustomersController,
   ],
   providers: [
+    {
+      provide: CUSTOMER_GROUP_USAGE_REGISTRY,
+      // A factory, not a value: each application (and each test app) gets its own registry.
+      useFactory: () => new CustomerGroupUsageRegistry(),
+    },
     PersistenceModule.auditWriterFor('customers'),
     PersistenceModule.outboxWriterFor('customers'),
     registerAuditActions('customers', CUSTOMERS_AUDIT_ACTIONS),
@@ -447,6 +488,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminCustomerTimeline,
       AdminCustomerTimelineExport,
       AdminCustomerRename,
+      AdminCustomerAddresses,
+      AdminCustomerAddressReveal,
     ].map((type) => managementUseCaseProvider(type as ManagementUseCaseClass<unknown>)),
     {
       provide: RecordCustomerTimeline,
@@ -497,6 +540,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         AUDIT_WRITER,
         STEP_UP_CONSUMER,
         CLOCK,
+        ADMIN_DAY_ZONE,
       ],
       useFactory: (
         gate: UseCaseGate,
@@ -506,6 +550,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         audit: AdminCustomersExportDependencies['audit'],
         stepUp: AdminCustomersExportDependencies['stepUp'],
         clock: AdminCustomersExportDependencies['clock'],
+        dayZone: AdminCustomersExportDependencies['dayZone'],
       ) =>
         new AdminCustomersExport(gate, {
           unitOfWork,
@@ -514,6 +559,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           audit,
           stepUp,
           clock,
+          dayZone,
         }),
     },
     {
@@ -561,6 +607,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ReconcileCustomerReadModels,
     CUSTOMER_MANAGEMENT_PEERS,
     RecordCustomerTimeline,
+    CUSTOMER_GROUP_USAGE_REGISTRY,
     SyncSellerCustomers,
     ReconcileSellerCustomers,
   ],

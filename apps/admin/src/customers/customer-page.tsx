@@ -37,9 +37,20 @@ import {
   type Tab,
 } from './page-types.ts';
 
+/** An erased customer's page: the id and when, nothing else. */
+interface CustomerTombstone {
+  readonly accountId: string;
+  readonly status: 'deleted';
+  readonly deletedAt: string;
+}
+
+const isTombstone = (body: CustomerOverview | CustomerTombstone): body is CustomerTombstone =>
+  body.status === 'deleted' && 'deletedAt' in body;
+
 type PageLoad =
   | { readonly state: 'loading' }
   | { readonly state: 'not-found' }
+  | { readonly state: 'deleted'; readonly deletedAt: string }
   | { readonly state: 'failed' }
   | { readonly state: 'ready'; readonly customer: CustomerOverview };
 
@@ -131,10 +142,19 @@ export function CustomerPage({
 
   const load = useCallback(async () => {
     setPage({ state: 'loading' });
-    const result = await callApi<CustomerOverview>('GET', `customers/admin/customers/${id}`);
+    const result = await callApi<CustomerOverview | CustomerTombstone>(
+      'GET',
+      `customers/admin/customers/${id}`,
+    );
     if (result.ok) {
-      setPendingDeletion((result.body.deletionRequest ?? null) !== null);
-      setPage({ state: 'ready', customer: result.body });
+      const body = result.body;
+      if (isTombstone(body)) {
+        // The account was erased: the API answers only when (phase 2b tombstone).
+        setPage({ state: 'deleted', deletedAt: body.deletedAt });
+        return;
+      }
+      setPendingDeletion((body.deletionRequest ?? null) !== null);
+      setPage({ state: 'ready', customer: body });
       return;
     }
     if (result.failure.status === 401) {
@@ -214,6 +234,16 @@ export function CustomerPage({
         {back}
         <Banner tone="info" title={t('not-found.title')}>
           {t('not-found.body')}
+        </Banner>
+      </div>
+    );
+  }
+  if (page.state === 'deleted') {
+    return (
+      <div className="flex flex-col gap-4">
+        {back}
+        <Banner tone="info" title={t('deleted.title')}>
+          {t('deleted.body', { date: dayOf(page.deletedAt, locale, zone) })}
         </Banner>
       </div>
     );
