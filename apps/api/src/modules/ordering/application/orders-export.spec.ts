@@ -12,11 +12,13 @@ const spec = (read: PageReader) => ({
   header: ['A', 'B'],
   name: 'orders',
   read,
+  columns: { fixed: 1, optional: { b: 1 } },
+  notFound: 'ordering.order-not-found' as const,
 });
 
-const text = async (chunks: AsyncIterable<string>) => {
+const text = async (chunks: AsyncIterable<string | Uint8Array>) => {
   let out = '';
-  for await (const chunk of chunks) out += chunk;
+  for await (const chunk of chunks) out += String(chunk);
   return out;
 };
 
@@ -122,5 +124,107 @@ describe('ordersExport', () => {
     const result = await ordersExport(clock, {}, spec(read));
     if (!result.ok) throw new Error('refused');
     await expect(text(result.value.chunks)).rejects.toThrow(/the read failed/);
+  });
+
+  it('writes only the chosen columns after the fixed ones, in the order given', async () => {
+    const read: PageReader = (extra) =>
+      Promise.resolve(
+        ok<ExportPage>(
+          extra['page'] === 1
+            ? { rows: [], nextCursor: null, total: 1 }
+            : { rows: [['1', 'x']], nextCursor: null, total: null },
+        ),
+      );
+    const none = await ordersExport(clock, { columns: 'b' }, spec(read));
+    if (!none.ok) throw new Error('refused');
+    expect(await text(none.value.chunks)).toBe('﻿A,B\r\n1,x\r\n');
+    const wide = { ...spec(read), columns: { fixed: 1, optional: { b: 1 } } };
+    const fixedOnly = await ordersExport(clock, { columns: '' }, wide);
+    if (!fixedOnly.ok) throw new Error('refused');
+    expect(await text(fixedOnly.value.chunks)).toBe('﻿A,B\r\n1,x\r\n');
+    const refused = await ordersExport(clock, { columns: 'nope' }, spec(read));
+    expect(refused).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'columns', code: 'value' }] },
+    });
+  });
+
+  it('answers an XLSX file for format=xlsx and refuses another format', async () => {
+    const read: PageReader = (extra) =>
+      Promise.resolve(
+        ok<ExportPage>(
+          extra['page'] === 1
+            ? { rows: [], nextCursor: null, total: 1 }
+            : { rows: [['1', 'x']], nextCursor: null, total: null },
+        ),
+      );
+    const result = await ordersExport(clock, { format: 'xlsx' }, spec(read));
+    if (!result.ok) throw new Error('refused');
+    expect(result.value.filename).toBe('orders-2026-11-06.xlsx');
+    expect(result.value.contentType).toContain('spreadsheetml');
+    let bytes = 0;
+    for await (const chunk of result.value.chunks) bytes += chunk.length;
+    expect(bytes).toBeGreaterThan(100);
+    expect(await ordersExport(clock, { format: 'pdf' }, spec(read))).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'format', code: 'value' }] },
+    });
+  });
+
+  describe('selected ids', () => {
+    const A = '0190a000-0000-7000-8000-000000000001';
+    const B = '0190a000-0000-7000-8000-000000000002';
+    const reader = (known: Record<string, readonly (readonly (string | number)[])[]>) => {
+      const calls: Record<string, unknown>[] = [];
+      const read: PageReader = (extra) => {
+        calls.push(extra);
+        return Promise.resolve(
+          ok<ExportPage>({ rows: known[String(extra['q'])] ?? [], nextCursor: null, total: null }),
+        );
+      };
+      return { read, calls };
+    };
+
+    it('reads each id through the list and writes those rows in the order given', async () => {
+      const { read, calls } = reader({ [A]: [['a', 'x']], [B]: [['b', 'y']] });
+      const result = await ordersExport(clock, { ids: `${B},${A}` }, spec(read));
+      if (!result.ok) throw new Error('refused');
+      expect(await text(result.value.chunks)).toBe('﻿A,B\r\nb,y\r\na,x\r\n');
+      expect(calls).toEqual([
+        { q: B, limit: 2 },
+        { q: A, limit: 2 },
+      ]);
+    });
+
+    it('refuses the whole request when one id is not in the list, before any file', async () => {
+      const { read } = reader({ [A]: [['a', 'x']] });
+      expect(await ordersExport(clock, { ids: `${A},${B}` }, spec(read))).toEqual({
+        ok: false,
+        error: { code: 'ordering.order-not-found' },
+      });
+    });
+
+    it('refuses a malformed, repeated or oversized selection without reading', async () => {
+      const { read, calls } = reader({});
+      const bad = await ordersExport(clock, { ids: 'x' }, spec(read));
+      expect(bad).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'ids', code: 'format' }] },
+      });
+      const twice = await ordersExport(clock, { ids: `${A},${A}` }, spec(read));
+      expect(twice).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'ids', code: 'duplicate' }] },
+      });
+      const many = Array.from(
+        { length: 101 },
+        (_, n) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`,
+      ).join(',');
+      expect(await ordersExport(clock, { ids: many }, spec(read))).toEqual({
+        ok: false,
+        error: { code: 'batch.too-large', max: 100 },
+      });
+      expect(calls).toHaveLength(0);
+    });
   });
 });

@@ -95,9 +95,9 @@ const OFFER_3 = id<'Offer'>(0x03);
 const VARIANT = id<'Variant'>(0x10);
 const ADDRESS = id<'CustomerAddress'>(0xad);
 
-const textOf = async (chunks: AsyncIterable<string>): Promise<string> => {
+const textOf = async (chunks: AsyncIterable<string | Uint8Array>): Promise<string> => {
   let text = '';
-  for await (const chunk of chunks) text += chunk;
+  for await (const chunk of chunks) text += String(chunk);
   return text;
 };
 
@@ -1063,7 +1063,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         expect(await run({ page: 2 })).toEqual(
           err({ code: 'validation.failed', fields: [{ path: 'page', code: 'unknown' }] }),
         );
-        expect(await run({ format: 'xlsx' })).toEqual(
+        expect(await run({ format: 'pdf' })).toEqual(
           err({ code: 'validation.failed', fields: [{ path: 'format', code: 'value' }] }),
         );
         expect(await run('status')).toMatchObject({ ok: false });
@@ -1968,6 +1968,36 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         expect((await textOf(toShip.value.chunks)).split('\r\n').filter(Boolean)).toHaveLength(1);
         expect(await exportOf(sellerA, { sellerId: SELLER_B })).toEqual(
           err({ code: 'validation.failed', fields: [{ path: 'sellerId', code: 'unknown' }] }),
+        );
+      });
+
+      it('writes the chosen columns after the fixed ones, as CSV or XLSX', async () => {
+        await paid();
+        const csv = await exportOf(sellerA, { columns: 'total,carrier' });
+        if (!csv.ok) throw new Error('export failed');
+        const head = (await textOf(csv.value.chunks)).replace('\uFEFF', '').split('\r\n')[0];
+        expect(head).toBe('Seller order,Order,Paid at,Fulfilment,Total,Carrier');
+
+        const sheet = await exportOf(sellerA, { format: 'xlsx' });
+        if (!sheet.ok) throw new Error('export failed');
+        expect(sheet.value.filename).toMatch(/\.xlsx$/);
+        expect(sheet.value.contentType).toContain('spreadsheetml');
+        expect(await exportOf(sellerA, { columns: 'buyer' })).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'columns', code: 'value' }] }),
+        );
+      });
+
+      it('exports exactly the selected seller orders and refuses one that is not the seller’s', async () => {
+        const first = await paid();
+        const mine = sellerOrderIdOf(first.id, SELLER_A);
+        const theirs = sellerOrderIdOf(first.id, SELLER_B);
+        const picked = await exportOf(sellerA, { ids: mine });
+        if (!picked.ok) throw new Error('export failed');
+        const text = await textOf(picked.value.chunks);
+        expect(text).toContain(mine);
+        expect(text.split('\r\n').filter(Boolean)).toHaveLength(2);
+        expect(await exportOf(sellerA, { ids: `${mine},${theirs}` })).toEqual(
+          err({ code: 'ordering.seller-order-not-found' }),
         );
       });
 

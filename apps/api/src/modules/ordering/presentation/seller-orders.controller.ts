@@ -179,19 +179,32 @@ export class SellerOrdersController {
 
   @Get('export')
   @ApiOperation({
-    summary: "The shop's paid orders as a CSV file",
+    summary: "The shop's paid orders as a CSV or XLSX file",
     description:
       'Needs ordering.seller-order.view. The seller orders the list shows for the same filter ' +
       '(status = fulfilment step, from, to), newest payment first, at most 10,000: more is 413 ' +
       'batch.too-large (details.max, details.matching). One row per seller order; no buyer name, ' +
       'email, phone or address. The file streams as an attachment.',
   })
-  @ApiQuery({ name: 'format', required: false, enum: ['csv'] })
+  @ApiQuery({ name: 'format', required: false, enum: ['csv', 'xlsx'] })
+  @ApiQuery({
+    name: 'columns',
+    required: false,
+    description:
+      'Comma-separated optional columns in the order shown; the first columns always leave. Absent: every column.',
+  })
+  @ApiQuery({
+    name: 'ids',
+    required: false,
+    description:
+      'Comma-separated ids of the selected rows (at most 100). With it exactly those orders leave, in the order given; the filter keys are then ignored. An id the list does not show refuses the whole request (404).',
+  })
   @ApiQuery({ name: 'status', required: false, enum: ['to-ship', 'shipped', 'delivered'] })
   @ApiQuery({ name: 'from', required: false, description: 'ISO instant: paid at or after it.' })
   @ApiQuery({ name: 'to', required: false, description: 'ISO instant: paid before it.' })
   @ApiOkResponse({
-    description: 'text/csv; charset=utf-8 (seller-orders-<date>.csv), as an attachment',
+    description:
+      'text/csv; charset=utf-8 (seller-orders-<date>.csv) or an XLSX file, as an attachment',
   })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })

@@ -220,7 +220,7 @@ export class AdminOrdersController {
 
   @Get('export')
   @ApiOperation({
-    summary: 'The orders of the list as a CSV file (admin)',
+    summary: 'The orders of the list as a CSV or XLSX file (admin)',
     description:
       'Needs ordering.order.view. The orders the list shows for the same filter (status, q, ' +
       'paymentState, fulfilment, sellerId, from, to), newest first, at most 10,000: more is 413 ' +
@@ -228,7 +228,19 @@ export class AdminOrdersController {
       'order; no customer name or email. The file streams as an attachment. A text cell that ' +
       'starts with = + - @ is written with a leading quote.',
   })
-  @ApiQuery({ name: 'format', required: false, enum: ['csv'] })
+  @ApiQuery({ name: 'format', required: false, enum: ['csv', 'xlsx'] })
+  @ApiQuery({
+    name: 'columns',
+    required: false,
+    description:
+      'Comma-separated optional columns in the order shown; the first columns always leave. Absent: every column.',
+  })
+  @ApiQuery({
+    name: 'ids',
+    required: false,
+    description:
+      'Comma-separated ids of the selected rows (at most 100). With it exactly those orders leave, in the order given; the filter keys are then ignored. An id the list does not show refuses the whole request (404).',
+  })
   @ApiQuery({
     name: 'status',
     required: false,
@@ -244,7 +256,10 @@ export class AdminOrdersController {
   @ApiQuery({ name: 'sellerId', required: false })
   @ApiQuery({ name: 'from', required: false })
   @ApiQuery({ name: 'to', required: false })
-  @ApiOkResponse({ description: 'text/csv; charset=utf-8 (orders-<date>.csv), as an attachment' })
+  @ApiOkResponse({
+    description:
+      'text/csv; charset=utf-8 (orders-<date>.csv) or an XLSX file (orders-<date>.xlsx), as an attachment',
+  })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })

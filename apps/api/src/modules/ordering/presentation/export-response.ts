@@ -8,7 +8,7 @@ import { writeChunks } from './write-chunks';
 interface ExportFile {
   readonly filename: string;
   readonly contentType: string;
-  readonly chunks: AsyncIterable<string>;
+  readonly chunks: AsyncIterable<string | Uint8Array>;
 }
 
 /**
