@@ -40,6 +40,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { MissingDetailsEmailSellers } from '../application/use-cases/missing-details-email-sellers.use-case';
 import { ProductsMissingDetailsList } from '../application/use-cases/products-missing-details-list.use-case';
 import { CategoryAttributeLinksGet } from '../application/use-cases/category-attribute-links-get.use-case';
 import { CategoryAttributeLinksSet } from '../application/use-cases/category-attribute-links-set.use-case';
@@ -67,6 +68,8 @@ import {
   FeatureSetWriteWrapBody,
   CategoryLinksBody,
   MissingDetailsListBody,
+  MissingDetailsEmailBody,
+  MissingDetailsEmailRequest,
   CategoryLinksSetRequest,
   CategoryLinksSetWrapBody,
 } from './attribute-admin.dto';
@@ -142,6 +145,7 @@ export const ATTRIBUTE_ADMIN_STATUS: Readonly<Record<string, number>> = Object.f
   'attribute-definition.default-label-required': 422,
   'attribute-definition.active-option-required': 422,
   'access.unavailable': 503,
+  'missing-details-email.unconfigured': 503,
   'claim-text.check-unavailable': 503,
 });
 
@@ -215,6 +219,7 @@ export class AttributeAdminController {
     private readonly getCategoryLinks: CategoryAttributeLinksGet,
     private readonly setCategoryLinks: CategoryAttributeLinksSet,
     private readonly listMissingDetails: ProductsMissingDetailsList,
+    private readonly emailMissingDetails: MissingDetailsEmailSellers,
   ) {}
 
   @Post('attributes')
@@ -657,6 +662,48 @@ export class AttributeAdminController {
       ? (JSON.parse(JSON.stringify(result.value)) as MissingDetailsListBody)
       : refusal(result.error, response, context);
     return this.settle('catalog.products-missing-details-list', context, outcome);
+  }
+
+  @Post('reports/products-missing-details/email-sellers')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Email sellers about missing details',
+    description:
+      `${EDITS} Asks the sellers of the picked products to fill in the required details. The ` +
+      'products are judged again on the server: only a published seller product that still ' +
+      "lacks a detail counts. One English mail goes to each seller, listing only that seller's " +
+      'picked products, at most once in 7 days per seller and product; the mail is sent within ' +
+      'a minute by a job. `dryRun: true` only reports who would be emailed. Recorded in the ' +
+      'audit log, ids and counts only.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: MissingDetailsEmailRequest })
+  @ApiOkResponse({ type: MissingDetailsEmailBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable or missing-details-email.unconfigured',
+  })
+  async emailSellers(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<MissingDetailsEmailBody> {
+    const input = closedBody(request, body, ['productIds'], ['dryRun']);
+    let outcome: MissingDetailsEmailBody | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.emailMissingDetails.execute(context, input);
+      outcome = result.ok
+        ? (JSON.parse(JSON.stringify(result.value)) as MissingDetailsEmailBody)
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.missing-details-email-sellers', context, outcome);
   }
 
   @Get('categories/:categoryId/attribute-links')

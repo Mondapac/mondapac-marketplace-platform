@@ -25,6 +25,18 @@ describe.each([['AU'], ['ZZ']] as const)('blog post lifecycle in %s', (code) => 
   const reviewer = (h: ReturnType<typeof blogHarness>) => h.admin('reviewer', REVIEWER);
   const publisher = (h: ReturnType<typeof blogHarness>) => h.admin('publisher', PUBLISHER);
 
+  it('lists the Market languages with the categories, for the names an editor may give', async () => {
+    const h = blogHarness(code);
+    await aCategory(h);
+    const config = h.deps.policy.of(h.market)!;
+    const taxonomy = unwrap(await h.cases.listTaxonomy.execute(writer(h), undefined));
+    expect(taxonomy.locales).toEqual({
+      default: config.defaultLocale,
+      supported: [...config.supportedLocales],
+    });
+    expect(taxonomy.categories).toHaveLength(1);
+  });
+
   it('creates a draft with a slug made from the title and audits it', async () => {
     const h = blogHarness(code);
     const category = await aCategory(h);

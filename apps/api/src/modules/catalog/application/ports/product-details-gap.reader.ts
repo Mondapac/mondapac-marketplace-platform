@@ -31,6 +31,16 @@ export interface PublishedProductsFilter {
  * (read-only) unit of the use case, through the Market-scoped client. Catalog tables only.
  */
 export interface ProductDetailsGapReader {
+  /**
+   * The same rows for the products with these ids (at most 200) that are published; an id that is
+   * not (unknown, another Market's, not published) gives no row.
+   */
+  publishedByIds(
+    market: MarketContext,
+    productIds: readonly string[],
+    locale: string,
+  ): Promise<readonly PublishedProductValues[]>;
+
   published(
     market: MarketContext,
     filter: PublishedProductsFilter,

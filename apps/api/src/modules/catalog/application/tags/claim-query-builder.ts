@@ -77,6 +77,54 @@ export class ClaimQueryBuilder {
   }
 
   /**
+   * {@link publishedSnapshot} for many products at once (multi-culture package 3a: the visibility
+   * of a sync batch): the products in one statement, their published revisions' categories and
+   * variants in one, and the live category paths of all of them together (one statement per tree
+   * level). An unknown product, or one with no published revision, answers null facts as above.
+   */
+  async publishedSnapshots(
+    market: MarketContext,
+    productIds: readonly Id<'Product'>[],
+  ): Promise<ReadonlyMap<Id<'Product'>, PublishedSnapshot>> {
+    const out = new Map<Id<'Product'>, PublishedSnapshot>();
+    const distinct = [...new Set(productIds)];
+    for (const id of distinct) out.set(id, { facts: null, productVersion: null });
+    if (distinct.length === 0) return out;
+    const products = await this.deps.products.findManyByIds(market, distinct);
+    const published = products.filter((p) => p.state.publishedRevisionId !== null);
+    for (const product of products) {
+      out.set(product.state.id, { facts: null, productVersion: product.state.version });
+    }
+    const shapes = await this.deps.revisions.claimShapes(
+      market,
+      published.map((p) => ({ productId: p.state.id, revisionId: p.state.publishedRevisionId! })),
+    );
+    const shapeOf = new Map(shapes.map((shape) => [shape.productId as string, shape]));
+    const found = published.filter((p) => shapeOf.has(p.state.id));
+    const paths = await this.deps.categoryPaths.livePathsMany(
+      market,
+      found.map((p) => shapeOf.get(p.state.id)!.categoryIds),
+    );
+    found.forEach((product, index) => {
+      const shape = shapeOf.get(product.state.id)!;
+      const retired = new Set(
+        product.state.variants.filter((v) => v.state === 'retired').map((v) => v.id as string),
+      );
+      out.set(product.state.id, {
+        productVersion: product.state.version,
+        facts: {
+          productId: product.state.id,
+          productRevisionId: shape.revisionId,
+          revisionPublished: true,
+          variantIds: shape.variantIds.filter((id) => !retired.has(id)) as Id<'Variant'>[],
+          platformCategoryPaths: paths[index] ?? [],
+        },
+      });
+    });
+    return out;
+  }
+
+  /**
    * Locks the product row at the version a tag write's ask was built on (slice 11; Hassan M1
    * condition): false when the product moved since, so the write asks again. Held to the end of
    * the caller's unit, which serialises the tag write against a revision publication.

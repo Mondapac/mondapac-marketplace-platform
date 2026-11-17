@@ -42,6 +42,7 @@ import {
 } from './application/use-cases/send-cart-reminders.use-case';
 import { SendOrderConfirmationMail } from './application/use-cases/send-order-confirmation-mail.use-case';
 import { SendOrderShippedMail } from './application/use-cases/send-order-shipped-mail.use-case';
+import { SendItemUnavailableRefundMail } from './application/use-cases/send-item-unavailable-refund-mail.use-case';
 import { SendSellerNewOrderMail } from './application/use-cases/send-seller-new-order-mail.use-case';
 import { SendSellerOrderDisputedMail } from './application/use-cases/send-seller-order-disputed-mail.use-case';
 import { disputeNoticeSubscriptions } from './presentation/subscribers/dispute-notice.subscriptions';
@@ -60,6 +61,7 @@ import { AdminNoticesController } from './presentation/admin-notices.controller'
 import { purgeExpiredNoticesJob } from './presentation/jobs/purge-expired-notices.job';
 import { sendCartRemindersJob } from './presentation/jobs/send-cart-reminders.job';
 import { SellerNoticesController } from './presentation/seller-notices.controller';
+import { systemRequestNoticeSubscriptions } from './presentation/subscribers/system-request-notice.subscriptions';
 import { reviewNoticeSubscriptions } from './presentation/subscribers/review-notice.subscriptions';
 import { payoutNoticeSubscriptions } from './presentation/subscribers/payout-notice.subscriptions';
 import { inAppNoticeSubscriptions } from './presentation/subscribers/in-app-notice.subscriptions';
@@ -231,6 +233,7 @@ function inAppNoticeProvider<U>(
     orderMailProvider(SendOrderConfirmationMail),
     orderMailProvider(SendSellerNewOrderMail),
     orderMailProvider(SendOrderShippedMail),
+    orderMailProvider(SendItemUnavailableRefundMail),
     orderMailProvider(SendSellerOrderDisputedMail),
     marketingProvider(ViewUnsubscribeLink),
     marketingProvider(UnsubscribeMarketingEmail),
@@ -250,12 +253,18 @@ function inAppNoticeProvider<U>(
     ),
     registerSubscriptionsFrom(
       'notifications',
-      [SendOrderConfirmationMail, SendSellerNewOrderMail, SendOrderShippedMail],
+      [
+        SendOrderConfirmationMail,
+        SendSellerNewOrderMail,
+        SendOrderShippedMail,
+        SendItemUnavailableRefundMail,
+      ],
       (
         confirmation: SendOrderConfirmationMail,
         sellerNewOrder: SendSellerNewOrderMail,
         shipped: SendOrderShippedMail,
-      ) => orderMailSubscriptions(confirmation, sellerNewOrder, shipped),
+        unavailable: SendItemUnavailableRefundMail,
+      ) => orderMailSubscriptions(confirmation, sellerNewOrder, shipped, unavailable),
     ),
     registerSubscriptionsFrom(
       'notifications',
@@ -287,6 +296,12 @@ function inAppNoticeProvider<U>(
       [RecordSellerNotice, RecordAdminReviewNotice],
       (sellerNotice: RecordSellerNotice, adminNotice: RecordAdminReviewNotice) =>
         reviewNoticeSubscriptions(sellerNotice, adminNotice),
+    ),
+    // System requests: an open request past its review date (reminder for its area's reviewers).
+    registerSubscriptionsFrom(
+      'notifications',
+      [RecordAdminReviewNotice],
+      (adminNotice: RecordAdminReviewNotice) => systemRequestNoticeSubscriptions(adminNotice),
     ),
     registerJobsFrom(
       'notifications',

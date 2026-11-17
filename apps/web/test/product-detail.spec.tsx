@@ -254,7 +254,27 @@ describe('specifications from the API', () => {
       ['Best before', 'March 1, 2027', 'details'],
     ]);
     expect(rows[2]?.groupLabel).toBe('Details');
+    // A group the page has no word for has no heading; its internal code is never shown.
     expect(rows[0]?.groupLabel).toBeUndefined();
+  });
+
+  it('never turns a group code into a heading, even one that reads like a certification', () => {
+    const detail = productDetailOf(
+      {
+        ...TWO_SELLERS,
+        specifications: [
+          {
+            groupCode: 'halal-certified',
+            specifications: [
+              { code: 'origin', name: 'Origin', value: { kind: 'text', text: 'Iran' } },
+            ],
+          },
+        ],
+      },
+      'en',
+      labels,
+    )!;
+    expect(detail.specifications?.[0]?.groupLabel).toBeUndefined();
   });
 
   it('shows digits as Latin digits in a right-to-left language', () => {
@@ -313,6 +333,132 @@ describe('specifications from the API', () => {
     expect(within(section).getByText('Details', { selector: 'h4' })).toBeTruthy();
     // The group with no word for its code has no heading.
     expect(section.querySelectorAll('h4')).toHaveLength(1);
+  });
+
+  it('keeps the group heading one level under the section heading', () => {
+    // With a description the section is h3 and the groups are h4; without one, h2 and h3.
+    renderWith(groups);
+    const section = screen.getByText('Specifications').closest('section')!;
+    expect(section.querySelectorAll('h3.spec-title, h4.spec-title')).toHaveLength(1);
+    expect(section.querySelectorAll('h4.spec-title')).toHaveLength(1);
+    cleanup();
+    render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider>
+          <ProductPage
+            product={productDetailOf(
+              { ...TWO_SELLERS, description: null, shortDescription: null, specifications: groups },
+              'en',
+              withGroup,
+            )!}
+            category={undefined}
+          />
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+    const bare = screen.getByText('Specifications').closest('section')!;
+    expect(bare.querySelector('h2')?.textContent).toBe('Specifications');
+    expect(bare.querySelectorAll('h3.spec-title')).toHaveLength(1);
+    expect(bare.querySelectorAll('h4')).toHaveLength(0);
+  });
+
+  it('keeps two attributes with the same name in one group as two rows, without a key warning', () => {
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    renderWith([
+      {
+        groupCode: 'general',
+        specifications: [
+          { code: 'a', name: 'Material', value: { kind: 'text', text: 'Cotton' } },
+          { code: 'b', name: 'Material', value: { kind: 'text', text: 'Wool' } },
+        ],
+      },
+    ]);
+    expect(screen.getAllByText('Material')).toHaveLength(2);
+    expect(screen.getByText('Cotton')).toBeTruthy();
+    expect(screen.getByText('Wool')).toBeTruthy();
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it('writes a list with the language separator and a decimal without rounding it', () => {
+    const rows = (locale: string) =>
+      productDetailOf(
+        {
+          ...TWO_SELLERS,
+          specifications: [
+            {
+              groupCode: 'general',
+              specifications: [
+                { code: 'l', name: 'L', value: { kind: 'list', items: ['Halal', 'Vegan'] } },
+                {
+                  code: 'n',
+                  name: 'N',
+                  value: { kind: 'number', value: '123456789012345.123456789' },
+                },
+                { code: 'm', name: 'M', value: { kind: 'number', value: '-0.5' } },
+                { code: 'z', name: 'Z', value: { kind: 'number', value: '7' } },
+                { code: 'o', name: 'O', value: { kind: 'number', value: '-0' } },
+              ],
+            },
+          ],
+        },
+        locale,
+        labels,
+      )!.specifications.map((row) => row.value);
+    expect(rows('en')).toEqual(['Halal, Vegan', '123,456,789,012,345.123456789', '-0.5', '7', '0']);
+    // Persian writes «،» with a right-to-left mark; the digits stay Latin.
+    expect(rows('fa')[0]).toBe('Halal،\u200F Vegan');
+    expect(rows('fa')[1]).toMatch(/^123,456,789,012,345[.٫]123456789$/u);
+    expect(rows('fa')[2]).toMatch(/^-0[.٫]5$/u);
+  });
+
+  it('writes a measure as its number and its unit label, and drops one it cannot write', () => {
+    const rows = (locale: string, value: unknown) =>
+      productDetailOf(
+        {
+          ...TWO_SELLERS,
+          specifications: [
+            {
+              groupCode: 'general',
+              specifications: [{ code: 'w', name: 'Net weight', value }],
+            },
+          ],
+        },
+        locale,
+        labels,
+      )!.specifications.map((row) => row.value);
+    expect(rows('en', { kind: 'measure', value: '1250.5', unitLabel: 'kg' })).toEqual([
+      '1,250.5 kg',
+    ]);
+    // The digits stay Latin and the unit is the label the API sent, in the asked language.
+    expect(rows('fa', { kind: 'measure', value: '0.5', unitLabel: 'کیلوگرم' })[0]).toMatch(
+      /^0[.٫]5 کیلوگرم$/u,
+    );
+    expect(rows('en', { kind: 'measure', value: '2' })).toEqual([]);
+    expect(rows('en', { kind: 'measure', value: 'NaN', unitLabel: 'kg' })).toEqual([]);
+    expect(rows('en', { kind: 'measure', value: '2', unitLabel: '' })).toEqual([]);
+  });
+
+  it('shows at most 60 rows and 20 list items', () => {
+    const many = Array.from({ length: 70 }, (_, index) => ({
+      code: `a${index}`,
+      name: `Attribute ${index}`,
+      value: { kind: 'text', text: 'x' },
+    }));
+    const list = {
+      groupCode: 'details',
+      specifications: [
+        {
+          code: 'big',
+          name: 'Big',
+          value: { kind: 'list', items: Array.from({ length: 25 }, (_, i) => `Item${i}`) },
+        },
+      ],
+    };
+    const rows = (value: unknown) =>
+      productDetailOf({ ...TWO_SELLERS, specifications: value }, 'en', labels)!.specifications;
+    expect(rows([{ groupCode: 'general', specifications: many }])).toHaveLength(60);
+    expect(rows([list])[0]?.value.split(', ')).toHaveLength(20);
   });
 
   it('shows one group as one plain table without a heading', () => {

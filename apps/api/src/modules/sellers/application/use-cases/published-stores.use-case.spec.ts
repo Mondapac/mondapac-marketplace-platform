@@ -129,6 +129,7 @@ describe.each([
       allowedProductTypes: () => Promise.reject(new Error('not used')),
       blogEnabled: () => Promise.reject(new Error('not used')),
       categoryProposalsAllowed: () => Promise.reject(new Error('not used')),
+      aiEnabled: () => Promise.reject(new Error('not used')),
       firstApprovedAt: () => Promise.reject(new Error('not used')),
     };
     const accessReader = {

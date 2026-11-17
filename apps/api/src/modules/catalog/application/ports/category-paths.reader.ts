@@ -17,6 +17,16 @@ export interface CategoryPathsReader {
     market: MarketContext,
     categoryIds: readonly string[],
   ): Promise<readonly (readonly Id<'Category'>[])[]>;
+
+  /**
+   * {@link livePaths} for several sets at once, answered per set in order; the nodes of all sets
+   * are read together, one statement per tree level (multi-culture package 3a: the visibility of
+   * many Offers). One set that cannot be resolved fails the whole call.
+   */
+  livePathsMany(
+    market: MarketContext,
+    categoryIdSets: readonly (readonly string[])[],
+  ): Promise<readonly (readonly (readonly Id<'Category'>[])[])[]>;
 }
 
 /** The paths cannot be built from the stored tree; nothing may be asked on them. */

@@ -661,6 +661,14 @@ the settings module can hold it): a click inside the window answers 429 `request
 `latest(market, seller, 'seller')`; an admin's request never locks the seller. A request still
 waiting answers `already-queued`. No migration: the table, index and grants of 7.9 serve it.
 
+### 7.11 The seller's own health read (seller health)
+`sellers.read-own-seller-health` (rule `own-resources`, approved sellers only; `GET
+/sellers/own-health`, `no-store`) answers the acting seller's latest stored card with its five
+metrics, the 90-day trend, and the state of "Refresh now": `refresh.pending` (a recount is waiting,
+from any source) and `refresh.retryAfterSeconds` (what is left of the 15-minute cooldown of 7.10,
+0 when the seller may click). It reads what the nightly run stored and computes nothing; no route
+takes a seller id. It feeds the seller panel's Performance page.
+
 ## 8. Personal data
 
 ### 8.1 Fields and keys

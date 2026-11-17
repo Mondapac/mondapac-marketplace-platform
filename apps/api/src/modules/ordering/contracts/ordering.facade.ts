@@ -1,5 +1,6 @@
 import type { CallContext, Id, Money, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { RefundReason } from '../domain/refund';
 
 /** A payment the provider holds on a card, as the webhook receiver reports it. */
 export interface AuthorisedPayment {
@@ -71,6 +72,28 @@ export interface ShipmentNotice {
 export type ShipmentNoticeFailure = OrderNoticeFailure;
 
 /**
+ * What the customer's refund emails need from a refund Stripe confirmed (`ordering.refund-
+ * succeeded.v1`): the customer's account id (for the address lookup in `identity` only), the
+ * reason code, the amount given back and how many units it covered. No name, address or Stripe id.
+ */
+export interface RefundNotice {
+  readonly orderId: string;
+  readonly accountId: Id<'Account'>;
+  readonly refundId: Id<'Refund'>;
+  /** `SELLER_UNAVAILABLE_REASON` when the seller marked the units unavailable (decision 6). */
+  readonly reason: RefundReason;
+  readonly requestedBy: 'admin' | 'seller';
+  readonly amount: Money;
+  readonly units: number;
+}
+
+/** An unknown, foreign-Market or not succeeded refund is `ordering.refund-not-found`. */
+export type RefundNoticeFailure =
+  | AccessDenied
+  | { readonly code: 'validation.failed' }
+  | { readonly code: 'ordering.refund-not-found' };
+
+/**
  * The short customer name of one of the seller's own paid seller orders (in-app notices). PERSONAL
  * DATA for the seller member who asked: never logged, stored on a notice, cached or put in an
  * event; rendered as escaped text only.
@@ -137,7 +160,96 @@ export type OwnOpenObligationsFailure = AccessDenied;
  * What `payments` (the Stripe webhook receiver) calls. Both methods take the system actor's
  * `CallContext` unchanged and are idempotent: a repeated event changes nothing.
  */
+/**
+ * What one customer's confirmed orders and succeeded refunds add up to, for the `customers` read
+ * model. Amounts in minor units of `currency` (null with no confirmed order). No personal data.
+ */
+export interface CustomerOrderStats {
+  readonly accountId: Id<'Account'>;
+  readonly orderCount: number;
+  readonly firstOrderAt: Temporal.Instant | null;
+  readonly lastOrderAt: Temporal.Instant | null;
+  readonly spentMinor: bigint | null;
+  readonly currency: string | null;
+  readonly refundCount: number;
+  readonly refundedMinor: bigint;
+}
+
+/** A keyset page of the accounts with a confirmed order, ascending by id. */
+export interface CustomerOrderAccounts {
+  readonly accountIds: readonly Id<'Account'>[];
+}
+
+export type CustomerOrderStatsFailure = AccessDenied | { readonly code: 'validation.failed' };
+
+/**
+ * What one customer's confirmed orders add up to with one seller (customers management phase 3).
+ * `spentMinor` is the seller orders' gross less their succeeded refunds (never below zero), in
+ * `currency`. No personal data.
+ */
+export interface CustomerSellerStats {
+  readonly sellerId: Id<'Seller'>;
+  readonly orderCount: number;
+  readonly firstOrderAt: Temporal.Instant;
+  readonly lastOrderAt: Temporal.Instant;
+  readonly spentMinor: bigint;
+  readonly currency: string;
+}
+
+/** The most seller orders one page of {@link OrderingFacade.sellerCustomerOrders} holds. */
+export const MAX_SELLER_CUSTOMER_ORDERS = 100;
+
+/** One of the seller's own paid seller orders of a customer: ids, money and fulfilment only. */
+export interface SellerCustomerOrder {
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly orderId: Id<'Order'>;
+  readonly paidAt: Temporal.Instant;
+  readonly total: Money;
+  readonly fulfilment: 'to-ship' | 'shipped' | 'delivered';
+  readonly deliveredAt: Temporal.Instant | null;
+}
+
+export interface SellerCustomerOrders {
+  readonly items: readonly SellerCustomerOrder[];
+  readonly total: number;
+}
+
+export type SellerCustomerOrdersFailure = AccessDenied | { readonly code: 'validation.failed' };
+
 export interface OrderingFacade {
+  /** Rule `system`: one customer's confirmed-order totals per seller (customers phase 3). */
+  customerSellerStats(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<readonly CustomerSellerStats[], CustomerOrderStatsFailure>>;
+
+  /**
+   * Rule `permissions [ordering.seller-order.view]`: a page of the calling seller's own paid
+   * seller orders of one customer, newest first (`pageSize` 1 to 100). The seller comes from the
+   * session. The account id is what `customers` resolved from the seller's own customer code and
+   * is never answered back.
+   */
+  sellerCustomerOrders(
+    context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly page: number;
+      readonly pageSize: number;
+    },
+  ): Promise<Result<SellerCustomerOrders, SellerCustomerOrdersFailure>>;
+
+  /** Rule `system`: the customers read model's order totals for one account. */
+  customerOrderStats(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<CustomerOrderStats, CustomerOrderStatsFailure>>;
+
+  /** Rule `system`: accounts with a confirmed order after `after` (null: from the start), at most `limit` (1 to 500). */
+  customerOrderAccounts(
+    context: CallContext,
+    request: { readonly after: Id<'Account'> | null; readonly limit: number },
+  ): Promise<Result<CustomerOrderAccounts, CustomerOrderStatsFailure>>;
+
   /**
    * The card holds the money. Commits the stock, then captures, then confirms the order; if the
    * stock is gone or the amount differs the authorisation is voided and the order cancelled.
@@ -175,6 +287,15 @@ export interface OrderingFacade {
     context: CallContext,
     request: { readonly orderId: string; readonly sellerOrderId: string },
   ): Promise<Result<ShipmentNotice, ShipmentNoticeFailure>>;
+
+  /**
+   * The succeeded refund behind an `ordering.refund-succeeded.v1` event, for the customer's refund
+   * email. Rule `system`.
+   */
+  refundNotice(
+    context: CallContext,
+    request: { readonly orderId: string; readonly refundId: string },
+  ): Promise<Result<RefundNotice, RefundNoticeFailure>>;
 
   /**
    * The PaymentIntent the order itself holds, for the dispute consumer of `commission-payouts`.

@@ -1,13 +1,6 @@
 import { createHash } from 'node:crypto';
-import { err, ok } from '@mondapac/shared-kernel';
-import type {
-  CallContext,
-  Id,
-  MarketContext,
-  Money,
-  Result,
-  Temporal,
-} from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, Money, Result } from '@mondapac/shared-kernel';
 import type { ConsumedStepUp, StepUpProofConsumer, StepUpRefusal } from '../../src/platform/authz';
 import type { BatchCodeCrypto } from '../../src/modules/promotions/application/ports/batch-code-crypto';
 import type {
@@ -25,6 +18,7 @@ import type {
   CustomerOrderHistory,
   Known,
   StoreFollows,
+  CustomerGroupMembership,
 } from '../../src/modules/promotions/application/ports/customer-facts';
 import type {
   DeliveredOrderFacts,
@@ -55,11 +49,16 @@ import type {
   OptInRepository,
 } from '../../src/modules/promotions/application/ports/opt-in.repository';
 import type { PriceHistory } from '../../src/modules/promotions/application/ports/price-history';
+import type { SellerCatalogue } from '../../src/modules/promotions/application/ports/seller-catalogue';
+import type { SellerCommission } from '../../src/modules/promotions/application/ports/seller-commission';
 import { LockContendedError } from '../../src/modules/promotions/application/ports/promotion.repository';
 import type {
+  CriterionCounts,
   LiveScope,
   PromotionFilter,
   PromotionRepository,
+  PromotionSearch,
+  StatusCriterion,
   UsageRecord,
 } from '../../src/modules/promotions/application/ports/promotion.repository';
 import type { FirstOrderSettings } from '../../src/modules/promotions/application/ports/promotions-policy';
@@ -73,6 +72,16 @@ import type {
   ShippingThresholdRecord,
   ShippingThresholdRepository,
 } from '../../src/modules/promotions/application/ports/settings.repository';
+import { displayStatusOf } from '../../src/modules/promotions/domain/display-status';
+import {
+  RedemptionTakenError,
+  type RedemptionRepository,
+  type UsageDelta,
+} from '../../src/modules/promotions/application/ports/redemption.repository';
+import type {
+  RedemptionRecord,
+  ReleaseReason,
+} from '../../src/modules/promotions/domain/redemption';
 import type { PromotionRecord } from '../../src/modules/promotions/domain/promotion';
 
 // The promotions tables in memory, with the rules the tables enforce: a Market-unique code, one
@@ -131,6 +140,85 @@ export class MemoryPromotions implements PromotionRepository {
         .slice(0, filter.limit),
     );
   }
+  private matches(
+    search: PromotionSearch,
+    now: Temporal.Instant,
+    criterion: StatusCriterion | null,
+  ) {
+    return (r: PromotionRecord) => {
+      const text = search.text?.toLowerCase() ?? null;
+      if (
+        text !== null &&
+        !r.name.toLowerCase().includes(text) &&
+        !(r.code ?? '').startsWith(text.toUpperCase())
+      ) {
+        return false;
+      }
+      if (search.types.length > 0 && !search.types.includes(r.type)) return false;
+      if (search.owner === 'PLATFORM' && r.ownerSellerId !== null) return false;
+      if (search.owner === 'SELLER' && r.ownerSellerId === null) return false;
+      if (search.funding !== null && r.funding !== search.funding) return false;
+      if (criterion === null) return true;
+      if (criterion === 'NEEDS_REVIEW') return search.reviewPromotionIds.includes(r.id);
+      const shown = displayStatusOf(
+        {
+          type: r.type,
+          status: r.status,
+          startsAt: r.startsAt,
+          endsAt: r.endsAt,
+          budgetMinor: r.budgetMinor,
+          spentMinor: this.usage.get(r.id)?.spentMinor ?? 0n,
+        },
+        now,
+      );
+      return (
+        shown === criterion ||
+        (search.hideBudget && criterion === 'ACTIVE' && shown === 'BUDGET_USED_UP')
+      );
+    };
+  }
+  search(_market: MarketContext, search: PromotionSearch, now: Temporal.Instant) {
+    const key = (r: PromotionRecord): number | string =>
+      search.sort === 'STARTS'
+        ? r.startsAt.epochMilliseconds
+        : search.sort === 'ENDS'
+          ? (r.endsAt?.epochMilliseconds ?? Number.MAX_SAFE_INTEGER)
+          : search.sort === 'NAME'
+            ? r.name
+            : search.sort === 'USES'
+              ? (this.usage.get(r.id)?.usesCount ?? 0)
+              : r.createdAt.epochMilliseconds;
+    const sign = search.descending ? -1 : 1;
+    const all = [...this.records.values()]
+      .filter(this.matches(search, now, search.criterion))
+      .sort((a, b) => {
+        const x = key(a);
+        const y = key(b);
+        return (x < y ? -1 : x > y ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0) * sign;
+      });
+    return Promise.resolve({
+      records: all.slice(search.offset, search.offset + search.limit),
+      total: all.length,
+    });
+  }
+  countByCriterion(_market: MarketContext, search: PromotionSearch, now: Temporal.Instant) {
+    const counts = new Map<StatusCriterion | 'ALL', number>();
+    const all = [...this.records.values()];
+    counts.set('ALL', all.filter(this.matches(search, now, null)).length);
+    for (const criterion of [
+      'ACTIVE',
+      'SCHEDULED',
+      'PAUSED',
+      'NEEDS_REVIEW',
+      'ENDED',
+      'PENDING_APPROVAL',
+      'REJECTED',
+      'BUDGET_USED_UP',
+    ] as const) {
+      counts.set(criterion, all.filter(this.matches(search, now, criterion)).length);
+    }
+    return Promise.resolve(counts as CriterionCounts);
+  }
   listLive(_market: MarketContext, now: Temporal.Instant, scope: LiveScope) {
     this.lastScope = scope;
     return Promise.resolve(
@@ -142,6 +230,30 @@ export class MemoryPromotions implements PromotionRepository {
           (r.ownerSellerId === null || scope.sellerIds.includes(r.ownerSellerId)) &&
           (r.productIds.length === 0 || r.productIds.some((p) => scope.productIds.includes(p))),
       ),
+    );
+  }
+  listOpenCampaigns(
+    _market: MarketContext,
+    now: Temporal.Instant,
+    sellerId: Id<'Seller'>,
+    promotionId?: Id<'Promotion'>,
+  ) {
+    return Promise.resolve(
+      [...this.records.values()]
+        .filter(
+          (r) =>
+            (promotionId === undefined || r.id === promotionId) &&
+            r.type === 'CO_FUNDED_CAMPAIGN' &&
+            r.funding === 'CO_FUNDED' &&
+            r.status === 'ACTIVE' &&
+            (r.endsAt === null || r.endsAt.epochMilliseconds > now.epochMilliseconds) &&
+            (r.sellerIds.length === 0 || r.sellerIds.includes(sellerId)),
+        )
+        .sort(
+          (a, b) =>
+            a.startsAt.epochMilliseconds - b.startsAt.epochMilliseconds ||
+            (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+        ),
     );
   }
   listLiveOfTypes(
@@ -229,6 +341,13 @@ export class MemoryOptIns implements OptInRepository {
     }
     return Promise.resolve(sellers.sort() as readonly Id<'Seller'>[]);
   }
+  listOf(_market: MarketContext, promotionId: Id<'Promotion'>) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter((row) => row.promotionId === promotionId)
+        .sort((a, b) => a.optedInAt.epochMilliseconds - b.optedInAt.epochMilliseconds),
+    );
+  }
   liveSellers(_market: MarketContext, promotionIds: readonly Id<'Promotion'>[]) {
     const map = new Map<Id<'Promotion'>, Id<'Seller'>[]>();
     for (const row of this.rows.values()) {
@@ -263,6 +382,10 @@ export class MemoryReviewQueue implements ReviewQueueRepository {
         .sort((a, b) => a.openedAt.epochMilliseconds - b.openedAt.epochMilliseconds)
         .slice(0, limit),
     );
+  }
+  openSummary() {
+    const open = [...this.entries.values()].filter((e) => e.status === 'OPEN');
+    return Promise.resolve({ count: open.length, promotionIds: open.map((e) => e.promotionId) });
   }
   decide(
     _market: MarketContext,
@@ -338,6 +461,38 @@ export class FakePriceHistory implements PriceHistory {
   days: number | null = null;
   daysSoldAtPrice() {
     return Promise.resolve(this.days);
+  }
+}
+
+export class FakeSellerCommission implements SellerCommission {
+  /** Null = unreadable. */
+  rate: number | null = 1500;
+  /** The provisional tax taken out of a tax-inclusive amount, basis points. */
+  taxBps = 1000;
+  readonly asked: { amount: bigint; taxInclusive: boolean }[] = [];
+  commissionOn(_context: CallContext, amount: bigint, taxInclusive: boolean) {
+    this.asked.push({ amount, taxInclusive });
+    if (this.rate === null) return Promise.resolve(null);
+    const half = (n: bigint, d: bigint) => (n * 2n + d) / (d * 2n);
+    const base = taxInclusive ? half(amount * 10000n, 10000n + BigInt(this.taxBps)) : amount;
+    return Promise.resolve({
+      rateBps: this.rate,
+      commissionBase: base,
+      commission: half(base * BigInt(this.rate), 10000n),
+    });
+  }
+}
+
+/** A seller's catalogue: the products it sells and the sell units it owns. */
+export class FakeSellerCatalogue implements SellerCatalogue {
+  /** Null = unknown. */
+  sells: ReadonlySet<Id<'Product'>> | null = new Set();
+  owns = true;
+  sellsProducts() {
+    return Promise.resolve(this.sells);
+  }
+  ownsSellUnit() {
+    return Promise.resolve(this.owns);
   }
 }
 
@@ -447,6 +602,191 @@ export class FakeBatchCodeCrypto implements BatchCodeCrypto {
   }
 }
 
+/**
+ * The redemptions of orders (package T2), in memory. Linked to a {@link MemoryPromotions} (its usage
+ * rows) and a {@link MemoryBatchCodes} when a test gives them; otherwise the counters and codes are
+ * not kept. Locks are no-ops (one test runs one call at a time).
+ */
+export class MemoryRedemptions implements RedemptionRepository {
+  readonly rows: RedemptionRecord[] = [];
+  readonly claims = new Map<string, string>();
+  /** The rows of the discounts, without the orders' head rows. */
+  get discounts(): RedemptionRecord[] {
+    return this.rows.filter((row) => row.kind !== 'ORDER');
+  }
+  marketLocked = 0;
+  constructor(
+    private readonly promotions?: MemoryPromotions,
+    private readonly codes?: MemoryBatchCodes,
+  ) {}
+  forOrder(_market: MarketContext, orderId: Id<'Order'>) {
+    return Promise.resolve(this.rows.filter((row) => row.orderId === orderId));
+  }
+  insertMany(_market: MarketContext, records: readonly RedemptionRecord[]) {
+    for (const record of records) {
+      if (
+        this.rows.some(
+          (row) => row.orderId === record.orderId && row.promotionKey === record.promotionKey,
+        )
+      ) {
+        throw new RedemptionTakenError();
+      }
+    }
+    this.rows.push(...records);
+    return Promise.resolve();
+  }
+  markReleased(
+    market: MarketContext,
+    orderId: Id<'Order'>,
+    id: string,
+    reason: ReleaseReason,
+    at: Temporal.Instant,
+  ) {
+    if (this.rows.some((row) => row.orderId === orderId && row.promotionKey === 'order')) {
+      return Promise.resolve();
+    }
+    this.rows.push({
+      id,
+      orderId,
+      promotionKey: 'order',
+      promotionId: null,
+      kind: 'ORDER',
+      customerAccountId: null,
+      codeHash: null,
+      currency: null,
+      amount: 0n,
+      sellerShare: 0n,
+      platformShare: 0n,
+      units: null,
+      budgetMonth: null,
+      status: 'RELEASED',
+      releaseReason: reason,
+      reservedAt: at,
+      confirmedAt: null,
+      releasedAt: at,
+    });
+    return Promise.resolve();
+  }
+  customerFirstOrders(_market: MarketContext, customerAccountId: Id<'Account'>) {
+    return Promise.resolve(
+      this.live().filter(
+        (row) => row.kind === 'FIRST_ORDER' && row.customerAccountId === customerAccountId,
+      ).length,
+    );
+  }
+  confirm(_market: MarketContext, orderId: Id<'Order'>, at: Temporal.Instant) {
+    let moved = 0;
+    this.rows.forEach((row, index) => {
+      if (row.orderId === orderId && row.status === 'RESERVED') {
+        this.rows[index] = { ...row, status: 'CONFIRMED', confirmedAt: at };
+        moved += 1;
+      }
+    });
+    return Promise.resolve(moved);
+  }
+  release(
+    _market: MarketContext,
+    orderId: Id<'Order'>,
+    reason: ReleaseReason,
+    at: Temporal.Instant,
+    includeConfirmed: boolean,
+  ) {
+    const released: RedemptionRecord[] = [];
+    this.rows.forEach((row, index) => {
+      const holds = row.status === 'RESERVED' || (includeConfirmed && row.status === 'CONFIRMED');
+      if (row.orderId === orderId && holds) {
+        released.push(row);
+        this.rows[index] = { ...row, status: 'RELEASED', releaseReason: reason, releasedAt: at };
+      }
+    });
+    return Promise.resolve(released);
+  }
+  lockUsage() {
+    return Promise.resolve();
+  }
+  lockMarket() {
+    this.marketLocked += 1;
+    return Promise.resolve(true);
+  }
+  addUsage(_market: MarketContext, deltas: readonly UsageDelta[]) {
+    if (this.promotions === undefined) return Promise.resolve();
+    for (const delta of deltas) {
+      const usage = this.promotions.usage.get(delta.promotionId);
+      if (usage === undefined) throw new Error('promotions.usage row missing');
+      const next = {
+        usesCount: usage.usesCount + delta.uses,
+        spentMinor: usage.spentMinor + delta.spent,
+        sellerShareMinor: usage.sellerShareMinor + delta.sellerShare,
+        platformShareMinor: usage.platformShareMinor + delta.platformShare,
+      };
+      if (next.usesCount < 0 || next.spentMinor < 0n) throw new Error('usage below zero');
+      this.promotions.usage.set(delta.promotionId, next);
+    }
+    return Promise.resolve();
+  }
+  private live() {
+    return this.rows.filter((row) => row.status !== 'RELEASED');
+  }
+  customerUses(
+    _market: MarketContext,
+    customerAccountId: Id<'Account'>,
+    promotionIds: readonly Id<'Promotion'>[],
+  ) {
+    const uses = new Map<Id<'Promotion'>, number>();
+    for (const row of this.live()) {
+      if (row.customerAccountId !== customerAccountId || row.promotionId === null) continue;
+      const id = row.promotionId as Id<'Promotion'>;
+      if (!promotionIds.includes(id)) continue;
+      uses.set(id, (uses.get(id) ?? 0) + 1);
+    }
+    return Promise.resolve(uses as ReadonlyMap<Id<'Promotion'>, number>);
+  }
+  unitsSold(_market: MarketContext, promotionIds: readonly Id<'Promotion'>[]) {
+    const sold = new Map<Id<'Promotion'>, number>(promotionIds.map((id) => [id, 0]));
+    for (const row of this.live()) {
+      const id = row.promotionId as Id<'Promotion'> | null;
+      if (id !== null && sold.has(id) && row.units !== null)
+        sold.set(id, sold.get(id)! + row.units);
+    }
+    return Promise.resolve(sold as ReadonlyMap<Id<'Promotion'>, number>);
+  }
+  firstOrderSpent(_market: MarketContext, budgetMonth: string) {
+    return Promise.resolve(
+      this.live()
+        .filter((row) => row.kind === 'FIRST_ORDER' && row.budgetMonth === budgetMonth)
+        .reduce((sum, row) => sum + row.amount, 0n),
+    );
+  }
+  claimCode(_market: MarketContext, codeHash: string, orderId: Id<'Order'>, at: Temporal.Instant) {
+    const holder = this.claims.get(codeHash);
+    if (holder !== undefined) return Promise.resolve(holder === orderId);
+    this.claims.set(codeHash, orderId);
+    if (this.codes?.rows.has(codeHash)) this.codes.markUsed(codeHash, at);
+    return Promise.resolve(true);
+  }
+  unclaimCode(_market: MarketContext, codeHash: string, orderId: Id<'Order'>) {
+    if (this.claims.get(codeHash) === orderId) {
+      this.claims.delete(codeHash);
+      const row = this.codes?.rows.get(codeHash);
+      if (row !== undefined) this.codes!.rows.set(codeHash, { ...row, usedAt: null });
+    }
+    return Promise.resolve();
+  }
+  staleReservations(_market: MarketContext, before: Temporal.Instant, limit: number) {
+    const ids = [
+      ...new Set(
+        this.rows
+          .filter(
+            (row) =>
+              row.status === 'RESERVED' && Temporal.Instant.compare(row.reservedAt, before) < 0,
+          )
+          .map((row) => row.orderId as Id<'Order'>),
+      ),
+    ];
+    return Promise.resolve(ids.slice(0, limit));
+  }
+}
+
 /** The units-sold counter of flash sales: unknown (null) until a test says otherwise. */
 export class FakeFlashSales implements FlashSales {
   sold: Map<Id<'Promotion'>, number> | null = null;
@@ -481,6 +821,23 @@ export class FakeCustomerOrderHistory implements CustomerOrderHistory {
 }
 
 /** Which sellers a customer follows: unknown until a test says otherwise. */
+/** Manual customer groups as the quote reads them: unknown unless a test puts the customer in. */
+export class FakeGroupMembership implements CustomerGroupMembership {
+  readonly members = new Map<string, Set<Id<'Account'>>>();
+  broken = false;
+  throws = false;
+  reads = 0;
+  isMember(_context: CallContext, groupId: string, accountId: Id<'Account'>) {
+    this.reads += 1;
+    if (this.throws) return Promise.reject(new Error('customers unreachable'));
+    if (this.broken) return Promise.resolve({ known: false } as Known<boolean>);
+    return Promise.resolve({
+      known: true,
+      value: this.members.get(groupId)?.has(accountId) ?? false,
+    } as Known<boolean>);
+  }
+}
+
 export class FakeStoreFollows implements StoreFollows {
   readonly follows = new Map<Id<'Account'>, Id<'Seller'>[]>();
   broken = false;
@@ -669,6 +1026,29 @@ export class MemoryCredits implements CreditRepository {
         .slice(0, limit),
     );
   }
+  listForRecipient(
+    _market: MarketContext,
+    recipient: Id<'Account'>,
+    limit: number,
+    after?: CreditCursor,
+  ) {
+    const newestFirst = (a: CreditRecord, b: CreditRecord) =>
+      b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds ||
+      (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter((r) => r.recipientAccountId === recipient)
+        .sort(newestFirst)
+        .filter(
+          (r) =>
+            after === undefined ||
+            r.createdAt.epochMilliseconds < after.createdAt.epochMilliseconds ||
+            (r.createdAt.epochMilliseconds === after.createdAt.epochMilliseconds &&
+              r.id < after.id),
+        )
+        .slice(0, limit),
+    );
+  }
 }
 
 /** Referral codes and referrals in memory: one code per customer, one referral per new customer. */
@@ -770,14 +1150,26 @@ export class MemoryReferrals implements ReferralRepository {
 }
 
 /** The phase 3 dependencies, fresh: spread into a deps object. */
+/** An audit reader with no rows and an identity that names nobody: the default of a spec that does not read the activity. */
+const NO_ACTIVITY = {
+  auditTrail: {
+    history: () => Promise.resolve(ok([])),
+    historyOf: () => Promise.resolve(ok([])),
+  },
+  actors: { labelsOf: () => Promise.resolve(new Map()) },
+};
+
 export function phase3Fakes() {
   return {
+    ...NO_ACTIVITY,
     orderHistory: new FakeCustomerOrderHistory(),
     storeFollows: new FakeStoreFollows(),
+    groupMembership: new FakeGroupMembership(),
     orderFacts: new FakeOrderFacts(),
     referralSignals: new FakeReferralSignals(),
     walletCredit: new FakeWalletCredit(),
     credits: new MemoryCredits(),
     referrals: new MemoryReferrals(),
+    redemptions: new MemoryRedemptions(),
   };
 }

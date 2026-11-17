@@ -17,6 +17,8 @@ export interface TextFieldProps extends Omit<
   readonly status?: ReactNode;
   /** Marks the label "(optional)"; the text is the Market-neutral word from the caller. */
   readonly optionalLabel?: string;
+  /** A control at the end of the label row (the "Write with AI" button); it is not part of the label. */
+  readonly headAction?: ReactNode;
   /** Password fields get a show/hide toggle; these are its labels. */
   readonly showLabel?: string;
   readonly hideLabel?: string;
@@ -32,6 +34,7 @@ export function TextField({
   prefix,
   status,
   optionalLabel,
+  headAction,
   type = 'text',
   className,
   ...rest
@@ -47,12 +50,24 @@ export function TextField({
     .join(' ');
   return (
     <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-fg">
-        {label}
-        {optionalLabel ? (
-          <span className="font-normal text-fg-muted"> ({optionalLabel})</span>
-        ) : null}
-      </label>
+      {headAction ? (
+        <div className="flex items-center justify-between gap-2">
+          <label htmlFor={id} className="text-sm font-medium text-fg">
+            {label}
+            {optionalLabel ? (
+              <span className="font-normal text-fg-muted"> ({optionalLabel})</span>
+            ) : null}
+          </label>
+          {headAction}
+        </div>
+      ) : (
+        <label htmlFor={id} className="text-sm font-medium text-fg">
+          {label}
+          {optionalLabel ? (
+            <span className="font-normal text-fg-muted"> ({optionalLabel})</span>
+          ) : null}
+        </label>
+      )}
       <div className="relative flex items-center">
         {prefix ? (
           <span

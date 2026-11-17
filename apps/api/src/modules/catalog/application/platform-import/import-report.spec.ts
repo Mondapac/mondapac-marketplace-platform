@@ -55,6 +55,16 @@ describe('the platform import reports', () => {
     expect(problemText('duplicate-in-file', 'title', 4)).toContain('row 4');
   });
 
+  it('describes the problems of an attribute column with the column named', () => {
+    expect(problemText('attribute.option-unknown', 'attr[cut]')).toContain('attr[cut]');
+    expect(problemText('attribute.option-duplicate', 'attr[diet]')).toMatch(/twice/);
+    expect(problemText('attribute.unit-unknown', 'attr[pack-size]')).toMatch(/unit/);
+    expect(problemText('attribute.precision', 'attr[pack-size]')).toMatch(/decimal/);
+    expect(problemText('attribute.unknown', 'attr[cut]')).toBe('attr[cut] is not valid');
+    expect(problemText('attribute.locale-unknown', 'attr[cut]')).toBe('attr[cut] is not valid');
+    expect(problemText('family.unavailable', 'category')).toMatch(/try again/);
+  });
+
   it('builds the template as CSV', () => {
     expect(
       templateCsv([

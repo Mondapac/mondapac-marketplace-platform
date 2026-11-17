@@ -1,4 +1,8 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import {
+  ADMIN_NOTE_CIPHER,
+  ADMIN_ORDER_NOTE_REPOSITORY,
+} from '../src/modules/ordering/application/ports/admin-order-notes';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -12,7 +16,24 @@ import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sess
 import { INVENTORY_ORDERING_PORT } from '../src/modules/inventory/contracts/ordering-port';
 import { CHECKOUT_GATEWAY } from '../src/modules/ordering/application/ports/checkout-gateway';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
+import {
+  ADMIN_SHIPMENT_LIST_READER,
+  type AdminShipmentListReader,
+} from '../src/modules/ordering/application/ports/admin-shipment-list.reader';
+import type { ShipmentListRecord } from '../src/modules/ordering/domain/admin-shipment-list';
+import {
+  ADMIN_DOCUMENT_LIST_READER,
+  type AdminDocumentListReader,
+} from '../src/modules/ordering/application/ports/admin-document-list.reader';
+import type { DocumentListRecord } from '../src/modules/ordering/domain/admin-document-list';
+import {
+  ADMIN_REFUND_LIST_READER,
+  type AdminRefundListReader,
+} from '../src/modules/ordering/application/ports/admin-refund-list.reader';
+import type { RefundListRecord } from '../src/modules/ordering/domain/admin-refund-list';
 import { PICKUP_CODE_REPOSITORY } from '../src/modules/ordering/application/ports/pickup-code.repository';
+import { REFUND_REPOSITORY } from '../src/modules/ordering/application/ports/refund.repository';
+import { SHIP_TO_RETENTION_REPOSITORY } from '../src/modules/ordering/application/ports/ship-to-retention.repository';
 import { PICKUP_CODE_VAULT } from '../src/modules/ordering/application/ports/pickup-code-vault';
 import { SHIP_TO_CIPHER } from '../src/modules/ordering/application/ports/ship-to-cipher';
 import { ORDERING_STATUS } from '../src/modules/ordering/presentation/http-answers';
@@ -40,11 +61,19 @@ import {
   FakeShipToCipher,
   MemoryOrders,
   MemoryPickupCodes,
+  MemoryRefundLimits,
+  MemoryShipToRetention,
   TEST_DELIVERY_ADDRESS,
+  FakeAdminNoteCipher,
+  MemoryAdminNotes,
+  OrderingAuditWriter,
 } from './support/ordering-fakes';
-import { FakeUnitOfWork, RecordingAuditWriter, RecordingOutbox } from './support/pricing-fakes';
+import { FakeUnitOfWork, RecordingOutbox } from './support/pricing-fakes';
+import { STORE_PROFILE_REPOSITORY } from '../src/modules/sellers/application/ports/store-profile.repository';
+import { InMemoryStoreProfiles } from '../src/modules/sellers/application/testing/in-memory-store-profiles';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
+import { encodeCursor } from '../src/modules/ordering/application/read-flow';
 
 // The checkout and order routes over HTTP: the real guards, controllers, gate and use cases; the
 // order store, Stripe, inventory and the cart are in memory. Proves the session and CSRF rules,
@@ -100,6 +129,10 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.card-declined': 402,
     'ordering.seller-order-not-found': 404,
     'ordering.fulfilment-conflict': 409,
+    'ordering.seller-order-refunded': 409,
+    'ordering.cancel-too-late': 409,
+    'ordering.cancel-nothing-left': 409,
+    'ordering.customer-erased': 409,
     'ordering.pickup-code-invalid': 422,
     'ordering.pickup-code-locked': 423,
     'ordering.payment-unavailable': 503,
@@ -110,8 +143,19 @@ it('maps every refusal code of the ordering use cases to its exact status', () =
     'ordering.refund-exceeds': 422,
     'ordering.refund-rejected': 422,
     'ordering.refund-tax-unavailable': 503,
+    'ordering.refund-limit-reached': 409,
+    'ordering.refund-limit-unset': 409,
+    'ordering.refund-limit-not-found': 404,
     'ordering.document-not-available': 409,
     'ordering.invoice-numbering-unavailable': 503,
+    'batch.too-large': 413,
+    'saved-filter.not-found': 404,
+    'saved-filter.name-taken': 409,
+    'saved-filter.limit-reached': 409,
+    'saved-filter.shared-limit-reached': 409,
+    'second-factor.required': 403,
+    'second-factor.enrolment-required': 403,
+    'ordering.search-unavailable': 503,
     'access.unavailable': 503,
   });
 });
@@ -126,7 +170,18 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
   let cart: FakeCart;
   let shipping: FakeShipping;
   let pickupCodes: MemoryPickupCodes;
+  let notes: MemoryAdminNotes;
   let pickupVault: FakePickupVault;
+  let refundLimits: MemoryRefundLimits;
+  let shipToRetention: MemoryShipToRetention;
+  /** The admin Shipments list's rows, served in memory (the SQL is in the db spec). */
+  let shipmentRows: ShipmentListRecord[];
+  /** The admin Invoices list's rows, served in memory (the SQL is in the db spec). */
+  let documentRows: DocumentListRecord[];
+  /** The admin Refunds list's rows, served in memory (the SQL is in the db spec). */
+  let refundRows: RefundListRecord[];
+  /** Ordering's audit rows, each checked against its definition. */
+  let audit: OrderingAuditWriter;
   const clock = new FixedClock(START);
   const http = () => request(app.getHttpServer());
   const marketOf = () => testMarketContext(code, PLATFORM_TENANT_ID);
@@ -139,7 +194,41 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
     cart = new FakeCart();
     shipping = new FakeShipping();
     pickupCodes = new MemoryPickupCodes();
+    notes = new MemoryAdminNotes();
     pickupVault = new FakePickupVault();
+    refundLimits = new MemoryRefundLimits();
+    shipToRetention = new MemoryShipToRetention();
+    shipmentRows = [];
+    documentRows = [];
+    const documentReader: AdminDocumentListReader = {
+      page: (_market, _filter, _sort, offset, limit) =>
+        Promise.resolve(documentRows.slice(offset, offset + limit)),
+      count: () => Promise.resolve(documentRows.length),
+      countByKind: () =>
+        Promise.resolve({ orderConfirmations: documentRows.length, creditNotes: 0 }),
+    };
+    const shipmentReader: AdminShipmentListReader = {
+      page: (_market, _filter, _sort, offset, limit) =>
+        Promise.resolve(shipmentRows.slice(offset, offset + limit)),
+      count: () => Promise.resolve(shipmentRows.length),
+      countByStage: () =>
+        Promise.resolve({
+          toPrepare: shipmentRows.length,
+          ready: 0,
+          shipped: 0,
+          delivered: 0,
+          refunded: 0,
+          attention: 0,
+        }),
+    };
+    refundRows = [];
+    const refundReader: AdminRefundListReader = {
+      page: (_market, _filter, _sort, offset, limit) =>
+        Promise.resolve(refundRows.slice(offset, offset + limit)),
+      count: () => Promise.resolve(refundRows.length),
+      countByState: () => Promise.resolve({ pending: 0, succeeded: refundRows.length, failed: 0 }),
+    };
+    audit = new OrderingAuditWriter();
     const customers = new FakeCustomers();
     customers.addresses.set(ADDRESS, { accountId: CUSTOMER, address: TEST_DELIVERY_ADDRESS });
     // The seller delivers for a flat 5.00.
@@ -165,11 +254,17 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .overrideProvider(UNIT_OF_WORK)
           .useValue(new FakeUnitOfWork())
           .overrideProvider(AUDIT_WRITER)
-          .useValue(new RecordingAuditWriter())
+          .useValue(audit)
           .overrideProvider(OUTBOX_WRITER)
           .useValue(new RecordingOutbox())
           .overrideProvider(ORDER_REPOSITORY)
           .useValue(orders)
+          .overrideProvider(ADMIN_SHIPMENT_LIST_READER)
+          .useValue(shipmentReader)
+          .overrideProvider(ADMIN_DOCUMENT_LIST_READER)
+          .useValue(documentReader)
+          .overrideProvider(ADMIN_REFUND_LIST_READER)
+          .useValue(refundReader)
           .overrideProvider(CHECKOUT_GATEWAY)
           .useValue(gateway)
           .overrideProvider(INVENTORY_ORDERING_PORT)
@@ -180,10 +275,20 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
           .useValue(customers)
           .overrideProvider(SHIP_TO_CIPHER)
           .useValue(new FakeShipToCipher())
+          .overrideProvider(ADMIN_ORDER_NOTE_REPOSITORY)
+          .useValue(notes)
+          .overrideProvider(ADMIN_NOTE_CIPHER)
+          .useValue(new FakeAdminNoteCipher())
+          .overrideProvider(STORE_PROFILE_REPOSITORY)
+          .useValue(new InMemoryStoreProfiles())
           .overrideProvider(PICKUP_CODE_REPOSITORY)
           .useValue(pickupCodes)
           .overrideProvider(PICKUP_CODE_VAULT)
           .useValue(pickupVault)
+          .overrideProvider(REFUND_REPOSITORY)
+          .useValue(refundLimits.repository)
+          .overrideProvider(SHIP_TO_RETENTION_REPOSITORY)
+          .useValue(shipToRetention)
           .overrideProvider(SHIPPING_FACADE)
           .useValue(shipping)
           .overrideProvider(TAX_FACADE)
@@ -992,6 +1097,275 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       });
     }
 
+    it('takes a search text on the admin list, refusing a bad length and showing the cap flag', async () => {
+      await seedAdmins();
+      await checkout(customer());
+
+      const matched = await http()
+        .get('/ordering/admin/orders?search=%20butcher%20&page=1')
+        .set(adminHeaders(VIEWER, 31));
+      const tooShort = await http()
+        .get('/ordering/admin/orders?search=a')
+        .set(adminHeaders(VIEWER, 32));
+      const tooLong = await http()
+        .get(`/ordering/admin/orders?search=${'x'.repeat(81)}`)
+        .set(adminHeaders(VIEWER, 33));
+      const noKey = await http()
+        .get('/ordering/admin/orders?search=butcher')
+        .set(adminHeaders(NO_KEY, 34));
+
+      expect(matched.status).toBe(200);
+      expect(body(matched)).toMatchObject({
+        searchCapped: false,
+        searchScope: 'customers-and-stores',
+      });
+      expect([tooShort, tooLong].map((r) => r.status)).toEqual([400, 400]);
+      expect(body(tooShort)).toMatchObject({
+        details: { fields: [{ path: 'search', code: 'length' }] },
+      });
+      expect(JSON.stringify(tooShort.body)).not.toContain('"a"');
+      expect(noKey.status).toBe(403);
+    });
+
+    it('lists shipments behind ordering.order.view, in pages or Previous/Next', async () => {
+      await seedAdmins();
+      const row = (n: number): ShipmentListRecord => ({
+        sellerOrderId: id<'SellerOrder'>(0x5000 + n),
+        orderId: id<'Order'>(0x6000 + n),
+        sellerId: SELLER,
+        accountId: CUSTOMER,
+        paidAt: START,
+        deliveryMethod: 'instant',
+        deliveryWindow: null,
+        fulfilment: 'shipped',
+        readyAt: START,
+        shippedAt: START,
+        deliveredAt: null,
+        carrier: 'Courier',
+        trackingRef: 'JD 0123 4567',
+        fleet: null,
+        deliveryAttention: null,
+        shipping: money(500n, currency),
+        total: money(1500n, currency),
+        refunded: money(0n, currency),
+      });
+      shipmentRows = [row(1), row(2), row(3)];
+
+      const paged = await http()
+        .get('/ordering/admin/shipments?page=1&pageSize=2')
+        .set(adminHeaders(VIEWER, 41));
+      const walked = await http()
+        .get('/ordering/admin/shipments?limit=2')
+        .set(adminHeaders(VIEWER, 42));
+      const spaced = await http()
+        .get('/ordering/admin/shipments?q=JD%200123%204567')
+        .set(adminHeaders(VIEWER, 43));
+      const bad = await http()
+        .get('/ordering/admin/shipments?stage=lost&page=1&cursor=x')
+        .set(adminHeaders(VIEWER, 44));
+      const noKey = await http().get('/ordering/admin/shipments').set(adminHeaders(NO_KEY, 45));
+      const customerTries = await http()
+        .get('/ordering/admin/shipments')
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), cookie: customer().cookie });
+
+      expect(paged.status).toBe(200);
+      expect(paged.headers['cache-control']).toBe('no-store');
+      expect(body(paged)).toMatchObject({
+        total: 3,
+        page: 1,
+        pageSize: 2,
+        nextCursor: null,
+        counts: { toPrepare: 3, refunded: 0 },
+        shipments: [
+          {
+            sellerOrderId: id<'SellerOrder'>(0x5001),
+            stage: 'shipped',
+            trackingRef: 'JD 0123 4567',
+            shipping: { amount: '500', currency },
+            actions: ['view-order', 'copy-tracking-reference'],
+          },
+          { sellerOrderId: id<'SellerOrder'>(0x5002) },
+        ],
+      });
+      expect(walked.status).toBe(200);
+      expect(body(walked)).toMatchObject({
+        total: null,
+        page: null,
+        pageSize: 2,
+        nextCursor: `${START.epochMilliseconds}.${id<'SellerOrder'>(0x5002)}`,
+      });
+      expect(spaced.status).toBe(200);
+      expect(bad.status).toBe(400);
+      expect(body(bad)).toMatchObject({
+        details: {
+          fields: [
+            { path: 'page', code: 'with-cursor' },
+            { path: 'cursor', code: 'format' },
+            { path: 'stage', code: 'value' },
+          ],
+        },
+      });
+      expect(noKey.status).toBe(403);
+      expect([401, 403]).toContain(customerTries.status);
+      // The route logs its outcome, never the reference typed.
+      const logged = logLines.filter((l) => l['msg'] === 'ordering.admin-list-shipments-route');
+      expect(logged.length).toBeGreaterThanOrEqual(5);
+      // A random correlation id (UUID), the time, the pid or the host name can hold "0123" by
+      // chance, so those fields are left out of the digit check; the whole line must still never
+      // hold the reference itself.
+      const byChance = new Set(['correlationId', 'time', 'pid', 'hostname']);
+      const withoutChanceFields = JSON.stringify(logged, (key, value: unknown) =>
+        byChance.has(key) ? undefined : value,
+      );
+      expect(withoutChanceFields).not.toContain('0123');
+      expect(JSON.stringify(logged)).not.toMatch(/JD( |%20|\+)0123/);
+    });
+
+    it('lists order confirmations and credit notes behind ordering.order.view, unnumbered', async () => {
+      await seedAdmins();
+      const row = (n: number): DocumentListRecord => ({
+        kind: 'order-confirmation',
+        documentId: id<'SellerOrder'>(0x7000 + n),
+        orderId: id<'Order'>(0x8000 + n),
+        sellerOrderId: id<'SellerOrder'>(0x7000 + n),
+        sellerId: SELLER,
+        accountId: CUSTOMER,
+        issuedAt: START,
+        total: money(3850n, currency),
+        tax: money(350n, currency),
+        shipping: money(550n, currency),
+        refundId: null,
+        refundReason: null,
+      });
+      documentRows = [row(1), row(2), row(3)];
+
+      const paged = await http()
+        .get('/ordering/admin/documents?page=1&pageSize=2')
+        .set(adminHeaders(VIEWER, 51));
+      const walked = await http()
+        .get('/ordering/admin/documents?kind=order-confirmation&limit=2')
+        .set(adminHeaders(VIEWER, 52));
+      const bad = await http()
+        .get('/ordering/admin/documents?kind=tax-invoice&minAmount=1.5')
+        .set(adminHeaders(VIEWER, 53));
+      const noKey = await http().get('/ordering/admin/documents').set(adminHeaders(NO_KEY, 54));
+
+      expect(paged.status).toBe(200);
+      expect(paged.headers['cache-control']).toBe('no-store');
+      expect(body(paged)).toMatchObject({
+        total: 3,
+        page: 1,
+        pageSize: 2,
+        nextCursor: null,
+        counts: { orderConfirmations: 3, creditNotes: 0 },
+        documents: [
+          {
+            kind: 'order-confirmation',
+            documentId: id<'SellerOrder'>(0x7001),
+            documentNumber: null,
+            total: { amount: '3850', currency },
+            actions: ['view-order', 'download-order-document'],
+          },
+          { documentId: id<'SellerOrder'>(0x7002) },
+        ],
+      });
+      expect(body(walked)).toMatchObject({
+        total: null,
+        page: null,
+        nextCursor: `${START.epochMilliseconds}.${id<'SellerOrder'>(0x7002)}`,
+      });
+      expect(bad.status).toBe(400);
+      expect(body(bad)).toMatchObject({
+        details: {
+          fields: [
+            { path: 'kind', code: 'value' },
+            { path: 'minAmount', code: 'format' },
+          ],
+        },
+      });
+      expect(noKey.status).toBe(403);
+      expect(
+        logLines.filter((l) => l['msg'] === 'ordering.admin-list-documents-route').length,
+      ).toBeGreaterThanOrEqual(3);
+    });
+
+    it('lists refunds behind ordering.order.view, in pages or Previous/Next', async () => {
+      await seedAdmins();
+      const row = (n: number): RefundListRecord => ({
+        refundId: id<'Refund'>(0x9000 + n),
+        orderId: id<'Order'>(0x9100 + n),
+        sellerOrderId: id<'SellerOrder'>(0x9200 + n),
+        sellerId: SELLER,
+        accountId: CUSTOMER,
+        gross: money(1100n, currency),
+        tax: money(100n, currency),
+        shippingGross: money(0n, currency),
+        reason: 'damaged',
+        actor: 'admin',
+        state: 'succeeded',
+        lossBearer: 'seller',
+        lossReasonCode: null,
+        stripeRefundId: `re_test${n}`,
+        requestedAt: START,
+        settledAt: START,
+        ledgerRecordedAt: null,
+        creditNoteId: id<'CreditNote'>(0x9300 + n),
+      });
+      refundRows = [row(1), row(2), row(3)];
+
+      const paged = await http()
+        .get('/ordering/admin/refunds?page=1&pageSize=2')
+        .set(adminHeaders(VIEWER, 61));
+      const walked = await http()
+        .get('/ordering/admin/refunds?limit=2')
+        .set(adminHeaders(VIEWER, 62));
+      const byStripe = await http()
+        .get('/ordering/admin/refunds?q=re_test1')
+        .set(adminHeaders(VIEWER, 63));
+      const bad = await http()
+        .get('/ordering/admin/refunds?state=lost&limit=0')
+        .set(adminHeaders(VIEWER, 64));
+      const noKey = await http().get('/ordering/admin/refunds').set(adminHeaders(NO_KEY, 65));
+
+      expect(paged.status).toBe(200);
+      expect(paged.headers['cache-control']).toBe('no-store');
+      expect(body(paged)).toMatchObject({
+        total: 3,
+        page: 1,
+        pageSize: 2,
+        nextCursor: null,
+        counts: { succeeded: 3 },
+        refunds: [
+          {
+            refundId: id<'Refund'>(0x9001),
+            gross: { amount: '1100', currency },
+            actions: ['view-order', 'copy-stripe-reference'],
+          },
+          { refundId: id<'Refund'>(0x9002) },
+        ],
+      });
+      expect(body(walked)).toMatchObject({
+        total: null,
+        page: null,
+        nextCursor: `${START.epochMilliseconds}.${id<'Refund'>(0x9002)}`,
+      });
+      expect(byStripe.status).toBe(200);
+      expect(bad.status).toBe(400);
+      expect(body(bad)).toMatchObject({
+        details: {
+          fields: [
+            { path: 'limit', code: 'range' },
+            { path: 'state', code: 'value' },
+          ],
+        },
+      });
+      expect(noKey.status).toBe(403);
+      // The route logs its outcome, never the reference typed.
+      const logged = logLines.filter((l) => l['msg'] === 'ordering.admin-list-refunds-route');
+      expect(logged.length).toBeGreaterThanOrEqual(4);
+      expect(JSON.stringify(logged)).not.toContain('re_test1');
+    });
+
     it('lets a role with ordering.order.view list and read orders, and no other', async () => {
       await seedAdmins();
       const started = await checkout(customer());
@@ -1013,7 +1387,40 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       const badFilter = await http()
         .get('/ordering/admin/orders?status=shipped')
         .set(adminHeaders(VIEWER, 15));
+      const paged = await http()
+        .get('/ordering/admin/orders?page=1&pageSize=10&sort=total&direction=asc')
+        .set(adminHeaders(VIEWER, 16));
+      const tooDeep = await http()
+        .get('/ordering/admin/orders?page=401')
+        .set(adminHeaders(VIEWER, 17));
+      const strayPageSize = await http()
+        .get('/ordering/admin/orders?pageSize=10')
+        .set(adminHeaders(VIEWER, 18));
 
+      const badSort = await http()
+        .get('/ordering/admin/orders?page=1&sort=name')
+        .set(adminHeaders(VIEWER, 19));
+      const notANumber = await http()
+        .get('/ordering/admin/orders?page=abc')
+        .set(adminHeaders(VIEWER, 20));
+      const pageAndCursor = await http()
+        .get(`/ordering/admin/orders?page=1&cursor=${encodeCursor(START, id<'Order'>(1))}&limit=10`)
+        .set(adminHeaders(VIEWER, 21));
+      const backwards = await http()
+        .get('/ordering/admin/orders?from=2026-02-01T00:00:00Z&to=2026-01-01T00:00:00Z')
+        .set(adminHeaders(VIEWER, 22));
+
+      expect([badSort, notANumber, pageAndCursor, backwards].map((r) => r.status)).toEqual([
+        400, 400, 400, 400,
+      ]);
+      expect(body(pageAndCursor)).toMatchObject({
+        details: { fields: [{ path: 'cursor' }, { path: 'limit' }] },
+      });
+      expect(paged.status).toBe(200);
+      expect(body(paged)).toMatchObject({ total: 1, page: 1, pageSize: 10, nextCursor: null });
+      expect(body(list)).toMatchObject({ total: null, page: null, pageSize: null });
+      expect(tooDeep.status).toBe(400);
+      expect(strayPageSize.status).toBe(400);
       expect(list.status).toBe(200);
       expect(list.headers['cache-control']).toBe('no-store');
       expect(body(list).orders).toHaveLength(1);
@@ -1036,6 +1443,50 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(customerTries.status).toBeLessThanOrEqual(403);
       expect(unknown.status).toBe(404);
       expect(badFilter.status).toBe(400);
+    });
+
+    it('exports the orders of the filter as a CSV attachment, for ordering.order.view only', async () => {
+      await seedAdmins();
+      const started = await checkout(customer());
+      const orderId = body(started).orderId;
+
+      const file = await http()
+        .get('/ordering/admin/orders/export?status=pending-payment')
+        .set(adminHeaders(VIEWER, 31));
+      const empty = await http()
+        .get('/ordering/admin/orders/export?status=cancelled')
+        .set(adminHeaders(VIEWER, 32));
+      const noKey = await http().get('/ordering/admin/orders/export').set(adminHeaders(NO_KEY, 33));
+      const customerTries = await http()
+        .get('/ordering/admin/orders/export')
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), cookie: customer().cookie });
+      const paged = await http()
+        .get('/ordering/admin/orders/export?page=1')
+        .set(adminHeaders(VIEWER, 34));
+      const xlsx = await http()
+        .get('/ordering/admin/orders/export?format=xlsx')
+        .set(adminHeaders(VIEWER, 35));
+      const badFilter = await http()
+        .get('/ordering/admin/orders/export?status=shipped')
+        .set(adminHeaders(VIEWER, 36));
+
+      expect(file.status).toBe(200);
+      expect(file.headers['content-type']).toContain('text/csv');
+      expect(file.headers['content-disposition']).toMatch(
+        /^attachment; filename="orders-\d{4}-\d{2}-\d{2}\.csv"$/,
+      );
+      expect(file.headers['cache-control']).toBe('no-store');
+      expect(file.headers['x-content-type-options']).toBe('nosniff');
+      const lines = String(file.text).replace('\uFEFF', '').split('\r\n').filter(Boolean);
+      expect(lines[0]).toMatch(/^Order,Placed,Status,Payment,/);
+      expect(lines).toHaveLength(2);
+      expect(lines[1]).toContain(orderId);
+      expect(String(empty.text).split('\r\n').filter(Boolean)).toHaveLength(1);
+      expect(noKey.status).toBe(403);
+      expect(customerTries.status).toBeGreaterThanOrEqual(401);
+      expect(customerTries.status).toBeLessThanOrEqual(403);
+      expect([paged, xlsx, badFilter].map((r) => r.status)).toEqual([400, 400, 400]);
+      expect(body(paged)).toMatchObject({ details: { fields: [{ path: 'page' }] } });
     });
 
     it('gives a role with ordering.order.view the document of a paid order, and no other role', async () => {
@@ -1105,6 +1556,313 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
       expect(noKey.status).toBe(403);
       expect(noCsrf.body).toMatchObject({ code: 'request.csrf' });
       expect(unknownField.status).toBe(400);
+    });
+
+    /** The Platform Administrator (every key, the protected refund key included). */
+    function seedRoot(accountId: Id<'Account'>, n: number) {
+      const rootRole = [...fakes.roles.values()].find(
+        (r) => r.marketId === code && r.seedCode === 'platform-administrator',
+      )!.id;
+      seedAccount(accountId, 'admin', `admin${n}`);
+      fakes.seedAssignment({
+        id: id<'RoleAssignment'>(0xe000 + n),
+        marketId: code as AccountState['marketId'],
+        accountId,
+        roleId: rootRole,
+        assignedByAccountId: null,
+        assignedAt: START,
+        version: 1,
+      });
+    }
+    const writer = (accountId: Id<'Account'>, n: number) => ({
+      'x-market-id': code,
+      ...panelHeaders(code, 'admin'),
+      ...session(accountId, 'admin', n),
+    });
+
+    it('cancels only for an admin with ordering.order.refund, and not while the Market switch is off', async () => {
+      await seedAdmins();
+      seedRoot(REFUNDER, 9);
+      const route = `/ordering/admin/orders/${id<'Order'>(0xbe11)}/cancel`;
+      const body = { reason: 'other' };
+
+      const off = await http().post(route).set(writer(REFUNDER, 31)).send(body);
+      const noKey = await http().post(route).set(writer(VIEWER, 32)).send(body);
+      const noCsrf = await http().post(route).set(adminHeaders(REFUNDER, 34)).send(body);
+      const unknownField = await http()
+        .post(route)
+        .set(writer(REFUNDER, 33))
+        .send({ ...body, lines: [] });
+
+      expect(off.status).toBe(409);
+      expect(off.body).toEqual({ statusCode: 409, code: 'ordering.refund-disabled' });
+      expect(off.headers['cache-control']).toBe('no-store');
+      expect(gateway.refunds).toHaveLength(0);
+      expect(noKey.status).toBe(403);
+      expect(noCsrf.body).toMatchObject({ code: 'request.csrf' });
+      expect(unknownField.status).toBe(400);
+    });
+
+    it('reads notes with ordering.order.view, writes them only with ordering.order.note', async () => {
+      await seedAdmins();
+      const WRITER = id<'Account'>(0xa00a);
+      seedRoot(WRITER, 10);
+      const orderId = id<'Order'>(0xbe21);
+      notes.orders.set(orderId, id<'Account'>(0xc0de));
+      const route = `/ordering/admin/orders/${orderId}/notes`;
+
+      const written = await http()
+        .post(route)
+        .set(writer(WRITER, 41))
+        .send({ body: 'Customer called <b>twice</b>' });
+      const viewerWrites = await http().post(route).set(writer(VIEWER, 42)).send({ body: 'x' });
+      const empty = await http().post(route).set(writer(WRITER, 43)).send({ body: '  ' });
+      const extra = await http().post(route).set(writer(WRITER, 44)).send({ body: 'x', pin: true });
+      const viewerReads = await http().get(route).set(adminHeaders(VIEWER, 45));
+      const noKeyReads = await http().get(route).set(adminHeaders(NO_KEY, 46));
+      const unknown = await http()
+        .get(`/ordering/admin/orders/${id<'Order'>(0xbe22)}/notes`)
+        .set(adminHeaders(VIEWER, 47));
+
+      expect(written.status).toBe(201);
+      expect(written.headers['cache-control']).toBe('no-store');
+      expect(written.body).toMatchObject({
+        body: 'Customer called <b>twice</b>',
+        authorAccountId: WRITER,
+        byYou: true,
+      });
+      expect(notes.rows[0]!.bodySealed).not.toContain('twice');
+      expect(viewerWrites.status).toBe(403);
+      expect(empty.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'body', code: 'required' }] },
+      });
+      expect(extra.status).toBe(400);
+      expect(viewerReads.status).toBe(200);
+      expect(viewerReads.body).toEqual({
+        notes: [{ ...written.body, byYou: false }],
+      });
+      expect(noKeyReads.status).toBe(403);
+      expect(unknown.status).toBe(404);
+    });
+
+    it('lets an admin with the refund-limit keys set the default and a seller’s own cap, audited', async () => {
+      await seedAdmins();
+      seedRoot(REFUNDER, 9);
+      const seller = id<'Seller'>(0xbe10);
+      const base = '/ordering/admin/refund-limits';
+
+      const none = await http().get(`${base}?sellerId=${seller}`).set(adminHeaders(REFUNDER, 40));
+      const setDefault = await http()
+        .put(base)
+        .set(writer(REFUNDER, 41))
+        .send({ maxCount: 20, maxAmount: '50000', expectedVersion: 0 });
+      const setOwn = await http()
+        .put(`${base}/sellers/${seller}`)
+        .set(writer(REFUNDER, 42))
+        .send({ maxCount: 5, maxAmount: '10000', expectedVersion: 0 });
+      const stale = await http()
+        .put(`${base}/sellers/${seller}`)
+        .set(writer(REFUNDER, 43))
+        .send({ maxCount: 6, maxAmount: '10000', expectedVersion: 0 });
+      const viewerSet = await http()
+        .put(base)
+        .set(writer(VIEWER, 44))
+        .send({ maxCount: 1, maxAmount: '1', expectedVersion: 1 });
+      const badBody = await http()
+        .put(base)
+        .set(writer(REFUNDER, 45))
+        .send({ maxCount: 0, maxAmount: 5, expectedVersion: 1, extra: true });
+      const removed = await http()
+        .delete(`${base}/sellers/${seller}?expectedVersion=1`)
+        .set(writer(REFUNDER, 46));
+      const removedAgain = await http()
+        .delete(`${base}/sellers/${seller}?expectedVersion=1`)
+        .set(writer(REFUNDER, 47));
+      const noKey = await http().get(base).set(adminHeaders(NO_KEY, 48));
+
+      expect(none.status).toBe(200);
+      expect(none.headers['cache-control']).toBe('no-store');
+      expect(none.body).toEqual({
+        currency,
+        marketDefault: null,
+        sellerId: seller,
+        own: null,
+        inForce: 'none',
+      });
+      expect(setDefault.status).toBe(200);
+      expect(setDefault.body).toMatchObject({
+        marketDefault: { maxCount: 20, maxAmount: { amount: '50000', currency }, version: 1 },
+        inForce: 'market',
+      });
+      expect(setOwn.body).toMatchObject({
+        sellerId: seller,
+        own: { maxCount: 5, maxAmount: { amount: '10000', currency }, version: 1 },
+        marketDefault: { maxCount: 20 },
+        inForce: 'own',
+      });
+      expect(stale.status).toBe(409);
+      expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.retry' });
+      expect(viewerSet.status).toBe(403);
+      expect(badBody.status).toBe(400);
+      expect(removed.status).toBe(200);
+      expect(removed.body).toMatchObject({ own: null, inForce: 'market' });
+      expect(removedAgain.status).toBe(404);
+      expect(removedAgain.body).toEqual({
+        statusCode: 404,
+        code: 'ordering.refund-limit-not-found',
+      });
+      expect(noKey.status).toBe(403);
+      expect(audit.rows.map((r) => r.action)).toEqual([
+        'ordering.refund-limit.set',
+        'ordering.refund-limit.set',
+        'ordering.refund-limit.removed',
+      ]);
+    });
+
+    const SHIP_TO_ACTION = 'ordering.ship-to-retention.change';
+    /** The root admin with an active second factor (an admin step-up action always asks for a code). */
+    async function seedStepUpAdmin() {
+      await seedAdmins();
+      seedRoot(REFUNDER, 9);
+      fakes.factors.set(REFUNDER, {
+        id: id<'SecondFactor'>(0xf309),
+        marketId: code as AccountState['marketId'],
+        accountId: REFUNDER,
+        state: 'active',
+        secretCiphertext: 'sealed',
+        pendingSecretCiphertext: null,
+        lastAcceptedStep: null,
+        activatedAt: START,
+        lockedAt: null,
+        createdAt: START,
+        recoveryCodes: Array.from({ length: 10 }, (_, index) => ({
+          position: index + 1,
+          codeHash: new Uint8Array(32).fill(index + 1),
+          usedAt: null,
+        })),
+        version: 1,
+      });
+    }
+    /** A fresh step-up proof of the admin session n for the ship-to retention change. */
+    const proveShipTo = (n: number) =>
+      fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf100 + n)}|${SHIP_TO_ACTION}`, clock.now());
+
+    it('lets only an admin with ordering.ship-to-retention.manage and a fresh code set the ship-to retention', async () => {
+      await seedStepUpAdmin();
+      const ACTION = SHIP_TO_ACTION;
+      const prove = proveShipTo;
+      const base = '/ordering/admin/ship-to-retention';
+      const body = { enabled: true, months: 24, expectedVersion: 0 };
+
+      const initial = await http().get(base).set(adminHeaders(VIEWER, 60));
+      const noCode = await http().put(base).set(writer(REFUNDER, 61)).send(body);
+      prove(62);
+      const saved = await http().put(base).set(writer(REFUNDER, 62)).send(body);
+      prove(63);
+      const stale = await http().put(base).set(writer(REFUNDER, 63)).send(body);
+      const invalid: number[] = [];
+      for (const [n, months] of [
+        [64, 0],
+        [65, 121],
+        [66, 2.5],
+      ] as const) {
+        prove(n);
+        invalid.push(
+          (
+            await http()
+              .put(base)
+              .set(writer(REFUNDER, n))
+              .send({ ...body, months, expectedVersion: 1 })
+          ).status,
+        );
+      }
+      prove(67);
+      const unknownField = await http()
+        .put(base)
+        .set(writer(REFUNDER, 67))
+        .send({ ...body, expectedVersion: 1, purgeNow: true });
+      const viewerSet = await http()
+        .put(base)
+        .set(writer(VIEWER, 68))
+        .send({ ...body, expectedVersion: 1 });
+      const noKey = await http().get(base).set(adminHeaders(NO_KEY, 69));
+      const anonymous = await http().get(base).set({ 'x-market-id': code });
+      const after = await http().get(base).set(adminHeaders(VIEWER, 70));
+
+      expect(initial.status).toBe(200);
+      expect(initial.headers['cache-control']).toBe('no-store');
+      expect(initial.body).toEqual({
+        enabled: false,
+        months: 24,
+        version: 0,
+        updatedAt: null,
+        updatedBy: null,
+      });
+      expect(noCode.status).toBe(403);
+      expect(noCode.body).toEqual({
+        statusCode: 403,
+        code: 'second-factor.required',
+        details: { actionKey: ACTION },
+      });
+      expect(saved.status).toBe(200);
+      expect(saved.body).toEqual({
+        enabled: true,
+        months: 24,
+        version: 1,
+        updatedAt: clock.now().toString(),
+        updatedBy: REFUNDER,
+      });
+      expect(stale.status).toBe(409);
+      expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.retry' });
+      expect(invalid).toEqual([400, 400, 400]);
+      expect(unknownField.status).toBe(400);
+      expect(viewerSet.status).toBe(403);
+      expect(noKey.status).toBe(403);
+      expect(anonymous.status).toBe(401);
+      expect(after.body).toMatchObject({ enabled: true, months: 24, version: 1 });
+      expect(audit.rows.map((r) => r.action)).toEqual(['ordering.ship-to-retention.changed']);
+      expect(
+        logLines.some(
+          (l) =>
+            l.msg === 'ordering.admin-set-ship-to-retention-route' &&
+            l.outcome === 'saved' &&
+            typeof l.correlationId === 'string',
+        ),
+      ).toBe(true);
+    });
+
+    it('answers a stale expectedVersion with 409 conflict.retry and months 0 with 400, saving nothing', async () => {
+      await seedStepUpAdmin();
+      const base = '/ordering/admin/ship-to-retention';
+      proveShipTo(71);
+      const first = await http()
+        .put(base)
+        .set(writer(REFUNDER, 71))
+        .send({ enabled: false, months: 36, expectedVersion: 0 });
+      proveShipTo(72);
+      const stale = await http()
+        .put(base)
+        .set(writer(REFUNDER, 72))
+        .send({ enabled: true, months: 12, expectedVersion: 0 });
+      proveShipTo(73);
+      const zero = await http()
+        .put(base)
+        .set(writer(REFUNDER, 73))
+        .send({ enabled: true, months: 0, expectedVersion: 1 });
+      const after = await http().get(base).set(adminHeaders(VIEWER, 74));
+
+      expect(first.status).toBe(200);
+      expect(stale.status).toBe(409);
+      expect(stale.body).toEqual({ statusCode: 409, code: 'conflict.retry' });
+      expect(zero.status).toBe(400);
+      expect(zero.body).toEqual({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'months', code: 'range' }] },
+      });
+      expect(after.body).toMatchObject({ enabled: false, months: 36, version: 1 });
+      expect(audit.rows.map((r) => r.action)).toEqual(['ordering.ship-to-retention.changed']);
     });
   });
 });

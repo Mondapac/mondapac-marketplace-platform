@@ -14,6 +14,7 @@ export const SENSITIVE_REASONS = [
   'image-added-or-replaced',
   'variant-removed',
   'gtin-changed',
+  'axis-added',
   'topics-changed',
   'never-published',
   'approval-required',
@@ -31,6 +32,8 @@ export interface SensitiveChangesPolicy {
   readonly variantRemoved: boolean;
   /** A GTIN set, changed or cleared on a variant that was already published (variants V4). */
   readonly gtinChanged: boolean;
+  /** A second variant axis added to a published product (variants V9b). */
+  readonly axisAdded: boolean;
 }
 
 /** What the policy reads of a revision's content. Ids and the text of names only. */
@@ -46,6 +49,8 @@ export interface RevisionSummary {
   readonly variantIds: readonly string[];
   /** Variant id to its 14-digit GTIN, or null (V4). */
   readonly variantGtins: Readonly<Record<string, string | null>>;
+  /** The option attribute codes the variants vary on (V9b); empty for a Simple product. */
+  readonly variantAxes: readonly string[];
 }
 
 export interface Classification {
@@ -116,6 +121,15 @@ export function classify(
     )
   ) {
     reasons.push('gtin-changed');
+  }
+  // A second axis rewrites the option values and labels of every variant. A Simple product made
+  // Configurable (published axes none) is not this change (M-9).
+  if (
+    policy.axisAdded &&
+    published.variantAxes.length > 0 &&
+    candidate.variantAxes.some((code) => !published.variantAxes.includes(code))
+  ) {
+    reasons.push('axis-added');
   }
   // Any difference between the two topic sets is a tag change and is always reviewed: not a Market
   // flag (decision 3 of the tags design). The order is not a tag change, so a reorder alone is minor.

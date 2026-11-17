@@ -3,6 +3,9 @@
 import { BackLink, Badge, Banner, Button, Card, CARD_TABLE, DataList, toast } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState } from 'react';
+import { OrderNotes } from './order-notes.tsx';
+import { OrderTimeline } from './order-timeline.tsx';
+import { UnavailableDialog } from './unavailable-dialog.tsx';
 import { callApi } from '../api/client.ts';
 import { DisputeNotice } from '../disputes/dispute-notice.tsx';
 import type { OwnDispute } from '../disputes/types.ts';
@@ -11,7 +14,13 @@ import { formatMinor } from '../price/money.ts';
 import { orderProblemOf } from './errors.ts';
 import { PickupHandover } from './pickup-handover.tsx';
 import { shortId, statusOf, TONE } from './status.ts';
-import type { SellerOrderView } from './types.ts';
+import {
+  remainingUnits,
+  type ActivityEvent,
+  type SellerNote,
+  type SellerOrderView,
+  packingSlipAvailable,
+} from './types.ts';
 
 /**
  * One paid order on its own page: summary, its lines with product names, the totals and the
@@ -26,6 +35,11 @@ export function OrderDetail({
   canDeliver,
   canConfirmPickup = false,
   dispute = null,
+  canMarkUnavailable = false,
+  canNote = false,
+  notes = null,
+  activity = null,
+  showExtras = false,
 }: {
   readonly initial: SellerOrderView;
   readonly csrfToken: string;
@@ -34,6 +48,16 @@ export function OrderDetail({
   readonly canConfirmPickup?: boolean;
   /** The dispute that holds or held this order: a notice shows near the top. */
   readonly dispute?: OwnDispute | null;
+  /** "Mark unavailable" (a protected key: the step-up dialog may ask for a code). */
+  readonly canMarkUnavailable?: boolean;
+  /** The role holds `ordering.seller-order.note`: the note form shows. */
+  readonly canNote?: boolean;
+  /** The shop's notes on this order; null when they could not be read. */
+  readonly notes?: readonly SellerNote[] | null;
+  /** The order timeline; null when it could not be read. */
+  readonly activity?: readonly ActivityEvent[] | null;
+  /** The page loads notes and the timeline (the order page does; a bare test mount does not). */
+  readonly showExtras?: boolean;
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -42,6 +66,9 @@ export function OrderDetail({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [justMarked, setJustMarked] = useState(false);
+  const [unavailableOpen, setUnavailableOpen] = useState(false);
+  // The page is read again after a refund or a note: the new answer replaces the old order.
+  useEffect(() => setOrder(initial), [initial]);
   const busy = useRef(false);
   const hintId = useId();
   const doneRef = useRef<HTMLDivElement>(null);
@@ -79,6 +106,16 @@ export function OrderDetail({
     setProblem(orderProblemOf(result.failure));
   }
 
+  /** The reference the seller reads out to support; a failed copy is told, never silent. */
+  async function copyReference() {
+    try {
+      await navigator.clipboard.writeText(reference);
+      toast.success(t('copy-id-done'));
+    } catch {
+      toast.error(t('copy-id-failed'));
+    }
+  }
+
   const windowText =
     order.deliveryMethod === 'scheduled' &&
     order.deliveryWindowStart !== null &&
@@ -86,7 +123,16 @@ export function OrderDetail({
       ? windowRange(order.deliveryWindowStart, order.deliveryWindowEnd, locale, zone)
       : null;
   const reference = shortId(order.sellerOrderId);
+  // The card shows only when it has something to say: delivered orders and shipped orders the
+  // person cannot deliver would leave it empty.
+  const nextStepVisible =
+    order.fulfilment === 'to-ship' || (order.fulfilment === 'shipped' && canDeliver);
   const count = order.lines.reduce((sum, line) => sum + line.quantity, 0);
+  const canUnavailable =
+    canMarkUnavailable &&
+    order.fulfilment === 'to-ship' &&
+    order.readyAt === null &&
+    order.lines.some((entry) => remainingUnits(order, entry.lineId) > 0);
   const lineHead = (col: 'item' | 'quantity' | 'unit' | 'amount') => t(`line.col.${col}`);
   return (
     <div className="flex flex-col gap-6">
@@ -97,6 +143,19 @@ export function OrderDetail({
             {t('detail-title', { id: reference })}
           </h1>
           <Badge tone={TONE[statusOf(order)]}>{t(`status.${statusOf(order)}`)}</Badge>
+          <Button variant="secondary" onClick={() => void copyReference()}>
+            {t('copy-id')}
+          </Button>
+          {packingSlipAvailable(order) ? (
+            <a
+              href={`/orders/${order.sellerOrderId}/packing-slip`}
+              target="_blank"
+              rel="noopener"
+              className="inline-flex items-center rounded-md border border-line-control bg-surface px-3 py-2 text-sm font-medium text-fg hover:bg-muted"
+            >
+              {t('slip.open')}
+            </a>
+          ) : null}
         </div>
         <p className="text-sm text-fg-muted">
           {t('paid-line', { when: formatInstant(order.paidAt, locale, zone) })}
@@ -107,6 +166,102 @@ export function OrderDetail({
       <DisputeNotice dispute={dispute} />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-6">
+          {nextStepVisible ? (
+            <Card title={t('next-step')}>
+              {order.fulfilment === 'to-ship' && order.readyAt === null ? (
+                canMarkReady ? (
+                  <>
+                    {problem === null ? null : (
+                      <Banner tone="critical">{t(`error.${problem}`)}</Banner>
+                    )}
+                    <p id={hintId} className="text-sm text-balance text-fg-muted">
+                      {t('ready.hint')}
+                    </p>
+                    <div>
+                      <Button
+                        aria-describedby={hintId}
+                        loading={pending}
+                        onClick={() => void step('ready')}
+                      >
+                        {t('ready.submit')}
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-fg-muted">{t('not-ready')}</p>
+                )
+              ) : null}
+              {order.fulfilment === 'to-ship' && order.readyAt !== null ? (
+                <div
+                  ref={doneRef}
+                  role="status"
+                  tabIndex={-1}
+                  className="flex flex-col gap-2 text-sm text-fg-muted outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <p className="text-fg">
+                    {t('ready.done', { when: shortInstant(order.readyAt, locale, zone) })}
+                  </p>
+                  <p>
+                    {order.deliveryMethod === 'pickup'
+                      ? t('ready.pickup')
+                      : t(order.deliveryAttention === null ? 'ready.arranged' : 'ready.attention')}
+                  </p>
+                </div>
+              ) : null}
+              {order.deliveryMethod === 'pickup' &&
+              order.fulfilment === 'to-ship' &&
+              order.readyAt !== null &&
+              canConfirmPickup &&
+              order.pickup != null ? (
+                <PickupHandover
+                  sellerOrderId={order.sellerOrderId}
+                  csrfToken={csrfToken}
+                  status={order.pickup}
+                  onCollected={(collected) => {
+                    setOrder(collected);
+                    toast.success(
+                      t('pickup.collected', {
+                        when: shortInstant(collected.deliveredAt ?? collected.paidAt, locale, zone),
+                      }),
+                    );
+                  }}
+                  onStatus={(pickup) => setOrder((current) => ({ ...current, pickup }))}
+                />
+              ) : null}
+              {order.fulfilment === 'shipped' && canDeliver ? (
+                <>
+                  {problem === null ? null : (
+                    <Banner tone="critical">{t(`error.${problem}`)}</Banner>
+                  )}
+                  <div>
+                    <Button
+                      variant="secondary"
+                      loading={pending}
+                      onClick={() => void step('deliver')}
+                    >
+                      {t('deliver')}
+                    </Button>
+                  </div>
+                </>
+              ) : null}
+            </Card>
+          ) : null}
+          {canUnavailable ? (
+            <Card title={t('unavailable.card')}>
+              <p className="text-sm text-balance text-fg-muted">{t('unavailable.hint')}</p>
+              <div>
+                <Button variant="destructive" onClick={() => setUnavailableOpen(true)}>
+                  {t('unavailable.open')}
+                </Button>
+              </div>
+              <UnavailableDialog
+                open={unavailableOpen}
+                onClose={() => setUnavailableOpen(false)}
+                order={order}
+                csrfToken={csrfToken}
+              />
+            </Card>
+          ) : null}
           <Card title={t('lines')} flush>
             <div className="relative overflow-x-auto">
               <table className={`${CARD_TABLE.table} lg:table-fixed`}>
@@ -237,84 +392,19 @@ export function OrderDetail({
                   ]}
                 />
               )}
-              {order.fulfilment === 'to-ship' && order.readyAt === null ? (
-                canMarkReady ? (
-                  <>
-                    {problem === null ? null : (
-                      <Banner tone="critical">{t(`error.${problem}`)}</Banner>
-                    )}
-                    <p id={hintId} className="text-sm text-balance text-fg-muted">
-                      {t('ready.hint')}
-                    </p>
-                    <div>
-                      <Button
-                        aria-describedby={hintId}
-                        loading={pending}
-                        onClick={() => void step('ready')}
-                      >
-                        {t('ready.submit')}
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-sm text-fg-muted">{t('not-ready')}</p>
-                )
-              ) : null}
-              {order.fulfilment === 'to-ship' && order.readyAt !== null ? (
-                <div
-                  ref={doneRef}
-                  role="status"
-                  tabIndex={-1}
-                  className="flex flex-col gap-2 text-sm text-fg-muted outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  <p className="text-fg">
-                    {t('ready.done', { when: shortInstant(order.readyAt, locale, zone) })}
-                  </p>
-                  <p>
-                    {order.deliveryMethod === 'pickup'
-                      ? t('ready.pickup')
-                      : t(order.deliveryAttention === null ? 'ready.arranged' : 'ready.attention')}
-                  </p>
-                </div>
-              ) : null}
-              {order.deliveryMethod === 'pickup' &&
-              order.fulfilment === 'to-ship' &&
-              order.readyAt !== null &&
-              canConfirmPickup &&
-              order.pickup != null ? (
-                <PickupHandover
-                  sellerOrderId={order.sellerOrderId}
-                  csrfToken={csrfToken}
-                  status={order.pickup}
-                  onCollected={(collected) => {
-                    setOrder(collected);
-                    toast.success(
-                      t('pickup.collected', {
-                        when: shortInstant(collected.deliveredAt ?? collected.paidAt, locale, zone),
-                      }),
-                    );
-                  }}
-                  onStatus={(pickup) => setOrder((current) => ({ ...current, pickup }))}
-                />
-              ) : null}
-              {order.fulfilment === 'shipped' && canDeliver ? (
-                <>
-                  {problem === null ? null : (
-                    <Banner tone="critical">{t(`error.${problem}`)}</Banner>
-                  )}
-                  <div>
-                    <Button
-                      variant="secondary"
-                      loading={pending}
-                      onClick={() => void step('deliver')}
-                    >
-                      {t('deliver')}
-                    </Button>
-                  </div>
-                </>
-              ) : null}
             </div>
           </Card>
+          {showExtras ? (
+            <>
+              <OrderNotes
+                sellerOrderId={order.sellerOrderId}
+                notes={notes}
+                canWrite={canNote}
+                csrfToken={csrfToken}
+              />
+              <OrderTimeline events={activity} />
+            </>
+          ) : null}
         </div>
       </div>
     </div>

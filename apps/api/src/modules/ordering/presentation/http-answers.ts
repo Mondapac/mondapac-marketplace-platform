@@ -26,8 +26,13 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'conflict.retry': 409,
   'request.throttled': 429,
   'ordering.check-unavailable': 503,
+  'ordering.search-unavailable': 503,
   'ordering.seller-order-not-found': 404,
   'ordering.fulfilment-conflict': 409,
+  'ordering.seller-order-refunded': 409,
+  'ordering.cancel-too-late': 409,
+  'ordering.cancel-nothing-left': 409,
+  'ordering.customer-erased': 409,
   'ordering.pickup-code-invalid': 422,
   'ordering.pickup-code-locked': 423,
   'ordering.payment-unavailable': 503,
@@ -38,8 +43,18 @@ export const ORDERING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'ordering.refund-exceeds': 422,
   'ordering.refund-rejected': 422,
   'ordering.refund-tax-unavailable': 503,
+  'ordering.refund-limit-reached': 409,
+  'ordering.refund-limit-unset': 409,
+  'ordering.refund-limit-not-found': 404,
   'ordering.document-not-available': 409,
   'ordering.invoice-numbering-unavailable': 503,
+  'batch.too-large': 413,
+  'saved-filter.not-found': 404,
+  'saved-filter.name-taken': 409,
+  'saved-filter.limit-reached': 409,
+  'saved-filter.shared-limit-reached': 409,
+  'second-factor.required': 403,
+  'second-factor.enrolment-required': 403,
   'access.unavailable': 503,
 });
 
@@ -84,6 +99,10 @@ const DETAILS = [
   'quotes',
   'attemptsLeft',
   'total',
+  'limit',
+  'max',
+  'matching',
+  'actionKey',
 ] as const;
 
 /** The sellers of `ordering.cart-not-ready`: the public minimum leaves as a money body. */

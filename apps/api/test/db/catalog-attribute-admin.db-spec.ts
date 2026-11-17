@@ -202,6 +202,7 @@ describe.each(TEST_MARKETS)('catalog attribute admin reader in market %s (databa
       product_id: productId,
       revision_no: 1,
       revision_kind: 'submission',
+      type_code: 'simple',
       base_revision_id: null,
       reverted_from_revision_id: null,
       family_revision_id: familyRevisionId,
@@ -248,6 +249,22 @@ describe.each(TEST_MARKETS)('catalog attribute admin reader in market %s (databa
       ],
     );
   }
+
+  it('names the attribute an archived definition was merged into, and only that one', async () => {
+    const target = await definition(market, { dataType: 'select' });
+    const source = await definition(market, { dataType: 'select' });
+    expect((await run(market, () => reader.definition(market, source.id)))?.mergedInto).toBeNull();
+    await owner.query(
+      `UPDATE catalog.attribute_definitions SET status = 'archived', merged_into_id = $3, version = version + 1
+        WHERE market_id = $1 AND id = $2`,
+      [market.marketId, source.id, target.id],
+    );
+    expect(await run(market, () => reader.definition(market, source.id))).toMatchObject({
+      status: 'archived',
+      mergedInto: { id: target.id, code: target.code },
+    });
+    expect((await run(market, () => reader.definition(market, target.id)))?.mergedInto).toBeNull();
+  });
 
   it('reads a definition with its current revision and options, and its history newest first', async () => {
     const made = await definition(market, {

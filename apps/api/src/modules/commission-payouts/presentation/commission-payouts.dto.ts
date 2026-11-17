@@ -6,8 +6,15 @@ import { APPROVAL_MODES, PAYOUT_WEEKDAYS, TERMS_CHANGE_REASONS } from '../domain
 import type { PayoutHoldView } from '../application/use-cases/place-payout-hold.use-case';
 import type { PayoutTermsView } from '../application/use-cases/view-seller-payout-terms.use-case';
 import type { LedgerView } from '../application/use-cases/view-own-ledger.use-case';
+import type { SellerHoldPage } from '../application/use-cases/list-seller-payout-holds.use-case';
+import type { SellerLedgerPage } from '../application/use-cases/view-seller-ledger.use-case';
+import { HOLD_ROW_ACTIONS, LEDGER_ROW_ACTIONS } from '../domain/seller-page-lists';
 
 // Bodies of the commission-payouts routes. Ids, basis points and minor-unit strings only.
+
+export const NOTE_DESCRIPTION =
+  "The admin's note for the reviewer, 1 to 500 characters; required while the Market reviews " +
+  'area money in Admin Inbox › System requests (else 400 on note), ignored otherwise.';
 
 export class CommissionRateBody {
   @ApiProperty({ format: 'uuid' }) sellerId!: string;
@@ -21,9 +28,25 @@ export class CommissionRateBody {
   @ApiProperty({ description: 'The Market rate, in basis points.' }) marketRateBps!: number;
 }
 
+/** The System requests review a change opened (Admin Inbox › System requests, area money). */
+export class ReviewRequestRef {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ description: 'Shown as SR-<number>.' }) number!: number;
+}
+
+const REQUEST_DESCRIPTION =
+  'The review this change opened in Admin Inbox › System requests; null when the Market does ' +
+  'not review area money.';
+
+export class CommissionRateChangeBody extends CommissionRateBody {
+  @ApiProperty({ type: ReviewRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: ReviewRequestRef | null;
+}
+
 export class SetCommissionRateRequest {
   @ApiProperty({ description: 'Basis points, a whole number from 0 to 3000.', example: 1200 })
   rateBps!: number;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 class LedgerTotalsBody {
@@ -96,6 +119,16 @@ export const rateBody = (view: RateView): CommissionRateBody => ({
   marketRateBps: view.marketRateBps,
 });
 
+type Requested = { readonly request: { readonly id: string; readonly number: number } | null };
+
+const requestBody = (view: Requested): ReviewRequestRef | null =>
+  view.request === null ? null : { id: view.request.id, number: view.request.number };
+
+export const rateChangeBody = (view: RateView & Requested): CommissionRateChangeBody => ({
+  ...rateBody(view),
+  request: requestBody(view),
+});
+
 export const ledgerBody = (view: LedgerView): LedgerBody => ({
   sellerId: view.sellerId,
   currency: view.currency,
@@ -126,6 +159,42 @@ export const ledgerBody = (view: LedgerView): LedgerBody => ({
   })),
   nextCursor: view.nextCursor,
 });
+
+class SellerLedgerRowBody extends LedgerEntryBody {
+  @ApiProperty({
+    enum: LEDGER_ROW_ACTIONS,
+    isArray: true,
+    description: 'The row Actions menu: open-order opens the order of the row.',
+  })
+  actions!: string[];
+}
+
+export class SellerLedgerListBody extends LedgerBody {
+  @ApiProperty({ type: [SellerLedgerRowBody], description: 'In the order of the sort.' })
+  declare entries: SellerLedgerRowBody[];
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Page numbers only; null with Previous/Next.',
+  })
+  total!: number | null;
+  @ApiProperty({ nullable: true, type: Number }) page!: number | null;
+  @ApiProperty() pageSize!: number;
+}
+
+export const sellerLedgerListBody = (view: SellerLedgerPage): SellerLedgerListBody => {
+  const base = ledgerBody(view);
+  return {
+    ...base,
+    entries: base.entries.map((entry, index) => ({
+      ...entry,
+      actions: [...view.entries[index]!.actions],
+    })),
+    total: view.total,
+    page: view.page,
+    pageSize: view.pageSize,
+  };
+};
 
 class PayoutTermsValuesBody {
   @ApiProperty({ enum: PAYOUT_WEEKDAYS, isArray: true }) weekdays!: string[];
@@ -178,9 +247,15 @@ export class PayoutTermsBody {
   version!: number | null;
 }
 
+export class PayoutTermsChangeBody extends PayoutTermsBody {
+  @ApiProperty({ type: ReviewRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: ReviewRequestRef | null;
+}
+
 export class SetPayoutTermsRequest {
   @ApiProperty({ enum: TERMS_CHANGE_REASONS, description: 'Why the terms change.' })
   reasonCode!: string;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
   @ApiProperty({ enum: PAYOUT_WEEKDAYS, isArray: true, required: false })
   weekdays?: string[];
   @ApiProperty({ required: false, example: '10:00' }) localTime?: string;
@@ -218,6 +293,39 @@ export class PayoutHoldBody {
 export class PayoutHoldsBody {
   @ApiProperty({ type: [PayoutHoldBody], description: 'Active holds first, newest first.' })
   holds!: PayoutHoldBody[];
+}
+
+class SellerHoldRowBody extends PayoutHoldBody {
+  @ApiProperty({
+    enum: HOLD_ROW_ACTIONS,
+    isArray: true,
+    description:
+      'The row Actions menu: open-order (a hold on one seller order), release (an active hold, ' +
+      'for a caller holding commission-payouts.payout-hold.release; the release route checks ' +
+      'the key and the step-up again).',
+  })
+  actions!: string[];
+}
+
+class HoldCountsBody {
+  @ApiProperty() active!: number;
+  @ApiProperty() released!: number;
+}
+
+export class SellerHoldListBody {
+  @ApiProperty({ type: [SellerHoldRowBody], description: 'Active holds first by default.' })
+  holds!: SellerHoldRowBody[];
+  @ApiProperty({ type: HoldCountsBody, description: "The seller's holds per status." })
+  counts!: HoldCountsBody;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Page numbers only; null with Previous/Next.',
+  })
+  total!: number | null;
+  @ApiProperty({ nullable: true, type: Number }) page!: number | null;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ nullable: true, type: String }) nextCursor!: string | null;
 }
 
 export class PlacePayoutHoldRequest {
@@ -274,3 +382,16 @@ export const payoutHoldBody = (view: PayoutHoldView): PayoutHoldBody => ({
   releasedAt: view.releasedAt === null ? null : view.releasedAt.toString(),
   releaseReason: view.releaseReason,
 });
+
+export const sellerHoldListBody = (view: SellerHoldPage): SellerHoldListBody => ({
+  holds: view.holds.map((hold) => ({ ...payoutHoldBody(hold), actions: [...hold.actions] })),
+  counts: { active: view.counts.active, released: view.counts.released },
+  total: view.total,
+  page: view.page,
+  pageSize: view.pageSize,
+  nextCursor: view.nextCursor,
+});
+
+export const payoutTermsChangeBody = (
+  view: PayoutTermsView & Requested,
+): PayoutTermsChangeBody => ({ ...payoutTermsBody(view), request: requestBody(view) });

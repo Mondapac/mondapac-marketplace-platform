@@ -20,7 +20,7 @@ export type ReserveFailure =
 const logger = new Logger('PlatformImportLimits');
 
 /**
- * Counts one attempt against per-account limits (catalog data design 3.26), in a reservation unit
+ * Counts one attempt against per-account (or, for a seller kind, per-seller) limits (catalog data design 3.26), in a reservation unit
  * of its own before any work: a throttled admin costs the parser nothing. A store that cannot
  * answer is `access.unavailable`, never a pass.
  */

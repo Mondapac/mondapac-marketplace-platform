@@ -55,6 +55,53 @@ describe('admin seller list', () => {
   beforeEach(() => vi.clearAllMocks());
   afterEach(cleanup);
 
+  it('shows the health column: band with score, New, No data, and not measured yet', async () => {
+    const health = (over: Partial<NonNullable<SellerRow['health']>>) => ({
+      day: '2026-11-10',
+      kind: 'scored' as const,
+      band: 'at-risk' as const,
+      score: 55,
+      ...over,
+    });
+    answer(
+      page([
+        row({ sellerId: 'a', storeName: 'A Store', health: health({}) }),
+        row({
+          sellerId: 'b',
+          storeName: 'B Store',
+          health: health({ band: 'unhealthy', score: 20 }),
+        }),
+        row({
+          sellerId: 'c',
+          storeName: 'C Store',
+          health: health({ kind: 'new', band: null, score: null }),
+        }),
+        row({
+          sellerId: 'd',
+          storeName: 'D Store',
+          health: health({ kind: 'no-data', band: null, score: null }),
+        }),
+        row({ sellerId: 'e', storeName: 'E Store', health: null }),
+      ]),
+    );
+    mount();
+
+    expect(await screen.findByText('At risk · 55')).toBeTruthy();
+    expect(screen.getByText('Unhealthy · 20')).toBeTruthy();
+    expect(screen.getByText('New')).toBeTruthy();
+    expect(screen.getByText('No data')).toBeTruthy();
+    expect(screen.getByText('Not measured yet')).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Health' })).toBeTruthy();
+  });
+
+  it('says Unavailable, not Not measured yet, when the page health could not be read', async () => {
+    answer({ ...page([row({ health: null })]), healthUnavailable: true });
+    mount();
+
+    expect(await screen.findByText('Unavailable')).toBeTruthy();
+    expect(screen.queryByText('Not measured yet')).toBeNull();
+  });
+
   it('loads the awaiting-review tab first and shows rows and tab counts', async () => {
     answer(page([row()]));
     mount();

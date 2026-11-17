@@ -14,6 +14,7 @@ import type { TopicChoice, TopicRef } from './types.ts';
 
 const call = vi.mocked(callApi);
 const assign = vi.fn();
+const PRODUCT = '0190a000-0000-7000-8000-0000000000a1';
 
 // Two Market shapes: a one-language default (AU) and a Market whose default language is not the
 // first key of a tag's names, with a tag that has no name in the default language at all.
@@ -63,6 +64,7 @@ describe.each(MARKETS)('TagField in market $code', ({ locale, names }) => {
         ids={ids}
         known={known}
         defaultLocale={locale}
+        productId={PRODUCT}
         issues={issues}
         max={max}
         onMax={setMax}
@@ -105,6 +107,31 @@ describe.each(MARKETS)('TagField in market $code', ({ locale, names }) => {
     expect(call).toHaveBeenCalledWith('GET', 'catalog/seller/topics?limit=100');
     const second = screen.getByRole('option', { name: /Barbecue/ });
     expect(within(second).getByText('Cuisine')).toBeTruthy();
+  });
+
+  it('links to the Suggest a tag form for this product, and carries a search with no match', async () => {
+    call.mockResolvedValue(page([choice(1, 'Eid')]));
+    mount();
+    const link = () =>
+      screen.getByRole('link', { name: "Can't find a tag? Suggest one for this product" });
+    expect(link().getAttribute('href')).toBe(`/tag-suggestions/new?product=${PRODUCT}`);
+    expect(link().textContent).toBe("Can't find a tag? Suggest one");
+    expect(
+      screen.getByText('An approved tag is not added automatically. Come back and add it here.'),
+    ).toBeTruthy();
+    open();
+    await screen.findByRole('option', { name: /Eid/ });
+    call.mockResolvedValue(page([]));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Search tags' }), {
+      target: { value: ' Eid gifts ' },
+    });
+    await waitFor(
+      () =>
+        expect(link().getAttribute('href')).toBe(
+          `/tag-suggestions/new?product=${PRODUCT}&label=Eid+gifts`,
+        ),
+      { timeout: 2000 },
+    );
   });
 
   it('picks a tag, keeps the order picked and writes the ids', async () => {

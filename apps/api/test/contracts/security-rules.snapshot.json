@@ -1,0 +1,145 @@
+[
+  {
+    "code": "admin-sign-in-after-failures",
+    "kind": "success-after-failures",
+    "severity": "s1",
+    "title": "Admin signed in after repeated failed attempts",
+    "success": {
+      "type": "identity.sign-in.succeeded",
+      "payloadEquals": {
+        "population": "admin"
+      }
+    },
+    "failures": {
+      "types": ["identity.sign-in.failed"],
+      "payloadEquals": {
+        "population": "admin"
+      }
+    },
+    "threshold": 3,
+    "window": "PT30M",
+    "lookback": "PT30M"
+  },
+  {
+    "code": "payout-account-changes-burst",
+    "kind": "threshold",
+    "severity": "s1",
+    "title": "Several seller payout accounts changed within an hour",
+    "types": ["payments.payout-change.recorded"],
+    "groupBy": "market",
+    "threshold": 3,
+    "window": "PT1H"
+  },
+  {
+    "code": "sign-in-failures-account",
+    "kind": "threshold",
+    "severity": "s2",
+    "title": "Many failed sign-ins on one account",
+    "types": ["identity.sign-in.failed"],
+    "groupBy": "account",
+    "threshold": 10,
+    "window": "PT5M"
+  },
+  {
+    "code": "sign-in-failures-ip",
+    "kind": "threshold",
+    "severity": "s2",
+    "title": "Many failed sign-ins from one address",
+    "types": ["identity.sign-in.failed"],
+    "groupBy": "ip",
+    "threshold": 10,
+    "window": "PT5M"
+  },
+  {
+    "code": "admin-second-factor-failures",
+    "kind": "threshold",
+    "severity": "s2",
+    "title": "Repeated wrong admin second-factor codes",
+    "types": ["identity.second-factor.failed"],
+    "payloadEquals": {
+      "population": "admin"
+    },
+    "groupBy": "account",
+    "threshold": 5,
+    "window": "PT10M"
+  },
+  {
+    "code": "second-factor-locked",
+    "kind": "each",
+    "severity": "s2",
+    "title": "A second factor was locked after too many wrong codes",
+    "types": ["identity.second-factor.locked"],
+    "lookback": "PT1H"
+  },
+  {
+    "code": "admin-role-changes-burst",
+    "kind": "threshold",
+    "severity": "s2",
+    "title": "Many admin role assignments within an hour",
+    "types": ["identity.account-role.assigned", "identity.account-role.changed"],
+    "groupBy": "market",
+    "threshold": 5,
+    "window": "PT1H"
+  },
+  {
+    "code": "money-movement-alert",
+    "kind": "each",
+    "severity": "s2",
+    "title": "A payment, payout or dispute needs a person",
+    "types": [
+      "payments.transfer.alert",
+      "payments.dispute.unmatched",
+      "commission-payouts.payout.alert",
+      "commission-payouts.dispute.order-mismatch"
+    ],
+    "lookback": "PT1H"
+  },
+  {
+    "code": "retired-category-relaxing-policy",
+    "kind": "each",
+    "severity": "s2",
+    "title": "A relaxing certification policy was found on a retired category",
+    "types": ["certification.retired-category.flagged-relaxing"],
+    "lookback": "PT1H"
+  },
+  {
+    "code": "webhook-signature-failures",
+    "kind": "threshold",
+    "severity": "s3",
+    "title": "Webhooks with bad signatures from one address",
+    "types": ["payments.webhook-signature.failed", "shipping.webhook-signature.failed"],
+    "groupBy": "ip",
+    "threshold": 5,
+    "window": "PT10M"
+  },
+  {
+    "code": "sign-in-throttled-burst",
+    "kind": "threshold",
+    "severity": "s3",
+    "title": "Many sign-in attempts hit the rate limit",
+    "types": ["identity.sign-in.throttled"],
+    "groupBy": "market",
+    "threshold": 20,
+    "window": "PT1H"
+  },
+  {
+    "code": "payout-live-check-failures",
+    "kind": "threshold",
+    "severity": "s3",
+    "title": "The live check before payouts keeps failing",
+    "types": ["payments.live-check.failed"],
+    "groupBy": "market",
+    "threshold": 3,
+    "window": "PT1H"
+  },
+  {
+    "code": "sign-in-failures-daily",
+    "kind": "threshold",
+    "severity": "s4",
+    "title": "Failed sign-ins across the Market in a day",
+    "types": ["identity.sign-in.failed"],
+    "groupBy": "market",
+    "threshold": 50,
+    "window": "PT24H"
+  }
+]

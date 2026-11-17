@@ -11,7 +11,7 @@ import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 // The family guard on PostgreSQL (attributes plan A4, CAT-10 change; migration
 // 20261105210000_catalog_product_family_follows_category), for both Market fixtures, as the API
 // role: the family can be written only in the same UPDATE that moves a revision pointer; type
-// stays immutable.
+// changes only simple to configurable (Add sizes, see catalog-product-add-sizes.db-spec.ts).
 
 const T0 = Temporal.Instant.from('2026-11-05T00:00:00Z');
 let sequence = 0;
@@ -79,9 +79,9 @@ describe.each(TEST_MARKETS)('product family guard in market %s (database)', (cod
       `INSERT INTO catalog.product_revisions
          (id, market_id, tenant_id, product_id, revision_no, revision_kind, family_revision_id,
           definition_revision_ids, tax_category_code, attribute_values, sensitive, sensitive_reasons,
-          content_schema_version, content_hash, author_kind, author_account_id, submitted_at)
+          content_schema_version, content_hash, author_kind, author_account_id, submitted_at, type_code)
        SELECT $1::uuid, $2::text, tenant_id, $3::uuid, 1, 'submission', $4::uuid, '{}', 'standard', '{}', false, '{}', 1, $5::text,
-              'admin', $6::uuid, now()
+              'admin', $6::uuid, now(), 'simple'
          FROM catalog.products WHERE market_id = $2::text AND id = $3::uuid`,
       [revisionId, market.marketId, id, familyRevisionId, `sha256:${'1'.repeat(64)}`, uuid7()],
     );
@@ -97,10 +97,12 @@ describe.each(TEST_MARKETS)('product family guard in market %s (database)', (cod
     );
   };
 
-  it('refuses a family change on its own (23514) and a type change (42501)', async () => {
+  it('refuses a family change on its own and a type change (both 23514)', async () => {
     const id = await newProduct();
     await expect(asApp(id, 'family')).rejects.toMatchObject({ code: '23514' });
-    await expect(asApp(id, 'type')).rejects.toMatchObject({ code: '42501' });
+    // The type column is updatable only for Add sizes (simple to configurable, with variant_model);
+    // the trigger products_type_change_guard refuses any other write.
+    await expect(asApp(id, 'type')).rejects.toMatchObject({ code: '23514' });
     const row = await owner.query(
       'SELECT family_code FROM catalog.products WHERE market_id = $1 AND id = $2',
       [market.marketId, id],

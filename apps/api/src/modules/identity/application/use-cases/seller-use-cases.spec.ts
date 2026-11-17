@@ -287,14 +287,14 @@ describe('the checked-in role seed (identity design 5.6)', () => {
         .map((r) => [r.scope, r.kind, r.seedCode, r.permissionKeys.length]),
     ).toEqual([
       ['platform', 'system', 'platform-administrator', 0],
-      ['platform', 'default', 'onboarding-compliance', 12],
-      ['platform', 'default', 'catalogue-moderator', 18],
+      ['platform', 'default', 'onboarding-compliance', 13],
+      ['platform', 'default', 'catalogue-moderator', 21],
       ['platform', 'default', 'operations-support', 9],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 29],
+      ['platform', 'default', 'viewer', 34],
       ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
-      ['seller', 'default', 'store-manager', 7],
+      ['seller', 'default', 'store-manager', 8],
       ['seller', 'default', 'order-fulfilment', 0],
       ['seller', 'default', 'catalogue-stock', 3],
       ['seller', 'default', 'customer-service', 1],
@@ -318,7 +318,14 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // data and the Viewer sees none (commission-payouts design 5.3; the brief of package 6d).
     // `commission-payouts.payout-terms.view` is left out for the same reason (design 5.3; the
     // owner's decision of 2026-11-04, viewer seed version 28).
+    // `security.centre.view` is left out too: alerts name accounts and addresses under attack,
+    // for the responders only (SOC package 2, docs/design/data/security.md 6).
+    // `customers.customers.view` is left out too: the Customers list and a customer's page show
+    // names, sign-in addresses and order totals, so the Platform Administrator grants it role by
+    // role (customers phase 1, package B2).
     const DECRYPTING_VIEW_KEYS = [
+      'security.centre.view',
+      'customers.customers.view',
       'sellers.business-details.view',
       'certification.issuer.view',
       'commission-payouts.payout.view',
@@ -349,11 +356,13 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'sellers.business-details.view',
       'sellers.seller-file.review',
       'sellers.seller-health.recalculate',
+      'sellers.seller-settings.edit',
       'sellers.seller.view',
     ]);
     expect(keysOf('catalogue-moderator')).toEqual([
       'catalog.attribute-suggestion.decide',
       'catalog.attribute.view',
+      'catalog.category-proposal.decide',
       'catalog.category-tree.edit',
       'catalog.category-tree.view',
       'catalog.platform-import.run',
@@ -363,12 +372,14 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'catalog.product.pause',
       'catalog.product.view',
       'catalog.saved-filter.share',
+      'catalog.variant-request.review',
       'catalog.variant.view',
       'certification.claim-policy.view',
       'certification.product-certificate.view',
       'certification.type.view',
       'identity.seller-access.view',
       'pricing.price-hold.view',
+      'sellers.seller-settings.edit',
       'sellers.seller.view',
     ]);
     expect(keysOf('operations-support')).toEqual([
@@ -398,6 +409,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       'sellers.seller.view',
     ]);
     expect(keysOf('store-manager')).toEqual([
+      'catalog.own-category.propose',
       'catalog.own-import.run',
       'catalog.own-product.edit',
       'catalog.own-product.view',

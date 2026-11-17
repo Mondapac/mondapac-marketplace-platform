@@ -18,6 +18,8 @@ key it needs.
 - `en-AU/identity.json`: the mails of identity slice 3 (`ux.md` 5, E1 and E12).
   `identity.mail.common.footer` is marked (L) in `ux.md`: legal wording is pending and this text
   is a placeholder.
+- `en-AU/assistant.json`: the buyer assistant's quick prompts (`assistant.quick-prompt.1` to `.6`,
+  at most 80 characters each), the buttons under the widget's welcome text. Draft copy for Reza.
 - The reviewer notice (`ux.md` E3, identity design 8.7) uses `identity.mail.reviewer-notice.admin.*`
   and `identity.mail.common.account-line.admin`: fixed text with no seller data. The en-AU wording
   is a draft for Reza and Jafar.

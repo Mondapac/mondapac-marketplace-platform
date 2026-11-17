@@ -4,6 +4,7 @@ import { MEASURE_DIMENSIONS } from '@mondapac/shared-kernel';
 import { z } from 'zod';
 import type { SeededDefinition, SeededFamily } from '../../application/ports/attribute-seed';
 import type { SeededCategory } from '../../application/ports/category-seed';
+import type { SeededCulture } from '../../application/ports/culture-seed';
 
 /**
  * The directory of the per-Market catalog seeds (`config/catalog-seed/<MARKET>.json`): Market
@@ -22,6 +23,14 @@ const category = z.strictObject({
   parentSlug: text.nullable(),
   verticalRootCode: text.nullable(),
   names: z.array(z.strictObject({ locale: text, name: text })).min(1),
+});
+const culture = z.strictObject({
+  code: text,
+  displayOrder: z.number().int(),
+  requiredCertificationType: text.nullable(),
+  badgeColour: text.nullable(),
+  isDefault: z.boolean(),
+  names: z.array(z.strictObject({ locale: text, name: text, description: text.nullable() })),
 });
 const definition = z.strictObject({
   code: text,
@@ -67,10 +76,12 @@ const file = z.strictObject({
   market: z.string().regex(/^[A-Z][A-Z0-9_]{1,7}$/),
   note: z.string().optional(),
   categories: z.array(category),
+  cultures: z.array(culture).default([]),
   attributes: z.strictObject({ definitions: z.array(definition), families: z.array(family) }),
 });
 
 export interface FileCatalogSeeds {
+  readonly cultures: Readonly<Record<string, readonly SeededCulture[]>>;
   readonly categories: Readonly<Record<string, readonly SeededCategory[]>>;
   readonly attributes: Readonly<
     Record<
@@ -94,6 +105,7 @@ export function loadFileCatalogSeeds(
   directory: string = DEFAULT_CATALOG_SEED_DIR,
 ): FileCatalogSeeds {
   const categories: Record<string, readonly SeededCategory[]> = {};
+  const cultures: Record<string, readonly SeededCulture[]> = {};
   const attributes: Record<
     string,
     {
@@ -105,7 +117,8 @@ export function loadFileCatalogSeeds(
   try {
     names = readdirSync(directory).filter((name) => /^[A-Z][A-Z0-9_]{1,7}\.json$/.test(name));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { categories, attributes };
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+      return { categories, cultures, attributes };
     throw error;
   }
   for (const name of names.sort()) {
@@ -120,7 +133,8 @@ export function loadFileCatalogSeeds(
       throw new CatalogSeedFileError(`Catalog seed file ${name} is invalid or not for ${code}`);
     }
     categories[code] = parsed.data.categories;
+    cultures[code] = parsed.data.cultures;
     attributes[code] = parsed.data.attributes;
   }
-  return { categories, attributes };
+  return { categories, cultures, attributes };
 }

@@ -4,6 +4,9 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+}));
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
@@ -128,6 +131,7 @@ function mount() {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <ProductsList
+        paging="pages"
         accountId="acc-1"
         marketId="AU"
         marketName="Australia"
@@ -200,6 +204,49 @@ describe('saved views of the product list', () => {
     expect(
       screen.getByRole('button', { name: 'Inactive (136)' }).getAttribute('aria-pressed'),
     ).toBe('true');
+  });
+
+  it("opens a built-in tab without the saved view's search, filters or sort", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Paused lamb (12)' }));
+    await waitFor(() => expect(productCalls().at(-1)).toContain('q=lamb&status=paused'));
+
+    // The saved view is on the All tab; All itself still shows every product.
+    fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+    await waitFor(() =>
+      expect(productCalls().at(-1)).toBe(
+        'catalog/admin/products?view=all&sort=updated&direction=desc&page=1&pageSize=25',
+      ),
+    );
+    expect(screen.getByRole('button', { name: /^All/ }).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button', { name: /^Paused lamb/ }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+    expect(screen.getByRole<HTMLInputElement>('searchbox').value).toBe('');
+
+    // Another built-in tab is clean too.
+    fireEvent.click(screen.getByRole('button', { name: 'Paused lamb (12)' }));
+    await waitFor(() => expect(productCalls().at(-1)).toContain('q=lamb'));
+    fireEvent.click(screen.getByRole('button', { name: /^Active/ }));
+    await waitFor(() =>
+      expect(productCalls().at(-1)).toBe(
+        'catalog/admin/products?view=active&sort=updated&direction=desc&page=1&pageSize=25',
+      ),
+    );
+  });
+
+  it('keeps an unsaved search and filter when only the tab changes', async () => {
+    mount();
+    await screen.findByText('Lamb cutlets 500 g');
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'beef' } });
+    fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Enter' });
+    await waitFor(() => expect(productCalls().at(-1)).toContain('q=beef'));
+    fireEvent.click(screen.getByRole('button', { name: /^Inactive/ }));
+    await waitFor(() =>
+      expect(productCalls().at(-1)).toBe(
+        'catalog/admin/products?view=inactive&sort=updated&direction=desc&page=1&pageSize=25&q=beef',
+      ),
+    );
   });
 
   it('keeps the three fixed tabs and offers no saved views when they cannot load', async () => {

@@ -1,5 +1,7 @@
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, PendingEvent } from '@mondapac/shared-kernel';
+import type { RefundRepository } from './ports/refund.repository';
+import type { Refund } from '../domain/refund';
 import {
   FixedClock,
   SequenceIdGenerator,
@@ -36,7 +38,9 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import type { CheckoutLine } from '../../cart';
 import { ConfigOrderingPolicy } from '../infrastructure/config-ordering-policy';
 import type { OrderingDependencies } from './checkout-flow';
+import { AdminExportOrders } from './use-cases/admin-export-orders.use-case';
 import { AdminListOrders } from './use-cases/admin-list-orders.use-case';
+import { SellerExportOrders } from './use-cases/seller-export-orders.use-case';
 import { BookCarrierDeliveries } from './use-cases/book-carrier-deliveries.use-case';
 import { CancelCarrierAfterRefund } from './use-cases/cancel-carrier-after-refund.use-case';
 import { AdminViewOrderDocument } from './use-cases/admin-view-order-document.use-case';
@@ -44,6 +48,7 @@ import { AdminViewOrder } from './use-cases/admin-view-order.use-case';
 import { CancelPayment } from './use-cases/cancel-payment.use-case';
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { ListOrders } from './use-cases/list-orders.use-case';
+import { AdminCustomerRefunds } from './use-cases/admin-customer-refunds.use-case';
 import { AdminOpenObligationsOfQuery } from './use-cases/admin-open-obligations-of.use-case';
 import { OpenObligationsOfQuery } from './use-cases/open-obligations-of.use-case';
 import { OwnOpenObligationsQuery } from './use-cases/own-open-obligations.use-case';
@@ -67,6 +72,8 @@ import { OrderPaymentRefQuery } from './use-cases/order-payment-ref.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { ViewOrderDocument } from './use-cases/view-order-document.use-case';
 import { ViewOrder } from './use-cases/view-order.use-case';
+import { encodeSellerCursor } from './fulfilment-flow';
+import { encodeCursor } from './read-flow';
 
 // Checkout, payment confirmation and the order reads in memory on both Market fixtures (AU in
 // AUD, ZZ in JPY): the seller split and totals, stock reserved before the page opens, committed
@@ -88,6 +95,12 @@ const OFFER_2 = id<'Offer'>(0x02);
 const OFFER_3 = id<'Offer'>(0x03);
 const VARIANT = id<'Variant'>(0x10);
 const ADDRESS = id<'CustomerAddress'>(0xad);
+
+const textOf = async (chunks: AsyncIterable<string>): Promise<string> => {
+  let text = '';
+  for await (const chunk of chunks) text += chunk;
+  return text;
+};
 
 describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (code) => {
   const market = testMarketContext(code, 'default');
@@ -1005,6 +1018,65 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         'order-0005-abcd',
       );
 
+    describe('export', () => {
+      it('writes the orders of the filter as a CSV with no customer data', async () => {
+        const result = await start();
+        if (!result.ok) throw new Error('checkout failed');
+        labels.stores.set(SELLER_A, '=Corner Butcher');
+        labels.customers.set(ACCOUNT, { displayName: 'Jane Doe', email: 'jane@example.com' });
+        const exported = await new AdminExportOrders(gate, deps).execute(adminContext(), {
+          status: 'pending-payment',
+        });
+        if (!exported.ok) throw new Error('export failed');
+        const text = await textOf(exported.value.chunks);
+        const lines = text
+          .replace('\uFEFF', '')
+          .split('\r\n')
+          .filter((line) => line !== '');
+
+        expect(exported.value.contentType).toBe('text/csv; charset=utf-8');
+        expect(exported.value.filename).toMatch(/^orders-\d{4}-\d{2}-\d{2}\.csv$/);
+        expect(text.startsWith('\uFEFFOrder,Placed,Status,Payment,')).toBe(true);
+        expect(lines).toHaveLength(2);
+        expect(lines[1]).toContain(result.value.orderId);
+        expect(lines[1]).toContain("'=Corner Butcher");
+        expect(text).not.toContain('jane@example.com');
+        expect(text).not.toContain('Jane Doe');
+      });
+
+      it('writes only the header when no order matches', async () => {
+        await start();
+        const exported = await new AdminExportOrders(gate, deps).execute(adminContext(), {
+          status: 'confirmed',
+        });
+        if (!exported.ok) throw new Error('export failed');
+        const text = await textOf(exported.value.chunks);
+        expect(text.split('\r\n').filter((line) => line !== '')).toHaveLength(1);
+      });
+
+      it('refuses a key, a value or a format the list does not know', async () => {
+        const run = (input: unknown) =>
+          new AdminExportOrders(gate, deps).execute(adminContext(), input);
+        expect(await run({ status: 'shipped' })).toMatchObject({
+          ok: false,
+          error: { code: 'validation.failed' },
+        });
+        expect(await run({ page: 2 })).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'page', code: 'unknown' }] }),
+        );
+        expect(await run({ format: 'xlsx' })).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'format', code: 'value' }] }),
+        );
+        expect(await run('status')).toMatchObject({ ok: false });
+      });
+
+      it('is for an admin only', async () => {
+        expect(await new AdminExportOrders(gate, deps).execute(customer, {})).toEqual(
+          err({ code: 'access.denied' }),
+        );
+      });
+    });
+
     it('names the products, stores and customer, with one batched call per lookup', async () => {
       const result = await start();
       if (!result.ok) throw new Error('checkout failed');
@@ -1018,7 +1090,10 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       });
 
       if (!list.ok || !view.ok) throw new Error('read failed');
-      expect(list.value.orders[0]).toEqual(view.value);
+      // The page adds the order's refunds and the refund switch to what the list shows.
+      const { refunds, refundsEnabled, ...listed } = view.value;
+      expect({ refunds, refundsEnabled }).toEqual({ refunds: [], refundsEnabled: false });
+      expect(list.value.orders[0]).toEqual(listed);
       expect(view.value.customer).toEqual({ displayName: null, email: 'jane@example.com' });
       const a = view.value.sellerOrders.find((s) => s.sellerId === SELLER_A)!;
       const b = view.value.sellerOrders.find((s) => s.sellerId === SELLER_B)!;
@@ -1139,9 +1214,194 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           orders: [],
           nextCursor: null,
           counts: { pendingPayment: 0, confirmed: 0, cancelled: 0 },
+          searchCapped: false,
+          searchScope: null,
+          paging: null,
         },
       });
       expect(labels.calls).toEqual([]);
+    });
+
+    describe('search by customer name or store name', () => {
+      const search = (input: Record<string, unknown>) =>
+        new AdminListOrders(gate, deps).execute(adminContext(), input);
+
+      it('finds an order by its customer or one of its stores, and by both filters together', async () => {
+        const result = await start();
+        if (!result.ok) throw new Error('checkout failed');
+        labels.stores.set(SELLER_A, 'Corner Butcher');
+        labels.customers.set(ACCOUNT, { displayName: 'Jane Citizen', email: 'jane@example.com' });
+        labels.customers.set(OTHER, { displayName: 'Omar Other', email: 'omar@example.com' });
+
+        const byStore = await search({ search: ' butcher ' });
+        const byCustomer = await search({ search: 'CITIZEN', page: 1 });
+        const stranger = await search({ search: 'omar' });
+        const combined = await search({ search: 'butcher', paymentState: 'captured' });
+        const none = await search({ search: 'nobody' });
+
+        expect(byStore.ok && byStore.value.orders.map((o) => o.orderId)).toEqual([
+          result.value.orderId,
+        ]);
+        expect(byCustomer.ok && byCustomer.value.paging?.total).toBe(1);
+        expect(stranger.ok && stranger.value.orders).toEqual([]);
+        expect(combined.ok && combined.value.orders).toEqual([]);
+        expect(none.ok && none.value.orders).toEqual([]);
+        // Whatever the search, the counts stay the Market's.
+        expect(none.ok && none.value.counts.pendingPayment).toBe(1);
+        expect(byStore.ok && byStore.value.searchCapped).toBe(false);
+      });
+
+      it('says what it searched: stores only when the admin may not see customer names', async () => {
+        const result = await start();
+        if (!result.ok) throw new Error('checkout failed');
+        labels.stores.set(SELLER_A, 'Corner Butcher');
+        labels.customers.set(ACCOUNT, { displayName: 'Butcher Fan', email: 'f@example.com' });
+
+        const both = await search({ search: 'butcher' });
+        labels.customerSearchDenied = true;
+        const storesOnly = await search({ search: 'butcher' });
+        const customerOnlyText = await search({ search: 'fan' });
+
+        expect(both.ok && both.value.searchScope).toBe('customers-and-stores');
+        expect(storesOnly.ok && storesOnly.value.searchScope).toBe('stores');
+        expect(storesOnly.ok && storesOnly.value.orders).toHaveLength(1);
+        // Without the key a customer's name finds nothing.
+        expect(customerOnlyText.ok && customerOnlyText.value.orders).toEqual([]);
+        const none = await search({});
+        expect(none.ok && none.value.searchScope).toBeNull();
+      });
+
+      it('passes on that the owners capped their matches', async () => {
+        labels.stores.set(SELLER_A, 'Corner Butcher');
+        labels.searchCapped = true;
+        const capped = await search({ search: 'butcher' });
+        expect(capped.ok && capped.value.searchCapped).toBe(true);
+      });
+
+      it('refuses a text that is too short or too long, echoing nothing', async () => {
+        const bad = {
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'search', code: 'length' }] },
+        };
+        expect(await search({ search: ' a ' })).toEqual(bad);
+        expect(await search({ search: 'x'.repeat(81) })).toEqual(bad);
+        expect(await search({ search: 7 })).toEqual(bad);
+        // A customer's own list takes no search.
+        expect(
+          await new ListOrders(gate, deps).execute(customer, { search: 'butcher' }),
+        ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      });
+
+      it('fails closed when an owner cannot answer: never the unfiltered list', async () => {
+        await start();
+        labels.fail.add('stores');
+        expect(await search({ search: 'butcher' })).toEqual({
+          ok: false,
+          error: { code: 'ordering.search-unavailable' },
+        });
+      });
+    });
+
+    describe('page mode', () => {
+      const list = (input: Record<string, unknown>) =>
+        new AdminListOrders(gate, deps).execute(adminContext(), input);
+      const refused = (fields: { path: string; code: string }[]) => ({
+        ok: false,
+        error: { code: 'validation.failed', fields },
+      });
+
+      it('answers an offset page with the total of the filter and no cursor', async () => {
+        const result = await start();
+        if (!result.ok) throw new Error('checkout failed');
+
+        const first = await list({ page: 1, pageSize: 10, sort: 'total', direction: 'asc' });
+        const beyond = await list({ page: 2, pageSize: 10 });
+        const filtered = await list({ page: 1, paymentState: 'captured' });
+
+        expect(first.ok && first.value.orders.map((o) => o.orderId)).toEqual([
+          result.value.orderId,
+        ]);
+        expect(first.ok && first.value.paging).toEqual({ total: 1, page: 1, pageSize: 10 });
+        expect(first.ok && first.value.nextCursor).toBeNull();
+        expect(beyond.ok && beyond.value.orders).toEqual([]);
+        expect(beyond.ok && beyond.value.paging).toEqual({ total: 1, page: 2, pageSize: 10 });
+        expect(filtered.ok && filtered.value.paging?.total).toBe(0);
+        // The counts per status stay the Market's, whatever the filter.
+        expect(filtered.ok && filtered.value.counts.pendingPayment).toBe(1);
+      });
+
+      it('stops page numbers at row 10,000 and names the refusal', async () => {
+        expect(await list({ page: 400, pageSize: 25 })).toMatchObject({ ok: true });
+        expect(await list({ page: 401, pageSize: 25 })).toEqual(
+          refused([{ path: 'page', code: 'too-deep' }]),
+        );
+        expect(await list({ page: 100, pageSize: 100 })).toMatchObject({ ok: true });
+        expect(await list({ page: 101, pageSize: 100 })).toEqual(
+          refused([{ path: 'page', code: 'too-deep' }]),
+        );
+      });
+
+      it('refuses what does not fit, field by field', async () => {
+        expect(await list({ page: 0 })).toEqual(refused([{ path: 'page', code: 'range' }]));
+        expect(await list({ page: 1, pageSize: 101 })).toEqual(
+          refused([{ path: 'pageSize', code: 'range' }]),
+        );
+        expect(await list({ page: 1, sort: 'name', direction: 'up' })).toEqual(
+          refused([
+            { path: 'sort', code: 'value' },
+            { path: 'direction', code: 'value' },
+          ]),
+        );
+        expect(await list({ sort: 'total' })).toEqual(
+          refused([{ path: 'sort', code: 'needs-page' }]),
+        );
+        // A page number and a cursor (or a limit) are two ways to say where to start.
+        expect(
+          await list({ page: 2, cursor: encodeCursor(T0, id<'Order'>(1)), limit: 10 }),
+        ).toEqual(
+          refused([
+            { path: 'cursor', code: 'with-page' },
+            { path: 'limit', code: 'with-page' },
+          ]),
+        );
+        expect(
+          await list({
+            paymentState: 'paid',
+            fulfilment: 'lost',
+            sellerId: 'x',
+            from: 'yesterday',
+          }),
+        ).toEqual(
+          refused([
+            { path: 'paymentState', code: 'value' },
+            { path: 'fulfilment', code: 'value' },
+            { path: 'sellerId', code: 'format' },
+            { path: 'from', code: 'format' },
+          ]),
+        );
+        expect(await list({ from: '2026-11-02T00:00:00Z', to: '2026-11-01T00:00:00Z' })).toEqual(
+          refused([{ path: 'to', code: 'range' }]),
+        );
+        // The customer page's Orders tab: one customer account, by id.
+        expect(await list({ accountId: 'x' })).toEqual(
+          refused([{ path: 'accountId', code: 'format' }]),
+        );
+      });
+
+      it('takes the new filters in cursor mode too, and none on a customer list', async () => {
+        const result = await start();
+        if (!result.ok) throw new Error('checkout failed');
+
+        const dated = await list({ from: '2000-01-01T00:00:00Z', to: '2100-01-01T00:00:00Z' });
+        const none = await list({ fulfilment: 'delivered' });
+
+        expect(dated.ok && dated.value.orders).toHaveLength(1);
+        expect(dated.ok && dated.value.paging).toBeNull();
+        expect(none.ok && none.value.orders).toEqual([]);
+        expect(
+          await new ListOrders(gate, deps).execute(customer, { paymentState: 'captured' }),
+        ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      });
     });
   });
   describe('delivery quote', () => {
@@ -1550,6 +1810,161 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       });
     });
 
+    describe('export', () => {
+      const exportOf = (context: CallContext, input: unknown = {}) =>
+        new SellerExportOrders(gate, deps).execute(context, input);
+
+      it("writes the seller's own paid orders and no buyer data", async () => {
+        const order = await paid();
+        const mine = sellerOrderIdOf(order.id, SELLER_A);
+        const theirs = sellerOrderIdOf(order.id, SELLER_B);
+
+        const exported = await exportOf(sellerA, { status: 'to-ship' });
+        if (!exported.ok) throw new Error('export failed');
+        const text = await textOf(exported.value.chunks);
+
+        expect(exported.value.filename).toMatch(/^seller-orders-\d{4}-\d{2}-\d{2}\.csv$/);
+        expect(text.startsWith('\uFEFFSeller order,Order,Paid at,Fulfilment,')).toBe(true);
+        expect(text).toContain(mine);
+        expect(text).not.toContain(theirs);
+        expect(text.split('\r\n').filter((line) => line !== '')).toHaveLength(2);
+        expect(text).not.toMatch(/@|shipTo|recipient/i);
+      });
+
+      it('follows the fulfilment step filter and refuses an unknown key', async () => {
+        const order = await paid();
+        await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
+
+        const shipped = await exportOf(sellerA, { status: 'shipped' });
+        const toShip = await exportOf(sellerA, { status: 'to-ship' });
+        if (!shipped.ok || !toShip.ok) throw new Error('export failed');
+        expect((await textOf(shipped.value.chunks)).split('\r\n').filter(Boolean)).toHaveLength(2);
+        expect((await textOf(toShip.value.chunks)).split('\r\n').filter(Boolean)).toHaveLength(1);
+        expect(await exportOf(sellerA, { sellerId: SELLER_B })).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'sellerId', code: 'unknown' }] }),
+        );
+      });
+
+      it('is for a seller only', async () => {
+        expect(await exportOf(customer)).toMatchObject({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+      });
+    });
+
+    describe('page mode', () => {
+      const refused = (fields: { path: string; code: string }[]) => ({
+        ok: false,
+        error: { code: 'validation.failed', fields },
+      });
+
+      it('answers an offset page with the total of the filter and no cursor', async () => {
+        const order = await paid();
+        await ship(sellerA, sellerOrderIdOf(order.id, SELLER_A));
+
+        const first = await list(sellerA, {
+          page: 1,
+          pageSize: 10,
+          sort: 'total',
+          direction: 'asc',
+        });
+        const shipped = await list(sellerA, { page: 1, status: 'shipped' });
+        const toShip = await list(sellerA, { page: 1, status: 'to-ship' });
+        const beyond = await list(sellerA, { page: 2, pageSize: 10 });
+
+        expect(first.ok && first.value.paging).toEqual({ total: 1, page: 1, pageSize: 10 });
+        expect(first.ok && first.value.nextCursor).toBeNull();
+        expect(shipped.ok && shipped.value.sellerOrders).toHaveLength(1);
+        expect(toShip.ok && toShip.value.paging?.total).toBe(0);
+        expect(beyond.ok && beyond.value.sellerOrders).toEqual([]);
+        expect(beyond.ok && beyond.value.paging).toEqual({ total: 1, page: 2, pageSize: 10 });
+      });
+
+      it('keeps the cursor page free of paging and refuses stray or deep params', async () => {
+        await paid();
+
+        const cursorMode = await list(sellerA, {});
+        expect(cursorMode.ok && cursorMode.value.paging).toBeNull();
+        expect(await list(sellerA, { sort: 'total' })).toEqual(
+          refused([{ path: 'sort', code: 'needs-page' }]),
+        );
+        expect(await list(sellerA, { page: 400, pageSize: 25 })).toMatchObject({ ok: true });
+        expect(await list(sellerA, { page: 401, pageSize: 25 })).toEqual(
+          refused([{ path: 'page', code: 'too-deep' }]),
+        );
+        expect(await list(sellerA, { page: 0 })).toEqual(
+          refused([{ path: 'page', code: 'range' }]),
+        );
+        expect(await list(sellerA, { page: 1, sort: 'created' })).toEqual(
+          refused([{ path: 'sort', code: 'value' }]),
+        );
+        expect(await list(sellerA, { page: 1, pageSize: 101 })).toEqual(
+          refused([{ path: 'pageSize', code: 'range' }]),
+        );
+        expect(await list(sellerA, { page: 1, direction: 'up' })).toEqual(
+          refused([{ path: 'direction', code: 'value' }]),
+        );
+        // A page number and a cursor (or a limit) are two ways to say where to start.
+        expect(
+          await list(sellerA, {
+            page: 2,
+            cursor: encodeSellerCursor(T0, id<'SellerOrder'>(1)),
+            limit: 10,
+          }),
+        ).toEqual(
+          refused([
+            { path: 'cursor', code: 'with-page' },
+            { path: 'limit', code: 'with-page' },
+          ]),
+        );
+        expect(await list(sellerA, { page: 1, cursor: 'nope' })).toEqual(
+          refused([{ path: 'cursor', code: 'format' }]),
+        );
+      });
+
+      it('counts only the shop itself, and takes the day range in cursor mode too', async () => {
+        await paid();
+
+        const mine = await list(sellerA, { page: 1 });
+        const other = await list(sellerB, { page: 1 });
+        const cursorModeIn = await list(sellerA, { from: '2000-01-01T00:00:00Z' });
+        const cursorModeOut = await list(sellerA, { from: '2999-01-01T00:00:00Z' });
+
+        expect(mine.ok && mine.value.paging?.total).toBe(1);
+        expect(other.ok && other.value.paging?.total).toBe(1);
+        expect(mine.ok && other.ok && mine.value.sellerOrders[0]!.sellerOrderId).not.toBe(
+          other.ok && other.value.sellerOrders[0]!.sellerOrderId,
+        );
+        expect(cursorModeIn.ok && cursorModeIn.value.sellerOrders).toHaveLength(1);
+        expect(cursorModeIn.ok && cursorModeIn.value.paging).toBeNull();
+        expect(cursorModeOut.ok && cursorModeOut.value.sellerOrders).toEqual([]);
+      });
+
+      it('filters by payment time and refuses a backwards or malformed range', async () => {
+        await paid();
+        const far = '2999-01-01T00:00:00Z';
+
+        const before = await list(sellerA, { page: 1, to: '2000-01-01T00:00:00Z' });
+        const after = await list(sellerA, { page: 1, from: far });
+        const inside = await list(sellerA, {
+          page: 1,
+          from: '2000-01-01T00:00:00Z',
+          to: far,
+        });
+
+        expect(before.ok && before.value.paging?.total).toBe(0);
+        expect(after.ok && after.value.paging?.total).toBe(0);
+        expect(inside.ok && inside.value.paging?.total).toBe(1);
+        expect(await list(sellerA, { from: far, to: '2000-01-01T00:00:00Z' })).toEqual(
+          refused([{ path: 'to', code: 'range' }]),
+        );
+        expect(await list(sellerA, { from: 'yesterday' })).toEqual(
+          refused([{ path: 'from', code: 'format' }]),
+        );
+      });
+    });
+
     it('names the lines of the list, the detail and each step, with one call per page', async () => {
       const order = await paid();
       labels.label({ offerId: OFFER_1, variantId: VARIANT }, 'Lamb mince', '500 g');
@@ -1594,6 +2009,192 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       // The list carries no address, and the seller's answer never names the customer's account.
       expect(page.ok && 'shipTo' in page.value.sellerOrders[0]!).toBe(false);
       expect(view.ok && 'accountId' in view.value).toBe(false);
+    });
+
+    it('stops showing the seller the address 30 days after delivery, not the buyer (2026-11-14)', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      const view = () => new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+      const shipTo = async () => {
+        const answer = await view();
+        if (!answer.ok) throw new Error('seller view failed');
+        return answer.value.shipTo;
+      };
+      const admin = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xad),
+          sessionId: id<'Session'>(0x62),
+          sellerId: null,
+        }),
+        'order-retain-abcd',
+      );
+      try {
+        // Before delivery: paid long ago, then shipped but not delivered.
+        clock.advance(Temporal.Duration.from({ hours: 24 * 400 }));
+        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        const shipped = await ship(sellerA, sellerOrderId);
+        expect(shipped.ok && shipped.value.deliveredAt).toBeNull();
+        expect(shipped.ok && shipped.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+        // Shipped 59 days ago, not delivered: still inside the 60-day limit.
+        clock.advance(Temporal.Duration.from({ hours: 24 * 59 }));
+        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+
+        const delivered = await deliver(sellerA, sellerOrderId);
+        expect(delivered.ok && delivered.value.deliveredAt).toEqual(clock.now());
+        expect(delivered.ok && delivered.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+
+        // 29 days 23 hours after delivery: still shown.
+        clock.advance(Temporal.Duration.from({ hours: 30 * 24 - 1 }));
+        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        // Exactly 30 days after delivery: withheld, and the address is not even opened.
+        clock.advance(Temporal.Duration.from({ hours: 1 }));
+        const openedBefore = shipToCipher.opened;
+        expect(await shipTo()).toBeNull();
+        expect(shipToCipher.opened).toBe(openedBefore);
+        const later = await view();
+        expect(later.ok && later.value.fulfilment).toBe('delivered');
+
+        // The buyer's own view still has it; the admin view (which never carried it) still answers.
+        const own = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
+        expect(own.ok && own.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+        const any = await new AdminViewOrder(gate, deps).execute(admin, { orderId: order.id });
+        expect(any.ok && any.value.sellerOrders.find((s) => s.sellerId === SELLER_A)).toMatchObject(
+          { fulfilment: 'delivered' },
+        );
+      } finally {
+        clock.set(T0);
+      }
+    });
+
+    it('withholds the address 60 days after a shipment that was never delivered (2026-11-15)', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      const shipTo = async () => {
+        const answer = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+        if (!answer.ok) throw new Error('seller view failed');
+        return answer.value.shipTo;
+      };
+      try {
+        clock.advance(Temporal.Duration.from({ hours: 5 }));
+        const shipped = await ship(sellerA, sellerOrderId);
+        const shippedAt = clock.now();
+        expect(shipped.ok && shipped.value.shippedAt).toEqual(shippedAt);
+        expect(shipped.ok && shipped.value.deliveredAt).toBeNull();
+
+        clock.set(shippedAt.add({ hours: 60 * 24 - 1 }));
+        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        clock.set(shippedAt.add({ hours: 60 * 24 }));
+        expect(await shipTo()).toBeNull();
+        // The buyer still sees it.
+        const own = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
+        expect(own.ok && own.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+      } finally {
+        clock.set(T0);
+      }
+    });
+
+    it('withholds the address, unopened, when the refunds cannot be read (fail closed)', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      let refundsRead = false;
+      const inner = deps.unitOfWork;
+      deps = {
+        ...deps,
+        refunds: Object.assign(Object.create(NO_REFUNDS) as RefundRepository, {
+          listOfSellerOrder: () => {
+            refundsRead = true;
+            return Promise.resolve([]);
+          },
+        }),
+        // The unit that reads the refunds answers a failure; every other unit runs as usual.
+        unitOfWork: Object.assign(Object.create(inner) as typeof inner, {
+          run: async (...args: Parameters<typeof inner.run>) => {
+            refundsRead = false;
+            const result = await inner.run(...args);
+            return refundsRead ? err({ code: 'unit.failed' }) : result;
+          },
+        }),
+      };
+      const openedBefore = shipToCipher.opened;
+
+      const view = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+
+      expect(view.ok && view.value.shipTo).toBeNull();
+      expect(view.ok && view.value.refunds).toEqual([]);
+      expect(shipToCipher.opened).toBe(openedBefore);
+    });
+
+    it('withholds the address at once when every unit is refunded, not for a partial refund', async () => {
+      const order = await paid();
+      const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      const lines = orders.rows
+        .get(order.id)!
+        .lines.filter((l) => l.sellerOrderId === sellerOrderId);
+      expect(lines.length).toBeGreaterThan(0);
+      let listed: Refund[] = [];
+      deps = {
+        ...deps,
+        refunds: Object.assign(Object.create(NO_REFUNDS) as RefundRepository, {
+          listOfSellerOrder: () => Promise.resolve(listed),
+        }),
+      };
+      const refundOf = (
+        n: number,
+        state: Refund['state'],
+        units: readonly { line: (typeof lines)[number]; quantity: number }[],
+      ): Refund => ({
+        id: id<'Refund'>(0x7700 + n),
+        orderId: order.id,
+        sellerOrderId,
+        sellerId: SELLER_A,
+        currency,
+        gross: 100n,
+        tax: 0n,
+        shipping: null,
+        reason: 'damaged',
+        lossBearer: 'seller',
+        lossReasonCode: null,
+        actor: { population: 'admin', accountId: id<'Account'>(0xad) },
+        state,
+        stripeIdempotencyKey: `r-${n}`,
+        stripeRefundId: null,
+        attempts: 0,
+        requestedAt: T0,
+        settledAt: null,
+        lines: units.map(({ line, quantity }) => ({
+          orderLineId: line.id,
+          quantity,
+          lineQuantity: line.quantity,
+          unitsBefore: 0,
+          gross: 100n,
+          tax: 0n,
+          taxRateBps: 0,
+          taxInclusive: true,
+        })),
+      });
+      const shipTo = async () => {
+        const answer = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+        if (!answer.ok) throw new Error('seller view failed');
+        return answer.value.shipTo;
+      };
+
+      // One unit of the first line only: still something to send.
+      listed = [refundOf(1, 'succeeded', [{ line: lines[0]!, quantity: 1 }])];
+      expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+      // Every unit, but by a refund that failed: nothing went back.
+      const all = lines.map((line) => ({ line, quantity: line.quantity }));
+      listed = [refundOf(2, 'failed', all)];
+      expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+      // Every unit by refunds not failed (one still pending): withheld at once, not opened.
+      listed = [refundOf(3, 'pending', all)];
+      const openedBefore = shipToCipher.opened;
+      expect(await shipTo()).toBeNull();
+      expect(shipToCipher.opened).toBe(openedBefore);
+      // The buyer still sees it.
+      const own = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
+      expect(own.ok && own.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
     });
 
     it('still marks ready, with null names, when the name lookup fails', async () => {
@@ -2014,6 +2615,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           ...deps,
           refunds: {
             findTarget: (_m: unknown, so: string) => Promise.resolve(refundTargets.get(so) ?? null),
+            listOfSellerOrder: () => Promise.resolve([]),
           } as never,
         };
       });
@@ -3183,6 +3785,40 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       ]) {
         expect(await read.execute(context, { accountId: ACCOUNT })).toMatchObject({ ok: false });
       }
+    });
+  });
+
+  describe('the refunds of one customer (customers package B3)', () => {
+    const adminActor = () =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xad),
+          sessionId: id<'Session'>(0x62),
+          sellerId: null,
+        }),
+        'customer-refunds-admin',
+      );
+
+    it('declares the order view key', () => {
+      expect(AdminCustomerRefunds.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: ['ordering.order.view'],
+      });
+    });
+
+    it('answers an admin, refuses a customer and a bad id', async () => {
+      const read = new AdminCustomerRefunds(gate, deps);
+      expect(await read.execute(adminActor(), { accountId: ACCOUNT })).toEqual({
+        ok: true,
+        value: { refunds: [] },
+      });
+      expect(await read.execute(customer, { accountId: ACCOUNT })).toMatchObject({ ok: false });
+      expect(await read.execute(adminActor(), { accountId: 'nope' })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'accountId', code: 'format' }] },
+      });
     });
   });
 

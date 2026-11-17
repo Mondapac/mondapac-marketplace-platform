@@ -1,13 +1,37 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { ListPaging } from '../domain/definitions';
-import { LIST_PAGING_VALUES, SETTING_DEFINITIONS } from '../domain/definitions';
-import type { SettingView } from '../application/use-cases/view-list-paging-setting.use-case';
+import { CART_MODE_VALUES, LIST_PAGING_VALUES, SETTING_DEFINITIONS } from '../domain/definitions';
+import type {
+  SettingChangeView,
+  SettingView,
+} from '../application/use-cases/view-list-paging-setting.use-case';
+
+export class SettingsReviewBody {
+  @ApiProperty({ description: 'A change is reviewed in this Market: the save asks for a note.' })
+  reviewed!: boolean;
+  @ApiProperty({ enum: ['low', 'medium', 'high'] }) risk!: string;
+}
+
+export class ReviewRequestRef {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ description: 'Shown as SR-<number>.' }) number!: number;
+}
 
 export class SettingBody {
   @ApiProperty({ enum: SETTING_DEFINITIONS.map((definition) => definition.code) }) code!: string;
   @ApiProperty() value!: string;
   @ApiProperty({ description: '0 while the default is in force.' }) version!: number;
   @ApiProperty({ format: 'date-time', nullable: true, type: String }) updatedAt!: string | null;
+  @ApiProperty({ type: SettingsReviewBody }) review!: SettingsReviewBody;
+}
+
+export class SettingChangeBody extends SettingBody {
+  @ApiProperty({
+    type: ReviewRequestRef,
+    nullable: true,
+    description: 'The review request the change opened; null where the area is not reviewed.',
+  })
+  request!: ReviewRequestRef | null;
 }
 
 export class SettingsListBody {
@@ -19,6 +43,34 @@ export class ChangeSettingRequest {
   @ApiProperty() value!: string;
   @ApiProperty({ description: 'The version the admin saw; a stale edit is refused (409).' })
   expectedVersion!: number;
+  @ApiProperty({
+    required: false,
+    description: 'The note for the reviewer, 1 to 500 characters; required where reviewed.',
+  })
+  note?: string;
+}
+
+export class ChangeCartModeRequest {
+  @ApiProperty({ enum: [...CART_MODE_VALUES] }) value!: string;
+  @ApiProperty({ description: 'The version the admin saw; a stale edit is refused (409).' })
+  expectedVersion!: number;
+  @ApiProperty({
+    required: false,
+    description: 'The note for the reviewer, 1 to 500 characters; required where reviewed.',
+  })
+  note?: string;
+}
+
+export class ChangeAiSettingRequest {
+  @ApiProperty({ enum: ['ai-description-writer', 'ai-description-writer-tier'] }) code!: string;
+  @ApiProperty({ enum: ['off', 'on', 'fast', 'balanced'] }) value!: string;
+  @ApiProperty({ description: 'The version the admin saw; a stale edit is refused (409).' })
+  expectedVersion!: number;
+  @ApiProperty({
+    required: false,
+    description: 'The note for the reviewer, 1 to 500 characters; required where reviewed.',
+  })
+  note?: string;
 }
 
 export class ListPagingBody {
@@ -30,6 +82,12 @@ export const settingBody = (view: SettingView): SettingBody => ({
   value: view.value,
   version: view.version,
   updatedAt: view.updatedAt === null ? null : view.updatedAt.toString(),
+  review: { reviewed: view.review.reviewed, risk: view.review.risk },
+});
+
+export const settingChangeBody = (view: SettingChangeView): SettingChangeBody => ({
+  ...settingBody(view),
+  request: view.request === null ? null : { id: view.request.id, number: view.request.number },
 });
 
 export const settingsListBody = (views: readonly SettingView[]): SettingsListBody => ({

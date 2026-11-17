@@ -10,7 +10,7 @@ import type {
   OwnProductRow,
   OwnProductsFilter,
 } from '../ports/own-catalog.reader';
-import { XLSX_CONTENT_TYPE, type SheetWriter } from '../ports/sheet-writer';
+import { XLSX_CONTENT_TYPE, type SheetWriter } from '../../../../platform/list-export/sheet-writer';
 import { productIdOf } from '../products/product-lifecycle';
 import { csvChunks, textRows, type ExportCell } from '../products/products-csv';
 import { EXPORT_FORMATS, EXPORT_MAX_ROWS } from './admin-products-export.use-case';

@@ -21,7 +21,8 @@ export interface OfferSearchFactsReader {
   ): Promise<readonly Id<'Offer'>[]>;
   /**
    * A short text that changes when what the index keeps of an attribute changes: a definition's
-   * published revision (flags, options, names), a brand or an alias. Equal text, same documents.
+   * published revision (flags, options, names), a brand or an alias, or a culture's status or
+   * required certification type (multi-culture package 3a). Equal text, same documents.
    */
   searchIndexStamp(market: MarketContext): Promise<string>;
 }

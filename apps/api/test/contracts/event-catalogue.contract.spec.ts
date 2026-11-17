@@ -84,6 +84,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.names()).toEqual([
       // Blog package 1: a seller's blog access turned off with its live posts to come down.
       'blog.pause-seller-posts',
+      // Categories C9a: SEL-26 switched off cancels the seller's pending category proposals.
+      'catalog.cancel-pending-proposals-on-revoked',
       // Catalog slice 12: tag re-evaluation from certification events (design 5.5, 9.5);
       // certification slice 14 adds the type-wide causes, slice 15 the manufacturer endings.
       'catalog.reevaluate-on-claim-policy-changed',
@@ -117,6 +119,27 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'commission-payouts.place-suspended-hold',
       // Phase 5 package 8b: dispute effects from payments' dispute events.
       'commission-payouts.sync-dispute',
+      // Customers phase 1 (B1): the customer directory and stats follow identity's account events and ordering's paid orders and refunds.
+      'customers.read-model-disabled',
+      'customers.read-model-email-verified',
+      'customers.read-model-enabled',
+      'customers.read-model-name-changed',
+      'customers.read-model-order-paid',
+      'customers.read-model-refund-succeeded',
+      'customers.read-model-registered',
+      // Customers phase 3: the per-seller customers, from orders, refunds and store follows.
+      'customers.seller-customers-order-paid',
+      'customers.seller-customers-refund-succeeded',
+      'customers.seller-customers-store-followed',
+      'customers.seller-customers-store-unfollowed',
+      // Customers phase 2 (PR 2a): the same events copied onto the customer's activity timeline.
+      'customers.timeline-disabled',
+      'customers.timeline-email-verified',
+      'customers.timeline-enabled',
+      'customers.timeline-name-changed',
+      'customers.timeline-order-paid',
+      'customers.timeline-refund-succeeded',
+      'customers.timeline-registered',
       'identity.existing-account-mail',
       'identity.invitation-mail',
       'identity.link-mail',
@@ -133,6 +156,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'inventory.rekey-on-offer-moved',
       'inventory.retire-on-offer-deleted',
       'inventory.retire-on-variant-removed',
+      'notifications.admin-assistant-spend-cap-notice',
       'notifications.admin-certificate-notice',
       'notifications.admin-delivery-fallback-notice',
       'notifications.admin-platform-import-notice',
@@ -142,6 +166,9 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.admin-review-held-notice',
       'notifications.admin-review-reported-notice',
       'notifications.admin-seller-file-notice',
+      'notifications.admin-seller-refund-limit-notice',
+      'notifications.admin-system-request-overdue-notice',
+      'notifications.item-unavailable-refund-mail',
       'notifications.order-confirmation-mail',
       'notifications.order-shipped-mail',
       'notifications.seller-access-approved-notice',
@@ -182,10 +209,24 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'pricing.retire-series-for-removed-offer',
       'pricing.retire-series-for-removed-variant',
       'promotions.cashback-on-delivery',
+      // Promotions T2: an order's redemption is confirmed when it is paid, released when cancelled.
+      'promotions.confirm-redemptions',
       'promotions.qualify-referral-on-delivery',
+      'promotions.release-cancelled-redemptions',
+      'search.index-approved-seller',
       'search.index-availability-changed',
+      'search.index-category-archived',
+      'search.index-category-merged',
+      'search.index-certificate-approved',
+      'search.index-certificate-expired',
+      'search.index-certificate-revoked',
+      'search.index-changed-category',
+      'search.index-culture-mark-changed',
+      'search.index-culture-status-changed',
       'search.index-deleted-offer',
+      'search.index-issuer-deactivated',
       'search.index-listing-changed-offer',
+      'search.index-moved-category',
       'search.index-moved-offer',
       'search.index-paused-product',
       'search.index-price-changed',
@@ -193,17 +234,36 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'search.index-published-revision',
       'search.index-reinstated-seller',
       'search.index-resumed-product',
+      'search.index-sell-unit-changed',
+      'search.index-seller-culture-changed',
+      'search.index-tag-added',
+      'search.index-tag-basis-switched',
+      'search.index-tag-removed',
+      'search.index-tag-restored',
+      'search.index-tag-suspended',
+      'search.index-type-deactivated',
       'search.unindex-suspended-seller',
       'sellers.after-submission',
+      // Multi-culture package 2 (ADR-0048): a new seller's default "universal" cultures.
+      'sellers.apply-signup-cultures',
       'sellers.close-decision-approved',
       'sellers.close-decision-rejected',
       'sellers.create-file',
+      // Multi-culture package 3a: certificate ends (M2) and catalog's approvals-invalidated (N1).
+      'sellers.demote-on-culture-approvals-invalidated',
+      'sellers.recheck-cultures-on-certificate-expired',
+      'sellers.recheck-cultures-on-certificate-revoked',
+      'sellers.recheck-cultures-on-issuer-deactivated',
     ]);
     expect(subscriptions.subscribersOf('ordering.order-paid.v1')).toEqual([
+      'customers.read-model-order-paid',
+      'customers.seller-customers-order-paid',
+      'customers.timeline-order-paid',
       'notifications.order-confirmation-mail',
       'notifications.seller-new-order-mail',
       'notifications.seller-order-notice',
       'ordering.book-carrier-deliveries',
+      'promotions.confirm-redemptions',
     ]);
     expect(subscriptions.subscribersOf('ordering.seller-order-ready.v1')).toEqual([
       'ordering.book-ready-carrier-delivery',
@@ -214,6 +274,10 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'promotions.qualify-referral-on-delivery',
     ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
+      'customers.read-model-refund-succeeded',
+      'customers.seller-customers-refund-succeeded',
+      'customers.timeline-refund-succeeded',
+      'notifications.item-unavailable-refund-mail',
       'ordering.cancel-carrier-after-refund',
     ]);
     expect(subscriptions.subscribersOf('shipping.carrier-delivery-progressed.v1')).toEqual([
@@ -237,6 +301,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.subscribersOf('identity.seller-registered.v1')).toEqual([
       'identity.welcome-mail',
       'inventory.ensure-seller-inventory',
+      'sellers.apply-signup-cultures',
       'sellers.create-file',
     ]);
     // Inventory retires its items on catalog's retirements (design 3.5).
@@ -271,14 +336,25 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.subscribersOf('catalog.offer-listing-changed.v1')).toEqual([
       'search.index-listing-changed-offer',
     ]);
+    // ... and a sell unit switched off or on (V5) re-syncs its Offer's document (V8).
+    expect(subscriptions.subscribersOf('catalog.offer-sell-unit-changed.v1')).toEqual([
+      'search.index-sell-unit-changed',
+    ]);
+    // ... and search re-syncs the documents that name a renamed or moved category (search 1a).
+    expect(subscriptions.subscribersOf('catalog.platform-category-changed.v1')).toEqual([
+      'search.index-changed-category',
+    ]);
     expect(subscriptions.subscribersOf('catalog.platform-category-moved.v1')).toEqual([
       'catalog.report-moved-category',
+      'search.index-moved-category',
     ]);
     expect(subscriptions.subscribersOf('catalog.platform-category-merged.v1')).toEqual([
       'catalog.report-merged-category',
+      'search.index-category-merged',
     ]);
     expect(subscriptions.subscribersOf('catalog.platform-category-archived.v1')).toEqual([
       'catalog.report-archived-category',
+      'search.index-category-archived',
     ]);
     expect(subscriptions.subscribersOf('catalog.product-revision-published.v1')).toEqual([
       'notifications.seller-product-published-notice',
@@ -298,6 +374,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'identity.seller-approved-mail',
       'inventory.ensure-seller-inventory-approved',
       'notifications.seller-access-approved-notice',
+      'search.index-approved-seller',
       'sellers.close-decision-approved',
     ]);
     expect(subscriptions.subscribersOf('identity.seller-access-rejected.v1')).toEqual([

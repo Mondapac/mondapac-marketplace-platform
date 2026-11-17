@@ -15,7 +15,7 @@ ADR-0043 (the `Eat` section of the buyer site and the section key in core).
 **Relates to:** ADR-0012 (PREPARED offers always need a seller certificate), ADR-0018 decision 3
 (a seller-side account is a member of one seller), ADR-0040 (business activities), ADR-0005
 (time zones, ServiceArea), the multi-culture plan (Project folder
-`design/culture-sections/`; not yet accepted as an ADR, and a dependency of decision 7).
+`design/culture-sections/`; accepted as ADR-0047).
 
 ## Context
 Hot food from restaurants of many cultures is the second vertical. The extension points of

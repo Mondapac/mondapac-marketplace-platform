@@ -184,7 +184,7 @@ function pageRange(n: number): { first: number; last: number } | null {
 
 async function productPage(page: number, read: Reader, photo: PhotoUrl | null = null) {
   try {
-    const live = await liveProducts({ page, pageSize: PRODUCT_PAGE_SIZE }, read, photo);
+    const live = await liveProducts({ page, pageSize: PRODUCT_PAGE_SIZE }, read, photo, true);
     if (live === undefined) throw new SitemapReadFailed('product search');
     return live;
   } catch {
@@ -195,7 +195,7 @@ async function productPage(page: number, read: Reader, photo: PhotoUrl | null = 
 /**
  * The product pages of child `n`: pages of `search/products` until `hasMore` is false or the 4,800
  * cap. Reaching the cap with more left logs one line: that is the trigger for package 4B.
- * Each lists its main photo (the search read gives one photo per product, not the whole set) when
+ * Each lists all its photos (the search read gives up to 8) when
  * a photo builder is given. Null when `n` names no child.
  */
 export async function productPaths(
@@ -205,21 +205,21 @@ export async function productPaths(
 ): Promise<SitemapUrl[] | null> {
   const range = pageRange(n);
   if (range === null) return null;
-  const names = new Map<string, { name: string; image?: string }>();
+  const names = new Map<string, { name: string; images?: readonly string[] }>();
   for (let page = range.first; page <= range.last; page += 1) {
     const live = await productPage(page, read, photo);
     for (const card of live.items) {
-      const image = card.imageSet?.largest;
-      names.set(card.id, { name: card.name, ...(image === undefined ? {} : { image }) });
+      const images = card.largeImages ?? [];
+      names.set(card.id, { name: card.name, ...(images.length === 0 ? {} : { images }) });
     }
     if (!live.hasMore) break;
     if (page === MAX_PAGE) {
       log({ msg: 'storefront.sitemap-product-cap', products: MAX_PAGE * PRODUCT_PAGE_SIZE });
     }
   }
-  return [...names].map(([id, { name, image }]) => ({
+  return [...names].map(([id, { name, images }]) => ({
     path: productHref(id, name),
-    ...(image === undefined ? {} : { images: [image] }),
+    ...(images === undefined ? {} : { images }),
   }));
 }
 

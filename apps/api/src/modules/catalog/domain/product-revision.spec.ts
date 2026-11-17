@@ -171,6 +171,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       const product = simple();
       submit(product, { revisionId: rev(1), outcome: PENDING });
       const result = product.approveRevision({
+        revisionTypeCode: product.state.typeCode,
         revisionId: rev(1),
         baseRevisionId: null,
         revisionVariantIds: [v(1)],
@@ -193,6 +194,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       submit(product, { revisionId: rev(2), outcome: PENDING, replacePending: true });
       const before = product.state;
       const result = product.approveRevision({
+        revisionTypeCode: product.state.typeCode,
         revisionId: rev(1),
         baseRevisionId: null,
         revisionVariantIds: [v(1)],
@@ -207,6 +209,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
     it('refuses an approval when nothing is pending', () => {
       const product = simple();
       const result = product.approveRevision({
+        revisionTypeCode: product.state.typeCode,
         revisionId: rev(1),
         baseRevisionId: null,
         revisionVariantIds: [v(1)],
@@ -220,8 +223,14 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       const product = simple();
       submit(product, { revisionId: rev(1) });
       submit(product, { revisionId: rev(2), outcome: PENDING });
-      product.publishTaxOverride({ revisionId: rev(3), fromRevisionId: rev(1), now: T2 });
+      product.publishTaxOverride({
+        revisionId: rev(3),
+        fromRevisionId: rev(1),
+        revisionTypeCode: product.state.typeCode,
+        now: T2,
+      });
       const result = product.approveRevision({
+        revisionTypeCode: product.state.typeCode,
         revisionId: rev(2),
         baseRevisionId: rev(1),
         revisionVariantIds: [v(1)],
@@ -237,6 +246,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       submit(product, { revisionId: rev(1), outcome: PENDING });
       product.removeProposedVariant(v(2), T1, 'seller');
       const result = product.approveRevision({
+        revisionTypeCode: product.state.typeCode,
         revisionId: rev(1),
         baseRevisionId: null,
         revisionVariantIds: [v(1), v(2)],
@@ -250,6 +260,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
     it('is not available on a PLATFORM product', () => {
       const product = simple('PLATFORM');
       const result = product.approveRevision({
+        revisionTypeCode: product.state.typeCode,
         revisionId: rev(1),
         baseRevisionId: null,
         revisionVariantIds: [v(1)],
@@ -411,6 +422,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
         const result = product.publishCategoryOverride({
           revisionId: rev(3),
           fromRevisionId: rev(1),
+          revisionTypeCode: product.state.typeCode,
           familyCode: 'default',
           now: T2,
         });
@@ -424,6 +436,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       product.publishCategoryOverride({
         revisionId: rev(2),
         fromRevisionId: rev(1),
+        revisionTypeCode: product.state.typeCode,
         familyCode: 'snacks',
         now: T2,
       });
@@ -436,6 +449,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
         product.publishCategoryOverride({
           revisionId: rev(revisionId),
           fromRevisionId: rev(fromRevisionId),
+          revisionTypeCode: product.state.typeCode,
           familyCode,
           now: T2,
         });
@@ -467,6 +481,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       const result = product.publishTaxOverride({
         revisionId: rev(3),
         fromRevisionId: rev(1),
+        revisionTypeCode: product.state.typeCode,
         now: T2,
       });
 
@@ -491,6 +506,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       const result = product.publishTaxOverride({
         revisionId: rev(1),
         fromRevisionId: rev(1),
+        revisionTypeCode: product.state.typeCode,
         now: T1,
       });
       expect(result).toEqual({ ok: false, error: { code: 'product.no-published-revision' } });
@@ -501,6 +517,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       const result = product.publishTaxOverride({
         revisionId: rev(1),
         fromRevisionId: rev(1),
+        revisionTypeCode: product.state.typeCode,
         now: T1,
       });
       expect(result).toEqual({ ok: false, error: { code: 'product.seller-only' } });
@@ -636,6 +653,7 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       submit(product, { revisionId: rev(1) });
       submit(product, { revisionId: rev(2), outcome: PENDING, revisionVariantIds: [v(1)] });
       const result = product.approveRevision({
+        revisionTypeCode: product.state.typeCode,
         revisionId: rev(2),
         baseRevisionId: rev(1),
         revisionVariantIds: [v(1)],
@@ -665,7 +683,12 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       product.addVariant(v(2), MAX_VARIANTS, T1, 'seller');
       const before = product.pendingEvents.length;
       expect(
-        product.publishTaxOverride({ revisionId: rev(2), fromRevisionId: rev(1), now: T2 }).ok,
+        product.publishTaxOverride({
+          revisionId: rev(2),
+          fromRevisionId: rev(1),
+          revisionTypeCode: product.state.typeCode,
+          now: T2,
+        }).ok,
       ).toBe(true);
       expect(product.state.variants.map((variant) => variant.state)).toEqual([
         'published',
@@ -680,7 +703,12 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       const product = simple();
       submit(product, { revisionId: rev(1), outcome: PENDING });
       expect(
-        product.publishTaxOverride({ revisionId: rev(2), fromRevisionId: rev(1), now: T2 }),
+        product.publishTaxOverride({
+          revisionId: rev(2),
+          fromRevisionId: rev(1),
+          revisionTypeCode: product.state.typeCode,
+          now: T2,
+        }),
       ).toEqual({
         ok: false,
         error: { code: 'product.no-published-revision' },
@@ -719,13 +747,28 @@ describe.each(FIXTURE_MARKETS)('product revisions in market $code', ({ code, max
       submit(product, { revisionId: rev(1) });
       submit(product, { revisionId: rev(2), outcome: PENDING });
       expect(
-        product.publishTaxOverride({ revisionId: rev(3), fromRevisionId: rev(2), now: T2 }),
+        product.publishTaxOverride({
+          revisionId: rev(3),
+          fromRevisionId: rev(2),
+          revisionTypeCode: product.state.typeCode,
+          now: T2,
+        }),
       ).toEqual({ ok: false, error: { code: 'revision.base-changed' } });
       expect(
-        product.publishTaxOverride({ revisionId: rev(2), fromRevisionId: rev(1), now: T2 }),
+        product.publishTaxOverride({
+          revisionId: rev(2),
+          fromRevisionId: rev(1),
+          revisionTypeCode: product.state.typeCode,
+          now: T2,
+        }),
       ).toEqual({ ok: false, error: { code: 'revision.id-taken' } });
       expect(
-        product.publishTaxOverride({ revisionId: rev(1), fromRevisionId: rev(1), now: T2 }),
+        product.publishTaxOverride({
+          revisionId: rev(1),
+          fromRevisionId: rev(1),
+          revisionTypeCode: product.state.typeCode,
+          now: T2,
+        }),
       ).toEqual({ ok: false, error: { code: 'revision.id-taken' } });
     });
   });

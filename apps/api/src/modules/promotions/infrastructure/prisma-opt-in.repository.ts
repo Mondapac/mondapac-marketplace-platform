@@ -90,6 +90,22 @@ export class PrismaOptInRepository implements OptInRepository {
     return live.map((row) => row.sellerId as Id<'Seller'>);
   }
 
+  async listOf(
+    market: MarketContext,
+    promotionId: Id<'Promotion'>,
+  ): Promise<readonly OptInRecord[]> {
+    const rows = await this.prisma.tx(market).promotionsCoFundingOptIn.findMany({
+      where: { marketId: market.marketId, promotionId },
+      orderBy: [{ optedInAt: 'asc' }, { sellerId: 'asc' }],
+    });
+    return rows.map((row) => ({
+      promotionId: row.promotionId as Id<'Promotion'>,
+      sellerId: row.sellerId as Id<'Seller'>,
+      optedInAt: fromDate(row.optedInAt),
+      withdrawnAt: row.withdrawnAt === null ? null : fromDate(row.withdrawnAt),
+    }));
+  }
+
   async liveSellers(
     market: MarketContext,
     promotionIds: readonly Id<'Promotion'>[],

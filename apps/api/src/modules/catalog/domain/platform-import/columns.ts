@@ -70,11 +70,37 @@ export type ColumnMap = Readonly<Partial<Record<ImportColumnKey, number>>>;
 
 export type ColumnsRefusal =
   | { readonly code: 'columns.missing'; readonly columns: readonly ImportColumnKey[] }
-  | { readonly code: 'columns.duplicate'; readonly columns: readonly ImportColumnKey[] };
+  | { readonly code: 'columns.duplicate'; readonly columns: readonly string[] };
+
+/** The column of one attribute: `attr[<code>]` (attributes package A9), the code of the attribute. */
+export type AttributeColumn = `attr[${string}]`;
+export const attributeColumn = (code: string): AttributeColumn => `attr[${code}]`;
+
+/** Attribute code to the index of its column in the file. */
+export type AttributeColumnMap = ReadonlyMap<string, number>;
 
 export interface MappedColumns {
   readonly map: ColumnMap;
+  /** The `attr[<code>]` columns of the file. */
+  readonly attributes: AttributeColumnMap;
   readonly ignored: readonly IgnoredColumn[];
+}
+
+/** The most attribute columns one file may carry. */
+export const ATTRIBUTE_COLUMNS_MAX = 40;
+const ATTRIBUTE_HEADER = /^attr\s*\[\s*([a-z][a-z0-9_-]{0,63})\s*\]$/;
+
+/**
+ * The attribute code of an `attr[<code>]` header (case and spacing do not matter), or null.
+ * A code that looks like a certification, handling or status column is never an attribute column:
+ * the import never writes those (see {@link CERTIFICATION_HEADER}); the header is then ignored.
+ */
+export function attributeCodeOf(header: string): string | null {
+  const match = ATTRIBUTE_HEADER.exec(header.normalize('NFKC').trim().toLowerCase());
+  const code = match?.[1];
+  // `_` counts as a letter to `\b`, so the guard also reads the code with `-` for `_`.
+  if (code === undefined || CERTIFICATION_HEADER.test(code.replaceAll('_', '-'))) return null;
+  return code;
 }
 
 /**
@@ -87,9 +113,17 @@ export function mapColumns(
   | { readonly ok: true; readonly value: MappedColumns }
   | { readonly ok: false; readonly error: ColumnsRefusal } {
   const map: Partial<Record<ImportColumnKey, number>> = {};
-  const duplicated = new Set<ImportColumnKey>();
+  const duplicated = new Set<string>();
+  const attributes = new Map<string, number>();
   const ignored: IgnoredColumn[] = [];
   header.forEach((raw, index) => {
+    const attributeCode = attributeCodeOf(raw);
+    if (attributeCode !== null) {
+      if (attributes.has(attributeCode)) duplicated.add(attributeColumn(attributeCode));
+      else if (attributes.size < ATTRIBUTE_COLUMNS_MAX) attributes.set(attributeCode, index);
+      else ignored.push({ header: displayHeader(raw), certification: false });
+      return;
+    }
     const name = normaliseHeader(raw);
     const column = IMPORT_COLUMNS.find(
       (candidate) => normaliseHeader(candidate.header) === name || candidate.aliases.includes(name),
@@ -118,13 +152,16 @@ export function mapColumns(
       error: { code: 'columns.missing', columns: missing.map((column) => column.key) },
     };
   }
-  return { ok: true, value: { map, ignored } };
+  return { ok: true, value: { map, attributes, ignored } };
 }
 
 /** The template: the header row and one example row, so a spreadsheet opens it ready to fill. */
-export function templateRows(typeExample: string): readonly (readonly string[])[] {
+export function templateRows(
+  typeExample: string,
+  attributeCodes: readonly string[] = [],
+): readonly (readonly string[])[] {
   return [
-    IMPORT_COLUMNS.map((column) => column.header),
+    [...IMPORT_COLUMNS.map((column) => column.header), ...attributeCodes.map(attributeColumn)],
     [
       'Lamb shoulder 1 kg',
       'Meat',
@@ -135,6 +172,7 @@ export function templateRows(typeExample: string): readonly (readonly string[])[
       '1 kg',
       '',
       '',
+      ...attributeCodes.map(() => ''),
     ],
   ];
 }

@@ -191,6 +191,7 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
       product_id: productId,
       revision_no: 1,
       revision_kind: 'submission',
+      type_code: 'configurable',
       base_revision_id: null,
       reverted_from_revision_id: null,
       family_revision_id: type.familyRevisionId,
@@ -264,6 +265,7 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
         | null;
       after?: string | null;
       limit?: number;
+      window?: { offset: number; sort: 'newest' | 'code' | 'gtin'; direction: 'asc' | 'desc' };
     },
   ) =>
     run(
@@ -275,6 +277,7 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
           issue: query.issue ?? null,
           after: query.after ?? null,
           limit: query.limit ?? 100,
+          ...(query.window === undefined ? {} : { window: query.window }),
           locale: L0,
           locales: LOCALES,
         }),
@@ -464,6 +467,74 @@ describe.each(TEST_MARKETS)('catalog variant admin in market %s (database)', (co
       after = next.nextAfter;
     } while (after !== null);
     expect(seen).toEqual([...a.variantIds].sort().reverse());
+  });
+
+  it('pages by number and counts, in each sort, with no row twice or missed', async () => {
+    const type = await seedType(market);
+    const gtinA = freshGtin();
+    const gtinB = freshGtin();
+    const a = await seedProduct(market, type, [
+      { option: 'l', labels: { [L0]: 'Large' }, gtin: gtinB },
+      { option: 'm', labels: { [L0]: 'Medium' }, gtin: null },
+      { option: 'l', labels: { [L0]: 'Large' }, gtin: gtinA },
+    ]);
+    const count = (issue: 'missing-gtin' | null = null) =>
+      run(
+        market,
+        () =>
+          reader.variantsCount(market, {
+            text: null,
+            typeCode: type.typeCode,
+            issue,
+            locale: L0,
+            locales: LOCALES,
+          }),
+        true,
+      );
+    expect(await count()).toBe(3);
+    expect(await count('missing-gtin')).toBe(1);
+
+    const pagesOf = async (sort: 'newest' | 'code' | 'gtin', direction: 'asc' | 'desc') => {
+      const seen: string[] = [];
+      for (let offset = 0; offset < 3; offset += 2) {
+        const next = await page(market, {
+          typeCode: type.typeCode,
+          limit: 2,
+          window: { offset, sort, direction },
+        });
+        seen.push(...idsOf(next.rows.slice(0, 2)));
+      }
+      return seen;
+    };
+    // Newest first is the id, descending; the other sorts give every variant once, in order.
+    expect(await pagesOf('newest', 'desc')).toEqual([...a.variantIds].sort().reverse());
+    expect(await pagesOf('newest', 'asc')).toEqual([...a.variantIds].sort());
+    const byCode = await pagesOf('code', 'asc');
+    expect([...byCode].sort()).toEqual([...a.variantIds].sort());
+    const codes = (
+      await page(market, {
+        typeCode: type.typeCode,
+        window: { offset: 0, sort: 'code', direction: 'asc' },
+      })
+    ).rows.map((row) => row.variantCode);
+    expect(codes).toEqual([...codes].sort());
+    expect(
+      idsOf(
+        (
+          await page(market, {
+            typeCode: type.typeCode,
+            window: { offset: 0, sort: 'gtin', direction: 'asc' },
+          })
+        ).rows,
+      ),
+    ).toEqual(
+      // GTIN ascending, the variant without one last.
+      [
+        gtinA < gtinB ? a.variantIds[2]! : a.variantIds[0]!,
+        gtinA < gtinB ? a.variantIds[0]! : a.variantIds[2]!,
+        a.variantIds[1]!,
+      ],
+    );
   });
 
   it('never reads a type, a variant or settings of another Market (canary)', async () => {

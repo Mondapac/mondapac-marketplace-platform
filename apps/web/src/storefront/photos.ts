@@ -7,6 +7,12 @@
 
 export type PhotoSize = 'thumb' | 'medium' | 'large';
 
+/** The formats the API also serves after the JPEG (the route's `size` takes `large.webp`). */
+export type PhotoFormat = 'webp' | 'avif';
+
+/** The route's `size` segment: a size alone is the JPEG, with a format after a dot is that format. */
+export type PhotoVariant = PhotoSize | `${PhotoSize}.${PhotoFormat}`;
+
 /** The most photos one product page shows (the API sends at most this many). */
 export const MAX_PHOTOS = 8;
 
@@ -16,7 +22,11 @@ const LOCAL_ORIGIN = /^(localhost|127\.0\.0\.1|[a-z0-9-]+\.localhost)$/u;
 const MAX_SIDE = 20_000;
 
 /** Builds the browser URL of one photo of a product. */
-export type PhotoUrl = (productId: string, imageId: string, size: PhotoSize) => string | undefined;
+export type PhotoUrl = (
+  productId: string,
+  imageId: string,
+  size: PhotoVariant,
+) => string | undefined;
 
 /**
  * Parses `STOREFRONT_IMAGE_ORIGIN`: `scheme://host[:port]` with no path, https (http only on
@@ -127,7 +137,23 @@ export interface PhotoSet {
   /** Width and height of the rendition `src` points to, so the box keeps the photo's ratio. */
   readonly width: number;
   readonly height: number;
+  /**
+   * The same renditions in the newer formats, best first (AVIF, then WebP), for `<source>` in a
+   * `<picture>`; the JPEG `srcSet` stays the fallback on the `<img>`.
+   */
+  readonly sources: readonly PhotoSource[];
 }
+
+/** One `<source>` of a `<picture>`: the MIME type and the `srcset` of that format. */
+export interface PhotoSource {
+  readonly type: 'image/avif' | 'image/webp';
+  readonly srcSet: string;
+}
+
+const SOURCE_TYPES: readonly (readonly [PhotoFormat, PhotoSource['type']])[] = [
+  ['avif', 'image/avif'],
+  ['webp', 'image/webp'],
+];
 
 /**
  * The `srcset` of one photo over thumb, medium and large, each with its real pixel width. A photo
@@ -140,17 +166,22 @@ export function photoSetOf(
   ref: PhotoRef,
   src: PhotoSize,
 ): PhotoSet | undefined {
-  const byWidth = new Map<number, string>();
-  let largest = '';
-  for (const size of ['thumb', 'medium', 'large'] as const) {
-    const url = build(productId, ref.imageId, size);
-    if (url === undefined) return undefined;
-    byWidth.set(renditionSize(ref, size).width, url);
-    largest = url;
-  }
-  return {
-    largest,
-    srcSet: [...byWidth].map(([width, url]) => `${url} ${width}w`).join(', '),
-    ...renditionSize(ref, src),
+  const sizes = ['thumb', 'medium', 'large'] as const;
+  const srcSetOf = (suffix: '' | `.${PhotoFormat}`): string | undefined => {
+    const byWidth = new Map<number, string>();
+    for (const size of sizes) {
+      const url = build(productId, ref.imageId, `${size}${suffix}`);
+      if (url === undefined) return undefined;
+      byWidth.set(renditionSize(ref, size).width, url);
+    }
+    return [...byWidth].map(([width, url]) => `${url} ${width}w`).join(', ');
   };
+  const srcSet = srcSetOf('');
+  const largest = build(productId, ref.imageId, 'large');
+  if (srcSet === undefined || largest === undefined) return undefined;
+  const sources = SOURCE_TYPES.flatMap(([format, type]) => {
+    const formatSet = srcSetOf(`.${format}`);
+    return formatSet === undefined ? [] : [{ type, srcSet: formatSet }];
+  });
+  return { largest, srcSet, sources, ...renditionSize(ref, src) };
 }

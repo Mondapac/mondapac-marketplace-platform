@@ -18,6 +18,16 @@ export interface CustomerSummaryRow {
   readonly email: string;
 }
 
+/** One customer account as the `customers` read model copies it. PERSONAL DATA: never logged. */
+export interface CustomerDirectoryRow {
+  readonly id: Id<'Account'>;
+  readonly email: string;
+  readonly displayName: string | null;
+  readonly status: 'active' | 'disabled';
+  readonly emailVerifiedAt: Temporal.Instant | null;
+  readonly signedUpAt: Temporal.Instant;
+}
+
 /**
  * The accounts of `identity` (identity design 2.1; data design 3.3). Every method runs in the
  * caller's open read-write unit of work and takes the `MarketContext` only (foundations 5.2
@@ -66,6 +76,30 @@ export interface AccountRepository {
     market: MarketContext,
     ids: readonly Id<'Account'>[],
   ): Promise<readonly CustomerSummaryRow[]>;
+
+  /** The directory fields of the Market's customer accounts with these ids. PERSONAL DATA. */
+  customerDirectoryRows(
+    market: MarketContext,
+    ids: readonly Id<'Account'>[],
+  ): Promise<readonly CustomerDirectoryRow[]>;
+
+  /** A keyset page of the Market's customer accounts, ascending by id, after `after`. PERSONAL DATA. */
+  customerDirectoryPage(
+    market: MarketContext,
+    after: Id<'Account'> | null,
+    limit: number,
+  ): Promise<readonly CustomerDirectoryRow[]>;
+
+  /**
+   * The ids of the Market's customer accounts whose display name contains `term` (case
+   * insensitive, `%` and `_` taken literally), at most `limit`, in id order. Reads no address.
+   * The term is PERSONAL DATA: never logged.
+   */
+  searchCustomerIdsByName(
+    market: MarketContext,
+    term: string,
+    limit: number,
+  ): Promise<readonly Id<'Account'>[]>;
 
   /**
    * Whether the customer account with this id has the same normalised sign-in address as an

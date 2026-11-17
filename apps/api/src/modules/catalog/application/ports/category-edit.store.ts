@@ -79,6 +79,16 @@ export interface CategoryEditStore {
     now: Temporal.Instant,
   ): Promise<boolean>;
 
+  /**
+   * The slugs among `slugs` that `slugUnavailable` would refuse, in two queries for any number of
+   * slugs (the import's read-only preview; the write still checks each slug under its lock).
+   */
+  unavailableSlugs(
+    market: MarketContext,
+    slugs: readonly string[],
+    now: Temporal.Instant,
+  ): Promise<ReadonlySet<string>>;
+
   /** Whether the category was ever shown (a `shown` revision exists), and how many product revisions name it. */
   discardFacts(
     market: MarketContext,

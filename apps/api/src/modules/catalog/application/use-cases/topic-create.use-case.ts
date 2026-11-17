@@ -4,17 +4,12 @@ import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-k
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_TOPIC_MANAGE } from '../../contracts/permissions';
-import {
-  TOPIC_SLUG_MAX,
-  isTopicSlug,
-  newTopic,
-  parseTopicContent,
-  suggestTopicSlug,
-} from '../../domain/topic';
+import { isTopicSlug, newTopic, parseTopicContent } from '../../domain/topic';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
 import type { TopicRepository } from '../ports/topic.repository';
+import { freeTopicSlug } from '../topics/topic-slug';
 import { termsTakenElsewhere, type TopicTermTaken } from '../topics/topic-terms';
 import {
   adminAccountOf,
@@ -54,7 +49,6 @@ export interface TopicCreateDependencies {
 }
 
 const CREATE_KEYS = ['slug', 'group', 'names', 'synonyms', 'intro'] as const;
-const MAX_SLUG_PROBES = 50;
 
 /**
  * `topic.create` (product tags package T1): an admin adds a topic to the Market's curated list,
@@ -130,20 +124,14 @@ export class TopicCreate extends UseCase<
       async () => {
         const taken = await termsTakenElsewhere(market, content.value.terms, topics, null);
         if (taken !== null) return err(taken);
-        if (typeof givenSlug === 'string') {
-          return (await topics.slugTaken(market, givenSlug))
-            ? err({ code: 'topic.slug-taken' } as const)
-            : ok(givenSlug);
-        }
-        const base = suggestTopicSlug(name.text);
-        for (let n = 1; n <= MAX_SLUG_PROBES; n += 1) {
-          const suffix = n === 1 ? '' : `-${n}`;
-          const candidate = `${base.slice(0, TOPIC_SLUG_MAX - suffix.length).replace(/-+$/u, '')}${suffix}`;
-          if (!(await topics.slugTaken(market, candidate))) return ok(candidate);
-        }
-        return ok(
-          `${base.slice(0, 31).replace(/-+$/u, '')}-${this.deps.ids.next<'Topic'>().slice(-8)}`,
+        const free = await freeTopicSlug(
+          market,
+          topics,
+          this.deps.ids,
+          typeof givenSlug === 'string' ? givenSlug : null,
+          name.text,
         );
+        return free === null ? err({ code: 'topic.slug-taken' } as const) : ok(free);
       },
       { readOnly: true },
     );

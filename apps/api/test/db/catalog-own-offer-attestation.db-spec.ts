@@ -134,6 +134,7 @@ describe.each(TEST_MARKETS)(
         product_id: productId,
         revision_no: 1,
         revision_kind: 'submission',
+        type_code: 'simple',
         base_revision_id: null,
         reverted_from_revision_id: null,
         family_revision_id: familyRevisionId,

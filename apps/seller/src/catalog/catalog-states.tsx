@@ -6,7 +6,9 @@ import type { CatalogPage } from '../server/catalog-page.ts';
 const LISTS: Record<string, { readonly href: string; readonly key: string }> = {
   s_offers: { href: '/offers', key: 'catalog.offers.back' },
   s_products: { href: '/products', key: 'catalog.products.back' },
+  s_categories: { href: '/category-proposals', key: 'categories.proposals.back' },
   s_suggestions: { href: '/value-suggestions', key: 'catalog.suggestions.back' },
+  s_tag_suggestions: { href: '/tag-suggestions', key: 'catalog.tagSuggestions.back' },
 };
 
 /** The pages' non-ok states: no access, not found, unavailable. Returns null when `page` is ok. */

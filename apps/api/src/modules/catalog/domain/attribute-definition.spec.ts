@@ -474,3 +474,77 @@ describe('AttributeDefinition.addOption', () => {
     });
   });
 });
+
+describe('AttributeDefinition.convertType (attributes A8)', () => {
+  const make = (overrides: Partial<Parameters<typeof AttributeDefinition.create>[0]> = {}) => {
+    const result = AttributeDefinition.create(
+      input({ code: 'pack', isVariantOption: false, options: [], ...overrides }),
+    );
+    if (!result.ok) throw new Error(result.error.code);
+    return result.value;
+  };
+  const convert = (definition: AttributeDefinition, to: string) =>
+    definition.convertType({
+      revisionId: 'r2' as Id<'AttributeDefinitionRevision'>,
+      to,
+      now: NOW,
+    });
+
+  it('turns a whole number into a decimal as the next revision, bounds kept', () => {
+    const result = convert(make({ dataType: 'integer', bounds: { min: 0, max: 99 } }), 'decimal');
+    if (!result.ok) throw new Error(result.error.code);
+    expect(result.value.state).toMatchObject({
+      dataType: 'decimal',
+      revisionNo: 2,
+      version: 2,
+      status: 'active',
+      bounds: { min: 0, max: 99 },
+    });
+  });
+
+  it('turns a select into a multi-select, values untouched', () => {
+    const options = [
+      { code: 'mild', labels: { xx: 'Mild' }, active: true, position: 0 },
+      { code: 'hot', labels: { xx: 'Hot' }, active: false, position: 1 },
+    ];
+    const result = convert(make({ dataType: 'select', options }), 'multi-select');
+    if (!result.ok) throw new Error(result.error.code);
+    expect(result.value.state).toMatchObject({ dataType: 'multi-select', options });
+  });
+
+  it('allows only the listed paths', () => {
+    for (const [from, to] of [
+      ['decimal', 'integer'],
+      ['multi-select', 'select'],
+      ['integer', 'integer'],
+      ['integer', 'select'],
+      ['text', 'select'],
+    ] as const) {
+      const options =
+        from === 'multi-select'
+          ? [{ code: 'a', labels: { xx: 'A' }, active: true, position: 0 }]
+          : [];
+      expect(convert(make({ dataType: from, options }), to)).toEqual({
+        ok: false,
+        error: { code: 'attribute-definition.convert-invalid' },
+      });
+    }
+  });
+
+  it('refuses a variant option, a material attribute and an archived one', () => {
+    const options = [{ code: 'red', labels: { xx: 'Red' }, active: true, position: 0 }];
+    expect(
+      convert(make({ dataType: 'select', options, isVariantOption: true }), 'multi-select'),
+    ).toEqual({ ok: false, error: { code: 'attribute-definition.convert-variant' } });
+    expect(convert(make({ dataType: 'integer', material: true }), 'decimal')).toEqual({
+      ok: false,
+      error: { code: 'attribute-definition.convert-material' },
+    });
+    const archived = make({ dataType: 'integer' }).archive();
+    if (!archived.ok) throw new Error(archived.error.code);
+    expect(convert(archived.value, 'decimal')).toEqual({
+      ok: false,
+      error: { code: 'attribute-definition.archived' },
+    });
+  });
+});

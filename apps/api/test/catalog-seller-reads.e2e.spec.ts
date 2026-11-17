@@ -733,6 +733,9 @@ describe('seller read routes over HTTP (integration)', () => {
       expect(own.body).toMatchObject({
         productId: PRODUCT,
         maxVariants: expect.any(Number) as number,
+        // The Market's own cap (config/markets): AU 2, the test Market ZZ 3.
+        maxAxes: code === 'ZZ' ? 3 : 2,
+        version: 3,
         form: { fields: [], categories: [], taxCategoryCodes: expect.any(Array) as string[] },
         workingCopy: null,
         published: null,

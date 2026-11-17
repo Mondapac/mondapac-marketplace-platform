@@ -81,11 +81,27 @@ import {
   CATEGORY_PROPOSALS_SETTING_REPOSITORY,
   type CategoryProposalsSettingRepository,
 } from '../application/ports/category-proposals-setting.repository';
+import {
+  AI_ACCESS_SETTING_REPOSITORY,
+  type AiAccessSettingRepository,
+} from '../application/ports/ai-access-setting.repository';
+import { PrismaAiAccessSettingRepository } from './prisma-ai-access-setting.repository';
 import { PrismaCategoryProposalsSettingRepository } from './prisma-category-proposals-setting.repository';
 import {
   SELLER_BUSINESS_ACTIVITY_REPOSITORY,
   type SellerBusinessActivityRepository,
 } from '../application/ports/seller-business-activity.repository';
+import { CULTURE_DIRECTORY } from '../application/ports/culture-directory';
+import { SELLER_CERTIFICATE_DIRECTORY } from '../application/ports/seller-certificate-directory';
+import {
+  SELLER_CULTURE_REPOSITORY,
+  type SellerCultureRepository,
+} from '../application/ports/seller-culture.repository';
+import { PrismaSellerCultureRepository } from './prisma-seller-culture.repository';
+import {
+  LateBoundCultureDirectory,
+  LateBoundSellerCertificateDirectory,
+} from './late-bound-directories';
 import { BUSINESS_ACTIVITY_DIRECTORY } from '../application/ports/business-activity-directory';
 import { LateBoundBusinessActivityDirectory } from './late-bound-business-activity-directory';
 import { PrismaSellerBusinessActivityRepository } from './prisma-seller-business-activity.repository';
@@ -424,6 +440,21 @@ export const sellerProviders: readonly FactoryProvider[] = [
       new PrismaSellerBusinessActivityRepository(prisma),
   },
   {
+    provide: SELLER_CULTURE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerCultureRepository =>
+      new PrismaSellerCultureRepository(prisma),
+  },
+  {
+    provide: CULTURE_DIRECTORY,
+    useFactory: (): LateBoundCultureDirectory => new LateBoundCultureDirectory(),
+  },
+  {
+    provide: SELLER_CERTIFICATE_DIRECTORY,
+    useFactory: (): LateBoundSellerCertificateDirectory =>
+      new LateBoundSellerCertificateDirectory(),
+  },
+  {
     provide: BUSINESS_ACTIVITY_DIRECTORY,
     useFactory: (): LateBoundBusinessActivityDirectory => new LateBoundBusinessActivityDirectory(),
   },
@@ -453,6 +484,12 @@ export const sellerProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): CategoryProposalsSettingRepository =>
       new PrismaCategoryProposalsSettingRepository(prisma),
+  },
+  {
+    provide: AI_ACCESS_SETTING_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AiAccessSettingRepository =>
+      new PrismaAiAccessSettingRepository(prisma),
   },
   {
     provide: SELLING_FACTS_REPOSITORY,

@@ -78,6 +78,7 @@ export function parseActivityContent(
     readonly categoryIds?: unknown;
   },
   locales: ActivityLocales,
+  isBlocked: (text: string) => boolean = () => false,
 ): Result<BusinessActivityContent, readonly ActivityFieldProblem[]> {
   const problems: ActivityFieldProblem[] = [];
   const names: { locale: string; name: string }[] = [];
@@ -152,6 +153,20 @@ export function parseActivityContent(
     });
   }
 
+  // The Market's content filter (a field refused for another reason is not judged twice).
+  for (const entry of names) {
+    const path = `names.${entry.locale}`;
+    if (isBlocked(entry.name) && !problems.some((problem) => problem.path === path)) {
+      problems.push({ path, code: 'blocked-term' });
+    }
+  }
+  if (
+    description !== null &&
+    isBlocked(description) &&
+    !problems.some((problem) => problem.path === 'description')
+  ) {
+    problems.push({ path: 'description', code: 'blocked-term' });
+  }
   if (problems.length > 0) return err(problems);
   return ok({ names, description, categoryIds });
 }

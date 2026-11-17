@@ -12,6 +12,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
+import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { FakePickups, MemoryDeliverySettings } from '../../../../test/support/shipping-fakes';
 import {
   TEST_MARKET_CONFIG_DIRS,
@@ -30,6 +31,8 @@ import {
 import { SHIPPING_AUDIT_ACTIONS } from '../domain/audit';
 import { ConfigShippingPolicy } from '../infrastructure/config-shipping-policy';
 import type { SellerDirectory } from './ports/seller-directory';
+import { DeliverySettingsReverter, SellerDeliveryMethodsReverter } from './shipping-reverters';
+import type { ChangeValues } from '../../system-requests';
 import type { ShippingDependencies } from './shipping-dependencies';
 import { DeliveryAvailability } from './use-cases/delivery-availability.use-case';
 import { DeliveryChoice } from './use-cases/delivery-choice.use-case';
@@ -126,6 +129,7 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
 
   let store: MemoryDeliverySettings;
   let audit: RecordingAudit;
+  let review: RecordingReview;
   let actors: FakeChangeActors;
   let clock: FixedClock;
   let pickups: FakePickups;
@@ -137,6 +141,7 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
     // 10:00 local on 10 June 2026 in the Market zone.
     clock = new FixedClock(noon('2026-06-10T10:00:00', marketZone));
     audit = new RecordingAudit(clock);
+    review = new RecordingReview();
     actors = new FakeChangeActors();
     pickups = new FakePickups();
     known = new Set([SELLER_A, SELLER_B, SELLER_C]);
@@ -149,6 +154,7 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
       policy: new ConfigShippingPolicy(markets, areas),
       sellers,
       audit,
+      review,
       clock,
       ids: undefined as never,
       outbox: undefined as never,
@@ -175,6 +181,8 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
     new ViewSellerDeliveryMethods(gate, deps).execute(context, { sellerId });
   const setSeller = (sellerId: unknown, supported: unknown, context: CallContext = admin) =>
     new SetSellerDeliveryMethods(gate, deps).execute(context, { sellerId, supported });
+  const setSellerWithNote = (sellerId: unknown, supported: unknown, note: unknown) =>
+    new SetSellerDeliveryMethods(gate, deps).execute(admin, { sellerId, supported, note });
   const offers = (sellerIds: unknown, context: CallContext = customer) =>
     new DeliveryAvailability(gate, deps).execute(context, { sellerIds });
   const choice = (input: Record<string, unknown>, context: CallContext = customer) =>
@@ -624,6 +632,184 @@ describe.each([['AU'], ['ZZ']] as const)('delivery settings in market %s', (code
         const result = await price(quote);
         expect(!result.ok && result.error.code).toBe('validation.failed');
       }
+    });
+  });
+
+  describe('review in System requests (area delivery)', () => {
+    const requestId = id<'SystemRequest'>(0xe1);
+    const revertOf = (
+      before: ChangeValues,
+      after: ChangeValues,
+      subjectRef = 'delivery-settings',
+    ) => ({ requestId, subjectRef, before, after });
+    const settingsReverter = () => new DeliverySettingsReverter(deps);
+    const methodsReverter = () => new SellerDeliveryMethodsReverter(deps);
+    const noMargin = {
+      enabled: { pickup: true, instant: true, same_day: true, scheduled: true },
+      sameDayCutoffMinutes: 720,
+      scheduledDaysAhead: 7,
+      scheduledWindowMinutes: 120,
+      readyPrepMinutes: 60,
+      margin: { kind: 'none' },
+      roundingStepMinor: 1,
+    };
+    const changed = { ...noMargin, margin: { kind: 'percent', basisPoints: 1000 } };
+
+    it('asks the area policy outside any unit and shows it on every read', async () => {
+      review.review('delivery', 'medium');
+      const page = await view();
+      expect(page.ok && page.value.review).toEqual({ reviewed: true, risk: 'medium' });
+      expect(page.ok && page.value.request).toBeNull();
+      const seller = await viewSeller(SELLER_A);
+      expect(seller.ok && seller.value.review).toEqual({ reviewed: true, risk: 'medium' });
+      expect(review.asked).toEqual(['delivery', 'delivery']);
+    });
+
+    it('opens nothing and needs no note where the Market does not review delivery', async () => {
+      const saved = await save({ ...SETTINGS, margin: { kind: 'percent', basisPoints: 500 } });
+      expect(saved.ok && saved.value.request).toBeNull();
+      expect(saved.ok && saved.value.review).toEqual({ reviewed: false, risk: 'low' });
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('opens a review of a settings save with the values before and after and the note', async () => {
+      review.review('delivery', 'medium');
+      const saved = await save({
+        ...SETTINGS,
+        margin: { kind: 'percent', basisPoints: 1000 },
+        note: 'Margin for launch',
+      });
+      expect(saved.ok && saved.value.request).toMatchObject({ number: 1 });
+      expect(review.opened).toEqual([
+        {
+          area: 'delivery',
+          subjectKind: 'shipping.delivery-settings',
+          subjectRef: 'delivery-settings',
+          before: noMargin,
+          after: changed,
+          note: 'Margin for launch',
+        },
+      ]);
+    });
+
+    it('refuses a reviewed save without a note', async () => {
+      review.review('delivery');
+      const refused = await save({ ...SETTINGS, margin: { kind: 'fixed', amountMinor: 100 } });
+      expect(!refused.ok && refused.error.code).toBe('validation.failed');
+      expect(!refused.ok && refused.error).toMatchObject({
+        fields: [{ path: 'note', code: 'required' }],
+      });
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('rolls the save back when the review cannot be opened', async () => {
+      review.review('delivery');
+      review.failNext = true;
+      const result = await save({ ...SETTINGS, note: 'x', scheduledDaysAhead: 5 });
+      expect(!result.ok && result.error.code).toBe('access.denied');
+    });
+
+    it('does not take the note for a setting', async () => {
+      review.review('delivery');
+      const result = await save({ ...SETTINGS, note: 7, scheduledDaysAhead: 5 });
+      expect(!result.ok && result.error.code).toBe('validation.failed');
+      const unknown = await save({ ...SETTINGS, other: 1, note: 'x' });
+      expect(!unknown.ok && unknown.error.code).toBe('validation.failed');
+    });
+
+    it('reverts a settings save to a new version, audited with the request id', async () => {
+      await save({ ...SETTINGS, margin: { kind: 'percent', basisPoints: 1000 } });
+      audit.entries.length = 0;
+      const outcome = await settingsReverter().revert(admin, revertOf(noMargin, changed));
+      expect(outcome).toBe('reverted');
+      const now = await view();
+      expect(now.ok && now.value.settings).toMatchObject({
+        margin: { kind: 'none' },
+        version: 2,
+      });
+      expect(audit.entries).toHaveLength(1);
+      expect(audit.entries[0]).toMatchObject({
+        action: 'shipping.delivery-settings.reverted',
+        targetId: 'market',
+        before: { marginKind: 'percent', marginValue: 1000, version: 1 },
+        after: { marginKind: 'none', marginValue: 0, version: 2, requestId },
+      });
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('answers changed-since when the settings moved on, and gone for values it cannot read', async () => {
+      await save({ ...SETTINGS, margin: { kind: 'percent', basisPoints: 1000 } });
+      await save({ ...SETTINGS, expectedVersion: 1, scheduledDaysAhead: 3 });
+      audit.entries.length = 0;
+      expect(await settingsReverter().revert(admin, revertOf(noMargin, changed))).toBe(
+        'changed-since',
+      );
+      expect(await settingsReverter().revert(admin, revertOf({ junk: 1 }, changed))).toBe('gone');
+      expect(
+        await settingsReverter().revert(
+          admin,
+          revertOf({ ...noMargin, roundingStepMinor: 3 }, changed),
+        ),
+      ).toBe('gone');
+      expect(audit.entries).toHaveLength(0);
+    });
+
+    it('refuses a revert outside a signed-in admin session', async () => {
+      await expect(
+        settingsReverter().revert(customer, revertOf(noMargin, changed)),
+      ).rejects.toThrow();
+    });
+
+    it('opens a review of a seller methods change and reverts it', async () => {
+      review.review('delivery', 'medium');
+      const saved = await setSellerWithNote(SELLER_A, ['pickup', 'scheduled'], 'Too small');
+      expect(saved.ok && saved.value.request).toMatchObject({ number: 1 });
+      expect(review.opened[0]).toMatchObject({
+        subjectKind: 'shipping.seller-delivery-methods',
+        subjectRef: SELLER_A,
+        before: { unsupported: [] },
+        after: { unsupported: ['instant', 'same_day'] },
+        note: 'Too small',
+      });
+      const refused = await setSellerWithNote(SELLER_B, ['pickup'], undefined);
+      expect(!refused.ok && refused.error.code).toBe('validation.failed');
+
+      audit.entries.length = 0;
+      const request = revertOf(
+        { unsupported: [] },
+        { unsupported: ['instant', 'same_day'] },
+        SELLER_A,
+      );
+      expect(await methodsReverter().revert(admin, request)).toBe('reverted');
+      const after = await viewSeller(SELLER_A);
+      expect(after.ok && after.value.supported).toEqual([
+        'pickup',
+        'instant',
+        'same_day',
+        'scheduled',
+      ]);
+      expect(audit.entries[0]).toMatchObject({
+        action: 'shipping.seller-delivery-methods.reverted',
+        targetId: SELLER_A,
+        before: { unsupported: ['instant', 'same-day'] },
+        after: { unsupported: [], requestId },
+      });
+      // The seller no longer holds the set after the change.
+      expect(await methodsReverter().revert(admin, request)).toBe('changed-since');
+    });
+
+    it('answers gone for a seller that no longer exists', async () => {
+      await setSeller(SELLER_A, ['pickup']);
+      known.delete(SELLER_A);
+      const request = revertOf(
+        { unsupported: [] },
+        { unsupported: ['instant', 'same_day', 'scheduled'] },
+        SELLER_A,
+      );
+      expect(await methodsReverter().revert(admin, request)).toBe('gone');
+      expect(
+        await methodsReverter().revert(admin, revertOf({ unsupported: 'x' }, {}, SELLER_B)),
+      ).toBe('gone');
     });
   });
 });

@@ -23,6 +23,16 @@ export interface CommissionRate {
 /** The rate of every requested seller (each requested seller is present). */
 export type CommissionRateMap = ReadonlyMap<Id<'Seller'>, CommissionRate>;
 
+/** What the signed-in seller's commission would be on an amount (see `ownCommissionOn`). */
+export interface OwnCommissionPreview {
+  readonly rateBps: number;
+  readonly source: 'seller' | 'market';
+  /** The amount the rate is applied to: the amount, less provisional tax when it includes tax. */
+  readonly commissionBase: bigint;
+  /** `commissionBase × rate`, rounded the way the ledger rounds. */
+  readonly commission: bigint;
+}
+
 /** One paid line of a seller order, with the rate ordering froze on it at placement. */
 export interface PaidLine {
   readonly orderLineId: Id<'OrderLine'>;
@@ -125,6 +135,18 @@ export interface CommissionPayoutsFacade {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<CommissionRateMap, CommissionPayoutsFailure>>;
+
+  /**
+   * The commission the signed-in seller would pay on `amount` (minor units of the Market
+   * currency, 0 up to 10^12): its own rate or the Market's, the provisional tax taken out of a
+   * tax-inclusive amount, and the ledger's rounding, so a screen shows the number the ledger will
+   * post. The seller comes from the session only (an approved seller, never an acting-as session);
+   * nobody else's rate can be asked. Read only. Used by `promotions`' payout preview.
+   */
+  ownCommissionOn(
+    context: CallContext,
+    request: { readonly amount: bigint; readonly taxInclusive: boolean },
+  ): Promise<Result<OwnCommissionPreview, CommissionPayoutsFailure>>;
 
   /**
    * Writes the ledger rows of a paid seller order (system actor only). Idempotent: a seller order

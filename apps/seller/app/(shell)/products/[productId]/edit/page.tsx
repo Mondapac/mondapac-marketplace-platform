@@ -47,6 +47,8 @@ export default async function EditProductPage({
     <SellerShell session={page.session} activeId="s_products" title={title}>
       <div>
         <EditForm
+          // Add sizes changes the product under the form: the form starts again from what is read.
+          key={`${page.body.variantModel}-${page.body.version ?? 0}`}
           product={page.body}
           photos={photos.kind === 'ok' ? photos.body.images : null}
           locales={options.body.locales.supported}

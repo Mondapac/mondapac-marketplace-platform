@@ -78,6 +78,12 @@ class MemoryImages implements ProductImageRepository {
   listUnattached() {
     return Promise.resolve([]);
   }
+  listMissingFormats() {
+    return Promise.resolve([]);
+  }
+  addRenditions() {
+    return Promise.resolve(true);
+  }
   deleteUnused(_m: unknown, _p: unknown, imageId: string) {
     const index = this.rows.findIndex((row) => row.id === imageId);
     if (index < 0) return Promise.resolve(false);
@@ -279,6 +285,13 @@ describe('seller photo routes over HTTP (integration)', () => {
         .send({ data })
         .expect(201);
       expect(created.body).toMatchObject({ width: 1600, height: 1200 });
+      // Three sizes, each as JPEG, WebP and AVIF; the JPEG keys are the ones they always were.
+      expect(images.rows[0]!.renditions.map((r) => `${r.size}/${r.format}`)).toEqual(
+        ['thumb', 'medium', 'large'].flatMap((s) =>
+          ['jpeg', 'webp', 'avif'].map((f) => `${s}/${f}`),
+        ),
+      );
+      expect(store.objects.size).toBe(9);
       const imageId = (created.body as { imageId: string }).imageId;
 
       const served = await http()
@@ -299,6 +312,7 @@ describe('seller photo routes over HTTP (integration)', () => {
         .set(headers(code, session))
         .expect(200);
       expect(images.rows).toHaveLength(0);
+      expect(store.objects.size).toBe(0);
     });
 
     it('refuses a body over the photo limit with 413 and nothing stored', async () => {

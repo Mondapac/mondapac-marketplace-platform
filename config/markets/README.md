@@ -8,6 +8,11 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
 `defaultLocale`, `supportedLocales`, `defaultCurrency`, `settlementCurrency` and `timezone`.
 `timezone` is only a fallback (ADR-0005): sellers, locations and addresses carry their own zone.
 
+Adding a Market also needs its text in `config/locales/` (see that folder's README). In
+particular, the Market's `defaultLocale` needs an `assistant.json` with at least one buyer
+assistant quick prompt (`assistant.quick-prompt.1`): the API refuses to start without it, even
+while the assistant is off.
+
 - `pricesIncludeTax` (required boolean; true for AU): the Market's price display convention
   (ADR-0007 decision 4). When true, prices are entered and shown tax-inclusive and tax is
   extracted from them; when false (the synthetic Market), tax is added on top. Read by pricing,
@@ -28,7 +33,9 @@ Fields today: `code`, `status` (`planned` | `soft_launch` | `active` | `suspende
 
 - `requestLimits`: the generic per-origin rate limiter (`apps/api/src/platform/rate-limit/`;
   identity design 6.8). `anonymousIdentityPerMinute` (sign-up, sign-in and reset requests;
-  20 for AU) and `publicMediaPerMinute` (the anonymous buyer photo route; 1500 for AU) and `defaultPerMinute`
+  20 for AU) and `publicMediaPerMinute` (the anonymous buyer photo route; 1500 for AU),
+  `publicSearchPerMinute` (the storefront product and store search, `GET search/products` and
+  `GET search/stores`; 120 for AU) and `defaultPerMinute`
   (every other market-scoped route; 300 for AU). The counter
   of an origin is shared by every Market of the Region Stack; the request's Market chooses
   only the limit.
@@ -213,7 +220,8 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
   digits and `_`) and `labelKey`. The AU values wait for the tax adviser (ADR-0007 decision 5).
 - `sensitiveChanges` (required, every flag required): `platformCategories`, `taxCategory`,
   `name`, `primaryImage`, `anyImage`, `variantRemoved`, `gtinChanged` (a GTIN set,
-  changed or cleared on a published variant). A change in a field marked `true` sends
+  changed or cleared on a published variant), `axisAdded` (a second variant axis added to a
+  published product). A change in a field marked `true` sends
   the revision to review (design 4.3). `anyImage` must be `true`: an added or replaced
   image always goes to review (Hassan H1), so a Market cannot switch it off.
 - `maxVariantsPerProduct` (required, 1 to 100; AU 100): the most non-retired variants one
@@ -227,6 +235,13 @@ conditions, review reasons, photo limits, import limits and the rest of 7.1.
   move, merge or archive of platform categories marks `rechecking` in its unit (catalog design
   4.6, Q-K4). Above it the change is refused with `category.impact-too-large`, and the admin moves
   the subcategories in parts.
+- `maxCategoryImportRows` (required, 1 to 5,000; AU 1,000): the most data rows one category tree
+  import file may hold (categories C7). More is refused before any row is read.
+- `maxCategoryImportBytes` (required, 1 KiB to 10 MiB; AU 5 MiB): the largest category tree import
+  file. The platform-wide import ceiling (10 MiB, 5,000 rows) still applies above it.
+- `maxPendingCategoryProposals` (optional, 1 to 50; AU 5, ZZ 3; default 5): the most category
+  proposals one seller may have waiting (CAT-54). Exact: one seller's proposals are serialised by a
+  lock.
 - `maxVariantAttributes` (required, 1 to 5; AU 2): the most variant (option) attributes one
   configurable product may vary on (attributes plan A2). A product whose feature set marks more
   option attributes is refused by the configurable type's variant check
@@ -285,6 +300,9 @@ and an audit row. A Market without the section shows no address until an admin s
 `<page>?token=<token>` (same URL rules). `oneClickUnsubscribeUrl`: the API's one-click route of this
 Market, `.../notifications/unsubscribe/<MARKET>`, sent in the `List-Unsubscribe` header (RFC 8058)
 as `<url>?token=<token>`. A Market without both sends no marketing mail (personalization 1b).
+`sellerMissingDetailsPage`: the seller panel's Products page the "Email sellers" mail of the
+attributes report links to (same URL rules; the mail adds `?filter=missing-details`). A Market
+without it sends no such mail (attributes package A4-4).
 
 ## `customers` section (optional)
 

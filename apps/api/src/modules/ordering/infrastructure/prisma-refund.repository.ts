@@ -5,13 +5,17 @@ import type {
   CreditNoteRecord,
   PendingRefund,
   RefundForLedger,
+  RefundLimits,
   RefundRepository,
+  SellerRefundGuard,
 } from '../application/ports/refund.repository';
-import type { LedgerState, OrderStatus, PaymentState } from '../domain/order';
+import type { RefundLimit } from '../domain/refund-limits';
+import type { Fulfilment, LedgerState, OrderStatus, PaymentState } from '../domain/order';
 import type {
   LossBearer,
   LossReasonCode,
   Refund,
+  RefundActor,
   RefundReason,
   RefundState,
   RefundTarget,
@@ -20,6 +24,29 @@ import type {
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
+
+interface LimitRow {
+  readonly id: string;
+  readonly sellerId: string | null;
+  readonly maxCount: number;
+  readonly maxAmount: bigint;
+  readonly currency: string;
+  readonly version: number;
+  readonly updatedAt: Date;
+  readonly updatedByAccountId: string;
+}
+
+function toLimit(row: LimitRow): RefundLimit {
+  return {
+    id: row.id as Id<'SellerRefundLimit'>,
+    sellerId: row.sellerId as Id<'Seller'> | null,
+    maxCount: row.maxCount,
+    maxAmount: { amount: row.maxAmount, currency: row.currency },
+    version: row.version,
+    updatedAt: toInstant(row.updatedAt),
+    updatedBy: row.updatedByAccountId as Id<'Account'>,
+  };
+}
 
 interface RefundRow {
   readonly id: string;
@@ -80,7 +107,7 @@ function toRefund(row: RefundRow): Refund {
     lossBearer: row.lossBearer as LossBearer,
     lossReasonCode: row.lossReasonCode as LossReasonCode | null,
     actor: {
-      population: row.actorPopulation as 'admin',
+      population: row.actorPopulation as RefundActor['population'],
       accountId: row.actorAccountId as Id<'Account'>,
     },
     state: row.state as RefundState,
@@ -112,14 +139,206 @@ function toRefund(row: RefundRow): Refund {
 export class PrismaRefundRepository implements RefundRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async findTarget(
+  findTarget(
     market: MarketContext,
     sellerOrderId: Id<'SellerOrder'>,
     orderId: Id<'Order'>,
   ): Promise<RefundTarget | null> {
+    return this.target(market, { id: sellerOrderId, orderId });
+  }
+
+  findSellerTarget(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+    sellerId: Id<'Seller'>,
+  ): Promise<RefundTarget | null> {
+    return this.target(market, { id: sellerOrderId, sellerId });
+  }
+
+  async listOfSellerOrder(
+    market: MarketContext,
+    sellerOrderId: Id<'SellerOrder'>,
+    sellerId: Id<'Seller'>,
+  ): Promise<readonly Refund[]> {
+    const tx = this.prisma.tx(market);
+    const rows = await tx.orderingRefund.findMany({
+      where: { marketId: market.marketId, sellerOrderId, sellerId },
+      include: { lines: true },
+      orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
+      take: 200,
+    });
+    return rows.map(toRefund);
+  }
+
+  async findById(market: MarketContext, refundId: Id<'Refund'>): Promise<Refund | null> {
+    const tx = this.prisma.tx(market);
+    const row = await tx.orderingRefund.findFirst({
+      where: { marketId: market.marketId, id: refundId },
+      include: { lines: true },
+    });
+    return row === null ? null : toRefund(row);
+  }
+
+  async guardSellerRefunds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    at: Temporal.Instant,
+    since: Temporal.Instant,
+  ): Promise<SellerRefundGuard> {
+    const tx = this.prisma.tx(market);
+    // Made with INSERT ... ON CONFLICT DO NOTHING, which waits for another unit inserting the same
+    // row and never raises a unique violation (an upsert with this where is a read then an
+    // insert in Prisma); then locked by the update until the unit ends. A second seller refund
+    // of the same seller waits here, then counts this one (READ COMMITTED: a fresh snapshot).
+    await tx.orderingSellerRefundGuard.createMany({
+      data: [
+        {
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          sellerId,
+          checkedAt: toDate(at),
+          lastAlertedAt: null,
+          alerts: 0,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    const locked = await tx.orderingSellerRefundGuard.updateMany({
+      where: { marketId: market.marketId, sellerId },
+      data: { checkedAt: toDate(at) },
+    });
+    if (locked.count !== 1) throw new Error('ordering: the seller refund guard row is missing');
+    const limits = await this.findRefundLimits(market, sellerId);
+    const used = await tx.orderingRefund.aggregate({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        actorPopulation: 'seller',
+        state: { not: 'failed' },
+        requestedAt: { gt: toDate(since) },
+      },
+      _count: { _all: true },
+      _sum: { grossAmount: true },
+    });
+    return {
+      ...limits,
+      usage: { count: used._count._all, amount: used._sum.grossAmount ?? 0n },
+    };
+  }
+
+  async noteRefundLimitAlert(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    at: Temporal.Instant,
+    since: Temporal.Instant,
+  ): Promise<number | null> {
+    const tx = this.prisma.tx(market);
+    const made = await tx.orderingSellerRefundGuard.createMany({
+      data: [
+        {
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          sellerId,
+          checkedAt: toDate(at),
+          lastAlertedAt: toDate(at),
+          alerts: 1,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    if (made.count === 1) return 1;
+    const raised = await tx.orderingSellerRefundGuard.updateManyAndReturn({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        OR: [{ lastAlertedAt: null }, { lastAlertedAt: { lte: toDate(since) } }],
+      },
+      data: { lastAlertedAt: toDate(at), alerts: { increment: 1 } },
+      select: { alerts: true },
+    });
+    return raised.length === 1 ? raised[0]!.alerts : null;
+  }
+
+  async findRefundLimits(
+    market: MarketContext,
+    sellerId: Id<'Seller'> | null,
+  ): Promise<RefundLimits> {
+    const tx = this.prisma.tx(market);
+    const rows = await tx.orderingSellerRefundLimit.findMany({
+      where: {
+        marketId: market.marketId,
+        OR: [{ sellerId: null }, ...(sellerId === null ? [] : [{ sellerId }])],
+      },
+      take: 2,
+    });
+    const own = rows.find((row) => row.sellerId !== null) ?? null;
+    const marketDefault = rows.find((row) => row.sellerId === null) ?? null;
+    return {
+      own: own === null ? null : toLimit(own),
+      marketDefault: marketDefault === null ? null : toLimit(marketDefault),
+    };
+  }
+
+  async saveRefundLimit(
+    market: MarketContext,
+    limit: RefundLimit,
+    expectedVersion: number,
+  ): Promise<'saved' | 'stale'> {
+    const tx = this.prisma.tx(market);
+    const values = {
+      maxCount: limit.maxCount,
+      maxAmount: limit.maxAmount.amount,
+      currency: limit.maxAmount.currency,
+      updatedAt: toDate(limit.updatedAt),
+      updatedByAccountId: limit.updatedBy,
+    };
+    if (expectedVersion === 0) {
+      // ON CONFLICT DO NOTHING: a default or seller cap another admin set first is `stale`.
+      const made = await tx.orderingSellerRefundLimit.createMany({
+        data: [
+          {
+            id: limit.id,
+            marketId: market.marketId,
+            tenantId: market.tenantId,
+            sellerId: limit.sellerId,
+            version: 1,
+            ...values,
+          },
+        ],
+        skipDuplicates: true,
+      });
+      return made.count === 1 ? 'saved' : 'stale';
+    }
+    const changed = await tx.orderingSellerRefundLimit.updateMany({
+      where: { marketId: market.marketId, sellerId: limit.sellerId, version: expectedVersion },
+      data: { ...values, version: expectedVersion + 1 },
+    });
+    return changed.count === 1 ? 'saved' : 'stale';
+  }
+
+  async removeRefundLimit(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    expectedVersion: number,
+  ): Promise<'removed' | 'stale'> {
+    const tx = this.prisma.tx(market);
+    const removed = await tx.orderingSellerRefundLimit.deleteMany({
+      where: { marketId: market.marketId, sellerId, version: expectedVersion },
+    });
+    return removed.count === 1 ? 'removed' : 'stale';
+  }
+
+  private async target(
+    market: MarketContext,
+    where: {
+      readonly id: Id<'SellerOrder'>;
+      readonly orderId?: Id<'Order'>;
+      readonly sellerId?: Id<'Seller'>;
+    },
+  ): Promise<RefundTarget | null> {
     const tx = this.prisma.tx(market);
     const row = await tx.orderingSellerOrder.findFirst({
-      where: { marketId: market.marketId, id: sellerOrderId, orderId },
+      where: { marketId: market.marketId, ...where },
       include: {
         order: true,
         lines: true,
@@ -148,12 +367,15 @@ export class PrismaRefundRepository implements RefundRepository {
       orderStatus: row.order.status as OrderStatus,
       paymentState: row.order.paymentState as PaymentState,
       paymentIntentId: row.order.stripePaymentIntentId,
+      fulfilment: row.fulfilment as Fulfilment,
+      readyAt: row.readyAt === null ? null : toInstant(row.readyAt),
       shipping: row.shippingAmount,
       shippingTax: row.shippingTaxAmount,
       shippingTaxRateBps: row.shippingTaxRateBps,
       shippingTaxInclusive: row.shippingTaxInclusive,
       total: row.totalAmount,
       refunded: row.refundedAmount,
+      refundCount: row.refunds.length,
       pending: row.refunds.some((refund) => refund.state === 'pending'),
       lines: [...row.lines]
         .sort((a, b) => a.id.localeCompare(b.id))
@@ -171,22 +393,75 @@ export class PrismaRefundRepository implements RefundRepository {
     };
   }
 
+  async listForOrder(market: MarketContext, orderId: Id<'Order'>) {
+    const tx = this.prisma.tx(market);
+    // Through the order's seller orders, so the read uses the (market_id, seller_order_id) index.
+    const sellerOrders = await tx.orderingSellerOrder.findMany({
+      where: { marketId: market.marketId, orderId },
+      select: { id: true },
+    });
+    if (sellerOrders.length === 0) return [];
+    const rows = await tx.orderingRefund.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerOrderId: { in: sellerOrders.map((s) => s.id) },
+      },
+      include: { lines: true, creditNote: { select: { id: true } } },
+      orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map((row) => ({
+      refund: toRefund(row),
+      creditNoteId: (row.creditNote?.id ?? null) as Id<'CreditNote'> | null,
+    }));
+  }
+
+  async listForAccount(market: MarketContext, accountId: Id<'Account'>, limit: number) {
+    const rows = await this.prisma.tx(market).orderingRefund.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerOrder: { is: { order: { is: { accountId } } } },
+      },
+      include: { lines: true, creditNote: { select: { id: true } } },
+      orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+    return rows.map((row) => ({
+      refund: toRefund(row),
+      creditNoteId: (row.creditNote?.id ?? null) as Id<'CreditNote'> | null,
+    }));
+  }
+
   async reserve(
     market: MarketContext,
     refund: Refund,
     expectedRefunded: bigint,
+    options?: { readonly whileNotReady?: boolean },
   ): Promise<'saved' | 'stale'> {
     const tx = this.prisma.tx(market);
-    const raised = await tx.orderingSellerOrder.updateMany({
-      where: {
-        marketId: market.marketId,
-        id: refund.sellerOrderId,
-        refundedAmount: expectedRefunded,
-        order: { is: { status: 'confirmed', paymentState: 'captured' } },
-      },
-      data: { refundedAmount: expectedRefunded + refund.gross },
-    });
-    if (raised.count === 0) return 'stale';
+    const next = expectedRefunded + refund.gross;
+    const raisable = {
+      marketId: market.marketId,
+      id: refund.sellerOrderId,
+      refundedAmount: expectedRefunded,
+      ...(options?.whileNotReady === true ? { fulfilment: 'to-ship', readyAt: null } : {}),
+      order: { is: { status: 'confirmed', paymentState: 'captured' } },
+    };
+    // `refunded_in_full` turns true in the same statement that brings the refunded gross to the
+    // total (a CHECK holds the two together), so a raise to the total is its own statement.
+    const raised =
+      (
+        await tx.orderingSellerOrder.updateMany({
+          where: { ...raisable, totalAmount: { not: next } },
+          data: { refundedAmount: next },
+        })
+      ).count ||
+      (
+        await tx.orderingSellerOrder.updateMany({
+          where: { ...raisable, totalAmount: next },
+          data: { refundedAmount: next, refundedInFull: true },
+        })
+      ).count;
+    if (raised === 0) return 'stale';
     // The raise holds the seller order's row lock, so this read sees every refund that became
     // pending before it; `stale` rolls the raise back with the unit (never a unique-index 500).
     const pending = await tx.orderingRefund.findFirst({
@@ -291,7 +566,8 @@ export class PrismaRefundRepository implements RefundRepository {
     if (settled.count === 0) return false;
     await tx.orderingSellerOrder.updateMany({
       where: { marketId: market.marketId, id: refund.sellerOrderId },
-      data: { refundedAmount: { decrement: refund.gross } },
+      // A failed refund gives its gross back, so the seller order is no longer refunded in full.
+      data: { refundedAmount: { decrement: refund.gross }, refundedInFull: false },
     });
     return true;
   }

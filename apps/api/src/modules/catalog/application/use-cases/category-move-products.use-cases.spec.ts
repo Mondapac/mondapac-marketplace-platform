@@ -441,6 +441,7 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
       id: revisionId,
       productId: product.state.id,
       revisionNo: 1,
+      typeCode: product.state.typeCode,
       kind: 'submission',
       baseRevisionId: null,
       revertedFromRevisionId: null,
@@ -514,7 +515,12 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
     expect(categoriesOf(2)).toEqual([cat(6), cat(3)]);
     expect(categoriesOf(3)).toEqual([cat(6)]);
     const revision = [...revisions.values()].find((r) => r.kind === 'category-override')!;
-    expect(revision).toMatchObject({ authorKind: 'admin', baseRevisionId: 'r1' });
+    // The override copies the base revision's own type (M-9).
+    expect(revision).toMatchObject({
+      authorKind: 'admin',
+      baseRevisionId: 'r1',
+      typeCode: revisions.get('r1')!.typeCode,
+    });
     expect(requests).toHaveLength(2);
     expect(audits.filter((a) => a.action === 'catalog.product.category-overridden')).toHaveLength(
       2,

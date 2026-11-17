@@ -136,6 +136,7 @@ describe.each(TEST_MARKETS)('product details gap reader in market %s (database)'
       product_id: productId,
       revision_no: 1,
       revision_kind: 'submission',
+      type_code: 'simple',
       base_revision_id: null,
       reverted_from_revision_id: null,
       family_revision_id: familyRevisionId,
@@ -280,5 +281,33 @@ describe.each(TEST_MARKETS)('product details gap reader in market %s (database)'
     await product(other, set.code, set.revisionId, {});
     expect(await read(market, set.code)).toEqual([]);
     expect(await read(other, set.code)).toHaveLength(1);
+  });
+
+  it('reads the products asked for by id, published ones only and of this Market only', async () => {
+    const set = await family(market, []);
+    const otherSet = await family(other, []);
+    const seller = uuid7();
+    const a = await product(
+      market,
+      set.code,
+      set.revisionId,
+      { origin: 'AU' },
+      { sellerId: seller },
+    );
+    const b = await product(market, set.code, set.revisionId, {});
+    const draft = await product(market, set.code, set.revisionId, {}, { status: 'draft' });
+    const foreign = await product(other, otherSet.code, otherSet.revisionId, {});
+    const unknown = uuid7();
+
+    const rows = await run(market, () =>
+      reader.publishedByIds(market, [b, a, draft, foreign, unknown], locale),
+    );
+    expect(rows.map((row) => row.productId)).toEqual([a, b].sort());
+    expect(rows.find((row) => row.productId === a)).toMatchObject({
+      ownerSellerId: seller,
+      revisionFamilyCode: set.code,
+      attributeValues: { origin: 'AU' },
+    });
+    expect(await run(market, () => reader.publishedByIds(market, [], locale))).toEqual([]);
   });
 });

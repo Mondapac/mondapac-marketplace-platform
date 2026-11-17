@@ -112,6 +112,12 @@ export class MemoryAttributeDefinitionStore implements AttributeDefinitionStore 
     return Promise.resolve();
   }
 
+  saveConversion(_m: MarketContext, definition: AttributeDefinition) {
+    this.#check(definition);
+    this.rows.set(definition.state.id, definition);
+    return Promise.resolve();
+  }
+
   #check(definition: AttributeDefinition): void {
     const stored = this.rows.get(definition.state.id);
     if (this.raceNext || stored?.state.version !== definition.state.version - 1) {

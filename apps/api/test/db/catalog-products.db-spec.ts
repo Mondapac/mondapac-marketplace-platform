@@ -224,6 +224,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
         product_id: productId,
         revision_no: index + 1,
         revision_kind: 'submission',
+        type_code: 'simple',
         base_revision_id: null,
         reverted_from_revision_id: null,
         family_revision_id: familyRevisionId,
@@ -295,6 +296,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       last.publishTaxOverride({
         revisionId: revisionIds[2]!,
         fromRevisionId: revisionIds[0]!,
+        revisionTypeCode: last.state.typeCode,
         now: T1,
       }).ok,
     ).toBe(true);
@@ -324,6 +326,7 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
       toApprove.approveRevision({
         revisionId: revisionIds[3]!,
         baseRevisionId: revisionIds[2]!,
+        revisionTypeCode: toApprove.state.typeCode,
         revisionVariantIds: [variantId],
         maxVariants: 5,
         now: T1,
@@ -480,14 +483,17 @@ describe.each(TEST_MARKETS)('catalog products in market %s (database integration
           [id, T1.toString()],
         ),
       ).toBeNull();
-      for (const column of [
-        'type_code',
-        'product_code',
-        'created_by_seller_id',
-        'variant_model',
-        'market_id',
-        'created_at',
-      ]) {
+      // Type and model are granted for Add sizes only (simple/single to configurable/options, both
+      // in one UPDATE): any other write is refused by the trigger products_type_change_guard.
+      for (const column of ['type_code', 'variant_model']) {
+        expect(
+          await sqlState(app, `UPDATE catalog.products SET ${column} = $2 WHERE id = $1`, [
+            id,
+            'zzz',
+          ]),
+        ).toBe('23514');
+      }
+      for (const column of ['product_code', 'created_by_seller_id', 'market_id', 'created_at']) {
         const value =
           column === 'created_by_seller_id'
             ? uuid7()

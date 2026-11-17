@@ -26,6 +26,34 @@ import {
 import { ORDER_REPOSITORY, type OrderRepository } from '../application/ports/order.repository';
 import { ORDERING_POLICY, type OrderingPolicy } from '../application/ports/ordering-policy';
 import { REFUND_REPOSITORY, type RefundRepository } from '../application/ports/refund.repository';
+import {
+  ADMIN_SHIPMENT_LIST_READER,
+  type AdminShipmentListReader,
+} from '../application/ports/admin-shipment-list.reader';
+import {
+  ADMIN_DOCUMENT_LIST_READER,
+  type AdminDocumentListReader,
+} from '../application/ports/admin-document-list.reader';
+import {
+  ADMIN_REFUND_LIST_READER,
+  type AdminRefundListReader,
+} from '../application/ports/admin-refund-list.reader';
+import {
+  ADMIN_NOTE_CIPHER,
+  ADMIN_ORDER_NOTE_REPOSITORY,
+  type AdminNoteCipher,
+  type AdminOrderNoteRepository,
+} from '../application/ports/admin-order-notes';
+import {
+  SELLER_NOTE_CIPHER,
+  SELLER_ORDER_NOTE_REPOSITORY,
+  type SellerNoteCipher,
+  type SellerOrderNoteRepository,
+} from '../application/ports/seller-order-notes';
+import { PrismaAdminOrderNoteRepository } from './prisma-admin-order-notes';
+import { PrismaSellerOrderNoteRepository } from './prisma-seller-order-notes';
+import { SubjectKeySellerNoteCipher } from './subject-key-seller-note-cipher';
+import { SubjectKeyAdminNoteCipher } from './subject-key-admin-note-cipher';
 import { SHIP_TO_CIPHER, type ShipToCipher } from '../application/ports/ship-to-cipher';
 import {
   DELIVERY_METHOD_POLICY,
@@ -42,7 +70,26 @@ import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
 import { ShippingDeliveryMethodPolicy } from './shipping-delivery-method-policy';
 import { PrismaOrderRepository } from './prisma-order.repository';
 import { PrismaPickupCodeRepository } from './prisma-pickup-code.repository';
+import { SAVED_FILTER_STORE, type SavedFilterStore } from '../../lists';
+import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
+import {
+  SAVED_FILTER_REPOSITORY,
+  type SavedFilterRepository,
+} from '../application/ports/saved-filter.repository';
 import { PrismaRefundRepository } from './prisma-refund.repository';
+import { PrismaAdminShipmentListReader } from './prisma-admin-shipment-list.reader';
+import { PrismaAdminDocumentListReader } from './prisma-admin-document-list.reader';
+import { PrismaAdminRefundListReader } from './prisma-admin-refund-list.reader';
+import {
+  MARKET_ZONES,
+  SHIP_TO_RETENTION_REPOSITORY,
+  type MarketZones,
+  type ShipToRetentionRepository,
+} from '../application/ports/ship-to-retention.repository';
+import {
+  PrismaShipToRetentionRepository,
+  RegistryMarketZones,
+} from './prisma-ship-to-retention.repository';
 import {
   SALES_RANKING_READER,
   type SalesRankingReader,
@@ -65,9 +112,56 @@ export const orderingProviders: readonly FactoryProvider[] = [
     useFactory: (prisma: PrismaService): OrderRepository => new PrismaOrderRepository(prisma),
   },
   {
+    provide: ADMIN_ORDER_NOTE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminOrderNoteRepository =>
+      new PrismaAdminOrderNoteRepository(prisma),
+  },
+  {
+    provide: SELLER_ORDER_NOTE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerOrderNoteRepository =>
+      new PrismaSellerOrderNoteRepository(prisma),
+  },
+  {
     provide: REFUND_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): RefundRepository => new PrismaRefundRepository(prisma),
+  },
+  {
+    provide: ADMIN_SHIPMENT_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminShipmentListReader =>
+      new PrismaAdminShipmentListReader(prisma),
+  },
+  {
+    provide: ADMIN_DOCUMENT_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminDocumentListReader =>
+      new PrismaAdminDocumentListReader(prisma),
+  },
+  {
+    provide: ADMIN_REFUND_LIST_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AdminRefundListReader =>
+      new PrismaAdminRefundListReader(prisma),
+  },
+  {
+    provide: SHIP_TO_RETENTION_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ShipToRetentionRepository =>
+      new PrismaShipToRetentionRepository(prisma),
+  },
+  {
+    provide: MARKET_ZONES,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): MarketZones => new RegistryMarketZones(markets),
+  },
+  {
+    provide: SAVED_FILTER_REPOSITORY,
+    inject: [SAVED_FILTER_STORE],
+    useFactory: (store: SavedFilterStore): SavedFilterRepository =>
+      new PrismaSavedFilterRepository(store),
   },
   {
     provide: PICKUP_CODE_REPOSITORY,
@@ -79,6 +173,16 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: PICKUP_CODE_VAULT,
     inject: [SUBJECT_KEY_SERVICE],
     useFactory: (keys: SubjectKeyService): PickupCodeVault => new SubjectKeyPickupCodeVault(keys),
+  },
+  {
+    provide: ADMIN_NOTE_CIPHER,
+    inject: [SUBJECT_KEY_SERVICE],
+    useFactory: (keys: SubjectKeyService): AdminNoteCipher => new SubjectKeyAdminNoteCipher(keys),
+  },
+  {
+    provide: SELLER_NOTE_CIPHER,
+    inject: [SUBJECT_KEY_SERVICE],
+    useFactory: (keys: SubjectKeyService): SellerNoteCipher => new SubjectKeySellerNoteCipher(keys),
   },
   {
     provide: SHIP_TO_CIPHER,

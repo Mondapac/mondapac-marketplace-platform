@@ -26,6 +26,7 @@ import { OwnProductImageRead } from '../../src/modules/catalog/application/use-c
 import { ProductImageAdminRead } from '../../src/modules/catalog/application/use-cases/product-image-admin-read.use-case';
 import { ProductImageTakeDown } from '../../src/modules/catalog/application/use-cases/product-image-take-down.use-case';
 import { ProductRevisionImageList } from '../../src/modules/catalog/application/use-cases/product-revision-image-list.use-case';
+import { ReprocessImageFormats } from '../../src/modules/catalog/application/use-cases/reprocess-image-formats.use-case';
 import { SweepOrphanImageFiles } from '../../src/modules/catalog/application/use-cases/sweep-orphan-image-files.use-case';
 import { SweepOrphanImages } from '../../src/modules/catalog/application/use-cases/sweep-orphan-images.use-case';
 import { OwnProductImageUpload } from '../../src/modules/catalog/application/use-cases/own-product-image-upload.use-case';
@@ -124,12 +125,15 @@ describe.each(TEST_MARKETS)(
         anyImage: false,
         variantRemoved: true,
         gtinChanged: true,
+        axisAdded: true,
       }),
       maxVariantsPerProduct: () => 10,
       maxVariantAttributes: () => 2,
       units: () => [],
       maxCategoryDepth: () => 4,
       maxCategoryChangeTags: () => 50_000,
+      maxCategoryImportRows: () => 2000,
+      maxCategoryImportBytes: () => 5 * 1024 * 1024,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],
@@ -222,6 +226,7 @@ describe.each(TEST_MARKETS)(
         workingCopies: copies,
         revisions,
         freeze: new FreezeRevision({
+          revisions,
           familyResolver: fixedFamilyResolver(),
           attributes,
           policy,
@@ -404,16 +409,28 @@ describe.each(TEST_MARKETS)(
       expect(view).toMatchObject({ width: 900, height: 600 });
 
       const keys = [...store.objects.keys()].filter((key) => key.includes(view.imageId));
+      // Three sizes, each as JPEG (the key it always had), WebP and AVIF.
       expect(keys.sort()).toEqual(
         ['large', 'medium', 'thumb']
-          .map((size) => `${product.state.id}/${view.imageId}/${size}`)
+          .flatMap((size) => [size, `${size}-webp`, `${size}-avif`])
+          .map((name) => `${product.state.id}/${view.imageId}/${name}`)
           .sort(),
       );
       for (const key of keys) {
         const meta = await sharp(store.objects.get(key)).metadata();
-        expect(meta.format).toBe('jpeg');
+        expect(meta.format).toBe(
+          key.endsWith('-webp') ? 'webp' : key.endsWith('-avif') ? 'heif' : 'jpeg',
+        );
         expect(meta.exif).toBeUndefined();
       }
+      const stored = await inUnit(() =>
+        images.find(market, product.state.id, view.imageId as Id<'ProductImage'>),
+      );
+      expect(stored?.renditions.map((r) => `${r.size}/${r.format}`)).toEqual(
+        ['thumb', 'medium', 'large'].flatMap((s) =>
+          ['jpeg', 'webp', 'avif'].map((f) => `${s}/${f}`),
+        ),
+      );
       const thumb = await sharp(
         store.objects.get(`${product.state.id}/${view.imageId}/thumb`),
       ).metadata();
@@ -842,7 +859,7 @@ describe.each(TEST_MARKETS)(
           second.imageId,
         ]);
         expect([...store.objects.keys()].filter((key) => key.includes(first.imageId))).toHaveLength(
-          3,
+          9,
         );
 
         await saveDraft(product.state.id, [second.imageId, first.imageId]);
@@ -1024,7 +1041,7 @@ describe.each(TEST_MARKETS)(
         expect(objectsOf(loneOrphan.imageId)).toEqual([]);
         for (const kept of [held, loneNamed]) {
           expect((await stateOf(kept.imageId))?.state).toBe('clean');
-          expect(objectsOf(kept.imageId)).toHaveLength(3);
+          expect(objectsOf(kept.imageId)).toHaveLength(9);
         }
         const again = await sweepLater.execute(systemContext(), {});
         expect(again.ok && again.value.deleted).toBe(0);
@@ -1068,12 +1085,82 @@ describe.each(TEST_MARKETS)(
         expect(await store.get(unknownProduct)).not.toBeNull();
         expect(await store.get(unrelated)).not.toBeNull();
         expect(await store.get(young)).not.toBeNull();
-        expect(objectsOf(real.imageId)).toHaveLength(3);
+        expect(objectsOf(real.imageId)).toHaveLength(9);
 
         const again = await sweepFiles.execute(systemContext(), {});
         expect(again.ok && again.value.deleted).toBe(0);
         const asAdmin = await sweepFiles.execute(adminContext(), {});
         expect(!asAdmin.ok && asAdmin.error.code).toBe('access.denied');
+      });
+
+      it('reprocess gives a photo that has only JPEGs its WebP and AVIF, and touches nothing else', async () => {
+        const product = await draftedProduct();
+        const modern = await uploaded(product.state.id);
+        const found = await inUnit(() =>
+          images.find(market, product.state.id, modern.imageId as Id<'ProductImage'>),
+        );
+        // A photo as it was before the formats existed: the same JPEGs, no other rows.
+        const legacyId = uuid7() as Id<'ProductImage'>;
+        const jpegs = found!.renditions.filter((r) => r.format === 'jpeg');
+        for (const r of jpegs)
+          await store.put(
+            `${product.state.id}/${legacyId}/${r.size}`,
+            (await store.get(r.objectKey))!,
+          );
+        await inUnit(() =>
+          images.add(market, {
+            ...found!,
+            id: legacyId,
+            renditions: jpegs.map((r) => ({
+              ...r,
+              objectKey: `${product.state.id}/${legacyId}/${r.size}`,
+            })),
+          }),
+        );
+        const before = objectsOf(modern.imageId).length;
+        const reprocess = new ReprocessImageFormats(gate, {
+          unitOfWork: persistence.unitOfWork,
+          images,
+          objectStore: store,
+        });
+
+        const first = await reprocess.execute(systemContext(), {});
+        // Other photos of this database have no files in this store: they fail and stay as they were.
+        expect(first.ok && first.value.completed).toBe(1);
+        const now = await inUnit(() => images.find(market, product.state.id, legacyId));
+        expect(now!.renditions.map((r) => `${r.size}/${r.format}`)).toEqual(
+          ['thumb', 'medium', 'large'].flatMap((s) =>
+            ['jpeg', 'webp', 'avif'].map((f) => `${s}/${f}`),
+          ),
+        );
+        for (const r of now!.renditions.filter((x) => x.format !== 'jpeg')) {
+          const meta = await sharp((await store.get(r.objectKey))!).metadata();
+          expect(meta.format).toBe(r.format === 'avif' ? 'heif' : 'webp');
+          expect(r.byteSize).toBe((await store.get(r.objectKey))!.length);
+        }
+        expect(objectsOf(modern.imageId)).toHaveLength(before);
+
+        // A second run adds nothing, and the file sweep keeps every file the rows now name.
+        const second = await reprocess.execute(systemContext(), {});
+        expect(second.ok && second.value.completed).toBe(0);
+        const swept = await sweepFiles.execute(systemContext(), {});
+        expect(swept.ok && swept.value.deleted).toBe(0);
+        expect(objectsOf(legacyId)).toHaveLength(9);
+      });
+
+      it('reprocess adds nothing to a photo that was taken down after it was listed', async () => {
+        const product = await draftedProduct();
+        const view = await uploaded(product.state.id);
+        await takeDown.execute(adminContext(), {
+          productId: product.state.id,
+          imageId: view.imageId,
+          reasonCode: 'other',
+        });
+
+        const added = await inUnit(() =>
+          images.addRenditions(market, product.state.id, view.imageId as Id<'ProductImage'>, []),
+        );
+        expect(added).toBe(false);
       });
 
       it('leaves a taken-down photo as the takedown left it', async () => {

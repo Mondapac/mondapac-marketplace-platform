@@ -275,3 +275,109 @@ describe('admin notice bell', () => {
     expect(showsNoticeBell([])).toBe(false);
   });
 });
+
+describe('AdminNotifications overdue system request notice', () => {
+  const overdue = (id: string, area: string, requestId: string) =>
+    notice(id, {
+      kind: `admin.system-request-overdue-${area}`,
+      params: { requestId, number: 12, ageDays: 9 },
+    });
+
+  async function openWith(items: readonly AdminNotice[]) {
+    counts = [{ unread: items.length, newest: items[0]! }];
+    call.mockImplementation((method, path) =>
+      Promise.resolve(
+        path.endsWith('/unread-count') || method === 'POST'
+          ? answer(path, method)
+          : { ok: true as const, status: 200, body: { items, next: null } },
+      ),
+    );
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: `Notifications, ${items.length} unread` }),
+    );
+  }
+
+  it('words the age and links every area kind to the request', async () => {
+    const areas = [
+      'people',
+      'money',
+      'delivery',
+      'catalogue',
+      'certification',
+      'marketplace',
+      'content',
+      'review-policy',
+    ];
+    const items = areas.map((area, index) =>
+      overdue(`0190a000-0000-7000-8000-0000000000${(0x30 + index).toString(16)}`, area, OLD),
+    );
+    await openWith(items);
+    const links = await screen.findAllByRole('link', {
+      name: /SR-12 has waited 9 days for review/,
+    });
+    expect(links).toHaveLength(areas.length);
+    for (const link of links) expect(link.getAttribute('href')).toBe(`/system-requests/${OLD}`);
+  });
+
+  it('builds no link when the request id is not a UUID, and says "1 day" for one day', async () => {
+    await openWith([
+      notice('0190a000-0000-7000-8000-000000000040', {
+        kind: 'admin.system-request-overdue-money',
+        params: { requestId: '../x?y=1', number: 3, ageDays: 1 },
+      }),
+    ]);
+    const row = await screen.findByRole('button', { name: /SR-3 has waited 1 day for review/ });
+    expect(row.closest('a')).toBeNull();
+  });
+
+  it('shows the bell to a reviewer of a system request area', () => {
+    expect(showsNoticeBell(['system-requests.catalogue.review'])).toBe(true);
+    expect(showsNoticeBell(['system-requests.request.view'])).toBe(false);
+  });
+});
+
+describe('AdminNotifications refund cap notice', () => {
+  const reached = (id: string, limit: 'count' | 'amount' | 'unset', sellerId: string = SELLER) =>
+    notice(id, { kind: 'admin.seller-refund-limit-reached', params: { sellerId, limit } });
+
+  async function openWith(items: readonly AdminNotice[]) {
+    counts = [{ unread: items.length, newest: items[0]! }];
+    call.mockImplementation((method, path) =>
+      Promise.resolve(
+        path.endsWith('/unread-count') || method === 'POST'
+          ? answer(path, method)
+          : { ok: true as const, status: 200, body: { items, next: null } },
+      ),
+    );
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: `Notifications, ${items.length} unread` }),
+    );
+  }
+
+  it('words each limit and links to the seller', async () => {
+    await openWith([
+      reached('0190a000-0000-7000-8000-000000000021', 'count'),
+      reached('0190a000-0000-7000-8000-000000000022', 'amount'),
+      reached('0190a000-0000-7000-8000-000000000023', 'unset'),
+    ]);
+    for (const name of [
+      /A seller reached the refund count cap/,
+      /A seller reached the refund amount cap/,
+      /A seller tried to refund with no refund cap set/,
+    ]) {
+      const link = await screen.findByRole('link', { name });
+      expect(link.getAttribute('href')).toBe(`/sellers/${SELLER}`);
+    }
+  });
+
+  it('builds no link when the seller id is not a UUID', async () => {
+    await openWith([reached('0190a000-0000-7000-8000-000000000024', 'count', '../admin?x=1')]);
+    const row = await screen.findByRole('button', {
+      name: /A seller reached the refund count cap/,
+    });
+    expect(row.closest('a')).toBeNull();
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+});

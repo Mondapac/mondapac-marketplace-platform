@@ -4,6 +4,7 @@ import { IdentityModule } from './identity';
 import { LegalModule } from './legal';
 import { CustomersModule } from './customers';
 import { CustomersAccountDeletionModule } from './customers/account-deletion.module';
+import { CustomersReadModelsModule } from './customers/customers-read-models.module';
 import { SellersModule } from './sellers';
 import { SellerHealthModule } from './sellers/seller-health.module';
 import { SellerStoreProfileModule } from './sellers/store-profile.module';
@@ -28,7 +29,10 @@ import { AssistantModule } from './assistant';
 import { WalletModule } from './wallet';
 import { ReviewsModule } from './reviews';
 import { SettingsModule } from './settings';
+import { ListsModule } from './lists';
 import { PromotionsModule } from './promotions';
+import { SecurityModule } from './security';
+import { SystemRequestsModule } from './system-requests';
 
 export const CORE_MODULES = [
   IdentityModule,
@@ -56,6 +60,9 @@ export const CORE_MODULES = [
   ReviewsModule,
   PromotionsModule,
   SettingsModule,
+  ListsModule,
+  SecurityModule,
+  SystemRequestsModule,
 ];
 
 /**
@@ -64,6 +71,7 @@ export const CORE_MODULES = [
  * certification's claim-term matching to the sellers store profile texts; sellers cannot import
  * certification without a module cycle. `CustomersAccountDeletionModule` runs the buyer's account
  * deletion flow, which asks ordering, wallet, identity and engagement (ordering imports customers).
+ * `CustomersReadModelsModule` keeps the customers read models from identity's and ordering's events.
  * `SellerHealthModule` binds the three health feeds (ordering, reviews, commission-payouts) to the
  * sellers nightly run. `CommissionPayoutsDisputesModule` binds the dispute consumer of commission-payouts to payments
  * and ordering, which reach commission-payouts.
@@ -72,5 +80,6 @@ export const BINDING_MODULES = [
   SellerStoreProfileModule,
   SellerHealthModule,
   CustomersAccountDeletionModule,
+  CustomersReadModelsModule,
   CommissionPayoutsDisputesModule,
 ];

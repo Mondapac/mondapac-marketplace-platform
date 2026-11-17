@@ -28,6 +28,12 @@ const APPROVED_SELLER_ZONES_CONTRACT_FILE =
 // it. Both files export only their own names (asserted in boundaries.spec.ts).
 // inventory's ordering port: importable by ordering only (rule inventory-ordering-port-is-for-ordering).
 const INVENTORY_ORDERING_PORT_FILE = '^src/modules/inventory/contracts/ordering-port\\.ts$';
+const CULTURE_DEMOTE_PORT_FILE = '^src/modules/sellers/contracts/culture-demote\\.port\\.ts$';
+// assistant's admin-notice contract (the spend-cap event and the permission that reads its
+// notice): importable by notifications only. assistant imports notifications (support contact),
+// so notifications cannot take these from assistant's index.ts without a cycle.
+const ASSISTANT_ADMIN_NOTICE_CONTRACT_FILE =
+  '^src/modules/assistant/contracts/admin-notice\\.contract\\.ts$';
 
 const MARKET_EXEMPTION_FILE = '^src/platform/market-context/no-market-context\\.decorator\\.ts$';
 const MARKET_EXEMPTION_IMPORTERS = [
@@ -43,6 +49,9 @@ const MODEL_ENTRY_ALLOW_LIST = [
   '^src/app\\.module\\.ts$',
   '^src/modules/assistant/infrastructure/gateway-assistant-runtime\\.ts$',
   '^src/modules/assistant/infrastructure/assistant-providers\\.ts$',
+  // The AI description writer (AIS-03; catalog design 13.3): its model adapter and the providers file.
+  '^src/modules/catalog/infrastructure/gateway-description-writer-model\\.ts$',
+  '^src/modules/catalog/infrastructure/catalog-providers\\.ts$',
 ];
 
 /** @type {import('dependency-cruiser').IConfiguration} */
@@ -345,6 +354,8 @@ module.exports = {
           SELLER_ACCESS_CONTRACT_FILE,
           APPROVED_SELLER_ZONES_CONTRACT_FILE,
           INVENTORY_ORDERING_PORT_FILE,
+          CULTURE_DEMOTE_PORT_FILE,
+          ASSISTANT_ADMIN_NOTICE_CONTRACT_FILE,
         ],
       },
     },
@@ -368,6 +379,33 @@ module.exports = {
       severity: 'error',
       from: { pathNot: ['^src/modules/inventory/', '^src/modules/ordering/'] },
       to: { path: '^src/modules/inventory/contracts/ordering-port\\.ts$' },
+    },
+    {
+      name: 'culture-demote-port-is-for-catalog-adapter',
+      comment:
+        "Only sellers and catalog's infrastructure/sellers-culture-members.ts import sellers' " +
+        'culture demotion port (cultureDemoteApprovals: every approval of a culture back to ' +
+        'requested). It is not on the sellers facade and the sellers barrels do not export it, so ' +
+        'no other path can mass-demote a culture (ADR-0048 security review N2).',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/modules/sellers/',
+          '^src/modules/catalog/infrastructure/sellers-culture-members\\.ts$',
+        ],
+      },
+      to: { path: CULTURE_DEMOTE_PORT_FILE },
+    },
+    {
+      name: 'assistant-admin-notice-contract-is-for-notifications',
+      comment:
+        "Only assistant and notifications import assistant's admin-notice contract " +
+        '(contracts/admin-notice.contract.ts: the spend-cap event and the permission that reads ' +
+        "its notice). It is not on assistant's index.ts: assistant imports notifications, so " +
+        'this file breaks the cycle a subscriber would otherwise close (stage 0, B4).',
+      severity: 'error',
+      from: { pathNot: ['^src/modules/assistant/', '^src/modules/notifications/'] },
+      to: { path: ASSISTANT_ADMIN_NOTICE_CONTRACT_FILE },
     },
     {
       name: 'approved-seller-zones-contract-is-for-certification',

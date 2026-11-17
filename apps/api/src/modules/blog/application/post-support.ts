@@ -4,6 +4,7 @@ import type { Block } from '../domain/body';
 import { linksOf } from '../domain/content';
 import type { OwnerType, PostContent, PostKind, PostLink } from '../domain/content';
 import type { EventDetails } from '../domain/event-details';
+import { mediaIdsOf, mediaRefsOf } from '../domain/media';
 import type { Problems } from '../domain/fields';
 import type { PostFacts, PostStatus, VersionState } from '../domain/lifecycle';
 import type {
@@ -158,7 +159,10 @@ export async function emit(
   ]);
 }
 
-/** The category and tags of a content must exist in the Market. */
+/**
+ * The category, the tags and the pictures (cover and image blocks) of a content must exist in the
+ * Market: a picture is one of the Market's blog media library. Runs inside the caller's unit.
+ */
 export async function checkReferences(
   deps: BlogDependencies,
   market: MarketContext,
@@ -177,6 +181,13 @@ export async function checkReferences(
     const known = new Set(found.map((tag) => tag.id as string));
     for (const [index, id] of content.tagIds.entries()) {
       if (!known.has(id)) problems.push({ path: `tagIds[${index}]`, code: 'not-found' });
+    }
+  }
+  const pictures = mediaIdsOf(content);
+  if (pictures.length > 0) {
+    const known = await deps.media.existing(market, pictures);
+    for (const ref of mediaRefsOf(content)) {
+      if (!known.has(ref.id)) problems.push({ path: ref.path, code: 'not-found' });
     }
   }
   return problems;

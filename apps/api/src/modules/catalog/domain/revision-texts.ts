@@ -48,5 +48,8 @@ export function summaryOf(content: RevisionContent): RevisionSummary {
     variantGtins: Object.fromEntries(
       content.variants.map((variant) => [variant.variantId, variant.gtin] as const),
     ),
+    variantAxes: [
+      ...new Set(content.variants.flatMap((variant) => Object.keys(variant.optionValues))),
+    ],
   };
 }

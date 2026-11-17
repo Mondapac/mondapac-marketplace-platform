@@ -111,3 +111,26 @@ export class SellerHealthRecalculationBody {
   })
   status!: 'queued' | 'already-queued';
 }
+
+export class OwnSellerHealthRefreshBody {
+  @ApiProperty({ description: 'A recount is waiting for the job.' })
+  pending!: boolean;
+
+  @ApiProperty({ minimum: 0, description: 'Seconds until "Refresh now" may be clicked; 0 = now.' })
+  retryAfterSeconds!: number;
+}
+
+export class OwnSellerHealthBody {
+  @ApiProperty({
+    type: SellerHealthCardBody,
+    nullable: true,
+    description: 'The latest snapshot, or null when no night has measured the seller yet.',
+  })
+  current!: SellerHealthCardBody | null;
+
+  @ApiProperty({ type: [SellerHealthTrendPointBody], description: 'Oldest first, last 90 days.' })
+  trend!: SellerHealthTrendPointBody[];
+
+  @ApiProperty({ type: OwnSellerHealthRefreshBody })
+  refresh!: OwnSellerHealthRefreshBody;
+}

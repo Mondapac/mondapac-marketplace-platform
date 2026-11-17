@@ -4,6 +4,10 @@ import type { Id } from '@mondapac/shared-kernel';
 import { testAuthenticatedActor, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { AdminProductsList } from '../../src/modules/catalog/application/use-cases/admin-products-list.use-case';
+import { ProductPauseProbe } from '../../src/modules/catalog/application/use-cases/product-pause-probe.use-case';
+import { ProductDeleteProbe } from '../../src/modules/catalog/application/use-cases/product-delete-probe.use-case';
+import { PlatformProductRetireProbe } from '../../src/modules/catalog/application/use-cases/platform-product-retire-probe.use-case';
+import { PlatformProductEditProbe } from '../../src/modules/catalog/application/use-cases/platform-product-edit-probe.use-case';
 import type { AdminProductsListInput } from '../../src/modules/catalog/application/use-cases/admin-products-list.use-case';
 import { Offer } from '../../src/modules/catalog/domain/offer';
 import { Product } from '../../src/modules/catalog/domain/product';
@@ -59,15 +63,17 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
       next: <K extends string>() => uuid7() as Id<K>,
     });
     storeNames = new Map();
-    list = new AdminProductsList(
-      createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) }),
-      {
-        unitOfWork: db.unitOfWork,
-        adminProductsReader: new PrismaAdminProductsReader(db.service),
-        policy,
-        sellerNames: { storeNames: () => Promise.resolve(storeNames) },
-      },
-    );
+    const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
+    list = new AdminProductsList(gate, {
+      unitOfWork: db.unitOfWork,
+      adminProductsReader: new PrismaAdminProductsReader(db.service),
+      policy,
+      sellerNames: { storeNames: () => Promise.resolve(storeNames) },
+      pauseProbe: new ProductPauseProbe(gate),
+      deleteProbe: new ProductDeleteProbe(gate),
+      retireProbe: new PlatformProductRetireProbe(gate),
+      platformEditProbe: new PlatformProductEditProbe(gate),
+    });
   });
   afterAll(async () => {
     await owner.end();
@@ -276,6 +282,7 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
       product_id: productId,
       revision_no: 1,
       revision_kind: 'submission',
+      type_code: 'simple',
       base_revision_id: null,
       reverted_from_revision_id: null,
       family_revision_id: await family(target),

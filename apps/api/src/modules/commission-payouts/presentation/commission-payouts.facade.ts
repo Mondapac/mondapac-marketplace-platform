@@ -1,5 +1,6 @@
 import type { CallContext, Id, Temporal } from '@mondapac/shared-kernel';
 import type { CommissionRates } from '../application/use-cases/commission-rates.use-case';
+import type { OwnCommissionOn } from '../application/use-cases/own-commission-on.use-case';
 import type { RecordSellerOrderDelivered } from '../application/use-cases/record-seller-order-delivered.use-case';
 import type { RecordRefund } from '../application/use-cases/record-refund.use-case';
 import type { RecordSellerOrderPaid } from '../application/use-cases/record-seller-order-paid.use-case';
@@ -19,10 +20,18 @@ export class CommissionPayoutsFacadeImplementation implements CommissionPayoutsF
     private readonly recordRefunded: RecordRefund,
     private readonly recordDelivered: RecordSellerOrderDelivered,
     private readonly lostDisputes: SellerLostDisputes,
+    private readonly ownCommission: OwnCommissionOn,
   ) {}
 
   commissionRates(context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
     return this.rates.execute(context, { sellerIds });
+  }
+
+  ownCommissionOn(
+    context: CallContext,
+    request: { readonly amount: bigint; readonly taxInclusive: boolean },
+  ) {
+    return this.ownCommission.execute(context, request);
   }
 
   recordSellerOrderPaid(context: CallContext, paid: PaidSellerOrder) {

@@ -896,6 +896,26 @@ export class Offer {
   }
 
   /**
+   * Removes the `pending-publish` tags when the pending revision they were written for is set
+   * aside (Add sizes with `replacePending`). Nothing is asked: no tag is written, only removed,
+   * so no claim decision is needed. A tag in another state than `pending-publish` refuses
+   * (`claim.inputs-changed`), as in {@link setPendingPublishTags}.
+   */
+  dropPendingPublishTags(input: {
+    readonly actor: Parameters<Offer['setPendingPublishTags']>[0]['actor'];
+    readonly now: Temporal.Instant;
+  }): Result<void, OfferTagRefusal> {
+    if (this.#state.status === 'deleted') return err({ code: 'offer.not-taggable' });
+    const open = this.#tags.filter((tag) => tag.status !== 'removed');
+    if (open.some((tag) => tag.status !== 'pending-publish')) {
+      return err({ code: 'claim.inputs-changed' });
+    }
+    for (const tag of open) this.#removeTag(tag, 'revision-submit', input.actor, input.now);
+    if (open.length > 0) this.#touch();
+    return ok(undefined);
+  }
+
+  /**
    * The badge requests of a first submit of a never-published product (design 5.1a points 1, 2, 6;
    * `own-product.submit` with `requestedTags`). The facts name the frozen submitted revision, never
    * the working copy and never a published one. Every requested type must be allowed, else the

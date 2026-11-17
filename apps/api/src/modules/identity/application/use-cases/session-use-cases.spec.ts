@@ -148,6 +148,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         effectiveKeys: realEffectiveKeys(),
         factors: fakes.factorRepository,
         records: fakes.recordRepository,
+        policy,
       });
     // Only describeActor is called here; the other methods have their own suites.
     const facadeOf = (describe: DescribeActor) =>
@@ -162,14 +163,18 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         requireStepUp: undefined as never,
         customerAccountOf: undefined as never,
         customerAccountSummaries: undefined as never,
+        searchCustomerAccounts: undefined as never,
         customerShortNames: undefined as never,
         teamMemberLabels: undefined as never,
         changeActorLabels: undefined as never,
         endOtherCustomerSessions: undefined as never,
         endAllCustomerSessions: undefined as never,
         customerAccountExists: undefined as never,
+        customerDirectoryRecords: undefined as never,
+        customerDirectoryPage: undefined as never,
         ownAccountTiedToSeller: undefined as never,
         eraseCustomerAccount: undefined as never,
+        adminRenameCustomer: undefined as never,
       });
 
     it("answers the actor's ids, email and session times; the facade drops the email", async () => {
@@ -191,6 +196,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
           displayName: null,
           timezone: null,
           locale: null,
+          marketTimezone: markets.get(market.marketId).timezone,
           appearance: null,
           session: {
             idleTimeoutSeconds: lifetime.idleTimeoutSeconds,

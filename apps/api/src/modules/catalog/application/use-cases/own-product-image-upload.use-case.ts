@@ -51,8 +51,8 @@ export interface OwnProductImageUploadDependencies {
 
 /**
  * `own-product.upload-image`: a seller adds a photo to a product of their own (catalog design 10,
- * simplified path). The photo is decoded and written again as three metadata-free JPEG
- * renditions; the raw upload is never stored. The upload spends one save of the account's
+ * simplified path). The photo is decoded and written again as three sizes, each as a
+ * metadata-free JPEG, WebP and AVIF; the raw upload is never stored. The upload spends one save of the account's
  * limits. Rule: key `catalog.own-product.edit`, the seller population and a seller who may sell.
  * A product of another seller, a PLATFORM product and an unknown id answer one `product.not-found`.
  * The photo joins a revision only when the seller lists its id in the draft and submits.

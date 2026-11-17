@@ -38,6 +38,10 @@ export class ConfigOrderingPolicy implements OrderingPolicy {
     return this.markets.get(market.marketId).tax?.refundCredit?.enabled === true;
   }
 
+  currency(market: MarketContext): string {
+    return this.markets.get(market.marketId).defaultCurrency;
+  }
+
   invoicesEnabled(market: MarketContext): boolean {
     return this.markets.get(market.marketId).tax?.invoice?.enabled === true;
   }

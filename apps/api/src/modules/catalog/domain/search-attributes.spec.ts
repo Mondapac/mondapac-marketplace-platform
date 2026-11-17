@@ -106,6 +106,21 @@ describe('buildSearchAttributes', () => {
     ).toEqual(['container=jar']);
   });
 
+  it('indexes the single code of a select that became a multi-select', () => {
+    const converted = definition({
+      dataType: 'multi-select',
+      options: options([['hot', 'Hot', null]]),
+    });
+    const facts = buildSearchAttributes({
+      values: { heat: 'hot' },
+      definitions: new Map([['heat', converted]]),
+      brand: null,
+      locale: 'en-AU',
+    });
+    expect(facts.facets).toEqual(['heat=hot']);
+    expect(facts.searchText).toBe('Hot');
+  });
+
   it('maps a merged multi-select without duplicates and carries numbers to the target', () => {
     const multi = (overrides: Partial<SearchDefinition>) =>
       definition({ dataType: 'multi-select', ...overrides });

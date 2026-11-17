@@ -61,6 +61,23 @@ export class SettingsBody {
   lastChanged!: LastChangedDto | null;
 }
 
+/** The System requests review a switch opened (Admin Inbox › System requests, area money). */
+export class ReviewRequestRef {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ description: 'Shown as SR-<number>.' }) number!: number;
+}
+
+export class SettingsChangeBody extends SettingsBody {
+  @ApiProperty({
+    type: ReviewRequestRef,
+    nullable: true,
+    description:
+      'The review this switch opened in Admin Inbox › System requests; null when the Market ' +
+      'does not review area money or nothing changed.',
+  })
+  request!: ReviewRequestRef | null;
+}
+
 export class SetSettingsRequest {
   @ApiProperty({ enum: [...WALLET_STATUSES] }) status!: string;
   @ApiProperty({
@@ -76,6 +93,13 @@ export class SetSettingsRequest {
       'The `version` the admin saw. A different current version answers 409 wallet.settings-conflict.',
   })
   expectedVersion!: number;
+  @ApiProperty({
+    required: false,
+    description:
+      "The admin's note for the reviewer, 1 to 500 characters; required while the Market " +
+      'reviews area money in Admin Inbox › System requests (else 400 on note), ignored otherwise.',
+  })
+  note?: string;
 }
 
 export const myWalletBody = (view: MyWalletView): MyWalletBody => ({
@@ -108,4 +132,13 @@ export const settingsBody = (view: SettingsPage): SettingsBody => ({
   updatedAt: view.updatedAt === null ? null : view.updatedAt.toString(),
   version: view.version,
   lastChanged: lastChangedBody(view.lastChanged),
+});
+
+export const settingsChangeBody = (
+  view: SettingsPage & {
+    readonly request: { readonly id: string; readonly number: number } | null;
+  },
+): SettingsChangeBody => ({
+  ...settingsBody(view),
+  request: view.request === null ? null : { id: view.request.id, number: view.request.number },
 });

@@ -10,6 +10,8 @@ export interface BlogMarketPolicy {
   readonly pageSize: number;
   readonly defaultAuthorDisplay: string;
   readonly healthTerms: readonly string[];
+  /** The Market's content filter terms (Market config `contentFilter`); none when not set. */
+  readonly blockedTerms: readonly string[];
   readonly selfApprovalWithStepUp: boolean;
 }
 

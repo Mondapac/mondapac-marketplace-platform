@@ -5,6 +5,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import type { SellerAccessStateCode } from '../../domain/seller-access';
 import type { StorefrontAppearance } from '../../domain/storefront-appearance';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
+import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { AccountRepository } from '../ports/account.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { SecondFactorRepository } from '../ports/second-factor.repository';
@@ -43,6 +44,12 @@ export interface ActorSummary {
   readonly timezone: string | null;
   /** The holder's panel language, or null when none was chosen. */
   readonly locale: string | null;
+  /**
+   * The Market's IANA zone (ADR-0005): a fallback only, for a holder with no zone of their own.
+   * Only the admin session answer carries it: the admin Orders list reads local days in it.
+   * The seller and customer session answers leave it out.
+   */
+  readonly marketTimezone: string;
   /** A customer's kept storefront look, or null when none was chosen (always null otherwise). */
   readonly appearance: StorefrontAppearance | null;
   /** The panel counts idle time from its own last request (8.6 row 9). */
@@ -67,6 +74,8 @@ export interface DescribeActorDependencies {
   readonly factors: SecondFactorRepository;
   /** The profile page's last sign-in. */
   readonly records: SignInRecordRepository;
+  /** The Market's own zone, a fallback for a holder who chose none. */
+  readonly policy: Pick<IdentityMarketPolicy, 'marketTimezone'>;
 }
 
 /**
@@ -148,6 +157,7 @@ export class DescribeActor extends UseCase<
       displayName: account.state.displayName,
       timezone: account.state.timezone ?? null,
       locale: account.state.locale ?? null,
+      marketTimezone: this.deps.policy.marketTimezone(market),
       appearance: account.state.appearance ?? null,
       session: {
         idleTimeoutSeconds: session.idleTimeoutSeconds,

@@ -528,9 +528,11 @@ describe('StoreProfile pictures', () => {
       // The other row is untouched.
       expect(within(row(name === 'Logo' ? 'Banner' : 'Logo')).queryByText(message)).toBeNull();
 
+      // The row already shows the first pick's image, so `pick` returns before the new file has
+      // been read; the notice and the Save lock clear only when the new file is staged.
       await pick(name, 'REVG');
-      expect(within(row(name)).queryByText(message)).toBeNull();
-      expect(save().disabled).toBe(false);
+      await waitFor(() => expect(within(row(name)).queryByText(message)).toBeNull());
+      await waitFor(() => expect(save().disabled).toBe(false));
     },
   );
 

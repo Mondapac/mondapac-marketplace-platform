@@ -67,6 +67,15 @@ const envSchema = z.object({
   HOSTED_MARKETS: hostedMarkets,
   API_DOCS_ENABLED: z.enum(['true', 'false']).default('false'),
   CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED: z.enum(['true', 'false']).default('false'),
+  // The ceiling of the SEO indexing switch (SEO admin plan 3.1): `off` (the default) keeps every page
+  // out of the index whatever the panel says; `on` lets the panel setting decide. The buyer app
+  // reads the same two names; keep them in step. STOREFRONT_SAMPLE_DATA is `on` unless set `off`:
+  // while it is on, the panel cannot turn indexing on.
+  STOREFRONT_INDEXING: z.enum(['on', 'off']).default('off'),
+  STOREFRONT_SAMPLE_DATA: z.enum(['on', 'off']).default('on'),
+  // ADR-0026 decision 8: the AI break-glass of this Region Stack. `true` forces every AI capability
+  // off, never on; unset is `false`; any other value fails boot, so a typo never leaves AI running.
+  AI_KILL_SWITCH: z.enum(['true', 'false']).default('false'),
   MARKET_CONFIG_DIR: z.string().min(1).default(DEFAULT_MARKET_CONFIG_DIR),
   SERVICE_AREA_CONFIG_DIR: z.string().min(1).default(DEFAULT_SERVICE_AREA_CONFIG_DIR),
   LOCALE_CONFIG_DIR: z.string().min(1).default(DEFAULT_LOCALE_CONFIG_DIR),
@@ -152,6 +161,12 @@ const envSchema = z.object({
   // secret, never stored in the database or echoed; without it no batch of codes is generated and
   // none is looked up.
   PROMOTIONS_CODE_PEPPER: z.string().regex(HMAC_KEY, HMAC_KEY_MESSAGE).optional(),
+  // Buyer assistant stage 0 (B4): the key that signs the internal preview token an admin takes to
+  // the storefront. A server secret, never echoed or logged; without it no preview token is issued
+  // or accepted (the internal audience then reaches no storefront visitor).
+  ASSISTANT_PREVIEW_TOKEN_KEY: z.string().regex(HMAC_KEY, HMAC_KEY_MESSAGE).optional(),
+  /** The on-call roster file of the SOC (docs/design/data/security.md 5); a path, never in the repo. */
+  SECURITY_ON_CALL_FILE: z.string().min(1).max(4096).optional(),
   PAYMENTS_EXTERNAL_ACCOUNT_HMAC_CURRENT_VERSION: z.coerce.number().int().min(1).max(3).optional(),
   // SHP-02/03: the marketplace's merchant API key at Mondapac Drive and the secret Drive signs its
   // status webhooks with, each as MARKET=value pairs separated by commas (each Market at most once
@@ -380,6 +395,13 @@ export interface AppConfig {
   readonly apiDocsEnabled: boolean;
   /** A reviewer may download a submitted certificate file. Off until the PDF scan hardening lands. */
   readonly certificationReviewerDocumentsEnabled: boolean;
+  /** `AI_KILL_SWITCH` (ADR-0026 decision 8): true forces every AI capability off. */
+  readonly aiKillSwitch: boolean;
+  /** `STOREFRONT_INDEXING` and `STOREFRONT_SAMPLE_DATA`: what bounds the SEO indexing switch. */
+  readonly storefrontIndexing: {
+    readonly ceiling: 'on' | 'off';
+    readonly sampleData: boolean;
+  };
   /** Directories holding `<CODE>.json` Market configuration (ADR-0003 decision 5). */
   readonly marketConfigDirs: readonly string[];
   /** Directories holding `<MARKET>.json` ServiceArea postcode sets (ADR-0005 decision 7). */
@@ -436,8 +458,19 @@ export interface AppConfig {
   readonly stripeWebhookSecrets: Readonly<Record<string, string>>;
   /** The same for the Connect endpoint (`STRIPE_CONNECT_WEBHOOK_SECRET`): connected-account events. */
   readonly stripeConnectWebhookSecrets: Readonly<Record<string, string>>;
+  /**
+   * `SECURITY_ON_CALL_FILE`: the path of the SOC on-call roster (people's addresses and phone
+   * numbers, so never in the repository), or null: alerts are still opened and shown, and every
+   * delivery is recorded as not configured. Read by the security module alone.
+   */
+  readonly securityOnCallFile: string | null;
   /** `PROMOTIONS_CODE_PEPPER` (a secret, never logged), or null when unset: single-use codes are then off. */
   readonly promotionsCodePepper: string | null;
+  /**
+   * `ASSISTANT_PREVIEW_TOKEN_KEY` (a secret, never logged), or null when unset: the assistant's
+   * internal preview is then off. Read by the assistant's preview token adapter alone.
+   */
+  readonly assistantPreviewTokenKey: string | null;
   /**
    * The keys of the hash of a connected account's default external account id, by version
    * (`PAYMENTS_EXTERNAL_ACCOUNT_HMAC_KEY_K<n>`), and the version new values use (the setting
@@ -902,6 +935,15 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       'CLAMD_HOST: required when NODE_ENV is production (every uploaded certificate file must be scanned, so none is ever stored unscanned)',
     );
   }
+  if (
+    parsed.success &&
+    parsed.data.NODE_ENV === 'production' &&
+    parsed.data.ASSISTANT_PREVIEW_TOKEN_KEY?.startsWith('dev-only-') === true
+  ) {
+    issues.push(
+      'ASSISTANT_PREVIEW_TOKEN_KEY: a dev-only placeholder is refused when NODE_ENV is production (each environment has its own key)',
+    );
+  }
   if (!parsed.success || issues.length > 0 || assistant.config === null) {
     throw new InvalidConfigError(issues);
   }
@@ -915,6 +957,11 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     apiDocsEnabled: parsed.data.API_DOCS_ENABLED === 'true',
     certificationReviewerDocumentsEnabled:
       parsed.data.CERTIFICATION_REVIEWER_DOCUMENTS_ENABLED === 'true',
+    aiKillSwitch: parsed.data.AI_KILL_SWITCH === 'true',
+    storefrontIndexing: Object.freeze({
+      ceiling: parsed.data.STOREFRONT_INDEXING,
+      sampleData: parsed.data.STOREFRONT_SAMPLE_DATA === 'on',
+    }),
     marketConfigDirs: Object.freeze([path.resolve(parsed.data.MARKET_CONFIG_DIR)]),
     serviceAreaConfigDirs: Object.freeze([path.resolve(parsed.data.SERVICE_AREA_CONFIG_DIR)]),
     localeConfigDirs: Object.freeze([path.resolve(parsed.data.LOCALE_CONFIG_DIR)]),
@@ -936,6 +983,8 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
     stripeConnectWebhookSecrets: connectSecrets.secrets,
     externalAccountHmac: externalAccountHmac.value,
     promotionsCodePepper: parsed.data.PROMOTIONS_CODE_PEPPER ?? null,
+    assistantPreviewTokenKey: parsed.data.ASSISTANT_PREVIEW_TOKEN_KEY ?? null,
+    securityOnCallFile: parsed.data.SECURITY_ON_CALL_FILE ?? null,
     clientAddressTrust: clientAddress.trust,
     assistantModels: assistant.config,
     googleSignIn:

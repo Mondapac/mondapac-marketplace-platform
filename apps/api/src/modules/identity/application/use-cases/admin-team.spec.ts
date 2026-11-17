@@ -8,6 +8,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { fakeHashOf, IdentityFakes } from '../../../../../test/support/identity-fakes';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 import {
   realEffectiveKeys,
   realPermissionRegistry,
@@ -112,13 +113,18 @@ const LEAD_KEYS = [
   'blog.post.read',
   'promotions.promotion.view',
   'ordering.order.view',
+  'ordering.refund-limits.view',
+  'ordering.ship-to-retention.view',
   'payments.connected-account.view',
   'pricing.price-hold.view',
   'sellers.seller.view',
   'commission-payouts.settlement.view',
   'commission-payouts.payout-terms.view',
   'commission-payouts.dispute.view',
+  'settings.ai.view',
+  'settings.cart-mode.view',
   'settings.list-paging.view',
+  'storefront.seo.view',
 ];
 
 describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)', (code) => {
@@ -255,6 +261,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       effectiveKeys,
       outbox: fakes.outbox,
       audit: fakes.audit,
+      review: new RecordingReview(),
       clock,
     };
     const status = {
@@ -421,7 +428,12 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
 
       expect(result).toEqual({
         ok: true,
-        value: { code: 'role.assigned', accountId: VIEWER, roleId: roleOf('operations-support') },
+        value: {
+          code: 'role.assigned',
+          accountId: VIEWER,
+          roleId: roleOf('operations-support'),
+          request: null,
+        },
       });
       expect(roleIdOf(VIEWER)).toBe(roleOf('operations-support'));
       const stored = [...fakes.assignments.values()].find((a) => a.accountId === VIEWER)!;
@@ -458,7 +470,12 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
         assign.execute(as(ROOT), { accountId: VIEWER, roleId: roleOf('viewer') }),
       ).resolves.toEqual({
         ok: true,
-        value: { code: 'role.unchanged', accountId: VIEWER, roleId: roleOf('viewer') },
+        value: {
+          code: 'role.unchanged',
+          accountId: VIEWER,
+          roleId: roleOf('viewer'),
+          request: null,
+        },
       });
       expect(fakes.events).toEqual([]);
       expect(fakes.audits).toEqual([]);
@@ -578,7 +595,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
 
       await expect(disableAdmin.execute(as(ROOT), { accountId: VIEWER })).resolves.toEqual({
         ok: true,
-        value: { code: 'account.disabled', accountId: VIEWER, revokedSessions: 2 },
+        value: { code: 'account.disabled', accountId: VIEWER, revokedSessions: 2, request: null },
       });
       expect(fakes.credentialLocks[0]).toBe(VIEWER);
       expect(statusOf(VIEWER)).toBe('disabled');
@@ -613,7 +630,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       });
       await expect(enableAdmin.execute(as(ROOT), { accountId: VIEWER })).resolves.toEqual({
         ok: true,
-        value: { code: 'account.enabled', accountId: VIEWER, revokedSessions: 0 },
+        value: { code: 'account.enabled', accountId: VIEWER, revokedSessions: 0, request: null },
       });
       await expect(enableAdmin.execute(as(ROOT), { accountId: VIEWER })).resolves.toEqual({
         ok: false,
@@ -673,12 +690,12 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
 
       await expect(disableCustomer.execute(as(SUPPORT), { accountId: CUSTOMER })).resolves.toEqual({
         ok: true,
-        value: { code: 'account.disabled', accountId: CUSTOMER, revokedSessions: 1 },
+        value: { code: 'account.disabled', accountId: CUSTOMER, revokedSessions: 1, request: null },
       });
       expect(fakes.events[0]!.payload).toEqual({ accountId: CUSTOMER, population: 'customer' });
       await expect(enableCustomer.execute(as(SUPPORT), { accountId: CUSTOMER })).resolves.toEqual({
         ok: true,
-        value: { code: 'account.enabled', accountId: CUSTOMER, revokedSessions: 0 },
+        value: { code: 'account.enabled', accountId: CUSTOMER, revokedSessions: 0, request: null },
       });
       await expect(disableCustomer.execute(as(VIEWER), { accountId: CUSTOMER })).resolves.toEqual({
         ok: false,
@@ -1200,7 +1217,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
 
       await expect(disableCustomer.execute(as(SUPPORT), { accountId: CUSTOMER })).resolves.toEqual({
         ok: true,
-        value: { code: 'account.disabled', accountId: CUSTOMER, revokedSessions: 2 },
+        value: { code: 'account.disabled', accountId: CUSTOMER, revokedSessions: 2, request: null },
       });
       const sessions = [...fakes.sessions.values()].map((s) => s.session);
       expect(sessions.filter((s) => s.accountId === CUSTOMER).map((s) => s.revokedReason)).toEqual([

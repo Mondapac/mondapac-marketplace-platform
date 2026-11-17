@@ -4,6 +4,8 @@
 // the layout of the message. The texts live in `message-templates.ts`. The label of the customer
 // mail is "Order confirmation", never "Tax invoice" (the tax adviser has not confirmed the wording).
 
+import { minorUnitExponent } from '@mondapac/shared-kernel';
+import type { Money } from '@mondapac/shared-kernel';
 import { renderTemplate } from './message-templates';
 
 export interface MailLine {
@@ -105,6 +107,51 @@ export function orderShippedMail(input: {
     tracking:
       (input.trackingRef === null ? '' : `\nTracking number: ${plainLine(input.trackingRef)}`) +
       (link === null ? '' : `\nTrack your delivery: ${link}`),
+    orderUrl: input.orderUrl,
+  });
+  return { subject, text };
+}
+
+/**
+ * An amount as the mail shows it, in the Market's locale (e.g. "A$15.00" or "¥1,500"). The minor
+ * units stay a bigint: the major amount is built as an exact decimal string, never a float.
+ */
+export function mailAmount(amount: Money, locale: string): string {
+  const exponent = minorUnitExponent(amount.currency);
+  const negative = amount.amount < 0n;
+  const digits = (negative ? -amount.amount : amount.amount).toString().padStart(exponent + 1, '0');
+  const whole = digits.slice(0, digits.length - exponent);
+  const major =
+    (negative ? '-' : '') + (exponent === 0 ? whole : `${whole}.${digits.slice(-exponent)}`);
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: amount.currency,
+      minimumFractionDigits: exponent,
+      maximumFractionDigits: exponent,
+      // An exact decimal string is a valid input (ECMA-402 Intl.NumberFormat v3).
+    }).format(major as unknown as number);
+  } catch {
+    return `${amount.currency} ${major}`;
+  }
+}
+
+/**
+ * The customer's "Part of your order is unavailable" (decision 6): the reference, how many units
+ * were not supplied, what went back, and the order link. No product, seller or card data.
+ */
+export function itemUnavailableRefundMail(input: {
+  readonly orderId: string;
+  readonly units: number;
+  readonly amount: Money;
+  readonly orderUrl: string;
+  readonly locale?: string;
+}): ComposedMail {
+  const locale = input.locale ?? 'en';
+  const { subject, text } = renderTemplate('item-unavailable-refund', locale, {
+    orderId: input.orderId,
+    units: String(input.units),
+    amount: mailAmount(input.amount, locale),
     orderUrl: input.orderUrl,
   });
   return { subject, text };

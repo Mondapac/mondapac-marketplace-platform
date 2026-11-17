@@ -119,3 +119,13 @@ Design: G2 section 3.6 (state machine), 4.5 to 4.7 (planning, gate, run), 11 (re
 14. `payout_state_history` is not built: a payout's transitions are kept only as its current state,
     `state_changed_at` and the timing columns.
 15. The events `payout-instructed.v1` and `payout-status-changed.v1` (design 6.3) are not published.
+
+## Review in System requests (Admin Inbox, area money)
+
+A seller's own commission rate and payout terms still change at once; where the Market reviews
+area money (on by default, high risk) the change also opens a System request in the same unit and
+needs the admin's `note` (body field, or the `note` query on the DELETE routes; 400 on `note`
+without one). The answer adds `request: {id, number}` (null when nothing was opened). A rejected or
+withdrawn request is restored by `CommissionRateReverter` / `PayoutTermsReverter`
+(application/money-reverters.ts), only while the seller still has the value after. The admin
+panel's note field comes with the panel package: until then a save in such a Market answers 400.

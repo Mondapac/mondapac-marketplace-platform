@@ -165,3 +165,20 @@
 | 2026-10-07 | تنظیم Market `inventory.maxSourcesPerSeller` = ۴ تعداد منبع‌های موجودی (انبارها) هر فروشنده را محدود می‌کند تا انتقال موجودی پس از ادغام محصول (V-1) در یک واحد قفل‌شده جا شود؛ قابل افزایش برای هر Market، با پیام خطای صریح هنگام رسیدن به سقف؛ افزایش آن نیازمند بازبینی مرز ۸۰۰ ردیف است (یادداشت بخش ۷) | علی (مدیر فنی) | پذیرفته شد (هادی (مالک محصول) و علی (مدیر فنی))؛ نیازی به مالک نیست |
 | 2026-10-08 | اسلایس ۲ به چند PR تقسیم شد: (۱) مایگریشن `inventory_stock` و آزمون‌های آن، (۲) راهنمای SQL خام `inventory.lock-stock-items` و گزینهٔ `lockTimeoutMs` در platform، (۳) `setStockLevel` با دفتر و سیگنال‌ها، (۴) هندلر `retire-sell-units`، (۵) هندلر `rekey-moved-offer` (مرور کد حسن پیش از ادغام). دامنه و قواعد سخت تغییری نکرد؛ فقط ترتیب تحویل. | حسین (بک‌اند)، مجتبی (طراح دیتابیس)، باقر (کنترل کیفیت) | بدون تغییر دامنه |
 | 2026-10-09 | مینی‌بازبینی (قانون ۱۰، علی/CTO): رویداد `catalog.variant-removed.v1` فقط `productId` و `variantId` دارد و Offer ندارد، و Variant هرگز دوباره استفاده نمی‌شود (CAT M-1)؛ پس سنگ‌قبر Variant فقط با `(market_id, variant_id)` کلید می‌خورد و `offer_id` برایش NULL است. مایگریشن `inventory_variant_tombstone_key` (محدودیت CHECK، شاخص یکتا و شاخص جزئی روی آیتم‌های فعال هر Variant) و اصلاح طراحی (داده ۳.۴، ۳.۱۰ و ۸.۱؛ دامنه ۳.۵). دامنهٔ برنامه و قانون سختی تغییر نمی‌کند؛ محصول `retire-sell-units` در PR بعدی می‌آید. امضا: مجتبی (طراح دیتابیس) روی مایگریشن. |
+
+## Admin read: Variants out of stock everywhere (V6b, backend)
+
+`GET inventory/admin/variants/out-of-stock-everywhere?limit&cursor` (use case
+`inventory.admin-out-of-stock-variants`, key `catalog.variant.view`, admin population only).
+
+- A Variant is listed when it has at least one stock item that is not retired and every
+  availability signal of it is `out`. A live item that has no signal row yet is not listed (the
+  first recompute creates the signal). A Variant whose items are all retired is not listed.
+- Answer `{ variantIds, nextCursor, total }`: ids ascending, the cursor is the last id, `total`
+  counts the whole Market and ignores the cursor.
+- The ids and the total are two reads in one READ COMMITTED read-only unit, not one snapshot;
+  they can differ for a moment while stock changes.
+- Cost: plain model reads, 500 candidate Variants per round trip; `total` walks every `out`
+  signal of the Market on each call. Cache or cap it if the Market grows large.
+- Catalog may not import inventory (ADR-0024 decision 5): the admin server composes these ids
+  with catalog's variant rows.

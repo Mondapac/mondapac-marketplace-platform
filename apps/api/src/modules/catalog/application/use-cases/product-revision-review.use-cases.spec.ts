@@ -120,6 +120,7 @@ describe.each(['AU', 'ZZ'] as const)('product revision review in market %s', (co
     id: revisionId,
     productId,
     revisionNo: 1,
+    typeCode: 'simple',
     kind: 'submission',
     baseRevisionId: null,
     revertedFromRevisionId: null,

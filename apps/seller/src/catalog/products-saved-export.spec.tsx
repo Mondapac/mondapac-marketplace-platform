@@ -287,7 +287,9 @@ describe('row selection and Bulk action', () => {
 });
 
 describe('export', () => {
-  const day = dayInZone(new Date(), 'Australia/Brisbane');
+  // Read when asserting, not when the file loads: a run that crosses the seller's midnight
+  // would otherwise compare two different days.
+  const today = () => dayInZone(new Date(), 'Australia/Brisbane');
   const fetched: string[] = [];
   let saveNames: string[];
   let made: Blob[];
@@ -362,7 +364,7 @@ describe('export', () => {
       paused: 'false',
       typeCode: 'grocery',
     });
-    expect(saveNames).toEqual([`products-${day}.csv`]);
+    expect(saveNames).toEqual([`products-${today()}.csv`]);
     expect(made[0]!.type).toBe('text/csv;charset=utf-8');
     expect(click).toHaveBeenCalledTimes(1);
     click.mockRestore();
@@ -375,7 +377,7 @@ describe('export', () => {
     );
     const click = stubDownload(fileOk);
     const dialog = await exportFromHeader();
-    await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(6));
+    await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(7));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
     await screen.findByText('143 products exported.');
     expect(params().get('columns')).toBe('product,offers,created');
@@ -410,7 +412,7 @@ describe('export', () => {
       direction: 'desc',
       productIds: `${ID},${ID2}`,
     });
-    expect(saveNames).toEqual([`products-${day}.xlsx`]);
+    expect(saveNames).toEqual([`products-${today()}.xlsx`]);
     expect(made[0]!.type).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     expect(new Uint8Array(await made[0]!.arrayBuffer())).toEqual(bytes);
     // An export changes nothing: the selection stays.
@@ -579,6 +581,8 @@ describe('export', () => {
 describe('saved filter tabs', () => {
   it('shows the saved filters after the built-in views, then Manage filters', async () => {
     mount();
+    // The saved tabs come from the saved-filters read and the counts from the list read: wait for both.
+    await screen.findByText('Olive oil 1L');
     expect(await screen.findByRole('button', { name: 'Live oils' })).toBeTruthy();
     expect(tabs()).toEqual([
       'All (143)',
@@ -639,10 +643,36 @@ describe('saved filter tabs', () => {
       (await screen.findByRole('button', { name: 'Live oils' })).getAttribute('aria-pressed'),
     ).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Drafts (12)' }));
-    await waitFor(() => expect(address()).toContain('view=drafts'));
+    // A saved filter belongs to its own tab: the built-in tab opens without its search,
+    // filters or sort.
+    await waitFor(() => expect(address()).toBe('view=drafts'));
     expect(screen.getByRole('button', { name: 'Live oils' }).getAttribute('aria-pressed')).toBe(
       'false',
     );
+    expect(screen.getByRole<HTMLInputElement>('searchbox').value).toBe('');
+  });
+
+  it('opens All as it is after a saved filter on the All tab', async () => {
+    nav.state.search = new URLSearchParams(`categoryId=${CATEGORY}&sort=created`);
+    mount();
+    await screen.findByText('Olive oil 1L');
+    expect(
+      (await screen.findByRole('button', { name: 'Team picks' })).getAttribute('aria-pressed'),
+    ).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'All (143)' }));
+    await waitFor(() => expect(address()).toBe(''));
+    expect(screen.getByRole('button', { name: 'All (143)' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+  });
+
+  it('keeps an unsaved search when only the tab changes', async () => {
+    nav.state.search = new URLSearchParams('q=beef');
+    mount();
+    await screen.findByText('Olive oil 1L');
+    await screen.findByRole('button', { name: 'Live oils' });
+    fireEvent.click(screen.getByRole('button', { name: 'Drafts (12)' }));
+    await waitFor(() => expect(address()).toBe('view=drafts&q=beef'));
   });
 
   it('keeps the built-in tabs only, with no Manage or Save, when the saved filters cannot load', async () => {
