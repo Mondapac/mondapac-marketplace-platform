@@ -14,7 +14,8 @@ import { orderUnitKey, type OrderLabels, type OrderUnitKey } from './ports/order
 
 const logger = new Logger('OrderLabels');
 
-export type Lookup = 'unit-labels' | 'store-names' | 'customers' | 'customer-short-names';
+export type Lookup =
+  'unit-labels' | 'store-names' | 'customers' | 'customer-short-names' | 'seller-customers';
 
 export function settled<T>(
   context: CallContext,

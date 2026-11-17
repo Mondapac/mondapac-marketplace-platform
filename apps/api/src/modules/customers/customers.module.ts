@@ -132,6 +132,7 @@ import { AdminSellerCustomersList } from './application/use-cases/admin-seller-c
 import { AdminSellerCustomersSummary } from './application/use-cases/admin-seller-customers-summary.use-case';
 import { ReconcileSellerCustomers } from './application/use-cases/reconcile-seller-customers.use-case';
 import { SellerCustomerDetail } from './application/use-cases/seller-customer-detail.use-case';
+import { SellerOrderCustomers } from './application/use-cases/seller-order-customers.use-case';
 import { SellerCustomersCodes } from './application/use-cases/seller-customers-codes.use-case';
 import { SellerCustomersExport } from './application/use-cases/seller-customers-export.use-case';
 import { SellerCustomersList } from './application/use-cases/seller-customers-list.use-case';
@@ -467,6 +468,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerCustomersCodes,
       SellerCustomersExport,
       SellerCustomerDetail,
+      SellerOrderCustomers,
       AdminSellerCustomersList,
       AdminSellerCustomersSummary,
     ].map((type) => sellerCustomerUseCaseProvider(type as SellerCustomerUseCaseClass<unknown>)),
@@ -572,12 +574,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => savedViewProvider(type as SavedViewUseCaseClass<unknown>)),
     {
       provide: CUSTOMERS_READ_FACADE,
-      inject: [ReadCustomerLastOrder, ReadOwnLastOrder, ReadCustomerGroupMembership],
+      inject: [
+        ReadCustomerLastOrder,
+        ReadOwnLastOrder,
+        ReadCustomerGroupMembership,
+        SellerOrderCustomers,
+      ],
       useFactory: (
         read: ReadCustomerLastOrder,
         own: ReadOwnLastOrder,
         membership: ReadCustomerGroupMembership,
-      ) => new CustomersReadFacadeImplementation(read, own, membership),
+        orderCustomers: SellerOrderCustomers,
+      ) => new CustomersReadFacadeImplementation(read, own, membership, orderCustomers),
     },
     {
       provide: CUSTOMERS_ACCOUNT_DELETION_FACADE,

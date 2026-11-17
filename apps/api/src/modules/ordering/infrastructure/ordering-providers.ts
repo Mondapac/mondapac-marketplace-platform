@@ -1,5 +1,6 @@
 import { Logger, type FactoryProvider } from '@nestjs/common';
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
+import { CUSTOMERS_READ_FACADE, type CustomersReadFacade } from '../../customers';
 import { IDENTITY_FACADE, type IdentityFacade } from '../../identity';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { SHIPPING_FACADE, type ShippingFacade } from '../../shipping';
@@ -259,13 +260,20 @@ export const orderingProviders: readonly FactoryProvider[] = [
   },
   {
     provide: ORDER_LABELS,
-    inject: [CATALOG_FACADE, SELLERS_FACADE, IDENTITY_FACADE, MarketRegistry],
+    inject: [
+      CATALOG_FACADE,
+      SELLERS_FACADE,
+      IDENTITY_FACADE,
+      MarketRegistry,
+      CUSTOMERS_READ_FACADE,
+    ],
     useFactory: (
       catalog: CatalogFacade,
       sellers: SellersFacade,
       identity: IdentityFacade,
       markets: MarketRegistry,
-    ): OrderLabels => new FacadeOrderLabels(catalog, sellers, identity, markets),
+      customers: CustomersReadFacade,
+    ): OrderLabels => new FacadeOrderLabels(catalog, sellers, identity, markets, customers),
   },
   {
     provide: CUSTOMER_PAYMENTS_READER,

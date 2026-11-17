@@ -271,9 +271,21 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
       'x-csrf-token': csrfTokenFor(issued.token),
     };
   }
-  const page = () => http().get(`/ordering/seller/orders/${SELLER_ORDER}`).set(headers());
+  // The shop never gets the delivery address (2026-11-17): only the note follows the rule.
+  const page = async () => {
+    const res = await http().get(`/ordering/seller/orders/${SELLER_ORDER}`).set(headers());
+    expect(res.body).not.toHaveProperty('shipTo');
+    for (const secret of [
+      TEST_DELIVERY_ADDRESS.phone,
+      TEST_DELIVERY_ADDRESS.line1,
+      TEST_DELIVERY_ADDRESS.recipientLastName,
+    ]) {
+      expect(JSON.stringify(res.body)).not.toContain(secret);
+    }
+    return res;
+  };
 
-  it('shows the address and note to ship after 90 days, and 50 days into an undelivered shipment', async () => {
+  it('shows the note to ship after 90 days, and 50 days into an undelivered shipment', async () => {
     clock.set(DELIVERED.add({ hours: 24 * 90 }));
     orders.rows.set(
       ORDER,
@@ -281,12 +293,12 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
     );
     const toShip = await page();
     expect(toShip.status).toBe(200);
-    expect(toShip.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS, buyerNote: 'Ring twice' });
+    expect(toShip.body).toMatchObject({ buyerNote: 'Ring twice' });
 
     orders.rows.set(ORDER, orderWith({ fulfilment: 'shipped', deliveredAt: null }));
     clock.set(DELIVERED.add({ hours: 24 * 50 }));
     const shipped = await page();
-    expect(shipped.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS, buyerNote: 'Ring twice' });
+    expect(shipped.body).toMatchObject({ buyerNote: 'Ring twice' });
   });
 
   it('withholds a shipped, never delivered order 60 days after shipping', async () => {
@@ -294,27 +306,27 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
     orders.rows.set(ORDER, orderWith({ fulfilment: 'shipped', shippedAt, deliveredAt: null }));
     clock.set(shippedAt.add({ hours: 60 * 24 - 1 }));
     const before = await page();
-    expect(before.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS, buyerNote: 'Ring twice' });
+    expect(before.body).toMatchObject({ buyerNote: 'Ring twice' });
 
     clock.set(shippedAt.add({ hours: 60 * 24 }));
     const after = await page();
     expect(after.status).toBe(200);
-    expect(after.body).toMatchObject({ fulfilment: 'shipped', shipTo: null, buyerNote: null });
+    expect(after.body).toMatchObject({ fulfilment: 'shipped', buyerNote: null });
   });
 
-  it('withholds the address at once when every unit is refunded, not for a partial refund', async () => {
+  it('withholds the note at once when every unit is refunded, not for a partial refund', async () => {
     orders.rows.set(
       ORDER,
       orderWith({ fulfilment: 'to-ship', shippedAt: null, deliveredAt: null }),
     );
     listed = [refundOf(1, 'succeeded', 1)];
     const partial = await page();
-    expect(partial.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS, buyerNote: 'Ring twice' });
+    expect(partial.body).toMatchObject({ buyerNote: 'Ring twice' });
 
     listed = [refundOf(1, 'succeeded', 1), refundOf(2, 'pending', 1)];
     const full = await page();
     expect(full.status).toBe(200);
-    expect(full.body).toMatchObject({ fulfilment: 'to-ship', shipTo: null, buyerNote: null });
+    expect(full.body).toMatchObject({ fulfilment: 'to-ship', buyerNote: null });
     expect((full.body as { refunds: unknown[] }).refunds).toHaveLength(2);
     expect(JSON.stringify(full.body)).not.toContain(TEST_DELIVERY_ADDRESS.phone);
   });
@@ -323,7 +335,7 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
     clock.set(DELIVERED.add({ hours: 30 * 24 - 1 }));
     const before = await page();
     expect(before.status).toBe(200);
-    expect(before.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS, buyerNote: 'Ring twice' });
+    expect(before.body).toMatchObject({ buyerNote: 'Ring twice' });
 
     clock.set(DELIVERED.add({ hours: 30 * 24 }));
     const after = await page();
@@ -333,7 +345,6 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
       sellerOrderId: SELLER_ORDER,
       fulfilment: 'delivered',
       deliveredAt: DELIVERED.toString(),
-      shipTo: null,
       buyerNote: null,
     });
     expect(JSON.stringify(after.body)).not.toContain(TEST_DELIVERY_ADDRESS.phone);
