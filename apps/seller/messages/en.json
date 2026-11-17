@@ -115,6 +115,7 @@
     "intro": "Welcome, {name}. Here is what needs attention in your shop and your latest activity."
   },
   "dashboard": {
+    "loading": "Loading the dashboard",
     "view-all": "View all",
     "unnamed-product": "Unnamed product",
     "error": {

@@ -86,6 +86,8 @@ const sellerOrder = (patch: Partial<SellerOrder> = {}): SellerOrder => ({
   sellerId: SELLER as SellerOrder['sellerId'],
   subtotal: 1000n,
   shipping: 0n,
+  discount: 0n,
+  shippingDiscount: 0n,
   shippingTaxRateBps: null,
   shippingTax: null,
   shippingTaxInclusive: null,

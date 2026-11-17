@@ -8,6 +8,7 @@ import {
 import { TEST_MARKETS } from '../../../../test/support/test-config';
 import type { CommissionPayoutsFacade } from '../../commission-payouts';
 import type { OrderingFacade } from '../../ordering';
+import { BoundDeliveredOrderFacts } from './bound-delivered-order-facts';
 import { FacadeDeliveredOrderFacts } from './facade-delivered-order-facts';
 import { FacadePayoutAnchors } from './facade-payout-anchors';
 import { FacadeSellerCashbackLedger } from './facade-seller-cashback-ledger';
@@ -125,6 +126,15 @@ describe.each(TEST_MARKETS)('the seller cashback adapters in market %s', (code) 
       false,
     );
     expect(calls).toEqual([]);
+  });
+
+  it('answers unknown until ordering is bound, then reads through it, and unknown on a throw', async () => {
+    const bound = new BoundDeliveredOrderFacts();
+    expect(await bound.read(system, request)).toEqual({ known: false });
+    bound.bind(new FacadeDeliveredOrderFacts(ordering(() => Promise.resolve(ok(facts)))));
+    expect((await bound.read(system, request)).known).toBe(true);
+    bound.bind({ read: () => Promise.reject(new Error('down')) });
+    expect(await bound.read(system, request)).toEqual({ known: false });
   });
 
   it('never reads more refunded goods than were charged', async () => {

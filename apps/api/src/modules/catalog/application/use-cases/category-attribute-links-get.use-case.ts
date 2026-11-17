@@ -22,6 +22,8 @@ import type {
   AttributeDefinitionRecord,
   FeatureSetRecord,
 } from '../ports/attribute-admin.reader';
+import { catalogueReview, type CatalogueReview } from '../catalogue-review';
+import type { SystemRequestRecorder } from '../../../system-requests';
 import type { CategoryAttributeLinkStore } from '../ports/category-attribute-link.store';
 import type { CategoryTreeReader } from '../ports/category-tree.reader';
 
@@ -59,6 +61,11 @@ export interface CategoryAttributeLinksGetOutput {
     } | null;
     readonly filters: readonly CategoryLinkFilterView[];
   };
+  /**
+   * Whether a change is reviewed in the Market (Admin Inbox › System requests, area catalogue) and
+   * at which risk: the editor asks for a note on save only when it is.
+   */
+  readonly review: CatalogueReview;
 }
 
 type LinksRead =
@@ -81,6 +88,8 @@ export interface CategoryAttributeLinksGetDependencies {
   readonly linkStore: CategoryAttributeLinkStore;
   readonly treeReader: CategoryTreeReader;
   readonly attributeAdminReader: AttributeAdminReader;
+  /** Reads the review policy of area catalogue for the page. */
+  readonly review: Pick<SystemRequestRecorder, 'areaPolicy'>;
 }
 
 /**
@@ -134,6 +143,8 @@ export class CategoryAttributeLinksGet extends UseCase<
     if (categoryId === null) return err({ code: 'category.not-found' });
     const { market } = context;
     const reader = this.deps.attributeAdminReader;
+    // Its own read-only unit, before this one (units do not nest).
+    const review = await catalogueReview(this.deps.review, context);
     const read = await this.deps.unitOfWork.run<LinksRead, never>(
       market,
       async (): Promise<Result<LinksRead, never>> => {
@@ -159,6 +170,7 @@ export class CategoryAttributeLinksGet extends UseCase<
     const byCode = new Map(definitions.map((definition) => [definition.code, definition]));
     return ok({
       categoryId,
+      review,
       own:
         own === null
           ? null

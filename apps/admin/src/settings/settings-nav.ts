@@ -29,6 +29,7 @@ import {
   SHIP_TO_RETENTION_VIEW_PERMISSION,
 } from '../ship-to-retention/types.ts';
 import { AI_MANAGE_PERMISSION, AI_VIEW_PERMISSION } from '../ai-settings/types.ts';
+import { POLICY_MANAGE_PERMISSION, POLICY_VIEW_PERMISSION } from '../system-requests/types.ts';
 import { SUPPORT_MANAGE_PERMISSION, SUPPORT_VIEW_PERMISSION } from './types.ts';
 
 // The one map of the admin Settings pages (settings UX design, hub and roles sections). The hub,
@@ -194,6 +195,13 @@ export const settingsGroups: readonly SettingsGroup[] = [
           'identity.platform-role.edit',
           'identity.platform-role.manage',
         ],
+      },
+      {
+        id: 'review-policy',
+        labelKey: 'settings.hub.link.review-policy',
+        href: '/settings/review-policy',
+        view: [POLICY_VIEW_PERMISSION],
+        manage: [POLICY_MANAGE_PERMISSION],
       },
     ],
   },

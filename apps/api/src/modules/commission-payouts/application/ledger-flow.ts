@@ -557,7 +557,9 @@ export async function recordSellerCashback(
         .reduce((sum, row) => sum + row.amount.amount, 0n);
       if (
         rows.length === 0 ||
-        rows.some((row) => row.sellerId !== cashback.sellerId || row.orderId !== cashback.orderId) ||
+        rows.some(
+          (row) => row.sellerId !== cashback.sellerId || row.orderId !== cashback.orderId,
+        ) ||
         cashback.amount > sales
       ) {
         return err({ code: 'commission-payouts.ledger-inconsistent' } as const);
