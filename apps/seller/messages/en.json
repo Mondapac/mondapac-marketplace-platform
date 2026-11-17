@@ -2532,6 +2532,13 @@
         "amount": "Amount"
       }
     },
+    "customer": {
+      "title": "Customer",
+      "code": "Customer code",
+      "first-name": "First name",
+      "pending": "The customer's code is not ready yet. Check again in a minute.",
+      "hint": "You see the customer's code and first name only. MondaPac's courier has the delivery address."
+    },
     "totals": "Totals",
     "fulfilment": "Fulfilment",
     "shipped-on": "Shipped",
@@ -2649,9 +2656,8 @@
       "back": "Back to order",
       "print": "Print",
       "paid": "Paid {when}",
-      "ship-to": "Ship to",
-      "no-address": "No delivery address is on this order.",
-      "phone": "Phone: {phone}",
+      "ship-to": "Customer",
+      "no-customer": "The customer's code is not ready yet.",
       "items": "Items to pack",
       "no-items": "Nothing is left to pack on this order.",
       "not-available": "This order was sent or refunded in full, so there is no packing slip to print.",

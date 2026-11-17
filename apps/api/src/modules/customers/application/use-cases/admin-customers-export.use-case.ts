@@ -26,6 +26,7 @@ import {
   selectorOfRequest,
   type ListValidationFailure,
 } from '../customer-list-flow';
+import type { AdminDayZone } from '../ports/admin-day-zone';
 import type { CustomerListReader } from '../ports/customer-list.reader';
 import { XLSX_CONTENT_TYPE, type SheetWriter } from '../ports/sheet-writer';
 
@@ -41,6 +42,8 @@ export interface AdminCustomersExportDependencies {
   readonly audit: AuditWriter;
   readonly stepUp: StepUpProofConsumer;
   readonly clock: Clock;
+  /** The zone the day filters are read in (the admin's, else the Market's). */
+  readonly dayZone: AdminDayZone;
 }
 
 export interface AdminCustomersExportOutput {
@@ -117,7 +120,7 @@ export class AdminCustomersExport extends UseCase<
     const { deps } = this;
     const { market } = context;
     const now = deps.clock.now();
-    const query = { selector: selector.value, now };
+    const query = { selector: selector.value, now, zone: await deps.dayZone.zoneOf(context) };
 
     const picked = await deps.unitOfWork.run<
       { readonly ids: readonly Id<'Account'>[] },

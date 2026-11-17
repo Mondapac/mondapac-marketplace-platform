@@ -375,6 +375,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A certificate type (certification): stop new certificates, ask for reactivation, and a second
     // admin's answer to a waiting revision or reactivation. Each names the version read.
     'certification/admin/types/:id/deactivate',
+    'certification/admin/types/:id/revisions',
     'certification/admin/types/:id/reactivation',
     'certification/admin/types/:id/relaxations/:id/approve',
     'certification/admin/types/:id/reactivations/:id/approve',

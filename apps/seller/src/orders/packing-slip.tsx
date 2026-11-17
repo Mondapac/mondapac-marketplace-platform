@@ -25,7 +25,7 @@ function SlipSheet({
   const rows = order.lines
     .map((line) => ({ line, quantity: remainingUnits(order, line.lineId) }))
     .filter((row) => row.quantity > 0);
-  const shipTo = order.shipTo ?? null;
+  const customer = order.customer ?? null;
   const note = order.buyerNote?.trim() ?? '';
   return (
     <>
@@ -42,22 +42,13 @@ function SlipSheet({
         <h2 id={`${uid}-slip-ship-to`} className="text-base font-semibold">
           {t('ship-to')}
         </h2>
-        {shipTo === null ? (
-          <p className="text-fg-muted">{t('no-address')}</p>
+        {customer === null ? (
+          <p className="text-fg-muted">{t('no-customer')}</p>
         ) : (
-          <address className="not-italic">
-            <div>
-              {shipTo.recipientFirstName} {shipTo.recipientLastName}
-            </div>
-            <div>{shipTo.line1}</div>
-            {shipTo.line2 === null || shipTo.line2 === '' ? null : <div>{shipTo.line2}</div>}
-            <div>
-              {[shipTo.suburb, shipTo.region, shipTo.postcode]
-                .filter((part) => part !== null && part !== '')
-                .join(' ')}
-            </div>
-            <div>{t('phone', { phone: shipTo.phone })}</div>
-          </address>
+          <p>
+            <span className="font-mono">{customer.code}</span>
+            {customer.firstName === null ? null : ` · ${customer.firstName}`}
+          </p>
         )}
       </section>
       <section aria-labelledby={`${uid}-slip-items`} className="flex flex-col gap-2">

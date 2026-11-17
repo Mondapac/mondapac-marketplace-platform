@@ -36,6 +36,8 @@ export interface ShipmentSort {
 
 /** Every field is an AND; null leaves it out. */
 export interface ShipmentListFilter {
+  /** The selected rows of an export (seller order ids, at most 200); null on the list itself. */
+  readonly ids: readonly string[] | null;
   readonly stage: ShipmentStage | null;
   /** A seller order id or an order id, exact. */
   readonly reference: string | null;

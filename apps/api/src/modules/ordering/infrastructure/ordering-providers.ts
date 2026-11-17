@@ -1,5 +1,6 @@
 import { Logger, type FactoryProvider } from '@nestjs/common';
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
+import { CUSTOMERS_READ_FACADE, type CustomersReadFacade } from '../../customers';
 import { IDENTITY_FACADE, type IdentityFacade } from '../../identity';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { SHIPPING_FACADE, type ShippingFacade } from '../../shipping';
@@ -8,6 +9,11 @@ import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { ServiceAreaDirectory } from '../../../platform/market-config/service-area-directory';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
+import {
+  CUSTOMER_PAYMENTS_READER,
+  type CustomerPaymentsReader,
+} from '../application/ports/customer-payments.reader';
+import { PrismaCustomerPaymentsReader } from './prisma-customer-payments.reader';
 import {
   SUBJECT_KEY_SERVICE,
   type SubjectKeyService,
@@ -103,6 +109,8 @@ import { PrismaSalesRankingReader } from './prisma-sales-ranking.reader';
 import { StripeCheckoutGateway } from './stripe-checkout-gateway';
 import { SubjectKeyPickupCodeVault } from './subject-key-pickup-code-vault';
 import { SubjectKeyShipToCipher } from './subject-key-ship-to-cipher';
+import { SHEET_WRITER, type SheetWriter } from '../../../platform/list-export/sheet-writer';
+import { ExceljsSheetWriter } from '../../../platform/list-export/exceljs-sheet-writer';
 
 /**
  * Binds the ports of ordering. Only this layer may reach `PrismaService`, subject keys and the
@@ -160,6 +168,8 @@ export const orderingProviders: readonly FactoryProvider[] = [
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): MarketZones => new RegistryMarketZones(markets),
   },
+  /** The XLSX writer of the Sales list exports (the shared list-export kit). */
+  { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
   {
     provide: SAVED_FILTER_REPOSITORY,
     inject: [SAVED_FILTER_STORE],
@@ -250,12 +260,25 @@ export const orderingProviders: readonly FactoryProvider[] = [
   },
   {
     provide: ORDER_LABELS,
-    inject: [CATALOG_FACADE, SELLERS_FACADE, IDENTITY_FACADE, MarketRegistry],
+    inject: [
+      CATALOG_FACADE,
+      SELLERS_FACADE,
+      IDENTITY_FACADE,
+      MarketRegistry,
+      CUSTOMERS_READ_FACADE,
+    ],
     useFactory: (
       catalog: CatalogFacade,
       sellers: SellersFacade,
       identity: IdentityFacade,
       markets: MarketRegistry,
-    ): OrderLabels => new FacadeOrderLabels(catalog, sellers, identity, markets),
+      customers: CustomersReadFacade,
+    ): OrderLabels => new FacadeOrderLabels(catalog, sellers, identity, markets, customers),
+  },
+  {
+    provide: CUSTOMER_PAYMENTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerPaymentsReader =>
+      new PrismaCustomerPaymentsReader(prisma),
   },
 ];

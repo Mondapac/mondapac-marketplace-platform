@@ -104,6 +104,18 @@ export const CUSTOMERS_NOTES_WRITE = definePermission('customers', {
 });
 
 /**
+ * See a customer's full delivery address (recipient, phone, street, postcode, courier note) on the
+ * customer page (phase 2b). Without it the page shows each address's suburb and country only.
+ * Protected: only the Platform Administrator holds it, or a custom role it grants it to. Also
+ * needs `customers.customers.view`. Every reveal is audited and lands on the customer's timeline.
+ */
+export const CUSTOMERS_ADDRESS_REVEAL = definePermission('customers', {
+  key: 'customers.customer-address.reveal',
+  scope: 'platform',
+  protected: true,
+});
+
+/**
  * See the shop's own Customers list (customers management phase 3): who bought from the shop or
  * follows it, by the customer's code for this shop and first name only, never an email, an account
  * id or what they did with another shop. A seller key, not protected; no default seller role lists
@@ -123,6 +135,7 @@ export const CUSTOMERS_SELLER_CUSTOMERS_EXPORT = definePermission('customers', {
 });
 
 export const CUSTOMERS_PERMISSIONS = declarePermissions('customers', [
+  CUSTOMERS_ADDRESS_REVEAL,
   CUSTOMERS_CUSTOMER_EDIT,
   CUSTOMERS_GROUPS_MANAGE,
   CUSTOMERS_NOTES_WRITE,

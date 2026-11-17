@@ -23,6 +23,7 @@ export const ADMIN_ACTION_KINDS = [
   'group-added',
   'group-removed',
   'renamed-by-admin',
+  'address-revealed',
 ] as const;
 
 export const TIMELINE_KINDS = [...CUSTOMER_EVENT_KINDS, ...ADMIN_ACTION_KINDS] as const;
@@ -42,6 +43,7 @@ export const categoryOf = (kind: TimelineKind): TimelineCategory => {
     case 'group-added':
     case 'group-removed':
     case 'renamed-by-admin':
+    case 'address-revealed':
       return 'admin';
     default:
       return 'account';

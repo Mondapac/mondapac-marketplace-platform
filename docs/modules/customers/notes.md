@@ -36,13 +36,16 @@ This note records what is built and the rules it keeps.
   country as one ciphertext under the customer account's subject key (`ordering.order.ship-to`),
   written once at insert. A later change or removal in the address book never touches it;
   destroying the key at account deletion erases it while the order's money stays.
-- Who sees it: the customer on `GET /orders/:id` and the seller on its own seller order page
-  (view, ship, deliver), as `shipTo` (recipient name, phone, address lines, suburb, region,
-  postcode, delivery notes, country), never the customer's email or account id. Lists and the
-  admin order page carry no address. `shipTo` is null on orders placed before this package and
-  once the account was erased.
-- Hassan (PR #406 review: GO) follow-ups: (1) a seller can read the address of every paid order
-  for ever; later drop `shipTo` from the seller's answer a Market-set time after delivery.
+- Who sees it: the customer on `GET /orders/:id`, as `shipTo` (recipient name, phone, address
+  lines, suburb, region, postcode, delivery notes, country), and the platform when it books the
+  courier. The seller never does (owner decision 2026-11-17): its own seller order page (view,
+  ready, deliver, pickup) names the customer as `customer` `{ code, firstName }`, the code the
+  shop knows them by on its Customers list (`customers.seller-order-customers` through
+  `CUSTOMERS_READ_FACADE`, rule `ordering.seller-order.view`), plus the customer's note to the
+  shop. Lists and the admin order page carry no address. `shipTo` is null on orders placed
+  before this package and once the account was erased.
+- Hassan (PR #406 review: GO) follow-ups: (1) done: the seller no longer gets `shipTo` at all
+  (2026-11-17); the retention rule now governs only the customer's note to the shop.
   (2) Removing an address from the book does not remove its copy on placed orders; only account
   erasure (package 5) does. The privacy notice must say so.
 
@@ -428,6 +431,72 @@ admin deletes a buyer's account for them, from a support ticket.
   carries no actor). The notes read writes
   no audit row of its own (the page open does). No role is seeded with the new keys; the owner
   assigns them.
+
+## Phase 2b: per-module admin reads (PR 2b, partial)
+
+Stacked on PR 2a (#929). What landed, by handoff item:
+
+- **Day filters in the right zone (i).** Two kinds of date filter, on purpose:
+  - The Customers list (joined and last-order days) and the activity timeline (from and to) take
+    `YYYY-MM-DD` days, resolved on the server in the admin's own zone (identity's account
+    setting), falling back to the Market's zone (`AdminDayZone`, ADR-0005). A zone that is
+    missing, empty, refused, failing or not a valid IANA id falls back to the Market's zone (never
+    a 500). A day whose midnight a DST change skips starts at its first real instant.
+  - The refunds, payments and disputes lists (owned by ordering and payments) take ISO instants,
+    as the admin Orders list does: the panel converts the admin's days.
+  The page-open dedup stays "once per UTC day".
+- **Tombstone (h).** `GET customers/admin/customers/:accountId` answers
+  `{ accountId, status: 'deleted', deletedAt }` for an account whose erasure completed here
+  (partial index `account_deletion_requests_completed_idx`); the open is audited, no timeline row.
+- **Order number search (a).** `orderNumber` on `POST customers/admin/list` (the order id: orders
+  have no separate number) resolves the account through ordering's `adminOrderAccountOf`, which
+  needs `ordering.order.view`; an unknown order lists nobody.
+- **Refunds (b).** `POST ordering/admin/customers/:accountId/refunds` (+ `/export`): a super list
+  (state, reason, requested between instants; sort requested or amount; both paging modes).
+- **Payments and disputes (c, d, f).** `POST payments/admin/customers/:accountId/payments` and
+  `.../disputes` (+ `/export`), new key `payments.customer-payment.view` (not seeded to Viewer:
+  financial data). Payments reads the orders through ordering's facade; the answer's `paid` (the
+  gross captured amount: the captured orders' totals per currency, refunds not taken off; refunds
+  are shown in the refunds list) replaces the stats estimate for Money "Paid". No provider
+  id but Stripe's payment id; disputes show no provider id, evidence or buyer text. A customer with
+  more than 10,000 orders gets `batch.too-large` on disputes.
+- **Customers view key on every tab.** The refunds, payments and disputes reads and their exports
+  also need `customers.customers.view`, as every other tab of the customer page does (ordering
+  and payments cast the literal; `test/contracts/admin-facade-permission.contract.spec.ts` pins
+  it). An admin with only `ordering.order.view` or `payments.customer-payment.view` gets 403.
+- **Exports.** Every owning-module export needs its view keys plus the protected
+  `customers.customers.export` and spends the customers export step-up in its unit; each writes
+  its own audit row (`ordering.customer-refunds.exported`, `payments.customer-payments.exported`,
+  `payments.customer-disputes.exported`).
+- **Addresses.** `GET customers/admin/customers/:accountId/addresses` shows suburb and country
+  only. `POST .../addresses/:addressId/reveal` needs the protected
+  `customers.customer-address.reveal`; one unit writes the audit row
+  `customers.customer-address.revealed` (the address id) and the timeline entry
+  `address-revealed` before the content is answered.
+- **Archive warning (j).** Archiving a group asks promotions, through `CustomerGroupUsageRegistry`
+  (owned by customers, registered by promotions at start, so customers never imports
+  promotions), how many live, waiting or paused promotions name it. Advisory: the answer's
+  `liveSegmentUse` and the audit row say `some`, `none` or `unknown`.
+
+Delivered elsewhere:
+
+- **Pending deletion request on GET customer (g).** Delivered by PR #925 (frontend thread), not by
+  this PR.
+
+Not built in 2b (remaining):
+
+- **Promotion usages per customer (e).** No data: `promotion_usage` keeps per-promotion counters
+  and orders record no promotion. Needs a usage table written at checkout first.
+- **Reviews and consent on the timeline (k).** reviews' events carry no account id (by design:
+  a seller must not tie a review to a buyer from the event), legal publishes no events. Needs an
+  event change in those modules, or a facade read instead of a timeline copy.
+- **Identity section** (logins over 90 days as a super list, sessions, sign out everywhere,
+  send a password reset): the largest piece, an auth path (security review). `sign_in_records`
+  holds the full IP and no geo data, so a "rough city" needs a geo lookup first.
+- **cart, reviews, notifications, legal/engagement/assistant reads.** Each needs a new facade
+  read and key in its owner. notifications keeps no per-account log of sent emails today (in-app
+  notices are addressed to sellers or admins, not to customers); the abandoned-cart reminders it
+  took are in `notifications.cart_reminders`, kept 30 days.
 
 ## Phase 3: per-seller customers and store follows (2026-11-16)
 

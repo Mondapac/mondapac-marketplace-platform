@@ -33,6 +33,7 @@ const T0 = Temporal.Instant.from('2026-11-15T10:00:00Z');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 
 const NO_FILTER: ShipmentListFilter = {
+  ids: null,
   stage: null,
   reference: null,
   trackingRef: null,
@@ -333,6 +334,21 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
     expect(await idsOf({ sellerId, attention: 'any', stage: 'shipped' })).toEqual([]);
   });
 
+  it('narrows to the selected seller orders of an export, beside the filter', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const a = await shipment(sellerId, 'to-prepare');
+    await shipment(sellerId, 'to-prepare');
+    const c = await shipment(sellerId, 'shipped');
+    expect(await idsOf({ sellerId, ids: [a.sellerOrderId, c.sellerOrderId] })).toEqual([
+      c.sellerOrderId,
+      a.sellerOrderId,
+    ]);
+    expect(await idsOf({ ids: [a.sellerOrderId, c.sellerOrderId], stage: 'shipped' })).toEqual([
+      c.sellerOrderId,
+    ]);
+    expect(await idsOf({ ids: [ids.next<'SellerOrder'>()] })).toEqual([]);
+  });
+
   it('finds a shipment by seller order id, order id or tracking reference', async () => {
     const sellerId = ids.next<'Seller'>();
     const target = await shipment(sellerId, 'shipped', { tracking: `TRK-${sellerId}` });
@@ -484,5 +500,13 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       { readOnly: true },
     );
     expect(rows.ok && rows.value).toEqual([]);
+    // Nor through an export's selected ids.
+    const selected = await db.unitOfWork.run(
+      other,
+      async () =>
+        ok(await reader.page(other, { ...NO_FILTER, ids: [mine.sellerOrderId] }, NEWEST, 0, 10)),
+      { readOnly: true },
+    );
+    expect(selected.ok && selected.value).toEqual([]);
   });
 });

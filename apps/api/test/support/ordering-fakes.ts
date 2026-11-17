@@ -1,3 +1,4 @@
+import type { SellerOrderCustomerView } from '../../src/modules/ordering/domain/order-views';
 import { err, ok } from '@mondapac/shared-kernel';
 import type {
   AdminNoteCipher,
@@ -148,6 +149,12 @@ class EmptyRefunds implements RefundRepository {
   }
   listForAccount() {
     return Promise.resolve([]);
+  }
+  pageForAccount() {
+    return Promise.resolve([]);
+  }
+  countForAccount() {
+    return Promise.resolve(0);
   }
   findSellerTarget() {
     return Promise.resolve(null);
@@ -331,8 +338,12 @@ export class MemoryOrders implements OrderRepository {
     this.rows.set(order.id, order);
     return Promise.resolve();
   }
-  findById(_m: MarketContext, orderId: Id<'Order'>) {
-    return Promise.resolve(this.rows.get(orderId) ?? null);
+  findById(market: MarketContext, orderId: Id<'Order'>) {
+    // As the database: an order of another Market is not found.
+    const order = this.rows.get(orderId);
+    return Promise.resolve(
+      order !== undefined && order.marketId === market.marketId ? order : null,
+    );
   }
   findOwn(_m: MarketContext, orderId: Id<'Order'>, accountId: Id<'Account'>) {
     const order = this.rows.get(orderId);
@@ -1313,7 +1324,11 @@ export class FakeLabels implements OrderLabels {
   readonly customers = new Map<Id<'Account'>, OrderCustomer>();
   readonly shortNames = new Map<Id<'Account'>, string>();
   readonly staff = new Map<Id<'Account'>, string>();
-  readonly fail = new Set<'units' | 'stores' | 'customers' | 'short-names' | 'staff'>();
+  /** `sellerId:accountId` → the code and first name that shop knows the customer by. */
+  readonly sellerCustomers = new Map<string, SellerOrderCustomerView>();
+  readonly fail = new Set<
+    'units' | 'stores' | 'customers' | 'short-names' | 'staff' | 'seller-customers'
+  >();
   readonly calls: { readonly lookup: string; readonly count: number }[] = [];
   /** What both searches answer for `capped`. */
   searchCapped = false;
@@ -1387,6 +1402,23 @@ export class FakeLabels implements OrderLabels {
     this.calls.push({ lookup: 'short-names', count: accountIds.length });
     if (this.fail.has('short-names')) return Promise.reject(new Error('short-names'));
     return Promise.resolve(this.shortNames);
+  }
+
+  sellerCustomersOf(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, SellerOrderCustomerView>> {
+    this.calls.push({ lookup: 'seller-customers', count: accountIds.length });
+    if (this.fail.has('seller-customers')) return Promise.reject(new Error('seller-customers'));
+    const { actor } = context;
+    const sellerId =
+      actor.kind === 'authenticated' && typeof actor.sellerId === 'string' ? actor.sellerId : '';
+    const found = new Map<Id<'Account'>, SellerOrderCustomerView>();
+    for (const accountId of accountIds) {
+      const customer = this.sellerCustomers.get(`${sellerId}:${accountId}`);
+      if (customer !== undefined) found.set(accountId, customer);
+    }
+    return Promise.resolve(found);
   }
 
   staffNamesOf(

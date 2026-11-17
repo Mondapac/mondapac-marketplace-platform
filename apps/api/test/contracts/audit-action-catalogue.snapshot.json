@@ -1687,6 +1687,16 @@
     }
   },
   {
+    "action": "customers.customer-address.revealed",
+    "targetType": "customers.customer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "addressId": "id"
+    }
+  },
+  {
     "action": "customers.customer-group.changed",
     "targetType": "customers.customer-group",
     "targetId": "id",
@@ -1698,6 +1708,7 @@
     "after": {
       "archived": "boolean",
       "describedChanged": "boolean",
+      "liveSegmentUse": "enumOf(not-checked|none|some|unknown)",
       "renamed": "boolean",
       "version": "integer"
     }
@@ -2506,6 +2517,19 @@
     }
   },
   {
+    "action": "ordering.customer-refunds.exported",
+    "targetType": "ordering.customer-account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
     "action": "payments.payout-change.recorded",
     "targetType": "payments.connected-account",
     "targetId": "id",
@@ -2556,6 +2580,32 @@
     "before": null,
     "after": {
       "sellerId": "optional(id)"
+    }
+  },
+  {
+    "action": "payments.customer-payments.exported",
+    "targetType": "payments.customer-account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "payments.customer-disputes.exported",
+    "targetType": "payments.customer-account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
     }
   },
   {
