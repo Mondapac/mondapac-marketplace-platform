@@ -15,6 +15,10 @@ import {
  * Not oneself, never an admin who holds a key the actor lacks (R1), never the last Platform
  * Administrator who can sign in (R3, HF8): one serializable unit that also revokes every
  * session and voids every open challenge of the account (see `changeAccountStatus`).
+ *
+ * A disable opens no review in Admin Inbox › System requests: it is a stop (like a wallet
+ * freeze), so it never waits for a note, and a revert would enable an account, which no revert
+ * does. Its answer's `request` is always null.
  */
 export class DisableAdminAccount extends UseCase<
   AccountStatusInput,

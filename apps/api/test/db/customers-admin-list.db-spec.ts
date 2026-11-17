@@ -38,6 +38,7 @@ const BLANK: CustomerSelector = {
   ordersMax: null,
   spentMin: null,
   spentMax: null,
+  group: null,
 };
 
 describe.each(TEST_MARKETS)('admin customers list in market %s (database)', (code) => {
