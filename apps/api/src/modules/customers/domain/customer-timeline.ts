@@ -23,6 +23,11 @@ export const ADMIN_ACTION_KINDS = [
   'group-added',
   'group-removed',
   'renamed-by-admin',
+  'address-revealed',
+  // Phase 2b, the security section: identity did it and audited it; customers notes it here.
+  'sign-in-address-revealed',
+  'signed-out-by-admin',
+  'password-reset-sent',
 ] as const;
 
 export const TIMELINE_KINDS = [...CUSTOMER_EVENT_KINDS, ...ADMIN_ACTION_KINDS] as const;
@@ -42,6 +47,10 @@ export const categoryOf = (kind: TimelineKind): TimelineCategory => {
     case 'group-added':
     case 'group-removed':
     case 'renamed-by-admin':
+    case 'address-revealed':
+    case 'sign-in-address-revealed':
+    case 'signed-out-by-admin':
+    case 'password-reset-sent':
       return 'admin';
     default:
       return 'account';

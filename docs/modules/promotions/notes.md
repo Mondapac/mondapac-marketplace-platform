@@ -434,3 +434,16 @@ total covers what is left); the cancel reason `discount-changed`. Existing rows 
 - **Part C (panels)**: the admin and seller order pages and the admin order document show each line's discount
   and the seller order's goods and delivery discounts (rows only when above zero); the admin names the cancel
   reason `discount-changed`. The buyer's account orders read the same fields and total what the buyer paid.
+- **A customer's usages** (customers management phase 2b, item e; 17 Nov 2026):
+  `GET promotions/admin/customers/:customerAccountId/usages` (`promotions.list-customer-promotion-usages`,
+  `promotions.promotion.view` and `customers.customers.view`, like every customer-page tab; admin only, refused in
+  an acting-as session). One row per discount an order of the
+  customer took (stored promotion with its name, first-order offer or zone free delivery; never an order's head
+  row), newest reservation first then id, keyset pages of 1 to 100 (default 50) through
+  `redemptions_customer_newest_idx`. A row carries the order, the discount (minor units and currency), whether a
+  single-use code was used (the code is never kept), the status (RESERVED can still be released; only CONFIRMED
+  counts as used), the release reason and the three instants; never the seller or platform share. Works while the
+  Market switch is off. No migration. `usedAt` is the reservation instant (when checkout took the discount);
+  `confirmedAt` and `releasedAt` say how it ended. There is no total: the tab pages with "Load more", like the
+  other per-customer histories. It is a plain table, not a super list (rule 14): one customer's discounts rarely
+  pass 50 rows; if the product wants a super list here, filters and a count are a follow-up.

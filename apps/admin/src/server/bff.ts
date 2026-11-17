@@ -30,6 +30,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Market's shipments (ordering, Sales > Shipments), read-only: the list (query: the tab,
     // search, filters and paging; see QUERY_KEYS).
     'ordering/admin/shipments',
+    // The export of the Shipments list as a CSV or XLSX file (ordering): the list's own filter,
+    // the visible columns, the chosen ids and the zone (see QUERY_KEYS).
+    'ordering/admin/shipments/export',
     // The Market's refunds (ordering, Sales > Refunds), read-only: the list (query: the tab,
     // search, filters and paging; see QUERY_KEYS).
     'ordering/admin/refunds',
@@ -375,6 +378,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A certificate type (certification): stop new certificates, ask for reactivation, and a second
     // admin's answer to a waiting revision or reactivation. Each names the version read.
     'certification/admin/types/:id/deactivate',
+    'certification/admin/types/:id/revisions',
     'certification/admin/types/:id/reactivation',
     'certification/admin/types/:id/relaxations/:id/approve',
     'certification/admin/types/:id/reactivations/:id/approve',
@@ -756,6 +760,24 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'shippedFrom',
     'shippedTo',
   ],
+  // The Shipments export: the list's filter keys (no paging or sort), the file's format and
+  // columns, the chosen ids and the zone of its times.
+  'ordering/admin/shipments/export': [
+    'format',
+    'columns',
+    'ids',
+    'zone',
+    'stage',
+    'q',
+    'search',
+    'deliveryMethod',
+    'attention',
+    'sellerId',
+    'paidFrom',
+    'paidTo',
+    'shippedFrom',
+    'shippedTo',
+  ],
   // The Refunds list: the tab (`state`), the search (`q` or `search`), the filters and the paging
   // of either List paging mode. No amount filters: the panel has no input for them (spec Q3).
   'ordering/admin/refunds': [
@@ -891,6 +913,35 @@ const HOLD_FILTER_SHAPES: Readonly<Record<string, RegExp>> = {
   from: ISO_INSTANT,
   to: ISO_INSTANT,
 };
+/** The ids of an export: up to 200 UUIDs, the cap of the bulk action. */
+const EXPORT_IDS =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i;
+/** An IANA time zone name such as `Australia/Brisbane` or `Etc/GMT+10`. */
+const EXPORT_ZONE = /^[A-Za-z][A-Za-z0-9_+-]*(\/[A-Za-z0-9_+-]+){0,2}$/;
+/** The columns an export may name, in any order (the list may show none: the server adds the fixed ones). */
+const exportColumns = (keys: readonly string[]): RegExp =>
+  new RegExp(`^(?:(?:${keys.join('|')})(?:,(?:${keys.join('|')})){0,${keys.length - 1}})?$`);
+/** The Sales list exports: a malformed key there is refused (400), never dropped. */
+const SALES_EXPORT_PATH = /^ordering\/admin\/(shipments|refunds|documents)\/export$/;
+const SALES_EXPORT_STRICT_KEYS = ['ids', 'columns', 'kind', 'format', 'zone'] as const;
+/**
+ * True when an export key that narrows or shapes the file is present but malformed, repeated or
+ * oversized. Dropping it would widen the export to the whole filter, so the relay answers 400.
+ */
+function malformedSalesExport(target: string, requestUrl: string): boolean {
+  if (!SALES_EXPORT_PATH.test(target)) return false;
+  const source = new URL(requestUrl).searchParams;
+  return SALES_EXPORT_STRICT_KEYS.some((key) => {
+    const values = source.getAll(key);
+    if (values.length === 0) return false;
+    const value = values[0] ?? '';
+    return (
+      values.length > 1 ||
+      value.length > (QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX) ||
+      QUERY_SHAPES[target]?.[key]?.test(value) === false
+    );
+  });
+}
 /** The Seller accounts list's filters and sort (payments validates every value again). */
 const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
   status: /^(not-started|pending|enabled|restricted|rejected)$/,
@@ -940,6 +991,36 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     // The API's own cursor: epoch milliseconds of the payment, a dot and the seller order id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
     // An id, a tracking reference or a name: free text, up to the box's 80 characters.
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    paidFrom: ISO_INSTANT,
+    paidTo: ISO_INSTANT,
+    shippedFrom: ISO_INSTANT,
+    shippedTo: ISO_INSTANT,
+  },
+  'ordering/admin/shipments/export': {
+    format: /^(csv|xlsx)$/,
+    columns: exportColumns([
+      'store',
+      'customer',
+      'sellerOrderId',
+      'paid',
+      'delivery',
+      'carrier',
+      'fleet',
+      'ready',
+      'shipped',
+      'delivered',
+      'shipping',
+      'total',
+      'refunded',
+    ]),
+    ids: EXPORT_IDS,
+    zone: EXPORT_ZONE,
+    stage: /^(to-prepare|ready|shipped|delivered|refunded)$/,
+    deliveryMethod: /^(pickup|instant|same_day|scheduled)$/,
+    attention: /^(any|no-carrier|carrier-unknown|cancel-unknown)$/,
+    sellerId: UUID,
     q: SEARCH_TEXT,
     search: SEARCH_TEXT,
     paidFrom: ISO_INSTANT,
@@ -1284,6 +1365,7 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
+  'ordering/admin/shipments/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
@@ -1450,7 +1532,7 @@ const FORWARDED_REQUEST_HEADERS = [
 const FORWARDED_RESPONSE_HEADERS = [
   'content-type',
   'retry-after',
-  // The product and payout exports (CSV or XLSX) and the import report CSV arrive as attachments with a file name the API made.
+  // The product, payout and Sales list exports (CSV or XLSX) and the import report CSV arrive as attachments with a file name the API made.
   'content-disposition',
 ] as const;
 
@@ -1629,6 +1711,9 @@ export async function relay(
     const read = await readCapped(request, bodyCap);
     if (read === null) return jsonError(413, 'request.too-large');
     body = read;
+  }
+  if (request.method === 'GET' && malformedSalesExport(target, request.url)) {
+    return jsonError(400, 'request.invalid');
   }
   const refused = strictQueryRefusal(request.method, target, request.url);
   if (refused !== null) {

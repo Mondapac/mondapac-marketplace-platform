@@ -6,6 +6,16 @@ import { savedFilterListOf } from './saved-view-lists';
 // the generic routes. The payload parser is the list's own; the keys are the ones that guard it.
 // The seller order list is account-scoped and cannot be shared; it joins with the seller routes.
 
+/** The columns an admin can show in the Orders list, after the order reference (always shown). */
+export const ADMIN_ORDER_COLUMNS: readonly string[] = [
+  'status',
+  'placed',
+  'paid',
+  'customer',
+  'sellers',
+  'total',
+];
+
 const ORDERS = savedFilterListOf('admin.ordering.orders');
 
 const fail = (): never => {
@@ -21,6 +31,7 @@ export const ORDERING_LISTS: readonly ListDefinition[] =
           population: 'admin',
           viewKey: ORDERING_ORDER_VIEW.key,
           shareKey: ORDERING_SAVED_FILTER_SHARE.key,
+          columns: ADMIN_ORDER_COLUMNS,
           parsePayload: (raw) => ORDERS.parsePayload(raw),
         },
       ];

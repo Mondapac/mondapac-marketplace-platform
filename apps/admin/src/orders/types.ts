@@ -123,13 +123,41 @@ export interface AdminOrder {
   readonly taxStrategyId: string | null;
 }
 
+/** The row actions the API names (`actions` of a list row); an id this panel does not know is ignored. */
+export const ROW_ACTIONS = [
+  'open',
+  'print-document',
+  'copy-number',
+  'add-note',
+  'refund',
+  'cancel',
+] as const;
+export type RowAction = (typeof ROW_ACTIONS)[number];
+
+/** One row of the list: the order and what the caller may run on it. */
+export interface AdminOrderRow extends AdminOrder {
+  readonly actions: readonly string[];
+}
+
+export interface OrderCounts {
+  readonly pendingPayment: number;
+  readonly confirmed: number;
+  readonly cancelled: number;
+}
+
 export interface AdminOrderPage {
-  readonly orders: readonly AdminOrder[];
+  readonly orders: readonly AdminOrderRow[];
   readonly nextCursor: string | null;
-  /** Page mode only (null in cursor mode): the orders matching the filter, and this page. */
-  readonly total?: number | null;
-  readonly page?: number | null;
-  readonly pageSize?: number | null;
+  /** The Market's orders per status, whatever the filter. */
+  readonly counts: OrderCounts;
+  /** `pages` mode only: the orders matching the filter. */
+  readonly total: number | null;
+  readonly paging: 'pages' | 'prev-next' | null;
+  readonly hasNext: boolean;
+  readonly page: number | null;
+  readonly pageSize: number | null;
+  readonly searchCapped: boolean;
+  readonly searchScope: 'customers-and-stores' | 'stores' | null;
 }
 
 /** The reasons an admin may give (apps/api domain/refund.ts ADMIN_REFUND_REASONS). */

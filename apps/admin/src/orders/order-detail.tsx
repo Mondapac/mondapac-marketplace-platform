@@ -52,6 +52,7 @@ export function OrderDetail({
   canNote,
   notes,
   csrfToken,
+  startCancel = false,
 }: {
   readonly order: AdminOrderDetail;
   /** Whether the admin holds identity.customer-account.view; tells "hidden" from "failed to load". */
@@ -63,6 +64,8 @@ export function OrderDetail({
   /** The internal notes; null when they did not load. */
   readonly notes: readonly AdminNote[] | null;
   readonly csrfToken: string;
+  /** Opened from the list's "Cancel order…": the cancel dialog opens with the page. */
+  readonly startCancel?: boolean;
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -75,7 +78,12 @@ export function OrderDetail({
             {t('reference', { id: shortId(order.orderId) })}
           </h1>
           <OrderStatusBadge status={order.status} />
-          <OrderMoreMenu order={order} canRefund={canRefund} csrfToken={csrfToken} />
+          <OrderMoreMenu
+            order={order}
+            canRefund={canRefund}
+            csrfToken={csrfToken}
+            startOpen={startCancel}
+          />
         </div>
         <p className="text-sm text-fg-muted break-all">{order.orderId}</p>
         <p className="text-sm text-fg-muted">
@@ -95,7 +103,7 @@ export function OrderDetail({
         </Banner>
       )}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-        <div className="flex min-w-0 flex-col gap-4">
+        <div id="seller-orders" className="flex min-w-0 scroll-mt-4 flex-col gap-4">
           {order.sellerOrders.length === 0 ? (
             <Banner tone="info">{t('detail.no-parts')}</Banner>
           ) : (
@@ -123,12 +131,14 @@ export function OrderDetail({
           <CustomerCard order={order} canView={canViewCustomer} />
           <ActivityCard order={order} />
           <DocumentsCard order={order} />
-          <NotesCard
-            orderId={order.orderId}
-            notes={notes}
-            canWrite={canNote}
-            csrfToken={csrfToken}
-          />
+          <div id="notes" className="scroll-mt-4">
+            <NotesCard
+              orderId={order.orderId}
+              notes={notes}
+              canWrite={canNote}
+              csrfToken={csrfToken}
+            />
+          </div>
         </div>
       </div>
     </div>

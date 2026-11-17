@@ -1787,6 +1787,10 @@
         "locale-name": "Name",
         "locale-description": "Description for customers",
         "locale-terms": "Claim terms",
+        "locale-name-in": "Name ({locale})",
+        "locale-description-in": "Description for customers ({locale})",
+        "locale-terms-in": "Claim terms ({locale})",
+        "revise": "Change this type",
         "inactive-note": "No new certificates of this type can be added. Existing certificates and badges stay.",
         "revision-waiting": "A change to this type is waiting for a second admin.",
         "reactivation-waiting": "A reactivation is waiting for a second admin.",
@@ -1796,7 +1800,56 @@
           "reactivation-asked": "Reactivation sent. A second admin has to approve it.",
           "approved": "Change approved and published.",
           "rejected": "Change rejected.",
-          "withdrawn": "Proposal withdrawn."
+          "withdrawn": "Proposal withdrawn.",
+          "revision-published": "Change published.",
+          "revision-pending": "Change saved. A second admin has to approve it before it is published."
+        }
+      },
+      "revise": {
+        "title": "Change a certificate type",
+        "heading": "Change {code}",
+        "back": "Back to the type",
+        "intro": "This saves a new revision. The check method cannot change. A change that makes a rule weaker, or removes a claim term or a language, waits for a second admin before it is published.",
+        "no-changes": "Nothing has changed yet.",
+        "settings": "Settings",
+        "mode-fixed": "cannot be changed",
+        "auto-help": "Only for self-declared types. Turning this on needs a second admin.",
+        "icon-help": "A key of the icon set: lowercase letters, digits and hyphens.",
+        "name-help": "Up to {max} characters.",
+        "description-help": "Up to {max} characters. Customers read this.",
+        "terms-help": "One term per line, up to {term} characters each and {terms} terms. Removing a term needs a second admin.",
+        "reason": "Reason",
+        "optional": "optional",
+        "reason-help": "Up to {max} characters. A second admin sees it.",
+        "review": "Review changes",
+        "cancel": "Cancel",
+        "problem": {
+          "icon": "Use lowercase letters, digits and hyphens, starting with a letter.",
+          "name": "Enter a name of up to {nameMax} characters.",
+          "description": "Enter a description of up to {descriptionMax} characters.",
+          "terms": "Keep each term to {termMax} characters and the list to {termsMax} terms.",
+          "terms-missing": "Add at least one claim term in one language.",
+          "reason": "Use {reasonMax} characters or fewer."
+        },
+        "issue": {
+          "text-invalid": "A name, description or term has characters that are not allowed, or is too long.",
+          "term-unmatchable": "A claim term is too short to be matched.",
+          "terms-missing": "At least one language needs a claim term.",
+          "icon": "The icon key is not valid.",
+          "locale": "The languages do not match the ones this Market supports.",
+          "auto": "Approving without a person is only for self-declared types.",
+          "mode": "The check method cannot be changed.",
+          "basis": "The default basis is not valid."
+        },
+        "confirm": {
+          "title": "Save this change?",
+          "body": "These changes will be saved as a new revision:",
+          "from": "Now:",
+          "to": "New:",
+          "second-admin": "If a change weakens a rule, removes a claim term or drops a language, it waits for a second admin and the published revision stays in use.",
+          "back": "Back to the form",
+          "save": "Save the change",
+          "reload": "Reload the page"
         }
       },
       "actions": {
@@ -1872,6 +1925,8 @@
       },
       "error": {
         "invalid": "Check the details and try again.",
+        "unchanged": "Nothing has changed since the published revision.",
+        "revision-invalid": "The API refused the change. Check the wording and the settings.",
         "gone": "This type no longer exists. Reload the page.",
         "already-inactive": "This type is already inactive. Reload the page.",
         "already-active": "This type is already active. Reload the page.",
@@ -3115,6 +3170,9 @@
         "buyer": "The buyer's language",
         "english": "English only"
       },
+      "basket": {
+        "label": "Basket proposals from a list"
+      },
       "welcome": {
         "label": "Welcome message",
         "help": "Up to {max} characters. Leave it empty to use the storefront's default text.",
@@ -4061,14 +4119,42 @@
         "name": "Title",
         "name-help": "In English. It is translated when a new buyer language is published.",
         "description": "Description",
-        "categories": "Product category",
-        "categories-help": "Its feature set adds the details below and suggests variant types.",
-        "categories-placeholder": "Choose a category or subcategory",
         "tax": "Tax category",
         "tax-help": "Required. Separate from the product category: it decides GST on every seller's offer.",
-        "categories-help-empty": "Only a category or subcategory (levels 3 and 4). It decides the product details and variant types.",
         "tax-placeholder": "Choose a tax category",
         "name-claim": "Product text can't include certification words like \"halal\". Badges come from seller offers."
+      },
+      "categories-field": {
+        "legend": "Product categories",
+        "hint": "Choose a category or subcategory. Products can't go on a department or group.",
+        "general": "General",
+        "general-hint": "Not in a subcategory",
+        "primary": "Primary",
+        "hidden": "Hidden",
+        "make-primary": "Make primary",
+        "make-primary-for": "Make primary: {name}",
+        "remove": "Remove",
+        "remove-for": "Remove {name}",
+        "add": "Add a category",
+        "add-placeholder": "Search categories",
+        "empty": "No category chosen yet. The first one you choose is the primary category.",
+        "limit": "A product can be in up to 3 categories. Remove one to add another.",
+        "loading": "Loading categories…",
+        "load-error": "We couldn't load the categories.",
+        "retry": "Try again",
+        "search": "Search categories",
+        "no-results": "No category matches.",
+        "added": "Added {name}.",
+        "removed": "Removed {name}.",
+        "made-primary": "{name} is now the primary category.",
+        "error": {
+          "required": "Choose at least one category.",
+          "too-many": "A product can be in at most 3 categories.",
+          "duplicate": "You chose this category twice. Remove one.",
+          "unknown": "This category isn't available any more. Remove it and choose another.",
+          "not-available": "This category isn't available any more. Remove it and choose another.",
+          "level-not-allowed": "Choose a more specific category. Products can't go on a department or group."
+        }
       },
       "category": "Category and tags",
       "details": "Product details",
@@ -4878,7 +4964,7 @@
   "orders": {
     "title": "Orders",
     "page-title": "Orders",
-    "intro": "The Market's orders, newest first.",
+    "intro": "The Market's orders. Open one to see its payment, delivery and notes.",
     "zone-note": "Times and days are in {zone}.",
     "no-access": "You don't have access to orders.",
     "no-access-title": "You don't have access to this page",
@@ -4924,7 +5010,8 @@
       "paid": "Paid",
       "customer": "Customer",
       "sellers": "Sellers",
-      "total": "Total"
+      "total": "Total",
+      "payment": "Payment"
     },
     "reference": "Order {id}",
     "tax": {
@@ -4957,7 +5044,9 @@
       }
     },
     "error": {
-      "unavailable": "We couldn't load the orders. Try again."
+      "unavailable": "We couldn't load the orders. Try again.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them.",
+      "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
     },
     "field": {
       "status": "Status",
@@ -5212,38 +5301,21 @@
     },
     "range": "{from} to {to} of {total}",
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
-    "filters": {
-      "group": "Filters",
-      "payment": "Payment",
-      "fulfilment": "Delivery",
-      "from": "Placed from",
-      "to": "Placed until",
-      "any": "Any",
-      "clear": "Clear filters",
-      "backwards": "The end day is before the start day."
-    },
     "sort": {
-      "label": "Sort by",
-      "newest": "Newest first",
-      "oldest": "Oldest first",
-      "total-high": "Total, high to low",
-      "total-low": "Total, low to high"
-    },
-    "paging": {
-      "nav": "Pages",
-      "previous": "Previous",
-      "next": "Next",
-      "page": "Page {n}"
-    },
-    "columns": {
-      "button": "Columns",
-      "title": "Columns",
-      "help": "Choose which columns the list shows and in what order. Only you see this choice.",
-      "always": "Always shown",
-      "up": "Move {column} up",
-      "down": "Move {column} down",
-      "reset": "Reset",
-      "save": "Save"
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "created": "Placed",
+        "total": "Total"
+      },
+      "date": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      },
+      "amount": {
+        "first": "Highest first",
+        "second": "Lowest first"
+      }
     },
     "saved": {
       "manage-link": "Manage filters",
@@ -5291,7 +5363,60 @@
         "help-share": "Rename, change who can use a filter, or delete it.",
         "help-own": "Rename or delete your filters. Your role can’t share filters."
       }
-    }
+    },
+    "sorted": "Sorted by {field}: {order}",
+    "filter": {
+      "title": "Filter orders",
+      "name": {
+        "paymentState": "Payment",
+        "fulfilment": "Fulfilment",
+        "placed": "Placed"
+      }
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Customer, store, or order ID",
+      "too-short": "Type at least 2 characters."
+    },
+    "chip-search": "Search: \"{text}\"",
+    "match": "{count, plural, one {# order matches} other {# orders match}}",
+    "not-yet": "Not yet",
+    "row-name": "order {id}",
+    "select": {
+      "page": "Select all orders on this page",
+      "page-short": "Select all on this page",
+      "row": "Select {name}"
+    },
+    "selection": {
+      "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+      "all": "{count, plural, one {The # matching order is selected} other {All # matching orders are selected}}",
+      "all-open": "All matching orders are selected",
+      "select-all": "Select all {count, number} matching",
+      "select-all-open": "Select all matching",
+      "clear": "Clear selection"
+    },
+    "bulk": {
+      "button": "Bulk action",
+      "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+      "all-open": "All matching orders selected",
+      "export": "Export all matching as CSV",
+      "export-help": "Exports every order the tab and filters match, not only the ticked ones.",
+      "export-name-search": "A customer or store search cannot be exported. Clear it to export."
+    },
+    "row-actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "open": "Open order",
+      "print": "Print document",
+      "copy-number": "Copy order number",
+      "add-note": "Add note…",
+      "refund": "Refund…",
+      "cancel": "Cancel order…",
+      "copied": "Copied",
+      "copy-failed": "Couldn't copy. Select the text and copy it."
+    },
+    "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
+    "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name."
   },
   "load": {
     "retry": "Try again",
@@ -6939,11 +7064,13 @@
       "move": "Move…",
       "merge": "Merge…",
       "archive": "Archive…",
+      "move-products": "Move products…",
       "restructure-reason-acting-as": "Not available while acting as a seller.",
       "restructure-reason-not-active": "Only live categories can be moved, merged or archived.",
       "note-move": "Category moved.",
       "note-merge": "Category merged.",
-      "note-archive": "Category archived."
+      "note-archive": "Category archived.",
+      "note-move-products": "Move started. Read the products again when it is done."
     },
     "form": {
       "tabs": "Sections",
@@ -7049,6 +7176,62 @@
       "file_too-many-pixels": "The picture has too many pixels. Choose a smaller one.",
       "file_too-small": "The picture is too small. Choose one at least 200 pixels on its longest side.",
       "file_unreadable": "The picture could not be read. Choose another file."
+    },
+    "move-products": {
+      "title": "Move products of {name}",
+      "intro": "Every published product in {name} moves to the category you choose. The change is published at once and each seller is emailed. Products in its subcategories stay where they are.",
+      "target": "Move products to",
+      "count-title": "What will change",
+      "count-loading": "Counting products…",
+      "count-error": "We couldn't count the products. The move is still checked when you start it.",
+      "count": "{n, plural, one {# published product will move.} other {# published products will move.}}",
+      "count-at-least": "At least {n, plural, one {# published product} other {# published products}} will move.",
+      "count-to": "{n, plural, one {# published product will move from {name} to {target}.} other {# published products will move from {name} to {target}.}}",
+      "count-at-least-to": "At least {n, plural, one {# published product} other {# published products}} will move from {name} to {target}.",
+      "count-none": "No published product is directly in {name}, so there is nothing to move.",
+      "reason": "Reason",
+      "reason-help": "10 to 500 characters. It is kept in the audit log. Sellers never see it.",
+      "reason-counter": "{n} / 500",
+      "reason-short": "Add a reason of 10 to 500 characters.",
+      "reason-long": "The reason is longer than 500 characters.",
+      "need-target": "Choose a category to continue.",
+      "need-reason": "Add a reason to continue.",
+      "need-products": "There are no published products to move.",
+      "cancel": "Cancel",
+      "close": "Close",
+      "reload": "Reload",
+      "action": "Move products",
+      "progress-title": "Moving products",
+      "progress-label": "Products handled",
+      "state": {
+        "queued": "Waiting to start…",
+        "running": "Moving products…",
+        "done": "Done. {moved} moved, {skipped} skipped, {failed} failed.",
+        "failed": "The move stopped."
+      },
+      "count-total": "Products to move",
+      "count-moved": "Moved",
+      "count-skipped": "Skipped",
+      "count-failed": "Failed",
+      "failed-body": "The move stopped before it finished. Some products may not have moved. Start it again to move the rest.",
+      "skipped-note": "Skipped products were no longer in {name} when their turn came, so there was nothing to move.",
+      "failed-note": "Some products could not be moved. Start the move again to try them.",
+      "view-progress": "View progress",
+      "view-failed": "We couldn't read the progress. Try again.",
+      "attached-note": "This move was started earlier. It may be moving products to a different category than the one you chose.",
+      "attach-finished": "That move just finished. Reload the page.",
+      "progress-gone": "This category is no longer available. Reload the page.",
+      "progress-unreadable": "We can't read the progress right now. The move keeps running and we keep trying.",
+      "keeps-running": "You can close this window. The move keeps running.",
+      "error": {
+        "category_not-found": "This category is no longer available. Reload.",
+        "category_target-not-found": "The category you chose is no longer available. Reload to choose another.",
+        "category_move-unchanged": "Those products are already in that category. Choose another.",
+        "category_level-not-allowed": "Choose a more specific category. Products can't go on a department or group.",
+        "category_not-editable": "This category can't be changed any more. Reload.",
+        "category_no-products": "This category has no published products to move.",
+        "category_move-in-progress": "A move from this category is already running."
+      }
     },
     "restructure": {
       "title": {
@@ -10455,6 +10638,31 @@
       "page": "Page {page}",
       "narrow": "Narrow the list to see more.",
       "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other rows."
+    },
+    "export": {
+      "menu": "Export",
+      "menu-help": "CSV or XLSX, with the columns shown",
+      "title": "Export {count, plural, one {# row} other {# rows}}",
+      "title-all": "Export all matching rows",
+      "body": "The file has the columns shown in the list, and the rows you selected or every row the filter matches.",
+      "legend": "File format",
+      "csv": "CSV",
+      "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+      "xlsx": "XLSX",
+      "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+      "confirm": "Export",
+      "cancel": "Cancel",
+      "pending": "Preparing your file…",
+      "done": "{count, plural, one {Exported # row.} other {Exported # rows.}}",
+      "done-unknown": "Your file is ready.",
+      "error": {
+        "too-large": "Too many rows to export: {total} match, and one file holds up to {max}. Narrow the filter or select fewer rows.",
+        "too-large-plain": "Too many rows to export. Narrow the filter or select fewer rows.",
+        "too-broad": "This search is too broad to export. Narrow the search and try again.",
+        "denied": "You don't have access to export this list.",
+        "invalid": "This list can't be exported with its current filters. Change them and try again.",
+        "unavailable": "Export failed. Try again."
+      }
     }
   },
   "shipments": {
@@ -10581,8 +10789,7 @@
     "bulk": {
       "button": "Bulk action",
       "selected": "{count, plural, one {# shipment selected} other {# shipments selected}}",
-      "all-open": "All matching shipments selected",
-      "none-yet": "No bulk actions are available for shipments yet."
+      "all-open": "All matching shipments selected"
     },
     "actions": {
       "header": "Actions",
