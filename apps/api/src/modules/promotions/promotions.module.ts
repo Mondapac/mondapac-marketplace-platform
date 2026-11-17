@@ -34,6 +34,7 @@ import {
   CustomersModule,
   type CustomerGroupUsageRegistry,
 } from '../customers';
+import { EngagementModule } from '../engagement';
 import { CountGroupSegmentUses } from './application/use-cases/count-group-segment-uses.use-case';
 import {
   CUSTOMER_GROUP_MEMBERSHIP,
@@ -66,6 +67,7 @@ import { ListCustomerPromotionCredits } from './application/use-cases/list-custo
 import { ListPromotionCredits } from './application/use-cases/list-promotion-credits.use-case';
 import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
 import { ViewMyReferral } from './application/use-cases/view-my-referral.use-case';
+import { ViewStoreFollowGift } from './application/use-cases/view-store-follow-gift.use-case';
 import { GenerateBatchCodes } from './application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from './application/use-cases/view-batch-code-summary.use-case';
 import { CheckWasPrice } from './application/use-cases/check-was-price.use-case';
@@ -111,6 +113,7 @@ import { promotionsProviders } from './infrastructure/promotions-providers';
 import {
   AdminPromotionsController,
   CustomerReferralController,
+  StoreFollowGiftController,
   SellerPromotionsController,
 } from './presentation/promotions.controller';
 import { deliveryCreditSubscriptions } from './presentation/subscribers/delivery-credit.subscriptions';
@@ -179,12 +182,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     CatalogModule,
     CommissionPayoutsModule,
     CustomersModule,
+    EngagementModule,
     IdentityModule,
     PricingModule,
     SellersModule,
     WalletModule,
   ],
-  controllers: [AdminPromotionsController, SellerPromotionsController, CustomerReferralController],
+  controllers: [
+    AdminPromotionsController,
+    SellerPromotionsController,
+    CustomerReferralController,
+    StoreFollowGiftController,
+  ],
   providers: [
     PersistenceModule.auditWriterFor('promotions'),
     PersistenceModule.auditTrailReaderFor('promotions'),
@@ -237,6 +246,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ListCustomerPromotionCredits,
       ApplyReferralCode,
       ViewMyReferral,
+      ViewStoreFollowGift,
       CashbackOnDelivery,
       QualifyReferralOnDelivery,
       CountGroupSegmentUses,

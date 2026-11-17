@@ -13,7 +13,7 @@ import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type {
-  CustomerReadModelPeers,
+  ReadModelPeers,
   DirectoryRecordPeer,
   OrderStatsPeerValue,
 } from './ports/customer-read-model-peers';
@@ -44,7 +44,7 @@ const delivery = (n: number): EventDelivery => ({
   attempt: 1,
 });
 
-class FakePeers implements CustomerReadModelPeers {
+class FakePeers implements ReadModelPeers {
   accounts = new Map<string, DirectoryRecordPeer>();
   totals = new Map<string, OrderStatsPeerValue>();
   orderOwner = new Map<string, Id<'Account'>>();

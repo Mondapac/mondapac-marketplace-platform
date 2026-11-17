@@ -16,14 +16,14 @@ import {
   accountOfRefund,
   type ReadModelFailure,
 } from '../customer-read-model-flow';
-import type { CustomerReadModelPeers } from '../ports/customer-read-model-peers';
+import type { ReadModelPeers } from '../ports/customer-read-model-peers';
 import type { ReviewsSectionPeer } from '../ports/customer-section-peers';
 import type { CustomerTimelineRepository } from '../ports/customer-timeline.repository';
 
 /** A timeline detail is a short lower-case code (the table's CHECK). */
 const CHANNEL_CODE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 
-export interface TimelineRecordDependencies extends CustomerReadModelPeers {
+export interface TimelineRecordDependencies extends ReadModelPeers {
   /** reviews' author lookup (rule `system`), bound at start; fails closed until then. */
   readonly reviews: Pick<ReviewsSectionPeer, 'reviewAuthorOf'>;
   readonly unitOfWork: UnitOfWork;

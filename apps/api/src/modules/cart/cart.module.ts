@@ -35,6 +35,7 @@ import { ReadCheckoutLines } from './application/use-cases/read-checkout-lines.u
 import { ListIdleAccountCarts } from './application/use-cases/list-idle-account-carts.use-case';
 import {
   CART_ADMIN_FACADE,
+  CART_ASSISTANT_FACADE,
   CART_CHECKOUT_FACADE,
   CART_PERMISSIONS,
   CART_REMINDER_FACADE,
@@ -42,7 +43,10 @@ import {
 import { AdminCustomerCartRead } from './application/use-cases/admin-customer-cart.use-case';
 import { AdminCustomerSavedItems } from './application/use-cases/admin-customer-saved-items.use-case';
 import { CartAdminFacadeImplementation } from './presentation/cart-admin.facade';
+import { ReadAssistantOfferUnits } from './application/use-cases/read-assistant-offer-units.use-case';
+import { ViewAssistantCart } from './application/use-cases/view-assistant-cart.use-case';
 import { cartProviders } from './infrastructure/cart-providers';
+import { CartAssistantFacadeImplementation } from './presentation/cart-assistant.facade';
 import { CartCheckoutFacadeImplementation } from './presentation/cart-checkout.facade';
 import { CartReminderFacadeImplementation } from './presentation/cart-reminder.facade';
 import { CartController } from './presentation/cart.controller';
@@ -109,6 +113,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       // Customers management phase 2b: the admin's reads of one customer's cart.
       AdminCustomerCartRead,
       AdminCustomerSavedItems,
+      ViewAssistantCart,
+      ReadAssistantOfferUnits,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     registerPermissions('cart', CART_PERMISSIONS),
     {
@@ -152,7 +158,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (cart: AdminCustomerCartRead, saved: AdminCustomerSavedItems) =>
         new CartAdminFacadeImplementation(cart, saved),
     },
+    {
+      provide: CART_ASSISTANT_FACADE,
+      inject: [ViewAssistantCart, ReadAssistantOfferUnits],
+      useFactory: (view: ViewAssistantCart, units: ReadAssistantOfferUnits) =>
+        new CartAssistantFacadeImplementation(view, units),
+    },
   ],
-  exports: [CART_CHECKOUT_FACADE, CART_REMINDER_FACADE, CART_ADMIN_FACADE],
+  exports: [CART_CHECKOUT_FACADE, CART_REMINDER_FACADE, CART_ADMIN_FACADE, CART_ASSISTANT_FACADE],
 })
 export class CartModule {}

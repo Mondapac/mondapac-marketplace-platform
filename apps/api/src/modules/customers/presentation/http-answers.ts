@@ -37,6 +37,7 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'customers.password-reset-recently-requested': 429,
   // Security review of #969 (L2/L3): the per-admin limits of the reveals and the password reset.
   'request.throttled': 429,
+  'customers.seller-customer-not-found': 404,
 });
 
 /**

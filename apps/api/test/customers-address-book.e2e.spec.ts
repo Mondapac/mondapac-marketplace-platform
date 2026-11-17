@@ -115,6 +115,7 @@ describe('customer address book routes over HTTP', () => {
       'customers.group-name-taken': 409,
       'customers.group-limit-reached': 409,
       'customers.group-archived': 409,
+      'customers.seller-customer-not-found': 404,
       'saved-filter.limit-reached': 409,
       'saved-filter.name-taken': 409,
       'saved-filter.not-found': 404,

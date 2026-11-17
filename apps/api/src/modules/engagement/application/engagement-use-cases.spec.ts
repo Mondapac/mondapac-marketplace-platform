@@ -17,7 +17,10 @@ import { EngagementFacadeImplementation } from '../presentation/engagement.facad
 import type { EngagementDependencies } from './engagement-dependencies';
 import {
   FakeEngagementGuestTokens,
+  FakePublishedStores,
   InMemoryBehaviourEvents,
+  InMemoryStoreFollows,
+  RecordingEngagementOutbox,
   InMemoryPersonalizationSettings,
 } from './testing/in-memory-engagement';
 import { ForgetAccount } from './use-cases/forget-account.use-case';
@@ -75,6 +78,12 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
   const quiet = { globalPrivacyControl: false };
   const consented = { ...quiet, consent: true };
 
+  // The follow methods are covered in store-follow.spec.ts.
+  const NO_FOLLOW_USE_CASES = {
+    followedAmong: null as never,
+    ownFollowedAmong: null as never,
+    followsOfAccount: null as never,
+  };
   let clock: FixedClock;
   let events: InMemoryBehaviourEvents;
   let settings: InMemoryPersonalizationSettings;
@@ -100,6 +109,9 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
       events,
       settings,
       guestTokens: tokens,
+      follows: new InMemoryStoreFollows(),
+      stores: new FakePublishedStores(),
+      outbox: new RecordingEngagementOutbox(),
       ids: new SequenceIdGenerator(clock),
       clock,
     };
@@ -392,6 +404,7 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
         forgetAccount: uc.forget,
         recentViewsOfCustomer: uc.recent,
         recentViewsOfGuest: uc.recentGuest,
+        ...NO_FOLLOW_USE_CASES,
       });
 
       expect(await facade.forgetAccount(alice, ALICE)).toMatchObject({ ok: false });
@@ -422,6 +435,7 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
         forgetAccount: uc.forget,
         recentViewsOfCustomer: uc.recent,
         recentViewsOfGuest: uc.recentGuest,
+        ...NO_FOLLOW_USE_CASES,
       });
     const record = async (who: CallContextLike, ...bodies: Record<string, unknown>[]) => {
       for (const event of bodies) {

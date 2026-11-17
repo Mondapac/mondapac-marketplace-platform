@@ -127,6 +127,11 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'customers.read-model-order-paid',
       'customers.read-model-refund-succeeded',
       'customers.read-model-registered',
+      // Customers phase 3: the per-seller customers, from orders, refunds and store follows.
+      'customers.seller-customers-order-paid',
+      'customers.seller-customers-refund-succeeded',
+      'customers.seller-customers-store-followed',
+      'customers.seller-customers-store-unfollowed',
       // Customers phase 2 (PR 2a): the same events copied onto the customer's activity timeline.
       // Phase 2b, part 4: legal's consent event too (channel only, never the value).
       'customers.timeline-consent-changed',
@@ -260,6 +265,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('ordering.order-paid.v1')).toEqual([
       'customers.read-model-order-paid',
+      'customers.seller-customers-order-paid',
       'customers.timeline-order-paid',
       'notifications.order-confirmation-mail',
       'notifications.seller-new-order-mail',
@@ -284,6 +290,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
       'customers.read-model-refund-succeeded',
+      'customers.seller-customers-refund-succeeded',
       'customers.timeline-refund-succeeded',
       'notifications.item-unavailable-refund-mail',
       'ordering.cancel-carrier-after-refund',
