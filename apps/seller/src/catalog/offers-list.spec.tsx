@@ -58,8 +58,7 @@ const pageOf = (rows: OfferListRow[], over: Partial<OfferListPage> = {}): OfferL
 const ok = (body: OfferListPage) => ({ ok: true as const, status: 200, body });
 
 function serve(make: (url: string) => OfferListPage) {
-  call.mockImplementation(((_method: string, path: string) =>
-    Promise.resolve(ok(make(path)))));
+  call.mockImplementation((_method: string, path: string) => Promise.resolve(ok(make(path))));
 }
 const lastUrl = (): string => {
   const calls = call.mock.calls.filter(
