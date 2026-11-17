@@ -2671,7 +2671,12 @@ const RESTRUCTURE_DEPS = {
       familyResolver: true,
       topicReader: true,
     }),
-    useCaseProvider(OwnOffersList, { unitOfWork: true, ownReader: true, policy: true }),
+    useCaseProvider(OwnOffersList, {
+      unitOfWork: true,
+      ownReader: true,
+      policy: true,
+      ownEditProbe: true,
+    }),
     useCaseProvider(OwnOfferRead, {
       unitOfWork: true,
       offers: true,

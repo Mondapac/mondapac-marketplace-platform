@@ -1449,6 +1449,43 @@ describe('relay of the seller import routes (catalog design 14c)', () => {
   });
 });
 
+describe('relay of the seller Offer list', () => {
+  const list = ['catalog', 'seller', 'offers'];
+  const get = (query: string) =>
+    new Request(`http://seller.localhost:3001/api/catalog/seller/offers${query}`, {
+      method: 'GET',
+      headers: { host: 'seller.localhost:3001' },
+    });
+
+  it('forwards the list parameters, the paging mode included, and drops everything else', async () => {
+    const upstream = upstreamOk();
+    const query =
+      '?view=drafts&q=olive&status=draft&listed=false&sort=sku&direction=asc&page=2&pageSize=50' +
+      '&paging=prev-next&extra=1';
+    expect((await relay(config, get(query), list, upstream)).status).toBe(200);
+    const sent = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(sent.pathname).toBe('/catalog/seller/offers');
+    expect(Object.fromEntries(sent.searchParams)).toEqual({
+      view: 'drafts',
+      q: 'olive',
+      status: 'draft',
+      listed: 'false',
+      sort: 'sku',
+      direction: 'asc',
+      page: '2',
+      pageSize: '50',
+      paging: 'prev-next',
+    });
+  });
+
+  it('drops a value of the wrong shape', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get('?view=bogus&sort=name&paging=infinite&page=1'), list, upstream);
+    const sent = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(Object.fromEntries(sent.searchParams)).toEqual({ page: '1' });
+  });
+});
+
 describe('relay of the seller product list', () => {
   const CATEGORY = '0190a000-0000-7000-8000-0000000000c1';
   const list = ['catalog', 'seller', 'products'];
