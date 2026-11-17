@@ -287,3 +287,13 @@ or the values.
 - Excluding the author from their own request's reminder: notices are Market-wide and shown by
   permission (below), so an author who also holds the area's review key sees it too.
 - The admin panel pages (frontend package).
+
+## Panel: not yet
+
+The admin panel pages (queue, detail, review policy, menu badge) are built. Left out for now:
+
+- Saved filters and CSV/XLSX export: the queue shows Export disabled with the hint "Export comes
+  with saved filters" until the shared kit has System requests routes for them.
+- Requested by and Decided by pickers: the team list is not relayed to the browser and needs a
+  different permission, so those two filters work from ids in the address only.
+- Phone layout: built (bottom sheets, sticky action bar) but not yet checked by hand on a phone.
