@@ -125,6 +125,19 @@ describe.each(TEST_MARKETS)('lists saved-filter reorder in market %s (database)'
     );
   });
 
+  it('keeps the filters of the admin Sales lists (no migration: the list_key CHECK is a pattern)', async () => {
+    const mine = idOf<'Account'>();
+    const keys = ['admin.ordering.shipments', 'admin.ordering.refunds', 'admin.ordering.documents'];
+    for (const listKey of keys) {
+      const row = filter(listKey, mine, 1);
+      const added = await within(market, () => store.add(market, row));
+      expect(added.ok && added.value).toBe('ok');
+      expect(await positions(mine, listKey)).toEqual([{ id: row.id, position: 1 }]);
+      const seen = await within(market, () => store.visibleTo(market, null, listKey, mine));
+      expect(seen.ok && seen.value.map((found) => found.id)).toEqual([row.id]);
+    }
+  });
+
   it('lets the application role update the position column and nothing that identifies a row', async () => {
     const mine = idOf<'Account'>();
     const row = filter(LIST_A, mine, 1);

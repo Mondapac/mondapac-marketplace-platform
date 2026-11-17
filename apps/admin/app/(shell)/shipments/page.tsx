@@ -43,6 +43,7 @@ export default async function ShipmentsPage({
           paging={paging}
           accountId={gate.session.accountId}
           marketId={marketId}
+          csrfToken={gate.session.csrfToken}
           zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
           sellerId={seller}
         />

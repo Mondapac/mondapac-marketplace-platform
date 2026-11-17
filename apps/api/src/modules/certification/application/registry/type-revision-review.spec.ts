@@ -85,7 +85,7 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
   });
   afterEach(() => jest.restoreAllMocks());
 
-  function rig(reviewed = true) {
+  function rig(reviewed = true, seed: TypeRevisionContent = contentOf()) {
     const clock = new FixedClock(T0);
     const ids = new SequenceIdGenerator(clock);
     const registry = new MemoryRegistry();
@@ -110,7 +110,7 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
     registry.addType(
       market,
       { id: typeId, code: 'qorvane', status: 'active' },
-      { id: seedRevision, content: contentOf() },
+      { id: seedRevision, content: seed },
       T0,
       'seed',
     );
@@ -369,6 +369,122 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
     const before = published(r);
     expect(await r.revert(requestOf(r))).toBe('not-permitted');
     expect(published(r)).toBe(before);
+  });
+
+  describe('a type revert goes through only for an edit of names, descriptions or the badge icon', () => {
+    // The least strict content a type can hold, so every setting can be tightened by a save that
+    // is published at once (a tightening relaxes nothing, so it opens a request).
+    const lax = (): TypeRevisionContent =>
+      contentOf({
+        verificationMode: 'SELF_DECLARATION',
+        requiresIssuerRegistry: false,
+        requiresDocument: false,
+        requiresExpiry: false,
+        defaultBasis: 'SELLER_REQUIRED',
+        autoApproveSelfDeclaration: true,
+      });
+    const edits: readonly (readonly [string, TypeRevisionContent, 'reverted' | 'not-permitted'])[] =
+      [
+        ['the names', { ...lax(), ...renamed('Qorvane Seal') }, 'reverted'],
+        ['the descriptions', { ...lax(), ...described('Holds a seal.') }, 'reverted'],
+        ['the badge icon', { ...lax(), badgeIconKey: 'shield' }, 'reverted'],
+        [
+          'names, descriptions and the icon together',
+          { ...lax(), ...renamed('Qorvane Seal', 'Holds a seal.'), badgeIconKey: 'shield' },
+          'reverted',
+        ],
+        [
+          'auto-approval switched off',
+          { ...lax(), autoApproveSelfDeclaration: false },
+          'not-permitted',
+        ],
+        ['a document now required', { ...lax(), requiresDocument: true }, 'not-permitted'],
+        [
+          'the issuer registry now required',
+          { ...lax(), requiresIssuerRegistry: true },
+          'not-permitted',
+        ],
+        ['an expiry now required', { ...lax(), requiresExpiry: true }, 'not-permitted'],
+        ['a stricter default basis', { ...lax(), defaultBasis: 'NOT_APPLICABLE' }, 'not-permitted'],
+        ['a claim term added', withTerms(lax(), ['qorvane', 'qorvane seal']), 'not-permitted'],
+        [
+          'a rename together with a tightened setting',
+          { ...lax(), ...renamed('Qorvane Seal'), requiresExpiry: true },
+          'not-permitted',
+        ],
+      ];
+
+    function renamed(name: string, description?: string): Pick<TypeRevisionContent, 'locales'> {
+      return {
+        locales: Object.fromEntries(
+          Object.entries(lax().locales).map(([l, text]) => [
+            l,
+            { ...text, name, customerDescription: description ?? text.customerDescription },
+          ]),
+        ),
+      };
+    }
+    function described(description: string): Pick<TypeRevisionContent, 'locales'> {
+      return renamed('Qorvane', description);
+    }
+    function withTerms(base: TypeRevisionContent, terms: readonly string[]): TypeRevisionContent {
+      return {
+        ...base,
+        locales: Object.fromEntries(
+          Object.entries(base.locales).map(([l, text]) => [l, { ...text, claimTerms: [...terms] }]),
+        ),
+      };
+    }
+
+    it.each(edits)('restoring %s answers %s', async (_label, content, expected) => {
+      const r = rig(true, lax());
+      const saved = await unwrap(
+        r.save.execute(r.admin(), { typeId: r.typeId, version: 1, content, note: 'Edit' }),
+      );
+      expect(saved).toMatchObject({ outcome: 'published' });
+      const revisions = r.registry.state.revisions.size;
+      expect(await r.revert(requestOf(r))).toBe(expected);
+      if (expected === 'reverted') {
+        expect(r.registry.state.revisions.get(published(r))!.content).toEqual(lax());
+      } else {
+        expect(published(r)).toBe(saved.revisionId);
+        expect(r.registry.state.revisions.size).toBe(revisions);
+      }
+    });
+  });
+
+  it('locks the type row before a relaxing save checks for a pending proposal', async () => {
+    const r = rig();
+    let locked = false;
+    // A revert of the type publishes between the save's read and its lock: the lock finds the
+    // version moved and the save is refused before it writes a revision or a proposal.
+    r.registry.beforeTypeLock = () => {
+      locked = true;
+      r.registry.state.types.get(r.typeId)!.version += 1;
+    };
+    const raced = await r.save.execute(r.admin(), {
+      typeId: r.typeId,
+      version: 1,
+      content: contentOf({ requiresDocument: false }),
+    });
+    expect(locked).toBe(true);
+    expect(!raced.ok && raced.error).toEqual({ code: 'conflict.stale' });
+    expect(r.registry.state.revisions.size).toBe(1);
+    expect(await r.registry.pendingProposal(market, 'type-revision', r.typeId)).toBeNull();
+
+    // Unraced, the same save takes the lock and waits for a second admin.
+    r.registry.state.types.get(r.typeId)!.version = 1;
+    r.registry.beforeTypeLock = () => (locked = true);
+    locked = false;
+    const relaxing = await unwrap(
+      r.save.execute(r.admin(), {
+        typeId: r.typeId,
+        version: 1,
+        content: contentOf({ requiresDocument: false }),
+      }),
+    );
+    expect(locked).toBe(true);
+    expect(relaxing).toMatchObject({ outcome: 'pending-second-admin' });
   });
 
   it('answers changed-since after a later publication, also one that races the lock', async () => {
