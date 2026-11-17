@@ -228,6 +228,19 @@ export const AttributeDefinitionRevisedAudit = defineAuditAction({
   },
 });
 
+/**
+ * A reviewer rejected, or its author withdrew, an attribute edit in Admin Inbox › System requests,
+ * and the content before came back as a new revision. `requestId` names the System request, so a
+ * revert is never mistaken for an admin's own edit.
+ */
+export const AttributeDefinitionRevertedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.reverted',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: definitionShape,
+  after: { ...definitionShape, requestId: auditField.id() },
+});
+
 /** An admin published a draft definition: sellers now see it where a feature set names it. */
 export const AttributeDefinitionPublishedAudit = defineAuditAction({
   action: 'catalog.attribute-definition.published',
@@ -398,6 +411,15 @@ export const PlatformCategoryCreatedAudit = defineAuditAction({
   },
 });
 
+const categoryDetailsShape = {
+  revisionNo: auditField.integer(),
+  localeCount: auditField.integer(),
+  showInMenu: auditField.boolean(),
+  noindex: auditField.boolean(),
+  seoTitleSet: auditField.boolean(),
+  seoDescriptionSet: auditField.boolean(),
+};
+
 /** An admin saved the details of a category (names, descriptions, keywords, search-result fields, menu flag). */
 export const PlatformCategoryDetailsChangedAudit = defineAuditAction({
   action: 'catalog.platform-category.details-changed',
@@ -405,22 +427,21 @@ export const PlatformCategoryDetailsChangedAudit = defineAuditAction({
   actors: ['authenticated'],
   // Flags and counts only (review amendment): whether a search-result title or description is
   // set, never its text.
-  before: {
-    revisionNo: auditField.integer(),
-    localeCount: auditField.integer(),
-    showInMenu: auditField.boolean(),
-    noindex: auditField.boolean(),
-    seoTitleSet: auditField.boolean(),
-    seoDescriptionSet: auditField.boolean(),
-  },
-  after: {
-    revisionNo: auditField.integer(),
-    localeCount: auditField.integer(),
-    showInMenu: auditField.boolean(),
-    noindex: auditField.boolean(),
-    seoTitleSet: auditField.boolean(),
-    seoDescriptionSet: auditField.boolean(),
-  },
+  before: categoryDetailsShape,
+  after: categoryDetailsShape,
+});
+
+/**
+ * A reviewer rejected, or its author withdrew, a category details edit in Admin Inbox › System
+ * requests, and the details before came back as a new revision. `requestId` names the System
+ * request.
+ */
+export const PlatformCategoryDetailsRevertedAudit = defineAuditAction({
+  action: 'catalog.platform-category.details-reverted',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: categoryDetailsShape,
+  after: { ...categoryDetailsShape, requestId: auditField.id() },
 });
 
 /** An admin moved a category up or down among its siblings. */
@@ -866,6 +887,19 @@ export const CategoryAttributesChangedAudit = defineAuditAction({
   after: linkShape,
 });
 
+/**
+ * A reviewer rejected, or its author withdrew, a change of a category's feature set or filters in
+ * Admin Inbox › System requests, and the links before came back as a new revision. `requestId`
+ * names the System request.
+ */
+export const CategoryAttributesRevertedAudit = defineAuditAction({
+  action: 'catalog.category-attributes.reverted',
+  targetType: CATALOG_CATEGORY_LINKS_TARGET,
+  actors: ['authenticated'],
+  before: linkShape,
+  after: { ...linkShape, requestId: auditField.id() },
+});
+
 /** The audit target type of an "Email sellers" request: the seller asked. */
 export const CATALOG_MISSING_DETAILS_EMAIL_TARGET = 'catalog.missing-details-email';
 
@@ -993,6 +1027,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   SavedFilterRemovedAudit,
   AttributeDefinitionCreatedAudit,
   AttributeDefinitionRevisedAudit,
+  AttributeDefinitionRevertedAudit,
   AttributeDefinitionPublishedAudit,
   AttributeDefinitionDiscardedAudit,
   AttributeValuesMergedAudit,
@@ -1005,6 +1040,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   CategoryTreeImportedAudit,
   PlatformCategoryCreatedAudit,
   PlatformCategoryDetailsChangedAudit,
+  PlatformCategoryDetailsRevertedAudit,
   PlatformCategoryReorderedAudit,
   PlatformCategoryHiddenAudit,
   PlatformCategoryShownAudit,
@@ -1035,6 +1071,7 @@ export const CATALOG_AUDIT_ACTIONS = [
   TopicSuggestedAudit,
   TopicSuggestionDecidedAudit,
   CategoryAttributesChangedAudit,
+  CategoryAttributesRevertedAudit,
   MissingDetailsEmailRequestedAudit,
   VariantTypeSettingsChangedAudit,
   VariantRequestedAudit,

@@ -42,6 +42,8 @@ export interface AssistantForm {
   readonly dailySpendCap: string;
   readonly monthlySpendCap: string;
   readonly supportHandoff: SupportHandoff;
+  /** Carried unchanged until the panel has its switch (S1-F2): the PUT needs every field. */
+  readonly basketProposals: boolean;
   readonly welcomeText: string;
 }
 
@@ -96,6 +98,7 @@ export function formOf(settings: AssistantSettings): AssistantForm {
     dailySpendCap: dollarsOf(settings.dailySpendCapUsdCents),
     monthlySpendCap: dollarsOf(settings.monthlySpendCapUsdCents),
     supportHandoff: settings.supportHandoff,
+    basketProposals: settings.basketProposals,
     welcomeText: settings.welcomeText ?? '',
   };
 }
@@ -165,6 +168,7 @@ export function settingsOf(
       dailySpendCapUsdCents: daily!,
       monthlySpendCapUsdCents: monthly!,
       supportHandoff: form.supportHandoff,
+      basketProposals: form.basketProposals,
       welcomeText: text === '' ? null : text,
     },
   };

@@ -1,4 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  CatalogueRequestRef,
+  CatalogueReviewBody,
+  NOTE_DESCRIPTION,
+  REQUEST_DESCRIPTION,
+} from './catalogue-review.dto';
 
 // Answers of the admin category read routes (categories package C1). Ids, slugs, names and counts;
 // never an account id of a seller or a permission key.
@@ -165,6 +171,12 @@ export class CategoryDetailBody {
   details!: CategoryEditDetailsBody;
   @ApiProperty({ description: 'The tree version a structural change of this category must name.' })
   treeVersion!: number;
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description:
+      'Whether a details save is reviewed in this Market: the form then asks for a note.',
+  })
+  review!: CatalogueReviewBody;
 }
 
 export class CategoryImpactBody {
@@ -244,6 +256,7 @@ export class CategoryEditDetailsRequest {
       '`POST :categoryId/image/remove`); a details save never changes it. A value is refused.',
   })
   imageId?: string | null;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class CategoryTreeVersionRequest {
@@ -294,6 +307,11 @@ export class CategoryWriteBody {
 
 export class CategoryWriteWrapBody {
   @ApiProperty({ type: CategoryWriteBody }) category!: CategoryWriteBody;
+}
+
+export class CategoryEditDetailsWrapBody extends CategoryWriteWrapBody {
+  @ApiProperty({ type: CatalogueRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: CatalogueRequestRef | null;
 }
 
 export class CategoryImageSetRequest {
