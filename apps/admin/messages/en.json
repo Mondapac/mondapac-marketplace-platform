@@ -9505,7 +9505,95 @@
       "value-code-help": "Optional. Letters a to z, digits and hyphens. Made from the name if left empty.",
       "value-code-needed": "Required: the name has no Latin letters or digits. Use letters a to z, digits and hyphens.",
       "value-code-bad": "Start with a letter; use only letters a to z, digits and hyphens.",
-      "title": "Value suggestions from sellers"
+      "title": "Value suggestions from sellers",
+      "dialog": {
+        "approve": {
+          "title": "Approve “{label}”?",
+          "body": "“{label}” becomes a value of {attribute} for every seller, and the seller who asked is told by email."
+        },
+        "map": {
+          "title": "Map “{label}” to an existing value?",
+          "body": "The seller who asked for “{label}” on {attribute} is told which existing value to use. No new value is added."
+        },
+        "reject": {
+          "title": "Reject “{label}”?",
+          "body": "“{label}” is not added to {attribute}. The seller who asked reads your reason in an email."
+        }
+      },
+      "list": {
+        "title": "Value suggestions",
+        "intro": "Values that sellers asked for on a product form, oldest first.",
+        "tabs": "Suggestion views",
+        "tab": {
+          "open": "Waiting"
+        },
+        "search": {
+          "label": "Search suggestions",
+          "placeholder": "Seller's words"
+        },
+        "filter": {
+          "title": "Filter suggestions"
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "created": "Date asked"
+          },
+          "date": {
+            "first": "Newest first",
+            "second": "Oldest first"
+          }
+        },
+        "sorted": "Sorted by {field}, {order}",
+        "col": {
+          "label": "Suggested value",
+          "attribute": "Field",
+          "product": "Product",
+          "requested": "Asked"
+        },
+        "chip-search": "Search: {text}",
+        "loading": "Loading suggestions",
+        "match": "{count, plural, one {# suggestion matches} other {# suggestions match}}",
+        "range": "{from}–{to} of {total}",
+        "too-many": "More than {limit} suggestions match. Add a search to see the rest.",
+        "no-access": "Your role cannot see value suggestions.",
+        "error": {
+          "unavailable": "The suggestions could not be loaded. Check your connection and try again.",
+          "refused": "The search cannot be used. Change it and try again."
+        },
+        "empty": {
+          "title": "Nothing is waiting for you",
+          "body": "Values that sellers ask for on a product form will show here.",
+          "no-match": "No suggestions match",
+          "no-match-help": "Change the search, or clear it."
+        },
+        "select": {
+          "page": "Select all suggestions on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# suggestion selected} other {# suggestions selected}}",
+          "all": "{count, plural, one {The # matching suggestion is selected} other {All # matching suggestions are selected}}",
+          "all-open": "All matching suggestions are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "actions": {
+          "header": "Actions",
+          "for": "Actions for {name}",
+          "approve": "Approve…",
+          "map": "Map to existing value…",
+          "reject": "Reject…"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# suggestion selected} other {# suggestions selected}}",
+          "all-open": "All matching suggestions selected"
+        }
+      }
     },
     "detail-page": {
       "back": "Back to attributes"

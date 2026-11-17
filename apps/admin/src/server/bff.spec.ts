@@ -2073,6 +2073,25 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/attributes');
   });
 
+  it('passes the list keys of the value suggestions in their shapes, and drops the rest', async () => {
+    const { upstream } = await run(
+      'GET',
+      'catalog/admin/attribute-suggestions?q=oat&page=2&pageSize=25&paging=pages&sort=created&direction=asc&x=1',
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/attribute-suggestions?q=oat&page=2&pageSize=25&paging=pages&sort=created&direction=asc',
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/attribute-suggestions?page=0&paging=all&sort=label&direction=up',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/attribute-suggestions',
+    );
+  });
+
   it('passes the page keys of the attribute list in their shapes', async () => {
     const { upstream } = await run(
       'GET',

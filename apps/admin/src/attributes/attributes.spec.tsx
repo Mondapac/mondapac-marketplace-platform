@@ -342,6 +342,8 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(query.get('page')).toBe('1');
     expect(query.get('paging')).toBe('pages');
     expect(query.get('limit')).toBeNull();
+    // The languages and feature sets arrive with the first answer; they do not read the list again.
+    expect(calls('catalog/admin/attributes?')).toHaveLength(1);
   });
 
   it('opens an attribute from the Actions menu', async () => {

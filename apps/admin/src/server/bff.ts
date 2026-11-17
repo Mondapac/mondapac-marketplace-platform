@@ -828,6 +828,15 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
+  'catalog/admin/attribute-suggestions': [
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/topic-suggestions': [
     'limit',
     'q',
@@ -995,6 +1004,14 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     pageSize: /^([1-9][0-9]?|100)$/,
     paging: /^(pages|prev-next)$/,
     sort: /^submitted$/,
+    direction: /^(asc|desc)$/,
+  },
+  'catalog/admin/attribute-suggestions': {
+    limit: /^([1-9][0-9]?|100)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^created$/,
     direction: /^(asc|desc)$/,
   },
   'catalog/admin/topic-suggestions': {
