@@ -96,7 +96,7 @@ session and CSRF token, only after the buyer clicks (ADR-0019 R4).
   most 10, each with its price, Variant label and `maxQuantity` (the Market's line ceiling, lowered
   by the stock read only while stock is low: the "max N" of the brief, never a stock count). A
   signed-in buyer's cart is read too: each unit's `lineId`, `inCart` and `addable` (`maxQuantity -
-  inCart`, since the cart's add caps the sum; 0 for a unit with no line when the cart holds its
+inCart`, since the cart's add caps the sum; 0 for a unit with no line when the cart holds its
   most lines, `cartFull`). The proposed quantity is lowered to the unit's `addable` (to the largest
   one when the buyer picks among several; the widget clamps to the chosen unit's), with
   `limited: true`; when nothing more fits there is no card. The cart and the mode are read once per
@@ -278,7 +278,7 @@ not sent to the model and, if the model asks for it anyway, the call is refused 
 - Evaluation set `buyer-assistant-5`: guard cases for totals, injections and diet claims in a
   list, four list-parsing cases (English, Persian, mixed, bullets and fractions) whose expected calls
   must pass the schema, and twelve invalid calls the parser must refuse.
-- **Sell unit** (`variantId`, `maxQuantity`, on every line and option): after planning, the server reads the units of each proposed Offer through the cart's READ facade (`offerUnits`, the buyer's own `CallContext`, at most 60 Offers, 4 at a time, inside the 12 s limit) and puts on the line the unit whose price is the price shown (the cheapest unit for a "from" price). `variantId` is null when the units could not be read or none has that price: the storefront then does not add that line from the card (it opens the product page). `maxQuantity` is the highest quantity one cart line of that unit may hold now; the cart's add still checks again and the storefront shows its answer. Neither field reaches the model.
+- **Sell unit** (`variantId`, `maxQuantity`, on every line and option): after planning, the server reads the units of each proposed Offer through the cart's READ facade (`offerUnits`, the buyer's own `CallContext`, at most 60 Offers, 4 at a time, within 4 s after the plan is done; a slow read never fails a plan, the Offers not reached have no unit) and puts on the line the unit whose price is the price shown (for a "from" price the cheapest unit, when it is at that price). `variantId` is null when the units could not be read in time or none has that price: the storefront then does not add that line from the card (it opens the product page). `maxQuantity` is the highest quantity one cart line of that unit may hold now; the cart's add still checks again and the storefront shows its answer. Neither field reaches the model.
 - **Variants**: the card carries `offerId` and, when read, `variantId` (see above); cart lines are keyed by both. A
   weight or volume line whose Offer has Variants at different prices (`priceFrom`) is never
   auto-picked (the size is often the Variant): it is an option and the buyer picks. F1 reads the
@@ -298,7 +298,7 @@ not sent to the model and, if the model asks for it anyway, the call is refused 
 - **Path.** The widget talks to the API through the buyer relay (`app/api/[...path]`, same
   origin, no CORS): `chatUrl` is `/api/assistant`. The relay allows only `GET assistant/storefront`
   (query `visitor` and `lang`, each only when well shaped) and `POST
-  assistant/conversations/<uuid>/messages` (strict UUID). On these paths, and only these, the
+assistant/conversations/<uuid>/messages` (strict UUID). On these paths, and only these, the
   assistant guest cookie `__Host-assistant-guest-<MARKET>` and the session cross both ways (the
   guest-cart cookie does not), the `x-assistant-preview` header crosses when it has the token
   shape, and the wait is 30 s (the server gives up at 25 s). The answer is buffered, which is

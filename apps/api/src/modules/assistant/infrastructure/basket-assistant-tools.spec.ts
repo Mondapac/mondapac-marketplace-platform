@@ -203,6 +203,38 @@ describe.each(TEST_MARKET_IDS)('BasketAssistantTools in market %s', (marketCode)
   });
 });
 
+describe('BasketAssistantTools sell units', () => {
+  const context = testCallContext(testMarketContext('AU', 'default'), 'anonymous');
+  const inner: AssistantTools = {
+    run: () => Promise.resolve({ forModel: '{}', isError: false, cards: [], notices: [] }),
+  };
+  const one: ToolRequest = {
+    tool: 'plan_basket',
+    items: [{ text: 'rice', quantity: 1, unit: null }],
+  };
+  const sources = (units: BasketSources['units']): BasketSources => ({
+    candidates: () => Promise.resolve(ok([cand('o1', 'A', 'Rice', 500, 'AUD')])),
+    units,
+    cartMode: () => Promise.resolve('multi-store'),
+  });
+
+  it('still returns the card, with no unit, when the unit read is too slow', async () => {
+    const never = sources(() => new Promise(() => undefined));
+    const outcome = await new BasketAssistantTools(inner, never, 5_000, 50).run(context, one);
+    expect(outcome.isError).toBe(false);
+    const card = outcome.cards[0];
+    if (card?.kind !== 'basket-proposal') throw new Error('no card');
+    expect(card.proposal.stores[0]!.lines[0]!.variantId).toBeNull();
+  });
+
+  it('still returns the card when a unit read throws', async () => {
+    const throwing = sources(() => Promise.reject(new Error('x')));
+    const outcome = await new BasketAssistantTools(inner, throwing).run(context, one);
+    expect(outcome.isError).toBe(false);
+    expect(outcome.cards.map((card) => card.kind)).toEqual(['basket-proposal']);
+  });
+});
+
 describe('BasketAssistantTools load limits', () => {
   const context = testCallContext(testMarketContext('AU', 'default'), 'anonymous');
   const inner: AssistantTools = {

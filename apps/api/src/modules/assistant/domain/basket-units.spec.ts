@@ -76,6 +76,23 @@ describe('attachSellUnits', () => {
     expect(mismatch.stores[0]!.lines[0]!.variantId).toBeNull();
   });
 
+  it('gives no unit for a "from" price when the cheapest unit read costs more', () => {
+    const from = planBasket({
+      items: [{ text: 'rice', quantity: 1, unit: null }],
+      candidates: [[candidate('o1', 'Rice', 500n, true)]],
+      mode: 'multi-store',
+      goal: 'best-match',
+    });
+    const filled = attachSellUnits(from, new Map([['o1', [unit('a', 900n), unit('b', 700n)]]]));
+    const picked = filled.stores[0]?.lines[0] ?? filled.uncertain[0]?.options[0];
+    expect(picked?.variantId).toBeNull();
+  });
+
+  it('lists picked lines before options and alternatives', () => {
+    const ids = offerIdsOf(proposal);
+    expect(ids[0]).toBe('o1');
+  });
+
   it('never matches a unit in another currency', () => {
     const other = attachSellUnits(
       proposal,

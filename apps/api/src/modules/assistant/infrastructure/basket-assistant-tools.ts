@@ -14,6 +14,8 @@ import type { ToolRequest } from '../domain/tools';
 /** Lines are searched this many at a time, and the whole plan is cut after this long. */
 const SEARCH_CONCURRENCY = 4;
 export const PLAN_TIMEOUT_MS = 12_000;
+/** The sell units of a plan are read for at most this long after the plan itself is done. */
+export const UNIT_TIMEOUT_MS = 4_000;
 /** Plans running at once in this process; more are refused as failed (load shed, not queued). */
 export const MAX_CONCURRENT_PLANS = 8;
 /** Offers whose sell units one plan reads (a 40-line list has at most 40 picks and 80 options). */
@@ -56,6 +58,7 @@ export class BasketAssistantTools implements AssistantTools {
     private readonly inner: AssistantTools,
     private readonly sources: BasketSources,
     private readonly timeoutMs = PLAN_TIMEOUT_MS,
+    private readonly unitTimeoutMs = UNIT_TIMEOUT_MS,
   ) {}
 
   async run(context: CallContext, request: ToolRequest): Promise<ToolOutcome> {
@@ -65,14 +68,26 @@ export class BasketAssistantTools implements AssistantTools {
     const state = { stopped: false };
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const timeout = new Promise<ToolOutcome>((resolve) => {
+      const timeout = new Promise<null>((resolve) => {
         timer = setTimeout(() => {
           // Stop searching at the next batch: a timed-out plan must not keep working.
           state.stopped = true;
-          resolve(failed);
+          resolve(null);
         }, this.timeoutMs);
       });
-      return await Promise.race([this.plan(context, request.items, state), timeout]);
+      const planned = await Promise.race([this.plan(context, request.items, state), timeout]);
+      clearTimeout(timer);
+      if (planned === null) return failed;
+      // The sell units have a budget of their own: a slow read leaves units out of the card,
+      // it never turns a plan that is done into a failure.
+      const units = await this.readUnitsWithin(context, offerIdsOf(planned));
+      const proposal = attachSellUnits(planned, units);
+      return {
+        forModel: JSON.stringify(summaryForModel(proposal)),
+        isError: false,
+        cards: [{ kind: 'basket-proposal', proposal }],
+        notices: [],
+      };
     } catch {
       return failed;
     } finally {
@@ -86,7 +101,7 @@ export class BasketAssistantTools implements AssistantTools {
     context: CallContext,
     items: readonly BasketItem[],
     state: { stopped: boolean },
-  ): Promise<ToolOutcome> {
+  ): Promise<BasketProposal | null> {
     // One search per distinct line text; a repeated line reuses it.
     const keyOf = (item: BasketItem) => normaliseText(item.text).trim();
     const distinct = new Map<string, string>();
@@ -94,7 +109,7 @@ export class BasketAssistantTools implements AssistantTools {
     const keys = [...distinct.keys()];
     const results = new Map<string, Awaited<ReturnType<BasketSources['candidates']>>>();
     for (let start = 0; start < keys.length; start += SEARCH_CONCURRENCY) {
-      if (state.stopped) return failed;
+      if (state.stopped) return null;
       const batch = keys.slice(start, start + SEARCH_CONCURRENCY);
       const answers = await Promise.all(
         batch.map((key) => this.sources.candidates(context, distinct.get(key)!)),
@@ -104,39 +119,51 @@ export class BasketAssistantTools implements AssistantTools {
     const candidates = [];
     for (const item of items) {
       const answer = results.get(keyOf(item))!;
-      if (!answer.ok) return failed;
+      if (!answer.ok) return null;
       candidates.push(answer.value);
     }
     const mode = await this.sources.cartMode(context);
-    const planned = planBasket({ items, candidates, mode, goal: 'best-match' });
-    const units = await this.readUnits(context, offerIdsOf(planned), state);
-    if (state.stopped) return failed;
-    const proposal = attachSellUnits(planned, units);
-    return {
-      forModel: JSON.stringify(summaryForModel(proposal)),
-      isError: false,
-      cards: [{ kind: 'basket-proposal', proposal }],
-      notices: [],
-    };
+    return planBasket({ items, candidates, mode, goal: 'best-match' });
   }
 
-  /** The sell units of the proposed offers, a few at a time; an offer that cannot be read has none. */
-  private async readUnits(
+  /**
+   * The sell units of the proposed offers, a few at a time, within {@link UNIT_TIMEOUT_MS}; an offer
+   * that cannot be read, or is not reached in time, has none (the card then carries null).
+   */
+  private async readUnitsWithin(
     context: CallContext,
     offerIds: readonly string[],
-    state: { stopped: boolean },
   ): Promise<SellUnitsByOffer> {
     const units = new Map<string, readonly SellUnit[]>();
-    const wanted = offerIds.slice(0, MAX_UNIT_READS);
-    for (let start = 0; start < wanted.length; start += SEARCH_CONCURRENCY) {
-      if (state.stopped) break;
-      const batch = wanted.slice(start, start + SEARCH_CONCURRENCY);
-      const answers = await Promise.all(batch.map((id) => this.sources.units(context, id)));
-      batch.forEach((id, index) => {
-        const answer = answers[index]!;
-        if (answer.ok) units.set(id, answer.value);
-      });
+    const state = { stopped: false };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        state.stopped = true;
+        resolve();
+      }, this.unitTimeoutMs);
+    });
+    const reading = (async () => {
+      const wanted = offerIds.slice(0, MAX_UNIT_READS);
+      for (let start = 0; start < wanted.length; start += SEARCH_CONCURRENCY) {
+        if (state.stopped) break;
+        const batch = wanted.slice(start, start + SEARCH_CONCURRENCY);
+        const answers = await Promise.all(
+          batch.map((id) => this.sources.units(context, id).catch(() => null)),
+        );
+        batch.forEach((id, index) => {
+          const answer = answers[index];
+          // A batch that ends after the deadline is dropped with the rest.
+          if (!state.stopped && answer?.ok) units.set(id, answer.value);
+        });
+      }
+    })();
+    try {
+      await Promise.race([reading, expired]);
+    } finally {
+      state.stopped = true;
+      clearTimeout(timer);
     }
-    return units;
+    return new Map(units);
   }
 }
