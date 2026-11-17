@@ -223,4 +223,22 @@ describe('CategoryChooser', () => {
     render(<Harness announcement="Added Drinks › Tea." />);
     expect(screen.getByRole('status').textContent).toBe('Added Drinks › Tea.');
   });
+
+  it('works the same for the synthetic ZZ market: other-script names, a depth-3 path, the same hint', async () => {
+    const onValue = vi.fn();
+    const zz = [
+      mk('zz-leaf', ['Zorbia', 'Plinkus', 'Quuxen']),
+      mk('zz-mid', ['Zorbia', 'Plinkus'], { general: true }),
+    ];
+    render(<Harness choices={zz} onValue={onValue} />);
+    expect(
+      screen.getByText(
+        "Choose a category or subcategory. Products can't go on a department or group.",
+      ),
+    ).toBeTruthy();
+    open();
+    fireEvent.click(await screen.findByRole('option', { name: /^Zorbia › Plinkus › Quuxen/ }));
+    expect(onValue).toHaveBeenLastCalledWith(['zz-leaf']);
+    expect(screen.getByRole('button', { name: 'Remove Zorbia › Plinkus › Quuxen' })).toBeTruthy();
+  });
 });

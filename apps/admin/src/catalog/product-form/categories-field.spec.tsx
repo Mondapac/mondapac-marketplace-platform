@@ -166,4 +166,21 @@ describe('a refused publish', () => {
     expect(problem.categoryIssues).toEqual({ list: 'required', items: { 2: 'unknown' } });
     expect(categoryIssuesOf([]).items).toEqual({});
   });
+
+  it('works for the synthetic ZZ market: its locale, a depth-3 path and the exact hint', async () => {
+    const zz = [
+      choice('zz-leaf', ['Zorbia', 'Plinkus', 'Quuxen']),
+      choice('zz-mid', ['Zorbia', 'Plinkus'], { general: true }),
+    ];
+    call.mockResolvedValue({ ok: true, status: 200, body: { locale: 'zz-ZZ', choices: zz } });
+    render(<Harness />);
+    expect(
+      screen.getByText(
+        "Choose a category or subcategory. Products can't go on a department or group.",
+      ),
+    ).toBeTruthy();
+    open();
+    expect(await screen.findByRole('option', { name: /^Zorbia › Plinkus › Quuxen/ })).toBeTruthy();
+    expect(screen.getByRole('option', { name: /^Zorbia › Plinkus › General/ })).toBeTruthy();
+  });
 });

@@ -254,4 +254,49 @@ describe('category issues of a refused submit', () => {
       ['duplicate', 'level-not-allowed', 'not-available', 'required', 'too-many', 'unknown'].sort(),
     );
   });
+
+  it('works for the synthetic ZZ market: its locale, a depth-3 path and the exact hint', async () => {
+    const base = product(['zz-leaf']);
+    const zzProduct: ProductView = {
+      ...base,
+      form: {
+        ...base.form,
+        categories: [
+          { categoryId: 'zz-leaf', parentId: 'zz-mid', names: { 'zz-ZZ': 'Quuxen' } },
+          { categoryId: 'zz-mid', parentId: 'zz-top', names: { 'zz-ZZ': 'Plinkus' } },
+          { categoryId: 'zz-top', parentId: null, names: { 'zz-ZZ': 'Zorbia' } },
+        ],
+      },
+    };
+    call.mockResolvedValue(
+      picker({
+        locale: 'zz-ZZ',
+        choices: [
+          choice('zz-leaf', ['Zorbia', 'Plinkus', 'Quuxen']),
+          choice('zz-other', ['Zorbia', 'Vex']),
+        ],
+      }),
+    );
+    render(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <EditForm
+          product={zzProduct}
+          photos={[]}
+          locales={['zz-ZZ']}
+          defaultLocale="zz-ZZ"
+          marketName="Zorbia"
+          csrfToken="csrf"
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText(hint)).toBeTruthy();
+    const saved = screen
+      .getAllByRole('list')
+      .map((l) => l.textContent)
+      .join(' ');
+    expect(saved).toContain('Quuxen');
+    expect(saved).toContain('Plinkus');
+    fireEvent.click(screen.getByRole('combobox', { name: 'Add a category' }));
+    expect(await screen.findByRole('option', { name: /^Zorbia › Vex/ })).toBeTruthy();
+  });
 });
