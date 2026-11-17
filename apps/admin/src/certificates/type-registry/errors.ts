@@ -14,6 +14,8 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'review.not-proposer': 'not-proposer',
   'type.revision-unchanged': 'unchanged',
   'type.revision-invalid': 'revision-invalid',
+  'claim-policy.revision-unchanged': 'unchanged',
+  'claim-policy.revision-invalid': 'policy-invalid',
   'conflict.stale': 'stale',
   'conflict.retry': 'retry',
   'access.denied': 'denied',
@@ -41,6 +43,13 @@ const ISSUES: Readonly<Record<string, string>> = {
   'type.auto-approve-needs-self-declaration': 'auto',
   'type.verification-mode-immutable': 'mode',
   'type.default-basis-invalid': 'basis',
+  'duplicate-selector': 'duplicate',
+  'manufacturer-basis-on-handling': 'manufacturer-handling',
+  'category-unknown': 'category-unknown',
+  length: 'too-many',
+  format: 'row-invalid',
+  type: 'row-invalid',
+  'unknown-field': 'row-invalid',
 };
 
 const RELOAD = new Set([

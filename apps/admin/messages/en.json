@@ -1757,7 +1757,9 @@
       },
       "basis": {
         "SELLER_CERT_REQUIRED": "Seller certificate required",
+        "SELLER_REQUIRED": "Seller certificate required",
         "SELLER_OR_MANUFACTURER": "Seller or manufacturer certificate",
+        "NOT_APPLICABLE": "No certificate needed",
         "NO_BADGE_ALLOWED": "No badge allowed"
       },
       "detail": {
@@ -1791,6 +1793,7 @@
         "locale-description-in": "Description for customers ({locale})",
         "locale-terms-in": "Claim terms ({locale})",
         "revise": "Change this type",
+        "policy": "Claim basis policy",
         "inactive-note": "No new certificates of this type can be added. Existing certificates and badges stay.",
         "revision-waiting": "A change to this type is waiting for a second admin.",
         "reactivation-waiting": "A reactivation is waiting for a second admin.",
@@ -1877,7 +1880,8 @@
       "proposal": {
         "title": {
           "revision": "A change waiting for a second admin",
-          "reactivation": "Reactivation waiting for a second admin"
+          "reactivation": "Reactivation waiting for a second admin",
+          "policy": "A policy change waiting for a second admin"
         },
         "sent": "Asked on",
         "reason": "Reason",
@@ -1900,7 +1904,8 @@
             "button": "Approve change",
             "body": {
               "revision": "The change is published at once. Certificates already approved keep the rules they were approved under.",
-              "reactivation": "The type becomes active again and sellers can add new certificates of it."
+              "reactivation": "The type becomes active again and sellers can add new certificates of it.",
+              "policy": "The new rows are published at once and apply to claims made from now on."
             }
           },
           "reject": {
@@ -1908,7 +1913,8 @@
             "button": "Reject change",
             "body": {
               "revision": "The proposal is closed for good. The published revision stays.",
-              "reactivation": "The proposal is closed for good. The type stays inactive."
+              "reactivation": "The proposal is closed for good. The type stays inactive.",
+              "policy": "The proposal is closed for good. The published rows stay."
             }
           },
           "withdraw": {
@@ -1916,17 +1922,97 @@
             "button": "Withdraw proposal",
             "body": {
               "revision": "The proposal is closed. You can propose it again later.",
-              "reactivation": "The proposal is closed. You can ask again later."
+              "reactivation": "The proposal is closed. You can ask again later.",
+              "policy": "The proposal is closed. You can propose it again later."
             }
           }
         },
         "policy-row": "Policy row",
         "reason-erased": "Reason removed"
       },
+      "policy": {
+        "title": "Claim basis policy",
+        "back": "Back to the type",
+        "heading": "Claim basis policy of {code}",
+        "never-saved": "No policy saved yet. The default basis applies everywhere.",
+        "revision": "Revision {n}",
+        "default": "Default basis",
+        "default-help": "Used when no row matches.",
+        "waiting": "A change to this policy is waiting for a second admin.",
+        "published-rows": "Published rows",
+        "no-rows": "There are no rows. The default basis applies to every claim.",
+        "kind": {
+          "category": "Platform category",
+          "handling": "Handling type"
+        },
+        "handling": {
+          "SEALED_ORIGINAL": "Sealed original",
+          "REPACKED": "Repacked",
+          "PREPARED": "Prepared",
+          "FRESH": "Fresh"
+        },
+        "reason": "Reason",
+        "change": "Change the rows",
+        "view-only": "You can view this policy but not change it.",
+        "categories-unavailable": "The categories could not be loaded, so the rows can't be changed right now. Reload the page to try again.",
+        "history": "History",
+        "not-published": "Not published",
+        "has-reason": "Has a reason",
+        "done": {
+          "published": "Policy changed and published.",
+          "pending": "Saved. A second admin has to approve it before it is published.",
+          "approved": "Change approved and published.",
+          "rejected": "Change rejected.",
+          "withdrawn": "Proposal withdrawn.",
+          "sent": "Sent for review as SR-{number}."
+        },
+        "form": {
+          "intro": "One row says which basis a claim needs for a platform category or a handling type. Each category and each handling type can have one row.",
+          "no-rows": "There are no rows yet.",
+          "row": "Row {n}",
+          "category": "Platform category",
+          "pick-category": "Choose a category",
+          "handling": "Handling type",
+          "basis": "Basis",
+          "remove": "Remove this row",
+          "add-category": "Add a category row",
+          "add-handling": "Add a handling row",
+          "reason": "Reason for the change",
+          "optional": "optional",
+          "reason-help": "Up to {max} characters. Shown to the admin who approves it.",
+          "review": "Review changes",
+          "no-changes": "Nothing has changed yet."
+        },
+        "problem": {
+          "category": "Choose a category.",
+          "duplicate": "This category or handling type already has a row.",
+          "manufacturer": "A handling type can't use the manufacturer basis.",
+          "reason": "Keep the reason to {max} characters."
+        },
+        "no-row": "No row",
+        "confirm": {
+          "title": "Save these changes?",
+          "body": "These rows change:",
+          "from": "Before:",
+          "to": "After:",
+          "back": "Back to the form",
+          "save": "Save the change",
+          "reload": "Reload the page",
+          "second-admin": "A change that relaxes a rule waits until a second admin approves it. Other changes are published at once."
+        },
+        "issue": {
+          "duplicate": "A category or handling type has two rows.",
+          "manufacturer-handling": "A handling row can't use the manufacturer basis.",
+          "category-unknown": "A row names a category that isn't an active platform category.",
+          "too-many": "There are too many rows.",
+          "row-invalid": "A row is not valid."
+        }
+      },
       "error": {
         "invalid": "Check the details and try again.",
         "unchanged": "Nothing has changed since the published revision.",
         "revision-invalid": "The API refused the change. Check the wording and the settings.",
+        "policy-invalid": "The API refused the rows. Check them and try again.",
         "gone": "This type no longer exists. Reload the page.",
         "already-inactive": "This type is already inactive. Reload the page.",
         "already-active": "This type is already active. Reload the page.",
