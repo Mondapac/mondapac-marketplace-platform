@@ -19,6 +19,14 @@ vi.mock('next-intl/server', () => ({
       } as never),
     ),
 }));
+vi.mock('next/headers', () => ({
+  headers: () => Promise.resolve(new Headers({ host: 'admin.localhost' })),
+}));
+vi.mock('../../../../src/server/server-fetch.ts', () => ({
+  serverGet: () => Promise.resolve({ kind: 'ok', body: { listPaging: 'pages' } }),
+}));
+vi.mock('../../../../src/server/bff.ts', () => ({ panelHostFor: () => ({ marketId: 'AU' }) }));
+vi.mock('../../../../src/server/config.ts', () => ({ panelConfig: () => ({}) }));
 vi.mock('../../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
 vi.mock('../../../../src/server/admin-shell.tsx', () => ({
   AdminShell: ({

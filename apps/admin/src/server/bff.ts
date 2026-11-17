@@ -134,7 +134,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The sizes sellers asked for, waiting for a decision (catalog, variants V7).
     'catalog/admin/variant-requests',
     // The seller category proposals waiting for a decision (catalog, categories C9a; query:
-    // `afterId`, `limit`).
+    // `q`, `page`, `pageSize`, `paging`, `sort`, `direction`, `afterId`, `limit`).
     'catalog/admin/category-proposals',
     // The tag suggestions waiting for a decision (catalog topics, product tags T5; query: `q`,
     // `page`, `pageSize`, `paging`, `sort`, `direction`, `limit`).
@@ -390,6 +390,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/attribute-suggestions/:id/map',
     'catalog/admin/attribute-suggestions/:id/reject',
     // Decide a seller's size request with the version seen (catalog, variants V7).
+    // Approve or reject up to 50 rows of a queue at once (each row is decided as the caller).
+    'catalog/admin/variant-requests/bulk-decide',
+    'catalog/admin/topic-suggestions/bulk-decide',
+    'catalog/admin/category-proposals/bulk-decide',
     'catalog/admin/variant-requests/:id/approve',
     'catalog/admin/variant-requests/:id/map',
     'catalog/admin/variant-requests/:id/decline',
@@ -760,7 +764,16 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   ],
   // The category tree, narrowed to the categories of one feature set (categories, A4).
   'catalog/admin/categories': ['featureSetId'],
-  'catalog/admin/category-proposals': ['afterId', 'limit'],
+  'catalog/admin/category-proposals': [
+    'afterId',
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/business-activities': [
     'status',
     'search',
@@ -1069,7 +1082,15 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
   'catalog/admin/categories': { featureSetId: UUID },
-  'catalog/admin/category-proposals': { afterId: UUID, limit: /^[0-9]{1,2}$/ },
+  'catalog/admin/category-proposals': {
+    afterId: UUID,
+    limit: /^[0-9]{1,2}$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^created$/,
+    direction: /^(asc|desc)$/,
+  },
   'catalog/admin/brands': {
     status: /^(draft|active|archived)$/,
     limit: /^[0-9]{1,3}$/,
