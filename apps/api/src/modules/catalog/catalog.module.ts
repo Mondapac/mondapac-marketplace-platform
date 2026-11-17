@@ -1400,6 +1400,7 @@ const RESTRUCTURE_DEPS = {
       attributeStore: true,
       sellerNames: true,
       policy: true,
+      platformEditProbe: true,
     }),
     useCaseProvider(VariantRequestApprove, {
       unitOfWork: true,

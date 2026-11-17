@@ -1171,6 +1171,114 @@ describe('relay of the shipments list', () => {
   });
 });
 
+describe('relay of the refunds list', () => {
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/refunds${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['ordering', 'admin', 'refunds'];
+  const SELLER = '0190a000-0000-7000-8000-0000000000b1';
+  const CURSOR = '1763300000000.0190a000-0000-7000-8000-0000000000aa';
+  const urlOf = (upstream: ReturnType<typeof upstreamOk>) => {
+    const target = upstream.mock.calls[0]?.[0];
+    return typeof target === 'string' ? target : '';
+  };
+  const sent = async (query: string) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(200);
+    return new URL(urlOf(upstream)).searchParams;
+  };
+
+  it('forwards the page mode, the tab, the filters and the dates', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'page=2&pageSize=25&sort=amount&direction=desc&state=succeeded&reason=damaged' +
+      '&actor=seller&lossBearer=platform&ledger=waiting&search=Cedar+Lane' +
+      '&from=2026-11-16T14%3A00%3A00.000Z&to=2026-11-17T14%3A00%3A00%2B10%3A00' +
+      `&sellerId=${SELLER}`;
+    await relay(config, get(`?${q}&x=1&minAmount=1&maxAmount=9`), path, upstream);
+    const url = new URL(urlOf(upstream));
+    expect(url.origin + url.pathname).toBe('http://api.test/ordering/admin/refunds');
+    expect(Object.fromEntries(url.searchParams)).toEqual(
+      Object.fromEntries(new URLSearchParams(q)),
+    );
+  });
+
+  it('forwards the Previous and next mode: limit, cursor, and an exact Stripe id as q', async () => {
+    const params = await sent(`?limit=25&cursor=${CURSOR}&q=re_3Pabc123`);
+    expect(Object.fromEntries(params)).toEqual({ limit: '25', cursor: CURSOR, q: 're_3Pabc123' });
+  });
+
+  it('drops the amount filters the panel has no input for, and every unknown key', async () => {
+    const params = await sent('?state=pending&minAmount=100&maxAmount=900&stage=ready&x=1');
+    expect(Object.fromEntries(params)).toEqual({ state: 'pending' });
+  });
+
+  it('drops a value of the wrong shape and keeps the rest', async () => {
+    const params = await sent(
+      '?state=done&sort=name&direction=up&reason=broken&actor=buyer&lossBearer=carrier' +
+        '&ledger=late&sellerId=nope&page=0x&pageSize=1000&limit=-1&cursor=abc&from=yesterday' +
+        '&to=2026-11-16&q=ok',
+    );
+    expect(Object.fromEntries(params)).toEqual({ q: 'ok' });
+  });
+
+  it('accepts each state, sort, reason, actor, loss bearer and ledger the API names', async () => {
+    for (const state of ['pending', 'succeeded', 'failed']) {
+      expect((await sent(`?state=${state}`)).get('state')).toBe(state);
+    }
+    for (const sort of ['requested', 'settled', 'amount']) {
+      expect((await sent(`?sort=${sort}`)).get('sort')).toBe(sort);
+    }
+    for (const reason of [
+      'not-received',
+      'damaged',
+      'wrong-item',
+      'not-as-described',
+      'seller-cancelled',
+      'item-unavailable',
+      'other',
+    ]) {
+      expect((await sent(`?reason=${reason}`)).get('reason')).toBe(reason);
+    }
+    for (const actor of ['admin', 'seller']) {
+      expect((await sent(`?actor=${actor}`)).get('actor')).toBe(actor);
+    }
+    for (const bearer of ['seller', 'platform']) {
+      expect((await sent(`?lossBearer=${bearer}`)).get('lossBearer')).toBe(bearer);
+    }
+    for (const ledger of ['waiting', 'recorded']) {
+      expect((await sent(`?ledger=${ledger}`)).get('ledger')).toBe(ledger);
+    }
+  });
+
+  it('keeps free text up to 80 characters for q and search, and drops more', async () => {
+    const eighty = 'x'.repeat(80);
+    expect((await sent(`?q=${eighty}`)).get('q')).toBe(eighty);
+    expect((await sent(`?search=${eighty}`)).get('search')).toBe(eighty);
+    expect((await sent(`?q=${eighty}y`)).has('q')).toBe(false);
+    expect((await sent(`?search=${eighty}y`)).has('search')).toBe(false);
+    expect((await sent('?q=')).has('q')).toBe(false);
+  });
+
+  it('refuses other paths and methods', async () => {
+    const upstream = upstreamOk();
+    const other = ['ordering', 'admin', 'refunds', '0190a000-0000-7000-8000-000000000001'];
+    expect((await relay(config, get(''), other, upstream)).status).toBe(404);
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const request = new Request('http://admin.localhost:3002/api/ordering/admin/refunds', {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      });
+      expect((await relay(config, request, path, upstream)).status).toBe(404);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
 describe('relay of the sellers without an owner', () => {
   const id = '0190a000-0000-7000-8000-000000000001';
   const get = (query: string) =>
@@ -2341,6 +2449,47 @@ describe('relay of the product list', () => {
       'http://api.test/catalog/admin/products?view=inactive&status=paused',
     );
     expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/admin/products');
+  });
+
+  describe('the order export', () => {
+    const exportPath = ['ordering', 'admin', 'orders', 'export'];
+
+    it('relays the list filter and drops paging, sort and a value of the wrong shape', async () => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        get(
+          `ordering/admin/orders/export?format=csv&status=confirmed&paymentState=captured&fulfilment=shipped&sellerId=${id}&from=2026-10-01T00:00:00.000Z&to=2026-11-01T00:00:00.000Z&page=2&pageSize=50&sort=total&limit=5&cursor=c1`,
+        ),
+        exportPath,
+        upstream,
+      );
+      await relay(
+        config,
+        get('ordering/admin/orders/export?format=xlsx&status=shipped&paymentState=free&from=today'),
+        exportPath,
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/ordering/admin/orders/export?format=csv&status=confirmed&paymentState=captured&fulfilment=shipped&sellerId=${id}&from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z`,
+      );
+      expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/ordering/admin/orders/export');
+    });
+
+    it('does not relay the export as a write', async () => {
+      const upstream = upstreamOk();
+      expect(
+        (
+          await relay(
+            config,
+            post('ordering/admin/orders/export', sameOrigin, '{}'),
+            exportPath,
+            upstream,
+          )
+        ).status,
+      ).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
   });
 
   describe('the bulk action and the export', () => {

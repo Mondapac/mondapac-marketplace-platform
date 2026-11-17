@@ -25,7 +25,7 @@ import { AssistantSpendCapReached } from '../domain/events';
 import { instructionsFor } from '../domain/instructions';
 import { maskPersonalData } from '../domain/personal-data';
 import { guardReply } from '../domain/reply-guard';
-import { parseToolCall, TOOL_DECLARATIONS } from '../domain/tools';
+import { parseToolCall, toolDeclarationsFor } from '../domain/tools';
 import type { AssistantDependencies } from './assistant-dependencies';
 import type {
   ConversationOwner,
@@ -149,7 +149,7 @@ interface Turn {
 
 /**
  * The model loop of one buyer turn, outside any unit of work (ADR-0019 decision 6): the model
- * answers or asks for READ tools, the server runs them with the buyer's own `CallContext` and
+ * answers or asks for the READ tools of the Market's scope, the server runs them with the buyer's own `CallContext` and
  * shows their cards, for at most four calls and 25 seconds. A failed or slow provider ends the
  * turn with the `unavailable` notice and the support card; a refusal with `refused`.
  */
@@ -196,9 +196,9 @@ async function runModel(
       context.market.marketId,
       settings.modelTier,
       {
-        system: instructionsFor(settings.replyLanguage),
+        system: instructionsFor(settings.replyLanguage, settings.scope),
         messages,
-        tools: TOOL_DECLARATIONS,
+        tools: toolDeclarationsFor(settings.scope),
         maxOutputTokens: MAX_OUTPUT_TOKENS,
       },
       Math.min(MODEL_TIMEOUT_MS, left),
@@ -230,7 +230,9 @@ async function runModel(
     const results: ModelBlock[] = [];
     for (const [index, call] of calls.entries()) {
       const request =
-        index < MAX_TOOL_CALLS_PER_ROUND ? parseToolCall(call.name, call.input) : null;
+        index < MAX_TOOL_CALLS_PER_ROUND
+          ? parseToolCall(call.name, call.input, settings.scope)
+          : null;
       if (request === null) {
         results.push({
           type: 'tool-result',

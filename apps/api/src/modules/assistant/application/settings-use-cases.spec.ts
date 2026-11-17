@@ -138,7 +138,6 @@ describe('parseAssistantSettings', () => {
     ['users', 'guests', 'type'],
     ['retention', '7-days', 'type'],
     ['replyLanguage', 'fa', 'type'],
-    ['scope', 'cart-suggestions', 'unavailable'],
     ['supportHandoff', 'in-panel-form', 'unavailable'],
     ['welcomeText', 42, 'type'],
     ['welcomeText', undefined, 'type'],
@@ -146,6 +145,15 @@ describe('parseAssistantSettings', () => {
     const result = parseAssistantSettings({ ...DEFAULT_ASSISTANT_SETTINGS, [path]: value });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContainEqual({ path, code });
+  });
+
+  it('accepts the cart-suggestions scope (S1-B1) and keeps read-only as the default', () => {
+    expect(DEFAULT_ASSISTANT_SETTINGS.scope).toBe('read-only');
+    const result = parseAssistantSettings({
+      ...DEFAULT_ASSISTANT_SETTINGS,
+      scope: 'cart-suggestions',
+    });
+    expect(result.ok && result.value.scope).toBe('cart-suggestions');
   });
 
   it('needs a percentage of 1 to 100 for a percentage rollout, and only then', () => {
@@ -311,7 +319,7 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
           { tier: 'fast', modelId: 'model-fast' },
           { tier: 'balanced', modelId: null },
         ],
-        unavailableOptions: { scope: ['cart-suggestions'], supportHandoff: ['in-panel-form'] },
+        unavailableOptions: { scope: [], supportHandoff: ['in-panel-form'] },
         spend: { todayMicroUsd: 0, monthMicroUsd: 0, conversationsToday: 0, lastAutoOff: null },
         lastChanged: null,
       }),
