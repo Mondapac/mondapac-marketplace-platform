@@ -175,6 +175,33 @@ export class PrismaConversationRepository implements ConversationRepository {
     });
   }
 
+  async datesOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    direction: 'asc' | 'desc',
+    window: { readonly offset: number; readonly limit: number },
+  ) {
+    // Through the buyer list's partial (market, account, last_message_at) index, then a small sort
+    // over one account's conversations; only the two instants are selected.
+    const rows = await this.prisma.tx(market).assistantConversation.findMany({
+      where: { marketId: market.marketId, accountId },
+      orderBy: [{ startedAt: direction }, { id: direction }],
+      skip: window.offset,
+      take: window.limit,
+      select: { startedAt: true, lastMessageAt: true },
+    });
+    return rows.map((row) => ({
+      startedAt: Temporal.Instant.fromEpochMilliseconds(row.startedAt.getTime()),
+      lastMessageAt: Temporal.Instant.fromEpochMilliseconds(row.lastMessageAt.getTime()),
+    }));
+  }
+
+  countOfAccount(market: MarketContext, accountId: Id<'Account'>): Promise<number> {
+    return this.prisma.tx(market).assistantConversation.count({
+      where: { marketId: market.marketId, accountId },
+    });
+  }
+
   async listByAccount(
     market: MarketContext,
     accountId: Id<'Account'>,

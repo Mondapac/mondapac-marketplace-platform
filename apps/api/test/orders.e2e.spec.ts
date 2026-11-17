@@ -1195,6 +1195,22 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
         refunded: money(0n, currency),
       });
       shipmentRows = [row(1), row(2), row(3)];
+      // shipping's carrier progress, through the real adapter over the (fake) facade; an id the
+      // page did not ask about is ignored.
+      shipping.carrierProgress.set(id<'SellerOrder'>(0x5001), {
+        fleet: 'uber_direct',
+        progress: 'picked-up',
+        carrierStatus: 'EN_ROUTE',
+        updatedAt: START,
+        proofOfDelivery: false,
+      });
+      shipping.carrierProgress.set(id<'SellerOrder'>(0x5fff), {
+        fleet: 'uber_direct',
+        progress: 'delivered',
+        carrierStatus: 'DELIVERED',
+        updatedAt: START,
+        proofOfDelivery: true,
+      });
 
       const paged = await http()
         .get('/ordering/admin/shipments?page=1&pageSize=2')
@@ -1228,10 +1244,42 @@ describe.each(TEST_MARKETS)('ordering routes over HTTP in market %s', (code) => 
             trackingRef: 'JD 0123 4567',
             shipping: { amount: '500', currency },
             actions: ['view-order', 'copy-tracking-reference'],
+            carrier: 'Courier',
+            carrierProgress: {
+              progress: 'picked-up',
+              carrierStatus: 'EN_ROUTE',
+              updatedAt: START.toString(),
+              proofOfDelivery: false,
+              fleet: 'uber_direct',
+            },
           },
-          { sellerOrderId: id<'SellerOrder'>(0x5002) },
+          { sellerOrderId: id<'SellerOrder'>(0x5002), carrierProgress: null },
         ],
+        carrierProgressAvailable: true,
       });
+      expect(shipping.carrierProgressAsked[0]).toEqual([
+        id<'SellerOrder'>(0x5001),
+        id<'SellerOrder'>(0x5002),
+      ]);
+      expect(JSON.stringify(body(paged))).not.toContain(id<'SellerOrder'>(0x5fff));
+      // An admin without shipping's key: the list still answers, the column is not available
+      // and the seller's carrier stays.
+      shipping.carrierProgressRefusal = 'access.denied';
+      const denied = await http()
+        .get('/ordering/admin/shipments?page=1&pageSize=2')
+        .set(adminHeaders(VIEWER, 46));
+      shipping.carrierProgressRefusal = 'shipping.unavailable';
+      const down = await http()
+        .get('/ordering/admin/shipments?page=1&pageSize=2')
+        .set(adminHeaders(VIEWER, 47));
+      shipping.carrierProgressRefusal = null;
+      for (const res of [denied, down]) {
+        expect(res.status).toBe(200);
+        expect(body(res)).toMatchObject({
+          carrierProgressAvailable: false,
+          shipments: [{ carrier: 'Courier', carrierProgress: null }, { carrierProgress: null }],
+        });
+      }
       expect(walked.status).toBe(200);
       expect(body(walked)).toMatchObject({
         total: null,

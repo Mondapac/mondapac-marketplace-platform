@@ -108,6 +108,7 @@
     "orders": "Orders",
     "shipments": "Shipments",
     "refunds": "Refunds",
+    "invoices": "Invoices",
     "price-holds": "Pricing",
     "review-queue": "Catalogue requests",
     "certificates": "Certification",
@@ -4119,14 +4120,42 @@
         "name": "Title",
         "name-help": "In English. It is translated when a new buyer language is published.",
         "description": "Description",
-        "categories": "Product category",
-        "categories-help": "Its feature set adds the details below and suggests variant types.",
-        "categories-placeholder": "Choose a category or subcategory",
         "tax": "Tax category",
         "tax-help": "Required. Separate from the product category: it decides GST on every seller's offer.",
-        "categories-help-empty": "Only a category or subcategory (levels 3 and 4). It decides the product details and variant types.",
         "tax-placeholder": "Choose a tax category",
         "name-claim": "Product text can't include certification words like \"halal\". Badges come from seller offers."
+      },
+      "categories-field": {
+        "legend": "Product categories",
+        "hint": "Choose a category or subcategory. Products can't go on a department or group.",
+        "general": "General",
+        "general-hint": "Not in a subcategory",
+        "primary": "Primary",
+        "hidden": "Hidden",
+        "make-primary": "Make primary",
+        "make-primary-for": "Make primary: {name}",
+        "remove": "Remove",
+        "remove-for": "Remove {name}",
+        "add": "Add a category",
+        "add-placeholder": "Search categories",
+        "empty": "No category chosen yet. The first one you choose is the primary category.",
+        "limit": "A product can be in up to 3 categories. Remove one to add another.",
+        "loading": "Loading categories…",
+        "load-error": "We couldn't load the categories.",
+        "retry": "Try again",
+        "search": "Search categories",
+        "no-results": "No category matches.",
+        "added": "Added {name}.",
+        "removed": "Removed {name}.",
+        "made-primary": "{name} is now the primary category.",
+        "error": {
+          "required": "Choose at least one category.",
+          "too-many": "A product can be in at most 3 categories.",
+          "duplicate": "You chose this category twice. Remove one.",
+          "unknown": "This category isn't available any more. Remove it and choose another.",
+          "not-available": "This category isn't available any more. Remove it and choose another.",
+          "level-not-allowed": "Choose a more specific category. Products can't go on a department or group."
+        }
       },
       "category": "Category and tags",
       "details": "Product details",
@@ -4936,7 +4965,7 @@
   "orders": {
     "title": "Orders",
     "page-title": "Orders",
-    "intro": "The Market's orders, newest first.",
+    "intro": "The Market's orders. Open one to see its payment, delivery and notes.",
     "zone-note": "Times and days are in {zone}.",
     "no-access": "You don't have access to orders.",
     "no-access-title": "You don't have access to this page",
@@ -4981,7 +5010,8 @@
       "paid": "Paid",
       "customer": "Customer",
       "sellers": "Sellers",
-      "total": "Total"
+      "total": "Total",
+      "payment": "Payment"
     },
     "reference": "Order {id}",
     "tax": {
@@ -5014,7 +5044,9 @@
       }
     },
     "error": {
-      "unavailable": "We couldn't load the orders. Try again."
+      "unavailable": "We couldn't load the orders. Try again.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them.",
+      "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
     },
     "field": {
       "status": "Status",
@@ -5265,38 +5297,21 @@
     },
     "range": "{from} to {to} of {total}",
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
-    "filters": {
-      "group": "Filters",
-      "payment": "Payment",
-      "fulfilment": "Delivery",
-      "from": "Placed from",
-      "to": "Placed until",
-      "any": "Any",
-      "clear": "Clear filters",
-      "backwards": "The end day is before the start day."
-    },
     "sort": {
-      "label": "Sort by",
-      "newest": "Newest first",
-      "oldest": "Oldest first",
-      "total-high": "Total, high to low",
-      "total-low": "Total, low to high"
-    },
-    "paging": {
-      "nav": "Pages",
-      "previous": "Previous",
-      "next": "Next",
-      "page": "Page {n}"
-    },
-    "columns": {
-      "button": "Columns",
-      "title": "Columns",
-      "help": "Choose which columns the list shows and in what order. Only you see this choice.",
-      "always": "Always shown",
-      "up": "Move {column} up",
-      "down": "Move {column} down",
-      "reset": "Reset",
-      "save": "Save"
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "created": "Placed",
+        "total": "Total"
+      },
+      "date": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      },
+      "amount": {
+        "first": "Highest first",
+        "second": "Lowest first"
+      }
     },
     "saved": {
       "manage-link": "Manage filters",
@@ -5344,7 +5359,60 @@
         "help-share": "Rename, change who can use a filter, or delete it.",
         "help-own": "Rename or delete your filters. Your role can’t share filters."
       }
-    }
+    },
+    "sorted": "Sorted by {field}: {order}",
+    "filter": {
+      "title": "Filter orders",
+      "name": {
+        "paymentState": "Payment",
+        "fulfilment": "Fulfilment",
+        "placed": "Placed"
+      }
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Customer, store, or order ID",
+      "too-short": "Type at least 2 characters."
+    },
+    "chip-search": "Search: \"{text}\"",
+    "match": "{count, plural, one {# order matches} other {# orders match}}",
+    "not-yet": "Not yet",
+    "row-name": "order {id}",
+    "select": {
+      "page": "Select all orders on this page",
+      "page-short": "Select all on this page",
+      "row": "Select {name}"
+    },
+    "selection": {
+      "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+      "all": "{count, plural, one {The # matching order is selected} other {All # matching orders are selected}}",
+      "all-open": "All matching orders are selected",
+      "select-all": "Select all {count, number} matching",
+      "select-all-open": "Select all matching",
+      "clear": "Clear selection"
+    },
+    "bulk": {
+      "button": "Bulk action",
+      "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+      "all-open": "All matching orders selected",
+      "export": "Export all matching as CSV",
+      "export-help": "Exports every order the tab and filters match, not only the ticked ones.",
+      "export-name-search": "A customer or store search cannot be exported. Clear it to export."
+    },
+    "row-actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "open": "Open order",
+      "print": "Print document",
+      "copy-number": "Copy order number",
+      "add-note": "Add note…",
+      "refund": "Refund…",
+      "cancel": "Cancel order…",
+      "copied": "Copied",
+      "copy-failed": "Couldn't copy. Select the text and copy it."
+    },
+    "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
+    "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name."
   },
   "load": {
     "retry": "Try again",
@@ -6992,11 +7060,13 @@
       "move": "Move…",
       "merge": "Merge…",
       "archive": "Archive…",
+      "move-products": "Move products…",
       "restructure-reason-acting-as": "Not available while acting as a seller.",
       "restructure-reason-not-active": "Only live categories can be moved, merged or archived.",
       "note-move": "Category moved.",
       "note-merge": "Category merged.",
-      "note-archive": "Category archived."
+      "note-archive": "Category archived.",
+      "note-move-products": "Move started. Read the products again when it is done."
     },
     "form": {
       "tabs": "Sections",
@@ -7102,6 +7172,62 @@
       "file_too-many-pixels": "The picture has too many pixels. Choose a smaller one.",
       "file_too-small": "The picture is too small. Choose one at least 200 pixels on its longest side.",
       "file_unreadable": "The picture could not be read. Choose another file."
+    },
+    "move-products": {
+      "title": "Move products of {name}",
+      "intro": "Every published product in {name} moves to the category you choose. The change is published at once and each seller is emailed. Products in its subcategories stay where they are.",
+      "target": "Move products to",
+      "count-title": "What will change",
+      "count-loading": "Counting products…",
+      "count-error": "We couldn't count the products. The move is still checked when you start it.",
+      "count": "{n, plural, one {# published product will move.} other {# published products will move.}}",
+      "count-at-least": "At least {n, plural, one {# published product} other {# published products}} will move.",
+      "count-to": "{n, plural, one {# published product will move from {name} to {target}.} other {# published products will move from {name} to {target}.}}",
+      "count-at-least-to": "At least {n, plural, one {# published product} other {# published products}} will move from {name} to {target}.",
+      "count-none": "No published product is directly in {name}, so there is nothing to move.",
+      "reason": "Reason",
+      "reason-help": "10 to 500 characters. It is kept in the audit log. Sellers never see it.",
+      "reason-counter": "{n} / 500",
+      "reason-short": "Add a reason of 10 to 500 characters.",
+      "reason-long": "The reason is longer than 500 characters.",
+      "need-target": "Choose a category to continue.",
+      "need-reason": "Add a reason to continue.",
+      "need-products": "There are no published products to move.",
+      "cancel": "Cancel",
+      "close": "Close",
+      "reload": "Reload",
+      "action": "Move products",
+      "progress-title": "Moving products",
+      "progress-label": "Products handled",
+      "state": {
+        "queued": "Waiting to start…",
+        "running": "Moving products…",
+        "done": "Done. {moved} moved, {skipped} skipped, {failed} failed.",
+        "failed": "The move stopped."
+      },
+      "count-total": "Products to move",
+      "count-moved": "Moved",
+      "count-skipped": "Skipped",
+      "count-failed": "Failed",
+      "failed-body": "The move stopped before it finished. Some products may not have moved. Start it again to move the rest.",
+      "skipped-note": "Skipped products were no longer in {name} when their turn came, so there was nothing to move.",
+      "failed-note": "Some products could not be moved. Start the move again to try them.",
+      "view-progress": "View progress",
+      "view-failed": "We couldn't read the progress. Try again.",
+      "attached-note": "This move was started earlier. It may be moving products to a different category than the one you chose.",
+      "attach-finished": "That move just finished. Reload the page.",
+      "progress-gone": "This category is no longer available. Reload the page.",
+      "progress-unreadable": "We can't read the progress right now. The move keeps running and we keep trying.",
+      "keeps-running": "You can close this window. The move keeps running.",
+      "error": {
+        "category_not-found": "This category is no longer available. Reload.",
+        "category_target-not-found": "The category you chose is no longer available. Reload to choose another.",
+        "category_move-unchanged": "Those products are already in that category. Choose another.",
+        "category_level-not-allowed": "Choose a more specific category. Products can't go on a department or group.",
+        "category_not-editable": "This category can't be changed any more. Reload.",
+        "category_no-products": "This category has no published products to move.",
+        "category_move-in-progress": "A move from this category is already running."
+      }
     },
     "restructure": {
       "title": {
@@ -10509,6 +10635,57 @@
       "narrow": "Narrow the list to see more.",
       "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other rows."
     },
+    "saved": {
+      "manage-link": "Manage filters",
+      "save-link": "Save filter…",
+      "cancel": "Cancel",
+      "save": {
+        "title": "Save this filter",
+        "name": "Name",
+        "who": "Who can use it",
+        "submit": "Save filter",
+        "everyone-help": "Everyone: every admin who can see this list gets it as a tab.",
+        "own-only": "Saved for you only. Your role can’t share filters."
+      },
+      "visibility": {
+        "me": "Only me",
+        "everyone": "Everyone"
+      },
+      "error": {
+        "name-taken": "A filter with this name already exists. Choose another name.",
+        "name-empty": "Enter a name for the filter.",
+        "limit": "You can keep up to {max} saved filters. Delete one to save another.",
+        "shared-limit": "Up to {max} filters can be shared with everyone. Delete or unshare one first.",
+        "denied": "Your role can’t do this.",
+        "unavailable": "That didn’t work. Try again."
+      },
+      "toast": {
+        "saved": "Saved “{name}”",
+        "updated": "Updated “{name}”",
+        "deleted": "Deleted “{name}”",
+        "moved": "Moved “{name}”"
+      },
+      "manage": {
+        "title": "Manage filters",
+        "close": "Close",
+        "edit": "Edit",
+        "edit-named": "Edit {name}",
+        "delete": "Delete",
+        "delete-named": "Delete {name}",
+        "delete-confirm": "Delete filter",
+        "delete-own": "Delete “{name}”? It is removed from your tabs.",
+        "delete-shared": "Delete “{name}”? It is removed from the tabs of every admin.",
+        "save": "Save changes",
+        "shared-by-other": "Shared by another admin",
+        "empty": "No saved filters yet",
+        "empty-help": "Set up filters, then choose Save filter to keep them as a tab.",
+        "help-share": "Rename, reorder, change who can use a filter, or delete it. Reordering changes only your own filters.",
+        "help-own": "Rename, reorder or delete your filters. Your role can’t share filters. Reordering changes only your own filters.",
+        "move-up": "Move {name} up",
+        "move-down": "Move {name} down"
+      },
+      "summary-sort": "Sorted by {field}"
+    },
     "export": {
       "menu": "Export",
       "menu-help": "CSV or XLSX, with the columns shown",
@@ -10659,8 +10836,7 @@
     "bulk": {
       "button": "Bulk action",
       "selected": "{count, plural, one {# shipment selected} other {# shipments selected}}",
-      "all-open": "All matching shipments selected",
-      "none-yet": "No bulk actions are available for shipments yet."
+      "all-open": "All matching shipments selected"
     },
     "actions": {
       "header": "Actions",
@@ -10842,6 +11018,113 @@
       },
       "failed": {
         "title": "No refused refunds"
+      }
+    }
+  },
+  "invoices": {
+    "title": "Invoices",
+    "page-title": "Invoices",
+    "intro": "Order confirmations and credit notes issued in this Market. These are not tax invoices.",
+    "no-access": "You don't have access to invoices.",
+    "back-home": "Back to home",
+    "tabs": "Invoice views",
+    "tab": {
+      "order-confirmation": "Order confirmations",
+      "credit-note": "Credit notes"
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Customer, store, or order, credit note or refund ID",
+      "too-short": "Type at least 2 characters."
+    },
+    "chip-search": "Search: \"{text}\"",
+    "chip-seller": "Seller is {name}",
+    "filter": {
+      "title": "Filter invoices",
+      "name": {
+        "issued": "Issued"
+      }
+    },
+    "sort": {
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "issued": "Issued",
+        "amount": "Amount"
+      },
+      "date": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      },
+      "amount": {
+        "first": "Highest first",
+        "second": "Lowest first"
+      }
+    },
+    "sorted": "Sorted by {field}: {order}",
+    "sorted-newest": "Newest first",
+    "match": "{kind, select, credit {{count, plural, one {# credit note matches} other {# credit notes match}}} other {{count, plural, one {# order confirmation matches} other {# order confirmations match}}}}",
+    "col": {
+      "order": "Order",
+      "issued": "Issued",
+      "store": "Store",
+      "customer": "Customer",
+      "total": "Total (incl. tax)",
+      "tax": "Tax",
+      "reason": "Reason",
+      "shipping": "Delivery (incl. tax)",
+      "sellerOrderId": "Seller order ID",
+      "documentId": "Credit note ID",
+      "refundId": "Refund ID"
+    },
+    "col-credit-only": "{column} (credit notes only)",
+    "not-recorded": "Not recorded",
+    "tax-not-recorded-title": "An item was placed before its tax was recorded.",
+    "row-name": "order {id}",
+    "select": {
+      "page": "{kind, select, credit {Select all credit notes on this page} other {Select all order confirmations on this page}}",
+      "page-short": "Select all on this page",
+      "row": "Select {name}"
+    },
+    "selection": {
+      "selected": "{kind, select, credit {{count, plural, one {# credit note selected} other {# credit notes selected}}} other {{count, plural, one {# order confirmation selected} other {# order confirmations selected}}}}",
+      "all": "{kind, select, credit {{count, plural, one {The # matching credit note is selected} other {All # matching credit notes are selected}}} other {{count, plural, one {The # matching order confirmation is selected} other {All # matching order confirmations are selected}}}}",
+      "all-open": "{kind, select, credit {All matching credit notes are selected} other {All matching order confirmations are selected}}",
+      "select-all": "Select all {count, number} matching",
+      "select-all-open": "Select all matching",
+      "clear": "Clear selection"
+    },
+    "bulk": {
+      "button": "Bulk action",
+      "selected": "{kind, select, credit {{count, plural, one {# credit note selected} other {# credit notes selected}}} other {{count, plural, one {# order confirmation selected} other {# order confirmations selected}}}}",
+      "all-open": "{kind, select, credit {All matching credit notes selected} other {All matching order confirmations selected}}",
+      "none-yet": "No bulk actions are available for invoices yet."
+    },
+    "actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "view-order": "View order",
+      "open-confirmation": "Open order confirmation"
+    },
+    "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
+    "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name.",
+    "too-many": "Page numbers stop at the first {limit} {kind, select, credit {credit notes} other {order confirmations}}. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
+    "loading": "Loading invoices...",
+    "error": {
+      "unavailable": "Invoices couldn't be loaded.",
+      "search-unavailable": "Name search isn't available right now. Try again, or search by ID.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them."
+    },
+    "empty": {
+      "no-match": "No invoices match",
+      "no-match-help": "Try other filters or clear them.",
+      "order-confirmation": {
+        "title": "No order confirmations yet",
+        "body": "One is issued for each seller when an order is paid."
+      },
+      "credit-note": {
+        "title": "No credit notes yet",
+        "body": "One is issued for each completed refund."
       }
     }
   }
