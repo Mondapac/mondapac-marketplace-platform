@@ -227,12 +227,40 @@ export interface LabelledSellerOrderPageView {
   readonly counts: SellerOrderCounts;
   /** Pass back as `cursor` for the next page; null on the last page. */
   readonly nextCursor: string | null;
-  /** Set only in page-number mode (`page` asked for); null in cursor mode. */
-  readonly paging: {
-    readonly total: number;
-    readonly page: number;
-    readonly pageSize: number;
-  } | null;
+  /** Set only in page mode (`page` asked for); null in cursor mode. */
+  readonly paging: OrderListPaging | null;
+}
+
+/**
+ * The page block of an offset page. `pages` mode (List paging: page numbers) carries the total;
+ * `prev-next` never counts, so `total` is null and `hasNext` tells whether a next page exists.
+ */
+export interface OrderListPaging {
+  readonly mode: 'pages' | 'prev-next';
+  readonly total: number | null;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly hasNext: boolean;
+}
+
+/** A seller order row of the seller list with the row actions the caller may run on it. */
+export interface SellerOrderListRow extends LabelledSellerOrderDetailView {
+  readonly actions: readonly string[];
+}
+
+/** The seller list as the panel gets it: rows carry their `actions`. */
+export interface SellerOrderListView extends Omit<LabelledSellerOrderPageView, 'sellerOrders'> {
+  readonly sellerOrders: readonly SellerOrderListRow[];
+}
+
+/** An admin order row with the row actions the caller may run on it. */
+export interface AdminOrderListRow extends LabelledAdminOrderView {
+  readonly actions: readonly string[];
+}
+
+/** The admin list as the panel gets it: rows carry their `actions`. */
+export interface AdminOrderListView extends Omit<AdminOrderPageView, 'orders'> {
+  readonly orders: readonly AdminOrderListRow[];
 }
 
 /** The admin list: a page of labelled orders and the Market's counts per status. */
@@ -245,12 +273,8 @@ export interface AdminOrderPageView extends OrderPageView<LabelledAdminOrderView
    * customer names. Null when no search was asked.
    */
   readonly searchScope: 'customers-and-stores' | 'stores' | null;
-  /** Set when the caller asked for an offset page: the rows matching the filter, and the page. */
-  readonly paging: {
-    readonly total: number;
-    readonly page: number;
-    readonly pageSize: number;
-  } | null;
+  /** Set when the caller asked for an offset page: the page and, in `pages` mode, the total. */
+  readonly paging: OrderListPaging | null;
 }
 
 export interface OrderPageView<V> {

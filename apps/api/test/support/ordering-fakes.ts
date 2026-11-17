@@ -533,6 +533,10 @@ export class MemoryOrders implements OrderRepository {
   private matches(r: SellerOrderRecord, filter: SellerOrderFilter): boolean {
     return (
       (filter.fulfilment === null || r.sellerOrder.fulfilment === filter.fulfilment) &&
+      (filter.reference === undefined ||
+        filter.reference === null ||
+        r.sellerOrder.id === filter.reference ||
+        r.orderId === filter.reference) &&
       (filter.accountId == null || r.accountId === filter.accountId) &&
       (filter.from === null || Temporal.Instant.compare(r.confirmedAt, filter.from) >= 0) &&
       (filter.to === null || Temporal.Instant.compare(r.confirmedAt, filter.to) < 0)

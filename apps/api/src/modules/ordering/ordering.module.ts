@@ -19,7 +19,8 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CART_CHECKOUT_FACADE, CartModule } from '../cart';
 import { CatalogModule } from '../catalog';
-import { ListsModule } from '../lists';
+import { ListsModule, registerLists } from '../lists';
+import { ORDERING_LISTS } from './application/saved-views/list-definitions';
 import { COMMISSION_PAYOUTS_FACADE, CommissionPayoutsModule } from '../commission-payouts';
 import { CUSTOMERS_CHECKOUT_FACADE, CustomersModule } from '../customers';
 import { IdentityModule } from '../identity';
@@ -79,6 +80,12 @@ import { AdminSavedFilterCreate } from './application/use-cases/admin-saved-filt
 import { AdminSavedFilterDelete } from './application/use-cases/admin-saved-filter-delete.use-case';
 import { AdminSavedFilterUpdate } from './application/use-cases/admin-saved-filter-update.use-case';
 import { AdminSavedFiltersList } from './application/use-cases/admin-saved-filters-list.use-case';
+import { OrderNoteProbe } from './application/use-cases/order-note-probe.use-case';
+import { OrderRefundProbe } from './application/use-cases/order-refund-probe.use-case';
+import { SellerOrderConfirmPickupProbe } from './application/use-cases/seller-order-confirm-pickup-probe.use-case';
+import { SellerOrderMarkDeliveredProbe } from './application/use-cases/seller-order-mark-delivered-probe.use-case';
+import { SellerOrderMarkReadyProbe } from './application/use-cases/seller-order-mark-ready-probe.use-case';
+import { SellerOrderMarkUnavailableProbe } from './application/use-cases/seller-order-mark-unavailable-probe.use-case';
 import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
 import { SellerSavedFilterCreate } from './application/use-cases/seller-saved-filter-create.use-case';
 import { SellerSavedFilterDelete } from './application/use-cases/seller-saved-filter-delete.use-case';
@@ -353,6 +360,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.outboxWriterFor('ordering'),
     PersistenceModule.auditWriterFor('ordering'),
     registerAuditActions('ordering', ORDERING_AUDIT_ACTIONS),
+    registerLists('ordering', ORDERING_LISTS),
     registerEvents('ordering', ORDERING_EVENTS),
     // SHP-02/03: the real-time carrier's booking and progress (ordering.inbox).
     registerSubscriptionsFrom(
@@ -391,12 +399,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminViewOrder,
       AdminViewOrderActivity,
       AdminViewOrderDocument,
-      AdminListOrders,
       AdminExportOrders,
       SellerExportOrders,
       ConfirmPayment,
       CancelPayment,
-      SellerListOrders,
       SellerViewOrder,
       SellerViewOrderActivity,
       SellerViewOrderDocument,
@@ -512,6 +518,59 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         labels: SellerNoteDependencies['labels'],
       ) => new type(gate, { unitOfWork, notes, cipher, audit, ids, clock, labels }),
     })),
+    // The order lists name each row's actions from probes of the caller's keys (super list phase 1).
+    ...[
+      OrderRefundProbe,
+      OrderNoteProbe,
+      SellerOrderMarkReadyProbe,
+      SellerOrderConfirmPickupProbe,
+      SellerOrderMarkDeliveredProbe,
+      SellerOrderMarkUnavailableProbe,
+    ].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new type(gate),
+    })),
+    {
+      provide: AdminListOrders,
+      inject: [USE_CASE_GATE, ...PORTS.map(([, token]) => token), OrderRefundProbe, OrderNoteProbe],
+      useFactory: (gate: UseCaseGate, ...values: unknown[]) => {
+        const probes = values.slice(PORTS.length);
+        return new AdminListOrders(
+          gate,
+          Object.fromEntries(
+            PORTS.map(([name], index) => [name, values[index]]),
+          ) as unknown as OrderingDependencies,
+          { refundProbe: probes[0] as OrderRefundProbe, noteProbe: probes[1] as OrderNoteProbe },
+        );
+      },
+    },
+    {
+      provide: SellerListOrders,
+      inject: [
+        USE_CASE_GATE,
+        ...PORTS.map(([, token]) => token),
+        SellerOrderMarkReadyProbe,
+        SellerOrderConfirmPickupProbe,
+        SellerOrderMarkDeliveredProbe,
+        SellerOrderMarkUnavailableProbe,
+      ],
+      useFactory: (gate: UseCaseGate, ...values: unknown[]) => {
+        const probes = values.slice(PORTS.length);
+        return new SellerListOrders(
+          gate,
+          Object.fromEntries(
+            PORTS.map(([name], index) => [name, values[index]]),
+          ) as unknown as OrderingDependencies,
+          {
+            markReadyProbe: probes[0] as SellerOrderMarkReadyProbe,
+            confirmPickupProbe: probes[1] as SellerOrderConfirmPickupProbe,
+            markDeliveredProbe: probes[2] as SellerOrderMarkDeliveredProbe,
+            markUnavailableProbe: probes[3] as SellerOrderMarkUnavailableProbe,
+          },
+        );
+      },
+    },
     {
       provide: SavedFilterShareCheck,
       inject: [USE_CASE_GATE],

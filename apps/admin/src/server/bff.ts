@@ -14,6 +14,10 @@ import type { PanelConfig, PanelHost } from './config.ts';
 /** The paths this panel may reach, by method (its own population's identity routes). */
 const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   GET: new Set([
+    // System requests (system-requests): the queue, the menu badge and the review policy.
+    'system-requests/admin/requests',
+    'system-requests/admin/requests-count',
+    'system-requests/admin/review-policy',
     'identity/admin/session',
     'identity/admin/sellers',
     // The Seller accounts list (super list 22) and the same rows as a file (CSV or XLSX).
@@ -85,6 +89,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/categories',
     // What the platform product create form offers (catalog): the Market's types and languages.
     'catalog/admin/platform-products/options',
+    // The category choices of the platform product form (catalog, categories C5a).
+    'catalog/admin/platform-products/category-picker',
     // The export of the product list as a file (catalog): the chosen ids or the list's own query.
     'catalog/admin/products/export',
     // Import products (catalog): the CSV and XLSX templates and the admin's current import.
@@ -164,6 +170,16 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
+    // The review policy (system-requests): one area at a time, and the review period; each
+    // behind a fresh two-step code. The area is a closed list, so each path is spelled out.
+    'system-requests/admin/review-policy/areas/people',
+    'system-requests/admin/review-policy/areas/money',
+    'system-requests/admin/review-policy/areas/delivery',
+    'system-requests/admin/review-policy/areas/catalogue',
+    'system-requests/admin/review-policy/areas/certification',
+    'system-requests/admin/review-policy/areas/marketplace',
+    'system-requests/admin/review-policy/areas/content',
+    'system-requests/admin/review-policy/review-due-days',
     // The navigation draft of the buyer site, replaced as a whole (storefront; editor key).
     'storefront/admin/navigation/draft',
     'notifications/admin/support-contact',
@@ -203,6 +219,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set([]),
   POST: new Set([
+    // Approve several low-risk system requests: by ids, or every one a list filter matches.
+    'system-requests/admin/requests/bulk-approve',
+    'system-requests/admin/requests/bulk-approve-matching',
     // An earlier navigation version copied into the draft (storefront; editor key), and the draft
     // approved (storefront.navigation.approve, protected): the API judges the keys.
     'storefront/admin/navigation/restore',
@@ -295,6 +314,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
  */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   POST: [
+    // One system request (system-requests): a comment, and the three decisions.
+    'system-requests/admin/requests/:id/comments',
+    'system-requests/admin/requests/:id/approve',
+    'system-requests/admin/requests/:id/reject',
+    'system-requests/admin/requests/:id/withdraw',
     // One order (ordering, order detail decisions 1 and 3): cancel and refund the whole order,
     // refund one seller order, and write an internal note. The notes and the order are read by the
     // page server.
@@ -391,6 +415,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/categories/:id/move',
     'catalog/admin/categories/:id/merge',
     'catalog/admin/categories/:id/archive',
+    // Move all the products of a category to another one (catalog, categories C5a: protected key
+    // `catalog.category-tree.restructure` and `catalog.product.approve`; a job runs it).
+    'catalog/admin/categories/:id/move-products',
     // Approve or reject a seller's category proposal with the version seen (catalog, categories
     // C9a: key `catalog.category-proposal.decide`, a prepared reason code on reject), and promote
     // or merge a seller's shelf (protected key `catalog.seller-category.promote-merge`).
@@ -552,10 +579,14 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   // The seller's commission rate and ledger, read from the seller review page.
   GET: [
+    // One system request with its values and its history (system-requests).
+    'system-requests/admin/requests/:id',
     // One category with its path and history, and the impact of a change on its subtree
     // (catalog, read-only; the impact takes the `action`).
     'catalog/admin/categories/:id',
     'catalog/admin/categories/:id/impact',
+    // The state and counts of the jobs that move a category's products (catalog, categories C5a).
+    'catalog/admin/categories/:id/move-products',
     // One seller's shelves, every status (catalog, categories C9a), read-only.
     'catalog/admin/sellers/:id/shelves',
     // One blog post with its working and live versions, and its automatic checks (blog).
@@ -626,6 +657,27 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
+  // The System requests queue: the view, search, filters, sort and either page numbers or a
+  // cursor (the API validates every value as well).
+  'system-requests/admin/requests': [
+    'view',
+    'q',
+    'area',
+    'risk',
+    'status',
+    'requestedBy',
+    'decidedBy',
+    'appliedFrom',
+    'appliedTo',
+    'overdue',
+    'subjectKind',
+    'subjectRef',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'cursor',
+  ],
   'identity/admin/sellers': ['state', 'limit', 'after'],
   'payments/admin/connected-accounts': [
     'status',
@@ -659,11 +711,15 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   // The page mode and the filters of the orders list (the API validates every value).
   'ordering/admin/orders': [
     'status',
+    'q',
+    'search',
+    'accountId',
     'cursor',
     'page',
     'pageSize',
     'sort',
     'direction',
+    'paging',
     'paymentState',
     'fulfilment',
     'sellerId',
@@ -850,6 +906,27 @@ const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
   direction: /^(asc|desc)$/,
 };
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'system-requests/admin/requests': {
+    view: /^(needs-my-review|all-open|mine|approved|reverted|overdue|all)$/,
+    q: /^.{1,100}$/,
+    area: /^[a-z-]{1,24}(,[a-z-]{1,24}){0,7}$/,
+    risk: /^(low|medium|high)(,(low|medium|high)){0,2}$/,
+    status: /^(open|approved|reverted)(,(open|approved|reverted)){0,2}$/,
+    requestedBy: UUID,
+    decidedBy: UUID,
+    // ISO 8601 instants, as the day filter builds them.
+    appliedFrom: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]{5,12}Z$/,
+    appliedTo: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]{5,12}Z$/,
+    overdue: /^true$/,
+    subjectKind: /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/,
+    subjectRef: /^[A-Za-z0-9._:-]{1,64}$/,
+    sort: /^(applied|due|number)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    // The API's own cursor: base64url, 200 characters at most.
+    cursor: /^[A-Za-z0-9_-]{1,200}$/,
+  },
   'ordering/admin/shipments': {
     stage: /^(to-prepare|ready|shipped|delivered|refunded)$/,
     sort: /^(paid|shipped|delivered|total)$/,

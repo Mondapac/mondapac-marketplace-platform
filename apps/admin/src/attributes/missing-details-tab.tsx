@@ -9,7 +9,7 @@ import {
   LoadError,
   SearchField,
   Select,
-  SkeletonRows,
+  DetailSkeleton,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -159,7 +159,9 @@ export function MissingDetailsTab({
       <Banner tone="info" title={t('info.title')}>
         {t('info.body')}
       </Banner>
-      {load.state === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
+      {load.state === 'loading' ? (
+        <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={4} title={false} />
+      ) : null}
       {load.state === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3"
