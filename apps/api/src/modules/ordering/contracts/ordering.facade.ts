@@ -187,7 +187,62 @@ export interface CustomerOrderAccounts {
 
 export type CustomerOrderStatsFailure = AccessDenied | { readonly code: 'validation.failed' };
 
+/**
+ * What one customer's confirmed orders add up to with one seller (customers management phase 3).
+ * `spentMinor` is the seller orders' gross less their succeeded refunds (never below zero), in
+ * `currency`. No personal data.
+ */
+export interface CustomerSellerStats {
+  readonly sellerId: Id<'Seller'>;
+  readonly orderCount: number;
+  readonly firstOrderAt: Temporal.Instant;
+  readonly lastOrderAt: Temporal.Instant;
+  readonly spentMinor: bigint;
+  readonly currency: string;
+}
+
+/** The most seller orders one page of {@link OrderingFacade.sellerCustomerOrders} holds. */
+export const MAX_SELLER_CUSTOMER_ORDERS = 100;
+
+/** One of the seller's own paid seller orders of a customer: ids, money and fulfilment only. */
+export interface SellerCustomerOrder {
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly orderId: Id<'Order'>;
+  readonly paidAt: Temporal.Instant;
+  readonly total: Money;
+  readonly fulfilment: 'to-ship' | 'shipped' | 'delivered';
+  readonly deliveredAt: Temporal.Instant | null;
+}
+
+export interface SellerCustomerOrders {
+  readonly items: readonly SellerCustomerOrder[];
+  readonly total: number;
+}
+
+export type SellerCustomerOrdersFailure = AccessDenied | { readonly code: 'validation.failed' };
+
 export interface OrderingFacade {
+  /** Rule `system`: one customer's confirmed-order totals per seller (customers phase 3). */
+  customerSellerStats(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<readonly CustomerSellerStats[], CustomerOrderStatsFailure>>;
+
+  /**
+   * Rule `permissions [ordering.seller-order.view]`: a page of the calling seller's own paid
+   * seller orders of one customer, newest first (`pageSize` 1 to 100). The seller comes from the
+   * session. The account id is what `customers` resolved from the seller's own customer code and
+   * is never answered back.
+   */
+  sellerCustomerOrders(
+    context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly page: number;
+      readonly pageSize: number;
+    },
+  ): Promise<Result<SellerCustomerOrders, SellerCustomerOrdersFailure>>;
+
   /** Rule `system`: the customers read model's order totals for one account. */
   customerOrderStats(
     context: CallContext,

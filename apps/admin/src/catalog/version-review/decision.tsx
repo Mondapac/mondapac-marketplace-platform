@@ -40,7 +40,9 @@ export function DecisionCard({
   const t = useTranslations('catalog.version.decision');
   const te = useTranslations('catalog.version.error');
   const [ticked, setTicked] = useState<ReadonlySet<string>>(new Set());
-  const [pending, setPending] = useState(false);
+  // The decision that is running, so only its own button shows the spinner.
+  const [running, setRunning] = useState<'approve' | 'request-changes' | null>(null);
+  const pending = running !== null;
   const [problem, setProblem] = useState<DecisionProblem | null>(null);
   const [decided, setDecided] = useState<Decided | null>(null);
   const [sendBack, setSendBack] = useState<{ readonly reason: string } | null>(null);
@@ -53,11 +55,11 @@ export function DecisionCard({
   async function send(action: 'approve' | 'request-changes', body: object): Promise<boolean> {
     if (busy.current) return false;
     busy.current = true;
-    setPending(true);
+    setRunning(action);
     setProblem(null);
     const result = await callApi<unknown>('POST', `${base}/${action}`, body, csrfToken);
     busy.current = false;
-    setPending(false);
+    setRunning(null);
     if (result.ok) {
       setDecided(action === 'approve' ? 'approved' : 'sent-back');
       setSendBack(null);
@@ -149,8 +151,8 @@ export function DecisionCard({
             {t('send-back')}
           </Button>
           <Button
-            disabled={!canApprove}
-            loading={pending}
+            disabled={!canApprove || running === 'request-changes'}
+            loading={running === 'approve'}
             aria-describedby={canApprove ? undefined : noteId}
             onClick={() => void send('approve', { version, checksConfirmed: [...ticked] })}
           >

@@ -17,8 +17,11 @@ import { CustomerBehaviourFacadeImplementation } from '../presentation/customer-
 import type { EngagementDependencies } from './engagement-dependencies';
 import {
   FakeEngagementGuestTokens,
+  FakePublishedStores,
   InMemoryBehaviourEvents,
   InMemoryPersonalizationSettings,
+  InMemoryStoreFollows,
+  RecordingEngagementOutbox,
 } from './testing/in-memory-engagement';
 import { AdminCustomerBehaviour } from './use-cases/admin-customer-behaviour.use-case';
 import { AdminCustomerCartAdditions } from './use-cases/admin-customer-cart-additions.use-case';
@@ -68,6 +71,9 @@ describe.each([['AU'], ['ZZ']] as const)(
         guestTokens: new FakeEngagementGuestTokens(),
         ids: new SequenceIdGenerator(clock),
         clock,
+        follows: new InMemoryStoreFollows(),
+        stores: new FakePublishedStores(),
+        outbox: new RecordingEngagementOutbox(),
       };
       const facade = new CustomerBehaviourFacadeImplementation(
         new AdminCustomerBehaviour(gate, deps),

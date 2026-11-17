@@ -184,6 +184,30 @@ export function isCategoryImageUploadRequest(
   );
 }
 
+/** An admin's blog picture (blog media upload): `POST /blog/admin/media`. */
+const BLOG_MEDIA_PATH = /^\/blog\/admin\/media\/?(?:\?.*)?$/;
+
+/**
+ * True for a blog picture upload that may carry the photo body: a POST to the route that holds an
+ * admin session cookie and the CSRF header (the category image's pre-filter). Anything else gets
+ * the 64 KiB JSON parser. A cheap pre-filter only: the actor guard still checks the session and
+ * the CSRF token itself.
+ */
+export function isBlogMediaUploadRequest(
+  method: string | undefined,
+  url: string | undefined,
+  headers: IncomingHttpHeaders = {},
+): boolean {
+  if (method !== 'POST' || url === undefined || !BLOG_MEDIA_PATH.test(url)) return false;
+  const csrf = headers[CSRF_HEADER];
+  return (
+    typeof headers.cookie === 'string' &&
+    ADMIN_SESSION_COOKIE.test(headers.cookie) &&
+    typeof csrf === 'string' &&
+    csrf.length > 0
+  );
+}
+
 /** An admin's photo of a PLATFORM product (P1): `POST /catalog/admin/platform-products/<id>/images`. */
 const PLATFORM_PRODUCT_IMAGE_PATH =
   /^\/catalog\/admin\/platform-products\/[0-9a-fA-F-]{36}\/images\/?(?:\?.*)?$/;
@@ -384,6 +408,12 @@ export function configureApp(app: NestExpressApplication): void {
   app.useBodyParser('raw', {
     type: (request) =>
       isPlatformProductImageUploadRequest(request.method, request.url, request.headers),
+    limit: PRODUCT_IMAGE_BODY_LIMIT,
+    inflate: false,
+  });
+  // An admin's blog picture takes the same body, under the same pre-filter (blog media upload).
+  app.useBodyParser('raw', {
+    type: (request) => isBlogMediaUploadRequest(request.method, request.url, request.headers),
     limit: PRODUCT_IMAGE_BODY_LIMIT,
     inflate: false,
   });
