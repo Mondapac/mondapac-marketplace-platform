@@ -4516,7 +4516,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
             return true;
           }
         }
-        deps = { ...deps, policy: new InvoicesOn(markets) };
+        deps = { ...deps, policy: new InvoicesOn(markets, testAreas) };
         expect(await bulk(sellerA, [mine])).toEqual(
           err({ code: 'ordering.invoice-numbering-unavailable' }),
         );
