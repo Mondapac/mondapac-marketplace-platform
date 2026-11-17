@@ -47,6 +47,8 @@ import { PrismaLedgerRepository } from '../../src/modules/commission-payouts/inf
 import { PrismaSellerRateRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-seller-rate.repository';
 import { RecordLedger } from '../../src/modules/ordering/application/use-cases/record-ledger.use-case';
 import { RecordRefundLedger } from '../../src/modules/ordering/application/use-cases/record-refund-ledger.use-case';
+import { CustomerSellerStatsQuery } from '../../src/modules/ordering/application/use-cases/customer-seller-stats.use-case';
+import { SellerCustomerOrdersQuery } from '../../src/modules/ordering/application/use-cases/seller-customer-orders.use-case';
 import { ConfirmPayment } from '../../src/modules/ordering/application/use-cases/confirm-payment.use-case';
 import { SettleRefunds } from '../../src/modules/ordering/application/use-cases/settle-refunds.use-case';
 import { LOSS_BEARERS, LOSS_REASON_CODES } from '../../src/modules/ordering/domain/reason-codes';
@@ -251,7 +253,11 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
   const total = inclusive ? 3300n + 550n : 3300n + 451n + 500n + 75n;
 
   /** A paid order of one seller with one line of three units; answers its ids. */
-  const paidOrder = async (sellerId: Id<'Seller'> = ids.next<'Seller'>(), pay = true) => {
+  const paidOrder = async (
+    sellerId: Id<'Seller'> = ids.next<'Seller'>(),
+    pay = true,
+    accountId: Id<'Account'> = ids.next<'Account'>(),
+  ) => {
     const orderId = ids.next<'Order'>();
     const sellerOrderId = ids.next<'SellerOrder'>();
     const lineId = ids.next<'OrderLine'>();
@@ -259,7 +265,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
     const order: OrderState = {
       id: orderId,
       marketId: market.marketId,
-      accountId: ids.next<'Account'>(),
+      accountId,
       status: 'pending-payment',
       cancelReason: null,
       paymentState: 'none',
@@ -2467,6 +2473,140 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         [market.marketId, o.sellerOrderId],
       );
       expect(stored.rows).toHaveLength(0);
+    });
+  });
+
+  describe('per-seller totals and orders of one customer (customers management phase 3)', () => {
+    const stats = (accountId: Id<'Account'>) =>
+      new CustomerSellerStatsQuery(gate, deps).execute(system, { accountId });
+    const sellerMember = (sellerId: Id<'Seller'>) =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: ids.next<'Account'>(),
+          sessionId: ids.next<'Session'>(),
+          sellerId,
+        }),
+      );
+
+    it('nets succeeded refunds per seller, ignores failed ones and never goes below zero', async () => {
+      const account = ids.next<'Account'>();
+      const [kept, refunded] = [ids.next<'Seller'>(), ids.next<'Seller'>()].sort() as [
+        Id<'Seller'>,
+        Id<'Seller'>,
+      ];
+      const first = await paidOrder(kept, true, account);
+      await paidOrder(kept, true, account);
+      const whole = await paidOrder(refunded, true, account);
+      // Another customer of the same seller and an unpaid order of this one do not count.
+      await paidOrder(kept, true);
+      await paidOrder(kept, false, account);
+
+      const part = await refund(first, 1);
+      if (!part.ok) throw new Error(`refund: ${part.error.code}`);
+      gateway.refundFails = { code: 'payment.provider-rejected' };
+      expect((await refund(first, 1)).ok).toBe(false);
+      gateway.refundFails = null;
+      const shippingGross = inclusive ? shipping : shipping + shippingTax;
+      expect((await refund(whole, 3, shippingGross.toString())).ok).toBe(true);
+
+      const answer = await stats(account);
+      expect(answer.ok).toBe(true);
+      if (!answer.ok) return;
+      const plain = answer.value.map((row) => ({
+        ...row,
+        firstOrderAt: row.firstOrderAt.epochMilliseconds,
+        lastOrderAt: row.lastOrderAt.epochMilliseconds,
+      }));
+      expect(plain).toEqual([
+        {
+          sellerId: kept,
+          orderCount: 2,
+          firstOrderAt: T0.epochMilliseconds,
+          lastOrderAt: T0.epochMilliseconds,
+          spentMinor: total * 2n - part.value.amount.amount,
+          currency,
+        },
+        {
+          sellerId: refunded,
+          orderCount: 1,
+          firstOrderAt: T0.epochMilliseconds,
+          lastOrderAt: T0.epochMilliseconds,
+          spentMinor: 0n,
+          currency,
+        },
+      ]);
+    });
+
+    it('answers nothing for another Market, and refuses a bad account id', async () => {
+      const account = ids.next<'Account'>();
+      await paidOrder(ids.next<'Seller'>(), true, account);
+      const elsewhere = marketOf(TEST_MARKETS.find((other) => other !== code)!);
+      expect(
+        await new CustomerSellerStatsQuery(gate, deps).execute(
+          testCallContext(elsewhere, 'system'),
+          { accountId: account },
+        ),
+      ).toEqual({ ok: true, value: [] });
+      expect(await stats('not-an-id' as Id<'Account'>)).toEqual({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+    });
+
+    it("lists only the calling seller's paid orders of that customer, paged", async () => {
+      const account = ids.next<'Account'>();
+      const shop = ids.next<'Seller'>();
+      const a = await paidOrder(shop, true, account);
+      const b = await paidOrder(shop, true, account);
+      // The same customer at another seller, another customer here, and an unpaid order.
+      await paidOrder(ids.next<'Seller'>(), true, account);
+      await paidOrder(shop, true);
+      await paidOrder(shop, false, account);
+      const read = (page: number, pageSize: number, as = sellerMember(shop)) =>
+        new SellerCustomerOrdersQuery(gate, deps).execute(as, {
+          accountId: account,
+          page,
+          pageSize,
+        });
+
+      const all = await read(1, 20);
+      expect(all.ok).toBe(true);
+      if (!all.ok) return;
+      expect(all.value.total).toBe(2);
+      expect(all.value.items.map((item) => item.sellerOrderId).sort()).toEqual(
+        [a.sellerOrderId, b.sellerOrderId].sort(),
+      );
+      expect(all.value.items[0]).toMatchObject({ total: money(total, currency) });
+      expect(all.value.items[0]!.paidAt.epochMilliseconds).toBe(T0.epochMilliseconds);
+      expect(
+        JSON.stringify(all.value, (_k, v: unknown) => (typeof v === 'bigint' ? String(v) : v)),
+      ).not.toContain(account);
+      const one = await read(2, 1);
+      expect(one.ok && one.value.items).toHaveLength(1);
+      expect(one.ok && one.value.total).toBe(2);
+
+      const stranger = await read(1, 20, sellerMember(ids.next<'Seller'>()));
+      expect(stranger).toEqual({ ok: true, value: { total: 0, items: [] } });
+      expect(await read(0, 20)).toEqual({ ok: false, error: { code: 'validation.failed' } });
+      expect(await read(1, 0)).toEqual({ ok: false, error: { code: 'validation.failed' } });
+      expect(
+        await new SellerCustomerOrdersQuery(gate, deps).execute(admin, {
+          accountId: account,
+          page: 1,
+          pageSize: 20,
+        }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      const member = sellerMember(shop);
+      const actingAs = {
+        ...member,
+        actor: { ...member.actor, actingAs: { accountId: ids.next<'Account'>(), sellerId: shop } },
+      } as unknown as CallContext;
+      expect(await read(1, 20, actingAs)).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
     });
   });
 });

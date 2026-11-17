@@ -25,11 +25,12 @@ export type ReplyLanguage = (typeof REPLY_LANGUAGES)[number];
 export type SupportHandoff = (typeof SUPPORT_HANDOFFS)[number];
 
 /**
- * Options shown in the panel but not selectable yet: cart suggestions wait for cart PR 2 and
- * Hassan's review; the in-window support form waits for its own package.
+ * Options shown in the panel but not selectable yet: the in-window support form waits for its
+ * own package. Cart suggestions became selectable with stage 1 S1-B1 (the default stays
+ * `read-only`).
  */
 export const UNAVAILABLE_OPTIONS = Object.freeze({
-  scope: ['cart-suggestions'] as readonly Scope[],
+  scope: [] as readonly Scope[],
   supportHandoff: ['in-panel-form'] as readonly SupportHandoff[],
 });
 

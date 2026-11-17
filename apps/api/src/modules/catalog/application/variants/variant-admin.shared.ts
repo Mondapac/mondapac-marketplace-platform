@@ -83,6 +83,12 @@ export function parseFilter(
   return ok({ text, typeCode, issue });
 }
 
+/** The keys of the list's own page request, beside the filter's. */
+export const PAGE_KEYS = ['sort', 'direction', 'page', 'pageSize', 'paging'] as const;
+export const VARIANTS_PAGE_SIZE = { default: 25, max: 100 } as const;
+/** The highest page number, as the Products list has it. */
+export const VARIANTS_MAX_PAGE = 1000;
+
 export function parseAfter(raw: unknown): Result<string | null, ValidationFailure> {
   if (empty(raw)) return ok(null);
   if (typeof raw !== 'string' || !UUID.test(raw)) return invalid('after', 'format');
