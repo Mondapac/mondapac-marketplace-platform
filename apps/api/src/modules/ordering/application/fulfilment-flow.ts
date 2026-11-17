@@ -22,7 +22,7 @@ import {
 } from '../domain/order-views';
 import type { OrderingDependencies } from './checkout-flow';
 import { deliveredEvent } from './delivery-event';
-import { labelSellerOrders } from './order-labels';
+import { labelSellerOrders, settled } from './order-labels';
 import type { SellerOrderPage, SellerOrderRecord, SellerOrderSort } from './ports/order.repository';
 import type { IssuedPickupCode } from './ports/pickup-code-vault';
 import { pickupStatusFor } from './pickup-flow';
@@ -35,7 +35,8 @@ import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, MAX_PAGED_ROWS, openShipTo } from './
 // recorded from the carrier's progress, or, for an order the buyer collects in person, when the
 // seller types the buyer's pickup code at the handover. The seller sees only the seller orders of its own shop. Inventory learns of a shipment
 // from the worker (`recordShipments`), not from the seller's request. One seller order's page
-// (view, ship, deliver) carries the delivery address copied at checkout; the list does not.
+// (view, ship, deliver) names the customer by their code for the shop and first name only, never
+// the delivery address (owner decision 2026-11-17); the list does not name them.
 
 const logger = new Logger('OrderingFulfilmentFlow');
 
@@ -605,9 +606,11 @@ export async function confirmSellerPickup(
 }
 
 /**
- * The step's answer with the names of its lines and the opened delivery address, read after the
- * unit has closed. Every seller answer that carries the address goes through here, so the
- * retention rule ({@link sellerMaySeeShipTo}) applies to all of them.
+ * The step's answer with the names of its lines, the customer as the shop knows them (code and
+ * first name only) and the customer's note to the shop, read after the unit has closed. Every
+ * seller answer goes through here. The shop never gets the delivery address, the recipient's full
+ * name or phone (owner decision 2026-11-17): the platform books the delivery. The sealed details
+ * are opened only for the note, and only while {@link sellerMaySeeShipTo} allows it.
  */
 export async function labelled(
   deps: OrderingDependencies,
@@ -616,14 +619,21 @@ export async function labelled(
 ): Promise<Result<LabelledSellerOrderShipView, FulfilmentFailure>> {
   if (!result.ok) return result;
   const { view, record } = result.value;
-  const [one] = await labelSellerOrders(deps.labels, context, [view]);
+  const [[one], customerAnswer] = await Promise.all([
+    labelSellerOrders(deps.labels, context, [view]),
+    deps.labels.sellerCustomersOf(context, [record.accountId]).then(
+      (found) => ({ status: 'fulfilled', value: found }) as const,
+      (reason: unknown) => ({ status: 'rejected', reason }) as const,
+    ),
+  ]);
+  const customers = settled(context, 'seller-customers', customerAnswer);
   const refunds = await deps.unitOfWork.run<readonly Refund[], never>(
     context.market,
     async () =>
       ok(await deps.refunds.listOfSellerOrder(context.market, view.sellerOrderId, view.sellerId)),
     { readOnly: true },
   );
-  // The seller loses the address once nothing is left to send, 30 days after delivery or 60 days
+  // The seller loses the note once nothing is left to send, 30 days after delivery or 60 days
   // after an undelivered shipment (owner decisions 2026-11-14 and 2026-11-15); it is then not
   // even opened. A cancelled order is never found for its seller (only paid ones are), and an
   // admin cancelling a paid order refunds every unit, so the refunds decide here. Refunds that
@@ -637,9 +647,15 @@ export async function labelled(
     },
     deps.clock.now(),
   );
+  const shipTo = shown
+    ? await openShipTo(deps, context, record.accountId, record.shipToSealed)
+    : null;
+  const customer = customers?.get(record.accountId) ?? null;
   return ok({
     ...one!,
-    shipTo: shown ? await openShipTo(deps, context, record.accountId, record.shipToSealed) : null,
+    // Built field by field, so nothing else of the sealed details reaches the seller.
+    customer: customer === null ? null : { code: customer.code, firstName: customer.firstName },
+    buyerNote: shipTo?.sellerNotes?.[view.sellerId] ?? null,
     refunds: refunds.ok ? refunds.value.map((r) => sellerOrderRefundView(r)) : [],
     pickup: result.value.pickup ?? null,
   });

@@ -618,7 +618,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
 
       const ready = await new SellerMarkOrderReady(gate, deps).execute(seller, { sellerOrderId });
       expect(ready.ok && ready.value.readyAt).toEqual(T0);
-      expect(ready.ok && ready.value.shipTo).toBeNull();
+      expect(ready.ok && ready.value.customer).toBeNull();
     });
   });
 
@@ -1990,13 +1990,25 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           variantLabel: null,
         });
       }
-      // Two distinct units of seller A, asked once per answer; never a store or a customer.
-      expect(labels.calls).toEqual(Array(4).fill({ lookup: 'units', count: 2 }));
+      // Two distinct units of seller A, asked once per answer; never a store or a customer's
+      // name. One order's page also asks customers for the shop's code of its one customer.
+      const units = { lookup: 'units', count: 2 };
+      const customer = { lookup: 'seller-customers', count: 1 };
+      expect(labels.calls).toEqual([units, units, customer, units, customer, units, customer]);
     });
 
-    it('shows the seller where to send its order on the detail and each step, not the list', async () => {
+    it('never gives the seller the delivery address: code and first name only (2026-11-17)', async () => {
       const order = await paid();
       const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      labels.sellerCustomers.set(`${SELLER_A}:${order.accountId}`, {
+        code: 'K7QM-2XTR',
+        firstName: 'Sara',
+      });
+      // Another shop's code for the same customer never reaches seller A.
+      labels.sellerCustomers.set(`${SELLER_B}:${order.accountId}`, {
+        code: 'ZZZZ-9999',
+        firstName: 'Sara',
+      });
 
       const page = await list(sellerA);
       const view = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
@@ -2004,7 +2016,17 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const delivered = await deliver(sellerA, sellerOrderId);
 
       for (const answer of [view, shipped, delivered]) {
-        expect(answer.ok && answer.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(answer.ok && 'shipTo' in answer.value).toBe(false);
+        expect(answer.ok && answer.value.customer).toEqual({
+          code: 'K7QM-2XTR',
+          firstName: 'Sara',
+        });
+        const text = JSON.stringify(answer.ok && answer.value, (_k, v: unknown) =>
+          typeof v === 'bigint' ? v.toString() : v,
+        );
+        for (const secret of [TEST_DELIVERY_ADDRESS.line1, TEST_DELIVERY_ADDRESS.phone, 'ZZZZ']) {
+          expect(text).not.toContain(secret);
+        }
       }
       // The list carries no address, and the seller's answer never names the customer's account.
       expect(page.ok && 'shipTo' in page.value.sellerOrders[0]!).toBe(false);
@@ -2015,10 +2037,13 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const order = await paid();
       const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
       const view = () => new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
+      // Whether the view opened the sealed details (for the customer's note): the retention rule.
       const shipTo = async () => {
+        const before = shipToCipher.opened;
         const answer = await view();
         if (!answer.ok) throw new Error('seller view failed');
-        return answer.value.shipTo;
+        expect('shipTo' in answer.value).toBe(false);
+        return shipToCipher.opened > before;
       };
       const admin = testCallContext(
         market,
@@ -2033,25 +2058,25 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       try {
         // Before delivery: paid long ago, then shipped but not delivered.
         clock.advance(Temporal.Duration.from({ hours: 24 * 400 }));
-        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(await shipTo()).toBe(true);
         const shipped = await ship(sellerA, sellerOrderId);
         expect(shipped.ok && shipped.value.deliveredAt).toBeNull();
-        expect(shipped.ok && shipped.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(shipped.ok && 'shipTo' in shipped.value).toBe(false);
         // Shipped 59 days ago, not delivered: still inside the 60-day limit.
         clock.advance(Temporal.Duration.from({ hours: 24 * 59 }));
-        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(await shipTo()).toBe(true);
 
         const delivered = await deliver(sellerA, sellerOrderId);
         expect(delivered.ok && delivered.value.deliveredAt).toEqual(clock.now());
-        expect(delivered.ok && delivered.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(delivered.ok && 'shipTo' in delivered.value).toBe(false);
 
         // 29 days 23 hours after delivery: still shown.
         clock.advance(Temporal.Duration.from({ hours: 30 * 24 - 1 }));
-        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(await shipTo()).toBe(true);
         // Exactly 30 days after delivery: withheld, and the address is not even opened.
         clock.advance(Temporal.Duration.from({ hours: 1 }));
         const openedBefore = shipToCipher.opened;
-        expect(await shipTo()).toBeNull();
+        expect(await shipTo()).toBe(false);
         expect(shipToCipher.opened).toBe(openedBefore);
         const later = await view();
         expect(later.ok && later.value.fulfilment).toBe('delivered');
@@ -2071,10 +2096,13 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     it('withholds the address 60 days after a shipment that was never delivered (2026-11-15)', async () => {
       const order = await paid();
       const sellerOrderId = sellerOrderIdOf(order.id, SELLER_A);
+      // Whether the view opened the sealed details (for the customer's note): the retention rule.
       const shipTo = async () => {
+        const before = shipToCipher.opened;
         const answer = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
         if (!answer.ok) throw new Error('seller view failed');
-        return answer.value.shipTo;
+        expect('shipTo' in answer.value).toBe(false);
+        return shipToCipher.opened > before;
       };
       try {
         clock.advance(Temporal.Duration.from({ hours: 5 }));
@@ -2084,9 +2112,9 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         expect(shipped.ok && shipped.value.deliveredAt).toBeNull();
 
         clock.set(shippedAt.add({ hours: 60 * 24 - 1 }));
-        expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+        expect(await shipTo()).toBe(true);
         clock.set(shippedAt.add({ hours: 60 * 24 }));
-        expect(await shipTo()).toBeNull();
+        expect(await shipTo()).toBe(false);
         // The buyer still sees it.
         const own = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
         expect(own.ok && own.value.shipTo).toEqual(TEST_DELIVERY_ADDRESS);
@@ -2121,7 +2149,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
 
       const view = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
 
-      expect(view.ok && view.value.shipTo).toBeNull();
+      expect(view.ok && view.value.buyerNote).toBeNull();
       expect(view.ok && view.value.refunds).toEqual([]);
       expect(shipToCipher.opened).toBe(openedBefore);
     });
@@ -2174,23 +2202,26 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           taxInclusive: true,
         })),
       });
+      // Whether the view opened the sealed details (for the customer's note): the retention rule.
       const shipTo = async () => {
+        const before = shipToCipher.opened;
         const answer = await new SellerViewOrder(gate, deps).execute(sellerA, { sellerOrderId });
         if (!answer.ok) throw new Error('seller view failed');
-        return answer.value.shipTo;
+        expect('shipTo' in answer.value).toBe(false);
+        return shipToCipher.opened > before;
       };
 
       // One unit of the first line only: still something to send.
       listed = [refundOf(1, 'succeeded', [{ line: lines[0]!, quantity: 1 }])];
-      expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+      expect(await shipTo()).toBe(true);
       // Every unit, but by a refund that failed: nothing went back.
       const all = lines.map((line) => ({ line, quantity: line.quantity }));
       listed = [refundOf(2, 'failed', all)];
-      expect(await shipTo()).toEqual(TEST_DELIVERY_ADDRESS);
+      expect(await shipTo()).toBe(true);
       // Every unit by refunds not failed (one still pending): withheld at once, not opened.
       listed = [refundOf(3, 'pending', all)];
       const openedBefore = shipToCipher.opened;
-      expect(await shipTo()).toBeNull();
+      expect(await shipTo()).toBe(false);
       expect(shipToCipher.opened).toBe(openedBefore);
       // The buyer still sees it.
       const own = await new ViewOrder(gate, deps).execute(customer, { orderId: order.id });
