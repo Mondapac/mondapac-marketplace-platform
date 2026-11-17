@@ -373,12 +373,18 @@ export class PrismaRedemptionRepository implements RedemptionRepository {
     market: MarketContext,
     before: Temporal.Instant,
     limit: number,
+    after: Id<'Order'> | null,
   ): Promise<readonly Id<'Order'>[]> {
     // Grouped in the database (a Prisma `distinct` runs in memory and would read every row).
     const groups = await this.prisma.tx(market).promotionsRedemption.groupBy({
       by: ['orderId'],
-      where: { marketId: market.marketId, status: 'RESERVED', reservedAt: { lt: toDate(before) } },
-      orderBy: [{ _min: { reservedAt: 'asc' } }, { orderId: 'asc' }],
+      where: {
+        marketId: market.marketId,
+        status: 'RESERVED',
+        reservedAt: { lt: toDate(before) },
+        ...(after === null ? {} : { orderId: { gt: after } }),
+      },
+      orderBy: { orderId: 'asc' },
       take: limit,
     });
     return groups.map((group) => group.orderId as Id<'Order'>);

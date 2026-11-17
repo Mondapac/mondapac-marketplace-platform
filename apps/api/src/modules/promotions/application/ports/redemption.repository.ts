@@ -104,11 +104,12 @@ export interface RedemptionRepository {
   ): Promise<boolean>;
   /** Gives a code back, only if this order holds it. */
   unclaimCode(market: MarketContext, codeHash: string, orderId: Id<'Order'>): Promise<void>;
-  /** Orders with RESERVED rows older than `before`, oldest first. */
+  /** Orders with RESERVED rows older than `before`, by order id, after `after` when given. */
   staleReservations(
     market: MarketContext,
     before: Temporal.Instant,
     limit: number,
+    after: Id<'Order'> | null,
   ): Promise<readonly Id<'Order'>[]>;
 }
 
