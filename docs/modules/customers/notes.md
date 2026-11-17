@@ -36,13 +36,16 @@ This note records what is built and the rules it keeps.
   country as one ciphertext under the customer account's subject key (`ordering.order.ship-to`),
   written once at insert. A later change or removal in the address book never touches it;
   destroying the key at account deletion erases it while the order's money stays.
-- Who sees it: the customer on `GET /orders/:id` and the seller on its own seller order page
-  (view, ship, deliver), as `shipTo` (recipient name, phone, address lines, suburb, region,
-  postcode, delivery notes, country), never the customer's email or account id. Lists and the
-  admin order page carry no address. `shipTo` is null on orders placed before this package and
-  once the account was erased.
-- Hassan (PR #406 review: GO) follow-ups: (1) a seller can read the address of every paid order
-  for ever; later drop `shipTo` from the seller's answer a Market-set time after delivery.
+- Who sees it: the customer on `GET /orders/:id`, as `shipTo` (recipient name, phone, address
+  lines, suburb, region, postcode, delivery notes, country), and the platform when it books the
+  courier. The seller never does (owner decision 2026-11-17): its own seller order page (view,
+  ready, deliver, pickup) names the customer as `customer` `{ code, firstName }`, the code the
+  shop knows them by on its Customers list (`customers.seller-order-customers` through
+  `CUSTOMERS_READ_FACADE`, rule `ordering.seller-order.view`), plus the customer's note to the
+  shop. Lists and the admin order page carry no address. `shipTo` is null on orders placed
+  before this package and once the account was erased.
+- Hassan (PR #406 review: GO) follow-ups: (1) done: the seller no longer gets `shipTo` at all
+  (2026-11-17); the retention rule now governs only the customer's note to the shop.
   (2) Removing an address from the book does not remove its copy on placed orders; only account
   erasure (package 5) does. The privacy notice must say so.
 

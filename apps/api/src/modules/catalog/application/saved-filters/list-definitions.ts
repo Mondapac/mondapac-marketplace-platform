@@ -5,6 +5,21 @@ import { SAVED_FILTER_LISTS } from './saved-filter-lists';
 // The lists catalog registers with `lists` (super list B0-1b) so they have saved filters through
 // the generic routes. The payload parser is the list's own; the keys are the ones that guard it.
 
+/**
+ * The columns an admin can choose in the Products list, after the four always shown (image, title,
+ * status, category). The panel's `OPTIONAL_COLUMNS` must keep the same ids.
+ */
+export const ADMIN_PRODUCT_COLUMNS: readonly string[] = [
+  'code',
+  'offers',
+  'updated',
+  'type',
+  'scope',
+  'seller',
+  'created',
+  'tags',
+];
+
 const PRODUCTS = SAVED_FILTER_LISTS['admin.catalog.products'];
 
 const fail = (): never => {
@@ -20,6 +35,7 @@ export const CATALOG_LISTS: readonly ListDefinition[] =
           population: 'admin',
           viewKey: CATALOG_PRODUCT_VIEW.key,
           shareKey: CATALOG_SAVED_FILTER_SHARE.key,
+          columns: ADMIN_PRODUCT_COLUMNS,
           parsePayload: (raw) => PRODUCTS.parsePayload(raw),
         },
       ];

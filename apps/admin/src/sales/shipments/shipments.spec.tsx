@@ -14,7 +14,7 @@ vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../../api/client.ts';
 import { ShipmentsList } from './shipments-list.tsx';
-import { cleanColumns } from './shipments-columns.ts';
+import { OPTIONAL_COLUMNS, cleanColumns, exportColumnIds } from './shipments-columns.ts';
 import type { ShipmentRow, ShipmentsPage } from './shipments-types.ts';
 
 const call = vi.mocked(callApi);
@@ -1068,27 +1068,6 @@ describe('Shipments row actions', () => {
 });
 
 describe('Shipments selection and Bulk action', () => {
-  it('disables Bulk action with nothing selected, and keeps it without a menu while rows are ticked', async () => {
-    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
-    mount();
-    await screen.findAllByText('Cedar Lane Halal Meats');
-    const bulk = screen.getByRole('button', { name: 'Bulk action' });
-    expect(bulk).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select order 00000001' })[0]!);
-    expect(screen.getByText('1 shipment selected')).toBeTruthy();
-    // There is no Export yet, so there is no action to open: the button stays disabled.
-    expect(screen.getByRole('button', { name: 'Bulk action' })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('button', { name: 'Bulk action' }).getAttribute('title')).toBe(
-      'No bulk actions are available for shipments yet.',
-    );
-    // The reason is also plain text, readable without focusing the disabled button.
-    expect(
-      screen.getByText('No bulk actions are available for shipments yet.', { selector: 'p' }),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
-    expect(screen.queryByText('1 shipment selected')).toBeNull();
-  });
-
   it('offers "Select all N matching" after the page is ticked, and clears with the next list', async () => {
     serve(() => pageOf([row()], { total: 143 }));
     mount();
@@ -1329,5 +1308,269 @@ describe('Shipments nav', () => {
       anyOf: ['ordering.order.view'],
     });
     expect(messages.nav.shipments).toBe('Shipments');
+  });
+});
+
+describe('Shipments Export', () => {
+  const CSV = { 'content-type': 'text/csv; charset=utf-8' };
+  const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const bulk = () => screen.getByRole('button', { name: 'Bulk action' });
+  const openExport = async () => {
+    fireEvent.click(bulk());
+    fireEvent.click(
+      within(await screen.findByRole('menu', { name: 'Bulk action' })).getByRole('menuitem', {
+        name: /^Export/,
+      }),
+    );
+    return screen.findByRole('dialog');
+  };
+  const confirm = (dialog: HTMLElement, format: 'CSV' | 'XLSX' = 'CSV') => {
+    fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(`^${format}`) }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+  };
+  /** The export requests the page made, as path and query. */
+  const fetched: string[] = [];
+  const answerWith = (make: () => Response) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        fetched.push(url);
+        return Promise.resolve(make());
+      }),
+    );
+  };
+  const sent = () => {
+    const url = new URL(fetched[fetched.length - 1]!, 'http://x');
+    return { path: url.pathname, params: Object.fromEntries(url.searchParams) };
+  };
+  const names: string[] = [];
+  let click: { mockRestore: () => void };
+
+  beforeEach(() => {
+    fetched.length = 0;
+    names.length = 0;
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close() {
+      this.removeAttribute('open');
+    };
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() });
+    click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      names.push(this.download);
+    });
+  });
+  afterEach(() => click.mockRestore());
+
+  it('has Export as the only item, and the button is off until a row is selected', async () => {
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    expect(bulk()).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select order 00000001' })[0]!);
+    expect(bulk()).toHaveProperty('disabled', false);
+    fireEvent.click(bulk());
+    const menu = await screen.findByRole('menu', { name: 'Bulk action' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['ExportCSV or XLSX, with the columns shown']);
+    expect(fetched).toEqual([]);
+  });
+
+  it('sends the ticked ids, the shown columns in order, the zone and the list filter, and no paging', async () => {
+    window.localStorage.setItem(
+      'mp:admin:AU:acc-1:shipments-columns',
+      JSON.stringify(['total', 'fee', 'store']),
+    );
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount({ zone: LOS_ANGELES });
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('button', { name: /^Shipped/ }));
+    await waitFor(() => expect(lastUrl()).toContain('stage=shipped'));
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    answerWith(
+      () => new Response('﻿Order ID\r\nrow 1\r\nrow 2\r\n', { status: 200, headers: CSV }),
+    );
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
+    expect(fetched).toHaveLength(1);
+    expect(sent()).toEqual({
+      path: '/api/ordering/admin/shipments/export',
+      params: {
+        format: 'csv',
+        stage: 'shipped',
+        columns: 'total,shipping,store',
+        zone: LOS_ANGELES,
+        ids: '0190a000-0000-7000-8000-0000000000d1,0190a000-0000-7000-8000-0000000000d2',
+      },
+    });
+    expect(names).toEqual([expect.stringMatching(/^shipments-\d{4}-\d{2}-\d{2}\.csv$/)]);
+  });
+
+  it('sends no ids after "Select all matching", takes the file name from the server and counts the total', async () => {
+    serve(() => pageOf([row()], { total: 143 }));
+    mount({ paging: 'pages' });
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all 143 matching' }));
+    answerWith(
+      () =>
+        new Response(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), {
+          status: 200,
+          headers: {
+            'content-type': XLSX,
+            'content-disposition': 'attachment; filename="shipments-2026-11-17.xlsx"',
+          },
+        }),
+    );
+    confirm(await openExport(), 'XLSX');
+    expect(await screen.findByText('Exported 143 rows.')).toBeTruthy();
+    const { params } = sent();
+    expect(params['format']).toBe('xlsx');
+    expect(params).not.toHaveProperty('ids');
+    expect(params).not.toHaveProperty('page');
+    expect(params).not.toHaveProperty('pageSize');
+    expect(params).not.toHaveProperty('sort');
+    expect(params).not.toHaveProperty('direction');
+    expect(names).toEqual(['shipments-2026-11-17.xlsx']);
+  });
+
+  it('leaves out page, cursor and limit with Previous and next, and counts the rows of a CSV with a line break inside a cell', async () => {
+    serve(() => cursorPage([row()], cursor(1)));
+    mount({ paging: 'prev-next' });
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all matching' }));
+    answerWith(
+      () =>
+        new Response('Order ID,Note\r\nr1,"two\r\nlines"\r\nr2,x\r\n', {
+          status: 200,
+          headers: CSV,
+        }),
+    );
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
+    const { params } = sent();
+    for (const key of ['ids', 'page', 'pageSize', 'sort', 'direction', 'cursor', 'limit']) {
+      expect(params).not.toHaveProperty(key);
+    }
+  });
+
+  it('says so when there are too many rows', async () => {
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    answerWith(
+      () =>
+        new Response(
+          '{"statusCode":413,"code":"batch.too-large","details":{"max":10000,"total":12345}}',
+          { status: 413 },
+        ),
+    );
+    confirm(await openExport());
+    expect(
+      await screen.findByText(
+        'Too many rows to export: 12,345 match, and one file holds up to 10,000. Narrow the filter or select fewer rows.',
+      ),
+    ).toBeTruthy();
+    expect(names).toEqual([]);
+  });
+
+  it('asks to narrow a search that is too broad', async () => {
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    answerWith(
+      () =>
+        new Response(
+          '{"statusCode":400,"code":"validation.failed","details":{"fields":[{"path":"search","code":"too-broad"}]}}',
+          { status: 400 },
+        ),
+    );
+    confirm(await openExport());
+    expect(
+      await screen.findByText(
+        'This search is too broad to export. Narrow the search and try again.',
+      ),
+    ).toBeTruthy();
+    expect(names).toEqual([]);
+  });
+
+  it('says so when the export fails or the connection breaks', async () => {
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    answerWith(() => new Response('{"code":"access.unavailable"}', { status: 503 }));
+    confirm(await openExport());
+    expect(await screen.findByText('Export failed. Try again.')).toBeTruthy();
+    toast.dismiss();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new TypeError('network'))),
+    );
+    confirm(await openExport());
+    expect(await screen.findByText('Export failed. Try again.')).toBeTruthy();
+    expect(names).toEqual([]);
+  });
+
+  it('says so when the download is cut off mid-stream', async () => {
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    answerWith(
+      () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new TypeError('network'));
+            },
+          }),
+          { status: 200, headers: CSV },
+        ),
+    );
+    confirm(await openExport());
+    expect(await screen.findByText('Export failed. Try again.')).toBeTruthy();
+    expect(names).toEqual([]);
+  });
+
+  it('closes the dialog without a request when it is cancelled', async () => {
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select order 00000001' })[0]!);
+    const dialog = await openExport();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(fetched).toEqual([]);
+  });
+});
+
+describe('Shipments export column ids', () => {
+  it('maps every column of the picker to the id the export endpoint reads', () => {
+    expect(OPTIONAL_COLUMNS).toHaveLength(13);
+    expect(exportColumnIds(OPTIONAL_COLUMNS)).toEqual([
+      'store',
+      'customer',
+      'paid',
+      'delivery',
+      'carrier',
+      'total',
+      'ready',
+      'shipped',
+      'delivered',
+      'fleet',
+      'shipping',
+      'refunded',
+      'sellerOrderId',
+    ]);
   });
 });
