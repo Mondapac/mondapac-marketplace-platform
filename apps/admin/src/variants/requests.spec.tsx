@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -263,6 +263,58 @@ describe.each(MARKETS)('size requests queue ($name)', (m) => {
     await waitFor(() =>
       expect(call.mock.calls.some(([, path]) => String(path).includes('q=SKU-1'))).toBe(true),
     );
+  });
+
+  it('approves the ticked requests together and reports what the server skipped', async () => {
+    call.mockResolvedValueOnce(ok(list(m, [item(m)])));
+    mount();
+    await screen.findByText(`${m.size}: ${m.xl}`);
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Bulk action' }).disabled).toBe(
+      true,
+    );
+    fireEvent.click(await screen.findByRole('checkbox', { name: `Select ${m.size}: ${m.xl}` }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Approve ticked…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve 1 size request?' });
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
+    call.mockResolvedValueOnce(
+      ok({ action: 'approve', counts: { done: 0, skipped: 1, failed: 0 }, results: [] }),
+    );
+    call.mockResolvedValueOnce(ok(list(m, [item(m)])));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve 1 request' }));
+    expect(await within(dialog).findByText('0 rows decided, 1 skipped.')).toBeTruthy();
+    expect(call.mock.calls[1]).toEqual([
+      'POST',
+      'catalog/admin/variant-requests/bulk-decide',
+      { action: 'approve', items: [{ id: id(1), version: 2 }] },
+      'csrf-1',
+    ]);
+  });
+
+  it('declines the ticked requests only with a reason', async () => {
+    call.mockResolvedValueOnce(ok(list(m, [item(m)])));
+    mount();
+    await screen.findByText(`${m.size}: ${m.xl}`);
+    fireEvent.click(await screen.findByRole('checkbox', { name: `Select ${m.size}: ${m.xl}` }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Decline ticked…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Decline 1 size request?' });
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', {
+      name: 'Decline 1 request',
+    });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: ' Not stocked ' } });
+    call.mockResolvedValueOnce(
+      ok({ action: 'decline', counts: { done: 1, skipped: 0, failed: 0 }, results: [] }),
+    );
+    call.mockResolvedValueOnce(ok(list(m, [])));
+    fireEvent.click(confirm);
+    await within(dialog).findByText('1 row decided, 0 skipped.');
+    expect(call.mock.calls[1]?.[2]).toEqual({
+      action: 'decline',
+      items: [{ id: id(1), version: 2 }],
+      reason: 'Not stocked',
+    });
   });
 
   it('shows a retry when the list cannot be read, and says so without access', async () => {

@@ -8538,6 +8538,22 @@
           "selected": "{count, plural, one {# suggestion selected} other {# suggestions selected}}",
           "all-open": "All matching suggestions selected"
         }
+      },
+      "bulk": {
+        "approve": "Approve ticked…",
+        "reject": "Reject ticked…",
+        "dialog": {
+          "approve": {
+            "title": "Create tags from {count, plural, one {# suggestion} other {# suggestions}}?",
+            "body": "Each ticked suggestion becomes a tag named as the seller wrote it, in the group you pick, and the seller is emailed. A name that already exists is skipped; map those one by one.",
+            "confirm": "Create {count, plural, one {# tag} other {# tags}}"
+          },
+          "reject": {
+            "title": "Reject {count, plural, one {# suggestion} other {# suggestions}}?",
+            "body": "Every ticked suggestion is closed with the reason you write, and the sellers are emailed. This cannot be undone.",
+            "confirm": "Reject {count, plural, one {# suggestion} other {# suggestions}}"
+          }
+        }
       }
     },
     "list": {
@@ -9779,6 +9795,22 @@
           "button": "Bulk action",
           "selected": "{count, plural, one {# request selected} other {# requests selected}}",
           "all-open": "All matching requests selected"
+        }
+      },
+      "bulk": {
+        "approve": "Approve ticked…",
+        "decline": "Decline ticked…",
+        "dialog": {
+          "approve": {
+            "title": "Approve {count, plural, one {# size request} other {# size requests}}?",
+            "body": "Each ticked size is added to its product. A request whose size already exists, or that needs a permission you do not have, is skipped. Sellers are told.",
+            "confirm": "Approve {count, plural, one {# request} other {# requests}}"
+          },
+          "decline": {
+            "title": "Decline {count, plural, one {# size request} other {# size requests}}?",
+            "body": "Every ticked request is closed with the reason you write, and the sellers read it. This cannot be undone.",
+            "confirm": "Decline {count, plural, one {# request} other {# requests}}"
+          }
         }
       }
     },
