@@ -307,6 +307,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/seller-certificates/:id/approve',
     'certification/admin/seller-certificates/:id/request-changes',
     'certification/admin/seller-certificates/:id/decline',
+    // Revoke an approved or expired certificate (certification; protected permission).
+    'certification/admin/seller-certificates/:id/revoke',
     // Start, resume or discard one checked import (catalog).
     'catalog/admin/platform-imports/:id/start',
     'catalog/admin/platform-imports/:id/resume',
@@ -562,6 +564,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/issuers/:id/expert-reference',
     'certification/admin/product-certificates/:id',
     'certification/admin/product-certificates/:id/history',
+    // The full status history of one seller certificate (certification): an audited read that
+    // needs the protected document view permission (query: `beforeId`, `limit`).
+    'certification/admin/seller-certificates/:id/history',
     // The photo library of a platform product, for the form's images card (catalog, P1).
     'catalog/admin/platform-products/:id/images',
     // The primary photo of a listed product, thumbnail size only (catalog).
@@ -894,6 +899,10 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
   },
   'ordering/admin/refund-limits': { sellerId: UUID },
+  'certification/admin/seller-certificates/:id/history': {
+    beforeId: UUID,
+    limit: /^[0-9]{1,3}$/,
+  },
   // The cursor is the API's own: epoch milliseconds, a dot and a request id.
   'wallet/admin/credit-requests': {
     status: /^(pending|decided|granted)$/,
@@ -1170,6 +1179,8 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   'catalog/admin/platform-imports/:id/report': ['kind'],
   'catalog/admin/categories/:id/impact': ['action', 'targetId'],
+  // The older page of a certificate's history: the API's own entry id and a small page size.
+  'certification/admin/seller-certificates/:id/history': ['beforeId', 'limit'],
 };
 /** A note for reviewers in a query: 1 to 500 characters (any, newlines included). */
 const NOTE_SHAPE = /^[\s\S]{1,500}$/;
