@@ -1,4 +1,5 @@
-import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   CartReminderKey,
@@ -26,6 +27,33 @@ export class PrismaCartReminderRepository implements CartReminderRepository {
       skipDuplicates: true,
     });
     return count === 1;
+  }
+
+  async pageOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    direction: 'asc' | 'desc',
+    window: { readonly offset: number; readonly limit: number },
+  ) {
+    const rows = await this.prisma.tx(market).notificationsCartReminder.findMany({
+      where: { marketId: market.marketId, accountId },
+      orderBy: [{ takenAt: direction }, { cartChangedAt: direction }, { stage: direction }],
+      skip: window.offset,
+      take: window.limit,
+      select: { cartChangedAt: true, stage: true, takenAt: true },
+    });
+    return rows.map((row) => ({
+      accountId,
+      cartChangedAt: Temporal.Instant.fromEpochMilliseconds(row.cartChangedAt.getTime()),
+      stage: row.stage === 2 ? (2 as const) : (1 as const),
+      takenAt: Temporal.Instant.fromEpochMilliseconds(row.takenAt.getTime()),
+    }));
+  }
+
+  countOfAccount(market: MarketContext, accountId: Id<'Account'>) {
+    return this.prisma
+      .tx(market)
+      .notificationsCartReminder.count({ where: { marketId: market.marketId, accountId } });
   }
 
   async purgeTakenBefore(market: MarketContext, cutoff: Temporal.Instant, limit: number) {

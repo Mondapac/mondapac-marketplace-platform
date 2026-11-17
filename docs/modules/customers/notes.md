@@ -490,6 +490,81 @@ Not built in 2b (remaining):
 - **Reviews and consent on the timeline (k).** reviews' events carry no account id (by design:
   a seller must not tie a review to a buyer from the event), legal publishes no events. Needs an
   event change in those modules, or a facade read instead of a timeline copy.
+- **Identity section; cart, notifications, legal, engagement and assistant reads.** Built in
+  part 2 (below). Reviews remain.
+
+## Phase 2b, part 2: the sections other modules own (16 Nov 2026)
+
+One facade read per owner, behind the owner's own key, checked again in the owner (a platform
+admin, not seller-scoped, not acting as anyone). customers composes them lazily, one route per
+section under `customers/admin/customers/:accountId/...`; every route also needs
+`customers.customers.view` (pinned in `test/contracts/admin-facade-permission.contract.spec.ts`).
+The owners are bound at start by `CustomersSectionsModule` (a binding module, because cart,
+notifications and assistant reach ordering, which imports customers); until then every section
+answers 503 `access.unavailable`. customers declares the owners' answer shapes itself
+(`ports/customer-section-peers.ts`) rather than importing them, for the same cycle reason.
+
+Every list here is a super list (`customer-section-lists.ts`): POST with `filters`, `sort`,
+`direction`, both paging modes; its export (CSV or XLSX, at most 10,000 rows) needs the
+protected `customers.customers.export` and a fresh step-up, spent in the unit that writes
+`customers.customer-section.exported` (section, format, count).
+
+The date filters of `sign-ins` and `cart-additions` (`filters.from`, `filters.to`) take ISO 8601
+instants with an offset or `Z` (`platform/list-query/instant-range.ts`), not days: the panel turns
+the days the admin picked into instants in the admin's zone, or the Market's (ADR-0005). `from` is
+inclusive, `to` exclusive; a bare day, junk, or `to` at or before `from` answers 400
+`validation.failed`. (The timeline's filter, from part 1, still takes local days.)
+
+- **Security (identity).** `POST sign-ins` (+ `/export`): the last 90 days; time, result
+  (success, failure, credential-change), identity's outcome code and the coarse device. No
+  address and no city: `city` is always null (seam for a geo lookup the owner has not decided).
+  The device is recorded on sign-in records from this release (`sign_in_records.device`), so
+  older records show null. `POST sign-ins/:signInId/reveal` needs the protected
+  `identity.customer-sign-in.reveal`; identity reads the address and writes
+  `identity.account.sign-in-address-revealed` in one unit, and customers answers the address only
+  after the timeline entry `sign-in-address-revealed` is written. `GET sessions` (at most 50 and
+  `more`), `POST sessions/end` (`identity.customer-session.end`; shares
+  AdminEndCustomerSessions' core; audited, timeline `signed-out-by-admin`) and
+  `POST password-reset` (`identity.customer-password-reset.send`: the customer's own reset mail,
+  the admin sees no link; audited, timeline `password-reset-sent`; 409 for a disabled or
+  unverified account, 429 within five minutes of the last request). No step-up on the two
+  actions, as for disabling an account. The timeline entry of an action is a second unit after
+  identity's: if it fails the action stands and a warning is logged (ids only).
+- **Cart (cart.customer-cart.view).** `GET cart` (lines by ids, quantity, the price when added as
+  `{ amount: string, currency }`, `savedCount`) and `POST saved-items` (+ export). Saved items
+  are paged in cart's memory: an account holds at most `MAX_SAVED_ITEMS` (100) and the read
+  loads at most `SAVED_READ_CAP` (twice that, pinned by a test).
+- **Reminders sent (notifications.customer-cart-reminder.view).** `POST cart-reminders`
+  (+ export): `sentAt`, stage, the cart change; kept 30 days. `sentAt` is
+  `cart_reminders.taken_at`, when notifications claimed the stage for sending, not proof of
+  delivery: the claim stays when the send then fails or is skipped (no consent, no address,
+  unsubscribe or contact not configured), and the stage is not retried. The export column is
+  "Taken for sending at".
+- **Behaviour (engagement.customer-behaviour.view).** `GET behaviour`: the personalization
+  switch, counts by kind and the ten most viewed categories over the 12 months kept; never the
+  search text. `POST cart-additions` (+ export, date range): the add-to-cart history. A DB CHECK
+  (`behaviour_events_shape_check`) gives every addition its offer and variant, so the page and
+  its total count the same rows.
+- **Consent (legal.customer-consent.view).** `GET consent` (each channel; not granted until the
+  customer agreed) and `POST consent-history` (+ export, channel filter) with the source. Read
+  only.
+- **Assistant (assistant.customer-conversation.view).** `POST assistant-conversations`
+  (+ export): started and last-message dates, `conversationCount` beside every page. Never a
+  message, card or turn count; nothing reaches a model. New index
+  `conversations(market_id, account_id, started_at DESC)`.
+
+None of the new view keys is seeded to Viewer (one customer's data).
+
+Not built in part 2 (remaining):
+
+- **Reviews** (the customer's reviews with status and moderation actions, the seller ratings
+  they gave, helpful votes, reports by and about them). Larger than expected: four super lists,
+  and `reviews.reports.reporter_account_id` needs an index first. To be a reviews facade read
+  keyed by account, admin key only, that never lets a seller tie a review to a buyer.
+- **Sent emails.** notifications keeps no per-account log of sent emails, so there is nothing
+  to show; not built (in-app notices go to sellers and admins only).
+- **Promotion usages (e)** remain as above.
+
 - **Identity section** (logins over 90 days as a super list, sessions, sign out everywhere,
   send a password reset): the largest piece, an auth path (security review). `sign_in_records`
   holds the full IP and no geo data, so a "rough city" needs a geo lookup first.
