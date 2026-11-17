@@ -220,6 +220,13 @@ describe.each(markets)('cancel and refund ($name)', ({ currency, shipping }) => 
     expect(document.body.textContent).toContain('A seller has started on this order');
   });
 
+  it('drops ?do=cancel from the address once the page has used it', () => {
+    window.history.replaceState(null, '', '/orders/abc?do=cancel');
+    render(wrap(<OrderMoreMenu order={order()} canRefund csrfToken="csrf" startOpen />));
+    expect(window.location.search).toBe('');
+    expect(window.location.pathname).toBe('/orders/abc');
+  });
+
   it('opens the cancel dialog at once when the list sent the admin here (startOpen)', () => {
     render(wrap(<OrderMoreMenu order={order()} canRefund csrfToken="csrf" startOpen />));
     expect(screen.getByLabelText('Reason').closest('dialog')).not.toBeNull();
