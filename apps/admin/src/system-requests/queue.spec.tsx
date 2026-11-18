@@ -344,6 +344,28 @@ describe('QueueList', () => {
     ]);
   });
 
+  it('lists Withdraw my request in the menu of an approval row to its author', async () => {
+    call.mockResolvedValueOnce(
+      ok(
+        page([
+          row(1, {
+            mode: 'approval',
+            requestedBy: ME,
+            actions: ['open', 'copy-link', 'withdraw'],
+          }),
+        ]),
+      ),
+    );
+    mount();
+    await screen.findByRole('link', { name: 'SR-1041' });
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for SR-1041' }));
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Open',
+      'Copy link',
+      'Withdraw my request',
+    ]);
+  });
+
   it('approves one request from its row menu and loads the list again', async () => {
     call.mockResolvedValueOnce(ok(page([row(1)])));
     mount();

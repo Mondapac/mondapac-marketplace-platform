@@ -147,7 +147,7 @@ function DecisionBody({
       setProblem('rejected');
       return;
     }
-    onRefused(refusalOf(failure), kind, text);
+    onRefused(refusalOf(failure, isApproval(request)), kind, text);
   }
 
   const cancel = (
@@ -188,7 +188,7 @@ function DecisionBody({
       <div className="flex flex-col gap-3">
         <p>{t(`${group}.body`)}</p>
         {kind === 'approve' && request.risk === 'high' ? (
-          <p className="font-medium text-attention-fg">{t('approve.high-risk')}</p>
+          <p className="font-medium text-attention-fg">{t(`${group}.high-risk`)}</p>
         ) : null}
         {needsReason ? (
           <>

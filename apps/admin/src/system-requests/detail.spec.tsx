@@ -773,3 +773,95 @@ describe('RequestDetail high-risk step-up', () => {
     });
   });
 });
+
+describe('RequestDetail, an action that waits for approval: high risk and refusals', () => {
+  const required = refused(403, 'second-factor.required', {
+    actionKey: 'system-requests.request.decide-high',
+  });
+  const verified = ok({ code: 'step-up-verified' });
+  const proposal = (over: Partial<SystemRequestDetail> = {}) =>
+    detail({
+      mode: 'approval',
+      risk: 'high',
+      before: { name: 'Acme Foods' },
+      after: { action: 'delete' },
+      ...over,
+    });
+  const openApprove = async () => {
+    await screen.findByRole('heading', { level: 1 });
+    open('Approve');
+    return (
+      await screen.findByRole('heading', { name: 'Approve SR-1042 and apply the action?' })
+    ).closest('dialog') as HTMLElement;
+  };
+
+  it('warns of the two-step code, then approves and applies after it is entered', async () => {
+    call.mockResolvedValueOnce(ok(proposal()));
+    mount(true);
+    const dialog = await openApprove();
+    expect(
+      within(dialog).getByText('High risk: you will be asked for your two-step code.'),
+    ).toBeTruthy();
+    call.mockResolvedValueOnce(required);
+    call.mockResolvedValueOnce(verified);
+    call.mockResolvedValueOnce(ok(proposal({ status: 'approved' })));
+    call.mockResolvedValueOnce(ok(proposal({ status: 'approved', actions: [] })));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve and apply' }));
+    await screen.findByRole('dialog', { name: 'Confirm it is you' });
+    const boxes = screen.getAllByRole('textbox', { name: /Digit \d of 6/ });
+    fireEvent.paste(boxes[0] as HTMLElement, { clipboardData: { getData: () => '123456' } });
+    await expectToast('SR-1042 approved. The action was applied.');
+    const posts = call.mock.calls.filter(([method]) => method === 'POST');
+    expect(posts.map(([, path]) => path)).toEqual([
+      `system-requests/admin/requests/${ID}/approve`,
+      'identity/admin/step-up/verify',
+      `system-requests/admin/requests/${ID}/approve`,
+    ]);
+  });
+
+  it('does not warn of a code for a lower risk request', async () => {
+    call.mockResolvedValueOnce(ok(proposal({ risk: 'medium' })));
+    mount();
+    const dialog = await openApprove();
+    expect(within(dialog).queryByText(/two-step code/)).toBeNull();
+  });
+
+  const refuseApprove = async (code: string, details?: object) => {
+    call.mockResolvedValueOnce(ok(proposal({ risk: 'medium' })));
+    mount();
+    const dialog = await openApprove();
+    call.mockResolvedValueOnce(refused(409, code, details));
+    call.mockResolvedValueOnce(ok(proposal({ risk: 'medium' })));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve and apply' }));
+  };
+
+  it('says nothing was applied and the request stays open when the subject changed', async () => {
+    await refuseApprove('system-requests.changed-since', { newerRequestId: null });
+    expect(
+      await screen.findByText(
+        /The subject changed after this was requested, so the action was not applied and nothing was changed\. The request stays open\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/not reverted/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open the newer request' })).toBeNull();
+    // Still open, so it can be rejected.
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeTruthy();
+  });
+
+  it('says nothing was applied when the subject is gone', async () => {
+    await refuseApprove('system-requests.subject-gone');
+    expect(
+      await screen.findByText(/The subject no longer exists, so the action was not applied/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/nothing to put back/)).toBeNull();
+  });
+
+  it('says nothing was applied when the admin may not make the change', async () => {
+    await refuseApprove('system-requests.revert-not-permitted');
+    expect(
+      await screen.findByText(
+        /You are not allowed to make this change, so the action was not applied/,
+      ),
+    ).toBeTruthy();
+  });
+});

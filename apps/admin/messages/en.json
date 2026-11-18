@@ -10874,7 +10874,10 @@
       "open-newer": "Open the newer request",
       "open-profile": "Open your profile",
       "retry": "Try again",
-      "reload": "Reload the page"
+      "reload": "Reload the page",
+      "approval-changed-since": "The subject changed after this was requested, so the action was not applied and nothing was changed. The request stays open. Reject it, or ask the author to withdraw it.",
+      "approval-subject-gone": "The subject no longer exists, so the action was not applied and nothing was changed. The request stays open. Reject it to close it.",
+      "approval-not-permitted": "You are not allowed to make this change, so the action was not applied and nothing was changed. The request stays open. Ask an admin with that permission."
     },
     "detail": {
       "not-found": "This request does not exist or you cannot see it.",

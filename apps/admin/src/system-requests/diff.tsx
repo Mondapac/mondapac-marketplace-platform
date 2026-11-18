@@ -243,7 +243,7 @@ const ACTIONS = ['delete', 'merge', 'import'] as const;
  * The "Requested action" card of a request that waits for approval: the action (from
  * `after.action`) with its details, and what the subject holds now (`before`) as the values the
  * action would apply to. There is no Current/Proposed diff: nothing has been changed. Without
- * `after` or `before` a note says who may see them.
+ * `after` a note says who may see the details; without `before` the second card is left out.
  */
 export function RequestedAction({
   kind,
@@ -293,21 +293,21 @@ export function RequestedAction({
           />
         ) : null}
       </Card>
-      <Card title={t('current-title')}>
-        {before === null ? (
-          <Banner tone="info">{t('hidden')}</Banner>
-        ) : Object.keys(before).length === 0 ? (
-          <p className="text-sm text-fg-muted">{t('none')}</p>
-        ) : (
-          <DataList
-            missing={t('none')}
-            rows={Object.entries(before).map(([key, value]) => ({
-              label: humanKey(key),
-              value: <Value kind={kind} field={key} value={value} />,
-            }))}
-          />
-        )}
-      </Card>
+      {before === null ? null : (
+        <Card title={t('current-title')}>
+          {Object.keys(before).length === 0 ? (
+            <p className="text-sm text-fg-muted">{t('none')}</p>
+          ) : (
+            <DataList
+              missing={t('none')}
+              rows={Object.entries(before).map(([key, value]) => ({
+                label: humanKey(key),
+                value: <Value kind={kind} field={key} value={value} />,
+              }))}
+            />
+          )}
+        </Card>
+      )}
     </>
   );
 }

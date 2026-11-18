@@ -28,22 +28,30 @@ export const shortCode = (code: string): string =>
  * The refusal of a decision (approve, reject, withdraw), one message per cause (screens spec,
  * "Outcome messages"). `own-subject` is a planned code; both own codes read the same.
  */
-export function refusalOf(failure: ApiFailure): Refusal {
+export function refusalOf(failure: ApiFailure, approval = false): Refusal {
   const code = shortCode(failure.code);
   switch (code) {
     case 'changed-since':
       return {
         tone: 'attention',
-        key: 'changed-since',
+        key: approval ? 'approval-changed-since' : 'changed-since',
         ...(typeof failure.details?.newerRequestId === 'string'
           ? { newerRequestId: failure.details.newerRequestId }
           : {}),
         refetch: true,
       };
     case 'subject-gone':
-      return { tone: 'attention', key: 'subject-gone', refetch: true };
+      return {
+        tone: 'attention',
+        key: approval ? 'approval-subject-gone' : 'subject-gone',
+        refetch: true,
+      };
     case 'revert-not-permitted':
-      return { tone: 'critical', key: 'revert-not-permitted', refetch: true };
+      return {
+        tone: 'critical',
+        key: approval ? 'approval-not-permitted' : 'revert-not-permitted',
+        refetch: true,
+      };
     case 'own-request':
     case 'own-subject':
       return { tone: 'critical', key: 'own', refetch: true };
