@@ -41,6 +41,13 @@ import type {
 import { assertSerializableUnit } from '../../src/modules/pricing/application/serializable-unit';
 import { PRICING_AUDIT_ACTIONS } from '../../src/modules/pricing/domain/audit';
 import { PRICING_EVENTS } from '../../src/modules/pricing/domain/events';
+import {
+  compareHolds,
+  holdMatches,
+  type HoldListFilter,
+  type HoldSort,
+  type HoldViewCounts,
+} from '../../src/modules/pricing/domain/hold-list';
 import { PriceSeries } from '../../src/modules/pricing/domain/price-series';
 import type { SpecialPriceRecord } from '../../src/modules/pricing/domain/special-price';
 import type {
@@ -252,6 +259,53 @@ export class InMemoryPriceSeries implements PriceSeriesRepository {
 
   countPendingHolds(market: MarketContext): Promise<number> {
     return Promise.resolve(this.inMarket(market).flatMap((state) => holdViews(state)).length);
+  }
+
+  queryPendingHolds(
+    market: MarketContext,
+    filter: HoldListFilter,
+    sort: HoldSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly PendingHoldView[]> {
+    const effective: HoldSort = sort;
+    const views = this.inMarket(market)
+      .flatMap((state) => holdViews(state))
+      .filter((view) => holdMatches(view, filter))
+      .sort((a, b) => compareHolds(a, b, effective));
+    return Promise.resolve(views.slice(offset, offset + limit));
+  }
+
+  countPendingHoldsWhere(market: MarketContext, filter: HoldListFilter): Promise<number> {
+    return Promise.resolve(
+      this.inMarket(market)
+        .flatMap((state) => holdViews(state))
+        .filter((view) => holdMatches(view, filter)).length,
+    );
+  }
+
+  pendingHoldViewCounts(market: MarketContext): Promise<HoldViewCounts> {
+    const views = this.inMarket(market).flatMap((state) => holdViews(state));
+    const count = (test: (v: PendingHoldView) => boolean) => views.filter(test).length;
+    return Promise.resolve({
+      all: views.length,
+      regular: count((v) => v.kind === 'regular'),
+      special: count((v) => v.kind === 'special'),
+      up: count((v) => v.direction === 'up'),
+      down: count((v) => v.direction === 'down'),
+    });
+  }
+
+  findPendingHoldsByIds(
+    market: MarketContext,
+    recordIds: readonly (Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>)[],
+  ): Promise<readonly PendingHoldView[]> {
+    const wanted = new Set<string>(recordIds);
+    return Promise.resolve(
+      this.inMarket(market)
+        .flatMap((state) => holdViews(state))
+        .filter((view) => wanted.has(view.recordId)),
+    );
   }
 
   findPendingHold(

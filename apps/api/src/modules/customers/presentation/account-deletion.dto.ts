@@ -125,13 +125,45 @@ export class PendingAccountDeletionRequestBody {
   @ApiProperty({ description: 'The buyer account id. No name or email.' }) accountId!: string;
   @ApiProperty() requestedAt!: string;
   @ApiProperty() scheduledFor!: string;
-  @ApiProperty({ enum: ['pending'] }) status!: 'pending';
+  @ApiProperty({ enum: ['pending', 'executing', 'cancelled', 'completed'] }) status!: string;
   @ApiProperty({ enum: ['customer', 'admin'] }) requestedBy!: 'customer' | 'admin';
+  @ApiProperty({ nullable: true, type: String }) cancelledAt!: string | null;
+  @ApiProperty({ enum: ['customer', 'sign-in', 'admin'], nullable: true, type: String })
+  cancelReason!: string | null;
+  @ApiProperty({ nullable: true, type: String }) completedAt!: string | null;
+  @ApiProperty({
+    enum: ['cancel'],
+    isArray: true,
+    description: 'cancel on a waiting request, for a holder of customers.buyer-account.delete.',
+  })
+  actions!: string[];
+}
+
+class AccountDeletionCountsBody {
+  @ApiProperty() pending!: number;
+  @ApiProperty() executing!: number;
+  @ApiProperty() cancelled!: number;
+  @ApiProperty() completed!: number;
+  @ApiProperty() all!: number;
 }
 
 export class PendingAccountDeletionRequestPageBody {
   @ApiProperty({ type: [PendingAccountDeletionRequestBody] })
   entries!: PendingAccountDeletionRequestBody[];
+  @ApiProperty({
+    type: AccountDeletionCountsBody,
+    description: 'The number of requests per view for the Market, whatever the filter.',
+  })
+  counts!: AccountDeletionCountsBody;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Page numbers: the requests that match. Previous/Next: null.',
+  })
+  total!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Page numbers: the page; else null.' })
+  page!: number | null;
+  @ApiProperty() pageSize!: number;
   @ApiProperty({ nullable: true, type: String, description: 'Pass as `cursor` for the next page.' })
   nextCursor!: string | null;
 }

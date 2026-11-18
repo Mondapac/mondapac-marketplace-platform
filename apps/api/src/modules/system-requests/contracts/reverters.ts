@@ -3,10 +3,13 @@
 // system-requests implements the registry, and other modules keep importing it from here.
 export {
   MAX_DESCRIBE_REFS,
+  registerSystemChangeApplier,
   registerSystemChangeReverter,
   SYSTEM_CHANGE_REVERTERS,
+  type ApplyOutcome,
   type RevertOutcome,
   type RevertRequest,
+  type SystemChangeApplier,
   type SystemChangeReverter,
   type SystemChangeReverters,
 } from '../../../platform/change-review/change-review';

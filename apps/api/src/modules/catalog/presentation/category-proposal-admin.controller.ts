@@ -43,7 +43,7 @@ import { CategoryProposalReject } from '../application/use-cases/category-propos
 import { SellerCategoryAdminList } from '../application/use-cases/seller-category-admin-list.use-case';
 import { SellerCategoryMerge } from '../application/use-cases/seller-category-merge.use-case';
 import { SellerCategoryPromote } from '../application/use-cases/seller-category-promote.use-case';
-import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
+import { closedBody, numericQuery, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 import {
   ProposalDecidedBody,
@@ -127,9 +127,18 @@ export class CategoryProposalAdminController {
   @ApiOperation({
     summary: 'List waiting category proposals',
     description:
-      'Needs catalog.category-proposal.decide. Oldest first, keyset-paged: send `nextAfterId` as ' +
-      '`afterId`. `limit` is 1 to 50 (default 25).',
+      'Needs catalog.category-proposal.decide. By time, oldest first by default. Read by page ' +
+      'number (`page`, `pageSize`, with a total) or Previous and Next (`paging=prev-next`); `q` ' +
+      'searches the proposed name; `sort` is `created` with `direction`. The older panel pages by ' +
+      'cursor: send `nextAfterId` as `afterId` (`afterId`/`limit` do not mix with the page ' +
+      'keys). `pageSize` and `limit` are 1 to 50 (default 25). Each row names its `actions`.',
   })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'sort', required: false, enum: ['created'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'pageSize', required: false })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
   @ApiQuery({ name: 'afterId', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiOkResponse({ type: ProposalQueueBody })
@@ -142,7 +151,7 @@ export class CategoryProposalAdminController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<ProposalQueueBody> {
-    const result = await this.queue.execute(context, pageQuery(query));
+    const result = await this.queue.execute(context, numericQuery(pageQuery(query)));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as ProposalQueueBody)
       : refusal(result.error, response, context);
