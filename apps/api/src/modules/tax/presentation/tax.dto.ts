@@ -29,7 +29,7 @@ export class StrategyBody {
 }
 
 export class StrategyCategory {
-  @ApiProperty({ example: 'gst-free' }) code!: string;
+  @ApiProperty({ example: 'gst_free' }) code!: string;
   @ApiProperty({ example: 'catalog.tax.gst-free' }) labelKey!: string;
 }
 

@@ -177,6 +177,26 @@ describe.each([['AU'], ['ZZ']] as const)('tax strategies in market %s', (code) =
     expect(answer.ok && answer.value.lines[0]).toMatchObject({ rateBps: builtIn });
   });
 
+  it('names the categories of the Market with their label keys', async () => {
+    const literal = {
+      AU: { code: 'gst_free', labelKey: 'catalog.tax.gst-free' },
+      ZZ: { code: 'zz_reduced', labelKey: 'catalog.tax.zz-reduced' },
+    }[code];
+    const answer = await list();
+    expect(answer.ok && answer.value.categories).toContainEqual(literal);
+  });
+
+  it('lists no category for a Market without a catalog section, and still has its tax settings', () => {
+    const noCatalog = {
+      get: () => ({ tax: { defaultRateBps: builtIn } }),
+    } as unknown as MarketRegistry;
+    expect(new ConfigTaxPolicy(noCatalog).settings(market)).toEqual({
+      defaultRateBps: builtIn,
+      categoryCodes: [],
+      categories: [],
+    });
+  });
+
   it('defines a strategy inactive, audits it without its name, and does not use it yet', async () => {
     const made = await create(byCategory);
     expect(made.ok && made.value).toMatchObject({ name: 'By category', active: false });
