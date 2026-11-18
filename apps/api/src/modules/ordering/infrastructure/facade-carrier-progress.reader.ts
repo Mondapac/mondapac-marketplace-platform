@@ -6,10 +6,8 @@ import type {
   CarrierProgressReader,
 } from '../application/ports/carrier-progress.reader';
 
-const NOT_AVAILABLE: CarrierProgressAnswer = Object.freeze({
-  available: false,
-  progress: new Map(),
-});
+/** A new answer each time: a shared Map could be changed by one caller for every other. */
+const notAvailable = (): CarrierProgressAnswer => ({ available: false, progress: new Map() });
 
 /**
  * {@link CarrierProgressReader} over shipping's `carrierProgressOf`: ONE call with the distinct
@@ -29,7 +27,7 @@ export class FacadeCarrierProgressReader implements CarrierProgressReader {
     if (requested.size === 0) return { available: true, progress: new Map() };
     const answer = await this.shipping.carrierProgressOf(context, [...requested]);
     if (!answer.ok) {
-      if (answer.error.code === 'access.denied') return NOT_AVAILABLE;
+      if (answer.error.code === 'access.denied') return notAvailable();
       throw new Error(`shipping.carrierProgressOf: ${answer.error.code}`);
     }
     const progress = new Map<Id<'SellerOrder'>, ShipmentCarrierProgress>();
