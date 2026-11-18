@@ -303,6 +303,34 @@ export async function countOpenReviews(
   );
 }
 
+/**
+ * How many live (or paused, or waiting) promotions name a manual customer group in their segment,
+ * for the warning customers shows when an admin archives the group (phase 2b). A count only: no
+ * promotion, code or owner leaves. Not behind the Market's promotions switch: a promotion stored
+ * while the switch was on still names the group.
+ */
+export async function countGroupSegmentUses(
+  deps: PromotionsDependencies,
+  context: CallContext,
+  input: { readonly groupId: string },
+): Promise<Result<{ readonly uses: number }, PromotionsFailure>> {
+  if (adminAccountId(context) === null) return err({ code: 'access.denied' });
+  return deps.unitOfWork.run<{ readonly uses: number }, PromotionsFailure>(
+    context.market,
+    async () => ({
+      ok: true,
+      value: {
+        uses: await deps.promotions.countGroupSegmentUses(
+          context.market,
+          input.groupId,
+          deps.clock.now(),
+        ),
+      },
+    }),
+    { readOnly: true },
+  );
+}
+
 // ---- Members of a co-funded campaign ----
 
 export interface CampaignMembers {

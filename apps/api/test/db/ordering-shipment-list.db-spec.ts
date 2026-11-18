@@ -17,7 +17,7 @@ import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
-import { FakeLabels } from '../support/ordering-fakes';
+import { FakeCarrierProgress, FakeLabels } from '../support/ordering-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 
@@ -33,6 +33,7 @@ const T0 = Temporal.Instant.from('2026-11-15T10:00:00Z');
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 
 const NO_FILTER: ShipmentListFilter = {
+  ids: null,
   stage: null,
   reference: null,
   trackingRef: null,
@@ -139,6 +140,8 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
           sellerId,
           subtotal,
           shipping: options.fee?.amount ?? 0n,
+          discount: 0n,
+          shippingDiscount: 0n,
           shippingTaxRateBps: feeTax === null ? null : 1000,
           shippingTax: feeTax?.tax ?? null,
           shippingTaxInclusive: feeTax?.inclusive ?? null,
@@ -177,6 +180,9 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
           quantity: 1,
           unitPrice: money(subtotal, currency),
           lineAmount: subtotal,
+          discountAmount: 0n,
+          discountSellerShare: 0n,
+          discountPlatformShare: 0n,
           taxInclusive: true,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
@@ -328,6 +334,21 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
     expect(await idsOf({ sellerId, attention: 'any', stage: 'shipped' })).toEqual([]);
   });
 
+  it('narrows to the selected seller orders of an export, beside the filter', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const a = await shipment(sellerId, 'to-prepare');
+    await shipment(sellerId, 'to-prepare');
+    const c = await shipment(sellerId, 'shipped');
+    expect(await idsOf({ sellerId, ids: [a.sellerOrderId, c.sellerOrderId] })).toEqual([
+      c.sellerOrderId,
+      a.sellerOrderId,
+    ]);
+    expect(await idsOf({ ids: [a.sellerOrderId, c.sellerOrderId], stage: 'shipped' })).toEqual([
+      c.sellerOrderId,
+    ]);
+    expect(await idsOf({ ids: [ids.next<'SellerOrder'>()] })).toEqual([]);
+  });
+
   it('finds a shipment by seller order id, order id or tracking reference', async () => {
     const sellerId = ids.next<'Seller'>();
     const target = await shipment(sellerId, 'shipped', { tracking: `TRK-${sellerId}` });
@@ -398,6 +419,7 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       unitOfWork: db.unitOfWork,
       shipments: reader,
       labels: new FakeLabels(),
+      carrierProgress: new FakeCarrierProgress(),
     });
     const page = await list.execute(admin, { sellerId, pageSize: 2 });
     if (!page.ok) throw new Error(page.error.code);
@@ -422,6 +444,7 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       unitOfWork: db.unitOfWork,
       shipments: reader,
       labels: new FakeLabels(),
+      carrierProgress: new FakeCarrierProgress(),
     });
     const one = await list.execute(admin, { sellerId, limit: 2 });
     if (!one.ok) throw new Error(one.error.code);
@@ -448,6 +471,7 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       unitOfWork: db.unitOfWork,
       shipments: reader,
       labels: new FakeLabels(),
+      carrierProgress: new FakeCarrierProgress(),
     });
     const seen: string[] = [];
     let cursor: string | null | undefined;
@@ -479,5 +503,13 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
       { readOnly: true },
     );
     expect(rows.ok && rows.value).toEqual([]);
+    // Nor through an export's selected ids.
+    const selected = await db.unitOfWork.run(
+      other,
+      async () =>
+        ok(await reader.page(other, { ...NO_FILTER, ids: [mine.sellerOrderId] }, NEWEST, 0, 10)),
+      { readOnly: true },
+    );
+    expect(selected.ok && selected.value).toEqual([]);
   });
 });

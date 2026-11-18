@@ -8,6 +8,7 @@ import type { BatchCodeCrypto } from './ports/batch-code-crypto';
 import type { CreditRepository, ReferralRepository } from './ports/credit.repository';
 import type {
   CustomerGroupMembership,
+  ExclusiveCustomers,
   CustomerOrderHistory,
   StoreFollows,
 } from './ports/customer-facts';
@@ -57,6 +58,8 @@ export interface PromotionsDependencies {
   readonly storeFollows: StoreFollows;
   /** Whether a customer is in a manual customer group (customer-group segment MANUAL_GROUP). */
   readonly groupMembership: CustomerGroupMembership;
+  /** Whose exclusive customer the customer is (customer-group segment SELLER_EXCLUSIVE). */
+  readonly exclusiveCustomers: ExclusiveCustomers;
   readonly orderFacts: DeliveredOrderFacts;
   readonly referralSignals: ReferralSignals;
   readonly walletCredit: WalletCredit;

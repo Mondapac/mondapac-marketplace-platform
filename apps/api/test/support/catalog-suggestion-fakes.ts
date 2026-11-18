@@ -91,13 +91,32 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
     );
   }
 
-  listOpen(market: MarketContext, limit: number) {
-    return Promise.resolve(
-      [...this.rows.values()]
-        .filter((row) => row.state.marketId === market.marketId && row.state.status === 'open')
-        .sort((a, b) => a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds)
-        .slice(0, limit),
+  #open(market: MarketContext, text: string | null) {
+    return [...this.rows.values()].filter(
+      (row) =>
+        row.state.marketId === market.marketId &&
+        row.state.status === 'open' &&
+        (text === null || row.state.label.toLowerCase().includes(text.toLowerCase())),
     );
+  }
+
+  pageOpen(
+    market: MarketContext,
+    page: { text: string | null; direction: 'asc' | 'desc'; offset: number; limit: number },
+  ) {
+    const sign = page.direction === 'asc' ? 1 : -1;
+    return Promise.resolve(
+      this.#open(market, page.text)
+        .sort(
+          (a, b) =>
+            sign * (a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds),
+        )
+        .slice(page.offset, page.offset + page.limit),
+    );
+  }
+
+  countOpen(market: MarketContext, filter: { text: string | null }) {
+    return Promise.resolve(this.#open(market, filter.text).length);
   }
 
   listOfProduct(market: MarketContext, productId: Id<'Product'>, limit: number) {

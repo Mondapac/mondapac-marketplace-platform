@@ -1,3 +1,5 @@
+import { FakeOrderProducts, FakePromotions } from '../support/ordering-promotions-fakes';
+import { testAreas } from '../support/ordering-policy';
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -63,6 +65,7 @@ class RefundsOn extends ConfigOrderingPolicy {
 }
 
 const NO_FILTER: RefundListFilter = {
+  ids: null,
   state: null,
   reference: null,
   stripeRefundId: null,
@@ -124,7 +127,7 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
       orders: new PrismaOrderRepository(db.service),
       refunds: new PrismaRefundRepository(db.service),
       gateway,
-      policy: new RefundsOn(markets),
+      policy: new RefundsOn(markets, testAreas),
       cart: new FakeCart(),
       customers: new FakeCustomers(),
       shipTo: new FakeShipToCipher(),
@@ -133,6 +136,8 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
       commission: new FakeCommission(),
       tax: new FakeTax(),
       taxCategories: new FakeTaxCategories('taxable'),
+      products: new FakeOrderProducts(),
+      promotions: new FakePromotions(),
       outbox: { append: () => Promise.resolve() },
       audit,
       ids,
@@ -180,6 +185,8 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
           sellerId,
           subtotal: 3300n,
           shipping,
+          discount: 0n,
+          shippingDiscount: 0n,
           shippingTaxRateBps: inclusive ? 1000 : 1500,
           shippingTax,
           shippingTaxInclusive: inclusive,
@@ -208,6 +215,9 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
           quantity: 3,
           unitPrice: money(1100n, currency),
           lineAmount: 3300n,
+          discountAmount: 0n,
+          discountSellerShare: 0n,
+          discountPlatformShare: 0n,
           taxInclusive: inclusive,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
@@ -381,6 +391,19 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
     ]);
   });
 
+  it('narrows to the selected refunds of an export, beside the filter', async () => {
+    const sellerId = ids.next<'Seller'>();
+    const a = await refunded(sellerId, 1, 'succeeded');
+    await refunded(sellerId, 1, 'succeeded');
+    const c = await refunded(sellerId, 1, 'pending');
+    expect(await idsOf({ sellerId, ids: [a.refundId, c.refundId] })).toEqual([
+      c.refundId,
+      a.refundId,
+    ]);
+    expect(await idsOf({ ids: [a.refundId, c.refundId], state: 'pending' })).toEqual([c.refundId]);
+    expect(await idsOf({ ids: [ids.next<'Refund'>()] })).toEqual([]);
+  });
+
   it('finds a refund by its id, its order, its seller order or its Stripe id', async () => {
     const sellerId = ids.next<'Seller'>();
     const target = await refunded(sellerId, 1, 'succeeded');
@@ -525,5 +548,21 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
       { readOnly: true },
     );
     expect(rows.ok && rows.value).toEqual([]);
+    // Nor through an export's selected ids.
+    const selected = await db.unitOfWork.run(
+      other,
+      async () =>
+        ok(
+          await reader.page(
+            other,
+            { ...NO_FILTER, ids: [mine.refundId] },
+            { key: 'requested', direction: 'desc' },
+            0,
+            10,
+          ),
+        ),
+      { readOnly: true },
+    );
+    expect(selected.ok && selected.value).toEqual([]);
   });
 });

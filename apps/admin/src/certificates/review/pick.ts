@@ -72,6 +72,11 @@ export function pickReviewPage(body: ReviewPage): ReviewPage {
         check: r.check,
         nextStep: r.nextStep,
       })),
+      revoked: (body.reasons.revoked ?? []).map((r) => ({
+        code: r.code,
+        check: r.check,
+        nextStep: r.nextStep,
+      })),
     },
     duplicateHints: body.duplicateHints.map((hint) => ({
       kind: hint.kind,

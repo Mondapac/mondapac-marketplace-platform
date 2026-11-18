@@ -378,6 +378,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       'validation.failed': 400,
       'product.not-found': 404,
       'offer.not-found': 404,
+      'batch.too-large': 413,
       'offer.not-editable': 409,
       'offer.not-submittable': 409,
       'offer.product-not-published': 409,

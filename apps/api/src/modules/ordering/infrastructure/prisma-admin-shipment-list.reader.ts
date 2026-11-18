@@ -76,6 +76,7 @@ const paid = (market: MarketContext) => ({ marketId: market.marketId, paidAt: { 
 /** The WHERE of a filter. Only a customer search joins the order (for its account). */
 function where(market: MarketContext, filter: ShipmentListFilter) {
   const and: object[] = [];
+  if (filter.ids !== null) and.push({ id: { in: [...filter.ids] } });
   if (filter.stage !== null) and.push(stageWhere(filter.stage));
   if (filter.reference !== null) {
     and.push({ OR: [{ id: filter.reference }, { orderId: filter.reference }] });

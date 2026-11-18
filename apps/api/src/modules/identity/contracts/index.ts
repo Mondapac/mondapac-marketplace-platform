@@ -6,6 +6,9 @@
 export {
   AccountDisabled,
   AccountDisplayNameChanged,
+  // Consumed by customers' read model and timeline (admin email change).
+  AccountEmailChanged,
+  AccountEmailChangeRequested,
   AccountEmailVerified,
   AccountEnabled,
   CustomerAccountRegistered,
@@ -30,9 +33,22 @@ export {
   type CustomerAccountRef,
   type CustomerAccountSummary,
   type CustomerDirectoryRecord,
+  type CustomerEmailChangeCancelFailure,
+  type CustomerEmailChangeFailure,
+  type CustomerPendingEmailChange,
   type CustomerShortName,
   type IdentityFacade,
   type IdentityValidationFailed,
   type SellerMembershipSummary,
+  // Customers management phase 2b: the customer page's security section.
+  CUSTOMER_SIGN_IN_RESULTS,
+  type AdminPasswordResetFailure,
+  type CustomerSecurityFailure,
+  type CustomerSessionFact,
+  type CustomerSessionsView,
+  type CustomerSignInFact,
+  type CustomerSignInResult,
+  type CustomerSignInsPage,
+  type CustomerSignInsRequest,
 } from './identity.facade';
 export { changeActorSourceOf, changeTrailProvider } from './change-actor-source';
