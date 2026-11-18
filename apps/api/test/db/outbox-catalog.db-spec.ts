@@ -478,6 +478,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX product_reviews_public_list_idx ON reviews.product_reviews USING btree (market_id, product_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
   'reviews.product_reviews_public_list_rating_idx':
     "CREATE INDEX product_reviews_public_list_rating_idx ON reviews.product_reviews USING btree (market_id, product_id, rating, published_at DESC, id DESC) WHERE (status = 'published'::text)",
+  // The shop's Reviews list (super list 32) reads its published reviews by Market and seller.
+  'reviews.product_reviews_seller_published_idx':
+    "CREATE INDEX product_reviews_seller_published_idx ON reviews.product_reviews USING btree (market_id, seller_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
   // Promotions: the real and the RECORDED credits each have a partial unique key over kind and
   // source, and over the idempotency key (the plain lookup index by source is not partial).
   'promotions.credit_issuances_real_idempotency_key':
