@@ -1,19 +1,33 @@
 import type { Id, Temporal } from '@mondapac/shared-kernel';
 import type { ReviewArea, Risk } from './areas';
 
-// A system request (the review of a change that is already live) and its rules: the shape of the
+// A system request (the review of a change that is already live, or of an action that waits for
+// approval before it is applied: `mode`) and its rules: the shape of the
 // values kept before and after, the note and reason texts, when a request is overdue, and which
 // actions a viewer has on it. Pure: no I/O.
 
 export const REQUEST_STATUSES = ['open', 'approved', 'reverted'] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 
-/** approved; rejected (a reviewer reverted it); withdrawn (the author reverted it). */
+/**
+ * How a request works: `review`, the change went live when it was made and a reject restores the
+ * value before; `approval`, the action (a delete, a merge, an import) is applied only when another
+ * admin approves it, and a reject or withdraw leaves everything as it was (owner decision of
+ * 18 Nov 2026). A closed approval request that was not applied keeps the status `reverted`.
+ */
+export const REQUEST_MODES = ['review', 'approval'] as const;
+export type RequestMode = (typeof REQUEST_MODES)[number];
+
+/**
+ * approved; rejected (a reviewer reverted it, or declined a proposal); withdrawn (the author
+ * reverted it, or took a proposal back).
+ */
 export const DECISIONS = ['approved', 'rejected', 'withdrawn'] as const;
 export type Decision = (typeof DECISIONS)[number];
 
 export const ACTIVITY_KINDS = [
   'applied',
+  'proposed',
   'commented',
   'approved',
   'rejected',
@@ -24,7 +38,8 @@ export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 /**
  * What a viewer may do with a row, so the panel's row menu matches the server: open and
  * copy-link always; approve and reject for a reviewer of the area who is not the author; withdraw
- * for the author. Reject and withdraw need the change to be the subject's latest.
+ * for the author. Reject and withdraw of a live change need it to be the subject's latest; a
+ * proposal (approval mode) is never superseded.
  */
 export const REQUEST_ACTIONS = ['open', 'copy-link', 'approve', 'reject', 'withdraw'] as const;
 export type RequestAction = (typeof REQUEST_ACTIONS)[number];
@@ -162,6 +177,7 @@ export interface SystemRequest {
   readonly area: ReviewArea;
   readonly subjectKind: string;
   readonly subjectRef: string;
+  readonly mode: RequestMode;
   readonly risk: Risk;
   readonly status: RequestStatus;
   readonly before: ChangeValues;
@@ -193,13 +209,13 @@ export interface Viewer {
 
 /** The actions `viewer` has on `request` (see {@link REQUEST_ACTIONS}). */
 export function actionsFor(
-  request: Pick<SystemRequest, 'status' | 'area' | 'requestedBy' | 'supersededBy'>,
+  request: Pick<SystemRequest, 'status' | 'area' | 'requestedBy' | 'supersededBy' | 'mode'>,
   viewer: Viewer,
 ): RequestAction[] {
   const actions: RequestAction[] = ['open', 'copy-link'];
   if (request.status !== 'open') return actions;
   const own = request.requestedBy === viewer.accountId;
-  const latest = request.supersededBy === null;
+  const latest = request.mode === 'approval' || request.supersededBy === null;
   if (!own && viewer.reviews.has(request.area)) {
     actions.push('approve');
     if (latest) actions.push('reject');

@@ -30,6 +30,38 @@ and the attribute links of a category (`PUT catalog/admin/categories/:id/attribu
 - Imports (the attribute file import) run through a variant of the edit use case with a recorder
   that never reviews, so a file import never needs a note.
 
+## Structure changes in Admin Inbox > System requests (owner decision of 18 Nov 2026)
+
+- Applied now and reviewed after: category create, move and reorder, and attribute create. The
+  routes take `note` (a move falls back to its reason) and answer `request`. The reverters are in
+  `application/catalogue-structure-reverters.ts` and write through the in-unit functions of
+  `categories/category-write-core.ts` (`discardInUnit`, `hideInUnit`, `reorderInUnit`) and the
+  restructure (`restructureInUnit`).
+- Wait for another admin's approval: category discard, merge, archive and products move;
+  attribute discard, merge, merge of values and archive (not of a `material` attribute, which has
+  its own two-person request); feature-set create. Where the area is reviewed the route checks
+  the action as it would before applying it, files the proposal in the same unit and answers
+  HTTP 202 with only `{request}`; nothing changes. A second proposal of the same subject is 409
+  `system-requests.already-pending` with `pendingNumber`. The appliers
+  (`application/catalogue-appliers.ts`) compare the subject with `before`, then run the same
+  in-unit function as the route (`discardInUnit`, `restructureInUnit`, `discardAttributeInUnit`,
+  `writeArchive`, `writeMerge`, `mergeValuesInUnit`, `startProductsMoveInUnit`,
+  `createFeatureSetInUnit`) as the approving admin, naming the request in the audit row.
+- Each approval kind is registered with every key its route's use case declares (`routeKeys`
+  in `catalog.module.ts`): a products move needs `catalog.category-tree.restructure` and
+  `catalog.product.approve`. What a pre-unit `check` cleared (`ClearedByRequest`) is dropped by the
+  next check of the request and is handed only to the same admin in the same Market, so a
+  decision that failed never reuses an earlier check.
+- The tree read, the attribute list and the feature-set list carry `review`, so the panel asks for
+  the note: the create, reorder and discard dialogs of a category, the restructure and move
+  products dialogs (the reason is the note), and the add, discard, archive, merge and merge values
+  dialogs of an attribute. A 202 shows "Sent for approval (SR-n)" and leaves the item as it is.
+  Where an action only files a request its dialog says "Send for approval", says that nothing
+  changes until another admin approves it, and shows no "can't be undone" line or terminal banner.
+  The panel has no feature-set create page yet.
+- Not hooked: the category-tree import and the attribute file import (see the system-requests
+  notes); they run unreviewed.
+
 ## Add product is the edit form in add mode (seller #991, admin #994)
 
 One page, no wizard. The same form serves Add and Edit; Add differs only in what is not yet

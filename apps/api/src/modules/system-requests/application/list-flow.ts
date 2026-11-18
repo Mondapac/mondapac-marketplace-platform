@@ -477,6 +477,8 @@ function approvableFilter(
     statuses: both(filter.statuses, ['open']),
     risks: both(filter.risks, ['low']),
     areas: both(filter.areas, [...viewer.reviews]),
+    // A proposal is applied when approved, so it is approved one by one, never in bulk.
+    modes: ['review'],
     notRequestedBy: viewer.accountId,
   };
   if (
@@ -540,6 +542,7 @@ export async function approveMatching(
         const found = await decidable(deps, context, 'approve', admin, candidate.id);
         if (!found.ok) return found;
         if (found.value.risk !== 'low') return err({ code: 'system-requests.not-low-risk' });
+        if (found.value.mode !== 'review') return err({ code: 'system-requests.one-by-one' });
         if (!areas.has(found.value.area)) return err({ code: 'system-requests.not-reviewer' });
         return ok(await approveInUnit(deps, context, admin, found.value, null));
       },

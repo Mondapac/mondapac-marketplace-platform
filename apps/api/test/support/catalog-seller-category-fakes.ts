@@ -169,6 +169,32 @@ export class MemorySellerCategoryStore implements SellerCategoryStore {
     return cancelled;
   }
 
+  #pending(filter: { nameKey: string | null }) {
+    return [...this.proposals.values()]
+      .map((stored) => stored.view)
+      .filter((view) => view.status === 'pending')
+      .filter(
+        (view) =>
+          filter.nameKey === null ||
+          view.texts.some((text) => text.name.toLowerCase().includes(filter.nameKey!)),
+      );
+  }
+
+  pagePending(
+    _m: MarketContext,
+    page: { nameKey: string | null; direction: 'asc' | 'desc'; offset: number; limit: number },
+  ) {
+    const sign = page.direction === 'asc' ? 1 : -1;
+    const sorted = this.#pending(page).sort(
+      (a, b) => sign * (compareInstants(a.createdAt, b.createdAt) || a.id.localeCompare(b.id)),
+    );
+    return Promise.resolve(sorted.slice(page.offset, page.offset + page.limit));
+  }
+
+  countPending(_m: MarketContext, filter: { nameKey: string | null }) {
+    return Promise.resolve(this.#pending(filter).length);
+  }
+
   listPending(
     _m: MarketContext,
     page: { readonly after: Id<'CategoryProposal'> | null; readonly limit: number },

@@ -257,7 +257,10 @@ export const AttributeDefinitionDiscardedAudit = defineAuditAction({
   targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
   actors: ['authenticated'],
   before: { status: auditField.enumOf(['draft'] as const) },
-  after: { status: auditField.enumOf(['archived'] as const) },
+  after: {
+    status: auditField.enumOf(['archived'] as const),
+    requestId: auditField.optional(auditField.id()),
+  },
 });
 
 /**
@@ -273,6 +276,7 @@ export const AttributeValuesMergedAudit = defineAuditAction({
   after: {
     ...definitionShape,
     mergedValueCount: auditField.integer(),
+    requestId: auditField.optional(auditField.id()),
   },
 });
 
@@ -302,6 +306,7 @@ export const AttributeDefinitionArchivedAudit = defineAuditAction({
     status: auditField.enumOf(['archived'] as const),
     relaxationRequestId: auditField.optional(auditField.id()),
     requestedByAccountId: auditField.optional(auditField.id()),
+    requestId: auditField.optional(auditField.id()),
   },
 });
 
@@ -318,6 +323,7 @@ export const AttributeDefinitionsMergedAudit = defineAuditAction({
     status: auditField.enumOf(['archived'] as const),
     mergedIntoId: auditField.id(),
     mappedValueCount: auditField.integer(),
+    requestId: auditField.optional(auditField.id()),
   },
 });
 
@@ -451,7 +457,7 @@ export const PlatformCategoryReorderedAudit = defineAuditAction({
   targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
   actors: ['authenticated'],
   before: { position: auditField.integer() },
-  after: { position: auditField.integer() },
+  after: { position: auditField.integer(), requestId: auditField.optional(auditField.id()) },
 });
 
 /** An admin hid a category; `cascaded` counts the descendants hidden with it. */
@@ -460,7 +466,11 @@ export const PlatformCategoryHiddenAudit = defineAuditAction({
   targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
   actors: ['authenticated'],
   before: { status: categoryEditStatus },
-  after: { status: categoryEditStatus, cascaded: auditField.integer() },
+  after: {
+    status: categoryEditStatus,
+    cascaded: auditField.integer(),
+    requestId: auditField.optional(auditField.id()),
+  },
 });
 
 /** An admin showed a category; `restored` counts the descendants shown again with it. */
@@ -487,7 +497,7 @@ export const PlatformCategoryDiscardedAudit = defineAuditAction({
   targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
   actors: ['authenticated'],
   before: { status: categoryEditStatus },
-  after: { status: categoryEditStatus },
+  after: { status: categoryEditStatus, requestId: auditField.optional(auditField.id()) },
 });
 
 /**
@@ -518,6 +528,7 @@ export const PlatformCategoryMovedAudit = defineAuditAction({
     subtreeSize: auditField.integer(),
     tagsMarked: auditField.integer(),
     reasonGiven: auditField.boolean(),
+    requestId: auditField.optional(auditField.id()),
   },
 });
 
@@ -535,6 +546,7 @@ export const PlatformCategoryProductsMoveStartedAudit = defineAuditAction({
     targetCategoryId: auditField.id(),
     jobId: auditField.id(),
     reasonGiven: auditField.boolean(),
+    requestId: auditField.optional(auditField.id()),
   },
 });
 
@@ -568,6 +580,7 @@ export const PlatformCategoryMergedAudit = defineAuditAction({
     activitiesRelinked: auditField.integer(),
     tagsMarked: auditField.integer(),
     reasonGiven: auditField.boolean(),
+    requestId: auditField.optional(auditField.id()),
   },
 });
 
@@ -582,6 +595,7 @@ export const PlatformCategoryArchivedAudit = defineAuditAction({
     activitiesUnlinked: auditField.integer(),
     tagsMarked: auditField.integer(),
     reasonGiven: auditField.boolean(),
+    requestId: auditField.optional(auditField.id()),
   },
 });
 
@@ -745,7 +759,7 @@ export const AttributeFamilyCreatedAudit = defineAuditAction({
   action: 'catalog.attribute-family.created',
   targetType: CATALOG_ATTRIBUTE_FAMILY_TARGET,
   actors: ['authenticated'],
-  after: familyShape,
+  after: { ...familyShape, requestId: auditField.optional(auditField.id()) },
 });
 
 /**

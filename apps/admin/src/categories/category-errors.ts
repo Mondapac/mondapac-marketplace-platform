@@ -43,6 +43,7 @@ const KNOWN = new Set([
   'file.too-many-pixels',
   'file.too-small',
   'file.unreadable',
+  'system-requests.already-pending',
 ]);
 
 const RELOAD = new Set([
@@ -74,6 +75,10 @@ export function categoryProblemOf(
     fields,
     reload: RELOAD.has(code),
     ...(failure.details?.max === undefined ? {} : { max: failure.details.max }),
+    // Another proposal of the category waits for approval (Admin Inbox > System requests).
+    ...(code === 'system-requests.already-pending'
+      ? { values: { number: `SR-${failure.details?.pendingNumber ?? '?'}` } }
+      : {}),
   };
 }
 
