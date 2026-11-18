@@ -914,3 +914,21 @@ card, the storefront's invite banner and the admin list's screens follow in the 
 - PR 4a-2: use case `customers.read-exclusive-seller` (rule `system`) and the read facade method
   `exclusiveSellerOf(context, accountId, at)` for promotions' exclusive-customer discount (and
   for 4b's checkout freeze). Ids and the instant only.
+
+## Phase 4b: the lower commission for an exclusive customer (2026-11-17)
+
+- Use case `customers.read-own-exclusive-seller` (rule `own-resources`, customer only, Login-as
+  refused) behind the checkout facade method `ownExclusiveSeller(context)`: the signed-in
+  customer's exclusive seller now (an active attribution), or null.
+- Checkout (ordering) asks it once per order; any failure or throw means none (standard rate).
+  It passes the answer to commission-payouts' `commissionRates`, which lowers the exclusive
+  seller's rate while the window is open, and freezes on every line `exclusive_seller` and
+  `commission_rate_reason` (`standard` | `exclusive`).
+- Market setting `commissionPayouts.exclusiveCustomer` `{ reductionBps, floorBps, months }`
+  (AU 5000/300/12: half, floor 3 %, 12 months; ZZ 2500/500/6). It lives with the commission
+  settings (commission-payouts owns the rate), not under `customers` as the handoff named it.
+  The window runs from the attribution (`since`), in UTC months. A Market without it has no lower
+  rate. The lower rate is `max(floor, floor(rate × (1 − reduction)))`, never above the rate in
+  force; `exclusive` only when it is lower.
+- Migration `20261117080000_ordering_exclusive_seller_commission`: two columns with constant
+  defaults (no rewrite) and a CHECK (`exclusive` needs `exclusive_seller` and a frozen rate).

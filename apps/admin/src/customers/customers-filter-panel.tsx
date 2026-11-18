@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useState, type FormEvent } from 'react';
 import { decimalsOf, parseAmount } from '../wallet/money.ts';
 import type { GroupRef } from './groups-types.ts';
-import type { FilterKey, Filters } from './list-types.ts';
+import { ORDER_NUMBER_MAX, type FilterKey, type Filters } from './list-types.ts';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const COUNT = /^\d{1,7}$/;
@@ -49,10 +49,18 @@ export function CustomersFilterPanel({
   filters,
   currency,
   groups = null,
+  orderNumber,
+  onApplyOrderNumber,
   onApply,
   close,
 }: {
   readonly filters: Filters;
+  /**
+   * The order number filter (phase 2b): the field shows only when the admin may read orders
+   * (the API refuses it otherwise) and the page gives a handler for it.
+   */
+  readonly orderNumber?: string;
+  readonly onApplyOrderNumber?: (orderNumber: string) => void;
   readonly currency: string | null;
   /**
    * The Market's groups for the Group filter (phase 2a); null leaves the filter out (no groups
@@ -65,6 +73,9 @@ export function CustomersFilterPanel({
   const t = useTranslations('customers.list.filter');
   const [draft, setDraft] = useState<Draft>(() => draftOf(filters, currency));
   const [errors, setErrors] = useState<Partial<Record<FilterKey, string>>>({});
+  const [order, setOrder] = useState(orderNumber ?? '');
+  const [orderError, setOrderError] = useState<string | undefined>(undefined);
+  const withOrder = onApplyOrderNumber !== undefined;
   const set = (key: FilterKey, value: string) =>
     setDraft((current) => ({ ...current, [key]: value }));
 
@@ -120,10 +131,15 @@ export function CustomersFilterPanel({
     before('lastOrderFrom', 'lastOrderTo', false);
     before('ordersMin', 'ordersMax', true);
     before('spentMin', 'spentMax', true);
-    if (Object.keys(problems).length > 0) {
+    const typedOrder = order.trim();
+    const orderBad =
+      withOrder && (typedOrder.length > ORDER_NUMBER_MAX || /\p{C}/u.test(typedOrder));
+    setOrderError(orderBad ? t('order-number.error') : undefined);
+    if (Object.keys(problems).length > 0 || orderBad) {
       setErrors(problems);
       return;
     }
+    onApplyOrderNumber?.(typedOrder);
     onApply(next);
     close();
   }
@@ -194,6 +210,16 @@ export function CustomersFilterPanel({
           />
         )}
       </div>
+      {withOrder ? (
+        <TextField
+          label={t('name.orderNumber')}
+          help={t('order-number.help')}
+          value={order}
+          error={orderError}
+          maxLength={ORDER_NUMBER_MAX + 16}
+          onChange={(event) => setOrder(event.target.value)}
+        />
+      ) : null}
       {range('joinedFrom', 'joinedTo', 'date')}
       {range('lastOrderFrom', 'lastOrderTo', 'date')}
       {range('ordersMin', 'ordersMax', 'text', 'numeric')}
