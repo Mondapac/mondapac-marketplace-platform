@@ -79,7 +79,39 @@ describe.each(FIXTURES)('topic use cases in market $code', ({ code, locales }) =
     },
   };
   let lastQuery: TopicListQuery | null = null;
+  const matching = (filter: {
+    status: string | null;
+    group: string | null;
+    search: string | null;
+  }) =>
+    [...rows.values()]
+      .filter((r) => filter.status === null || r.status === filter.status)
+      .filter((r) => filter.group === null || r.group === filter.group)
+      .filter(
+        (r) =>
+          filter.search === null ||
+          r.slug.includes(filter.search.toLowerCase()) ||
+          r.terms.some((t) => t.text.toLowerCase().includes(filter.search!.toLowerCase())),
+      );
   const topicReader: TopicReader = {
+    page: (_m, query) => {
+      const sign = query.direction === 'asc' ? 1 : -1;
+      const keyOf = (r: TopicState): string =>
+        query.sort === 'slug'
+          ? r.slug
+          : query.sort === 'status'
+            ? r.status
+            : query.sort === 'group'
+              ? r.group
+              : query.sort === 'created'
+                ? r.createdAt.toString()
+                : r.updatedAt.toString();
+      const sorted = matching(query).sort(
+        (a, b) => sign * (keyOf(a).localeCompare(keyOf(b)) || a.id.localeCompare(b.id)),
+      );
+      return Promise.resolve(sorted.slice(query.offset, query.offset + query.limit));
+    },
+    count: (_m, filter) => Promise.resolve(matching(filter).length),
     briefsOf: () => Promise.resolve([]),
     list: (_m, query) => {
       lastQuery = query;
@@ -114,7 +146,12 @@ describe.each(FIXTURES)('topic use cases in market $code', ({ code, locales }) =
     }),
     edit: new TopicEdit(gate, { unitOfWork, topics, policy, matcher, claimLocales, clock }),
     get: new TopicGet(gate, { unitOfWork, topics }),
-    list: new TopicList(gate, { unitOfWork, topicReader, policy }),
+    list: new TopicList(gate, {
+      unitOfWork,
+      topicReader,
+      policy,
+      topicManageProbe: { execute: () => Promise.resolve({ ok: true }) },
+    }),
   });
 
   const contextOf = (population: 'admin' | 'seller'): CallContext =>
@@ -555,18 +592,30 @@ describe.each(FIXTURES)('topic use cases in market $code', ({ code, locales }) =
     });
     const all = await list.execute(admin, { group: 'use', search: '  bb  ' });
     expect(all.ok && all.value.items.map((i) => i.slug)).toEqual(['bbq']);
+    expect(all).toMatchObject({
+      ok: true,
+      value: { total: 1, page: 1, pageSize: 25, paging: 'pages', hasNext: false },
+    });
+    expect(all.ok && all.value.items[0]?.actions).toEqual(['edit']);
+    const cursor = await list.execute(admin, { group: 'use', search: 'bb', limit: 5 });
+    expect(cursor).toMatchObject({ ok: true, value: { total: null, pageSize: 5 } });
     expect(lastQuery).toEqual({
       status: null,
       group: 'use',
       search: 'bb',
       afterId: null,
-      limit: 25,
+      limit: 5,
     });
     expect(await list.execute(admin, { status: 'archived' })).toEqual({
       ok: true,
       value: {
         items: [],
         nextAfterId: null,
+        total: 0,
+        page: 1,
+        pageSize: 25,
+        paging: 'pages',
+        hasNext: false,
         locales: { default: main, supported: [...locales.supported] },
         groups: ['occasion', 'cuisine', 'use'],
         maxSynonyms: 10,
@@ -576,7 +625,11 @@ describe.each(FIXTURES)('topic use cases in market $code', ({ code, locales }) =
       [{ limit: 0 }, 'limit', 'range'],
       [{ group: 'season' }, 'group', 'unknown'],
       [{ status: 'gone' }, 'status', 'unknown'],
-      [{ search: 'x'.repeat(81) }, 'search', 'too-long'],
+      [{ search: 'x'.repeat(121) }, 'search', 'length'],
+      [{ q: 'a', search: 'b' }, 'search', 'conflict'],
+      [{ afterId: '01990000-0000-7000-8000-000000000001', page: 2 }, 'page', 'conflict'],
+      [{ sort: 'price' }, 'sort', 'value'],
+      [{ pageSize: 101 }, 'pageSize', 'range'],
       [{ afterId: 'x' }, 'afterId', 'format'],
     ] as const) {
       expect(await list.execute(admin, input)).toEqual({

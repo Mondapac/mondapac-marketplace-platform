@@ -9,6 +9,7 @@ import {
 } from '../../platform/authz';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { CLOCK } from '../../platform/clock/clock.module';
+import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../platform/list-export';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
@@ -25,7 +26,12 @@ import { RETIREMENT_TOMBSTONE_REPOSITORY } from './application/ports/retirement-
 import { WRITE_RATE_COUNTER_REPOSITORY } from './application/ports/write-rate-counter.repository';
 import { WRITE_REFUSAL_THROTTLE_REPOSITORY } from './application/ports/write-refusal-throttle.repository';
 import { ApprovePriceHold } from './application/use-cases/approve-price-hold.use-case';
+import type { AdminHoldListDependencies } from './application/admin-hold-list-flow';
+import { HOLD_ROW_KEYS } from './application/admin-hold-list-flow';
+import { ExportPriceHolds } from './application/use-cases/export-price-holds.use-case';
 import { ListPriceHolds } from './application/use-cases/list-price-holds.use-case';
+import { PriceHoldDecideProbe } from './application/use-cases/price-hold-decide-probe.use-case';
+import { QueryPriceHolds } from './application/use-cases/query-price-holds.use-case';
 import { RejectPriceHold } from './application/use-cases/reject-price-hold.use-case';
 import { RetireSeriesForRemovedOffer } from './application/use-cases/retire-series-for-removed-offer.use-case';
 import { RetireSeriesForRemovedVariant } from './application/use-cases/retire-series-for-removed-variant.use-case';
@@ -97,6 +103,46 @@ function useCaseProvider<D, U>(
     inject: [USE_CASE_GATE, ...names.map((name) => PORT[name])],
     useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
       new type(gate, Object.fromEntries(names.map((name, index) => [name, values[index]])) as D),
+  };
+}
+
+type HoldListUseCaseClass<U> = new (gate: UseCaseGate, deps: AdminHoldListDependencies) => U;
+
+/** The admin held-price list and its export (super list 19) share one dependency object. */
+function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      PRICE_SERIES_REPOSITORY,
+      HELD_UNIT_LABELS,
+      SELLER_STORE_NAMES,
+      PriceHoldDecideProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AdminHoldListDependencies['unitOfWork'],
+      series: AdminHoldListDependencies['series'],
+      unitLabels: AdminHoldListDependencies['unitLabels'],
+      storeNames: AdminHoldListDependencies['storeNames'],
+      decide: PriceHoldDecideProbe,
+      sheetWriter: AdminHoldListDependencies['sheetWriter'],
+      clock: AdminHoldListDependencies['clock'],
+    ) => {
+      const [decideKey] = HOLD_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        series,
+        unitLabels,
+        storeNames,
+        probes: { [decideKey]: decide },
+        sheetWriter,
+        clock,
+      });
+    },
   };
 }
 
@@ -213,6 +259,14 @@ function useCaseProvider<D, U>(
       unitLabels: true,
       storeNames: true,
     }),
+    { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
+    {
+      provide: PriceHoldDecideProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new PriceHoldDecideProbe(gate),
+    },
+    holdListUseCaseProvider(QueryPriceHolds),
+    holdListUseCaseProvider(ExportPriceHolds),
     useCaseProvider(ViewPriceHold, {
       unitOfWork: true,
       series: true,

@@ -275,6 +275,9 @@ not sent to the model and, if the model asks for it anyway, the call is refused 
   storefront adds lines with the buyer's session after a click.
 - **Failure**: a search that cannot be read, or a plan slower than 12 s, gives `tool-failed` and
   no card: a line is never reported "not found" because a read failed.
+- **Load limits**: at most 8 plans run at once in a process, 2 per signed-in buyer, and 4 for
+  all guests of a Market together (guests have no id); a plan over the limit is refused as
+  `tool-failed`, not queued.
 - Evaluation set `buyer-assistant-5`: guard cases for totals, injections and diet claims in a
   list, four list-parsing cases (English, Persian, mixed, bullets and fractions) whose expected calls
   must pass the schema, and twelve invalid calls the parser must refuse.

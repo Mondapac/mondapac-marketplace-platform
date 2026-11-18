@@ -40,11 +40,13 @@ export function BottomSheet({ open, title, closeLabel, onClose, children }: Bott
     >
       {open ? (
         <div className="flex max-h-[85dvh] flex-col rounded-t-xl border-t border-line bg-surface shadow-(--mp-shadow-elevation-floating)">
-          <div className="flex items-center justify-between gap-2 px-4 pt-3">
-            <h2 id={titleId} className="min-w-0 truncate text-lg font-semibold">
+          <div className="flex shrink-0 items-start justify-between gap-2 px-4 pt-3">
+            <h2 id={titleId} className="min-w-0 break-words text-lg font-semibold">
               {title}
             </h2>
-            <IconButton icon="x" label={closeLabel} onClick={onClose} />
+            <span className="shrink-0">
+              <IconButton icon="x" label={closeLabel} onClick={onClose} />
+            </span>
           </div>
           <div className="min-h-0 overflow-y-auto px-4 pb-4 pt-2">{children}</div>
         </div>

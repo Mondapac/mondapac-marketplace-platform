@@ -33,14 +33,27 @@ const { chromium } = process.env.PLAYWRIGHT_PATH
   ? requireFrom(process.env.PLAYWRIGHT_PATH)
   : requireFrom('playwright');
 const browser = await chromium.launch();
-// name, scenario, text to wait for
+// name, scenario, text to wait for, optional steps run on the page before the shot
+const fillAdd = async (page) => {
+  await page.getByLabel('Title').fill('Sella basmati rice 5 kg');
+  await page
+    .locator('[name=description]')
+    .fill('Extra-long grain rice, parboiled and aged for two years.');
+  await page.getByLabel('Product type').selectOption('grocery');
+  await page.getByLabel(/Your SKU/).fill('RICE-5KG');
+  await page.getByRole('combobox', { name: 'Add a category' }).click();
+  await page.getByRole('option', { name: /Rice/ }).click();
+  await page.getByLabel('Tax category').selectOption('gst-free-food');
+};
 const views = [
   ['seller-edit', 'edit', 'Sella basmati rice'],
   ['seller-edit-paused', 'paused', 'Mondapac paused this product.'],
+  ['seller-add-empty', 'add', 'Your offer'],
+  ['seller-add-filled', 'add', 'Your offer', fillAdd],
 ];
 for (const scheme of ['light', 'dark']) {
   for (const width of [1280, 768, 375]) {
-    for (const [name, scenario, waitFor] of views) {
+    for (const [name, scenario, waitFor, steps] of views) {
       const ctx = await browser.newContext({
         viewport: { width, height: 900 },
         colorScheme: scheme,
@@ -53,6 +66,7 @@ for (const scheme of ['light', 'dark']) {
         scheme,
       );
       await page.getByText(waitFor, { exact: false }).first().waitFor();
+      if (steps) await steps(page);
       await page.waitForTimeout(300);
       const over = await page.evaluate(
         () => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth,

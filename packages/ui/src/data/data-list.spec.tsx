@@ -32,6 +32,11 @@ describe('DataList', () => {
     const out = html(<DataList rows={rows} missing="-" />);
     expect(out).toContain('--mp-size-data-label');
   });
+
+  it('default: the phone column may shrink, so an unbroken value wraps inside the card', () => {
+    const out = html(<DataList rows={rows} missing="-" />);
+    expect(out).toContain('max-sm:grid-cols-[minmax(0,1fr)]');
+  });
 });
 
 describe('Card', () => {

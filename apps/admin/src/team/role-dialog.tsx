@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import {
   isNoteFailure,
+  requestOf,
   ReviewNoteField,
   trimmedNote,
   useAlreadyPending,
@@ -274,8 +275,10 @@ export function InviteAdminDialog({
       if (result.ok) {
         onClose();
         const body = result.body as { readonly code?: unknown } | null;
-        // Nothing was sent yet: only the approval request is announced.
-        if (body?.code === 'invitation.proposed') sentForApproval(result.body);
+        // Nothing was sent yet: only the approval request is announced (the answer also names
+        // its code, so only its request is passed on as the proposal).
+        if (body?.code === 'invitation.proposed')
+          sentForApproval({ request: requestOf(result.body) });
         else {
           toast.success(t('dialog.invite.toast-sent', { email: address }));
           sentForReview(result.body);
