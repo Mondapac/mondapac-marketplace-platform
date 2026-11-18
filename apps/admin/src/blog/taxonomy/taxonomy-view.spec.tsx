@@ -39,7 +39,9 @@ function show(canEdit = true) {
 const writes = () => call.mock.calls.filter(([method]) => method !== 'GET');
 
 describe('admin blog taxonomy', () => {
-  beforeEach(() => call.mockReset());
+  beforeEach(() => {
+    call.mockReset();
+  });
   afterEach(cleanup);
 
   it('lists categories and tags, and offers no change to a reader', async () => {
@@ -127,6 +129,27 @@ describe('admin blog taxonomy', () => {
       'blog/admin/taxonomy/tags',
       { name: 'Slow cooker' },
     ]);
+  });
+
+  it('shows the spinner only on Add tag while a tag is added, not on Save of an open category form', async () => {
+    let finish: (value: never) => void = () => undefined;
+    call.mockImplementation((...args: unknown[]) =>
+      args[0] === 'GET'
+        ? Promise.resolve(ok(taxonomy) as never)
+        : new Promise<never>((resolve) => (finish = resolve)),
+    );
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Add category' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Slow cooker' } });
+    const addTag = screen.getByRole('button', { name: 'Add tag' });
+    fireEvent.click(addTag);
+    await waitFor(() => expect(addTag.getAttribute('aria-busy')).toBe('true'));
+    const save = screen.getByRole<HTMLButtonElement>('button', { name: 'Save' });
+    expect(save.getAttribute('aria-busy')).toBeNull();
+    expect(save.disabled).toBe(true);
+    finish(ok({}) as never);
+    await waitFor(() => expect(addTag.getAttribute('aria-busy')).toBeNull());
+    expect(save.disabled).toBe(false);
   });
 
   it('cannot add a category when the Market has no blog language settings', async () => {

@@ -31,6 +31,8 @@ model AssistantSettings {
   monthlySpendCapUsdCents Int      @map("monthly_spend_cap_usd_cents")
   /// email-link | in-panel-form
   supportHandoff          String   @map("support_handoff") @db.VarChar(16)
+  /// Basket proposals from a list (stage 1): may the assistant plan a typed list. Default false.
+  basketProposals         Boolean  @default(false) @map("basket_proposals")
   /// null: the storefront's default welcome text.
   welcomeText             String?  @map("welcome_text") @db.VarChar(200)
   changedAt               DateTime @map("changed_at") @db.Timestamptz(6)
@@ -64,6 +66,9 @@ model AssistantConversation {
   @@unique([marketId, id])
   /// The purge reads the conversations of a Market by the age of their last message.
   @@index([marketId, retentionDays, lastMessageAt])
+  /// The partial index (market_id, account_id, last_message_at DESC, id DESC) WHERE account_id IS
+  /// NOT NULL (a buyer's own list, stage 0 B2) is hand-written in its own migration, built
+  /// CONCURRENTLY; Prisma cannot declare it.
   @@map("conversations")
   @@schema("assistant")
 }
@@ -107,5 +112,36 @@ model AssistantSpendDay {
 
   @@id([marketId, day])
   @@map("spend_days")
+  @@schema("assistant")
+}
+
+/// assistant's outbox (stage 0, B4): the spend-cap event the admin bell notice follows. Which cap
+/// only, never an amount, a conversation or buyer text. Every outbox of every module has exactly
+/// these fields.
+model AssistantOutbox {
+  /// UUIDv7 stamped by the outbox writer.
+  eventId          String    @id @map("event_id") @db.Uuid
+  /// "assistant.<subject>-<verb>.v<N>"; the CHECK refuses another module's type.
+  type             String
+  /// The instant the use case took from Clock (UTC).
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  /// Market of the unit that wrote the event (ADR-0003); stamped by the writer.
+  marketId         String    @map("market_id") @db.VarChar(8)
+  /// Tenant seam (ADR-0001); stamped by the writer, no database default.
+  tenantId         String    @map("tenant_id")
+  aggregateType    String    @map("aggregate_type")
+  aggregateId      String    @map("aggregate_id") @db.Uuid
+  /// The aggregate's version after the change; unique per aggregate (P 10).
+  aggregateVersion Int       @map("aggregate_version")
+  correlationId    String    @map("correlation_id")
+  /// The consumed event that caused this one, or null.
+  causationId      String?   @map("causation_id") @db.Uuid
+  payload          Json      @db.JsonB
+  /// Set by the relay when the event was handed to the bus; the only column that changes.
+  publishedAt      DateTime? @map("published_at") @db.Timestamptz(6)
+
+  /// No two events of one aggregate share a version (I7); led by market_id (data design C7).
+  @@unique([marketId, aggregateId, aggregateVersion])
+  @@map("outbox")
   @@schema("assistant")
 }

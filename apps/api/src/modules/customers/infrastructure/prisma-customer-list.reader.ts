@@ -17,12 +17,15 @@ import {
   type SortDirection,
 } from '../domain/customer-list';
 import { emailSearchKey } from '../domain/customer-read-models';
+import { localDayEnd, localDayStart } from '../domain/local-day';
 
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
-const startOfDay = (day: string): Date => new Date(`${day}T00:00:00Z`);
-const startOfNextDay = (day: string): Date =>
-  new Date(Temporal.Instant.from(`${day}T00:00:00Z`).epochMilliseconds + 24 * 3_600_000);
+/** A day of a filter, already validated, as the instants it starts and ends in the query's zone. */
+const startOfDay = (day: string, zone: string): Date =>
+  new Date((localDayStart(day, zone) as Temporal.Instant).epochMilliseconds);
+const startOfNextDay = (day: string, zone: string): Date =>
+  new Date((localDayEnd(day, zone) as Temporal.Instant).epochMilliseconds);
 const daysBefore = (now: Temporal.Instant, days: number): Date =>
   new Date(now.epochMilliseconds - days * 24 * 3_600_000);
 
@@ -30,7 +33,16 @@ const daysBefore = (now: Temporal.Instant, days: number): Date =>
 const PENDING_CAP = 5000;
 
 type Where = Prisma.CustomersCustomerDirectoryWhereInput;
-type DirectoryRow = Prisma.CustomersCustomerDirectoryGetPayload<{ include: { stats: true } }>;
+/** What a list row reads beside the directory row: the stats and the groups it is in. */
+const INCLUDE = {
+  stats: true,
+  groupMemberships: {
+    select: { group: { select: { id: true, name: true, archivedAt: true } } },
+    orderBy: [{ addedAt: 'asc' }, { groupId: 'asc' }],
+  },
+} as const satisfies Prisma.CustomersCustomerDirectoryInclude;
+
+type DirectoryRow = Prisma.CustomersCustomerDirectoryGetPayload<{ include: typeof INCLUDE }>;
 
 const rowOf = (row: DirectoryRow): CustomerListRow => ({
   accountId: row.accountId as Id<'Account'>,
@@ -46,6 +58,11 @@ const rowOf = (row: DirectoryRow): CustomerListRow => ({
   currency: row.stats?.currency ?? null,
   refundCount: row.stats?.refundCount ?? 0,
   refundedMinor: row.stats?.refundedMinor ?? 0n,
+  groups: row.groupMemberships.map(({ group }) => ({
+    groupId: group.id,
+    name: group.name,
+    archived: group.archivedAt !== null,
+  })),
 });
 
 /**
@@ -64,7 +81,7 @@ export class PrismaCustomerListReader implements CustomerListReader {
     const where = await this.#where(market, query);
     const rows = await this.prisma.tx(market).customersCustomerDirectory.findMany({
       where,
-      include: { stats: true },
+      include: INCLUDE,
       orderBy: orderBy(order.sort, order.direction),
       skip: page.offset,
       take: page.limit,
@@ -86,6 +103,8 @@ export class PrismaCustomerListReader implements CustomerListReader {
     const counts = await Promise.all(
       CUSTOMER_VIEWS.map((view) =>
         this.count(market, {
+          // The tabs count back from now and carry no day filter, so the zone plays no part.
+          zone: 'UTC',
           selector: {
             ...empty,
             view,
@@ -99,6 +118,7 @@ export class PrismaCustomerListReader implements CustomerListReader {
             ordersMax: null,
             spentMin: null,
             spentMax: null,
+            group: null,
           },
           now,
         }),
@@ -131,7 +151,7 @@ export class PrismaCustomerListReader implements CustomerListReader {
     if (ids.length === 0) return [];
     const rows = await this.prisma.tx(market).customersCustomerDirectory.findMany({
       where: { marketId: market.marketId, accountId: { in: [...ids] } },
-      include: { stats: true },
+      include: INCLUDE,
     });
     const byId = new Map(rows.map((row) => [row.accountId, rowOf(row)]));
     return ids.flatMap((id) => {
@@ -141,7 +161,7 @@ export class PrismaCustomerListReader implements CustomerListReader {
   }
 
   async #where(market: MarketContext, query: CustomerListQuery): Promise<Where> {
-    const { selector, now } = query;
+    const { selector, now, zone } = query;
     const and: Where[] = [];
 
     switch (selector.view) {
@@ -173,13 +193,22 @@ export class PrismaCustomerListReader implements CustomerListReader {
       }
     }
 
+    if (selector.accountIds != null) and.push({ accountId: { in: [...selector.accountIds] } });
+    if (selector.followsSellerId != null) {
+      and.push({
+        sellerCustomers: { some: { sellerId: selector.followsSellerId, follower: true } },
+      });
+    }
     if (selector.status !== null) and.push({ status: selector.status });
+    if (selector.group !== null) {
+      and.push({ groupMemberships: { some: { groupId: selector.group } } });
+    }
     if (selector.verified !== null) and.push({ emailVerified: selector.verified });
     if (selector.joinedFrom !== null || selector.joinedTo !== null) {
       and.push({
         signedUpAt: {
-          ...(selector.joinedFrom === null ? {} : { gte: startOfDay(selector.joinedFrom) }),
-          ...(selector.joinedTo === null ? {} : { lt: startOfNextDay(selector.joinedTo) }),
+          ...(selector.joinedFrom === null ? {} : { gte: startOfDay(selector.joinedFrom, zone) }),
+          ...(selector.joinedTo === null ? {} : { lt: startOfNextDay(selector.joinedTo, zone) }),
         },
       });
     }
@@ -190,10 +219,10 @@ export class PrismaCustomerListReader implements CustomerListReader {
             lastOrderAt: {
               ...(selector.lastOrderFrom === null
                 ? {}
-                : { gte: startOfDay(selector.lastOrderFrom) }),
+                : { gte: startOfDay(selector.lastOrderFrom, zone) }),
               ...(selector.lastOrderTo === null
                 ? {}
-                : { lt: startOfNextDay(selector.lastOrderTo) }),
+                : { lt: startOfNextDay(selector.lastOrderTo, zone) }),
             },
           },
         },

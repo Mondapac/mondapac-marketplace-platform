@@ -7,8 +7,8 @@ import {
   FormActionBar,
   LinkButton,
   LoadError,
-  SkeletonRows,
   toast,
+  DetailSkeleton,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -179,7 +179,9 @@ export function SlideOrderView({
     <div className="flex min-w-0 flex-col gap-4">
       <SlideOrderControls place={place} />
       {!readable ? <p className="text-sm text-fg-muted">{t('scope-id-needed')}</p> : null}
-      {readable && load.state === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
+      {readable && load.state === 'loading' ? (
+        <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={4} />
+      ) : null}
       {readable && load.state === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"

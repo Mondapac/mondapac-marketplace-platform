@@ -1,5 +1,5 @@
 import { defineEvent, eventField } from '@mondapac/shared-kernel';
-import type { EventDefinition } from '@mondapac/shared-kernel';
+import type { EventDefinition, Id, PendingEvent, Temporal } from '@mondapac/shared-kernel';
 import { REFUND_LIMIT_ALERTS } from '../refund-limits';
 
 /**
@@ -17,6 +17,33 @@ export const OrderPaid = defineEvent({
     sellerIds: eventField.listOf(eventField.id()),
   },
 });
+
+/**
+ * An order was cancelled (promotions package T2): before payment (the page expired, the payment
+ * failed, a later checkout of the customer superseded it, the provider failed) or by an admin.
+ * Once per order, in the unit that cancels it. Ids only. `promotions` releases the discounts the
+ * order had reserved (usage counters, budgets, a single-use code).
+ */
+export const OrderCancelled = defineEvent({
+  type: 'ordering.order-cancelled.v1',
+  aggregateType: 'order',
+  payload: {
+    orderId: eventField.id(),
+  },
+});
+
+/** The {@link OrderCancelled} of an order just saved cancelled (`version` is the saved one). */
+export function orderCancelledEvent(
+  order: { readonly id: Id<'Order'>; readonly version: number },
+  occurredAt: Temporal.Instant,
+): PendingEvent {
+  return OrderCancelled.record({
+    aggregateId: order.id,
+    aggregateVersion: order.version,
+    occurredAt,
+    payload: { orderId: order.id },
+  });
+}
 
 /**
  * A seller recorded the shipment of its part of a paid order (Phase 6 package 3), once per
@@ -104,6 +131,7 @@ export const SellerRefundLimitReached = defineEvent({
 /** Every event type ordering publishes, registered with the event catalogue at boot. */
 export const ORDERING_EVENTS: readonly EventDefinition[] = [
   OrderPaid,
+  OrderCancelled,
   OrderShipped,
   SellerOrderReady,
   SellerOrderDelivered,

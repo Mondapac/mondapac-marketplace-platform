@@ -15,7 +15,7 @@ export {
   type AccountMenuProps,
 } from './shell/account-menu.tsx';
 export { Icon, type IconName, type IconProps } from './icon/icon.tsx';
-export { Tabs, type TabItem, type TabsProps } from './shell/tabs.tsx';
+export { Tabs, tabIdOf, type TabItem, type TabsProps } from './shell/tabs.tsx';
 export { BackLink } from './shell/back-link.tsx';
 export { ShortcutGrid, type Shortcut } from './shell/shortcut-grid.tsx';
 export { RouteError, RouteLoading, type RouteErrorProps } from './shell/route-states.tsx';
@@ -27,6 +27,15 @@ export {
   type NavigationProgressProps,
 } from './loading/navigation-progress.tsx';
 export { Spinner } from './loading/spinner.tsx';
+export {
+  DetailSkeleton,
+  FormSkeleton,
+  TableSkeleton,
+  type DetailSkeletonProps,
+  type FormSkeletonProps,
+  type TableSkeletonColumn,
+  type TableSkeletonProps,
+} from './loading/section-skeletons.tsx';
 export {
   SettingsSkeleton,
   type SettingsSkeletonProps,
@@ -60,12 +69,22 @@ export {
   type NavSection,
   type NavItem,
 } from './shell/nav.ts';
+export {
+  NavBadgeProvider,
+  NAV_BADGE_CAP,
+  badgeText,
+  sumBadges,
+  useNavBadges,
+  useSetNavBadge,
+  type NavBadgeValue,
+} from './shell/nav-badges.tsx';
 export { AuthLayout, type AuthLayoutProps, type AuthShowcaseCard } from './auth/auth-layout.tsx';
 export { Banner, type BannerProps, type BannerTone } from './form/banner.tsx';
 export {
   Button,
   LinkButton,
   type ButtonProps,
+  type ButtonSize,
   type ButtonVariant,
   type LinkButtonProps,
 } from './form/button.tsx';
@@ -96,6 +115,19 @@ export {
   type SearchSelectProps,
   type SearchSelectSingleProps,
 } from './select/search-select.tsx';
+export {
+  CategoryChooser,
+  type CategoryChooserLabels,
+  type CategoryChooserProps,
+} from './select/category-chooser.tsx';
+export {
+  MAX_PRODUCT_CATEGORIES,
+  addCategory,
+  choiceLabel,
+  makePrimary,
+  removeCategory,
+  type CategoryChoice,
+} from './select/category-chooser-logic.ts';
 export { LoadError, type LoadErrorProps } from './form/load-error.tsx';
 export { Badge, type BadgeProps, type BadgeTone } from './form/badge.tsx';
 export { EmptyState, type EmptyStateProps, type EmptyStateSize } from './form/empty-state.tsx';
@@ -145,6 +177,11 @@ export {
   type SettingsHistoryState,
 } from './settings/settings-history.tsx';
 export {
+  SettingsDrawer,
+  type SettingsDrawerLabels,
+  type SettingsDrawerProps,
+} from './settings/settings-drawer.tsx';
+export {
   SettingsViewOnlyBanner,
   type SettingsViewOnlyBannerProps,
 } from './settings/view-only-banner.tsx';
@@ -181,7 +218,7 @@ export {
   type PageItem as PaginationPageItem,
   type PaginationLabels,
 } from './data/pagination.tsx';
-export { CARD_TABLE } from './data/card-table.ts';
+export { CARD_TABLE, ROW_ACTIONS_COLUMN_ID } from './data/card-table.ts';
 export { MemberColumns } from './data/member-columns.tsx';
 export { addressLines } from './data/address.ts';
 export { EmailText } from './data/email-text.tsx';
@@ -194,6 +231,18 @@ export {
 } from './data/ledger.tsx';
 export { ActivityTable, formatCount, type ActivityColumn } from './dashboard/activity-table.tsx';
 export {
+  ActivityCardSkeleton,
+  DashboardLoading,
+  DistributionCardSkeleton,
+  StatCardSkeleton,
+  activitySkeletonColumns,
+  type ActivityCardSkeletonProps,
+  type ActivitySkeletonColumn,
+  type DistributionCardSkeletonProps,
+  type StatCardSkeletonProps,
+} from './dashboard/dashboard-loading.tsx';
+export { DashboardSlot, type DashboardSource } from './dashboard/dashboard-slot.tsx';
+export {
   DashboardCard,
   DistributionBar,
   StatCard,
@@ -204,6 +253,7 @@ export {
   type StatTone,
 } from './dashboard/dashboard.tsx';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
+export { SidePanel, type SidePanelProps } from './overlay/side-panel.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
 export {
   ActionMenu,
@@ -303,6 +353,11 @@ export {
   type PrefsStore,
 } from './palette/panel-prefs.ts';
 export { panelToolsLabels } from './palette/palette-labels.ts';
+export {
+  ConfirmAction,
+  type ConfirmActionProps,
+  type ConfirmLevel,
+} from './overlay/confirm-action.tsx';
 export { BottomSheet, type BottomSheetProps } from './overlay/bottom-sheet.tsx';
 export { useDesktop, useMediaQuery, DESKTOP_QUERY, WIDE_QUERY } from './list/use-desktop.ts';
 export { ListThumb } from './list/list-thumb.tsx';
@@ -365,6 +420,23 @@ export {
   type ExportFormat,
 } from './list/export-dialog.tsx';
 export { useRowSelection, type RowSelectionState } from './list/use-row-selection.ts';
+export { SuperList, type SuperListProps, type SuperListTool } from './list/super-list.tsx';
+export {
+  SuperTable,
+  type SuperColumn,
+  type SuperTableProps,
+  type SuperTableSelectionLabels,
+} from './list/super-table.tsx';
+export {
+  useSuperListQuery,
+  type SuperListQuery,
+  type SuperListQueryOptions,
+} from './list/use-super-list-query.ts';
+export {
+  FilterChipRow,
+  type FilterChipRowChip,
+  type FilterChipRowProps,
+} from './list/filter-chip-row.tsx';
 export { ListViewsBar, type ListViewsBarProps } from './list/list-views-bar.tsx';
 export {
   DescriptionWriter,

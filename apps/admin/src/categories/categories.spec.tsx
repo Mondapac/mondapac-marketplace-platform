@@ -125,7 +125,10 @@ beforeEach(() => {
   push.mockReset();
   wide(true);
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe('CategoriesView', () => {
   it('offers Export and Import only with the import key', async () => {
@@ -148,6 +151,26 @@ describe('CategoriesView', () => {
       screen.queryByRole('button', { name: 'Export the category tree as a CSV file' }),
     ).toBeNull();
     expect(screen.queryByRole('link', { name: 'Import' })).toBeNull();
+  });
+
+  it('shows the spinner only on the export button that was pressed', async () => {
+    serve({ 'catalog/admin/categories': ok(tree()) });
+    let finish: (value: Response) => void = () => undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((resolve) => (finish = resolve))),
+    );
+    view(<CategoriesView canEdit canImport />);
+    await screen.findAllByRole('treeitem');
+    const csv = screen.getByRole('button', { name: 'Export the category tree as a CSV file' });
+    const xlsx = screen.getByRole('button', { name: 'Export the category tree as an XLSX file' });
+    fireEvent.click(xlsx);
+    await waitFor(() => expect(xlsx.getAttribute('aria-busy')).toBe('true'));
+    expect(csv.getAttribute('aria-busy')).toBeNull();
+    expect((csv as HTMLButtonElement).disabled).toBe(true);
+    finish({ ok: false, status: 500 } as Response);
+    await waitFor(() => expect(xlsx.getAttribute('aria-busy')).toBeNull());
+    expect((csv as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('filters the tree by feature set, own or inherited, and clears it', async () => {

@@ -3,7 +3,15 @@
 // area, and the reverter port they implement. Other modules may import only what this file
 // exports, through ../index.ts.
 export { SYSTEM_REQUESTS_AUDIT_ACTIONS } from '../domain/audit';
-export { POLICY_AREAS, RISKS, type PolicyArea, type Risk } from '../domain/areas';
+export {
+  POLICY_AREAS,
+  REVIEW_AREAS,
+  RISKS,
+  type PolicyArea,
+  type ReviewArea,
+  type Risk,
+} from '../domain/areas';
+export { SystemRequestOverdue } from '../domain/events';
 export { isChangeValues, type ChangeValue, type ChangeValues } from '../domain/request';
 export {
   SYSTEM_REQUEST_RECORDER,
@@ -13,6 +21,7 @@ export {
   type SystemRequestRecorder,
 } from './recorder';
 export {
+  MAX_DESCRIBE_REFS,
   registerSystemChangeReverter,
   SYSTEM_CHANGE_REVERTERS,
   type RevertOutcome,

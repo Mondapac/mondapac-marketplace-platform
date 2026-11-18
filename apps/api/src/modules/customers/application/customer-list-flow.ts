@@ -14,6 +14,8 @@ import {
   type CustomerView,
   type SortDirection,
 } from '../domain/customer-list';
+import type { AdminDayZone } from './ports/admin-day-zone';
+import type { OrderAccountPeer } from './ports/customer-management-peers';
 import type { CustomerListQuery, CustomerListReader } from './ports/customer-list.reader';
 
 // The reading of a list request and the page it answers. Plain functions: use cases cannot extend
@@ -36,6 +38,10 @@ export interface CustomerListDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly listReader: CustomerListReader;
   readonly clock: Clock;
+  /** The zone the day filters are read in (the admin's, else the Market's). */
+  readonly dayZone: AdminDayZone;
+  /** Resolves an order number to the account that placed it (phase 2b); bound at start. */
+  readonly orders: OrderAccountPeer;
 }
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -62,6 +68,7 @@ const LIST_KEYS = new Set([
   'pageSize',
   'cursor',
   'limit',
+  'orderNumber',
 ]);
 
 /** The selector keys of a request without paging: used by the ids read and the export. */
@@ -100,6 +107,8 @@ export interface ListPageRequest {
   readonly page: number | null;
   readonly offset: number;
   readonly limit: number;
+  /** An order's number (its id): only the customer who placed it (phase 2b); null for none. */
+  readonly orderNumber: string | null;
 }
 
 const CURSOR = /^o(\d{1,5})$/;
@@ -113,6 +122,16 @@ export function parseListRequest(input: unknown): Result<ListPageRequest, ListVa
   if (!selector.ok) return selector;
   const order = parseSort(input['sort'], input['direction']);
   if (!order.ok) return invalidField(order.error.path, order.error.code);
+  let orderNumber: string | null = null;
+  const typed = input['orderNumber'];
+  if (typed !== undefined && typed !== null && typed !== '') {
+    if (typeof typed !== 'string') return invalidField('orderNumber', 'type');
+    const trimmed = typed.trim();
+    if (trimmed.length === 0 || trimmed.length > 64 || /\p{C}/u.test(trimmed)) {
+      return invalidField('orderNumber', 'length');
+    }
+    orderNumber = trimmed.toLowerCase();
+  }
 
   const wholeNumber = (value: unknown, min: number, max: number): number | null =>
     typeof value === 'number' && Number.isSafeInteger(value) && value >= min && value <= max
@@ -135,6 +154,7 @@ export function parseListRequest(input: unknown): Result<ListPageRequest, ListVa
       page,
       offset: (page - 1) * size,
       limit: size,
+      orderNumber,
     });
   }
 
@@ -152,7 +172,7 @@ export function parseListRequest(input: unknown): Result<ListPageRequest, ListVa
     // A hand-made cursor must not walk past the depth the page numbers stop at.
     if (offset >= CUSTOMER_MAX_PAGED_ROWS) return invalidField('cursor', 'range');
   }
-  return ok({ selector: selector.value, ...order.value, page: null, offset, limit });
+  return ok({ selector: selector.value, ...order.value, page: null, offset, limit, orderNumber });
 }
 
 export interface CustomerRowView {
@@ -168,6 +188,12 @@ export interface CustomerRowView {
   readonly spentMinor: string;
   readonly currency: string | null;
   readonly refundCount: number;
+  /** The manual groups the customer is in (the optional "Groups" column). */
+  readonly groups: readonly {
+    readonly groupId: string;
+    readonly name: string;
+    readonly archived: boolean;
+  }[];
 }
 
 export const rowView = (row: CustomerListRow): CustomerRowView => ({
@@ -182,6 +208,7 @@ export const rowView = (row: CustomerListRow): CustomerRowView => ({
   spentMinor: row.spentMinor.toString(),
   currency: row.currency,
   refundCount: row.refundCount,
+  groups: row.groups,
 });
 
 export interface CustomerListOutput {
@@ -204,8 +231,28 @@ export async function listCustomers(
   deps: CustomerListDependencies,
   context: CallContext,
   request: ListPageRequest,
-): Promise<Result<CustomerListOutput, { readonly code: 'access.unavailable' }>> {
-  const query: CustomerListQuery = { selector: request.selector, now: deps.clock.now() };
+): Promise<
+  Result<
+    CustomerListOutput,
+    { readonly code: 'access.unavailable' } | { readonly code: 'access.denied' }
+  >
+> {
+  // An order number narrows the list to the customer who placed it, as ordering answers it under
+  // its own key (`ordering.order.view`): an admin without that key is refused, an unknown or
+  // another Market's order matches nobody. Asked before the unit opens.
+  let accountIds: readonly string[] | null = null;
+  if (request.orderNumber !== null) {
+    const placed = await deps.orders.adminOrderAccountOf(context, request.orderNumber);
+    if (placed.ok) accountIds = [placed.value.accountId];
+    else if (placed.error.code === 'ordering.order-not-found') accountIds = [];
+    else if (placed.error.code === 'access.denied') return err({ code: 'access.denied' });
+    else return err({ code: 'access.unavailable' });
+  }
+  const query: CustomerListQuery = {
+    selector: accountIds === null ? request.selector : { ...request.selector, accountIds },
+    now: deps.clock.now(),
+    zone: await deps.dayZone.zoneOf(context),
+  };
   const read = await deps.unitOfWork.run<
     {
       readonly rows: readonly CustomerListRow[];

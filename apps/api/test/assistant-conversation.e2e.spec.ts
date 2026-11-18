@@ -6,8 +6,11 @@ import request from 'supertest';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
+import { DeleteConversation } from '../src/modules/assistant/application/use-cases/delete-conversation.use-case';
+import { ListConversations } from '../src/modules/assistant/application/use-cases/list-conversations.use-case';
 import { SendGuestMessage } from '../src/modules/assistant/application/use-cases/send-guest-message.use-case';
 import { SendMessage } from '../src/modules/assistant/application/use-cases/send-message.use-case';
+import { ViewConversation } from '../src/modules/assistant/application/use-cases/view-conversation.use-case';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
@@ -71,7 +74,13 @@ describe.each(TEST_MARKETS)('the assistant conversation over HTTP in market %s',
           .overrideProvider(SendMessage)
           .useValue(stub('account'))
           .overrideProvider(SendGuestMessage)
-          .useValue(stub('guest')),
+          .useValue(stub('guest'))
+          .overrideProvider(ListConversations)
+          .useValue(stub('list'))
+          .overrideProvider(ViewConversation)
+          .useValue(stub('view'))
+          .overrideProvider(DeleteConversation)
+          .useValue(stub('delete')),
     }));
   }
 
@@ -196,6 +205,121 @@ describe.each(TEST_MARKETS)('the assistant conversation over HTTP in market %s',
     expect(typeof calls[0]!.input['origin']).toBe('string');
   });
 
+  it('streams the cart cards with every Money as a string of minor units (S1-B1)', async () => {
+    await boot();
+    const OFFER = id<'Offer'>(0xd101);
+    const LINE = id<'CartLine'>(0xd102);
+    const VARIANT = id<'Variant'>(0xd103);
+    const SELLER = id<'Seller'>(0xd104);
+    next = ok({
+      conversationId: CONVERSATION,
+      cards: [
+        {
+          kind: 'cart-action',
+          action: 'add',
+          offerId: OFFER,
+          productId: null,
+          sellerId: SELLER,
+          sellerName: 'Fresh Farm',
+          name: 'Ghee',
+          lineId: null,
+          currentQuantity: null,
+          quantity: 2,
+          limited: false,
+          cartFull: false,
+          units: [
+            {
+              variantId: VARIANT,
+              label: '500 g',
+              price: money(1250n, currency),
+              taxInclusive: true,
+              maxQuantity: 5,
+              lineId: LINE,
+              inCart: 1,
+              addable: 4,
+            },
+            {
+              variantId: id<'Variant'>(0xd105),
+              label: null,
+              price: null,
+              taxInclusive: null,
+              maxQuantity: null,
+              lineId: null,
+              inCart: 0,
+              addable: 0,
+            },
+          ],
+          cartMode: 'single-store',
+          otherStore: null,
+        },
+        {
+          kind: 'cart',
+          lineCount: 2,
+          total: null,
+          groups: [
+            {
+              sellerId: SELLER,
+              sellerName: 'Fresh Farm',
+              subtotal: money(2500n, currency),
+              minimumOrder: { state: 'met', minimum: money(2000n, currency) },
+              lines: [
+                {
+                  lineId: LINE,
+                  offerId: OFFER,
+                  variantId: VARIANT,
+                  productId: null,
+                  name: 'Ghee',
+                  variantLabel: '500 g',
+                  quantity: 2,
+                  state: 'buyable',
+                  unitPrice: money(1250n, currency),
+                  maxQuantity: 5,
+                },
+              ],
+            },
+            {
+              sellerId: null,
+              sellerName: null,
+              subtotal: null,
+              minimumOrder: { state: 'check-unavailable', minimum: null },
+              lines: [],
+            },
+          ],
+        },
+      ],
+      sentences: ['You can confirm on the card.'],
+      notices: [],
+      guestToken: null,
+    });
+
+    const res = await http().post(PATH).set({ 'x-market-id': code }).send({ text: 'add ghee' });
+
+    expect(res.status).toBe(200);
+    const cards = framesOf(res.text)
+      .filter(([name]) => name === 'card')
+      .map(([, data]) => data as Record<string, unknown>);
+    expect(cards[0]).toMatchObject({
+      kind: 'cart-action',
+      units: [
+        { price: { amount: '1250', currency }, addable: 4 },
+        { price: null, addable: 0 },
+      ],
+      otherStore: null,
+    });
+    expect(cards[1]).toMatchObject({
+      kind: 'cart',
+      total: null,
+      groups: [
+        {
+          subtotal: { amount: '2500', currency },
+          minimumOrder: { state: 'met', minimum: { amount: '2000', currency } },
+          lines: [{ unitPrice: { amount: '1250', currency }, maxQuantity: 5 }],
+        },
+        { subtotal: null, minimumOrder: { minimum: null } },
+      ],
+    });
+  });
+
   it("passes the guest's own cookie of this Market, and a malformed one as not a token", async () => {
     await boot();
     const other = code === 'AU' ? 'ZZ' : 'AU';
@@ -239,9 +363,24 @@ describe.each(TEST_MARKETS)('the assistant conversation over HTTP in market %s',
       {
         name: 'account',
         actor: 'authenticated',
-        input: { conversationId: CONVERSATION, text: 'hi', visitor: undefined },
+        input: { conversationId: CONVERSATION, text: 'hi', visitor: undefined, preview: undefined },
       },
     ]);
+  });
+
+  it('passes the internal preview header to the use case as sent, never from the body', async () => {
+    await boot();
+    await http()
+      .post(PATH)
+      .set({ 'x-market-id': code, 'x-assistant-preview': 'ap1.token' })
+      .send({ text: 'hi' });
+    const inBody = await http()
+      .post(PATH)
+      .set({ 'x-market-id': code })
+      .send({ text: 'hi', preview: 'ap1.token' });
+    expect(inBody.status).toBe(400);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.input['preview']).toBe('ap1.token');
   });
 
   it('refuses a body with unknown fields or of another type before any use case', async () => {
@@ -292,5 +431,154 @@ describe.each(TEST_MARKETS)('the assistant conversation over HTTP in market %s',
 
     expect(res.status).toBe(429);
     expect(res.headers['retry-after']).toBe('120');
+  });
+
+  describe("a signed-in buyer's history", () => {
+    const LIST = '/assistant/conversations';
+    const ONE = `/assistant/conversations/${CONVERSATION}`;
+    const item = {
+      id: CONVERSATION,
+      title: 'Do you have dates?',
+      turns: 2,
+      full: false,
+      startedAt: START,
+      lastMessageAt: START.add({ hours: 1 }),
+    };
+
+    it('refuses a guest with assistant.sign-in-required before any use case', async () => {
+      await boot();
+      const headers = { 'x-market-id': code, cookie: `__Host-assistant-guest-${code}=${TOKEN}` };
+
+      const listed = await http().get(LIST).set(headers);
+      const viewed = await http().get(ONE).set(headers);
+      const deleted = await http().delete(ONE).set(headers);
+
+      for (const res of [listed, viewed, deleted]) {
+        expect(res.status).toBe(403);
+        expect((res.body as { code: string }).code).toBe('assistant.sign-in-required');
+      }
+      expect(calls).toEqual([]);
+    });
+
+    it('lists from the session with the query, never cached', async () => {
+      await boot();
+      const session = customerSession();
+      next = ok({ items: [item], nextCursor: 'abc' });
+
+      const res = await http()
+        .get(`${LIST}?cursor=abc&limit=5&accountId=${id<'Account'>(0xbad).toString()}`)
+        .set({ 'x-market-id': code, cookie: session.cookie });
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body).toEqual({
+        items: [
+          {
+            ...item,
+            startedAt: '2026-10-19T21:00:00Z',
+            lastMessageAt: '2026-10-19T22:00:00Z',
+          },
+        ],
+        nextCursor: 'abc',
+      });
+      expect(calls).toEqual([
+        { name: 'list', actor: 'authenticated', input: { cursor: 'abc', limit: '5' } },
+      ]);
+    });
+
+    it('answers one conversation with its messages and card refs', async () => {
+      await boot();
+      const session = customerSession();
+      next = ok({
+        ...item,
+        messages: [
+          { position: 1, role: 'buyer', text: 'Do you have dates?', cards: [], at: START },
+          {
+            position: 2,
+            role: 'assistant',
+            text: 'Here are some.',
+            cards: [{ kind: 'product', offerId: id<'Offer'>(0xd001) }, { kind: 'support' }],
+            at: START,
+          },
+        ],
+      });
+
+      const res = await http().get(ONE).set({ 'x-market-id': code, cookie: session.cookie });
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect((res.body as { messages: unknown[] }).messages).toEqual([
+        {
+          position: 1,
+          role: 'buyer',
+          text: 'Do you have dates?',
+          cards: [],
+          at: '2026-10-19T21:00:00Z',
+        },
+        {
+          position: 2,
+          role: 'assistant',
+          text: 'Here are some.',
+          cards: [{ kind: 'product', offerId: id<'Offer'>(0xd001) }, { kind: 'support' }],
+          at: '2026-10-19T21:00:00Z',
+        },
+      ]);
+      expect(calls).toEqual([
+        { name: 'view', actor: 'authenticated', input: { conversationId: CONVERSATION } },
+      ]);
+    });
+
+    it.each([
+      ['assistant.conversation-not-found', 404],
+      ['assistant.off', 403],
+    ])('answers %s with status %i', async (failure, status) => {
+      await boot();
+      const session = customerSession();
+      next = err({ code: failure });
+
+      const res = await http().get(ONE).set({ 'x-market-id': code, cookie: session.cookie });
+
+      expect(res.status).toBe(status);
+      expect((res.body as { code: string }).code).toBe(failure);
+    });
+
+    it('answers a bad query with 400 and its fields, a deleted id with 404', async () => {
+      await boot();
+      const session = customerSession();
+      const headers = { 'x-market-id': code, cookie: session.cookie };
+      next = err({ code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] });
+      const bad = await http().get(`${LIST}?limit=0`).set(headers);
+      next = err({ code: 'assistant.conversation-not-found' });
+      const gone = await http()
+        .delete(ONE)
+        .set({ ...headers, 'x-csrf-token': session.csrf });
+
+      expect(bad.status).toBe(400);
+      expect(bad.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'limit', code: 'range' }] },
+      });
+      expect(gone.status).toBe(404);
+      expect((gone.body as { code: string }).code).toBe('assistant.conversation-not-found');
+    });
+
+    it('deletes with the CSRF token only, answering 204', async () => {
+      await boot();
+      const session = customerSession();
+      next = ok({ deleted: true });
+      const headers = { 'x-market-id': code, cookie: session.cookie };
+
+      const noToken = await http().delete(ONE).set(headers);
+      const deleted = await http()
+        .delete(ONE)
+        .set({ ...headers, 'x-csrf-token': session.csrf });
+
+      expect(noToken.status).toBe(403);
+      expect(deleted.status).toBe(204);
+      expect(deleted.text).toBe('');
+      expect(calls).toEqual([
+        { name: 'delete', actor: 'authenticated', input: { conversationId: CONVERSATION } },
+      ]);
+    });
   });
 });

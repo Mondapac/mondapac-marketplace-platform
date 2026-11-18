@@ -143,3 +143,57 @@ describe('the seller product list’s saved document', () => {
     });
   });
 });
+
+describe('the seller offer list’s saved document', () => {
+  const list = sellerSavedFilterListOf('seller.catalog.offers')!;
+
+  it('is a seller list shown by the product view permission', () => {
+    expect(list).not.toBeNull();
+    expect(list.key.startsWith('seller.')).toBe(true);
+    expect(list.viewKey).toBe(CATALOG_OWN_PRODUCT_VIEW.key);
+  });
+
+  it('resolves the tab, sort and direction like the Offer list does', () => {
+    expect(list.parsePayload({ v: 1 })).toEqual({
+      ok: true,
+      value: { v: 1, view: 'all', sort: 'created', direction: 'desc' },
+    });
+    expect(list.parsePayload({ v: 1, sort: 'sku' })).toEqual({
+      ok: true,
+      value: { v: 1, view: 'all', sort: 'sku', direction: 'asc' },
+    });
+  });
+
+  it('accepts the fullest document and keeps a false `listed`', () => {
+    const full = {
+      v: 1,
+      view: 'live',
+      q: 'dates',
+      status: 'published',
+      listed: false,
+      sort: 'created',
+      direction: 'asc',
+    };
+    expect(list.parsePayload(full)).toEqual({ ok: true, value: full });
+  });
+
+  it('refuses page keys, Products keys, other versions and values the list refuses', () => {
+    const cases: [Record<string, unknown>, string][] = [
+      [{ v: 1, page: 2 }, 'payload.page'],
+      [{ v: 1, categoryId: 'x' }, 'payload.categoryId'],
+      [{ v: 2 }, 'payload.v'],
+      [{ v: 1, view: 'archived' }, 'payload.view'],
+      [{ v: 1, status: 'withdrawn' }, 'payload.status'],
+      [{ v: 1, listed: 'no' }, 'payload.listed'],
+      [{ v: 1, q: 'x'.repeat(101) }, 'payload.q'],
+    ];
+    for (const [raw, path] of cases) {
+      const parsed = list.parsePayload(raw);
+      expect(parsed.ok).toBe(false);
+      if (!parsed.ok) {
+        expect(parsed.error).toMatchObject({ fields: [{ path }] });
+      }
+    }
+    expect(list.parsePayload('x').ok).toBe(false);
+  });
+});
