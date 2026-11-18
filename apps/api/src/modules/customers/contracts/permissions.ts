@@ -148,6 +148,29 @@ export const CUSTOMERS_SELLER_CUSTOMERS_EXPORT = definePermission('customers', {
   protected: false,
 });
 
+/**
+ * Draw and refresh the shop's invite link (customers management phase 4a): a customer who signs up
+ * through it becomes the shop's exclusive customer. A seller key, not protected; no default seller
+ * role lists it, so the Seller Owner holds it and grants it to a role.
+ */
+export const CUSTOMERS_SELLER_INVITE_LINK_MANAGE = definePermission('customers', {
+  key: 'customers.seller-invite-link.manage',
+  scope: 'seller',
+  protected: false,
+});
+
+/**
+ * Reject a customer's attribution to a seller, or restore it (phase 4a). It decides whether the
+ * seller gets the exclusive-customer perks (a lower commission, cashback), so it is protected: only
+ * the Platform Administrator holds it, or a custom role it grants it to. Reading the list needs
+ * `customers.customers.view`.
+ */
+export const CUSTOMERS_SELLER_ATTRIBUTIONS_MANAGE = definePermission('customers', {
+  key: 'customers.seller-attributions.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const CUSTOMERS_PERMISSIONS = declarePermissions('customers', [
   CUSTOMERS_ADDRESS_REVEAL,
   CUSTOMERS_CUSTOMER_EDIT,
@@ -163,4 +186,6 @@ export const CUSTOMERS_PERMISSIONS = declarePermissions('customers', [
   BUYER_ACCOUNT_DELETE,
   CUSTOMERS_SELLER_CUSTOMERS_EXPORT,
   CUSTOMERS_SELLER_CUSTOMERS_VIEW,
+  CUSTOMERS_SELLER_INVITE_LINK_MANAGE,
+  CUSTOMERS_SELLER_ATTRIBUTIONS_MANAGE,
 ]);

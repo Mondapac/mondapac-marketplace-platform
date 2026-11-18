@@ -41,6 +41,9 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'customers.sign-in-not-found': 404,
   'customers.password-reset-recently-requested': 429,
   'customers.seller-customer-not-found': 404,
+  // Phase 4a.
+  'customers.invitation-not-found': 404,
+  'customers.invitation-not-eligible': 409,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {

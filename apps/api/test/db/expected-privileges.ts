@@ -1067,6 +1067,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
+    // Customers phase 4a: a seller's invite link is only revoked; an attribution is decided (status,
+    // reason, who, when, version) and never removed by the API.
+    'customers.seller_invite_links': { table: ['INSERT', 'SELECT'], columnUpdate: ['revoked_at'] },
+    'customers.seller_attributions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['decided_at', 'decided_by_account_id', 'reject_reason', 'status', 'version'],
+    },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
     'legal.marketing_consents': {

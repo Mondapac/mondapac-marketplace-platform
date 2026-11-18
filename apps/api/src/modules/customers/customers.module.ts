@@ -61,6 +61,31 @@ import {
   CUSTOMER_GROUP_USAGE_REGISTRY,
   CustomerGroupUsageRegistry,
 } from './contracts';
+import { AdminSellerAttributionsDecide } from './application/use-cases/admin-seller-attributions-decide.use-case';
+import { AdminSellerAttributionsExport } from './application/use-cases/admin-seller-attributions-export.use-case';
+import { AdminSellerAttributionsIds } from './application/use-cases/admin-seller-attributions-ids.use-case';
+import { AdminSellerAttributionsList } from './application/use-cases/admin-seller-attributions-list.use-case';
+import { JoinStoreByInvitation } from './application/use-cases/join-store-by-invitation.use-case';
+import { ResolveStoreInvitation } from './application/use-cases/resolve-store-invitation.use-case';
+import { SellerInviteLinkRefresh } from './application/use-cases/seller-invite-link-refresh.use-case';
+import { SellerInviteLinkView } from './application/use-cases/seller-invite-link-view.use-case';
+import { ViewOwnStoreInvitation } from './application/use-cases/view-own-store-invitation.use-case';
+import {
+  INVITATION_RULES,
+  type InvitationDependencies,
+} from './application/seller-invitations-flow';
+import {
+  INVITE_LINK_REPOSITORY,
+  INVITE_TOKENS,
+  SELLER_ATTRIBUTION_REPOSITORY,
+} from './application/ports/seller-invitations.repository';
+import { INVITATION_PEERS } from './application/ports/invitation-peers';
+import { AdminSellerAttributionsController } from './presentation/admin-seller-attributions.controller';
+import { SellerInviteLinkController } from './presentation/seller-invite-link.controller';
+import {
+  OwnStoreInvitationController,
+  StoreInvitationController,
+} from './presentation/store-invitation.controller';
 import { CUSTOMERS_AUDIT_ACTIONS } from './domain/audit';
 import { CUSTOMERS_EVENTS } from './domain/events';
 import { customersProviders } from './infrastructure/customers-providers';
@@ -266,6 +291,7 @@ const SELLER_CUSTOMER_PORTS: readonly [
   ['audit', AUDIT_WRITER],
   ['sheetWriter', SHEET_WRITER],
   ['zones', TREND_ZONES],
+  ['attributions', SELLER_ATTRIBUTION_REPOSITORY],
 ];
 
 /** The per-seller customers use cases (phase 3): their ports, plus the peers bound at start. */
@@ -284,6 +310,39 @@ function sellerCustomerUseCaseProvider<U>(type: SellerCustomerUseCaseClass<U>): 
         ordering: peers.ordering,
         engagement: peers.engagement,
       } as unknown as SellerCustomerDependencies),
+  };
+}
+
+type InvitationUseCaseClass<U> = new (gate: UseCaseGate, deps: InvitationDependencies) => U;
+
+const INVITATION_PORTS: readonly [keyof InvitationDependencies, InjectionToken][] = [
+  ['unitOfWork', UNIT_OF_WORK],
+  ['inviteLinks', INVITE_LINK_REPOSITORY],
+  ['attributions', SELLER_ATTRIBUTION_REPOSITORY],
+  ['readModels', CUSTOMER_READ_MODEL_REPOSITORY],
+  ['tokens', INVITE_TOKENS],
+  ['ids', ID_GENERATOR],
+  ['clock', CLOCK],
+  ['audit', AUDIT_WRITER],
+  ['outbox', OUTBOX_WRITER],
+  ['invitationPeers', INVITATION_PEERS],
+  ['invitationRules', INVITATION_RULES],
+  ['stepUp', STEP_UP_CONSUMER],
+  ['sheetWriter', SHEET_WRITER],
+];
+
+/** The invite link and attribution use cases (phase 4a): their ports, with the peers bound at start. */
+function invitationUseCaseProvider<U>(type: InvitationUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, ...INVITATION_PORTS.map(([, token]) => token)],
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+      new type(
+        gate,
+        Object.fromEntries(
+          INVITATION_PORTS.map(([name], index) => [name, values[index]]),
+        ) as unknown as InvitationDependencies,
+      ),
   };
 }
 
@@ -499,6 +558,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminCustomerReviewsController,
     SellerCustomersController,
     AdminSellerCustomersController,
+    SellerInviteLinkController,
+    StoreInvitationController,
+    OwnStoreInvitationController,
+    AdminSellerAttributionsController,
   ],
   providers: [
     {
@@ -550,6 +613,17 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminSellerCustomersList,
       AdminSellerCustomersSummary,
     ].map((type) => sellerCustomerUseCaseProvider(type as SellerCustomerUseCaseClass<unknown>)),
+    ...[
+      SellerInviteLinkView,
+      SellerInviteLinkRefresh,
+      ResolveStoreInvitation,
+      JoinStoreByInvitation,
+      ViewOwnStoreInvitation,
+      AdminSellerAttributionsList,
+      AdminSellerAttributionsIds,
+      AdminSellerAttributionsExport,
+      AdminSellerAttributionsDecide,
+    ].map((type) => invitationUseCaseProvider(type as InvitationUseCaseClass<unknown>)),
     // The overview also reads the pending email change from identity (admin email change).
     ...[AdminCustomerOverview, AdminCustomerTabOpened].map((type) =>
       pageUseCaseProvider(type as PageUseCaseClass<unknown>),
@@ -759,6 +833,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     SyncCustomerReadModel,
     ReconcileCustomerReadModels,
     CUSTOMER_MANAGEMENT_PEERS,
+    INVITATION_PEERS,
     RecordCustomerTimeline,
     CancelEmailChangeOnDeletion,
     CUSTOMER_GROUP_USAGE_REGISTRY,
