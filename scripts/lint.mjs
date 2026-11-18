@@ -11,7 +11,10 @@
 // directory or file is linted without editing this script. The rules are unchanged: every
 // shard reads the same eslint.config.mjs.
 //
-// Usage: node scripts/lint.mjs [extra eslint args, e.g. --fix]
+// Usage: node scripts/lint.mjs [extra eslint args, e.g. --fix]. Through pnpm, extra args reach
+// the whole `pnpm lint` line (and so prettier), so pass ESLint flags by calling this script
+// directly.
+// Knobs: LINT_HEAP_MB (heap per shard, default 6144), LINT_MODULE_SHARDS (API module shards, default 4).
 import { spawnSync } from 'node:child_process';
 import { readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -19,9 +22,20 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const extraArgs = process.argv.slice(2);
-const HEAP_MB = Number(process.env.LINT_HEAP_MB ?? 6144);
+/** Reads a positive integer from the environment, failing loudly on a bad value. */
+function positiveInt(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    console.error(`${name} must be a positive integer, got "${raw}".`);
+    process.exit(2);
+  }
+  return value;
+}
+const HEAP_MB = positiveInt('LINT_HEAP_MB', 6144);
 // How many shards the API modules are split into.
-const MODULE_SHARDS = Number(process.env.LINT_MODULE_SHARDS ?? 4);
+const MODULE_SHARDS = positiveInt('LINT_MODULE_SHARDS', 4);
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.next', 'coverage', 'generated']);
 
@@ -87,7 +101,7 @@ for (const shard of shards) {
   if (result.status !== 0) {
     failed += 1;
     console.error(
-      `== eslint: ${shard.name} FAILED (exit ${result.status ?? result.signal}) after ${seconds}s`,
+      `== eslint: ${shard.name} FAILED (${result.error ? result.error.message : `exit ${result.status ?? result.signal}`}) after ${seconds}s`,
     );
   } else {
     console.log(`== eslint: ${shard.name} ok in ${seconds}s`);
