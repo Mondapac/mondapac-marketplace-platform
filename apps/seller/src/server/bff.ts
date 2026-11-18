@@ -39,6 +39,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'ordering/seller/orders',
     // The Offer list (list mode: tabs, search, filters, sort and page; the API validates every value).
     'catalog/seller/offers',
+    // The Offers export (file): the list's selector, the format, the columns and the selected ids.
+    'catalog/seller/offers/export',
     // The export of the order list as a CSV file (ordering): the list's own filter.
     'ordering/seller/orders/export',
     // The saved views of the order list (ordering; query: `listKey`).
@@ -260,6 +262,19 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     afterId: UUID,
     limit: /^[0-9]{1,2}$/,
   },
+  'catalog/seller/offers/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(sku|product|status|code|listed|created|type)(,(sku|product|status|code|listed|created|type)){0,6}$/,
+    offerIds:
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
+    view: /^(all|drafts|in-review|changes-needed|live)$/,
+    q: null,
+    status: /^(draft|pending-first-publish|changes-needed|published)$/,
+    listed: /^(true|false)$/,
+    sort: /^(created|sku|status)$/,
+    direction: /^(asc|desc)$/,
+  },
   'catalog/seller/products': {
     view: /^(all|drafts|live|inactive|in-review)$/,
     // Free text up to the API's 100 characters (it refuses control characters itself).
@@ -303,6 +318,7 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 100 ids of 36 characters and 99 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/seller/products/export:productIds': 3700,
+  'catalog/seller/offers/export:offerIds': 3700,
 };
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */

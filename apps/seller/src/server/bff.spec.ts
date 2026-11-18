@@ -1563,6 +1563,43 @@ describe('relay of the seller product list', () => {
   });
 });
 
+describe('relay of the Offers export', () => {
+  const OFFER = '0190a000-0000-7000-8000-0000000000b1';
+  const EXPORT = ['catalog', 'seller', 'offers', 'export'];
+  const get = (query: string) =>
+    new Request(`http://seller.localhost:3001/api/catalog/seller/offers/export${query}`, {
+      method: 'GET',
+      headers: { host: 'seller.localhost:3001' },
+    });
+
+  it('forwards the selector, format, columns and ids, and drops the page and everything else', async () => {
+    const upstream = upstreamOk();
+    const query =
+      `?format=xlsx&columns=sku,code,listed&offerIds=${OFFER}&view=live&q=olive%20oil` +
+      '&status=published&listed=true&sort=sku&direction=asc&page=2&pageSize=50&paging=pages&x=1';
+    expect((await relay(config, get(query), EXPORT, upstream)).status).toBe(200);
+    const sent = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(sent.pathname).toBe('/catalog/seller/offers/export');
+    expect(Object.fromEntries(sent.searchParams)).toEqual({
+      format: 'xlsx',
+      columns: 'sku,code,listed',
+      offerIds: OFFER,
+      view: 'live',
+      q: 'olive oil',
+      status: 'published',
+      listed: 'true',
+      sort: 'sku',
+      direction: 'asc',
+    });
+  });
+
+  it('drops values that do not fit instead of forwarding them', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get('?format=pdf&columns=price&offerIds=x&sort=name'), EXPORT, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/seller/offers/export');
+  });
+});
+
 describe('relay of the Products export and saved filters (catalog design 9.2c, 9.2d)', () => {
   const PRODUCT = '0190a000-0000-7000-8000-0000000000b1';
   const CATEGORY = '0190a000-0000-7000-8000-0000000000c1';
