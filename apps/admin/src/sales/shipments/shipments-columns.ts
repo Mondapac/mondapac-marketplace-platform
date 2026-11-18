@@ -3,12 +3,19 @@
 
 import { cleanColumnIds } from '../columns.ts';
 
+/**
+ * The columns of the picker. These ids are saved in each admin's browser, so they are not renamed;
+ * the export endpoint's ids differ for some of them (see `exportColumnIds`), and the relay's
+ * `exportColumns` list in `server/bff.ts` holds the export-side ids. A new column here needs its
+ * export id in both places, and a test in `shipments.spec.tsx` that lists all of them.
+ */
 export const OPTIONAL_COLUMNS = [
   'store',
   'customer',
   'paid',
   'delivery',
   'carrier',
+  'carrier-progress',
   'total',
   'ready',
   'shipped',
@@ -34,3 +41,17 @@ export const MONEY_COLUMNS: readonly OptionalColumn[] = ['total', 'fee', 'refund
 
 export const cleanColumns = (saved: readonly unknown[] | undefined): readonly OptionalColumn[] =>
   cleanColumnIds(saved, OPTIONAL_COLUMNS, DEFAULT_COLUMNS);
+
+/**
+ * The ids the export endpoint reads, where the picker's id is another: the delivery fee is
+ * `shipping` and the seller order ID is `sellerOrderId` there. The picker's ids stay as they are
+ * (they are the ones saved in the admin's browser). Carrier progress is `carrierProgress` there.
+ */
+const EXPORT_IDS: Readonly<Partial<Record<OptionalColumn, string>>> = {
+  fee: 'shipping',
+  'seller-order': 'sellerOrderId',
+  'carrier-progress': 'carrierProgress',
+};
+
+export const exportColumnIds = (columns: readonly OptionalColumn[]): readonly string[] =>
+  columns.map((id) => EXPORT_IDS[id] ?? id);

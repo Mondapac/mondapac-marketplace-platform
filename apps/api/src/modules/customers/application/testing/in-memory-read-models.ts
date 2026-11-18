@@ -20,6 +20,10 @@ export class InMemoryReadModels implements CustomerReadModelRepository {
     return Promise.resolve(this.directory.has(this.key(market, accountId)));
   }
 
+  signedUpAtOf(market: MarketContext, accountId: Id<'Account'>) {
+    return Promise.resolve(this.directory.get(this.key(market, accountId))?.signedUpAt ?? null);
+  }
+
   upsertStats(market: MarketContext, entry: CustomerStatsEntry) {
     this.stats.set(this.key(market, entry.accountId), entry);
     return Promise.resolve();

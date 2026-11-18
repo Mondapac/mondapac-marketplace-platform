@@ -59,9 +59,71 @@ export interface OrderStatsPeer {
   ): Promise<Result<{ readonly accountId: Id<'Account'>; readonly amount: Money }, Failure>>;
 }
 
-export interface CustomerReadModelPeers {
+export interface SellerOrderTotalsPeerValue {
+  readonly sellerId: Id<'Seller'>;
+  readonly orderCount: number;
+  readonly firstOrderAt: Temporal.Instant;
+  readonly lastOrderAt: Temporal.Instant;
+  readonly spentMinor: bigint;
+  readonly currency: string;
+}
+
+export interface SellerCustomerOrderPeerValue {
+  readonly sellerOrderId: string;
+  readonly orderId: string;
+  readonly paidAt: Temporal.Instant;
+  readonly total: Money;
+  readonly fulfilment: 'to-ship' | 'shipped' | 'delivered';
+  readonly deliveredAt: Temporal.Instant | null;
+}
+
+/** What the per-seller customers read model (phase 3) asks of `ordering`. */
+export interface SellerOrdersPeer {
+  /** Rule `system`: the account's confirmed-order totals per seller. */
+  customerSellerStats(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<readonly SellerOrderTotalsPeerValue[], Failure>>;
+  /** As the calling seller: a page of their own paid seller orders of one customer. */
+  sellerCustomerOrders(
+    context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly page: number;
+      readonly pageSize: number;
+    },
+  ): Promise<
+    Result<
+      { readonly items: readonly SellerCustomerOrderPeerValue[]; readonly total: number },
+      Failure
+    >
+  >;
+}
+
+/** What the per-seller customers read model asks of `engagement`. */
+export interface StoreFollowsPeer {
+  /** Rule `system`: every store the account follows, with the instant the follow started. */
+  followsOfAccount(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<
+    Result<
+      readonly { readonly sellerId: Id<'Seller'>; readonly followedAt: Temporal.Instant }[],
+      Failure
+    >
+  >;
+}
+
+/** What the B1 read models (directory and stats) ask of the other modules. */
+export interface ReadModelPeers {
   readonly identity: IdentityDirectoryPeer;
   readonly ordering: OrderStatsPeer;
+}
+
+/** Every peer, as `CustomersReadModelsModule` binds them. */
+export interface CustomerReadModelPeers extends ReadModelPeers {
+  readonly ordering: OrderStatsPeer & SellerOrdersPeer;
+  readonly engagement: StoreFollowsPeer;
 }
 
 export const CUSTOMER_READ_MODEL_PEERS = Symbol('CUSTOMER_READ_MODEL_PEERS');

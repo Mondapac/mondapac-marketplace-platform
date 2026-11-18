@@ -76,8 +76,20 @@ export const OFFER_STATUSES = [
   'published',
 ] as const;
 
-/** A code from the API as readable text when no translation names it (`dry-goods` to `Dry goods`). */
+/** Words that stay in capitals when a code is shown as text (tax and trade acronyms). */
+const ACRONYMS = new Set(['gst', 'vat', 'abn', 'sku', 'gtin', 'upc', 'ean', 'isbn']);
+
+/**
+ * A code from the API as readable text when no translation names it (`dry-goods` to
+ * `Dry goods`, `gst-free-food` to `GST free food`).
+ */
 export function readable(code: string): string {
   const text = code.replace(/[-_]+/g, ' ').trim();
-  return text === '' ? code : text.charAt(0).toUpperCase() + text.slice(1);
+  if (text === '') return code;
+  const words = text
+    .split(' ')
+    .map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word));
+  const first = words[0] ?? '';
+  words[0] = first.charAt(0).toUpperCase() + first.slice(1);
+  return words.join(' ');
 }
