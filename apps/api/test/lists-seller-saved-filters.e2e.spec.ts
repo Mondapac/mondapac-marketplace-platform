@@ -44,6 +44,7 @@ const VIEWER_A = id<'Account'>(0xa102);
 const OTHER_VIEWER_A = id<'Account'>(0xa103);
 const NO_KEY_A = id<'Account'>(0xa104);
 const OWNER_B = id<'Account'>(0xa201);
+const ADMIN = id<'Account'>(0xa301);
 const NO_KEY_ROLE = id<'Role'>(0xc0f2);
 
 const fakes = new IdentityFakes();
@@ -178,6 +179,20 @@ describe('seller saved filters over HTTP (integration)', () => {
     seedMember(code, OTHER_VIEWER_A, STORE_A, 'viewera2', 'seed:customer-service', 3);
     seedMember(code, NO_KEY_A, STORE_A, 'nokeya', NO_KEY_ROLE, 4);
     seedMember(code, OWNER_B, STORE_B, 'ownerb', 'seed:seller-owner', 5);
+    fakes.seedAccount({
+      id: ADMIN,
+      marketId: code as AccountState['marketId'],
+      population: 'admin',
+      email: { typed: 'admin@Example.com', normalized: 'admin@example.com' },
+      displayName: 'Name admin',
+      status: 'active',
+      emailVerifiedAt: START,
+      existingAccountNoticeAt: null,
+      signedUpAt: START,
+      createdAt: START,
+      version: 1,
+      credential: { passwordHash: fakeHashOf('x'), changedAt: START },
+    });
   }
 
   function sessionOf(
@@ -207,6 +222,28 @@ describe('seller saved filters over HTTP (integration)', () => {
     };
   }
   const ownerA = (code: string) => sessionOf(code, OWNER_A, STORE_A, 1);
+  /** A real admin session (cookie of the admin panel) for the routes that must refuse it. */
+  function adminSession(code: string): Record<string, string> {
+    const issued = tokens.issue();
+    void fakes.sessionRepository.add(
+      marketOf(code),
+      openSession({
+        id: id<'Session'>(0xf1ff),
+        marketId: code as AccountState['marketId'],
+        accountId: ADMIN,
+        population: 'admin',
+        sellerId: null,
+        transport: 'cookie',
+        lifetime: LIFETIME,
+        now: clock.now(),
+      }),
+      issued.tokenHash,
+    );
+    return {
+      cookie: `__Host-session-admin-${code}=${issued.token}`,
+      'x-csrf-token': csrfTokenFor(issued.token),
+    };
+  }
   const viewerA = (code: string) => sessionOf(code, VIEWER_A, STORE_A, 2);
   const otherViewerA = (code: string) => sessionOf(code, OTHER_VIEWER_A, STORE_A, 3);
   const noKeyA = (code: string) => sessionOf(code, NO_KEY_A, STORE_A, 4);
@@ -273,7 +310,9 @@ describe('seller saved filters over HTTP (integration)', () => {
         ['delete', `${one}?listKey=${LIST}`, undefined],
       ] as const) {
         expect((await call(method, code, path, null).send(body)).status).toBe(401);
-        expect((await call(method, code, path, blind).send(body)).status).toBe(403);
+        const refused = await call(method, code, path, blind).send(body);
+        expect(refused.status).toBe(403);
+        expect(JSON.stringify(refused.body)).toContain('access.denied');
       }
       expect(store.rows.size).toBe(0);
     });
@@ -289,12 +328,19 @@ describe('seller saved filters over HTTP (integration)', () => {
         ['put', one, { listKey: LIST, name: 'X', visibility: 'me' }],
         ['delete', `${one}?listKey=${LIST}`, undefined],
       ] as const) {
-        expect((await call(method, code, path, session, false).send(body)).status).toBe(403);
+        const refused = await call(method, code, path, session, false).send(body);
+        expect(refused.status).toBe(403);
+        expect(JSON.stringify(refused.body)).toContain('request.csrf');
       }
-      const admin = await http()
+      const admin = adminSession(code);
+      const asAdmin = await http()
         .get(`/lists/seller/saved-filters?listKey=${LIST}`)
-        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') });
-      expect(admin.status).toBe(401);
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), cookie: admin.cookie! });
+      const adminOnSeller = await http()
+        .get(`/lists/seller/saved-filters?listKey=${LIST}`)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), cookie: admin.cookie! });
+      expect(asAdmin.status).toBe(401);
+      expect([401, 403]).toContain(adminOnSeller.status);
       expect(store.rows.size).toBe(0);
     });
 
@@ -346,6 +392,7 @@ describe('seller saved filters over HTTP (integration)', () => {
       expect(update.status).toBe(404);
       expect(remove.status).toBe(404);
       expect(store.rows.size).toBe(1);
+      expect([...store.rows.values()].map((row) => row.filter.name)).toEqual(['Live dates']);
     });
 
     it('reads `order` as the reorder route, not as an id', async () => {
@@ -365,7 +412,7 @@ describe('seller saved filters over HTTP (integration)', () => {
       );
     });
 
-    it('keeps the seller Orders filter for the account, never shares it, and shows it in every store', async () => {
+    it('keeps the seller Orders filter for the account with no store and never shares it', async () => {
       await boot();
       await seeded(code);
       const session = ownerA(code);
