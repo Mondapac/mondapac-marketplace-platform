@@ -76,6 +76,18 @@ export const SHIPMENT_EXPORT_COLUMNS: readonly Column<ShipmentListRow>[] = [
     headers: ['Carrier', 'Tracking reference'],
     cells: (row) => [text(row.carrier), text(row.trackingRef)],
   },
+  {
+    // Advisory, from shipping: empty when the order has no carrier booking or the admin may not
+    // see carrier delivery. The status code is of a safe shape only (SHOWN_CARRIER_STATUS).
+    key: 'carrierProgress',
+    fixed: false,
+    headers: ['Carrier progress', 'Carrier status', 'Carrier updated'],
+    cells: (row, at) => [
+      text(row.carrierProgress?.progress ?? null),
+      text(row.carrierProgress?.carrierStatus ?? null),
+      zonedText(row.carrierProgress?.updatedAt ?? null, at.zone),
+    ],
+  },
   { key: 'fleet', fixed: false, headers: ['Fleet'], cells: (row) => [text(row.fleet)] },
   {
     key: 'ready',
