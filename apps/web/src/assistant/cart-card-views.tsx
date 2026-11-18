@@ -437,6 +437,10 @@ const rowKey = (row: { pick: BasketOptionView; packs: number }) =>
 /** The most packs of one line the planner ever proposes; the cart route has its own limit. */
 const PACKS_MAX = 99;
 
+/** The most packs of this product the buyer can set: the server's own ceiling, never above PACKS_MAX. */
+const packsLimit = (option: BasketOptionView) =>
+  Math.max(1, Math.min(PACKS_MAX, option.maxQuantity ?? PACKS_MAX));
+
 /** A planned shopping list: edit packs, swap a product, drop a line, then add the whole list. */
 export function BasketProposalCardView({
   card,
@@ -490,7 +494,11 @@ export function BasketProposalCardView({
       ...row,
       pick,
       choices,
-      packs: edit?.packs ?? (swapped ? (pick.quantity ?? 1) : row.packs),
+      // The planner's pack count (or the buyer's edit) never goes past what the product allows.
+      packs: Math.min(
+        edit?.packs ?? (swapped ? (pick.quantity ?? 1) : row.packs),
+        packsLimit(pick),
+      ),
       chosen: swapped,
       off: edit?.off ?? (uncertainIndexes.has(row.itemIndex) && !swapped),
     };
@@ -647,7 +655,7 @@ export function BasketProposalCardView({
                 <button
                   type="button"
                   aria-label={t('cart-more')}
-                  disabled={locked || row.packs >= PACKS_MAX}
+                  disabled={locked || row.packs >= packsLimit(row.pick)}
                   onClick={() => patch(row.itemIndex, { packs: row.packs + 1 })}
                 >
                   +
