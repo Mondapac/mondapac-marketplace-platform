@@ -10,6 +10,24 @@ export interface TopicListQuery {
   readonly limit: number;
 }
 
+export const TOPIC_SORTS = ['slug', 'status', 'group', 'created', 'updated'] as const;
+export type TopicSort = (typeof TOPIC_SORTS)[number];
+
+/** The filter shared by a page read and its count. */
+export interface TopicPageFilter {
+  readonly status: TopicStatus | null;
+  readonly group: TopicGroup | null;
+  readonly search: string | null;
+}
+
+/** One page of the numbered read: `offset` rows are skipped; ties end on the id. */
+export interface TopicPageQuery extends TopicPageFilter {
+  readonly sort: TopicSort;
+  readonly direction: 'asc' | 'desc';
+  readonly offset: number;
+  readonly limit: number;
+}
+
 export interface TopicListPage {
   readonly items: readonly TopicState[];
   /** The `afterId` of the next page; null on the last page. */
@@ -28,6 +46,10 @@ export interface TopicBrief {
 export interface TopicReader {
   /** By slug, then id; keyset-paged. */
   list(market: MarketContext, query: TopicListQuery): Promise<TopicListPage>;
+  /** A page of the numbered read (the caller asks for one extra row to see a next page). */
+  page(market: MarketContext, query: TopicPageQuery): Promise<readonly TopicState[]>;
+  /** The topics matching the filter, over all pages. */
+  count(market: MarketContext, filter: TopicPageFilter): Promise<number>;
   /**
    * The topics of this Market among `ids` (any status). An id that is unknown or belongs to another
    * Market is absent from the answer. At most 50 ids (more throws, which is a 500): callers cap the list; they pass valid UUIDs.

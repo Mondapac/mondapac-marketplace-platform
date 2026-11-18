@@ -17,6 +17,23 @@ export interface BrandListQuery {
   readonly limit: number;
 }
 
+export const BRAND_SORTS = ['name', 'status', 'created', 'updated'] as const;
+export type BrandSort = (typeof BRAND_SORTS)[number];
+
+/** The filter shared by a page read and its count. */
+export interface BrandPageFilter {
+  readonly status: BrandStatus | null;
+  readonly search: string | null;
+}
+
+/** One page of the numbered read: `offset` rows are skipped; ties end on the id. */
+export interface BrandPageQuery extends BrandPageFilter {
+  readonly sort: BrandSort;
+  readonly direction: 'asc' | 'desc';
+  readonly offset: number;
+  readonly limit: number;
+}
+
 export interface BrandListPage {
   readonly items: readonly BrandState[];
   /** The `afterId` of the next page; null on the last page. */
@@ -44,6 +61,12 @@ export interface PublicBrandRecord {
  */
 export interface BrandReader {
   list(market: MarketContext, query: BrandListQuery): Promise<BrandListPage>;
+
+  /** A page of the numbered read (`offset`, `limit` rows; the caller asks for one extra to see a next page). */
+  page(market: MarketContext, query: BrandPageQuery): Promise<readonly BrandState[]>;
+
+  /** The brands matching the filter, over all pages. */
+  count(market: MarketContext, filter: BrandPageFilter): Promise<number>;
 
   detail(market: MarketContext, id: Id<'Brand'>): Promise<BrandDetailRecord | null>;
 

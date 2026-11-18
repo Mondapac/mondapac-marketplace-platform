@@ -192,7 +192,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/imports/:id/resume',
     'catalog/seller/imports/:id/discard',
     'catalog/seller/imports/:id/photos',
+    // The seller's steps on an order: mark ready, hand over a pickup, mark delivered.
     'ordering/seller/orders/:id/ship',
+    'ordering/seller/orders/:id/ready',
+    'ordering/seller/orders/:id/confirm-pickup',
     'ordering/seller/orders/:id/deliver',
     // Mark units unavailable and refund them (protected: step-up), and add a note to the order.
     'ordering/seller/orders/:id/unavailable',
@@ -242,7 +245,11 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     to: null,
   },
   'ordering/seller/orders/export': {
-    format: /^csv$/,
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(delivery|items|currency|subtotal|shipping|tax|total|carrier|tracking|ready|shipped|delivered)(,(delivery|items|currency|subtotal|shipping|tax|total|carrier|tracking|ready|shipped|delivered)){0,11}$/,
+    // At most 100 selected seller order ids, one list page.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
     status: /^(to-ship|shipped|delivered)$/,
     from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
     to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
@@ -358,6 +365,7 @@ const QUERY_VALUE_MAX = 512;
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/seller/products/export:productIds': 3700,
   'reviews/seller/export:ids': 7400,
+  'ordering/seller/orders/export:ids': 3700,
   'catalog/seller/offers/export:offerIds': 3700,
 };
 

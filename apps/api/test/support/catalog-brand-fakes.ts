@@ -4,6 +4,8 @@ import type {
   BrandDetailRecord,
   BrandListPage,
   BrandListQuery,
+  BrandPageFilter,
+  BrandPageQuery,
   BrandReader,
   MergeQueueRecord,
   PublicBrandRecord,
@@ -215,6 +217,39 @@ export class MemoryBrands implements BrandRepository, BrandReader {
     const items = sorted.slice(start, start + query.limit);
     const more = sorted.length > start + query.limit;
     return Promise.resolve({ items, nextAfterId: more ? items[items.length - 1]!.id : null });
+  }
+
+  #matching(filter: BrandPageFilter): BrandState[] {
+    const search = filter.search?.toLowerCase() ?? null;
+    return [...this.brands.values()]
+      .filter((row) => filter.status === null || row.status === filter.status)
+      .filter(
+        (row) =>
+          search === null ||
+          row.name.toLowerCase().includes(search) ||
+          row.slug.includes(search) ||
+          this.#aliasesOf(row.id).some((alias) => alias.toLowerCase().includes(search)),
+      );
+  }
+
+  page(_market: MarketContext, query: BrandPageQuery): Promise<readonly BrandState[]> {
+    const sign = query.direction === 'asc' ? 1 : -1;
+    const keyOf = (row: BrandState): string =>
+      query.sort === 'name'
+        ? row.name
+        : query.sort === 'status'
+          ? row.status
+          : query.sort === 'created'
+            ? row.createdAt.toString()
+            : row.updatedAt.toString();
+    const sorted = this.#matching(query).sort(
+      (a, b) => sign * (keyOf(a).localeCompare(keyOf(b)) || a.id.localeCompare(b.id)),
+    );
+    return Promise.resolve(sorted.slice(query.offset, query.offset + query.limit));
+  }
+
+  count(_market: MarketContext, filter: BrandPageFilter): Promise<number> {
+    return Promise.resolve(this.#matching(filter).length);
   }
 
   detail(market: MarketContext, id: Id<'Brand'>): Promise<BrandDetailRecord | null> {

@@ -798,7 +798,9 @@ export async function approveRequest(
  * Runs the owning module's optional pre-unit `check` of a revert (see `SystemChangeReverter`),
  * before the decision unit opens. The values before and after of a request never change, so the
  * look taken here is the one the unit decides on; a request that is gone or no longer open is left
- * to the unit, which answers it. A check that throws fails the decision, as a revert does.
+ * to the unit, which answers it, and so is a withdraw by anyone but the author (`not-author`), for
+ * whom the check is not run. A check that throws fails closed: `revert-not-permitted`, nothing
+ * written, the request stays open.
  */
 async function checkBeforeRevert(
   deps: SystemRequestsDependencies,

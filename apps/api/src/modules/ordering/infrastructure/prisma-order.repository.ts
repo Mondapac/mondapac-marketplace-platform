@@ -93,6 +93,8 @@ interface OrderRow {
     readonly taxInclusive: boolean;
     readonly reservationLineId: string;
     readonly commissionRateBps: number | null;
+    readonly commissionRateReason: string;
+    readonly exclusiveSeller: boolean;
     readonly taxRateBps: number | null;
     readonly taxAmount: bigint | null;
     readonly taxCategoryCode: string | null;
@@ -163,6 +165,8 @@ const toLine = (l: LineRow, currency: string): OrderLine => ({
   taxInclusive: l.taxInclusive,
   reservationLineId: l.reservationLineId,
   commissionRateBps: l.commissionRateBps,
+  commissionRateReason: l.commissionRateReason === 'exclusive' ? 'exclusive' : 'standard',
+  exclusiveSeller: l.exclusiveSeller,
   taxRateBps: l.taxRateBps,
   taxAmount: l.taxAmount,
   taxCategoryCode: l.taxCategoryCode,
@@ -346,6 +350,8 @@ export class PrismaOrderRepository implements OrderRepository {
         taxInclusive: l.taxInclusive,
         reservationLineId: l.reservationLineId,
         commissionRateBps: l.commissionRateBps,
+        commissionRateReason: l.commissionRateReason,
+        exclusiveSeller: l.exclusiveSeller,
         taxRateBps: l.taxRateBps,
         taxAmount: l.taxAmount,
         taxCategoryCode: l.taxCategoryCode,

@@ -867,11 +867,20 @@ describe('relay of the seller order routes', () => {
         )
       ).status,
     ).toBe(200);
-    await relay(config, query('?status=cancelled&format=xlsx&to=yesterday'), path, upstream);
+    await relay(config, query('?status=cancelled&format=pdf&to=yesterday'), path, upstream);
     expect(upstream.mock.calls[0]?.[0]).toBe(
       'http://api.test/ordering/seller/orders/export?format=csv&status=shipped&from=2026-10-01T00%3A00%3A00.000Z',
     );
     expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/ordering/seller/orders/export');
+    // The file format, the optional columns and the selected ids are the export's own keys.
+    const id = '0190a000-0000-7000-8000-000000000001';
+    const own = `format=xlsx&columns=total%2Ccarrier&ids=${id}`;
+    await relay(config, query(`?${own}`), path, upstream);
+    expect(upstream.mock.calls[2]?.[0]).toBe(
+      `http://api.test/ordering/seller/orders/export?${own}`,
+    );
+    await relay(config, query('?columns=buyer&ids=x'), path, upstream);
+    expect(upstream.mock.calls[3]?.[0]).toBe('http://api.test/ordering/seller/orders/export');
   });
 
   it('posts ship and deliver by UUID, and refuses other shapes', async () => {
@@ -1973,5 +1982,33 @@ describe('relay of the seller order list views', () => {
       expect(response.status, `${method} ${path}`).toBe(404);
       expect(fetchImpl).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe('the seller order steps', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const request = (path: string) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method: 'POST',
+      headers: sameOrigin,
+      body: '{}',
+    });
+
+  it('relays mark ready, confirm pickup and mark delivered of one order', async () => {
+    for (const step of ['ready', 'confirm-pickup', 'deliver']) {
+      const path = `ordering/seller/orders/${ID}/${step}`;
+      const upstream = upstreamOk();
+      const response = await relay(config, request(path), path.split('/'), upstream);
+      expect(response.status, step).toBe(200);
+      expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+    }
+  });
+
+  it('refuses a step no order has', async () => {
+    const path = `ordering/seller/orders/${ID}/cancel`;
+    const upstream = upstreamOk();
+    const response = await relay(config, request(path), path.split('/'), upstream);
+    expect(response.status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
   });
 });
