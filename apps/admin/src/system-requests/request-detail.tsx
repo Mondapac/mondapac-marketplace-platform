@@ -189,9 +189,6 @@ export function RequestDetail({
   const mine = request.requestedBy === accountId;
   const href = subjectHref(request.subjectKind, request.subjectRef);
   const subjectName = request.subjectLabel ?? request.subjectRef;
-  const who = (id: string | null, name?: string | null) =>
-    id === accountId ? t('you-lower') : person(id, name);
-  const decidedOn = request.decidedAt === null ? '' : dayInZone(request.decidedAt, locale, zone);
 
   const canApprove = open && has(request, 'approve');
   const canReject = open && has(request, 'reject');
@@ -357,19 +354,12 @@ export function RequestDetail({
       {open && mine ? <Banner tone="info">{t('banner.own')}</Banner> : null}
       {request.status === 'approved' ? (
         <p role="status" className="break-words text-sm text-fg-secondary">
-          {t('outcome.approved', {
-            name: who(request.decidedBy, request.decidedByName),
-            date: decidedOn,
-          })}
+          {t('outcome.approved')}
         </p>
       ) : null}
       {request.status === 'reverted' ? (
         <p role="status" className="break-words text-sm text-fg-secondary">
-          {t(`outcome.${request.decision === 'withdrawn' ? 'withdrawn' : 'rejected'}`, {
-            name: who(request.decidedBy, request.decidedByName),
-            date: decidedOn,
-            reason: request.decisionReason ?? '',
-          })}
+          {t(`outcome.${request.decision === 'withdrawn' ? 'withdrawn' : 'rejected'}`)}
         </p>
       ) : null}
       <Card title={t('detail.note')}>
