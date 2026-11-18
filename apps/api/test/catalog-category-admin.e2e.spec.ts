@@ -19,6 +19,10 @@ import {
   CATEGORY_RESTRUCTURE_STORE,
 } from '../src/modules/catalog/application/ports/category-edit.store';
 import { CATEGORY_RETIREMENT_CHECK } from '../src/modules/catalog/application/ports/category-retirement-check';
+import {
+  CATEGORY_PRODUCT_MOVE_STORE,
+  type CategoryProductMoveStore,
+} from '../src/modules/catalog/application/ports/category-product-move.store';
 import type { CategoryRetirementCheck } from '../src/modules/catalog/application/ports/category-retirement-check';
 import { CATEGORY_IMAGE_STORE } from '../src/modules/catalog/application/ports/category-image.store';
 import { IMAGE_PROCESSOR } from '../src/modules/catalog/application/ports/image-processor';
@@ -112,6 +116,11 @@ const retirement: CategoryRetirementCheck = {
   retired: () => Promise.resolve({ ok: true, value: undefined }),
 };
 const treeVersion = new MemoryTreeVersion();
+/** A move of products only counts them before it is proposed; nothing else is reached here. */
+const productMoves = {
+  countProducts: () => Promise.resolve(3),
+  insertJob: () => Promise.reject(new Error('a proposed move starts no job')),
+} as unknown as CategoryProductMoveStore;
 const halalOnlyMatcher = {
   match: (_context: unknown, texts: readonly { text: string }[]) =>
     Promise.resolve({
@@ -240,6 +249,8 @@ describe.each(TEST_MARKETS)(
             .useValue(restructureStore)
             .overrideProvider(CATEGORY_RETIREMENT_CHECK)
             .useValue(retirement)
+            .overrideProvider(CATEGORY_PRODUCT_MOVE_STORE)
+            .useValue(productMoves)
             .overrideProvider(PLATFORM_CATEGORY_REPOSITORY)
             .useValue(treeVersion)
             .overrideProvider(CATEGORY_IMAGE_STORE)
@@ -288,6 +299,8 @@ describe.each(TEST_MARKETS)(
           'catalog.category-tree.view',
           'catalog.category-tree.edit',
           'catalog.category-tree.restructure',
+          // A move of products also needs it (its route's `allOf`).
+          'catalog.product.approve',
         ],
         version: 1,
         createdAt: START,
@@ -982,6 +995,56 @@ describe.each(TEST_MARKETS)(
           .send({ treeVersion: 1, reason: REASON })
           .expect(503);
         expect(editStore.revisions).toEqual([]);
+      });
+
+      it('answers 202 with the proposal of a products move that waits for approval, and 409 for a second', async () => {
+        // Pantry > Rice > Basmati (source) and Pantry > Rice > Jasmine (target), both on level 3.
+        const SOURCE = id<'Category'>(0xcc03);
+        const TARGET = id<'Category'>(0xcc04);
+        const node = (nodeId: Id<'Category'>, parentId: Id<'Category'> | null, slug: string) => ({
+          id: nodeId,
+          parentId,
+          slug,
+          status: 'active' as const,
+          mergedIntoId: null,
+          names: [{ locale: 'en', name: slug }],
+          revisionNo: 1,
+          version: 1,
+          position: 0,
+          showInMenu: true,
+        });
+        categoriesOverride = [
+          node(ROOT, null, 'pantry'),
+          node(LEAF, ROOT, 'rice'),
+          node(SOURCE, LEAF, 'basmati'),
+          node(TARGET, LEAF, 'jasmine'),
+        ];
+        reviews.review('catalogue', 'medium');
+        const session = adminSession(RESTRUCTURER, 34);
+        const proposed = await http()
+          .post(`${BASE}/${SOURCE}/move-products`)
+          .set(session)
+          .send({ targetId: TARGET, reason: REASON, note: 'Basmati is jasmine now' })
+          .expect(202);
+        expect(proposed.body).toEqual({
+          request: { id: <unknown>expect.any(String), number: 901 },
+        });
+        expect(proposer.proposed[0]).toMatchObject({
+          area: 'catalogue',
+          subjectKind: 'catalog.category-products-move',
+          subjectRef: SOURCE,
+          after: { action: 'move-products', targetId: TARGET, reason: REASON, products: 3 },
+          note: 'Basmati is jasmine now',
+        });
+        const again = await http()
+          .post(`${BASE}/${SOURCE}/move-products`)
+          .set(session)
+          .send({ targetId: TARGET, reason: REASON, note: 'Again' })
+          .expect(409);
+        expect(again.body).toMatchObject({
+          code: 'system-requests.already-pending',
+          details: { pendingNumber: 901 },
+        });
       });
 
       it('answers 400 for a short reason, 404 for an unknown target, 409 for subcategories, 422 for a cycle', async () => {

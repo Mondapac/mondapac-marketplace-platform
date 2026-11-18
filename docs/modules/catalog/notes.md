@@ -47,10 +47,17 @@ and the attribute links of a category (`PUT catalog/admin/categories/:id/attribu
   in-unit function as the route (`discardInUnit`, `restructureInUnit`, `discardAttributeInUnit`,
   `writeArchive`, `writeMerge`, `mergeValuesInUnit`, `startProductsMoveInUnit`,
   `createFeatureSetInUnit`) as the approving admin, naming the request in the audit row.
+- Each approval kind is registered with every key its route's use case declares (`routeKeys`
+  in `catalog.module.ts`): a products move needs `catalog.category-tree.restructure` and
+  `catalog.product.approve`. What a pre-unit `check` cleared (`ClearedByRequest`) is dropped by the
+  next check of the request and is handed only to the same admin in the same Market, so a
+  decision that failed never reuses an earlier check.
 - The tree read, the attribute list and the feature-set list carry `review`, so the panel asks for
   the note: the create, reorder and discard dialogs of a category, the restructure and move
   products dialogs (the reason is the note), and the add, discard, archive, merge and merge values
   dialogs of an attribute. A 202 shows "Sent for approval (SR-n)" and leaves the item as it is.
+  Where an action only files a request its dialog says "Send for approval", says that nothing
+  changes until another admin approves it, and shows no "can't be undone" line or terminal banner.
   The panel has no feature-set create page yet.
 - Not hooked: the category-tree import and the attribute file import (see the system-requests
   notes); they run unreviewed.

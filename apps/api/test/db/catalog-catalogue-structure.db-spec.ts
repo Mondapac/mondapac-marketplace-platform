@@ -14,12 +14,15 @@ import { AppModule } from '../../src/app.module';
 import {
   AttributeActionApplier,
   CategoryActionApplier,
+  FeatureSetCreateApplier,
+  ProductsMoveApplier,
   type CatalogueStructureDependencies,
 } from '../../src/modules/catalog/application/catalogue-appliers';
 import { isProposal } from '../../src/modules/catalog/application/catalogue-review';
 import {
   AttributeCreateReverter,
   CategoryCreateReverter,
+  CategoryMoveReverter,
   CategoryReorderReverter,
 } from '../../src/modules/catalog/application/catalogue-structure-reverters';
 import { ADMIN_CATEGORY_READER } from '../../src/modules/catalog/application/ports/admin-category.reader';
@@ -42,9 +45,15 @@ import { AttributeArchive } from '../../src/modules/catalog/application/use-case
 import { AttributeDefinitionCreate } from '../../src/modules/catalog/application/use-cases/attribute-definition-create.use-case';
 import { AttributeDefinitionDiscard } from '../../src/modules/catalog/application/use-cases/attribute-definition-discard.use-case';
 import { AttributeDefinitionPublish } from '../../src/modules/catalog/application/use-cases/attribute-definition-publish.use-case';
+import { AttributeMerge } from '../../src/modules/catalog/application/use-cases/attribute-merge.use-case';
+import { AttributeValuesMerge } from '../../src/modules/catalog/application/use-cases/attribute-values-merge.use-case';
 import { CategoryArchive } from '../../src/modules/catalog/application/use-cases/category-archive.use-case';
 import { CategoryCreate } from '../../src/modules/catalog/application/use-cases/category-create.use-case';
 import { CategoryDiscard } from '../../src/modules/catalog/application/use-cases/category-discard.use-case';
+import { CategoryMerge } from '../../src/modules/catalog/application/use-cases/category-merge.use-case';
+import { CategoryMove } from '../../src/modules/catalog/application/use-cases/category-move.use-case';
+import { CategoryMoveProducts } from '../../src/modules/catalog/application/use-cases/category-move-products.use-case';
+import { FeatureSetCreate } from '../../src/modules/catalog/application/use-cases/feature-set-create.use-case';
 import { CategoryReorder } from '../../src/modules/catalog/application/use-cases/category-reorder.use-case';
 import { CatalogModule } from '../../src/modules/catalog/catalog.module';
 import { ConfigCatalogMarketPolicy } from '../../src/modules/catalog/infrastructure/config-catalog-market-policy';
@@ -74,7 +83,7 @@ import {
   TEST_MARKETS,
 } from '../support/test-config';
 import { marketOf } from './persistence-support';
-import { testDatabaseUrl } from './test-database';
+import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // Structure changes of area catalogue (Admin Inbox › System requests, owner decision of 18 Nov
 // 2026) on the real proposer, recorder and catalog stores, in both Market fixtures (catalogue is
@@ -82,7 +91,10 @@ import { testDatabaseUrl } from './test-database';
 // in catalog; its applier then writes it in the decision's unit, as the approving admin, naming
 // the request, and answers changed-since the second time. A create or reorder applies at once and
 // opens a review; its reverter undoes it. Records are new per test (and the tree version is read
-// again on a race), so nothing here meets another spec's rows.
+// again on a race), so nothing here meets another spec's rows. The attribute and feature-set
+// cases write their events to the real catalog outbox; a category restructure (move, merge,
+// archive) keeps its events in memory, for the outbox reason given at the archive case below.
+// Each L1 check here is made by the deciding admin's context (Hassan L1).
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const policy = new ConfigCatalogMarketPolicy(markets);
@@ -109,6 +121,8 @@ describe.each(TEST_MARKETS)('catalogue structure requests in market %s (database
   let unitOfWork: UnitOfWork;
   let requests: RequestRepository;
   let sql: Client;
+  /** The database owner, for the rows no use case here writes (published products, seeds). */
+  let owner: Client;
   let deps: CatalogueStructureDependencies & {
     readonly review: SystemRequestRecorder;
     readonly proposer: SystemActionProposer;
@@ -177,8 +191,11 @@ describe.each(TEST_MARKETS)('catalogue structure requests in market %s (database
     };
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
+    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    await owner.connect();
   });
   afterAll(async () => {
+    await owner.end();
     await sql.end();
     await app.close();
   });
@@ -238,6 +255,122 @@ describe.each(TEST_MARKETS)('catalogue structure requests in market %s (database
     );
     if (!created.ok) throw new Error(`create failed: ${created.error.code}`);
     return created.value;
+  }
+
+  const HASH = `sha256:${'c'.repeat(64)}`;
+  const insert = async (table: string, row: Record<string, unknown>) => {
+    const columns = Object.keys(row);
+    await owner.query(
+      `INSERT INTO catalog.${table} (${columns.join(', ')}) VALUES (${columns.map((_, i) => `$${i + 1}`).join(', ')})`,
+      Object.values(row),
+    );
+  };
+  const rowBase = () => ({ market_id: market.marketId, tenant_id: market.tenantId });
+  const now = clock.now().toString();
+
+  /** A published PLATFORM product whose published revision names `categoryId` (as the move spec). */
+  async function publishedProductIn(categoryId: string): Promise<void> {
+    const familyId = ids.next<'AttributeFamily'>();
+    const familyRevisionId = ids.next<'AttributeFamilyRevision'>();
+    await insert('attribute_families', {
+      id: familyId,
+      ...rowBase(),
+      code: `f-${slugOf()}`,
+      status: 'active',
+      created_by_kind: 'seed',
+      version: 1,
+      created_at: now,
+    });
+    await insert('attribute_family_revisions', {
+      id: familyRevisionId,
+      ...rowBase(),
+      family_id: familyId,
+      revision_no: 1,
+      groups: '[]',
+      author_kind: 'seed',
+      created_at: now,
+    });
+    const productId = ids.next<'Product'>();
+    const revisionId = ids.next<'ProductRevision'>();
+    await insert('products', {
+      id: productId,
+      ...rowBase(),
+      scope: 'PLATFORM',
+      owner_seller_id: null,
+      created_by_seller_id: null,
+      type_code: 'simple',
+      variant_model: 'single',
+      family_code: 'default',
+      product_code: `S${productId.replaceAll('-', '').slice(-12).toUpperCase()}`,
+      status: 'draft',
+      own_brand: false,
+      last_changed_at: now,
+      version: 1,
+      created_at: now,
+    });
+    await insert('product_revisions', {
+      id: revisionId,
+      ...rowBase(),
+      product_id: productId,
+      revision_no: 1,
+      type_code: 'simple',
+      revision_kind: 'submission',
+      base_revision_id: null,
+      reverted_from_revision_id: null,
+      family_revision_id: familyRevisionId,
+      definition_revision_ids: [],
+      tax_category_code: 'standard',
+      attribute_values: '{}',
+      field_provenance: null,
+      sensitive: false,
+      sensitive_reasons: [],
+      content_schema_version: 1,
+      content_hash: HASH,
+      author_kind: 'admin',
+      author_account_id: ids.next<'Account'>(),
+      acting_admin_account_id: null,
+      submitted_at: now,
+    });
+    const variantId = ids.next<'ProductVariant'>();
+    await insert('product_variants', {
+      id: variantId,
+      ...rowBase(),
+      product_id: productId,
+      variant_model: 'single',
+      variant_no: 1,
+      state: 'published',
+      created_at: now,
+      published_at: now,
+    });
+    await insert('product_revision_texts', {
+      ...rowBase(),
+      revision_id: revisionId,
+      locale: 'en',
+      name: 'Rice',
+      short_description: null,
+      description: null,
+    });
+    await insert('product_revision_variants', {
+      ...rowBase(),
+      revision_id: revisionId,
+      variant_id: variantId,
+      product_id: productId,
+      position: 0,
+      option_key: '',
+      option_values: '{}',
+      labels: '{}',
+    });
+    await insert('product_revision_categories', {
+      ...rowBase(),
+      revision_id: revisionId,
+      category_id: categoryId,
+      position: 0,
+    });
+    await owner.query(
+      `UPDATE catalog.products SET status = 'published', published_revision_id = $3
+         WHERE market_id = $1 AND id = $2`,
+      [market.marketId, productId, revisionId],
+    );
   }
 
   it('reviews a create after: the request is open, and its reject discards the category', async () => {
@@ -365,6 +498,208 @@ describe.each(TEST_MARKETS)('catalogue structure requests in market %s (database
     });
   });
 
+  /**
+   * The deps of a category restructure with its events kept in memory: a restructure appends
+   * `platform-category-changed` and its own event for the same category version, which the catalog
+   * outbox's unique (aggregate id, version) refuses (known, being fixed separately; see the
+   * archive case above).
+   */
+  const withRecordingOutbox = () => {
+    const events: unknown[] = [];
+    return {
+      events,
+      deps: {
+        ...deps,
+        outbox: {
+          append: (_context: unknown, batch: readonly unknown[]) => {
+            events.push(...batch);
+            return Promise.resolve();
+          },
+        },
+      },
+    };
+  };
+
+  it('files a merge for approval, writing nothing, and its approval merges the category', async () => {
+    const source = await newCategory();
+    const target = await newCategory();
+    const { events, deps: restructureDeps } = withRecordingOutbox();
+    const before = await categoryOf(source.category.id);
+    const proposed = await atTreeVersion((treeVersion) =>
+      new CategoryMerge(gate, restructureDeps).execute(admin('structure-db-merge'), {
+        categoryId: source.category.id,
+        targetId: target.category.id,
+        treeVersion,
+        reason: 'Two aisles became one',
+        note: 'Same products in both',
+      }),
+    );
+    if (!proposed.ok || !isProposal(proposed.value)) {
+      throw new Error(`no proposal: ${proposed.ok ? 'applied' : proposed.error.code}`);
+    }
+    const proposal = proposed.value.request;
+    expect(await categoryOf(source.category.id)).toEqual(before);
+    expect(events).toEqual([]);
+    const stored = await inUnit(() => requests.find(market, proposal.id));
+    expect(stored).toMatchObject({
+      status: 'open',
+      mode: 'approval',
+      subjectKind: 'catalog.category-restructure',
+      subjectRef: source.category.id,
+      after: { action: 'merge', targetId: target.category.id },
+    });
+    const applier = new CategoryActionApplier(restructureDeps, ['merge', 'archive']);
+    const request = requestRef(proposal, source.category.id, stored!);
+    const approver = admin('structure-db-approver');
+    expect(await applier.check(approver, request)).toBe('ok');
+    expect(await inUnit(() => applier.apply(approver, request))).toBe('applied');
+    expect(await categoryOf(source.category.id)).toMatchObject({ status: 'merged' });
+    expect(audits.at(-1)).toMatchObject({
+      action: 'catalog.platform-category.merged',
+      targetId: source.category.id,
+      after: { requestId: proposal.id },
+    });
+    // A later decision does not find this check's result: it fails closed.
+    expect(await inUnit(() => applier.apply(approver, request))).not.toBe('applied');
+  });
+
+  it('reviews a move after, and its reject moves the category back', async () => {
+    const parent = await newCategory();
+    const moving = await newCategory();
+    const { deps: restructureDeps } = withRecordingOutbox();
+    const moved = await atTreeVersion((treeVersion) =>
+      new CategoryMove(gate, restructureDeps).execute(admin('structure-db-move'), {
+        categoryId: moving.category.id,
+        parentId: parent.category.id,
+        treeVersion,
+        reason: 'It belongs under the new aisle',
+        note: 'Grouped with its aisle',
+      }),
+    );
+    if (!moved.ok || moved.value.request === null) {
+      throw new Error(`no review opened: ${moved.ok ? 'none' : moved.error.code}`);
+    }
+    const opened = moved.value.request;
+    const parentOf = async () =>
+      (
+        await sql.query<{ parent_id: string | null }>(
+          'SELECT parent_id FROM catalog.platform_categories WHERE id = $1',
+          [moving.category.id],
+        )
+      ).rows[0]!.parent_id;
+    expect(await parentOf()).toBe(parent.category.id);
+    const stored = await inUnit(() => requests.find(market, opened.id));
+    expect(stored).toMatchObject({
+      status: 'open',
+      mode: 'review',
+      subjectKind: 'catalog.category-move',
+      before: { parentId: null },
+      after: { parentId: parent.category.id },
+    });
+    const reverter = new CategoryMoveReverter(restructureDeps);
+    const request = requestRef(opened, moving.category.id, stored!);
+    const reviewer = admin('structure-db-reviewer');
+    expect(await reverter.check(reviewer, request)).toBe('ok');
+    // Another admin's revert does not use this reviewer's check (Hassan L1).
+    expect(await inUnit(() => reverter.revert(admin('structure-db-other'), request))).toBe(
+      'not-permitted',
+    );
+    expect(await reverter.check(reviewer, request)).toBe('ok');
+    expect(await inUnit(() => reverter.revert(reviewer, request))).toBe('reverted');
+    expect(await parentOf()).toBeNull();
+    expect(audits.at(-1)).toMatchObject({
+      action: 'catalog.platform-category.moved',
+      after: { requestId: opened.id },
+    });
+  });
+
+  it('files a products move for approval, starting nothing, and its approval queues the job', async () => {
+    // Department > group > source and target (products sit on level 3 and below).
+    const department = await newCategory();
+    const group = await atTreeVersion((treeVersion) =>
+      new CategoryCreate(gate, deps).execute(admin('structure-db-create'), {
+        parentId: department.category.id,
+        slug: slugOf(),
+        texts: { [english]: { name: `Group ${slugOf()}` } },
+        treeVersion,
+        note: 'A group',
+      }),
+    );
+    if (!group.ok) throw new Error(group.error.code);
+    const leaf = async () => {
+      const created = await atTreeVersion((treeVersion) =>
+        new CategoryCreate(gate, deps).execute(admin('structure-db-create'), {
+          parentId: group.value.category.id,
+          slug: slugOf(),
+          texts: { [english]: { name: `Leaf ${slugOf()}` } },
+          treeVersion,
+          note: 'A leaf',
+        }),
+      );
+      if (!created.ok) throw new Error(created.error.code);
+      return created.value.category.id;
+    };
+    const source = await leaf();
+    const target = await leaf();
+    await publishedProductIn(source);
+    await publishedProductIn(source);
+    const jobsOf = async () =>
+      (
+        await owner.query<{ id: string; state: string; total: number }>(
+          `SELECT id, state, total_count AS total FROM catalog.category_product_move_jobs
+            WHERE market_id = $1 AND source_category_id = $2`,
+          [market.marketId, source],
+        )
+      ).rows;
+
+    const proposed = await new CategoryMoveProducts(gate, deps).execute(
+      admin('structure-db-products'),
+      { categoryId: source, targetId: target, reason: 'Basmati is its own aisle now' },
+    );
+    if (!proposed.ok || !isProposal(proposed.value)) {
+      throw new Error(`no proposal: ${proposed.ok ? 'started' : proposed.error.code}`);
+    }
+    const proposal = proposed.value.request;
+    expect(await jobsOf()).toEqual([]);
+    const stored = await inUnit(() => requests.find(market, proposal.id));
+    expect(stored).toMatchObject({
+      status: 'open',
+      mode: 'approval',
+      subjectKind: 'catalog.category-products-move',
+      subjectRef: source,
+      after: { action: 'move-products', targetId: target, products: 2 },
+    });
+    const again = await new CategoryMoveProducts(gate, deps).execute(
+      admin('structure-db-products-2'),
+      { categoryId: source, targetId: target, reason: 'Basmati is its own aisle now' },
+    );
+    expect(!again.ok && again.error).toMatchObject({ code: 'system-requests.already-pending' });
+
+    const applier = new ProductsMoveApplier(deps);
+    const request = requestRef(proposal, source, stored!);
+    const approver = admin('structure-db-approver');
+    expect(await applier.check(approver)).toBe('ok');
+    try {
+      expect(await inUnit(() => applier.apply(approver, request))).toBe('applied');
+      expect(await jobsOf()).toEqual([
+        { id: <unknown>expect.any(String), state: 'queued', total: 2 },
+      ]);
+      expect(audits.at(-1)).toMatchObject({ after: { requestId: proposal.id } });
+      // A second approval finds the job already open and starts no other.
+      expect(await inUnit(() => applier.apply(approver, request))).toBe('not-permitted');
+      expect(await jobsOf()).toHaveLength(1);
+    } finally {
+      // The job is the worker's, not this spec's: close it so no runner of another spec takes it.
+      await owner.query(
+        `UPDATE catalog.category_product_move_jobs
+            SET state = 'done', started_at = COALESCE(started_at, now()), finished_at = now(),
+                lease_holder = NULL, lease_expires_at = NULL
+          WHERE market_id = $1 AND source_category_id = $2 AND state IN ('queued', 'running')`,
+        [market.marketId, source],
+      );
+    }
+  });
+
   it('reviews a reorder after, and its reject puts the two siblings back', async () => {
     const first = await newCategory();
     const second = await newCategory();
@@ -478,6 +813,188 @@ describe.each(TEST_MARKETS)('catalogue structure requests in market %s (database
         'applied',
       );
       expect(await attributeStatus(attribute.id)).toBe('archived');
+    });
+
+    /** A new published select attribute with the given option codes. */
+    async function publishedAttribute(options: readonly string[]) {
+      const created = await create().execute(admin('structure-db-attribute'), {
+        dataType: 'select',
+        names: { [english]: `Size ${slugOf()}` },
+        options: options.map((option) => ({ code: option, labels: { [english]: option } })),
+        note: 'For the sizes',
+      });
+      if (!created.ok) throw new Error(`create failed: ${created.error.code}`);
+      const published = await new AttributeDefinitionPublish(gate, deps).execute(
+        admin('structure-db-publish'),
+        { attributeId: created.value.attribute.id, version: created.value.attribute.version },
+      );
+      if (!published.ok) throw new Error(published.error.code);
+      return published.value.attribute;
+    }
+
+    it('files a merge for approval, and its approval merges it into the other attribute', async () => {
+      const source = await publishedAttribute(['g500', 'kg1']);
+      const target = await publishedAttribute(['g500', 'kg1']);
+      const proposed = await new AttributeMerge(gate, deps).execute(
+        admin('structure-db-attribute-merge'),
+        {
+          attributeId: source.id,
+          version: source.version,
+          target: target.id,
+          targetVersion: target.version,
+          options: { g500: 'g500', kg1: 'kg1' },
+          note: 'Two names for one thing',
+        },
+      );
+      if (!proposed.ok || !isProposal(proposed.value)) {
+        throw new Error(`no proposal: ${proposed.ok ? 'applied' : proposed.error.code}`);
+      }
+      const proposal = proposed.value.request;
+      expect(await attributeStatus(source.id)).toBe('active');
+      const stored = await inUnit(() => requests.find(market, proposal.id));
+      expect(stored).toMatchObject({
+        status: 'open',
+        mode: 'approval',
+        subjectKind: 'catalog.attribute-restructure',
+        subjectRef: source.id,
+        after: { action: 'merge', targetId: target.id },
+      });
+      const applier = new AttributeActionApplier(deps, ['archive', 'merge', 'merge-values']);
+      const request = requestRef(proposal, source.id, stored!);
+      const approver = admin('structure-db-approver');
+      expect(await applier.check(approver, request)).toBe('ok');
+      expect(await inUnit(() => applier.apply(approver, request))).toBe('applied');
+      expect(await attributeStatus(source.id)).toBe('archived');
+      expect(audits.at(-1)).toMatchObject({ after: { requestId: proposal.id } });
+      expect(await inUnit(() => applier.apply(approver, request))).toBe('changed-since');
+    });
+
+    it('files a merge of values for approval, and its approval merges the value', async () => {
+      const attribute = await publishedAttribute(['g500', 'kg1']);
+      const proposed = await new AttributeValuesMerge(gate, deps).execute(
+        admin('structure-db-values-merge'),
+        {
+          attributeId: attribute.id,
+          version: attribute.version,
+          source: 'g500',
+          target: 'kg1',
+          note: 'Half a kilo is sold as one kilo now',
+        },
+      );
+      if (!proposed.ok || !isProposal(proposed.value)) {
+        throw new Error(`no proposal: ${proposed.ok ? 'applied' : proposed.error.code}`);
+      }
+      const proposal = proposed.value.request;
+      const optionOf = async () =>
+        (
+          await sql.query<{ active: boolean; merged_into: string | null }>(
+            `SELECT o.active, o.merged_into
+               FROM catalog.attribute_definition_revision_options o
+               JOIN catalog.attribute_definitions d
+                 ON d.market_id = o.market_id AND d.published_revision_id = o.revision_id
+              WHERE d.id = $1 AND o.option_code = 'g500'`,
+            [attribute.id],
+          )
+        ).rows[0]!;
+      expect(await optionOf()).toEqual({ active: true, merged_into: null });
+      const stored = await inUnit(() => requests.find(market, proposal.id));
+      expect(stored).toMatchObject({
+        mode: 'approval',
+        subjectKind: 'catalog.attribute-restructure',
+        after: { action: 'merge-values', source: 'g500', target: 'kg1' },
+      });
+      const applier = new AttributeActionApplier(deps, ['archive', 'merge', 'merge-values']);
+      const request = requestRef(proposal, attribute.id, stored!);
+      const approver = admin('structure-db-approver');
+      expect(await applier.check(approver, request)).toBe('ok');
+      expect(await inUnit(() => applier.apply(approver, request))).toBe('applied');
+      expect(await optionOf()).toEqual({ active: false, merged_into: 'kg1' });
+      expect(audits.at(-1)).toMatchObject({ after: { requestId: proposal.id } });
+    });
+
+    /** The Core attributes a feature set needs, active in the Market (another spec may make them). */
+    async function coreAttributes(): Promise<void> {
+      for (const code of ['brand', 'country-of-origin']) {
+        const found = await sql.query<{ status: string }>(
+          'SELECT status FROM catalog.attribute_definitions WHERE market_id = $1 AND code = $2',
+          [market.marketId, code],
+        );
+        if (found.rows[0]?.status === 'active') continue;
+        if (found.rows.length > 0) throw new Error(`${code} is ${found.rows[0]!.status}`);
+        const created = await create().execute(admin('structure-db-core'), {
+          code,
+          dataType: 'text',
+          names: { [english]: code },
+          note: 'A Core attribute',
+        });
+        if (!created.ok) {
+          if (created.error.code === 'attribute.code-taken') continue;
+          throw new Error(`create failed: ${created.error.code}`);
+        }
+        const published = await new AttributeDefinitionPublish(gate, deps).execute(
+          admin('structure-db-publish'),
+          { attributeId: created.value.attribute.id, version: created.value.attribute.version },
+        );
+        if (!published.ok) throw new Error(published.error.code);
+      }
+    }
+
+    it('files a feature-set create for approval, and its approval creates the set', async () => {
+      await coreAttributes();
+      const name = `Pantry ${slugOf()}`;
+      const body = {
+        names: { [english]: name },
+        groups: [
+          {
+            groupCode: 'core',
+            names: { [english]: 'Core' },
+            attributes: [
+              { code: 'brand', level: 'required' },
+              { code: 'country-of-origin', level: 'recommended' },
+            ],
+          },
+        ],
+      };
+      const proposed = await new FeatureSetCreate(gate, deps).execute(
+        admin('structure-db-feature-set'),
+        { ...body, note: 'The pantry needs its own set' },
+      );
+      if (!proposed.ok || !isProposal(proposed.value)) {
+        throw new Error(`no proposal: ${proposed.ok ? 'created' : proposed.error.code}`);
+      }
+      const proposal = proposed.value.request;
+      const stored = await inUnit(() => requests.find(market, proposal.id));
+      expect(stored).toMatchObject({
+        status: 'open',
+        mode: 'approval',
+        subjectKind: 'catalog.feature-set-create',
+        after: { action: 'create' },
+      });
+      const code = stored!.subjectRef;
+      const setsOf = async () =>
+        (
+          await sql.query<{ status: string }>(
+            'SELECT status FROM catalog.attribute_families WHERE market_id = $1 AND code = $2',
+            [market.marketId, code],
+          )
+        ).rows;
+      expect(await setsOf()).toEqual([]);
+      const again = await new FeatureSetCreate(gate, deps).execute(
+        admin('structure-db-feature-set-2'),
+        { ...body, note: 'Again' },
+      );
+      expect(!again.ok && again.error).toMatchObject({ code: 'system-requests.already-pending' });
+
+      const applier = new FeatureSetCreateApplier(deps);
+      const request = requestRef(proposal, code, stored!);
+      const approver = admin('structure-db-approver');
+      expect(await applier.check(approver, request)).toBe('ok');
+      expect(await inUnit(() => applier.apply(approver, request))).toBe('applied');
+      expect(await setsOf()).toEqual([{ status: 'active' }]);
+      expect(audits.at(-1)).toMatchObject({ after: { requestId: proposal.id } });
+      // Its check result was taken once: a second apply fails closed and creates nothing more.
+      expect(await inUnit(() => applier.apply(approver, request))).toBe('not-permitted');
+      expect(await setsOf()).toHaveLength(1);
     });
   });
 });
