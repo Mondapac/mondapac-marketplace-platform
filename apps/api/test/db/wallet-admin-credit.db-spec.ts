@@ -15,6 +15,17 @@ import {
 } from '../../src/modules/identity/application/ports/step-up.repository';
 import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { openSession } from '../../src/modules/identity/domain/session';
+import {
+  ADMIN_CREDIT_LIST_READER,
+  type AdminCreditListReader,
+} from '../../src/modules/wallet/application/ports/admin-credit-list.reader';
+import { ExportAdminCreditRequests } from '../../src/modules/wallet/application/use-cases/export-admin-credit-requests.use-case';
+import { ListAdminCreditRequests } from '../../src/modules/wallet/application/use-cases/list-admin-credit-requests.use-case';
+import {
+  CREDIT_SORT_KEYS,
+  type CreditListFilter,
+} from '../../src/modules/wallet/domain/admin-credit-list';
+import { MemoryAdminCreditList } from '../support/wallet-credit-list-fakes';
 import { ApproveAdminCredit } from '../../src/modules/wallet/application/use-cases/approve-admin-credit.use-case';
 import { ExpireAdminCreditRequests } from '../../src/modules/wallet/application/use-cases/expire-admin-credit-requests.use-case';
 import { IssueAdminCredit } from '../../src/modules/wallet/application/use-cases/issue-admin-credit.use-case';
@@ -524,6 +535,146 @@ describe.each(TEST_MARKETS)('admin credit in market %s (database)', (code) => {
     ]);
     await app.get(ExpireAdminCreditRequests).execute(system, {});
     expect(await auditsOf(id)).toHaveLength(1);
+  });
+
+  describe('the Credit requests list (super list 24)', () => {
+    const reader = () => app.get<AdminCreditListReader>(ADMIN_CREDIT_LIST_READER);
+    const readOnly = <T>(work: () => Promise<T>, target = market): Promise<T> =>
+      units()
+        .run(target, async () => ok(await work()), { readOnly: true })
+        .then((result) => {
+          if (!result.ok) throw new Error('unit refused');
+          return result.value;
+        });
+    const filterOf = (fields: Partial<CreditListFilter>): CreditListFilter => ({
+      statuses: null,
+      status: null,
+      reason: null,
+      approvalReason: null,
+      requestOrCustomerId: null,
+      requestedBy: null,
+      from: null,
+      to: null,
+      minAmount: null,
+      maxAmount: null,
+      ...fields,
+    });
+    /** Rejects a pending row as `by`, at `at`. */
+    const rejectRow = (id: string, by: string, at: Temporal.Instant) =>
+      sql.query(
+        `UPDATE wallet.admin_credit_requests SET status = 'rejected', decided_by_account_id = $3,
+         decided_at = $4, decision_reason_code = 'duplicate' WHERE market_id = $1 AND id = $2`,
+        [code, id, by, at.toString()],
+      );
+
+    it('reads through the real module: views, counts, actions, page numbers and the export', async () => {
+      const maker = await administrator();
+      const checker = await administrator();
+      const base = Temporal.Instant.from('2026-11-04T00:00:00Z');
+      const now = Temporal.Now.instant();
+      const a = await pendingRow(maker, 5n, now.subtract({ minutes: 2 }));
+      const b = await pendingRow(maker, 9n, now.subtract({ minutes: 1 }));
+      const decided = await pendingRow(maker, 7n, base);
+      await rejectRow(decided, checker, base.add({ minutes: 5 }));
+      const context = await sessionOf(checker);
+      const list = await app
+        .get(ListAdminCreditRequests)
+        .execute(context, { view: 'all', requestedBy: maker });
+      expect(list.ok).toBe(true);
+      if (!list.ok) return;
+      expect(list.value.entries.map((row) => row.id)).toEqual([b, a, decided]);
+      expect(list.value.total).toBe(3);
+      expect(list.value.entries.map((row) => row.actions)).toEqual([
+        ['open', 'approve', 'reject'],
+        ['open', 'approve', 'reject'],
+        ['open'],
+      ]);
+      expect(list.value.counts.all).toBeGreaterThanOrEqual(3);
+      // The maker never sees a decision on their own request.
+      const own = await app
+        .get(ListAdminCreditRequests)
+        .execute(await sessionOf(maker), { requestedBy: 'me' });
+      expect(own.ok && own.value.entries.map((row) => [row.id, row.actions])).toEqual([
+        [b, ['open']],
+        [a, ['open']],
+      ]);
+      const file = await app
+        .get(ExportAdminCreditRequests)
+        .execute(context, { ids: `${decided},${a}`, columns: 'decision-reason' });
+      expect(file.ok).toBe(true);
+      if (!file.ok) return;
+      let text = '';
+      for await (const chunk of file.value.chunks) text += typeof chunk === 'string' ? chunk : '';
+      const lines = text.split('\r\n').filter(Boolean);
+      expect(lines.slice(1).map((line) => line.split(',')[0])).toEqual([decided, a]);
+      expect(lines[1]!.endsWith(',Rejected,' + maker + ',' + base.toString() + ',Duplicate')).toBe(
+        true,
+      );
+    });
+
+    it('matches the in-memory reader on every sort, both directions, with nulls and ties', async () => {
+      const maker = await administrator();
+      const checker = await administrator();
+      const at = Temporal.Instant.from('2026-11-05T00:00:00Z');
+      const ids = [
+        await pendingRow(maker, 5n, at),
+        await pendingRow(maker, 5n, at),
+        await pendingRow(maker, 9n, at.add({ minutes: 1 }), 2),
+        await pendingRow(maker, 1n, at.add({ minutes: 2 })),
+      ];
+      await rejectRow(ids[2]!, checker, at.add({ hours: 1 }));
+      const filter = filterOf({ requestedBy: maker });
+      const rows = await readOnly(() => reader().byIds(market, ids));
+      const memory = new MemoryAdminCreditList(() => rows);
+      for (const key of CREDIT_SORT_KEYS) {
+        for (const direction of ['asc', 'desc'] as const) {
+          const sort = { key, direction };
+          const real = await readOnly(() => reader().idsPage(market, filter, sort, 10));
+          expect({ key, direction, ids: real }).toEqual({
+            key,
+            direction,
+            ids: await memory.idsPage(market, filter, sort, 10),
+          });
+        }
+      }
+      expect(await readOnly(() => reader().count(market, filter))).toBe(4);
+      expect(
+        await readOnly(() =>
+          reader().count(market, filterOf({ requestedBy: maker, minAmount: 5n, maxAmount: 5n })),
+        ),
+      ).toBe(2);
+      expect(
+        await readOnly(() =>
+          reader().count(
+            market,
+            filterOf({ requestedBy: maker, statuses: ['pending'], status: 'rejected' }),
+          ),
+        ),
+      ).toBe(0);
+    });
+
+    it('walks the Previous/Next cursor newest first across a tie and keeps to the Market', async () => {
+      const maker = await administrator();
+      const at = Temporal.Instant.from('2026-11-06T00:00:00Z');
+      const older = await pendingRow(maker, 5n, at.subtract({ minutes: 1 }));
+      const tied = [await pendingRow(maker, 5n, at), await pendingRow(maker, 5n, at)].sort(
+        (x, y) => (x < y ? 1 : -1),
+      );
+      const filter = filterOf({ requestedBy: maker });
+      const newest = { key: 'requested', direction: 'desc' } as const;
+      const first = await readOnly(() => reader().page(market, filter, newest, 0, 1));
+      expect(first.map((row) => row.id)).toEqual([tied[0]]);
+      const second = await readOnly(() =>
+        reader().page(market, filter, newest, 0, 5, { requestedAt: at, id: first[0]!.id }),
+      );
+      expect(second.map((row) => row.id)).toEqual([tied[1], older]);
+      const counts = await readOnly(() => reader().countByStatus(market));
+      expect(counts.pending).toBeGreaterThanOrEqual(3);
+      // Another Market's unit never sees these requests.
+      const other = marketOf(code === 'AU' ? 'ZZ' : 'AU');
+      expect(await readOnly(() => reader().byIds(other, [older]), other)).toEqual([]);
+      expect(await readOnly(() => reader().count(other, filter), other)).toBe(0);
+    });
   });
 
   describe('the tables', () => {

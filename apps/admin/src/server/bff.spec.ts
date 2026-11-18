@@ -2207,6 +2207,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['PUT', 'promotions/admin/free-shipping/logan'],
     ['PUT', 'promotions/admin/free-shipping/Gold_Coast-2'],
     ['GET', 'wallet/admin/credit-requests'],
+    ['GET', 'wallet/admin/credit-requests/export'],
     ['POST', 'wallet/admin/credits'],
     ['POST', 'identity/admin/step-up/verify'],
     ['GET', `wallet/admin/customers/${id}`],
@@ -2629,7 +2630,7 @@ describe('relay of the wallet and step-up routes', () => {
     expect(response.status).toBe(403);
   });
 
-  it('passes only the status, cursor and limit of the requests list, in their shapes', async () => {
+  it("passes the older queue's status, cursor and limit of the requests list, in their shapes", async () => {
     const cursor = `1790000000000.${id}`;
     const { upstream } = await run(
       'GET',
@@ -2645,6 +2646,41 @@ describe('relay of the wallet and step-up routes', () => {
       readHeaders,
     );
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/wallet/admin/credit-requests');
+  });
+
+  it('passes the Credit requests super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `wallet/admin/credit-requests?view=all&status=expired&reason=promotion&approvalReason=daily-cap&q=${id}&requestedBy=me&from=2026-11-01T00:00:00Z&minAmount=100&sort=expires&direction=asc&page=2&pageSize=50&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/credit-requests?view=all&status=expired&reason=promotion&approvalReason=daily-cap&q=${id}&requestedBy=me&from=2026-11-01T00%3A00%3A00Z&minAmount=100&sort=expires&direction=asc&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'wallet/admin/credit-requests?view=mine&reason=gift&requestedBy=you&q=abc&sort=customer&pageSize=101&maxAmount=-1',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/wallet/admin/credit-requests',
+    );
+    const file = await run(
+      'GET',
+      `wallet/admin/credit-requests/export?format=xlsx&columns=note,journal&ids=${id}&view=decided&page=2&cursor=1.x`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/credit-requests/export?format=xlsx&columns=note%2Cjournal&ids=${id}&view=decided`,
+    );
+    const badFile = await run(
+      'GET',
+      'wallet/admin/credit-requests/export?format=pdf&columns=fingerprint&ids=x',
+      readHeaders,
+    );
+    expect(badFile.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/wallet/admin/credit-requests/export',
+    );
   });
 
   it('passes no query on the customer summary or the settings', async () => {
@@ -2703,6 +2739,34 @@ describe('relay of the wallet and step-up routes', () => {
     expect(file.upstream.mock.calls[0]?.[0]).toBe(
       `http://api.test/commission-payouts/admin/disputes/export?format=xlsx&columns=reason%2Cseller-ids&ids=${id}&view=closed`,
     );
+  });
+
+  it('passes the held-price super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `pricing/admin/price-holds/list?view=up&kind=regular&q=${id}&sellerId=${id}&sort=amount&direction=desc&paging=prev-next&page=2&pageSize=50&from=2026-11-02T00:00:00Z&minAmount=100&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/pricing/admin/price-holds/list?view=up&kind=regular&q=${id}&sellerId=${id}&from=2026-11-02T00%3A00%3A00Z&minAmount=100&sort=amount&direction=desc&paging=prev-next&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'pricing/admin/price-holds/list?view=open&change=sideways&sort=name&q=abc&minAmount=-1&paging=all',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/pricing/admin/price-holds/list',
+    );
+    const file = await run(
+      'GET',
+      `pricing/admin/price-holds/export?format=xlsx&columns=record-id,window&ids=${id}&view=down&page=2&paging=pages`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/pricing/admin/price-holds/export?format=xlsx&columns=record-id%2Cwindow&ids=${id}&view=down`,
+    );
+    expect((await run('POST', 'pricing/admin/price-holds/list')).response.status).toBe(404);
   });
 
   it.each([
@@ -4152,5 +4216,44 @@ describe('relay of the invoices export', () => {
       (await relay(config, post('ordering/admin/documents/export'), path, upstream)).status,
     ).toBe(404);
     expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay of the security alert super list', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const get = async (path: string) => {
+    const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    const response = await relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin }),
+      path.split('?')[0]!.split('/'),
+      upstream,
+    );
+    return { response, url: upstream.mock.calls[0]?.[0] as string | undefined };
+  };
+
+  it('passes the list keys of its own and drops the rest', async () => {
+    const { url } = await get(
+      'security/admin/alerts/list?view=critical&severity=s1,s2&rule=sign-in-failures-ip&keyType=ip&keyValue=203.0.113.7&minEvents=5&sort=events&direction=asc&paging=prev-next&page=2&pageSize=50&x=1',
+    );
+    expect(url).toBe(
+      'http://api.test/security/admin/alerts/list?view=critical&severity=s1%2Cs2&rule=sign-in-failures-ip&keyType=ip&keyValue=203.0.113.7&minEvents=5&sort=events&direction=asc&paging=prev-next&page=2&pageSize=50',
+    );
+    const bad = await get('security/admin/alerts/list?view=other&minEvents=0&pageSize=500');
+    expect(bad.url).toBe('http://api.test/security/admin/alerts/list');
+  });
+
+  it('keeps the single-alert route apart from the list and the export', async () => {
+    const one = await get(`security/admin/alerts/${ID}`);
+    expect(one.response.status).toBe(404);
+  });
+
+  it('relays 200 selected ids whole and refuses a malformed filter instead of widening the file', async () => {
+    const ids = Array.from({ length: 200 }, () => ID).join(',');
+    const { url } = await get(`security/admin/alerts/export?format=csv&ids=${ids}`);
+    expect(url).toContain(`ids=${encodeURIComponent(ids)}`);
+    const bad = await get('security/admin/alerts/export?format=csv&view=other');
+    expect(bad.response.status).toBe(400);
+    expect(bad.url).toBeUndefined();
   });
 });

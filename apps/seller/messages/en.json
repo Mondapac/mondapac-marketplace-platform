@@ -1154,7 +1154,8 @@
         "product": "Product",
         "sku": "Your SKU",
         "listed": "On sale",
-        "submitted": "Submitted"
+        "submitted": "Submitted",
+        "status": "Status"
       },
       "listed": {
         "yes": "Yes",
@@ -1166,6 +1167,190 @@
         "changes-needed": "Changes needed",
         "published": "Published",
         "unknown": "Unknown"
+      },
+      "list": {
+        "intro": "Your offers to sell products, from drafts to live. Open one to change its prices, stock and details.",
+        "tabs": "Offer stages",
+        "tab": {
+          "all": "All",
+          "drafts": "Drafts",
+          "in-review": "In review",
+          "changes-needed": "Changes needed",
+          "live": "Live"
+        },
+        "loading": "Loading offers...",
+        "error": {
+          "unavailable": "We couldn't load your offers. Try again.",
+          "refused": "This search can't be run. Change the text or the filters, or clear them."
+        },
+        "chip": "{field} is {value}",
+        "chip-search": "Search: {text}",
+        "chip-remove": "Remove filter {filter}",
+        "clear-all": "Clear all",
+        "match": "{count, plural, one {# offer matches} other {# offers match}}",
+        "range": "{from} to {to} of {total}",
+        "sorted": "Sorted by {field}, {order}",
+        "columns-button": "Columns",
+        "too-many": "Page numbers stop at the first {limit} offers. Narrow the list with a search or a filter to reach the rest.",
+        "empty": {
+          "all": {
+            "title": "No offers yet",
+            "body": "Offers you create to sell products will appear here."
+          },
+          "drafts": {
+            "title": "No draft offers",
+            "body": "Offers you have started but not submitted appear here."
+          },
+          "in-review": {
+            "title": "No offers in review",
+            "body": "Offers waiting for our review appear here."
+          },
+          "changes-needed": {
+            "title": "No offers need changes",
+            "body": "Offers we asked you to change appear here."
+          },
+          "live": {
+            "title": "No live offers",
+            "body": "Offers that are on sale appear here."
+          }
+        },
+        "empty-filtered": {
+          "title": "No offers match",
+          "body": "Change or clear the search and filters to see more offers."
+        },
+        "search": {
+          "label": "Search offers",
+          "placeholder": "Search by SKU, product code or name"
+        },
+        "filter": {
+          "button": "Filter",
+          "title": "Filter offers",
+          "match-all": "Match all conditions",
+          "field": "Field",
+          "field-placeholder": "Field",
+          "is": "is",
+          "value": "Value",
+          "value-placeholder": "Value",
+          "remove": "Remove condition",
+          "add": "Add condition",
+          "cancel": "Cancel",
+          "apply": "Apply"
+        },
+        "sort": {
+          "button": "Sort",
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "created": "Created",
+            "sku": "Your SKU",
+            "status": "Status"
+          },
+          "date": {
+            "first": "Newest first",
+            "second": "Oldest first"
+          },
+          "text": {
+            "first": "A to Z",
+            "second": "Z to A"
+          }
+        },
+        "columns": {
+          "title": "Columns",
+          "help": "Choose what the table shows. Saved for you only, in this browser.",
+          "always": "Always shown",
+          "up": "Move {column} up",
+          "down": "Move {column} down",
+          "reset": "Reset to default",
+          "save": "Save"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# offer selected} other {# offers selected}}",
+          "all": "All {count, plural, one {# matching offer is} other {# matching offers are}} selected",
+          "all-open": "All matching offers are selected",
+          "select-all": "Select all {count} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "select": {
+          "page": "Select all offers on this page",
+          "page-short": "Select page",
+          "row": "Select {name}"
+        },
+        "paging": {
+          "rows-per-page": "Rows per page",
+          "previous": "Previous",
+          "next": "Next",
+          "pages": "Pages",
+          "page": "Page {page}",
+          "narrow": "Narrow the list to see more.",
+          "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other rows."
+        },
+        "row-actions": {
+          "header": "Actions",
+          "for": "Actions for {name}",
+          "open": "Open",
+          "edit": "Edit",
+          "prices": "Prices",
+          "stock": "Stock",
+          "submit": "Submit for review…",
+          "delete": "Delete…",
+          "done": {
+            "submit": "Submitted. We will review the offer before it goes on sale.",
+            "published": "Submitted and published. The offer is on sale.",
+            "delete": "Offer deleted."
+          },
+          "confirm": {
+            "cancel": "Cancel",
+            "submit": {
+              "title": "Submit offer {sku} for review?",
+              "body": "We review the offer before it goes on sale. You can't change it until we decide.",
+              "confirm": "Submit"
+            },
+            "delete": {
+              "title": "Delete offer {sku}?",
+              "body": "The offer stops being listed and you can't bring it back.",
+              "confirm": "Delete offer",
+              "type": "Type the SKU to confirm",
+              "step-up": "You will be asked for a code from your authenticator next."
+            }
+          }
+        },
+        "export-button": "Export",
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# offer selected} other {# offers selected}}",
+          "all-open": "All matching offers selected",
+          "none-selected": "Select offers to use a bulk action.",
+          "export": "Export",
+          "export-help": "Download the selected offers as CSV or XLSX."
+        },
+        "export": {
+          "title": "Export {count, plural, one {# offer} other {# offers}}",
+          "title-open": "Export offers",
+          "body": "The file has the SKU, product, status and product code, and On sale when the list shows it.",
+          "legend": "File format",
+          "csv": "CSV",
+          "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+          "xlsx": "XLSX",
+          "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+          "confirm": "Export",
+          "cancel": "Cancel",
+          "pending": "Preparing your export…",
+          "done": "{count, plural, one {# offer exported.} other {# offers exported.}}",
+          "done-open": "The export is saved.",
+          "error": {
+            "unavailable": "The export didn’t work. Try again.",
+            "denied": "You don’t have access to export offers.",
+            "too-large": "Too many offers to export ({total}). Narrow the list to {max} or fewer, then try again.",
+            "too-many-selected": "You can export up to {max} selected offers at a time.",
+            "not-found": "Some of the selected offers are no longer in your store. Reload the list and try again.",
+            "invalid": "That export can’t be done. Reload the page and try again."
+          }
+        },
+        "saved": {
+          "manage-link": "Manage filters",
+          "save-link": "Save filter…"
+        }
       }
     },
     "offer": {
@@ -1197,20 +1382,36 @@
       },
       "tabs": "Offer sections"
     },
+    "add": {
+      "subtitle": "Your product · {market}",
+      "unsaved": "Unsaved product",
+      "offer": {
+        "title": "Your offer",
+        "help": "These belong to your offer on this product, not to the product itself."
+      },
+      "later": {
+        "tags": "Tags: save the draft first. Then you can add them here.",
+        "attributes": "Save the draft first. The details to fill in depend on the category you choose.",
+        "variants": "Save the draft first. Then you can choose the sizes or options you sell.",
+        "photos": "Save the draft first. Then you can add photos here."
+      },
+      "error": {
+        "not-saved": "Your product was created, but the page was not saved. {reason} Enter it again and press Save draft.",
+        "refused": "Your product was created, but some text was not saved because it holds a claim or a hidden character."
+      }
+    },
     "create": {
-      "title": "New product",
-      "intro": "Choose what you sell and add your first offer. You can add the product details next.",
+      "title": "Add product",
       "closed": "Your market does not let sellers add products yet.",
       "back": "Back to products",
       "type": "Product type",
       "condition": "Condition",
       "sku": "Your SKU",
       "sku-help": "Your own code for this offer. It must be unique among your open offers.",
-      "choose": "Choose",
+      "choose-type": "Choose a product type",
+      "choose-condition": "Choose a condition",
       "description": "Description ({locale})",
       "optional": "optional",
-      "submit": "Create product",
-      "creating": "Creating",
       "validation": {
         "summary": "Check the fields marked below.",
         "invalid": "This value is not valid.",
@@ -1300,6 +1501,8 @@
         "level-not-allowed": "Choose a more specific category. Products can't go on a department or group."
       },
       "tax-category": "Tax category",
+      "tax-category-placeholder": "Choose a tax category",
+      "tax-category-help": "Required. Separate from the product category: it decides GST on every seller's offer.",
       "variants": "Variants",
       "grid": {
         "step-axes": "1. What does this product come in?",
@@ -1465,14 +1668,18 @@
         "title-item": "add a title",
         "category-item": "choose a category",
         "tax-item": "choose the tax category",
-        "details-item": "fill in the required details"
+        "details-item": "fill in the required details",
+        "type-item": "choose a product type",
+        "sku-item": "enter your SKU",
+        "save-item": "save the draft first"
       },
       "organisation": {
         "title": "Organisation",
         "market": "Market",
         "scope": "Scope",
         "scope-own": "Your product",
-        "type": "Type"
+        "type": "Type",
+        "type-unset": "Choose it in Your offer"
       },
       "paused": {
         "title": "Mondapac paused this product.",
@@ -2689,7 +2896,12 @@
       "items": "Items to pack",
       "no-items": "Nothing is left to pack on this order.",
       "not-available": "This order was sent or refunded in full, so there is no packing slip to print.",
-      "buyer-note": "Note from the customer"
+      "buyer-note": "Note from the customer",
+      "back-to-list": "Back to orders",
+      "many-title": "Packing slips",
+      "many-count": "{count, plural, one {# packing slip} other {# packing slips}}",
+      "many-skipped": "{count, plural, one {# order was left out: it was sent or refunded in full.} other {# orders were left out: they were sent or refunded in full.}}",
+      "many-unreadable": "{count, plural, one {# order could not be read just now.} other {# orders could not be read just now.}} Reload this page to try again."
     },
     "unavailable": {
       "card": "Cannot supply an item?",
@@ -2772,6 +2984,132 @@
       "reason": {
         "item-unavailable": "Item unavailable"
       }
+    },
+    "list": {
+      "zone-note": "Times and days are in {zone}.",
+      "chip": "{field} is {value}",
+      "chip-search": "Order: {text}",
+      "chip-remove": "Remove filter {filter}",
+      "clear-all": "Clear all",
+      "match": "{count, plural, one {# order matches} other {# orders match}}",
+      "sorted": "Sorted by {field}, {order}",
+      "columns-button": "Columns",
+      "date-preset": {
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "last-7-days": "Last 7 days",
+        "last-30-days": "Last 30 days",
+        "this-month": "This month",
+        "last-month": "Last month"
+      },
+      "search": {
+        "label": "Search orders",
+        "placeholder": "Search by order ID",
+        "not-an-id": "Type a whole order ID. Orders can't be searched by other text yet."
+      },
+      "filter": {
+        "button": "Filter",
+        "title": "Filter orders",
+        "match-all": "Match all conditions",
+        "field": "Field",
+        "field-placeholder": "Field",
+        "is": "is",
+        "value": "Value",
+        "value-placeholder": "Value",
+        "remove": "Remove condition",
+        "add": "Add condition",
+        "cancel": "Cancel",
+        "apply": "Apply"
+      },
+      "sort": {
+        "button": "Sort",
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "paid": "Paid",
+          "total": "Total"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "amount": {
+          "first": "Highest first",
+          "second": "Lowest first"
+        }
+      },
+      "selection": {
+        "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+        "all": "All {count, plural, one {# matching order is} other {# matching orders are}} selected",
+        "all-open": "All matching orders are selected",
+        "select-all": "Select all {count} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "paging": {
+        "rows-per-page": "Rows per page",
+        "previous": "Previous",
+        "next": "Next",
+        "pages": "Pages",
+        "page": "Page {page}",
+        "narrow": "Narrow the list to see more.",
+        "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other rows."
+      },
+      "error": {
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty-filtered": {
+        "title": "No orders match",
+        "body": "Change or clear the filters to see more orders."
+      }
+    },
+    "row-name": "order {id}",
+    "select": {
+      "page": "Select all orders on this page",
+      "page-short": "Select page",
+      "row": "Select {name}"
+    },
+    "row-actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "open": "Open",
+      "packing-slip": "Print packing slip",
+      "copy-number": "Copy order ID",
+      "ready": "Mark ready…",
+      "hand-over": "Hand over…",
+      "mark-delivered": "Mark as delivered…",
+      "report-unavailable": "Report unavailable…",
+      "copied": "Order number copied",
+      "copy-failed": "Couldn't copy. Select the number and copy it.",
+      "done": {
+        "ready": "Order {id} marked ready",
+        "deliver": "Order {id} marked as delivered"
+      },
+      "confirm": {
+        "cancel": "Cancel",
+        "ready": {
+          "title": "Mark order {id} as ready?",
+          "body": "The customer is told the order is ready. You can't undo this.",
+          "confirm": "Mark ready"
+        },
+        "deliver": {
+          "title": "Mark order {id} as delivered?",
+          "body": "The order is recorded as delivered to the customer. You can't undo this.",
+          "confirm": "Mark as delivered"
+        }
+      }
+    },
+    "bulk": {
+      "button": "Bulk action",
+      "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+      "all-open": "All matching orders selected",
+      "none-selected": "Tick orders to print slips, or export the whole list.",
+      "export": "Export all matching as CSV",
+      "export-help": "Every order the tab and paid dates match, not only the ticked ones.",
+      "export-searching": "A search cannot be exported. Clear it to export.",
+      "print-slips": "Print packing slips",
+      "print-slips-help": "Opens one page with a slip for each selected order (up to {max}).",
+      "print-slips-all": "Tick the orders you want slips for. Slips can't be printed for every matching order at once."
     }
   },
   "earnings": {

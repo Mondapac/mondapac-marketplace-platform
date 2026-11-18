@@ -372,6 +372,34 @@ describe('Move products dialog: the form', () => {
     expect(within(dialog()).queryByTestId('move-products-progress')).toBeNull();
   });
 
+  it('says nothing changes until approval where the Market reviews area catalogue', async () => {
+    serve({ start: { ok: true, status: 202, body: { request: { id: 'r1', number: 45 } } } });
+    const { onClose } = mountDialog({ reviewed: true });
+    await screen.findByText('4 published products will move.');
+    expect(
+      within(dialog()).getByText(/^If another admin approves, every published product in Rice/),
+    ).toBeTruthy();
+    expect(
+      within(dialog()).getByText(
+        'Nothing changes until another admin approves it in Admin Inbox > System requests. Your reason is the note for the reviewer.',
+      ),
+    ).toBeTruthy();
+    expect(within(dialog()).queryByRole('button', { name: 'Move products' })).toBeNull();
+    await fill();
+    fireEvent.click(within(dialog()).getByRole('button', { name: 'Send for approval' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledWith(false));
+    expect(writes()).toHaveLength(1);
+  });
+
+  it('keeps its own wording where the area is off', async () => {
+    serve();
+    mountDialog();
+    await screen.findByText('4 published products will move.');
+    expect(within(dialog()).getByText(/The change is published at once/)).toBeTruthy();
+    expect(within(dialog()).queryByText(/Nothing changes until/)).toBeNull();
+    expect(within(dialog()).queryByRole('button', { name: 'Send for approval' })).toBeNull();
+  });
+
   it('offers Reload after a refusal that means the page is old, and calls it', async () => {
     serve({ start: refused(404, 'category.target-not-found') });
     const { onReload } = mountDialog();

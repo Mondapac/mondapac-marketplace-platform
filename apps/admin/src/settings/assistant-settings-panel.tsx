@@ -446,6 +446,19 @@ export function AssistantSettingsPanel({
           />
         </SettingRow>
         <SettingRow
+          settingId="assistant-basket-proposals"
+          label={t(`${P}.basket.label`)}
+          help={t(`${P}.basket.help`)}
+          changed={changed('basketProposals')}
+        >
+          <SettingCheckbox
+            name="basketProposals"
+            text={form.basketProposals ? t(`${P}.status.on`) : t(`${P}.status.off`)}
+            checked={form.basketProposals}
+            onChange={(event) => set('basketProposals', event.target.checked)}
+          />
+        </SettingRow>
+        <SettingRow
           settingId="assistant-model"
           label={t(`${P}.model.label`)}
           help={tierHelp}
@@ -671,6 +684,10 @@ function summaryRows(
           : t(`${P}.audience.${settings.audience}`),
     },
     { label: t(`${P}.scope.label`), value: t(`${P}.scope.${settings.scope}`) },
+    {
+      label: t(`${P}.basket.label`),
+      value: t(`${P}.status.${settings.basketProposals ? 'on' : 'off'}`),
+    },
     { label: t(`${P}.model.label`), value: t(`${P}.model.${settings.modelTier}`) },
     { label: t(`${P}.language.label`), value: t(`${P}.language.${settings.replyLanguage}`) },
     { label: t(`${P}.welcome.label`), value: settings.welcomeText },

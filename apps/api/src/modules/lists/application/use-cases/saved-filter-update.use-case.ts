@@ -8,11 +8,13 @@ import {
   MAX_SHARED_SAVED_FILTERS,
   type SavedFilterStore,
   type StoredFilter,
+  type ListPopulation,
 } from '../../contracts';
 import { ListsFilterChangedAudit } from '../../domain/audit';
 import { isVisibleTo, mayManage } from '../../domain/saved-filter-rules';
 import {
-  adminOf,
+  callerOf,
+  storeOf,
   auditListOf,
   canShareOf,
   filterIdOf,
@@ -78,93 +80,107 @@ export class SavedFilterUpdate extends UseCase<
     super(gate);
   }
 
-  protected async handle(
+  protected handle(
     context: CallContext,
     input: SavedFilterUpdateInput,
   ): Promise<Result<SavedFilterView, SavedFilterUpdateFailure>> {
-    const admin = adminOf(context);
-    if (admin === null) return err({ code: 'access.denied' });
-    if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-      return invalid('body', 'type');
-    }
-    for (const key of Object.keys(input)) if (!KEYS.has(key)) return invalid(key, 'unknown');
-    const { deps } = this;
-    const list = deps.registry.lookup(input.listKey, 'admin');
-    if (!list.ok) return list;
-    const name = nameOf(input.name);
-    if (!name.ok) return name;
-    const visibility = visibilityOf(input.visibility);
-    if (!visibility.ok) return visibility;
-    const id = filterIdOf(input.id);
-    if (id === null) return err({ code: 'saved-filter.not-found' });
-
-    const viewed = await holds(
-      deps.authorisation,
-      context,
-      'lists.saved-filter-update-view',
-      list.value.viewKey,
-    );
-    if (!viewed.ok) return viewed;
-    const canShare = await canShareOf(
-      deps.authorisation,
-      context,
-      'lists.saved-filter-update',
-      list.value,
-    );
-    if (!canShare.ok) return canShare;
-
-    const { market } = context;
-    const listKey = list.value.listKey;
-    const written = await deps.unitOfWork.run<StoredFilter, SavedFilterUpdateFailure>(
-      market,
-      async () => {
-        const found = await deps.store.find(market, null, [listKey], id);
-        if (found === null || !isVisibleTo(found, admin.accountId)) {
-          return err({ code: 'saved-filter.not-found' });
-        }
-        if (!mayManage(found, admin.accountId, canShare.value)) {
-          return err({ code: 'access.denied' });
-        }
-        const renamed = found.name !== name.value;
-        const moved = found.visibility !== visibility.value;
-        if (moved && visibility.value === 'everyone') {
-          if (!canShare.value) return err({ code: 'access.denied' });
-          if ((await deps.store.countShared(market, null, listKey)) >= MAX_SHARED_SAVED_FILTERS) {
-            return err({
-              code: 'saved-filter.shared-limit-reached',
-              max: MAX_SHARED_SAVED_FILTERS,
-            });
-          }
-        }
-        if (!renamed && !moved) return ok(found);
-        const changed: StoredFilter = {
-          ...found,
-          name: name.value,
-          visibility: visibility.value,
-          updatedAt: deps.clock.now(),
-        };
-        const outcome = await deps.store.change(market, changed);
-        if (outcome === 'gone') return err({ code: 'saved-filter.not-found' });
-        if (outcome === 'name-taken') return err({ code: 'saved-filter.name-taken' });
-        if (found.visibility === 'everyone' || changed.visibility === 'everyone') {
-          await deps.audit.record(
-            context,
-            ListsFilterChangedAudit.entry(changed.id, {
-              before: { visibility: found.visibility },
-              after: {
-                listKey: auditListOf(changed.listKey),
-                visibility: changed.visibility,
-                renamed,
-                ownedByActor: changed.ownerAccountId === admin.accountId,
-              },
-            }),
-          );
-        }
-        return ok(changed);
-      },
-      { isolation: 'serializable' },
-    );
-    if (!written.ok) return written;
-    return ok(viewOf(written.value, admin.accountId, canShare.value));
+    return handleSavedFilterUpdate('admin', this.deps, context, input);
   }
+}
+
+/**
+ * The body of the use case for one population: the admin class and the seller class of
+ * `seller-saved-filters` run it with their own population, so the rules stay in one place.
+ */
+export async function handleSavedFilterUpdate(
+  population: ListPopulation,
+  deps: SavedFilterUpdateDependencies,
+  context: CallContext,
+  input: SavedFilterUpdateInput,
+): Promise<Result<SavedFilterView, SavedFilterUpdateFailure>> {
+  const caller = callerOf(context, population);
+  if (!caller.ok) return caller;
+  const member = caller.value;
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return invalid('body', 'type');
+  }
+  for (const key of Object.keys(input)) if (!KEYS.has(key)) return invalid(key, 'unknown');
+  const list = deps.registry.lookup(input.listKey, population);
+  if (!list.ok) return list;
+  const sellerId = storeOf(member, list.value);
+  const name = nameOf(input.name);
+  if (!name.ok) return name;
+  const visibility = visibilityOf(input.visibility);
+  if (!visibility.ok) return visibility;
+  const id = filterIdOf(input.id);
+  if (id === null) return err({ code: 'saved-filter.not-found' });
+
+  const viewed = await holds(
+    deps.authorisation,
+    context,
+    'lists.saved-filter-update-view',
+    list.value.viewKey,
+  );
+  if (!viewed.ok) return viewed;
+  const canShare = await canShareOf(
+    deps.authorisation,
+    context,
+    'lists.saved-filter-update',
+    list.value,
+  );
+  if (!canShare.ok) return canShare;
+
+  const { market } = context;
+  const listKey = list.value.listKey;
+  const written = await deps.unitOfWork.run<StoredFilter, SavedFilterUpdateFailure>(
+    market,
+    async () => {
+      const found = await deps.store.find(market, sellerId, [listKey], id);
+      if (found === null || !isVisibleTo(found, member.accountId)) {
+        return err({ code: 'saved-filter.not-found' });
+      }
+      if (!mayManage(found, member.accountId, canShare.value)) {
+        return err({ code: 'access.denied' });
+      }
+      const renamed = found.name !== name.value;
+      const moved = found.visibility !== visibility.value;
+      if (moved && visibility.value === 'everyone') {
+        if (!canShare.value) return err({ code: 'access.denied' });
+        if ((await deps.store.countShared(market, sellerId, listKey)) >= MAX_SHARED_SAVED_FILTERS) {
+          return err({
+            code: 'saved-filter.shared-limit-reached',
+            max: MAX_SHARED_SAVED_FILTERS,
+          });
+        }
+      }
+      if (!renamed && !moved) return ok(found);
+      const changed: StoredFilter = {
+        ...found,
+        name: name.value,
+        visibility: visibility.value,
+        updatedAt: deps.clock.now(),
+      };
+      const outcome = await deps.store.change(market, changed);
+      if (outcome === 'gone') return err({ code: 'saved-filter.not-found' });
+      if (outcome === 'name-taken') return err({ code: 'saved-filter.name-taken' });
+      if (found.visibility === 'everyone' || changed.visibility === 'everyone') {
+        await deps.audit.record(
+          context,
+          ListsFilterChangedAudit.entry(changed.id, {
+            before: { visibility: found.visibility },
+            after: {
+              listKey: auditListOf(changed.listKey),
+              visibility: changed.visibility,
+              renamed,
+              ownedByActor: changed.ownerAccountId === member.accountId,
+            },
+          }),
+        );
+      }
+      return ok(changed);
+    },
+    { isolation: 'serializable' },
+  );
+  if (!written.ok) return written;
+  return ok(viewOf(written.value, member.accountId, canShare.value));
 }
