@@ -885,7 +885,7 @@ measured; at these row counts every table is far below the point where partition
 | `sign_in_records` | 10³ to 10⁴ a day, so at most about 10⁶ at 90 days | Daily-slice deletes. Revisit at 5 × 10⁷ rows: monthly range partitions on `occurred_at`, dropped whole |
 | `sign_in_throttles` | One row per key and window: hundreds normally; under attack one per address or IPv6 /64 tried, for 48 hours | Hourly purge; an index `(market_id, window_started_at)` once it passes 10⁶ rows |
 | `sign_in_challenges` | Hundreds, short-lived | Hourly purge |
-| `one_time_links`, `invitations` | At most four per account; open invitations | Hourly purge of consumed, expired and decided rows, and of never-dispatched invitations older than their kind's lifetime |
+| `one_time_links`, `invitations` | At most four per account; open invitations | Hourly purge of consumed, expired and decided rows (except accepted `admin` invitations, kept for the people review), and of never-dispatched invitations older than their kind's lifetime |
 | `outbox` | A few events per account plus admin actions: 10⁵ to 10⁶ a year | Kept (P 6.5); pruning or partitioning is decided at 10⁶ rows |
 | `event_delivery`, `inbox` | The mail-causing events times their subscribers | The platform prune job, before the first deployed environment (P 7) |
 | `subject_keys` | Accounts plus sellers plus one tombstone per purged sign-up | None in Phase 2 (A7; revisited before the first deployed environment); sign-up is rate-limited per origin |
