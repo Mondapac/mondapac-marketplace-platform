@@ -44,8 +44,11 @@ import type { SystemRequestsDependencies } from './system-requests-dependencies'
 /** Rows read per page while the file streams. */
 export const EXPORT_PAGE = 100;
 
-/** The most a refused export counts when it says how many rows matched (a 32-bit `take`). */
-const TOTAL_CAP = 1_000_000_000;
+/**
+ * The most a refused export counts when it says how many rows matched: the count stops here, so a
+ * refusal never scans a whole large Market. A total at this cap reads "at least" in the panel.
+ */
+export const EXPORT_TOTAL_CAP = 100_000;
 
 /** The optional columns, as the queue's column picker names them. */
 export const EXPORT_COLUMNS = [
@@ -267,8 +270,8 @@ export async function exportRequests(
         async () => {
           const found = await deps.requests.count(context.market, filter, LIST_EXPORT_MAX_ROWS + 1);
           if (found <= LIST_EXPORT_MAX_ROWS) return ok({ found, total: found });
-          // Over the cap: the full count, so the panel can say how far to narrow.
-          const total = await deps.requests.count(context.market, filter, TOTAL_CAP);
+          // Over the cap: a bounded count, so the panel can say how far to narrow.
+          const total = await deps.requests.count(context.market, filter, EXPORT_TOTAL_CAP);
           return ok({ found, total });
         },
         { readOnly: true },

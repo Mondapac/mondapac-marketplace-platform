@@ -381,6 +381,8 @@ export function QueueList({
   // Export: the ticked rows, or with none ticked (or "Select all matching") every row the view,
   // search and filters match, in the list's order, with the columns shown.
   const ticked = [...selection.selected];
+  const matchingCount =
+    counts === null || counts[query.view] >= MAX_PAGED_ROWS ? null : counts[query.view];
   const exportAll = selection.allMatching || ticked.length === 0;
   const exporter = useSalesExport({
     path: `${BASE}/requests/export`,
@@ -396,7 +398,10 @@ export function QueueList({
     selection: {
       ids: exportAll ? [] : ticked,
       allMatching: exportAll,
-      total: counts === null ? null : counts[query.view],
+      // The rows the current query matches: the API counts every view for the same search and
+      // filters, so this is the list's own total (page mode answers it as `total`). At the cap
+      // the real number is unknown: the dialog then says "all matching rows", never 10,000.
+      total: matchingCount,
     },
     keepOrder: true,
   });

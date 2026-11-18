@@ -822,6 +822,32 @@ describe('QueueList export', () => {
     );
   });
 
+  it('titles the dialog with the rows the search and filters match, or all matching at the cap', async () => {
+    // The API counts each view for the same search and filters: 2 of the view's rows match.
+    call.mockResolvedValue(ok(page([row(1), row(2)], { counts: counts({ all: 2 }) })));
+    mount('pages', 'view=all&q=limit&risk=high');
+    await screen.findByRole('link', { name: 'SR-1041' });
+    expect(lastList().get('q')).toBe('limit');
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    expect(await screen.findByRole('heading', { name: 'Export 2 rows' })).toBeTruthy();
+    cleanup();
+
+    call.mockResolvedValue(ok(page([row(1)], { counts: counts({ all: 10_000 }) })));
+    mount('pages', 'view=all&risk=high');
+    await screen.findByRole('link', { name: 'SR-1041' });
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    expect(await screen.findByRole('heading', { name: 'Export all matching rows' })).toBeTruthy();
+  });
+
+  it('titles the dialog with the ticked rows when rows are ticked', async () => {
+    call.mockResolvedValue(ok(page([row(1), row(2), row(3)])));
+    mount('pages', 'view=all');
+    await screen.findByRole('link', { name: 'SR-1041' });
+    tick('SR-1042');
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    expect(await screen.findByRole('heading', { name: 'Export 1 row' })).toBeTruthy();
+  });
+
   it('offers no export while the view is empty', async () => {
     call.mockResolvedValue(
       ok(page([], { counts: counts({ 'needs-my-review': 0, 'all-open': 0 }) })),

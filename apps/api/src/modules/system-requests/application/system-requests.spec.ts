@@ -35,7 +35,7 @@ import {
   SYSTEM_REQUESTS_DECIDE_HIGH_STEP_UP,
   SYSTEM_REQUESTS_POLICY_CHANGE_STEP_UP,
 } from '../contracts/step-up';
-import type { SystemRequestsExportDependencies } from './export-flow';
+import { EXPORT_TOTAL_CAP, type SystemRequestsExportDependencies } from './export-flow';
 import { listRequests } from './list-flow';
 import { changeAreaPolicy, DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './policy-flow';
 import { approveRequest, commentOnRequest, withdrawRequest } from './request-flow';
@@ -1170,6 +1170,26 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
         ok: false,
         error: { code: 'batch.too-large', max: 10_000, total: 12_345 },
       });
+    });
+
+    it('counts the total of a refused export only up to 100,000', async () => {
+      await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      const caps: number[] = [];
+      const huge = Object.create(requests) as InMemoryRequests;
+      huge.count = (_market, _filter, cap) => {
+        caps.push(cap);
+        return Promise.resolve(Math.min(2_500_000, cap));
+      };
+      const result = await new ExportSystemRequests(gate, {
+        ...exportDeps(),
+        requests: huge,
+      }).execute(admin(CHECKER), { view: 'all' });
+      expect(result).toEqual({
+        ok: false,
+        error: { code: 'batch.too-large', max: 10_000, total: EXPORT_TOTAL_CAP },
+      });
+      expect(EXPORT_TOTAL_CAP).toBe(100_000);
+      expect(caps).toEqual([10_001, 100_000]);
     });
 
     it('refuses unknown keys, bad values, a caller without the view key and an acting-as session', async () => {
