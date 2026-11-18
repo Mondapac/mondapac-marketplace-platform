@@ -1,4 +1,4 @@
-import type { ModerationListPage } from '../application/moderation-list-flow';
+import type { ModerationListPage } from '../application/use-cases/query-moderation-reviews.use-case';
 import { ApiProperty } from '@nestjs/swagger';
 import { REVIEWS_STATUSES } from '../domain/market-status';
 import { REVIEW_STATUSES, SELLER_RATING_REASONS } from '../domain/rules';

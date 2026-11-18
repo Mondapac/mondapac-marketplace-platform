@@ -9,6 +9,8 @@ import {
   type ModerationListPage,
 } from '../moderation-list-flow';
 
+export type { ModerationListPage } from '../moderation-list-flow';
+
 /**
  * `reviews.query-moderation-reviews` (super list 18): an admin lists the reviews of the moderation
  * queue with views and counts, filters, sort, page numbers or Previous/Next and each row's actions.
