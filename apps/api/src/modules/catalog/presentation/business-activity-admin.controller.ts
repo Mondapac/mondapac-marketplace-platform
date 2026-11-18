@@ -49,7 +49,7 @@ import {
   BusinessActivityListBody,
   BusinessActivityWrapBody,
 } from './business-activity.dto';
-import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
+import { closedBody, numericQuery, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 
 /**
@@ -108,12 +108,22 @@ export class BusinessActivityAdminController {
   @ApiOperation({
     summary: 'List business activities',
     description:
-      'Needs catalog.business-activity.read. By code, keyset-paged: send `nextAfterId` of the ' +
-      'previous page as `afterId`. `status` filters; `search` matches a name in any locale or the ' +
-      'code (server-side search for pickers). `limit` is 1 to 100 (default 25).',
+      'Needs catalog.business-activity.read. Read by page number (`page`, `pageSize`, with a ' +
+      'total) or Previous and Next (`paging=prev-next`), sorted by `sort` (code, status, created, ' +
+      'updated) and `direction`; or, as the older panel and the pickers do, keyset-paged by code: ' +
+      'send `nextAfterId` of the previous page as `afterId` (`afterId`/`limit` do not mix with the ' +
+      'page keys). `status` filters; `q` (older name `search`) matches a name in any locale or ' +
+      'the code. `pageSize` and `limit` are 1 to 100. Each row names the `actions` the caller ' +
+      'may run.',
   })
   @ApiQuery({ name: 'status', required: false, enum: ['active', 'inactive'] })
-  @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'search', required: false, deprecated: true, description: 'Older name of q.' })
+  @ApiQuery({ name: 'sort', required: false, enum: ['code', 'status', 'created', 'updated'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'pageSize', required: false })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
   @ApiQuery({ name: 'afterId', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiOkResponse({ type: BusinessActivityListBody })
@@ -126,7 +136,7 @@ export class BusinessActivityAdminController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<BusinessActivityListBody> {
-    const result = await this.listActivities.execute(context, pageQuery(query));
+    const result = await this.listActivities.execute(context, numericQuery(pageQuery(query)));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as BusinessActivityListBody)
       : refusal(result.error, response, context);

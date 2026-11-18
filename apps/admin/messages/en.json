@@ -1759,7 +1759,9 @@
       },
       "basis": {
         "SELLER_CERT_REQUIRED": "Seller certificate required",
+        "SELLER_REQUIRED": "Seller certificate required",
         "SELLER_OR_MANUFACTURER": "Seller or manufacturer certificate",
+        "NOT_APPLICABLE": "No certificate needed",
         "NO_BADGE_ALLOWED": "No badge allowed"
       },
       "detail": {
@@ -1793,6 +1795,7 @@
         "locale-description-in": "Description for customers ({locale})",
         "locale-terms-in": "Claim terms ({locale})",
         "revise": "Change this type",
+        "policy": "Claim basis policy",
         "inactive-note": "No new certificates of this type can be added. Existing certificates and badges stay.",
         "revision-waiting": "A change to this type is waiting for a second admin.",
         "reactivation-waiting": "A reactivation is waiting for a second admin.",
@@ -1879,7 +1882,8 @@
       "proposal": {
         "title": {
           "revision": "A change waiting for a second admin",
-          "reactivation": "Reactivation waiting for a second admin"
+          "reactivation": "Reactivation waiting for a second admin",
+          "policy": "A policy change waiting for a second admin"
         },
         "sent": "Asked on",
         "reason": "Reason",
@@ -1902,7 +1906,8 @@
             "button": "Approve change",
             "body": {
               "revision": "The change is published at once. Certificates already approved keep the rules they were approved under.",
-              "reactivation": "The type becomes active again and sellers can add new certificates of it."
+              "reactivation": "The type becomes active again and sellers can add new certificates of it.",
+              "policy": "The new rows are published at once and apply to claims made from now on."
             }
           },
           "reject": {
@@ -1910,7 +1915,8 @@
             "button": "Reject change",
             "body": {
               "revision": "The proposal is closed for good. The published revision stays.",
-              "reactivation": "The proposal is closed for good. The type stays inactive."
+              "reactivation": "The proposal is closed for good. The type stays inactive.",
+              "policy": "The proposal is closed for good. The published rows stay."
             }
           },
           "withdraw": {
@@ -1918,17 +1924,97 @@
             "button": "Withdraw proposal",
             "body": {
               "revision": "The proposal is closed. You can propose it again later.",
-              "reactivation": "The proposal is closed. You can ask again later."
+              "reactivation": "The proposal is closed. You can ask again later.",
+              "policy": "The proposal is closed. You can propose it again later."
             }
           }
         },
         "policy-row": "Policy row",
         "reason-erased": "Reason removed"
       },
+      "policy": {
+        "title": "Claim basis policy",
+        "back": "Back to the type",
+        "heading": "Claim basis policy of {code}",
+        "never-saved": "No policy saved yet. The default basis applies everywhere.",
+        "revision": "Revision {n}",
+        "default": "Default basis",
+        "default-help": "Used when no row matches.",
+        "waiting": "A change to this policy is waiting for a second admin.",
+        "published-rows": "Published rows",
+        "no-rows": "There are no rows. The default basis applies to every claim.",
+        "kind": {
+          "category": "Platform category",
+          "handling": "Handling type"
+        },
+        "handling": {
+          "SEALED_ORIGINAL": "Sealed original",
+          "REPACKED": "Repacked",
+          "PREPARED": "Prepared",
+          "FRESH": "Fresh"
+        },
+        "reason": "Reason",
+        "change": "Change the rows",
+        "view-only": "You can view this policy but not change it.",
+        "categories-unavailable": "The categories could not be loaded, so the rows can't be changed right now. Reload the page to try again.",
+        "history": "History",
+        "not-published": "Not published",
+        "has-reason": "Has a reason",
+        "done": {
+          "published": "Policy changed and published.",
+          "pending": "Saved. A second admin has to approve it before it is published.",
+          "approved": "Change approved and published.",
+          "rejected": "Change rejected.",
+          "withdrawn": "Proposal withdrawn.",
+          "sent": "Sent for review as SR-{number}."
+        },
+        "form": {
+          "intro": "One row says which basis a claim needs for a platform category or a handling type. Each category and each handling type can have one row.",
+          "no-rows": "There are no rows yet.",
+          "row": "Row {n}",
+          "category": "Platform category",
+          "pick-category": "Choose a category",
+          "handling": "Handling type",
+          "basis": "Basis",
+          "remove": "Remove this row",
+          "add-category": "Add a category row",
+          "add-handling": "Add a handling row",
+          "reason": "Reason for the change",
+          "optional": "optional",
+          "reason-help": "Up to {max} characters. Shown to the admin who approves it.",
+          "review": "Review changes",
+          "no-changes": "Nothing has changed yet."
+        },
+        "problem": {
+          "category": "Choose a category.",
+          "duplicate": "This category or handling type already has a row.",
+          "manufacturer": "A handling type can't use the manufacturer basis.",
+          "reason": "Keep the reason to {max} characters."
+        },
+        "no-row": "No row",
+        "confirm": {
+          "title": "Save these changes?",
+          "body": "These rows change:",
+          "from": "Before:",
+          "to": "After:",
+          "back": "Back to the form",
+          "save": "Save the change",
+          "reload": "Reload the page",
+          "second-admin": "A change that relaxes a rule waits until a second admin approves it. Other changes are published at once."
+        },
+        "issue": {
+          "duplicate": "A category or handling type has two rows.",
+          "manufacturer-handling": "A handling row can't use the manufacturer basis.",
+          "category-unknown": "A row names a category that isn't an active platform category.",
+          "too-many": "There are too many rows.",
+          "row-invalid": "A row is not valid."
+        }
+      },
       "error": {
         "invalid": "Check the details and try again.",
         "unchanged": "Nothing has changed since the published revision.",
         "revision-invalid": "The API refused the change. Check the wording and the settings.",
+        "policy-invalid": "The API refused the rows. Check them and try again.",
         "gone": "This type no longer exists. Reload the page.",
         "already-inactive": "This type is already inactive. Reload the page.",
         "already-active": "This type is already active. Reload the page.",
@@ -3155,7 +3241,7 @@
       },
       "scope": {
         "label": "What it can do",
-        "help": "Cart suggestions wait for the real cart connection and a security review.",
+        "help": "Cart suggestions add cart cards to answers. The buyer confirms every change; the assistant never edits a cart by itself. Keep \"Answer questions only\" until the assistant has been tested with a real AI model for this feature.",
         "read-only": "Answer questions only",
         "cart-suggestions": "Answer and suggest cart actions"
       },
@@ -3173,7 +3259,8 @@
         "english": "English only"
       },
       "basket": {
-        "label": "Basket proposals from a list"
+        "label": "Basket proposals from a list",
+        "help": "Off by default. Lets the assistant turn a typed or pasted shopping list into a basket card that the buyer reviews; it adds nothing to a cart by itself. It works with either choice of \"What it can do\", and only while \"Assistant switched on\" is on. Keep it off until the assistant has been tested with a real AI model for this feature."
       },
       "welcome": {
         "label": "Welcome message",
@@ -4106,13 +4193,12 @@
       "reload": "Read the product again",
       "create": {
         "title": "Add product",
-        "subtitle": "Platform product",
         "type": "Product type",
-        "type-help": "The type decides the product's fields and whether it is one size or has variants. It can't be changed later.",
+        "type-help": "Required. The type decides the product's fields and whether it is one size or has variants. It can't be changed after the first save.",
         "choose": "Choose a type",
         "type-required": "Choose a product type.",
-        "submit": "Create draft",
-        "cancel": "Cancel"
+        "images-after-save": "Photos can be added after the first save.",
+        "variants-after-save": "Variants are set up after the first save. The product type and category decide them."
       },
       "edit": {
         "title": "Edit product"
@@ -4245,7 +4331,10 @@
         "partial": "The new variants were created but the draft wasn't saved with them. Save again.",
         "variant-fields": "Fix the highlighted variant fields before saving.",
         "pause-failed": "The product could not be turned on or off. Read it again, then retry.",
-        "second-missing": "Choose the new type's value for every variant before you publish."
+        "second-missing": "Choose the new type's value for every variant before you publish.",
+        "draft-not-saved": "The product was created, but what you entered wasn't saved. Enter it again and save the draft.",
+        "type-missing": "Choose a product type.",
+        "draft-refused": "The product was created, but some text wasn't saved because it holds a claim or a hidden character. Check the title and description."
       },
       "discard": {
         "button": "Discard product",
@@ -4281,7 +4370,8 @@
         "title": "add a title",
         "category": "choose a category",
         "tax": "choose the tax category",
-        "details": "fill in the required details"
+        "details": "fill in the required details",
+        "save": "save the draft first"
       },
       "details-empty": "Choose a category first. Its feature set lists what to fill in here.",
       "active": {
@@ -5566,7 +5656,8 @@
           "lastOrderFrom": "Last order",
           "ordersMin": "Orders",
           "spentMin": "Spent",
-          "group": "Group"
+          "group": "Group",
+          "orderNumber": "Order number"
         },
         "chip": {
           "status": "Status",
@@ -5579,7 +5670,8 @@
           "ordersMax": "Orders at most",
           "spentMin": "Spent at least",
           "spentMax": "Spent at most",
-          "group": "Group"
+          "group": "Group",
+          "orderNumber": "Order"
         },
         "status": {
           "active": "Active",
@@ -5598,7 +5690,11 @@
         },
         "minor-units": "{value, number} in minor units",
         "group-archived": "{name} (archived)",
-        "group-unknown": "A group you can no longer see"
+        "group-unknown": "A group you can no longer see",
+        "order-number": {
+          "help": "Finds the customer who placed this order.",
+          "error": "Enter the order ID, up to 64 characters."
+        }
       },
       "sort": {
         "button": "Sort",
@@ -5695,6 +5791,7 @@
         "button": "Bulk action",
         "selected": "{count, plural, one {# customer selected} other {# customers selected}}",
         "select-all": "Select all {count, number} customers in this filter",
+        "select-all-blocked": "Clear the order number filter to select all or export.",
         "clear": "Clear selection",
         "export": "Export…",
         "export-help": "CSV or XLSX, with the columns shown",
@@ -5805,7 +5902,10 @@
       "tab": {
         "overview": "Overview",
         "orders": "Orders",
-        "money": "Money"
+        "money": "Money",
+        "security": "Account & security",
+        "shopping": "Shopping",
+        "reviews": "Reviews"
       },
       "header": {
         "verified": "Email verified",
@@ -5816,7 +5916,9 @@
         "view-wallet": "View wallet",
         "more": "More actions",
         "delete": "Delete account…",
-        "edit": "Edit…"
+        "edit": "Edit…",
+        "password-reset": "Send password reset…",
+        "sign-out": "Sign out everywhere…"
       },
       "overview": {
         "figures": "Customer figures",
@@ -5854,25 +5956,6 @@
           "spent": "Spent",
           "refunded": "Refunded",
           "wallet": "Wallet balance"
-        },
-        "refunds": {
-          "title": "Refunds and credit notes",
-          "empty": "No refunds",
-          "order": "Order {id}",
-          "col": {
-            "order": "Order",
-            "state": "Status",
-            "amount": "Amount",
-            "requested": "Requested",
-            "credit-note": "Credit note"
-          },
-          "state": {
-            "pending": "Pending",
-            "succeeded": "Refunded",
-            "failed": "Failed"
-          },
-          "no-credit-note": "None",
-          "capped": "The newest {max} refunds are shown. Older ones are on each order's page."
         },
         "wallet": {
           "title": "Wallet history",
@@ -5921,6 +6004,255 @@
             "failed": "Failed"
           },
           "capped": "The newest {max} promotion credits are shown."
+        },
+        "list": {
+          "filter": {
+            "button": "Filter",
+            "title": "Filter",
+            "when": "Date",
+            "from": "From",
+            "to": "To",
+            "apply": "Apply",
+            "cancel": "Cancel",
+            "error": {
+              "day": "Enter a date.",
+              "range": "The end comes before the start."
+            }
+          },
+          "chip": {
+            "from": "From {day}",
+            "to": "To {day}",
+            "choice": "{field}: {value}"
+          },
+          "sorted": "Sorted by {field}, {order}",
+          "match": "{count, plural, one {# row matches} other {# rows match}}",
+          "retry": "Retry",
+          "loading": "Loading {section}…",
+          "range-open": "{from}–{to}",
+          "row": {
+            "open": "Open order",
+            "menu": "Actions for {name}"
+          },
+          "error": {
+            "invalid": "This filter cannot be used. Clear it and try again.",
+            "unavailable": "This list could not be loaded.",
+            "throttled": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+            "denied": "You don’t have access to this list."
+          },
+          "export": {
+            "button": "Export…",
+            "body": "The file has every row of this filter, at most 10,000. You confirm with a two-step code, and the export is recorded.",
+            "pending": "Preparing the file…",
+            "error": {
+              "too-large": "Up to {max, number} rows can be exported at once; this filter has {total, number}. Narrow it first.",
+              "enrol": "Set up two-step verification on your profile to export.",
+              "denied": "You don’t have access to export.",
+              "unavailable": "The file could not be made. Try again.",
+              "throttled": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+              "cancelled": "Export cancelled."
+            }
+          }
+        },
+        "payments": {
+          "title": "Payments",
+          "subtitle": "The payment of each order this customer placed.",
+          "views": "Payment state",
+          "caption": "Customer payments",
+          "empty": "No payments yet.",
+          "empty-filtered": "No payments match.",
+          "order": "Order {id}",
+          "paid": "Paid, before refunds: {amount}",
+          "view": {
+            "all": "All",
+            "captured": "Paid",
+            "authorised": "Authorised",
+            "voided": "Voided",
+            "none": "No payment"
+          },
+          "col": {
+            "order": "Order",
+            "amount": "Amount",
+            "payment-state": "Payment",
+            "status": "Order status",
+            "payment-id": "Stripe payment ID",
+            "created": "Placed",
+            "confirmed": "Confirmed"
+          },
+          "sort": {
+            "created": "Placed",
+            "amount": "Amount"
+          },
+          "payment-state": {
+            "none": "No payment",
+            "authorised": "Authorised",
+            "captured": "Paid",
+            "voided": "Voided"
+          },
+          "status": {
+            "pending-payment": "Awaiting payment",
+            "confirmed": "Confirmed",
+            "cancelled": "Cancelled"
+          },
+          "choice": {
+            "name": "Order status",
+            "value": {
+              "pending-payment": "Awaiting payment",
+              "confirmed": "Confirmed",
+              "cancelled": "Cancelled"
+            }
+          },
+          "export": {
+            "title": "Export payments",
+            "done": "Payments exported."
+          }
+        },
+        "disputes": {
+          "title": "Disputes",
+          "subtitle": "Chargebacks and inquiries on this customer’s orders.",
+          "views": "Dispute state",
+          "caption": "Customer disputes",
+          "empty": "No disputes.",
+          "empty-filtered": "No disputes match.",
+          "order": "Order {id}",
+          "view": {
+            "all": "All",
+            "open": "Open",
+            "won": "Won",
+            "lost": "Lost",
+            "closed": "Closed"
+          },
+          "col": {
+            "order": "Order",
+            "amount": "Amount",
+            "status": "State",
+            "reason": "Reason",
+            "opened": "Opened",
+            "due": "Evidence due by",
+            "outcome": "Outcome"
+          },
+          "sort": {
+            "opened": "Opened",
+            "amount": "Amount",
+            "due": "Evidence due by"
+          },
+          "status": {
+            "warning_needs_response": "Inquiry: needs response",
+            "warning_under_review": "Inquiry: under review",
+            "warning_closed": "Inquiry: closed",
+            "needs_response": "Needs response",
+            "under_review": "Under review",
+            "won": "Won",
+            "lost": "Lost",
+            "prevented": "Prevented"
+          },
+          "reason": {
+            "bank_cannot_process": "Bank cannot process",
+            "check_returned": "Check returned",
+            "credit_not_processed": "Credit not processed",
+            "customer_initiated": "Customer initiated",
+            "debit_not_authorized": "Debit not authorised",
+            "duplicate": "Duplicate",
+            "fraudulent": "Fraudulent",
+            "general": "General",
+            "incorrect_account_details": "Incorrect account details",
+            "insufficient_funds": "Insufficient funds",
+            "noncompliant": "Non-compliant",
+            "product_not_received": "Product not received",
+            "product_unacceptable": "Product unacceptable",
+            "subscription_canceled": "Subscription cancelled",
+            "unrecognized": "Unrecognised",
+            "other": "Other"
+          },
+          "outcome": {
+            "won": "Won",
+            "lost": "Lost"
+          },
+          "export": {
+            "title": "Export disputes",
+            "done": "Disputes exported."
+          }
+        },
+        "refunds": {
+          "title": "Refunds and credit notes",
+          "subtitle": "Refunds on this customer’s orders.",
+          "views": "Refund state",
+          "caption": "Customer refunds",
+          "empty": "No refunds",
+          "empty-filtered": "No refunds match.",
+          "order": "Order {id}",
+          "no-credit-note": "None",
+          "view": {
+            "all": "All",
+            "succeeded": "Refunded",
+            "pending": "Pending",
+            "failed": "Failed"
+          },
+          "col": {
+            "order": "Order",
+            "amount": "Amount",
+            "state": "Status",
+            "reason": "Reason",
+            "requested": "Requested",
+            "settled": "Settled",
+            "credit-note": "Credit note"
+          },
+          "sort": {
+            "requested": "Requested",
+            "amount": "Amount"
+          },
+          "state": {
+            "pending": "Pending",
+            "succeeded": "Refunded",
+            "failed": "Failed"
+          },
+          "choice": {
+            "name": "Reason",
+            "value": {
+              "not-received": "Not received",
+              "damaged": "Arrived damaged",
+              "wrong-item": "Wrong item",
+              "not-as-described": "Not as described",
+              "seller-cancelled": "Seller cancelled",
+              "other": "Other",
+              "item-unavailable": "Item unavailable"
+            }
+          },
+          "export": {
+            "title": "Export refunds",
+            "done": "Refunds exported."
+          },
+          "capped": "The newest {max} refunds are shown. Older ones are on each order's page."
+        },
+        "usages": {
+          "title": "Promotions used",
+          "empty": "No promotions used yet.",
+          "order": "Order {id}",
+          "with-code": "with a code",
+          "load-more": "Load more",
+          "more-failed": "More rows could not be loaded.",
+          "more-loaded": "{count, plural, one {# more row loaded} other {# more rows loaded}}",
+          "throttled": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+          "col": {
+            "used": "Used",
+            "offer": "Promotion",
+            "amount": "Discount",
+            "status": "Status",
+            "order": "Order"
+          },
+          "kind": {
+            "PROMOTION": "Promotion",
+            "FIRST_ORDER": "First-order offer",
+            "FREE_SHIPPING": "Free shipping"
+          },
+          "status": {
+            "RESERVED": "Reserved",
+            "CONFIRMED": "Used",
+            "RELEASED": "Released"
+          },
+          "release": {
+            "ORDER_CANCELLED": "Order cancelled",
+            "ORDER_REFUNDED": "Order refunded"
+          }
         },
         "not-yet": "Payments per order, chargebacks and discount code usage are not listed here yet."
       },
@@ -6097,7 +6429,7 @@
       "empty": "No activity yet.",
       "empty-filtered": "No activity matches",
       "by-at": "{actor} · {time}",
-      "subtitle": "What happened to this account, and what admins did on it. Times in your zone.",
+      "subtitle": "What happened to this account, and what admins did on it. Times in {zone}.",
       "views": "Activity type",
       "view": {
         "all": "All",
@@ -6193,6 +6525,439 @@
           "denied": "You don’t have access to export.",
           "unavailable": "The file could not be made. Try again.",
           "cancelled": "Export cancelled."
+        }
+      }
+    },
+    "security": {
+      "cancel": "Cancel",
+      "retry": "Try again",
+      "loading": "Loading {section}…",
+      "failed": "{section} could not be loaded.",
+      "index": {
+        "label": "On this page"
+      },
+      "jump": {
+        "label": "Jump to",
+        "placeholder": "Choose a section"
+      },
+      "section": {
+        "sessions": "Active sessions",
+        "sign-ins": "Sign-ins, last 90 days",
+        "addresses": "Addresses",
+        "privacy": "Privacy",
+        "deletion": "Deletion request"
+      },
+      "device": {
+        "unknown": "Unknown device",
+        "of": "{browser} on {system}"
+      },
+      "channel": {
+        "email": "Email"
+      },
+      "error": {
+        "throttled": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+        "denied": "You don’t have access to do this.",
+        "gone": "This record no longer exists. Reload the page.",
+        "not-eligible": "This account is disabled or its email is not verified, so no mail can be sent.",
+        "unavailable": "This could not be done right now. Try again.",
+        "unknown": "This could not be done. Try again."
+      },
+      "reveal": {
+        "tag": "Revealed, recorded",
+        "hidden-ip": "The IP address was hidden again after 5 minutes.",
+        "hidden-address": "The full address was hidden again after 5 minutes."
+      },
+      "sessions": {
+        "sign-out": "Sign out everywhere…",
+        "empty": "No active sessions.",
+        "sign-out-none": "No active sessions to sign out.",
+        "started": "Signed in {time}",
+        "last-seen": "Last seen {time}",
+        "more": "Showing the 50 most recently used sessions."
+      },
+      "sign-out": {
+        "title": "Sign out everywhere?",
+        "body": "Every session of this customer ends now.",
+        "confirm": "Sign out everywhere",
+        "done": "{count, plural, one {# session} other {# sessions}} ended."
+      },
+      "password-reset": {
+        "title": "Send a password reset?",
+        "body": "The customer gets an email with a reset link. Their password stays until they use it.",
+        "confirm": "Send reset email",
+        "done": "Password reset email sent."
+      },
+      "addresses": {
+        "empty": "This customer has no saved addresses.",
+        "default": "Default",
+        "added": "Added {date}",
+        "erased": "Address erased",
+        "show": "Show full address…",
+        "hide": "Hide address",
+        "show-for": "Show full address for {place}…",
+        "hide-for": "Hide address for {place}",
+        "reveal": {
+          "title": "Show the full address?",
+          "body": "Showing the full address is recorded.",
+          "confirm": "Show address"
+        },
+        "field": {
+          "recipient": "Recipient",
+          "phone": "Phone",
+          "lines": "Street",
+          "place": "Suburb and postcode",
+          "notes": "Courier note"
+        }
+      },
+      "consent": {
+        "title": "Marketing consent",
+        "empty": "No consent channels.",
+        "never": "Never changed",
+        "changed": "Changed {time}",
+        "granted": "Granted",
+        "not-granted": "Not granted"
+      },
+      "personalization": {
+        "title": "Personalisation",
+        "on": "On",
+        "off": "Off",
+        "never": "Never changed",
+        "changed": "Changed {time}"
+      },
+      "deletion": {
+        "none": "No deletion request is open for this customer.",
+        "pending": "Deletion requested on {requested}. The account is erased on {scheduled} unless the request is cancelled.",
+        "executing": "Deletion requested on {date}. The account is being erased now.",
+        "pending-banner": "A deletion request is open. See the banner at the top of the page."
+      },
+      "consent-history": {
+        "title": "Consent history",
+        "subtitle": "Every change of this customer’s marketing consent.",
+        "zone": "Times in {zone}.",
+        "views": "Consent history",
+        "view": {
+          "all": "All changes"
+        },
+        "caption": "Consent history",
+        "loading": "Loading consent history…",
+        "empty": "No consent changes yet.",
+        "granted": "Granted",
+        "withdrawn": "Withdrawn",
+        "sorted": "Sorted by time, {order}",
+        "range-open": "{from}–{to}",
+        "row": {
+          "name": "Change at {time}"
+        },
+        "col": {
+          "time": "Time",
+          "channel": "Channel",
+          "change": "Change",
+          "source": "Source"
+        },
+        "source": {
+          "sign-up": "Sign-up",
+          "account": "Account settings",
+          "unsubscribe-link": "Unsubscribe link"
+        },
+        "error": {
+          "unavailable": "The consent history could not be loaded."
+        },
+        "export": {
+          "button": "Export…",
+          "title": "Export consent history",
+          "body": "The file has every change, at most 10,000. You confirm with a two-step code, and the export is recorded.",
+          "pending": "Preparing the file…",
+          "done": "Consent history exported.",
+          "error": {
+            "too-large": "Up to {max, number} rows can be exported at once; this list has {total, number}.",
+            "enrol": "Set up two-step verification on your profile to export.",
+            "denied": "You don’t have access to export.",
+            "unavailable": "The file could not be made. Try again.",
+            "cancelled": "Export cancelled."
+          }
+        }
+      },
+      "sign-ins": {
+        "subtitle": "Sign-in attempts of the last 90 days. The full IP address is shown only per row, and every reveal is recorded.",
+        "zone": "Times in {zone}.",
+        "views": "Sign-in results",
+        "view": {
+          "all": "All sign-ins",
+          "failed": "Failed"
+        },
+        "caption": "Sign-ins",
+        "loading": "Loading sign-ins…",
+        "empty": "No sign-ins in the last 90 days.",
+        "empty-filtered": "No sign-ins match",
+        "sorted": "Sorted by time, {order}",
+        "match": "{count, plural, one {# sign-in} other {# sign-ins}}",
+        "range-open": "{from}–{to}",
+        "result": {
+          "success": "Signed in",
+          "failure": "Failed",
+          "credential-change": "Credential change",
+          "other": "Other"
+        },
+        "col": {
+          "time": "Time",
+          "result": "Result",
+          "device": "Device",
+          "city": "Rough city"
+        },
+        "row": {
+          "name": "Sign-in at {time}",
+          "menu": "Actions for {name}",
+          "show-ip": "Show IP…",
+          "hide-ip": "Hide IP address"
+        },
+        "reveal": {
+          "title": "Show the full IP address?",
+          "body": "Showing the full IP address is recorded.",
+          "confirm": "Show IP address"
+        },
+        "filter": {
+          "button": "Filter",
+          "title": "Filter sign-ins",
+          "result": "Result",
+          "when": "Date",
+          "from": "From",
+          "to": "To",
+          "apply": "Apply",
+          "cancel": "Cancel",
+          "error": {
+            "day": "Enter a date.",
+            "range": "The end comes before the start."
+          }
+        },
+        "chip": {
+          "result": "Result: {result}",
+          "from": "From {day}",
+          "to": "To {day}"
+        },
+        "error": {
+          "invalid": "This filter cannot be used. Clear it and try again.",
+          "unavailable": "The sign-ins could not be loaded."
+        }
+      }
+    },
+    "sections": {
+      "loading": "Loading {section}…",
+      "retry": "Try again",
+      "views": "Show in {section}",
+      "view-all": "All",
+      "row-menu": "Actions for {name}",
+      "empty-filtered": "Nothing matches this filter",
+      "sorted": "Sorted by {field}, {order}",
+      "match": "{count, plural, one {# entry} other {# entries}}",
+      "range": "{from}–{to} of {total}",
+      "range-open": "{from}–{to}",
+      "error": {
+        "unavailable": "{section} could not be loaded.",
+        "invalid": "This filter cannot be used. Clear it and try again.",
+        "throttled": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}."
+      },
+      "filter": {
+        "button": "Filter",
+        "title": "Filter by date",
+        "when": "Date",
+        "from": "From",
+        "to": "To",
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "error": {
+          "day": "Enter a date.",
+          "range": "The end comes before the start."
+        }
+      },
+      "chip": {
+        "from": "From {day}",
+        "to": "To {day}"
+      },
+      "export": {
+        "button": "Export…",
+        "body": "The file has every row of this filter, at most 10,000. You confirm with a two-step code, and the export is recorded.",
+        "pending": "Preparing the file…",
+        "done": "File exported.",
+        "error": {
+          "too-large": "Up to {max, number} rows can be exported at once; this filter has {total, number}. Narrow it first.",
+          "enrol": "Set up two-step verification on your profile to export.",
+          "denied": "You don’t have access to export.",
+          "unavailable": "The file could not be made. Try again.",
+          "throttled": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+          "cancelled": "Export cancelled."
+        }
+      }
+    },
+    "shopping": {
+      "cart": {
+        "title": "Current cart",
+        "caption": "Lines of the current cart",
+        "empty": "The cart is empty.",
+        "changed": "Last changed {time}",
+        "saved-count": "{count, plural, one {# item saved for later} other {# items saved for later}}",
+        "col": {
+          "offer": "Offer",
+          "variant": "Variant",
+          "price": "Price when added",
+          "quantity": "Quantity",
+          "added": "Added"
+        }
+      },
+      "saved": {
+        "title": "Saved for later",
+        "subtitle": "Items the customer saved for later. Times in {zone}.",
+        "caption": "Saved for later",
+        "empty": "Nothing saved for later.",
+        "export-title": "Export saved for later",
+        "col": {
+          "offer": "Offer",
+          "variant": "Variant",
+          "saved": "Saved"
+        }
+      },
+      "reminders": {
+        "title": "Abandoned-cart reminders sent",
+        "subtitle": "Reminders taken for sending in the last 30 days. A taken reminder is not proof of delivery.",
+        "caption": "Abandoned-cart reminders",
+        "empty": "No reminders in the last 30 days.",
+        "export-title": "Export reminders",
+        "stage": "Reminder {stage}",
+        "col": {
+          "stage": "Reminder",
+          "cart-changed": "Cart changed",
+          "sent": "Taken for sending"
+        }
+      },
+      "additions": {
+        "title": "Added to cart in the last 12 months",
+        "subtitle": "Each time the customer added an item to a cart. Nothing is kept while personalization is off.",
+        "caption": "Add-to-cart history",
+        "empty": "Nothing added to a cart in the last 12 months.",
+        "export-title": "Export add-to-cart history",
+        "col": {
+          "offer": "Offer",
+          "variant": "Variant",
+          "added": "Added"
+        }
+      },
+      "behaviour": {
+        "title": "Behaviour summary",
+        "personalization": "Personalization",
+        "on": "On",
+        "off": "Off",
+        "changed": "Changed {time}",
+        "window": "The last 12 months. Search text is never shown.",
+        "figures": "Behaviour figures",
+        "figure": {
+          "productViews": "Product views",
+          "categoryViews": "Category views",
+          "cartAdditions": "Added to cart"
+        },
+        "top": "Most viewed categories",
+        "top-empty": "No category views yet.",
+        "category": "Category",
+        "views": "{count, plural, one {# view} other {# views}}"
+      },
+      "assistant": {
+        "title": "Assistant conversations",
+        "subtitle": "When each conversation started and last had a message. What was said is never shown.",
+        "caption": "Assistant conversations",
+        "empty": "No assistant conversations.",
+        "export-title": "Export assistant conversations",
+        "count": "{count, plural, one {# conversation} other {# conversations}} in all",
+        "col": {
+          "started": "Started",
+          "last": "Last message"
+        }
+      }
+    },
+    "reviews": {
+      "yes": "Yes",
+      "no": "No",
+      "role": {
+        "by": "Made by the customer",
+        "about": "About their review"
+      },
+      "moderation-line": "{action}: {reason} ({by})",
+      "by-moderator": "a moderator",
+      "by-system": "automatic",
+      "open-moderation": "Open moderation queue",
+      "reviews": {
+        "title": "Reviews written",
+        "subtitle": "Reviews this customer wrote, with their status. The text is never shown here. Times in {zone}.",
+        "caption": "Reviews written",
+        "empty": "This customer has not written a review.",
+        "export-title": "Export reviews",
+        "view": {
+          "published": "Published",
+          "held": "Held",
+          "hidden": "Hidden",
+          "removed": "Removed",
+          "deleted-by-author": "Deleted by buyer"
+        },
+        "col": {
+          "review": "Review",
+          "status": "Status",
+          "product": "Product",
+          "seller": "Seller",
+          "anonymous": "Anonymous",
+          "helpful": "Helpful votes",
+          "reports": "Open reports",
+          "moderation": "Last moderation",
+          "edited": "Edited",
+          "created": "Written"
+        }
+      },
+      "ratings": {
+        "title": "Seller ratings given",
+        "subtitle": "Ratings this customer gave sellers after an order. Times in {zone}.",
+        "caption": "Seller ratings given",
+        "empty": "This customer has not rated a seller.",
+        "export-title": "Export seller ratings",
+        "view": {
+          "published": "Published",
+          "hidden": "Hidden",
+          "removed": "Removed"
+        },
+        "col": {
+          "satisfaction": "Rating",
+          "status": "Status",
+          "seller": "Seller",
+          "order": "Seller order",
+          "described": "As described",
+          "arrived": "Arrived OK",
+          "reason": "Reason",
+          "created": "Given"
+        }
+      },
+      "votes": {
+        "title": "Helpful votes cast",
+        "subtitle": "Reviews this customer marked helpful. The review’s author is never shown.",
+        "caption": "Helpful votes cast",
+        "empty": "This customer has not voted on a review.",
+        "export-title": "Export helpful votes",
+        "col": {
+          "review": "Review",
+          "product": "Product",
+          "voted": "Voted"
+        }
+      },
+      "reports": {
+        "title": "Review reports",
+        "subtitle": "Reports this customer made, and reports about their reviews. The reporter is never shown.",
+        "caption": "Review reports",
+        "empty": "No review reports.",
+        "export-title": "Export review reports",
+        "view": {
+          "by": "Made by the customer",
+          "about": "About their reviews"
+        },
+        "col": {
+          "role": "Report",
+          "review": "Review",
+          "reason": "Reason",
+          "status": "Status",
+          "created": "Reported"
         }
       }
     }
@@ -10895,12 +11660,12 @@
       "own-approval": "You asked for this action. Another admin has to approve it before it is applied. You can withdraw it and nothing will change."
     },
     "outcome": {
-      "approved": "Approved by {name} on {date}. The change stayed live.",
-      "rejected": "Rejected by {name} on {date}. Reason: {reason}.",
-      "withdrawn": "Withdrawn by {name} on {date}. Reason: {reason}.",
-      "approval-approved": "Approved by {name} on {date}. The action was applied.",
-      "approval-rejected": "Declined by {name} on {date}. Nothing was changed. Reason: {reason}.",
-      "approval-withdrawn": "Withdrawn by {name} on {date}. Nothing was changed. Reason: {reason}."
+      "approved": "Approved. The change stayed live.",
+      "rejected": "Rejected. The previous value was put back.",
+      "withdrawn": "Withdrawn. The previous value was put back.",
+      "approval-approved": "Approved. The action was applied.",
+      "approval-rejected": "Declined. Nothing was changed.",
+      "approval-withdrawn": "Withdrawn. Nothing was changed."
     },
     "more-actions": "More actions",
     "diff": {
@@ -11428,7 +12193,7 @@
   "shipments": {
     "title": "Shipments",
     "page-title": "Shipments",
-    "intro": "One row for each seller in each paid order. Carrier tracking updates aren't shown here yet; open the order for details.",
+    "intro": "One row for each seller in each paid order. Add the Carrier progress column to see what the delivery fleet last reported; open the order for details.",
     "no-access": "You don't have access to shipments.",
     "back-home": "Back to home",
     "tabs": "Shipment views",
@@ -11515,6 +12280,7 @@
       "paid": "Paid",
       "delivery": "Delivery",
       "carrier": "Carrier and tracking",
+      "carrier-progress": "Carrier progress",
       "total": "Total (incl. tax)",
       "ready": "Ready",
       "shipped": "Shipped",
@@ -11523,6 +12289,23 @@
       "fee": "Delivery fee (incl. tax)",
       "refunded": "Refunded (incl. tax)",
       "seller-order": "Seller order ID"
+    },
+    "carrier-progress": {
+      "label": {
+        "booked": "Booked",
+        "picked-up": "Picked up",
+        "delivered": "Delivered",
+        "exception": "Exception",
+        "cancelled": "Cancelled",
+        "unknown": "Unknown"
+      },
+      "updated": "Updated {time}",
+      "proof": "Proof of delivery",
+      "booked-on": "Booked on {fleet}",
+      "advisory": "Reported by the carrier booking. Can differ from Stage for a short time.",
+      "not-available": "Not available",
+      "not-available-title": "Carrier progress could not be loaded. Try again later.",
+      "none-sr": "No carrier booking"
     },
     "window": "{start} to {end}",
     "carrier": {

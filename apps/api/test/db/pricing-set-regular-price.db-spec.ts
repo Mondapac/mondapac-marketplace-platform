@@ -454,6 +454,11 @@ describe.each(TEST_MARKETS)(
         findByRecordId: (m, recordId) => inner.findByRecordId(m, recordId),
         listPendingHolds: (m, after, limit) => inner.listPendingHolds(m, after, limit),
         countPendingHolds: (m) => inner.countPendingHolds(m),
+        queryPendingHolds: (m, filter, sort, offset, limit) =>
+          inner.queryPendingHolds(m, filter, sort, offset, limit),
+        countPendingHoldsWhere: (m, filter) => inner.countPendingHoldsWhere(m, filter),
+        pendingHoldViewCounts: (m) => inner.pendingHoldViewCounts(m),
+        findPendingHoldsByIds: (m, ids) => inner.findPendingHoldsByIds(m, ids),
         findPendingHold: (m, recordId) => inner.findPendingHold(m, recordId),
         findByProductVariant: (m, productId, variantId) =>
           inner.findByProductVariant(m, productId, variantId),

@@ -46,6 +46,21 @@ export class AdminExportOrders extends UseCase<unknown, OrdersExportOutput, Orde
       allowed: FILTER_KEYS,
       header: ADMIN_ORDERS_HEADER,
       name: 'orders',
+      // Order, Placed, Status and Payment always leave; the rest follows `columns`.
+      columns: {
+        fixed: 4,
+        optional: {
+          currency: 4,
+          total: 5,
+          tax: 6,
+          sellers: 7,
+          stores: 8,
+          fulfilment: 9,
+          paid: 10,
+          cancelled: 11,
+        },
+      },
+      notFound: 'ordering.order-not-found',
       read: async (extra) => {
         const result = await listAllOrders(this.deps, context, extra);
         return result.ok

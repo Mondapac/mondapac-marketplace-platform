@@ -191,9 +191,6 @@ export function RequestDetail({
   const mine = request.requestedBy === accountId;
   const href = subjectHref(request.subjectKind, request.subjectRef);
   const subjectName = request.subjectLabel ?? request.subjectRef;
-  const who = (id: string | null, name?: string | null) =>
-    id === accountId ? t('you-lower') : person(id, name);
-  const decidedOn = request.decidedAt === null ? '' : dayInZone(request.decidedAt, locale, zone);
 
   const canApprove = open && has(request, 'approve');
   const canReject = open && has(request, 'reject');
@@ -365,22 +362,14 @@ export function RequestDetail({
         <Banner tone="info">{t(approval ? 'banner.own-approval' : 'banner.own')}</Banner>
       ) : null}
       {request.status === 'approved' ? (
-        <p role="status" className="text-sm text-fg-secondary">
-          {t(approval ? 'outcome.approval-approved' : 'outcome.approved', {
-            name: who(request.decidedBy, request.decidedByName),
-            date: decidedOn,
-          })}
+        <p role="status" className="break-words text-sm text-fg-secondary">
+          {t(approval ? 'outcome.approval-approved' : 'outcome.approved')}
         </p>
       ) : null}
       {request.status === 'reverted' ? (
-        <p role="status" className="text-sm text-fg-secondary">
+        <p role="status" className="break-words text-sm text-fg-secondary">
           {t(
             `outcome.${approval ? 'approval-' : ''}${request.decision === 'withdrawn' ? 'withdrawn' : 'rejected'}`,
-            {
-              name: who(request.decidedBy, request.decidedByName),
-              date: decidedOn,
-              reason: request.decisionReason ?? '',
-            },
           )}
         </p>
       ) : null}

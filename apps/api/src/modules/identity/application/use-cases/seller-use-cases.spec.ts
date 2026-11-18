@@ -458,6 +458,21 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     }
   });
 
+  it('every default role that sees orders also sees carrier delivery (the Shipments list column, Q-3)', () => {
+    // Shipping's own key gates the column; an admin with the list and without it sees
+    // "Not available", so a default role never holds one without the other.
+    const defaults = new CheckedInRoleSeed().roles().filter((role) => role.kind === 'default');
+    expect(defaults.some((role) => role.permissionKeys.includes('ordering.order.view'))).toBe(true);
+    for (const role of defaults) {
+      if (role.permissionKeys.includes('ordering.order.view')) {
+        expect([role.seedCode, role.permissionKeys]).toEqual([
+          role.seedCode,
+          expect.arrayContaining(['shipping.carrier-delivery.view']),
+        ]);
+      }
+    }
+  });
+
   it("its keys agree with the real registry: declared, in the role's scope, never protected", () => {
     expect(() =>
       checkRoleSeedKeys(new CheckedInRoleSeed().roles(), realPermissionRegistry()),

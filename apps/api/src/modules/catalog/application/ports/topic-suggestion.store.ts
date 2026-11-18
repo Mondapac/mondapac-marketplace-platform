@@ -7,6 +7,18 @@ import type { TopicSuggestion, SuggestionStatus } from '../../domain/topic-sugge
  * never deleted: a decision is one conditional update out of `open`, and a notice move is one
  * conditional update out of `pending`.
  */
+/** The filter of the admin list of open tag suggestions. */
+export interface OpenTopicSuggestionsFilter {
+  /** A fragment of the seller's text; null: all. */
+  readonly text: string | null;
+}
+
+export interface OpenTopicSuggestionsPage extends OpenTopicSuggestionsFilter {
+  readonly direction: 'asc' | 'desc';
+  readonly offset: number;
+  readonly limit: number;
+}
+
 export interface TopicSuggestionStore {
   findById(market: MarketContext, id: Id<'TopicSuggestion'>): Promise<TopicSuggestion | null>;
 
@@ -34,8 +46,14 @@ export interface TopicSuggestionStore {
   /** How many suggestions of this seller are open. */
   openCountOfSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<number>;
 
-  /** Open suggestions, oldest first, at most `limit`. */
-  listOpen(market: MarketContext, limit: number): Promise<readonly TopicSuggestion[]>;
+  /** One page of the open suggestions by time (the caller asks for one extra row to see a next page). */
+  pageOpen(
+    market: MarketContext,
+    page: OpenTopicSuggestionsPage,
+  ): Promise<readonly TopicSuggestion[]>;
+
+  /** How many open suggestions match the same filter (the total of the list). */
+  countOpen(market: MarketContext, filter: OpenTopicSuggestionsFilter): Promise<number>;
 
   /** One product's suggestions in every status, newest first, at most `limit`. */
   listOfProduct(

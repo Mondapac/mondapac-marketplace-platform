@@ -103,6 +103,46 @@ export class PriceHoldPageBody {
   total!: number;
 }
 
+export class PriceHoldListRow extends PriceHoldRow {
+  @ApiProperty({
+    enum: ['open', 'decide'],
+    isArray: true,
+    description:
+      'What the caller may do on this row: open always, decide when the caller holds ' +
+      'pricing.price-hold.decide. The decision checks its key, the record and the submitter again.',
+  })
+  actions!: ('open' | 'decide')[];
+}
+
+export class PriceHoldViewCounts {
+  @ApiProperty() all!: number;
+  @ApiProperty() regular!: number;
+  @ApiProperty() special!: number;
+  @ApiProperty({ description: 'Regular prices held for a rise.' }) up!: number;
+  @ApiProperty({ description: 'Held for a fall: regular drops and every special.' }) down!: number;
+}
+
+export class PriceHoldListBody {
+  @ApiProperty({ type: [PriceHoldListRow] })
+  items!: PriceHoldListRow[];
+
+  @ApiProperty({ type: PriceHoldViewCounts, description: 'The Market, whatever the filter.' })
+  counts!: PriceHoldViewCounts;
+
+  @ApiProperty({ type: Number, nullable: true, description: 'Null in Previous/Next mode.' })
+  total!: number | null;
+
+  @ApiProperty() page!: number;
+
+  @ApiProperty() pageSize!: number;
+
+  @ApiProperty({ enum: ['pages', 'prev-next'] })
+  paging!: 'pages' | 'prev-next';
+
+  @ApiProperty({ description: 'Whether a page after this one exists.' })
+  hasNext!: boolean;
+}
+
 export class RejectPriceHoldRequest {
   @ApiProperty({ enum: HOLD_REJECTION_REASONS, description: 'Required.' })
   reasonCode!: string;

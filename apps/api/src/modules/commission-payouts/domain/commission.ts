@@ -1,5 +1,5 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { Result } from '@mondapac/shared-kernel';
+import type { Result, Temporal } from '@mondapac/shared-kernel';
 
 // Commission (Phase 5 package 5, COM-01/02/04/05, simplified for speed mode). A rate is a whole
 // number of basis points (1500 = 15 %). The Market rate comes from Market config; an admin may
@@ -43,4 +43,34 @@ export function commissionBase(
 /** The commission on a base: `base × rate`, rounded half up; never more than the base. */
 export function commissionOn(base: bigint, rateBps: number): bigint {
   return roundHalfUp(base * BigInt(rateBps), BPS);
+}
+
+/** The Market's lower commission for a seller's exclusive customer (customers phase 4b). */
+export interface ExclusiveCommissionRule {
+  /** The share of the rate in force taken off, in basis points of it (5000 = half). */
+  readonly reductionBps: number;
+  /** The lowest rate the reduction may reach, in basis points (300 = 3 %). */
+  readonly floorBps: number;
+  /** How long after the customer joined the seller the lower rate applies. */
+  readonly months: number;
+}
+
+/**
+ * The rate on a line of the seller whose exclusive customer the buyer is: the rate in force less
+ * `reductionBps` of itself (rounded down, in the seller's favour), never below the floor and never
+ * above the rate in force (a rate already under the floor stays as it is).
+ */
+export function exclusiveRateBps(rateBps: number, rule: ExclusiveCommissionRule): number {
+  const reduced = Math.floor((rateBps * (10_000 - rule.reductionBps)) / 10_000);
+  return Math.min(rateBps, Math.max(rule.floorBps, reduced));
+}
+
+/** Whether the lower rate still applies at `now` to a customer who joined at `since` (UTC months). */
+export function exclusiveWindowOpen(
+  since: Temporal.Instant,
+  now: Temporal.Instant,
+  rule: ExclusiveCommissionRule,
+): boolean {
+  const end = since.toZonedDateTimeISO('UTC').add({ months: rule.months }).toInstant();
+  return now.epochMilliseconds < end.epochMilliseconds;
 }

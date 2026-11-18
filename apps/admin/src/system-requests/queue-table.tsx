@@ -32,9 +32,6 @@ import {
   type SystemRequest,
 } from './types.ts';
 
-/** The note under the request number: one line of at most this many characters. */
-const NOTE_PREVIEW = 80;
-
 const SELECT_CELL =
   'w-14 px-4 py-3 align-middle max-lg:absolute max-lg:start-4 max-lg:top-4 max-lg:w-auto max-lg:p-0';
 
@@ -44,14 +41,6 @@ export interface QueueSelection {
   readonly full: boolean;
   readonly onToggle: (id: string) => void;
   readonly onTogglePage: (checked: boolean) => void;
-}
-
-/** The note cut to one line; plain text, never markup. */
-export function preview(note: string): string {
-  const line = note.replace(/\s+/g, ' ').trim();
-  return Array.from(line).length > NOTE_PREVIEW
-    ? `${Array.from(line).slice(0, NOTE_PREVIEW).join('')}…`
-    : line;
 }
 
 /** The row menu: exactly the actions the API listed for the caller, never another. */
@@ -306,12 +295,18 @@ export function QueueTable({
                   onChange={() => selection.onToggle(row.id)}
                 />
               </td>
-              <th scope="row" className={`${cell} text-start font-normal lg:min-w-72 max-lg:ps-8`}>
-                <a href={requestPath(row.id)} className="font-medium text-link underline">
+              <th
+                scope="row"
+                className={`${cell} text-start font-normal lg:min-w-72 max-lg:contents`}
+              >
+                <a
+                  href={requestPath(row.id)}
+                  className="font-medium text-link underline max-lg:inline-flex max-lg:min-h-11 max-lg:items-center max-lg:self-start max-lg:ps-8"
+                >
                   {row.displayNumber}
                 </a>
-                <span className="mt-0.5 block break-words text-fg-muted max-lg:line-clamp-2">
-                  {preview(row.note)}
+                <span className="mt-0.5 block break-words text-fg-muted max-lg:col-span-2 max-lg:mt-0 lg:max-w-md lg:truncate">
+                  {row.note}
                 </span>
               </th>
               <td className={`${labelled} max-lg:hidden`}>
@@ -320,7 +315,7 @@ export function QueueTable({
               <td className={`${labelled} max-lg:hidden`}>
                 <RiskBadge risk={row.risk} />
               </td>
-              <td className={`${corner} max-lg:pe-8`}>
+              <td className={`${corner} max-lg:pe-14`}>
                 <StatusBadges request={row} />
               </td>
               {/* On a phone the area and risk badges share one line under the note. */}

@@ -1,6 +1,10 @@
-import { money, ok, err } from '@mondapac/shared-kernel';
-import type { CallContext } from '@mondapac/shared-kernel';
-import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import { money, ok, err, parseId } from '@mondapac/shared-kernel';
+import type { CallContext, Id } from '@mondapac/shared-kernel';
+import {
+  testAuthenticatedActor,
+  testCallContext,
+  testMarketContext,
+} from '@mondapac/shared-kernel/testing';
 import { TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AssistantTools, ToolOutcome } from '../application/ports/assistant-tools';
 import type { BasketSources } from '../application/ports/basket-sources';
@@ -235,6 +239,12 @@ describe('BasketAssistantTools sell units', () => {
   });
 });
 
+const idOf = <T extends string>(n: number): Id<T> => {
+  const parsed = parseId(`01990000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`);
+  if (!parsed.ok) throw new Error('bad test id');
+  return parsed.value as Id<T>;
+};
+
 describe('BasketAssistantTools load limits', () => {
   const context = testCallContext(testMarketContext('AU', 'default'), 'anonymous');
   const inner: AssistantTools = {
@@ -256,15 +266,81 @@ describe('BasketAssistantTools load limits', () => {
       cartMode: () => Promise.resolve('multi-store'),
     };
     const tools = new BasketAssistantTools(inner, slow, 5_000);
-    const running = Array.from({ length: 8 }, () => tools.run(context, one));
+    const market = testMarketContext('AU', 'default');
+    const buyer = (n: number) =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'customer',
+          accountId: idOf<'Account'>(n),
+          sessionId: idOf<'Session'>(n),
+          sellerId: null,
+        }),
+      );
+    const running = Array.from({ length: 8 }, (_, n) => tools.run(buyer(n + 1), one));
     await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(await tools.run(context, one)).toMatchObject({
+    expect(await tools.run(buyer(99), one)).toMatchObject({
       isError: true,
       notices: ['tool-failed'],
     });
     release.forEach((done) => done());
     const done = await Promise.all(running);
     expect(done.every((outcome) => !outcome.isError)).toBe(true);
+  });
+
+  it('sheds a third plan of one signed-in buyer, and not another buyer', async () => {
+    const release: (() => void)[] = [];
+    const slow: BasketSources = {
+      candidates: () =>
+        new Promise((resolve) => {
+          release.push(() => resolve(ok([])));
+        }),
+      units: () => Promise.resolve(err({ code: 'unavailable' as const })),
+      cartMode: () => Promise.resolve('multi-store'),
+    };
+    const tools = new BasketAssistantTools(inner, slow, 5_000);
+    const market = testMarketContext('AU', 'default');
+    const buyer = (n: number) =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'customer',
+          accountId: idOf<'Account'>(n),
+          sessionId: idOf<'Session'>(n),
+          sellerId: null,
+        }),
+      );
+    const running = [tools.run(buyer(1), one), tools.run(buyer(1), one)];
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(await tools.run(buyer(1), one)).toMatchObject({ isError: true });
+    const other = tools.run(buyer(2), one);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    release.forEach((done) => done());
+    expect((await other).isError).toBe(false);
+    await Promise.all(running);
+  });
+
+  it('sheds a fifth plan of the guest bucket well before the global cap', async () => {
+    const release: (() => void)[] = [];
+    const slow: BasketSources = {
+      candidates: () =>
+        new Promise((resolve) => {
+          release.push(() => resolve(ok([])));
+        }),
+      units: () => Promise.resolve(err({ code: 'unavailable' as const })),
+      cartMode: () => Promise.resolve('multi-store'),
+    };
+    const tools = new BasketAssistantTools(inner, slow, 5_000);
+    const running = Array.from({ length: 4 }, () => tools.run(context, one));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(await tools.run(context, one)).toMatchObject({ isError: true });
+    release.forEach((done) => done());
+    await Promise.all(running);
+    // The slots are free again once the plans end.
+    const again = tools.run(context, one);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    release.forEach((done) => done());
+    expect((await again).isError).toBe(false);
   });
 
   it('starts no new search batch after it timed out', async () => {
