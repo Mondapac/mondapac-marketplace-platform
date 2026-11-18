@@ -462,6 +462,57 @@ admin deletes a buyer's account for them, from a support ticket.
   no audit row of its own (the page open does). No role is seeded with the new keys; the owner
   assigns them.
 
+## Customers management: admin changes a customer's sign-in email (16 Nov 2026, API only)
+
+Design note of 16 Nov 2026 with Mohammad's and Hassan's reviews (R1 to R12). The storefront
+confirm page and the admin screen are not part of this change.
+
+- **Routes.** `PUT customers/admin/customers/:accountId/email` (body `email` only) and
+  `DELETE customers/admin/customers/:accountId/email-change`: admin sessions, CSRF, `no-store`,
+  keys `customers.customers.view` and the new **protected** `customers.customer-email.change`
+  (held by the Platform Administrator only), and a fresh step-up proof of that key, spent by
+  identity inside its own unit. Anonymous `POST identity/customer/email-change/confirm`
+  (`token`, `password`; `no-store`, `Referrer-Policy: no-referrer`).
+- **Who owns what.** customers checks its own side first (no pending deletion request:
+  `customers.account-deletion-pending`) and maps identity's codes. identity owns the account,
+  the pending address (`identity.accounts.pending_email*`), the `confirm-email-change` link, the
+  step-up spend, the mail counters (`mail.account` for the customer and for the admin, plus
+  `mail.origin`), the audit rows and the events. customers reaches identity through a late-bound
+  `EMAIL_CHANGE_PEER` bound by `CustomersAccountDeletionModule`.
+- **Flow.** The request keeps the current address; the link goes to the new address (SendLinkMail
+  picks the recipient per purpose) and a warning with the new address masked goes to the current
+  one. A newer request replaces an older one and voids its link; the current address again answers
+  `changed: false` and spends nothing. The confirmation needs the link and the account's password
+  and runs through the sign-in sequence (throttles, failure counter): the link must belong to the
+  pending request (bound by its request instant); the address is swapped and verified, every
+  session is revoked (`email-changed`), no session is opened, the account's other live links are
+  cancelled, and a notice goes to the previous address. The notice is one row per confirmed
+  change in `identity.email_change_notices` (key: Market, account, the account version of the
+  swap; both addresses sealed under the account's key; cascade with the account); the mail
+  handler sends exactly its event's notice, masks that change's new address, and deletes only
+  that row. Every refusal of the link is `link.rejected`; a clash on the unique email key rolls
+  the unit back and also answers `link.rejected`.
+- **Lapse.** A pending address lapses at `requestedAt` plus the Market's `confirm-email-change`
+  link lifetime (AU 1440 minutes). Confirm and SendLinkMail use that one boundary: a link mail
+  that is delivered late is skipped once the address has lapsed (`account.pending-email-lapsed`),
+  and a link issued late may outlive the lapse but its confirmation answers `link.rejected`.
+  The customer page stops showing the address then; `identity.purge-expired` clears it (index
+  `accounts_market_id_pending_email_requested_at_idx`, partial, built concurrently).
+- **Deletion.** A deletion request (by the customer or an admin) cancels the pending change:
+  customers' subscribers `customers.email-change-on-deletion` and
+  `customers.email-change-on-admin-deletion` read the request's account and call identity's
+  `cancelCustomerEmailChangeForDeletion` (system actor from the dispatcher; repeat-safe; the
+  link is voided without a mail; logged by id; no audit row, the deletion request is audited).
+  The request itself still refuses a change while a deletion is pending.
+- **Customer page.** The overview carries `pendingEmailChange` (`email`, `requestedAt`) or null,
+  read from identity at read time (`identity.customer-pending-email-of`, key
+  `customers.customers.view`). The read model takes the new address from
+  `identity.account-email-changed.v1`.
+- **Known gaps.** (1) The deletion cancel is asynchronous: between the deletion request's commit
+  and the dispatch of its event, a confirmation can still swap the address. (2) No timeline
+  entries yet: the customer timeline (phase 2, PR 2a) merged while this change was open; the
+  subscriber and the three entry kinds follow in a PR of their own.
+
 ## Phase 2b: per-module admin reads (PR 2b, partial)
 
 Stacked on PR 2a (#929). What landed, by handoff item:
@@ -663,6 +714,101 @@ Not built in part 3:
   as `consent-changed`. The consent history section (part 2) shows every change meanwhile.
 - `review-published` also follows an edit that passed the checks and a release from a hold, as
   reviews' event does; the timeline cannot tell a first submission from those.
+
+## Per-admin limits on customer PII actions and the bulk-reveal alert (16 Nov 2026)
+
+Follow-up of Hassan's review of #969 (findings L2, L3, I3).
+
+- **Limits.** Per admin account and fixed one-hour window, from the Market's
+  `customers.adminActionLimits` (AU / ZZ fixture): `passwordResetsPerHour` 20 / 5 for "send
+  password reset", and `piiRevealsPerHour` 60 / 10 for the reveals of a customer's personal data,
+  the sign-in address (`sign-ins/:signInId/reveal`) and the delivery address
+  (`addresses/:addressId/reveal`) sharing one count. Past it the route answers 429
+  `request.throttled` with `details.retryAfterSeconds` and `Retry-After` (the seconds left in the
+  window). "Sign out everywhere" and the reads are not limited. A Market without the section, or a
+  counter that cannot be read, refuses with `access.unavailable` (503).
+- **Counters.** The platform's shared per-subject counters (`SubjectRateLimits`), new classes
+  `admin-customer-password-reset` and `admin-customer-pii-reveal` (3600-second windows), subject
+  `<market>:<admin account id>` stored as its keyed hash. Migration
+  `20261117050400_platform_rate_limit_admin_customer_classes` widens
+  `platform.rate_limit_counters_key_check` (no grant or index change), reversible.
+- **What counts.** Counted in the application layer after the gate allowed the call and the body
+  is closed, before the customer is looked up: a refused key, an acting-as session or a stray body
+  does not count; an unknown customer, sign-in or address does (no free probing). A refused
+  (throttled) attempt counts too: the windows are fixed, so trying on does not move the window's
+  end, and the count stays one atomic statement.
+- **Bulk-reveal alert.** From `piiRevealAlertAt` on (AU 40 / ZZ 6, at most the reveal limit),
+  every admitted reveal records the security event `customers.pii-reveal.bulk` (s2, target the
+  admin's account, payload `{ reveals }` only): at most `piiRevealsPerHour - piiRevealAlertAt + 1`
+  events per admin and window (AU 21). A reveal whose event cannot be recorded is refused
+  (`access.unavailable`, logged at error level), so one failed write never loses the alert and
+  every reveal past the alert count fails closed while it is unrecorded (Hassan L1 on #974; an
+  earlier version recorded only at the exact count, and a failure there lost the alert). The
+  security events have no dedupe key, so the dedupe is the security centre's: the rule
+  `admin-bulk-pii-reveal` (threshold 1, one-hour window, grouped by the event's target account)
+  keeps one live alert per admin and raises its event count with each later event. No migration.
+- **Fixed-window bursts (Hassan I2).** The windows are fixed, not sliding: an admin can use the
+  whole limit at the end of one window and again at the start of the next, so up to about twice
+  the limit (AU 120 reveals or 40 password resets) can pass within a few minutes around a window
+  boundary. The alert counts per window too: such a burst reaches the alert count in each window,
+  and if the first alert has been resolved meanwhile a second one opens (one live alert per admin
+  otherwise). The windows start at the admin's first counted attempt, not on the clock hour.
+- **I3.** The platform-admin check of the admin reads (authenticated admin, no seller, no
+  acting-as marker) is one helper, `isPlatformAdminActor` in `platform/authz`, used by identity's
+  customer security, cart, engagement, legal, reviews, notifications (support contact) and
+  assistant (settings). In the last two it replaces a population-only check; today no admin actor
+  has a seller or an acting-as marker, so no answer changes.
+- **Tests.** `admin-action-limits.spec.ts` (both Markets: limit then 429, another admin
+  unaffected, the window resets, the shared count, the event from the alert count on, a failed
+  event at the alert count recorded by the next reveal, only allowed calls counted, fail closed),
+  the evaluator keeping one alert per admin (`security-use-cases.spec.ts`), HTTP 429 mapping of the
+  sign-in reveal and the password reset in `customers-sections-admin.e2e.spec.ts` and of the
+  address reveal in `customers-management-admin.e2e.spec.ts`, both Markets, the CHECK in
+  `rate-limit-counters.db-spec.ts`.
+
+## Phase 2b, part 4: consent on the timeline; promotion usages not built (16 Nov 2026)
+
+- **Consent on the timeline (rest of item k).** legal publishes `legal.marketing-consent-changed.v1`
+  from its new outbox (migration `20261117050700_legal_outbox`; docs/modules/legal/notes.md): the
+  account and the channel, never the value or the source. Subscription
+  `customers.timeline-consent-changed`, registered by `CustomersSectionsModule` (which already
+  imports legal), hands it to `RecordCustomerTimeline` (rule `system`; `runOnce` and the customers
+  inbox; once per event by the source event id). New kind `consent-changed` in the `account`
+  category, the channel as the entry's `detail` (a code; anything else is `validation.failed`), no
+  reference, no actor. An account without a directory row yet is refused and retried as for the
+  other account events; an erased account gets nothing. No customers migration: the kind and
+  detail CHECKs are code alphabets.
+- **Consent entries need legal's key (decision).** The task suggested `customers.customers.view`
+  might be enough, since an entry carries no value. It is not: only real changes are recorded and
+  the default is "not granted", so the number of `consent-changed` entries tells whether the
+  customer consents now, which is what `legal.customer-consent.view` guards on the consent
+  section. So the timeline read, its export and the Overview's last five show `consent-changed`
+  only to a caller who also holds `legal.customer-consent.view`, through the probe use case
+  `customers.customer-consent-events-check` (the gate decides), exactly as the review kinds need
+  `reviews.customer-review.view`: without the key the kind leaves the query (page and total agree),
+  a filter on it alone is an empty list, a probe the gate cannot answer is `access.unavailable`.
+  The two probes are independent (the review key does not open the consent kind). Pinned in
+  `test/contracts/admin-facade-permission.contract.spec.ts`.
+- **No new permission key, audit action or security event.** The registry, the Viewer exclusion
+  list, the role seed and the audit snapshot are unchanged; the event catalogue snapshot and the
+  subscriber list gain the new type and subscriber. The probe has a permission rule, so it is not
+  in `access-declarations.json`.
+- **Promotion usages per customer (item e): not built, blocked.** There is still no per-account
+  redemption data: checkout never calls promotions (ordering has no promotion or discount on an
+  order), `promotion_usage` holds per-promotion counters that nothing writes yet, and
+  `promotion_batch_codes.used_at` is never set (promotions package T2, "marking a code used on
+  redemption", is open). A read and route over an empty or invented table would show nothing true.
+  Needs, first: promotions package T2 (apply the quote at checkout, a redemption row per order and
+  promotion with the account, the discount as Money, the time and a status, released or reversed
+  on cancel or refund), designed with Mohammad and Mojtaba. Then this read is a promotions facade
+  read keyed by account behind its own key, as planned.
+- **Tests.** Unit on both Market fixtures: legal writes one event per real change, none for a
+  no-op or a failed write, never a value (`legal-use-cases.spec.ts`); the subscription records once
+  per event with the channel, skips an erased account, retries a missing directory row, refuses a
+  bad channel (`customer-timeline-events.spec.ts`); the gate on the read and the export
+  (`customer-management.spec.ts`). PostgreSQL: the event row in `legal.outbox` with the change and
+  rolled back with a serialization loser (`legal-marketing-consent.db-spec.ts`), the timeline row
+  (`customers-management.db-spec.ts`), privileges and the partial-index list.
 
 - **Identity section** (logins over 90 days as a super list, sessions, sign out everywhere,
   send a password reset): the largest piece, an auth path (security review). `sign_in_records`

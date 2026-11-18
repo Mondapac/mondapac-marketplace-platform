@@ -115,6 +115,11 @@
     "reason": "Customer email-confirmation link: the visitor is not signed in yet."
   },
   {
+    "name": "identity.confirm-customer-email-change",
+    "rule": "anonymous",
+    "reason": "The customer confirms, with the single-use link mailed to the new address and the account's password, a sign-in email change an admin asked for: the link and the password bind the account; no session is read or opened."
+  },
+  {
     "name": "identity.confirm-second-factor-enrolment",
     "rule": "anonymous",
     "reason": "Admin second-factor enrolment confirmation with the enrolment challenge token and the first code: no session exists yet."

@@ -1,3 +1,5 @@
+import { SendEmailChangeRequestedMail } from './send-email-change-requested-mail.use-case';
+import { SendEmailChangedMail } from './send-email-changed-mail.use-case';
 import { Logger } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, PendingEvent, Result } from '@mondapac/shared-kernel';
@@ -184,6 +186,8 @@ function setUp() {
         grants: fakes.grantReader,
       }),
       new SendOtherSessionsSignedOutMail(gate, mailDeps),
+      new SendEmailChangeRequestedMail(gate, mailDeps),
+      new SendEmailChangedMail(gate, { ...mailDeps, emailChanges: fakes.emailChangeStore }),
     ),
     seed: new SeedRoles(gate, {
       unitOfWork,
@@ -1366,6 +1370,9 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
           'identity.other-sessions-signed-out-mail',
           'identity.account-other-sessions-signed-out.v1',
         ],
+        // Customers admin email change: the warning and the changed notice.
+        ['identity.email-change-requested-mail', 'identity.account-email-change-requested.v1'],
+        ['identity.email-changed-mail', 'identity.account-email-changed.v1'],
       ]);
       expect(s.subscriptions.map((x) => x.event.type)).not.toContain(
         'identity.account-email-verified.v1',

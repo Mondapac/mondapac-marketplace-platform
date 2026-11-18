@@ -29,6 +29,7 @@ import { AdminCustomerSignInsExport } from '../application/use-cases/admin-custo
 import { AdminCustomerSignIns } from '../application/use-cases/admin-customer-sign-ins.use-case';
 import { AdminCustomerSignOut } from '../application/use-cases/admin-customer-sign-out.use-case';
 import { CUSTOMERS_EXPORT_STEP_UP } from '../contracts/step-up';
+import { setRetryAfter } from './http-answers';
 import {
   CSRF,
   emptyBody,
@@ -149,7 +150,13 @@ export class AdminCustomerSectionsController {
       '(identity.account.sign-in-address-revealed: the record id, never the address) in the unit ' +
       'that reads it, and the address is answered only after the timeline entry ' +
       '`sign-in-address-revealed` is written. Only the last 90 days. Personal data: not cached. ' +
-      '404 customers.customer-not-found or customers.sign-in-not-found.',
+      '404 customers.customer-not-found or customers.sign-in-not-found. Limited per admin and ' +
+      'fixed hour (the Market’s customers.adminActionLimits.piiRevealsPerHour, one count with the ' +
+      'delivery address reveal; every attempt the keys allow counts): past it 429 ' +
+      'request.throttled with details.retryAfterSeconds and Retry-After. From the Market’s ' +
+      'alert count on, each reveal records a security event (one live alert ' +
+      'admin-bulk-pii-reveal per admin); a reveal whose event cannot be recorded answers 503 ' +
+      'access.unavailable.',
   })
   @ApiHeader(CSRF)
   @ApiOkResponse({ type: Object })
@@ -157,6 +164,10 @@ export class AdminCustomerSectionsController {
   @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
   @ApiNotFoundResponse({ ...ERROR, description: `${NOT_FOUND} or customers.sign-in-not-found` })
+  @ApiTooManyRequestsResponse({
+    ...ERROR,
+    description: 'request.throttled (details.retryAfterSeconds, Retry-After)',
+  })
   @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
   async revealSignIn(
     @Call() context: CallContext,
@@ -168,11 +179,9 @@ export class AdminCustomerSectionsController {
     response.setHeader('Cache-Control', 'no-store');
     const checked = emptyBody(body);
     if (checked !== null) throw checked;
-    return settle(
-      this.#logger,
-      context,
-      await this.signInReveal.execute(context, { accountId, signInId }),
-    );
+    const result = await this.signInReveal.execute(context, { accountId, signInId });
+    setRetryAfter(response, result);
+    return settle(this.#logger, context, result);
   }
 
   @Get(':accountId/sessions')
@@ -237,7 +246,9 @@ export class AdminCustomerSectionsController {
       '(identity.account.password-reset-sent-by-admin) and on the timeline ' +
       '(`password-reset-sent`). 409 customers.customer-not-eligible for a disabled or unverified ' +
       'account; 429 customers.password-reset-recently-requested within five minutes of the last ' +
-      'request.',
+      'request. Limited per admin and fixed hour (the Market’s ' +
+      'customers.adminActionLimits.passwordResetsPerHour; every attempt the keys allow counts): ' +
+      'past it 429 request.throttled with details.retryAfterSeconds and Retry-After.',
   })
   @ApiHeader(CSRF)
   @ApiOkResponse({ type: Object })
@@ -248,7 +259,9 @@ export class AdminCustomerSectionsController {
   @ApiConflictResponse({ ...ERROR, description: 'customers.customer-not-eligible' })
   @ApiTooManyRequestsResponse({
     ...ERROR,
-    description: 'customers.password-reset-recently-requested',
+    description:
+      'customers.password-reset-recently-requested, or request.throttled ' +
+      '(details.retryAfterSeconds, Retry-After)',
   })
   @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
   async sendPasswordReset(
@@ -260,6 +273,8 @@ export class AdminCustomerSectionsController {
     response.setHeader('Cache-Control', 'no-store');
     const checked = emptyBody(body);
     if (checked !== null) throw checked;
-    return settle(this.#logger, context, await this.passwordReset.execute(context, { accountId }));
+    const result = await this.passwordReset.execute(context, { accountId });
+    setRetryAfter(response, result);
+    return settle(this.#logger, context, result);
   }
 }

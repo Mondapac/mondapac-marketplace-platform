@@ -4,6 +4,7 @@ import { Button, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useState, type FormEvent } from 'react';
 import { decimalsOf, parseAmount } from '../wallet/money.ts';
+import type { GroupRef } from './groups-types.ts';
 import type { FilterKey, Filters } from './list-types.ts';
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -34,6 +35,7 @@ const draftOf = (filters: Filters, currency: string | null): Draft => ({
     filters.spentMin === undefined || currency === null ? '' : majorOf(filters.spentMin, currency),
   spentMax:
     filters.spentMax === undefined || currency === null ? '' : majorOf(filters.spentMax, currency),
+  group: filters.group ?? '',
 });
 
 /**
@@ -46,11 +48,17 @@ const draftOf = (filters: Filters, currency: string | null): Draft => ({
 export function CustomersFilterPanel({
   filters,
   currency,
+  groups = null,
   onApply,
   close,
 }: {
   readonly filters: Filters;
   readonly currency: string | null;
+  /**
+   * The Market's groups for the Group filter (phase 2a); null leaves the filter out (no groups
+   * read, or a group page, whose group is fixed). A group already set is kept.
+   */
+  readonly groups?: readonly GroupRef[] | null;
   readonly onApply: (filters: Filters) => void;
   readonly close: () => void;
 }) {
@@ -66,6 +74,9 @@ export function CustomersFilterPanel({
     const problems: Partial<Record<FilterKey, string>> = {};
     if (draft.status !== '') next['status'] = draft.status;
     if (draft.verified !== '') next['verified'] = draft.verified;
+    if (groups === null) {
+      if (filters.group !== undefined) next['group'] = filters.group;
+    } else if (draft.group !== '') next['group'] = draft.group;
     for (const key of ['joinedFrom', 'joinedTo', 'lastOrderFrom', 'lastOrderTo'] as const) {
       const value = draft[key].trim();
       if (value === '') continue;
@@ -170,6 +181,18 @@ export function CustomersFilterPanel({
           ]}
           onChange={(event) => set('verified', event.target.value)}
         />
+        {groups === null || groups.length === 0 ? null : (
+          <Select
+            label={t('name.group')}
+            value={draft.group}
+            placeholder={t('any')}
+            options={groups.map((group) => ({
+              value: group.groupId,
+              label: group.archived ? t('group-archived', { name: group.name }) : group.name,
+            }))}
+            onChange={(event) => set('group', event.target.value)}
+          />
+        )}
       </div>
       {range('joinedFrom', 'joinedTo', 'date')}
       {range('lastOrderFrom', 'lastOrderTo', 'date')}

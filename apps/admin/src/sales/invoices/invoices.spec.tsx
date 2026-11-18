@@ -854,25 +854,6 @@ describe('Invoices row actions', () => {
 });
 
 describe('Invoices selection and Bulk action', () => {
-  it('disables Bulk action with nothing selected, and keeps it without a menu while rows are ticked', async () => {
-    serve(() => pageOf([confirmation(), confirmation({ documentId: 'x2' })]));
-    mount();
-    await screen.findAllByText('Cedar Lane Halal Meats');
-    expect(screen.getByRole('button', { name: 'Bulk action' })).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select order 00000001' })[0]!);
-    expect(screen.getByText('1 order confirmation selected')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Bulk action' })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('button', { name: 'Bulk action' }).getAttribute('title')).toBe(
-      'No bulk actions are available for invoices yet.',
-    );
-    // The reason is also plain text, readable without focusing the disabled button.
-    expect(
-      screen.getByText('No bulk actions are available for invoices yet.', { selector: 'p' }),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
-    expect(screen.queryByText('1 order confirmation selected')).toBeNull();
-  });
-
   it('offers "Select all N matching" after the page is ticked, and drops it with the next tab', async () => {
     serve(() => pageOf([confirmation()], { total: 143 }));
     mount();
@@ -922,7 +903,7 @@ describe('Invoices selection and Bulk action', () => {
 });
 
 describe('Invoices words for the rows', () => {
-  it('names credit notes on the Credit notes tab, in the count, selection and Bulk hint', async () => {
+  it('names credit notes on the Credit notes tab, in the count and selection', async () => {
     serve(
       byKind([confirmation()], [creditNote(), creditNote({ documentId: 'x9' })], { total: 143 }),
     );
@@ -934,14 +915,9 @@ describe('Invoices words for the rows', () => {
       await screen.findByRole('checkbox', { name: 'Select all credit notes on this page' }),
     );
     expect(screen.getByText('2 credit notes selected')).toBeTruthy();
-    expect(
-      screen.getByText('No bulk actions are available for invoices yet.', { selector: 'p' }),
-    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Select all 143 matching' }));
     expect(screen.getByText('All 143 matching credit notes are selected')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Bulk action' }).getAttribute('title')).toBe(
-      'No bulk actions are available for invoices yet.',
-    );
+    expect(screen.getByRole('button', { name: 'Bulk action' })).toHaveProperty('disabled', false);
   });
 
   it('never says "document" to an admin, whatever the tab or count', () => {
@@ -1276,5 +1252,356 @@ describe('Invoices nav', () => {
       anyOf: ['ordering.order.view'],
     });
     expect(messages.nav.invoices).toBe('Invoices');
+  });
+});
+
+describe('Invoices Export', () => {
+  const CSV = { 'content-type': 'text/csv; charset=utf-8' };
+  const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const bulk = () => screen.getByRole('button', { name: 'Bulk action' });
+  const openExport = async () => {
+    fireEvent.click(bulk());
+    fireEvent.click(
+      within(await screen.findByRole('menu', { name: 'Bulk action' })).getByRole('menuitem', {
+        name: /^Export/,
+      }),
+    );
+    return screen.findByRole('dialog');
+  };
+  const confirm = (dialog: HTMLElement, format: 'CSV' | 'XLSX' = 'CSV') => {
+    fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(`^${format}`) }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+  };
+  /** The export requests the page made, as path and query. */
+  const fetched: string[] = [];
+  const answerWith = (make: () => Response) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        fetched.push(url);
+        return Promise.resolve(make());
+      }),
+    );
+  };
+  const sent = () => {
+    const url = new URL(fetched[fetched.length - 1]!, 'http://x');
+    return { path: url.pathname, params: Object.fromEntries(url.searchParams) };
+  };
+  const names: string[] = [];
+  let click: { mockRestore: () => void };
+
+  beforeEach(() => {
+    fetched.length = 0;
+    names.length = 0;
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close() {
+      this.removeAttribute('open');
+    };
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() });
+    click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      names.push(this.download);
+    });
+  });
+  afterEach(() => click.mockRestore());
+
+  it('has Export as the only item, and the button is off until a row is selected', async () => {
+    serve(() =>
+      pageOf([
+        confirmation(),
+        confirmation({ documentId: '0190a000-0000-7000-8000-0000000000d2' }),
+      ]),
+    );
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    expect(bulk()).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select order 00000001' })[0]!);
+    expect(bulk()).toHaveProperty('disabled', false);
+    fireEvent.click(bulk());
+    const menu = await screen.findByRole('menu', { name: 'Bulk action' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['ExportCSV or XLSX, with the columns shown']);
+    expect(fetched).toEqual([]);
+  });
+
+  it('sends the ticked ids, the shown columns in order, the zone and the list filter, and no paging', async () => {
+    window.localStorage.setItem(
+      'mp:admin:AU:acc-1:invoices-columns',
+      JSON.stringify(['total', 'reason', 'documentId', 'store']),
+    );
+    serve(() =>
+      pageOf([
+        confirmation(),
+        confirmation({ documentId: '0190a000-0000-7000-8000-0000000000d2' }),
+      ]),
+    );
+    mount({ zone: LOS_ANGELES });
+    await screen.findAllByText('Cedar Lane Halal Meats');
+
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all order confirmations on this page' }),
+    );
+    answerWith(
+      () => new Response('﻿Order ID\r\nrow 1\r\nrow 2\r\n', { status: 200, headers: CSV }),
+    );
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
+    expect(fetched).toHaveLength(1);
+    expect(sent()).toEqual({
+      path: '/api/ordering/admin/documents/export',
+      params: {
+        format: 'csv',
+        kind: 'order-confirmation',
+        columns: 'total,store',
+        zone: LOS_ANGELES,
+        ids: '0190a000-0000-7000-8000-0000000000d1,0190a000-0000-7000-8000-0000000000d2',
+      },
+    });
+    expect(names).toEqual([expect.stringMatching(/^order-confirmations-\d{4}-\d{2}-\d{2}\.csv$/)]);
+  });
+
+  it('sends no ids after "Select all matching", takes the file name from the server and counts the total', async () => {
+    serve(() => pageOf([confirmation()], { total: 143 }));
+    mount({ paging: 'pages' });
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all order confirmations on this page' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select all 143 matching' }));
+    answerWith(
+      () =>
+        new Response(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), {
+          status: 200,
+          headers: {
+            'content-type': XLSX,
+            'content-disposition': 'attachment; filename="order-confirmations-2026-11-17.xlsx"',
+          },
+        }),
+    );
+    confirm(await openExport(), 'XLSX');
+    expect(await screen.findByText('Exported 143 rows.')).toBeTruthy();
+    const { params } = sent();
+    expect(params['format']).toBe('xlsx');
+    expect(params).not.toHaveProperty('ids');
+    expect(params).not.toHaveProperty('page');
+    expect(params).not.toHaveProperty('pageSize');
+    expect(params).not.toHaveProperty('sort');
+    expect(params).not.toHaveProperty('direction');
+    expect(names).toEqual(['order-confirmations-2026-11-17.xlsx']);
+  });
+
+  it('leaves out page, cursor and limit with Previous and next, and counts the rows of a CSV with a line break inside a cell', async () => {
+    serve(() => cursorPage([confirmation()], cursor(1)));
+    mount({ paging: 'prev-next' });
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all order confirmations on this page' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Select all matching' }));
+    answerWith(
+      () =>
+        new Response('Order ID,Note\r\nr1,"two\r\nlines"\r\nr2,x\r\n', {
+          status: 200,
+          headers: CSV,
+        }),
+    );
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
+    const { params } = sent();
+    for (const key of ['ids', 'page', 'pageSize', 'sort', 'direction', 'cursor', 'limit']) {
+      expect(params).not.toHaveProperty(key);
+    }
+  });
+
+  it('says so when there are too many rows', async () => {
+    serve(() =>
+      pageOf([
+        confirmation(),
+        confirmation({ documentId: '0190a000-0000-7000-8000-0000000000d2' }),
+      ]),
+    );
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all order confirmations on this page' }),
+    );
+    answerWith(
+      () =>
+        new Response(
+          '{"statusCode":413,"code":"batch.too-large","details":{"max":10000,"total":12345}}',
+          { status: 413 },
+        ),
+    );
+    confirm(await openExport());
+    expect(
+      await screen.findByText(
+        'Too many rows to export: 12,345 match, and one file holds up to 10,000. Narrow the filter or select fewer rows.',
+      ),
+    ).toBeTruthy();
+    expect(names).toEqual([]);
+  });
+
+  it('asks to narrow a search that is too broad', async () => {
+    serve(() =>
+      pageOf([
+        confirmation(),
+        confirmation({ documentId: '0190a000-0000-7000-8000-0000000000d2' }),
+      ]),
+    );
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all order confirmations on this page' }),
+    );
+    answerWith(
+      () =>
+        new Response(
+          '{"statusCode":400,"code":"validation.failed","details":{"fields":[{"path":"search","code":"too-broad"}]}}',
+          { status: 400 },
+        ),
+    );
+    confirm(await openExport());
+    expect(
+      await screen.findByText(
+        'This search is too broad to export. Narrow the search and try again.',
+      ),
+    ).toBeTruthy();
+    expect(names).toEqual([]);
+  });
+
+  it('says so when the export fails or the connection breaks', async () => {
+    serve(() =>
+      pageOf([
+        confirmation(),
+        confirmation({ documentId: '0190a000-0000-7000-8000-0000000000d2' }),
+      ]),
+    );
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all order confirmations on this page' }),
+    );
+    answerWith(() => new Response('{"code":"access.unavailable"}', { status: 503 }));
+    confirm(await openExport());
+    expect(await screen.findByText('Export failed. Try again.')).toBeTruthy();
+    toast.dismiss();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new TypeError('network'))),
+    );
+    confirm(await openExport());
+    expect(await screen.findByText('Export failed. Try again.')).toBeTruthy();
+    expect(names).toEqual([]);
+  });
+
+  it('says so when the download is cut off mid-stream', async () => {
+    serve(() =>
+      pageOf([
+        confirmation(),
+        confirmation({ documentId: '0190a000-0000-7000-8000-0000000000d2' }),
+      ]),
+    );
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all order confirmations on this page' }),
+    );
+    answerWith(
+      () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new TypeError('network'));
+            },
+          }),
+          { status: 200, headers: CSV },
+        ),
+    );
+    confirm(await openExport());
+    expect(await screen.findByText('Export failed. Try again.')).toBeTruthy();
+    expect(names).toEqual([]);
+  });
+
+  it('closes the dialog without a request when it is cancelled', async () => {
+    serve(() =>
+      pageOf([
+        confirmation(),
+        confirmation({ documentId: '0190a000-0000-7000-8000-0000000000d2' }),
+      ]),
+    );
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select order 00000001' })[0]!);
+    const dialog = await openExport();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(fetched).toEqual([]);
+  });
+
+  it('sends kind=credit-note and the credit note columns from the Credit notes tab, keyed by document id', async () => {
+    window.localStorage.setItem(
+      'mp:admin:AU:acc-1:invoices-columns',
+      JSON.stringify(['total', 'reason', 'documentId', 'store']),
+    );
+    serve(
+      byKind(
+        [confirmation()],
+        [creditNote(), creditNote({ documentId: '0190a000-0000-7000-8000-0000000000e2' })],
+      ),
+    );
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('button', { name: /^Credit notes/ }));
+    await waitFor(() => expect(lastUrl()).toContain('kind=credit-note'));
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all credit notes on this page' }));
+    answerWith(() => new Response('Credit note ID\r\na\r\nb\r\n', { status: 200, headers: CSV }));
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
+    expect(sent().params).toEqual({
+      format: 'csv',
+      kind: 'credit-note',
+      columns: 'total,reason,documentId,store',
+      zone: BRISBANE,
+      ids: '0190a000-0000-7000-8000-0000000000e1,0190a000-0000-7000-8000-0000000000e2',
+    });
+    expect(names).toEqual([expect.stringMatching(/^credit-notes-\d{4}-\d{2}-\d{2}\.csv$/)]);
+  });
+
+  // The backend filters `id IN ids`: the seller order id of a confirmation (its document id is that
+  // id) and the credit note id of a credit note (its seller order id is another id).
+  it('sends the id the backend filters on: the seller order id of a confirmation, the credit note id of a credit note', async () => {
+    const OTHER_ORDER = '0190a000-0000-7000-8000-0000000000d9';
+    serve(
+      byKind(
+        [confirmation({ documentId: SELLER_ORDER, sellerOrderId: SELLER_ORDER })],
+        [creditNote({ documentId: CREDIT_ID, sellerOrderId: OTHER_ORDER })],
+      ),
+    );
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all order confirmations on this page' }),
+    );
+    answerWith(() => new Response('Order ID\r\na\r\n', { status: 200, headers: CSV }));
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 1 row.')).toBeTruthy();
+    expect(sent().params['ids']).toBe(SELLER_ORDER);
+    toast.dismiss();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Credit notes/ }));
+    await waitFor(() => expect(lastUrl()).toContain('kind=credit-note'));
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all credit notes on this page' }));
+    confirm(await openExport());
+    await waitFor(() => expect(fetched).toHaveLength(2));
+    expect(sent().params['ids']).toBe(CREDIT_ID);
+    expect(sent().params['ids']).not.toContain(OTHER_ORDER);
   });
 });

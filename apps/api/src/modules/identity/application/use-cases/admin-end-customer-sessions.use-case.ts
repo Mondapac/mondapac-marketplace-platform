@@ -3,6 +3,7 @@ import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
+  isPlatformAdminActor,
   UseCase,
   type AccessDeclaration,
   type PermissionKey,
@@ -11,7 +12,6 @@ import {
 import { AccountSessionsEndedForErasureAudit } from '../../domain/audit';
 import type { AccountRepository } from '../ports/account.repository';
 import type { SessionRepository } from '../ports/session.repository';
-import { isActingAsSession } from '../sellers/access-decision-reads';
 import { endEveryCustomerSession } from '../accounts/customer-security';
 
 export interface AdminEndCustomerSessionsInput {
@@ -70,13 +70,7 @@ export class AdminEndCustomerSessions extends UseCase<
     context: CallContext,
     input: AdminEndCustomerSessionsInput,
   ): Promise<Result<AdminEndCustomerSessionsOutput, AdminEndCustomerSessionsFailure>> {
-    const { actor } = context;
-    if (
-      actor.kind !== 'authenticated' ||
-      actor.population !== 'admin' ||
-      actor.sellerId !== null ||
-      isActingAsSession(actor)
-    ) {
+    if (!isPlatformAdminActor(context.actor)) {
       return err({ code: 'access.denied' });
     }
     // The shared core of "sign out everywhere" (customers phase 2b), with this request's reason

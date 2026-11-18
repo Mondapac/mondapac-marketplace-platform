@@ -13,6 +13,7 @@ import {
   type CustomerSignInResult,
 } from '../../identity';
 import type { TimelineKind } from '../domain/customer-timeline';
+import { admitAdminAction, type AdminActionRefusal } from './admin-action-limits';
 import {
   customerOf,
   fromOwner,
@@ -20,7 +21,8 @@ import {
   type CustomerSectionFailure,
   type SectionListSpec,
 } from './customer-section-lists';
-import { invalidField, isRecord } from './customer-list-flow';
+import { adminAccountOf, invalidField, isRecord } from './customer-list-flow';
+import type { AdminLimitedAction } from './ports/admin-action-limits';
 
 // The customer page's security section (phase 2b): the sign-ins of the last 90 days as a super
 // list, the reveal of one sign-in's full address, the live sessions, "sign out everywhere" and
@@ -30,6 +32,7 @@ import { invalidField, isRecord } from './customer-list-flow';
 
 export type CustomerSecurityFailure =
   | CustomerSectionFailure
+  | AdminActionRefusal
   | { readonly code: 'customers.sign-in-not-found' }
   | { readonly code: 'customers.customer-not-eligible' }
   | { readonly code: 'customers.password-reset-recently-requested' };
@@ -159,6 +162,17 @@ export async function revealSignInAddress(
 > {
   const closed = closedInput(input, ['accountId', 'signInId']);
   if (!closed.ok) return closed;
+  const me = adminAccountOf(context);
+  if (me === null) return err({ code: 'access.denied' });
+  // Counted with the address reveal (security review of #969, L3), before anything is read.
+  const admitted = await admitAdminAction(
+    deps,
+    context,
+    me,
+    'pii-reveal',
+    'customers.admin-customer-sign-in-reveal',
+  );
+  if (!admitted.ok) return admitted;
   const customer = await customerOf(deps, context, closed.value['accountId']);
   if (!customer.ok) return customer;
   const { admin, accountId } = customer.value;
@@ -218,9 +232,17 @@ async function accountAction<T>(
   name: string,
   kind: TimelineKind,
   act: (accountId: Id<'Account'>) => Promise<Result<T, { readonly code: string }>>,
+  limited: AdminLimitedAction | null = null,
 ): Promise<Result<T, CustomerSecurityFailure>> {
   const closed = closedInput(input, ['accountId']);
   if (!closed.ok) return closed;
+  if (limited !== null) {
+    // Counted per admin (security review of #969, L2), before the customer is looked up.
+    const me = adminAccountOf(context);
+    if (me === null) return err({ code: 'access.denied' });
+    const admitted = await admitAdminAction(deps, context, me, limited, name);
+    if (!admitted.ok) return admitted;
+  }
   const customer = await customerOf(deps, context, closed.value['accountId']);
   if (!customer.ok) return customer;
   const { admin, accountId } = customer.value;
@@ -267,5 +289,6 @@ export function sendPasswordReset(
     'customers.admin-customer-password-reset',
     'password-reset-sent',
     (accountId) => deps.peers.identity.adminSendCustomerPasswordReset(context, accountId),
+    'password-reset',
   );
 }
