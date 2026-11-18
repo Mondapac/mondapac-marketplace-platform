@@ -605,6 +605,36 @@ describe.each(TEST_MARKETS)('payout terms, anchors and holds in market %s (datab
       expect(active.map((h) => h.id)).toEqual([oldActive.id]);
     });
 
+    it('says whether an active hold covers a seller order: its own or the whole seller’s, in its Market (Hassan M-2)', async () => {
+      const sellerId = ids.next<'Seller'>();
+      const sellerOrderId = ids.next<'SellerOrder'>();
+      const covered = (at = market) =>
+        value(at, () => holds.hasActiveCovering(at, sellerId, sellerOrderId));
+      expect(await covered()).toBe(false);
+      // Another seller order of the seller, and the same seller order of another seller: no.
+      await value(market, () =>
+        holds.insertIfAbsent(market, hold({ sellerId, sellerOrderId: ids.next<'SellerOrder'>() })),
+      );
+      await value(market, () =>
+        holds.insertIfAbsent(market, hold({ sellerId: ids.next<'Seller'>(), sellerOrderId })),
+      );
+      expect(await covered()).toBe(false);
+      const own = hold({ sellerId, sellerOrderId });
+      await value(market, () => holds.insertIfAbsent(market, own));
+      expect(await covered()).toBe(true);
+      expect(await covered(other)).toBe(false);
+      const release = {
+        releasedAt: T0.add({ hours: 1 }),
+        releasedBy: ids.next<'Account'>(),
+        reason: 'resolved',
+      } as const;
+      await value(market, () => holds.release(market, own.id, release));
+      expect(await covered()).toBe(false);
+      const whole = hold({ sellerId });
+      await value(market, () => holds.insertIfAbsent(market, whole));
+      expect(await covered()).toBe(true);
+    });
+
     it('has the seller listing index and the active seller-order index of the payout run (F2, N1)', async () => {
       const names = (
         await sql.query<{ indexname: string }>(

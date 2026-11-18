@@ -1,6 +1,6 @@
 import { BackLink, Badge, LinkButton, Tabs } from '@mondapac/ui';
 import { known, OFFER_STATUSES } from './format.ts';
-import { OFFER_TONE } from './offers-table.tsx';
+import { OFFER_TONE } from './offer-tone.ts';
 import type { OfferView } from './types.ts';
 
 export type OfferTab = 'details' | 'prices' | 'stock' | 'variants';
