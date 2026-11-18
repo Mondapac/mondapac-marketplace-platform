@@ -93,6 +93,7 @@ describe.each(MARKETS)(
       } as unknown as AttributeRepository;
       const policy: CatalogMarketPolicy = {
         taxCategoryCodes: () => tax,
+        taxCategories: () => tax.map((code) => ({ code, labelKey: `catalog.tax.${code}` })),
         locales: () => ({ default: locale, supported: locales }),
         sensitiveChanges: () => {
           throw new Error('not used');
@@ -947,6 +948,7 @@ describe.each(MARKETS)(
         attributes: { loadSchema: () => Promise.resolve(schema) } as unknown as AttributeRepository,
         policy: {
           taxCategoryCodes: () => tax,
+          taxCategories: () => tax.map((code) => ({ code, labelKey: `catalog.tax.${code}` })),
           locales: () => ({ default: locale, supported: locales }),
           maxVariantsPerProduct: () => max,
           maxVariantAttributes: () => 2,

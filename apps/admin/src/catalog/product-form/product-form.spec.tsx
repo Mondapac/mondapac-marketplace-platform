@@ -66,6 +66,10 @@ const view = (over: Partial<ProductView> = {}): ProductView => ({
   createdAt: '2026-11-05T01:00:00.000Z',
   form: {
     taxCategoryCodes: ['gst-free', 'gst'],
+    taxCategories: [
+      { code: 'gst-free', labelKey: 'catalog.tax.gst-free' },
+      { code: 'gst', labelKey: 'catalog.tax.taxable' },
+    ],
     fields: [
       {
         code: 'origin',
@@ -225,6 +229,10 @@ describe('the add page', () => {
     productTypes: ['simple', 'configurable'],
     locales: { default: 'en', supported: ['en'] },
     taxCategoryCodes: ['gst-free', 'gst'],
+    taxCategories: [
+      { code: 'gst-free', labelKey: 'catalog.tax.gst-free' },
+      { code: 'gst', labelKey: 'catalog.tax.taxable' },
+    ],
     categories: [
       { categoryId: CATEGORY, parentId: null, names: { en: 'Pantry' } },
       { categoryId: CHILD, parentId: CATEGORY, names: { en: 'Rice' } },
@@ -662,6 +670,9 @@ describe('the edit form', () => {
     ).toBeTruthy();
     expect(screen.getByText(/No category chosen yet/)).toBeTruthy();
     expect(screen.getByText('Choose a tax category')).toBeTruthy();
+    // The names come from the messages of the labelKey the Market configured, not from the code.
+    expect(screen.getByRole('option', { name: 'GST-free' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Taxable' })).toBeTruthy();
     expect(screen.getByText(/Sellers can't find it until you publish/)).toBeTruthy();
   });
 
