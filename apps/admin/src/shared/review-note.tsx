@@ -1,6 +1,6 @@
 'use client';
 
-import { TextAreaField, toast } from '@mondapac/ui';
+import { Banner, TextAreaField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import type { ApiFailure } from '../api/client.ts';
 
@@ -76,6 +76,18 @@ export function useSentForReview(): (body: unknown) => boolean {
     toast.info(t('sent', { number: requestLabel(request) }));
     return true;
   };
+}
+
+/** The label of an action that only files a request for approval: "Send for approval". */
+export function useApprovalAction(): (label: string, approval: boolean) => string {
+  const t = useTranslations('review-note');
+  return (label, approval) => (approval ? t('send-for-approval') : label);
+}
+
+/** Says that an action waiting for approval changes nothing until another admin approves it. */
+export function ApprovalNotice() {
+  const t = useTranslations('review-note');
+  return <Banner tone="info">{t('approval-body')}</Banner>;
 }
 
 /** The "Note for reviewers" field: multi-line, up to 500 characters, with a counter. */

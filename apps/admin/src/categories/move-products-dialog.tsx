@@ -4,7 +4,7 @@ import { Banner, Button, Dialog, SkeletonRows, TextAreaField } from '@mondapac/u
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
-import { useSentForApproval } from '../shared/review-note.tsx';
+import { useApprovalAction, useSentForApproval } from '../shared/review-note.tsx';
 import { CategoryProblemBanner } from './category-problem.tsx';
 import {
   MAX_MISSES,
@@ -231,6 +231,7 @@ export function MoveProductsDialog({
   readonly onReload: () => void;
 }) {
   const t = useTranslations('categories.move-products');
+  const actionLabel = useApprovalAction();
   const call = useCategoryCall(csrfToken, 'move-products');
   const [target, setTarget] = useState<string | null>(null);
   const [reason, setReason] = useState('');
@@ -333,7 +334,7 @@ export function MoveProductsDialog({
                 aria-describedby={note === undefined ? undefined : noteId}
                 onClick={() => void submit()}
               >
-                {t('action')}
+                {actionLabel(t('action'), reviewed)}
               </Button>
             )}
           </>
@@ -372,7 +373,7 @@ export function MoveProductsDialog({
               ) : null}
             </>
           )}
-          <p className="m-0">{t('intro', { name })}</p>
+          <p className="m-0">{t(reviewed ? 'approval-intro' : 'intro', { name })}</p>
           {reviewed ? <Banner tone="info">{t('approval-note')}</Banner> : null}
           <TargetPicker
             legend={t('target')}

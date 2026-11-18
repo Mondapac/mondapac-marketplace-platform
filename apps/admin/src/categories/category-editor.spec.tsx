@@ -282,16 +282,22 @@ describe('category editor (C3b)', () => {
       await pick('Oils');
       fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
       const dialog = screen.getByRole('dialog');
+      // It only files a request: the wording says so, and promises nothing final.
       expect(
-        within(dialog).getByText(/Nothing changes until another admin approves it/),
+        within(dialog).getByText(
+          'Nothing changes until another admin approves it in Admin Inbox > System requests.',
+        ),
       ).toBeTruthy();
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+      expect(within(dialog).getByText(/If another admin approves, it is archived/)).toBeTruthy();
+      expect(within(dialog).queryByText(/can not be undone/)).toBeNull();
+      expect(within(dialog).queryByRole('button', { name: 'Discard' })).toBeNull();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
       expect(await within(dialog).findByText(/Write a note for the reviewers/)).toBeTruthy();
       expect(writes()).toHaveLength(0);
       fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
         target: { value: ' Never used ' },
       });
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
       await waitFor(() => expect(writes()).toHaveLength(1));
       expect(writes()[0]![2]).toEqual({ treeVersion: 7, note: 'Never used' });
       await expectToast('Sent for approval (SR-12)', 'info');
@@ -310,6 +316,10 @@ describe('category editor (C3b)', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
       const dialog = screen.getByRole('dialog');
       expect(within(dialog).queryByLabelText('Note for reviewers')).toBeNull();
+      // Unreviewed: the wording is the discard's own, final one.
+      expect(within(dialog).getByText(/This can not be undone here/)).toBeTruthy();
+      expect(within(dialog).queryByText(/Nothing changes until/)).toBeNull();
+      expect(within(dialog).queryByRole('button', { name: 'Send for approval' })).toBeNull();
       fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
       await waitFor(() => expect(writes()).toHaveLength(1));
       expect(writes()[0]![2]).toEqual({ treeVersion: 7 });
@@ -334,7 +344,7 @@ describe('category editor (C3b)', () => {
       fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
         target: { value: 'Never used' },
       });
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
       expect(
         await screen.findByText(/already has a change waiting for approval \(SR-7\)/),
       ).toBeTruthy();
@@ -360,6 +370,48 @@ describe('category editor (C3b)', () => {
         note: 'Rice after oils',
       });
       await expectToast('Sent for review as SR-44', 'info');
+    });
+
+    it('keeps the Move down note dialog open and says so when the server refuses the note', async () => {
+      serve(
+        {
+          ok: false,
+          failure: {
+            status: 400,
+            code: 'validation.failed',
+            details: { fields: [{ path: 'note', code: 'too-long' }] },
+          },
+        },
+        reviewed,
+      );
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Rice');
+      fireEvent.click(screen.getByRole('button', { name: 'Move down' }));
+      const dialog = screen.getByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: 'Rice after oils' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Move down' }));
+      expect(await within(dialog).findByText(/The note was refused/)).toBeTruthy();
+      expect(writes()).toHaveLength(1);
+      expect(screen.getByRole('dialog')).toBe(dialog);
+      // The note can be written again in the same dialog.
+      expect(within(dialog).getByLabelText<HTMLTextAreaElement>('Note for reviewers').value).toBe(
+        'Rice after oils',
+      );
+    });
+
+    it('closes the Move down note dialog on any other refusal, which the page shows', async () => {
+      serve({ ok: false, failure: { status: 409, code: 'category.reorder-edge' } }, reviewed);
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Rice');
+      fireEvent.click(screen.getByRole('button', { name: 'Move down' }));
+      const dialog = screen.getByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: 'Rice after oils' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Move down' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
   });
 

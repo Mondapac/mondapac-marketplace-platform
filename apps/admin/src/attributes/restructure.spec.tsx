@@ -195,6 +195,8 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     expect(within(dialog).queryByRole('list', { hidden: true })).toBeNull();
     expect(within(dialog).getByText('12')).toBeTruthy();
     const confirm = within(dialog).getByRole('button', { name: 'Merge values' });
+    expect(within(dialog).queryByText(/Nothing changes until/)).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Send for approval' })).toBeNull();
     expect((confirm as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(within(dialog).getByLabelText('Merge this value'), {
       target: { value: 'can' },
@@ -233,13 +235,24 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
       const dialog = await screen.findByRole('dialog');
       await within(dialog).findByText('Published products');
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Archive attribute' }));
+      // It only files a request: the wording says so, and promises nothing final.
+      expect(
+        within(dialog).getByText(
+          'Nothing changes until another admin approves it in Admin Inbox > System requests.',
+        ),
+      ).toBeTruthy();
+      expect(
+        within(dialog).getByText(/If another admin approves, it is no longer offered/),
+      ).toBeTruthy();
+      expect(within(dialog).queryByText(/cannot be brought back/)).toBeNull();
+      expect(within(dialog).queryByRole('button', { name: 'Archive attribute' })).toBeNull();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
       expect(await within(dialog).findByText(/Write a note for the reviewers/)).toBeTruthy();
       expect(writes()).toHaveLength(0);
       fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
         target: { value: 'Nobody uses it' },
       });
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Archive attribute' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
       await expectToast('Sent for approval (SR-31)', 'info');
       expect(writes()[0]).toEqual([
         'POST',
@@ -265,7 +278,16 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
         target: { value: 'Same container' },
       });
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Merge values' }));
+      expect(
+        within(dialog).getByText(
+          'Nothing changes until another admin approves it in Admin Inbox > System requests.',
+        ),
+      ).toBeTruthy();
+      expect(
+        within(dialog).getByText(/If another admin approves, the value you merge away/),
+      ).toBeTruthy();
+      expect(within(dialog).queryByRole('button', { name: 'Merge values' })).toBeNull();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
       await expectToast('Sent for approval (SR-31)', 'info');
       expect(writes()[0]![2]).toEqual({
         version: 4,
@@ -289,7 +311,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
         target: { value: 'Nobody uses it' },
       });
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Archive attribute' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
       expect(
         await within(dialog).findByText(/already has a change waiting for approval/),
       ).toBeTruthy();
@@ -318,6 +340,8 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
     const dialog = await screen.findByRole('dialog');
     await within(dialog).findByText('Published products');
+    expect(within(dialog).getByText(/It cannot be brought back/)).toBeTruthy();
+    expect(within(dialog).queryByText(/Nothing changes until/)).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Archive attribute' }));
     await expectToast('Attribute archived.');
     expect(writes()[0]).toEqual([
@@ -585,6 +609,8 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       const dialog = await screen.findByRole('dialog');
       const confirm = within(dialog).getByRole('button', { name: 'Merge attributes' });
       await within(dialog).findByText('Published products');
+      expect(within(dialog).getByText(/This cannot be undone/)).toBeTruthy();
+      expect(within(dialog).queryByText(/Nothing changes until/)).toBeNull();
       expect((confirm as HTMLButtonElement).disabled).toBe(true);
       fireEvent.change(await within(dialog).findByLabelText('Merge into'), {
         target: { value: id(2) },
@@ -611,6 +637,30 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
         },
         'csrf-1',
       ]);
+    });
+
+    it('only sends a merge for approval where the Market reviews area catalogue', async () => {
+      merging({
+        [`GET catalog/admin/attributes/${id(1)}`]: ok(
+          detail(locales, { review: { reviewed: true, risk: 'medium' } }),
+        ),
+      });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Merge into attribute' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      expect(
+        within(dialog).getByText(
+          'Nothing changes until another admin approves it in Admin Inbox > System requests.',
+        ),
+      ).toBeTruthy();
+      expect(
+        within(dialog).getByText(/If another admin approves, Pack type is archived/),
+      ).toBeTruthy();
+      expect(within(dialog).queryByText(/cannot be undone/)).toBeNull();
+      expect(within(dialog).queryByRole('button', { name: 'Merge attributes' })).toBeNull();
+      expect(within(dialog).getByRole('button', { name: 'Send for approval' })).toBeTruthy();
+      expect(within(dialog).getByLabelText('Note for reviewers')).toBeTruthy();
     });
 
     it('says when there is no other attribute of the type', async () => {

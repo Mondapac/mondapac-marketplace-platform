@@ -93,18 +93,27 @@ export function CategoryToolbar({
     document.querySelector<HTMLElement>(`[data-row-id="${category.id}"]`)?.focus();
   }, [open, category.id]);
 
-  async function reorder(direction: 'up' | 'down', note?: string) {
+  async function reorder(
+    direction: 'up' | 'down',
+    note?: string,
+  ): Promise<'done' | 'note-refused'> {
     const answer = await move.run<WriteWrap>('POST', `${API_CATEGORIES}/${category.id}/reorder`, {
       direction,
       treeVersion: body.treeVersion,
       ...(note === undefined ? {} : { note }),
     });
+    // A refused note stays in the note dialog, on its field, so it can be written again.
+    if (!answer.ok && note !== undefined && answer.problem?.fields['note'] !== undefined) {
+      move.clear();
+      return 'note-refused';
+    }
     setOpen(null);
     // A refusal stays in view with a button to read again; reading at once would clear it.
     if (answer.ok) {
       sentForReview(answer.body);
       onChanged(t(direction === 'up' ? 'note-up' : 'note-down'), category.id);
     }
+    return 'done';
   }
   const askReorder = (direction: 'up' | 'down') => {
     if (reviewed) setOpen(direction === 'up' ? 'reorder-up' : 'reorder-down');
@@ -250,7 +259,7 @@ export function CategoryToolbar({
           action={t(open === 'reorder-up' ? 'move-up' : 'move-down')}
           pending={move.pending}
           onClose={() => setOpen(null)}
-          onSubmit={(note) => void reorder(open === 'reorder-up' ? 'up' : 'down', note)}
+          onSubmit={(note) => reorder(open === 'reorder-up' ? 'up' : 'down', note)}
         />
       ) : null}
       {open === 'add-child' ? (

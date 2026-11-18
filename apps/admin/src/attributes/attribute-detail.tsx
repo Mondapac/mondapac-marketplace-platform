@@ -18,7 +18,13 @@ import {
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
-import { ReviewNoteField, trimmedNote, useSentForApproval } from '../shared/review-note.tsx';
+import {
+  ApprovalNotice,
+  ReviewNoteField,
+  trimmedNote,
+  useApprovalAction,
+  useSentForApproval,
+} from '../shared/review-note.tsx';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
 import { AttributeEditForm } from './attribute-edit-form.tsx';
@@ -435,6 +441,7 @@ function StatusDialog({
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
   const sentForApproval = useSentForApproval();
+  const actionLabel = useApprovalAction();
 
   async function confirm() {
     const sentNote = approval ? trimmedNote(note) : null;
@@ -474,12 +481,12 @@ function StatusDialog({
             <Button onClick={() => onEdit(problem.fields)}>{t('edit-attribute')}</Button>
           ) : (
             <Button
-              variant={kind === 'discard' ? 'destructive-solid' : 'primary'}
+              variant={kind === 'discard' && !approval ? 'destructive-solid' : 'primary'}
               loading={call.pending}
               disabled={call.pending}
               onClick={() => void confirm()}
             >
-              {t(kind)}
+              {actionLabel(t(kind), approval)}
             </Button>
           )}
         </>
@@ -491,7 +498,8 @@ function StatusDialog({
             {TEXT_FIX.has(problem.key) ? t(`publish-${problem.key}`) : te(`error.${problem.key}`)}
           </Banner>
         )}
-        <p>{t(`${kind}-body`)}</p>
+        <p>{approval ? t('discard-approval-body') : t(`${kind}-body`)}</p>
+        {approval ? <ApprovalNotice /> : null}
         {kind === 'publish' && missing.length > 0 ? (
           <p className="text-sm text-fg-muted">
             {t('publish-missing', { languages: missing.join(', ') })}

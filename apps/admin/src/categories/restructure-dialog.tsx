@@ -4,7 +4,7 @@ import { Banner, Button, Dialog, SkeletonRows, TextAreaField, TextField } from '
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
-import { useSentForApproval, useSentForReview } from '../shared/review-note.tsx';
+import { useApprovalAction, useSentForApproval, useSentForReview } from '../shared/review-note.tsx';
 import { CategoryProblemBanner } from './category-problem.tsx';
 import {
   TOP,
@@ -228,6 +228,7 @@ export function RestructureDialog({
   const approval = kind !== 'move' && body.review?.reviewed === true;
   const sentForApproval = useSentForApproval();
   const sentForReview = useSentForReview();
+  const actionLabel = useApprovalAction();
 
   async function submit() {
     if (!ready) return;
@@ -280,13 +281,13 @@ export function RestructureDialog({
             <Button onClick={onReload}>{t('reload')}</Button>
           ) : (
             <Button
-              variant={kind === 'archive' ? 'destructive-solid' : 'primary'}
+              variant={kind === 'archive' && !approval ? 'destructive-solid' : 'primary'}
               loading={call.pending}
               disabled={!ready}
               aria-describedby={note === undefined ? undefined : noteId}
               onClick={() => void submit()}
             >
-              {t(`action.${kind}`)}
+              {actionLabel(t(`action.${kind}`), approval)}
             </Button>
           )}
         </>
@@ -294,8 +295,11 @@ export function RestructureDialog({
     >
       <div className="flex flex-col gap-4">
         <CategoryProblemBanner problem={problem} />
-        <p className="m-0">{t(`intro.${kind}`, { name })}</p>
-        {kind === 'archive' ? <Banner tone="attention">{t('terminal')}</Banner> : null}
+        <p className="m-0">
+          {approval ? t(`approval-intro.${kind}`, { name }) : t(`intro.${kind}`, { name })}
+        </p>
+        {/* Nothing is archived yet while it waits for approval, so no terminal warning then. */}
+        {kind === 'archive' && !approval ? <Banner tone="attention">{t('terminal')}</Banner> : null}
         {approval ? <Banner tone="info">{t('approval-note')}</Banner> : null}
         {picks ? (
           <TargetPicker

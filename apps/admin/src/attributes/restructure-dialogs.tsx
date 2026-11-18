@@ -4,7 +4,13 @@ import { Banner, Button, Dialog, LoadError, Select, SkeletonRows } from '@mondap
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
-import { ReviewNoteField, trimmedNote, useSentForApproval } from '../shared/review-note.tsx';
+import {
+  ApprovalNotice,
+  ReviewNoteField,
+  trimmedNote,
+  useApprovalAction,
+  useSentForApproval,
+} from '../shared/review-note.tsx';
 import { loadActiveAttributes } from './load-active-attributes.ts';
 import { useAttributeCall } from './use-attribute-call.ts';
 import {
@@ -25,6 +31,7 @@ function useApprovalNote(active: boolean) {
   const [note, setNote] = useState('');
   const [error, setError] = useState<'required' | 'rejected' | null>(null);
   const sentForApproval = useSentForApproval();
+  const actionLabel = useApprovalAction();
   return {
     /** What to add to the body; null when the note is missing (the field then says so). */
     body(): Readonly<Record<string, string>> | null {
@@ -39,6 +46,12 @@ function useApprovalNote(active: boolean) {
     },
     /** Whether the answer is a proposal ("Sent for approval (SR-n)"): nothing changed yet. */
     sent: sentForApproval,
+    /** Whether the action only files a request for approval. */
+    active,
+    /** The action's label: "Send for approval" when it only files a request. */
+    action: (label: string): string => actionLabel(label, active),
+    /** Says that nothing changes until another admin approves it. */
+    notice: active ? <ApprovalNotice /> : null,
     field: active ? (
       <ReviewNoteField
         approval
@@ -234,7 +247,7 @@ export function MergeValuesDialog({
                 if (load.state === 'ready') void merge(load.answer.attribute.version);
               }}
             >
-              {t('merge-confirm')}
+              {approval.action(t('merge-confirm'))}
             </Button>
           )}
         </>
@@ -242,7 +255,8 @@ export function MergeValuesDialog({
     >
       <div className="flex flex-col gap-3">
         {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
-        <p>{t('merge-body')}</p>
+        <p>{t(approval.active ? 'merge-approval-body' : 'merge-body')}</p>
+        {approval.notice}
         <Select
           label={t('merge-source')}
           placeholder={t('choose')}
@@ -431,14 +445,14 @@ export function ArchiveDialog({
             <Button onClick={onReload}>{te('reload')}</Button>
           ) : (
             <Button
-              variant={material ? 'primary' : 'destructive-solid'}
+              variant={material || approval.active ? 'primary' : 'destructive-solid'}
               loading={call.pending}
               disabled={call.pending || load.state !== 'ready' || block !== null}
               onClick={() => {
                 if (load.state === 'ready') void send(load.answer.attribute.version);
               }}
             >
-              {t(material ? 'archive-request-send' : 'archive-confirm')}
+              {material ? t('archive-request-send') : approval.action(t('archive-confirm'))}
             </Button>
           )}
         </>
@@ -447,7 +461,16 @@ export function ArchiveDialog({
       <div className="flex flex-col gap-3">
         {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
         {block === null ? null : <Banner tone="attention">{t(`blocked.${block}`)}</Banner>}
-        <p>{t(material ? 'archive-request-body' : 'archive-body')}</p>
+        <p>
+          {t(
+            material
+              ? 'archive-request-body'
+              : approval.active
+                ? 'archive-approval-body'
+                : 'archive-body',
+          )}
+        </p>
+        {approval.notice}
         <ImpactBody load={load} retry={retry}>
           {(answer) => (
             <>
@@ -621,7 +644,7 @@ export function MergeAttributesDialog({
                 }
               }}
             >
-              {t('merge-attributes-confirm')}
+              {approval.action(t('merge-attributes-confirm'))}
             </Button>
           )}
         </>
@@ -629,7 +652,12 @@ export function MergeAttributesDialog({
     >
       <div className="flex flex-col gap-3">
         {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
-        <p>{t('merge-attributes-body', { name })}</p>
+        <p>
+          {t(approval.active ? 'merge-attributes-approval-body' : 'merge-attributes-body', {
+            name,
+          })}
+        </p>
+        {approval.notice}
         {candidates.state === 'loading' ? (
           <SkeletonRows rows={1} label={t('merge-attributes-loading')} />
         ) : null}

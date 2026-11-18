@@ -1137,6 +1137,10 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const panel = await screen.findByRole('region', { name: 'Attribute details' });
     fireEvent.click(await within(panel).findByRole('button', { name: 'Discard draft' }));
     const dialog = await screen.findByRole('dialog', { name: 'Discard Attribute 1?' });
+    // Unreviewed: the discard's own, final wording.
+    expect(within(dialog).getByText(/can never be published/)).toBeTruthy();
+    expect(within(dialog).queryByText(/Nothing changes until/)).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Send for approval' })).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
     await expectToast('Draft discarded.');
     expect(writes('POST')[0]?.path).toBe(`catalog/admin/attributes/${id(1)}/discard`);
@@ -1158,13 +1162,24 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const panel = await screen.findByRole('region', { name: 'Attribute details' });
     fireEvent.click(await within(panel).findByRole('button', { name: 'Discard draft' }));
     const dialog = await screen.findByRole('dialog', { name: 'Discard Attribute 1?' });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
+    // It only files a request: the wording says so, and promises nothing final.
+    expect(
+      within(dialog).getByText(
+        'Nothing changes until another admin approves it in Admin Inbox > System requests.',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByText(/If another admin approves, the draft is archived/),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText(/can never be published/)).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Discard draft' })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
     expect(await within(dialog).findByText(/Write a note for the reviewers/)).toBeTruthy();
     expect(writes('POST')).toHaveLength(0);
     fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
       target: { value: 'Made by mistake' },
     });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
     await expectToast('Sent for approval (SR-52)', 'info');
     expect(writes('POST')[0]?.body).toEqual({ version: 1, note: 'Made by mistake' });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());

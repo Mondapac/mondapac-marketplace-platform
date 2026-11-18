@@ -4,8 +4,10 @@ import { Banner, Button, Dialog, Tabs, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
 import {
+  ApprovalNotice,
   ReviewNoteField,
   trimmedNote,
+  useApprovalAction,
   useSentForApproval,
   useSentForReview,
 } from '../shared/review-note.tsx';
@@ -513,6 +515,7 @@ export function ConfirmCategoryDialog({
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
   const sentForApproval = useSentForApproval();
+  const actionLabel = useApprovalAction();
 
   async function confirm() {
     const sentNote = approval ? trimmedNote(note) : null;
@@ -551,12 +554,12 @@ export function ConfirmCategoryDialog({
             <Button onClick={onReload}>{t('reload')}</Button>
           ) : (
             <Button
-              variant={kind === 'discard' ? 'destructive-solid' : 'primary'}
+              variant={kind === 'discard' && !approval ? 'destructive-solid' : 'primary'}
               loading={call.pending}
               disabled={call.pending}
               onClick={() => void confirm()}
             >
-              {t(`${kind}.action`)}
+              {actionLabel(t(`${kind}.action`), approval)}
             </Button>
           )}
         </>
@@ -564,7 +567,12 @@ export function ConfirmCategoryDialog({
     >
       <div className="flex flex-col gap-3">
         <CategoryProblemBanner problem={problem} />
-        <p className="m-0">{t(`${kind}.body`, { name, count: descendants })}</p>
+        <p className="m-0">
+          {approval
+            ? t('discard.approval-body', { name })
+            : t(`${kind}.body`, { name, count: descendants })}
+        </p>
+        {approval ? <ApprovalNotice /> : null}
         {kind === 'hide' && descendants > 0 ? (
           <p className="m-0">{t('hide.cascade', { count: descendants })}</p>
         ) : null}
@@ -586,7 +594,9 @@ export function ConfirmCategoryDialog({
 
 /**
  * Asks for the note of a change that has no dialog of its own (Move up, Move down) where the
- * Market reviews area catalogue (Admin Inbox > System requests), then runs it.
+ * Market reviews area catalogue (Admin Inbox > System requests), then runs it. `onSubmit` answers
+ * `note-refused` when the server refused the note: the dialog then stays open and says so on the
+ * field, as the other dialogs do; any other answer is the owner's to show.
  */
 export function ReviewNoteDialog({
   title,
@@ -599,11 +609,11 @@ export function ReviewNoteDialog({
   readonly action: string;
   readonly pending: boolean;
   readonly onClose: () => void;
-  readonly onSubmit: (note: string) => void;
+  readonly onSubmit: (note: string) => Promise<'done' | 'note-refused'>;
 }) {
   const t = useTranslations('categories.confirm');
   const [note, setNote] = useState('');
-  const [noteError, setNoteError] = useState<'required' | null>(null);
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
   return (
     <Dialog
       open
@@ -619,8 +629,13 @@ export function ReviewNoteDialog({
             disabled={pending}
             onClick={() => {
               const sent = trimmedNote(note);
-              if (sent === null) setNoteError('required');
-              else onSubmit(sent);
+              if (sent === null) {
+                setNoteError('required');
+                return;
+              }
+              void onSubmit(sent).then((outcome) => {
+                if (outcome === 'note-refused') setNoteError('rejected');
+              });
             }}
           >
             {action}
