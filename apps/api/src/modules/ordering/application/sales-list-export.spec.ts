@@ -206,6 +206,7 @@ describe.each(['AU', 'ZZ'] as const)('admin Sales list exports in market %s', (c
     const shipments = new ShipmentReader();
     const refunds = new RefundReader();
     const documents = new DocumentReader();
+    const carrierProgress = new FakeCarrierProgress();
     const context: CallContext = testCallContext(
       market,
       testAuthenticatedActor(market, {
@@ -221,11 +222,8 @@ describe.each(['AU', 'ZZ'] as const)('admin Sales list exports in market %s', (c
       shipments,
       refunds,
       documents,
-      exportShipments: new AdminExportShipments(gate, {
-        ...shared,
-        shipments,
-        carrierProgress: new FakeCarrierProgress(),
-      }),
+      carrierProgress,
+      exportShipments: new AdminExportShipments(gate, { ...shared, shipments, carrierProgress }),
       exportRefunds: new AdminExportRefunds(gate, { ...shared, refunds }),
       exportDocuments: new AdminExportDocuments(gate, { ...shared, documents }),
     };
@@ -276,7 +274,7 @@ describe.each(['AU', 'ZZ'] as const)('admin Sales list exports in market %s', (c
   });
 
   it('writes every shipment column with money split, times in the zone and the customer', async () => {
-    const { exportShipments, shipments, labels, context } = setup();
+    const { exportShipments, shipments, labels, carrierProgress, context } = setup();
     const row = shipment({
       deliveryMethod: 'scheduled',
       deliveryWindow: { start: T0, end: T0.add({ hours: 2 }) },
@@ -291,6 +289,13 @@ describe.each(['AU', 'ZZ'] as const)('admin Sales list exports in market %s', (c
     shipments.records = [row];
     labels.stores.set(row.sellerId, '=Store');
     labels.customers.set(row.accountId, { displayName: 'Sara', email: 'sara@example.test' });
+    carrierProgress.progress.set(row.sellerOrderId, {
+      progress: 'picked-up',
+      carrierStatus: 'PICKED_UP',
+      updatedAt: T0.add({ minutes: 5 }),
+      proofOfDelivery: false,
+      fleet: 'acme',
+    });
 
     const result = await exportShipments.execute(context, {});
     if (!result.ok) throw new Error(result.error.code);
@@ -301,7 +306,8 @@ describe.each(['AU', 'ZZ'] as const)('admin Sales list exports in market %s', (c
     const [header, line] = await linesOf(result.value.chunks);
     expect(header).toBe(
       'Order ID,Seller order ID,Stage,Delivery problem,Store,Seller ID,Customer,Customer email,' +
-        'Paid,Delivery method,Window start,Window end,Carrier,Tracking reference,Fleet,Ready,' +
+        'Paid,Delivery method,Window start,Window end,Carrier,Tracking reference,' +
+        'Carrier progress,Carrier status,Carrier updated,Fleet,Ready,' +
         'Shipped,Delivered,Delivery fee (incl. tax),Delivery fee (incl. tax) currency,' +
         'Total (incl. tax),Total (incl. tax) currency,Refunded (incl. tax),' +
         'Refunded (incl. tax) currency',
@@ -324,6 +330,9 @@ describe.each(['AU', 'ZZ'] as const)('admin Sales list exports in market %s', (c
         zonedText(T0.add({ hours: 2 }), zone),
         '"Acme, Couriers"',
         'TR 1',
+        'picked-up',
+        'PICKED_UP',
+        zonedText(T0.add({ minutes: 5 }), zone),
         'acme',
         at,
         at,
@@ -346,6 +355,73 @@ describe.each(['AU', 'ZZ'] as const)('admin Sales list exports in market %s', (c
     const [header, line] = await linesOf(result.value.chunks);
     expect(header).toBe('Order ID,Stage,Delivery problem,Customer,Customer email');
     expect(line!.endsWith(',to-prepare,,,')).toBe(true);
+  });
+
+  it('leaves the carrier progress cells empty without a booking or when carrier delivery is not available', async () => {
+    const { exportShipments, shipments, carrierProgress, context } = setup();
+    const booked = shipment();
+    shipments.records = [booked, shipment()];
+    carrierProgress.progress.set(booked.sellerOrderId, {
+      progress: 'booked',
+      carrierStatus: null,
+      updatedAt: T0,
+      proofOfDelivery: false,
+      fleet: 'acme',
+    });
+    const first = await exportShipments.execute(context, { columns: 'carrierProgress' });
+    if (!first.ok) throw new Error(first.error.code);
+    const [header, withBooking, without] = await linesOf(first.value.chunks);
+    expect(header).toBe(
+      'Order ID,Stage,Delivery problem,Carrier progress,Carrier status,Carrier updated',
+    );
+    expect(withBooking!.endsWith(`,booked,,${zonedText(T0, zone)}`)).toBe(true);
+    expect(without!.endsWith(',to-prepare,,,,')).toBe(true);
+
+    carrierProgress.denied = true;
+    const denied = await exportShipments.execute(context, { columns: 'carrierProgress' });
+    if (!denied.ok) throw new Error(denied.error.code);
+    const deniedLines = await linesOf(denied.value.chunks);
+    expect(deniedLines.slice(1).every((line) => line.endsWith(',,,'))).toBe(true);
+  });
+
+  it('writes a formula- or markup-shaped carrier status as inert text', async () => {
+    // Shipping never answers such a status (SHOWN_CARRIER_STATUS); this checks the file's own
+    // defence if one ever got through (Hassan S-1).
+    const { exportShipments, shipments, carrierProgress, context } = setup();
+    const rows = ['=1+1', '<b>X</b>', '-A1'].map((status) => {
+      const row = shipment();
+      carrierProgress.progress.set(row.sellerOrderId, {
+        progress: 'booked',
+        carrierStatus: status,
+        updatedAt: T0,
+        proofOfDelivery: false,
+        fleet: 'acme',
+      });
+      return row;
+    });
+    shipments.records = rows;
+    const csv = await exportShipments.execute(context, { columns: 'carrierProgress' });
+    if (!csv.ok) throw new Error(csv.error.code);
+    const statuses = (await linesOf(csv.value.chunks)).slice(1).map((line) => line.split(',')[4]);
+    expect(statuses).toEqual(["'=1+1", '<b>X</b>', "'-A1"]);
+
+    const xlsx = await exportShipments.execute(context, {
+      columns: 'carrierProgress',
+      format: 'xlsx',
+    });
+    if (!xlsx.ok) throw new Error(xlsx.error.code);
+    const parts: Uint8Array[] = [];
+    for await (const chunk of xlsx.value.chunks) {
+      parts.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    }
+    const book = new ExcelJS.Workbook();
+    await book.xlsx.load(Buffer.concat(parts) as unknown as ArrayBuffer);
+    const sheet = book.getWorksheet('Shipments')!;
+    for (const [index, status] of ['=1+1', '<b>X</b>', '-A1'].entries()) {
+      const cell = sheet.getRow(index + 2).getCell(5);
+      expect(cell.type).toBe(ExcelJS.ValueType.String);
+      expect(cell.value).toBe(status);
+    }
   });
 
   it('writes the fixed columns first, then the chosen ones in the order given', async () => {
