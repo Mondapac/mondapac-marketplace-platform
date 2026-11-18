@@ -1,5 +1,5 @@
 import { defineEvent, eventField } from '@mondapac/shared-kernel';
-import type { EventDefinition } from '@mondapac/shared-kernel';
+import type { EventDefinition, Id, PendingEvent, Temporal } from '@mondapac/shared-kernel';
 import { REFUND_LIMIT_ALERTS } from '../refund-limits';
 
 /**
@@ -31,6 +31,19 @@ export const OrderCancelled = defineEvent({
     orderId: eventField.id(),
   },
 });
+
+/** The {@link OrderCancelled} of an order just saved cancelled (`version` is the saved one). */
+export function orderCancelledEvent(
+  order: { readonly id: Id<'Order'>; readonly version: number },
+  occurredAt: Temporal.Instant,
+): PendingEvent {
+  return OrderCancelled.record({
+    aggregateId: order.id,
+    aggregateVersion: order.version,
+    occurredAt,
+    payload: { orderId: order.id },
+  });
+}
 
 /**
  * A seller recorded the shipment of its part of a paid order (Phase 6 package 3), once per

@@ -73,6 +73,16 @@
   "identity.mail.confirm-second-factor-reset.seller.heading": "2段階認証のリセットの確認",
   "identity.mail.confirm-second-factor-reset.seller.body": "サポートが出品者アカウントの2段階認証の無効化を開始しました。確認するまで何も変更されません。確認すると2段階認証が無効になり、すべてのセッションが終了し、再設定するまでパスワードだけでサインインします。下のリンクから確認してください。リンクの有効期間は{duration}で、一度だけ使えます。",
   "identity.mail.confirm-second-factor-reset.seller.action": "2段階認証を無効にする",
+  "identity.mail.confirm-email-change.customer.subject": "MondaPacアカウントの新しいサインイン用メールアドレスを確認してください",
+  "identity.mail.confirm-email-change.customer.heading": "新しいサインイン用メールアドレスの確認",
+  "identity.mail.confirm-email-change.customer.body": "サポートチームに、顧客アカウントのサインイン用メールアドレスをこのアドレスに変更する依頼がありました。確認するまで何も変わりません。確認するには、下のリンクを開いてアカウントのパスワードを入力してください。確認後はこのアドレスでサインインし、すべての端末からサインアウトされます。リンクの有効期間は{duration}で、1回だけ使えます。",
+  "identity.mail.confirm-email-change.customer.action": "新しいメールアドレスを確認する",
+  "identity.mail.email-change-requested.customer.subject": "MondaPacのサインイン用メールアドレスの変更が依頼されました",
+  "identity.mail.email-change-requested.customer.heading": "サインイン用メールアドレスの変更依頼",
+  "identity.mail.email-change-requested.customer.body": "{time}に、サポートチームが顧客アカウントのサインイン用メールアドレスを{address}に変更するよう依頼しました。そのアドレスからパスワードで確認されるまで何も変わりません。引き続きこのアドレスでサインインできます。",
+  "identity.mail.email-changed.customer.subject": "MondaPacのサインイン用メールアドレスが変更されました",
+  "identity.mail.email-changed.customer.heading": "サインイン用メールアドレスが変更されました",
+  "identity.mail.email-changed.customer.body": "{time}に、顧客アカウントのサインイン用メールアドレスが{address}に変更されました。すべての端末からサインアウトされました。このアドレスではもうサインインできません。",
   "identity.mail.invitation.seller.subject": "出品者として招待されました",
   "identity.mail.invitation.seller.heading": "出品者アカウントへの招待",
   "identity.mail.invitation.seller.body": "出品者アカウントが作成されました。下のリンクを開いてパスワードを設定してください。招待の有効期間は{duration}で、一度だけ使えます。",
@@ -101,5 +111,6 @@
   "identity.mail.common.account-line.admin": "このメールは管理者アカウントについてです。",
   "identity.mail.common.ignore": "心当たりがない場合は、このメールを無視してください。",
   "identity.mail.common.not-you": "心当たりがない場合は、すぐにサインインページからパスワードを再設定してください。",
+  "identity.mail.common.contact-support": "心当たりがない場合は、すぐにMondaPacサポートにお問い合わせください。",
   "identity.mail.common.footer": "このメールは自動送信です。返信は読まれません。"
 }

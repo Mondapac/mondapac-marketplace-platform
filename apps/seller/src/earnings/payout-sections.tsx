@@ -9,7 +9,8 @@ import {
   DataList,
   EmptyState,
   LoadError,
-  SkeletonRows,
+  DetailSkeleton,
+  TableSkeleton,
   type BadgeTone,
 } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
@@ -150,7 +151,15 @@ export function PayoutSections({
   return (
     <>
       <Card title={t('next.title')}>
-        {next === 'loading' ? <SkeletonRows label={t('loading')} rows={2} /> : null}
+        {next === 'loading' ? (
+          <DetailSkeleton
+            label={t('loading')}
+            slowLabel={tl('slow')}
+            rows={3}
+            title={false}
+            framed={false}
+          />
+        ) : null}
         {next !== 'loading' && next.kind === 'failed' ? (
           <LoadError
             className="flex flex-col items-start gap-3"
@@ -206,7 +215,20 @@ export function PayoutSections({
         <h2 id="held-title" className="text-lg font-semibold">
           {t('held.title')}
         </h2>
-        {holds === 'loading' ? <SkeletonRows label={t('loading')} rows={3} /> : null}
+        {holds === 'loading' ? (
+          <TableSkeleton
+            label={t('loading')}
+            slowLabel={tl('slow')}
+            rows={3}
+            columns={[
+              { header: t('held.col.order'), kind: 'title' },
+              { header: t('held.col.reason'), kind: 'status' },
+              { header: t('held.col.why'), kind: 'text' },
+              { header: t('held.col.available'), kind: 'date' },
+              { header: t('held.col.share'), kind: 'number' },
+            ]}
+          />
+        ) : null}
         {holds !== 'loading' && holds.kind === 'failed' ? (
           <LoadError
             className="flex flex-col items-start gap-3"
@@ -240,7 +262,19 @@ export function PayoutSections({
         <h2 id="history-title" className="text-lg font-semibold">
           {t('history.title')}
         </h2>
-        {history === 'loading' ? <SkeletonRows label={t('loading')} rows={3} /> : null}
+        {history === 'loading' ? (
+          <TableSkeleton
+            label={t('loading')}
+            slowLabel={tl('slow')}
+            rows={4}
+            columns={[
+              { header: t('history.col.date'), kind: 'title' },
+              { header: t('history.col.status'), kind: 'status' },
+              { header: t('history.col.note'), kind: 'text' },
+              { header: t('history.col.amount'), kind: 'number' },
+            ]}
+          />
+        ) : null}
         {history !== 'loading' && history.kind === 'failed' ? (
           <LoadError
             className="flex flex-col items-start gap-3"

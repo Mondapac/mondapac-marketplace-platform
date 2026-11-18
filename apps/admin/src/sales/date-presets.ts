@@ -3,7 +3,7 @@
 // the clock of the list's zone (the zone the table shows; ADR-0005), never the browser's, and the
 // end is exclusive: the first instant after the last day. Pure, so it is tested without a page.
 
-import { startOfDay } from '../orders/orders-query.ts';
+import { startOfDay } from './day-start.ts';
 
 export const DATE_PRESETS = [
   'today',

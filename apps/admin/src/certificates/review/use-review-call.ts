@@ -18,12 +18,16 @@ export function useReviewCall(csrfToken: string) {
   const busy = useRef(false);
 
   const run = useCallback(
-    async <T>(path: string, body: unknown): Promise<ReviewOutcome<T>> => {
+    async <T>(
+      path: string,
+      body?: unknown,
+      method: 'GET' | 'POST' = 'POST',
+    ): Promise<ReviewOutcome<T>> => {
       if (busy.current) return { ok: false, problem: null };
       busy.current = true;
       setPending(true);
       setProblem(null);
-      const result = await callApi<T>('POST', path, body, csrfToken);
+      const result = await callApi<T>(method, path, body, csrfToken);
       busy.current = false;
       setPending(false);
       if (result.ok) return { ok: true, body: result.body };

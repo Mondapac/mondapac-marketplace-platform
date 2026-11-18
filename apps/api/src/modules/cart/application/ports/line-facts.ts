@@ -53,6 +53,25 @@ export interface LineFactsSource {
   ): Promise<ReadonlyMap<string, LineVerdict>>;
 
   /**
+   * The sell units of one Offer that catalog lists for sale now (published Offer and product,
+   * listed, the unit published and selling), in catalog's order, with the Offer's seller and
+   * product. `absent` when the Offer is unknown, of another Market, deleted or not listed; null
+   * when catalog could not be asked (fail closed). Advisory only: `evaluate` decides. Never throws.
+   */
+  offerSellUnits(
+    context: CallContext,
+    offerId: Id<'Offer'>,
+  ): Promise<
+    | {
+        readonly sellerId: Id<'Seller'>;
+        readonly productId: Id<'Product'>;
+        readonly variantIds: readonly Id<'Variant'>[];
+      }
+    | 'absent'
+    | null
+  >;
+
+  /**
    * The minimum order of each of the distinct sellers (cart design 6.4), from one
    * `sellers.sellerSummaries` batch per 100 ids. `none` only when `sellers` answered an explicit
    * none; a seller whose key is absent from the answer, or a failed call, is `unknown` (fail

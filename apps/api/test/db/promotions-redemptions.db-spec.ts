@@ -1,3 +1,8 @@
+import { QuoteOwnDiscounts } from '../../src/modules/promotions/application/use-cases/quote-own-discounts.use-case';
+import { RedeemOwnDiscounts } from '../../src/modules/promotions/application/use-cases/redeem-own-discounts.use-case';
+import { ListCustomerPromotionUsages } from '../../src/modules/promotions/application/use-cases/list-customer-promotion-usages.use-case';
+import { ListStaleRedemptions } from '../../src/modules/promotions/application/use-cases/list-stale-redemptions.use-case';
+import { SettleRedemptions } from '../../src/modules/promotions/application/use-cases/settle-redemptions.use-case';
 import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, Result } from '@mondapac/shared-kernel';
 import {
@@ -174,6 +179,10 @@ describe.each(TEST_MARKETS)('promotions redemptions in market %s (database)', (c
       make(QuoteDiscounts),
       make(RedeemDiscounts),
       make(CheckWasPrice),
+      make(QuoteOwnDiscounts),
+      make(RedeemOwnDiscounts),
+      make(ListStaleRedemptions),
+      make(SettleRedemptions),
     );
   const state = (promise: Promise<unknown>) =>
     promise.then(
@@ -446,6 +455,129 @@ describe.each(TEST_MARKETS)('promotions redemptions in market %s (database)', (c
         fields.month ?? null,
       ],
     );
+
+  it("lists the safety sweep's stale orders in pages by order id, and settles one (package T2)", async () => {
+    const productId = ids.next<'Product'>();
+    await created(
+      make(CreateOwnPromotion).execute(seller, {
+        type: 'SELLER_SALE',
+        name: 'Sweep',
+        funding: 'SELLER',
+        startsAt: startsAt(),
+        reward: { kind: 'PERCENT', bps: 1000 },
+        productIds: [productId],
+      }),
+    );
+    const placed = [];
+    for (let n = 0; n < 3; n += 1) {
+      const o = await pricedOrder(request(productId, 5000n, 1, { testMode: false }));
+      expect(await o.redeem()).toEqual({ ok: true, value: { outcome: 'redeemed' } });
+      placed.push(o.orderId);
+    }
+    const mine = new Set<string>(placed);
+    const later = clock.now().add({ hours: 1 });
+    const stale = async (after?: Id<'Order'>) => {
+      const listed = await facade().staleRedemptions(system, {
+        before: later,
+        limit: 100,
+        ...(after === undefined ? {} : { after }),
+      });
+      if (!listed.ok) throw new Error(listed.error.code);
+      return listed.value.filter((orderId) => mine.has(orderId));
+    };
+    const sorted = [...placed].sort();
+    expect(await stale()).toEqual(sorted);
+    expect(await stale(sorted[0])).toEqual(sorted.slice(1));
+    expect(
+      await facade().staleRedemptions(system, {
+        before: clock.now().subtract({ hours: 1 }),
+        limit: 100,
+      }),
+    ).toMatchObject({ ok: true });
+
+    expect(
+      await facade().settleRedemptions(system, { orderId: sorted[1]!, outcome: 'cancelled' }),
+    ).toEqual({ ok: true, value: { outcome: 'released' } });
+    expect(await stale()).toEqual([sorted[0], sorted[2]]);
+  });
+
+  it("lists one customer's usages for the admin customer page, newest first in pages (phase 2b, item e)", async () => {
+    const productId = ids.next<'Product'>();
+    const sale = await created(
+      make(CreateOwnPromotion).execute(seller, {
+        type: 'SELLER_SALE',
+        name: 'Usage sale',
+        funding: 'SELLER',
+        startsAt: startsAt(),
+        reward: { kind: 'PERCENT', bps: 1000 },
+        productIds: [productId],
+      }),
+    );
+    const customerAccountId = ids.next<'Account'>();
+    const orders: Id<'Order'>[] = [];
+    for (let n = 0; n < 3; n += 1) {
+      const orderId = ids.next<'Order'>();
+      const req = { ...request(productId, 5000n, 1, { testMode: false }), customerAccountId };
+      const quoted = await facade().quote(system, req);
+      if (!quoted.ok) throw new Error('quote failed');
+      expect(
+        await facade().redeem(system, {
+          orderId,
+          customerAccountId,
+          request: req,
+          expected: summaryOf(quoted.value),
+        }),
+      ).toEqual({ ok: true, value: { outcome: 'redeemed' } });
+      orders.push(orderId);
+    }
+    expect(
+      await facade().settleRedemptions(system, { orderId: orders[1]!, outcome: 'cancelled' }),
+    ).toEqual({ ok: true, value: { outcome: 'released' } });
+    // The same account id in another Market never shows here.
+    const elsewhere = TEST_MARKETS.find((m) => m !== code)!;
+    const foreign = await owner.query<{ id: string }>(
+      `INSERT INTO promotions.redemptions (id, market_id, tenant_id, order_id, promotion_key, promotion_id,
+         kind, customer_account_id, code_hash, currency, amount_minor, seller_share_minor,
+         platform_share_minor, units, budget_month, status, reserved_at)
+       VALUES (gen_random_uuid(), $1, 'default', $2, 'first-order', NULL, 'FIRST_ORDER', $3, NULL, $4,
+         500, 0, 500, NULL, '2026-10', 'RESERVED', now() + interval '1 day')
+       RETURNING id`,
+      [marketOf(elsewhere).marketId, ids.next<'Order'>(), customerAccountId, currency],
+    );
+    const list = (input: Record<string, unknown>) =>
+      make(ListCustomerPromotionUsages).execute(admin, { customerAccountId, ...input });
+    const first = await list({ limit: 2 });
+    if (!first.ok) throw new Error(first.error.code);
+    const second = await list({ limit: 2, cursor: first.value.nextCursor });
+    if (!second.ok) throw new Error(second.error.code);
+    expect(second.value.nextCursor).toBeNull();
+    const all = [...first.value.items, ...second.value.items];
+    // The clock is fixed, so the three share one instant and the id breaks the tie, descending.
+    expect(all.map((u) => u.record.id)).toEqual(
+      all
+        .map((u) => u.record.id)
+        .sort()
+        .reverse(),
+    );
+    expect(new Set(all.map((u) => u.record.orderId))).toEqual(new Set(orders));
+    expect(all.map((u) => u.record.id)).not.toContain(foreign.rows[0]!.id);
+    for (const usage of all) {
+      expect(usage.record.status).toBe(
+        usage.record.orderId === orders[1] ? 'RELEASED' : 'RESERVED',
+      );
+    }
+    for (const usage of all) {
+      expect(usage.promotionName).toBe('Usage sale');
+      expect(usage.record.promotionId).toBe(sale.id);
+      expect(usage.record.kind).toBe('PROMOTION');
+      expect(usage.record.currency).toBe(currency);
+      expect(usage.record.amount).toBe(500n);
+    }
+    const nobody = await make(ListCustomerPromotionUsages).execute(admin, {
+      customerAccountId: ids.next<'Account'>(),
+    });
+    expect(nobody.ok && nobody.value.items).toEqual([]);
+  });
 
   it('backs the per-customer first-order rule and the codes with constraints', async () => {
     const customer = ids.next<'Account'>();

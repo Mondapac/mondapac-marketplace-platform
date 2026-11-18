@@ -1,3 +1,5 @@
+import { SendEmailChangeRequestedMail } from './send-email-change-requested-mail.use-case';
+import { SendEmailChangedMail } from './send-email-changed-mail.use-case';
 import { Logger } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, PendingEvent, Result } from '@mondapac/shared-kernel';
@@ -184,6 +186,8 @@ function setUp() {
         grants: fakes.grantReader,
       }),
       new SendOtherSessionsSignedOutMail(gate, mailDeps),
+      new SendEmailChangeRequestedMail(gate, mailDeps),
+      new SendEmailChangedMail(gate, { ...mailDeps, emailChanges: fakes.emailChangeStore }),
     ),
     seed: new SeedRoles(gate, {
       unitOfWork,
@@ -291,7 +295,7 @@ describe('the checked-in role seed (identity design 5.6)', () => {
       ['platform', 'default', 'catalogue-moderator', 21],
       ['platform', 'default', 'operations-support', 9],
       ['platform', 'default', 'finance', 3],
-      ['platform', 'default', 'viewer', 34],
+      ['platform', 'default', 'viewer', 35],
       ['platform', 'default', 'certification-reviewer', 8],
       ['seller', 'system', 'seller-owner', 0],
       ['seller', 'default', 'store-manager', 8],
@@ -322,8 +326,21 @@ describe('the checked-in role seed (identity design 5.6)', () => {
     // for the responders only (SOC package 2, docs/design/data/security.md 6).
     // `customers.customers.view` is left out too: the Customers list and a customer's page show
     // names, sign-in addresses and order totals, so the Platform Administrator grants it role by
-    // role (customers phase 1, package B2).
+    // role (customers phase 1, package B2). `payments.customer-payment.view` is left out for the
+    // same reason: one customer's payments and disputes (customers phase 2b). So is
+    // `identity.customer-sign-in.view`: one customer's sign-ins and sessions (customers phase 2b).
+    // So are the other owners' keys of one customer's page (phase 2b, part 2): the cart, the
+    // reminders sent, the behaviour, the consent and the assistant conversation dates. So is
+    // reviews' read of one customer's reviews, ratings, votes and reports (phase 2b, part 3).
     const DECRYPTING_VIEW_KEYS = [
+      'identity.customer-sign-in.view',
+      'reviews.customer-review.view',
+      'cart.customer-cart.view',
+      'notifications.customer-cart-reminder.view',
+      'engagement.customer-behaviour.view',
+      'legal.customer-consent.view',
+      'assistant.customer-conversation.view',
+      'payments.customer-payment.view',
       'security.centre.view',
       'customers.customers.view',
       'sellers.business-details.view',
@@ -436,6 +453,21 @@ describe('the checked-in role seed (identity design 5.6)', () => {
         expect([role.seedCode, role.permissionKeys]).toEqual([
           role.seedCode,
           expect.arrayContaining(['sellers.business-details.view']),
+        ]);
+      }
+    }
+  });
+
+  it('every default role that sees orders also sees carrier delivery (the Shipments list column, Q-3)', () => {
+    // Shipping's own key gates the column; an admin with the list and without it sees
+    // "Not available", so a default role never holds one without the other.
+    const defaults = new CheckedInRoleSeed().roles().filter((role) => role.kind === 'default');
+    expect(defaults.some((role) => role.permissionKeys.includes('ordering.order.view'))).toBe(true);
+    for (const role of defaults) {
+      if (role.permissionKeys.includes('ordering.order.view')) {
+        expect([role.seedCode, role.permissionKeys]).toEqual([
+          role.seedCode,
+          expect.arrayContaining(['shipping.carrier-delivery.view']),
         ]);
       }
     }
@@ -1353,6 +1385,9 @@ describe.each(TEST_MARKETS)('seller account and limited sign-in in market %s (sl
           'identity.other-sessions-signed-out-mail',
           'identity.account-other-sessions-signed-out.v1',
         ],
+        // Customers admin email change: the warning and the changed notice.
+        ['identity.email-change-requested-mail', 'identity.account-email-change-requested.v1'],
+        ['identity.email-changed-mail', 'identity.account-email-changed.v1'],
       ]);
       expect(s.subscriptions.map((x) => x.event.type)).not.toContain(
         'identity.account-email-verified.v1',
