@@ -30,6 +30,7 @@ import type {
 import type { AdminDocumentListReader } from './ports/admin-document-list.reader';
 import type { AdminRefundListReader } from './ports/admin-refund-list.reader';
 import type { AdminShipmentListReader } from './ports/admin-shipment-list.reader';
+import { MAX_CARRIER_PROGRESS_IDS } from '../../shipping';
 import { SALES_EXPORT_MAX_IDS, SALES_EXPORT_PAGE, zonedText } from './sales-list-export';
 import { AdminExportDocuments } from './use-cases/admin-export-documents.use-case';
 import { AdminExportRefunds } from './use-cases/admin-export-refunds.use-case';
@@ -173,6 +174,10 @@ async function textOf(chunks: AsyncIterable<string | Uint8Array>): Promise<strin
 
 const linesOf = async (chunks: AsyncIterable<string | Uint8Array>) =>
   (await textOf(chunks)).split('\r\n').filter((line) => line !== '');
+
+it('reads a page no larger than shipping answers carrier progress for (else the cells go empty)', () => {
+  expect(SALES_EXPORT_PAGE).toBeLessThanOrEqual(MAX_CARRIER_PROGRESS_IDS);
+});
 
 describe.each(['AU', 'ZZ'] as const)('admin Sales list exports in market %s', (code) => {
   const market = testMarketContext(code, 'default');
