@@ -9,7 +9,16 @@ import {
 import { useTranslations } from 'next-intl';
 import { callApi } from '../api/client.ts';
 import { problemOf } from '../catalog/products-saved-save.tsx';
-import { LIST_KEY, payloadOf, type Query, type SavedFilter } from './list-types.ts';
+
+/** What the dialogs need of a saved filter; each list keeps its own payload. */
+export interface SavedFilterShape {
+  readonly id: string;
+  readonly name: string;
+  readonly visibility: 'me' | 'everyone';
+  readonly ownedByMe: boolean;
+  readonly canManage: boolean;
+  readonly count?: number | null;
+}
 
 function useFieldLabels(limits: { readonly perOwner: number; readonly shared: number }) {
   const t = useTranslations('customers.list.saved');
@@ -42,7 +51,8 @@ function useFieldLabels(limits: { readonly perOwner: number; readonly shared: nu
 export function CustomersSavedDialogs({
   dialog,
   onClose,
-  query,
+  listKey,
+  payload,
   summary,
   filters,
   canShare,
@@ -53,13 +63,16 @@ export function CustomersSavedDialogs({
 }: {
   readonly dialog: 'save' | 'manage' | null;
   readonly onClose: () => void;
-  readonly query: Query;
+  /** The list the filters belong to (`admin.customers.customers`). */
+  readonly listKey: string;
+  /** The closed document the list keeps for its current view. */
+  readonly payload: unknown;
   readonly summary: string;
-  readonly filters: readonly SavedFilter[];
+  readonly filters: readonly SavedFilterShape[];
   readonly canShare: boolean;
   readonly limits: { readonly perOwner: number; readonly shared: number };
   readonly csrfToken: string;
-  readonly onSaved: (filter: SavedFilter) => void;
+  readonly onSaved: (filter: SavedFilterShape) => void;
   readonly onChanged: () => void;
 }) {
   const t = useTranslations('customers.list.saved');
@@ -91,10 +104,10 @@ export function CustomersSavedDialogs({
         canShare={canShare}
         labels={{ ...fields, title: t('save.title'), submit: t('save.submit') }}
         onSubmit={async ({ name, visibility }) => {
-          const result = await callApi<SavedFilter>(
+          const result = await callApi<SavedFilterShape>(
             'POST',
             'customers/admin/saved-filters',
-            { listKey: LIST_KEY, name, visibility, payload: payloadOf(query) },
+            { listKey, name, visibility, payload },
             csrfToken,
           );
           if (!result.ok) return problemOf(result.failure);
@@ -112,7 +125,7 @@ export function CustomersSavedDialogs({
         canShare={canShare}
         labels={manageLabels}
         onUpdate={async (id, input) => {
-          const result = await callApi<SavedFilter>(
+          const result = await callApi<SavedFilterShape>(
             'PUT',
             `customers/admin/saved-filters/${encodeURIComponent(id)}`,
             input,

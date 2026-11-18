@@ -50,6 +50,7 @@ import {
   defaultDirection,
   filterCount,
   orderNumberOf,
+  payloadOf,
   queryOfPayload,
   searchOf,
   selectorOf,
@@ -65,6 +66,7 @@ import {
   type View,
 } from './list-types.ts';
 import { ORDERS_VIEW } from './page-types.ts';
+import { shortId, useSellerNames } from './seller-names.tsx';
 
 type Failure = 'denied' | 'invalid' | 'unavailable';
 
@@ -130,6 +132,7 @@ export function CustomersList({
   const [groups, setGroups] = useState<readonly GroupRef[] | null>(null);
   const fixedGroup = group?.groupId ?? null;
   const latest = useRef(0);
+  const sellers = useSellerNames();
   const storageKey = prefsKey('admin', marketId, accountId, 'customers-columns');
 
   const list = useSuperListQuery<Query>({
@@ -179,6 +182,13 @@ export function CustomersList({
   useEffect(() => {
     void loadSaved();
   }, [loadSaved]);
+
+  // The store a saved filter names is read once, for its chip.
+  const followsId = query.filters.follows;
+  const { resolve } = sellers;
+  useEffect(() => {
+    if (followsId !== undefined) void resolve([followsId], csrfToken);
+  }, [followsId, resolve, csrfToken]);
 
   const load = useCallback(
     async (next: Query) => {
@@ -271,6 +281,9 @@ export function CustomersList({
         : formatMinor(value, currency, locale);
     }
     if (key === 'ordersMin' || key === 'ordersMax') return number(Number(value));
+    if (key === 'follows') {
+      return sellers.names.get(value) ?? t('filter.follows-unknown', { id: shortId(value) });
+    }
     if (key === 'group') {
       return groups?.find((known) => known.groupId === value)?.name ?? t('filter.group-unknown');
     }
@@ -548,6 +561,14 @@ export function CustomersList({
             filters={query.filters}
             currency={currency}
             groups={fixedGroup === null ? groups : null}
+            seller={{
+              csrfToken,
+              name:
+                query.filters.follows === undefined
+                  ? null
+                  : (sellers.names.get(query.filters.follows) ?? null),
+              onChosen: sellers.remember,
+            }}
             {...(canFindOrder
               ? {
                   orderNumber: query.orderNumber,
@@ -702,7 +723,8 @@ export function CustomersList({
           <CustomersSavedDialogs
             dialog={dialog}
             onClose={() => setDialog(null)}
-            query={query}
+            listKey={LIST_KEY}
+            payload={payloadOf(query)}
             summary={summary}
             filters={savedItems}
             canShare={canShare}

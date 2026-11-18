@@ -144,7 +144,8 @@
     "tags": "Tags",
     "system-requests": "System requests",
     "security": "Security",
-    "customer-groups": "Customer groups"
+    "customer-groups": "Customer groups",
+    "customer-attributions": "Suspicious attributions"
   },
   "home": {
     "title": "Dashboard",
@@ -5571,7 +5572,8 @@
           "ordersMin": "Orders",
           "spentMin": "Spent",
           "group": "Group",
-          "orderNumber": "Order number"
+          "orderNumber": "Order number",
+          "follows": "Store followed"
         },
         "chip": {
           "status": "Status",
@@ -5585,7 +5587,8 @@
           "spentMin": "Spent at least",
           "spentMax": "Spent at most",
           "group": "Group",
-          "orderNumber": "Order"
+          "orderNumber": "Order",
+          "follows": "Store followed"
         },
         "status": {
           "active": "Active",
@@ -5608,7 +5611,8 @@
         "order-number": {
           "help": "Finds the customer who placed this order.",
           "error": "Enter the order ID, up to 64 characters."
-        }
+        },
+        "follows-unknown": "Store {id}"
       },
       "sort": {
         "button": "Sort",
@@ -6872,6 +6876,435 @@
           "reason": "Reason",
           "status": "Status",
           "created": "Reported"
+        }
+      }
+    },
+    "seller-picker": {
+      "search": "Search stores",
+      "help": "Type part of the store name",
+      "find": "Search",
+      "failed": "Stores could not be searched. Try again.",
+      "none": "No store matches.",
+      "results": "Matching stores",
+      "choose": "{count, plural, one {# store found} other {# stores found}}: choose one",
+      "unknown": "Store {id}",
+      "change": "Change",
+      "clear": "Clear"
+    },
+    "seller-tab": {
+      "title": "Seller customers",
+      "back": "Back to the seller",
+      "link": "Customers",
+      "nav": "Seller sections",
+      "no-access": "You don’t have access to this seller’s customers.",
+      "summary": {
+        "title": "Summary",
+        "loading": "Loading the summary",
+        "error": "The summary could not be loaded. Try again.",
+        "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+        "tiles": "Customer counts",
+        "tile": {
+          "all": "All",
+          "buyers": "Buyers",
+          "followers": "Followers",
+          "referred": "Exclusive"
+        },
+        "referred-hint": "Joined through the seller’s invite link, attribution active",
+        "trend": {
+          "title": "Last 12 months",
+          "zone": "Months in {zone}",
+          "show-table": "Show as table",
+          "show-chart": "Show as chart",
+          "caption": "New buyers and new followers by month",
+          "month": "Month",
+          "new-buyers": "New buyers",
+          "new-followers": "New followers",
+          "legend": "Chart legend",
+          "chart-label": "Bar chart of new buyers and new followers by month, months in {zone}. Use Show as table for the figures."
+        }
+      },
+      "list": {
+        "title": "Customers",
+        "subtitle": "{count, plural, one {# customer} other {# customers}}",
+        "tabs": "Customer views",
+        "tab": {
+          "all": "All",
+          "buyers": "Buyers",
+          "followers": "Followers",
+          "referred": "Referred"
+        },
+        "caption": "Customers of this seller",
+        "search": {
+          "label": "Search by customer code",
+          "placeholder": "Customer code",
+          "help": "Type the start of a code",
+          "too-short": "Enter at least {min} characters of the code"
+        },
+        "filter": {
+          "button": "Filter",
+          "title": "Filter customers",
+          "any": "Any",
+          "yes": "Yes",
+          "no": "No",
+          "from": "From",
+          "to": "To",
+          "cancel": "Cancel",
+          "apply": "Apply",
+          "name": {
+            "follower": "Follower",
+            "exclusive": "Exclusive",
+            "lastOrder": "Last order",
+            "orders": "Orders",
+            "spent": "Spent ({currency})"
+          },
+          "chip": {
+            "follower": "Follower",
+            "exclusive": "Exclusive",
+            "lastOrderFrom": "Last order from",
+            "lastOrderTo": "Last order to",
+            "ordersMin": "Orders at least",
+            "ordersMax": "Orders at most",
+            "spentMin": "Spent at least",
+            "spentMax": "Spent at most"
+          },
+          "error": {
+            "day": "Enter a date.",
+            "count": "Enter a whole number.",
+            "amount": "Enter an amount, for example 25.00.",
+            "range": "The end comes before the start."
+          },
+          "minor-units": "{value, number} in minor units"
+        },
+        "chip": "{field}: {value}",
+        "chip-remove": "Remove filter {filter}",
+        "clear-all": "Clear all",
+        "clear-filters": "Clear filters",
+        "match": "{count, plural, one {# customer matches} other {# customers match}}",
+        "range": "{from}–{to} of {total} customers",
+        "loading": "Loading customers",
+        "sort": {
+          "button": "Sort",
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "last-order": "Last order",
+            "first-order": "First order",
+            "orders": "Orders",
+            "spent": "Spent",
+            "followed": "Followed since",
+            "code": "Code"
+          },
+          "name": {
+            "first": "A to Z",
+            "second": "Z to A"
+          },
+          "date": {
+            "first": "Newest first",
+            "second": "Oldest first"
+          },
+          "figure": {
+            "first": "Highest first",
+            "second": "Lowest first"
+          }
+        },
+        "sorted": "Sorted by {field}: {order}",
+        "columns": {
+          "button": "Columns",
+          "title": "Columns",
+          "help": "Choose what the table shows. Saved for you only, in this browser.",
+          "always": "Always shown",
+          "up": "Move {column} up",
+          "down": "Move {column} down",
+          "reset": "Reset to default",
+          "save": "Save"
+        },
+        "paging": {
+          "rows-per-page": "Rows per page",
+          "previous": "Previous",
+          "next": "Next",
+          "pages": "Pages",
+          "page": "Page {page}",
+          "narrow-title": "Narrow the list to see more",
+          "narrow-body": "Page numbers stop at 10,000 customers. Search or filter to reach the rest."
+        },
+        "col": {
+          "code": "Code",
+          "first-name": "First name",
+          "orders": "Orders",
+          "spent": "Spent",
+          "last-order": "Last order",
+          "badges": "Badges",
+          "first-order": "First order",
+          "followed": "Followed since",
+          "actions": "Actions"
+        },
+        "badge": {
+          "buyer": "Buyer",
+          "follower": "Follower",
+          "exclusive": "Exclusive"
+        },
+        "row": {
+          "menu": "Actions for {name}",
+          "open": "Open customer",
+          "copy-code": "Copy code"
+        },
+        "copied": "Copied.",
+        "copy-failed": "Could not copy.",
+        "error": {
+          "denied": "You don’t have access to this seller’s customers.",
+          "invalid": "This search or filter can’t be used. Change it and try again.",
+          "unavailable": "Customers could not be loaded. Try again.",
+          "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}."
+        },
+        "empty": {
+          "none": "No customers yet",
+          "no-match": "No customers match",
+          "no-match-help": "Try another search or remove a filter.",
+          "view": {
+            "all": "No customers",
+            "buyers": "No customer has bought from this seller yet",
+            "followers": "No customer follows this seller yet",
+            "referred": "No customer joined through this seller’s link"
+          }
+        }
+      }
+    },
+    "attributions": {
+      "title": "Suspicious attributions",
+      "no-access": "You don’t have access to customers.",
+      "subtitle": "{count, plural, one {# attribution} other {# attributions}}",
+      "tabs": "Attribution views",
+      "tab": {
+        "suspicious": "Suspicious",
+        "all": "All",
+        "active": "Active",
+        "rejected": "Rejected"
+      },
+      "caption": "Customers attributed to a seller through an invite link",
+      "loading": "Loading attributions",
+      "search": {
+        "label": "Search attributions",
+        "placeholder": "Start of the sign-in address",
+        "help": "Start of the sign-in address",
+        "too-short": "Enter at least {min} characters"
+      },
+      "saved-manage-link": "Manage filters",
+      "saved-save-link": "Save filter…",
+      "saved-summary-search": "Search “{q}”",
+      "status": {
+        "active": "Active",
+        "rejected": "Rejected"
+      },
+      "reason": {
+        "seller-team": "Seller’s team",
+        "admin": "Admin"
+      },
+      "flag": {
+        "link-burst": "Link burst"
+      },
+      "seller-unknown": "Seller {id}",
+      "col": {
+        "customer": "Customer",
+        "seller": "Seller",
+        "attributed": "Attributed at",
+        "status": "Status",
+        "reason": "Reject reason",
+        "flags": "Flags",
+        "decided": "Decided at",
+        "actions": "Actions"
+      },
+      "row": {
+        "menu": "Actions for {name}",
+        "open-customer": "Open customer",
+        "open-seller": "Open seller",
+        "reject": "Reject…",
+        "restore": "Restore…",
+        "not-restorable": "Not restorable: seller’s team",
+        "already-rejected": "Already rejected",
+        "already-active": "Already active"
+      },
+      "select": {
+        "page": "Select all customers on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "chip": "{field}: {value}",
+      "chip-remove": "Remove filter {filter}",
+      "clear-all": "Clear all",
+      "clear-filters": "Clear filters",
+      "match": "{count, plural, one {# attribution matches} other {# attributions match}}",
+      "range": "{from}–{to} of {total} attributions",
+      "sort": {
+        "button": "Sort",
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "attributed": "Attributed at"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "columns": {
+        "button": "Columns",
+        "title": "Columns",
+        "help": "Choose what the table shows. Saved for you only, in this browser.",
+        "always": "Always shown",
+        "up": "Move {column} up",
+        "down": "Move {column} down",
+        "reset": "Reset to default",
+        "save": "Save"
+      },
+      "paging": {
+        "rows-per-page": "Rows per page",
+        "previous": "Previous",
+        "next": "Next",
+        "pages": "Pages",
+        "page": "Page {page}",
+        "narrow-title": "Narrow the list to see more",
+        "narrow-body": "Page numbers stop at 10,000 attributions. Search or filter to reach the rest."
+      },
+      "error": {
+        "denied": "You don’t have access to customers.",
+        "invalid": "This search or filter can’t be used. Change it and try again.",
+        "unavailable": "Attributions could not be loaded. Try again.",
+        "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}."
+      },
+      "empty": {
+        "no-match": "No attributions match",
+        "no-match-help": "Try another search or remove a filter.",
+        "view": {
+          "suspicious": "No suspicious attributions.",
+          "all": "No attributions yet",
+          "active": "No active attributions",
+          "rejected": "No rejected attributions"
+        }
+      },
+      "filter": {
+        "button": "Filter",
+        "title": "Filter attributions",
+        "any": "Any",
+        "from": "From",
+        "to": "To",
+        "cancel": "Cancel",
+        "apply": "Apply",
+        "utc-days": "Days are UTC days.",
+        "name": {
+          "sellerId": "Store",
+          "status": "Status",
+          "rejectReason": "Reject reason",
+          "flag": "Flag",
+          "attributed": "Attributed"
+        },
+        "chip": {
+          "sellerId": "Store",
+          "status": "Status",
+          "rejectReason": "Reject reason",
+          "flag": "Flag",
+          "attributedFrom": "Attributed from (UTC)",
+          "attributedTo": "Attributed to (UTC)"
+        },
+        "status": {
+          "active": "Active",
+          "rejected": "Rejected"
+        },
+        "reason": {
+          "seller-team": "Seller’s team",
+          "admin": "Admin"
+        },
+        "flag": {
+          "link-burst": "Link burst"
+        },
+        "error": {
+          "day": "Enter a date.",
+          "range": "The end comes before the start."
+        }
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# attribution selected} other {# attributions selected}}",
+        "select-all": "Select all {count, number} attributions in this filter",
+        "clear": "Clear selection",
+        "reject": "Reject…",
+        "reject-help": "Stop the selected customers being exclusive customers of their seller",
+        "restore": "Restore…",
+        "restore-help": "Make the selected customers exclusive customers again",
+        "export": "Export…",
+        "export-help": "CSV or XLSX, with the sign-in address and account ID",
+        "dialog": {
+          "title": "Export {count, plural, one {# attribution} other {# attributions}}",
+          "body": "The file has the email, name, account ID, seller ID, attributed at, status, reject reason, flags and decided at. You confirm with a two-step code, and the export is recorded.",
+          "legend": "File format",
+          "csv": "CSV",
+          "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+          "xlsx": "XLSX",
+          "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+          "confirm": "Export",
+          "cancel": "Cancel"
+        },
+        "pending": "Preparing the file…",
+        "done": "{count, plural, one {# attribution exported.} other {# attributions exported.}}",
+        "error": {
+          "too-large": "Up to {max, number} attributions can be exported at once; this list has {total, number}. Narrow it first.",
+          "enrol": "Set up two-step verification on your profile to export attributions.",
+          "denied": "You don’t have access to export attributions.",
+          "unavailable": "The file could not be made. Try again.",
+          "cancelled": "Export cancelled.",
+          "too-many-ticked": "You can change up to {max, number} ticked attributions at once. Use Select all, or narrow the list.",
+          "too-many-ticked-export": "You can export up to {max, number} ticked attributions. Use Select all, or narrow the list."
+        }
+      },
+      "decide": {
+        "cancel": "Cancel",
+        "close": "Close",
+        "chunks": "The decision is sent in groups of {size, number}. Each customer’s answer is shown at the end.",
+        "unchanged-list": "Not changed",
+        "and-more": "and {count, number} more",
+        "not-sent": "{count, plural, one {# customer was not reached} other {# customers were not reached}} because a request failed. Try again for the rest.",
+        "reject": {
+          "title": "Reject {count, plural, one {# attribution} other {# attributions}}?",
+          "confirm": "Reject",
+          "body": "Reject {count, plural, one {# attribution} other {# attributions}}? These customers stop being exclusive customers of their seller (discount and lower commission no longer apply to new orders). Orders already placed keep their terms.",
+          "result-title": "Reject: result"
+        },
+        "restore": {
+          "title": "Restore {count, plural, one {# attribution} other {# attributions}}?",
+          "confirm": "Restore",
+          "body": "Restore {count, plural, one {# attribution} other {# attributions}}?",
+          "result-title": "Restore: result"
+        },
+        "outcome": {
+          "changed": {
+            "reject": "{count, plural, one {# attribution rejected} other {# attributions rejected}}",
+            "restore": "{count, plural, one {# attribution restored} other {# attributions restored}}"
+          },
+          "unchanged": {
+            "reject": "{count, plural, one {# was already rejected} other {# were already rejected}}",
+            "restore": "{count, plural, one {# was already active} other {# were already active}}"
+          },
+          "not-found": {
+            "reject": "{count, plural, one {# was not found} other {# were not found}}",
+            "restore": "{count, plural, one {# was not found} other {# were not found}}"
+          },
+          "seller-team": {
+            "reject": "{count, plural, one {# is on the seller’s team} other {# are on the seller’s team}}",
+            "restore": "Seller’s own team: {count, plural, one {# cannot be restored} other {# cannot be restored}}"
+          }
+        },
+        "outcome-short": {
+          "changed": "Changed",
+          "unchanged": "Unchanged",
+          "not-found": "Not found",
+          "seller-team": "Seller’s own team: cannot be restored"
+        },
+        "error": {
+          "busy": "Another change is in progress. Try again.",
+          "denied": "You don’t have access to change attributions.",
+          "unavailable": "The change could not be made. Try again.",
+          "too-large": "Up to {max, number} attributions can be selected; this list has {total, number}. Narrow it first.",
+          "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}."
         }
       }
     }
