@@ -640,6 +640,21 @@
     "whenSellerNotApproved": "deny"
   },
   {
+    "name": "lists.seller-column-preference-get",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-column-preference-reset",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-column-preference-save",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "lists.seller-saved-filter-create",
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"

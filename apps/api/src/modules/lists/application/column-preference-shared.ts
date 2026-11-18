@@ -2,7 +2,7 @@ import { ok } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
 import type { AuthorisationCheck } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
-import type { ColumnPreferenceStore } from '../contracts';
+import type { ColumnPreferenceStore, ListPopulation } from '../contracts';
 import {
   invalid,
   type AccessRefusal,
@@ -42,8 +42,12 @@ export function bodyOf(
 }
 
 /** The list a request names, when it has a column choice at all. */
-export function columnListOf(registry: ListRegistry, value: unknown) {
-  const list = registry.lookup(value, 'admin');
+export function columnListOf(
+  registry: ListRegistry,
+  value: unknown,
+  population: ListPopulation = 'admin',
+) {
+  const list = registry.lookup(value, population);
   if (!list.ok) return list;
   if (list.value.columns === undefined) return invalid('listKey', 'value');
   return ok({ definition: list.value, available: list.value.columns });
