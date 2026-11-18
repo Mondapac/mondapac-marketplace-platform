@@ -22,6 +22,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -30,6 +31,7 @@ import {
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
 import { RequiresStepUp } from '../../../platform/authz';
+import { EXPORT_FORMATS, writeChunks } from '../../../platform/list-export';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -46,6 +48,10 @@ import { ChangeAreaReviewPolicy } from '../application/use-cases/change-area-rev
 import { ChangeReviewDueDays } from '../application/use-cases/change-review-due-days.use-case';
 import { CommentOnSystemRequest } from '../application/use-cases/comment-on-system-request.use-case';
 import { CountSystemRequests } from '../application/use-cases/count-system-requests.use-case';
+import {
+  EXPORT_COLUMNS,
+  ExportSystemRequests,
+} from '../application/use-cases/export-system-requests.use-case';
 import { ListSystemRequests } from '../application/use-cases/list-system-requests.use-case';
 import { RejectSystemRequest } from '../application/use-cases/reject-system-request.use-case';
 import { ViewReviewPolicy } from '../application/use-cases/view-review-policy.use-case';
@@ -115,6 +121,7 @@ export class SystemRequestsController {
 
   constructor(
     private readonly list: ListSystemRequests,
+    private readonly exportRequests: ExportSystemRequests,
     private readonly counts: CountSystemRequests,
     private readonly view: ViewSystemRequest,
     private readonly comment: CommentOnSystemRequest,
@@ -188,6 +195,97 @@ export class SystemRequestsController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return requestListBody(result.value);
+  }
+
+  // Before `requests/:requestId`, so `export` is never read as a request id.
+  @Get('requests/export')
+  @ApiOperation({
+    summary: 'Export the System requests list as a file (admin)',
+    description:
+      'Needs system-requests.request.view. `format` is csv (default) or xlsx. `columns` is the ' +
+      `comma-separated optional columns in the order shown (${EXPORT_COLUMNS.join(', ')}); ` +
+      'request, note, area, risk and status are always there. The values before and after a ' +
+      'change are never written. The rows are `ids` (comma-separated, at most 100, in that ' +
+      'order; an id that is not a request of the Market refuses the whole file as not found) or ' +
+      'what the list keys match (view, q, area, risk, status, requestedBy, decidedBy, ' +
+      'appliedFrom, appliedTo, overdue, subjectKind, subjectRef, read as the list reads them), ' +
+      'in the list sort (`sort`, `direction`), at most 10,000 (more: batch.too-large with the ' +
+      'total). Times are written in `zone` (an IANA zone; the Market zone when absent) with ' +
+      'their offset. CSV: a text cell that starts with = + - @ gets a leading quote. XLSX: ' +
+      'every cell is a string value.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({ name: 'columns', required: false })
+  @ApiQuery({ name: 'ids', required: false, description: 'Up to 100 request ids.' })
+  @ApiQuery({ name: 'zone', required: false, description: 'An IANA time zone.' })
+  @ApiQuery({ name: 'view', required: false, enum: REQUEST_VIEWS })
+  @ApiQuery({ name: 'q', required: false, description: 'Up to 100 characters.' })
+  @ApiQuery({
+    name: 'area',
+    required: false,
+    description: `Comma list of ${REVIEW_AREAS.join(', ')}.`,
+  })
+  @ApiQuery({ name: 'risk', required: false, description: `Comma list of ${RISKS.join(', ')}.` })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    description: `Comma list of ${REQUEST_STATUSES.join(', ')}.`,
+  })
+  @ApiQuery({ name: 'requestedBy', required: false, description: 'An admin account id.' })
+  @ApiQuery({ name: 'decidedBy', required: false, description: 'An admin account id.' })
+  @ApiQuery({ name: 'appliedFrom', required: false, description: 'ISO 8601 instant.' })
+  @ApiQuery({ name: 'appliedTo', required: false, description: 'ISO 8601 instant (exclusive).' })
+  @ApiQuery({ name: 'overdue', required: false, enum: ['true', 'false'] })
+  @ApiQuery({ name: 'subjectKind', required: false })
+  @ApiQuery({ name: 'subjectRef', required: false })
+  @ApiQuery({ name: 'sort', required: false, enum: ['applied', 'due', 'number'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiOkResponse({
+    description: 'system-requests-<date>.csv or system-requests-<date>.xlsx, as an attachment',
+  })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'system-requests.not-found' })
+  @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large (details.max, total)' })
+  async download(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportRequests.execute(context, { ...query });
+    logRoute(
+      this.#logger,
+      'system-requests.export-route',
+      context,
+      result.ok ? 'export' : result.error.code,
+    );
+    if (!result.ok) {
+      const error = refusal(result.error, context, this.#logger);
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      await writeChunks(response, chunks);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logger.warn({
+        msg: 'system-requests.export-route',
+        code: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+    }
   }
 
   @Get('requests-count')
