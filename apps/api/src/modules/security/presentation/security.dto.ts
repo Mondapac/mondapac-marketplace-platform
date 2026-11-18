@@ -4,7 +4,7 @@ import { ALERT_RESOLUTIONS, ALERT_STATES } from '../domain/alert';
 import { DELIVERY_CHANNELS, DELIVERY_OUTCOMES } from '../domain/delivery';
 import { ALERT_KEY_TYPES } from '../domain/rules';
 import { SEVERITIES } from '../domain/severity';
-import type { AlertListPage } from '../application/alert-list-flow';
+import type { AlertListPage } from '../application/use-cases/query-security-alerts.use-case';
 import type {
   AlertPage,
   AlertSummaryView,

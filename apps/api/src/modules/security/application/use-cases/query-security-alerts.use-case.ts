@@ -9,6 +9,8 @@ import {
   type AlertListPage,
 } from '../alert-list-flow';
 
+export type { AlertListPage } from '../alert-list-flow';
+
 /**
  * `security.query-security-alerts` (super list 37): the alerts with views, filters, sort, page
  * numbers or Previous/Next, the view counts and the row actions (security.centre.view).
