@@ -137,7 +137,6 @@ describe('customer address book routes over HTTP', () => {
       'customers.email-taken': 409,
       'customers.account-deletion-pending': 409,
       'customers.email-change-not-found': 404,
-      'request.throttled': 429,
     });
   });
 

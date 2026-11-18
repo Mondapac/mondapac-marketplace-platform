@@ -769,7 +769,7 @@ Follow-up of Hassan's review of #969 (findings L2, L3, I3).
 ## Phase 2b, part 4: consent on the timeline; promotion usages not built (16 Nov 2026)
 
 - **Consent on the timeline (rest of item k).** legal publishes `legal.marketing-consent-changed.v1`
-  from its new outbox (migration `20261117050500_legal_outbox`; docs/modules/legal/notes.md): the
+  from its new outbox (migration `20261117050700_legal_outbox`; docs/modules/legal/notes.md): the
   account and the channel, never the value or the source. Subscription
   `customers.timeline-consent-changed`, registered by `CustomersSectionsModule` (which already
   imports legal), hands it to `RecordCustomerTimeline` (rule `system`; `runOnce` and the customers

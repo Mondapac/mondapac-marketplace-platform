@@ -1,4 +1,4 @@
--- Reverses 20261117050500_legal_outbox: drops legal's outbox. Events not yet relayed are lost,
+-- Reverses 20261117050700_legal_outbox: drops legal's outbox. Events not yet relayed are lost,
 -- so this is for a database where no timeline entry depends on them.
 SET lock_timeout = '5s';
 SET statement_timeout = '60s';
