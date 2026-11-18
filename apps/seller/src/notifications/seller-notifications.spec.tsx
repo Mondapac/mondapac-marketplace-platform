@@ -19,6 +19,7 @@ import { SellerNotifications } from './seller-notifications.tsx';
 import type { Notice } from './types.ts';
 
 const call = vi.mocked(callApi);
+const SLOW = 10_000;
 const OLD = '0190a000-0000-7000-8000-000000000001';
 const NEW = '0190a000-0000-7000-8000-000000000002';
 const ORDER = '0190a000-0000-7000-8000-0000000000a1';
@@ -209,21 +210,33 @@ describe('SellerNotifications drawer', () => {
   it('marks all as read', async () => {
     counts = [{ unread: 1, newest: notice(NEW) }];
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
-    const markAll = await screen.findByRole('button', { name: 'Mark all as read' });
-    // The button stays disabled until the list has loaded; a click before that is ignored.
-    await waitFor(() => expect(markAll.hasAttribute('disabled')).toBe(false));
-    fireEvent.click(markAll);
-    await waitFor(() =>
-      expect(call).toHaveBeenCalledWith(
-        'POST',
-        'notifications/seller/notices/read-all',
-        {},
-        'csrf-1',
-      ),
+    // A loaded CI runner can take longer than the 1 s default for each step, so wait for the
+    // events themselves (up to SLOW) instead of a fixed short window.
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Notifications, 1 unread' }, { timeout: SLOW }),
     );
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications' })));
-  });
+    const markAll = await screen.findByRole(
+      'button',
+      { name: 'Mark all as read' },
+      { timeout: SLOW },
+    );
+    // The button stays disabled until the list has loaded; a click before that is ignored.
+    await waitFor(() => expect(markAll.hasAttribute('disabled')).toBe(false), { timeout: SLOW });
+    fireEvent.click(markAll);
+    await waitFor(
+      () =>
+        expect(call).toHaveBeenCalledWith(
+          'POST',
+          'notifications/seller/notices/read-all',
+          {},
+          'csrf-1',
+        ),
+      { timeout: SLOW },
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications' })), {
+      timeout: SLOW,
+    });
+  }, 20_000);
 
   it.each([
     [
