@@ -120,6 +120,7 @@ export class CategoryMoveReverter implements SystemChangeReverter {
    * certification's check of the categories it would take off the products' paths (fail closed).
    */
   async check(context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'> {
+    this.#cleared.forget(request.requestId);
     if (categoryEditorOf(context) === null) return 'not-permitted';
     if (!(await mayRun(this.deps, context, CategoryMove.access))) return 'not-permitted';
     const id = categoryIdOf(request.subjectRef);
@@ -136,7 +137,7 @@ export class CategoryMoveReverter implements SystemChangeReverter {
       if (spec === null) return 'ok';
       const cleared = await clearRestructure(this.deps, context, spec);
       if (!cleared.ok) return 'not-permitted';
-      this.#cleared.put(request.requestId, cleared.value);
+      this.#cleared.put(context, request.requestId, cleared.value);
       return 'ok';
     } catch {
       return 'not-permitted';
@@ -148,7 +149,7 @@ export class CategoryMoveReverter implements SystemChangeReverter {
     const id = categoryIdOf(request.subjectRef);
     const back = parentOf(request.before);
     const now = parentOf(request.after);
-    const cleared = this.#cleared.take(request.requestId);
+    const cleared = this.#cleared.take(context, request.requestId);
     if (!id.ok || back === undefined || now === undefined) return 'gone';
     try {
       const locked = await lockTreeInUnit(this.deps, context.market);

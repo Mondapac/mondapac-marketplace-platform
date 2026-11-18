@@ -49,6 +49,7 @@ import {
   registerPermissions,
   registerStepUpActions,
   USE_CASE_GATE,
+  type AccessDeclaration,
   type UseCaseGate,
 } from '../../platform/authz';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
@@ -233,13 +234,7 @@ import { AddSizes } from './application/products/add-sizes.service';
 import { PlatformProductAddSizes } from './application/use-cases/platform-product-add-sizes.use-case';
 import { PlatformProductAddSizesImpact } from './application/use-cases/platform-product-add-sizes-impact.use-case';
 import { OwnProductAddSizes } from './application/use-cases/own-product-add-sizes.use-case';
-import {
-  CATALOG_ATTRIBUTE_EDIT,
-  CATALOG_ATTRIBUTE_RESTRUCTURE,
-  CATALOG_CATEGORY_TREE_EDIT,
-  CATALOG_CATEGORY_TREE_RESTRUCTURE,
-  CATALOG_PERMISSIONS,
-} from './contracts/permissions';
+import { CATALOG_PERMISSIONS } from './contracts/permissions';
 import { CATALOG_STEP_UP_ACTIONS } from './contracts/step-up';
 import { CATEGORY_SEED } from './application/ports/category-seed';
 import { PLATFORM_CATEGORY_REPOSITORY } from './application/ports/platform-category.repository';
@@ -960,41 +955,64 @@ const STRUCTURE_REVERTERS: readonly (readonly [string, StructureBuild])[] = [
 ];
 
 /**
- * Discards, merges, archives, a move of products and a new feature set of area catalogue: they
- * wait for a second admin's approval (approval mode), each kind with the key its route needs.
+ * Every key the action's own route declares (its use case's `allOf`), so the approver needs what
+ * the author needed (Hassan L2): derived from the declaration, it cannot drift from it.
  */
-const APPLIERS: readonly (readonly [string, string, StructureBuild])[] = [
+function routeKeys(access: AccessDeclaration): readonly string[] {
+  if (access.rule.kind !== 'permissions' || access.rule.allOf.length === 0) {
+    throw new Error(`catalog: ${access.name} declares no permission keys`);
+  }
+  return access.rule.allOf;
+}
+
+/**
+ * Discards, merges, archives, a move of products and a new feature set of area catalogue: they
+ * wait for a second admin's approval (approval mode), each kind with every key its route needs.
+ */
+const APPLIERS: readonly (readonly [string, readonly string[], StructureBuild])[] = [
   [
     CATEGORY_DISCARD_SUBJECT_KIND,
-    CATALOG_CATEGORY_TREE_EDIT.key,
+    routeKeys(CategoryDiscard.access),
     (deps) => new CategoryActionApplier(deps, ['discard']),
   ],
   [
     CATEGORY_RESTRUCTURE_SUBJECT_KIND,
-    CATALOG_CATEGORY_TREE_RESTRUCTURE.key,
+    // Merge and archive declare the same key; both are checked.
+    [...new Set([...routeKeys(CategoryMerge.access), ...routeKeys(CategoryArchive.access)])],
     (deps) => new CategoryActionApplier(deps, ['merge', 'archive']),
   ],
   [
     CATEGORY_PRODUCTS_MOVE_SUBJECT_KIND,
-    CATALOG_CATEGORY_TREE_RESTRUCTURE.key,
+    routeKeys(CategoryMoveProducts.access),
     (deps) => new ProductsMoveApplier(deps),
   ],
   [
     ATTRIBUTE_DISCARD_SUBJECT_KIND,
-    CATALOG_ATTRIBUTE_EDIT.key,
+    routeKeys(AttributeDefinitionDiscard.access),
     (deps) => new AttributeActionApplier(deps, ['discard']),
   ],
   [
     ATTRIBUTE_RESTRUCTURE_SUBJECT_KIND,
-    CATALOG_ATTRIBUTE_RESTRUCTURE.key,
+    [
+      ...new Set([
+        ...routeKeys(AttributeArchive.access),
+        ...routeKeys(AttributeMerge.access),
+        ...routeKeys(AttributeValuesMerge.access),
+      ]),
+    ],
     (deps) => new AttributeActionApplier(deps, ['archive', 'merge', 'merge-values']),
   ],
   [
     FEATURE_SET_CREATE_SUBJECT_KIND,
-    CATALOG_ATTRIBUTE_EDIT.key,
+    routeKeys(FeatureSetCreate.access),
     (deps) => new FeatureSetCreateApplier(deps),
   ],
 ];
+
+/** The keys each approval kind is registered with (read by the wiring spec). */
+export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[]> = new Map(
+  APPLIERS.map(([kind, permission]) => [kind, permission]),
+);
 
 @Module({
   controllers: [

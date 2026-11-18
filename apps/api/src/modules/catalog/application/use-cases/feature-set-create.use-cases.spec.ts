@@ -260,6 +260,21 @@ describe.each(['AU', 'ZZ'] as const)(
       expect(audits).toEqual([]);
     });
 
+    it('an apply does not reuse a check cleared before a refused one, or for another admin (Hassan L1)', async () => {
+      const uc = build();
+      await uc.create.execute(admin(), body({ note }));
+      const request = requestOf(proposer.proposed[0]!);
+      expect(await uc.applier.check(admin(0xb1), request)).toBe('ok');
+      allow = false;
+      expect(await uc.applier.check(admin(0xb1), request)).toBe('not-permitted');
+      allow = true;
+      expect(await uc.applier.apply(admin(0xb1), request)).toBe('not-permitted');
+      expect(await uc.applier.check(admin(0xb1), request)).toBe('ok');
+      expect(await uc.applier.apply(admin(0xb2), request)).toBe('not-permitted');
+      expect(store.rows.size).toBe(0);
+      expect(audits).toEqual([]);
+    });
+
     it('a reject changes nothing; a second proposal of the code waits for the first', async () => {
       const uc = build();
       await uc.create.execute(admin(), body({ note }));

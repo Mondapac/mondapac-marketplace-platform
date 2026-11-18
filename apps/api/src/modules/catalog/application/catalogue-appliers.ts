@@ -110,16 +110,30 @@ export async function mayRun(
 
 /**
  * What a pre-unit `check` cleared for one request, handed to the `apply` (or `revert`) that System
- * requests runs right after it in the same call. Held in memory, a few hundred requests at most;
- * an entry is taken once. A missing entry means the check did not run here: the caller fails
- * closed.
+ * requests runs right after it in the same call. Held in memory, a few hundred requests at most.
+ * Each `check` first drops what an earlier one left for the request (`forget`: a decision that
+ * failed after its check never hands its result to a later one), and an entry is taken once, by
+ * the same admin in the same Market as the check (Hassan L1). A missing or foreign entry means the
+ * check did not run here for this decision: the caller fails closed.
  */
 export class ClearedByRequest<T> {
-  readonly #entries = new Map<string, T>();
+  readonly #entries = new Map<
+    string,
+    { readonly accountId: string | null; readonly marketId: string; readonly value: T }
+  >();
 
-  put(requestId: Id<'SystemRequest'>, value: T): void {
+  /** Drops what an earlier check left for the request (called first by every `check`). */
+  forget(requestId: Id<'SystemRequest'>): void {
     this.#entries.delete(requestId);
-    this.#entries.set(requestId, value);
+  }
+
+  put(context: CallContext, requestId: Id<'SystemRequest'>, value: T): void {
+    this.#entries.delete(requestId);
+    this.#entries.set(requestId, {
+      accountId: categoryEditorOf(context),
+      marketId: context.market.marketId,
+      value,
+    });
     while (this.#entries.size > 256) {
       const oldest = this.#entries.keys().next().value;
       if (oldest === undefined) break;
@@ -127,10 +141,15 @@ export class ClearedByRequest<T> {
     }
   }
 
-  take(requestId: Id<'SystemRequest'>): T | undefined {
-    const value = this.#entries.get(requestId);
+  /** The value the check cleared for this decider in this Market; undefined otherwise. */
+  take(context: CallContext, requestId: Id<'SystemRequest'>): T | undefined {
+    const entry = this.#entries.get(requestId);
     this.#entries.delete(requestId);
-    return value;
+    if (entry === undefined) return undefined;
+    const accountId = categoryEditorOf(context);
+    if (accountId === null || entry.accountId !== accountId) return undefined;
+    if (entry.marketId !== context.market.marketId) return undefined;
+    return entry.value;
   }
 }
 
@@ -217,6 +236,7 @@ export class CategoryActionApplier implements SystemChangeApplier {
    * plan on a snapshot and certification's check of the categories it retires (fail closed).
    */
   async check(context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'> {
+    this.#cleared.forget(request.requestId);
     const accountId = categoryEditorOf(context);
     if (accountId === null) return 'not-permitted';
     const action = this.#actionOf(request.after);
@@ -243,7 +263,7 @@ export class CategoryActionApplier implements SystemChangeApplier {
         this.#spec(context, accountId, id.value, action, request.requestId),
       );
       if (!cleared.ok) return cleared.error.code === 'category.not-found' ? 'ok' : 'not-permitted';
-      this.#cleared.put(request.requestId, cleared.value);
+      this.#cleared.put(context, request.requestId, cleared.value);
       return 'ok';
     } catch {
       return 'not-permitted';
@@ -254,7 +274,7 @@ export class CategoryActionApplier implements SystemChangeApplier {
     const accountId = deciderOf(context);
     const action = this.#actionOf(request.after);
     const id = categoryIdOf(request.subjectRef);
-    const cleared = this.#cleared.take(request.requestId);
+    const cleared = this.#cleared.take(context, request.requestId);
     if (action === null || !id.ok) return 'gone';
     try {
       const locked = await lockTreeInUnit(this.deps, context.market);
@@ -432,6 +452,7 @@ export class FeatureSetCreateApplier implements SystemChangeApplier {
   constructor(private readonly deps: CatalogueStructureDependencies) {}
 
   async check(context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'> {
+    this.#prepared.forget(request.requestId);
     if (attributeEditorOf(context) === null) return 'not-permitted';
     if (!(await mayRun(this.deps, context, FeatureSetCreate.access))) return 'not-permitted';
     const body = featureSetBodyOf(request.after);
@@ -439,7 +460,7 @@ export class FeatureSetCreateApplier implements SystemChangeApplier {
     try {
       const prepared = await prepareFeatureSet(this.deps, context, body);
       if (!prepared.ok) return 'not-permitted';
-      this.#prepared.put(request.requestId, prepared.value);
+      this.#prepared.put(context, request.requestId, prepared.value);
       return 'ok';
     } catch {
       return 'not-permitted';
@@ -448,7 +469,7 @@ export class FeatureSetCreateApplier implements SystemChangeApplier {
 
   async apply(context: CallContext, request: RevertRequest): Promise<ApplyOutcome> {
     const accountId = deciderOf(context);
-    const prepared = this.#prepared.take(request.requestId);
+    const prepared = this.#prepared.take(context, request.requestId);
     if (featureSetBodyOf(request.after) === null) return 'gone';
     if (prepared === undefined) return 'not-permitted';
     try {

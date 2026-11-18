@@ -88,6 +88,28 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
           population === 'seller' ? ('01990000-0000-7000-8000-0000000000b3' as never) : null,
       }),
     );
+  const otherAdmin = (): CallContext =>
+    testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'admin',
+        accountId: '01990000-0000-7000-8000-0000000000c1' as never,
+        sessionId: '01990000-0000-7000-8000-0000000000c2' as never,
+        sellerId: null,
+      }),
+    );
+  const otherMarket = (): CallContext => {
+    const elsewhere = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+    return testCallContext(
+      elsewhere,
+      testAuthenticatedActor(elsewhere, {
+        population: 'admin',
+        accountId: ADMIN as never,
+        sessionId: '01990000-0000-7000-8000-0000000000b2' as never,
+        sellerId: null,
+      }),
+    );
+  };
   const actingAs = (): CallContext => {
     const base = context();
     return { ...base, actor: { ...base.actor, actingAs: { adminAccountId: ADMIN } } as never };
@@ -731,6 +753,22 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
         expect(await reverter.revert(context(), request)).toBe('changed-since');
       });
 
+      it('a revert does not reuse a check cleared before a refused one, or for another admin (Hassan L1)', async () => {
+        review.review('catalogue');
+        const uc = build();
+        await uc.move.execute(context(), moveBody({ note }));
+        const reverter = new CategoryMoveReverter(uc.structure);
+        const request = requestOf(review.opened[0]!);
+        expect(await reverter.check(context(), request)).toBe('ok');
+        answer = () => Promise.resolve(err({ code: 'category.check-unavailable' }));
+        expect(await reverter.check(context(), request)).toBe('not-permitted');
+        answer = () => Promise.resolve(ok(undefined));
+        expect(await reverter.revert(context(), request)).toBe('not-permitted');
+        expect(await reverter.check(context(), request)).toBe('ok');
+        expect(await reverter.revert(otherAdmin(), request)).toBe('not-permitted');
+        expect(store.rows.get(cat(3))).toMatchObject({ parentId: cat(8) });
+      });
+
       it('uses the reason as the note when none is given', async () => {
         review.review('catalogue');
         const answer = await build().move.execute(context(), moveBody());
@@ -830,6 +868,30 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
         answer = () => Promise.resolve(ok(undefined));
         expect(await applier.check(context(), request)).toBe('not-permitted');
         expect(store.rows.get(cat(3))).toMatchObject({ status: 'active' });
+      });
+
+      it('a cleared check is not reused by a later decision, another admin or another Market (Hassan L1)', async () => {
+        review.review('catalogue');
+        const uc = build();
+        await uc.archive.execute(context(), { ...archiveBody, note });
+        const applier = new CategoryActionApplier(uc.structure, ['merge', 'archive']);
+        const request = requestOf(proposer.proposed[0]!);
+        // A check clears, the decision fails before its apply, and a later check is refused:
+        // the later apply does not find the first check's result.
+        expect(await applier.check(context(), request)).toBe('ok');
+        answer = () => Promise.resolve(err({ code: 'category.check-unavailable' }));
+        expect(await applier.check(context(), request)).toBe('not-permitted');
+        answer = () => Promise.resolve(ok(undefined));
+        expect(await applier.apply(context(), request)).toBe('not-permitted');
+        // Cleared for one admin: another admin's apply is refused, and the entry is gone.
+        expect(await applier.check(context(), request)).toBe('ok');
+        expect(await applier.apply(otherAdmin(), request)).toBe('not-permitted');
+        expect(await applier.apply(context(), request)).toBe('not-permitted');
+        // Cleared in one Market: an apply in another Market is refused.
+        expect(await applier.check(context(), request)).toBe('ok');
+        expect(await applier.apply(otherMarket(), request)).toBe('not-permitted');
+        expect(store.rows.get(cat(3))).toMatchObject({ status: 'active' });
+        expect(audits).toEqual([]);
       });
 
       it('a reject changes nothing, and a second proposal waits for the first', async () => {

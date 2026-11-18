@@ -359,21 +359,23 @@ export function featureSetBodyOf(values: unknown): Record<string, unknown> | nul
   const built: { groupCode?: string; names: Record<string, unknown>; attributes: unknown[] }[] = [];
   for (const group of groups) {
     if (!isRecord(group)) return null;
-    const groupNames: Record<string, unknown> = {};
+    // Keys come from request input: collected as pairs and built with `Object.fromEntries`, which
+    // defines own properties, so a `__proto__` key never reaches the prototype (Hassan, info).
+    const groupNames: [string, unknown][] = [];
     let groupCode: string | undefined;
     for (const [field, value] of Object.entries(group)) {
       if (field === 'groupCode') {
         if (value !== null && typeof value !== 'string') return null;
         if (typeof value === 'string') groupCode = value;
       } else if (field.startsWith(NAME_FIELD)) {
-        groupNames[field.slice(NAME_FIELD.length)] = value;
+        groupNames.push([field.slice(NAME_FIELD.length), value]);
       } else {
         return null;
       }
     }
     built.push({
       ...(groupCode === undefined ? {} : { groupCode }),
-      names: groupNames,
+      names: Object.fromEntries(groupNames),
       attributes: [],
     });
   }
