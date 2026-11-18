@@ -3,10 +3,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CATALOG_CATEGORY_TREE_EDIT } from '../../contracts/permissions';
-import { PlatformCategoryHiddenAudit } from '../../domain/audit';
-import { planHide } from '../../domain/category-edit';
 import {
-  announceChanged,
   categoryIdOf,
   closedInput,
   editorAccountOf,
@@ -16,6 +13,7 @@ import {
   type CategoryWriteFailure,
   type CategoryWriteView,
 } from '../categories/category-editor';
+import { hideInUnit } from '../categories/category-write-core';
 
 export interface CategoryHideInput {
   readonly [key: string]: unknown;
@@ -77,46 +75,18 @@ export class CategoryHide extends UseCase<
     const treeVersion = versionOf(body.value['treeVersion'], 'treeVersion');
     if (!treeVersion.ok) return treeVersion;
     const { market } = context;
-    const { store, ids, clock } = this.deps;
 
     return runStructural(this.deps, market, treeVersion.value, async (nodes, nextTreeVersion) => {
-      const target = nodes.find((node) => node.id === id.value);
-      if (target === undefined) return err({ code: 'category.not-found' } as const);
-      const plan = planHide(nodes, target);
-      if (!plan.ok) return plan;
-      const at = clock.now();
-      let version = target.version;
-      for (const change of plan.value) {
-        const node = nodes.find((entry) => entry.id === change.id)!;
-        const newVersion = await store.apply(market, {
-          category: node,
-          revisionId: ids.next<'CategoryRevision'>(),
-          kind: 'hidden',
-          texts: node.texts,
-          patch: { status: change.status, hiddenById: change.hiddenById },
-          authorAccountId: accountId,
-          now: at,
-        });
-        if (node.id === target.id) version = newVersion;
-        await announceChanged(this.deps, context, node.id, newVersion);
-      }
-      await this.deps.audit.record(
+      const hidden = await hideInUnit(
+        this.deps,
         context,
-        PlatformCategoryHiddenAudit.entry(target.id, {
-          before: { status: 'active' },
-          after: { status: 'hidden', cascaded: plan.value.length - 1 },
-        }),
+        accountId,
+        nodes,
+        id.value,
+        nextTreeVersion,
+        null,
       );
-      return ok({
-        category: {
-          id: target.id,
-          slug: target.slug,
-          status: 'hidden',
-          version,
-          revisionNo: target.revisionNo + 1,
-          treeVersion: nextTreeVersion,
-        },
-      });
+      return hidden.ok ? ok({ category: hidden.value.category }) : hidden;
     });
   }
 }
