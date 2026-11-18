@@ -140,6 +140,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'customers.seller-customers-store-followed',
       'customers.seller-customers-store-unfollowed',
       // Customers phase 2 (PR 2a): the same events copied onto the customer's activity timeline.
+      // Phase 2b, part 4: legal's consent event too (channel only, never the value).
+      'customers.timeline-consent-changed',
       'customers.timeline-disabled',
       'customers.timeline-email-verified',
       'customers.timeline-enabled',
@@ -292,6 +294,9 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     expect(subscriptions.subscribersOf('reviews.review-hidden.v1')).toEqual([
       'customers.timeline-review-hidden',
       'notifications.seller-review-hidden-notice',
+    ]);
+    expect(subscriptions.subscribersOf('legal.marketing-consent-changed.v1')).toEqual([
+      'customers.timeline-consent-changed',
     ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
       'customers.read-model-refund-succeeded',

@@ -423,7 +423,10 @@ export class AdminCustomerManagementController {
       '`kinds`: an array of event kinds; `from`, `to`: YYYY-MM-DD in the admin’s own zone, else the Market’s), `direction` (desc, the ' +
       'default, or asc), `page`, `pageSize` (at most 100) and `paging` (pages, with the total, or ' +
       'prev-next, the Market’s List paging setting). Codes and ids only; an admin action names ' +
-      'the admin. Every read is an audited open of the page (tab activity).',
+      'the admin. Every read is an audited open of the page (tab activity). The review kinds ' +
+      'need reviews.customer-review.view as well and the consent kind (consent-changed, the ' +
+      'channel as detail, never the value) legal.customer-consent.view; without the key they are ' +
+      'left out of the page and its total.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: Object })

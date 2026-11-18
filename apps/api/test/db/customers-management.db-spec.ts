@@ -345,6 +345,23 @@ describe.each(TEST_MARKETS)('customers management in market %s (database)', (cod
       expect(await inUnit(other, () => timeline.count(other, query))).toBe(0);
     });
 
+    it('keeps a consent change with its channel as the detail, once per event (part 4)', async () => {
+      const accountId = await customer();
+      const consent = entry(accountId, { kind: 'consent-changed', detail: 'email' });
+      expect(await inUnit(market, () => timeline.record(market, consent, T0))).toBe(true);
+      expect(
+        await inUnit(market, () => timeline.record(market, { ...consent, id: ids.next() }, T0)),
+      ).toBe(false);
+      const query = { accountId, kinds: ['consent-changed' as const], from: null, to: null };
+      const rows = await inUnit(market, () =>
+        timeline.page(market, query, 'desc', { offset: 0, limit: 10 }),
+      );
+      expect(rows.map((row) => [row.kind, row.detail, row.ref])).toEqual([
+        ['consent-changed', 'email', null],
+      ]);
+      expect(await inUnit(other, () => timeline.count(other, query))).toBe(0);
+    });
+
     it('records many admin entries in one statement', async () => {
       const a = await customer();
       const b = await customer();

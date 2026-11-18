@@ -1,5 +1,5 @@
 // Public contracts of the legal module (ADR-0008): the facades, their tokens and the permission
-// catalogue. Every customer use case is `own-resources`; the admin's read of one customer's
+// catalogue, and the events (consent changed: account and channel only). Every customer use case is `own-resources`; the admin's read of one customer's
 // consent holds `legal.customer-consent.view`. Other modules may import only what this file
 // exports, through ../index.ts.
 export { LEGAL_FACADE, type LegalFacade } from './legal.facade';
@@ -13,3 +13,4 @@ export {
 } from './customer-consent.facade';
 export { LEGAL_CUSTOMER_CONSENT_VIEW, LEGAL_PERMISSIONS } from './permissions';
 export { MARKETING_CHANNELS } from '../domain/marketing-consent';
+export { MarketingConsentChanged } from '../domain/events';

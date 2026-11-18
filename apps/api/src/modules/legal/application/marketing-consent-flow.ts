@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
+import { MarketingConsentChanged } from '../domain/events';
 import {
   isCustomerConsentSource,
   type ConsentSource,
@@ -12,7 +13,9 @@ import type { MarketingConsentRecord } from './ports/marketing-consent.repositor
 // record means no consent. A signed-in customer reads and changes their own consent; the
 // one-click unsubscribe link (notifications) withdraws it; a marketing send asks whether it is
 // granted. Only a real change is recorded, and every change is appended to the history with its
-// source and time. No email address, and no consent value, reaches a log or an event.
+// source and time, and announced as `legal.marketing-consent-changed.v1` (the account and the
+// channel; customers copies it onto the customer's timeline). No email address, and no consent
+// value or source, reaches a log or an event.
 
 export type EmailPreferencesFailure =
   | { readonly code: 'access.denied' }
@@ -48,8 +51,9 @@ const viewOf = (record: MarketingConsentRecord | null): EmailPreferencesView => 
 });
 
 /**
- * Sets the consent and appends the change, unless it already holds that value. Runs inside the
- * caller's unit of work. Answers the record as it now stands.
+ * Sets the consent, appends the change and writes its event, unless it already holds that value.
+ * Runs inside the caller's unit of work (so the event is written with the change, or neither is).
+ * Answers the record as it now stands.
  */
 async function change(
   deps: LegalDependencies,
@@ -70,14 +74,24 @@ async function change(
     changedAt: now,
     createdAt: before?.createdAt ?? now,
   };
+  const changeId = deps.ids.next<'MarketingConsentChange'>();
   await deps.consents.record(context.market, record, {
-    id: deps.ids.next<'MarketingConsentChange'>(),
+    id: changeId,
     accountId,
     channel: EMAIL,
     granted,
     source,
     occurredAt: now,
   });
+  // The account and the channel only: the value and the source stay in legal's history.
+  await deps.outbox.append(context, [
+    MarketingConsentChanged.record({
+      aggregateId: changeId,
+      aggregateVersion: 1,
+      occurredAt: now,
+      payload: { accountId, channel: EMAIL },
+    }),
+  ]);
   return { record, changed: true };
 }
 
