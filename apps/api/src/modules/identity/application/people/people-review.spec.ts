@@ -896,6 +896,58 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       ).toBe('gone');
     });
 
+    it('answers changed-since for an invitation revoked meanwhile or an account no longer active, and gone once purged', async () => {
+      const { invite, invitationReverter, disable } = setUp();
+      const issue = async (email: string) => {
+        const invited = await invite.execute(as(ROOT), {
+          email,
+          roleId: NARROW,
+          origin: '203.0.113.9',
+          note: 'Joins support',
+        });
+        if (!invited.ok) throw new Error(JSON.stringify(invited.error));
+        const opened = review.opened.at(-1)!;
+        return {
+          invitationId: invited.value.invitationId,
+          revert: request(invited.value.invitationId, opened.before, opened.after),
+        };
+      };
+
+      // Revoked by the inviter's side meanwhile: changed-since, nothing written.
+      const revoked = await issue('revoked.person@example.com');
+      fakes.invitations.set(revoked.invitationId, {
+        ...fakes.invitations.get(revoked.invitationId)!,
+        state: 'revoked',
+        email: null,
+        decidedAt: START,
+      });
+      const audits = fakes.audits.length;
+      expect(await invitationReverter.revert(as(CHECKER), revoked.revert)).toBe('changed-since');
+      expect(fakes.audits).toHaveLength(audits);
+
+      // Accepted by an account that is disabled since: changed-since, nothing written.
+      const inactive = await issue('inactive.person@example.com');
+      fakes.invitations.set(inactive.invitationId, {
+        ...fakes.invitations.get(inactive.invitationId)!,
+        state: 'accepted',
+        email: null,
+        decidedAt: START,
+        acceptedAccountId: MEMBER,
+      });
+      await disable.execute(as(ROOT), { accountId: MEMBER });
+      const before = fakes.audits.length;
+      expect(await invitationReverter.revert(as(CHECKER), inactive.revert)).toBe('changed-since');
+      expect(fakes.audits).toHaveLength(before);
+      expect(statusOf(MEMBER)).toBe('disabled');
+
+      // Purged (the row is gone): gone, nothing written.
+      const purged = await issue('purged.person@example.com');
+      fakes.invitations.delete(purged.invitationId);
+      const purgedBefore = fakes.audits.length;
+      expect(await invitationReverter.revert(as(CHECKER), purged.revert)).toBe('gone');
+      expect(fakes.audits).toHaveLength(purgedBefore);
+    });
+
     it('files a delete for approval and writes nothing; one waits per role', async () => {
       const { create, remove } = setUp();
       const role = await created(create);

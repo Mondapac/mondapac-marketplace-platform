@@ -639,7 +639,8 @@
         "delete-confirm": "Delete role",
         "keep": "Keep role",
         "section-note": "Review",
-        "delete-requested-body": "Another admin must approve the delete in Admin Inbox > System requests. The role stays until then."
+        "delete-requested-body": "Nothing is deleted yet: another admin must approve this in Admin Inbox > System requests, and the role stays until then. A role that someone still holds can't be deleted: give those people another role first.",
+        "delete-request": "Send for approval"
       },
       "conflict": {
         "title": "Someone saved this role first",
@@ -3416,7 +3417,7 @@
     "help": "Say why you are making this change. It applies at once; a reviewer reads your note in Admin Inbox > System requests and can undo the change.",
     "help-approval": "Say why. Nothing changes until another admin approves it in Admin Inbox > System requests.",
     "counter": "{count} / {max}",
-    "sent": "Sent for review as {number}",
+    "sent": "Sent for review ({number})",
     "sent-for-approval": "Sent for approval ({number})",
     "already-pending": "This is already waiting for approval ({number}).",
     "error": {

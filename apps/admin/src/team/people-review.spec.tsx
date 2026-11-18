@@ -133,7 +133,7 @@ describe('change role in a reviewed Market', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText('Sent for review as SR-42')).toBeTruthy();
+    expect(await screen.findByText('Sent for review (SR-42)')).toBeTruthy();
     expect(screen.getByText(/role is changed/)).toBeTruthy();
   });
 
@@ -178,7 +178,7 @@ describe('reactivate and deactivate in a reviewed Market', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText('Sent for review as SR-42')).toBeTruthy();
+    expect(await screen.findByText('Sent for review (SR-42)')).toBeTruthy();
     expect(screen.getByText(/is active again/)).toBeTruthy();
   });
 
@@ -305,7 +305,7 @@ describe('role editor in a reviewed Market', () => {
       ),
     );
     await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/settings/roles/${ID}`));
-    expect(flash).toHaveBeenCalledWith('info', 'Sent for review as SR-42');
+    expect(flash).toHaveBeenCalledWith('info', 'Sent for review (SR-42)');
     flash.mockRestore();
   });
 
@@ -322,8 +322,13 @@ describe('role editor in a reviewed Market', () => {
   const askDelete = () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete role' }));
   };
+  /** The dialog's confirm: "Send for approval" where reviewed, "Delete role" otherwise. */
   const confirmDelete = () =>
-    fireEvent.click(screen.getAllByRole('button', { name: 'Delete role' }).at(-1)!);
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /^(Send for approval|Delete role)$/,
+      }),
+    );
 
   it('a delete asks for a note, and on 202 says it was sent for approval and keeps the role', async () => {
     call.mockResolvedValue({
@@ -333,7 +338,14 @@ describe('role editor in a reviewed Market', () => {
     });
     mount(true);
     askDelete();
-    expect(screen.getByText(/Another admin must approve the delete/)).toBeTruthy();
+    const dialog = within(screen.getByRole('dialog'));
+    // Nothing is deleted until a second admin approves: the dialog says so and asks for approval.
+    expect(
+      dialog.getByText(/Nothing is deleted yet: another admin must approve this/),
+    ).toBeTruthy();
+    expect(dialog.queryByText(/can't be undone/)).toBeNull();
+    expect(dialog.getByRole('button', { name: 'Send for approval' })).toBeTruthy();
+    expect(dialog.queryByRole('button', { name: 'Delete role' })).toBeNull();
     confirmDelete();
     expect(call).not.toHaveBeenCalled();
     expect(await screen.findByText(/Write a note for the reviewers/)).toBeTruthy();
@@ -380,7 +392,10 @@ describe('role editor in a reviewed Market', () => {
     });
     mount(false);
     askDelete();
-    expect(within(screen.getByRole('dialog')).queryByLabelText(NOTE_FIELD)).toBeNull();
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.queryByLabelText(NOTE_FIELD)).toBeNull();
+    expect(dialog.getByText(/This can't be undone/)).toBeTruthy();
+    expect(dialog.queryByRole('button', { name: 'Send for approval' })).toBeNull();
     confirmDelete();
     await waitFor(() => expect(router.push).toHaveBeenCalledWith('/settings/roles'));
     expect(call.mock.calls[0]?.[2]).toEqual({ expectedVersion: 2 });
@@ -407,7 +422,7 @@ describe('role editor in a reviewed Market', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText('Sent for review as SR-42')).toBeTruthy();
+    expect(await screen.findByText('Sent for review (SR-42)')).toBeTruthy();
     expect(screen.getByText(/Saved\./)).toBeTruthy();
   });
 
@@ -465,7 +480,7 @@ describe('invite an admin in a reviewed Market', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText('Sent for review as SR-42')).toBeTruthy();
+    expect(await screen.findByText('Sent for review (SR-42)')).toBeTruthy();
   });
 
   it('shows a 400 on the note inline', async () => {

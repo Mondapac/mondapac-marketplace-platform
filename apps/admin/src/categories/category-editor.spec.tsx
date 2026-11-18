@@ -247,7 +247,7 @@ describe('category editor (C3b)', () => {
       save();
       await waitFor(() => expect(writes()).toHaveLength(1));
       expect(writes()[0]![2]).toMatchObject({ note: 'New aisle' });
-      await expectToast('Sent for review as SR-41', 'info');
+      await expectToast('Sent for review (SR-41)', 'info');
     });
 
     it('shows a 400 on note on the note field', async () => {

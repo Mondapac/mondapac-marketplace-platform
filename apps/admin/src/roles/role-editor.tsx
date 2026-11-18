@@ -508,12 +508,12 @@ export function RoleEditor({
                 {t('editor.keep')}
               </Button>
               <Button variant="destructive" loading={pending} onClick={() => void remove()}>
-                {t('editor.delete-confirm')}
+                {/* Where people is reviewed the delete only asks a second admin to approve it. */}
+                {reviewed ? t('editor.delete-request') : t('editor.delete-confirm')}
               </Button>
             </>
           }
         >
-          <p>{t('editor.delete-body')}</p>
           {reviewed ? (
             <>
               <p>{t('editor.delete-requested-body')}</p>
@@ -528,7 +528,9 @@ export function RoleEditor({
                 approval
               />
             </>
-          ) : null}
+          ) : (
+            <p>{t('editor.delete-body')}</p>
+          )}
         </Dialog>
       </SettingsPage>
     </div>

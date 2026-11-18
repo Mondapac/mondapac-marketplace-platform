@@ -103,7 +103,7 @@ describe('CommissionRateCard', () => {
     fireEvent.change(screen.getByLabelText(/Commission rate/), { target: { value: '12' } });
     typeNote(screen);
     fireEvent.click(screen.getByRole('button', { name: 'Save rate' }));
-    await expectToast('Sent for review as SR-42', 'info');
+    await expectToast('Sent for review (SR-42)', 'info');
   });
 
   it('shows a 400 on note as an error on the note field', async () => {

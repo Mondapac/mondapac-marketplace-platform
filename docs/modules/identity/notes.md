@@ -142,8 +142,11 @@ delete waits for another admin's approval. Area `people`, always high risk.
   (`identity.invitation.reverted`, `requestId`); accepted, the account it created is disabled,
   every session revoked and every challenge voided, as the enabling's revert does
   (`identity.account-status.reverted`), never the last Platform Administrator who can sign in;
-  revoked meanwhile or an account no longer active is `changed-since`; purged (30 days after its
-  decision) is `gone`. The invitee (the account that accepted it, or the account of the invited
+  revoked meanwhile or an account no longer active is `changed-since`; purged (only a pending one
+  past its expiry, or a revoked one) is `gone`. The purge keeps accepted admin invitations (Hassan
+  M1 on PR #1058): the row is the only link from the request to the account it created, it holds
+  ids only (the address is cleared at acceptance), and there is one per admin ever invited.
+  Accepted seller-side invitations are still purged 30 days after acceptance. The invitee (the account that accepted it, or the account of the invited
   address) may not decide it (`isInterested`).
 - **Delete a custom platform role** (`DeletePlatformRole`, kind `identity.platform-role-deletion`,
   approval mode): every check of the delete runs first (reach, version, grant, `role.in-use`),

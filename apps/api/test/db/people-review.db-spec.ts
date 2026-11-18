@@ -13,6 +13,11 @@ import { AssignAdminRole } from '../../src/modules/identity/application/use-case
 import { CreatePlatformRole } from '../../src/modules/identity/application/use-cases/create-platform-role.use-case';
 import { DeletePlatformRole } from '../../src/modules/identity/application/use-cases/delete-platform-role.use-case';
 import { InviteAdmin } from '../../src/modules/identity/application/use-cases/invite-admin.use-case';
+import { PurgeExpired } from '../../src/modules/identity/application/use-cases/purge-expired.use-case';
+import {
+  THROTTLE_KEYS,
+  type ThrottleKeys,
+} from '../../src/modules/identity/application/ports/session-secrets';
 import { DisableAdminAccount } from '../../src/modules/identity/application/use-cases/disable-admin-account.use-case';
 import { EditPlatformRole } from '../../src/modules/identity/application/use-cases/edit-platform-role.use-case';
 import { EnableAdminAccount } from '../../src/modules/identity/application/use-cases/enable-admin-account.use-case';
@@ -640,10 +645,25 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
     const email = `Invited.${randomUUID()}@Review.example`;
     const invite = app.get(InviteAdmin);
     const viewer = await seededRole('viewer');
+    // An origin of this test only, so both mail counters are this test's own rows.
+    const origin = `client-${randomUUID()}`;
+    const keys = app.get<ThrottleKeys>(THROTTLE_KEYS);
+    const counted = async () =>
+      (
+        await sql.query<{ kind: string; attempts: number }>(
+          `SELECT kind, attempts FROM identity.sign_in_throttles
+           WHERE market_id = $1 AND kind IN ('mail.account', 'mail.origin')
+             AND key_hash IN ($2, $3) ORDER BY kind`,
+          [code, keys.account(market, 'admin', email.toLowerCase()), keys.origin(market, origin)],
+        )
+      ).rows;
 
-    expect(
-      await invite.execute(as(root), { email, roleId: viewer, origin: '203.0.113.9' }),
-    ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    expect(await invite.execute(as(root), { email, roleId: viewer, origin })).toMatchObject({
+      ok: false,
+      error: { code: 'validation.failed' },
+    });
+    // Hassan L1: the refused note rolled the mail counters back with the invitation.
+    expect(await counted()).toEqual([]);
     expect(
       (
         await sql.query(
@@ -656,11 +676,16 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
     const issued = await invite.execute(as(root), {
       email,
       roleId: viewer,
-      origin: '203.0.113.9',
+      origin,
       note: 'Joins support',
     });
     if (!issued.ok || issued.value.request === null) throw new Error('no request opened');
     const invitationId = issued.value.invitationId;
+    // The kept invitation counted its mail once on each counter.
+    expect(await counted()).toEqual([
+      { kind: 'mail.account', attempts: 1 },
+      { kind: 'mail.origin', attempts: 1 },
+    ]);
     const [opened] = await requestsOf(invitationId);
     expect(opened).toMatchObject({
       status: 'open',
@@ -811,5 +836,40 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
       error: { code: 'system-requests.changed-since' },
     });
     expect(await roleExists(roleId)).toBe(true);
+  });
+  it('still disables the admin of a rejected invitation accepted more than 30 days ago: the purge keeps it (Hassan M1)', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const viewer = await seededRole('viewer');
+    const issued = await app.get(InviteAdmin).execute(as(root), {
+      email: `Old.${randomUUID()}@Review.example`,
+      roleId: viewer,
+      origin: '203.0.113.9',
+      note: 'Joins support',
+    });
+    if (!issued.ok || issued.value.request === null) throw new Error('no request opened');
+    const invitationId = issued.value.invitationId;
+    const invitee = await admin(viewer);
+    await accepted(invitationId, invitee);
+    // Accepted 31 days ago: past the 30 days the hourly purge keeps decided invitations.
+    await sql.query(
+      `UPDATE identity.invitations SET decided_at = now() - interval '31 days'
+       WHERE market_id = $1 AND id = $2`,
+      [code, invitationId],
+    );
+    await app
+      .get(PurgeExpired)
+      .execute(testCallContext(market, 'system', `db-people-${randomUUID()}`), {});
+    expect(await invitationOf(invitationId)).toEqual({ state: 'accepted', email: null });
+
+    // The queue still names the admin, and a reject still disables them.
+    await sessionOf(invitee);
+    expect(await reject(checker, issued.value.request.id)).toMatchObject({
+      ok: true,
+      value: { status: 'reverted' },
+    });
+    expect(await statusOf(invitee)).toBe('disabled');
+    expect(await revokedReasonsOf(invitee)).toEqual(['account-disabled']);
   });
 });

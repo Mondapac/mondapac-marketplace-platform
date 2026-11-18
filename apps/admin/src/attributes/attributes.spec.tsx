@@ -897,7 +897,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
         target: { value: '  Made it clearer  ' },
       });
       fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
-      await expectToast('Sent for review as SR-31', 'info');
+      await expectToast('Sent for review (SR-31)', 'info');
       expect(writes('PUT')[0]?.body).toMatchObject({ note: 'Made it clearer' });
     });
 

@@ -224,8 +224,9 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
   live at once: an invitee can accept and sign in before the review, and a reject then disables
   the account. Holding the first sign-in until the invitation's request is approved is a
   follow-up. A created role that someone was given meanwhile cannot be deleted by a reject
-  (`not-permitted`): reject the role assignment first. An accepted invitation purged (30 days
-  after its decision) is `gone`; its account then has to be disabled by hand.
+  (`not-permitted`): reject the role assignment first. The hourly purge never deletes an accepted
+  admin invitation (Hassan M1 on PR #1058), so a reject still reaches the admin it created however
+  late it comes; an invitation that is `gone` is one that was never accepted and has expired.
 
 ## Actions that wait for approval (approval mode)
 
