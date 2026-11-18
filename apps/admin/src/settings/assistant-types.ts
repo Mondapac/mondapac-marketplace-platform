@@ -38,7 +38,7 @@ export interface AssistantSettings {
   readonly dailySpendCapUsdCents: number;
   readonly monthlySpendCapUsdCents: number;
   readonly supportHandoff: SupportHandoff;
-  /** "Basket proposals from a list" (stage 1). The panel carries it; its switch comes with S1-F2. */
+  /** "Basket proposals from a list" (stage 1). Default off. */
   readonly basketProposals: boolean;
   /** null: the storefront shows its own default text. */
   readonly welcomeText: string | null;

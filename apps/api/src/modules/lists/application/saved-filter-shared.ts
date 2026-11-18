@@ -21,11 +21,48 @@ export type ValidationFailure = ListPayloadFailure;
 export const invalid = (path: string, code: string): Result<never, ValidationFailure> =>
   err({ code: 'validation.failed', fields: [{ path, code }] });
 
-/** The account of an admin call; null for anything else (the use case answers access.denied). */
+/** Who calls a generic list route: the account and, for a seller, the store of the session. */
+export interface ListCaller {
+  readonly accountId: Id<'Account'>;
+  readonly sellerId: Id<'Seller'> | null;
+}
+
+/** The account of an admin call; null for anything else (column preferences are admin-only so far). */
 export function adminOf(context: CallContext): { readonly accountId: Id<'Account'> } | null {
   const { actor } = context;
   if (actor.kind !== 'authenticated' || actor.population !== 'admin') return null;
   return { accountId: actor.accountId };
+}
+
+/**
+ * The caller of a route of `population`. Any other population is `access.denied`. A seller who
+ * acts as the store for another person (Login as Seller) is refused: a saved view is the seller's
+ * own preference, and the AI rules forbid acting-as as well. The reserved `actingAs` marker is read
+ * from the actor as catalog reads it, without importing a module.
+ */
+export function callerOf(
+  context: CallContext,
+  population: ListDefinition['population'],
+): Result<ListCaller, AccessRefusal> {
+  const { actor } = context;
+  if (actor.kind !== 'authenticated' || actor.population !== population) {
+    return err({ code: 'access.denied' });
+  }
+  if (population === 'admin') return ok({ accountId: actor.accountId, sellerId: null });
+  if (actor.sellerId === null) return err({ code: 'access.denied' });
+  if (Object.hasOwn(actor, 'actingAs')) {
+    const marker = (actor as { readonly actingAs?: unknown }).actingAs;
+    if (marker !== null && marker !== undefined) return err({ code: 'access.acting-as-refused' });
+  }
+  return ok({ accountId: actor.accountId, sellerId: actor.sellerId });
+}
+
+/**
+ * The store a list's rows are kept under: the caller's store for a store-scoped seller list, none
+ * for an admin list or an account-scoped one (the rows belong to the account in every store).
+ */
+export function storeOf(caller: ListCaller, list: ListDefinition): Id<'Seller'> | null {
+  return list.population === 'seller' && list.scope !== 'account' ? caller.sellerId : null;
 }
 
 /**
@@ -80,7 +117,9 @@ export class ListRegistry {
 const ACCESS_LOG = new Logger('ListsAccess');
 
 export type AccessRefusal =
-  { readonly code: 'access.denied' } | { readonly code: 'access.unavailable' };
+  | { readonly code: 'access.denied' }
+  | { readonly code: 'access.unavailable' }
+  | { readonly code: 'access.acting-as-refused' };
 
 /**
  * Asks the gate whether the caller holds one key of a list. A plain "no" is `access.denied`; a
@@ -125,6 +164,8 @@ export async function canShareOf(
   useCase: string,
   list: ListDefinition,
 ): Promise<Result<boolean, { readonly code: 'access.unavailable' }>> {
+  // A list with no share key cannot be shared with everyone, whoever asks.
+  if (list.shareKey === undefined) return ok(false);
   const answer = await holds(authorisation, context, `${useCase}-share`, list.shareKey);
   if (answer.ok) return ok(true);
   return answer.error.code === 'access.denied' ? ok(false) : err({ code: 'access.unavailable' });

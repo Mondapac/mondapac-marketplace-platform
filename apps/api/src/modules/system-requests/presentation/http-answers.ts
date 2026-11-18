@@ -21,6 +21,7 @@ export const SYSTEM_REQUESTS_STATUS: Readonly<Record<string, number>> = Object.f
   'system-requests.revert-unavailable': 503,
   'system-requests.revert-not-permitted': 403,
   'system-requests.not-low-risk': 409,
+  'system-requests.one-by-one': 409,
   'system-requests.policy-conflict': 409,
 });
 

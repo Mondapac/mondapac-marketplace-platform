@@ -351,6 +351,29 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
       expect(await attempt(promotion({ ...exclusive, segment_kind: 'DELIVERY_ZONE' }))).toBe(CHECK);
     });
 
+    it('lets the seller pay a cashback exactly for its exclusive customers (customers phase 4c)', async () => {
+      const sellerCashback = {
+        type: 'CASHBACK',
+        segment_kind: 'SELLER_EXCLUSIVE',
+        funding: 'SELLER',
+        owner_seller_id: sellerId,
+        budget_minor: null,
+        test_mode: false,
+      };
+      expect(await attempt(promotion(sellerCashback))).toBe('allowed');
+      // Still a percent with a cap.
+      expect(await attempt(promotion({ ...sellerCashback, cap_minor: null }))).toBe(CHECK);
+      // The exclusive segment is the seller's money; without it a cashback is the platform's.
+      expect(
+        await attempt(promotion({ ...sellerCashback, funding: 'PLATFORM', owner_seller_id: null })),
+      ).toBe(CHECK);
+      expect(await attempt(promotion({ ...sellerCashback, segment_kind: null }))).toBe(CHECK);
+      for (const segment_kind of ['RETURNING_CUSTOMER', 'DELIVERY_ZONE']) {
+        expect(await attempt(promotion({ ...sellerCashback, segment_kind }))).toBe(CHECK);
+      }
+      expect(await attempt(promotion({ ...sellerCashback, segment_min_days: 30 }))).toBe(CHECK);
+    });
+
     it('counts the live and paused promotions that name a manual group, in its Market only (customers phase 2b)', async () => {
       const groupId = ids.next<'CustomerGroup'>();
       const manual = (overrides: Record<string, unknown> = {}) =>
@@ -993,7 +1016,7 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
     it('changes state only, never the amount or recipient, and is never deleted', async () => {
       const row = creditRow();
       await sql.query(...(insert('credit_issuances', row).slice(0, 2) as [string, unknown[]]));
-      for (const column of ['amount_minor', 'recipient_account_id', 'idempotency_key', 'kind']) {
+      for (const column of ['recipient_account_id', 'idempotency_key', 'kind']) {
         expect(
           await state(
             sql.query(
@@ -1003,6 +1026,16 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
           ),
         ).toBe(NO_PRIVILEGE);
       }
+      // The app may write the amount only to end a cashback's wait (customers phase 4c); the
+      // guard refuses any other change of it.
+      expect(
+        await state(
+          sql.query(
+            `UPDATE promotions.credit_issuances SET amount_minor = amount_minor + 1 WHERE market_id = $1 AND id = $2`,
+            [mk, row.id],
+          ),
+        ),
+      ).toBe(RESTRICT);
       expect(
         await state(sql.query('DELETE FROM promotions.credit_issuances WHERE id = $1', [row.id])),
       ).toBe(NO_PRIVILEGE);
@@ -1055,6 +1088,7 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
         idempotencyKey: `promotions:cashback:${ids.next<'x'>()}`,
         createdAt: clock.now(),
         settledAt: null,
+        grantAfter: null,
       };
       const credits = deps.credits;
       const result = await db.unitOfWork.run(market, async () => {
@@ -1093,6 +1127,97 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
           ),
         );
       expect([await settle(), await settle()]).toEqual([ok(true), ok(false)]);
+    });
+
+    it('keeps a cashback waiting for the payout release, then fixes its amount once (customers phase 4c)', async () => {
+      const row = promotionRow();
+      await sql.query(...(insert('promotions', row).slice(0, 2) as [string, unknown[]]));
+      const now = clock.now();
+      const credit = {
+        id: ids.next<'PromotionCredit'>(),
+        promotionId: row.id as never,
+        kind: 'CASHBACK' as const,
+        recipientAccountId: ids.next<'Account'>(),
+        orderId: ids.next<'Order'>(),
+        sourceKind: 'SELLER_ORDER' as const,
+        sourceId: ids.next<'SellerOrder'>(),
+        amountMinor: 400n,
+        currency: 'AUD',
+        status: 'PENDING' as const,
+        failureCode: null,
+        walletJournalId: null,
+        idempotencyKey: `promotions:cashback:${ids.next<'x'>()}`,
+        createdAt: now,
+        settledAt: null,
+        grantAfter: now.add({ hours: 24 * 14 }),
+      };
+      const credits = deps.credits;
+      const inUnit = <T>(work: () => Promise<T>) =>
+        db.unitOfWork.run(market, async () => ok(await work()));
+      expect(await inUnit(() => credits.insert(market, credit))).toEqual(ok('inserted'));
+      const due = (at: typeof now) =>
+        inUnit(async () =>
+          (await credits.listDue(market, at, at.subtract({ minutes: 60 }), 100))
+            .filter((c) => c.id === credit.id)
+            .map((c) => c.amountMinor),
+        );
+      expect(await due(now)).toEqual(ok([]));
+      expect(await due(now.add({ hours: 24 * 14 }))).toEqual(ok([400n]));
+      // The wallet is never credited before the wait ends: GRANTED is refused for every role.
+      const grant = () =>
+        inUnit(() =>
+          credits.settle(
+            market,
+            credit.id,
+            { status: 'GRANTED', walletJournalId: ids.next<'WalletJournal'>() },
+            now,
+          ),
+        ).catch(() => 'refused');
+      expect(await grant()).toBe('refused');
+      expect(
+        await state(
+          sql.query(
+            `UPDATE promotions.credit_issuances SET amount_minor = 500, grant_after = NULL WHERE id = $1`,
+            [credit.id],
+          ),
+        ),
+      ).toBe(RESTRICT);
+      // Fixed once, never higher; then it is no longer waiting, and may be granted.
+      expect(await inUnit(() => credits.fixAmount(market, credit.id, 401n))).toEqual(ok(false));
+      expect(await inUnit(() => credits.fixAmount(market, credit.id, 250n))).toEqual(ok(true));
+      expect(await inUnit(() => credits.fixAmount(market, credit.id, 100n))).toEqual(ok(false));
+      // No longer waiting: found again only once it has stalled for an hour.
+      expect(await due(now.add({ minutes: 30 }))).toEqual(ok([]));
+      expect(await due(now.add({ minutes: 61 }))).toEqual(ok([250n]));
+      expect(await grant()).toEqual(ok(true));
+      const found = await inUnit(() => credits.findBySource(market, 'CASHBACK', credit.sourceId));
+      expect(found.ok && found.value).toMatchObject({
+        status: 'GRANTED',
+        amountMinor: 250n,
+        grantAfter: null,
+      });
+      // Only a cashback waits.
+      expect(
+        await attempt(
+          insert('credit_issuances', {
+            id: ids.next(),
+            market_id: mk,
+            tenant_id: 'default',
+            promotion_id: row.id,
+            kind: 'REFERRER_REWARD',
+            recipient_account_id: ids.next<'Account'>(),
+            order_id: null,
+            source_kind: 'REFERRAL',
+            source_id: ids.next(),
+            amount_minor: 10,
+            currency: 'AUD',
+            status: 'PENDING',
+            idempotency_key: `promotions:referrer-reward:${ids.next<'x'>()}`,
+            created_at: now,
+            grant_after: now,
+          }),
+        ),
+      ).toBe(CHECK);
     });
   });
 
@@ -1283,8 +1408,10 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
         const order = {
           orderId: ids.next<'Order'>(),
           sellerOrderId: ids.next<'SellerOrder'>(),
+          sellerId: sellerId as never,
           customerAccountId: who as never,
           goodsPaid: money(goodsMinor, currency),
+          exclusiveSeller: false,
           placedAt: clock.now().add({ hours: 1 }),
           deliveredAt: clock.now().add({ hours: 48 }),
           testOrder: false,
@@ -1433,8 +1560,10 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
         const order = {
           orderId,
           sellerOrderId: ids.next<'SellerOrder'>(),
+          sellerId: sellerId as never,
           customerAccountId: who as never,
           goodsPaid: money(goodsMinor, currency),
+          exclusiveSeller: false,
           placedAt: clock.now().add({ hours: 1 }),
           deliveredAt: clock.now().add({ hours: 48 }),
           testOrder: false,

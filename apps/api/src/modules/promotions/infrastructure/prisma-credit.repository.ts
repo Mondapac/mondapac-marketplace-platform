@@ -24,6 +24,7 @@ interface Row {
   readonly idempotencyKey: string;
   readonly createdAt: Date;
   readonly settledAt: Date | null;
+  readonly grantAfter: Date | null;
 }
 
 const toRecord = (row: Row): CreditRecord => ({
@@ -42,6 +43,7 @@ const toRecord = (row: Row): CreditRecord => ({
   idempotencyKey: row.idempotencyKey,
   createdAt: fromDate(row.createdAt),
   settledAt: row.settledAt === null ? null : fromDate(row.settledAt),
+  grantAfter: row.grantAfter === null ? null : fromDate(row.grantAfter),
 });
 
 /** {@link CreditRepository} on `promotions.credit_issuances`, scoped by `marketId`. */
@@ -70,6 +72,7 @@ export class PrismaCreditRepository implements CreditRepository {
           idempotencyKey: record.idempotencyKey,
           createdAt: toDate(record.createdAt),
           settledAt: record.settledAt === null ? null : toDate(record.settledAt),
+          grantAfter: record.grantAfter === null ? null : toDate(record.grantAfter),
         },
       ],
       skipDuplicates: true,
@@ -108,6 +111,48 @@ export class PrismaCreditRepository implements CreditRepository {
           ? { walletJournalId: result.walletJournalId }
           : { failureCode: result.failureCode }),
       },
+    });
+    return updated.count === 1;
+  }
+
+  async listDue(
+    market: MarketContext,
+    now: Temporal.Instant,
+    stalledBefore: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly CreditRecord[]> {
+    // The partial index credit_issuances_pending_cashback_idx (PENDING cashback only, a handful
+    // of rows at any time) serves it.
+    const rows = await this.prisma.tx(market).promotionsCreditIssuance.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'PENDING',
+        kind: 'CASHBACK',
+        OR: [
+          { grantAfter: { lte: toDate(now) } },
+          { grantAfter: null, createdAt: { lte: toDate(stalledBefore) } },
+        ],
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    return rows.map(toRecord);
+  }
+
+  async fixAmount(
+    market: MarketContext,
+    id: Id<'PromotionCredit'>,
+    amountMinor: bigint,
+  ): Promise<boolean> {
+    const updated = await this.prisma.tx(market).promotionsCreditIssuance.updateMany({
+      where: {
+        marketId: market.marketId,
+        id,
+        status: 'PENDING',
+        grantAfter: { not: null },
+        amountMinor: { gte: amountMinor },
+      },
+      data: { amountMinor, grantAfter: null },
     });
     return updated.count === 1;
   }

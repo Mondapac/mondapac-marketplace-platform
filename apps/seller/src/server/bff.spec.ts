@@ -1947,3 +1947,31 @@ describe('relay of the seller order list views', () => {
     }
   });
 });
+
+describe('the seller order steps', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const request = (path: string) =>
+    new Request(`http://seller.localhost:3001/api/${path}`, {
+      method: 'POST',
+      headers: sameOrigin,
+      body: '{}',
+    });
+
+  it('relays mark ready, confirm pickup and mark delivered of one order', async () => {
+    for (const step of ['ready', 'confirm-pickup', 'deliver']) {
+      const path = `ordering/seller/orders/${ID}/${step}`;
+      const upstream = upstreamOk();
+      const response = await relay(config, request(path), path.split('/'), upstream);
+      expect(response.status, step).toBe(200);
+      expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+    }
+  });
+
+  it('refuses a step no order has', async () => {
+    const path = `ordering/seller/orders/${ID}/cancel`;
+    const upstream = upstreamOk();
+    const response = await relay(config, request(path), path.split('/'), upstream);
+    expect(response.status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});

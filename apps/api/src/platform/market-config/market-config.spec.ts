@@ -2509,6 +2509,8 @@ describe('promotions phase 3 limits (customer group, referral, cashback)', () =>
     ['a cashback above 100 percent', { cashback: { ...CASHBACK, maxBps: 10001 } }],
     ['a zero cashback cap', { cashback: { ...CASHBACK, maxCapMinor: 0 } }],
     ['an unknown cashback key', { cashback: { ...CASHBACK, rate: 1 } }],
+    ['a zero seller minimum', { cashback: { ...CASHBACK, sellerMinBps: 0 } }],
+    ['a seller minimum above the maximum', { cashback: { ...CASHBACK, sellerMinBps: 1001 } }],
   ])('rejects %s', (_label, extra) => {
     expect(() => load(extra)).toThrow(InvalidMarketConfigError);
   });
