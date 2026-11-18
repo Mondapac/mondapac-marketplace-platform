@@ -29,6 +29,7 @@ import type {
   TrendZones,
 } from './ports/seller-customers.repository';
 import type { SheetWriter } from './ports/sheet-writer';
+import type { SellerAttributionRepository } from './ports/seller-invitations.repository';
 
 // The per-seller customers read model (customers management phase 3): its sync from `ordering`
 // and `engagement`, the nightly reconcile, and the reads of the seller's Customers list and the
@@ -43,6 +44,8 @@ export interface SellerCustomerDependencies extends CustomerReadModelPeers {
   readonly audit: AuditWriter;
   readonly sheetWriter: SheetWriter;
   readonly zones: TrendZones;
+  /** The seller each customer signed up through (phase 4a): the exclusive flag. */
+  readonly attributions: SellerAttributionRepository;
 }
 
 /** Codes drawn for one new row before the sync gives up (40 random bits: never reached). */
@@ -57,7 +60,8 @@ const RECONCILE_MAX_PAGES = 400;
 
 /**
  * Brings one customer's per-seller rows in line with `ordering` (their confirmed orders per
- * seller, refunds taken off) and `engagement` (the stores they follow), both read before the unit.
+ * seller, refunds taken off) and `engagement` (the stores they follow), both read before the unit,
+ * and with the customer's active attribution to a seller (phase 4a: the exclusive flag), read in it.
  * The write replaces, never increments, so a repeated or late event changes nothing. A row keeps
  * its code once drawn; a seller with no relation left loses the row (and with it the code). An
  * account with no directory row (never copied, or erased) has no rows: the foreign key to the
@@ -73,10 +77,18 @@ export async function syncSellerCustomers(
   if (!totals.ok) return err({ code: 'customers.unavailable' });
   const follows = await deps.engagement.followsOfAccount(context, accountId);
   if (!follows.ok) return err({ code: 'customers.unavailable' });
-  const entries = sellerCustomerEntriesOf(accountId, totals.value, follows.value);
 
   const work = async (): Promise<Result<{ readonly rows: number }, ReadModelFailure>> => {
     const { market } = context;
+    // The attribution is this module's own row: read in the unit, so an admin's decision that
+    // commits first is seen (its event syncs again otherwise).
+    const attribution = await deps.attributions.findOf(market, accountId);
+    const entries = sellerCustomerEntriesOf(
+      accountId,
+      totals.value,
+      follows.value,
+      attribution !== null && attribution.status === 'active' ? attribution.sellerId : null,
+    );
     const existing = await deps.sellerCustomers.codesOfAccount(market, accountId);
     const keep = (await deps.readModels.hasDirectory(market, accountId)) ? entries : [];
     const now = deps.clock.now();

@@ -682,6 +682,15 @@
     "fields": {}
   },
   {
+    "type": "customers.seller-attribution-changed.v1",
+    "aggregateType": "seller-attribution",
+    "fields": {
+      "accountId": "id",
+      "sellerId": "id",
+      "status": "enumOf(active|rejected)"
+    }
+  },
+  {
     "type": "engagement.store-followed.v1",
     "aggregateType": "store-follow",
     "fields": {
