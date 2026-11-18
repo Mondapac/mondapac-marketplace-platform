@@ -147,7 +147,7 @@ const ALL_KEYS = [
   'identity.admin-account.invite',
   'identity.platform-role.view',
   'identity.platform-role.create',
-  'identity.customer-account.view',
+  'customers.customers.view',
 ];
 
 afterEach(cleanup);
@@ -268,7 +268,7 @@ describe('admin dashboard', () => {
       wrap(
         <AdminDashboard
           data={small}
-          permissionKeys={['ordering.order.view', 'identity.customer-account.view']}
+          permissionKeys={['ordering.order.view', 'customers.customers.view']}
         />,
       ),
     );
