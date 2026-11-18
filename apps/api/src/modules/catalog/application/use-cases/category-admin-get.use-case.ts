@@ -20,6 +20,8 @@ import {
   type CategoryRowView,
   type ValidationFailure,
 } from '../categories/category-admin-views';
+import { catalogueReview, type CatalogueReview } from '../catalogue-review';
+import type { SystemRequestRecorder } from '../../../system-requests';
 import type { AdminCategoryReader } from '../ports/admin-category.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 
@@ -65,6 +67,11 @@ export interface CategoryAdminGetOutput {
   };
   /** `category_trees.version`: what a structural change of this category must name. */
   readonly treeVersion: number;
+  /**
+   * Whether an edit is reviewed in the Market (Admin Inbox › System requests, area catalogue) and
+   * at which risk: the edit form asks for a note on save only when it is.
+   */
+  readonly review: CatalogueReview;
 }
 
 export type CategoryAdminGetFailure =
@@ -79,6 +86,8 @@ export interface CategoryAdminGetDependencies {
   readonly adminCategoryReader: AdminCategoryReader;
   readonly policy: CatalogMarketPolicy;
   readonly categoryProbes: CategoryActionProbes;
+  /** Reads the review policy of area catalogue for the page. */
+  readonly review: Pick<SystemRequestRecorder, 'areaPolicy'>;
 }
 
 /**
@@ -134,6 +143,8 @@ export class CategoryAdminGet extends UseCase<
     const { market } = context;
     const { policy, adminCategoryReader } = this.deps;
     const locales = policy.locales(market);
+    // Its own read-only unit, before this one (units do not nest).
+    const review = await catalogueReview(this.deps.review, context);
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
@@ -198,6 +209,7 @@ export class CategoryAdminGet extends UseCase<
         hiddenById: detail.hiddenById,
       },
       treeVersion,
+      review,
     });
   }
 }

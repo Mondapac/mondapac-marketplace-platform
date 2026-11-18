@@ -119,20 +119,29 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'commission-payouts.place-suspended-hold',
       // Phase 5 package 8b: dispute effects from payments' dispute events.
       'commission-payouts.sync-dispute',
+      // Customers admin email change (Hassan L2): a requested deletion cancels a pending sign-in email change.
+      'customers.email-change-on-admin-deletion',
+      'customers.email-change-on-deletion',
       // Customers phase 1 (B1): the customer directory and stats follow identity's account events and ordering's paid orders and refunds.
       'customers.read-model-disabled',
+      // Customers admin email change: the directory copies the confirmed new sign-in email.
+      'customers.read-model-email-changed',
       'customers.read-model-email-verified',
       'customers.read-model-enabled',
       'customers.read-model-name-changed',
       'customers.read-model-order-paid',
       'customers.read-model-refund-succeeded',
       'customers.read-model-registered',
-      // Customers phase 3: the per-seller customers, from orders, refunds and store follows.
+      // Customers phase 3: the per-seller customers, from orders, refunds and store follows
+      // (phase 4a: and from the seller a customer joined through).
+      'customers.seller-customers-attribution-changed',
       'customers.seller-customers-order-paid',
       'customers.seller-customers-refund-succeeded',
       'customers.seller-customers-store-followed',
       'customers.seller-customers-store-unfollowed',
       // Customers phase 2 (PR 2a): the same events copied onto the customer's activity timeline.
+      // Phase 2b, part 4: legal's consent event too (channel only, never the value).
+      'customers.timeline-consent-changed',
       'customers.timeline-disabled',
       'customers.timeline-email-verified',
       'customers.timeline-enabled',
@@ -140,6 +149,15 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'customers.timeline-order-paid',
       'customers.timeline-refund-succeeded',
       'customers.timeline-registered',
+      // Customers phase 2b, part 3: reviews' events on the author's timeline (the author is asked
+      // of reviews by the system; the events carry no account).
+      'customers.timeline-review-held',
+      'customers.timeline-review-hidden',
+      'customers.timeline-review-published',
+      'customers.timeline-review-restored',
+      // Customers admin email change: the warning to the current address, the notice to the old.
+      'identity.email-change-requested-mail',
+      'identity.email-changed-mail',
       'identity.existing-account-mail',
       'identity.invitation-mail',
       'identity.link-mail',
@@ -273,6 +291,13 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'promotions.cashback-on-delivery',
       'promotions.qualify-referral-on-delivery',
     ]);
+    expect(subscriptions.subscribersOf('reviews.review-hidden.v1')).toEqual([
+      'customers.timeline-review-hidden',
+      'notifications.seller-review-hidden-notice',
+    ]);
+    expect(subscriptions.subscribersOf('legal.marketing-consent-changed.v1')).toEqual([
+      'customers.timeline-consent-changed',
+    ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
       'customers.read-model-refund-succeeded',
       'customers.seller-customers-refund-succeeded',
@@ -288,6 +313,13 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
     ]);
     expect(subscriptions.subscribersOf('identity.one-time-link-requested.v1')).toEqual([
       'identity.link-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.account-email-change-requested.v1')).toEqual([
+      'identity.email-change-requested-mail',
+    ]);
+    expect(subscriptions.subscribersOf('identity.account-email-changed.v1')).toEqual([
+      'customers.read-model-email-changed',
+      'identity.email-changed-mail',
     ]);
     expect(subscriptions.subscribersOf('identity.sign-up-repeated.v1')).toEqual([
       'identity.existing-account-mail',

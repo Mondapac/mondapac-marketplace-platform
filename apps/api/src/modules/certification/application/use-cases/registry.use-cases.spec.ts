@@ -14,6 +14,7 @@ import {
   MemoryRegistry,
 } from '../../../../../test/support/certification-registry-fakes';
 import { RecordingAudit } from '../../../../../test/support/certification-review-fakes';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
@@ -156,6 +157,7 @@ describe.each(['AU', 'ZZ'] as const)('certification registry in market %s', (cod
       outbox,
       clock,
       ids,
+      review: new RecordingReview(),
       supportedLocales: (m) => markets.get(m.marketId).supportedLocales,
     };
     const typeId = ids.next<'CertificationType'>();

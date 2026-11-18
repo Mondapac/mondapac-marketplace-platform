@@ -658,5 +658,17 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       });
       expect(unknown).toBe('gone');
     });
+
+    it('labels each setting by its name for the queue, and no unknown code', async () => {
+      const labels = await new SettingsReverter(deps).describe(adminCtx(), [
+        'list-paging',
+        'cart-mode',
+        'retired-setting',
+      ]);
+      expect([...labels]).toEqual([
+        ['list-paging', 'List paging'],
+        ['cart-mode', 'Cart mode'],
+      ]);
+    });
   });
 });

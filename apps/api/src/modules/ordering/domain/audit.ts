@@ -129,7 +129,12 @@ export const ORDERING_SAVED_FILTER_TARGET = 'ordering.saved-filter';
 const savedFilterVisibility = auditField.enumOf(['me', 'everyone'] as const);
 
 /** The lists whose filters can be shared with everyone (the admin ones, see `saved-view-lists.ts`). */
-export const SAVED_FILTER_AUDIT_LISTS = ['admin.ordering.orders'] as const;
+export const SAVED_FILTER_AUDIT_LISTS = [
+  'admin.ordering.orders',
+  'admin.ordering.shipments',
+  'admin.ordering.refunds',
+  'admin.ordering.documents',
+] as const;
 export type SavedFilterAuditList = (typeof SAVED_FILTER_AUDIT_LISTS)[number];
 const savedFilterList = auditField.enumOf(SAVED_FILTER_AUDIT_LISTS);
 
@@ -209,6 +214,25 @@ export const ShipToPurged = defineAuditAction({
   },
 });
 
+/** The audit target type of a customer's data an admin exported; the target id is the account id. */
+export const CUSTOMER_ACCOUNT_TARGET = 'ordering.customer-account';
+
+/**
+ * An admin exported the refunds of one customer's orders from the customer page (customers
+ * management phase 2b). The format, how many rows and the step-up proof spent; no refund data.
+ */
+export const CustomerRefundsExported = defineAuditAction({
+  action: 'ordering.customer-refunds.exported',
+  targetType: CUSTOMER_ACCOUNT_TARGET,
+  actors: ['authenticated'],
+  after: {
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rowCount: auditField.integer(),
+    stepUpSessionId: auditField.id(),
+    stepUpVerifiedAt: auditField.instant(),
+  },
+});
+
 export const ORDERING_AUDIT_ACTIONS = [
   RefundRequested,
   RefundSettled,
@@ -222,4 +246,5 @@ export const ORDERING_AUDIT_ACTIONS = [
   SavedFilterRemovedAudit,
   ShipToRetentionChanged,
   ShipToPurged,
+  CustomerRefundsExported,
 ] as const;

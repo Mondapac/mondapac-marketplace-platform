@@ -4,6 +4,9 @@ import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { ENGAGEMENT_FACADE, EngagementModule, type EngagementFacade } from '../engagement';
 import { IDENTITY_FACADE, IdentityModule, type IdentityFacade } from '../identity';
 import { ORDERING_FACADE, OrderingModule, type OrderingFacade } from '../ordering';
+import { SELLERS_FACADE, SellersModule, type SellersFacade } from '../sellers';
+import { INVITATION_PEERS } from './application/ports/invitation-peers';
+import type { LateBoundInvitationPeers } from './infrastructure/late-bound-invitation-peers';
 import { CUSTOMER_READ_MODEL_PEERS } from './application/ports/customer-read-model-peers';
 import { ReconcileCustomerReadModels } from './application/use-cases/reconcile-customer-read-models.use-case';
 import { SyncCustomerReadModel } from './application/use-cases/sync-customer-read-model.use-case';
@@ -22,7 +25,8 @@ import { customerReadModelSubscriptions } from './presentation/subscribers/custo
 
 /**
  * Binds the customers read models (phase 1, package B1; the per-seller customers of phase 3) to
- * `identity`, `ordering` and `engagement`. It is a
+ * `identity`, `ordering` and `engagement`, and the invite links (phase 4a) to `identity`,
+ * `engagement` and `sellers`. It is a
  * module of its own because `ordering` imports `customers`: `CustomersModule` provides the use
  * cases with peers that refuse (fail closed) until this module binds the real facades at start,
  * and this module also holds what needs the other modules' event definitions (the subscriptions
@@ -31,7 +35,7 @@ import { customerReadModelSubscriptions } from './presentation/subscribers/custo
  * customers entry point, so no file cycle forms.
  */
 @Module({
-  imports: [CustomersModule, IdentityModule, OrderingModule, EngagementModule],
+  imports: [CustomersModule, IdentityModule, OrderingModule, EngagementModule, SellersModule],
   providers: [
     registerSubscriptionsFrom(
       'customers',
@@ -61,6 +65,8 @@ export class CustomersReadModelsModule implements OnModuleInit {
     @Inject(IDENTITY_FACADE) private readonly identity: IdentityFacade,
     @Inject(ORDERING_FACADE) private readonly ordering: OrderingFacade,
     @Inject(ENGAGEMENT_FACADE) private readonly engagement: EngagementFacade,
+    @Inject(INVITATION_PEERS) private readonly invitations: LateBoundInvitationPeers,
+    @Inject(SELLERS_FACADE) private readonly sellers: SellersFacade,
   ) {}
 
   onModuleInit(): void {
@@ -69,6 +75,11 @@ export class CustomersReadModelsModule implements OnModuleInit {
       ordering: this.ordering,
       engagement: this.engagement,
     });
-    this.management.bind({ identity: this.identity });
+    this.management.bind({ identity: this.identity, ordering: this.ordering });
+    this.invitations.bind({
+      identity: this.identity,
+      engagement: this.engagement,
+      sellers: this.sellers,
+    });
   }
 }

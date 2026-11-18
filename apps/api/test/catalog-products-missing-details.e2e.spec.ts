@@ -236,6 +236,7 @@ describe('products missing required details over HTTP (integration)', () => {
             featureSetCode: 'pantry',
             missing: ['origin'],
             lastEmailedAt: null,
+            actions: ['open-product'],
           },
           {
             productId: id<'Product'>(0x3003),
@@ -245,6 +246,7 @@ describe('products missing required details over HTTP (integration)', () => {
             featureSetCode: 'pantry',
             missing: ['origin'],
             lastEmailedAt: null,
+            actions: ['open-product'],
           },
         ],
         nextAfterId: null,

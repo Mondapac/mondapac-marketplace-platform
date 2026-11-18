@@ -491,6 +491,33 @@ describe('relay allowlist for stock locations', () => {
     }
   });
 
+  it('relays the category picker read (GET) on its exact path, without a query, and no write', async () => {
+    const upstream = upstreamOk();
+    const path = ['catalog', 'seller', 'products', 'category-picker'];
+    const read = (init: RequestInit = {}, query = '') =>
+      new Request(
+        `http://seller.localhost:3001/api/catalog/seller/products/category-picker${query}`,
+        {
+          headers: sameOrigin,
+          ...init,
+        },
+      );
+    expect((await relay(config, read(), path, upstream)).status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/seller/products/category-picker',
+    );
+    // A query never crosses.
+    await relay(config, read({}, '?includeHidden=true'), path, upstream);
+    expect(upstream.mock.calls[1]?.[0]).toBe(
+      'http://api.test/catalog/seller/products/category-picker',
+    );
+    // Not a write, and not a longer path.
+    const post = await relay(config, read({ method: 'POST' }), path, upstreamOk());
+    expect(post.status).toBe(404);
+    const longer = await relay(config, read(), [...path, 'extra'], upstreamOk());
+    expect(longer.status).toBe(404);
+  });
+
   it('relays a location edit by UUID and the order, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     expect((await relay(config, put(`inventory/seller/sources/${ID}`), [], upstream)).status).toBe(
@@ -802,6 +829,24 @@ describe('relay of the seller order routes', () => {
       'page=2&pageSize=25&sort=total&direction=desc&status=shipped&to=2026-10-10T00%3A00%3A00.000Z';
     await relay(config, get(`?${q}&x=1`), list, upstream);
     expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/seller/orders?${q}`);
+  });
+
+  it('posts the packing-slip selection to the documents route only', async () => {
+    const upstream = upstreamOk();
+    const path = [...list, 'documents'];
+    expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+    const other = [...list, 'documents', 'x'];
+    expect((await relay(config, post(other.join('/')), other, upstream)).status).toBe(404);
+  });
+
+  it('forwards the reference and the paging mode, and drops a paging mode it does not know', async () => {
+    const upstream = upstreamOk();
+    const q = 'page=1&paging=prev-next&q=0190a000-0000-7000-8000-000000000001';
+    await relay(config, get(`?${q}&x=1`), list, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/seller/orders?${q}`);
+    const refused = upstreamOk();
+    await relay(config, get('?page=1&paging=infinite'), list, refused);
+    expect(refused.mock.calls[0]?.[0]).not.toContain('paging=infinite');
   });
 
   it('relays the export with its own filter keys and drops the rest', async () => {

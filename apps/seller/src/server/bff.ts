@@ -64,6 +64,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // direction, page, pageSize). The keyset parameters (`afterId`, `limit`) are read by the
     // panel's server pages only and do not cross.
     'catalog/seller/products',
+    // The category choices of the product form (catalog, categories C5a): levels 3 and 4, no hidden node.
+    'catalog/seller/products/category-picker',
     // The Products list as a file (CSV or XLSX): the list's selector plus format, columns and the
     // selected product ids; the answer is an attachment.
     'catalog/seller/products/export',
@@ -94,6 +96,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set(['sellers/store-profile/logo', 'sellers/store-profile/banner']),
   POST: new Set([
+    // The packing slips of a selection of orders (up to 50 ids in the body; a read).
+    'ordering/seller/orders/documents',
     // A description draft from the "Write with AI" modal (catalog, AIS-03): the form's title,
     // category label, details, keywords and note in; plain text out. Nothing is stored.
     'catalog/own/description-writer/drafts',
@@ -226,6 +230,8 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     pageSize: null,
     sort: null,
     direction: null,
+    paging: /^(pages|prev-next)$/,
+    q: null,
     status: null,
     from: null,
     to: null,
