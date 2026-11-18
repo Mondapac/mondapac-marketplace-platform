@@ -662,6 +662,8 @@ export type StoreProducts =
 export interface SellerShop {
   /** The URL slug. */
   readonly id: string;
+  /** The seller's id (a UUID) when the store read gives it; the Follow button needs it. */
+  readonly sellerId?: string;
   readonly name: string;
   /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
   readonly logo?: string;

@@ -165,7 +165,8 @@
       "orders": "Orders",
       "addresses": "Addresses",
       "lists": "Saved lists",
-      "settings": "Settings"
+      "settings": "Settings",
+      "stores": "My stores"
     },
     "log-out": "Log out",
     "back": {
@@ -181,7 +182,8 @@
       "lists": "Saved lists",
       "settings": "Settings",
       "reviews": "My reviews",
-      "delete": "Delete account"
+      "delete": "Delete account",
+      "stores": "My stores"
     },
     "auth": {
       "log-in": "Log in",
@@ -419,7 +421,9 @@
       "language-saved": "Language saved to your account",
       "language-failed": "We could not save your language. Your choice was not changed. Try again in a moment.",
       "language-label": "Site language",
-      "language-save": "Save language"
+      "language-save": "Save language",
+      "joined-through": "You joined through <store>{name}</store>. They see your first name and a code, never your email.",
+      "joined-store-fallback": "a store that is not public now"
     },
     "delete": {
       "title": "Delete account",
@@ -455,6 +459,26 @@
       "cancelled": "Deletion cancelled. Your account stays open.",
       "cancel-retry": "Please try again.",
       "cancel-failed": "We could not cancel the deletion. Try again in a moment."
+    },
+    "stores": {
+      "heading": "Stores you follow ({count})",
+      "privacy": "The store sees your first name and a code only, not your email.",
+      "loading": "Loading your stores",
+      "empty": "You don't follow any stores yet. Tap Follow on a store page.",
+      "browse": "Browse stores",
+      "error": "Couldn't load your stores.",
+      "retry": "Retry",
+      "try-again-in": "Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+      "load-more": "Load more",
+      "since": "Following since {date}",
+      "following": "Following",
+      "unfollowed": "Unfollowed.",
+      "undo": "Undo",
+      "undo-label": "Undo: follow {store} again",
+      "unfollowed-announce": "Unfollowed {store}",
+      "following-announce": "Following {store}",
+      "row-error": "Couldn't update. Try again.",
+      "unavailable": "This store isn't available."
     }
   },
   "reviews": {
@@ -1545,7 +1569,8 @@
       "sell": "Sell your food to local buyers on {store}. Sign up as a seller.",
       "offline": "You are offline. Pages you opened on {store} before still work.",
       "unavailable-product": "{name} is no longer sold on {store}. See similar products from local sellers.",
-      "closed-store": "{name} is not taking orders on {store} right now."
+      "closed-store": "{name} is not taking orders on {store} right now.",
+      "account-stores": "The stores you follow on {store}."
     }
   },
   "areas": {
@@ -1562,5 +1587,43 @@
     "loading": "Loading suggestions",
     "found": "{products, plural, one {# product} other {# products}} and {stores, plural, one {# store} other {# stores}} suggested. Use the up and down arrow keys to choose.",
     "see-all-none": "See all results for \"{q}\""
+  },
+  "follow": {
+    "follow": "Follow",
+    "following": "Following",
+    "close": "Close",
+    "privacy": "The store sees your first name and a code only, not your email.",
+    "learn-more": "Learn more",
+    "privacy-help": "A store you follow sees your first name and a customer code. Your email address and account details are never shared with it. You can unfollow at any time in My stores.",
+    "error-failed": "Couldn't update. Try again.",
+    "error-not-found": "This store isn't available.",
+    "error-limit": "You follow the maximum number of stores. Unfollow one in <link>My stores</link>.",
+    "following-announce": "Following {store}",
+    "unfollowed-announce": "Unfollowed {store}",
+    "follow-to-get": "Follow to get {offer}",
+    "thanks": "Thanks for following {store}",
+    "gift-applies": "Your offer applies at checkout while you follow this store.",
+    "shop": "Shop {store}",
+    "percent-off": "{percent}% off",
+    "amount-off": "{amount} off",
+    "min-spend": "from {amount}",
+    "until": "until {date}"
+  },
+  "invite": {
+    "banner-title": "{store} invited you.",
+    "banner-body": "Create an account to become one of their exclusive customers.",
+    "create-account": "Create account",
+    "sign-in": "Sign in",
+    "sign-up-line": "You're joining through {store}. They'll see your first name and a code, not your email.",
+    "not-now": "Not now",
+    "the-store": "the store",
+    "dismiss": "Dismiss",
+    "invalid": "This invite link is no longer valid.",
+    "notice": {
+      "joined": "You joined {store} and follow it.",
+      "joined-only": "You joined {store}.",
+      "not-eligible": "This link can't be used for an existing account.",
+      "unavailable": "We couldn't add you to {store} just now. Your account is ready."
+    }
   }
 }

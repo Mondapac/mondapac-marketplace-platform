@@ -293,6 +293,21 @@ class SellerReadFailed extends Error {
 
 const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
+const INVITE_TOKEN = /^[A-Za-z0-9_-]{8,200}$/;
+
+/**
+ * The store address an invite link leads to (`GET customers/store-invitations/:token`, anonymous),
+ * or undefined for an unknown, revoked or expired link, a store not public now, a malformed token,
+ * an outage and the sample (no API). Never cached: the token is a credential.
+ */
+export async function loadInvitedStoreSlug(token: string): Promise<string | undefined> {
+  if (!INVITE_TOKEN.test(token)) return undefined;
+  const answer = await apiGet<unknown>(`customers/store-invitations/${encodeURIComponent(token)}`);
+  if (answer.kind !== 'ok') return undefined;
+  const slug = (answer.body as { slug?: unknown } | null)?.slug;
+  return typeof slug === 'string' && slug.length <= 50 && STORE_SLUG.test(slug) ? slug : undefined;
+}
+
 /**
  * The seller page's read: profile, terms, certificates and products, or undefined when there is
  * no such seller. With the API configured, `GET sellers/stores/:slug` gives name, area, year and
