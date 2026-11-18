@@ -140,6 +140,8 @@ function parseSelector(
       (candidate) => candidate === record['kind'],
     );
     if (found === undefined) return listQueryInvalid('kind', 'value');
+    // A view that is a kind and a different `kind` beside it name two different lists.
+    if (view !== 'all' && found !== view) return listQueryInvalid('kind', 'conflict');
     kind = found;
   }
   let typeCode: string | null = null;
@@ -190,17 +192,22 @@ const SPEC = {
   maxPage: MAX_PAGED_ROWS,
 } as const;
 
+/** Reads one row past the cap, so `truncated` is true only when submissions were really left out. */
 async function readWaiting(
   deps: CertificateQueueListDependencies,
   context: CallContext,
-): Promise<readonly ReviewQueueEntry[]> {
+): Promise<{ readonly waiting: readonly ReviewQueueEntry[]; readonly truncated: boolean }> {
   const read = await deps.unitOfWork.run<readonly ReviewQueueEntry[], never>(
     context.market,
-    async () => ok(await deps.reviews.queue(context.market, QUEUE_LIST_READ_CAP)),
+    async () => ok(await deps.reviews.queue(context.market, QUEUE_LIST_READ_CAP + 1)),
     { readOnly: true },
   );
   if (!read.ok) throw new Error('certification.certificate-queue-list: the read failed');
-  return read.value;
+  const truncated = read.value.length > QUEUE_LIST_READ_CAP;
+  return {
+    waiting: truncated ? read.value.slice(0, QUEUE_LIST_READ_CAP) : read.value,
+    truncated,
+  };
 }
 
 function select(
@@ -259,7 +266,7 @@ export async function listCertificateQueue(
   if (!selector.ok) return selector;
   const sort: CertificateQueueSort = { key: query.value.sort, direction: query.value.direction };
 
-  const waiting = await readWaiting(deps, context);
+  const { waiting, truncated } = await readWaiting(deps, context);
   const matching = select(waiting, selector.value, sort);
   const { offset, limit } = pageWindow(query.value);
   const page = listPage(matching.slice(offset, offset + limit), query.value, matching.length);
@@ -283,7 +290,7 @@ export async function listCertificateQueue(
       actions: rowActions(entry, QUEUE_ROW_RULES, granted) as CertificateQueueRowAction[],
     })),
     counts: countsOf(waiting),
-    truncated: waiting.length >= QUEUE_LIST_READ_CAP,
+    truncated,
   });
 }
 
@@ -348,7 +355,7 @@ export async function exportCertificateQueue(
   const columns = parseExportColumns(record['columns'], CERTIFICATE_QUEUE_EXPORT_COLUMNS);
   if (!columns.ok) return columns;
 
-  const waiting = await readWaiting(deps, context);
+  const { waiting, truncated } = await readWaiting(deps, context);
   let rows: ReviewQueueEntry[];
   if (!absent(record['ids'])) {
     if (typeof record['ids'] !== 'string') return listQueryInvalid('ids', 'type');
@@ -367,7 +374,7 @@ export async function exportCertificateQueue(
     if (!query.ok) return query;
     const selector = parseSelector(record);
     if (!selector.ok) return selector;
-    if (waiting.length >= QUEUE_LIST_READ_CAP) {
+    if (truncated) {
       return err({ code: 'batch.too-large', max: QUEUE_LIST_READ_CAP });
     }
     rows = select(waiting, selector.value, {

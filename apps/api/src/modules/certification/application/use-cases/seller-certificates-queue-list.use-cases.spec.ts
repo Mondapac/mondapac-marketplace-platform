@@ -144,6 +144,7 @@ describe.each(['AU', 'ZZ'] as const)('certificate queue list and export in marke
       (await ask(input)).items.map((r) => r.certificateId);
     expect(await idsOf({ view: 'resubmission' })).toEqual([b.certificateId]);
     expect(await idsOf({ kind: 'renewal' })).toEqual([c.certificateId]);
+    expect(await idsOf({ view: 'renewal', kind: 'renewal' })).toEqual([c.certificateId]);
     expect(await idsOf({ type: 'kosher' })).toEqual([b.certificateId]);
     expect(await idsOf({ sellerId: a.sellerId })).toEqual([a.certificateId]);
     expect(await idsOf({ q: a.submissionId })).toEqual([a.certificateId]);
@@ -190,6 +191,7 @@ describe.each(['AU', 'ZZ'] as const)('certificate queue list and export in marke
       { type: 'Bad Code' },
       { q: 'abc' },
       { view: 'done' },
+      { view: 'initial', kind: 'renewal' },
     ]) {
       expect(await list.execute(admin(), input)).toMatchObject({
         ok: false,
@@ -203,6 +205,8 @@ describe.each(['AU', 'ZZ'] as const)('certificate queue list and export in marke
     wait('halal', 'initial', 1, foreign);
     expect(await ask({})).toMatchObject({ items: [], counts: { all: 0 }, truncated: false });
     for (let i = 0; i < 500; i += 1) wait('halal', 'initial', i);
+    expect(await ask({ pageSize: 1 })).toMatchObject({ truncated: false, counts: { all: 500 } });
+    wait('halal', 'initial', 501);
     expect(await ask({ pageSize: 1 })).toMatchObject({ truncated: true, counts: { all: 500 } });
   });
 
@@ -256,7 +260,7 @@ describe.each(['AU', 'ZZ'] as const)('certificate queue list and export in marke
   it('refuses a selector export cut at the cap, but exports chosen ids', async () => {
     const { exporter, admin, wait } = setup();
     const first = wait('halal', 'initial', 0);
-    for (let i = 1; i < 500; i += 1) wait('halal', 'initial', i);
+    for (let i = 1; i < 501; i += 1) wait('halal', 'initial', i);
     expect(await exporter.execute(admin(), {})).toMatchObject({
       ok: false,
       error: { code: 'batch.too-large', max: 500 },
