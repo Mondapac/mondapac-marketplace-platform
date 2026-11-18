@@ -29,3 +29,33 @@ and the attribute links of a category (`PUT catalog/admin/categories/:id/attribu
   revisions of an attribute.
 - Imports (the attribute file import) run through a variant of the edit use case with a recorder
   that never reviews, so a file import never needs a note.
+
+## Add product is the edit form in add mode (seller #991, admin #994)
+
+One page, no wizard. The same form serves Add and Edit; Add differs only in what is not yet
+known.
+
+- **Route.** Seller `/products/new` renders `EditForm` with the `add` prop (blank product built
+  by `blankProduct(options)`); admin `/catalog/products/new` renders `ProductAdd`, which reads
+  the options client-side and gives `EditForm` the `creating` prop.
+- **Nothing is created until the first Save draft.** Opening the page, typing and leaving writes
+  nothing. Publish and Submit are inactive while adding.
+- **Save sequence (`createAndSave`).** `POST` create (seller: type, condition, SKU; admin: type
+  only), then `PUT .../draft` with the page content and the `variantIds` returned by the create,
+  then `router.replace` to the edit URL. Before leaving, `flushSync(() => setDirty(false))`
+  releases the unsaved-changes guard so it does not prompt. A busy ref (not state) blocks a
+  double submit. A 401 at either call goes to `/session-ended`. Once the create has succeeded,
+  a failed or refused draft save still moves to the edit page and is told there (seller: toast;
+  admin: `?saved=failed|refused`, read by `startProblemOf`), because a second Save draft would
+  find the SKU taken. A failed create stays on the page with its problem shown.
+- **Reads before the first save** come from the options endpoints, not a product read:
+  `GET catalog/seller/products/options` and `GET catalog/platform/products/options` (use cases
+  `OwnProductOptions`, `PlatformProductOptions`): product types, locales, tax categories,
+  categories (seller also conditions and `sellerCanCreateProduct`). A failed category read
+  degrades to an empty list; the other answers stay usable.
+- **Seller and admin differ in one card.** The seller gets a "Your offer" card (type,
+  condition, SKU; all required, checked before the call). The admin picks the product type in
+  the Organisation card; a missing type is reported at the top and focuses the field.
+- **DOM order equals visual order.** The two-column layout is an explicit `lg:` grid with
+  `col-start`/`row-start`/`row-span`; no `order-*` classes, so tab and screen-reader order match
+  what is seen. Add a card by giving it an explicit cell, not by reordering.
