@@ -9,6 +9,8 @@ import {
   type SellerReviewListPage,
 } from '../seller-review-list-flow';
 
+export type { SellerReviewListPage } from '../seller-review-list-flow';
+
 /**
  * `reviews.query-seller-reviews` (super list 32): the shop lists its own published reviews with
  * views and counts, filters, sort, page numbers or Previous/Next and each row's actions. Same key

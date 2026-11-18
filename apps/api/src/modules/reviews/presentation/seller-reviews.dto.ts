@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { SELLER_REPORT_REASONS } from '../domain/seller-reply';
-import type { SellerReviewListPage } from '../application/seller-review-list-flow';
+import type { SellerReviewListPage } from '../application/use-cases/query-seller-reviews.use-case';
 import type {
   SellerReplyView,
   SellerReviewsPage,
