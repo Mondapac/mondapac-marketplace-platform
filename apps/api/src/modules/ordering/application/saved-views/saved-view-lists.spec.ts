@@ -62,6 +62,7 @@ describe('the admin Sales lists that keep saved filters', () => {
     expect(ORDERING_LISTS.map((list) => list.listKey)).toEqual([
       'admin.ordering.orders',
       ...SALES_LISTS,
+      'seller.ordering.orders',
     ]);
   });
 
