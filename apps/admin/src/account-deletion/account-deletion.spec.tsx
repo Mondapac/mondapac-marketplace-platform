@@ -9,7 +9,6 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { Toaster, toast } from '@mondapac/ui';
 import { callApi, type ApiResult } from '../api/client.ts';
-import { CustomerLookup } from '../customers/customer-lookup.tsx';
 import { settingsLink, settingsViewKeys, visibleSettings } from '../settings/settings-nav.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
 import { BuyerDeletion } from './buyer-deletion.tsx';
@@ -853,34 +852,30 @@ describe('BuyerDeletion', () => {
   });
 });
 
-describe('CustomerLookup with the delete action', () => {
-  const found = {
-    accountId: ACCOUNT,
-    email: 'sara@example.com',
-    status: 'active',
-    createdAt: '2026-10-01T02:30:00.000Z',
-    emailVerified: true,
-  };
-  const find = async (buyerDeletion: { waitingPeriodDays: number | null } | null) => {
-    call.mockResolvedValueOnce(ok(found));
-    render(wrap(<CustomerLookup canChangeStatus buyerDeletion={buyerDeletion} csrfToken="csrf" />));
-    fireEvent.change(screen.getByLabelText('Customer email'), {
-      target: { value: 'sara@example.com' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Find customer' }));
-    await screen.findByText('Customer account');
-  };
-
-  it('shows the action after the status action for an admin who may delete', async () => {
-    await find({ waitingPeriodDays: 30 });
-    const buttons = screen.getAllByRole('button').map((button) => button.textContent);
-    expect(buttons.indexOf("Delete this buyer's account")).toBeGreaterThan(
-      buttons.indexOf('Disable account'),
+describe('BuyerDeletion opened from the customer page menu', () => {
+  it('shows no button of its own and opens its dialog on each new signal', async () => {
+    const { rerender } = render(
+      wrap(
+        <BuyerDeletion
+          accountId={ACCOUNT}
+          waitingPeriodDays={30}
+          csrfToken="csrf"
+          openSignal={0}
+        />,
+      ),
     );
-  });
-
-  it('hides the action without customers.buyer-account.delete', async () => {
-    await find(null);
     expect(screen.queryByRole('button', { name: "Delete this buyer's account" })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    rerender(
+      wrap(
+        <BuyerDeletion
+          accountId={ACCOUNT}
+          waitingPeriodDays={30}
+          csrfToken="csrf"
+          openSignal={1}
+        />,
+      ),
+    );
+    expect(await screen.findByRole('dialog')).toBeTruthy();
   });
 });

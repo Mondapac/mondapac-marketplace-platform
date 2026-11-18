@@ -8,9 +8,9 @@ import {
   EmptyState,
   LoadError,
   Select,
-  SkeletonRows,
   TextField,
   toast,
+  DetailSkeleton,
   type BadgeTone,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
@@ -108,7 +108,9 @@ export function ShelvesPanel({
       <div role="status" className="min-h-5 text-sm text-fg-muted">
         {result}
       </div>
-      {load.state === 'loading' ? <SkeletonRows label={t('loading')} rows={2} /> : null}
+      {load.state === 'loading' ? (
+        <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={2} />
+      ) : null}
       {load.state === 'denied' ? <Banner tone="info">{t('denied')}</Banner> : null}
       {load.state === 'failed' ? (
         <LoadError

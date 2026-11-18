@@ -1,3 +1,4 @@
+import { FakeOrderProducts, FakePromotions } from '../support/ordering-promotions-fakes';
 import { err, money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -11,7 +12,7 @@ import { ConfirmPayment } from '../../src/modules/ordering/application/use-cases
 import type { OrderingDependencies } from '../../src/modules/ordering/application/checkout-flow';
 import { ORDERING_EVENTS } from '../../src/modules/ordering/domain/events';
 import type { OrderState } from '../../src/modules/ordering/domain/order';
-import { ConfigOrderingPolicy } from '../../src/modules/ordering/infrastructure/config-ordering-policy';
+import { testOrderingPolicy } from '../support/ordering-policy';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
 import { PrismaPickupCodeRepository } from '../../src/modules/ordering/infrastructure/prisma-pickup-code.repository';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
@@ -82,7 +83,7 @@ describe.each(TEST_MARKETS)(
         refunds: NO_REFUNDS,
         audit: NO_AUDIT,
         gateway: new FakeGateway(),
-        policy: new ConfigOrderingPolicy(markets),
+        policy: testOrderingPolicy(markets),
         cart: new FakeCart(),
         customers: new FakeCustomers(),
         shipTo: new FakeShipToCipher(),
@@ -91,6 +92,8 @@ describe.each(TEST_MARKETS)(
         commission: new FakeCommission(),
         tax: new FakeTax(),
         taxCategories: new FakeTaxCategories('taxable'),
+        products: new FakeOrderProducts(),
+        promotions: new FakePromotions(),
         outbox: new PrismaOutboxWriterFactory(
           modelMap,
           db.service,
@@ -141,6 +144,8 @@ describe.each(TEST_MARKETS)(
           sellerId: sellerIds[index]!,
           subtotal: 1250n,
           shipping: 0n,
+          discount: 0n,
+          shippingDiscount: 0n,
           shippingTaxRateBps: null,
           shippingTax: null,
           shippingTaxInclusive: null,
@@ -167,9 +172,14 @@ describe.each(TEST_MARKETS)(
           quantity: 1,
           unitPrice: money(1250n, currency),
           lineAmount: 1250n,
+          discountAmount: 0n,
+          discountSellerShare: 0n,
+          discountPlatformShare: 0n,
           taxInclusive: true,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
+          commissionRateReason: 'standard',
+          exclusiveSeller: false,
           taxRateBps: 1000,
           taxAmount: 114n,
           taxCategoryCode: 'taxable',

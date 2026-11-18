@@ -771,10 +771,40 @@ describe.each([
     expect(codes(parsed(rawCashback(platformDraft({}))), platform)).toEqual([]);
     expect(codes(parsed(rawFollower()), seller)).toEqual([]);
 
-    for (const raw of [rawGroup(), rawReferral(), rawCashback()]) {
+    for (const raw of [rawReferral(), rawCashback()]) {
       expect(codes(parsed({ ...raw, funding: 'SELLER' }), seller)).toContain('type:not-allowed');
     }
+    // A seller's customer-group discount is for its exclusive customers only.
+    expect(codes(parsed({ ...rawGroup(), funding: 'SELLER' }), seller)).toContain(
+      'segment.kind:not-allowed',
+    );
     expect(codes(parsed(rawFollower()), platform)).toContain('type:not-allowed');
+  });
+
+  it('lets a seller, and only a seller, make the exclusive-customer discount (customers phase 4a)', () => {
+    const exclusive = (over: Record<string, unknown> = {}) =>
+      parsed(
+        rawGroup({
+          funding: 'SELLER',
+          budgetMinor: undefined,
+          testMode: false,
+          segment: { kind: 'SELLER_EXCLUSIVE' },
+          ...over,
+        }),
+      );
+    expect(codes(exclusive(), seller)).toEqual([]);
+    expect(layerOf('CUSTOMER_GROUP', 'seller')).toBe('SELLER_CART');
+    expect(layerOf('CUSTOMER_GROUP', platform)).toBe('PLATFORM_CART');
+    expect(codes(exclusive({ zones: ['BRIS-1'] }), seller)).toContain('zones:not-allowed');
+    expect(
+      codes(
+        exclusive({ reward: { kind: 'PERCENT', bps: rules.sellerMaxDiscountBps + 1 } }),
+        seller,
+      ),
+    ).toContain('reward.bps:exceeds-seller-maximum');
+    expect(
+      codes(parsed(rawGroup(platformDraft({ segment: { kind: 'SELLER_EXCLUSIVE' } }))), platform),
+    ).toContain('segment.kind:not-allowed');
   });
 
   it('keeps the follower offer seller-funded and the platform types platform-funded', () => {

@@ -40,7 +40,11 @@ import {
 } from '../../src/modules/identity/application/ports/access-reviewers';
 import {
   ACCOUNT_REPOSITORY,
+  AccountEmailTakenError,
+  EMAIL_CHANGE_STORE,
   type AccountRepository,
+  type EmailChangeNotice,
+  type EmailChangeStore,
 } from '../../src/modules/identity/application/ports/account.repository';
 import {
   PASSWORD_HASHER,
@@ -59,7 +63,9 @@ import {
   type SessionRepository,
 } from '../../src/modules/identity/application/ports/session.repository';
 import {
+  customerSignInResultOf,
   SIGN_IN_RECORD_REPOSITORY,
+  type CustomerSignInQuery,
   type SignInRecord,
   type SignInRecordRepository,
 } from '../../src/modules/identity/application/ports/sign-in-record.repository';
@@ -257,6 +263,7 @@ export class IdentityFakes {
     this.provider.failure = null;
     this.provider.exchanges.length = 0;
     this.accounts.clear();
+    this.emailChangeNotices.clear();
     this.sessions.clear();
     this.throttles.clear();
     this.records.length = 0;
@@ -413,6 +420,19 @@ export class IdentityFakes {
       const stored = this.accounts.get(account.state.id);
       if (stored === undefined || stored.version !== account.persistedVersion) {
         return Promise.reject(new StaleAggregateError('account', account.state.id));
+      }
+      // As the unique key on (market, population, email_normalized).
+      const { marketId, population, email } = account.state;
+      if (
+        [...this.accounts.values()].some(
+          (other) =>
+            other.id !== account.state.id &&
+            other.marketId === marketId &&
+            other.population === population &&
+            other.email.normalized === email.normalized,
+        )
+      ) {
+        return Promise.reject(new AccountEmailTakenError(account.state.id));
       }
       this.accounts.set(account.state.id, account.state);
       return Promise.resolve();
@@ -1145,6 +1165,45 @@ export class IdentityFakes {
     },
   };
 
+  /** The notices of confirmed changes, by `${accountId}|${accountVersion}` (sealed in the real store). */
+  readonly emailChangeNotices = new Map<string, EmailChangeNotice>();
+
+  readonly emailChangeStore: EmailChangeStore = {
+    recordNotice: (_market, accountId, accountVersion, notice) => {
+      const key = `${accountId}|${accountVersion}`;
+      if (this.emailChangeNotices.has(key)) {
+        return Promise.reject(new Error('email_change_notices_pkey'));
+      }
+      this.emailChangeNotices.set(key, { ...notice });
+      return Promise.resolve();
+    },
+    noticeOf: (_market, accountId, accountVersion) => {
+      const notice = this.emailChangeNotices.get(`${accountId}|${accountVersion}`);
+      if (notice === undefined) return Promise.resolve('missing' as const);
+      return Promise.resolve(
+        this.subjectKeys.get(accountId) === 'destroyed' ? ('unreadable' as const) : notice,
+      );
+    },
+    forgetNotice: (_market, accountId, accountVersion) =>
+      Promise.resolve(this.emailChangeNotices.delete(`${accountId}|${accountVersion}`)),
+    clearLapsedPendingEmails: (market, before) => {
+      let count = 0;
+      for (const [id, state] of this.accounts) {
+        const at = state.pendingEmailRequestedAt ?? null;
+        if (state.marketId !== market.marketId || at === null) continue;
+        if (Temporal.Instant.compare(at, before) > 0) continue;
+        this.accounts.set(id, {
+          ...state,
+          pendingEmail: null,
+          pendingEmailRequestedAt: null,
+          version: state.version + 1,
+        });
+        count += 1;
+      }
+      return Promise.resolve(count);
+    },
+  };
+
   readonly linkRepository: OneTimeLinkRepository = {
     findById: (market, id) => {
       const state = this.links.get(id);
@@ -1530,9 +1589,52 @@ export class IdentityFakes {
         );
       return Promise.resolve(latest);
     },
+    pageOfCustomer: (market, query, direction, window) => {
+      const sign = direction === 'asc' ? 1 : -1;
+      const rows = this.customerRecords(market.marketId, query)
+        .sort(
+          (a, b) =>
+            sign *
+            (Temporal.Instant.compare(a.occurredAt, b.occurredAt) || a.id.localeCompare(b.id)),
+        )
+        .slice(window.offset, window.offset + window.limit)
+        .map(({ id, occurredAt, outcome, device }) => ({ id, occurredAt, outcome, device }));
+      return Promise.resolve(rows);
+    },
+    countOfCustomer: (market, query) =>
+      Promise.resolve(this.customerRecords(market.marketId, query).length),
+    customerAddressOf: (market, accountId, recordId, since) => {
+      const found = this.records.find(
+        (record) =>
+          record.marketId === market.marketId &&
+          record.id === recordId &&
+          record.accountId === accountId &&
+          record.population === 'customer' &&
+          Temporal.Instant.compare(record.occurredAt, since) >= 0,
+      );
+      return Promise.resolve(
+        found === undefined ? null : { address: found.address, occurredAt: found.occurredAt },
+      );
+    },
     oldest: () => Promise.resolve(null),
     deleteBetween: () => Promise.resolve(0),
   };
+
+  /** One customer's records as `pageOfCustomer` filters them (any order). */
+  private customerRecords(
+    marketId: string,
+    query: CustomerSignInQuery,
+  ): (SignInRecord & { marketId: string })[] {
+    return this.records.filter(
+      (record) =>
+        record.marketId === marketId &&
+        record.accountId === query.accountId &&
+        record.population === 'customer' &&
+        Temporal.Instant.compare(record.occurredAt, query.from) >= 0 &&
+        (query.to === null || Temporal.Instant.compare(record.occurredAt, query.to) < 0) &&
+        (query.results === null || query.results.includes(customerSignInResultOf(record.outcome))),
+    );
+  }
 
   readonly factorRepository: SecondFactorRepository = {
     findByAccount: (market, accountId) => {
@@ -1949,6 +2051,8 @@ export class IdentityFakes {
       .useValue(this.review)
       .overrideProvider(ACCOUNT_REPOSITORY)
       .useValue(this.accountRepository)
+      .overrideProvider(EMAIL_CHANGE_STORE)
+      .useValue(this.emailChangeStore)
       .overrideProvider(SESSION_REPOSITORY)
       .useValue(this.sessionRepository)
       .overrideProvider(STEP_UP_REPOSITORY)

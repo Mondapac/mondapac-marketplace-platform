@@ -5,13 +5,33 @@ import type {
   TopicBrief,
   TopicListPage,
   TopicListQuery,
+  TopicPageFilter,
+  TopicPageQuery,
   TopicReader,
 } from '../application/ports/topic.reader';
-import { normaliseTopicTerm, type TopicStatus } from '../domain/topic';
+import { normaliseTopicTerm, type TopicState, type TopicStatus } from '../domain/topic';
+import { likeLiteral } from './like-literal';
 import { TOPIC_INCLUDE, topicStateOf } from './prisma-topic.repository';
 
-/** Escapes `\`, `%` and `_`, so a search term is matched as typed (LIKE patterns). */
-const literal = (term: string): string => term.replace(/[\\%_]/g, (char) => `\\${char}`);
+const literal = likeLiteral;
+
+function topicFilters(filter: TopicPageFilter): Prisma.CatalogTopicWhereInput[] {
+  const filters: Prisma.CatalogTopicWhereInput[] = [];
+  if (filter.status !== null) filters.push({ status: filter.status });
+  if (filter.group !== null) filters.push({ group: filter.group });
+  if (filter.search !== null) {
+    const key = normaliseTopicTerm(filter.search);
+    const typed = literal(filter.search);
+    filters.push({
+      OR: [
+        { slug: { contains: typed.toLowerCase() } },
+        { terms: { some: { term: { contains: typed, mode: 'insensitive' } } } },
+        ...(key === '' ? [] : [{ terms: { some: { termKey: { contains: literal(key) } } } }]),
+      ],
+    });
+  }
+  return filters;
+}
 
 const BRIEFS_MAX = 50;
 
@@ -21,20 +41,7 @@ export class PrismaTopicReader implements TopicReader {
 
   async list(market: MarketContext, query: TopicListQuery): Promise<TopicListPage> {
     const tx = this.prisma.tx(market);
-    const filters: Prisma.CatalogTopicWhereInput[] = [];
-    if (query.status !== null) filters.push({ status: query.status });
-    if (query.group !== null) filters.push({ group: query.group });
-    if (query.search !== null) {
-      const key = normaliseTopicTerm(query.search);
-      const typed = literal(query.search);
-      filters.push({
-        OR: [
-          { slug: { contains: typed.toLowerCase() } },
-          { terms: { some: { term: { contains: typed, mode: 'insensitive' } } } },
-          ...(key === '' ? [] : [{ terms: { some: { termKey: { contains: literal(key) } } } }]),
-        ],
-      });
-    }
+    const filters = topicFilters(query);
     if (query.afterId !== null) {
       // Keyset by (slug, id): the page starts after the row the cursor names.
       const cursor = await tx.catalogTopic.findFirst({
@@ -57,6 +64,30 @@ export class PrismaTopicReader implements TopicReader {
       items: page.map(topicStateOf),
       nextAfterId: rows.length > query.limit ? (page[page.length - 1]!.id as Id<'Topic'>) : null,
     };
+  }
+
+  async page(market: MarketContext, query: TopicPageQuery): Promise<readonly TopicState[]> {
+    const field = {
+      slug: 'slug',
+      status: 'status',
+      group: 'group',
+      created: 'createdAt',
+      updated: 'updatedAt',
+    }[query.sort] as 'slug' | 'status' | 'group' | 'createdAt' | 'updatedAt';
+    const rows = await this.prisma.tx(market).catalogTopic.findMany({
+      where: { marketId: market.marketId, AND: topicFilters(query) },
+      include: TOPIC_INCLUDE,
+      orderBy: [{ [field]: query.direction }, { id: query.direction }],
+      skip: query.offset,
+      take: query.limit,
+    });
+    return rows.map(topicStateOf);
+  }
+
+  async count(market: MarketContext, filter: TopicPageFilter): Promise<number> {
+    return this.prisma.tx(market).catalogTopic.count({
+      where: { marketId: market.marketId, AND: topicFilters(filter) },
+    });
   }
 
   async briefsOf(market: MarketContext, ids: readonly string[]): Promise<readonly TopicBrief[]> {

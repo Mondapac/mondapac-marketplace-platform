@@ -35,10 +35,28 @@ export class BusinessActivityLocalesBody {
   supported!: string[];
 }
 
+export class BusinessActivityListItemBody extends BusinessActivityBody {
+  @ApiProperty({
+    type: [String],
+    description: 'The row actions of the Actions menu the caller may run: edit, deactivate.',
+  })
+  actions!: string[];
+}
+
 export class BusinessActivityListBody {
-  @ApiProperty({ type: [BusinessActivityBody] }) items!: BusinessActivityBody[];
+  @ApiProperty({ type: [BusinessActivityListItemBody] }) items!: BusinessActivityListItemBody[];
   @ApiProperty({ nullable: true, type: String, description: 'The `afterId` of the next page.' })
   nextAfterId!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Activities matching over all pages; null in prev-next mode and on a cursor read.',
+  })
+  total!: number | null;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty({ description: 'Whether a page after this one exists.' }) hasNext!: boolean;
   @ApiProperty({ type: BusinessActivityLocalesBody })
   locales!: BusinessActivityLocalesBody;
 }

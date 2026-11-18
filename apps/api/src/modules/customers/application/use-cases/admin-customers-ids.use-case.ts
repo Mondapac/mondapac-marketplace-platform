@@ -58,7 +58,11 @@ export class AdminCustomersIds extends UseCase<
     const selector = selectorOfRequest(input);
     if (!selector.ok) return selector;
     const { deps } = this;
-    const query = { selector: selector.value, now: deps.clock.now() };
+    const query = {
+      selector: selector.value,
+      now: deps.clock.now(),
+      zone: await deps.dayZone.zoneOf(context),
+    };
     const read = await deps.unitOfWork.run(
       context.market,
       async () => {

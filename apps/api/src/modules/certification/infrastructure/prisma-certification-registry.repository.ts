@@ -305,6 +305,19 @@ export class PrismaCertificationRegistryRepository implements CertificationRegis
     return revisionNo;
   }
 
+  async lockType(
+    market: MarketContext,
+    typeId: Id<'CertificationType'>,
+    expectedVersion: number,
+  ): Promise<void> {
+    // An update that changes nothing still takes the row lock, under the version guard.
+    const { count } = await this.prisma.tx(market).certificationType.updateMany({
+      where: { marketId: market.marketId, id: typeId, version: expectedVersion },
+      data: { version: expectedVersion },
+    });
+    if (count !== 1) throw new StaleAggregateError('certification-type', typeId);
+  }
+
   async publishRevision(
     market: MarketContext,
     typeId: Id<'CertificationType'>,

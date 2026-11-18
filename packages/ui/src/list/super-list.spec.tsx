@@ -185,6 +185,19 @@ describe('SuperList', () => {
     expect(html).toContain('opacity-60');
   });
 
+  it('shows a page title and a notice, and a page-made toolbar in place of the three tools', () => {
+    const html = list({
+      heading: { title: 'People', subtitle: '143 people' },
+      notice: <p>View only</p>,
+      toolbar: <fieldset>OWN TOOLS</fieldset>,
+    });
+    expect(html).toContain('<h1');
+    expect(html).toContain('People');
+    expect(html).toContain('View only');
+    expect(html).toContain('OWN TOOLS');
+    expect(html).not.toContain('>Columns<');
+  });
+
   it('puts a page note under the subtitle, and anything the page gives after the search box', () => {
     const html = list({
       heading: { subtitle: '143 people', note: 'Times are in Brisbane.' },

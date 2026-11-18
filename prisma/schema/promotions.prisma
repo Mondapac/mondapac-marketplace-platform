@@ -64,8 +64,9 @@ model PromotionsPromotion {
   /// both set if and only if the type is FLASH_SALE (CHECK), which also has an end.
   flashUnitLimit     Int?                       @map("flash_unit_limit")
   flashTimeZone      String?                    @map("flash_time_zone")
-  /// CUSTOMER_GROUP: RETURNING_CUSTOMER, DELIVERY_ZONE (the zones are its ZONE targets) or
-  /// MANUAL_GROUP; set if and only if the type is CUSTOMER_GROUP (CHECK).
+  /// CUSTOMER_GROUP: RETURNING_CUSTOMER, DELIVERY_ZONE (the zones are its ZONE targets),
+  /// MANUAL_GROUP or SELLER_EXCLUSIVE (a seller's own, seller-funded); set if and only if the type
+  /// is CUSTOMER_GROUP (CHECK).
   segmentKind        String?                    @map("segment_kind")
   /// RETURNING_CUSTOMER: whole days since the customer's last order (1 to 3650).
   segmentMinDays     Int?                       @map("segment_min_days") @db.SmallInt
