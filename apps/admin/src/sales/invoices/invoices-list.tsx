@@ -464,8 +464,11 @@ export function InvoicesList({
         note: to('zone-note', { zone }),
         actions: (
           <InvoicesBulk
-            tab={query.tab}
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}
+            query={query}
+            paging={paging}
+            zone={zone}
+            columns={columns}
           />
         ),
       }}
