@@ -23,6 +23,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Seller accounts list (super list 22) and the same rows as a file (CSV or XLSX).
     'payments/admin/connected-accounts',
     'payments/admin/connected-accounts/export',
+    // The security centre's alerts as a super list (security; query: `view`, `severity`, `rule`,
+    // `keyType`, `keyValue`, `minEvents`, `from`, `to`, `sort`, `direction`, `paging`, `page`,
+    // `pageSize`) and its export as a file (the chosen ids or the list's own query).
+    'security/admin/alerts/list',
+    'security/admin/alerts/export',
     // The Market's orders (ordering), read-only: the list; one order is read by the page server.
     'ordering/admin/orders',
     // The export of the order list as a CSV file (ordering): the list's own filter.
@@ -75,7 +80,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'ordering/admin/refund-limits',
     // The Market's ship-to retention (ordering): whether and when delivery addresses are deleted.
     'ordering/admin/ship-to-retention',
+    // The admin credit requests (wallet; the Credit requests super list), read-only list (query:
+    // `view`, `status`, `q`, the filters, `sort`, `direction`, `page`, `pageSize`, or `cursor` and
+    // `limit`). The export of the list as a file: the chosen ids or the list's own query.
     'wallet/admin/credit-requests',
+    'wallet/admin/credit-requests/export',
     // The payment dispute cases (commission-payouts; the Disputes super list), read-only list
     // (query: `view` or the older `filter`, `status`, `money`, `q`, `search`, the filters, `sort`,
     // `direction`, `page`, `pageSize`, or `cursor` and `limit`); one case is read by the page
@@ -83,6 +92,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // list's own query.
     'commission-payouts/admin/disputes',
     'commission-payouts/admin/disputes/export',
+    // The held prices as a super list (pricing; query: `view`, `kind`, `change`, `q`, `sellerId`,
+    // `from`, `to`, `minAmount`, `maxAmount`, `sort`, `direction`, `paging`, `page`, `pageSize`) and
+    // its export as a file (the chosen ids or the list's own query). The decisions are POSTs below.
+    'pricing/admin/price-holds/list',
+    'pricing/admin/price-holds/export',
     // The buyer-review moderation queue (reviews), read-only list (query: `tab`, `cursor`,
     // `limit`); one review is read by its dialog and again after an action.
     'reviews/admin/moderation',
@@ -387,6 +401,43 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/customers/:id/notes',
     'customers/admin/customers/:id/activity',
     'customers/admin/customers/:id/activity/export',
+    // Customers phase 2b, part A (Money tab): one customer's payments, disputes and refunds as
+    // super lists read in the body, each with its export behind a fresh two-step code.
+    'payments/admin/customers/:id/payments',
+    'payments/admin/customers/:id/payments/export',
+    'payments/admin/customers/:id/disputes',
+    'payments/admin/customers/:id/disputes/export',
+    'ordering/admin/customers/:id/refunds',
+    'ordering/admin/customers/:id/refunds/export',
+    // Customers phase 2b, part B (Account & security): the sign-ins super list (NO export route:
+    // owner decision), the reveal of one sign-in's address or one delivery address (no body), sign
+    // out everywhere, the password reset mail, and the consent history with its export.
+    'customers/admin/customers/:id/sign-ins',
+    'customers/admin/customers/:id/sign-ins/:id/reveal',
+    'customers/admin/customers/:id/sessions/end',
+    'customers/admin/customers/:id/password-reset',
+    'customers/admin/customers/:id/addresses/:id/reveal',
+    'customers/admin/customers/:id/consent-history',
+    'customers/admin/customers/:id/consent-history/export',
+    // Customers phase 2b, part C (Shopping and Reviews tabs): the super lists are read in the
+    // body (filters, direction, page, pageSize, paging), each with its export behind a fresh
+    // two-step code. Ids, counts and instants only; never a review's text or a search text.
+    'customers/admin/customers/:id/saved-items',
+    'customers/admin/customers/:id/saved-items/export',
+    'customers/admin/customers/:id/cart-reminders',
+    'customers/admin/customers/:id/cart-reminders/export',
+    'customers/admin/customers/:id/cart-additions',
+    'customers/admin/customers/:id/cart-additions/export',
+    'customers/admin/customers/:id/assistant-conversations',
+    'customers/admin/customers/:id/assistant-conversations/export',
+    'customers/admin/customers/:id/reviews',
+    'customers/admin/customers/:id/reviews/export',
+    'customers/admin/customers/:id/seller-ratings',
+    'customers/admin/customers/:id/seller-ratings/export',
+    'customers/admin/customers/:id/helpful-votes',
+    'customers/admin/customers/:id/helpful-votes/export',
+    'customers/admin/customers/:id/review-reports',
+    'customers/admin/customers/:id/review-reports/export',
     'identity/admin/invitations/:id/resend',
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
@@ -425,6 +476,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/types/:id/reactivations/:id/approve',
     'certification/admin/types/:id/proposals/:id/reject',
     'certification/admin/types/:id/proposals/:id/withdraw',
+    // A claim basis policy (certification): a new revision, and a second admin's answer to a
+    // relaxing one, each under the version read. The relay refuses reads here.
+    'certification/admin/claim-policies/:id/revisions',
+    'certification/admin/claim-policies/:id/relaxations/:id/approve',
+    'certification/admin/claim-policies/:id/proposals/:id/reject',
+    'certification/admin/claim-policies/:id/proposals/:id/withdraw',
     // The rest of an issuer's life (certification): close to new, derecognise (names the number of
     // certificates the form showed), ask for reactivation, and a second admin's answer to it.
     'certification/admin/issuers/:id/close-to-new',
@@ -703,10 +760,22 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // `cursor`).
     'customers/admin/groups/:id',
     'customers/admin/customers/:id/notes',
+    // Customers phase 2b, part B: the live sessions (identity), the delivery addresses as suburb
+    // and country (customers), the marketing consent (legal) and the personalization switch
+    // (engagement, read from the behaviour answer). No query keys.
+    'customers/admin/customers/:id/sessions',
+    'customers/admin/customers/:id/addresses',
+    'customers/admin/customers/:id/consent',
+    // Customers phase 2b, part C: the current cart and the behaviour summary (cart, engagement).
+    'customers/admin/customers/:id/cart',
+    'customers/admin/customers/:id/behaviour',
     // The customer page's Money tab: the newest refunds (ordering) and the wallet credits from
     // promotions (promotions; query: `limit`, `cursor`).
     'ordering/admin/customers/:id/refunds',
     'promotions/admin/customers/:id/credits',
+    // Customers phase 2b, part A: the promotions a customer used (promotions; query: `limit`,
+    // `cursor`).
+    'promotions/admin/customers/:id/usages',
     // One dispute case, read again after a decision (commission-payouts).
     'commission-payouts/admin/disputes/:id',
     // One buyer review for the moderator dialog (reviews).
@@ -768,6 +837,36 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'paging',
     'cursor',
   ],
+  'security/admin/alerts/list': [
+    'view',
+    'severity',
+    'rule',
+    'keyType',
+    'keyValue',
+    'minEvents',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'paging',
+    'page',
+    'pageSize',
+  ],
+  'security/admin/alerts/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'severity',
+    'rule',
+    'keyType',
+    'keyValue',
+    'minEvents',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   'payments/admin/connected-accounts/export': [
     'format',
     'columns',
@@ -802,6 +901,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   ],
   'ordering/admin/orders/export': [
     'format',
+    'columns',
+    'ids',
     'status',
     'q',
     'paymentState',
@@ -923,7 +1024,41 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
   'blog/admin/posts': ['status', 'kind', 'owner', 'page'],
-  'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
+  'wallet/admin/credit-requests': [
+    'view',
+    'status',
+    'reason',
+    'approvalReason',
+    'q',
+    'requestedBy',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+  ],
+  'wallet/admin/credit-requests/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'status',
+    'reason',
+    'approvalReason',
+    'q',
+    'requestedBy',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+  ],
   // The view, search, filters and page mode of the Disputes super list (the API validates them).
   'commission-payouts/admin/disputes': [
     'view',
@@ -958,6 +1093,39 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'from',
     'to',
     'dueBefore',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+  ],
+  // The view, filters, sort and page mode of the held-price super list (the API validates them).
+  'pricing/admin/price-holds/list': [
+    'view',
+    'kind',
+    'change',
+    'q',
+    'sellerId',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+    'paging',
+    'page',
+    'pageSize',
+  ],
+  'pricing/admin/price-holds/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'kind',
+    'change',
+    'q',
+    'sellerId',
+    'from',
+    'to',
     'minAmount',
     'maxAmount',
     'sort',
@@ -1165,6 +1333,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
       'paid',
       'delivery',
       'carrier',
+      'carrierProgress',
       'fleet',
       'ready',
       'shipped',
@@ -1287,6 +1456,40 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     // The API's own cursor: epoch milliseconds of the creation, a dot and the seller id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
+  'security/admin/alerts/list': {
+    view: /^(all|open|acknowledged|critical|resolved)$/,
+    severity: /^(s[1-4])(,s[1-4]){0,3}$/,
+    rule: /^[a-z][a-z0-9-]{0,59}$/,
+    keyType: /^(account|ip|market|event)$/,
+    // An account id, an address, the Market code or an event id, exact (the API validates it again).
+    keyValue: /^[\s\S]{1,64}$/,
+    minEvents: /^[1-9][0-9]{0,8}$/,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(severity|opened|events|last-event)$/,
+    direction: /^(asc|desc)$/,
+    paging: /^(pages|prev-next)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'security/admin/alerts/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(alert-id|rule|first-event|last-event|acknowledged|resolved|resolution)(,(alert-id|rule|first-event|last-event|acknowledged|resolved|resolution)){0,6}$/,
+    // At most 200 alert ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(all|open|acknowledged|critical|resolved)$/,
+    severity: /^(s[1-4])(,s[1-4]){0,3}$/,
+    rule: /^[a-z][a-z0-9-]{0,59}$/,
+    keyType: /^(account|ip|market|event)$/,
+    // An account id, an address, the Market code or an event id, exact (the API validates it again).
+    keyValue: /^[\s\S]{1,64}$/,
+    minEvents: /^[1-9][0-9]{0,8}$/,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(severity|opened|events|last-event)$/,
+    direction: /^(asc|desc)$/,
+  },
   'payments/admin/connected-accounts/export': {
     ...ACCOUNT_LIST_SHAPES,
     format: /^(csv|xlsx)$/,
@@ -1301,9 +1504,52 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   // The cursor is the API's own: epoch milliseconds, a dot and a request id.
   'wallet/admin/credit-requests': {
-    status: /^(pending|decided|granted)$/,
+    // `status` is one status, or the older queue's view (pending, decided or granted).
+    view: /^(pending|decided|granted|all)$/,
+    status: /^(pending|decided|granted|approved|rejected|expired)$/,
+    reason: /^(goodwill|service-recovery|promotion|correction)$/,
+    approvalReason: /^(issue-cap|daily-cap)$/,
+    // A request id or a customer account id, exact.
+    q: UUID,
+    // An admin account id, or `me` for the caller.
+    requestedBy:
+      /^(me|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/,
+    // ISO instants on the request time (`to` excluded).
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The amount in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(requested|amount|expires|decided)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
     limit: /^[0-9]{1,3}$/,
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'wallet/admin/credit-requests/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(note|approval-reason|expires|decided-by|decided|decision-reason|journal)(,(note|approval-reason|expires|decided-by|decided|decision-reason|journal)){0,6}$/,
+    // At most 200 request ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(pending|decided|granted|all)$/,
+    status: /^(pending|decided|granted|approved|rejected|expired)$/,
+    reason: /^(goodwill|service-recovery|promotion|correction)$/,
+    approvalReason: /^(issue-cap|daily-cap)$/,
+    // A request id or a customer account id, exact.
+    q: UUID,
+    // An admin account id, or `me` for the caller.
+    requestedBy:
+      /^(me|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/,
+    // ISO instants on the request time (`to` excluded).
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The amount in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(requested|amount|expires|decided)$/,
+    direction: /^(asc|desc)$/,
   },
   'reviews/admin/moderation': {
     tab: /^(held|reported|actioned)$/,
@@ -1358,6 +1604,46 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^(opened|amount|evidence-due|updated)$/,
     direction: /^(asc|desc)$/,
   },
+  'pricing/admin/price-holds/list': {
+    view: /^(all|regular|special|up|down)$/,
+    kind: /^(regular|special)$/,
+    change: /^(up|down)$/,
+    // A record id or an Offer id, exact.
+    q: UUID,
+    sellerId: UUID,
+    // ISO instants: the submission (`to` excluded).
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The held amount in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(submitted|amount)$/,
+    direction: /^(asc|desc)$/,
+    paging: /^(pages|prev-next)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'pricing/admin/price-holds/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(offer-id|variant-id|seller-id|record-id|window|anchor)(,(offer-id|variant-id|seller-id|record-id|window|anchor)){0,5}$/,
+    // At most 200 record ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(all|regular|special|up|down)$/,
+    kind: /^(regular|special)$/,
+    change: /^(up|down)$/,
+    // A record id or an Offer id, exact.
+    q: UUID,
+    sellerId: UUID,
+    // ISO instants: the submission (`to` excluded).
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The held amount in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(submitted|amount)$/,
+    direction: /^(asc|desc)$/,
+  },
   'catalog/admin/products': {
     view: /^(active|all|inactive)$/,
     scope: /^(PLATFORM|SELLER)$/,
@@ -1371,7 +1657,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     pageSize: /^([1-9][0-9]?|100)$/,
   },
   'ordering/admin/orders/export': {
-    format: /^csv$/,
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(currency|total|tax|sellers|stores|fulfilment|paid|cancelled)(,(currency|total|tax|sellers|stores|fulfilment|paid|cancelled)){0,7}$/,
+    // At most 100 selected order ids, one list page.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
     status: /^(pending-payment|confirmed|cancelled)$/,
     q: /^[0-9a-f-]{36}$/i,
     paymentState: /^(none|authorised|captured|voided)$/,
@@ -1416,6 +1706,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'ordering/admin/orders': { accountId: UUID },
   'wallet/admin/customers/:id/history': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'promotions/admin/customers/:id/credits': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
+  // Customers phase 2b, part A.
+  'promotions/admin/customers/:id/usages': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'lists/admin/saved-filters': { listKey: SALES_LIST_KEY },
   'customers/admin/customers/:id/notes': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'commission-payouts/admin/payouts': {
@@ -1624,6 +1916,8 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/categories/:id/impact': ['action', 'targetId'],
   'wallet/admin/customers/:id/history': ['cursor', 'limit'],
   'promotions/admin/customers/:id/credits': ['limit', 'cursor'],
+  // Customers phase 2b, part A.
+  'promotions/admin/customers/:id/usages': ['limit', 'cursor'],
   // The older page of a certificate's history: the API's own entry id and a small page size.
   'certification/admin/seller-certificates/:id/history': ['beforeId', 'limit'],
   'customers/admin/customers/:id/notes': ['limit', 'cursor'],
@@ -1646,14 +1940,18 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
+  'ordering/admin/orders/export:ids': 3700,
   'ordering/admin/documents/export:ids': 7400,
   'ordering/admin/refunds/export:ids': 7400,
   'ordering/admin/shipments/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
+  'wallet/admin/credit-requests/export:ids': 7400,
   'commission-payouts/admin/disputes/export:ids': 7400,
+  'pricing/admin/price-holds/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
   'payments/admin/connected-accounts/export:ids': 7400,
+  'security/admin/alerts/export:ids': 7400,
   'catalog/admin/attributes:search': 120,
 };
 
@@ -1683,6 +1981,7 @@ function badScope(method: string, target: string, requestUrl: string): boolean {
  */
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
+  'security/admin/alerts/export',
 ]);
 
 /** The first known key of a strict target whose value cannot cross, or null. */

@@ -88,6 +88,8 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
           .useValue({
             offerTotalsOfProduct: (market: { marketId: string }) =>
               Promise.resolve(offerTotals[market.marketId] ?? { sellerCount: 0, offerCount: 0 }),
+            productCategories: () =>
+              Promise.resolve([{ categoryId: PRODUCT, parentId: null, names: { en: 'Pantry' } }]),
             productForm: () =>
               Promise.resolve({
                 fields: [],
@@ -269,7 +271,16 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       const options = await get('/options', root);
       expect(options.status).toBe(200);
       expect(options.headers['cache-control']).toBe('no-store');
-      expect((options.body as { productTypes: string[] }).productTypes).toContain('simple');
+      const optionsBody = options.body as {
+        productTypes: string[];
+        taxCategoryCodes: string[];
+        categories: { categoryId: string }[];
+      };
+      expect(optionsBody.productTypes).toContain('simple');
+      expect(optionsBody.taxCategoryCodes.length).toBeGreaterThan(0);
+      expect(optionsBody.categories).toEqual([
+        { categoryId: PRODUCT, parentId: null, names: { en: 'Pantry' } },
+      ]);
 
       const created = await send('post', code, '', { typeCode: 'simple' }, root);
       const productId = (created.body as { productId: string }).productId;

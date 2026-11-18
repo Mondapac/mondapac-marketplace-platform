@@ -21,6 +21,19 @@ export const MAX_CONCURRENT_PLANS = 8;
 /** Offers whose sell units one plan reads (a 40-line list has at most 40 picks and 80 options). */
 const MAX_UNIT_READS = 60;
 
+/** Plans one signed-in buyer may run at once; guests have no id and share one bucket per Market. */
+export const MAX_PLANS_PER_BUYER = 2;
+export const MAX_PLANS_PER_GUEST_BUCKET = 4;
+
+/** Who the plan counts against: the account, or the guest bucket of the Market. */
+function budgetOf(context: CallContext): { key: string; cap: number } {
+  const actor = context.actor;
+  if (actor.kind === 'authenticated') {
+    return { key: `${actor.marketId}:${actor.accountId}`, cap: MAX_PLANS_PER_BUYER };
+  }
+  return { key: `${actor.marketId}:guest`, cap: MAX_PLANS_PER_GUEST_BUCKET };
+}
+
 const failed: ToolOutcome = Object.freeze({
   forModel: JSON.stringify({ error: 'could not read the store; say so and do not guess' }),
   isError: true,
@@ -53,6 +66,7 @@ function summaryForModel(proposal: BasketProposal) {
  */
 export class BasketAssistantTools implements AssistantTools {
   private running = 0;
+  private readonly runningBy = new Map<string, number>();
 
   constructor(
     private readonly inner: AssistantTools,
@@ -64,6 +78,10 @@ export class BasketAssistantTools implements AssistantTools {
   async run(context: CallContext, request: ToolRequest): Promise<ToolOutcome> {
     if (request.tool !== 'plan_basket') return this.inner.run(context, request);
     if (this.running >= MAX_CONCURRENT_PLANS) return failed;
+    const budget = budgetOf(context);
+    const mine = this.runningBy.get(budget.key) ?? 0;
+    if (mine >= budget.cap) return failed;
+    this.runningBy.set(budget.key, mine + 1);
     this.running += 1;
     const state = { stopped: false };
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -93,6 +111,9 @@ export class BasketAssistantTools implements AssistantTools {
     } finally {
       state.stopped = true;
       this.running -= 1;
+      const left = (this.runningBy.get(budget.key) ?? 1) - 1;
+      if (left <= 0) this.runningBy.delete(budget.key);
+      else this.runningBy.set(budget.key, left);
       clearTimeout(timer);
     }
   }

@@ -10,7 +10,8 @@ import type { AuthorisationCheck } from '../../src/platform/authz';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
-import type { CategoryRestructureDependencies } from '../../src/modules/catalog/application/categories/category-restructure';
+import type { CategoryRestructureRouteDependencies } from '../../src/modules/catalog/application/categories/category-restructure';
+import { NO_PROPOSAL, NO_REVIEW } from '../../src/modules/catalog/application/catalogue-review';
 import { CategoryArchive } from '../../src/modules/catalog/application/use-cases/category-archive.use-case';
 import { CategoryMerge } from '../../src/modules/catalog/application/use-cases/category-merge.use-case';
 import { CategoryMove } from '../../src/modules/catalog/application/use-cases/category-move.use-case';
@@ -550,7 +551,7 @@ describe.each(TEST_MARKETS)(
       let audits: AuditEntry[];
       let events: PendingEvent[];
       let asked: string[][];
-      let deps: CategoryRestructureDependencies;
+      let deps: CategoryRestructureRouteDependencies;
       let requests: PrismaTagReevaluationRequests;
       const admin = (): CallContext =>
         testCallContext(
@@ -581,6 +582,8 @@ describe.each(TEST_MARKETS)(
         ).forModule('catalog');
         requests = new PrismaTagReevaluationRequests(db.service);
         deps = {
+          review: NO_REVIEW,
+          proposer: NO_PROPOSAL,
           unitOfWork: db.unitOfWork,
           store,
           restructure: store,
@@ -674,11 +677,7 @@ describe.each(TEST_MARKETS)(
        * The acted-on category: `changed` then the action's own event, one version each (Q-K3), the
        * row at the last; the answer carries that version and one new revision.
        */
-      const expectTwoVersionSteps = async (
-        answer: Result<{ category: { version: number; revisionNo: number } }, unknown>,
-        categoryId: string,
-        own: string,
-      ) => {
+      const expectTwoVersionSteps = async (answer: unknown, categoryId: string, own: string) => {
         const row = await load(market, categoryId);
         expect(row.version).toBe(3);
         expect(row.revisionNo).toBe(2);

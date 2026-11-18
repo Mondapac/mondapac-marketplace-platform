@@ -48,6 +48,7 @@ import { ViewReviewPolicy } from './application/use-cases/view-review-policy.use
 import { ViewSystemRequest } from './application/use-cases/view-system-request.use-case';
 import { WithdrawSystemRequest } from './application/use-cases/withdraw-system-request.use-case';
 import {
+  SYSTEM_ACTION_PROPOSER,
   SYSTEM_CHANGE_REVERTERS,
   SYSTEM_REQUEST_RECORDER,
   SYSTEM_REQUESTS_AUDIT_ACTIONS,
@@ -188,6 +189,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (deps: SystemRequestsDependencies) =>
         new SystemRequestRecorderImplementation(deps),
     },
+    // The same implementation, for an action that waits for approval (owner decision of 18 Nov).
+    { provide: SYSTEM_ACTION_PROPOSER, useExisting: SYSTEM_REQUEST_RECORDER },
     {
       provide: POLICY_AREA_REVERTER,
       inject: [DEPENDENCIES],
@@ -209,7 +212,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       },
     },
   ],
-  exports: [SYSTEM_REQUEST_RECORDER, SYSTEM_CHANGE_REVERTERS],
+  exports: [SYSTEM_REQUEST_RECORDER, SYSTEM_ACTION_PROPOSER, SYSTEM_CHANGE_REVERTERS],
 })
 export class SystemRequestsModule implements OnApplicationBootstrap {
   constructor(@Inject(REVERTER_REGISTRY) private readonly reverters: ReverterRegistry) {}
