@@ -74,6 +74,11 @@ export const filterCount = (filters: Filters): number =>
 export interface Query {
   readonly view: View;
   readonly q: string;
+  /**
+   * An order's id (phase 2b): the list narrows to the customer who placed it. The API reads it on
+   * the list only, so it is not part of a saved filter, the selector or an export.
+   */
+  readonly orderNumber: string;
   readonly filters: Filters;
   readonly sort: Sort;
   readonly direction: Direction;
@@ -84,6 +89,7 @@ export interface Query {
 export const DEFAULT_QUERY: Query = {
   view: 'all',
   q: '',
+  orderNumber: '',
   filters: {},
   sort: 'joined',
   direction: 'desc',
@@ -95,6 +101,14 @@ export const DEFAULT_QUERY: Query = {
 export const searchOf = (q: string): string | undefined => {
   const text = q.trim();
   return text.length >= SEARCH_MIN ? text : undefined;
+};
+
+export const ORDER_NUMBER_MAX = 64;
+
+/** The order number as the API takes it (trimmed, at most 64 characters), or undefined when empty. */
+export const orderNumberOf = (orderNumber: string): string | undefined => {
+  const text = orderNumber.trim();
+  return text === '' ? undefined : text;
 };
 
 /** The filters as the API takes them (also the `filters` of a saved document). */
@@ -255,6 +269,7 @@ export function queryOfPayload(payload: SavedPayload, pageSize: number): Query {
   return {
     view: (VIEWS as readonly string[]).includes(payload.view) ? payload.view : 'all',
     q: payload.q ?? '',
+    orderNumber: '',
     filters: filtersOfApi(payload.filters),
     sort,
     direction: payload.direction ?? defaultDirection(sort),

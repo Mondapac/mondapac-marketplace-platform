@@ -21,7 +21,15 @@ export type PrefsKind =
   | 'system-requests-columns'
   | 'system-requests-view'
   | 'system-requests-query'
-  | 'customer-activity-columns';
+  | 'customer-activity-columns'
+  | 'customer-payments-columns'
+  | 'customer-disputes-columns'
+  | 'customer-refunds-columns'
+  // Customers phase 2b, part B (Account & security).
+  | 'customer-sign-ins-columns'
+  | 'customer-consent-history-columns'
+  // Customers phase 2b, part C (Shopping and Reviews).
+  | 'customer-section-columns';
 
 /** The storage key of one list of one account in one Market of one panel. */
 export function prefsKey(

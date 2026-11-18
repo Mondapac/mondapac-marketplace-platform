@@ -396,6 +396,43 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/customers/:id/notes',
     'customers/admin/customers/:id/activity',
     'customers/admin/customers/:id/activity/export',
+    // Customers phase 2b, part A (Money tab): one customer's payments, disputes and refunds as
+    // super lists read in the body, each with its export behind a fresh two-step code.
+    'payments/admin/customers/:id/payments',
+    'payments/admin/customers/:id/payments/export',
+    'payments/admin/customers/:id/disputes',
+    'payments/admin/customers/:id/disputes/export',
+    'ordering/admin/customers/:id/refunds',
+    'ordering/admin/customers/:id/refunds/export',
+    // Customers phase 2b, part B (Account & security): the sign-ins super list (NO export route:
+    // owner decision), the reveal of one sign-in's address or one delivery address (no body), sign
+    // out everywhere, the password reset mail, and the consent history with its export.
+    'customers/admin/customers/:id/sign-ins',
+    'customers/admin/customers/:id/sign-ins/:id/reveal',
+    'customers/admin/customers/:id/sessions/end',
+    'customers/admin/customers/:id/password-reset',
+    'customers/admin/customers/:id/addresses/:id/reveal',
+    'customers/admin/customers/:id/consent-history',
+    'customers/admin/customers/:id/consent-history/export',
+    // Customers phase 2b, part C (Shopping and Reviews tabs): the super lists are read in the
+    // body (filters, direction, page, pageSize, paging), each with its export behind a fresh
+    // two-step code. Ids, counts and instants only; never a review's text or a search text.
+    'customers/admin/customers/:id/saved-items',
+    'customers/admin/customers/:id/saved-items/export',
+    'customers/admin/customers/:id/cart-reminders',
+    'customers/admin/customers/:id/cart-reminders/export',
+    'customers/admin/customers/:id/cart-additions',
+    'customers/admin/customers/:id/cart-additions/export',
+    'customers/admin/customers/:id/assistant-conversations',
+    'customers/admin/customers/:id/assistant-conversations/export',
+    'customers/admin/customers/:id/reviews',
+    'customers/admin/customers/:id/reviews/export',
+    'customers/admin/customers/:id/seller-ratings',
+    'customers/admin/customers/:id/seller-ratings/export',
+    'customers/admin/customers/:id/helpful-votes',
+    'customers/admin/customers/:id/helpful-votes/export',
+    'customers/admin/customers/:id/review-reports',
+    'customers/admin/customers/:id/review-reports/export',
     'identity/admin/invitations/:id/resend',
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
@@ -712,10 +749,22 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // `cursor`).
     'customers/admin/groups/:id',
     'customers/admin/customers/:id/notes',
+    // Customers phase 2b, part B: the live sessions (identity), the delivery addresses as suburb
+    // and country (customers), the marketing consent (legal) and the personalization switch
+    // (engagement, read from the behaviour answer). No query keys.
+    'customers/admin/customers/:id/sessions',
+    'customers/admin/customers/:id/addresses',
+    'customers/admin/customers/:id/consent',
+    // Customers phase 2b, part C: the current cart and the behaviour summary (cart, engagement).
+    'customers/admin/customers/:id/cart',
+    'customers/admin/customers/:id/behaviour',
     // The customer page's Money tab: the newest refunds (ordering) and the wallet credits from
     // promotions (promotions; query: `limit`, `cursor`).
     'ordering/admin/customers/:id/refunds',
     'promotions/admin/customers/:id/credits',
+    // Customers phase 2b, part A: the promotions a customer used (promotions; query: `limit`,
+    // `cursor`).
+    'promotions/admin/customers/:id/usages',
     // One dispute case, read again after a decision (commission-payouts).
     'commission-payouts/admin/disputes/:id',
     // One buyer review for the moderator dialog (reviews).
@@ -811,6 +860,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   ],
   'ordering/admin/orders/export': [
     'format',
+    'columns',
+    'ids',
     'status',
     'q',
     'paymentState',
@@ -1272,6 +1323,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
       'paid',
       'delivery',
       'carrier',
+      'carrierProgress',
       'fleet',
       'ready',
       'shipped',
@@ -1521,7 +1573,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     pageSize: /^([1-9][0-9]?|100)$/,
   },
   'ordering/admin/orders/export': {
-    format: /^csv$/,
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(currency|total|tax|sellers|stores|fulfilment|paid|cancelled)(,(currency|total|tax|sellers|stores|fulfilment|paid|cancelled)){0,7}$/,
+    // At most 100 selected order ids, one list page.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
     status: /^(pending-payment|confirmed|cancelled)$/,
     q: /^[0-9a-f-]{36}$/i,
     paymentState: /^(none|authorised|captured|voided)$/,
@@ -1566,6 +1622,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'ordering/admin/orders': { accountId: UUID },
   'wallet/admin/customers/:id/history': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'promotions/admin/customers/:id/credits': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
+  // Customers phase 2b, part A.
+  'promotions/admin/customers/:id/usages': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'lists/admin/saved-filters': { listKey: SALES_LIST_KEY },
   'customers/admin/customers/:id/notes': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'commission-payouts/admin/payouts': {
@@ -1842,6 +1900,8 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/categories/:id/impact': ['action', 'targetId'],
   'wallet/admin/customers/:id/history': ['cursor', 'limit'],
   'promotions/admin/customers/:id/credits': ['limit', 'cursor'],
+  // Customers phase 2b, part A.
+  'promotions/admin/customers/:id/usages': ['limit', 'cursor'],
   // The older page of a certificate's history: the API's own entry id and a small page size.
   'certification/admin/seller-certificates/:id/history': ['beforeId', 'limit'],
   'customers/admin/customers/:id/notes': ['limit', 'cursor'],
@@ -1864,13 +1924,14 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
+  'ordering/admin/orders/export:ids': 3700,
   'ordering/admin/documents/export:ids': 7400,
   'ordering/admin/refunds/export:ids': 7400,
   'ordering/admin/shipments/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
+  'customers/admin/deletion-requests/export:ids': 7400,
   'blog/admin/posts/export:ids': 7400,
   'wallet/admin/credit-requests/export:ids': 7400,
-  'customers/admin/deletion-requests/export:ids': 7400,
   'commission-payouts/admin/disputes/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,

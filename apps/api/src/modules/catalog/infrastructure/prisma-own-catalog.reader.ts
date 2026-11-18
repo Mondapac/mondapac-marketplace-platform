@@ -17,6 +17,7 @@ import type {
   OwnSortDirection,
   PendingRevisionRow,
   ProductForm,
+  ProductFormCategory,
   ProductFormField,
   ProductLabel,
   RevisionQueueFilter,
@@ -897,20 +898,21 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
           })),
       });
     }
-    const categories = await tx.catalogPlatformCategory.findMany({
+    return { fields, categories: await this.productCategories(market) };
+  }
+
+  async productCategories(market: MarketContext): Promise<readonly ProductFormCategory[]> {
+    const categories = await this.prisma.tx(market).catalogPlatformCategory.findMany({
       where: { marketId: market.marketId, status: 'active', publishedRevisionId: { not: null } },
       include: { publishedRevision: { include: { names: true } } },
       orderBy: { slug: 'asc' },
     });
-    return {
-      fields,
-      categories: categories.map((row) => ({
-        categoryId: row.id,
-        parentId: row.parentId,
-        names: Object.fromEntries(
-          (row.publishedRevision?.names ?? []).map((entry) => [entry.locale, entry.name]),
-        ),
-      })),
-    };
+    return categories.map((row) => ({
+      categoryId: row.id,
+      parentId: row.parentId,
+      names: Object.fromEntries(
+        (row.publishedRevision?.names ?? []).map((entry) => [entry.locale, entry.name]),
+      ),
+    }));
   }
 }

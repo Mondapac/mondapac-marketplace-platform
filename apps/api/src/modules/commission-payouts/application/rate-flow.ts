@@ -1,4 +1,4 @@
-import { err, ok, parseId } from '@mondapac/shared-kernel';
+import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type {
   CommissionRate,
@@ -6,7 +6,13 @@ import type {
   OwnCommissionPreview,
 } from '../contracts/commission-payouts.facade';
 import { CommissionRateCleared, CommissionRateSet } from '../domain/audit';
-import { commissionBase, commissionOn, parseRateBps } from '../domain/commission';
+import {
+  commissionBase,
+  commissionOn,
+  exclusiveRateBps,
+  exclusiveWindowOpen,
+  parseRateBps,
+} from '../domain/commission';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
 import { isActingAs, spendStepUp, type StepUpFailure } from './step-up';
 import { COMMISSION_PAYOUTS_RATE_EDIT } from '../contracts/permissions';
@@ -38,7 +44,7 @@ export type RatesFailure = Extract<
   { code: 'access.denied' | 'validation.failed' | 'commission-payouts.rate-unavailable' }
 >;
 
-export interface RateView extends CommissionRate {
+export interface RateView extends Omit<CommissionRate, 'reason'> {
   readonly sellerId: Id<'Seller'>;
   /** The Market rate, so a screen can show what the seller would be on without its own rate. */
   readonly marketRateBps: number;
@@ -207,11 +213,23 @@ export async function clearCommissionRate(
   });
 }
 
+/** The buyer's exclusive seller from the wire: null when absent, undefined when malformed. */
+function exclusiveOf(
+  value: unknown,
+): { readonly sellerId: Id<'Seller'>; readonly since: Temporal.Instant } | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'object') return undefined;
+  const { sellerId, since } = value as { sellerId?: unknown; since?: unknown };
+  const id = sellerIdOf(sellerId);
+  if (id === null || !(since instanceof Temporal.Instant)) return undefined;
+  return { sellerId: id, since };
+}
+
 /** The system read behind the facade: the rate in force for up to 100 distinct sellers. */
 export async function readCommissionRates(
   deps: CommissionPayoutsDependencies,
   context: CallContext,
-  input: { readonly sellerIds: unknown },
+  input: { readonly sellerIds: unknown; readonly exclusive?: unknown },
 ): Promise<Result<CommissionRateMap, RatesFailure>> {
   // Only checkout calls this, as the signed-in customer; every other actor is refused.
   const caller = context.actor;
@@ -230,8 +248,20 @@ export async function readCommissionRates(
     }
     if (!ids.includes(id)) ids.push(id);
   }
+  const exclusive = exclusiveOf(input?.exclusive);
+  if (exclusive === undefined) {
+    return err({ code: 'validation.failed', fields: [{ path: 'exclusive', code: 'format' }] });
+  }
   const settings = deps.policy.settings(context.market);
   if (settings === null) return err({ code: 'commission-payouts.rate-unavailable' });
+  // The lower rate applies to the exclusive seller's lines only, while its window is open.
+  const rule = settings.exclusiveCustomer;
+  const lowered =
+    exclusive !== null &&
+    rule !== null &&
+    exclusiveWindowOpen(exclusive.since, deps.clock.now(), rule)
+      ? { sellerId: exclusive.sellerId, rule }
+      : null;
   return deps.unitOfWork.run<CommissionRateMap, RatesFailure>(
     context.market,
     async () => {
@@ -240,13 +270,14 @@ export async function readCommissionRates(
       return ok(
         new Map(
           ids.map((id): [Id<'Seller'>, CommissionRate] => {
-            const rateBps = bySeller.get(id);
-            return [
-              id,
-              rateBps === undefined
-                ? { rateBps: settings.defaultRateBps, source: 'market' }
-                : { rateBps, source: 'seller' },
-            ];
+            const ownRate = bySeller.get(id);
+            const source = ownRate === undefined ? 'market' : 'seller';
+            const inForce = ownRate ?? settings.defaultRateBps;
+            const rateBps =
+              lowered !== null && lowered.sellerId === id
+                ? exclusiveRateBps(inForce, lowered.rule)
+                : inForce;
+            return [id, { rateBps, source, reason: rateBps < inForce ? 'exclusive' : 'standard' }];
           }),
         ),
       );

@@ -43,6 +43,7 @@ closed (`v: 1`; date filters are relative presets, never dates; search text is n
   on its `ListDefinition`; the panel's own column ids must stay the same.
 - Routes: `GET/PUT/DELETE /lists/admin/column-preferences` (`listKey` in the query or body). No
   audit: it is a personal preference. Ids the list no longer offers are dropped on read.
+
 ## Phase 4 lists (PR10)
 
 - Registered admin lists: `admin.commission-payouts.payouts` (21), `admin.commission-payouts.disputes`
