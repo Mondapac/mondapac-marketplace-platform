@@ -503,6 +503,12 @@ describe('order list columns', () => {
     expect(within(table).getAllByRole('link')[0]?.getAttribute('href')).toContain(
       `customer=${CUSTOMER}&from=orders`,
     );
+    // So does the row's Actions menu (Open order here; Cancel, notes and refunds alike).
+    fireEvent.click(within(table).getAllByRole('button', { name: /^Actions for / })[0]!);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Open order' }));
+    expect(push).toHaveBeenLastCalledWith(
+      `/orders/${row().orderId}?customer=${CUSTOMER}&from=orders`,
+    );
   });
 
   it('ignores a stored column that no longer exists, and works when storage refuses', async () => {

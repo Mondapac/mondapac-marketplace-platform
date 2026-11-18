@@ -150,6 +150,9 @@ describe('rate-limit counters shared across API instances (database)', () => {
   it('accepts a hashed key of every class the code counts (the CHECK lists them all)', async () => {
     const classes = [...RATE_LIMIT_CLASSES, ...Object.keys(SUBJECT_LIMIT_WINDOWS)];
     expect(classes).toContain('public-search');
+    expect(classes).toEqual(
+      expect.arrayContaining(['admin-customer-password-reset', 'admin-customer-pii-reveal']),
+    );
 
     for (const [index, counted] of classes.entries()) {
       const key = `${counted}:${index.toString(16).repeat(64).slice(0, 64)}`;

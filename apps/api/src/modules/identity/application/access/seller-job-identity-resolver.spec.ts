@@ -51,6 +51,7 @@ const JOB_CONTINUES: Record<SessionRevokedReason, boolean> = {
   'seller-suspended': false,
   'signed-out-elsewhere': false,
   'account-erasure': false,
+  'email-changed': false,
   'admin-signed-out': false,
 };
 
@@ -64,6 +65,7 @@ const ACCOUNT_BULK_REASONS: readonly SessionRevokedReason[] = [
   'account-disabled',
   'signed-out-elsewhere',
   'account-erasure',
+  'email-changed',
   'admin-signed-out',
 ];
 

@@ -13,6 +13,7 @@ import { CUSTOMERS_EXPORT_STEP_UP } from '../contracts/step-up';
 import { CustomerPageOpened, CustomerTimelineExported } from '../domain/audit';
 import {
   categoryOf,
+  CONSENT_EVENT_KINDS,
   kindsOf,
   REVIEW_EVENT_KINDS,
   TIMELINE_CATEGORIES,
@@ -123,24 +124,34 @@ export function timelineFiltersOf(
 }
 
 const REVIEW_KINDS: readonly TimelineKind[] = REVIEW_EVENT_KINDS;
+const CONSENT_KINDS: readonly TimelineKind[] = CONSENT_EVENT_KINDS;
 
 /**
- * The query the caller may run (security review L1): the review kinds only with reviews' own key
- * `reviews.customer-review.view` as well. Without it they leave the query itself (every kind but
- * those, or the requested kinds less those), so a page and its total agree; a filter on the
- * `reviews` category, or on review kinds only, is an empty list rather than an error. A check the
- * gate cannot answer is `access.unavailable`. Asked before the unit opens: the gate reads in a
- * unit of its own.
+ * The query the caller may run. The review kinds only with reviews' own key
+ * `reviews.customer-review.view` as well (security review L1), the consent kind only with legal's
+ * `legal.customer-consent.view` (phase 2b, part 4: the count of consent entries tells the current
+ * value). Without a key its kinds leave the query itself (every kind but those, or the requested
+ * kinds less those), so a page and its total agree; a filter on those kinds only is an empty list
+ * rather than an error. A check the gate cannot answer is `access.unavailable`. Asked before the
+ * unit opens: the gate reads in a unit of its own.
  */
 async function visibleQuery(
   deps: CustomerManagementDependencies,
   context: CallContext,
   query: TimelineQuery,
 ): Promise<Result<TimelineQuery, { readonly code: 'access.unavailable' }>> {
-  const answer = await deps.reviewEventsCheck.execute(context, {});
-  if (answer.ok) return ok(query);
-  if (answer.error.code !== 'access.denied') return err({ code: 'access.unavailable' });
-  const kinds = (query.kinds ?? TIMELINE_KINDS).filter((kind) => !REVIEW_KINDS.includes(kind));
+  const hidden: TimelineKind[] = [];
+  for (const [probe, kinds] of [
+    [deps.reviewEventsCheck, REVIEW_KINDS],
+    [deps.consentEventsCheck, CONSENT_KINDS],
+  ] as const) {
+    const answer = await probe.execute(context, {});
+    if (answer.ok) continue;
+    if (answer.error.code !== 'access.denied') return err({ code: 'access.unavailable' });
+    hidden.push(...kinds);
+  }
+  if (hidden.length === 0) return ok(query);
+  const kinds = (query.kinds ?? TIMELINE_KINDS).filter((kind) => !hidden.includes(kind));
   return ok({ ...query, kinds });
 }
 

@@ -316,6 +316,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "customers.cancel-email-change-on-deletion", "rule": "system" },
   { "name": "customers.create-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.delete-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.execute-account-deletions", "rule": "system" },
@@ -404,6 +405,7 @@
   },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
+  { "name": "identity.cancel-customer-email-change-for-deletion", "rule": "system" },
   {
     "name": "identity.change-actor-labels",
     "rule": "own-resources",
@@ -438,6 +440,7 @@
   },
   { "name": "identity.complete-seller-sign-in", "rule": "anonymous" },
   { "name": "identity.confirm-customer-email", "rule": "anonymous" },
+  { "name": "identity.confirm-customer-email-change", "rule": "anonymous" },
   { "name": "identity.confirm-second-factor-enrolment", "rule": "anonymous" },
   { "name": "identity.confirm-seller-email", "rule": "anonymous" },
   {
@@ -529,6 +532,8 @@
   { "name": "identity.seed-roles", "rule": "system" },
   { "name": "identity.seller-access-of", "rule": "anonymous" },
   { "name": "identity.seller-access-of-system", "rule": "system" },
+  { "name": "identity.send-email-change-requested-mail", "rule": "system" },
+  { "name": "identity.send-email-changed-mail", "rule": "system" },
   { "name": "identity.send-existing-account-mail", "rule": "system" },
   { "name": "identity.send-invitation-mail", "rule": "system" },
   { "name": "identity.send-link-mail", "rule": "system" },

@@ -1,6 +1,5 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type {
-  ActorContext,
   AuditEntry,
   CallContext,
   Clock,
@@ -10,6 +9,7 @@ import type {
   Temporal,
 } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
+import { isPlatformAdminActor } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -28,7 +28,6 @@ import {
   type CustomerSignInQuery,
   type SignInRecordRepository,
 } from '../ports/sign-in-record.repository';
-import { isActingAsSession } from '../sellers/access-decision-reads';
 import type {
   AdminPasswordResetFailure,
   CustomerSecurityFailure,
@@ -91,16 +90,6 @@ export interface CustomerPasswordResetDependencies {
   readonly ids: IdGenerator;
 }
 
-/** A platform admin on an admin session: not seller-scoped, not acting as anyone. */
-export function isPlatformAdmin(actor: ActorContext): boolean {
-  return (
-    actor.kind === 'authenticated' &&
-    actor.population === 'admin' &&
-    actor.sellerId === null &&
-    !isActingAsSession(actor)
-  );
-}
-
 const ninetyDaysBefore = (now: Temporal.Instant): Temporal.Instant =>
   now.subtract({ hours: 24 * CUSTOMER_SIGN_IN_DAYS });
 
@@ -112,7 +101,7 @@ export async function readCustomerSignIns(
   context: CallContext,
   request: CustomerSignInsRequest,
 ): Promise<Result<CustomerSignInsPage, CustomerSecurityFailure>> {
-  if (!isPlatformAdmin(context.actor)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   const now = deps.clock.now();
   const since = ninetyDaysBefore(now);
   const from =
@@ -168,7 +157,7 @@ export async function revealCustomerSignInAddress(
 ): Promise<
   Result<{ readonly address: string; readonly occurredAt: string }, CustomerSecurityFailure>
 > {
-  if (!isPlatformAdmin(context.actor)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   const since = ninetyDaysBefore(deps.clock.now());
   return deps.unitOfWork.run<
     { readonly address: string; readonly occurredAt: string },
@@ -199,7 +188,7 @@ export async function readCustomerSessions(
   context: CallContext,
   accountId: Id<'Account'>,
 ): Promise<Result<CustomerSessionsView, CustomerSecurityFailure>> {
-  if (!isPlatformAdmin(context.actor)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   const now = deps.clock.now();
   const read = await deps.unitOfWork.run<
     readonly CustomerSessionFact[] | null,
@@ -275,7 +264,7 @@ export async function signOutCustomerEverywhere(
   context: CallContext,
   accountId: Id<'Account'>,
 ): Promise<Result<{ readonly revokedSessions: number }, CustomerSecurityFailure>> {
-  if (!isPlatformAdmin(context.actor)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   const revoked = await endEveryCustomerSession(
     deps,
     context,
@@ -301,7 +290,7 @@ export async function sendCustomerPasswordReset(
   context: CallContext,
   accountId: Id<'Account'>,
 ): Promise<Result<{ readonly sent: true }, AdminPasswordResetFailure>> {
-  if (!isPlatformAdmin(context.actor)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   const { market } = context;
   const now = deps.clock.now();
   try {

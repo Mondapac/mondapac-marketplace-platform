@@ -182,6 +182,11 @@
   },
   "customers": {
     "addressBookLimit": 20,
+    "adminActionLimits": {
+      "passwordResetsPerHour": 20,
+      "piiRevealsPerHour": 60,
+      "piiRevealAlertAt": 40
+    },
     "address": {
       "countryCode": "AU",
       "postcodePattern": "^[0-9]{4}$",
@@ -255,13 +260,15 @@
         "verify-email": 1440,
         "reset-password": 60,
         "enrol-second-factor": 60,
-        "confirm-second-factor-reset": 1440
+        "confirm-second-factor-reset": 1440,
+        "confirm-email-change": 1440
       },
       "targets": {
         "customer": {
           "verify-email": "https://storefront.au.mondapac.test/account/confirm-email",
           "sign-in": "https://storefront.au.mondapac.test/account/sign-in",
-          "reset-password": "https://storefront.au.mondapac.test/account/reset-password"
+          "reset-password": "https://storefront.au.mondapac.test/account/reset-password",
+          "confirm-email-change": "https://storefront.au.mondapac.test/account/confirm-email-change"
         },
         "seller": {
           "verify-email": "https://seller.au.mondapac.test/confirm-email",
