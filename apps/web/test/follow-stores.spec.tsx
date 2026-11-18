@@ -340,8 +340,21 @@ describe('Follow button', () => {
   });
 });
 
-const ROW_A = { sellerId: SELLER, slug: 'green-grocer', followedAt: '2026-11-10T12:00:00Z' };
-const ROW_B = { sellerId: SELLER_B, slug: null, followedAt: '2026-10-01T12:00:00Z' };
+const LOGO = '6f1c2a0e-8d1b-4c39-9a52-0b7f3e2d4c11';
+const ROW_A = {
+  sellerId: SELLER,
+  slug: 'green-grocer',
+  name: 'Green Grocer',
+  logo: { id: LOGO, width: 512, height: 512 },
+  followedAt: '2026-11-10T12:00:00Z',
+};
+const ROW_B = {
+  sellerId: SELLER_B,
+  slug: null,
+  name: null,
+  logo: null,
+  followedAt: '2026-10-01T12:00:00Z',
+};
 const LIST = 'customers/me/followed-stores';
 
 function myStores() {
@@ -360,11 +373,25 @@ describe('My stores', () => {
       status: 200,
       body: { items: [ROW_A, ROW_B], total: 2, nextCursor: null },
     };
-    answers['GET sellers/stores/green-grocer'] = {
-      status: 200,
-      body: { slug: 'green-grocer', name: 'Green Grocer', logo: null },
-    };
     answers[`DELETE customers/me/followed-stores/${SELLER_B}`] = state(false);
+  });
+
+  it("takes each store's name and logo from the list, with no read per store", async () => {
+    myStores();
+    const link = await screen.findByRole('link', { name: 'Green Grocer' });
+    const img = link.closest('li')?.querySelector('img');
+    expect(img?.getAttribute('src')).toContain(`green-grocer/images/${LOGO}/small`);
+    expect(count('GET', 'sellers/stores/green-grocer')).toBe(0);
+  });
+
+  it('shows the address when a public store answers no name', async () => {
+    answers[`GET ${LIST}`] = {
+      status: 200,
+      body: { items: [{ ...ROW_A, name: null, logo: null }], total: 1, nextCursor: null },
+    };
+    myStores();
+    expect(await screen.findByRole('link', { name: 'green-grocer' })).toBeTruthy();
+    expect(document.querySelector('.ms-row img')).toBeNull();
   });
 
   it('lists stores with name, date, link and a greyed store that is not public', async () => {

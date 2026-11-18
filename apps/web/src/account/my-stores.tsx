@@ -11,17 +11,14 @@ import { AccountFrame } from './account-area.tsx';
 import {
   followStore,
   readFollowedStores,
-  readStoreName,
   unfollowStore,
   type FollowedStore,
-  type PublicStoreName,
 } from './follow-api.ts';
 
 // "My stores" (customers management phase 3; Reza's spec 4): the stores the buyer follows, newest
 // first, 50 to a page with "Load more". Unfollow is one tap; the row then offers Undo for 5
-// seconds (Undo follows the store again) and leaves the list. The API's rows carry the store's
-// address, not its name, so each row asks the public store read for the name and logo; a store
-// that is not public now shows greyed with no link and still unfollows. This is the buyer's own
+// seconds (Undo follows the store again) and leaves the list. Each row carries the store's public
+// name and logo; a store that is not public now shows greyed with no link and still unfollows. This is the buyer's own
 // list of at most the account's follow limit, paged by the API: a storefront account page, not a
 // panel super list (rule 14 is about the admin and seller panels).
 
@@ -31,15 +28,12 @@ export const UNDO_MS = 5000;
 type Phase = 'loading' | 'ready' | 'failed' | 'throttled';
 type RowState = 'following' | 'unfollowed' | 'busy' | 'failed' | 'refused-limit' | 'refused-gone';
 
-/** A store's name read: a name, or nothing (then the row shows the address). */
 /** A copy of the row states without one seller. */
 const omit = (
   states: Readonly<Record<string, RowState>>,
   sellerId: string,
 ): Readonly<Record<string, RowState>> =>
   Object.fromEntries(Object.entries(states).filter(([key]) => key !== sellerId));
-
-type Named = PublicStoreName | 'unknown';
 
 export function MyStores() {
   const t = useTranslations('account.stores');
@@ -53,27 +47,12 @@ export function MyStores() {
   const [more, setMore] = useState(false);
   const [moreFailed, setMoreFailed] = useState(false);
   const [state, setState] = useState<Readonly<Record<string, RowState>>>({});
-  const [names, setNames] = useState<Readonly<Record<string, Named>>>({});
-  const asked = useRef(new Set<string>());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const [announce, setAnnounce] = useState('');
   const rowsRef = useRef<readonly FollowedStore[]>([]);
   rowsRef.current = rows;
   // Where focus goes after a row leaves: the next row's button, else the heading.
   const [refocus, setRefocus] = useState<string | null>(null);
-
-  const nameRows = useCallback((items: readonly FollowedStore[]) => {
-    for (const { slug } of items) {
-      if (slug === null || asked.current.has(slug)) continue;
-      asked.current.add(slug);
-      void readStoreName(slug).then((read) =>
-        setNames((current) => ({
-          ...current,
-          [slug]: read.kind === 'ok' ? read.value : 'unknown',
-        })),
-      );
-    }
-  }, []);
 
   const load = useCallback(
     async (cursor: string | null) => {
@@ -84,13 +63,12 @@ export function MyStores() {
         );
         setTotal(read.value.total);
         setNext(read.value.nextCursor);
-        nameRows(read.value.items);
         return 'ok' as const;
       }
       if (read.kind === 'throttled') setRetryAfter(read.retryAfterSeconds);
       return read.kind === 'throttled' ? ('throttled' as const) : ('failed' as const);
     },
-    [nameRows],
+    [],
   );
 
   const first = useCallback(async () => {
@@ -223,7 +201,6 @@ export function MyStores() {
                 <StoreRow
                   key={row.sellerId}
                   row={row}
-                  named={row.slug === null ? undefined : names[row.slug]}
                   state={state[row.sellerId] ?? 'following'}
                   onUnfollow={(label) => void unfollow(row, label)}
                   onUndo={(label) => void undo(row, label)}
@@ -256,13 +233,11 @@ export function MyStores() {
 
 function StoreRow({
   row,
-  named,
   state,
   onUnfollow,
   onUndo,
 }: {
   readonly row: FollowedStore;
-  readonly named: Named | undefined;
   readonly state: RowState;
   readonly onUnfollow: (label: string) => void;
   readonly onUndo: (label: string) => void;
@@ -272,12 +247,10 @@ function StoreRow({
   const hidden = row.slug === null;
   const label = hidden
     ? t('unavailable')
-    : named === undefined || named === 'unknown'
-      ? (row.slug ?? '')
-      : named.name;
+    : (row.name ?? row.slug ?? '');
   const logo =
-    row.slug !== null && named !== undefined && named !== 'unknown' && named.logoId !== null
-      ? { src: storeImageSrc(row.slug, named.logoId, 'small'), width: 64, height: 64 }
+    row.slug !== null && row.logoId !== null
+      ? { src: storeImageSrc(row.slug, row.logoId, 'small'), width: 64, height: 64 }
       : undefined;
   const since = formatInstantDay(row.followedAt, locale);
   return (

@@ -34,6 +34,10 @@ export interface FollowedStore {
   readonly sellerId: string;
   /** null while the store is not public. */
   readonly slug: string | null;
+  /** The public store name now; null while the store is not public. */
+  readonly name: string | null;
+  /** The picture id of the current logo; null when there is none or the store is not public. */
+  readonly logoId: string | null;
   readonly followedAt: string;
 }
 
@@ -59,7 +63,15 @@ export function readFollowedStores(cursor: string | null): Promise<ApiResult<Fol
         !(slug === null || (typeof slug === 'string' && SLUG.test(slug)))
       )
         return undefined;
-      items.push({ sellerId: row.sellerId, slug, followedAt: row.followedAt });
+      const name = typeof row.name === 'string' && row.name.trim() !== '' ? row.name : null;
+      const logo = isRecord(row.logo) ? text(row.logo.id) : undefined;
+      items.push({
+        sellerId: row.sellerId,
+        slug,
+        name: slug === null ? null : name,
+        logoId: slug !== null && logo !== undefined && UUID.test(logo) ? logo : null,
+        followedAt: row.followedAt,
+      });
     }
     return { items, total: json.total, nextCursor: text(json.nextCursor) ?? null };
   });
