@@ -7,6 +7,7 @@ import type { EventDelivery } from '../../../../platform/events/event-delivery';
 import {
   AccountDisabled,
   AccountDisplayNameChanged,
+  AccountEmailChanged,
   AccountEmailVerified,
   AccountEnabled,
   CustomerAccountRegistered,
@@ -20,6 +21,8 @@ export const CUSTOMER_NAME_SUBSCRIBER = 'customers.read-model-name-changed';
 export const CUSTOMER_VERIFIED_SUBSCRIBER = 'customers.read-model-email-verified';
 export const CUSTOMER_DISABLED_SUBSCRIBER = 'customers.read-model-disabled';
 export const CUSTOMER_ENABLED_SUBSCRIBER = 'customers.read-model-enabled';
+/** Customers admin email change (Mohammad 9): the directory copies the new sign-in email. */
+export const CUSTOMER_EMAIL_CHANGED_SUBSCRIBER = 'customers.read-model-email-changed';
 export const CUSTOMER_ORDER_PAID_SUBSCRIBER = 'customers.read-model-order-paid';
 export const CUSTOMER_REFUND_SUBSCRIBER = 'customers.read-model-refund-succeeded';
 
@@ -56,6 +59,7 @@ export function customerReadModelSubscriptions(
       | typeof AccountDisabled
       | typeof AccountEnabled
       | typeof AccountEmailVerified
+      | typeof AccountEmailChanged
       | typeof AccountDisplayNameChanged,
   ) =>
     subscription({
@@ -73,6 +77,7 @@ export function customerReadModelSubscriptions(
     byAccountOfPopulation(CUSTOMER_VERIFIED_SUBSCRIBER, AccountEmailVerified),
     byAccountOfPopulation(CUSTOMER_DISABLED_SUBSCRIBER, AccountDisabled),
     byAccountOfPopulation(CUSTOMER_ENABLED_SUBSCRIBER, AccountEnabled),
+    byAccountOfPopulation(CUSTOMER_EMAIL_CHANGED_SUBSCRIBER, AccountEmailChanged),
     subscription({
       name: CUSTOMER_ORDER_PAID_SUBSCRIBER,
       event: OrderPaid,

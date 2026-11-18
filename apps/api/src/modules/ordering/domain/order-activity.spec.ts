@@ -31,6 +31,8 @@ describe.each([
     sellerId,
     subtotal: 3000n,
     shipping: 500n,
+    discount: 0n,
+    shippingDiscount: 0n,
     shippingTaxRateBps: null,
     shippingTax: null,
     shippingTaxInclusive: null,

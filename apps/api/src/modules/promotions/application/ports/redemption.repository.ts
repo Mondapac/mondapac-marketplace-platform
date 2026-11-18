@@ -104,12 +104,36 @@ export interface RedemptionRepository {
   ): Promise<boolean>;
   /** Gives a code back, only if this order holds it. */
   unclaimCode(market: MarketContext, codeHash: string, orderId: Id<'Order'>): Promise<void>;
-  /** Orders with RESERVED rows older than `before`, oldest first. */
+  /** Orders with RESERVED rows older than `before`, by order id, after `after` when given. */
   staleReservations(
     market: MarketContext,
     before: Temporal.Instant,
     limit: number,
+    after: Id<'Order'> | null,
   ): Promise<readonly Id<'Order'>[]>;
+  /**
+   * One customer's discounts (any status, never the orders' head rows), newest reservation first
+   * then id, after `after` when given (customers management phase 2b, item e).
+   */
+  forCustomer(
+    market: MarketContext,
+    customerAccountId: Id<'Account'>,
+    limit: number,
+    after: UsageCursor | null,
+  ): Promise<readonly CustomerUsage[]>;
+}
+
+/** One discount an order of a customer took (a per-promotion row; never an order's head row). */
+export interface CustomerUsage {
+  readonly record: RedemptionRecord;
+  /** The stored promotion's name; null for a settings-based offer (first order, free delivery). */
+  readonly promotionName: string | null;
+}
+
+/** The keyset position of a customer's usage: its reservation instant and id. */
+export interface UsageCursor {
+  readonly reservedAt: Temporal.Instant;
+  readonly id: string;
 }
 
 /** A row of the same order and key exists: another redemption or a cancellation came first. */

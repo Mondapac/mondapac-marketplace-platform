@@ -1,6 +1,11 @@
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
-import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import {
+  FixedClock,
+  testAuthenticatedActor,
+  testCallContext,
+  testMarketContext,
+} from '@mondapac/shared-kernel/testing';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
@@ -14,6 +19,7 @@ import { ConfigNotificationsPolicy } from '../infrastructure/config-notification
 import { HmacUnsubscribeTokens } from '../infrastructure/hmac-unsubscribe-tokens';
 import type { CartReminderKey, CartReminderRepository } from './ports/cart-reminder.repository';
 import type { CartReminderSettings } from './ports/notifications-policy';
+import { AdminCustomerCartReminders } from './use-cases/admin-customer-cart-reminders.use-case';
 import {
   SendCartReminders,
   type CartReminderDependencies,
@@ -91,6 +97,36 @@ class MemoryReminders implements CartReminderRepository {
       }
     }
     return Promise.resolve(count);
+  }
+  /** The rows of one account in this Market, oldest taken first. */
+  private ofAccount(market: MarketContext, accountId: Id<'Account'>) {
+    return [...this.taken]
+      .map(([k, takenAt]) => {
+        const [marketId, account, changed, stage] = k.split('|');
+        return { marketId, account, changed: changed!, stage: Number(stage), takenAt };
+      })
+      .filter((row) => row.marketId === market.marketId && row.account === accountId)
+      .sort((a, b) => Temporal.Instant.compare(a.takenAt, b.takenAt) || a.stage - b.stage);
+  }
+  pageOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    direction: 'asc' | 'desc',
+    window: { readonly offset: number; readonly limit: number },
+  ) {
+    const rows = this.ofAccount(market, accountId);
+    if (direction === 'desc') rows.reverse();
+    return Promise.resolve(
+      rows.slice(window.offset, window.offset + window.limit).map((row) => ({
+        accountId,
+        cartChangedAt: Temporal.Instant.from(row.changed),
+        stage: row.stage === 2 ? (2 as const) : (1 as const),
+        takenAt: row.takenAt,
+      })),
+    );
+  }
+  countOfAccount(market: MarketContext, accountId: Id<'Account'>) {
+    return Promise.resolve(this.ofAccount(market, accountId).length);
   }
 }
 
@@ -306,3 +342,110 @@ describe.each([['AU'], ['ZZ']] as const)('cart reminders in market %s', (code) =
     });
   });
 });
+
+// Customers management phase 2b: the admin's read of the reminders one customer was sent, on both
+// Market fixtures: the customer's own rows of this Market only, both paging modes, admins only.
+describe.each([['AU'], ['ZZ']] as const)(
+  'the reminders a customer was sent, in market %s',
+  (code) => {
+    const market = testMarketContext(code, 'default');
+    const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+    const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
+    const T0 = Temporal.Instant.from('2026-11-16T00:00:00Z');
+    const CUSTOMER = id<'Account'>(0xc1);
+    const OTHER = id<'Account'>(0xc2);
+    const admin = (): CallContext =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: id<'Account'>(0xa1),
+          sessionId: id<'Session'>(0xa2),
+          sellerId: null,
+        }),
+      );
+
+    async function seeded() {
+      const reminders = new MemoryReminders();
+      for (const [n, stage] of [
+        [1, 1],
+        [1, 2],
+        [2, 1],
+      ] as const) {
+        await reminders.take(
+          market,
+          { accountId: CUSTOMER, cartChangedAt: T0.add({ hours: n }), stage },
+          T0.add({ hours: n * 10 + stage }),
+        );
+      }
+      await reminders.take(other, { accountId: CUSTOMER, cartChangedAt: T0, stage: 1 }, T0);
+      await reminders.take(market, { accountId: OTHER, cartChangedAt: T0, stage: 1 }, T0);
+      return new AdminCustomerCartReminders(gate, { unitOfWork: new FakeUnitOfWork(), reminders });
+    }
+
+    it('pages the customer’s own reminders of this Market, newest first', async () => {
+      const useCase = await seeded();
+      const page = await useCase.execute(admin(), {
+        accountId: CUSTOMER,
+        direction: 'desc',
+        window: { offset: 0, limit: 2 },
+        withTotal: true,
+      });
+      expect(page).toEqual({
+        ok: true,
+        value: {
+          total: 3,
+          rows: [
+            {
+              cartChangedAt: T0.add({ hours: 2 }).toString(),
+              stage: 1,
+              sentAt: T0.add({ hours: 21 }).toString(),
+            },
+            {
+              cartChangedAt: T0.add({ hours: 1 }).toString(),
+              stage: 2,
+              sentAt: T0.add({ hours: 12 }).toString(),
+            },
+          ],
+        },
+      });
+      const next = await useCase.execute(admin(), {
+        accountId: CUSTOMER,
+        direction: 'asc',
+        window: { offset: 2, limit: 3 },
+        withTotal: false,
+      });
+      expect(next).toMatchObject({ ok: true, value: { total: null, rows: [{ stage: 1 }] } });
+    });
+
+    it('refuses the system actor and an acting-as session', async () => {
+      const useCase = await seeded();
+      const request = {
+        accountId: CUSTOMER,
+        direction: 'desc' as const,
+        window: { offset: 0, limit: 10 },
+        withTotal: true,
+      };
+      await expect(
+        useCase.execute(testCallContext(market, 'system'), request),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      const acting = admin();
+      await expect(
+        useCase.execute(
+          { ...acting, actor: { ...acting.actor, actingAs: { sellerId: 'x' } } as never },
+          request,
+        ),
+      ).resolves.toMatchObject({ ok: false, error: { code: 'access.denied' } });
+    });
+
+    it('declares only its own key', () => {
+      expect(AdminCustomerCartReminders.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: ['notifications.customer-cart-reminder.view'],
+      });
+    });
+  },
+);
