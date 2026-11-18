@@ -160,9 +160,6 @@ function skeletonRound(s: string, visualDigits: boolean): string {
   return curated;
 }
 
-/** Not a letter or number (or a modifier letter): punctuation, spaces and symbols between letters. */
-const SEPARATOR_CHAR = /^(?:[^\p{L}\p{N}]|\p{Lm})$/u;
-
 /**
  * Neither a letter of a script nor a reason to stop looking for Latin context: a separator or a
  * number. «ha1ا1al» is halal: the digits beside the alef are skipped, as separators are.
