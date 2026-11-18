@@ -27,6 +27,8 @@ export function AttributionsFilterPanel({
   filters,
   sellerName,
   csrfToken,
+  canPickSeller,
+  sellerLabel,
   onSellerChosen,
   onApply,
   close,
@@ -35,6 +37,10 @@ export function AttributionsFilterPanel({
   /** The name of the store already chosen, when known. */
   readonly sellerName: string | null;
   readonly csrfToken: string;
+  /** The admin holds the sellers read key: the store picker shows only then. */
+  readonly canPickSeller: boolean;
+  /** The chosen store as text (name or short id), for a panel without the picker. */
+  readonly sellerLabel: string | null;
   /** A store was picked: its name is kept for the chip. */
   readonly onSellerChosen: (sellerId: string, name: string) => void;
   readonly onApply: (filters: AttributionFilters) => void;
@@ -78,16 +84,22 @@ export function AttributionsFilterPanel({
   return (
     <form className="flex flex-col gap-4" onSubmit={apply} noValidate>
       <h2 className="text-base font-semibold">{t('title')}</h2>
-      <SellerPicker
-        label={t('name.sellerId')}
-        value={draft.sellerId}
-        name={pickedName}
-        csrfToken={csrfToken}
-        onChange={(id, name) => {
-          set('sellerId', id);
-          setPickedName(name);
-        }}
-      />
+      {canPickSeller ? (
+        <SellerPicker
+          label={t('name.sellerId')}
+          value={draft.sellerId}
+          name={pickedName}
+          csrfToken={csrfToken}
+          onChange={(id, name) => {
+            set('sellerId', id);
+            setPickedName(name);
+          }}
+        />
+      ) : sellerLabel === null ? null : (
+        <p className="text-sm text-fg-secondary">
+          {t('name.sellerId')}: {sellerLabel}
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <Select
           label={t('name.status')}

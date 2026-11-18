@@ -15,6 +15,7 @@ vi.mock('next/navigation', () => ({
 import { Toaster } from '@mondapac/ui';
 import { callApi, type ApiResult } from '../api/client.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
+import { CustomersList } from './customers-list.tsx';
 import { AttributionsList } from './attributions-list.tsx';
 import {
   attributionFiltersOfApi,
@@ -268,7 +269,11 @@ describe('the suspicious attributions list', () => {
         decidedAt: '2026-11-11T03:00:00.000Z',
       }),
     ]);
-    render(wrap(<AttributionsList {...listProps} permissionKeys={[VIEW, MANAGE]} />));
+    render(
+      wrap(
+        <AttributionsList {...listProps} permissionKeys={[VIEW, MANAGE, 'sellers.seller.view']} />,
+      ),
+    );
     expect(
       (await screen.findAllByRole('link', { name: 'Halal Bites' }))[0]?.getAttribute('href'),
     ).toBe(`/sellers/${SELLER}`);
@@ -374,5 +379,142 @@ describe('the Store followed filter of the Customers list', () => {
     expect(apiFilters({ follows: SELLER })).toEqual({ followsSellerId: SELLER });
     expect(filtersOfApi({ followsSellerId: SELLER.toUpperCase() })).toEqual({ follows: SELLER });
     expect(filtersOfApi({ followsSellerId: 'shop-1' })).toEqual({});
+  });
+});
+
+describe('review fixes', () => {
+  const savedAnswer = (canShare: boolean) =>
+    ok({ items: [], canShare, limits: { perOwner: 50, shared: 20 } });
+  const route = (canShare: boolean) =>
+    call.mockImplementation((_m, path) => {
+      if (path === 'customers/admin/seller-attributions/list') {
+        return Promise.resolve(ok(attributionsPage([attribution()])));
+      }
+      if (path.startsWith('customers/admin/saved-filters') && _m === 'GET') {
+        return Promise.resolve(savedAnswer(canShare));
+      }
+      if (path === 'customers/admin/saved-filters') {
+        return Promise.resolve(refused(500, 'x'));
+      }
+      return Promise.resolve(ok({ items: [], next: null }));
+    });
+
+  async function saveWith(visibility: 'Everyone' | 'Only me') {
+    route(true);
+    render(wrap(<AttributionsList {...listProps} permissionKeys={[VIEW]} />));
+    const search = await screen.findByLabelText('Search attributions');
+    fireEvent.change(search, { target: { value: 'sara@' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('button', { name: /Save filter…/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Mine' } });
+    fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(visibility) }));
+    return dialog;
+  }
+  const savedBody = () =>
+    call.mock.calls.find(
+      (args) => args[0] === 'POST' && args[1] === 'customers/admin/saved-filters',
+    )?.[2] as {
+      payload: { q?: string };
+    };
+
+  it('leaves the search term out of a filter shared with everyone, and says so', async () => {
+    const dialog = await saveWith('Everyone');
+    expect(within(dialog).getByText(/search term is not kept in a shared filter/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save filter' }));
+    await waitFor(() => expect(savedBody()).toBeTruthy());
+    expect(savedBody().payload.q).toBeUndefined();
+  });
+
+  it('keeps the search term in a personal filter', async () => {
+    const dialog = await saveWith('Only me');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save filter' }));
+    await waitFor(() => expect(savedBody()).toBeTruthy());
+    expect(savedBody().payload.q).toBe('sara@');
+  });
+
+  it('offers no store picker without the sellers key, and keeps an applied chip readable', async () => {
+    call.mockImplementation((_m, path) =>
+      Promise.resolve(
+        path === 'customers/admin/list'
+          ? ok({
+              items: [],
+              counts: {
+                all: 0,
+                new: 0,
+                active: 0,
+                inactive: 0,
+                'never-ordered': 0,
+                disabled: 0,
+                'pending-deletion': 0,
+              },
+              paging: { total: 0, page: 1, pageSize: 25, maxRows: 10_000 },
+              nextCursor: null,
+            })
+          : path.startsWith('customers/admin/saved-filters')
+            ? savedAnswer(false)
+            : ok({ items: [] }),
+      ),
+    );
+    render(
+      wrap(
+        <CustomersList
+          accountId="admin-1"
+          marketId="AU"
+          marketName="Australia"
+          zone="Australia/Brisbane"
+          paging="pages"
+          permissionKeys={[VIEW]}
+          csrfToken="csrf"
+        />,
+      ),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Filter/ }));
+    expect(screen.queryByText('Store followed')).toBeNull();
+    expect(call.mock.calls.some((args) => args[1] === 'sellers/admin/list')).toBe(false);
+  });
+
+  it('attributions filter panel: no picker without the sellers key, store as short id', async () => {
+    route(false);
+    render(wrap(<AttributionsList {...listProps} permissionKeys={[VIEW]} />));
+    await screen.findAllByText('Sara Ahmadi');
+    fireEvent.click(screen.getByRole('button', { name: /Filter/ }));
+    expect(await screen.findByText('UTC days', { exact: false })).toBeTruthy();
+    expect(screen.queryByLabelText('Search stores')).toBeNull();
+    expect(call.mock.calls.some((args) => args[1] === 'sellers/admin/list')).toBe(false);
+  });
+
+  it('lists not-found and seller-team answers in the result dialog', async () => {
+    routeAttributions(
+      [attribution(), attribution({ accountId: A2, email: 'b@example.com', displayName: 'Bilal' })],
+      () =>
+        Promise.resolve(
+          ok({
+            results: [
+              { accountId: A1, outcome: 'not-found', status: null },
+              { accountId: A2, outcome: 'seller-team', status: 'rejected' },
+            ],
+          }),
+        ),
+    );
+    render(wrap(<AttributionsList {...listProps} permissionKeys={[VIEW, MANAGE]} />));
+    await screen.findAllByText('Sara Ahmadi');
+    fireEvent.click(screen.getAllByRole('checkbox', { name: /Select all/ })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Restore…/ }));
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Restore' }),
+    );
+    expect(await screen.findByText('1 was not found')).toBeTruthy();
+    expect(screen.getByText('Seller’s own team: 1 cannot be restored')).toBeTruthy();
+    expect(screen.getAllByText(/Seller’s own team: cannot be restored/).length).toBeGreaterThan(0);
+  });
+
+  it('hides the sub-page sections on 403 from both reads', async () => {
+    call.mockResolvedValue(refused(403, 'access.denied'));
+    render(wrap(<SellerCustomersTab {...tabProps} />));
+    expect(await screen.findByText(/don’t have access to this seller’s customers/)).toBeTruthy();
+    expect(screen.queryByText('Summary')).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
   });
 });

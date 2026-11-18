@@ -11,6 +11,9 @@ import type { SellerListPage, SellerRow } from '../sellers/types.ts';
 // list (`sellers/admin/list`); a role that may not read it gets the short id and no picker search
 // result, never an error: the name is a convenience, the id is the filter.
 
+/** The key `sellers/admin/list` needs: without it the picker and name lookups are left out. */
+export const SELLERS_VIEW_PERMISSION = 'sellers.seller.view';
+
 const PAGE = 50;
 /** At most this many pages are read to name the ids on one screen. */
 const PAGES_MAX = 6;

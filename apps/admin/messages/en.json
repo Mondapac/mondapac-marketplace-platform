@@ -7306,7 +7306,8 @@
           "too-large": "Up to {max, number} attributions can be selected; this list has {total, number}. Narrow it first.",
           "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}."
         }
-      }
+      },
+      "saved-shared-help": "Everyone: every admin who can see customers gets it as a tab. The search term is not kept in a shared filter, because it holds part of a customer’s email; keep it in a filter only you can use."
     }
   },
   "account-deletion": {

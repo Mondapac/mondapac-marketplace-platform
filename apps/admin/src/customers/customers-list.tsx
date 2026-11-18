@@ -66,7 +66,7 @@ import {
   type View,
 } from './list-types.ts';
 import { ORDERS_VIEW } from './page-types.ts';
-import { shortId, useSellerNames } from './seller-names.tsx';
+import { SELLERS_VIEW_PERMISSION, shortId, useSellerNames } from './seller-names.tsx';
 
 type Failure = 'denied' | 'invalid' | 'unavailable';
 
@@ -133,6 +133,7 @@ export function CustomersList({
   const fixedGroup = group?.groupId ?? null;
   const latest = useRef(0);
   const sellers = useSellerNames();
+  const canReadSellers = permissionKeys.includes(SELLERS_VIEW_PERMISSION);
   const storageKey = prefsKey('admin', marketId, accountId, 'customers-columns');
 
   const list = useSuperListQuery<Query>({
@@ -187,8 +188,8 @@ export function CustomersList({
   const followsId = query.filters.follows;
   const { resolve } = sellers;
   useEffect(() => {
-    if (followsId !== undefined) void resolve([followsId], csrfToken);
-  }, [followsId, resolve, csrfToken]);
+    if (followsId !== undefined && canReadSellers) void resolve([followsId], csrfToken);
+  }, [followsId, resolve, csrfToken, canReadSellers]);
 
   const load = useCallback(
     async (next: Query) => {
@@ -561,14 +562,18 @@ export function CustomersList({
             filters={query.filters}
             currency={currency}
             groups={fixedGroup === null ? groups : null}
-            seller={{
-              csrfToken,
-              name:
-                query.filters.follows === undefined
-                  ? null
-                  : (sellers.names.get(query.filters.follows) ?? null),
-              onChosen: sellers.remember,
-            }}
+            seller={
+              canReadSellers
+                ? {
+                    csrfToken,
+                    name:
+                      query.filters.follows === undefined
+                        ? null
+                        : (sellers.names.get(query.filters.follows) ?? null),
+                    onChosen: sellers.remember,
+                  }
+                : undefined
+            }
             {...(canFindOrder
               ? {
                   orderNumber: query.orderNumber,

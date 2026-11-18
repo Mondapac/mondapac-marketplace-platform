@@ -20,14 +20,17 @@ export interface SavedFilterShape {
   readonly count?: number | null;
 }
 
-function useFieldLabels(limits: { readonly perOwner: number; readonly shared: number }) {
+function useFieldLabels(
+  limits: { readonly perOwner: number; readonly shared: number },
+  everyoneHelp?: string,
+) {
   const t = useTranslations('customers.list.saved');
   return {
     name: t('save.name'),
     who: t('save.who'),
     me: t('visibility.me'),
     everyone: t('visibility.everyone'),
-    everyoneHelp: t('save.everyone-help'),
+    everyoneHelp: everyoneHelp ?? t('save.everyone-help'),
     ownOnly: t('save.own-only'),
     cancel: t('cancel'),
     errors: {
@@ -53,6 +56,8 @@ export function CustomersSavedDialogs({
   onClose,
   listKey,
   payload,
+  sharedPayload,
+  sharedHelp,
   summary,
   filters,
   canShare,
@@ -67,6 +72,10 @@ export function CustomersSavedDialogs({
   readonly listKey: string;
   /** The closed document the list keeps for its current view. */
   readonly payload: unknown;
+  /** The document kept when the filter is shared with everyone (a search term is left out). */
+  readonly sharedPayload?: unknown;
+  /** Replaces the share hint of the save dialog (says what a shared filter leaves out). */
+  readonly sharedHelp?: string;
   readonly summary: string;
   readonly filters: readonly SavedFilterShape[];
   readonly canShare: boolean;
@@ -76,7 +85,7 @@ export function CustomersSavedDialogs({
   readonly onChanged: () => void;
 }) {
   const t = useTranslations('customers.list.saved');
-  const fields = useFieldLabels(limits);
+  const fields = useFieldLabels(limits, sharedHelp);
   const manageLabels: ManageFiltersLabels = {
     ...fields,
     title: t('manage.title'),
@@ -107,7 +116,13 @@ export function CustomersSavedDialogs({
           const result = await callApi<SavedFilterShape>(
             'POST',
             'customers/admin/saved-filters',
-            { listKey, name, visibility, payload },
+            {
+              listKey,
+              name,
+              visibility,
+              payload:
+                visibility === 'everyone' && sharedPayload !== undefined ? sharedPayload : payload,
+            },
             csrfToken,
           );
           if (!result.ok) return problemOf(result.failure);

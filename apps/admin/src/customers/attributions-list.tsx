@@ -58,6 +58,7 @@ import {
   type AttributionSavedAnswer,
   type AttributionsPage,
 } from './attributions-types.ts';
+import { SELLERS_VIEW_PERMISSION } from './seller-names.tsx';
 import { CustomersSavedDialogs } from './customers-saved.tsx';
 import { timeOf } from './format.ts';
 import { minutesOf } from './security-shared.tsx';
@@ -131,6 +132,7 @@ export function AttributionsList({
     void loadSaved();
   }, [loadSaved]);
 
+  const canReadSellers = permissionKeys.includes(SELLERS_VIEW_PERMISSION);
   const { resolve } = sellers;
   const load = useCallback(
     async (next: AttributionQuery) => {
@@ -167,12 +169,14 @@ export function AttributionsList({
         return;
       }
       setAnswer(result.body);
-      void resolve(
-        result.body.items.map((row) => row.sellerId),
-        csrfToken,
-      );
+      if (canReadSellers) {
+        void resolve(
+          result.body.items.map((row) => row.sellerId),
+          csrfToken,
+        );
+      }
     },
-    [csrfToken, resolve],
+    [csrfToken, resolve, canReadSellers],
   );
   useEffect(() => {
     void load(query);
@@ -180,8 +184,8 @@ export function AttributionsList({
   // The store a saved filter or the URL names is read once, for its chip.
   const filterSellerId = query.filters.sellerId;
   useEffect(() => {
-    if (filterSellerId !== undefined) void resolve([filterSellerId], csrfToken);
-  }, [filterSellerId, resolve, csrfToken]);
+    if (filterSellerId !== undefined && canReadSellers) void resolve([filterSellerId], csrfToken);
+  }, [filterSellerId, resolve, csrfToken, canReadSellers]);
 
   const selectionKey = JSON.stringify([query.view, query.q, query.filters, query.direction]);
   const pageIds = useMemo(() => answer?.items.map((row) => row.accountId) ?? [], [answer]);
@@ -474,6 +478,10 @@ export function AttributionsList({
                 : (sellers.names.get(query.filters.sellerId) ?? null)
             }
             csrfToken={csrfToken}
+            canPickSeller={canReadSellers}
+            sellerLabel={
+              query.filters.sellerId === undefined ? null : sellerLabel(query.filters.sellerId)
+            }
             onSellerChosen={sellers.remember}
             onApply={(filters) => list.change({ filters })}
             close={close}
@@ -630,6 +638,8 @@ export function AttributionsList({
             onClose={() => setDialog(null)}
             listKey={ATTRIBUTIONS_LIST_KEY}
             payload={attributionPayloadOf(query)}
+            sharedPayload={attributionPayloadOf({ ...query, q: '' })}
+            sharedHelp={t('saved-shared-help')}
             summary={summary}
             filters={savedItems}
             canShare={canShare}
