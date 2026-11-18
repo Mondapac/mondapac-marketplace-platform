@@ -11539,9 +11539,9 @@
       "own": "You made this change. Another admin has to approve it. You can withdraw it."
     },
     "outcome": {
-      "approved": "Approved by {name} on {date}. The change stayed live.",
-      "rejected": "Rejected by {name} on {date}. Reason: {reason}.",
-      "withdrawn": "Withdrawn by {name} on {date}. Reason: {reason}."
+      "approved": "Approved. The change stayed live.",
+      "rejected": "Rejected. The previous value was put back.",
+      "withdrawn": "Withdrawn. The previous value was put back."
     },
     "more-actions": "More actions",
     "diff": {
