@@ -14,6 +14,7 @@ import { CustomerPageOpened, CustomerTimelineExported } from '../domain/audit';
 import {
   categoryOf,
   kindsOf,
+  REVIEW_EVENT_KINDS,
   TIMELINE_CATEGORIES,
   TIMELINE_KINDS,
   type TimelineCategory,
@@ -121,6 +122,28 @@ export function timelineFiltersOf(
   return ok({ accountId, kinds, from, to });
 }
 
+const REVIEW_KINDS: readonly TimelineKind[] = REVIEW_EVENT_KINDS;
+
+/**
+ * The query the caller may run (security review L1): the review kinds only with reviews' own key
+ * `reviews.customer-review.view` as well. Without it they leave the query itself (every kind but
+ * those, or the requested kinds less those), so a page and its total agree; a filter on the
+ * `reviews` category, or on review kinds only, is an empty list rather than an error. A check the
+ * gate cannot answer is `access.unavailable`. Asked before the unit opens: the gate reads in a
+ * unit of its own.
+ */
+async function visibleQuery(
+  deps: CustomerManagementDependencies,
+  context: CallContext,
+  query: TimelineQuery,
+): Promise<Result<TimelineQuery, { readonly code: 'access.unavailable' }>> {
+  const answer = await deps.reviewEventsCheck.execute(context, {});
+  if (answer.ok) return ok(query);
+  if (answer.error.code !== 'access.denied') return err({ code: 'access.unavailable' });
+  const kinds = (query.kinds ?? TIMELINE_KINDS).filter((kind) => !REVIEW_KINDS.includes(kind));
+  return ok({ ...query, kinds });
+}
+
 async function viewsOf(
   deps: CustomerManagementDependencies,
   context: CallContext,
@@ -164,10 +187,16 @@ export async function readTimeline(
   }
   const accountId = accountIdOf(input['accountId']);
   if (accountId === null) return err({ code: 'customers.customer-not-found' });
-  const query = timelineFiltersOf(accountId, input['filters'], await deps.dayZone.zoneOf(context));
-  if (!query.ok) return query;
+  const filters = timelineFiltersOf(
+    accountId,
+    input['filters'],
+    await deps.dayZone.zoneOf(context),
+  );
+  if (!filters.ok) return filters;
   const list = parseListQuery(input, SPEC);
   if (!list.ok) return list;
+  const query = await visibleQuery(deps, context, filters.value);
+  if (!query.ok) return query;
   const window = pageWindow(list.value);
   const read = await deps.unitOfWork.run<
     { readonly rows: readonly TimelineEntry[]; readonly total: number | null },
@@ -233,7 +262,13 @@ export async function exportTimeline(
   if (direction !== 'asc' && direction !== 'desc') return invalidField('direction', 'value');
   const accountId = accountIdOf(input['accountId']);
   if (accountId === null) return err({ code: 'customers.customer-not-found' });
-  const query = timelineFiltersOf(accountId, input['filters'], await deps.dayZone.zoneOf(context));
+  const filters = timelineFiltersOf(
+    accountId,
+    input['filters'],
+    await deps.dayZone.zoneOf(context),
+  );
+  if (!filters.ok) return filters;
+  const query = await visibleQuery(deps, context, filters.value);
   if (!query.ok) return query;
   const now = deps.clock.now();
   const read = await deps.unitOfWork.run<readonly TimelineEntry[], TimelineFailure>(

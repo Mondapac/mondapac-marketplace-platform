@@ -1777,7 +1777,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "section": "enumOf(sign-ins|saved-items|cart-reminders|cart-additions|consent-history|assistant-conversations)",
+      "section": "enumOf(sign-ins|saved-items|cart-reminders|cart-additions|reviews|seller-ratings|helpful-votes|review-reports|consent-history|assistant-conversations)",
       "format": "enumOf(csv|xlsx)",
       "rowCount": "integer",
       "stepUpSessionId": "id",

@@ -777,6 +777,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "reviews.review-author-of", "rule": "system" },
   {
     "name": "reviews.submit-product-review",
     "rule": "own-resources",
