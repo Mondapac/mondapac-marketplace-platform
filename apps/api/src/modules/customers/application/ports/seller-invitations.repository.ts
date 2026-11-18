@@ -89,6 +89,16 @@ export interface SellerAttributionRepository {
     since: Temporal.Instant,
   ): Promise<number>;
 
+  /**
+   * The seller's active attributions recorded in each window `[from, to)` (the admin's monthly
+   * trend of new exclusive customers); a window with none is 0. Rejected ones are not counted.
+   */
+  activeCountsOfSellerBetween(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ): Promise<readonly number[]>;
+
   /** The seller's attributions by status (every link of the seller). */
   countsOfSeller(
     market: MarketContext,

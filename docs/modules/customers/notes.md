@@ -932,3 +932,11 @@ card, the storefront's invite banner and the admin list's screens follow in the 
   force; `exclusive` only when it is lower.
 - Migration `20261117080000_ordering_exclusive_seller_commission`: two columns with constant
   defaults (no rewrite) and a CHECK (`exclusive` needs `exclusive_seller` and a frozen rate).
+
+## Admin seller summary: exclusive customers (2026-11-18)
+
+- `GET customers/admin/sellers/:sellerId/customers/summary` documents `counts.referred` as the
+  seller's exclusive customers (attribution active; the same number as the seller's Referred
+  view) and adds `months[].newExclusive`: customers whose active attribution to the seller was
+  recorded in that month of the Market's zone. A rejected attribution is counted nowhere. Read
+  from `customers.seller_attributions` on its (market, seller, attributed_at) index; no migration.

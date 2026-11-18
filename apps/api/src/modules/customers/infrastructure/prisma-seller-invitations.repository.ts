@@ -214,6 +214,27 @@ export class PrismaSellerAttributionRepository implements SellerAttributionRepos
     });
   }
 
+  activeCountsOfSellerBetween(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ) {
+    // One count per window on (market_id, seller_id, attributed_at): 12 index range reads.
+    const tx = this.prisma.tx(market);
+    return Promise.all(
+      windows.map(({ from, to }) =>
+        tx.customersSellerAttribution.count({
+          where: {
+            marketId: market.marketId,
+            sellerId,
+            status: 'active',
+            attributedAt: { gte: toDate(from), lt: toDate(to) },
+          },
+        }),
+      ),
+    );
+  }
+
   async countsOfSeller(market: MarketContext, sellerId: Id<'Seller'>) {
     const groups = await this.prisma.tx(market).customersSellerAttribution.groupBy({
       by: ['status'],

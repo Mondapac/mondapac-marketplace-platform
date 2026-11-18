@@ -124,6 +124,26 @@ export class InMemorySellerAttributions implements SellerAttributionRepository {
     );
   }
 
+  activeCountsOfSellerBetween(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ) {
+    const mine = this.rows.filter(
+      (r) => r.marketId === market.marketId && r.sellerId === sellerId && r.status === 'active',
+    );
+    return Promise.resolve(
+      windows.map(
+        ({ from, to }) =>
+          mine.filter(
+            (r) =>
+              r.attributedAt.epochMilliseconds >= from.epochMilliseconds &&
+              r.attributedAt.epochMilliseconds < to.epochMilliseconds,
+          ).length,
+      ),
+    );
+  }
+
   countsOfSeller(market: MarketContext, sellerId: Id<'Seller'>) {
     const mine = this.rows.filter((r) => r.marketId === market.marketId && r.sellerId === sellerId);
     return Promise.resolve({
