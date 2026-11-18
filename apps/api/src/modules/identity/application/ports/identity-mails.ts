@@ -87,6 +87,31 @@ export type IdentityMail =
       readonly lifetimeMinutes: number;
     }
   | {
+      /**
+       * Customers admin email change: to the PENDING address, the link that confirms it (with the
+       * account's password). The link and its lifetime only (Hassan R9).
+       */
+      readonly template: 'confirm-email-change';
+      readonly population: 'customer';
+      /** The storefront's confirmation page, with the token in the fragment. */
+      readonly url: string;
+      readonly lifetimeMinutes: number;
+    }
+  | {
+      /**
+       * To the CURRENT address after an admin asked to change it (`email-change-requested`), and
+       * to the PREVIOUS address once the change was confirmed (`email-changed`). A notice
+       * without a button (Hassan R9): when, the new address masked by code, "not you? contact
+       * support".
+       */
+      readonly template: 'email-change-requested' | 'email-changed';
+      readonly population: 'customer';
+      /** The new address masked (`maskEmailAddress`): never the full address. */
+      readonly maskedEmail: string;
+      /** When it was asked for, or changed: written in the Market's time zone and locale. */
+      readonly changedAt: Temporal.Instant;
+    }
+  | {
       /** An invitation (identity design 3.4; slice 7b: the admin kind). No inviter's name. */
       readonly template: 'invitation';
       readonly population: Population;

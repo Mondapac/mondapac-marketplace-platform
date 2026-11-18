@@ -35,6 +35,8 @@ const JOB_CONTINUES: Record<SessionRevokedReason, boolean> = {
   'seller-suspended': false,
   'signed-out-elsewhere': false,
   'account-erasure': false,
+  'email-changed': false,
+  'admin-signed-out': false,
 };
 
 describe.each(TEST_MARKETS)('AdminJobIdentityResolver in market %s', (code) => {

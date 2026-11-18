@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, LoadError, SkeletonRows } from '@mondapac/ui';
+import { Banner, DetailSkeleton, LoadError } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { callApi } from '../../api/client.ts';
@@ -64,7 +64,9 @@ export function ProposalsTab({
   }, [fetchTree]);
 
   if (load.state === 'denied') return <Banner tone="info">{t('denied')}</Banner>;
-  if (load.state === 'loading') return <SkeletonRows label={t('loading')} rows={3} />;
+  if (load.state === 'loading') {
+    return <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={3} />;
+  }
   if (load.state === 'failed') {
     return (
       <LoadError

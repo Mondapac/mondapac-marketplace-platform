@@ -18,7 +18,18 @@ export const NOTIFICATIONS_SUPPORT_CONTACT_MANAGE = definePermission('notificati
   protected: true,
 });
 
+/**
+ * See which abandoned-cart reminders one customer was sent (the cart change, the stage, when; kept
+ * 30 days) on the customer page (customers management phase 2b). No mail content.
+ */
+export const NOTIFICATIONS_CUSTOMER_CART_REMINDER_VIEW = definePermission('notifications', {
+  key: 'notifications.customer-cart-reminder.view',
+  scope: 'platform',
+  protected: false,
+});
+
 export const NOTIFICATIONS_PERMISSIONS = declarePermissions('notifications', [
+  NOTIFICATIONS_CUSTOMER_CART_REMINDER_VIEW,
   NOTIFICATIONS_SUPPORT_CONTACT_MANAGE,
   NOTIFICATIONS_SUPPORT_CONTACT_VIEW,
 ]);

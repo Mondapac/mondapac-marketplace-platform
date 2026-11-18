@@ -25,11 +25,12 @@ export type ReplyLanguage = (typeof REPLY_LANGUAGES)[number];
 export type SupportHandoff = (typeof SUPPORT_HANDOFFS)[number];
 
 /**
- * Options shown in the panel but not selectable yet: cart suggestions wait for cart PR 2 and
- * Hassan's review; the in-window support form waits for its own package.
+ * Options shown in the panel but not selectable yet: the in-window support form waits for its
+ * own package. Cart suggestions became selectable with stage 1 S1-B1 (the default stays
+ * `read-only`).
  */
 export const UNAVAILABLE_OPTIONS = Object.freeze({
-  scope: ['cart-suggestions'] as readonly Scope[],
+  scope: [] as readonly Scope[],
   supportHandoff: ['in-panel-form'] as readonly SupportHandoff[],
 });
 
@@ -53,6 +54,11 @@ export interface AssistantSettings {
   readonly dailySpendCapUsdCents: number;
   readonly monthlySpendCapUsdCents: number;
   readonly supportHandoff: SupportHandoff;
+  /**
+   * "Basket proposals from a list": the assistant may plan a typed or pasted shopping list into
+   * a basket card (`plan_basket`). Off by default; it adds nothing to a cart by itself.
+   */
+  readonly basketProposals: boolean;
   /** null: the storefront shows its own default welcome text. */
   readonly welcomeText: string | null;
 }
@@ -71,6 +77,7 @@ export const SETTING_FIELDS = [
   'dailySpendCapUsdCents',
   'monthlySpendCapUsdCents',
   'supportHandoff',
+  'basketProposals',
   'welcomeText',
 ] as const satisfies readonly (keyof AssistantSettings)[];
 
@@ -89,6 +96,7 @@ export const DEFAULT_ASSISTANT_SETTINGS: AssistantSettings = Object.freeze({
   dailySpendCapUsdCents: 1_000,
   monthlySpendCapUsdCents: 20_000,
   supportHandoff: 'email-link',
+  basketProposals: false,
   welcomeText: null,
 });
 
@@ -213,6 +221,8 @@ export function parseAssistantSettings(
   if (UNAVAILABLE_OPTIONS.supportHandoff.includes(supportHandoff)) {
     errors.push({ path: 'supportHandoff', code: 'unavailable' });
   }
+  const basketProposals = raw.basketProposals;
+  if (typeof basketProposals !== 'boolean') errors.push({ path: 'basketProposals', code: 'type' });
   const welcome = parseWelcomeText(raw.welcomeText);
   if (!welcome.ok) errors.push(welcome.error);
 
@@ -231,6 +241,7 @@ export function parseAssistantSettings(
     dailySpendCapUsdCents: daily,
     monthlySpendCapUsdCents: monthly,
     supportHandoff,
+    basketProposals: basketProposals as boolean,
     welcomeText: welcome.ok ? welcome.value : null,
   });
 }

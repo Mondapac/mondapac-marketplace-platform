@@ -648,6 +648,41 @@ export const SellerAccessReappliedAudit = defineAuditAction({
   },
 });
 
+/**
+ * An admin asked to change a customer's sign-in email (customers admin email change). Target: the
+ * customer's account. The admin is the row's actor; `stepUpSessionId` is the admin session whose
+ * fresh two-step proof was spent in the same unit (Hassan R4, R10). Never an address.
+ */
+export const AccountEmailChangeRequestedAudit = defineAuditAction({
+  action: 'identity.account.email-change-requested',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { stepUpSessionId: auditField.id() },
+});
+
+/** An admin cancelled a pending email change (as {@link AccountEmailChangeRequestedAudit}). */
+export const AccountEmailChangeCancelledAudit = defineAuditAction({
+  action: 'identity.account.email-change-cancelled',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { stepUpSessionId: auditField.id() },
+});
+
+/**
+ * The customer confirmed the change with the link mailed to the new address and the account's
+ * password: the address was swapped, every session ended (`revokedSessions`) and the account's
+ * other links stopped working, in the same unit. Target: the account. `ANONYMOUS`: the link and
+ * the password bound the account, named in `boundSubjectId`; the attempt is also a sign-in record
+ * (outcome `email-changed`), and a refused one is a sign-in record with its code (Hassan R10).
+ * Never an address.
+ */
+export const AccountEmailChangedAudit = defineAuditAction({
+  action: 'identity.account.email-changed',
+  targetType: 'identity.account',
+  actors: ['anonymous'],
+  after: { boundSubjectId: auditField.id(), revokedSessions: auditField.integer() },
+});
+
 /** Every audited action of identity, for its module's registration. */
 /**
  * An admin changed a customer account's display name from the customer page (customers management
@@ -659,6 +694,42 @@ export const CustomerRenamedByAdminAudit = defineAuditAction({
   targetType: 'identity.account',
   actors: ['authenticated'],
   after: { population: auditField.enumOf(['customer'] as const) },
+});
+
+/**
+ * An admin revealed the full client address of one of a customer's sign-in records (customers
+ * management phase 2b; key `identity.customer-sign-in.reveal`). Target: the account. `after`
+ * names the record only: never the address (R5). Written in the unit that read the address,
+ * before it is answered.
+ */
+export const CustomerSignInAddressRevealedAudit = defineAuditAction({
+  action: 'identity.account.sign-in-address-revealed',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { signInId: auditField.id() },
+});
+
+/**
+ * An admin signed a customer out of every device from the customer page (customers management
+ * phase 2b; key `identity.customer-session.end`). Target: the account; `after` is the count.
+ */
+export const CustomerSessionsEndedByAdminAudit = defineAuditAction({
+  action: 'identity.account.sessions-ended-by-admin',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { revokedSessions: auditField.integer() },
+});
+
+/**
+ * An admin sent a customer the password reset mail (customers management phase 2b; key
+ * `identity.customer-password-reset.send`). Target: the account; `after` names the link row
+ * requested again, never a token or the address.
+ */
+export const CustomerPasswordResetSentByAdminAudit = defineAuditAction({
+  action: 'identity.account.password-reset-sent-by-admin',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { linkId: auditField.id() },
 });
 
 export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
@@ -694,7 +765,13 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   OtherSessionsSignedOutAudit,
   AccountErasedAudit,
   AccountSessionsEndedForErasureAudit,
+  AccountEmailChangeRequestedAudit,
+  AccountEmailChangeCancelledAudit,
+  AccountEmailChangedAudit,
   CustomerRenamedByAdminAudit,
+  CustomerSignInAddressRevealedAudit,
+  CustomerSessionsEndedByAdminAudit,
+  CustomerPasswordResetSentByAdminAudit,
   SellerAccessApprovedAudit,
   SellerAccessRejectedAudit,
   SellerAccessSuspendedAudit,

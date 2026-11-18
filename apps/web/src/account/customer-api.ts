@@ -86,6 +86,15 @@ export function forgetCsrfToken(): void {
   csrfToken = null;
 }
 
+/** The token this tab holds now (a sign-in or a session read gave it), or null. */
+export const knownCsrfToken = (): string | null => csrfToken;
+
+/** The session's token for a write made outside this file; reads the session when none is held. */
+export async function currentCsrfToken(): Promise<string | null> {
+  if (csrfToken === null) await readSession();
+  return csrfToken;
+}
+
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
