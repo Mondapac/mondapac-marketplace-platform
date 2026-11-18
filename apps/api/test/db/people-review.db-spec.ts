@@ -468,6 +468,32 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
         value: { subjectKind: 'identity.admin-roles', subjectLabel: 'Layla Haddad' },
       });
     }
+    // Never the sign-in address, whatever the viewer.
+    const { rows: emails } = await sql.query<{ email: string }>(
+      `SELECT email FROM identity.accounts WHERE id = $1`,
+      [member],
+    );
+    for (const viewer of [checker, reviewer]) {
+      const seen = JSON.stringify(await view(viewer, assigned.value.request.id));
+      expect(seen).not.toContain(emails[0]!.email);
+      expect(seen.toLowerCase()).not.toContain(emails[0]!.email.toLowerCase());
+    }
+    // An enabling (identity.admin-status) is labelled as a role change is. (An admin always has
+    // a display name: identity's table requires one, so no label ever falls back to the address.)
+    const named = await admin(narrow, 'disabled');
+    await sql.query(`UPDATE identity.accounts SET display_name = $2 WHERE id = $1`, [
+      named,
+      'Omar Saleh',
+    ]);
+    const enabled = await app
+      .get(EnableAdminAccount)
+      .execute(as(root), { accountId: named, note: 'Back from leave' });
+    if (!enabled.ok || enabled.value.request === null) throw new Error('no request opened');
+    expect(await view(reviewer, enabled.value.request.id)).toMatchObject({
+      ok: true,
+      value: { subjectKind: 'identity.admin-status', subjectLabel: 'Omar Saleh' },
+    });
+
     // The role's name for an admin who may list roles; no label for one who may not.
     expect(await view(checker, edited.value.request.id)).toMatchObject({
       ok: true,
