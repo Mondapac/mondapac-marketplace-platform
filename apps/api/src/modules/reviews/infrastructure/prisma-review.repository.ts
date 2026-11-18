@@ -23,6 +23,13 @@ import type {
   StoredStarSummary,
 } from '../application/ports/review.repository';
 import type { QueueTab } from '../domain/moderation';
+import {
+  EMPTY_SELLER_REVIEW_FILTER,
+  SELLER_REVIEW_VIEWS,
+  sellerReviewViewFilter,
+  type SellerReviewFilter,
+  type SellerReviewSort,
+} from '../domain/seller-review-list';
 import type { ReviewStatus, SellerRatingReason, SellerRatingStatus } from '../domain/rules';
 import {
   summariseSellerGroups,
@@ -32,6 +39,64 @@ import {
 } from '../domain/summary';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
+
+/** The shop's own reply of a review, as the list reads it (the newest that is not superseded). */
+const SELLER_REPLIES = (sellerId: Id<'Seller'>) => ({
+  where: { sellerId, status: { not: 'superseded' } },
+  orderBy: { createdAt: 'desc' as const },
+});
+
+/** The `where` of the shop's published reviews for a list filter (the twin of `sellerReviewMatches`). */
+function sellerReviewWhere(
+  market: MarketContext,
+  sellerId: Id<'Seller'>,
+  filter: SellerReviewFilter,
+) {
+  const and: Record<string, unknown>[] = [];
+  if (filter.reply === 'published')
+    and.push({ replies: { some: { sellerId, status: 'published' } } });
+  if (filter.reply === 'none') and.push({ replies: { none: { sellerId, status: 'published' } } });
+  if (filter.text !== null) {
+    and.push({
+      OR: [
+        { title: { contains: filter.text, mode: 'insensitive' } },
+        { body: { contains: filter.text, mode: 'insensitive' } },
+      ],
+    });
+  }
+  if (filter.anyId !== null) {
+    and.push({
+      OR: [
+        { id: filter.anyId },
+        { lastSellerOrderId: filter.anyId },
+        { offerId: filter.anyId },
+        { productId: filter.anyId },
+      ],
+    });
+  }
+  return {
+    marketId: market.marketId,
+    sellerId,
+    status: 'published',
+    ...(filter.minRating === null && filter.maxRating === null
+      ? {}
+      : {
+          rating: {
+            ...(filter.minRating === null ? {} : { gte: filter.minRating }),
+            ...(filter.maxRating === null ? {} : { lte: filter.maxRating }),
+          },
+        }),
+    ...(filter.from === null && filter.to === null
+      ? {}
+      : {
+          publishedAt: {
+            ...(filter.from === null ? {} : { gte: toDate(filter.from) }),
+            ...(filter.to === null ? {} : { lt: toDate(filter.to) }),
+          },
+        }),
+    ...(and.length === 0 ? {} : { AND: and }),
+  };
+}
 const fromDate = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 const fromNullable = (date: Date | null): Temporal.Instant | null =>
@@ -627,6 +692,65 @@ export class PrismaReviewRepository implements ReviewRepository {
       },
       orderBy: [{ publishedAt: 'desc' }, { id: 'desc' }],
       take: query.limit,
+    });
+    return rows.map((row) => ({ review: toReview(row), reply: toReply(row.replies[0] ?? null) }));
+  }
+
+  async querySellerReviews(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerReviewFilter,
+    sort: SellerReviewSort,
+    offset: number,
+    limit: number,
+  ) {
+    const rows = await this.prisma.tx(market).reviewsProductReview.findMany({
+      where: sellerReviewWhere(market, sellerId, filter),
+      include: { replies: SELLER_REPLIES(sellerId) },
+      orderBy:
+        sort.key === 'published'
+          ? [{ publishedAt: sort.direction }, { id: sort.direction }]
+          : [{ rating: sort.direction }, { id: sort.direction }],
+      skip: offset,
+      take: limit,
+    });
+    return rows.map((row) => ({ review: toReview(row), reply: toReply(row.replies[0] ?? null) }));
+  }
+
+  countSellerReviewsWhere(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerReviewFilter,
+  ) {
+    return this.prisma
+      .tx(market)
+      .reviewsProductReview.count({ where: sellerReviewWhere(market, sellerId, filter) });
+  }
+
+  async sellerReviewViewCounts(market: MarketContext, sellerId: Id<'Seller'>) {
+    const tx = this.prisma.tx(market);
+    const count = (filter: SellerReviewFilter) =>
+      tx.reviewsProductReview.count({ where: sellerReviewWhere(market, sellerId, filter) });
+    const [all, unanswered, answered, low] = await Promise.all(
+      SELLER_REVIEW_VIEWS.map((view) =>
+        count({ ...EMPTY_SELLER_REVIEW_FILTER, ...sellerReviewViewFilter(view) }),
+      ),
+    );
+    return { all: all!, unanswered: unanswered!, answered: answered!, low: low! };
+  }
+
+  async findSellerReviewsByIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    reviewIds: readonly Id<'ProductReview'>[],
+  ) {
+    if (reviewIds.length === 0) return [];
+    const rows = await this.prisma.tx(market).reviewsProductReview.findMany({
+      where: {
+        ...sellerReviewWhere(market, sellerId, EMPTY_SELLER_REVIEW_FILTER),
+        id: { in: [...reviewIds] },
+      },
+      include: { replies: SELLER_REPLIES(sellerId) },
     });
     return rows.map((row) => ({ review: toReview(row), reply: toReply(row.replies[0] ?? null) }));
   }

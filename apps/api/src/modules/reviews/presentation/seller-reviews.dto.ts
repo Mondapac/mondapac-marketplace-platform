@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { SELLER_REPORT_REASONS } from '../domain/seller-reply';
+import type { SellerReviewListPage } from '../application/seller-review-list-flow';
 import type {
   SellerReplyView,
   SellerReviewsPage,
@@ -73,4 +74,36 @@ export const sellerReviewBody = (view: SellerReviewView): SellerReviewBody => ({
 export const sellerReviewsBody = (page: SellerReviewsPage): SellerReviewsBody => ({
   items: page.items.map(sellerReviewBody),
   nextCursor: page.nextCursor,
+});
+
+export class SellerReviewRowBody extends SellerReviewBody {
+  @ApiProperty({ enum: ['open', 'reply', 'edit-reply', 'report'], isArray: true })
+  actions!: string[];
+}
+
+export class SellerReviewCountsBody {
+  @ApiProperty() all!: number;
+  @ApiProperty() unanswered!: number;
+  @ApiProperty() answered!: number;
+  @ApiProperty() low!: number;
+}
+
+export class SellerReviewListBody {
+  @ApiProperty({ type: [SellerReviewRowBody] }) items!: SellerReviewRowBody[];
+  @ApiProperty({ type: SellerReviewCountsBody }) counts!: SellerReviewCountsBody;
+  @ApiProperty({ nullable: true, type: Number }) total!: number | null;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+}
+
+export const sellerReviewListBody = (page: SellerReviewListPage): SellerReviewListBody => ({
+  items: page.items.map((row) => ({ ...sellerReviewBody(row), actions: [...row.actions] })),
+  counts: { ...page.counts },
+  total: page.total,
+  page: page.page,
+  pageSize: page.pageSize,
+  paging: page.paging,
+  hasNext: page.hasNext,
 });

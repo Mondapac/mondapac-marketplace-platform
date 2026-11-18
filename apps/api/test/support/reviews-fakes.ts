@@ -36,6 +36,15 @@ import type { OverlapAnswers } from '../../src/modules/reviews/domain/seller-ove
 import type { QueueTab } from '../../src/modules/reviews/domain/moderation';
 import { isPublic } from '../../src/modules/reviews/domain/rules';
 import {
+  compareSellerReviews,
+  EMPTY_SELLER_REVIEW_FILTER,
+  sellerReviewMatches,
+  sellerReviewViewFilter,
+  type SELLER_REVIEW_VIEWS,
+  type SellerReviewFilter,
+  type SellerReviewSort,
+} from '../../src/modules/reviews/domain/seller-review-list';
+import {
   summariseSellerGroups,
   summariseStarGroups,
 } from '../../src/modules/reviews/domain/summary';
@@ -288,6 +297,75 @@ export class MemoryReviews implements ReviewRepository {
       )
       .slice(0, query.limit);
     return Promise.resolve(rows.map((r) => this.rowOf(r, sellerId)));
+  }
+  private sellerSubjects(sellerId: Id<'Seller'>) {
+    return [...this.productReviews.values()]
+      .filter((r) => r.sellerId === sellerId && r.status === 'published')
+      .map((r) => {
+        const row = this.rowOf(r, sellerId);
+        return {
+          row,
+          subject: {
+            id: r.id,
+            productId: r.productId,
+            offerId: r.offerId,
+            orderRef: r.lastSellerOrderId,
+            rating: r.rating,
+            title: r.title,
+            body: r.body,
+            publishedAt: r.publishedAt,
+            hasReply: row.reply?.status === 'published',
+          },
+        };
+      });
+  }
+  querySellerReviews(
+    _m: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerReviewFilter,
+    sort: SellerReviewSort,
+    offset: number,
+    limit: number,
+  ) {
+    return Promise.resolve(
+      this.sellerSubjects(sellerId)
+        .filter((x) => sellerReviewMatches(x.subject, filter))
+        .sort((a, b) => compareSellerReviews(a.subject, b.subject, sort))
+        .slice(offset, offset + limit)
+        .map((x) => x.row),
+    );
+  }
+  countSellerReviewsWhere(_m: MarketContext, sellerId: Id<'Seller'>, filter: SellerReviewFilter) {
+    return Promise.resolve(
+      this.sellerSubjects(sellerId).filter((x) => sellerReviewMatches(x.subject, filter)).length,
+    );
+  }
+  sellerReviewViewCounts(_m: MarketContext, sellerId: Id<'Seller'>) {
+    const all = this.sellerSubjects(sellerId);
+    const count = (view: (typeof SELLER_REVIEW_VIEWS)[number]) =>
+      all.filter((x) =>
+        sellerReviewMatches(x.subject, {
+          ...EMPTY_SELLER_REVIEW_FILTER,
+          ...sellerReviewViewFilter(view),
+        }),
+      ).length;
+    return Promise.resolve({
+      all: count('all'),
+      unanswered: count('unanswered'),
+      answered: count('answered'),
+      low: count('low'),
+    });
+  }
+  findSellerReviewsByIds(
+    _m: MarketContext,
+    sellerId: Id<'Seller'>,
+    reviewIds: readonly Id<'ProductReview'>[],
+  ) {
+    return Promise.resolve(
+      this.sellerSubjects(sellerId)
+        .filter((x) => reviewIds.includes(x.row.review.id))
+        .map((x) => x.row),
+    );
   }
   findSellerReview(_m: MarketContext, sellerId: Id<'Seller'>, reviewId: Id<'ProductReview'>) {
     const found = this.productReviews.get(reviewId);
