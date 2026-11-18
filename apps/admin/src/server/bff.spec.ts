@@ -3978,3 +3978,39 @@ describe('relay of the invoices export', () => {
     expect(upstream).not.toHaveBeenCalled();
   });
 });
+
+describe('relay of the review moderation super list', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const get = async (path: string) => {
+    const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    const response = await relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin }),
+      path.split('?')[0]!.split('/'),
+      upstream,
+    );
+    return { response, url: upstream.mock.calls[0]?.[0] as string | undefined };
+  };
+
+  it('passes the list keys of its own and drops the rest', async () => {
+    const { url } = await get(
+      `reviews/admin/moderation/list?view=reported&minRating=2&sellerId=${ID}&reportReason=abusive&sort=rating&direction=asc&paging=prev-next&page=2&pageSize=50&x=1`,
+    );
+    expect(url).toBe(
+      `http://api.test/reviews/admin/moderation/list?view=reported&minRating=2&sellerId=${ID}&reportReason=abusive&sort=rating&direction=asc&paging=prev-next&page=2&pageSize=50`,
+    );
+    const bad = await get('reviews/admin/moderation/list?view=other&minRating=9&pageSize=500');
+    expect(bad.url).toBe('http://api.test/reviews/admin/moderation/list');
+  });
+
+  it('passes the export keys and keeps the single-review route apart', async () => {
+    const { url } = await get(
+      `reviews/admin/moderation/export?format=xlsx&columns=review-id,signals&ids=${ID}&view=held&x=1`,
+    );
+    expect(url).toBe(
+      `http://api.test/reviews/admin/moderation/export?format=xlsx&columns=review-id%2Csignals&ids=${ID}&view=held`,
+    );
+    const one = await get(`reviews/admin/moderation/${ID}`);
+    expect(one.url).toBe(`http://api.test/reviews/admin/moderation/${ID}`);
+  });
+});
