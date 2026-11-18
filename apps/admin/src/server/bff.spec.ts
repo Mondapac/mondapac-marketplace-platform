@@ -1158,6 +1158,8 @@ describe('relay of the customers list and customer page', () => {
       ['POST', `customers/admin/customers/${ID}/activity`],
       ['POST', `customers/admin/customers/${ID}/activity/export`],
       ['PUT', `customers/admin/customers/${ID}/display-name`],
+      ['PUT', `customers/admin/customers/${ID}/email`],
+      ['DELETE', `customers/admin/customers/${ID}/email-change`],
     ])('relays %s %s', async (method, target) => {
       const upstream = upstreamOk();
       const response = await relay(config, send(method, target), pathOf(target), upstream);
@@ -1170,11 +1172,31 @@ describe('relay of the customers list and customer page', () => {
       ['POST', `customers/admin/groups/${G}/members/purge`],
       ['GET', `customers/admin/customers/${ID}/activity`],
       ['DELETE', `customers/admin/customers/${ID}/notes`],
+      ['POST', `customers/admin/customers/${ID}/email`],
+      ['GET', `customers/admin/customers/${ID}/email`],
+      ['PATCH', `customers/admin/customers/${ID}/email`],
+      ['PUT', `customers/admin/customers/${ID}/email-change`],
+      ['POST', `customers/admin/customers/${ID}/email-change`],
+      ['DELETE', `customers/admin/customers/${ID}/email`],
+      ['PUT', 'customers/admin/customers/not-a-uuid/email'],
     ])('refuses %s %s', async (method, target) => {
       const upstream = upstreamOk();
       const response = await relay(config, send(method, target), pathOf(target), upstream);
       expect(response.status).toBe(404);
       expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('caps the email change body at 1 KB, and only on that path', async () => {
+      const upstream = upstreamOk();
+      const email = `customers/admin/customers/${ID}/email`;
+      const small = JSON.stringify({ email: 'new@example.com' });
+      expect((await relay(config, send('PUT', email, small), pathOf(email), upstream)).status).toBe(
+        200,
+      );
+      const big = JSON.stringify({ email: `${'a'.repeat(1100)}@example.com` });
+      expect((await relay(config, send('PUT', email, big), pathOf(email), upstream)).status).toBe(
+        413,
+      );
     });
 
     it('forwards only the notes paging keys', async () => {

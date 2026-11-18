@@ -8,6 +8,8 @@ export const WALLET_VIEW = 'wallet.credit.view';
 export const WALLET_ISSUE = 'wallet.credit.issue';
 export const PROMOTIONS_VIEW = 'promotions.promotion.view';
 export const BUYER_DELETE = 'customers.buyer-account.delete';
+/** Edit and cancel a customer's sign-in email change (protected: behind a two-step code). */
+export const EMAIL_CHANGE = 'customers.customer-email.change';
 
 export const TABS = ['overview', 'orders', 'money'] as const;
 export type Tab = (typeof TABS)[number];
@@ -34,6 +36,8 @@ export interface CustomerOverview extends CustomerRow {
     readonly requestedAt: string;
     readonly scheduledFor: string;
   } | null;
+  /** The sign-in email an admin asked for that the customer has not confirmed, or null. */
+  readonly pendingEmailChange?: { readonly email: string; readonly requestedAt: string } | null;
 }
 
 /** The average of the confirmed orders, in minor units (rounded down), or null with none. */

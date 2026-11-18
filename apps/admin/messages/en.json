@@ -5816,7 +5816,10 @@
         "view-wallet": "View wallet",
         "more": "More actions",
         "delete": "Delete account…",
-        "edit": "Edit…"
+        "edit": "Edit…",
+        "edit-email": "Edit email…",
+        "change-pending-email": "Change pending email…",
+        "email-pending": "Pending new email"
       },
       "overview": {
         "figures": "Customer figures",
@@ -6053,7 +6056,7 @@
         "unavailable": "The name could not be saved. Try again."
       },
       "email": "Email",
-      "email-help": "The email is changed through its own verified flow, not here.",
+      "email-help": "Use Edit email… in the More menu to change the email.",
       "counter": "{count, number} of {max, number}"
     },
     "notes": {
@@ -6194,6 +6197,44 @@
           "unavailable": "The file could not be made. Try again.",
           "cancelled": "Export cancelled."
         }
+      }
+    },
+    "email": {
+      "title": "Edit email",
+      "current": "Current email",
+      "pending": "Pending new email",
+      "new": "New email",
+      "note": "We email a confirmation link to the new address and a notice to the current one. The current address keeps working until the customer confirms.",
+      "replaces": "Sending again replaces the pending request.",
+      "send": "Send confirmation",
+      "cancel": "Cancel",
+      "step-up": "You will be asked for a two-step code next.",
+      "sent": "Confirmation sent to {email}.",
+      "error": {
+        "required": "Enter the new email.",
+        "invalid": "Enter a valid email address.",
+        "same": "This is already the current email.",
+        "taken": "This email is already used by another account.",
+        "not-eligible": "A disabled or unverified account cannot change its email. Enable or verify it first.",
+        "deletion-pending": "This customer has a deletion request pending. Cancel it first.",
+        "not-found": "This customer no longer exists.",
+        "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+        "denied": "You don’t have access to change emails.",
+        "unavailable": "The confirmation could not be sent. Try again."
+      },
+      "banner": {
+        "text": "Waiting for {email} to confirm. The current address stays until then. Requested {date}.",
+        "cancel": "Cancel email change…"
+      },
+      "cancel-change": {
+        "title": "Cancel the email change?",
+        "body": "{email} will not be used and its confirmation link stops working. The current address stays.",
+        "confirm": "Cancel email change",
+        "keep": "Keep it",
+        "done": "Email change cancelled.",
+        "gone": "There is no pending email change any more.",
+        "failed": "The email change could not be cancelled. Try again.",
+        "denied": "You don’t have access to cancel email changes."
       }
     }
   },

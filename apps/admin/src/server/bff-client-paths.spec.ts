@@ -161,6 +161,8 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'POST customers/admin/groups/:id/members/add',
         'POST customers/admin/groups/:id/members/remove',
         'PUT customers/admin/customers/:id/display-name',
+        'PUT customers/admin/customers/:id/email',
+        'DELETE customers/admin/customers/:id/email-change',
         'PUT customers/admin/groups/:id',
         'POST identity/admin/customers/:id/disable',
         'POST identity/admin/customers/:id/enable',
