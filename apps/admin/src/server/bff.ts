@@ -126,10 +126,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'lists/admin/saved-filters',
     // The manual customer groups (customers, phase 2a), at most 500 per Market.
     'customers/admin/groups',
-    // The buyer account deletion setting, read again after a conflict, and the pending deletion
-    // requests (customers; query: `cursor`, `limit`).
+    // The buyer account deletion setting, read again after a conflict, and the Account deletion
+    // requests super list (customers; query: `view`, `status`, the filters, `sort`, `direction`,
+    // `page`, `pageSize`, or `cursor` and `limit`) with its export as a file.
     'customers/admin/account-deletion-settings',
     'customers/admin/deletion-requests',
+    'customers/admin/deletion-requests/export',
     // "View history" of a settings page (query: `after`, `limit`): when, who by display name and
     // which fields changed, from the audit log.
     'assistant/admin/settings/history',
@@ -1065,7 +1067,38 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
-  'customers/admin/deletion-requests': ['cursor', 'limit'],
+  // The view, filters and page mode of the Account deletion requests super list.
+  'customers/admin/deletion-requests': [
+    'view',
+    'status',
+    'requestedBy',
+    'cancelReason',
+    'q',
+    'from',
+    'to',
+    'scheduledBefore',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+  ],
+  'customers/admin/deletion-requests/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'status',
+    'requestedBy',
+    'cancelReason',
+    'q',
+    'from',
+    'to',
+    'scheduledBefore',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
   // The category tree, narrowed to the categories of one feature set (categories, A4).
   'catalog/admin/categories': ['featureSetId'],
@@ -1579,9 +1612,40 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     direction: /^(asc|desc)$/,
   },
   'customers/admin/deletion-requests': {
+    view: /^(pending|executing|cancelled|completed|all)$/,
+    // The older list's name of the pending view.
+    status: /^pending$/,
+    requestedBy: /^(customer|admin)$/,
+    cancelReason: /^(customer|sign-in|admin)$/,
+    // A request id or a buyer's account id, exact.
+    q: UUID,
+    // ISO instants: the request time (`to` excluded) and the deletion date.
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    scheduledBefore: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(scheduled|requested|cancelled|completed)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the scheduled date, a dot and the request id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'customers/admin/deletion-requests/export': {
+    format: /^(csv|xlsx)$/,
+    columns: /^(cancelled|cancel-reason|completed)(,(cancelled|cancel-reason|completed)){0,2}$/,
+    // At most 200 request ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(pending|executing|cancelled|completed|all)$/,
+    status: /^pending$/,
+    requestedBy: /^(customer|admin)$/,
+    cancelReason: /^(customer|sign-in|admin)$/,
+    q: UUID,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    scheduledBefore: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(scheduled|requested|cancelled|completed)$/,
+    direction: /^(asc|desc)$/,
   },
   'catalog/admin/categories': { featureSetId: UUID },
   'catalog/admin/category-proposals': { afterId: UUID, limit: /^[0-9]{1,2}$/ },
@@ -1732,6 +1796,7 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'ordering/admin/shipments/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
   'wallet/admin/credit-requests/export:ids': 7400,
+  'customers/admin/deletion-requests/export:ids': 7400,
   'commission-payouts/admin/disputes/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,

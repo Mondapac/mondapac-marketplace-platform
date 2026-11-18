@@ -106,6 +106,14 @@ import { CUSTOMER_LIST_READER } from './application/ports/customer-list.reader';
 import { ADMIN_DAY_ZONE } from './application/ports/admin-day-zone';
 import { SAVED_FILTER_REPOSITORY } from './application/ports/saved-filter.repository';
 import { SHEET_WRITER } from './application/ports/sheet-writer';
+import { SHEET_WRITER as LIST_SHEET_WRITER } from '../../platform/list-export';
+import {
+  DELETION_ROW_KEYS,
+  type AdminDeletionListDependencies,
+} from './application/admin-deletion-list-flow';
+import { ADMIN_DELETION_LIST_READER } from './application/ports/admin-deletion-list.reader';
+import { AdminExportAccountDeletions } from './application/use-cases/admin-export-account-deletions.use-case';
+import { BuyerDeleteProbe } from './application/use-cases/buyer-delete-probe.use-case';
 import type { CustomerListDependencies } from './application/customer-list-flow';
 import type { SavedViewDependencies } from './application/saved-views/saved-view-shared';
 import type { AdminCustomersExportDependencies } from './application/use-cases/admin-customers-export.use-case';
@@ -376,6 +384,43 @@ function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
   };
 }
 
+type DeletionListUseCaseClass<U> = new (
+  gate: UseCaseGate,
+  deps: AdminDeletionListDependencies,
+) => U;
+
+/** The admin Account deletion requests list and its export (super list 25): one dependency object. */
+function deletionListUseCaseProvider<U>(type: DeletionListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      ADMIN_DELETION_LIST_READER,
+      BuyerDeleteProbe,
+      LIST_SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AdminDeletionListDependencies['unitOfWork'],
+      list: AdminDeletionListDependencies['list'],
+      deleteProbe: BuyerDeleteProbe,
+      sheetWriter: AdminDeletionListDependencies['sheetWriter'],
+      clock: AdminDeletionListDependencies['clock'],
+    ) => {
+      const [deleteKey] = DELETION_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        list,
+        probes: { [deleteKey]: deleteProbe },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
 type PageUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerPageDependencies) => U;
 
 /** The customer page use cases: the list reads, the audit writer and the open deletion request. */
@@ -606,8 +651,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ExecuteAccountDeletions,
       AdminRequestAccountDeletion,
       AdminCancelAccountDeletion,
-      AdminListAccountDeletions,
     ].map((type) => deletionUseCaseProvider(type as DeletionUseCaseClass<unknown>)),
+    ...[AdminListAccountDeletions, AdminExportAccountDeletions].map((type) =>
+      deletionListUseCaseProvider(type as DeletionListUseCaseClass<unknown>),
+    ),
+    {
+      provide: BuyerDeleteProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new BuyerDeleteProbe(gate),
+    },
     ...[
       SyncCustomerReadModel,
       ReconcileCustomerReadModels,
