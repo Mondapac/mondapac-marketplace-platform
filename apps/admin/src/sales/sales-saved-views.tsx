@@ -162,7 +162,11 @@ export function SalesSavedViews<P>({
             { listKey, ids },
             csrfToken,
           );
-          if (!result.ok) return problemOf(result.failure);
+          if (!result.ok) {
+            // A refused order may mean the filters changed meanwhile: reload them under the banner.
+            onChanged();
+            return problemOf(result.failure);
+          }
           toast.success(
             t('toast.moved', { name: saved.items.find((item) => item.id === movedId)?.name ?? '' }),
             TOAST,

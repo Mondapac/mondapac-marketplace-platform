@@ -12,7 +12,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react';
-import { callApi, type ApiResult } from '../api/client.ts';
+import { callApi, type ApiFailure, type ApiResult } from '../api/client.ts';
 
 /** `callApi`, with the two-step code asked for and the request repeated when a rule needs one. */
 export type GuardedCall = <T>(
@@ -39,6 +39,20 @@ const StepUpContext = createContext<GuardedCall>(callApi);
 
 export const useGuardedCall = () => useContext(StepUpContext);
 
+/**
+ * Asks for the two-step code a refused request names (`second-factor.required` with
+ * `details.actionKey`), for a request that is not a JSON call, such as a file download. The caller
+ * repeats its request on `verified`; `not-asked` means the refusal was something else.
+ */
+export type StepUpProof = (
+  failure: ApiFailure,
+  csrfToken?: string,
+) => Promise<'verified' | 'cancelled' | 'not-asked'>;
+
+const StepUpProofContext = createContext<StepUpProof>(() => Promise.resolve('not-asked'));
+
+export const useStepUpProof = () => useContext(StepUpProofContext);
+
 interface Ask {
   readonly actionKey: string;
   readonly mode: 'code' | 'enrol';
@@ -59,18 +73,16 @@ export function StepUpProvider({ children }: { readonly children: ReactNode }) {
   // A ref, not only state: two guarded answers before a render must not open two dialogs.
   const open = useRef(false);
 
-  const guarded = useCallback<GuardedCall>(async (method, path, body, csrfToken) => {
-    const first = await callApi<never>(method, path, body, csrfToken);
-    if (first.ok) return first;
-    const { code, details } = first.failure;
+  const prove = useCallback<StepUpProof>(async (failure, csrfToken) => {
+    const { code, details } = failure;
     const actionKey = details?.actionKey;
     if (
       (code !== 'second-factor.required' && code !== 'second-factor.enrolment-required') ||
       actionKey === undefined ||
       csrfToken === undefined
     )
-      return first;
-    if (open.current) return CANCELLED;
+      return 'not-asked';
+    if (open.current) return 'cancelled';
     open.current = true;
     const verified = await new Promise<boolean>((settle) =>
       setAsk({
@@ -82,14 +94,27 @@ export function StepUpProvider({ children }: { readonly children: ReactNode }) {
     );
     open.current = false;
     setAsk(null);
-    if (!verified) return CANCELLED;
-    return callApi(method, path, body, csrfToken);
+    return verified ? 'verified' : 'cancelled';
   }, []);
+
+  const guarded = useCallback<GuardedCall>(
+    async (method, path, body, csrfToken) => {
+      const first = await callApi<never>(method, path, body, csrfToken);
+      if (first.ok) return first;
+      const proof = await prove(first.failure, csrfToken);
+      if (proof === 'not-asked') return first;
+      if (proof === 'cancelled') return CANCELLED;
+      return callApi(method, path, body, csrfToken);
+    },
+    [prove],
+  );
 
   return (
     <StepUpContext.Provider value={guarded}>
-      {children}
-      {ask === null ? null : <StepUpDialog key={ask.actionKey} ask={ask} />}
+      <StepUpProofContext.Provider value={prove}>
+        {children}
+        {ask === null ? null : <StepUpDialog key={ask.actionKey} ask={ask} />}
+      </StepUpProofContext.Provider>
     </StepUpContext.Provider>
   );
 }

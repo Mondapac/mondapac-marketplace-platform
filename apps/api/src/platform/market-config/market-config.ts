@@ -2080,6 +2080,18 @@ const marketSchema = z
             message: 'regions must be unique',
             path: ['regions'],
           }),
+        /**
+         * Sellers' invite links (customers management phase 4a). `signUpWindowDays`: how long after
+         * sign-up an account may still join a store through its link (AU 7). `burstPerDay`: the
+         * attributions to one seller (any of its links) in 24 hours from which a new one is flagged for the admin
+         * (AU 50). Without it the invite links are unavailable.
+         */
+        invitations: z
+          .strictObject({
+            signUpWindowDays: z.number().int().min(1).max(30),
+            burstPerDay: z.number().int().min(1).max(100_000),
+          })
+          .optional(),
       })
       .optional(),
     allowedOrigins: allowedOriginsSchema,

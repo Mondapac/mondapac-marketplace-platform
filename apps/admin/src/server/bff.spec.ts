@@ -1063,6 +1063,77 @@ describe('relay of the connected accounts list', () => {
   });
 });
 
+describe('relay of the customers list and customer page', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const get = (target: string) =>
+    new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const pathOf = (target: string) => target.split('?')[0]!.split('/');
+
+  it("forwards one customer's orders (accountId, a UUID only)", async () => {
+    const upstream = upstreamOk();
+    const target = `ordering/admin/orders?accountId=${ID}&page=1`;
+    await relay(config, get(target), pathOf(target), upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/ordering/admin/orders?accountId=${ID}&page=1`,
+    );
+    // A malformed scope is refused, never dropped (that would list the whole Market's orders).
+    const bad = 'ordering/admin/orders?accountId=someone&page=1';
+    const refused = await relay(config, get(bad), pathOf(bad), upstream);
+    expect(refused.status).toBe(400);
+    expect(upstream).toHaveBeenCalledOnce();
+  });
+
+  it('relays the Money tab reads that the client builds from a variable path', async () => {
+    for (const target of [
+      `ordering/admin/customers/${ID}/refunds`,
+      `promotions/admin/customers/${ID}/credits`,
+      `wallet/admin/customers/${ID}/history`,
+    ]) {
+      const upstream = upstreamOk();
+      const response = await relay(config, get(target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it('forwards the wallet journal and promotion credit paging, and nothing else', async () => {
+    const upstream = upstreamOk();
+    const wallet = `wallet/admin/customers/${ID}/history?limit=20&cursor=abc.1&x=1`;
+    await relay(config, get(wallet), pathOf(wallet), upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/customers/${ID}/history?cursor=abc.1&limit=20`,
+    );
+    const credits = `promotions/admin/customers/${ID}/credits?limit=100&cursor=a%20b`;
+    await relay(config, get(credits), pathOf(credits), upstream);
+    expect(upstream.mock.calls[1]?.[0]).toBe(
+      `http://api.test/promotions/admin/customers/${ID}/credits?limit=100`,
+    );
+  });
+
+  it('takes an export naming 1000 ticked ids, and still caps a larger body', async () => {
+    const upstream = upstreamOk();
+    const ids = Array.from({ length: 1000 }, () => ID);
+    const body = JSON.stringify({ format: 'csv', columns: ['name'], ids });
+    expect(body.length).toBeGreaterThan(16 * 1024);
+    const path = ['customers', 'admin', 'export'];
+    const ok = await relay(config, post(path.join('/'), sameOrigin, body), path, upstream);
+    expect(ok.status).toBe(200);
+    const big = await relay(
+      config,
+      post(path.join('/'), sameOrigin, 'x'.repeat(48 * 1024 + 1)),
+      path,
+      upstream,
+    );
+    expect(big.status).toBe(413);
+    // The larger cap is the export's only.
+    const list = ['customers', 'admin', 'list'];
+    const other = await relay(config, post(list.join('/'), sameOrigin, body), list, upstream);
+    expect(other.status).toBe(413);
+  });
+});
+
 describe('relay of the orders list', () => {
   const get = (query: string) =>
     new Request(`http://admin.localhost:3002/api/ordering/admin/orders${query}`, {
@@ -3569,6 +3640,126 @@ describe('relay of the shipments export', () => {
     const upstream = upstreamOk();
     expect(
       (await relay(config, post('ordering/admin/shipments/export'), path, upstream)).status,
+    ).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay of the refunds export', () => {
+  const path = ['ordering', 'admin', 'refunds', 'export'];
+  const base = 'http://api.test/ordering/admin/refunds/export';
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/refunds/export${query}`, {
+      method: 'GET',
+      headers: sameOrigin,
+    });
+  const ids = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, i) => `0190a000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+    ).join(',');
+
+  it('relays the list filter, the format, the columns, the ids and the zone, and drops paging and sort', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get(
+        '?state=succeeded&reason=damaged&actor=seller&lossBearer=platform&ledger=waiting&search=Ada&sellerId=0190a000-0000-7000-8000-0000000000b1&from=2026-11-01T00:00:00.000Z&to=2026-11-08T00:00:00.000Z&format=xlsx&columns=amount,store,lossBearer,creditNote&ids=' +
+          ids(2) +
+          '&zone=Australia/Brisbane&page=2&pageSize=25&sort=total&direction=asc&limit=25&cursor=1763300000000.0190a000-0000-7000-8000-0000000000a1&extra=1',
+      ),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    const url = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(url.origin + url.pathname).toBe(base);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      state: 'succeeded',
+      reason: 'damaged',
+      actor: 'seller',
+      lossBearer: 'platform',
+      ledger: 'waiting',
+      search: 'Ada',
+      sellerId: '0190a000-0000-7000-8000-0000000000b1',
+      from: '2026-11-01T00:00:00.000Z',
+      to: '2026-11-08T00:00:00.000Z',
+      format: 'xlsx',
+      columns: 'amount,store,lossBearer,creditNote',
+      ids: ids(2),
+      zone: 'Australia/Brisbane',
+    });
+  });
+
+  it('passes 200 ids and an empty column list', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get(`?ids=${ids(200)}&columns=`), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `${base}?columns=&ids=${encodeURIComponent(ids(200))}`,
+    );
+  });
+
+  it.each([
+    ['201 ids', `?ids=${ids(201)}`],
+    ['an empty ids', '?ids='],
+    ['an id that is not a UUID', '?ids=not-an-id'],
+    ['a repeated ids', `?ids=${ids(1)}&ids=${ids(2)}`],
+    ['a column that is not allowed', '?columns=store,secret'],
+    ['a repeated column', `?columns=${Array(16).fill('store').join(',')}`],
+    ['a format that is not allowed', '?format=xls'],
+    ['an upper case format', '?format=CSV'],
+    ['a zone that is a path', '?zone=../etc'],
+    ['an empty zone', '?zone='],
+    ['an oversized zone', `?zone=${'A'.repeat(600)}`],
+  ])('answers 400 and calls nothing for %s', async (_name, query) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('relays a file byte for byte with its type and attachment name', async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00, 0x80, 0x7f]);
+    const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(bytes, {
+          status: 200,
+          headers: {
+            'content-type': type,
+            'content-disposition': 'attachment; filename="refunds-2026-11-16.xlsx"',
+          },
+        }),
+      ),
+    );
+    const response = await relay(config, get('?format=xlsx'), path, upstream);
+    expect(response.headers.get('content-type')).toBe(type);
+    expect(response.headers.get('content-disposition')).toBe(
+      'attachment; filename="refunds-2026-11-16.xlsx"',
+    );
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
+
+  it('relays the too-large refusal with its details', async () => {
+    const body = JSON.stringify({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10000, total: 12000 },
+    });
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(body, { status: 413, headers: { 'content-type': 'application/json' } }),
+      ),
+    );
+    const response = await relay(config, get('?format=csv'), path, upstream);
+    expect(response.status).toBe(413);
+    expect(await response.text()).toBe(body);
+  });
+
+  it('does not relay the export as a write', async () => {
+    const upstream = upstreamOk();
+    expect(
+      (await relay(config, post('ordering/admin/refunds/export'), path, upstream)).status,
     ).toBe(404);
     expect(upstream).not.toHaveBeenCalled();
   });
