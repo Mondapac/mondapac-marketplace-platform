@@ -33,6 +33,7 @@ import type { PickupDirectory } from '../../src/modules/shipping/application/por
 import type { CarrierGateway } from '../../src/modules/shipping/application/ports/carrier-gateway';
 import type { CarrierMethod } from '../../src/modules/shipping/domain/booking-service';
 import type { CarrierBooking } from '../../src/modules/shipping/domain/carrier-booking';
+import type { CarrierProgressRecord } from '../../src/modules/shipping/domain/carrier-progress';
 import type { FleetCapabilities, FleetCode } from '../../src/modules/shipping/domain/fleet';
 import type {
   FleetSelectionModel,
@@ -49,6 +50,28 @@ export class MemoryBookings implements CarrierBookingRepository {
   readonly attempts = new Map<string, FleetCode>();
   findBySellerOrder(m: MarketContext, sellerOrderId: Id<'SellerOrder'>) {
     return Promise.resolve(this.rows.get(`${m.marketId}|${sellerOrderId}`) ?? null);
+  }
+  /** Every `progressOfSellerOrders` call, with the ids asked. */
+  readonly progressReads: (readonly string[])[] = [];
+  progressOfSellerOrders(
+    m: MarketContext,
+    sellerOrderIds: readonly Id<'SellerOrder'>[],
+  ): Promise<CarrierProgressRecord[]> {
+    this.progressReads.push(sellerOrderIds);
+    const out: CarrierProgressRecord[] = [];
+    for (const id of sellerOrderIds) {
+      const b = this.rows.get(`${m.marketId}|${id}`);
+      if (b === undefined) continue;
+      out.push({
+        sellerOrderId: b.sellerOrderId,
+        fleet: b.fleet,
+        progress: b.progress,
+        carrierStatus: b.carrierStatus,
+        updatedAt: b.updatedAt,
+        podRecordedAt: b.podRecordedAt,
+      });
+    }
+    return Promise.resolve(out);
   }
   findByCarrierReference(m: MarketContext, fleet: FleetCode, carrierReference: string) {
     return Promise.resolve(

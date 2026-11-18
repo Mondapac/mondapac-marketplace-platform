@@ -97,7 +97,15 @@ export interface EditDetails {
 }
 
 /** The answer of every category write (apps/api CategoryWriteWrapBody). */
+/** Whether an edit is reviewed in this Market (Admin Inbox > System requests, area catalogue). */
+export interface CatalogueReview {
+  readonly reviewed: boolean;
+  readonly risk: string;
+}
+
 export interface WriteWrap {
+  /** The review a details save opened (Admin Inbox > System requests); absent or null when none. */
+  readonly request?: { readonly id: string; readonly number: number } | null;
   readonly category: {
     readonly id: string;
     readonly slug: string;
@@ -146,6 +154,8 @@ export interface DetailBody {
   readonly details: EditDetails;
   /** The tree version a structural change of this category must name. */
   readonly treeVersion: number;
+  /** Whether a details save is reviewed here: the form then asks for a note. */
+  readonly review?: CatalogueReview;
 }
 
 export const DETAIL_TABS = ['details', 'attribute-links', 'products', 'history'] as const;
@@ -161,4 +171,32 @@ export interface ImpactBody {
   readonly complete: boolean;
   /** Present when a target was named: the products whose feature set would change. */
   readonly featureSetChanges?: number;
+}
+
+/** `POST .../move-products` (202): the job that was queued and the published products it will move. */
+export interface MoveStarted {
+  readonly jobId: string;
+  readonly products: number;
+}
+
+export type MoveJobState = 'queued' | 'running' | 'done' | 'failed';
+
+/** One job of `GET .../move-products`: ids, state and counts only (no reason, no seller). */
+export interface MoveJob {
+  readonly id: string;
+  readonly sourceCategoryId: string;
+  readonly targetCategoryId: string;
+  readonly state: MoveJobState;
+  readonly createdAt: string;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+  readonly total: number;
+  readonly moved: number;
+  readonly skipped: number;
+  readonly failed: number;
+}
+
+export interface MoveProgressBody {
+  /** The newest jobs of the category, newest first. */
+  readonly jobs: readonly MoveJob[];
 }

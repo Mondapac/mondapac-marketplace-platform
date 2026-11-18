@@ -23,6 +23,7 @@ import {
   MAX_PAGED_ROWS,
   MAX_SEARCH_LENGTH,
   MIN_SEARCH_LENGTH,
+  type ListScope,
   type ReadFailure,
 } from './read-flow';
 
@@ -209,6 +210,7 @@ function parse(input: RefundListInput): Result<Parsed, ReadFailure> {
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
   return ok({
     filter: {
+      ids: null,
       state,
       reference,
       stripeRefundId,
@@ -239,11 +241,13 @@ export async function listRefunds(
   deps: AdminRefundListDependencies,
   context: CallContext,
   input: RefundListInput,
+  scope: ListScope = {},
 ): Promise<Result<RefundListPage, ReadFailure>> {
   const parsed = parse(input ?? {});
   if (!parsed.ok) return parsed;
   const { sort, paging } = parsed.value;
-  let filter = parsed.value.filter;
+  // An export's selected rows narrow the list's own filter (an AND).
+  let filter = { ...parsed.value.filter, ids: scope.ids ?? null };
   let searchCapped = false;
   let searchScope: RefundListPage['searchScope'] = null;
   if (parsed.value.search !== null) {
@@ -283,7 +287,9 @@ export async function listRefunds(
         // One row more than asked tells whether a next page exists.
         const [rows, counts] = await Promise.all([
           deps.refunds.page(context.market, filter, sort, 0, paging.limit + 1, paging.after),
-          deps.refunds.countByState(context.market),
+          scope.skipCounts === true
+            ? Promise.resolve({ pending: 0, succeeded: 0, failed: 0 })
+            : deps.refunds.countByState(context.market),
         ]);
         const records = rows.slice(0, paging.limit);
         const last = records[records.length - 1];

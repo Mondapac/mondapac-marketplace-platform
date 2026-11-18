@@ -12,9 +12,15 @@ import {
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
+import { SHEET_WRITER } from '../../platform/list-export';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { changeTrailProvider, IDENTITY_FACADE, IdentityModule } from '../identity';
+import {
+  CREDIT_ROW_KEYS,
+  type AdminCreditListDependencies,
+} from './application/admin-credit-list-flow';
+import { ADMIN_CREDIT_LIST_READER } from './application/ports/admin-credit-list.reader';
 import { ADMIN_CREDIT_REPOSITORY } from './application/ports/admin-credit.repository';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import { WALLET_POLICY } from './application/ports/wallet-policy';
@@ -23,6 +29,8 @@ import { ApproveAdminCredit } from './application/use-cases/approve-admin-credit
 import { AdminBalanceOf } from './application/use-cases/admin-balance-of.use-case';
 import { BalanceOf } from './application/use-cases/balance-of.use-case';
 import { CaptureHold } from './application/use-cases/capture-hold.use-case';
+import { CreditApproveProbe } from './application/use-cases/credit-approve-probe.use-case';
+import { ExportAdminCreditRequests } from './application/use-cases/export-admin-credit-requests.use-case';
 import { ExpireAdminCreditRequests } from './application/use-cases/expire-admin-credit-requests.use-case';
 import { ExpireWalletCredit } from './application/use-cases/expire-wallet-credit.use-case';
 import { GrantCredit } from './application/use-cases/grant-credit.use-case';
@@ -90,6 +98,40 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   };
 }
 
+type CreditListUseCaseClass<U> = new (gate: UseCaseGate, deps: AdminCreditListDependencies) => U;
+
+/** The admin Credit requests list and its export (super list 24) share one dependency object. */
+function creditListUseCaseProvider<U>(type: CreditListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      ADMIN_CREDIT_LIST_READER,
+      CreditApproveProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AdminCreditListDependencies['unitOfWork'],
+      list: AdminCreditListDependencies['list'],
+      approve: CreditApproveProbe,
+      sheetWriter: AdminCreditListDependencies['sheetWriter'],
+      clock: AdminCreditListDependencies['clock'],
+    ) => {
+      const [approveKey] = CREDIT_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        list,
+        probes: { [approveKey]: approve },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
 /**
  * Wallet (customer wallet package 1, speed mode): the ledger core of platform-issued store
  * credit. Lots, holds, balanced insert-only journals and the cached balance live in the `wallet`
@@ -139,11 +181,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       IssueAdminCredit,
       ApproveAdminCredit,
       RejectAdminCredit,
-      ListAdminCreditRequests,
       ViewCustomerWallet,
       ViewCustomerHistory,
       ExpireAdminCreditRequests,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    ...[ListAdminCreditRequests, ExportAdminCreditRequests].map((type) =>
+      creditListUseCaseProvider(type as CreditListUseCaseClass<unknown>),
+    ),
+    {
+      provide: CreditApproveProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new CreditApproveProbe(gate),
+    },
     {
       provide: WALLET_FACADE,
       inject: [

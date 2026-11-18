@@ -2,6 +2,7 @@ import { BackLink, LoadError } from '@mondapac/ui';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { OrderDetail } from '../../../../src/orders/order-detail.tsx';
+import { backHrefOf, customerOriginOf } from '../../../../src/orders/order-href.ts';
 import {
   NOTE_PERMISSION,
   REFUND_PERMISSION,
@@ -22,10 +23,16 @@ export async function generateMetadata() {
 
 export default async function OrderPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly orderId: string }>;
+  readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { orderId } = await params;
+  const query = await searchParams;
+  const from = customerOriginOf(query['customer'], query['from']);
+  // "Cancel order…" in the list's Actions menu lands here with the cancel dialog ready.
+  const startCancel = query['do'] === 'cancel';
   if (!UUID.test(orderId)) notFound();
   const gate = await requireSession();
   const t = await getTranslations();
@@ -41,7 +48,10 @@ export default async function OrderPage({
   const message = (key: 'no-access' | 'not-found') =>
     shell(
       <div className="flex flex-col gap-4">
-        <BackLink href="/orders" label={t('orders.detail.back')} />
+        <BackLink
+          href={backHrefOf(from)}
+          label={t(from === undefined ? 'orders.detail.back' : 'orders.detail.back-customer')}
+        />
         <div>
           <h1 className="mb-2 text-2xl font-semibold">{t(`orders.${key}-title`)}</h1>
           <p className="text-fg-muted">{t(`orders.${key}`)}</p>
@@ -64,6 +74,8 @@ export default async function OrderPage({
         canNote={keys.includes(NOTE_PERMISSION)}
         notes={notes.kind === 'ok' ? notes.body.notes : null}
         csrfToken={gate.session.csrfToken}
+        {...(from === undefined ? {} : { from })}
+        startCancel={startCancel}
       />,
     );
   if (result.kind === 'forbidden') return message('no-access');

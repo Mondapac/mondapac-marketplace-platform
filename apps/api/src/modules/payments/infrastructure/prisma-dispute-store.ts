@@ -1,7 +1,13 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
+import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { DisputeRecord, DisputeStore } from '../application/ports/dispute-store';
+import type {
+  DisputeRecord,
+  DisputeStore,
+  OrdersDisputeQuery,
+  OrdersDisputeSort,
+} from '../application/ports/dispute-store';
 import type { DisputeOutcome, DisputeReason, DisputeState, DisputeStatus } from '../domain/dispute';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
@@ -144,4 +150,56 @@ export class PrismaDisputeStore implements DisputeStore {
     });
     return rows.map(toRecord);
   }
+
+  async pageOfOrders(
+    market: MarketContext,
+    query: OrdersDisputeQuery,
+    order: { readonly sort: OrdersDisputeSort; readonly direction: 'asc' | 'desc' },
+    window: { readonly offset: number; readonly limit: number },
+  ) {
+    if (query.orderIds.length === 0) return [];
+    const { direction } = order;
+    const rows = await this.prisma.tx(market).paymentsDispute.findMany({
+      where: ordersDisputeWhere(market, query),
+      orderBy:
+        order.sort === 'amount'
+          ? [{ amountMinor: direction }, { openedAt: direction }, { id: direction }]
+          : order.sort === 'due'
+            ? [
+                { evidenceDueBy: { sort: direction, nulls: 'last' } },
+                { openedAt: direction },
+                { id: direction },
+              ]
+            : [{ openedAt: direction }, { id: direction }],
+      skip: window.offset,
+      take: window.limit,
+    });
+    return rows.map(toRecord);
+  }
+
+  async countOfOrders(market: MarketContext, query: OrdersDisputeQuery) {
+    if (query.orderIds.length === 0) return 0;
+    return this.prisma
+      .tx(market)
+      .paymentsDispute.count({ where: ordersDisputeWhere(market, query) });
+  }
+}
+
+function ordersDisputeWhere(
+  market: MarketContext,
+  query: OrdersDisputeQuery,
+): Prisma.PaymentsDisputeWhereInput {
+  return {
+    marketId: market.marketId,
+    orderId: { in: [...query.orderIds] },
+    ...(query.statuses === null ? {} : { status: { in: [...query.statuses] } }),
+    ...(query.from === null && query.to === null
+      ? {}
+      : {
+          openedAt: {
+            ...(query.from === null ? {} : { gte: new Date(query.from.epochMilliseconds) }),
+            ...(query.to === null ? {} : { lt: new Date(query.to.epochMilliseconds) }),
+          },
+        }),
+  };
 }

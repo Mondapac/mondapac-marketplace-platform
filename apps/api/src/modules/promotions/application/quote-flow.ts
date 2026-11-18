@@ -66,6 +66,10 @@ export function audienceOf(record: PromotionRecord): Audience | null {
   if (record.segmentKind === 'MANUAL_GROUP' && record.segmentGroupId !== null) {
     return { kind: 'MANUAL_GROUP', groupId: record.segmentGroupId };
   }
+  // A seller's own discount for its exclusive customers; a platform row could not mean anything.
+  if (record.segmentKind === 'SELLER_EXCLUSIVE' && record.ownerSellerId !== null) {
+    return { kind: 'SELLER_EXCLUSIVE' };
+  }
   return null;
 }
 
@@ -362,6 +366,9 @@ async function customerFactsOf(
     (record) => record.type === 'CUSTOMER_GROUP' && record.segmentKind === 'RETURNING_CUSTOMER',
   );
   const needsFollows = records.some((record) => record.type === 'STORE_FOLLOWER');
+  const needsExclusive = records.some(
+    (record) => record.type === 'CUSTOMER_GROUP' && record.segmentKind === 'SELLER_EXCLUSIVE',
+  );
   const groupIds = [
     ...new Set(
       records.flatMap((record) =>
@@ -373,7 +380,7 @@ async function customerFactsOf(
       ),
     ),
   ].sort();
-  if (!needsHistory && !needsFollows && groupIds.length === 0) return null;
+  if (!needsHistory && !needsFollows && !needsExclusive && groupIds.length === 0) return null;
   let daysSinceLastOrder: number | null = null;
   if (needsHistory) {
     try {
@@ -405,7 +412,17 @@ async function customerFactsOf(
       // Fail closed: the group's promotion does not apply.
     }
   }
-  return { daysSinceLastOrder, followedSellerIds, memberOfGroupIds };
+  let exclusiveSellerId: string | null = null;
+  if (needsExclusive) {
+    try {
+      const exclusive = await deps.exclusiveCustomers.exclusiveSellerOf(context, accountId, now);
+      exclusiveSellerId = exclusive.known ? exclusive.value : null;
+    } catch {
+      // Fail closed: no exclusive-customer discount.
+      exclusiveSellerId = null;
+    }
+  }
+  return { daysSinceLastOrder, followedSellerIds, memberOfGroupIds, exclusiveSellerId };
 }
 
 function checkShape(

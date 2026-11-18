@@ -131,7 +131,10 @@ export class AdminCertificationTypeController {
     description:
       `${EDIT} Under the type version read. A revision that only tightens is published at ` +
       'once; one that relaxes a setting or removes a claim term waits pending until a second ' +
-      'admin approves it. verificationMode never changes.',
+      'admin approves it. verificationMode never changes. A published revision opens a review ' +
+      'in Admin Inbox › System requests while the Market reviews area certification (then ' +
+      '`note` is required; 400 on note without it); a reviewer who rejects it restores the ' +
+      'content before only when that relaxes nothing.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: TypeRevisionRequest })
@@ -166,13 +169,14 @@ export class AdminCertificationTypeController {
       request,
       response,
       body,
-      { required: ['version', 'content'], optional: ['reason'] },
+      { required: ['version', 'content'], optional: ['reason', 'note'] },
       (input) =>
         this.save.execute(context, {
           typeId,
           version: input.version,
           content: input.content,
           reason: input.reason,
+          note: input.note,
         }),
     ) as Promise<TypeRevisionSavedView>;
   }
