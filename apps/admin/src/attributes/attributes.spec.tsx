@@ -1142,6 +1142,34 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(writes('POST')[0]?.path).toBe(`catalog/admin/attributes/${id(1)}/discard`);
   });
 
+  it('asks for a note before a discard waits for approval, and keeps the draft (system requests)', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1, { status: 'draft' })])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(
+        detail(locales, 1, { status: 'draft', review: { reviewed: true, risk: 'low' } }),
+      ),
+      [`POST catalog/admin/attributes/${id(1)}/discard`]: {
+        ok: true,
+        status: 202,
+        body: { request: { id: 'r3', number: 52 } },
+      },
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Discard draft' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Discard Attribute 1?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
+    expect(await within(dialog).findByText(/Write a note for the reviewers/)).toBeTruthy();
+    expect(writes('POST')).toHaveLength(0);
+    fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+      target: { value: 'Made by mistake' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
+    await expectToast('Sent for approval (SR-52)', 'info');
+    expect(writes('POST')[0]?.body).toEqual({ version: 1, note: 'Made by mistake' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
   const relaxation = (n: number, mine: boolean): OpenRelaxation => ({
     id: id(800 + n),
     version: 1,

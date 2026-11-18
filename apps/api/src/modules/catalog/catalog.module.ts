@@ -1,5 +1,23 @@
 import { CertificationModule } from '../certification';
-import { registerSystemChangeReverter, SYSTEM_REQUEST_RECORDER } from '../system-requests';
+import {
+  registerSystemChangeApplier,
+  registerSystemChangeReverter,
+  SYSTEM_ACTION_PROPOSER,
+  SYSTEM_REQUEST_RECORDER,
+} from '../system-requests';
+import {
+  AttributeActionApplier,
+  CategoryActionApplier,
+  FeatureSetCreateApplier,
+  ProductsMoveApplier,
+  type CatalogueStructureDependencies,
+} from './application/catalogue-appliers';
+import {
+  AttributeCreateReverter,
+  CategoryCreateReverter,
+  CategoryMoveReverter,
+  CategoryReorderReverter,
+} from './application/catalogue-structure-reverters';
 import {
   AttributeDefinitionReverter,
   CategoryDetailsReverter,
@@ -12,6 +30,16 @@ import {
   CATEGORY_DETAILS_SUBJECT_KIND,
   CATEGORY_LINKS_SUBJECT_KIND,
   NO_REVIEW,
+  ATTRIBUTE_CREATE_SUBJECT_KIND,
+  ATTRIBUTE_DISCARD_SUBJECT_KIND,
+  ATTRIBUTE_RESTRUCTURE_SUBJECT_KIND,
+  CATEGORY_CREATE_SUBJECT_KIND,
+  CATEGORY_DISCARD_SUBJECT_KIND,
+  CATEGORY_MOVE_SUBJECT_KIND,
+  CATEGORY_PRODUCTS_MOVE_SUBJECT_KIND,
+  CATEGORY_REORDER_SUBJECT_KIND,
+  CATEGORY_RESTRUCTURE_SUBJECT_KIND,
+  FEATURE_SET_CREATE_SUBJECT_KIND,
 } from './application/catalogue-review';
 import { CatalogReferencesModule } from './infrastructure/catalog-references.module';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
@@ -205,7 +233,13 @@ import { AddSizes } from './application/products/add-sizes.service';
 import { PlatformProductAddSizes } from './application/use-cases/platform-product-add-sizes.use-case';
 import { PlatformProductAddSizesImpact } from './application/use-cases/platform-product-add-sizes-impact.use-case';
 import { OwnProductAddSizes } from './application/use-cases/own-product-add-sizes.use-case';
-import { CATALOG_PERMISSIONS } from './contracts/permissions';
+import {
+  CATALOG_ATTRIBUTE_EDIT,
+  CATALOG_ATTRIBUTE_RESTRUCTURE,
+  CATALOG_CATEGORY_TREE_EDIT,
+  CATALOG_CATEGORY_TREE_RESTRUCTURE,
+  CATALOG_PERMISSIONS,
+} from './contracts/permissions';
 import { CATALOG_STEP_UP_ACTIONS } from './contracts/step-up';
 import { CATEGORY_SEED } from './application/ports/category-seed';
 import { PLATFORM_CATEGORY_REPOSITORY } from './application/ports/platform-category.repository';
@@ -574,6 +608,8 @@ const OWN_IMPORT_OFFER_CREATE = Symbol('CATALOG_OWN_IMPORT_OFFER_CREATE');
 const OWN_IMPORT_OFFER_EDIT = Symbol('CATALOG_OWN_IMPORT_OFFER_EDIT');
 /** The attribute edit the file import runs: the same use case, with no review (import is not reviewed). */
 const ATTRIBUTE_IMPORT_EDIT = Symbol('CATALOG_ATTRIBUTE_IMPORT_EDIT');
+/** The attribute create the file import runs: the same use case, with no review. */
+const ATTRIBUTE_IMPORT_CREATE = Symbol('CATALOG_ATTRIBUTE_IMPORT_CREATE');
 const OWN_IMPORT_IMAGE_UPLOAD = Symbol('CATALOG_OWN_IMPORT_IMAGE_UPLOAD');
 const NO_SAVE_BUDGET = { reserveSaves: (): Promise<null> => Promise.resolve(null) } as const;
 
@@ -691,9 +727,10 @@ const PORT = {
   missingDetailsMailSettings: MISSING_DETAILS_MAIL_SETTINGS,
   familyResolver: ProductFamilyResolver,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
-  attributeCreate: AttributeDefinitionCreate,
+  attributeCreate: ATTRIBUTE_IMPORT_CREATE,
   attributeEdit: ATTRIBUTE_IMPORT_EDIT,
   review: SYSTEM_REQUEST_RECORDER,
+  proposer: SYSTEM_ACTION_PROPOSER,
   featureSetStore: FEATURE_SET_STORE,
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
@@ -805,6 +842,8 @@ const productTypeProvider: FactoryProvider<string> = {
  * slices 6 and 7.
  */
 const RESTRUCTURE_DEPS = {
+  review: true,
+  proposer: true,
   unitOfWork: true,
   store: true,
   restructure: true,
@@ -817,6 +856,18 @@ const RESTRUCTURE_DEPS = {
   outbox: true,
   clock: true,
   ids: true,
+} as const;
+
+const ATTRIBUTE_CREATE_PORTS = {
+  unitOfWork: true,
+  attributeStore: true,
+  policy: true,
+  matcher: true,
+  claimLocales: true,
+  audit: true,
+  clock: true,
+  ids: true,
+  review: true,
 } as const;
 
 const ATTRIBUTE_EDIT_PORTS = {
@@ -858,6 +909,92 @@ const REVERTERS = [
   [ATTRIBUTE_DEFINITION_SUBJECT_KIND, AttributeDefinitionReverter],
   [CATEGORY_LINKS_SUBJECT_KIND, CategoryLinksReverter],
 ] as const;
+
+/** The ports the structure reverters and the appliers of area catalogue are built from. */
+const STRUCTURE_PORTS = [
+  'unitOfWork',
+  'store',
+  'restructure',
+  'categories',
+  'policy',
+  'retirement',
+  'offers',
+  'requests',
+  'audit',
+  'outbox',
+  'clock',
+  'ids',
+  'attributeStore',
+  'relaxations',
+  'impact',
+  'featureSetStore',
+  'attributeAdminReader',
+  'matcher',
+  'claimLocales',
+  'moveStore',
+  'adminCategoryReader',
+  'authorisation',
+] as const satisfies readonly (keyof CatalogueStructureDependencies & PortName)[];
+
+type StructureBuild = (deps: CatalogueStructureDependencies) => object;
+
+function structureProvider(token: symbol, build: StructureBuild): FactoryProvider<object> {
+  return {
+    provide: token,
+    inject: STRUCTURE_PORTS.map((name) => PORT[name]),
+    useFactory: (...values: unknown[]) =>
+      build(
+        Object.fromEntries(
+          STRUCTURE_PORTS.map((name, index) => [name, values[index]]),
+        ) as unknown as CatalogueStructureDependencies,
+      ),
+  };
+}
+
+/** Creates and moves of area catalogue: live at once, undone on a reject (review mode). */
+const STRUCTURE_REVERTERS: readonly (readonly [string, StructureBuild])[] = [
+  [CATEGORY_CREATE_SUBJECT_KIND, (deps) => new CategoryCreateReverter(deps)],
+  [CATEGORY_MOVE_SUBJECT_KIND, (deps) => new CategoryMoveReverter(deps)],
+  [CATEGORY_REORDER_SUBJECT_KIND, (deps) => new CategoryReorderReverter(deps)],
+  [ATTRIBUTE_CREATE_SUBJECT_KIND, (deps) => new AttributeCreateReverter(deps)],
+];
+
+/**
+ * Discards, merges, archives, a move of products and a new feature set of area catalogue: they
+ * wait for a second admin's approval (approval mode), each kind with the key its route needs.
+ */
+const APPLIERS: readonly (readonly [string, string, StructureBuild])[] = [
+  [
+    CATEGORY_DISCARD_SUBJECT_KIND,
+    CATALOG_CATEGORY_TREE_EDIT.key,
+    (deps) => new CategoryActionApplier(deps, ['discard']),
+  ],
+  [
+    CATEGORY_RESTRUCTURE_SUBJECT_KIND,
+    CATALOG_CATEGORY_TREE_RESTRUCTURE.key,
+    (deps) => new CategoryActionApplier(deps, ['merge', 'archive']),
+  ],
+  [
+    CATEGORY_PRODUCTS_MOVE_SUBJECT_KIND,
+    CATALOG_CATEGORY_TREE_RESTRUCTURE.key,
+    (deps) => new ProductsMoveApplier(deps),
+  ],
+  [
+    ATTRIBUTE_DISCARD_SUBJECT_KIND,
+    CATALOG_ATTRIBUTE_EDIT.key,
+    (deps) => new AttributeActionApplier(deps, ['discard']),
+  ],
+  [
+    ATTRIBUTE_RESTRUCTURE_SUBJECT_KIND,
+    CATALOG_ATTRIBUTE_RESTRUCTURE.key,
+    (deps) => new AttributeActionApplier(deps, ['archive', 'merge', 'merge-values']),
+  ],
+  [
+    FEATURE_SET_CREATE_SUBJECT_KIND,
+    CATALOG_ATTRIBUTE_EDIT.key,
+    (deps) => new FeatureSetCreateApplier(deps),
+  ],
+];
 
 @Module({
   controllers: [
@@ -1252,6 +1389,7 @@ const REVERTERS = [
       policy: true,
       attributeEditProbe: true,
       attributeRestructureProbe: true,
+      review: true,
     }),
     useCaseProvider(AttributeAdminGet, {
       unitOfWork: true,
@@ -1259,17 +1397,19 @@ const REVERTERS = [
       policy: true,
       review: true,
     }),
-    useCaseProvider(FeatureSetAdminList, { unitOfWork: true, attributeAdminReader: true }),
-    useCaseProvider(AttributeDefinitionCreate, {
+    useCaseProvider(FeatureSetAdminList, {
       unitOfWork: true,
-      attributeStore: true,
-      policy: true,
-      matcher: true,
-      claimLocales: true,
-      audit: true,
-      clock: true,
-      ids: true,
+      attributeAdminReader: true,
+      review: true,
     }),
+    useCaseProvider(AttributeDefinitionCreate, ATTRIBUTE_CREATE_PORTS),
+    portVariantProvider(
+      ATTRIBUTE_IMPORT_CREATE,
+      AttributeDefinitionCreate,
+      ATTRIBUTE_CREATE_PORTS,
+      { review: NO_REVIEW },
+      [],
+    ),
     useCaseProvider(AttributeDefinitionEdit, ATTRIBUTE_EDIT_PORTS),
     portVariantProvider(
       ATTRIBUTE_IMPORT_EDIT,
@@ -1308,6 +1448,8 @@ const REVERTERS = [
       impact: true,
     }),
     useCaseProvider(AttributeValuesMerge, {
+      review: true,
+      proposer: true,
       unitOfWork: true,
       attributeStore: true,
       relaxations: true,
@@ -1324,6 +1466,8 @@ const REVERTERS = [
       ids: true,
     }),
     useCaseProvider(AttributeMerge, {
+      review: true,
+      proposer: true,
       unitOfWork: true,
       attributeStore: true,
       relaxations: true,
@@ -1333,6 +1477,8 @@ const REVERTERS = [
       ids: true,
     }),
     useCaseProvider(AttributeArchive, {
+      review: true,
+      proposer: true,
       unitOfWork: true,
       attributeStore: true,
       relaxations: true,
@@ -1578,12 +1724,16 @@ const REVERTERS = [
       claimLocales: true,
     }),
     useCaseProvider(AttributeDefinitionDiscard, {
+      review: true,
+      proposer: true,
       unitOfWork: true,
       attributeStore: true,
       policy: true,
       audit: true,
     }),
     useCaseProvider(FeatureSetCreate, {
+      review: true,
+      proposer: true,
       unitOfWork: true,
       featureSetStore: true,
       attributeAdminReader: true,
@@ -1659,6 +1809,7 @@ const REVERTERS = [
       categoryProbes: true,
       linkStore: true,
       attributeAdminReader: true,
+      review: true,
     }),
     useCaseProvider(CategoryAdminGet, {
       unitOfWork: true,
@@ -1710,6 +1861,7 @@ const REVERTERS = [
       clock: true,
     }),
     useCaseProvider(CategoryCreate, {
+      review: true,
       contentFilter: true,
       unitOfWork: true,
       store: true,
@@ -1752,7 +1904,22 @@ const REVERTERS = [
         registerSystemChangeReverter('catalog', kind, CATALOGUE_REVIEW_AREA, token),
       ];
     }),
+    ...STRUCTURE_REVERTERS.flatMap(([kind, build]) => {
+      const token = Symbol(`CATALOG_REVERTER:${kind}`);
+      return [
+        structureProvider(token, build),
+        registerSystemChangeReverter('catalog', kind, CATALOGUE_REVIEW_AREA, token),
+      ];
+    }),
+    ...APPLIERS.flatMap(([kind, permission, build]) => {
+      const token = Symbol(`CATALOG_APPLIER:${kind}`);
+      return [
+        structureProvider(token, build),
+        registerSystemChangeApplier('catalog', kind, CATALOGUE_REVIEW_AREA, permission, token),
+      ];
+    }),
     useCaseProvider(CategoryReorder, {
+      review: true,
       contentFilter: true,
       unitOfWork: true,
       store: true,
@@ -1805,6 +1972,8 @@ const REVERTERS = [
       ids: true,
     }),
     useCaseProvider(CategoryDiscard, {
+      review: true,
+      proposer: true,
       contentFilter: true,
       unitOfWork: true,
       store: true,
@@ -2254,6 +2423,8 @@ const REVERTERS = [
       rowSubmit: true,
     }),
     useCaseProvider(CategoryMoveProducts, {
+      review: true,
+      proposer: true,
       unitOfWork: true,
       adminCategoryReader: true,
       moveStore: true,

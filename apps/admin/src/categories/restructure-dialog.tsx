@@ -4,6 +4,7 @@ import { Banner, Button, Dialog, SkeletonRows, TextAreaField, TextField } from '
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { useSentForApproval, useSentForReview } from '../shared/review-note.tsx';
 import { CategoryProblemBanner } from './category-problem.tsx';
 import {
   TOP,
@@ -222,6 +223,11 @@ export function RestructureDialog({
     : undefined;
   const noteId = useId();
   const cancel = useRef<HTMLButtonElement>(null);
+  // Where the Market reviews area catalogue, a merge or archive waits for another admin's approval
+  // (the reason is the reviewer's note) and a move is reviewed after.
+  const approval = kind !== 'move' && body.review?.reviewed === true;
+  const sentForApproval = useSentForApproval();
+  const sentForReview = useSentForReview();
 
   async function submit() {
     if (!ready) return;
@@ -241,7 +247,14 @@ export function RestructureDialog({
       `${API_CATEGORIES}/${body.category.id}/${kind}`,
       payload,
     );
-    if (answer.ok) onDone();
+    if (!answer.ok) return;
+    // Sent for approval: nothing changed yet, so the category stays as it is.
+    if (sentForApproval(answer.body)) {
+      onClose();
+      return;
+    }
+    sentForReview(answer.body);
+    onDone();
   }
 
   const problem = call.problem;
@@ -283,6 +296,7 @@ export function RestructureDialog({
         <CategoryProblemBanner problem={problem} />
         <p className="m-0">{t(`intro.${kind}`, { name })}</p>
         {kind === 'archive' ? <Banner tone="attention">{t('terminal')}</Banner> : null}
+        {approval ? <Banner tone="info">{t('approval-note')}</Banner> : null}
         {picks ? (
           <TargetPicker
             legend={t(kind === 'move' ? 'target-move' : 'target-merge')}

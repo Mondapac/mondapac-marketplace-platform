@@ -225,6 +225,8 @@ describe('attribute editor over HTTP (integration)', () => {
           version: 1,
           revisionNo: 1,
         },
+        // Reviewed after where the Market reviews area catalogue; none here.
+        request: null,
       });
       const attributeId = (created.body as { attribute: { id: string } }).attribute.id;
       expect(store.authors.map((a) => a.author)).toEqual([EDITOR]);

@@ -322,6 +322,8 @@ describe('admin attribute reads over HTTP (integration)', () => {
           },
         ],
         truncated: false,
+        // Whether a new feature set waits for approval (Admin Inbox > System requests).
+        review: { reviewed: false, risk: 'low' },
       });
       const set = await http().get(`${FEATURE_SETS}/${FAMILY}`).set(session).expect(200);
       expect(set.body).toMatchObject({ code: 'default', groups: [{ groupCode: 'general' }] });

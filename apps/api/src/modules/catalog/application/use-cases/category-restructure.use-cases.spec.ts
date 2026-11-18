@@ -32,8 +32,15 @@ import type { EditableCategory } from '../../domain/category-edit';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import {
   RESTRUCTURE_MAX_PRODUCTS,
-  type CategoryRestructureDependencies,
+  type CategoryRestructureRouteDependencies,
 } from '../categories/category-restructure';
+import {
+  applied,
+  RecordingProposer,
+  RecordingReview,
+} from '../../../../../test/support/system-request-fakes';
+import { CategoryActionApplier, type CatalogueStructureDependencies } from '../catalogue-appliers';
+import { CategoryMoveReverter } from '../catalogue-structure-reverters';
 import type {
   CategoryRetirementCheck,
   CategoryRetirementRefusal,
@@ -98,6 +105,8 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
   let answer: () => Promise<Result<void, CategoryRetirementRefusal>>;
   let offersSaved: string[];
   let requests: { productId: string; productRevisionId: string }[];
+  let review: RecordingReview;
+  let proposer: RecordingProposer;
 
   const check: AuthorisationCheck = {
     check: (_context, declaration) =>
@@ -195,7 +204,7 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
 
   const build = () => {
     const gate = createUseCaseGate(markets, check);
-    const deps: CategoryRestructureDependencies = {
+    const deps: CategoryRestructureRouteDependencies = {
       unitOfWork,
       store,
       restructure,
@@ -208,11 +217,15 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
       outbox,
       clock,
       ids,
+      review,
+      proposer,
     };
     return {
       move: new CategoryMove(gate, deps),
       merge: new CategoryMerge(gate, deps),
       archive: new CategoryArchive(gate, deps),
+      // The appliers and reverters read only what these use cases do, plus the authorisation.
+      structure: { ...deps, authorisation: check } as unknown as CatalogueStructureDependencies,
     };
   };
 
@@ -277,6 +290,8 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
     answer = () => Promise.resolve(ok(undefined));
     offersSaved = [];
     requests = [];
+    review = new RecordingReview();
+    proposer = new RecordingProposer(review);
     seed();
   });
 
@@ -367,6 +382,7 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
             revisionNo: 2,
             treeVersion: 2,
           },
+          request: null,
         }),
       );
       expect(store.rows.get(cat(3))).toMatchObject({ parentId: cat(8), position: 0 });
@@ -389,6 +405,7 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
             subtreeSize: 1,
             tagsMarked: 2,
             reasonGiven: true,
+            requestId: null,
           },
         }),
       ]);
@@ -526,7 +543,7 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
     it('moves the children under the target, marks the source merged and relinks activities', async () => {
       productUnder(3, 2);
       const answer = await build().merge.execute(context(), body());
-      expect(answer.ok && answer.value.category).toMatchObject({
+      expect(answer.ok && applied(answer.value).category).toMatchObject({
         id: cat(2),
         status: 'merged',
         treeVersion: 2,
@@ -584,7 +601,7 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
 
     it('archives a leaf, unlinks its activities and checks only that category', async () => {
       const answer = await build().archive.execute(context(), body());
-      expect(answer.ok && answer.value.category).toMatchObject({ status: 'archived' });
+      expect(answer.ok && applied(answer.value).category).toMatchObject({ status: 'archived' });
       expect(store.rows.get(cat(3))).toMatchObject({ status: 'archived' });
       expect(restructure.relinked).toEqual([{ from: cat(3), to: null }]);
       expect(asked).toEqual([[cat(3)]]);
@@ -670,6 +687,168 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
       ).execute(testCallContext(market, 'system'), { delivery, categoryIds: [cat(3)] });
       expect(answer).toEqual(err({ code: 'category.check-unavailable' }));
       expect(runs).toEqual([]);
+    });
+  });
+  describe('system requests (area catalogue, owner decision of 18 Nov 2026)', () => {
+    const note = 'Pantry aisle reorganised, see the plan.';
+    const NO_REQUEST = '01990000-0000-7000-8000-000000005eff' as never;
+    const requestOf = (change: { subjectRef: string; before: unknown; after: unknown }) => ({
+      requestId: NO_REQUEST,
+      subjectRef: change.subjectRef,
+      before: change.before as never,
+      after: change.after as never,
+    });
+
+    describe('move: applied now, reviewed after', () => {
+      it('opens a review with the parent before and after; a reject moves it back', async () => {
+        review.review('catalogue');
+        const uc = build();
+        const answer = await uc.move.execute(context(), moveBody({ note }));
+        if (!answer.ok) throw new Error(answer.error.code);
+        expect(applied(answer.value).request).toMatchObject({ number: 1 });
+        expect(store.rows.get(cat(3))).toMatchObject({ parentId: cat(8) });
+        const opened = review.opened[0]!;
+        expect(opened).toMatchObject({
+          area: 'catalogue',
+          subjectKind: 'catalog.category-move',
+          subjectRef: cat(3),
+          before: { parentId: cat(2) },
+          after: { parentId: cat(8) },
+          note,
+        });
+        const reverter = new CategoryMoveReverter(uc.structure);
+        const request = requestOf(opened);
+        asked = [];
+        expect(await reverter.check(context(), request)).toBe('ok');
+        expect(checkInsideUnit).toBe(false);
+        expect(await reverter.revert(context(), request)).toBe('reverted');
+        expect(store.rows.get(cat(3))).toMatchObject({ parentId: cat(2) });
+        expect(audits.at(-1)).toMatchObject({
+          action: 'catalog.platform-category.moved',
+          after: { requestId: NO_REQUEST },
+        });
+        // Back under its old parent: a second reject finds it changed.
+        expect(await reverter.revert(context(), request)).toBe('changed-since');
+      });
+
+      it('uses the reason as the note when none is given', async () => {
+        review.review('catalogue');
+        const answer = await build().move.execute(context(), moveBody());
+        expect(answer.ok).toBe(true);
+        expect(review.opened[0]).toMatchObject({ note: REASON });
+      });
+
+      it('a reject fails closed when certification refuses the move back', async () => {
+        review.review('catalogue');
+        const uc = build();
+        await uc.move.execute(context(), moveBody({ note }));
+        const reverter = new CategoryMoveReverter(uc.structure);
+        const request = requestOf(review.opened[0]!);
+        answer = () => Promise.resolve(err({ code: 'category.check-unavailable' }));
+        expect(await reverter.check(context(), request)).toBe('not-permitted');
+        expect(await reverter.revert(context(), request)).toBe('not-permitted');
+        expect(store.rows.get(cat(3))).toMatchObject({ parentId: cat(8) });
+      });
+    });
+
+    describe('merge and archive: wait for approval', () => {
+      const mergeBody = { categoryId: cat(2), treeVersion: 1, targetId: cat(6), reason: REASON };
+      const archiveBody = { categoryId: cat(3), treeVersion: 1, reason: REASON };
+
+      it('a merge files a proposal and changes nothing, then the approval merges it', async () => {
+        review.review('catalogue');
+        const uc = build();
+        const answer = await uc.merge.execute(context(), { ...mergeBody, note });
+        if (!answer.ok) throw new Error(answer.error.code);
+        expect(answer.value).toEqual({
+          request: <unknown>expect.objectContaining({ number: 901 }),
+        });
+        expect(store.rows.get(cat(2))).toMatchObject({ status: 'active' });
+        expect(audits).toEqual([]);
+        expect(events).toEqual([]);
+        expect(tree.version).toBe(1);
+        const proposal = proposer.proposed[0]!;
+        expect(proposal).toMatchObject({
+          subjectKind: 'catalog.category-restructure',
+          subjectRef: cat(2),
+          before: { status: 'active', version: 1, parentId: cat(1) },
+          after: { action: 'merge', targetId: cat(6), reason: REASON },
+          note,
+        });
+
+        const applier = new CategoryActionApplier(uc.structure, ['merge', 'archive']);
+        const request = requestOf(proposal);
+        asked = [];
+        expect(await applier.check(context(), request)).toBe('ok');
+        expect(checkInsideUnit).toBe(false);
+        expect(asked).toHaveLength(1);
+        expect(await applier.apply(context(), request)).toBe('applied');
+        expect(store.rows.get(cat(2))).toMatchObject({ status: 'merged' });
+        expect(store.mergedInto.get(cat(2))).toBe(cat(6));
+        expect(audits.map((a) => a.action)).toEqual(['catalog.platform-category.merged']);
+        expect(audits[0]).toMatchObject({ after: { requestId: NO_REQUEST } });
+      });
+
+      it('an archive files a proposal, then the approval archives it', async () => {
+        review.review('catalogue');
+        const uc = build();
+        const answer = await uc.archive.execute(context(), { ...archiveBody, note });
+        expect(answer.ok && answer.value).toEqual({
+          request: <unknown>expect.objectContaining({}),
+        });
+        expect(store.rows.get(cat(3))).toMatchObject({ status: 'active' });
+        const applier = new CategoryActionApplier(uc.structure, ['merge', 'archive']);
+        const request = requestOf(proposer.proposed[0]!);
+        expect(await applier.check(context(), request)).toBe('ok');
+        expect(await applier.apply(context(), request)).toBe('applied');
+        expect(store.rows.get(cat(3))).toMatchObject({ status: 'archived' });
+      });
+
+      it('answers changed-since when the category changed after the proposal, writing nothing', async () => {
+        review.review('catalogue');
+        const uc = build();
+        await uc.archive.execute(context(), { ...archiveBody, note });
+        const applier = new CategoryActionApplier(uc.structure, ['merge', 'archive']);
+        const request = requestOf(proposer.proposed[0]!);
+        store.put(stored(3, 2, { version: 2 }));
+        expect(await applier.check(context(), request)).toBe('ok');
+        expect(await applier.apply(context(), request)).toBe('changed-since');
+        expect(store.rows.get(cat(3))).toMatchObject({ status: 'active' });
+        expect(audits).toEqual([]);
+      });
+
+      it('the approval fails closed when certification refuses, or the check did not run', async () => {
+        review.review('catalogue');
+        const uc = build();
+        await uc.archive.execute(context(), { ...archiveBody, note });
+        const applier = new CategoryActionApplier(uc.structure, ['merge', 'archive']);
+        const request = requestOf(proposer.proposed[0]!);
+        expect(await applier.apply(context(), request)).toBe('not-permitted');
+        answer = () => Promise.resolve(err({ code: 'category.check-unavailable' }));
+        expect(await applier.check(context(), request)).toBe('not-permitted');
+        allow = false;
+        answer = () => Promise.resolve(ok(undefined));
+        expect(await applier.check(context(), request)).toBe('not-permitted');
+        expect(store.rows.get(cat(3))).toMatchObject({ status: 'active' });
+      });
+
+      it('a reject changes nothing, and a second proposal waits for the first', async () => {
+        review.review('catalogue');
+        const uc = build();
+        await uc.archive.execute(context(), { ...archiveBody, note });
+        expect(
+          await uc.merge.execute(context(), { ...mergeBody, categoryId: cat(3), note }),
+        ).toEqual(err({ code: 'system-requests.already-pending', pendingNumber: 901 }));
+        proposer.settle('catalog.category-restructure', cat(3));
+        expect(store.rows.get(cat(3))).toMatchObject({ status: 'active', version: 1 });
+        expect(audits).toEqual([]);
+      });
+
+      it('applies at once where the area is off', async () => {
+        const answer = await build().archive.execute(context(), archiveBody);
+        expect(answer.ok && applied(answer.value).category).toMatchObject({ status: 'archived' });
+        expect(proposer.proposed).toEqual([]);
+      });
     });
   });
 });

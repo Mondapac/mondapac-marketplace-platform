@@ -18,6 +18,7 @@ import {
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
+import { ReviewNoteField, trimmedNote, useSentForApproval } from '../shared/review-note.tsx';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
 import { AttributeEditForm } from './attribute-edit-form.tsx';
@@ -429,14 +430,31 @@ function StatusDialog({
   const call = useAttributeCall(csrfToken);
   const name = textIn(detail.names, detail.locales.default, detail.locales.default, detail.code);
   const missing = detail.missingLocales.map((tag) => languageName(tag, detail.locales.supported));
+  // A discard waits for another admin's approval where the Market reviews area catalogue.
+  const approval = kind === 'discard' && detail.review?.reviewed === true;
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForApproval = useSentForApproval();
 
   async function confirm() {
+    const sentNote = approval ? trimmedNote(note) : null;
+    if (approval && sentNote === null) {
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     const answer = await call.run<AttributeWrite>(
       'POST',
       `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}/${kind}`,
-      { version: detail.version },
+      { version: detail.version, ...(sentNote === null ? {} : { note: sentNote }) },
     );
-    if (answer.ok) onDone();
+    if (!answer.ok) {
+      if (answer.problem?.fields['note'] !== undefined) setNoteError('rejected');
+      return;
+    }
+    // Sent for approval: nothing changed yet, so the attribute stays as it is.
+    if (sentForApproval(answer.body)) onClose();
+    else onDone();
   }
 
   const problem = call.problem;
@@ -478,6 +496,18 @@ function StatusDialog({
           <p className="text-sm text-fg-muted">
             {t('publish-missing', { languages: missing.join(', ') })}
           </p>
+        ) : null}
+        {approval ? (
+          <ReviewNoteField
+            approval
+            value={note}
+            onChange={(next) => {
+              setNote(next);
+              setNoteError(null);
+            }}
+            error={noteError ?? undefined}
+            disabled={call.pending}
+          />
         ) : null}
       </div>
     </Dialog>

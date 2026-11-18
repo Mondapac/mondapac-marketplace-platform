@@ -273,6 +273,96 @@ describe('category editor (C3b)', () => {
     });
   });
 
+  describe('system requests: structure changes (area catalogue)', () => {
+    const reviewed = { reviewed: true, risk: 'medium' };
+
+    it('asks for a note before Discard waits for approval, then leaves the category as it is', async () => {
+      serve({ ok: true, status: 202, body: { request: { id: 'r9', number: 12 } } }, reviewed);
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Oils');
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+      const dialog = screen.getByRole('dialog');
+      expect(
+        within(dialog).getByText(/Nothing changes until another admin approves it/),
+      ).toBeTruthy();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+      expect(await within(dialog).findByText(/Write a note for the reviewers/)).toBeTruthy();
+      expect(writes()).toHaveLength(0);
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: ' Never used ' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+      await waitFor(() => expect(writes()).toHaveLength(1));
+      expect(writes()[0]![2]).toEqual({ treeVersion: 7, note: 'Never used' });
+      await expectToast('Sent for approval (SR-12)', 'info');
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      // Nothing changed yet: the category is still selected and the tree was not read again.
+      expect(screen.getByRole('heading', { name: 'Oils' })).toBeTruthy();
+      expect(
+        call.mock.calls.filter(([m, path]) => m === 'GET' && path === 'catalog/admin/categories'),
+      ).toHaveLength(1);
+    });
+
+    it('asks for no note where the area is off', async () => {
+      serve({ ok: true, status: 200, body: written });
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Oils');
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+      const dialog = screen.getByRole('dialog');
+      expect(within(dialog).queryByLabelText('Note for reviewers')).toBeNull();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+      await waitFor(() => expect(writes()).toHaveLength(1));
+      expect(writes()[0]![2]).toEqual({ treeVersion: 7 });
+    });
+
+    it('names the proposal that already waits', async () => {
+      serve(
+        {
+          ok: false,
+          failure: {
+            status: 409,
+            code: 'system-requests.already-pending',
+            details: { pendingNumber: 7 },
+          },
+        },
+        reviewed,
+      );
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Oils');
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+      const dialog = screen.getByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: 'Never used' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+      expect(
+        await screen.findByText(/already has a change waiting for approval \(SR-7\)/),
+      ).toBeTruthy();
+    });
+
+    it('asks for a note before a reviewed Move down, and says it was sent for review', async () => {
+      serve(ok({ ...written, request: { id: 'r2', number: 44 } }), reviewed);
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Rice');
+      fireEvent.click(screen.getByRole('button', { name: 'Move down' }));
+      const dialog = screen.getByRole('dialog');
+      expect(writes()).toHaveLength(0);
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Move down' }));
+      expect(await within(dialog).findByText(/Write a note for the reviewers/)).toBeTruthy();
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: 'Rice after oils' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Move down' }));
+      await waitFor(() => expect(writes()).toHaveLength(1));
+      expect(writes()[0]![2]).toEqual({
+        direction: 'down',
+        treeVersion: 7,
+        note: 'Rice after oils',
+      });
+      await expectToast('Sent for review as SR-44', 'info');
+    });
+  });
+
   it('shows the search preview from the typed words', async () => {
     serve();
     view(<CategoriesView canEdit csrfToken="tok" />);

@@ -1,6 +1,6 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import { SYSTEM_REQUEST_RECORDER } from '../src/modules/system-requests';
-import { RecordingReview } from './support/system-request-fakes';
+import { SYSTEM_ACTION_PROPOSER, SYSTEM_REQUEST_RECORDER } from '../src/modules/system-requests';
+import { RecordingProposer, RecordingReview } from './support/system-request-fakes';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -191,12 +191,14 @@ describe.each(TEST_MARKETS)(
   (code) => {
     let app: NestExpressApplication;
     let reviews = new RecordingReview();
+    let proposer = new RecordingProposer(reviews);
     const clock = new FixedClock(START);
     const http = () => request(app.getHttpServer());
     const market = testMarketContext(code, PLATFORM_TENANT_ID);
 
     beforeEach(async () => {
       reviews = new RecordingReview();
+      proposer = new RecordingProposer(reviews);
       fakes.reset();
       editStore.reset();
       categoryImages.reset();
@@ -224,6 +226,8 @@ describe.each(TEST_MARKETS)(
             .useValue(clock)
             .overrideProvider(SYSTEM_REQUEST_RECORDER)
             .useValue(reviews)
+            .overrideProvider(SYSTEM_ACTION_PROPOSER)
+            .useValue(proposer)
             .overrideProvider(ADMIN_CATEGORY_READER)
             .useValue(reader)
             .overrideProvider(CATEGORY_ATTRIBUTE_LINK_STORE)
@@ -619,6 +623,54 @@ describe.each(TEST_MARKETS)(
           .expect(409)
           .expect((response) => {
             expect((response.body as { code: string }).code).toBe('category.reorder-edge');
+          });
+      });
+
+      it('answers 202 with the proposal of a discard that waits for approval, and 409 for a second', async () => {
+        const session = adminSession(MODERATOR, 27);
+        const created = await http().post(BASE).set(session).send(body()).expect(201);
+        const { id: newId, treeVersion } = (
+          created.body as { category: { id: string; treeVersion: number } }
+        ).category;
+        reviews.review('catalogue', 'medium');
+        const tree = await http().get(BASE).set(session).expect(200);
+        expect(tree.body).toMatchObject({ review: { reviewed: true, risk: 'medium' } });
+        const proposed = await http()
+          .post(`${BASE}/${newId}/discard`)
+          .set(session)
+          .send({ treeVersion, note: 'Made by mistake' })
+          .expect(202);
+        expect(proposed.body).toEqual({
+          request: { id: <unknown>expect.any(String), number: 901 },
+        });
+        // Nothing changed: the category is still there, hidden, at its version.
+        expect(editStore.rows.get(newId)).toMatchObject({ status: 'hidden', version: 1 });
+        expect(proposer.proposed[0]).toMatchObject({
+          area: 'catalogue',
+          subjectKind: 'catalog.category-discard',
+          subjectRef: newId,
+          after: { action: 'discard' },
+          note: 'Made by mistake',
+        });
+        const again = await http()
+          .post(`${BASE}/${newId}/discard`)
+          .set(session)
+          .send({ treeVersion, note: 'Again' })
+          .expect(409);
+        expect(again.body).toMatchObject({
+          code: 'system-requests.already-pending',
+          details: { pendingNumber: 901 },
+        });
+        await http()
+          .post(`${BASE}/${newId}/discard`)
+          .set(session)
+          .send({ treeVersion })
+          .expect(400)
+          .expect((response) => {
+            expect(response.body).toMatchObject({
+              code: 'validation.failed',
+              details: { fields: [{ path: 'note', code: 'required' }] },
+            });
           });
       });
 

@@ -4,6 +4,7 @@ import { Banner, Button, Dialog, SkeletonRows, TextAreaField } from '@mondapac/u
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { useSentForApproval } from '../shared/review-note.tsx';
 import { CategoryProblemBanner } from './category-problem.tsx';
 import {
   MAX_MISSES,
@@ -212,9 +213,12 @@ export function MoveProductsDialog({
   rows,
   locale,
   csrfToken,
+  reviewed = false,
   onClose,
   onReload,
 }: {
+  /** Where the Market reviews area catalogue the move waits for another admin's approval. */
+  readonly reviewed?: boolean;
   readonly categoryId: string;
   readonly name: string;
   /** Every category of the tree, in tree order. */
@@ -252,6 +256,7 @@ export function MoveProductsDialog({
   const noteId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const finished = progress.kind === 'job' && isFinished(progress.job);
+  const sentForApproval = useSentForApproval();
 
   // The form is gone once the job is queued: focus goes to the progress heading, not to the page.
   useEffect(() => {
@@ -280,7 +285,7 @@ export function MoveProductsDialog({
 
   async function submit() {
     if (!ready || target === null) return;
-    const answer = await call.run<MoveStarted>(
+    const answer = await call.run<MoveStarted | { readonly request: unknown }>(
       'POST',
       `${API_CATEGORIES}/${categoryId}/move-products`,
       {
@@ -288,7 +293,10 @@ export function MoveProductsDialog({
         reason: reasonOf(reason),
       },
     );
-    if (answer.ok) setStarted(answer.body);
+    if (!answer.ok) return;
+    // Sent for approval: no job yet, and the category stays as it is.
+    if (sentForApproval(answer.body)) onClose(false);
+    else setStarted(answer.body as MoveStarted);
   }
 
   const reasonError =
@@ -365,6 +373,7 @@ export function MoveProductsDialog({
             </>
           )}
           <p className="m-0">{t('intro', { name })}</p>
+          {reviewed ? <Banner tone="info">{t('approval-note')}</Banner> : null}
           <TargetPicker
             legend={t('target')}
             rows={candidates}

@@ -3413,8 +3413,10 @@
   "review-note": {
     "label": "Note for reviewers",
     "help": "Say why you are making this change. It applies at once; a reviewer reads your note in Admin Inbox > System requests and can undo the change.",
+    "help-approval": "Say why. Nothing changes until another admin approves it in Admin Inbox > System requests.",
     "counter": "{count} / {max}",
     "sent": "Sent for review as {number}",
+    "sent-for-approval": "Sent for approval ({number})",
     "error": {
       "required": "Write a note for the reviewers (1 to 500 characters).",
       "rejected": "The note was refused. Write 1 to 500 characters."
@@ -7830,7 +7832,8 @@
       "file_unsupported-type": "This file type is not supported. Choose a JPEG, PNG or WebP picture.",
       "file_too-many-pixels": "The picture has too many pixels. Choose a smaller one.",
       "file_too-small": "The picture is too small. Choose one at least 200 pixels on its longest side.",
-      "file_unreadable": "The picture could not be read. Choose another file."
+      "file_unreadable": "The picture could not be read. Choose another file.",
+      "system-requests_already-pending": "This category already has a change waiting for approval ({number}). Wait for it to be decided."
     },
     "move-products": {
       "title": "Move products of {name}",
@@ -7886,7 +7889,8 @@
         "category_not-editable": "This category can't be changed any more. Reload.",
         "category_no-products": "This category has no published products to move.",
         "category_move-in-progress": "A move from this category is already running."
-      }
+      },
+      "approval-note": "Where changes are reviewed, moving products waits for another admin's approval; your reason is the note for the reviewer."
     },
     "restructure": {
       "title": {
@@ -7942,7 +7946,8 @@
         "category_target-not-found": "The category you chose is no longer available. Reload to choose another.",
         "category_parent-not-found": "The category you chose is no longer available. Reload to choose another.",
         "reason": "Add a reason of 10 to 500 characters."
-      }
+      },
+      "approval-note": "Where changes are reviewed, merging and archiving wait for another admin's approval; your reason is the note for the reviewer."
     },
     "links": {
       "loading": "Loading attribute links",
@@ -9864,7 +9869,8 @@
         "archive-needs-second-admin": "This attribute is Material, so a second administrator has to confirm. Reload and ask for the archive.",
         "archive-not-material": "This attribute is not Material, so it can be archived at once. Reload and try again.",
         "archive-blocked-in-feature-set": "It is still in an active feature set. Remove it from those feature sets first.",
-        "archive-blocked-live-variants": "Live products use it as a variant option, so it cannot be archived."
+        "archive-blocked-live-variants": "Live products use it as a variant option, so it cannot be archived.",
+        "already-pending": "This attribute already has a change waiting for approval in Admin Inbox > System requests."
       },
       "has-error": "Needs a change",
       "check-languages": "Check the text in: {languages}.",

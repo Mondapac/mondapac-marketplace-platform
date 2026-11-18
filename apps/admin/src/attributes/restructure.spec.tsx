@@ -213,6 +213,89 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     ]);
   });
 
+  describe('where the Market reviews area catalogue (system requests)', () => {
+    const reviewed = (extra: Record<string, Handler> = {}) =>
+      base({
+        [`GET catalog/admin/attributes/${id(1)}`]: ok(
+          detail(locales, { review: { reviewed: true, risk: 'medium' } }),
+        ),
+        ...extra,
+      });
+    const proposal: ApiResult<unknown> = {
+      ok: true,
+      status: 202,
+      body: { request: { id: 'r1', number: 31 } },
+    };
+
+    it('asks for a note before an archive waits for approval, and leaves the attribute as it is', async () => {
+      reviewed({ [`POST catalog/admin/attributes/${id(1)}/archive`]: proposal });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Archive attribute' }));
+      expect(await within(dialog).findByText(/Write a note for the reviewers/)).toBeTruthy();
+      expect(writes()).toHaveLength(0);
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: 'Nobody uses it' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Archive attribute' }));
+      await expectToast('Sent for approval (SR-31)', 'info');
+      expect(writes()[0]).toEqual([
+        'POST',
+        `catalog/admin/attributes/${id(1)}/archive`,
+        { version: 4, note: 'Nobody uses it' },
+        'csrf-1',
+      ]);
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    });
+
+    it('sends the note with a merge of values', async () => {
+      reviewed({ [`POST catalog/admin/attributes/${id(1)}/merge-values`]: proposal });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Merge values' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      fireEvent.change(within(dialog).getByLabelText('Merge this value'), {
+        target: { value: 'can' },
+      });
+      fireEvent.change(within(dialog).getByLabelText('Into this value'), {
+        target: { value: 'tin' },
+      });
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: 'Same container' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Merge values' }));
+      await expectToast('Sent for approval (SR-31)', 'info');
+      expect(writes()[0]![2]).toEqual({
+        version: 4,
+        source: 'can',
+        target: 'tin',
+        note: 'Same container',
+      });
+    });
+
+    it('says when the attribute already has a change waiting', async () => {
+      reviewed({
+        [`POST catalog/admin/attributes/${id(1)}/archive`]: refuse(
+          409,
+          'system-requests.already-pending',
+        ),
+      });
+      mount(true);
+      fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+      const dialog = await screen.findByRole('dialog');
+      await within(dialog).findByText('Published products');
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: 'Nobody uses it' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Archive attribute' }));
+      expect(
+        await within(dialog).findByText(/already has a change waiting for approval/),
+      ).toBeTruthy();
+    });
+  });
+
   it('says "At least" when the server stopped counting', async () => {
     base({
       [`GET catalog/admin/attributes/${id(1)}/impact`]: ok(
