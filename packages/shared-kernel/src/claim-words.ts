@@ -196,9 +196,7 @@ const STEM_SOURCES = [
   'vejeteryan',
   '(?:fleisch|schweine?|milch)los',
   'kosjer|kasjer',
-  'pflanzlich|plantaardig',
   'belgeli',
-  'onayli',
   'helal',
   'toyyib',
   'jakim',
@@ -209,6 +207,8 @@ const STRICT_STEMS = STEM_SOURCES.map((stem) => `${START}(?:${stem})(?:s|es)?${E
 
 const WORDS = [
   'bio',
+  'pflanzlich',
+  'plantaardig',
   'био',
   'glatt',
   'gf',
@@ -221,7 +221,7 @@ const WORDS = [
 const FOODS = String.raw`(?:pork|swine|alcohol|lard|gelatin|nuts?|dairy|lactose|meat|milk|eggs?|gluten|wheat|sesame|shellfish)`;
 // Food words of the "free of" patterns in other languages. Open endings are bounded, so a long run
 // of letters cannot make the patterns backtrack far.
-const OTHER_FOODS = String.raw`(?:(?:porc|porco|cerdo|maiale|suino|schwein|varken|babi|khinzir|domuz|svin|alcool|alcohol|alkohol|alkol|alcol|gelatin|laktos|lactos|laktoz|lattos|glutin|gluten|fleisch|vlees|viande|carne|daging|kacang|nuss|nusse|nuts|noten|laitier|arachide|nott|milch|leche|lait|oeuf|huevo|gris|flask|tenusu|susu)\p{L}{0,30}|ei|eier|telur|melk|latte|nuezes|produits[\s-]+laitiers)`;
+const OTHER_FOODS = String.raw`(?:(?:porc|porco|cerdo|maiale|suino|schwein|varken|babi|khinzir|domuz|svin|alcool|alcohol|alkohol|alkol|alcol|gelatin|laktos|lactos|laktoz|lattos|glutin|gluten|fleisch|vlees|viande|carne|daging|kacang|nuss|nusse|nuts|noten|laitier|arachide|nott|milch|leche|lait|oeuf|huevo|flask|tenusu|susu)\p{L}{0,30}|ei|eier|telur|melk|latte|nuezes|produits[\s-]+laitiers)`;
 const FREE_FROM = [
   String.raw`(?:pork|alcohol|lard|gelatin|lactose|dairy|nut|egg|soy|meat|milk|wheat|sesame|shellfish|sugar|fat|msg|gmo)[\s-]*free${END}`,
   String.raw`${START}(?:no|without|free\s+from)[\s-]+(?:lactose|dairy|nuts?|pork|alcohol|lard|gelatin|sugar|meat|milk|eggs?)${END}`,
@@ -234,6 +234,7 @@ const FREE_FROM = [
   String.raw`sertifi`,
   // "Free of" in other languages: "ohne Schweinefleisch", "sans porc", "bebas babi", "senza alcol".
   String.raw`${START}(?:sans|sin|senza|ohne|zonder|tanpa|bebas|uden|uten|utan|sem|geen|kein\p{L}{0,2}|pas[\s-]+de|bukan|non|tiada|tidak[\s-]+ada|tidak[\s-]+mengandung(?:i)?|bebas[\s-]+daripada|ne[\s-]+contient[\s-]+pas[\s-]+de|enth[aä]lt[\s-]+kein\p{L}{0,2}|frei[\s-]+von|libre[\s-]+de|vrij[\s-]+van|fri[\s-]+(?:fr[aå]n|f[oö]r)|(?<![\p{N},.])0[,.]?0?%)[\s-]+(?:(?:lemak|bahan|unsur|dna|daripada)[\s-]+){0,2}${OTHER_FOODS}${END}`,
+  String.raw`${START}(?:uden|uten|utan)[\s-]+gris\p{L}{0,30}${END}`,
   String.raw`${START}(?:ne[\s-]+contient[\s-]+pas|pas)[\s-]+d'${OTHER_FOODS}${END}`,
   // Suffix forms ("alkoholfrei", "alcoholvrije", "alkolsuz"), also declined, and "içermez".
   String.raw`${START}${OTHER_FOODS}[\s-]*(?:frei|vrij|fri)(?:e|es|er|en|em|t|tt)?${END}`,
