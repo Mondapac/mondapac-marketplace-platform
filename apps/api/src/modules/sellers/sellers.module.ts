@@ -29,6 +29,10 @@ import { SELLER_HEALTH_ROSTER } from './application/ports/seller-health-roster';
 import { SELLER_HEALTH_SIGNALS } from './application/ports/seller-health-signals';
 import { SELLER_HEALTH_STORE } from './application/ports/seller-health.store';
 import { SellerHealthQueueRead } from './application/use-cases/seller-health-queue.use-case';
+import { SellerHealthQueueExport } from './application/use-cases/seller-health-queue-export.use-case';
+import { SellerHealthQueueQuery } from './application/use-cases/seller-health-queue-query.use-case';
+import type { HealthQueueListDependencies } from './application/health-queue-list-flow';
+import { ExceljsSheetWriter } from '../../platform/list-export';
 import { SellerHealthRead } from './application/use-cases/seller-health-read.use-case';
 import { OwnSellerHealthController } from './presentation/own-seller-health.controller';
 import { SellerHealthController } from './presentation/seller-health.controller';
@@ -1045,6 +1049,25 @@ const REVIEW_DECISION_PORTS = {
       list: true,
       clock: true,
     }),
+    // The "Needs a look" super list (list 16) and its export share one dependency object.
+    ...[SellerHealthQueueQuery, SellerHealthQueueExport].map((type): FactoryProvider => ({
+      provide: type,
+      inject: [USE_CASE_GATE, PORT.unitOfWork, PORT.healthStore, PORT.list, PORT.clock],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: HealthQueueListDependencies['unitOfWork'],
+        healthStore: HealthQueueListDependencies['healthStore'],
+        list: HealthQueueListDependencies['list'],
+        clock: HealthQueueListDependencies['clock'],
+      ) =>
+        new type(gate, {
+          unitOfWork,
+          healthStore,
+          list,
+          clock,
+          sheetWriter: new ExceljsSheetWriter(),
+        }),
+    })),
     useCaseProvider(SellerHealthRead, {
       unitOfWork: true,
       files: true,

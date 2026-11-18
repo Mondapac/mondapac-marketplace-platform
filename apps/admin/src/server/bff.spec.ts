@@ -2529,6 +2529,33 @@ describe('relay of the wallet and step-up routes', () => {
     );
   });
 
+  it('passes the "Needs a look" super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `sellers/admin/health-queue/list?view=reports&metric=late-ready&q=al&sellerId=${id}&minScore=5&maxScore=100&sort=name&direction=desc&paging=pages&page=2&pageSize=50&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/sellers/admin/health-queue/list?view=reports&metric=late-ready&q=al&sellerId=${id}&minScore=5&maxScore=100&sort=name&direction=desc&paging=pages&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'sellers/admin/health-queue/list?view=speed&metric=speed&q=a&minScore=101&sort=orders&pageSize=500',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/sellers/admin/health-queue/list',
+    );
+    const file = await run(
+      'GET',
+      `sellers/admin/health-queue/export?format=xlsx&columns=seller-id,day&ids=${id}&page=2`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/sellers/admin/health-queue/export?format=xlsx&columns=seller-id%2Cday&ids=${id}`,
+    );
+  });
+
   it.each([
     ['GET', 'commission-payouts/admin/payouts'],
     ['GET', `commission-payouts/admin/payouts/${id}`],
