@@ -227,7 +227,8 @@ a merge or an import cannot be undone cleanly, so it waits for another admin's a
   once, in the same unit, as before), the new request, or `system-requests.already-pending`
   (`pendingNumber`): one open proposal per subject (also a partial unique index).
 - The kind registers an applier (`registerSystemChangeApplier(module, kind, area, permission,
-  token)`): the permission key the action needs, which system-requests checks itself (Hassan M1:
+  token)`): the permission key the action needs (an array when its use case declares several; all
+  are required), which system-requests checks itself (Hassan M1:
   a module `check` that answers `ok` for anyone cannot let a reviewer run an action they may not
   run); `apply` (in the approval's serializable unit: compares the subject with `before`, runs the
   module's own checks, writes the action as the approving admin naming the request; answers
