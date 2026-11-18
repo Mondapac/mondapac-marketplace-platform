@@ -110,10 +110,38 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
   and publish rules of an active attribute, and that the decider holds the subject's edit key
   (`catalog.category-tree.edit` or `catalog.attribute.edit`); any refusal, or a check that cannot
   be answered, is `not-permitted` with nothing written and the request left open.
-  Left out (owner decision): create, delete, merge, move, import, seller-scoped content and
-  ClaimBasisPolicy. Slug change, image set or remove, and feature-set edits are not hooked either:
-  a slug change and an image carry redirect and storage effects a revert cannot undo cleanly.
-  Imports run unreviewed.
+  Structure changes (owner decision of 18 Nov 2026, "mixed"), with the subject's id as subject:
+  - Reviewed after (reverter): `catalog.category-create` (values `{exists, slug, parentId}`; a
+    reject discards the category when it never went live, else hides it, and a category hidden
+    since is left as it is), `catalog.category-move` (`{parentId}` before and after; a reject moves
+    it back, last among its old siblings, when it is still under the new parent; certification's
+    retirement check runs in `check`), `catalog.category-reorder` (`{position, neighbourId,
+    neighbourPosition}`; a reject swaps the two back when both still hold their places) and
+    `catalog.attribute-create` (`{exists, code, status}`; a reject discards a draft, and a
+    published attribute is `not-permitted`: it can only be approved). The create, move and reorder
+    routes take `note` (a move uses its reason when no note is given).
+  - Wait for approval (applier, HTTP 202 `{request}`, nothing written in catalog): kinds
+    `catalog.category-discard` (key `catalog.category-tree.edit`),
+    `catalog.category-restructure` (merge and archive, `catalog.category-tree.restructure`),
+    `catalog.category-products-move` (`catalog.category-tree.restructure`),
+    `catalog.attribute-discard` (`catalog.attribute.edit`), `catalog.attribute-restructure`
+    (archive, merge and merge of values, `catalog.attribute.restructure`) and
+    `catalog.feature-set-create` (`catalog.attribute.edit`; a feature set has no delete, so its
+    create waits for approval; subject = the code asked for or made from the name). `before` is the
+    subject's state (`{status, version, parentId}` for a category, `{code, status, version,
+    material}` for an attribute); `after` is the action (`{action: 'merge', targetId, reason}`,
+    ...). A restructure uses its reason as the note when no note is given. The archive of a
+    `material` attribute keeps its own two-person request and files no proposal. The applier's
+    `check` also checks the decider's key through the authorisation port, and runs certification's
+    retirement check (merge, archive) or the claim-text check (feature set) before the unit; its
+    `apply` writes through the same in-unit function as the route, naming the request in the audit
+    row (`requestId`). The tree and attribute admin reads carry `review`.
+  - Left out: the category-tree import and the attribute file import (a file does not fit a
+    request's values, at most 10 KB and three levels; keeping it needs a staged-import store, a
+    schema change; the attribute import also runs row by row in units of its own and cannot run in
+    one decision unit); seller-scoped content, ClaimBasisPolicy, slug change, image set or remove,
+    and feature-set edits (a slug change and an image carry redirect and storage effects a revert
+    cannot undo cleanly). Imports run unreviewed.
 
 - **shipping** (area delivery, medium risk by default, on by default): only changes that can be
   put back are reviewed; creating, deleting, merging, moving and importing are not.
@@ -180,6 +208,18 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
 - A request that turned the AI description writer off cannot be withdrawn into a revert that turns
   it back on: the reverter answers `not-permitted`, because a permission check cannot run inside
   the decision unit. The author changes the setting again instead.
+- Catalogue approvals run in the decision's unit with its default timeout, shorter than the 30 s a
+  route's restructure may take: the approval of a merge or archive that marks very many products
+  can time out and is then not applied (the request stays open). The check of a merge or archive
+  hands the categories it cleared to the apply in memory, on the same instance; a missing hand-over
+  is `not-permitted` (fail closed). The approval of a products move compares only the source
+  category's status; the job reads the products again when it runs. A feature set proposed with no
+  code gets a free code at approval (as the route does); one with a code taken since is
+  `changed-since`. A merge proposal keeps at most 100 value pairs (`too-large-for-review` above).
+- Catalogue: a restructure appends `platform-category-changed` and the action's own event
+  (`moved`, `merged`, `archived`) for the same category version, which the catalog outbox's
+  unique (market, aggregate id, version) index refuses on PostgreSQL; the route has the same
+  problem and the DB specs keep a recording outbox for it. Reported as a follow-up.
 - Catalogue: a revert of an attribute edit keeps the options the edit added (revisions never
   remove an option) and switches them off; cancelling an open relaxation request that the edit
   triggered is not undone; a revert that would clear `material` on a published attribute is
@@ -250,8 +290,9 @@ a merge or an import cannot be undone cleanly, so it waits for another admin's a
 - Migration `20261118100000_system_requests_approval_mode`: `requests.mode` (no update grant), the
   CHECK and partial unique index above, activity kind `proposed`. Its `down.sql` refuses to run
   while any proposal exists.
-- Which actions use it, per module, and their panel pages: follow-up PRs (plan in the project
-  files, `handoffs/system-requests/deferred-hooks-plan.md`).
+- Which actions use it, per module, and their panel pages: catalog (see "Hooked areas"); the
+  other modules are follow-up PRs (plan in the project files,
+  `handoffs/system-requests/deferred-hooks-plan.md`).
 
 ## Supersession and locks
 
