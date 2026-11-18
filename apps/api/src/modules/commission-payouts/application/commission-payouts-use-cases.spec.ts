@@ -41,6 +41,8 @@ import { ClearCommissionRate } from './use-cases/clear-commission-rate.use-case'
 import { CommissionRates } from './use-cases/commission-rates.use-case';
 import { OwnCommissionOn } from './use-cases/own-commission-on.use-case';
 import { RecordRefund } from './use-cases/record-refund.use-case';
+import { RecordSellerCashback } from './use-cases/record-seller-cashback.use-case';
+import { SellerOrderPayoutAnchorQuery } from './use-cases/seller-order-payout-anchor.use-case';
 import { RecordSellerOrderPaid } from './use-cases/record-seller-order-paid.use-case';
 import { SetCommissionRate } from './use-cases/set-commission-rate.use-case';
 import { ViewCommissionRate } from './use-cases/view-commission-rate.use-case';
@@ -1151,6 +1153,145 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       expect(await view(admin)).toEqual(err({ code: 'access.denied' }));
       expect(await view(customer)).toEqual(err({ code: 'access.denied' }));
       expect(await view(system)).toMatchObject({ ok: false });
+    });
+  });
+
+  describe("a seller's cashback for its exclusive customer (customers phase 4c)", () => {
+    const CREDIT = id<'PromotionCredit'>(0xc4);
+    const cashback = (over: Record<string, unknown> = {}) => ({
+      creditId: CREDIT,
+      orderId: ORDER,
+      sellerOrderId: SELLER_ORDER,
+      sellerId: SELLER_A,
+      amount: 70n,
+      currency,
+      creditedAt: T0.add({ hours: 50 }),
+      ...over,
+    });
+    const recordCashback = (input: unknown, context: CallContext = system) =>
+      new RecordSellerCashback(gate, deps).execute(context, input as never);
+
+    it('debits the seller order once per credit and lowers the balance', async () => {
+      await record();
+      expect(await recordCashback(cashback())).toEqual(ok('recorded'));
+      expect(await recordCashback(cashback())).toEqual(ok('already-recorded'));
+      const rows = ledger.rows.filter((r) => r.kind === 'cashback-seller');
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        sellerId: SELLER_A,
+        sellerOrderId: SELLER_ORDER,
+        orderLineId: null,
+        sourceId: CREDIT,
+        amount: money(70n, currency),
+        rateBps: null,
+        baseAmount: null,
+      });
+      expect(rows[0]!.occurredAt.equals(T0.add({ hours: 50 }))).toBe(true);
+      const view = await new ViewOwnLedger(gate, deps).execute(sellerA, {});
+      const commission =
+        commissionOn(
+          inclusive
+            ? commissionBase(1100n, true, config.commissionPayouts!.provisionalTaxRateBps)
+            : 1100n,
+          1500,
+        ) +
+        commissionOn(
+          inclusive
+            ? commissionBase(335n, true, config.commissionPayouts!.provisionalTaxRateBps)
+            : 335n,
+          1500,
+        );
+      expect(view).toMatchObject({
+        ok: true,
+        value: { totals: { sellerCashback: 70n, balance: 1435n + 500n - commission - 70n } },
+      });
+      expect(
+        view.ok && view.value.entries.find((e) => e.kind === 'cashback-seller')?.direction,
+      ).toBe('debit');
+    });
+
+    it('refuses another seller, another order, more than the goods, or a seller order the ledger does not hold', async () => {
+      await record();
+      expect(await recordCashback(cashback({ sellerId: SELLER_B }))).toEqual(
+        err({ code: 'commission-payouts.ledger-inconsistent' }),
+      );
+      expect(await recordCashback(cashback({ orderId: id<'Order'>(0xdd) }))).toEqual(
+        err({ code: 'commission-payouts.ledger-inconsistent' }),
+      );
+      // The sales of the seller order are 1435: a cashback above them is refused.
+      expect(await recordCashback(cashback({ amount: 1436n }))).toEqual(
+        err({ code: 'commission-payouts.ledger-inconsistent' }),
+      );
+      expect(await recordCashback(cashback({ sellerOrderId: id<'SellerOrder'>(0x5ff) }))).toEqual(
+        err({ code: 'commission-payouts.ledger-inconsistent' }),
+      );
+      expect(ledger.rows.some((r) => r.kind === 'cashback-seller')).toBe(false);
+    });
+
+    it('refuses malformed facts, another currency, and any caller but the system', async () => {
+      await record();
+      const fieldsOf = async (input: unknown, context: CallContext = system) => {
+        const result = await recordCashback(input, context);
+        return !result.ok && 'fields' in result.error
+          ? result.error.fields.map((f) => `${f.path}:${f.code}`)
+          : result;
+      };
+      expect(await fieldsOf(cashback({ amount: 0n }))).toEqual(['amount:range']);
+      expect(await fieldsOf(cashback({ amount: 70 }))).toEqual(['amount:range']);
+      expect(await fieldsOf(cashback({ creditId: 'x' }))).toEqual(['creditId:format']);
+      expect(await fieldsOf(cashback({ currency: currency === 'AUD' ? 'JPY' : 'AUD' }))).toEqual([
+        'currency:value',
+      ]);
+      expect(await fieldsOf(cashback({ creditedAt: '2026-10-14T10:00:00Z' }))).toEqual([
+        'creditedAt:type',
+      ]);
+      for (const context of [admin, sellerA, customer]) {
+        expect(await recordCashback(cashback(), context)).toMatchObject({ ok: false });
+      }
+      expect(ledger.rows.some((r) => r.kind === 'cashback-seller')).toBe(false);
+    });
+  });
+
+  describe("a seller order's payout release, for promotions (customers phase 4c)", () => {
+    const anchorOf = (sellerOrderId: unknown, context: CallContext = system) =>
+      new SellerOrderPayoutAnchorQuery(gate, deps).execute(context, sellerOrderId as never);
+    const anchor = (sellerId: Id<'Seller'> = SELLER_A) => ({
+      sellerOrderId: SELLER_ORDER,
+      orderId: ORDER,
+      sellerId,
+      deliveredAt: T0,
+      source: 'seller-click' as const,
+      holdDaysApplied: 14,
+      eligibleAt: T0.add({ hours: 24 * 14 }),
+      recordedAt: T0,
+    });
+
+    it('answers the anchor of a seller order the ledger holds, by its seller', async () => {
+      await record();
+      await deps.anchors.insertIfAbsent(market, anchor());
+      expect(await anchorOf(SELLER_ORDER)).toEqual(
+        ok({
+          orderId: ORDER,
+          sellerOrderId: SELLER_ORDER,
+          sellerId: SELLER_A,
+          eligibleAt: T0.add({ hours: 24 * 14 }),
+        }),
+      );
+    });
+
+    it('is not anchored without the ledger rows, without an anchor, or with another seller', async () => {
+      const notAnchored = err({ code: 'commission-payouts.not-anchored' });
+      await deps.anchors.insertIfAbsent(market, anchor());
+      expect(await anchorOf(SELLER_ORDER)).toEqual(notAnchored);
+      await record();
+      expect(await anchorOf(id<'SellerOrder'>(0x5ff))).toEqual(notAnchored);
+    });
+
+    it('refuses a malformed id and every caller but the system', async () => {
+      expect(await anchorOf('nope')).toEqual(err({ code: 'validation.failed' }));
+      for (const context of [admin, sellerA, customer]) {
+        expect((await anchorOf(SELLER_ORDER, context)).ok).toBe(false);
+      }
     });
   });
 

@@ -296,10 +296,12 @@
   { "name": "commission-payouts.place-seller-suspended-hold", "rule": "system" },
   { "name": "commission-payouts.reconcile-instructions", "rule": "system" },
   { "name": "commission-payouts.record-refund", "rule": "system" },
+  { "name": "commission-payouts.record-seller-cashback", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-delivered", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
   { "name": "commission-payouts.run-payouts", "rule": "system" },
   { "name": "commission-payouts.seller-lost-disputes", "rule": "system" },
+  { "name": "commission-payouts.seller-order-payout-anchor", "rule": "system" },
   { "name": "commission-payouts.sync-dispute", "rule": "system" },
   {
     "name": "commission-payouts.view-next-payout",
@@ -707,6 +709,7 @@
   { "name": "ordering.customer-order-accounts", "rule": "system" },
   { "name": "ordering.customer-order-stats", "rule": "system" },
   { "name": "ordering.customer-seller-stats", "rule": "system" },
+  { "name": "ordering.delivered-seller-order-facts", "rule": "system" },
   { "name": "ordering.delivery-quotes", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
@@ -779,6 +782,7 @@
   { "name": "promotions.cashback-on-delivery", "rule": "system" },
   { "name": "promotions.check-was-price", "rule": "anonymous" },
   { "name": "promotions.confirm-redemptions", "rule": "system" },
+  { "name": "promotions.grant-due-credits", "rule": "system" },
   { "name": "promotions.list-stale-redemptions", "rule": "system" },
   { "name": "promotions.qualify-referral-on-delivery", "rule": "system" },
   { "name": "promotions.quote-discounts", "rule": "system" },

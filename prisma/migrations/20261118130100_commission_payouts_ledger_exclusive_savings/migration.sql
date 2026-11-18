@@ -29,6 +29,6 @@ ALTER TABLE "commission_payouts"."ledger_entries"
       AND ("kind" <> 'commission' OR "amount" + "saved_amount" <= "base_amount"))) NOT VALID;
 ALTER TABLE "commission_payouts"."ledger_entries" VALIDATE CONSTRAINT "ledger_entries_exclusive_saving_check";
 
--- The partial index of the seller's savings is in 20261118100200 (CONCURRENTLY, alone in its file).
+-- The partial index of the seller's savings is in 20261118130200 (CONCURRENTLY, alone in its file).
 
 -- Grants: unchanged (SELECT, INSERT on the table; the ledger is never updated).

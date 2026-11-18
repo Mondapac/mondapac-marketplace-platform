@@ -405,6 +405,30 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   lets the seller pay a customer-group discount exactly for this segment; `promotions_phase3_check`
   accepts the segment with no days and no group. `down.sql` refuses while such rows exist.
 
+## Customers phase 4c-1: the seller's cashback (2026-11-17)
+
+- `CASHBACK` takes the segment `SELLER_EXCLUSIVE`: seller-funded, seller-owned, for its exclusive
+  customers on its own seller orders. Market setting `promotions.cashback.sellerMinBps` (optional)
+  is the least such a cashback may credit (`reward.bps` `below-market-minimum`).
+- The order facts port now reads ordering's `deliveredSellerOrderFacts` (adapter
+  `FacadeDeliveredOrderFacts`, system actor only; failures are unknown), so cashback runs for real.
+  The facts carry the seller.
+- New port `SellerCashbackLedger` (adapter on commission-payouts' `recordSellerCashback`): after
+  the wallet grant of a seller-funded credit; `false` keeps the credit pending (retry).
+- A real cashback waits for the payout release: `credit_issuances.grant_after` (migration
+  `20261117120000_promotions_credit_grant_after`), port `PayoutAnchors` on commission-payouts,
+  job `promotions.grant-due-credits` (use case of the same name, system). The guard trigger gains
+  one move (PENDING to PENDING: end the wait, amount kept or lowered) and grants GRANTED only after
+  the wait; the app role may update `amount_minor` and `grant_after`. A cashback PENDING with no
+  wait for an hour is finished by the job as it is (its amount is final).
+- Migration `20261117100001_promotions_seller_cashback`: `promotions_type_funding_check` makes a
+  cashback the seller's money exactly with the segment; `promotions_phase3_check` lets a cashback
+  carry no segment or this one. `down.sql` refuses while such rows exist.
+- The delivered seller order's facts come from ordering's facade, which promotions cannot import
+  (ordering imports promotions for checkout): `DELIVERED_ORDER_FACTS` is a
+  `BoundDeliveredOrderFacts` that `PromotionsOrderEventsModule` binds to ordering's facade at
+  start-up; unbound or failing, it answers unknown and the handlers retry.
+
 ## Package T2: discounts at checkout (part B, ordering side)
 
 Migration `20261117040000_ordering_discounts`: `order_lines` gains `discount_amount` with its seller and platform

@@ -1,6 +1,10 @@
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
-import type { PaidSellerOrder, RefundedSellerOrder } from '../contracts/commission-payouts.facade';
+import type {
+  PaidSellerOrder,
+  RefundedSellerOrder,
+  SellerCashback,
+} from '../contracts/commission-payouts.facade';
 import { commissionBase, commissionOn, isRateBps } from '../domain/commission';
 import {
   isCredit,
@@ -514,6 +518,71 @@ export async function recordRefund(
       }
       if (entries.length === 0) return ok('nothing-to-post' as const);
       const inserted = await deps.ledger.append(context.market, entries);
+      return ok(inserted === 0 ? ('already-recorded' as const) : ('recorded' as const));
+    },
+  );
+}
+
+/**
+ * The system use case behind the facade (customers phase 4c): one `cashback-seller` debit on the
+ * seller order the cashback was earned on, sourced by the promotions credit. Idempotent per credit
+ * (the fact key carries the source). Refused, with nothing written, when the seller order is not in
+ * the ledger yet or belongs to another seller.
+ */
+export async function recordSellerCashback(
+  deps: CommissionPayoutsDependencies,
+  context: CallContext,
+  cashback: SellerCashback,
+): Promise<Result<'recorded' | 'already-recorded', LedgerFailure>> {
+  const settings = deps.policy.settings(context.market);
+  if (settings === null) return err({ code: 'commission-payouts.rate-unavailable' });
+  const fields: { path: string; code: string }[] = [];
+  const idOk = (value: unknown) => typeof value === 'string' && parseId(value).ok;
+  for (const path of ['creditId', 'orderId', 'sellerOrderId', 'sellerId'] as const) {
+    if (!idOk(cashback?.[path])) fields.push({ path, code: 'format' });
+  }
+  if (typeof cashback?.amount !== 'bigint' || cashback.amount <= 0n) {
+    fields.push({ path: 'amount', code: 'range' });
+  }
+  if (cashback?.currency !== settings.currency) fields.push({ path: 'currency', code: 'value' });
+  if (!(cashback?.creditedAt instanceof Temporal.Instant)) {
+    fields.push({ path: 'creditedAt', code: 'type' });
+  }
+  if (fields.length > 0) return err({ code: 'validation.failed', fields });
+  const now = deps.clock.now();
+  const entry: LedgerEntry = {
+    id: deps.ids.next<'LedgerEntry'>(),
+    sellerId: cashback.sellerId,
+    orderId: cashback.orderId,
+    sellerOrderId: cashback.sellerOrderId,
+    orderLineId: null,
+    kind: 'cashback-seller',
+    amount: money(cashback.amount, cashback.currency),
+    rateBps: null,
+    baseAmount: null,
+    sourceId: cashback.creditId,
+    occurredAt: cashback.creditedAt,
+    recordedAt: now,
+  };
+  return deps.unitOfWork.run<'recorded' | 'already-recorded', LedgerFailure>(
+    context.market,
+    async () => {
+      // The seller order is the seller's, of that order, and the cashback is at most the goods
+      // it was paid for (Hassan L-2).
+      const rows = await deps.ledger.listSellerOrder(context.market, cashback.sellerOrderId);
+      const sales = rows
+        .filter((row) => row.kind === 'sale')
+        .reduce((sum, row) => sum + row.amount.amount, 0n);
+      if (
+        rows.length === 0 ||
+        rows.some(
+          (row) => row.sellerId !== cashback.sellerId || row.orderId !== cashback.orderId,
+        ) ||
+        cashback.amount > sales
+      ) {
+        return err({ code: 'commission-payouts.ledger-inconsistent' } as const);
+      }
+      const inserted = await deps.ledger.append(context.market, [entry]);
       return ok(inserted === 0 ? ('already-recorded' as const) : ('recorded' as const));
     },
   );

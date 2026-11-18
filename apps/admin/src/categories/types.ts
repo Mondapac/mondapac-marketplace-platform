@@ -60,6 +60,8 @@ export interface TreeBody {
   /** Depth first, siblings in order. */
   readonly categories: readonly CategoryRow[];
   readonly actions: Readonly<Record<string, ActionAnswer>>;
+  /** Whether a create or reorder is reviewed (and a discard, merge or archive waits for approval). */
+  readonly review?: CatalogueReview;
 }
 
 export interface PathEntry {
