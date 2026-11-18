@@ -170,6 +170,7 @@ import { AdminSellerCustomersList } from './application/use-cases/admin-seller-c
 import { AdminSellerCustomersSummary } from './application/use-cases/admin-seller-customers-summary.use-case';
 import { ReconcileSellerCustomers } from './application/use-cases/reconcile-seller-customers.use-case';
 import { SellerCustomerDetail } from './application/use-cases/seller-customer-detail.use-case';
+import { SellerOrderCustomers } from './application/use-cases/seller-order-customers.use-case';
 import { SellerCustomersCodes } from './application/use-cases/seller-customers-codes.use-case';
 import { SellerCustomersExport } from './application/use-cases/seller-customers-export.use-case';
 import { SellerCustomersList } from './application/use-cases/seller-customers-list.use-case';
@@ -312,7 +313,7 @@ function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
 
 type PageUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerPageDependencies) => U;
 
-/** The customer page use cases: the list reads plus the audit writer. */
+/** The customer page use cases: the list reads, the audit writer and the open deletion request. */
 function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
@@ -322,6 +323,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       CUSTOMER_LIST_READER,
       CLOCK,
       AUDIT_WRITER,
+      ACCOUNT_DELETION_REQUEST_REPOSITORY,
       CUSTOMER_TIMELINE_REPOSITORY,
       ID_GENERATOR,
       ADMIN_DAY_ZONE,
@@ -334,6 +336,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       listReader: CustomerPageDependencies['listReader'],
       clock: CustomerPageDependencies['clock'],
       audit: CustomerPageDependencies['audit'],
+      deletionRequests: CustomerPageDependencies['deletionRequests'],
       timeline: CustomerPageDependencies['timeline'],
       ids: CustomerPageDependencies['ids'],
       dayZone: CustomerPageDependencies['dayZone'],
@@ -345,6 +348,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
         listReader,
         clock,
         audit,
+        deletionRequests,
         timeline,
         ids,
         dayZone,
@@ -545,6 +549,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerCustomersCodes,
       SellerCustomersExport,
       SellerCustomerDetail,
+      SellerOrderCustomers,
       AdminSellerCustomersList,
       AdminSellerCustomersSummary,
     ].map((type) => sellerCustomerUseCaseProvider(type as SellerCustomerUseCaseClass<unknown>)),
@@ -697,12 +702,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => savedViewProvider(type as SavedViewUseCaseClass<unknown>)),
     {
       provide: CUSTOMERS_READ_FACADE,
-      inject: [ReadCustomerLastOrder, ReadOwnLastOrder, ReadCustomerGroupMembership],
+      inject: [
+        ReadCustomerLastOrder,
+        ReadOwnLastOrder,
+        ReadCustomerGroupMembership,
+        SellerOrderCustomers,
+      ],
       useFactory: (
         read: ReadCustomerLastOrder,
         own: ReadOwnLastOrder,
         membership: ReadCustomerGroupMembership,
-      ) => new CustomersReadFacadeImplementation(read, own, membership),
+        orderCustomers: SellerOrderCustomers,
+      ) => new CustomersReadFacadeImplementation(read, own, membership, orderCustomers),
     },
     {
       provide: CUSTOMERS_ACCOUNT_DELETION_FACADE,

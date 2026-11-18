@@ -144,6 +144,7 @@ function offersWhere(
     sellerId,
     status: { in: [...filter.statuses] },
     ...(filter.listed === null ? {} : { listed: filter.listed }),
+    ...(filter.offerIds == null ? {} : { id: { in: [...filter.offerIds] } }),
     ...(part === null
       ? {}
       : {
@@ -586,6 +587,47 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
     });
     // Read-only projections for the list (no tags): never saved (I1).
     return rows.map((row) => offerFromRow(row));
+  }
+
+  async listOfferIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnOffersFilter,
+    order: { readonly sort: OwnOfferSort; readonly direction: OwnSortDirection },
+    limit: number,
+  ): Promise<readonly Id<'Offer'>[]> {
+    const key = order.sort === 'created' ? 'id' : order.sort === 'sku' ? 'sellerSku' : 'status';
+    const rows = await this.prisma.tx(market).catalogOffer.findMany({
+      where: offersWhere(market, sellerId, filter),
+      orderBy:
+        key === 'id'
+          ? [{ id: order.direction }]
+          : [{ [key]: order.direction }, { id: order.direction }],
+      select: { id: true },
+      take: limit,
+    });
+    return rows.map((row) => row.id as Id<'Offer'>);
+  }
+
+  async listOffersByIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    ids: readonly Id<'Offer'>[],
+  ): Promise<readonly Offer[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.tx(market).catalogOffer.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        status: { not: 'deleted' },
+        id: { in: [...ids] },
+      },
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return ids.flatMap((id) => {
+      const row = byId.get(id);
+      return row === undefined ? [] : [offerFromRow(row)];
+    });
   }
 
   async countOffersByStatus(

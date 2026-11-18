@@ -1,4 +1,5 @@
 import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { SellUnit } from '../../domain/basket-units';
 import type { BasketCandidate, CartMode } from '../../domain/plan-basket';
 
 /**
@@ -12,6 +13,14 @@ export interface BasketSources {
     context: CallContext,
     text: string,
   ): Promise<Result<readonly BasketCandidate[], { readonly code: 'unavailable' }>>;
+  /**
+   * The sell units of one Offer, as the cart's add would take them now. An error here does not
+   * fail a plan: the line then has no unit and the storefront does not add it from the card.
+   */
+  units(
+    context: CallContext,
+    offerId: string,
+  ): Promise<Result<readonly SellUnit[], { readonly code: 'unavailable' }>>;
   /** The Market's cart mode; `multi-store` when it cannot be read (the cart enforces its own). */
   cartMode(context: CallContext): Promise<CartMode>;
 }

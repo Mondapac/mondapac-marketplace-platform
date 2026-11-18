@@ -13,8 +13,11 @@ export type PrefsKind =
   | 'single-key'
   | 'products-columns'
   | 'orders-columns'
+  | 'customers-columns'
+  | 'customer-orders-columns'
   | 'shipments-columns'
   | 'refunds-columns'
+  | 'invoices-columns'
   | 'system-requests-columns'
   | 'system-requests-view'
   | 'system-requests-query';

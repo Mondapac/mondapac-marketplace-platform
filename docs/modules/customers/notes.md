@@ -36,13 +36,16 @@ This note records what is built and the rules it keeps.
   country as one ciphertext under the customer account's subject key (`ordering.order.ship-to`),
   written once at insert. A later change or removal in the address book never touches it;
   destroying the key at account deletion erases it while the order's money stays.
-- Who sees it: the customer on `GET /orders/:id` and the seller on its own seller order page
-  (view, ship, deliver), as `shipTo` (recipient name, phone, address lines, suburb, region,
-  postcode, delivery notes, country), never the customer's email or account id. Lists and the
-  admin order page carry no address. `shipTo` is null on orders placed before this package and
-  once the account was erased.
-- Hassan (PR #406 review: GO) follow-ups: (1) a seller can read the address of every paid order
-  for ever; later drop `shipTo` from the seller's answer a Market-set time after delivery.
+- Who sees it: the customer on `GET /orders/:id`, as `shipTo` (recipient name, phone, address
+  lines, suburb, region, postcode, delivery notes, country), and the platform when it books the
+  courier. The seller never does (owner decision 2026-11-17): its own seller order page (view,
+  ready, deliver, pickup) names the customer as `customer` `{ code, firstName }`, the code the
+  shop knows them by on its Customers list (`customers.seller-order-customers` through
+  `CUSTOMERS_READ_FACADE`, rule `ordering.seller-order.view`), plus the customer's note to the
+  shop. Lists and the admin order page carry no address. `shipTo` is null on orders placed
+  before this package and once the account was erased.
+- Hassan (PR #406 review: GO) follow-ups: (1) done: the seller no longer gets `shipTo` at all
+  (2026-11-17); the retention rule now governs only the customer's note to the shop.
   (2) Removing an address from the book does not remove its copy on placed orders; only account
   erasure (package 5) does. The privacy notice must say so.
 
@@ -368,6 +371,36 @@ admin deletes a buyer's account for them, from a support ticket.
   (make it a full `text_pattern_ops` index in a new migration). A name search of three characters or
   more is a scan of the Market until `pg_trgm` is approved. The two sort indexes on the stats
   table are not used by the left join and can be dropped later.
+
+## Customers management, phase 1 frontend: F1 list and F2 customer page (15 Nov 2026)
+
+- **Customers list** (`apps/admin/src/customers/customers-list.tsx`, `/customers`) replaces the exact-email lookup. It is a
+  super list on `SuperList`/`SuperTable`: the seven tabs with counts, saved filters (`customers/admin/saved-filters`),
+  search (email start or name, 2 to 80 characters; shorter is not sent), filters, sort, columns (this browser),
+  selection with "select all matching", the Bulk action menu (Export, with the `customers.customers.export` two-step code)
+  and the row Actions menu (open, copy email, copy account id, disable or enable). The nav item and the dashboard's
+  "Find a customer" now need `customers.customers.view` (was `identity.customer-account.view`).
+- **Customer page** (`/customers/:accountId`, `?tab=overview|orders|money`): header (status, verified, joined; Issue
+  wallet credit; More: disable or enable, delete through the 5c dialog), Overview figures and profile, Orders (the admin
+  Orders list scoped with `accountId`, no Customer column, no saved filters), Money (Spent, Refunded, wallet balance;
+  refunds, wallet journal and promotion credits, each under its own key). `tab-opened` is called once per tab per visit
+  before the tab's data is read.
+- **Known gaps (phase 2 backend):** order-number search; refunds read capped at 100 with no paging or sort (the page
+  pages the 100 in the browser); payments per order, chargebacks and code usage per customer; the
+  "deleted customer" view (erasure removes the directory row, so the page says not found). The spent filter is typed in
+  the currency the rows carry (the panel has no Market currency setting); with no ordering customer on the page it is
+  hidden.
+- **Review round 1 (PR #925):** the Overview read now carries `deletionRequest` (the open request: id, pending or
+  executing, requested and scheduled instants), so the page shows the banner with the date and Cancel and offers no
+  second request. The panel relay allows the new routes (list, export with a 48 KB body cap for 1000 ids, saved
+  filters, the overview, `tab-opened`, refunds, wallet journal, promotion credits) and lets `accountId` (a UUID) cross
+  on `ordering/admin/orders`. More than 1000 ticked rows are refused instead of exporting the whole filter. The
+  customer's Orders tab keeps its own column choice; an order opened from it (or from Money) has Back to the customer.
+  The page tabs use the ARIA tabs pattern (`Tabs` with `panelId`).
+- **Still open:** the day filters (joined, last order) are evaluated as UTC days on the API while the list shows days in
+  the admin's zone (ADR-0005; phase 2 backend). A shared saved filter may hold an email prefix as its search; every
+  admin who sees it already holds `customers.customers.view`. The `tab-opened` audit is written because the page calls
+  it first; a direct read of the owning module's route is audited by that module only.
 
 ## Customers management, phase 2, PR 2a: groups, notes, the activity timeline and the name edit (15 Nov 2026)
 

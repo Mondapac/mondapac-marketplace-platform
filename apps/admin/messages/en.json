@@ -108,6 +108,7 @@
     "orders": "Orders",
     "shipments": "Shipments",
     "refunds": "Refunds",
+    "invoices": "Invoices",
     "price-holds": "Pricing",
     "review-queue": "Catalogue requests",
     "certificates": "Certification",
@@ -3682,7 +3683,7 @@
         "menu": {
           "resume": "Activate",
           "pause": "Deactivate",
-          "export": "Export",
+          "export": "Export…",
           "export-help": "CSV or XLSX, with the columns shown",
           "delete": "Delete…"
         },
@@ -4119,14 +4120,42 @@
         "name": "Title",
         "name-help": "In English. It is translated when a new buyer language is published.",
         "description": "Description",
-        "categories": "Product category",
-        "categories-help": "Its feature set adds the details below and suggests variant types.",
-        "categories-placeholder": "Choose a category or subcategory",
         "tax": "Tax category",
         "tax-help": "Required. Separate from the product category: it decides GST on every seller's offer.",
-        "categories-help-empty": "Only a category or subcategory (levels 3 and 4). It decides the product details and variant types.",
         "tax-placeholder": "Choose a tax category",
         "name-claim": "Product text can't include certification words like \"halal\". Badges come from seller offers."
+      },
+      "categories-field": {
+        "legend": "Product categories",
+        "hint": "Choose a category or subcategory. Products can't go on a department or group.",
+        "general": "General",
+        "general-hint": "Not in a subcategory",
+        "primary": "Primary",
+        "hidden": "Hidden",
+        "make-primary": "Make primary",
+        "make-primary-for": "Make primary: {name}",
+        "remove": "Remove",
+        "remove-for": "Remove {name}",
+        "add": "Add a category",
+        "add-placeholder": "Search categories",
+        "empty": "No category chosen yet. The first one you choose is the primary category.",
+        "limit": "A product can be in up to 3 categories. Remove one to add another.",
+        "loading": "Loading categories…",
+        "load-error": "We couldn't load the categories.",
+        "retry": "Try again",
+        "search": "Search categories",
+        "no-results": "No category matches.",
+        "added": "Added {name}.",
+        "removed": "Removed {name}.",
+        "made-primary": "{name} is now the primary category.",
+        "error": {
+          "required": "Choose at least one category.",
+          "too-many": "A product can be in at most 3 categories.",
+          "duplicate": "You chose this category twice. Remove one.",
+          "unknown": "This category isn't available any more. Remove it and choose another.",
+          "not-available": "This category isn't available any more. Remove it and choose another.",
+          "level-not-allowed": "Choose a more specific category. Products can't go on a department or group."
+        }
       },
       "category": "Category and tags",
       "details": "Product details",
@@ -4936,7 +4965,7 @@
   "orders": {
     "title": "Orders",
     "page-title": "Orders",
-    "intro": "The Market's orders, newest first.",
+    "intro": "The Market's orders. Open one to see its payment, delivery and notes.",
     "zone-note": "Times and days are in {zone}.",
     "no-access": "You don't have access to orders.",
     "no-access-title": "You don't have access to this page",
@@ -4981,7 +5010,8 @@
       "paid": "Paid",
       "customer": "Customer",
       "sellers": "Sellers",
-      "total": "Total"
+      "total": "Total",
+      "payment": "Payment"
     },
     "reference": "Order {id}",
     "tax": {
@@ -5014,7 +5044,9 @@
       }
     },
     "error": {
-      "unavailable": "We couldn't load the orders. Try again."
+      "unavailable": "We couldn't load the orders. Try again.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them.",
+      "search-unavailable": "Name search isn't available right now. Try again, or search by ID."
     },
     "field": {
       "status": "Status",
@@ -5077,7 +5109,8 @@
         "no-carrier": "No courier could take this delivery."
       },
       "cancelled-banner": "This order was cancelled: {reason}.",
-      "customer-unavailable": "Customer details couldn't be loaded. Reload the page to try again."
+      "customer-unavailable": "Customer details couldn't be loaded. Reload the page to try again.",
+      "back-customer": "Back to customer"
     },
     "delivery-method": {
       "pickup": "Pickup",
@@ -5265,38 +5298,21 @@
     },
     "range": "{from} to {to} of {total}",
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
-    "filters": {
-      "group": "Filters",
-      "payment": "Payment",
-      "fulfilment": "Delivery",
-      "from": "Placed from",
-      "to": "Placed until",
-      "any": "Any",
-      "clear": "Clear filters",
-      "backwards": "The end day is before the start day."
-    },
     "sort": {
-      "label": "Sort by",
-      "newest": "Newest first",
-      "oldest": "Oldest first",
-      "total-high": "Total, high to low",
-      "total-low": "Total, low to high"
-    },
-    "paging": {
-      "nav": "Pages",
-      "previous": "Previous",
-      "next": "Next",
-      "page": "Page {n}"
-    },
-    "columns": {
-      "button": "Columns",
-      "title": "Columns",
-      "help": "Choose which columns the list shows and in what order. Only you see this choice.",
-      "always": "Always shown",
-      "up": "Move {column} up",
-      "down": "Move {column} down",
-      "reset": "Reset",
-      "save": "Save"
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "created": "Placed",
+        "total": "Total"
+      },
+      "date": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      },
+      "amount": {
+        "first": "Highest first",
+        "second": "Lowest first"
+      }
     },
     "saved": {
       "manage-link": "Manage filters",
@@ -5344,7 +5360,61 @@
         "help-share": "Rename, change who can use a filter, or delete it.",
         "help-own": "Rename or delete your filters. Your role can’t share filters."
       }
-    }
+    },
+    "sorted": "Sorted by {field}: {order}",
+    "filter": {
+      "title": "Filter orders",
+      "name": {
+        "paymentState": "Payment",
+        "fulfilment": "Fulfilment",
+        "placed": "Placed"
+      }
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Customer, store, or order ID",
+      "too-short": "Type at least 2 characters."
+    },
+    "chip-search": "Search: \"{text}\"",
+    "match": "{count, plural, one {# order matches} other {# orders match}}",
+    "not-yet": "Not yet",
+    "row-name": "order {id}",
+    "select": {
+      "page": "Select all orders on this page",
+      "page-short": "Select all on this page",
+      "row": "Select {name}"
+    },
+    "selection": {
+      "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+      "all": "{count, plural, one {The # matching order is selected} other {All # matching orders are selected}}",
+      "all-open": "All matching orders are selected",
+      "select-all": "Select all {count, number} matching",
+      "select-all-open": "Select all matching",
+      "clear": "Clear selection"
+    },
+    "bulk": {
+      "button": "Bulk action",
+      "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+      "all-open": "All matching orders selected",
+      "export": "Export all matching as CSV",
+      "export-help": "Exports every order the tab and filters match, not only the ticked ones.",
+      "export-name-search": "A customer or store search cannot be exported. Clear it to export."
+    },
+    "row-actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "open": "Open order",
+      "print": "Print document",
+      "copy-number": "Copy order number",
+      "add-note": "Add note…",
+      "refund": "Refund…",
+      "cancel": "Cancel order…",
+      "copied": "Copied",
+      "copy-failed": "Couldn't copy. Select the text and copy it."
+    },
+    "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
+    "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name.",
+    "customer-intro": "This customer’s orders in this market, newest first."
   },
   "load": {
     "retry": "Try again",
@@ -5419,26 +5489,10 @@
   },
   "customers": {
     "title": "Customers",
-    "intro": "Find a customer account by the exact address they sign in with. Partial addresses and names do not match.",
-    "no-access": "You do not have access to customer accounts. Ask an admin who manages roles to grant it.",
+    "no-access": "You don't have access to customers. Ask an admin who manages roles to grant it.",
     "back-home": "Back to dashboard",
-    "find": "Find customer",
-    "field": {
-      "lookup": "Customer email",
-      "lookup-help": "The full address, for example name@example.com.",
-      "email": "Email",
-      "email-verified": "Email confirmed",
-      "created": "Signed up"
-    },
     "yes": "Yes",
     "no": "No",
-    "not-found": {
-      "title": "No customer found",
-      "body": "No customer account in this market uses this address. Check the spelling and try the full address."
-    },
-    "result": {
-      "title": "Customer account"
-    },
     "status": {
       "active": "Active",
       "disabled": "Disabled"
@@ -5471,8 +5525,390 @@
       "unavailable": "The service is not available right now. Try again in a few minutes.",
       "unknown": "Something went wrong. Try again."
     },
-    "wallet-issue": "Issue credit",
-    "wallet-view": "View wallet"
+    "list": {
+      "tabs": "Customer views",
+      "tab": {
+        "all": "All",
+        "new": "New",
+        "active": "Active",
+        "inactive": "Inactive",
+        "never-ordered": "Never ordered",
+        "disabled": "Disabled",
+        "pending-deletion": "Pending deletion"
+      },
+      "subtitle": "{count, plural, one {# customer} other {# customers}} in the {market} market",
+      "caption": "Customers",
+      "search": {
+        "label": "Search customers",
+        "placeholder": "Email start or name",
+        "too-short": "Enter at least {min} characters",
+        "help": "Start of the email, or part of the name"
+      },
+      "filter": {
+        "button": "Filter",
+        "title": "Filter customers",
+        "any": "Any",
+        "from": "From",
+        "to": "To",
+        "cancel": "Cancel",
+        "apply": "Apply",
+        "name": {
+          "status": "Status",
+          "verified": "Email verified",
+          "joinedFrom": "Joined",
+          "lastOrderFrom": "Last order",
+          "ordersMin": "Orders",
+          "spentMin": "Spent"
+        },
+        "chip": {
+          "status": "Status",
+          "verified": "Email verified",
+          "joinedFrom": "Joined from",
+          "joinedTo": "Joined to",
+          "lastOrderFrom": "Last order from",
+          "lastOrderTo": "Last order to",
+          "ordersMin": "Orders at least",
+          "ordersMax": "Orders at most",
+          "spentMin": "Spent at least",
+          "spentMax": "Spent at most"
+        },
+        "status": {
+          "active": "Active",
+          "disabled": "Disabled"
+        },
+        "verified": {
+          "yes": "Yes",
+          "no": "No"
+        },
+        "error": {
+          "day": "Enter a date.",
+          "count": "Enter a whole number.",
+          "amount": "Enter an amount, for example 25.00.",
+          "range": "The end comes before the start.",
+          "amount-large": "Enter a smaller amount."
+        },
+        "minor-units": "{value, number} in minor units"
+      },
+      "sort": {
+        "button": "Sort",
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "joined": "Joined",
+          "last-order": "Last order",
+          "orders": "Orders",
+          "spent": "Spent",
+          "name": "Name",
+          "email": "Email"
+        },
+        "name": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "figure": {
+          "first": "Highest first",
+          "second": "Lowest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "columns": {
+        "button": "Columns",
+        "title": "Columns",
+        "help": "Choose what the table shows. Saved for you only, in this browser.",
+        "always": "Always shown",
+        "up": "Move {column} up",
+        "down": "Move {column} down",
+        "reset": "Reset to default",
+        "save": "Save"
+      },
+      "col": {
+        "customer": "Customer",
+        "status": "Status",
+        "joined": "Joined",
+        "orders": "Orders",
+        "spent": "Spent",
+        "last-order": "Last order",
+        "verified": "Email verified",
+        "refunds": "Refunds",
+        "actions": "Actions"
+      },
+      "never": "Never",
+      "chip": "{field}: {value}",
+      "chip-remove": "Remove filter {filter}",
+      "clear-all": "Clear all",
+      "clear-filters": "Clear filters",
+      "match": "{count, plural, one {# customer matches} other {# customers match}}",
+      "range": "{from}–{to} of {total} customers",
+      "loading": "Loading customers",
+      "error": {
+        "denied": "You don't have access to customers.",
+        "invalid": "This search or filter can't be used. Change it and try again.",
+        "unavailable": "Customers could not be loaded. Try again."
+      },
+      "empty": {
+        "none": "No customers yet",
+        "none-help": "Customers appear here when they sign up in this market.",
+        "no-match": "No customers match",
+        "no-match-help": "Try another search or remove a filter.",
+        "view": {
+          "all": "No customers",
+          "new": "No customers joined in the last 30 days",
+          "active": "No customers ordered in the last 90 days",
+          "inactive": "No inactive customers",
+          "never-ordered": "Every customer has ordered",
+          "disabled": "No disabled accounts",
+          "pending-deletion": "No accounts waiting for deletion"
+        }
+      },
+      "select": {
+        "page": "Select all customers on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "row": {
+        "menu": "Actions for {name}",
+        "open": "Open customer",
+        "copy-email": "Copy email",
+        "copy-id": "Copy account ID",
+        "disable": "Disable account…",
+        "enable": "Enable account…"
+      },
+      "copied": "Copied",
+      "copy-failed": "Could not copy. Select the text and copy it instead.",
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# customer selected} other {# customers selected}}",
+        "select-all": "Select all {count, number} customers in this filter",
+        "clear": "Clear selection",
+        "export": "Export…",
+        "export-help": "CSV or XLSX, with the columns shown",
+        "dialog": {
+          "title": "Export {count, plural, one {# customer} other {# customers}}",
+          "body": "The file has the email and the columns shown in the list. You confirm with a two-step code, and the export is recorded.",
+          "legend": "File format",
+          "csv": "CSV",
+          "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+          "xlsx": "XLSX",
+          "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+          "confirm": "Export",
+          "cancel": "Cancel"
+        },
+        "pending": "Preparing the file…",
+        "done": "{count, plural, one {# customer exported.} other {# customers exported.}}",
+        "error": {
+          "too-large": "Up to {max, number} customers can be exported at once; this list has {total, number}. Narrow it first.",
+          "enrol": "Set up two-step verification on your profile to export customers.",
+          "denied": "You don't have access to export customers.",
+          "unavailable": "The file could not be made. Try again.",
+          "cancelled": "Export cancelled.",
+          "too-many-ticked": "You can export up to {max, number} ticked customers. Use Select all, or narrow the list."
+        }
+      },
+      "saved": {
+        "manage-link": "Manage filters",
+        "save-link": "Save filter…",
+        "summary-search": "Search “{q}”",
+        "cancel": "Cancel",
+        "save": {
+          "title": "Save this filter",
+          "name": "Name",
+          "who": "Who can use it",
+          "submit": "Save filter",
+          "everyone-help": "Everyone: every admin who can see customers gets it as a tab.",
+          "own-only": "Saved for you only. Your role can’t share filters."
+        },
+        "visibility": {
+          "me": "Only me",
+          "everyone": "Everyone"
+        },
+        "error": {
+          "name-taken": "A filter with this name already exists. Choose another name.",
+          "name-empty": "Enter a name for the filter.",
+          "limit": "You can keep up to {max} saved filters. Delete one to save another.",
+          "shared-limit": "Up to {max} filters can be shared with everyone. Delete or unshare one first.",
+          "denied": "Your role can’t do this.",
+          "unavailable": "The filter could not be saved. Try again."
+        },
+        "toast": {
+          "saved": "Saved “{name}”",
+          "updated": "Updated “{name}”",
+          "deleted": "Deleted “{name}”"
+        },
+        "manage": {
+          "title": "Manage filters",
+          "close": "Close",
+          "edit": "Edit",
+          "edit-named": "Edit {name}",
+          "delete": "Delete",
+          "delete-named": "Delete {name}",
+          "delete-confirm": "Delete filter",
+          "delete-own": "Delete “{name}”? It is removed from your tabs.",
+          "delete-shared": "Delete “{name}”? It is removed from the tabs of every admin.",
+          "save": "Save changes",
+          "shared-by-other": "Shared by another admin",
+          "empty": "No saved filters yet",
+          "empty-help": "Set up a search or filters, then choose Save filter to keep them as a tab.",
+          "help-share": "Rename, change who can use a filter, or delete it.",
+          "help-own": "Rename or delete your filters. Your role can’t share filters."
+        }
+      },
+      "paging": {
+        "rows-per-page": "Rows per page",
+        "previous": "Previous",
+        "next": "Next",
+        "pages": "Pages",
+        "page": "Page {page}",
+        "narrow-title": "Narrow the list to see more",
+        "narrow-body": "Page numbers stop at 10,000 customers. Search or filter to reach the rest."
+      }
+    },
+    "page": {
+      "page-title": "Customer",
+      "back": "Customers",
+      "loading": "Loading the customer",
+      "loading-section": "Loading {section}",
+      "retry": "Try again",
+      "not-found": {
+        "title": "Customer not found",
+        "body": "No customer in this market has this account. It may have been deleted. Go back to the list and search again."
+      },
+      "failed": {
+        "title": "Customer couldn't be loaded",
+        "body": "The page could not be opened right now. Try again in a moment."
+      },
+      "section-failed": "{section} could not be loaded.",
+      "tab-failed": "This tab could not be opened right now. Try again.",
+      "tabs": "Customer sections",
+      "tab": {
+        "overview": "Overview",
+        "orders": "Orders",
+        "money": "Money"
+      },
+      "header": {
+        "verified": "Email verified",
+        "not-verified": "Email not verified",
+        "deletion-pending": "Deletion pending",
+        "joined": "Joined {date}",
+        "issue-credit": "Issue wallet credit",
+        "view-wallet": "View wallet",
+        "more": "More actions",
+        "delete": "Delete account…"
+      },
+      "overview": {
+        "figures": "Customer figures",
+        "orders": "Orders",
+        "spent": "Spent",
+        "average": "Average order",
+        "refunds": "Refunds",
+        "refund-count": "{count, plural, =0 {No refunds} one {# refund} other {# refunds}}",
+        "wallet": "Wallet balance",
+        "wallet-failed": "Could not be read",
+        "last-order": "Last order",
+        "profile": "Profile",
+        "email": "Email",
+        "name": "Name",
+        "status": "Status",
+        "verified": "Email verified",
+        "joined": "Joined",
+        "account-id": "Account ID",
+        "not-given": "Not given",
+        "first-order-on": "First order {date}"
+      },
+      "range": "{from}–{to} of {total}",
+      "paging": {
+        "rows-per-page": "Rows per page",
+        "previous": "Previous",
+        "next": "Next",
+        "pages": "Pages",
+        "page": "Page {page}",
+        "narrow-title": "Older rows are not listed",
+        "narrow-body": "Only the newest rows are shown here."
+      },
+      "money": {
+        "figures": "Money figures",
+        "figure": {
+          "spent": "Spent",
+          "refunded": "Refunded",
+          "wallet": "Wallet balance"
+        },
+        "refunds": {
+          "title": "Refunds and credit notes",
+          "empty": "No refunds",
+          "order": "Order {id}",
+          "col": {
+            "order": "Order",
+            "state": "Status",
+            "amount": "Amount",
+            "requested": "Requested",
+            "credit-note": "Credit note"
+          },
+          "state": {
+            "pending": "Pending",
+            "succeeded": "Refunded",
+            "failed": "Failed"
+          },
+          "no-credit-note": "None",
+          "capped": "The newest {max} refunds are shown. Older ones are on each order's page."
+        },
+        "wallet": {
+          "title": "Wallet history",
+          "empty": "No wallet activity",
+          "open": "Open the wallet page",
+          "page": "Page {page}",
+          "col": {
+            "date": "Date",
+            "kind": "Entry",
+            "amount": "Amount",
+            "reason": "Reason"
+          },
+          "kind": {
+            "credit": "Credit",
+            "spend": "Spent at checkout",
+            "refund": "Refund to wallet",
+            "expiry": "Expired",
+            "reversal": "Reversed",
+            "hold": "Held",
+            "release": "Released"
+          },
+          "reason": {
+            "goodwill": "Goodwill",
+            "service-recovery": "Service recovery",
+            "promotion": "Promotion",
+            "correction": "Correction"
+          }
+        },
+        "credits": {
+          "title": "Promotion credits",
+          "empty": "No promotion credits",
+          "col": {
+            "issued": "Issued",
+            "kind": "Kind",
+            "status": "Status",
+            "amount": "Amount"
+          },
+          "kind": {
+            "referral": "Referral reward",
+            "cashback": "Cashback"
+          },
+          "status": {
+            "pending": "Pending",
+            "granted": "Granted",
+            "settled": "Settled",
+            "failed": "Failed"
+          },
+          "capped": "The newest {max} promotion credits are shown."
+        },
+        "not-yet": "Payments per order, chargebacks and discount code usage are not listed here yet."
+      },
+      "deleted": {
+        "title": "Account deleted",
+        "body": "This customer’s account was deleted on {date}. Nothing else about it is kept."
+      }
+    }
   },
   "account-deletion": {
     "cancel": "Cancel",
@@ -5595,7 +6031,11 @@
         "pending-refunds": "{count, plural, one {# refund waiting} other {# refunds waiting}}",
         "wallet-balance": "The wallet balance isn't zero"
       },
-      "open-pending": "Open Settings > Account deletion > Pending requests"
+      "open-pending": "Open Settings > Account deletion > Pending requests",
+      "pending-on": "The account will be deleted on {date}. You can cancel the request until then.",
+      "pending-undated": "The account will be deleted after the waiting period. You can cancel the request until then.",
+      "executing": "The account is being deleted now. The request can't be cancelled.",
+      "cancel-request": "Cancel deletion request…"
     },
     "error": {
       "invalid": "Enter a reason of 1 to 500 characters, without < or >.",
@@ -6992,11 +7432,13 @@
       "move": "Move…",
       "merge": "Merge…",
       "archive": "Archive…",
+      "move-products": "Move products…",
       "restructure-reason-acting-as": "Not available while acting as a seller.",
       "restructure-reason-not-active": "Only live categories can be moved, merged or archived.",
       "note-move": "Category moved.",
       "note-merge": "Category merged.",
-      "note-archive": "Category archived."
+      "note-archive": "Category archived.",
+      "note-move-products": "Move started. Read the products again when it is done."
     },
     "form": {
       "tabs": "Sections",
@@ -7102,6 +7544,62 @@
       "file_too-many-pixels": "The picture has too many pixels. Choose a smaller one.",
       "file_too-small": "The picture is too small. Choose one at least 200 pixels on its longest side.",
       "file_unreadable": "The picture could not be read. Choose another file."
+    },
+    "move-products": {
+      "title": "Move products of {name}",
+      "intro": "Every published product in {name} moves to the category you choose. The change is published at once and each seller is emailed. Products in its subcategories stay where they are.",
+      "target": "Move products to",
+      "count-title": "What will change",
+      "count-loading": "Counting products…",
+      "count-error": "We couldn't count the products. The move is still checked when you start it.",
+      "count": "{n, plural, one {# published product will move.} other {# published products will move.}}",
+      "count-at-least": "At least {n, plural, one {# published product} other {# published products}} will move.",
+      "count-to": "{n, plural, one {# published product will move from {name} to {target}.} other {# published products will move from {name} to {target}.}}",
+      "count-at-least-to": "At least {n, plural, one {# published product} other {# published products}} will move from {name} to {target}.",
+      "count-none": "No published product is directly in {name}, so there is nothing to move.",
+      "reason": "Reason",
+      "reason-help": "10 to 500 characters. It is kept in the audit log. Sellers never see it.",
+      "reason-counter": "{n} / 500",
+      "reason-short": "Add a reason of 10 to 500 characters.",
+      "reason-long": "The reason is longer than 500 characters.",
+      "need-target": "Choose a category to continue.",
+      "need-reason": "Add a reason to continue.",
+      "need-products": "There are no published products to move.",
+      "cancel": "Cancel",
+      "close": "Close",
+      "reload": "Reload",
+      "action": "Move products",
+      "progress-title": "Moving products",
+      "progress-label": "Products handled",
+      "state": {
+        "queued": "Waiting to start…",
+        "running": "Moving products…",
+        "done": "Done. {moved} moved, {skipped} skipped, {failed} failed.",
+        "failed": "The move stopped."
+      },
+      "count-total": "Products to move",
+      "count-moved": "Moved",
+      "count-skipped": "Skipped",
+      "count-failed": "Failed",
+      "failed-body": "The move stopped before it finished. Some products may not have moved. Start it again to move the rest.",
+      "skipped-note": "Skipped products were no longer in {name} when their turn came, so there was nothing to move.",
+      "failed-note": "Some products could not be moved. Start the move again to try them.",
+      "view-progress": "View progress",
+      "view-failed": "We couldn't read the progress. Try again.",
+      "attached-note": "This move was started earlier. It may be moving products to a different category than the one you chose.",
+      "attach-finished": "That move just finished. Reload the page.",
+      "progress-gone": "This category is no longer available. Reload the page.",
+      "progress-unreadable": "We can't read the progress right now. The move keeps running and we keep trying.",
+      "keeps-running": "You can close this window. The move keeps running.",
+      "error": {
+        "category_not-found": "This category is no longer available. Reload.",
+        "category_target-not-found": "The category you chose is no longer available. Reload to choose another.",
+        "category_move-unchanged": "Those products are already in that category. Choose another.",
+        "category_level-not-allowed": "Choose a more specific category. Products can't go on a department or group.",
+        "category_not-editable": "This category can't be changed any more. Reload.",
+        "category_no-products": "This category has no published products to move.",
+        "category_move-in-progress": "A move from this category is already running."
+      }
     },
     "restructure": {
       "title": {
@@ -10508,6 +11006,82 @@
       "page": "Page {page}",
       "narrow": "Narrow the list to see more.",
       "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other rows."
+    },
+    "saved": {
+      "manage-link": "Manage filters",
+      "save-link": "Save filter…",
+      "cancel": "Cancel",
+      "save": {
+        "title": "Save this filter",
+        "name": "Name",
+        "who": "Who can use it",
+        "submit": "Save filter",
+        "everyone-help": "Everyone: every admin who can see this list gets it as a tab.",
+        "own-only": "Saved for you only. Your role can’t share filters."
+      },
+      "visibility": {
+        "me": "Only me",
+        "everyone": "Everyone"
+      },
+      "error": {
+        "name-taken": "A filter with this name already exists. Choose another name.",
+        "name-empty": "Enter a name for the filter.",
+        "limit": "You can keep up to {max} saved filters. Delete one to save another.",
+        "shared-limit": "Up to {max} filters can be shared with everyone. Delete or unshare one first.",
+        "denied": "Your role can’t do this.",
+        "unavailable": "That didn’t work. Try again."
+      },
+      "toast": {
+        "saved": "Saved “{name}”",
+        "updated": "Updated “{name}”",
+        "deleted": "Deleted “{name}”",
+        "moved": "Moved “{name}”"
+      },
+      "manage": {
+        "title": "Manage filters",
+        "close": "Close",
+        "edit": "Edit",
+        "edit-named": "Edit {name}",
+        "delete": "Delete",
+        "delete-named": "Delete {name}",
+        "delete-confirm": "Delete filter",
+        "delete-own": "Delete “{name}”? It is removed from your tabs.",
+        "delete-shared": "Delete “{name}”? It is removed from the tabs of every admin.",
+        "save": "Save changes",
+        "shared-by-other": "Shared by another admin",
+        "empty": "No saved filters yet",
+        "empty-help": "Set up filters, then choose Save filter to keep them as a tab.",
+        "help-share": "Rename, reorder, change who can use a filter, or delete it. Reordering changes only your own filters.",
+        "help-own": "Rename, reorder or delete your filters. Your role can’t share filters. Reordering changes only your own filters.",
+        "move-up": "Move {name} up",
+        "move-down": "Move {name} down"
+      },
+      "summary-sort": "Sorted by {field}"
+    },
+    "export": {
+      "menu": "Export",
+      "menu-help": "CSV or XLSX, with the columns shown",
+      "title": "Export {count, plural, one {# row} other {# rows}}",
+      "title-all": "Export all matching rows",
+      "body": "The file has the columns shown in the list, and the rows you selected or every row the filter matches.",
+      "legend": "File format",
+      "csv": "CSV",
+      "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+      "xlsx": "XLSX",
+      "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+      "confirm": "Export",
+      "cancel": "Cancel",
+      "pending": "Preparing your file…",
+      "done": "{count, plural, one {Exported # row.} other {Exported # rows.}}",
+      "done-unknown": "Your file is ready.",
+      "error": {
+        "too-large": "Too many rows to export: {total} match, and one file holds up to {max}. Narrow the filter or select fewer rows.",
+        "too-large-plain": "Too many rows to export. Narrow the filter or select fewer rows.",
+        "too-broad": "This search is too broad to export. Narrow the search and try again.",
+        "denied": "You don't have access to export this list.",
+        "invalid": "This list can't be exported with its current filters. Change them and try again.",
+        "unavailable": "Export failed. Try again."
+      }
     }
   },
   "shipments": {
@@ -10634,8 +11208,7 @@
     "bulk": {
       "button": "Bulk action",
       "selected": "{count, plural, one {# shipment selected} other {# shipments selected}}",
-      "all-open": "All matching shipments selected",
-      "none-yet": "No bulk actions are available for shipments yet."
+      "all-open": "All matching shipments selected"
     },
     "actions": {
       "header": "Actions",
@@ -10783,8 +11356,7 @@
     "bulk": {
       "button": "Bulk action",
       "selected": "{count, plural, one {# refund selected} other {# refunds selected}}",
-      "all-open": "All matching refunds selected",
-      "none-yet": "No bulk actions are available for refunds yet."
+      "all-open": "All matching refunds selected"
     },
     "actions": {
       "header": "Actions",
@@ -10818,6 +11390,113 @@
       },
       "failed": {
         "title": "No refused refunds"
+      }
+    }
+  },
+  "invoices": {
+    "title": "Invoices",
+    "page-title": "Invoices",
+    "intro": "Order confirmations and credit notes issued in this Market. These are not tax invoices.",
+    "no-access": "You don't have access to invoices.",
+    "back-home": "Back to home",
+    "tabs": "Invoice views",
+    "tab": {
+      "order-confirmation": "Order confirmations",
+      "credit-note": "Credit notes"
+    },
+    "search": {
+      "label": "Search",
+      "placeholder": "Customer, store, or order, credit note or refund ID",
+      "too-short": "Type at least 2 characters."
+    },
+    "chip-search": "Search: \"{text}\"",
+    "chip-seller": "Seller is {name}",
+    "filter": {
+      "title": "Filter invoices",
+      "name": {
+        "issued": "Issued"
+      }
+    },
+    "sort": {
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "issued": "Issued",
+        "amount": "Amount"
+      },
+      "date": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      },
+      "amount": {
+        "first": "Highest first",
+        "second": "Lowest first"
+      }
+    },
+    "sorted": "Sorted by {field}: {order}",
+    "sorted-newest": "Newest first",
+    "match": "{kind, select, credit {{count, plural, one {# credit note matches} other {# credit notes match}}} other {{count, plural, one {# order confirmation matches} other {# order confirmations match}}}}",
+    "col": {
+      "order": "Order",
+      "issued": "Issued",
+      "store": "Store",
+      "customer": "Customer",
+      "total": "Total (incl. tax)",
+      "tax": "Tax",
+      "reason": "Reason",
+      "shipping": "Delivery (incl. tax)",
+      "sellerOrderId": "Seller order ID",
+      "documentId": "Credit note ID",
+      "refundId": "Refund ID"
+    },
+    "col-credit-only": "{column} (credit notes only)",
+    "not-recorded": "Not recorded",
+    "tax-not-recorded-title": "An item was placed before its tax was recorded.",
+    "row-name": "order {id}",
+    "select": {
+      "page": "{kind, select, credit {Select all credit notes on this page} other {Select all order confirmations on this page}}",
+      "page-short": "Select all on this page",
+      "row": "Select {name}"
+    },
+    "selection": {
+      "selected": "{kind, select, credit {{count, plural, one {# credit note selected} other {# credit notes selected}}} other {{count, plural, one {# order confirmation selected} other {# order confirmations selected}}}}",
+      "all": "{kind, select, credit {{count, plural, one {The # matching credit note is selected} other {All # matching credit notes are selected}}} other {{count, plural, one {The # matching order confirmation is selected} other {All # matching order confirmations are selected}}}}",
+      "all-open": "{kind, select, credit {All matching credit notes are selected} other {All matching order confirmations are selected}}",
+      "select-all": "Select all {count, number} matching",
+      "select-all-open": "Select all matching",
+      "clear": "Clear selection"
+    },
+    "bulk": {
+      "button": "Bulk action",
+      "selected": "{kind, select, credit {{count, plural, one {# credit note selected} other {# credit notes selected}}} other {{count, plural, one {# order confirmation selected} other {# order confirmations selected}}}}",
+      "all-open": "{kind, select, credit {All matching credit notes selected} other {All matching order confirmations selected}}",
+      "none-yet": "No bulk actions are available for invoices yet."
+    },
+    "actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "view-order": "View order",
+      "open-confirmation": "Open order confirmation"
+    },
+    "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
+    "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name.",
+    "too-many": "Page numbers stop at the first {limit} {kind, select, credit {credit notes} other {order confirmations}}. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
+    "loading": "Loading invoices...",
+    "error": {
+      "unavailable": "Invoices couldn't be loaded.",
+      "search-unavailable": "Name search isn't available right now. Try again, or search by ID.",
+      "refused": "This search can't be run. Change the text or the filters, or clear them."
+    },
+    "empty": {
+      "no-match": "No invoices match",
+      "no-match-help": "Try other filters or clear them.",
+      "order-confirmation": {
+        "title": "No order confirmations yet",
+        "body": "One is issued for each seller when an order is paid."
+      },
+      "credit-note": {
+        "title": "No credit notes yet",
+        "body": "One is issued for each completed refund."
       }
     }
   }

@@ -51,6 +51,10 @@ class MemoryBookings implements CarrierBookingRepository {
   listOpen() {
     return Promise.resolve([]);
   }
+  /** Not read by the webhook. */
+  progressOfSellerOrders() {
+    return Promise.resolve([]);
+  }
   markPolled() {
     return Promise.resolve();
   }

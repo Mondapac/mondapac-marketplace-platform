@@ -90,6 +90,14 @@ export const adminNav: NavConfig = {
       anyOf: ['ordering.order.view'],
     },
     {
+      id: 'invoices',
+      icon: 'file',
+      labelKey: 'nav.invoices',
+      href: '/invoices',
+      group: 'sales',
+      anyOf: ['ordering.order.view'],
+    },
+    {
       id: 'products',
       icon: 'package',
       labelKey: 'nav.products',
@@ -159,7 +167,7 @@ export const adminNav: NavConfig = {
       labelKey: 'nav.customers',
       href: '/customers',
       group: 'customers',
-      anyOf: ['identity.customer-account.view'],
+      anyOf: ['customers.customers.view'],
     },
     {
       id: 'review-moderation',
