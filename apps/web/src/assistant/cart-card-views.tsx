@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { useCallback, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import * as api from '../account/customer-api.ts';
 import { formatMoney } from '../format/money.ts';
 import { useStore } from '../shell/store-context.tsx';
@@ -64,6 +64,25 @@ function useCartGuard() {
     return Object.keys(latest.current.cart).length === 0;
   };
   return { live, holdsOtherStore, moveAway, settle, refreshCart };
+}
+
+/**
+ * True once the buyer's live cart has changed since this card was first shown with the live cart.
+ * The numbers on an older card (quantities, what can still be added, what the list adds up to)
+ * were true when the assistant wrote it, so the card says so and its button stays off until the
+ * buyer asks again. A cart that has not been read yet (`live` false) never counts as a change.
+ */
+function useCartChanged(): boolean {
+  const { live, cart } = useStore();
+  const signature = Object.keys(cart)
+    .sort()
+    .map((key) => `${key}:${cart[key]?.quantity ?? 0}`)
+    .join('|');
+  const [shown, setShown] = useState<string | null>(null);
+  useEffect(() => {
+    if (live && shown === null) setShown(signature);
+  }, [live, shown, signature]);
+  return shown !== null && shown !== signature;
 }
 
 function useMoney() {
@@ -203,6 +222,7 @@ export function CartActionCardView({
   const canAdd = card.action !== 'add' || ceiling > 0;
   const addNotPossible = card.action === 'add' && (card.cartFull === true || ceiling === 0);
   const live = guard.live;
+  const outdated = useCartChanged() && step === 'idle';
 
   return (
     <section className="ascc" aria-label={title}>
@@ -307,6 +327,11 @@ export function CartActionCardView({
               {t(outcomeKey(step))}
             </p>
           ) : null}
+          {outdated ? (
+            <p className="asnote" role="status">
+              {t('cart-card-outdated')}
+            </p>
+          ) : null}
           {!live ? (
             <p className="asnote">{t('cart-unavailable')}</p>
           ) : addNotPossible ? null : (
@@ -314,7 +339,7 @@ export function CartActionCardView({
               <button
                 type="button"
                 className={card.action === 'remove' ? 'btn small alt' : 'btn small'}
-                disabled={step === 'busy'}
+                disabled={step === 'busy' || outdated}
                 onClick={() => void press()}
               >
                 {step === 'busy'
@@ -341,6 +366,7 @@ export function CartSummaryCardView({
 }) {
   const t = useTranslations('assistant');
   const money = useMoney();
+  const outdated = useCartChanged();
   if (card.lineCount === 0 || card.groups.length === 0) {
     return (
       <section className="ascc" aria-label={t('cart-summary-title')}>
@@ -351,6 +377,11 @@ export function CartSummaryCardView({
   return (
     <section className="ascc" aria-label={t('cart-summary-title')}>
       <p className="ascc-t">{t('cart-summary-lines', { count: card.lineCount })}</p>
+      {outdated ? (
+        <p className="asnote" role="status">
+          {t('cart-card-outdated')}
+        </p>
+      ) : null}
       {card.groups.map((group, at) => (
         <div className="ascc-group" key={group.sellerId ?? `g${at}`}>
           <div className="ascc-gh">
@@ -588,6 +619,8 @@ export function BasketProposalCardView({
   const added = ready.filter((row) => results[rowKey(row)] === 'ok').length;
   const everyLineAdded = ready.length > 0 && ready.every((row) => results[rowKey(row)] === 'ok');
   const locked = step === 'busy';
+  // Before anything was added from this card, a changed cart makes its list and total old news.
+  const outdated = useCartChanged() && step === 'idle' && Object.keys(results).length === 0;
 
   // Rows sit under the store of the product they now name, with that store's subtotal of the
   // lines in the list (the grand total below is the sum, so who is paid is never hidden).
@@ -824,6 +857,11 @@ export function BasketProposalCardView({
               {t('basket-some-failed', { count: failed })}
             </p>
           ) : null}
+          {outdated ? (
+            <p className="asnote" role="status">
+              {t('cart-card-outdated')}
+            </p>
+          ) : null}
           {!guard.live ? (
             <p className="asnote">{t('cart-unavailable')}</p>
           ) : (
@@ -831,7 +869,9 @@ export function BasketProposalCardView({
               <button
                 type="button"
                 className="btn small"
-                disabled={locked || ready.length === 0 || oneStoreBroken || everyLineAdded}
+                disabled={
+                  locked || outdated || ready.length === 0 || oneStoreBroken || everyLineAdded
+                }
                 onClick={() => void press()}
               >
                 {locked

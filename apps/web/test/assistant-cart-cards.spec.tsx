@@ -455,6 +455,67 @@ describe('the cart-action card', () => {
     expect(called('POST', 'cart/items')).toHaveLength(0);
   });
 
+  it('marks an older card as out of date once the cart changes, and turns its button off', async () => {
+    answers['GET cart'] = {
+      status: 200,
+      body: {
+        groups: [
+          {
+            sellerId: SELLER,
+            sellerName: 'Halal Corner',
+            subtotal: aud('1250'),
+            minimumOrder: { state: 'none', minimum: null },
+            lines: [
+              {
+                lineId: LINE,
+                offerId: OFFER,
+                variantId: VARIANT,
+                quantity: 1,
+                state: 'buyable',
+                reason: null,
+                unitPrice: aud('1250'),
+                previousPrice: null,
+                availability: { status: 'in-stock', onlyLeft: null },
+                display: {
+                  productId: null,
+                  productName: 'Lamb mince',
+                  variantLabel: null,
+                  imageId: null,
+                },
+              },
+            ],
+          },
+        ],
+        lineCount: 1,
+      },
+    };
+    wrap(
+      <>
+        <CartActionCardView card={action({ name: 'Older card' })} />
+        <CartActionCardView card={action({ name: 'Newer card' })} />
+      </>,
+    );
+    expect(screen.queryByText(/may be out of date/)).toBeNull();
+    const [older, newer] = screen.getAllByRole('region');
+    // The buyer adds from the newer card: the cart changes under the older one.
+    fireEvent.click(within(newer!).getByRole('button', { name: 'Add to cart' }));
+    expect(await within(older!).findByText(/may be out of date/)).toBeTruthy();
+    expect(
+      within(older!).getByRole('button', { name: 'Add to cart' }).hasAttribute('disabled'),
+    ).toBe(true);
+    // The card that did the add says it is done, not out of date.
+    expect(within(newer!).queryByText(/may be out of date/)).toBeNull();
+    expect(await within(newer!).findByText(/Added to your cart/)).toBeTruthy();
+  });
+
+  it('does not call a card out of date while the cart has only just been read', () => {
+    wrap(<CartActionCardView card={action()} />);
+    expect(screen.queryByText(/may be out of date/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Add to cart' }).hasAttribute('disabled')).toBe(
+      false,
+    );
+  });
+
   it('offers no change on sample data', () => {
     wrap(<CartActionCardView card={action()} />, null, false);
     expect(screen.queryByRole('button', { name: 'Add to cart' })).toBeNull();
