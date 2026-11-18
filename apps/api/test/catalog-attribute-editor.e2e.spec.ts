@@ -1,4 +1,6 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { SYSTEM_REQUEST_RECORDER } from '../src/modules/system-requests';
+import { RecordingReview } from './support/system-request-fakes';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -49,6 +51,7 @@ const tokens = new RandomSessionTokens();
 
 describe('attribute editor over HTTP (integration)', () => {
   let app: NestExpressApplication;
+  let reviews = new RecordingReview();
   const store = new MemoryAttributeDefinitionStore();
   let covered: readonly string[] | null = null;
   const http = () => request(app.getHttpServer());
@@ -62,6 +65,8 @@ describe('attribute editor over HTTP (integration)', () => {
           .override(builder)
           .overrideProvider(CLOCK)
           .useValue(new FixedClock(START))
+          .overrideProvider(SYSTEM_REQUEST_RECORDER)
+          .useValue(reviews)
           .overrideProvider(ATTRIBUTE_DEFINITION_STORE)
           .useValue(store)
           .overrideProvider(ATTRIBUTE_RELAXATION_STORE)
@@ -161,6 +166,7 @@ describe('attribute editor over HTTP (integration)', () => {
   const ATTRIBUTES = '/catalog/admin/attributes';
 
   beforeEach(() => {
+    reviews = new RecordingReview();
     fakes.reset();
     store.reset();
     covered = null;
@@ -258,6 +264,47 @@ describe('attribute editor over HTTP (integration)', () => {
         .send({ version: 3 })
         .expect(409);
       expect(discard.body).toMatchObject({ code: 'attribute-definition.not-draft' });
+    }, 30_000);
+
+    it('asks for a note where the area is reviewed, and answers the request', async () => {
+      await boot();
+      await seeded(code);
+      const editor = adminSession(code, EDITOR, 5);
+      const created = await http().post(ATTRIBUTES).set(editor).send(body()).expect(201);
+      const attributeId = (created.body as { attribute: { id: string } }).attribute.id;
+      const save = (extra: Record<string, unknown> = {}) =>
+        http()
+          .put(`${ATTRIBUTES}/${attributeId}`)
+          .set(editor)
+          .send({
+            version: 1,
+            names: { [locale]: 'Pack size' },
+            options: [{ code: 'g500', labels: { [locale]: '500 g' } }],
+            searchable: true,
+            ...extra,
+          });
+
+      reviews.review('catalogue', 'medium');
+      const saved = await save({ note: 'Made it searchable' }).expect(200);
+      expect(saved.body).toMatchObject({
+        attribute: { version: 2, revisionNo: 2 },
+        request: { number: 1 },
+      });
+      expect(reviews.opened[0]).toMatchObject({
+        area: 'catalogue',
+        subjectKind: 'catalog.attribute-definition',
+        subjectRef: attributeId,
+        before: { revisionNo: 1, version: 1, searchable: false },
+        after: { revisionNo: 2, version: 2, searchable: true },
+      });
+      // A save without a note is refused where the area is reviewed (400 on note); the rollback of
+      // what it wrote is proved on the real unit of work in the database spec.
+      const missing = await save({ version: 2, searchable: false }).expect(400);
+      expect(missing.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'note', code: 'required' }] },
+      });
+      expect(reviews.opened).toHaveLength(1);
     }, 30_000);
 
     it('refuses a claim word with the field paths only, and a locale the check cannot read', async () => {

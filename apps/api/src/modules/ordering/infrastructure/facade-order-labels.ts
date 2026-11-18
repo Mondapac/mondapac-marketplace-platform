@@ -1,7 +1,9 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import { MAX_FACADE_BATCH, sellUnitKey, type CatalogFacade } from '../../catalog';
+import type { CustomersReadFacade } from '../../customers';
 import type { IdentityFacade } from '../../identity';
 import type { SellersFacade } from '../../sellers';
+import type { SellerOrderCustomerView } from '../domain/order-views';
 import type { MarketRegistry } from '../../../platform/market-config/market-registry';
 import {
   orderUnitKey,
@@ -23,7 +25,7 @@ function chunks<T>(items: readonly T[], size: number): T[][] {
 }
 
 /**
- * {@link OrderLabels} over the facades of catalog, sellers and identity. The caller's
+ * {@link OrderLabels} over the facades of catalog, sellers, identity and customers. The caller's
  * `CallContext` goes through unchanged; the locale is the Market's default. Larger requests are
  * split to each facade's batch limit. Any refusal is thrown (the caller shows no names), except
  * identity's `access.denied`, which is the expected answer for an admin without the customer key.
@@ -34,6 +36,7 @@ export class FacadeOrderLabels implements OrderLabels {
     private readonly sellers: SellersFacade,
     private readonly identity: IdentityFacade,
     private readonly markets: MarketRegistry,
+    private readonly customers: CustomersReadFacade,
   ) {}
 
   async unitLabelsOf(
@@ -145,6 +148,25 @@ export class FacadeOrderLabels implements OrderLabels {
       }
     }
     return names;
+  }
+
+  async sellerCustomersOf(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<ReadonlyMap<Id<'Account'>, SellerOrderCustomerView>> {
+    const requested = new Set(accountIds);
+    const found = new Map<Id<'Account'>, SellerOrderCustomerView>();
+    for (const batch of chunks([...requested], MAX_ID_BATCH)) {
+      const answer = await this.customers.sellerOrderCustomers(context, batch);
+      if (!answer.ok) throw new Error(`customers.sellerOrderCustomers: ${answer.error.code}`);
+      for (const [accountId, customer] of answer.value) {
+        // Built field by field: nothing else the answer might carry reaches the seller.
+        if (requested.has(accountId)) {
+          found.set(accountId, { code: customer.code, firstName: customer.firstName });
+        }
+      }
+    }
+    return found;
   }
 
   async staffNamesOf(

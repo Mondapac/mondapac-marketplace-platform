@@ -18,6 +18,7 @@ import type { CustomerListRow } from '../domain/customer-list';
 import type { CustomerManagementDependencies } from './customer-management-dependencies';
 import type { IdentityManagementPeer } from './ports/customer-management-peers';
 import type { SheetWriter } from './ports/sheet-writer';
+import { ActorOrMarketDayZone } from '../infrastructure/actor-or-market-day-zone';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
 import {
   FakeNoteCipher,
@@ -25,6 +26,10 @@ import {
   InMemoryCustomerNotes,
   InMemoryCustomerTimeline,
 } from './testing/in-memory-customer-management';
+import { CustomerGroupUsageRegistry } from '../contracts/group-usage';
+import { InMemoryAddresses, ReversibleAddressCipher } from './testing/in-memory-address-book';
+import { AdminCustomerAddressReveal } from './use-cases/admin-customer-address-reveal.use-case';
+import { AdminCustomerAddresses } from './use-cases/admin-customer-addresses.use-case';
 import { AdminCustomerGroupCreate } from './use-cases/admin-customer-group-create.use-case';
 import { AdminCustomerGroupMembersAdd } from './use-cases/admin-customer-group-members-add.use-case';
 import { AdminCustomerGroupMembersRemove } from './use-cases/admin-customer-group-members-remove.use-case';
@@ -51,6 +56,7 @@ const MANAGE = 'customers.groups.manage';
 const NOTES = 'customers.customer-notes.write';
 const EDIT = 'customers.customers.edit';
 const EXPORT = 'customers.customers.export';
+const REVEAL = 'customers.customer-address.reveal';
 
 describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code) => {
   const market: MarketContext = testMarketContext(code, 'default');
@@ -137,8 +143,27 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
         Promise.resolve(
           ok(accountIds.map((accountId) => ({ accountId, displayName: 'Admin One' }))),
         ),
+      describeActor: () => Promise.resolve(ok({ timezone: ownZone.value })),
     };
+    const ownZone = { value: null as string | null };
+    const addresses = new InMemoryAddresses();
+    const addressCipher = new ReversibleAddressCipher();
+    /** What promotions answers for a group's live segment uses: a count, a refusal, or a throw. */
+    const groupUses = { answer: 0 as number | 'refused' | 'throws', asked: [] as string[] };
+    const usageRegistry = new CustomerGroupUsageRegistry();
+    usageRegistry.register({
+      liveUsesOf: (_context, groupId) => {
+        groupUses.asked.push(groupId);
+        if (groupUses.answer === 'throws') return Promise.reject(new Error('down'));
+        return Promise.resolve(
+          groupUses.answer === 'refused' ? err({ code: 'access.denied' }) : ok(groupUses.answer),
+        );
+      },
+    });
     const deps: CustomerManagementDependencies = {
+      groupUsage: usageRegistry,
+      addresses,
+      addressCipher,
       unitOfWork,
       groups,
       notes,
@@ -151,6 +176,7 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
       stepUp: consumer,
       sheetWriter,
       identity,
+      dayZone: new ActorOrMarketDayZone(markets, identity),
     };
     const admin = (keys: readonly string[], inMarket: MarketContext = market) => {
       const accountId = ids.next<'Account'>();
@@ -170,6 +196,12 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
     };
     return {
       deps,
+      groupUses,
+      addresses,
+      addressCipher,
+      listAddresses: new AdminCustomerAddresses(gate, deps),
+      revealAddress: new AdminCustomerAddressReveal(gate, deps),
+      ownZone,
       audits,
       listReader,
       groups,
@@ -264,6 +296,55 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
         archived: true,
       });
       expect(archived.ok && archived.value.archived).toBe(true);
+    });
+
+    it('warns on an archive while a live promotion names the group, and audits the answer (phase 2b)', async () => {
+      const t = setup();
+      const manager = t.admin([VIEW, MANAGE]);
+      const archiveAnswer = async (answer: number | 'refused' | 'throws') => {
+        t.groupUses.answer = answer;
+        const made = await t.create.execute(manager.context, { name: `G ${String(answer)}` });
+        if (!made.ok) throw new Error('create failed');
+        const archived = await t.update.execute(manager.context, {
+          groupId: made.value.groupId,
+          expectedVersion: 1,
+          archived: true,
+        });
+        if (!archived.ok) throw new Error('archive failed');
+        return archived.value.liveSegmentUse;
+      };
+      expect(await archiveAnswer(2)).toBe('some');
+      expect(await archiveAnswer(0)).toBe('none');
+      expect(await archiveAnswer('refused')).toBe('unknown');
+      expect(await archiveAnswer('throws')).toBe('unknown');
+      const changed = t.audits.filter((e) => e.action === 'customers.customer-group.changed');
+      expect(changed.map((e) => (e.after as { liveSegmentUse: string }).liveSegmentUse)).toEqual([
+        'some',
+        'none',
+        'unknown',
+        'unknown',
+      ]);
+      // A rename asks nothing and records `not-checked`.
+      const made = await t.create.execute(manager.context, { name: 'Plain' });
+      if (!made.ok) throw new Error('create failed');
+      const asked = t.groupUses.asked.length;
+      const renamed = await t.update.execute(manager.context, {
+        groupId: made.value.groupId,
+        expectedVersion: 1,
+        name: 'Plainer',
+      });
+      expect(renamed.ok && renamed.value.liveSegmentUse).toBeUndefined();
+      expect(t.groupUses.asked).toHaveLength(asked);
+      expect(t.audits.at(-1)?.after).toMatchObject({ liveSegmentUse: 'not-checked' });
+    });
+
+    it('answers unknown, never none, while no module has registered a usage source', async () => {
+      const registry = new CustomerGroupUsageRegistry();
+      const t = setup();
+      const answer = await registry.liveUsesOf(t.system, 'g');
+      expect(answer.ok).toBe(false);
+      registry.register({ liveUsesOf: () => Promise.resolve(ok(0)) });
+      expect(() => registry.register({ liveUsesOf: () => Promise.resolve(ok(0)) })).toThrow();
     });
 
     it('adds and removes members by ids, skipping ids that are no customer of the Market', async () => {
@@ -611,6 +692,44 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
       expect(opened).toHaveLength(3);
     });
 
+    it('reads the from and to days in the Market’s zone, or in the admin’s own (ADR-0005)', async () => {
+      const t = setup();
+      const viewer = t.admin([VIEW]);
+      const customer = row();
+      t.listReader.add(market, customer);
+      // 14:30Z is already the next day in Brisbane (UTC+10) but not yet in Tokyo (UTC+9).
+      const edge = Temporal.Instant.from('2026-11-01T14:30:00Z');
+      await t.timeline.record(
+        market,
+        {
+          id: ids.next<'CustomerTimelineEntry'>(),
+          accountId: customer.accountId,
+          occurredAt: edge,
+          kind: 'signed-up',
+          ref: null,
+          actorAccountId: null,
+          detail: null,
+          sourceEventId: ids.next(),
+        },
+        NOW,
+      );
+      const local = edge.toZonedDateTimeISO(markets.get(market.marketId).timezone).toPlainDate();
+      expect(local.toString()).toBe(market.marketId === 'AU' ? '2026-11-02' : '2026-11-01');
+      const kinds = async (from: string, to: string) => {
+        const read = await t.readTimeline.execute(viewer.context, {
+          accountId: customer.accountId,
+          filters: { from, to },
+        });
+        return read.ok ? read.value.items.map((item) => item.kind) : read.error.code;
+      };
+      expect(await kinds(local.toString(), local.toString())).toEqual(['signed-up']);
+      const next = local.add({ days: 1 }).toString();
+      expect(await kinds(next, next)).toEqual([]);
+      t.ownZone.value = 'UTC';
+      expect(await kinds('2026-11-01', '2026-11-01')).toEqual(['signed-up']);
+      expect(await kinds('2026-11-02', '2026-11-02')).toEqual([]);
+    });
+
     it('exports behind a fresh step-up and the export key, without names of customers', async () => {
       const { t, customer } = await withEntries();
       const viewer = t.admin([VIEW]);
@@ -636,6 +755,119 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
         (entry) => entry.action === 'customers.customer-timeline.exported',
       );
       expect(exported).toBeDefined();
+    });
+  });
+
+  describe('addresses (phase 2b)', () => {
+    const content = {
+      recipientFirstName: 'Aisha',
+      recipientLastName: 'Rahman',
+      phone: '+61412345678',
+      line1: '1 Hidden Street',
+      line2: null,
+      suburb: 'Sunnybank',
+      region: null,
+      postcode: code === 'AU' ? '4109' : '1000001',
+      deliveryNotes: 'Leave at the side gate',
+    };
+    async function seeded(t: ReturnType<typeof setup>, inMarket: MarketContext = market) {
+      const customer = row();
+      t.listReader.add(inMarket, customer);
+      const sealed = await t.addressCipher.seal(inMarket, customer.accountId, content);
+      if (!sealed.ok) throw new Error('seal failed');
+      const addressId = ids.next<'CustomerAddress'>();
+      await t.addresses.insert(inMarket, {
+        id: addressId,
+        accountId: customer.accountId,
+        sealed: sealed.value,
+        countryCode: code === 'AU' ? 'AU' : 'ZZ',
+        isDefault: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      return { accountId: customer.accountId, addressId };
+    }
+
+    it('shows suburb and country only with the view key, and writes no audit row for it', async () => {
+      const t = setup();
+      const { accountId, addressId } = await seeded(t);
+      const listed = await t.listAddresses.execute(t.admin([VIEW]).context, { accountId });
+      expect(listed.ok && listed.value.items).toEqual([
+        {
+          addressId,
+          suburb: 'Sunnybank',
+          countryCode: code === 'AU' ? 'AU' : 'ZZ',
+          isDefault: true,
+          createdAt: NOW.toString(),
+        },
+      ]);
+      expect(JSON.stringify(listed)).not.toContain('Hidden');
+      expect(failure(await t.listAddresses.execute(t.admin([]).context, { accountId }))).toBe(
+        'access.denied',
+      );
+      t.addressCipher.destroyed.add(accountId);
+      const erased = await t.listAddresses.execute(t.admin([VIEW]).context, { accountId });
+      expect(erased.ok && erased.value.items[0]?.suburb).toBeNull();
+      expect(t.audits).toEqual([]);
+    });
+
+    it('reveals one address in full only with the protected key, audited and on the timeline', async () => {
+      const t = setup();
+      const { accountId, addressId } = await seeded(t);
+      const viewer = t.admin([VIEW]);
+      expect(failure(await t.revealAddress.execute(viewer.context, { accountId, addressId }))).toBe(
+        'access.denied',
+      );
+      const revealer = t.admin([VIEW, REVEAL]);
+      const shown = await t.revealAddress.execute(revealer.context, { accountId, addressId });
+      expect(shown.ok && shown.value).toMatchObject({
+        addressId,
+        line1: '1 Hidden Street',
+        deliveryNotes: 'Leave at the side gate',
+      });
+      expect(t.audits.map((entry) => [entry.action, entry.after])).toEqual([
+        ['customers.customer-address.revealed', { addressId }],
+      ]);
+      expect(JSON.stringify(t.audits)).not.toContain('Hidden');
+      const entries = t.timeline.entries.get(`${market.marketId}:${accountId}`) ?? [];
+      expect(entries.map((entry) => [entry.kind, entry.actorAccountId, entry.detail])).toEqual([
+        ['address-revealed', revealer.accountId, 'address'],
+      ]);
+    });
+
+    it('treats another customer’s address, another Market’s customer and a bad id as not found', async () => {
+      const t = setup();
+      const mine = await seeded(t);
+      const theirs = await seeded(t);
+      const foreign = await seeded(t, otherMarket);
+      const revealer = t.admin([VIEW, REVEAL]);
+      expect(
+        failure(
+          await t.revealAddress.execute(revealer.context, {
+            accountId: mine.accountId,
+            addressId: theirs.addressId,
+          }),
+        ),
+      ).toBe('customers.address-not-found');
+      expect(failure(await t.revealAddress.execute(revealer.context, foreign))).toBe(
+        'customers.customer-not-found',
+      );
+      expect(
+        failure(
+          await t.revealAddress.execute(revealer.context, {
+            accountId: mine.accountId,
+            addressId: 'nope',
+          }),
+        ),
+      ).toBe('customers.address-not-found');
+      expect(
+        failure(await t.revealAddress.execute(revealer.context, { ...mine, extra: true })),
+      ).toBe('validation.failed');
+      t.addressCipher.destroyed.add(mine.accountId);
+      expect(failure(await t.revealAddress.execute(revealer.context, mine))).toBe(
+        'customers.address-not-found',
+      );
+      expect(t.audits).toEqual([]);
     });
   });
 

@@ -6,6 +6,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+// The Orders tab's list keeps its query in the address (the super list kit).
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+  usePathname: () => '/customers/x',
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 import { Toaster } from '@mondapac/ui';
 import { callApi, type ApiResult } from '../api/client.ts';
@@ -305,7 +311,20 @@ function routePage(answer: ApiResult<unknown> = ok(overview())) {
     if (path === `wallet/admin/customers/${ID}`)
       return Promise.resolve(ok({ available: '2500', currency: 'AUD' }) as ApiResult<never>);
     if (path.startsWith('ordering/admin/orders'))
-      return Promise.resolve(ok({ orders: [], nextCursor: null, total: 0 }) as ApiResult<never>);
+      return Promise.resolve(
+        ok({
+          orders: [],
+          nextCursor: null,
+          counts: { pendingPayment: 0, confirmed: 0, cancelled: 0 },
+          total: null,
+          paging: 'prev-next',
+          hasNext: false,
+          page: 1,
+          pageSize: 25,
+          searchCapped: false,
+          searchScope: null,
+        }) as ApiResult<never>,
+      );
     if (path === `ordering/admin/customers/${ID}/refunds`)
       return Promise.resolve(ok({ refunds: [] }) as ApiResult<never>);
     return Promise.resolve(refused(404, 'unknown'));
@@ -333,6 +352,14 @@ describe('the customer page', () => {
     expect(screen.getByText('1 refund')).toBeTruthy();
     expect(screen.getByText('$41.83')).toBeTruthy();
     expect(call).toHaveBeenCalledWith('GET', `customers/admin/customers/${ID}`);
+  });
+
+  it('says when an erased customer was deleted, and shows nothing else about them', async () => {
+    routePage(ok({ accountId: ID, status: 'deleted', deletedAt: '2026-11-10T23:30:00Z' }));
+    render(wrap(<CustomerPage {...pageProps} permissionKeys={[VIEW]} />));
+    expect(await screen.findByText('Account deleted')).toBeTruthy();
+    expect(screen.getByText(/was deleted on 11 Nov 2026/)).toBeTruthy();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
   });
 
   it('is "not found" for a customer of another Market, and a page-level error with Retry otherwise', async () => {

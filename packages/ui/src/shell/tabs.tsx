@@ -9,6 +9,8 @@ export interface TabItem {
   readonly title?: string;
   /** A link tab (a page of its own). Without it the tab is a button and calls `onSelect`. */
   readonly href?: string;
+  /** `critical` draws the label in the danger colour (an Overdue count); the text still says it. */
+  readonly tone?: 'critical';
 }
 
 export interface TabsProps {
@@ -140,7 +142,12 @@ export function Tabs({ label, items, activeId, onSelect, panelId }: TabsProps) {
     <nav ref={row} aria-label={label} style={style} className={rowClass}>
       {items.map((item) => {
         const active = item.id === activeId;
-        const className = active ? ACTIVE : IDLE;
+        const className =
+          item.tone === 'critical'
+            ? `${BASE} text-critical-fg ${active ? 'border-accent font-medium' : 'border-transparent'}`
+            : active
+              ? ACTIVE
+              : IDLE;
         return item.href === undefined ? (
           <button
             key={item.id}

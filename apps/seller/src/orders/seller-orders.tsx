@@ -22,6 +22,7 @@ import { resolveZone } from '../price/zone-time.ts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { OrdersBoard } from './orders-board.tsx';
+import { downloadOrders } from './export-file.ts';
 import {
   DEFAULT_COLUMNS,
   OPTIONAL_COLUMNS,
@@ -37,6 +38,7 @@ import {
   PAGE_SIZE,
   SORTS,
   pageCountOf,
+  exportQueryOf,
   queryOf,
   rangeIsBackwards,
   type Days,
@@ -89,6 +91,11 @@ export function SellerOrders({
   const [cursors, setCursors] = useState<readonly (string | null)[]>([null]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportNote, setExportNote] = useState<{
+    readonly tone: 'info' | 'critical';
+    readonly text: string;
+  } | null>(null);
   const [columns, setColumns] = useState<readonly OrderColumn[]>(DEFAULT_COLUMNS);
   // The saved filters: null until they load, and when they cannot (the page then has the
   // fulfilment tabs only). `savedId` is the saved tab the page is showing.
@@ -152,6 +159,7 @@ export function SellerOrders({
     /** The saved tab being opened; a change of tab, days or sort leaves the saved tab. */
     savedId?: string;
   }) {
+    setExportNote(null);
     const nextFilter = want.filter ?? filter;
     const nextDays = want.days ?? draftDays;
     const nextSort = want.sort ?? draftSort;
@@ -221,6 +229,34 @@ export function SellerOrders({
   };
 
   const filtered = draftDays.from !== '' || draftDays.to !== '';
+  // The file holds every order the tab and days match, not only the page on screen.
+  async function exportFile() {
+    setExporting(true);
+    setExportNote(null);
+    const outcome = await downloadOrders(
+      'ordering/seller/orders/export',
+      exportQueryOf(filter, draftDays, zone),
+    );
+    setExporting(false);
+    if (outcome.ok) {
+      setExportNote({ tone: 'info', text: t('export.done') });
+    } else if (outcome.reason === 'session') {
+      window.location.assign('/session-ended');
+    } else if (outcome.reason === 'too-large') {
+      setExportNote({
+        tone: 'critical',
+        text:
+          outcome.matching === undefined || outcome.max === undefined
+            ? t('export.too-large-plain')
+            : t('export.too-large', {
+                matching: number(outcome.matching),
+                max: number(outcome.max),
+              }),
+      });
+    } else {
+      setExportNote({ tone: 'critical', text: t(`export.${outcome.reason}`) });
+    }
+  }
   const somethingToSave =
     filtered || filter !== 'all' || (paging === 'pages' && draftSort !== 'newest');
   const summary = [
@@ -372,7 +408,19 @@ export function SellerOrders({
                 {t('saved.manage-link')}
               </Button>
             )}
+            <Button
+              variant="secondary"
+              disabled={exporting || loading || failed || backwards || orders.length === 0}
+              onClick={() => void exportFile()}
+            >
+              {exporting ? t('export.busy') : t('export.button')}
+            </Button>
           </div>
+          {exportNote !== null ? (
+            <div role="status">
+              <Banner tone={exportNote.tone}>{exportNote.text}</Banner>
+            </div>
+          ) : null}
           {total !== null && orders.length > 0 ? (
             <p className="text-sm text-fg-muted" aria-live="polite">
               {t('range', {

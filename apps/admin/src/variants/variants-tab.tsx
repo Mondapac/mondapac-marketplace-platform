@@ -8,8 +8,8 @@ import {
   LoadError,
   SearchField,
   Select,
-  SkeletonRows,
   toast,
+  TableSkeleton,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -254,9 +254,19 @@ export function VariantsTab() {
         <p className="text-sm text-fg-muted">{t('stock-note')}</p>
       </div>
       {load === 'loading' && rows.length === 0 ? (
-        <div className="p-4">
-          <SkeletonRows label={t('loading')} rows={6} />
-        </div>
+        <TableSkeleton
+          label={t('loading')}
+          slowLabel={tl('slow')}
+          rows={8}
+          framed={false}
+          columns={[
+            { header: t('col.variant'), kind: 'title' },
+            { header: t('col.code'), kind: 'text' },
+            { header: t('col.gtin'), kind: 'text' },
+            { header: t('col.sellers'), kind: 'number' },
+            { header: t('col.issues'), kind: 'text' },
+          ]}
+        />
       ) : null}
       {load === 'failed' ? (
         <LoadError

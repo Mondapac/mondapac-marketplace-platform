@@ -8,12 +8,18 @@ import {
   EmptyState,
   LoadError,
   Select,
-  SkeletonRows,
+  DetailSkeleton,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { loadActiveAttributes } from '../attributes/load-active-attributes.ts';
+import {
+  isNoteFailure,
+  ReviewNoteField,
+  trimmedNote,
+  useSentForReview,
+} from '../shared/review-note.tsx';
 import {
   API_FEATURE_SETS,
   type AttributePage,
@@ -23,6 +29,8 @@ import {
 
 /** What the category links API answers (catalog, attributes A3: category-attribute-links). */
 export interface LinksBody {
+  /** Whether a save is reviewed here (Admin Inbox > System requests): the editor then asks for a note. */
+  readonly review?: { readonly reviewed: boolean; readonly risk: string };
   readonly own: {
     readonly featureSetId: string | null;
     readonly filters: readonly string[];
@@ -117,7 +125,9 @@ export function AttributeLinksTab({
     void fetchLinks();
   }, [fetchLinks]);
 
-  if (load === 'loading') return <SkeletonRows label={t('loading')} rows={4} />;
+  if (load === 'loading') {
+    return <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={4} title={false} />;
+  }
   if (load === 'gone') return <p className="text-fg-muted">{t('gone')}</p>;
   if (load === 'failed' || body === null) {
     return (
@@ -211,6 +221,11 @@ function LinksEditor({
   const [listFailed, setListFailed] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
+  // The note is asked only where the view says a save is reviewed (area catalogue).
+  const reviewed = body.review?.reviewed === true;
   const busy = useRef(false);
 
   useEffect(() => {
@@ -244,6 +259,12 @@ function LinksEditor({
       setFailure('need-feature-set');
       return;
     }
+    const sentNote = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sentNote === null) {
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     busy.current = true;
     setPending(true);
     setFailure(null);
@@ -254,17 +275,24 @@ function LinksEditor({
         ...(body.own === null ? {} : { version: body.own.version }),
         featureSetId: own ? featureSetId : null,
         filters: sent,
+        ...(sentNote === null ? {} : { note: sentNote }),
       },
       csrfToken,
     );
     busy.current = false;
     setPending(false);
     if (result.ok) {
+      sentForReview(result.body);
       onSaved();
       return;
     }
     if (result.failure.status === 401) {
       window.location.assign('/session-ended');
+      return;
+    }
+    // The note has its own field: its refusal is shown there, not as the page's message.
+    if (isNoteFailure(result.failure)) {
+      setNoteError('rejected');
       return;
     }
     setFailure(linksErrorKey(result.failure.code, result.failure.status));
@@ -364,6 +392,17 @@ function LinksEditor({
         )}
         <p className="text-sm text-fg-muted">{t('noindex')}</p>
       </section>
+      {reviewed ? (
+        <ReviewNoteField
+          value={note}
+          onChange={(next) => {
+            setNote(next);
+            setNoteError(null);
+          }}
+          error={noteError ?? undefined}
+          disabled={pending}
+        />
+      ) : null}
       <div className="flex flex-wrap gap-2">
         <Button variant="secondary" disabled={pending} onClick={onCancel}>
           {t('cancel')}

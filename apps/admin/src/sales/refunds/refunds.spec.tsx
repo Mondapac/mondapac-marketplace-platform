@@ -1,0 +1,1340 @@
+// @vitest-environment jsdom
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { NextIntlClientProvider } from 'next-intl';
+import { visibleNavItems, toast, Toaster } from '@mondapac/ui';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import messages from '../../../messages/en.json';
+import { adminNav } from '../../nav.ts';
+
+const push = vi.hoisted(() => vi.fn());
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
+}));
+vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
+
+import { callApi } from '../../api/client.ts';
+import { RefundsList } from './refunds-list.tsx';
+import { cleanColumns } from './refunds-columns.ts';
+import type { RefundRow, RefundsPage } from './refunds-types.ts';
+
+const call = vi.mocked(callApi);
+const BRISBANE = 'Australia/Brisbane';
+const LOS_ANGELES = 'America/Los_Angeles';
+// 2026-11-16 20:30 UTC: already the 17th in Brisbane, still the 16th in Los Angeles.
+const NOW = new Date('2026-11-16T20:30:00.000Z');
+
+const ORDER = '0190a000-0000-7000-8000-000000000001';
+const SELLER = '0190a000-0000-7000-8000-0000000000b1';
+const ACCOUNT = '0190a000-0000-7000-8000-0000000000c1';
+const REFUND = '0190a000-0000-7000-8000-0000000000f1';
+const refundId = (n: number) => `0190a000-0000-7000-8000-0000000000f${n}`;
+const cursor = (n: number) => `${1763300000000 + n}.0190a000-0000-7000-8000-0000000000a${n}`;
+const money = (amount: string, currency = 'AUD') => ({ amount, currency });
+
+const row = (over: Partial<RefundRow> = {}): RefundRow => ({
+  refundId: REFUND,
+  orderId: ORDER,
+  sellerOrderId: '0190a000-0000-7000-8000-0000000000d1',
+  sellerId: SELLER,
+  storeName: 'Cedar Lane Halal Meats',
+  accountId: ACCOUNT,
+  customer: { displayName: 'Ada Lovelace', email: 'ada@example.com' },
+  gross: money('12550'),
+  tax: money('1141'),
+  shippingGross: money('990'),
+  reason: 'damaged',
+  actor: 'admin',
+  state: 'succeeded',
+  lossBearer: 'seller',
+  lossReasonCode: null,
+  stripeRefundId: 're_3Pabc123',
+  requestedAt: '2026-11-10T01:30:00.000Z',
+  settledAt: '2026-11-10T03:00:00.000Z',
+  ledgerRecordedAt: '2026-11-10T03:05:00.000Z',
+  creditNoteId: '0190a000-0000-7000-8000-0000000000e1',
+  actions: ['view-order', 'copy-stripe-reference'],
+  ...over,
+});
+const COUNTS = { pending: 3, succeeded: 20, failed: 2 };
+const pageOf = (refunds: RefundRow[], over: Partial<RefundsPage> = {}): RefundsPage => ({
+  refunds,
+  counts: COUNTS,
+  total: refunds.length,
+  page: 1,
+  pageSize: 25,
+  nextCursor: null,
+  searchCapped: false,
+  searchScope: null,
+  ...over,
+});
+/** The answer of Previous and next: no total, no page. */
+const cursorPage = (refunds: RefundRow[], nextCursor: string | null = null) =>
+  pageOf(refunds, { total: null, page: null, nextCursor });
+
+type SavedRoute = (method: string, path: string, body: unknown, csrf?: string) => Promise<never>;
+/** Until a test says otherwise the saved-filter route is not there: the controls stay hidden. */
+const noSavedRoute: SavedRoute = () =>
+  Promise.resolve({ ok: false, failure: { status: 404, code: 'not-found' } } as never);
+
+type Answer = RefundsPage | 'fail' | 'denied' | 'unauthenticated' | 'search-down';
+
+/** The list answers by URL, so the order of the calls does not matter. */
+function serve(answer: (url: string) => Answer, saved: SavedRoute = noSavedRoute) {
+  call.mockImplementation((method, path, body, csrf) => {
+    if (path.startsWith('lists/admin/saved-filters')) return saved(method, path, body, csrf);
+    const result = answer(path);
+    if (result === 'fail') {
+      return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
+    }
+    if (result === 'denied') {
+      return Promise.resolve({ ok: false, failure: { status: 403, code: 'access.denied' } });
+    }
+    if (result === 'unauthenticated') {
+      return Promise.resolve({ ok: false, failure: { status: 401, code: 'session.invalid' } });
+    }
+    if (result === 'search-down') {
+      return Promise.resolve({
+        ok: false,
+        failure: { status: 503, code: 'ordering.search-unavailable' },
+      });
+    }
+    return Promise.resolve({ ok: true, status: 200, body: result } as never);
+  });
+}
+/** The list's own requests (the saved-filter routes have their own helper). */
+const urls = () =>
+  call.mock.calls
+    .map((entry) => entry[1])
+    .filter((url) => !url.startsWith('lists/admin/saved-filters'));
+const lastUrl = () => urls()[urls().length - 1]!;
+const paramsOf = (url: string) => Object.fromEntries(new URL(`http://x/${url}`).searchParams);
+
+function mount(
+  options: {
+    paging?: 'pages' | 'prev-next';
+    zone?: string;
+    marketId?: string;
+    sellerId?: string | null;
+    locale?: string;
+  } = {},
+) {
+  return render(
+    <NextIntlClientProvider locale={options.locale ?? 'en-AU'} messages={messages}>
+      <RefundsList
+        paging={options.paging ?? 'pages'}
+        accountId="acc-1"
+        marketId={options.marketId ?? 'AU'}
+        zone={options.zone ?? BRISBANE}
+        sellerId={options.sellerId ?? null}
+      />
+      <Toaster labels={{ region: messages.toast.region, close: messages.toast.close }} />
+    </NextIntlClientProvider>,
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  window.localStorage.clear();
+});
+afterEach(() => {
+  cleanup();
+  toast.dismiss();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+const STORE = 'Cedar Lane Halal Meats';
+
+describe('Refunds page numbers', () => {
+  it('asks for page 1, Requested newest first, and shows the header, tabs and sorted line', async () => {
+    serve(() => pageOf([row()], { total: 143 }));
+    mount();
+    expect(await screen.findByRole('link', { name: 'Order 00000001' })).toBeTruthy();
+    expect(urls()[0]).toBe(
+      'ordering/admin/refunds?page=1&pageSize=25&sort=requested&direction=desc',
+    );
+    expect(
+      screen.getByText('Every refund in this Market. To refund an order, open the order.'),
+    ).toBeTruthy();
+    expect(screen.getByText('Times and days are in Australia/Brisbane.')).toBeTruthy();
+    expect(screen.getByText('Sorted by Requested: Newest first')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sort' })).toBeTruthy();
+    expect(screen.getByText('1 to 1 of 143')).toBeTruthy();
+    // Read only: no refund or retry button, and the saved filter UI is hidden.
+    expect(screen.queryByRole('button', { name: /^(Refund|Retry refund|Retry)$/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Manage filters' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Save filter/ })).toBeNull();
+  });
+
+  it('shows the tab counts: All is pending plus succeeded plus failed', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    expect(screen.getByRole('button', { name: 'All (25)' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    for (const name of ['Waiting for Stripe (3)', 'Refunded (20)', 'Refused by Stripe (2)']) {
+      expect(screen.getByRole('button', { name })).toBeTruthy();
+    }
+  });
+
+  it('sends state for a state tab and nothing for All, back on page 1', async () => {
+    serve(() => pageOf([row()], { total: 80 }));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(lastUrl()).toContain('page=2'));
+    fireEvent.click(screen.getByRole('button', { name: /^Waiting for Stripe/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())['state']).toBe('pending'));
+    expect(paramsOf(lastUrl())).toMatchObject({ page: '1' });
+    fireEvent.click(screen.getByRole('button', { name: /^Refused by Stripe/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())['state']).toBe('failed'));
+    fireEvent.click(screen.getByRole('button', { name: /^Refunded/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())['state']).toBe('succeeded'));
+    fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())).not.toHaveProperty('state'));
+  });
+
+  it('sorts by Amount, highest first, then Settled, and then lowest first', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: 'Sort' }));
+    const panel = await screen.findByRole('dialog', { name: 'Sort' });
+    fireEvent.click(within(panel).getByRole('radio', { name: 'Amount' }));
+    await waitFor(() => expect(lastUrl()).toContain('sort=amount&direction=desc'));
+    fireEvent.click(within(panel).getByRole('radio', { name: 'Lowest first' }));
+    await waitFor(() => expect(lastUrl()).toContain('sort=amount&direction=asc'));
+    expect(screen.getByText('Sorted by Amount: Lowest first')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('radio', { name: 'Settled' }));
+    await waitFor(() => expect(lastUrl()).toContain('sort=settled&direction=desc'));
+  });
+
+  it('stops page numbers at row 10,000, with the banner, and sends no page past 400', async () => {
+    serve((url) => pageOf([row()], { total: 12_345, page: Number(paramsOf(url)['page']) }));
+    mount();
+    await screen.findByText(STORE);
+    expect(
+      screen.getByText(/Page numbers stop at the first 10,000 refunds\. Narrow the filters/),
+    ).toBeTruthy();
+    expect(screen.getByText('1 to 1 of 12,345')).toBeTruthy();
+    // The banner sits above the table, with the other banners.
+    const banner = screen.getByText(/Page numbers stop at the first 10,000 refunds/);
+    expect(
+      banner.compareDocumentPosition(screen.getByRole('table')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Page 400' }));
+    await waitFor(() => expect(lastUrl()).toContain('page=400'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Next' })).toHaveProperty('disabled', true),
+    );
+    expect(screen.queryByRole('button', { name: 'Page 401' })).toBeNull();
+    expect(screen.queryByText('Narrow the list to see more.')).toBeNull();
+  });
+
+  it('goes back to the last page that has rows when the page asked for is empty', async () => {
+    serve((url) =>
+      paramsOf(url)['page'] === '2'
+        ? pageOf([], { total: 25, page: 2 })
+        : pageOf([row()], { total: 30, page: 1 }),
+    );
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+    await waitFor(() => expect(urls().some((url) => url.includes('page=2'))).toBe(true));
+    await waitFor(() => expect(lastUrl()).toContain('page=1'));
+    expect(await screen.findByText(STORE)).toBeTruthy();
+  });
+});
+
+describe('Refunds Previous and next', () => {
+  it('sends the limit alone, hides Sort, says Newest first and shows no total', async () => {
+    serve(() => cursorPage([row()], cursor(1)));
+    mount({ paging: 'prev-next' });
+    await screen.findByText(STORE);
+    expect(urls()[0]).toBe('ordering/admin/refunds?limit=25');
+    expect(screen.queryByRole('button', { name: 'Sort' })).toBeNull();
+    expect(screen.getByText('Newest first')).toBeTruthy();
+    expect(screen.queryByText(/ of /)).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Pages' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'All (25)' })).toBeTruthy();
+  });
+
+  it('walks the cursor stack forward and back, never mixing a cursor with page or sort', async () => {
+    serve((url) => {
+      const sent = paramsOf(url)['cursor'];
+      if (sent === undefined) return cursorPage([row({ storeName: 'First Store' })], cursor(1));
+      if (sent === cursor(1)) return cursorPage([row({ storeName: 'Second Store' })], cursor(2));
+      return cursorPage([row({ storeName: 'Third Store' })], null);
+    });
+    mount({ paging: 'prev-next' });
+    await screen.findByText('First Store');
+    expect(screen.getByRole('button', { name: 'Previous' })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('Second Store');
+    expect(lastUrl()).toBe(
+      `ordering/admin/refunds?limit=25&cursor=${encodeURIComponent(cursor(1))}`,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('Third Store');
+    expect(screen.getByRole('button', { name: 'Next' })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    await screen.findByText('Second Store');
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    await screen.findByText('First Store');
+    expect(lastUrl()).toBe('ordering/admin/refunds?limit=25');
+    for (const url of urls()) {
+      for (const key of ['page', 'pageSize', 'sort', 'direction']) {
+        expect(paramsOf(url)).not.toHaveProperty(key);
+      }
+    }
+  });
+
+  it('starts again from the first cursor when a tab changes', async () => {
+    serve((url) =>
+      paramsOf(url)['cursor'] === undefined
+        ? cursorPage([row()], cursor(1))
+        : cursorPage([row()], null),
+    );
+    mount({ paging: 'prev-next' });
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(lastUrl()).toContain('cursor='));
+    fireEvent.click(screen.getByRole('button', { name: /^Refused by Stripe/ }));
+    await waitFor(() => expect(lastUrl()).toBe('ordering/admin/refunds?state=failed&limit=25'));
+    expect(screen.getByRole('button', { name: 'Previous' })).toHaveProperty('disabled', true);
+  });
+
+  it('offers "Select all matching" without a number', async () => {
+    serve(() => cursorPage([row()], cursor(1)));
+    mount({ paging: 'prev-next' });
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all refunds on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all matching' }));
+    expect(screen.getByText('All matching refunds are selected')).toBeTruthy();
+  });
+});
+
+describe('Refunds search', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000e5';
+  const box = () => screen.getByRole('searchbox', { name: 'Search' });
+
+  it('shows the label, the placeholder and no scope select', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    expect(box().getAttribute('placeholder')).toBe(
+      'Customer, store, order or refund ID, or Stripe ID',
+    );
+    expect(screen.queryByLabelText('Search by')).toBeNull();
+  });
+
+  it('sends a UUID and a re_ id as q on Enter, and a name as search after the typing pause', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.change(box(), { target: { value: ` ${ID} ` } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(paramsOf(lastUrl())['q']).toBe(ID));
+    expect(paramsOf(lastUrl())).not.toHaveProperty('search');
+    expect(screen.getByText(`Search: "${ID}"`)).toBeTruthy();
+
+    fireEvent.change(box(), { target: { value: 're_3Pabc123' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(paramsOf(lastUrl())['q']).toBe('re_3Pabc123'));
+    expect(paramsOf(lastUrl())).not.toHaveProperty('search');
+    expect(screen.getByText('Search: "re_3Pabc123"')).toBeTruthy();
+
+    fireEvent.change(box(), { target: { value: ' Cedar ' } });
+    await act(() => vi.advanceTimersByTimeAsync(400));
+    await waitFor(() => expect(paramsOf(lastUrl())['search']).toBe('Cedar'));
+    expect(paramsOf(lastUrl())).not.toHaveProperty('q');
+    expect(screen.getByText('Search: "Cedar"')).toBeTruthy();
+  });
+
+  it('sends an upper-case v7 id lower-cased, and a v4 UUID as search (the API knows v7 ids only)', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.change(box(), { target: { value: ID.toUpperCase() } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(paramsOf(lastUrl())['q']).toBe(ID));
+    const v4 = '3f2b8c1e-5d4a-4b6f-9a7e-1c2d3e4f5a6b';
+    fireEvent.change(box(), { target: { value: v4 } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(paramsOf(lastUrl())['search']).toBe(v4));
+    expect(paramsOf(lastUrl())).not.toHaveProperty('q');
+  });
+
+  it('shows the one-character hint only after Enter or leaving the box, not at the first keystroke', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.change(box(), { target: { value: 'a' } });
+    expect(screen.queryByText('Type at least 2 characters.')).toBeNull();
+    fireEvent.blur(box());
+    expect(screen.getByRole('status').textContent).toBe('Type at least 2 characters.');
+    // Typing again takes it away until the box is left again.
+    fireEvent.change(box(), { target: { value: 'b' } });
+    expect(screen.queryByText('Type at least 2 characters.')).toBeNull();
+  });
+
+  it('asks for nothing from one character and shows the hint under the box', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    const before = urls().length;
+    fireEvent.change(box(), { target: { value: 'a' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await act(() => vi.advanceTimersByTimeAsync(600));
+    expect(screen.getByText('Type at least 2 characters.')).toBeTruthy();
+    expect(urls()).toHaveLength(before);
+    expect(screen.queryByText(/^Search: /)).toBeNull();
+    fireEvent.change(box(), { target: { value: 'ab' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await waitFor(() => expect(paramsOf(lastUrl())['search']).toBe('ab'));
+    expect(screen.queryByText('Type at least 2 characters.')).toBeNull();
+  });
+
+  it('removes the search with its chip and clears the box', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.change(box(), { target: { value: 'Cedar' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    await screen.findByText('Search: "Cedar"');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove filter Search: "Cedar"' }));
+    await waitFor(() => expect(paramsOf(lastUrl())).not.toHaveProperty('search'));
+    expect((box() as HTMLInputElement).value).toBe('');
+  });
+
+  it('says when only store names were searched, and when the search was capped', async () => {
+    serve((url) =>
+      url.includes('search=')
+        ? pageOf([row()], { searchScope: 'stores', searchCapped: true })
+        : pageOf([row()]),
+    );
+    mount();
+    await screen.findByText(STORE);
+    expect(screen.queryByText(/Only store names were searched/)).toBeNull();
+    fireEvent.change(box(), { target: { value: 'Cedar' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    expect(await screen.findByText(/Only store names were searched\./)).toBeTruthy();
+    expect(screen.getByText(/More than 200 customers or stores match/)).toBeTruthy();
+  });
+
+  it('replaces the table with a critical banner when name search is down, keeping chips and counts', async () => {
+    serve((url) => (url.includes('search=') ? 'search-down' : pageOf([row()])));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.change(box(), { target: { value: 'Cedar' } });
+    fireEvent.keyDown(box(), { key: 'Enter' });
+    expect(
+      await screen.findByText("Name search isn't available right now. Try again, or search by ID."),
+    ).toBeTruthy();
+    expect(screen.queryByText(STORE)).toBeNull();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByText('Search: "Cedar"')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'All (25)' })).toBeTruthy();
+    const before = urls().length;
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(urls().length).toBe(before + 1));
+    expect(lastUrl()).toContain('search=Cedar');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove filter Search: "Cedar"' }));
+    expect(await screen.findByText(STORE)).toBeTruthy();
+  });
+});
+
+describe('Refunds out-of-order answers', () => {
+  type Reply = { ok: true; status: 200; body: RefundsPage } | { ok: false; failure: object };
+  /** Answers the requests of the tabs by hand: the first one (All) at once, the others later. */
+  function held() {
+    const waiting = new Map<string, (reply: Reply) => void>();
+    call.mockImplementation((_method, path) => {
+      if (!path.includes('state=')) {
+        return Promise.resolve({ ok: true, status: 200, body: pageOf([row()]) } as never);
+      }
+      return new Promise((resolve) => {
+        waiting.set(path.match(/state=([a-z]+)/)![1]!, resolve);
+      }) as never;
+    });
+    return waiting;
+  }
+  const body = (storeName: string, total: number, counts = COUNTS) =>
+    ({
+      ok: true,
+      status: 200,
+      body: pageOf([row({ storeName })], { total, counts }),
+    }) as const;
+
+  it('shows the rows, counts and total of the last tab asked when the answers arrive in reverse', async () => {
+    const waiting = held();
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: /^Refunded/ }));
+    await waitFor(() => expect(waiting.has('succeeded')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: /^Refused by Stripe/ }));
+    await waitFor(() => expect(waiting.has('failed')).toBe(true));
+    // B (Refused) answers first, then the older A (Refunded).
+    act(() => {
+      waiting.get('failed')!(body('Store B', 2, { ...COUNTS, failed: 40 }));
+    });
+    expect(await screen.findByText('Store B')).toBeTruthy();
+    act(() => {
+      waiting.get('succeeded')!(body('Store A', 1, { ...COUNTS, failed: 99 }));
+    });
+    expect(screen.getByText('Store B')).toBeTruthy();
+    expect(screen.queryByText('Store A')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Refused by Stripe (40)' })).toBeTruthy();
+    expect(screen.getByText('1 to 1 of 2')).toBeTruthy();
+  });
+
+  it('shows no error when the older request fails after the newer one answered', async () => {
+    const waiting = held();
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: /^Refunded/ }));
+    await waitFor(() => expect(waiting.has('succeeded')).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: /^Refused by Stripe/ }));
+    await waitFor(() => expect(waiting.has('failed')).toBe(true));
+    act(() => {
+      waiting.get('failed')!(body('Store B', 1));
+    });
+    await screen.findByText('Store B');
+    act(() => {
+      waiting.get('succeeded')!({
+        ok: false,
+        failure: { status: 503, code: 'access.unavailable' },
+      });
+    });
+    expect(screen.queryByText("Refunds couldn't be loaded.")).toBeNull();
+    expect(screen.getByText('Store B')).toBeTruthy();
+  });
+
+  it('drops the answer that arrives after the first load gave up at 30 seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let late: ((reply: Reply) => void) | null = null;
+    call.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          late = resolve;
+        }) as never,
+    );
+    mount();
+    await act(() => vi.advanceTimersByTimeAsync(31_000));
+    expect(screen.getByText("Refunds couldn't be loaded.")).toBeTruthy();
+    act(() => {
+      late!(body('Late Store', 1));
+    });
+    expect(screen.queryByText('Late Store')).toBeNull();
+    expect(screen.getByText("Refunds couldn't be loaded.")).toBeTruthy();
+  });
+});
+
+describe('Refunds filters', () => {
+  async function addCondition(field: string, value: string, first = true) {
+    if (first) fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    if (!first) fireEvent.click(within(panel).getByRole('button', { name: 'Add condition' }));
+    const index = first ? 0 : within(panel).getAllByLabelText('Field').length - 1;
+    fireEvent.change(within(panel).getAllByLabelText('Field')[index]!, {
+      target: { value: field },
+    });
+    fireEvent.change(within(panel).getAllByLabelText('Value')[index]!, { target: { value } });
+    return panel;
+  }
+  const apply = (panel: HTMLElement) =>
+    fireEvent.click(within(panel).getByRole('button', { name: 'Apply' }));
+
+  it('offers the five fields with their values', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    const field = within(panel).getByLabelText('Field');
+    expect(
+      within(field)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['Field', 'Reason', 'Requested by', 'Loss borne by', 'Seller ledger', 'Requested']);
+    const values = (name: string) => {
+      fireEvent.change(field, { target: { value: name } });
+      return within(within(panel).getByLabelText('Value'))
+        .getAllByRole('option')
+        .map((option) => option.textContent)
+        .slice(1);
+    };
+    expect(values('reason')).toEqual([
+      'Not received',
+      'Damaged',
+      'Wrong item',
+      'Not as described',
+      'Seller cancelled',
+      'Item unavailable',
+      'Other',
+    ]);
+    expect(values('actor')).toEqual(['Admin', 'Seller']);
+    expect(values('lossBearer')).toEqual(['Seller', 'Platform']);
+    expect(values('ledger')).toEqual(['Waiting', 'Recorded']);
+    expect(values('requested')).toEqual([
+      'Today',
+      'Yesterday',
+      'Last 7 days',
+      'Last 30 days',
+      'This month',
+      'Last month',
+    ]);
+  });
+
+  it('filters by reason, requester, loss bearer and ledger, as chips that can be removed', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    await addCondition('reason', 'item-unavailable');
+    await addCondition('actor', 'seller', false);
+    await addCondition('lossBearer', 'platform', false);
+    apply(await addCondition('ledger', 'recorded', false));
+    await waitFor(() => expect(paramsOf(lastUrl())['ledger']).toBe('recorded'));
+    expect(paramsOf(lastUrl())).toMatchObject({
+      reason: 'item-unavailable',
+      actor: 'seller',
+      lossBearer: 'platform',
+    });
+    expect(screen.getByText('Reason is Item unavailable')).toBeTruthy();
+    expect(screen.getByText('Requested by is Seller')).toBeTruthy();
+    expect(screen.getByText('Loss borne by is Platform')).toBeTruthy();
+    expect(screen.getByText('Seller ledger is Recorded')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Filter (4)' })).toBeTruthy();
+    expect(screen.getByText('1 refund matches')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove filter Requested by is Seller' }));
+    await waitFor(() => expect(paramsOf(lastUrl())).not.toHaveProperty('actor'));
+    expect(paramsOf(lastUrl())['reason']).toBe('item-unavailable');
+  });
+
+  it('reads the Requested preset on the clock of the list zone, Brisbane', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    serve(() => pageOf([row()]));
+    mount({ zone: BRISBANE });
+    await screen.findByText(STORE);
+    apply(await addCondition('requested', 'today'));
+    await waitFor(() => expect(paramsOf(lastUrl())['from']).toBeDefined());
+    expect(paramsOf(lastUrl())).toMatchObject({
+      from: '2026-11-16T14:00:00.000Z',
+      to: '2026-11-17T14:00:00.000Z',
+    });
+    expect(screen.getByText('Requested is Today')).toBeTruthy();
+  });
+
+  it('works on a Market that is not Australian: other locale, zone and currency', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    serve(() =>
+      pageOf([
+        row({
+          gross: money('12550', 'EUR'),
+          tax: money('2004', 'EUR'),
+          shippingGross: money('990', 'EUR'),
+        }),
+      ]),
+    );
+    mount({ locale: 'de-DE', zone: 'Europe/Berlin', marketId: 'DE' });
+    await screen.findByText(STORE);
+    expect(screen.getByText('Times and days are in Europe/Berlin.')).toBeTruthy();
+    expect(screen.getByText(/125,50\s€/)).toBeTruthy();
+    expect(screen.queryByText(/\$/)).toBeNull();
+    apply(await addCondition('requested', 'today'));
+    // 16 Nov 20:30 UTC is 21:30 in Berlin (UTC+1): today runs from 23:00 UTC on the 15th.
+    await waitFor(() => expect(paramsOf(lastUrl())['from']).toBeDefined());
+    expect(paramsOf(lastUrl())).toMatchObject({
+      from: '2026-11-15T23:00:00.000Z',
+      to: '2026-11-16T23:00:00.000Z',
+    });
+  });
+
+  it('reads the date presets at each load, so a tab left open past midnight moves on', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    serve(() => pageOf([row()]));
+    mount({ zone: BRISBANE });
+    await screen.findByText(STORE);
+    apply(await addCondition('requested', 'today'));
+    await waitFor(() => expect(paramsOf(lastUrl())['from']).toBe('2026-11-16T14:00:00.000Z'));
+    // A day later, a new tab asks for the new day.
+    vi.setSystemTime(new Date(NOW.getTime() + 24 * 3_600_000));
+    fireEvent.click(screen.getByRole('button', { name: /^Refused by Stripe/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())['state']).toBe('failed'));
+    expect(paramsOf(lastUrl())['from']).toBe('2026-11-17T14:00:00.000Z');
+  });
+
+  it('reads the same preset on another zone, Los Angeles, at the same instant', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    serve(() => pageOf([row()]));
+    mount({ zone: LOS_ANGELES });
+    await screen.findByText(STORE);
+    apply(await addCondition('requested', 'last-month'));
+    await waitFor(() => expect(paramsOf(lastUrl())['from']).toBeDefined());
+    expect(paramsOf(lastUrl())).toMatchObject({
+      from: '2026-10-01T07:00:00.000Z',
+      to: '2026-11-01T07:00:00.000Z',
+    });
+  });
+
+  it('gives an empty list, with no special case, for "Seller ledger is Waiting" on the Refused tab', async () => {
+    serve((url) =>
+      paramsOf(url)['state'] === 'failed' && paramsOf(url)['ledger'] === 'waiting'
+        ? pageOf([])
+        : pageOf([row()]),
+    );
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: /^Refused by Stripe/ }));
+    await waitFor(() => expect(paramsOf(lastUrl())['state']).toBe('failed'));
+    apply(await addCondition('ledger', 'waiting'));
+    expect(await screen.findByRole('heading', { name: 'No refunds match' })).toBeTruthy();
+    // Both go to the API as an AND, and the page does not drop or explain the pair.
+    expect(paramsOf(lastUrl())).toMatchObject({ state: 'failed', ledger: 'waiting' });
+    expect(screen.getByText('Seller ledger is Waiting')).toBeTruthy();
+  });
+
+  it('shows a removable Seller chip when a link names one, with the store name or the short id', async () => {
+    serve(() => pageOf([row()]));
+    mount({ sellerId: SELLER });
+    await screen.findByText(`Seller is ${STORE}`);
+    expect(paramsOf(urls()[0]!)['sellerId']).toBe(SELLER);
+    fireEvent.click(screen.getByRole('button', { name: `Remove filter Seller is ${STORE}` }));
+    await waitFor(() => expect(paramsOf(lastUrl())).not.toHaveProperty('sellerId'));
+  });
+
+  it('names the seller by its short id when no row knows the store', async () => {
+    serve(() => pageOf([row({ storeName: null })]));
+    mount({ sellerId: SELLER });
+    expect(await screen.findByText('Seller is 000000B1')).toBeTruthy();
+  });
+
+  it('offers no seller or amount filter in the panel', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    const names = within(within(panel).getByLabelText('Field'))
+      .getAllByRole('option')
+      .map((option) => option.textContent);
+    expect(names.join('|')).not.toMatch(/Seller\||Amount|Store/);
+  });
+
+  it('clears the search, filters and seller together with Clear all, keeping the tab', async () => {
+    serve(() => pageOf([row()]));
+    mount({ sellerId: SELLER });
+    await screen.findByText(`Seller is ${STORE}`);
+    fireEvent.click(screen.getByRole('button', { name: /^Refunded/ }));
+    apply(await addCondition('reason', 'damaged'));
+    await screen.findByText('Reason is Damaged');
+    fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
+    await waitFor(() => expect(paramsOf(lastUrl())).not.toHaveProperty('reason'));
+    expect(paramsOf(lastUrl())).not.toHaveProperty('sellerId');
+    expect(paramsOf(lastUrl())['state']).toBe('succeeded');
+  });
+});
+
+describe('Refunds rows', () => {
+  it('shows the default columns, money in the row currency (two currencies) and times in the zone', async () => {
+    serve(() =>
+      pageOf([
+        row(),
+        row({ refundId: refundId(2), storeName: 'Zed Store', gross: money('48000', 'ZZD') }),
+      ]),
+    );
+    mount();
+    await screen.findByText('Zed Store');
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      '',
+      'Order',
+      'State',
+      'Amount (incl. tax)',
+      'Reason',
+      'Requested by',
+      'Store',
+      'Customer',
+      'Requested',
+      'Loss borne by',
+      'Actions',
+    ]);
+    const first = screen.getAllByRole('row')[1]!;
+    expect(within(first).getByText('$125.50')).toBeTruthy();
+    expect(within(first).getByText('$125.50').className).toContain('font-medium');
+    // 2026-11-10 01:30 UTC is 11:30 am in Brisbane.
+    expect(within(first).getByText('10 Nov, 11:30 am')).toBeTruthy();
+    expect(within(first).getByText('Refunded')).toBeTruthy();
+    expect(within(first).getByText('Damaged')).toBeTruthy();
+    expect(within(first).getByText('Admin')).toBeTruthy();
+    expect(within(first).getByText('Seller')).toBeTruthy();
+    expect(within(first).getByText('Ada Lovelace')).toBeTruthy();
+    const second = screen.getAllByRole('row')[2]!;
+    expect(within(second).getByText(/480\.00/)).toBeTruthy();
+    expect(within(second).queryByText('$480.00')).toBeNull();
+    const link = within(first).getByRole('link', { name: 'Order 00000001' });
+    expect(link.getAttribute('href')).toBe(`/orders/${ORDER}`);
+    expect(link.getAttribute('title')).toBe(ORDER);
+  });
+
+  it('shows the same times on another zone (Los Angeles)', async () => {
+    serve(() => pageOf([row()]));
+    mount({ zone: LOS_ANGELES });
+    await screen.findByText(STORE);
+    // 2026-11-10 01:30 UTC is 9 Nov 5:30 pm in Los Angeles.
+    expect(screen.getByText('9 Nov, 5:30 pm')).toBeTruthy();
+    expect(screen.getByText('Times and days are in America/Los_Angeles.')).toBeTruthy();
+  });
+
+  it('words the three states as the order page does, with a tone each', async () => {
+    serve(() =>
+      pageOf([
+        row({ state: 'pending' }),
+        row({ refundId: refundId(2), state: 'succeeded' }),
+        row({ refundId: refundId(3), state: 'failed' }),
+        row({ refundId: refundId(4), state: 'mystery' }),
+      ]),
+    );
+    mount();
+    await screen.findAllByText(STORE);
+    const body = screen.getAllByRole('row').slice(1);
+    expect(within(body[0]!).getByText('Waiting for Stripe')).toBeTruthy();
+    expect(within(body[1]!).getByText('Refunded')).toBeTruthy();
+    expect(within(body[2]!).getByText('Refused by Stripe')).toBeTruthy();
+    expect(within(body[3]!).getByText('Unknown')).toBeTruthy();
+  });
+
+  it('shows Seller or Platform for who bears the loss, and the loss reason under Platform', async () => {
+    serve(() =>
+      pageOf([
+        row({ lossBearer: 'seller' }),
+        row({ refundId: refundId(2), lossBearer: 'platform', lossReasonCode: 'carrier-loss' }),
+        row({ refundId: refundId(3), lossBearer: 'platform', lossReasonCode: 'newcode' }),
+        row({ refundId: refundId(4), lossBearer: 'platform', lossReasonCode: null }),
+      ]),
+    );
+    mount();
+    await screen.findAllByText(STORE);
+    const body = screen.getAllByRole('row').slice(1);
+    // The seller row has no second line; the reason of a platform row is muted under it.
+    expect(within(body[0]!).queryByText('Lost by the carrier')).toBeNull();
+    expect(within(body[1]!).getByText('Platform')).toBeTruthy();
+    const reason = within(body[1]!).getByText('Lost by the carrier');
+    expect(reason.className).toContain('text-fg-muted');
+    expect(within(body[2]!).getByText('Other')).toBeTruthy();
+    expect(within(body[3]!).getByText('Platform')).toBeTruthy();
+  });
+
+  it('shows every reason, including Item unavailable, in the order page words', async () => {
+    const reasons = [
+      'not-received',
+      'damaged',
+      'wrong-item',
+      'not-as-described',
+      'seller-cancelled',
+      'item-unavailable',
+      'other',
+    ];
+    serve(() => pageOf(reasons.map((reason, n) => row({ refundId: refundId(n), reason }))));
+    mount();
+    await screen.findAllByText(STORE);
+    const cells = screen.getAllByRole('row').slice(1);
+    expect(cells.map((tr) => within(tr).getAllByRole('cell')[4]?.textContent)).toEqual([
+      'Not received',
+      'Damaged',
+      'Wrong item',
+      'Not as described',
+      'Seller cancelled',
+      'Item unavailable',
+      'Other',
+    ]);
+  });
+
+  it('shows the optional columns, with the Seller ledger waiting badge, Not yet and None', async () => {
+    window.localStorage.setItem(
+      'mp:admin:AU:acc-1:refunds-columns',
+      JSON.stringify(['ledger', 'tax', 'shipping', 'settled']),
+    );
+    serve(() =>
+      pageOf([
+        // Succeeded and recorded.
+        row(),
+        // Succeeded, not in the seller ledger yet.
+        row({ refundId: refundId(2), ledgerRecordedAt: null, shippingGross: money('0') }),
+        // Pending: no ledger, no settlement.
+        row({
+          refundId: refundId(3),
+          state: 'pending',
+          ledgerRecordedAt: null,
+          settledAt: null,
+          stripeRefundId: null,
+          creditNoteId: null,
+        }),
+        // Failed: nothing will reach the ledger.
+        row({
+          refundId: refundId(4),
+          state: 'failed',
+          ledgerRecordedAt: null,
+          creditNoteId: null,
+          tax: money('500', 'ZZD'),
+        }),
+      ]),
+    );
+    mount();
+    await screen.findAllByText('Waiting');
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      '',
+      'Order',
+      'State',
+      'Seller ledger',
+      'Tax',
+      'Delivery part (incl. tax)',
+      'Settled',
+      'Actions',
+    ]);
+    const [recorded, waiting, pending, failed] = screen.getAllByRole('row').slice(1);
+    // 2026-11-10 03:05 UTC is 1:05 pm in Brisbane.
+    expect(within(recorded!).getByText('10 Nov, 1:05 pm')).toBeTruthy();
+    expect(within(recorded!).getByText('$11.41')).toBeTruthy();
+    expect(within(recorded!).getByText('$9.90')).toBeTruthy();
+    const badge = within(waiting!).getByText('Waiting');
+    expect(badge.closest('td')).not.toBeNull();
+    expect(badge.closest('[title]')?.getAttribute('title')).toBe(
+      "Refunded, but not yet recorded in the seller's ledger.",
+    );
+    expect(within(waiting!).getByText('None')).toBeTruthy();
+    expect(within(pending!).getAllByText('Not yet')).toHaveLength(2);
+    expect(within(failed!).getByText('None', { selector: 'span' })).toBeTruthy();
+    expect(within(failed!).getByText(/5\.00/)).toBeTruthy();
+    expect(within(failed!).queryByText('Waiting')).toBeNull();
+  });
+
+  it('shows the Stripe refund ID as text, and the words for none', async () => {
+    window.localStorage.setItem(
+      'mp:admin:AU:acc-1:refunds-columns',
+      JSON.stringify(['stripeRefundId', 'creditNote', 'refundId', 'sellerOrderId']),
+    );
+    serve(() =>
+      pageOf([
+        row(),
+        row({
+          refundId: refundId(2),
+          state: 'pending',
+          stripeRefundId: null,
+          creditNoteId: null,
+        }),
+        row({
+          refundId: refundId(3),
+          state: 'failed',
+          stripeRefundId: null,
+          creditNoteId: null,
+        }),
+      ]),
+    );
+    mount();
+    await screen.findByText('re_3Pabc123');
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      '',
+      'Order',
+      'State',
+      'Stripe refund ID',
+      'Credit note',
+      'Refund ID',
+      'Seller order ID',
+      'Actions',
+    ]);
+    const [done, pending, failed] = screen.getAllByRole('row').slice(1);
+    expect(screen.getByText('re_3Pabc123').title).toBe('re_3Pabc123');
+    expect(within(done!).getByText('000000E1').title).toBe('0190a000-0000-7000-8000-0000000000e1');
+    expect(within(done!).getByText('000000F1').title).toBe(REFUND);
+    expect(within(done!).getByText('000000D1').title).toBe('0190a000-0000-7000-8000-0000000000d1');
+    expect(within(pending!).getByText('Not made yet')).toBeTruthy();
+    expect(within(pending!).getByText('None')).toBeTruthy();
+    expect(within(failed!).getAllByText('None')).toHaveLength(2);
+    expect(within(failed!).queryByText('Not made yet')).toBeNull();
+  });
+
+  it('shows the id of the seller and the account where a name is missing, never raw text as HTML', async () => {
+    serve(() => pageOf([row({ storeName: '<b>Evil</b>', customer: null })]));
+    const { container } = mount();
+    await screen.findByText('<b>Evil</b>');
+    expect(container.querySelector('b')).toBeNull();
+    expect(screen.getByText('000000C1').title).toBe(ACCOUNT);
+    cleanup();
+    serve(() => pageOf([row({ storeName: null })]));
+    mount();
+    expect((await screen.findByText('000000B1')).title).toBe(SELLER);
+  });
+});
+
+describe('Refunds row actions', () => {
+  const OPEN = (name: string) => screen.getByRole('button', { name });
+
+  it('lists View order and Copy Stripe refund ID, as the row names them', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(OPEN('Actions for order 00000001'));
+    const menu = await screen.findByRole('menu');
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['View order', 'Copy Stripe refund ID']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'View order' }));
+    expect(push).toHaveBeenCalledWith(`/orders/${ORDER}`);
+  });
+
+  it('offers only what the row names, ignores an unknown id, and has no menu without an action', async () => {
+    serve(() =>
+      pageOf([
+        row({ actions: ['view-order', 'copy-tracking-reference', 'retry-refund'] }),
+        row({ refundId: refundId(2), actions: [] }),
+        row({ refundId: refundId(3), actions: ['mystery'] }),
+      ]),
+    );
+    mount();
+    await screen.findAllByText(STORE);
+    expect(screen.getAllByRole('button', { name: /^Actions for order/ })).toHaveLength(1);
+    fireEvent.click(OPEN('Actions for order 00000001'));
+    const menu = await screen.findByRole('menu');
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['View order']);
+  });
+
+  it('keeps a fixed menu order whatever the order of the row array', async () => {
+    serve(() => pageOf([row({ actions: ['copy-stripe-reference', 'view-order'] })]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(OPEN('Actions for order 00000001'));
+    const menu = await screen.findByRole('menu');
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['View order', 'Copy Stripe refund ID']);
+  });
+
+  it('copies the Stripe refund ID and says Copied', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(OPEN('Actions for order 00000001'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy Stripe refund ID' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('re_3Pabc123'));
+    expect(await screen.findByText('Copied')).toBeTruthy();
+  });
+
+  it('says so when copying fails', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('no')) },
+      configurable: true,
+    });
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(OPEN('Actions for order 00000001'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Copy Stripe refund ID' }));
+    expect(await screen.findByText("Couldn't copy. Select the text and copy it.")).toBeTruthy();
+  });
+
+  it('leaves out the copy item when the row names it but Stripe made no refund', async () => {
+    serve(() => pageOf([row({ stripeRefundId: null })]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(OPEN('Actions for order 00000001'));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).queryByRole('menuitem', { name: 'Copy Stripe refund ID' })).toBeNull();
+  });
+});
+
+describe('Refunds selection and Bulk action', () => {
+  it('disables Bulk action with nothing selected, and keeps it without a menu while rows are ticked', async () => {
+    serve(() => pageOf([row(), row({ refundId: refundId(2) })]));
+    mount();
+    await screen.findAllByText(STORE);
+    expect(screen.getByRole('button', { name: 'Bulk action' })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select order 00000001' })[0]!);
+    expect(screen.getByText('1 refund selected')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Bulk action' })).toHaveProperty('disabled', true);
+    expect(screen.getByRole('button', { name: 'Bulk action' }).getAttribute('title')).toBe(
+      'No bulk actions are available for refunds yet.',
+    );
+    // The reason is also plain text, readable without focusing the disabled button.
+    expect(
+      screen.getByText('No bulk actions are available for refunds yet.', { selector: 'p' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
+    expect(screen.queryByText('1 refund selected')).toBeNull();
+  });
+
+  it('offers "Select all N matching" after the page is ticked, and clears with the next list', async () => {
+    serve(() => pageOf([row()], { total: 143 }));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all refunds on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all 143 matching' }));
+    expect(screen.getByText('All 143 matching refunds are selected')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Refunded/ }));
+    await waitFor(() => expect(screen.queryByText(/matching refunds are selected/)).toBeNull());
+  });
+
+  it('does not offer Select all matching when everything fits on the page', async () => {
+    serve(() => pageOf([row()], { total: 1 }));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all refunds on this page' }));
+    expect(screen.queryByRole('button', { name: /Select all .* matching/ })).toBeNull();
+  });
+});
+
+describe('Refunds states', () => {
+  it('shows skeleton rows with a loading status on the first load', async () => {
+    call.mockReturnValue(new Promise(() => {}));
+    mount();
+    expect(await screen.findByText('Loading refunds...')).toBeTruthy();
+    expect(screen.getByRole('searchbox', { name: 'Search' })).toBeTruthy();
+  });
+
+  it('shows the load error with Try again when the first load fails, then recovers', async () => {
+    serve(() => 'fail');
+    mount();
+    expect(await screen.findByText("Refunds couldn't be loaded.")).toBeTruthy();
+    serve(() => pageOf([row()]));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText(STORE)).toBeTruthy();
+  });
+
+  it('keeps the rows and shows a banner when a refresh fails, without actions on them', async () => {
+    serve((url) => (url.includes('state=failed') ? 'fail' : pageOf([row()])));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: /^Refused by Stripe/ }));
+    expect(await screen.findByText("Refunds couldn't be loaded.")).toBeTruthy();
+    expect(screen.getByText(STORE)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Actions for order/ })).toBeNull();
+  });
+
+  it('goes to the sign-in page on a 401', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { ...window.location, assign });
+    serve(() => 'unauthenticated');
+    mount();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+  });
+
+  it('says there is no access on a 403, with a link home', async () => {
+    serve(() => 'denied');
+    mount();
+    expect(await screen.findByText("You don't have access to refunds.")).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Back to home' }).getAttribute('href')).toBe('/');
+  });
+
+  it('says the search cannot be run on validation.failed, with no Try again, and writes it once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    call.mockResolvedValue({
+      ok: false,
+      failure: {
+        status: 422,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'q', code: 'format' }] },
+      },
+    } as never);
+    mount();
+    expect(
+      await screen.findByText(
+        "This search can't be run. Change the text or the filters, or clear them.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Refunds couldn't be loaded.")).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it.each([
+    ['all', 'No refunds yet', 'Refunds made from an order page show here.'],
+    ['pending', 'Nothing waiting for Stripe', null],
+    ['succeeded', 'No completed refunds', null],
+    ['failed', 'No refused refunds', null],
+  ] as const)('shows the %s tab empty state', async (tab, title, body) => {
+    serve(() => pageOf([]));
+    mount();
+    await screen.findByText('No refunds yet');
+    if (tab !== 'all') {
+      const name = {
+        pending: /^Waiting for Stripe/,
+        succeeded: /^Refunded/,
+        failed: /^Refused by Stripe/,
+      }[tab];
+      fireEvent.click(screen.getByRole('button', { name }));
+    }
+    expect(await screen.findByRole('heading', { name: title })).toBeTruthy();
+    if (body !== null) expect(screen.getByText(body)).toBeTruthy();
+  });
+
+  it('says nothing matches a filter, with Clear all to start again', async () => {
+    serve((url) => (url.includes('reason=') ? pageOf([]) : pageOf([row()])));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    fireEvent.change(within(panel).getByLabelText('Field'), { target: { value: 'reason' } });
+    fireEvent.change(within(panel).getByLabelText('Value'), { target: { value: 'damaged' } });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Apply' }));
+    expect(await screen.findByRole('heading', { name: 'No refunds match' })).toBeTruthy();
+    expect(screen.getByText('Try other filters or clear them.')).toBeTruthy();
+    const clear = screen
+      .getAllByRole('button', { name: 'Clear all' })
+      .find((button) => button.closest('td') !== null)!;
+    fireEvent.click(clear);
+    expect(await screen.findByText(STORE)).toBeTruthy();
+  });
+});
+
+describe('Refunds column choice', () => {
+  const KEY = 'mp:admin:AU:acc-1:refunds-columns';
+
+  it('keeps the choice in this browser, per Market and account, in the chosen order', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    expect(within(panel).getAllByText('Always shown')).toHaveLength(2);
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Tax' }));
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Customer' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Move Tax up' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    expect(JSON.parse(window.localStorage.getItem(KEY)!)).toEqual([
+      'amount',
+      'reason',
+      'actor',
+      'store',
+      'requested',
+      'tax',
+      'lossBearer',
+    ]);
+  });
+
+  it('reads the choice back, and keys it by Market (second fixture ZZ)', async () => {
+    window.localStorage.setItem('mp:admin:ZZ:acc-1:refunds-columns', JSON.stringify(['tax']));
+    serve(() => pageOf([row()]));
+    mount({ marketId: 'ZZ' });
+    await screen.findByText('$11.41');
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      '',
+      'Order',
+      'State',
+      'Tax',
+      'Actions',
+    ]);
+    cleanup();
+    mount({ marketId: 'AU' });
+    await screen.findByText(STORE);
+    expect(screen.getAllByRole('columnheader')).toHaveLength(11);
+  });
+
+  it('ignores a stored column that no longer exists, and puts the defaults back with Reset', async () => {
+    window.localStorage.setItem(KEY, JSON.stringify(['gone', 'tax', 'tax']));
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByText('$11.41');
+    expect(screen.getAllByRole('columnheader').map((th) => th.textContent)).toEqual([
+      '',
+      'Order',
+      'State',
+      'Tax',
+      'Actions',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Reset to default' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    expect(screen.getAllByRole('columnheader')).toHaveLength(11);
+  });
+
+  it('works when the browser storage refuses', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    try {
+      serve(() => pageOf([row()]));
+      mount();
+      await screen.findByText(STORE);
+      fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+      const panel = await screen.findByRole('dialog', { name: 'Columns' });
+      fireEvent.click(within(panel).getByRole('checkbox', { name: 'Tax' }));
+      fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+      expect(screen.getByRole('columnheader', { name: 'Tax' })).toBeTruthy();
+    } finally {
+      getItem.mockRestore();
+      setItem.mockRestore();
+    }
+  });
+
+  it('cleans a stored choice to the exact column ids the export reads, without repeats', () => {
+    expect(cleanColumns(undefined)).toEqual([
+      'amount',
+      'reason',
+      'actor',
+      'store',
+      'customer',
+      'requested',
+      'lossBearer',
+    ]);
+    expect(cleanColumns(['x', 'tax', 'tax', 3])).toEqual(['tax']);
+    expect(cleanColumns([])).toEqual([]);
+    expect(
+      cleanColumns([
+        'amount',
+        'reason',
+        'actor',
+        'store',
+        'customer',
+        'requested',
+        'lossBearer',
+        'ledger',
+        'tax',
+        'shipping',
+        'settled',
+        'stripeRefundId',
+        'creditNote',
+        'refundId',
+        'sellerOrderId',
+      ]),
+    ).toHaveLength(15);
+  });
+});
+
+describe('Refunds nav', () => {
+  it('sits in Sales right after Shipments, with the wallet icon, and needs the order view key', () => {
+    const ids = (keys: string[]) => visibleNavItems(adminNav, new Set(keys)).map((item) => item.id);
+    expect(ids([])).not.toContain('refunds');
+    expect(ids(['ordering.order.view'])).toContain('refunds');
+    const sales = adminNav.items.filter((item) => item.group === 'sales').map((item) => item.id);
+    expect(sales.slice(0, 3)).toEqual(['orders', 'shipments', 'refunds']);
+    expect(adminNav.items.find((item) => item.id === 'refunds')).toMatchObject({
+      icon: 'wallet',
+      href: '/refunds',
+      labelKey: 'nav.refunds',
+      anyOf: ['ordering.order.view'],
+    });
+    expect(messages.nav.refunds).toBe('Refunds');
+  });
+});

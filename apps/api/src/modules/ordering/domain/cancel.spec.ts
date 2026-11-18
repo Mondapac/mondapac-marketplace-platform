@@ -7,6 +7,8 @@ const line = (id: string, quantity: number) => ({
   id: id as Id<'OrderLine'>,
   quantity,
   unitAmount: 1000n,
+  lineAmount: 1000n * BigInt(quantity),
+  discountAmount: 0n,
   taxInclusive: true,
   taxRateBps: 1000,
   taxAmount: 91n * BigInt(quantity),
