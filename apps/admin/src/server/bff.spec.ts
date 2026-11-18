@@ -2936,7 +2936,7 @@ describe('relay of the product list', () => {
       );
       await relay(
         config,
-        get('ordering/admin/orders/export?format=xlsx&status=shipped&paymentState=free&from=today'),
+        get('ordering/admin/orders/export?format=pdf&status=shipped&paymentState=free&from=today'),
         exportPath,
         upstream,
       );

@@ -6,10 +6,25 @@ import { listSellerOrders } from '../fulfilment-flow';
 import { SELLER_ORDERS_HEADER, sellerOrderRow } from '../orders-csv';
 import { ordersExport, type OrdersExportFailure, type OrdersExportOutput } from '../orders-export';
 
+export const SELLER_ORDERS_EXPORT_COLUMNS = [
+  'delivery',
+  'items',
+  'currency',
+  'subtotal',
+  'shipping',
+  'tax',
+  'total',
+  'carrier',
+  'tracking',
+  'ready',
+  'shipped',
+  'delivered',
+] as const;
+
 const FILTER_KEYS = new Set(['status', 'from', 'to']);
 
 /**
- * The seller's paid orders as a CSV file (seller Orders page, Export): the seller orders the list
+ * The seller's paid orders as a CSV or XLSX file (seller Orders page, Export): the seller orders the list
  * shows for the same filter (`status` = fulfilment step, `from`, `to`), newest payment first, at
  * most 10,000 (more is `batch.too-large`). One row per seller order with its amounts, delivery
  * method and tracking; no buyer name, email, phone or address. Rule:
@@ -34,6 +49,25 @@ export class SellerExportOrders extends UseCase<unknown, OrdersExportOutput, Ord
       allowed: FILTER_KEYS,
       header: SELLER_ORDERS_HEADER,
       name: 'seller-orders',
+      // Seller order, Order, Paid at and Fulfilment always leave; the rest follows `columns`.
+      columns: {
+        fixed: 4,
+        optional: {
+          delivery: 4,
+          items: 5,
+          currency: 6,
+          subtotal: 7,
+          shipping: 8,
+          tax: 9,
+          total: 10,
+          carrier: 11,
+          tracking: 12,
+          ready: 13,
+          shipped: 14,
+          delivered: 15,
+        },
+      },
+      notFound: 'ordering.seller-order-not-found',
       read: async (extra) => {
         const result = await listSellerOrders(this.deps, context, extra);
         return result.ok

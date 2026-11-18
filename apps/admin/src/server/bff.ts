@@ -851,6 +851,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   ],
   'ordering/admin/orders/export': [
     'format',
+    'columns',
+    'ids',
     'status',
     'q',
     'paymentState',
@@ -1420,7 +1422,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     pageSize: /^([1-9][0-9]?|100)$/,
   },
   'ordering/admin/orders/export': {
-    format: /^csv$/,
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(currency|total|tax|sellers|stores|fulfilment|paid|cancelled)(,(currency|total|tax|sellers|stores|fulfilment|paid|cancelled)){0,7}$/,
+    // At most 100 selected order ids, one list page.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
     status: /^(pending-payment|confirmed|cancelled)$/,
     q: /^[0-9a-f-]{36}$/i,
     paymentState: /^(none|authorised|captured|voided)$/,
@@ -1699,6 +1705,7 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
+  'ordering/admin/orders/export:ids': 3700,
   'ordering/admin/documents/export:ids': 7400,
   'ordering/admin/refunds/export:ids': 7400,
   'ordering/admin/shipments/export:ids': 7400,
