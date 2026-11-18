@@ -243,6 +243,18 @@ describe.each(TEST_MARKETS)('catalog topics in market %s (database integration)'
       reader.list(market, { ...query, search: `STORE ${unique}a`, limit: 10 }),
     );
     expect(bySynonym.items.map((i) => i.id)).toEqual([states[0]!.id]);
+    // The numbered read: sorted both ways, offset, count, and a wildcard matched as typed.
+    const filter = { status: null, group: null, search: unique } as const;
+    expect(await inUnit(() => reader.count(market, filter))).toBe(3);
+    const desc = await inUnit(() =>
+      reader.page(market, { ...filter, sort: 'slug', direction: 'desc', offset: 1, limit: 5 }),
+    );
+    expect(desc.map((i) => i.slug)).toEqual([states[1]!.slug, states[0]!.slug]);
+    const byGroup = await inUnit(() =>
+      reader.page(market, { ...filter, sort: 'group', direction: 'asc', offset: 0, limit: 1 }),
+    );
+    expect(byGroup.map((i) => i.id)).toEqual([states[2]!.id]);
+    expect(await inUnit(() => reader.count(market, { ...filter, search: '%' }))).toBe(0);
     const byKey = await inUnit(() =>
       reader.list(market, { ...query, search: `store, ${unique}a!`, limit: 10 }),
     );
