@@ -27,7 +27,10 @@ export interface ExclusiveCommissionRuleView {
 export interface SavingsMonth {
   /** `YYYY-MM` in `zone`. */
   readonly month: string;
-  /** Per currency, by code; empty when nothing was saved that month. */
+  /**
+   * Per currency, by code: what the month saved less what its refunds gave back (negative when an
+   * earlier month's order was refunded this month); empty when it nets to nothing.
+   */
   readonly saved: readonly Money[];
 }
 
@@ -70,7 +73,10 @@ export function savingsMonths(
 
 /**
  * The signed-in seller's lower commission on exclusive customers and its savings by month. The
- * seller is the session's, never a request field: a seller sees only its own.
+ * seller is the session's, never a request field: a seller sees only its own. Deliberately not
+ * refused for an acting-as (Login as Seller) session, as the seller's ledger is not: read-only, and
+ * the admin already sees that seller's ledger (Hassan L2). The gate mints no acting-as marker
+ * today, so there is no such context to test yet.
  */
 export async function viewOwnExclusiveCommission(
   deps: CommissionPayoutsDependencies,

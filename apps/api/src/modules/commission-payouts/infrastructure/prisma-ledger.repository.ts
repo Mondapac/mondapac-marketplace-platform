@@ -129,34 +129,38 @@ export class PrismaLedgerRepository implements LedgerRepository {
     return rows.map(toEntry);
   }
 
-  savingsBetween(
+  async savingsBetween(
     market: MarketContext,
     sellerId: Id<'Seller'>,
     windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
   ) {
-    // One grouped sum per window on the partial index of the rows that carry a saving.
+    // One grouped sum per window on the partial index of the rows that carry a saving, one after
+    // the other: a read-only unit opens no transaction, so parallel sums would hold one pool
+    // connection each (Mojtaba).
     const tx = this.prisma.tx(market);
-    return Promise.all(
-      windows.map(async ({ from, to }) => {
-        const groups = await tx.commissionPayoutsLedgerEntry.groupBy({
-          by: ['currency', 'kind'],
-          where: {
-            marketId: market.marketId,
-            sellerId,
-            savedAmount: { not: null },
-            occurredAt: { gte: toDate(from), lt: toDate(to) },
-          },
-          _sum: { savedAmount: true },
-        });
-        return savingsOf(
+    const answers: (readonly { readonly currency: string; readonly saved: bigint }[])[] = [];
+    for (const { from, to } of windows) {
+      const groups = await tx.commissionPayoutsLedgerEntry.groupBy({
+        by: ['currency', 'kind'],
+        where: {
+          marketId: market.marketId,
+          sellerId,
+          savedAmount: { not: null },
+          occurredAt: { gte: toDate(from), lt: toDate(to) },
+        },
+        _sum: { savedAmount: true },
+      });
+      answers.push(
+        savingsOf(
           groups.map((group) => ({
             currency: group.currency,
             kind: group.kind,
             saved: group._sum.savedAmount ?? 0n,
           })),
-        );
-      }),
-    );
+        ),
+      );
+    }
+    return answers;
   }
 
   async sums(market: MarketContext, sellerId: Id<'Seller'>) {

@@ -24,7 +24,11 @@ import { refusal } from './http-answers';
 const ERROR = { type: Object };
 
 class SavedAmountBody {
-  @ApiProperty({ description: 'Minor units, never negative.' }) amount!: string;
+  @ApiProperty({
+    description:
+      'Minor units. Negative when the month’s refunds gave back more than the month saved.',
+  })
+  amount!: string;
   @ApiProperty({ description: 'ISO 4217.' }) currency!: string;
 }
 
@@ -91,7 +95,8 @@ export class SellerExclusiveCommissionController {
       'rate its exclusive customers’ lines carry and for how many months after each customer ' +
       'joined (null: none in this Market). `months`: the last 12 months in the Market’s zone, ' +
       'per currency, the commission the standard rate would have taken on those lines less what ' +
-      'was taken, less what refunds gave back. `thisMonth` is the last of them.',
+      'was taken, less what that month’s refunds gave back (so a month can be negative). ' +
+      '`thisMonth` is the last of them.',
   })
   @ApiOkResponse({ type: ExclusiveCommissionBody })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })

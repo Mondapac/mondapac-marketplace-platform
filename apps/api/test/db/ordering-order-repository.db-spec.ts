@@ -700,7 +700,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
     // The standard rate only on a lowered line, never below its rate (savings follow-up).
     expect(await insertLine('standard', true, 1500, 1500)).toBe(CHECK);
     expect(await insertLine('exclusive', true, 750, 700)).toBe(CHECK);
-    expect(await insertLine('exclusive', true, 750, 10001)).toBe(CHECK);
+    expect(await insertLine('exclusive', true, 750, 3001)).toBe(CHECK);
     expect(await insertLine('exclusive', true, 750, 1500)).toBeNull();
   });
 

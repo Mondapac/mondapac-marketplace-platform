@@ -52,7 +52,8 @@ export interface LedgerRepository {
   /**
    * What the seller saved on its exclusive customers in each window `[from, to)` of the rows'
    * `occurred_at` (customers phase 4b): per currency, the savings of `commission` rows less the
-   * parts `refund-commission` rows gave back; only currencies with a saving left, by code.
+   * parts `refund-commission` rows gave back, by code; negative when the window's refunds gave
+   * back more than it saved, and a currency that nets to zero is left out.
    */
   savingsBetween(
     market: MarketContext,

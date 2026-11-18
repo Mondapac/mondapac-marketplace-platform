@@ -1121,6 +1121,29 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       });
     });
 
+    it('shows a month net of its refunds, negative when an earlier order is refunded in it', async () => {
+      await record(exclusivePaid());
+      // The whole lowered line refunded 40 days later: that month gives the saving back.
+      const later = T0.add({ hours: 24 * 40 });
+      await new RecordRefund(gate, deps).execute(system, {
+        refundId: id<'Refund'>(0x421),
+        orderId: ORDER,
+        sellerOrderId: SELLER_ORDER,
+        sellerId: SELLER_A,
+        currency,
+        lossBearer: 'seller',
+        settledAt: later,
+        lines: [{ orderLineId: LINE_1, lineQuantity: 3, unitsBefore: 0, units: 3 }],
+        shipping: null,
+      });
+      clock.set(later);
+      const answer = await view();
+      if (!answer.ok) throw new Error('refused');
+      expect(answer.value.months.at(-1)!.saved).toEqual([money(-saved1, currency)]);
+      expect(answer.value.months.at(-2)!.saved).toEqual([money(saved1, currency)]);
+      clock.set(T0);
+    });
+
     it('shows a seller only its own savings, and refuses anyone but a seller', async () => {
       await record(exclusivePaid());
       const other = await view(sellerB);

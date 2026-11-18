@@ -8,13 +8,17 @@ SET lock_timeout = '5s';
 ALTER TABLE "ordering"."order_lines"
   ADD COLUMN "commission_standard_rate_bps" INTEGER;
 
--- Hand-written: only a lowered line carries it, and it is never below the rate frozen on the line.
+-- Hand-written: only a lowered line carries it, never below the rate frozen on the line and in
+-- the range of every rate (0 to 3000). Added NOT VALID and then validated: every existing row is
+-- null and passes. The file runs in one transaction, so the validation still holds the lock of the
+-- ADD (accepted while the table is small; on a large table VALIDATE goes in a migration of its own).
 ALTER TABLE "ordering"."order_lines"
   ADD CONSTRAINT "order_lines_commission_standard_rate_check" CHECK (
     "commission_standard_rate_bps" IS NULL
     OR ("commission_rate_reason" = 'exclusive'
       AND "commission_rate_bps" IS NOT NULL
       AND "commission_standard_rate_bps" >= "commission_rate_bps"
-      AND "commission_standard_rate_bps" <= 10000));
+      AND "commission_standard_rate_bps" <= 3000)) NOT VALID;
+ALTER TABLE "ordering"."order_lines" VALIDATE CONSTRAINT "order_lines_commission_standard_rate_check";
 
 -- Grants: unchanged. The app role inserts lines (table-level INSERT) and never updates this.

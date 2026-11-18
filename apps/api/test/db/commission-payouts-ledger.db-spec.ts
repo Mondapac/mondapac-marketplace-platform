@@ -314,10 +314,10 @@ describe.each(TEST_MARKETS)('commission-payouts stores in market %s (database)',
       { from: T0.add({ hours: 1 }), to: T0.add({ hours: 48 }) },
       { from: T0.subtract({ hours: 1 }), to: T0.add({ hours: 48 }) },
     ];
-    // The refund's window gives back more than it saved: nothing is left to show there.
+    // The refund's window gives back what an earlier window saved: it nets negative.
     expect(await value(market, () => ledger.savingsBetween(market, sellerId, windows))).toEqual([
       [{ currency, saved: 75n }],
-      [],
+      [{ currency, saved: -25n }],
       [{ currency, saved: 50n }],
     ]);
     expect(await value(other, () => ledger.savingsBetween(other, sellerId, windows))).toEqual([
@@ -358,6 +358,9 @@ describe.each(TEST_MARKETS)('commission-payouts stores in market %s (database)',
     expect(await insert('commission', 750, 700, 10)).toBe(CHECK);
     expect(await insert('commission', 750, 1500, -1)).toBe(CHECK);
     expect(await insert('sale', null, 1500, 10)).toBe(CHECK);
+    // The commission at the standard rate never exceeds the base (amount 10 + saving > 1000).
+    expect(await insert('commission', 750, 1500, 991)).toBe(CHECK);
+    expect(await insert('commission', 750, 3001, 10)).toBe(CHECK);
     expect(await insert('commission', 750, 1500, 75)).toBe('allowed');
   });
 

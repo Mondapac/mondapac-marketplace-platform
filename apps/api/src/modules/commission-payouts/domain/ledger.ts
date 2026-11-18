@@ -145,7 +145,8 @@ export function netBySellerOrder(
 
 /**
  * Per currency, the savings of `commission` rows less the parts `refund-commission` rows gave
- * back; a currency whose savings were all given back is left out.
+ * back, by code. Negative when refunds in the window gave back more than the window saved (an
+ * earlier month's order refunded now, Hassan L1); a currency that nets to zero is left out.
  */
 export function savingsOf(
   groups: readonly { readonly currency: string; readonly kind: string; readonly saved: bigint }[],
@@ -156,7 +157,7 @@ export function savingsOf(
     byCurrency.set(group.currency, (byCurrency.get(group.currency) ?? 0n) + sign * group.saved);
   }
   return [...byCurrency]
-    .filter(([, saved]) => saved > 0n)
+    .filter(([, saved]) => saved !== 0n)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([currency, saved]) => ({ currency, saved }));
 }
