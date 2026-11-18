@@ -91,6 +91,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.read family in market %s'
       } as unknown as OwnCatalogReader,
       policy: {
         taxCategoryCodes: () => ['gst'],
+        taxCategories: () => [{ code: 'gst', labelKey: 'catalog.tax.taxable' }],
         maxVariantsPerProduct: () => 100,
         maxVariantAttributes: () => 2,
         locales: () => ({ default: 'en', supported: ['en'] }),
