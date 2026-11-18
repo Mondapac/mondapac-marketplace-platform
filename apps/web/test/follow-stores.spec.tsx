@@ -218,8 +218,15 @@ describe('Follow button', () => {
     await waitFor(() =>
       expect(document.querySelector('.fl-live')?.textContent).toBe('Following Green Grocer'),
     );
+    // Let React run the effect that starts the timer before the clock moves.
+    await act(async () => {});
     await act(() => {
-      vi.advanceTimersByTime(ANNOUNCE_MS + 50);
+      vi.advanceTimersByTime(ANNOUNCE_MS - 200);
+      return Promise.resolve();
+    });
+    expect(document.querySelector('.fl-live')?.textContent).toBe('Following Green Grocer');
+    await act(() => {
+      vi.advanceTimersByTime(400);
       return Promise.resolve();
     });
     expect(document.querySelector('.fl-live')?.textContent).toBe('');
