@@ -319,6 +319,11 @@
   { "name": "customers.create-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.delete-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.execute-account-deletions", "rule": "system" },
+  {
+    "name": "customers.join-store-by-invitation",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "customers.list-addresses", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.read-customer-group-membership", "rule": "system" },
   { "name": "customers.read-customer-last-order", "rule": "system" },
@@ -340,6 +345,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "customers.resolve-store-invitation", "rule": "anonymous" },
   {
     "name": "customers.set-default-address",
     "rule": "own-resources",
@@ -355,6 +361,11 @@
   },
   {
     "name": "customers.view-account-deletion-request",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "customers.view-own-store-invitation",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },

@@ -13,7 +13,10 @@ export type SavedFilterVisibility = (typeof SAVED_FILTER_VISIBILITIES)[number];
 
 export const SAVED_FILTER_NAME_MAX = 60;
 /** The lists that have saved filters (their vocabulary is in the application layer). */
-export const SAVED_FILTER_LIST_KEYS = ['admin.customers.customers'] as const;
+export const SAVED_FILTER_LIST_KEYS = [
+  'admin.customers.customers',
+  'admin.customers.seller-attributions',
+] as const;
 export type SavedFilterListKey = (typeof SAVED_FILTER_LIST_KEYS)[number];
 
 /** Filters one account keeps in one list (all visibilities). */

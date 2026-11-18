@@ -107,8 +107,9 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
       clock,
     };
     const forget = new ForgetAccount(gate, deps);
+    const follow = new FollowStore(gate, deps);
     uc = {
-      follow: new FollowStore(gate, deps),
+      follow,
       unfollow: new UnfollowStore(gate, deps),
       view: new ViewStoreFollow(gate, deps),
       mine: new ListMyStores(gate, deps),
@@ -120,6 +121,7 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
         followedAmong: new FollowedAmong(gate, deps),
         ownFollowedAmong: new OwnFollowedAmong(gate, deps),
         followsOfAccount: new FollowsOfAccount(gate, deps),
+        followStore: follow,
       }),
     };
   });
@@ -270,6 +272,22 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
       value: [{ sellerId: SHOP, followedAt: T0 }],
     });
     expect(await uc.facade.followsOfAccount(alice, ALICE)).toMatchObject({ ok: false });
+  });
+
+  it('follows a store through the facade for the signed-in customer only', async () => {
+    // The automatic follow after joining a store through its invite link (customers phase 4a).
+    expect(await uc.facade.followStore(alice, SHOP)).toEqual({
+      ok: true,
+      value: { following: true },
+    });
+    expect(outbox.events).toHaveLength(1);
+    expect(await uc.facade.followStore(alice, SHOP)).toEqual({
+      ok: true,
+      value: { following: true },
+    });
+    expect(outbox.events).toHaveLength(1);
+    expect(await uc.facade.followStore(system, SHOP)).toMatchObject({ ok: false });
+    expect(await uc.facade.followStore(as('admin', BOB), SHOP)).toMatchObject({ ok: false });
   });
 
   it('keeps each Market apart', async () => {

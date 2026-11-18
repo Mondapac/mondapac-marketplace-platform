@@ -1807,7 +1807,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.customers.customers)",
+      "listKey": "enumOf(admin.customers.customers|admin.customers.seller-attributions)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -1819,7 +1819,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.customers.customers)",
+      "listKey": "enumOf(admin.customers.customers|admin.customers.seller-attributions)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -1833,7 +1833,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.customers.customers)",
+      "listKey": "enumOf(admin.customers.customers|admin.customers.seller-attributions)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -1847,6 +1847,45 @@
       "format": "enumOf(csv|xlsx)",
       "rowCount": "integer",
       "selection": "enumOf(codes|filter)"
+    }
+  },
+  {
+    "action": "customers.seller-attribution.decided",
+    "targetType": "customers.customer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|rejected)"
+    },
+    "after": {
+      "sellerId": "id",
+      "status": "enumOf(active|rejected)",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "customers.seller-attributions.exported",
+    "targetType": "customers.seller-attributions-export",
+    "targetId": "enumOf(seller-attributions-export)",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "selection": "enumOf(ids|filter)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "customers.seller-invite-link.drawn",
+    "targetType": "customers.seller-invite-link",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "replacedLinkId": "optional(id)",
+      "sellerId": "id"
     }
   },
   {

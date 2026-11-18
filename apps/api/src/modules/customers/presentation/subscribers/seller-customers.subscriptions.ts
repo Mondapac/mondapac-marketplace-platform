@@ -7,12 +7,15 @@ import type { EventDelivery } from '../../../../platform/events/event-delivery';
 import { StoreFollowed, StoreUnfollowed } from '../../../engagement';
 import { OrderPaid, RefundSucceeded } from '../../../ordering';
 import type { SyncSellerCustomers } from '../../application/use-cases/sync-seller-customers.use-case';
+import { SellerAttributionChangedEvent } from '../../domain/events';
 
 /** The subscriber names: also the `handler` of the inbox. */
 export const SELLER_CUSTOMERS_ORDER_PAID_SUBSCRIBER = 'customers.seller-customers-order-paid';
 export const SELLER_CUSTOMERS_REFUND_SUBSCRIBER = 'customers.seller-customers-refund-succeeded';
 export const SELLER_CUSTOMERS_FOLLOWED_SUBSCRIBER = 'customers.seller-customers-store-followed';
 export const SELLER_CUSTOMERS_UNFOLLOWED_SUBSCRIBER = 'customers.seller-customers-store-unfollowed';
+export const SELLER_CUSTOMERS_ATTRIBUTION_SUBSCRIBER =
+  'customers.seller-customers-attribution-changed';
 
 /**
  * The per-seller customers' subscriptions (customers management phase 3). Each hands the event's
@@ -71,6 +74,18 @@ export function sellerCustomersSubscriptions(sync: SyncSellerCustomers): Registe
       handle: (consumed, delivery, context) =>
         run(
           SELLER_CUSTOMERS_UNFOLLOWED_SUBSCRIBER,
+          { accountId: consumed.payload.accountId },
+          delivery,
+          context,
+        ),
+    }),
+    // Phase 4a: an attribution recorded, rejected or restored sets or clears the exclusive flag.
+    subscription({
+      name: SELLER_CUSTOMERS_ATTRIBUTION_SUBSCRIBER,
+      event: SellerAttributionChangedEvent,
+      handle: (consumed, delivery, context) =>
+        run(
+          SELLER_CUSTOMERS_ATTRIBUTION_SUBSCRIBER,
           { accountId: consumed.payload.accountId },
           delivery,
           context,
