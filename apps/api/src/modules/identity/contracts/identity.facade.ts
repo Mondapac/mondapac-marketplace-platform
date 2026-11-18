@@ -151,6 +151,41 @@ export interface IdentityValidationFailed {
   readonly fields: readonly { readonly path: string; readonly code: string }[];
 }
 
+/**
+ * A customer's pending change of the sign-in email ({@link IdentityFacade.customerPendingEmailOf}).
+ * PERSONAL DATA for the admin who asked: the full new address. No module logs it or puts it in an
+ * event, an audit row, a cache, an outbox or an error body.
+ */
+export interface CustomerPendingEmailChange {
+  readonly email: string;
+  readonly requestedAt: Temporal.Instant;
+}
+
+/** Why {@link IdentityFacade.requestCustomerEmailChangeForAdmin} refused. */
+export type CustomerEmailChangeFailure =
+  | AccessDenied
+  | { readonly code: 'access.unavailable' }
+  /** No customer account with this id in the Market (or another population's). */
+  | { readonly code: 'account.unknown' }
+  /** A disabled or unverified account keeps its address. */
+  | { readonly code: 'account.not-eligible' }
+  /** Another customer account of the Market signs in with the address. */
+  | { readonly code: 'account.email-taken' }
+  | IdentityValidationFailed
+  | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
+  | { readonly code: 'second-factor.required'; readonly actionKey: string }
+  | { readonly code: 'second-factor.enrolment-required'; readonly actionKey: string };
+
+/** Why {@link IdentityFacade.cancelCustomerEmailChangeForAdmin} refused. */
+export type CustomerEmailChangeCancelFailure =
+  | AccessDenied
+  | { readonly code: 'access.unavailable' }
+  | { readonly code: 'account.unknown' }
+  /** No change is pending for the account. */
+  | { readonly code: 'email-change.none' }
+  | { readonly code: 'second-factor.required'; readonly actionKey: string }
+  | { readonly code: 'second-factor.enrolment-required'; readonly actionKey: string };
+
 /** Why {@link IdentityFacade.endOtherCustomerSessions} refused. */
 export type EndOtherCustomerSessionsFailure = AccessDenied | { readonly code: 'session.invalid' };
 
@@ -375,6 +410,61 @@ export interface IdentityFacade {
         }
     >
   >;
+
+  /**
+   * An admin asks to change a customer's sign-in email (customers admin email change). Rule
+   * `permissions [customers.customer-email.change]` (protected), checked again in identity's unit;
+   * a platform admin that is not acting as a seller only. In one unit: the address parsed, a
+   * customer account of the Market that is active and verified, the address not held by another
+   * customer account, the mail counters, the admin's fresh step-up proof of
+   * `customers.customer-email.change` spent, the pending address stored and the confirmation link
+   * requested (mailed to the new address; a warning goes to the current one). The current address
+   * again answers `{ changed: false }` and spends nothing. `origin` is the admin's client (the
+   * `mail.origin` key). Not exposed over HTTP.
+   */
+  requestCustomerEmailChangeForAdmin(
+    context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly email: string;
+      readonly origin: string;
+    },
+  ): Promise<
+    Result<
+      { readonly changed: boolean; readonly requestedAt: Temporal.Instant | null },
+      CustomerEmailChangeFailure
+    >
+  >;
+
+  /**
+   * An admin cancels a customer's pending email change: the same rule, a fresh step-up proof
+   * spent, the pending address cleared and the mailed link void. Not exposed over HTTP.
+   */
+  cancelCustomerEmailChangeForAdmin(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly code: 'email-change.cancelled' }, CustomerEmailChangeCancelFailure>>;
+
+  /**
+   * The pending email change of a customer account, for the admin customer page, or null (none,
+   * lapsed, unknown, another Market's). Rule `permissions [customers.customers.view]`; a platform
+   * admin that is not acting as a seller only. PERSONAL DATA. Not exposed over HTTP.
+   */
+  customerPendingEmailOf(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<CustomerPendingEmailChange | null, CustomerAccountOfFailure>>;
+
+  /**
+   * Cancels a customer's pending sign-in email change because the account's deletion was
+   * requested (customers admin email change; Hassan R6, L2): the pending address cleared and its
+   * mailed link voided. Rule `system` (customers' subscriber on its deletion-requested events).
+   * `cancelled: false` when none was pending. Repeat-safe.
+   */
+  cancelCustomerEmailChangeForDeletion(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly cancelled: boolean }, CustomerAccountOfFailure>>;
 
   /**
    * One page of a customer's sign-ins of the last 90 days (time, outcome, result, device; never the

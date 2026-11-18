@@ -110,8 +110,13 @@ import type { CustomerListDependencies } from './application/customer-list-flow'
 import type { SavedViewDependencies } from './application/saved-views/saved-view-shared';
 import type { AdminCustomersExportDependencies } from './application/use-cases/admin-customers-export.use-case';
 import { AdminCustomerOverview } from './application/use-cases/admin-customer-overview.use-case';
+import { AdminCustomerEmailChangeRequest } from './application/use-cases/admin-customer-email-change-request.use-case';
+import { AdminCustomerEmailChangeCancel } from './application/use-cases/admin-customer-email-change-cancel.use-case';
+import { CancelEmailChangeOnDeletion } from './application/use-cases/cancel-email-change-on-deletion.use-case';
 import { AdminCustomerTabOpened } from './application/use-cases/admin-customer-tab-opened.use-case';
 import type { CustomerPageDependencies } from './application/customer-page-flow';
+import type { EmailChangeDependencies } from './application/admin-email-change-flow';
+import { EMAIL_CHANGE_PEER, type EmailChangePeer } from './application/ports/email-change-peer';
 import { AdminCustomersExport } from './application/use-cases/admin-customers-export.use-case';
 import { AdminCustomersIds } from './application/use-cases/admin-customers-ids.use-case';
 import { AdminCustomersList } from './application/use-cases/admin-customers-list.use-case';
@@ -388,6 +393,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       ADMIN_DAY_ZONE,
       ACCOUNT_DELETION_REQUEST_REPOSITORY,
       CUSTOMER_MANAGEMENT_PEERS,
+      EMAIL_CHANGE_PEER,
     ],
     useFactory: (
       gate: UseCaseGate,
@@ -401,6 +407,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       dayZone: CustomerPageDependencies['dayZone'],
       deletions: CustomerPageDependencies['deletions'],
       peers: CustomerManagementPeers,
+      emailChanges: EmailChangePeer,
     ) =>
       new type(gate, {
         unitOfWork,
@@ -413,6 +420,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
         dayZone,
         deletions,
         orders: peers.ordering,
+        pendingEmails: emailChanges,
       }),
   };
 }
@@ -627,9 +635,37 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminSellerAttributionsExport,
       AdminSellerAttributionsDecide,
     ].map((type) => invitationUseCaseProvider(type as InvitationUseCaseClass<unknown>)),
+    // The overview also reads the pending email change from identity (admin email change).
     ...[AdminCustomerOverview, AdminCustomerTabOpened].map((type) =>
       pageUseCaseProvider(type as PageUseCaseClass<unknown>),
     ),
+    ...[AdminCustomerEmailChangeRequest, AdminCustomerEmailChangeCancel].map(
+      (type): FactoryProvider => ({
+        provide: type,
+        inject: [
+          USE_CASE_GATE,
+          UNIT_OF_WORK,
+          ACCOUNT_DELETION_REQUEST_REPOSITORY,
+          EMAIL_CHANGE_PEER,
+        ],
+        useFactory: (
+          gate: UseCaseGate,
+          unitOfWork: EmailChangeDependencies['unitOfWork'],
+          requests: EmailChangeDependencies['requests'],
+          identity: EmailChangePeer,
+        ) => new type(gate, { unitOfWork, requests, identity }),
+      }),
+    ),
+    {
+      provide: CancelEmailChangeOnDeletion,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ACCOUNT_DELETION_REQUEST_REPOSITORY, EMAIL_CHANGE_PEER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: EmailChangeDependencies['unitOfWork'],
+        requests: EmailChangeDependencies['requests'],
+        identity: EmailChangePeer,
+      ) => new CancelEmailChangeOnDeletion(gate, { unitOfWork, requests, identity }),
+    },
     ...[
       AdminCustomerGroupsList,
       AdminCustomerGroupView,
@@ -809,12 +845,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     CUSTOMERS_ACCOUNT_DELETION_FACADE,
     CUSTOMERS_READ_FACADE,
     ACCOUNT_DELETION_PEERS,
+    EMAIL_CHANGE_PEER,
     CUSTOMER_READ_MODEL_PEERS,
     SyncCustomerReadModel,
     ReconcileCustomerReadModels,
     CUSTOMER_MANAGEMENT_PEERS,
     INVITATION_PEERS,
     RecordCustomerTimeline,
+    CancelEmailChangeOnDeletion,
     CUSTOMER_GROUP_USAGE_REGISTRY,
     CUSTOMER_SECTION_PEERS,
     SyncSellerCustomers,
