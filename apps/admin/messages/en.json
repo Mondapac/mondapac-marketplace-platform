@@ -677,19 +677,6 @@
         "approved": "Approved",
         "suspended": "Suspended"
       },
-      "search": {
-        "label": "Store name or shop address",
-        "help": "Start of the name or address, at least 2 letters.",
-        "submit": "Search",
-        "too-short": "Enter at least 2 characters."
-      },
-      "filter": {
-        "kind": "Submission",
-        "all-kinds": "All submissions",
-        "outside-area": "Outside the service area only",
-        "area": "Service area",
-        "all-areas": "All areas"
-      },
       "kind": {
         "onboarding": "New application",
         "identity-change": "Change request",
@@ -703,7 +690,9 @@
         "kind": "Submission",
         "area": "Service area",
         "submitted": "Submitted",
-        "changed": "Last change"
+        "changed": "Last change",
+        "seller-id": "Seller ID",
+        "actions": "Actions"
       },
       "health": {
         "band": {
@@ -739,16 +728,83 @@
         "not-approved": "No sellers are out of applications.",
         "approved": "No approved sellers yet.",
         "suspended": "No suspended sellers.",
-        "search": "No sellers match that search."
+        "no-match": "No seller matches",
+        "no-match-help": "Change or clear the search and filters to see more sellers."
+      },
+      "not-given": "Not given",
+      "intro": "Every seller on the platform. Open a seller to review its file and decide.",
+      "search": {
+        "label": "Search",
+        "placeholder": "Store name or shop address",
+        "help": "Matches the start of a store name or shop address. Type at least 2 characters.",
+        "too-short": "Type at least {min} characters to search."
+      },
+      "chip-search": "Search: \"{text}\"",
+      "filter": {
+        "title": "Filter sellers",
+        "name": {
+          "kind": "Submission",
+          "outsideArea": "Outside the service area",
+          "areaCode": "Service area"
+        },
+        "kind": {
+          "onboarding": "New application",
+          "identity-change": "Change request"
+        },
+        "outside-area-yes": "Only outside the area"
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "queue": "List order",
+          "name": "Store name"
+        },
+        "oldest": {
+          "first": "Oldest first",
+          "second": "Newest first"
+        },
+        "newest": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "name": {
+          "first": "A to Z",
+          "second": "Z to A"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# seller matches} other {# sellers match}}",
+      "range": "{from}–{to} of {total} sellers",
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# seller selected} other {# sellers selected}}",
+        "all-open": "All matching sellers selected"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# seller selected} other {# sellers selected}}",
+        "all": "{count, plural, one {The # matching seller is selected} other {All # matching sellers are selected}}",
+        "all-open": "All matching sellers are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "select": {
+        "page": "Select all sellers on this page",
+        "page-short": "Select all",
+        "row": "Select {name}"
+      },
+      "row": {
+        "open": "Open",
+        "menu": "Actions for {name}"
       },
       "loading": "Loading sellers...",
-      "more": "Show more",
+      "health-unavailable": "Seller health could not be loaded, so the Health column is empty. Everything else on this page is up to date.",
       "error": {
-        "too-broad": "That search matches too many sellers. Add more letters.",
-        "denied": "You don't have access to the seller list.",
-        "unavailable": "We couldn't load the sellers. Try again in a moment."
-      },
-      "not-given": "Not given"
+        "too-broad": "That search matches too many sellers. Type more letters.",
+        "unavailable": "We couldn't load the sellers. Try again.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      }
     },
     "review": {
       "title": "Seller application",
