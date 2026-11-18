@@ -831,6 +831,14 @@ describe('relay of the seller order routes', () => {
     expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/seller/orders?${q}`);
   });
 
+  it('posts the packing-slip selection to the documents route only', async () => {
+    const upstream = upstreamOk();
+    const path = [...list, 'documents'];
+    expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+    const other = [...list, 'documents', 'x'];
+    expect((await relay(config, post(other.join('/')), other, upstream)).status).toBe(404);
+  });
+
   it('forwards the reference and the paging mode, and drops a paging mode it does not know', async () => {
     const upstream = upstreamOk();
     const q = 'page=1&paging=prev-next&q=0190a000-0000-7000-8000-000000000001';
@@ -1560,6 +1568,43 @@ describe('relay of the seller product list', () => {
     const path = ['catalog', 'seller', 'products', CATEGORY, 'images', CATEGORY, 'thumb'];
     const request = get(`/${CATEGORY}/images/${CATEGORY}/thumb`);
     expect((await relay(config, request, path, upstream)).status).toBe(200);
+  });
+});
+
+describe('relay of the Offers export', () => {
+  const OFFER = '0190a000-0000-7000-8000-0000000000b1';
+  const EXPORT = ['catalog', 'seller', 'offers', 'export'];
+  const get = (query: string) =>
+    new Request(`http://seller.localhost:3001/api/catalog/seller/offers/export${query}`, {
+      method: 'GET',
+      headers: { host: 'seller.localhost:3001' },
+    });
+
+  it('forwards the selector, format, columns and ids, and drops the page and everything else', async () => {
+    const upstream = upstreamOk();
+    const query =
+      `?format=xlsx&columns=sku,code,listed&offerIds=${OFFER}&view=live&q=olive%20oil` +
+      '&status=published&listed=true&sort=sku&direction=asc&page=2&pageSize=50&paging=pages&x=1';
+    expect((await relay(config, get(query), EXPORT, upstream)).status).toBe(200);
+    const sent = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(sent.pathname).toBe('/catalog/seller/offers/export');
+    expect(Object.fromEntries(sent.searchParams)).toEqual({
+      format: 'xlsx',
+      columns: 'sku,code,listed',
+      offerIds: OFFER,
+      view: 'live',
+      q: 'olive oil',
+      status: 'published',
+      listed: 'true',
+      sort: 'sku',
+      direction: 'asc',
+    });
+  });
+
+  it('drops values that do not fit instead of forwarding them', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get('?format=pdf&columns=price&offerIds=x&sort=name'), EXPORT, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/seller/offers/export');
   });
 });
 

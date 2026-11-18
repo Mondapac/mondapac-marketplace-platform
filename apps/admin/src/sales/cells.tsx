@@ -14,12 +14,19 @@ export function EmptyWord({ children }: { readonly children: ReactNode }) {
 }
 
 /** "Order 654165CC", linking to the order; the full id is the tooltip. */
-export function OrderLink({ orderId }: { readonly orderId: string }) {
+export function OrderLink({
+  orderId,
+  href,
+}: {
+  readonly orderId: string;
+  /** Where the link goes; the order page by default. */
+  readonly href?: string;
+}) {
   const t = useTranslations('orders');
   return (
     <a
       className="font-medium text-link underline lg:whitespace-nowrap"
-      href={`/orders/${encodeURIComponent(orderId)}`}
+      href={href ?? `/orders/${encodeURIComponent(orderId)}`}
       title={orderId}
     >
       {t('reference', { id: shortId(orderId) })}

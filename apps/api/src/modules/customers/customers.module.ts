@@ -117,6 +117,7 @@ import { AdminSavedFilterDelete } from './application/use-cases/admin-saved-filt
 import { AdminSavedFilterUpdate } from './application/use-cases/admin-saved-filter-update.use-case';
 import { AdminSavedFiltersList } from './application/use-cases/admin-saved-filters-list.use-case';
 import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
+import { CustomerReviewEventsCheck } from './application/use-cases/customer-review-events-check.use-case';
 import type { CustomerManagementDependencies } from './application/customer-management-dependencies';
 import { CUSTOMER_GROUP_REPOSITORY } from './application/ports/customer-groups.repository';
 import {
@@ -155,11 +156,20 @@ import { AdminCustomerConsentHistorySection } from './application/use-cases/admi
 import { AdminCustomerConsentHistorySectionExport } from './application/use-cases/admin-customer-consent-history-export.use-case';
 import { AdminCustomerAssistantConversationsSection } from './application/use-cases/admin-customer-assistant-conversations.use-case';
 import { AdminCustomerAssistantConversationsSectionExport } from './application/use-cases/admin-customer-assistant-conversations-export.use-case';
+import { AdminCustomerReviewsSection } from './application/use-cases/admin-customer-reviews.use-case';
+import { AdminCustomerReviewsSectionExport } from './application/use-cases/admin-customer-reviews-export.use-case';
+import { AdminCustomerSellerRatingsSection } from './application/use-cases/admin-customer-seller-ratings.use-case';
+import { AdminCustomerSellerRatingsSectionExport } from './application/use-cases/admin-customer-seller-ratings-export.use-case';
+import { AdminCustomerHelpfulVotesSection } from './application/use-cases/admin-customer-helpful-votes.use-case';
+import { AdminCustomerHelpfulVotesSectionExport } from './application/use-cases/admin-customer-helpful-votes-export.use-case';
+import { AdminCustomerReviewReportsSection } from './application/use-cases/admin-customer-review-reports.use-case';
+import { AdminCustomerReviewReportsSectionExport } from './application/use-cases/admin-customer-review-reports-export.use-case';
 import type { CustomerSectionDependencies } from './application/customer-section-lists';
 import { CUSTOMER_SECTION_PEERS } from './application/ports/customer-section-peers';
 import { LateBoundSectionPeers } from './infrastructure/late-bound-section-peers';
 import { AdminCustomerActivityController } from './presentation/admin-customer-activity.controller';
 import { AdminCustomerSectionsController } from './presentation/admin-customer-sections.controller';
+import { AdminCustomerReviewsController } from './presentation/admin-customer-reviews.controller';
 import { AdminCustomerAddresses } from './application/use-cases/admin-customer-addresses.use-case';
 import { AdminCustomerNotesList } from './application/use-cases/admin-customer-notes-list.use-case';
 import { AdminCustomerRename } from './application/use-cases/admin-customer-rename.use-case';
@@ -359,7 +369,7 @@ function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
 
 type PageUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerPageDependencies) => U;
 
-/** The customer page use cases: the list reads plus the audit writer. */
+/** The customer page use cases: the list reads, the audit writer and the open deletion request. */
 function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
@@ -369,6 +379,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       CUSTOMER_LIST_READER,
       CLOCK,
       AUDIT_WRITER,
+      ACCOUNT_DELETION_REQUEST_REPOSITORY,
       CUSTOMER_TIMELINE_REPOSITORY,
       ID_GENERATOR,
       ADMIN_DAY_ZONE,
@@ -381,6 +392,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       listReader: CustomerPageDependencies['listReader'],
       clock: CustomerPageDependencies['clock'],
       audit: CustomerPageDependencies['audit'],
+      deletionRequests: CustomerPageDependencies['deletionRequests'],
       timeline: CustomerPageDependencies['timeline'],
       ids: CustomerPageDependencies['ids'],
       dayZone: CustomerPageDependencies['dayZone'],
@@ -392,6 +404,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
         listReader,
         clock,
         audit,
+        deletionRequests,
         timeline,
         ids,
         dayZone,
@@ -449,6 +462,7 @@ const MANAGEMENT_PORTS: readonly [
   ['addresses', ADDRESS_REPOSITORY],
   ['addressCipher', ADDRESS_CIPHER],
   ['groupUsage', CUSTOMER_GROUP_USAGE_REGISTRY],
+  ['reviewEventsCheck', CustomerReviewEventsCheck],
 ];
 
 /** The admin's management of customers (phase 2): its ports, plus identity bound at start. */
@@ -534,6 +548,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminCustomerManagementController,
     AdminCustomerSectionsController,
     AdminCustomerActivityController,
+    AdminCustomerReviewsController,
     SellerCustomersController,
     AdminSellerCustomersController,
     SellerInviteLinkController,
@@ -643,12 +658,22 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AdminCustomerConsentHistorySectionExport,
       AdminCustomerAssistantConversationsSection,
       AdminCustomerAssistantConversationsSectionExport,
+      // Part 3: the reviews sections.
+      AdminCustomerReviewsSection,
+      AdminCustomerReviewsSectionExport,
+      AdminCustomerSellerRatingsSection,
+      AdminCustomerSellerRatingsSectionExport,
+      AdminCustomerHelpfulVotesSection,
+      AdminCustomerHelpfulVotesSectionExport,
+      AdminCustomerReviewReportsSection,
+      AdminCustomerReviewReportsSectionExport,
     ].map((type) => sectionUseCaseProvider(type as SectionUseCaseClass<unknown>)),
     {
       provide: RecordCustomerTimeline,
       inject: [
         USE_CASE_GATE,
         CUSTOMER_READ_MODEL_PEERS,
+        CUSTOMER_SECTION_PEERS,
         UNIT_OF_WORK,
         CUSTOMER_TIMELINE_REPOSITORY,
         ID_GENERATOR,
@@ -657,6 +682,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (
         gate: UseCaseGate,
         peers: CustomerReadModelPeers,
+        sections: LateBoundSectionPeers,
         unitOfWork: TimelineRecordDependencies['unitOfWork'],
         timeline: TimelineRecordDependencies['timeline'],
         ids: TimelineRecordDependencies['ids'],
@@ -665,6 +691,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         new RecordCustomerTimeline(gate, {
           identity: peers.identity,
           ordering: peers.ordering,
+          reviews: sections.reviews,
           unitOfWork,
           timeline,
           ids,
@@ -719,6 +746,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       provide: SavedFilterShareCheck,
       inject: [USE_CASE_GATE],
       useFactory: (gate: UseCaseGate): SavedFilterShareCheck => new SavedFilterShareCheck(gate),
+    },
+    {
+      provide: CustomerReviewEventsCheck,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate): CustomerReviewEventsCheck =>
+        new CustomerReviewEventsCheck(gate),
     },
     ...[
       AdminSavedFiltersList,

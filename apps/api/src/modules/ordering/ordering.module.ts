@@ -177,6 +177,7 @@ import { SellerMarkUnavailable } from './application/use-cases/seller-mark-unava
 import { BookReadyCarrierDelivery } from './application/use-cases/book-ready-carrier-delivery.use-case';
 import { SellerViewOrder } from './application/use-cases/seller-view-order.use-case';
 import { SellerViewOrderDocument } from './application/use-cases/seller-view-order-document.use-case';
+import { SellerViewOrderDocuments } from './application/use-cases/seller-view-order-documents.use-case';
 import { DeliveryQuotes } from './application/use-cases/delivery-quotes.use-case';
 import { PayByCard } from './application/use-cases/pay-by-card.use-case';
 import { StartCheckout } from './application/use-cases/start-checkout.use-case';
@@ -439,6 +440,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerViewOrder,
       SellerViewOrderActivity,
       SellerViewOrderDocument,
+      SellerViewOrderDocuments,
       SellerMarkOrderReady,
       SellerMarkUnavailable,
       SellerConfirmPickup,

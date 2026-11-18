@@ -712,7 +712,7 @@ describe('admin product bulk action', () => {
     ).toEqual([
       'Activate',
       'Deactivate',
-      'ExportCSV or XLSX, with the columns shown',
+      'Export…CSV or XLSX, with the columns shown',
       'Delete…',
       'Select all 26 products in this filter',
       'Clear selection',
@@ -1147,7 +1147,7 @@ describe('admin product bulk action', () => {
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
     ).toEqual([
-      'ExportCSV or XLSX, with the columns shown',
+      'Export…CSV or XLSX, with the columns shown',
       'Select all 26 products in this filter',
       'Clear selection',
     ]);

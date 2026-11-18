@@ -20,6 +20,7 @@ import type { CustomerListDependencies } from './customer-list-flow';
 import type { SheetWriter } from './ports/sheet-writer';
 import { ActorOrMarketDayZone } from '../infrastructure/actor-or-market-day-zone';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
+import { MemoryAccountDeletionRequests } from './testing/in-memory-account-deletion';
 import { InMemoryCustomerTimeline } from './testing/in-memory-customer-management';
 import { MemorySavedFilters } from './testing/memory-saved-filters';
 import { AdminCustomerOverview } from './use-cases/admin-customer-overview.use-case';
@@ -158,7 +159,8 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       completedAt: (inMarket: MarketContext, accountId: Id<'Account'>) =>
         Promise.resolve(erased.get(`${inMarket.marketId}:${accountId}`) ?? null),
     };
-    const pageDeps = { ...listDeps, audit, timeline, ids, deletions };
+    const deletionRequests = new MemoryAccountDeletionRequests();
+    const pageDeps = { ...listDeps, audit, deletionRequests, timeline, ids, deletions };
     const filterDeps = {
       unitOfWork,
       savedFilters,
@@ -169,6 +171,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
     };
     return {
       listReader,
+      deletionRequests,
       audits,
       spent,
       stepUp,
@@ -294,6 +297,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
         spentMinor: '30000',
         refundedMinor: '0',
         firstOrderAt: null,
+        deletionRequest: null,
       });
       expect(t.audits).toHaveLength(1);
       expect(t.audits[0]).toMatchObject({
@@ -302,6 +306,50 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
         after: { tab: 'overview' },
       });
       expect(JSON.stringify(t.audits)).not.toContain('bilal');
+    });
+
+    it('carries the open deletion request of the customer, and none of another Market', async () => {
+      const t = seeded();
+      const accountId = pick(t, 'bilal@example.test');
+      const requestId = ids.next<'AccountDeletionRequest'>();
+      const scheduledFor = NOW.add({ hours: 24 * 14 });
+      await t.deletionRequests.insertPending(otherMarket, {
+        id: ids.next<'AccountDeletionRequest'>(),
+        accountId,
+        status: 'pending',
+        waitingPeriodDays: 14,
+        requestedAt: NOW,
+        scheduledFor,
+        claimedAt: null,
+        requestedBy: 'customer',
+        adminOrigin: null,
+      });
+      const admin = t.as(person([VIEW]));
+      const before = await t.overview.execute(admin, { accountId });
+      expect(
+        before.ok && 'deletionRequest' in before.value && before.value.deletionRequest,
+      ).toBeNull();
+      await t.deletionRequests.insertPending(market, {
+        id: requestId,
+        accountId,
+        status: 'pending',
+        waitingPeriodDays: 14,
+        requestedAt: NOW,
+        scheduledFor,
+        claimedAt: null,
+        requestedBy: 'customer',
+        adminOrigin: null,
+      });
+      const result = await t.overview.execute(admin, { accountId });
+      expect(
+        result.ok && 'deletionRequest' in result.value && result.value.deletionRequest,
+      ).toEqual({
+        requestId,
+        status: 'pending',
+        requestedAt: NOW.toString(),
+        scheduledFor: scheduledFor.toString(),
+      });
+      expect(JSON.stringify(t.audits)).not.toContain(requestId);
     });
 
     it('answers customer-not-found, writing no audit row, for an unknown id and another Market', async () => {
