@@ -162,6 +162,11 @@ class FakeListRepository implements SellerListRepository {
     });
   }
 
+  countMatching(): Promise<number> {
+    // The keyset list never counts a filtered tab (only the super list, list 15, does).
+    return Promise.reject(new Error('countMatching is not a read of the keyset list'));
+  }
+
   searchCandidates(market: MarketContext): Promise<SearchCandidates> {
     this.of(market);
     return Promise.resolve(this.candidates ?? { ids: [], overflow: false });

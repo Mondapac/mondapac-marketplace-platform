@@ -525,6 +525,46 @@ describe('signed client address (ADR-0037)', () => {
   });
 });
 
+describe('relay of the Sellers super list (list 15)', () => {
+  it.each(['sellers/admin/sellers/list', 'sellers/admin/sellers/export'])(
+    'relays %s as a same-origin POST with its body, and nothing else',
+    async (path) => {
+      const fetchImpl = upstreamOk();
+      const body = JSON.stringify({ view: 'awaiting-review', q: 'al', page: 2, pageSize: 50 });
+      const relayed = await relay(config, post(path, sameOrigin, body), path.split('/'), fetchImpl);
+      expect(relayed.status).toBe(200);
+      expect(fetchImpl.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+      expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
+
+      const refused = upstreamOk();
+      const get = new Request(`http://admin.localhost:3002/api/${path}?view=all`, {
+        method: 'GET',
+        headers: sameOrigin,
+      });
+      expect((await relay(config, get, path.split('/'), refused)).status).toBe(404);
+      const crossSite = post(path, { ...sameOrigin, 'sec-fetch-site': 'cross-site' });
+      expect((await relay(config, crossSite, path.split('/'), refused)).status).toBe(403);
+      const near = `${path}/x`;
+      expect((await relay(config, post(near), near.split('/'), refused)).status).toBe(404);
+      expect(refused).not.toHaveBeenCalled();
+    },
+  );
+
+  it('carries an export of 200 ticked ids under the body cap', async () => {
+    const fetchImpl = upstreamOk();
+    const ids = Array.from(
+      { length: 200 },
+      (_, i) => `01990000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+    ).join(',');
+    const path = 'sellers/admin/sellers/export';
+    const body = JSON.stringify({ format: 'xlsx', columns: 'seller-id', ids });
+    expect(
+      (await relay(config, post(path, sameOrigin, body), path.split('/'), fetchImpl)).status,
+    ).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('relay allowlist for seller decisions', () => {
   const ID = '0190a000-0000-7000-8000-0000000000a1';
   const call = (method: string, path: string) =>
