@@ -122,7 +122,12 @@ const REASON = /^[a-z][a-z-]{0,39}$/;
 const hasControl = (text: string): boolean =>
   Array.from(text).some((char) => {
     const code = char.codePointAt(0) ?? 0;
-    return code < 0x20 || code === 0x7f;
+    return (
+      code < 0x20 ||
+      (code >= 0x7f && code <= 0x9f) ||
+      (code >= 0x202a && code <= 0x202e) ||
+      (code >= 0x2066 && code <= 0x2069)
+    );
   });
 
 const absent = (value: unknown): boolean => value === undefined || value === null || value === '';

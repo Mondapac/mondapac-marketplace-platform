@@ -197,6 +197,8 @@ describe.each([['AU'], ['ZZ']] as const)('moderation list in market %s', (code) 
       { reportReason: 'Abusive!' },
       { q: 'a'.repeat(101) },
       { q: 'a\nb' },
+      { q: 'a\u0085b' },
+      { q: 'a\u202eb' },
       { sort: 'author' },
       { page: 101, pageSize: 100 },
     ]) {

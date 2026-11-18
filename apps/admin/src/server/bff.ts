@@ -1347,7 +1347,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sellerId: UUID,
     reportReason: /^[a-z][a-z-]{0,39}$/,
     // Free text up to the API's 100 characters, or a review, Offer or product id.
-    q: null,
+    q: /^[\s\S]{1,100}$/,
     from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
     to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
     sort: /^(submitted|rating)$/,
@@ -1368,7 +1368,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sellerId: UUID,
     reportReason: /^[a-z][a-z-]{0,39}$/,
     // Free text up to the API's 100 characters, or a review, Offer or product id.
-    q: null,
+    q: /^[\s\S]{1,100}$/,
     from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
     to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
     sort: /^(submitted|rating)$/,
@@ -1723,6 +1723,7 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
   'payments/admin/connected-accounts/export:ids': 7400,
+  'reviews/admin/moderation/export:ids': 7400,
   'catalog/admin/attributes:search': 120,
 };
 
@@ -1752,6 +1753,7 @@ function badScope(method: string, target: string, requestUrl: string): boolean {
  */
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
+  'reviews/admin/moderation/export',
 ]);
 
 /** The first known key of a strict target whose value cannot cross, or null. */

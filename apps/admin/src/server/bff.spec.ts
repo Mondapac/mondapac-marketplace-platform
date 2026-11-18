@@ -4013,4 +4013,13 @@ describe('relay of the review moderation super list', () => {
     const one = await get(`reviews/admin/moderation/${ID}`);
     expect(one.url).toBe(`http://api.test/reviews/admin/moderation/${ID}`);
   });
+
+  it('relays 200 selected ids whole and refuses a malformed filter instead of widening the file', async () => {
+    const ids = Array.from({ length: 200 }, () => ID).join(',');
+    const { url } = await get(`reviews/admin/moderation/export?format=csv&ids=${ids}`);
+    expect(url).toContain(`ids=${encodeURIComponent(ids)}`);
+    const bad = await get(`reviews/admin/moderation/export?format=csv&view=other`);
+    expect(bad.response.status).toBe(400);
+    expect(bad.url).toBeUndefined();
+  });
 });
