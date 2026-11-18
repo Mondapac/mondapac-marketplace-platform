@@ -193,6 +193,12 @@ const STEM_SOURCES = [
   'coeliak|coeliaq|zoliak|celiak|cholak',
   'glutin',
   'vejetaryen',
+  'vejeteryan',
+  '(?:fleisch|schweine?|milch)los',
+  'kosjer|kasjer',
+  'pflanzlich|plantaardig',
+  'belgeli',
+  'onayli',
   'helal',
   'toyyib',
   'jakim',
@@ -215,7 +221,7 @@ const WORDS = [
 const FOODS = String.raw`(?:pork|swine|alcohol|lard|gelatin|nuts?|dairy|lactose|meat|milk|eggs?|gluten|wheat|sesame|shellfish)`;
 // Food words of the "free of" patterns in other languages. Open endings are bounded, so a long run
 // of letters cannot make the patterns backtrack far.
-const OTHER_FOODS = String.raw`(?:(?:porc|porco|cerdo|maiale|suino|schwein|varken|babi|khinzir|domuz|svin|alcool|alcohol|alkohol|alkol|alcol|gelatin|laktos|lactos|laktoz|lattos|glutin|gluten|fleisch|vlees|viande|carne|daging|kacang|nuss|nusse|nuts|noten|laitier|arachide|nott|milch|leche|lait|oeuf|huevo)\p{L}{0,30}|ei|eier|telur|melk|latte|nuezes|produits[\s-]+laitiers)`;
+const OTHER_FOODS = String.raw`(?:(?:porc|porco|cerdo|maiale|suino|schwein|varken|babi|khinzir|domuz|svin|alcool|alcohol|alkohol|alkol|alcol|gelatin|laktos|lactos|laktoz|lattos|glutin|gluten|fleisch|vlees|viande|carne|daging|kacang|nuss|nusse|nuts|noten|laitier|arachide|nott|milch|leche|lait|oeuf|huevo|gris|flask|tenusu|susu)\p{L}{0,30}|ei|eier|telur|melk|latte|nuezes|produits[\s-]+laitiers)`;
 const FREE_FROM = [
   String.raw`(?:pork|alcohol|lard|gelatin|lactose|dairy|nut|egg|soy|meat|milk|wheat|sesame|shellfish|sugar|fat|msg|gmo)[\s-]*free${END}`,
   String.raw`${START}(?:no|without|free\s+from)[\s-]+(?:lactose|dairy|nuts?|pork|alcohol|lard|gelatin|sugar|meat|milk|eggs?)${END}`,
@@ -227,10 +233,12 @@ const FREE_FROM = [
   String.raw`allerg`,
   String.raw`sertifi`,
   // "Free of" in other languages: "ohne Schweinefleisch", "sans porc", "bebas babi", "senza alcol".
-  String.raw`${START}(?:sans|sin|senza|ohne|zonder|tanpa|bebas|uden|utan|sem|geen|kein\p{L}{0,2}|pas[\s-]+de|bukan|non|tiada|tiada[\s-]+unsur|tanpa[\s-]+unsur|bebas[\s-]+daripada|tidak[\s-]+mengandungi|ne[\s-]+contient[\s-]+pas[\s-]+de|enth[aä]lt[\s-]+kein\p{L}{0,2}|frei[\s-]+von|libre[\s-]+de|vrij[\s-]+van|fri[\s-]+fr[aå]n|0[,.]?0?%)[\s-]+${OTHER_FOODS}${END}`,
+  String.raw`${START}(?:sans|sin|senza|ohne|zonder|tanpa|bebas|uden|uten|utan|sem|geen|kein\p{L}{0,2}|pas[\s-]+de|bukan|non|tiada|tidak[\s-]+ada|tidak[\s-]+mengandung(?:i)?|bebas[\s-]+daripada|ne[\s-]+contient[\s-]+pas[\s-]+de|enth[aä]lt[\s-]+kein\p{L}{0,2}|frei[\s-]+von|libre[\s-]+de|vrij[\s-]+van|fri[\s-]+(?:fr[aå]n|f[oö]r)|(?<![\p{N},.])0[,.]?0?%)[\s-]+(?:(?:lemak|bahan|unsur|dna|daripada)[\s-]+){0,2}${OTHER_FOODS}${END}`,
+  String.raw`${START}(?:ne[\s-]+contient[\s-]+pas|pas)[\s-]+d'${OTHER_FOODS}${END}`,
   // Suffix forms ("alkoholfrei", "alcoholvrije", "alkolsuz"), also declined, and "içermez".
-  String.raw`${START}${OTHER_FOODS}[\s-]*(?:frei|vrij|fri|libre|suz|los)(?:e|es|er|en|em|t|tt)?${END}`,
-  String.raw`${START}${OTHER_FOODS}(?:[\s-]+eti)?[\s-]+icermez${END}`,
+  String.raw`${START}${OTHER_FOODS}[\s-]*(?:frei|vrij|fri)(?:e|es|er|en|em|t|tt)?${END}`,
+  String.raw`${START}${OTHER_FOODS}-?suz${END}`,
+  String.raw`${START}${OTHER_FOODS}(?:[\s-]+(?:eti|yagi))?[\s-]+(?:icermez|icermemektedir|yok)${END}`,
 ];
 
 // Arabic, Persian (spelled with the Persian letters the fold produces; no ZWNJ) and Hebrew
@@ -403,6 +411,7 @@ export function hasClaimWord(text: string): boolean {
   return (
     carriesClaim(folded) ||
     carriesClaim(folded.replace(L_READING, 'l')) ||
+    carriesClaim(foldForClaims(text.replace(/[\u0153\u0152]/gu, 'o'))) ||
     carriesClaim(foldForClaims(replaceLeet(prepare(text)))) ||
     carriesClaim(foldForClaims(replaceLeet(prepare(text).replaceAll('1', 'i')))) ||
     carriesClaim(foldForClaims(replaceLeet(prepare(text)).replaceAll('a', 'e'))) ||
