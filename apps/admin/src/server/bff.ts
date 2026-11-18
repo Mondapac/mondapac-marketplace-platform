@@ -18,6 +18,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'system-requests/admin/requests',
     'system-requests/admin/requests-count',
     'system-requests/admin/review-policy',
+    // The queue as a file (CSV or XLSX): the chosen ids or the list's own filter.
+    'system-requests/admin/requests/export',
     'identity/admin/session',
     'identity/admin/sellers',
     // The Seller accounts list (super list 22) and the same rows as a file (CSV or XLSX).
@@ -97,6 +99,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // its export as a file (the chosen ids or the list's own query). The decisions are POSTs below.
     'pricing/admin/price-holds/list',
     'pricing/admin/price-holds/export',
+    // The certificate review queue as a super list (certification; query: `view`, `kind`, `type`,
+    // `q`, `sellerId`, `from`, `to`, `sort`, `direction`, `paging`, `page`, `pageSize`) and its
+    // export as a file (the chosen ids or the list's own query). One certificate is read by its
+    // page server.
+    'certification/admin/seller-certificates/list',
+    'certification/admin/seller-certificates/export',
     // The buyer-review moderation queue (reviews), read-only list (query: `tab`, `cursor`,
     // `limit`); one review is read by its dialog and again after an action.
     'reviews/admin/moderation',
@@ -136,10 +144,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'lists/admin/saved-filters',
     // The manual customer groups (customers, phase 2a), at most 500 per Market.
     'customers/admin/groups',
-    // The buyer account deletion setting, read again after a conflict, and the pending deletion
-    // requests (customers; query: `cursor`, `limit`).
+    // The buyer account deletion setting, read again after a conflict, and the Account deletion
+    // requests super list (customers; query: `view`, `status`, the filters, `sort`, `direction`,
+    // `page`, `pageSize`, or `cursor` and `limit`) with its export as a file.
     'customers/admin/account-deletion-settings',
     'customers/admin/deletion-requests',
+    'customers/admin/deletion-requests/export',
     // "View history" of a settings page (query: `after`, `limit`): when, who by display name and
     // which fields changed, from the audit log.
     'assistant/admin/settings/history',
@@ -796,8 +806,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** An opaque API cursor (base64url or dotted ids): URL-safe characters only. */
 const CURSOR = /^[A-Za-z0-9._~:=-]{1,256}$/;
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
-/** The lists whose saved views cross the generic route: the three Sales lists (and Orders). */
-const SALES_LIST_KEY = /^admin\.ordering\.(orders|shipments|refunds|documents)$/;
+/**
+ * The lists whose saved views cross the generic route: the three Sales lists (and Orders), and
+ * the System requests queue.
+ */
+const GENERIC_LIST_KEY =
+  /^admin\.(ordering\.(orders|shipments|refunds|documents)|system-requests\.requests)$/;
+/** The System requests export: every key is checked, and a malformed one is refused (400). */
+const SYSTEM_REQUESTS_EXPORT = 'system-requests/admin/requests/export';
 
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   // The System requests queue: the view, search, filters, sort and either page numbers or a
@@ -820,6 +836,28 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'page',
     'pageSize',
     'cursor',
+  ],
+  // The System requests export: the list's filter keys (no paging), its sort, the file's format
+  // and columns, the chosen ids and the zone of its times.
+  [SYSTEM_REQUESTS_EXPORT]: [
+    'format',
+    'columns',
+    'ids',
+    'zone',
+    'view',
+    'q',
+    'area',
+    'risk',
+    'status',
+    'requestedBy',
+    'decidedBy',
+    'appliedFrom',
+    'appliedTo',
+    'overdue',
+    'subjectKind',
+    'subjectRef',
+    'sort',
+    'direction',
   ],
   'identity/admin/sellers': ['state', 'limit', 'after'],
   'payments/admin/connected-accounts': [
@@ -1131,6 +1169,35 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
+  // The view, filters, sort and page mode of the certificate queue super list (the API validates).
+  'certification/admin/seller-certificates/list': [
+    'view',
+    'kind',
+    'type',
+    'q',
+    'sellerId',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'paging',
+    'page',
+    'pageSize',
+  ],
+  'certification/admin/seller-certificates/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'kind',
+    'type',
+    'q',
+    'sellerId',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
   'catalog/admin/products': [
     'view',
@@ -1195,7 +1262,38 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
-  'customers/admin/deletion-requests': ['cursor', 'limit'],
+  // The view, filters and page mode of the Account deletion requests super list.
+  'customers/admin/deletion-requests': [
+    'view',
+    'status',
+    'requestedBy',
+    'cancelReason',
+    'q',
+    'from',
+    'to',
+    'scheduledBefore',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+  ],
+  'customers/admin/deletion-requests/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'status',
+    'requestedBy',
+    'cancelReason',
+    'q',
+    'from',
+    'to',
+    'scheduledBefore',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
   // The category tree, narrowed to the categories of one feature set (categories, A4).
   'catalog/admin/categories': ['featureSetId'],
@@ -1255,9 +1353,14 @@ const SALES_EXPORT_STRICT_KEYS = ['ids', 'columns', 'kind', 'format', 'zone'] as
  * oversized. Dropping it would widen the export to the whole filter, so the relay answers 400.
  */
 function malformedSalesExport(target: string, requestUrl: string): boolean {
-  if (!SALES_EXPORT_PATH.test(target)) return false;
+  const strict = SALES_EXPORT_PATH.test(target)
+    ? SALES_EXPORT_STRICT_KEYS
+    : target === SYSTEM_REQUESTS_EXPORT
+      ? (QUERY_KEYS[SYSTEM_REQUESTS_EXPORT] ?? [])
+      : null;
+  if (strict === null) return false;
   const source = new URL(requestUrl).searchParams;
-  return SALES_EXPORT_STRICT_KEYS.some((key) => {
+  return strict.some((key) => {
     const values = source.getAll(key);
     if (values.length === 0) return false;
     const value = values[0] ?? '';
@@ -1303,6 +1406,35 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     pageSize: /^([1-9][0-9]?|100)$/,
     // The API's own cursor: base64url, 200 characters at most.
     cursor: /^[A-Za-z0-9_-]{1,200}$/,
+  },
+  [SYSTEM_REQUESTS_EXPORT]: {
+    format: /^(csv|xlsx)$/,
+    columns: exportColumns([
+      'subject',
+      'requestedBy',
+      'applied',
+      'due',
+      'decidedBy',
+      'decided',
+      'comments',
+    ]),
+    // At most 100 request ids, the cap of the queue's selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
+    zone: EXPORT_ZONE,
+    view: /^(needs-my-review|all-open|mine|approved|reverted|overdue|all)$/,
+    q: /^.{1,100}$/,
+    area: /^[a-z-]{1,24}(,[a-z-]{1,24}){0,7}$/,
+    risk: /^(low|medium|high)(,(low|medium|high)){0,2}$/,
+    status: /^(open|approved|reverted)(,(open|approved|reverted)){0,2}$/,
+    requestedBy: UUID,
+    decidedBy: UUID,
+    appliedFrom: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]{5,12}Z$/,
+    appliedTo: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]{5,12}Z$/,
+    overdue: /^true$/,
+    subjectKind: /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/,
+    subjectRef: /^[A-Za-z0-9._:-]{1,64}$/,
+    sort: /^(applied|due|number)$/,
+    direction: /^(asc|desc)$/,
   },
   'ordering/admin/shipments': {
     stage: /^(to-prepare|ready|shipped|delivered|refunded)$/,
@@ -1644,6 +1776,36 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^(submitted|amount)$/,
     direction: /^(asc|desc)$/,
   },
+  'certification/admin/seller-certificates/list': {
+    view: /^(all|initial|resubmission|renewal)$/,
+    kind: /^(initial|resubmission|renewal)$/,
+    type: /^[a-z0-9][a-z0-9_-]{0,63}$/,
+    // A certificate id or a submission id, exact.
+    q: UUID,
+    sellerId: UUID,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
+    sort: /^(queue|submitted|type)$/,
+    direction: /^(asc|desc)$/,
+    paging: /^(pages|prev-next)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'certification/admin/seller-certificates/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(certificate-id|submission-id|seller-id|submission-no)(,(certificate-id|submission-id|seller-id|submission-no)){0,3}$/,
+    ids: UUID_LIST_200,
+    view: /^(all|initial|resubmission|renewal)$/,
+    kind: /^(initial|resubmission|renewal)$/,
+    type: /^[a-z0-9][a-z0-9_-]{0,63}$/,
+    q: UUID,
+    sellerId: UUID,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
+    sort: /^(queue|submitted|type)$/,
+    direction: /^(asc|desc)$/,
+  },
   'catalog/admin/products': {
     view: /^(active|all|inactive)$/,
     scope: /^(PLATFORM|SELLER)$/,
@@ -1708,7 +1870,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'promotions/admin/customers/:id/credits': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   // Customers phase 2b, part A.
   'promotions/admin/customers/:id/usages': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
-  'lists/admin/saved-filters': { listKey: SALES_LIST_KEY },
+  'lists/admin/saved-filters': { listKey: GENERIC_LIST_KEY },
   'customers/admin/customers/:id/notes': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'commission-payouts/admin/payouts': {
     view: /^(all|awaiting-approval|sending|paid|failed|not-sent)$/,
@@ -1790,9 +1952,40 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     direction: /^(asc|desc)$/,
   },
   'customers/admin/deletion-requests': {
+    view: /^(pending|executing|cancelled|completed|all)$/,
+    // The older list's name of the pending view.
+    status: /^pending$/,
+    requestedBy: /^(customer|admin)$/,
+    cancelReason: /^(customer|sign-in|admin)$/,
+    // A request id or a buyer's account id, exact.
+    q: UUID,
+    // ISO instants: the request time (`to` excluded) and the deletion date.
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    scheduledBefore: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(scheduled|requested|cancelled|completed)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the scheduled date, a dot and the request id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'customers/admin/deletion-requests/export': {
+    format: /^(csv|xlsx)$/,
+    columns: /^(cancelled|cancel-reason|completed)(,(cancelled|cancel-reason|completed)){0,2}$/,
+    // At most 200 request ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(pending|executing|cancelled|completed|all)$/,
+    status: /^pending$/,
+    requestedBy: /^(customer|admin)$/,
+    cancelReason: /^(customer|sign-in|admin)$/,
+    q: UUID,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    scheduledBefore: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(scheduled|requested|cancelled|completed)$/,
+    direction: /^(asc|desc)$/,
   },
   'catalog/admin/categories': { featureSetId: UUID },
   'catalog/admin/category-proposals': { afterId: UUID, limit: /^[0-9]{1,2}$/ },
@@ -1926,7 +2119,7 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 const NOTE_SHAPE = /^[\s\S]{1,500}$/;
 /** DELETE templates whose query crosses: the version seen and the closed reason code. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
-  'lists/admin/saved-filters/:id': { listKey: SALES_LIST_KEY },
+  'lists/admin/saved-filters/:id': { listKey: GENERIC_LIST_KEY },
   'ordering/admin/refund-limits/sellers/:id': { expectedVersion: /^[0-9]{1,9}$/ },
   // The note for the reviewers (System requests), 1 to 500 characters; the API checks it too.
   'commission-payouts/admin/sellers/:id/commission-rate': { note: NOTE_SHAPE },
@@ -1945,9 +2138,12 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'ordering/admin/refunds/export:ids': 7400,
   'ordering/admin/shipments/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
+  'customers/admin/deletion-requests/export:ids': 7400,
   'wallet/admin/credit-requests/export:ids': 7400,
   'commission-payouts/admin/disputes/export:ids': 7400,
+  'system-requests/admin/requests/export:ids': 3700,
   'pricing/admin/price-holds/export:ids': 7400,
+  'certification/admin/seller-certificates/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
   'payments/admin/connected-accounts/export:ids': 7400,

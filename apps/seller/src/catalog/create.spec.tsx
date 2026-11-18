@@ -128,7 +128,8 @@ describe('Add product page', () => {
     expect(screen.getByLabelText('Tax category')).toBeTruthy();
     expect(screen.getByText(/Tags: save the draft first/)).toBeTruthy();
     const submit = screen.getByRole('button', { name: 'Submit for review' });
-    expect((submit as HTMLButtonElement).disabled).toBe(true);
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
+    expect(submit.getAttribute('aria-disabled')).toBe('true');
     expect(
       screen.getByText(
         /To submit: add a title, choose a product type.*category.*tax category.*save the draft first/,
@@ -414,9 +415,14 @@ describe('Add product page', () => {
     });
   });
 
-  it('ties the "To submit" line to the disabled Submit button', () => {
+  it('keeps the unavailable Submit focusable and tied to the "To submit" line', () => {
     mount();
     const submit = screen.getByRole('button', { name: 'Submit for review' });
+    submit.focus();
+    expect(document.activeElement).toBe(submit);
+    expect(submit.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(submit);
+    expect(call).not.toHaveBeenCalled();
     const line = screen.getByText(/^To submit:/);
     expect(submit.getAttribute('aria-describedby')).toBe(line.id);
     expect(line.parentElement?.getAttribute('aria-live')).toBe('polite');

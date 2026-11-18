@@ -11816,8 +11816,7 @@
       }
     },
     "export": {
-      "button": "Export",
-      "hint": "Export comes with saved filters"
+      "button": "Export"
     },
     "waits-for-approval": "Waits for approval",
     "requested": {

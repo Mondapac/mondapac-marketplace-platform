@@ -78,6 +78,7 @@ const ledger = (currency: string) => ({
     refundedCommission: 45n,
     disputeDebits: 0n,
     disputeReinstated: 0n,
+    sellerCashback: 0n,
     balance: 1434n,
   },
   entries: [
@@ -544,6 +545,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         refundedCommission: '45',
         disputeDebits: '0',
         disputeReinstated: '0',
+        sellerCashback: '0',
         balance: '1434',
       },
       entries: [
