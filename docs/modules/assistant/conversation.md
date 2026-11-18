@@ -329,6 +329,33 @@ not sent to the model and, if the model asks for it anyway, the call is refused 
   `preview: false`. Never a query string, cookie, localStorage, log, analytics event or error text.
   The GA4 page view reports origin plus path and never the fragment.
 
+
+## Cart cards in the storefront (stage 1, S1-F1; `apps/web`)
+
+- **Cards rendered.** `cart-action` (add, set quantity, remove), `cart` (read only) and
+  `basket-proposal` (`src/assistant/cart-cards.ts` checks every field; `cart-card-views.tsx` shows
+  them). A bad id, mode, state or total drops the card; a bad price only drops that price. Nothing
+  the model wrote is a link or a number: names are seller text rendered as text, links are built
+  from ids.
+- **Click, then the cart's own routes.** A card never changes the cart. The button calls
+  `POST cart/items`, `PUT` or `DELETE cart/items/:lineId` through the buyer relay with the session
+  and CSRF token (the same functions as the product page), then `refreshCart()` of the store reads
+  the cart again, so the header and the cart page agree. A refused change says so and offers
+  "Try again"; nothing is retried by itself.
+- **Quantity.** A card's quantity is clamped to the chosen unit's `addable` (add) or `maxQuantity`
+  (set); "Most you can add: N" shows when it was lowered; a full cart shows no button.
+- **Single-store.** `otherStore` null or old never means safe: the cart on screen is checked too,
+  and when it holds another store (or an unknown one) the card asks first to save those lines for
+  later or remove them, and adds nothing until the buyer chooses. Multi-store never asks.
+- **Basket proposal.** Edit packs, swap to another product, remove a line, choose an unsure line
+  (unsure lines start unselected), then "Add all": one add per line in order, a result per line,
+  "Try the rest again" repeats only the lines not added. Needs the sell unit (`variantId`) on each
+  line and option; a line without one cannot be added. Totals are price x packs of the card's own
+  figures; delivery and minimum orders say "shown at checkout".
+- **Not built here.** "Save for later" of a whole list: the cart's saved route takes only a cart
+  line id, so a list cannot be saved without adding it first. The notice `cart-sign-in` is shown
+  as text.
+
 ## Tables (Mojtaba's sign-off before merge)
 
 Migration `20261116210000_assistant_basket_proposals_setting` adds `settings.basket_proposals`
@@ -336,8 +363,11 @@ Migration `20261116210000_assistant_basket_proposals_setting` adds `settings.bas
 
 Migration `20261019224946_assistant_conversations`. `conversations`: one owner (account, or a
 32-byte guest token hash), `turns` 0 to 30, `retention_days` 0 or 30 (365 for an account only),
-index on (`market_id`, `retention_days`, `last_message_at`) for the purge; the application role
-updates only `turns` and `last_message_at`. `messages`: PK (Market, conversation,
+index on (`market_id`, `retention_days`, `last_message_at`) for the purge (the admin customer
+page's assistant section, customers phase 2b, reads one account's conversation count and dates
+through the buyer list's partial (`market_id`, `account_id`, `last_message_at` DESC, `id` DESC)
+index; it adds no index of its own); the application role updates only `turns` and
+`last_message_at`. `messages`: PK (Market, conversation,
 position 1 to 60), `text_cipher`, card refs (ids only, at most 40), cascade delete with the
 conversation; the application role can neither UPDATE nor DELETE them. `spend_days`: PK (Market, day), counts
 never negative, one auto-off record per day; never deleted by the application role.

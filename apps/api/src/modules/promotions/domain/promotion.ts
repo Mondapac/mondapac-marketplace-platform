@@ -23,8 +23,16 @@ export type CreditType = (typeof CREDIT_TYPES)[number];
 export const isCreditType = (type: string): type is CreditType =>
   (CREDIT_TYPES as readonly string[]).includes(type);
 
-/** The segments of a customer-group discount. */
-export const SEGMENT_KINDS = ['RETURNING_CUSTOMER', 'DELIVERY_ZONE', 'MANUAL_GROUP'] as const;
+/**
+ * The segments of a customer-group discount. SELLER_EXCLUSIVE (customers phase 4a) is a seller's
+ * own discount for the customers who joined through its invite link: seller-funded, on its items.
+ */
+export const SEGMENT_KINDS = [
+  'RETURNING_CUSTOMER',
+  'DELIVERY_ZONE',
+  'MANUAL_GROUP',
+  'SELLER_EXCLUSIVE',
+] as const;
 export type SegmentKind = (typeof SEGMENT_KINDS)[number];
 
 /** The types a person creates; the first-order discount comes from the Market's settings. */
@@ -248,8 +256,10 @@ export function layerOf(
     case 'FIRST_ORDER':
     case 'TIERED_CART':
     case 'BATCH_CODE':
-    case 'CUSTOMER_GROUP':
       return 'PLATFORM_CART';
+    // A seller's customer-group discount (its exclusive customers) is on its own items only.
+    case 'CUSTOMER_GROUP':
+      return kind === 'seller' ? 'SELLER_CART' : 'PLATFORM_CART';
     case 'STORE_FOLLOWER':
       return 'SELLER_CART';
     case 'FREE_SHIPPING':
@@ -837,6 +847,10 @@ function checkTypeFields(
         if (draft.segmentMinDays !== null) bad('segment.minDaysSinceLastOrder', 'not-allowed');
         if (draft.zones.length > 0) bad('zones', 'not-allowed');
       }
+      if (draft.segmentKind === 'SELLER_EXCLUSIVE') {
+        if (draft.segmentMinDays !== null) bad('segment.minDaysSinceLastOrder', 'not-allowed');
+        if (draft.zones.length > 0) bad('zones', 'not-allowed');
+      }
       break;
     case 'STORE_FOLLOWER':
       // A seller's own store: it needs no target; any of its products qualify.
@@ -921,14 +935,23 @@ export function checkDraft(
   }
 
   // Who may make which type, and with whose money.
+  // A seller's customer-group discount is for its own exclusive customers, and only a seller has
+  // exclusive customers.
+  const exclusiveSegment =
+    draft.type === 'CUSTOMER_GROUP' && draft.segmentKind === 'SELLER_EXCLUSIVE';
   if (seller) {
-    if (ADMIN_ONLY_TYPES.includes(draft.type)) bad('type', 'not-allowed');
+    if (draft.type === 'CUSTOMER_GROUP') {
+      if (draft.segmentKind !== null && !exclusiveSegment) bad('segment.kind', 'not-allowed');
+    } else if (ADMIN_ONLY_TYPES.includes(draft.type)) {
+      bad('type', 'not-allowed');
+    }
     if (draft.funding !== 'SELLER') bad('funding', 'seller-money-only');
     if (draft.specialCampaign) bad('specialCampaign', 'not-allowed');
     if (draft.testMode) bad('testMode', 'not-allowed');
     if (draft.sellerIds.length > 0) bad('sellerIds', 'not-allowed');
   } else {
     if (SELLER_ONLY_TYPES.includes(draft.type)) bad('type', 'not-allowed');
+    if (exclusiveSegment) bad('segment.kind', 'not-allowed');
     if (draft.type === 'CO_FUNDED_CAMPAIGN') {
       if (draft.funding !== 'CO_FUNDED') bad('funding', 'value');
     } else if (draft.funding !== 'PLATFORM') {

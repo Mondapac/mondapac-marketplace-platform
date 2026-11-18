@@ -34,6 +34,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // the public list and the worker's due-posts index, and the outbox's unpublished index.
   'assistant.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON assistant.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // Customers phase 2b, part 4: legal's outbox (consent changed).
+  'legal.outbox_market_id_event_id_unpublished_idx':
+    'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON legal.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'reviews.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON reviews.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'system_requests.outbox_market_id_event_id_unpublished_idx':
@@ -260,6 +263,14 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX customer_directory_email_prefix_idx ON customers.customer_directory USING btree (market_id, email_lower text_pattern_ops) WHERE (email_lower <> ''::text)",
   'customers.saved_filters_shared_name_key':
     "CREATE UNIQUE INDEX saved_filters_shared_name_key ON customers.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
+  // Customers phase 4a: the rejected or flagged attributions an admin reviews, and one live invite
+  // link per seller.
+  'customers.seller_attributions_market_id_suspicious_idx':
+    "CREATE INDEX seller_attributions_market_id_suspicious_idx ON customers.seller_attributions USING btree (market_id, attributed_at DESC, account_id DESC) WHERE ((status = 'rejected'::text) OR (flags <> '{}'::text[]))",
+  'customers.seller_invite_links_one_live_per_seller_key':
+    'CREATE UNIQUE INDEX seller_invite_links_one_live_per_seller_key ON customers.seller_invite_links USING btree (market_id, seller_id) WHERE (revoked_at IS NULL)',
+  'identity.accounts_market_id_pending_email_requested_at_idx':
+    'CREATE INDEX accounts_market_id_pending_email_requested_at_idx ON identity.accounts USING btree (market_id, pending_email_requested_at) WHERE (pending_email_requested_at IS NOT NULL)',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
   'identity.invitations_market_id_email_pending_platform_key':

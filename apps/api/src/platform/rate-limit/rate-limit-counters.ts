@@ -9,11 +9,17 @@ export const RATE_LIMIT_WINDOW_SECONDS = 60;
  * limit. `assistant-message`: the buyer assistant's messages per guest token, per origin and per
  * customer account (plan section 8: 10-minute windows, the limits are Market settings).
  * `checkout-payment`: the card payment attempts of a customer account (10-minute window; the limit
- * is a constant of ordering). A new class also needs a migration that widens `rate_limit_counters_key_check`.
+ * is a constant of ordering). `admin-customer-password-reset` and `admin-customer-pii-reveal`:
+ * an admin's "send password reset" and the reveals of a customer's personal data (a sign-in's
+ * address, a delivery address) on the customer page, per admin account (one-hour windows, the
+ * limits are the Market's `customers.adminActionLimits`; security review of #969, L2/L3). A new
+ * class also needs a migration that widens `rate_limit_counters_key_check`.
  */
 export const SUBJECT_LIMIT_WINDOWS = Object.freeze({
   'assistant-message': 600,
   'checkout-payment': 600,
+  'admin-customer-password-reset': 3600,
+  'admin-customer-pii-reveal': 3600,
 } as const);
 export type SubjectLimitClass = keyof typeof SUBJECT_LIMIT_WINDOWS;
 

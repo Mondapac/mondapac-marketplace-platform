@@ -7,6 +7,7 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import { RecordingSecurityEvents } from '../../../../test/support/recording-security-events';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { AuthorisationCheck, StepUpProofConsumer } from '../../../platform/authz';
@@ -20,6 +21,7 @@ import type { IdentityManagementPeer } from './ports/customer-management-peers';
 import type { SheetWriter } from './ports/sheet-writer';
 import { ActorOrMarketDayZone } from '../infrastructure/actor-or-market-day-zone';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
+import { MemoryAdminActionLimits } from './testing/memory-admin-action-limits';
 import {
   FakeNoteCipher,
   InMemoryCustomerGroups,
@@ -42,6 +44,8 @@ import { AdminCustomerRename } from './use-cases/admin-customer-rename.use-case'
 import { AdminCustomerTimeline } from './use-cases/admin-customer-timeline.use-case';
 import { AdminCustomerTimelineExport } from './use-cases/admin-customer-timeline-export.use-case';
 import { ReadCustomerGroupMembership } from './use-cases/read-customer-group-membership.use-case';
+import { CustomerReviewEventsCheck } from './use-cases/customer-review-events-check.use-case';
+import { CustomerConsentEventsCheck } from './use-cases/customer-consent-events-check.use-case';
 
 // Customers management phase 2 (PR 2a) in memory, on both Market fixtures: manual groups (access
 // keys, names unique whatever the case, versions, archive, members by ids and by "select all
@@ -57,6 +61,8 @@ const NOTES = 'customers.customer-notes.write';
 const EDIT = 'customers.customers.edit';
 const EXPORT = 'customers.customers.export';
 const REVEAL = 'customers.customer-address.reveal';
+const REVIEWS = 'reviews.customer-review.view';
+const CONSENT = 'legal.customer-consent.view';
 
 describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code) => {
   const market: MarketContext = testMarketContext(code, 'default');
@@ -160,6 +166,24 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
         );
       },
     });
+    const reviewsCheck = new CustomerReviewEventsCheck(gate);
+    /** Whether the review-events probe answers as the gate does, or cannot answer. */
+    const probeState = { unavailable: false };
+    const probe: CustomerManagementDependencies['reviewEventsCheck'] = {
+      execute: (context, input) =>
+        probeState.unavailable
+          ? Promise.resolve(err({ code: 'access.unavailable' }))
+          : reviewsCheck.execute(context, input),
+    };
+    const consentCheck = new CustomerConsentEventsCheck(gate);
+    /** Whether the consent-events probe answers as the gate does, or cannot answer. */
+    const consentProbeState = { unavailable: false };
+    const consentProbe: CustomerManagementDependencies['consentEventsCheck'] = {
+      execute: (context, input) =>
+        consentProbeState.unavailable
+          ? Promise.resolve(err({ code: 'access.unavailable' }))
+          : consentCheck.execute(context, input),
+    };
     const deps: CustomerManagementDependencies = {
       groupUsage: usageRegistry,
       addresses,
@@ -177,6 +201,10 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
       sheetWriter,
       identity,
       dayZone: new ActorOrMarketDayZone(markets, identity),
+      reviewEventsCheck: probe,
+      consentEventsCheck: consentProbe,
+      adminLimits: new MemoryAdminActionLimits(markets, clock),
+      securityEvents: new RecordingSecurityEvents(),
     };
     const admin = (keys: readonly string[], inMarket: MarketContext = market) => {
       const accountId = ids.next<'Account'>();
@@ -196,6 +224,8 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
     };
     return {
       deps,
+      probeState,
+      consentProbeState,
       groupUses,
       addresses,
       addressCipher,
@@ -690,6 +720,157 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
       ).toBe('validation.failed');
       const opened = t.audits.filter((entry) => entry.action === 'customers.customer-page.opened');
       expect(opened).toHaveLength(3);
+    });
+
+    it('shows the review kinds only with reviews’ own key, filtered in the query (L1)', async () => {
+      const { t, customer } = await withEntries();
+      const review = (kind: 'review-published' | 'review-hidden', days: number) => ({
+        id: ids.next<'CustomerTimelineEntry'>(),
+        accountId: customer.accountId,
+        occurredAt: NOW.subtract({ hours: 24 * days }),
+        kind,
+        ref: null,
+        actorAccountId: null,
+        detail: null,
+        sourceEventId: ids.next(),
+      });
+      await t.timeline.recordMany(
+        market,
+        [review('review-published', 3), review('review-hidden', 0.5)],
+        NOW,
+      );
+      const viewer = t.admin([VIEW]);
+      const both = t.admin([VIEW, REVIEWS]);
+      const read = async (who: { context: CallContext }, extra: Record<string, unknown> = {}) => {
+        const page = await t.readTimeline.execute(who.context, {
+          accountId: customer.accountId,
+          ...extra,
+        });
+        if (!page.ok) throw new Error(page.error.code);
+        return { kinds: page.value.items.map((item) => item.kind), total: page.value.total };
+      };
+      // Without the key: not on any page, not in the total, so the pages agree with it.
+      expect(await read(viewer)).toEqual({
+        kinds: ['note-added', 'order-paid', 'order-paid', 'signed-up'],
+        total: 4,
+      });
+      const first = await read(viewer, { pageSize: 2 });
+      expect(first).toEqual({ kinds: ['note-added', 'order-paid'], total: 4 });
+      const second = await read(viewer, { pageSize: 2, page: 2 });
+      expect(second.kinds).toEqual(['order-paid', 'signed-up']);
+      // The category or the kinds alone: an empty list, not an error.
+      expect(await read(viewer, { filters: { category: 'reviews' } })).toEqual({
+        kinds: [],
+        total: 0,
+      });
+      expect(await read(viewer, { filters: { kinds: ['review-hidden', 'signed-up'] } })).toEqual({
+        kinds: ['signed-up'],
+        total: 1,
+      });
+      // With it: every kind, and the category.
+      expect(await read(both, { pageSize: 5 })).toEqual({
+        kinds: ['review-hidden', 'note-added', 'order-paid', 'review-published', 'order-paid'],
+        total: 6,
+      });
+      expect((await read(both, { filters: { category: 'reviews' } })).total).toBe(2);
+      // A check the gate cannot answer is no page at all.
+      t.probeState.unavailable = true;
+      expect(
+        failure(await t.readTimeline.execute(both.context, { accountId: customer.accountId })),
+      ).toBe('access.unavailable');
+      t.probeState.unavailable = false;
+
+      // The export: the same rule on the same query.
+      const exporter = t.admin([VIEW, EXPORT]);
+      const reviewer = t.admin([VIEW, EXPORT, REVIEWS]);
+      const lines = async (who: { context: CallContext }) => {
+        const file = await t.exportTimeline.execute(who.context, {
+          accountId: customer.accountId,
+        });
+        if (!file.ok) throw new Error(file.error.code);
+        return (await collect(file.value.chunks)).split('\r\n').filter((line) => line !== '');
+      };
+      const plain = await lines(exporter);
+      expect(plain).toHaveLength(5);
+      expect(plain.join('\n')).not.toContain('review-');
+      expect(await lines(reviewer)).toHaveLength(7);
+      const none = await t.exportTimeline.execute(exporter.context, {
+        accountId: customer.accountId,
+        filters: { category: 'reviews' },
+      });
+      if (!none.ok) throw new Error(none.error.code);
+      expect((await collect(none.value.chunks)).split('\r\n').filter((l) => l !== '')).toHaveLength(
+        1,
+      );
+    });
+
+    it('shows the consent kind only with legal’s consent key, filtered in the query (part 4)', async () => {
+      const { t, customer } = await withEntries();
+      const consent = (days: number) => ({
+        id: ids.next<'CustomerTimelineEntry'>(),
+        accountId: customer.accountId,
+        occurredAt: NOW.subtract({ hours: 24 * days }),
+        kind: 'consent-changed' as const,
+        ref: null,
+        actorAccountId: null,
+        detail: 'email',
+        sourceEventId: ids.next(),
+      });
+      await t.timeline.recordMany(market, [consent(20), consent(0.5)], NOW);
+      const read = async (who: { context: CallContext }, extra: Record<string, unknown> = {}) => {
+        const page = await t.readTimeline.execute(who.context, {
+          accountId: customer.accountId,
+          ...extra,
+        });
+        if (!page.ok) throw new Error(page.error.code);
+        return {
+          rows: page.value.items.map((item) => [item.kind, item.category, item.detail]),
+          total: page.value.total,
+        };
+      };
+      // Without legal's key: not on the page, not in the total (the count would tell the value),
+      // and a filter on the kind alone is an empty list.
+      const viewer = t.admin([VIEW]);
+      expect((await read(viewer)).total).toBe(4);
+      expect(await read(viewer, { filters: { kinds: ['consent-changed'] } })).toEqual({
+        rows: [],
+        total: 0,
+      });
+      expect((await read(viewer, { filters: { category: 'account' } })).rows).toEqual([
+        ['signed-up', 'account', null],
+      ]);
+      // With it: the channel as the detail, in the account category; never a value.
+      const legal = t.admin([VIEW, CONSENT]);
+      expect(await read(legal, { filters: { category: 'account' } })).toEqual({
+        rows: [
+          ['consent-changed', 'account', 'email'],
+          ['consent-changed', 'account', 'email'],
+          ['signed-up', 'account', null],
+        ],
+        total: 3,
+      });
+      // The review key does not open the consent kind, nor the other way round.
+      const reviewer = t.admin([VIEW, REVIEWS]);
+      expect((await read(reviewer, { filters: { kinds: ['consent-changed'] } })).total).toBe(0);
+      // A check the gate cannot answer is no page at all.
+      t.consentProbeState.unavailable = true;
+      expect(
+        failure(await t.readTimeline.execute(legal.context, { accountId: customer.accountId })),
+      ).toBe('access.unavailable');
+      t.consentProbeState.unavailable = false;
+
+      // The export: the same rule on the same query.
+      const lines = async (keys: readonly string[]) => {
+        const file = await t.exportTimeline.execute(t.admin(keys).context, {
+          accountId: customer.accountId,
+        });
+        if (!file.ok) throw new Error(file.error.code);
+        return (await collect(file.value.chunks)).split('\r\n').filter((line) => line !== '');
+      };
+      const plain = await lines([VIEW, EXPORT]);
+      expect(plain).toHaveLength(5);
+      expect(plain.join('\n')).not.toContain('consent-changed');
+      expect(await lines([VIEW, EXPORT, CONSENT])).toHaveLength(7);
     });
 
     it('reads the from and to days in the Market’s zone, or in the admin’s own (ADR-0005)', async () => {

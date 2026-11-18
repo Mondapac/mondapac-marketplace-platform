@@ -32,6 +32,7 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
+import { MarketRegistry } from '../src/platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { ORDER_REPOSITORY } from '../src/modules/ordering/application/ports/order.repository';
@@ -435,6 +436,25 @@ describe.each(TEST_MARKETS)('customers management routes over HTTP in market %s'
       .set(manager)
       .send({ accountId: BUYER });
     expect(stray.status).toBe(400);
+
+    // The per-admin reveal limit (security review of #969, L3): the shown and the missing reveal
+    // counted, the viewer's refusal and the stray body did not.
+    const limit = app!.get(MarketRegistry).get(market.marketId).customers!.adminActionLimits
+      .piiRevealsPerHour;
+    for (let index = 2; index < limit; index += 1) {
+      expect((await http().post(`${base}/${addressId}/reveal`).set(manager).send({})).status).toBe(
+        200,
+      );
+    }
+    const throttled = await http().post(`${base}/${addressId}/reveal`).set(manager).send({});
+    expect(throttled.status).toBe(429);
+    expect(throttled.body).toMatchObject({ statusCode: 429, code: 'request.throttled' });
+    expect(throttled.headers['retry-after']).toBe(
+      String(
+        (throttled.body as { details: { retryAfterSeconds: number } }).details.retryAfterSeconds,
+      ),
+    );
+    expect(JSON.stringify(throttled.body)).not.toContain('Hidden');
   });
 
   it('writes and reads a note without caching, and reads the activity', async () => {

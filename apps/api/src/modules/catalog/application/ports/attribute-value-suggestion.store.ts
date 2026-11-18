@@ -10,6 +10,18 @@ import type {
  * never deleted: a decision is one conditional update out of `open`, and a notice move is one
  * conditional update out of `pending`.
  */
+/** The filter of the admin list of open value suggestions. */
+export interface OpenSuggestionsFilter {
+  /** A fragment of the seller's text; null: all. */
+  readonly text: string | null;
+}
+
+export interface OpenSuggestionsPage extends OpenSuggestionsFilter {
+  readonly direction: 'asc' | 'desc';
+  readonly offset: number;
+  readonly limit: number;
+}
+
 export interface AttributeValueSuggestionStore {
   findById(
     market: MarketContext,
@@ -40,8 +52,17 @@ export interface AttributeValueSuggestionStore {
   /** How many suggestions of this seller are open. */
   openCountOfSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<number>;
 
-  /** Open suggestions, oldest first, at most `limit`. */
-  listOpen(market: MarketContext, limit: number): Promise<readonly AttributeValueSuggestion[]>;
+  /**
+   * Open suggestions for the admin list, one page by creation time (`direction`), `offset` rows
+   * skipped, at most `limit`, optionally only those whose text holds `text` (case-insensitive).
+   */
+  pageOpen(
+    market: MarketContext,
+    page: OpenSuggestionsPage,
+  ): Promise<readonly AttributeValueSuggestion[]>;
+
+  /** How many open suggestions match the same filter (the total of the list). */
+  countOpen(market: MarketContext, filter: OpenSuggestionsFilter): Promise<number>;
 
   /** One product's suggestions in every status, newest first, at most `limit`. */
   listOfProduct(

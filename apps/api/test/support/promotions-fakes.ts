@@ -19,6 +19,7 @@ import type {
   Known,
   StoreFollows,
   CustomerGroupMembership,
+  ExclusiveCustomers,
 } from '../../src/modules/promotions/application/ports/customer-facts';
 import type {
   DeliveredOrderFacts,
@@ -76,6 +77,7 @@ import { displayStatusOf } from '../../src/modules/promotions/domain/display-sta
 import {
   RedemptionTakenError,
   type RedemptionRepository,
+  type UsageCursor,
   type UsageDelta,
 } from '../../src/modules/promotions/application/ports/redemption.repository';
 import type {
@@ -620,6 +622,35 @@ export class FakeBatchCodeCrypto implements BatchCodeCrypto {
  */
 export class MemoryRedemptions implements RedemptionRepository {
   readonly rows: RedemptionRecord[] = [];
+  /** Promotion names by id, for {@link forCustomer} (a test sets them). */
+  readonly names = new Map<string, string>();
+  forCustomer(
+    _market: MarketContext,
+    customerAccountId: Id<'Account'>,
+    limit: number,
+    after: UsageCursor | null,
+  ) {
+    const newestFirst = (a: RedemptionRecord, b: RedemptionRecord) =>
+      Temporal.Instant.compare(b.reservedAt, a.reservedAt) ||
+      (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+    const rows = this.rows
+      .filter((row) => row.kind !== 'ORDER' && row.customerAccountId === customerAccountId)
+      .filter(
+        (row) =>
+          after === null ||
+          Temporal.Instant.compare(row.reservedAt, after.reservedAt) < 0 ||
+          (Temporal.Instant.compare(row.reservedAt, after.reservedAt) === 0 && row.id < after.id),
+      )
+      .sort(newestFirst)
+      .slice(0, limit);
+    return Promise.resolve(
+      rows.map((record) => ({
+        record,
+        promotionName:
+          record.promotionId === null ? null : (this.names.get(record.promotionId) ?? null),
+      })),
+    );
+  }
   readonly claims = new Map<string, string>();
   /** The rows of the discounts, without the orders' head rows. */
   get discounts(): RedemptionRecord[] {
@@ -840,6 +871,23 @@ export class FakeCustomerOrderHistory implements CustomerOrderHistory {
 
 /** Which sellers a customer follows: unknown until a test says otherwise. */
 /** Manual customer groups as the quote reads them: unknown unless a test puts the customer in. */
+/** Whose exclusive customer each account is; `broken` answers unknown, `throws` rejects. */
+export class FakeExclusiveCustomers implements ExclusiveCustomers {
+  readonly sellers = new Map<string, Id<'Seller'>>();
+  broken = false;
+  throws = false;
+  reads = 0;
+  exclusiveSellerOf(_context: CallContext, accountId: Id<'Account'>) {
+    this.reads += 1;
+    if (this.throws) return Promise.reject(new Error('customers unreachable'));
+    if (this.broken) return Promise.resolve({ known: false } as Known<Id<'Seller'> | null>);
+    return Promise.resolve({
+      known: true,
+      value: this.sellers.get(accountId) ?? null,
+    } as Known<Id<'Seller'> | null>);
+  }
+}
+
 export class FakeGroupMembership implements CustomerGroupMembership {
   readonly members = new Map<string, Set<Id<'Account'>>>();
   broken = false;
@@ -1183,6 +1231,7 @@ export function phase3Fakes() {
     orderHistory: new FakeCustomerOrderHistory(),
     storeFollows: new FakeStoreFollows(),
     groupMembership: new FakeGroupMembership(),
+    exclusiveCustomers: new FakeExclusiveCustomers(),
     orderFacts: new FakeOrderFacts(),
     referralSignals: new FakeReferralSignals(),
     walletCredit: new FakeWalletCredit(),

@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
+import { isPlatformAdminActor } from '../../../platform/authz';
 import type { ChangeScope, LastChanged } from '../../../platform/audit/change-trail';
 import { SupportContactChanged } from '../domain/audit';
 import { parseSupportEmail } from '../domain/support-email';
@@ -42,15 +43,12 @@ export interface PublicSupportContact {
   readonly email: string | null;
 }
 
-const isAdmin = (context: CallContext): boolean =>
-  context.actor.kind === 'authenticated' && context.actor.population === 'admin';
-
 /** The address in force: the newest admin version, else the Market default. */
 export async function viewSupportContact(
   deps: NotificationsDependencies,
   context: CallContext,
 ): Promise<Result<SupportContactView, SupportContactFailure>> {
-  if (!isAdmin(context)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   return deps.unitOfWork.run<SupportContactView, SupportContactFailure>(
     context.market,
     async () => {

@@ -3,7 +3,7 @@
 import { Banner, Button, CheckboxRow, Dialog, Menu, Select, TextField } from '@mondapac/ui';
 import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { callApi, type ApiFailure, type ApiResult } from '../api/client.ts';
 import { formatMinor, parseAmount } from '../wallet/money.ts';
 import { cancelBlock, refundBlock, refundsOf, shippingLeft, unitsLeft } from './refunds.ts';
@@ -159,16 +159,28 @@ export function OrderMoreMenu({
   order,
   canRefund,
   csrfToken,
+  startOpen = false,
 }: {
   readonly order: AdminOrderDetail;
   readonly canRefund: boolean;
   readonly csrfToken: string;
+  /** The page was reached from the list's "Cancel order…": the dialog is open (when it can be). */
+  readonly startOpen?: boolean;
 }) {
   const t = useTranslations('orders.actions');
-  const [open, setOpen] = useState(false);
-  const [done, setDone] = useState<CancelAnswer | null>(null);
-  if (!canRefund) return null;
   const block = cancelBlock(order);
+  const [open, setOpen] = useState(startOpen && block === null);
+  const [done, setDone] = useState<CancelAnswer | null>(null);
+  // The `?do=cancel` link did its job once the page is up: drop it, so a reload does not open the
+  // dialog again, and a stale page is not left with a link that opens nothing.
+  useEffect(() => {
+    if (!startOpen) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('do') !== 'cancel') return;
+    url.searchParams.delete('do');
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+  }, [startOpen]);
+  if (!canRefund) return null;
   return (
     <>
       <div className="ms-auto">
