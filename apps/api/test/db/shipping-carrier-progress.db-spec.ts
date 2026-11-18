@@ -44,6 +44,8 @@ beforeAll(async () => {
   owner = new Client({ connectionString: ownerTestDatabaseUrl() });
   await owner.connect();
   // 100,000 delivered bookings over the two Market fixtures (delivered: the poll never reads them).
+  // Invariant the plan test relies on: every volume row is 'delivered' with VOLUME_STATUS, so the
+  // poll and the other tests never touch them, and the 100 picked ids are all volume rows.
   for (const code of TEST_MARKETS) {
     await owner.query(
       `INSERT INTO shipping.carrier_bookings (id, market_id, tenant_id, seller_order_id, order_id,
@@ -209,8 +211,25 @@ describe.each(TEST_MARKETS)('carrier progress read in market %s (database)', (co
     const reads = recorder.statements.filter((text) => /carrier_bookings/.test(text));
     expect(reads).toHaveLength(1);
     const statement = reads[0]!;
-    // Only the six columns; never the carrier reference or the tracking link.
+    // Only the six columns (and the id Prisma adds, which never leaves the mapping); never the
+    // carrier reference or the tracking link.
     expect(statement).not.toMatch(/carrier_reference|tracking_url/);
+    const selectList = /^\s*SELECT\s+(.*?)\s+FROM\s/is.exec(statement)?.[1] ?? '';
+    const selected = selectList
+      .split(',')
+      .map((part) => /"([a-z_]+)"\s*$/.exec(part.trim())?.[1])
+      .sort();
+    expect(selected).toEqual(
+      [
+        'carrier_status',
+        'fleet',
+        'id',
+        'pod_recorded_at',
+        'progress',
+        'seller_order_id',
+        'updated_at',
+      ].sort(),
+    );
     expect(statement).toMatch(/"market_id"\s*=\s*\$1/);
 
     // The plan of that exact statement, with the values Prisma bound: the Market, then the ids
@@ -238,7 +257,8 @@ describe.each(TEST_MARKETS)('carrier progress read in market %s (database)', (co
     expect(nodes.filter((node) => node['Node Type'] === 'Seq Scan')).toEqual([]);
     const probe = nodes.find((node) => node['Index Name'] === INDEX);
     expect(probe).toBeDefined();
-    expect(probe!['Node Type']).toBe('Index Scan');
+    // Any probe of that index is fine: the planner may pick an index-only or a bitmap scan.
+    expect(['Index Scan', 'Index Only Scan', 'Bitmap Index Scan']).toContain(probe!['Node Type']);
     const cond = String(probe!['Index Cond']);
     expect(cond).toMatch(/market_id/);
     expect(cond).toMatch(/seller_order_id/);

@@ -338,6 +338,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "customers.read-exclusive-seller", "rule": "system" },
   {
     "name": "customers.read-own-last-order",
     "rule": "own-resources",

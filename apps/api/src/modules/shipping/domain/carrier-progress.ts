@@ -39,9 +39,10 @@ export interface CarrierProgressView {
 /**
  * The only carrier status shape shown to an admin. The database allows any printable ASCII
  * code; this keeps markup- or formula-shaped text (`<`, `>`, `=`, `+`, quotes, spaces) out of
- * every screen and export even if a future fleet adapter stores one (Hassan H3).
+ * every screen and export even if a future fleet adapter stores one (Hassan H3). It starts with a
+ * letter or digit, so a leading `-` (a formula in a spreadsheet) is refused too (Hassan S-1).
  */
-export const SHOWN_CARRIER_STATUS = /^[A-Za-z0-9_.-]{1,60}$/;
+export const SHOWN_CARRIER_STATUS = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,59}$/;
 
 export function shownCarrierStatus(value: string): string | null {
   return SHOWN_CARRIER_STATUS.test(value) ? value : null;
