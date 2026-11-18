@@ -27,6 +27,8 @@ import { RecentActivity } from './customer-activity.tsx';
 import { CustomerEditDialog } from './customer-edit.tsx';
 import { CustomerGroupsCard } from './customer-groups-card.tsx';
 import { CustomerMoney } from './customer-money.tsx';
+import { CustomerReviews } from './customer-reviews.tsx';
+import { CustomerShopping } from './customer-shopping.tsx';
 import { CustomerNotes } from './customer-notes.tsx';
 import { CustomerStatusDialog, type StatusTarget } from './customer-status.tsx';
 import { copyText } from './customers-list.tsx';
@@ -39,6 +41,7 @@ import {
   WALLET_VIEW,
   averageMinor,
   tabsFor,
+  UNAUDITED_TABS,
   type CustomerOverview,
   type Tab,
 } from './page-types.ts';
@@ -223,6 +226,8 @@ export function CustomerPage({
   // Orders and Money: the opening is audited once per visit, before their data is read.
   useEffect(() => {
     if (tab === 'overview' || page.state !== 'ready' || audits[tab] !== undefined) return;
+    // The shopping and reviews tabs have no tab-opened audit (the API takes three tabs only).
+    if (UNAUDITED_TABS.includes(tab)) return;
     setAudits((current) => ({ ...current, [tab]: 'pending' }));
     void callApi('POST', `customers/admin/customers/${id}/tab-opened`, { tab }, csrfToken).then(
       (result) => setAudits((current) => ({ ...current, [tab]: result.ok ? 'ok' : 'failed' })),
@@ -521,6 +526,29 @@ export function CustomerPage({
               />
             </Card>
           </div>
+        ) : tab === 'shopping' || tab === 'reviews' ? (
+          // Phase 2b part C: each section reads on its own, under its own key.
+          tab === 'shopping' ? (
+            <CustomerShopping
+              accountId={accountId}
+              adminAccountId={adminAccountId}
+              marketId={marketId}
+              csrfToken={csrfToken}
+              zone={zone}
+              paging={paging}
+              keys={keys}
+            />
+          ) : (
+            <CustomerReviews
+              accountId={accountId}
+              adminAccountId={adminAccountId}
+              marketId={marketId}
+              csrfToken={csrfToken}
+              zone={zone}
+              paging={paging}
+              keys={keys}
+            />
+          )
         ) : audits[tab] === 'failed' ? (
           <Banner tone="critical">
             <div className="flex flex-wrap items-center justify-between gap-3">

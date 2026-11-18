@@ -9,7 +9,18 @@ export const WALLET_ISSUE = 'wallet.credit.issue';
 export const PROMOTIONS_VIEW = 'promotions.promotion.view';
 export const BUYER_DELETE = 'customers.buyer-account.delete';
 
-export const TABS = ['overview', 'orders', 'money'] as const;
+// Phase 2b, part C (Shopping and Reviews tabs): each section is under its owner's key.
+export const CART_VIEW = 'cart.customer-cart.view';
+export const REMINDER_VIEW = 'notifications.customer-cart-reminder.view';
+export const BEHAVIOUR_VIEW = 'engagement.customer-behaviour.view';
+export const ASSISTANT_VIEW = 'assistant.customer-conversation.view';
+export const REVIEWS_VIEW = 'reviews.customer-review.view';
+/** The tabs of part C and the keys of their sections: a tab shows when the admin holds one. */
+export const SHOPPING_KEYS = [CART_VIEW, REMINDER_VIEW, BEHAVIOUR_VIEW, ASSISTANT_VIEW] as const;
+/** Tabs that have no `tab-opened` audit (the customers API takes only overview, orders, money). */
+export const UNAUDITED_TABS: readonly string[] = ['shopping', 'reviews'];
+
+export const TABS = ['overview', 'orders', 'money', 'shopping', 'reviews'] as const;
 export type Tab = (typeof TABS)[number];
 
 export const isTab = (value: unknown): value is Tab =>
@@ -20,7 +31,12 @@ export const isTab = (value: unknown): value is Tab =>
  * always has its Spent and Refunded figures (they come with the page); its sections need keys.
  */
 export const tabsFor = (keys: ReadonlySet<string>): readonly Tab[] =>
-  TABS.filter((tab) => tab !== 'orders' || keys.has(ORDERS_VIEW));
+  TABS.filter(
+    (tab) =>
+      (tab !== 'orders' || keys.has(ORDERS_VIEW)) &&
+      (tab !== 'shopping' || SHOPPING_KEYS.some((key) => keys.has(key))) &&
+      (tab !== 'reviews' || keys.has(REVIEWS_VIEW)),
+  );
 
 /** GET customers/admin/customers/:accountId: the header and the Overview. */
 export interface CustomerOverview extends CustomerRow {
@@ -87,4 +103,31 @@ export interface PromotionCredits {
     readonly settledAt: string | null;
   }[];
   readonly nextCursor: string | null;
+}
+
+/** GET customers/admin/customers/:id/cart (cart): ids, never names; money is minor units as digits. */
+export interface CartAnswer {
+  readonly savedCount: number;
+  readonly cart: {
+    readonly createdAt: string;
+    readonly lastChangedAt: string;
+    readonly lines: readonly {
+      readonly offerId: string;
+      readonly variantId: string;
+      readonly quantity: number;
+      readonly priceAtAdd: { readonly amount: string; readonly currency: string };
+      readonly addedAt: string;
+    }[];
+  } | null;
+}
+
+/** GET customers/admin/customers/:id/behaviour (engagement): counts and ids, never search text. */
+export interface BehaviourAnswer {
+  readonly personalization: { readonly enabled: boolean; readonly changedAt: string | null };
+  readonly summary: {
+    readonly productViews: number;
+    readonly categoryViews: number;
+    readonly cartAdditions: number;
+    readonly topCategories: readonly { readonly categoryId: string; readonly views: number }[];
+  };
 }

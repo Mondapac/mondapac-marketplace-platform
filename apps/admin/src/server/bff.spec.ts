@@ -1133,6 +1133,77 @@ describe('relay of the customers list and customer page', () => {
     expect(other.status).toBe(413);
   });
 
+  describe('customers phase 2b part C: shopping and reviews', () => {
+    const SECTIONS = [
+      'saved-items',
+      'cart-reminders',
+      'cart-additions',
+      'assistant-conversations',
+      'reviews',
+      'seller-ratings',
+      'helpful-votes',
+      'review-reports',
+    ];
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it.each([
+      ...SECTIONS.flatMap((name) => [
+        ['POST', `customers/admin/customers/${ID}/${name}`],
+        ['POST', `customers/admin/customers/${ID}/${name}/export`],
+      ]),
+      ['GET', `customers/admin/customers/${ID}/cart`],
+      ['GET', `customers/admin/customers/${ID}/behaviour`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ...SECTIONS.flatMap((name) => [
+        ['GET', `customers/admin/customers/${ID}/${name}`],
+        ['PUT', `customers/admin/customers/${ID}/${name}`],
+        ['GET', `customers/admin/customers/${ID}/${name}/export`],
+      ]),
+      ['POST', `customers/admin/customers/${ID}/cart`],
+      ['DELETE', `customers/admin/customers/${ID}/behaviour`],
+      ['POST', `customers/admin/customers/${ID}/reviews/purge`],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('takes a list body under the 16 KB cap and refuses a larger one', async () => {
+      const upstream = upstreamOk();
+      const target = `customers/admin/customers/${ID}/reviews`;
+      const big = JSON.stringify({ filters: { status: ['x'.repeat(17 * 1024)] } });
+      expect(
+        (await relay(config, send('POST', target, big), pathOf(target), upstream)).status,
+      ).toBe(413);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('forwards no query string of the cart read', async () => {
+      const upstream = upstreamOk();
+      const target = `customers/admin/customers/${ID}/cart?x=1`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/customers/admin/customers/${ID}/cart`,
+      );
+    });
+  });
+
   describe('customers phase 2a: groups, notes, activity and the name edit', () => {
     const G = '0190a000-0000-7000-8000-0000000000b1';
     const send = (method: string, target: string, body = '{}') =>
