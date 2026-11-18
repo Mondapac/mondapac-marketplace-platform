@@ -41,12 +41,20 @@ export function exportQuery(input: {
   readonly columns: readonly string[];
   readonly zone: string;
   readonly selection: ExportSelection;
+  /** A list whose export has no `zone` key (its cells hold no times of day) leaves it out. */
+  readonly omitZone?: boolean;
+  /** A list whose file follows the list's own sort keeps `sort` and `direction`. */
+  readonly keepSort?: boolean;
 }): string {
   const params = new URLSearchParams(input.listQuery);
-  for (const key of PAGING_KEYS) params.delete(key);
+  for (const key of PAGING_KEYS) {
+    if (input.keepSort === true && (key === 'sort' || key === 'direction')) continue;
+    params.delete(key);
+  }
   params.set('format', input.format);
-  params.set('columns', input.columns.join(','));
-  params.set('zone', input.zone);
+  // No optional column shown: the key is left out and the file has its fixed columns.
+  if (input.columns.length > 0) params.set('columns', input.columns.join(','));
+  if (input.omitZone !== true) params.set('zone', input.zone);
   if (!input.selection.allMatching) {
     // An empty `ids` would be refused by the relay, and dropping it would widen the file to the
     // whole filter: with nothing ticked and "Select all matching" off there is nothing to export.
@@ -186,6 +194,8 @@ export function useSalesExport(input: {
   readonly columns: readonly string[];
   readonly zone: string;
   readonly selection: ExportSelection;
+  readonly omitZone?: boolean;
+  readonly keepSort?: boolean;
 }): { readonly item: ActionMenuItem; readonly dialog: ReactNode; readonly busy: boolean } {
   const t = useTranslations('sales-lists.export');
   const locale = useLocale();
@@ -220,6 +230,8 @@ export function useSalesExport(input: {
         columns: input.columns,
         zone: input.zone,
         selection,
+        ...(input.omitZone === true ? { omitZone: true } : {}),
+        ...(input.keepSort === true ? { keepSort: true } : {}),
       }),
       format,
       fallbackName: input.fallbackName,

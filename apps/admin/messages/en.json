@@ -1049,12 +1049,14 @@
       "title": "Sellers that need a look",
       "link": "Sellers that need a look",
       "back": "Back to sellers",
-      "intro": "Sellers whose latest health is Unhealthy, worst score first. Open a seller to see the measures and the trend.",
+      "intro": "Sellers whose latest health is Unhealthy, worst score first. Pick a measure to see the sellers it set, or open a seller to see the measures and the trend.",
       "col": {
         "seller": "Seller",
         "score": "Score",
         "lowest": "Lowest measure",
-        "measured": "Measured"
+        "measured": "Measured",
+        "seller-id": "Seller ID",
+        "actions": "Actions"
       },
       "unnamed": "Unnamed store",
       "unhealthy": "Unhealthy",
@@ -1067,15 +1069,106 @@
       },
       "empty": {
         "title": "No seller needs a look",
-        "body": "No seller is in the Unhealthy band right now."
+        "body": "No seller is in the Unhealthy band right now.",
+        "no-match": "No seller matches",
+        "no-match-help": "Change or clear the search and filters to see more sellers.",
+        "view": {
+          "all": "No seller needs a look",
+          "seller-cancellations": "No seller is unhealthy because of cancellations by the seller",
+          "late-ready": "No seller is unhealthy because of orders ready late",
+          "customer-rating": "No seller is unhealthy because of the customer rating",
+          "lost-disputes": "No seller is unhealthy because of disputes lost",
+          "reports": "No seller is unhealthy because of reports"
+        }
       },
-      "truncated": "Only the worst sellers are shown.",
+      "truncated": "Only the 200 sellers with the worst scores are in this list, so some unhealthy sellers are not shown. Exporting every matching seller is not possible until fewer are unhealthy; tick sellers to export them.",
       "unavailable": "We couldn't load the sellers. Try again.",
       "no-access": {
         "title": "You don't have access to this page",
         "body": "Ask an administrator for the permission to view sellers."
       },
-      "informs": "Health only informs. Nothing happens to a seller because of its score."
+      "informs": "Health only informs. Nothing happens to a seller because of its score.",
+      "back-home": "Back to home",
+      "views": "Seller health views",
+      "view": {
+        "all": "All"
+      },
+      "search": {
+        "label": "Search",
+        "placeholder": "Store name or slug",
+        "help": "Matches the start of a store name or slug. Type at least 2 characters.",
+        "too-short": "Type at least {min} characters to search."
+      },
+      "chip-search": "Search: \"{text}\"",
+      "filter": {
+        "title": "Filter sellers",
+        "name": {
+          "score": "Score"
+        },
+        "chip": {
+          "minScore": "Score from",
+          "maxScore": "Score up to"
+        },
+        "from": "From",
+        "to": "To",
+        "cancel": "Cancel",
+        "apply": "Apply",
+        "error": {
+          "score": "Use a whole number from 0 to 100.",
+          "range": "The end of the range is before its start."
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "score": "Score",
+          "name": "Store name",
+          "day": "Measured"
+        },
+        "score": {
+          "first": "Lowest first",
+          "second": "Highest first"
+        },
+        "name": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# seller matches} other {# sellers match}}",
+      "range": "{from}–{to} of {total} sellers",
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# seller selected} other {# sellers selected}}",
+        "all-open": "All matching sellers selected"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# seller selected} other {# sellers selected}}",
+        "all": "{count, plural, one {The # matching seller is selected} other {All # matching sellers are selected}}",
+        "all-open": "All matching sellers are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "select": {
+        "page": "Select all sellers on this page",
+        "page-short": "Select all",
+        "row": "Select {name}"
+      },
+      "row": {
+        "open": "Open",
+        "menu": "Actions for {name}"
+      },
+      "loading": "Loading sellers...",
+      "error": {
+        "unavailable": "We couldn't load the sellers. Try again.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      }
     },
     "health": {
       "title": "Seller health",
