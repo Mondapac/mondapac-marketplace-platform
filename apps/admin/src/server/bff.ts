@@ -476,6 +476,12 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'certification/admin/types/:id/reactivations/:id/approve',
     'certification/admin/types/:id/proposals/:id/reject',
     'certification/admin/types/:id/proposals/:id/withdraw',
+    // A claim basis policy (certification): a new revision, and a second admin's answer to a
+    // relaxing one, each under the version read. The relay refuses reads here.
+    'certification/admin/claim-policies/:id/revisions',
+    'certification/admin/claim-policies/:id/relaxations/:id/approve',
+    'certification/admin/claim-policies/:id/proposals/:id/reject',
+    'certification/admin/claim-policies/:id/proposals/:id/withdraw',
     // The rest of an issuer's life (certification): close to new, derecognise (names the number of
     // certificates the form showed), ask for reactivation, and a second admin's answer to it.
     'certification/admin/issuers/:id/close-to-new',
