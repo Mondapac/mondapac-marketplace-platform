@@ -78,10 +78,25 @@ export const REVIEWS_CUSTOMER_REVIEW_VIEW = definePermission('reviews', {
   protected: false,
 });
 
+/**
+ * Share a saved filter of the seller Reviews list with everyone in the store ("Everyone" in the
+ * Save filter dialog), and rename, unshare or delete a filter another member shared (the generic
+ * saved-filter routes of `lists`). Without it a member who can see the list still saves and manages
+ * filters for themselves only. Seller scope, unprotected; the Seller Owner holds every seller key
+ * by definition and no default role lists it. A filter holds no review text of a buyer, only the
+ * selector (view, search words, stars, sort), so sharing it exposes nothing the list does not.
+ */
+export const REVIEWS_SELLER_SAVED_FILTER_SHARE = definePermission('reviews', {
+  key: 'reviews.seller-saved-filter.share',
+  scope: 'seller',
+  protected: false,
+});
+
 export const REVIEWS_PERMISSIONS = declarePermissions('reviews', [
   REVIEWS_CUSTOMER_REVIEW_VIEW,
   REVIEWS_SELLER_REPLY,
   REVIEWS_SELLER_REPORT,
+  REVIEWS_SELLER_SAVED_FILTER_SHARE,
   REVIEWS_SELLER_VIEW,
   REVIEWS_MODERATION_MODERATE,
   REVIEWS_MODERATION_REMOVE,

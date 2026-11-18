@@ -300,3 +300,6 @@ Owner approved the build 2026-11-01. Everything is behind the runtime switch abo
   event is not written until the buyer notice exists.
 - Delivery-problem notice (owner decision 2 Nov 2026): the event and the notice carry the seller only,
   never the order, so the seller cannot tie a "not in good order" answer to one buyer.
+
+## Seller Reviews list: saved filters (rule 14)
+The seller Reviews super list registers `seller.reviews.list` with `lists` (`registerLists('reviews', ...)`, `application/saved-filter-list.ts`), so its saved filters use the generic routes `lists/seller/saved-filters`. One set per store, guarded by `reviews.seller.view`; sharing a filter with the store needs the new unprotected seller key `reviews.seller-saved-filter.share` (no default role lists it; the Seller Owner holds every seller key). The document is closed: `v`, `view`, `q`, `reply`, `minRating`, `maxRating`, `within` (7, 30 or 90 days), `sort`, `direction`; page keys and anything else are refused. No migration (the list key CHECK is a pattern); the key is added to the lists audit vocabulary and its snapshot.
