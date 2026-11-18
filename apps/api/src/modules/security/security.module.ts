@@ -2,6 +2,7 @@ import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/commo
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../platform/list-export';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
@@ -13,11 +14,15 @@ import { ADMIN_NAMES } from './application/ports/admin-names';
 import { ALERT_MESSENGER } from './application/ports/alert-messenger';
 import { ON_CALL_ROSTER } from './application/ports/on-call-roster';
 import { SECURITY_ALERT_REPOSITORY } from './application/ports/security-alert.repository';
+import { ALERT_ROW_KEYS, type AlertListDependencies } from './application/alert-list-flow';
 import type { SecurityDependencies } from './application/security-dependencies';
+import { AlertRespondProbe } from './application/use-cases/alert-respond-probe.use-case';
 import { AcknowledgeSecurityAlert } from './application/use-cases/acknowledge-security-alert.use-case';
 import { DeliverSecurityAlerts } from './application/use-cases/deliver-security-alerts.use-case';
 import { EvaluateSecurityRules } from './application/use-cases/evaluate-security-rules.use-case';
+import { ExportSecurityAlerts } from './application/use-cases/export-security-alerts.use-case';
 import { ListSecurityAlerts } from './application/use-cases/list-security-alerts.use-case';
+import { QuerySecurityAlerts } from './application/use-cases/query-security-alerts.use-case';
 import { ResolveSecurityAlert } from './application/use-cases/resolve-security-alert.use-case';
 import { SendSecurityDigests } from './application/use-cases/send-security-digests.use-case';
 import { ViewOnCall } from './application/use-cases/view-on-call.use-case';
@@ -61,6 +66,46 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   };
 }
 
+type AlertListUseCaseClass<U> = new (gate: UseCaseGate, deps: AlertListDependencies) => U;
+
+/** The alert list and its export (super list 37) share one dependency object. */
+function alertListUseCaseProvider<U>(type: AlertListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      SECURITY_ALERT_REPOSITORY,
+      ON_CALL_ROSTER,
+      ADMIN_NAMES,
+      AlertRespondProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AlertListDependencies['unitOfWork'],
+      alerts: AlertListDependencies['alerts'],
+      roster: AlertListDependencies['roster'],
+      names: AlertListDependencies['names'],
+      respond: AlertRespondProbe,
+      sheetWriter: AlertListDependencies['sheetWriter'],
+      clock: AlertListDependencies['clock'],
+    ) => {
+      const [respondKey] = ALERT_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        alerts,
+        roster,
+        names,
+        probes: { [respondKey]: respond },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
 /**
  * Security (the SOC; docs/design/data/security.md): package 2, the rules over the security events
  * of package 1, the alerts they open, their delivery by severity with the s1 escalation, the
@@ -76,6 +121,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerAuditActions('security', SECURITY_AUDIT_ACTIONS),
     registerPermissions('security', SECURITY_PERMISSIONS),
     ...securityProviders,
+    { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
     ...[
       EvaluateSecurityRules,
       DeliverSecurityAlerts,
@@ -87,6 +133,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       AcknowledgeSecurityAlert,
       ResolveSecurityAlert,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    {
+      provide: AlertRespondProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new AlertRespondProbe(gate),
+    },
+    alertListUseCaseProvider(QuerySecurityAlerts),
+    alertListUseCaseProvider(ExportSecurityAlerts),
     registerJobsFrom(
       'security',
       [EvaluateSecurityRules, DeliverSecurityAlerts, SendSecurityDigests],

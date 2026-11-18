@@ -59,7 +59,7 @@ const isActingAs = (context: CallContext): boolean => {
 };
 
 /** An admin session that is not acting as someone else. */
-function adminAccountId(context: CallContext): string | null {
+export function adminAccountId(context: CallContext): string | null {
   const actor = context.actor;
   if (actor.kind !== 'authenticated' || actor.population !== 'admin') return null;
   return isActingAs(context) ? null : actor.accountId;
@@ -135,8 +135,8 @@ const nameOf = (names: Names, accountId: string | null): string | null =>
   accountId === null ? null : (names.get(accountId) ?? null);
 
 /** The names of the accounts that acknowledged or resolved these alerts; outside any transaction. */
-function namesFor(
-  deps: SecurityDependencies,
+export function namesFor(
+  deps: Pick<SecurityDependencies, 'names'>,
   context: CallContext,
   alerts: readonly SecurityAlert[],
 ): Promise<Names> {
@@ -146,7 +146,7 @@ function namesFor(
   return ids.length === 0 ? Promise.resolve(NO_NAMES) : deps.names.namesOf(context, ids);
 }
 
-function summaryOf(alert: SecurityAlert, names: Names = NO_NAMES): AlertSummaryView {
+export function summaryOf(alert: SecurityAlert, names: Names = NO_NAMES): AlertSummaryView {
   return {
     id: alert.id,
     rule: alert.rule,
@@ -305,7 +305,7 @@ async function storedOf(
 }
 
 /** The s1 resolvers of the roster: the admin accounts of the commander and the owner (D2). */
-function s1ResolversOf(roster: OnCallRoster | null): readonly string[] {
+export function s1ResolversOf(roster: OnCallRoster | null): readonly string[] {
   return roster === null
     ? []
     : [roster.incidentCommander, roster.securityOwner].flatMap(
