@@ -624,6 +624,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // change a customer's display name (identity owns the write).
     'customers/admin/groups/:id',
     'customers/admin/customers/:id/display-name',
+    // Ask to change a customer's sign-in email (customers, phase 2b): a closed `{ email }` body,
+    // behind a fresh two-step code.
+    'customers/admin/customers/:id/email',
     'sellers/admin/:id/review/manual-register-check',
     // Whether the seller may propose categories (sellers, SEL-26; categories C9-0).
     'sellers/admin/:id/category-proposals',
@@ -687,6 +690,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/sellers/:id/payout-terms',
     // Cancel a pending buyer deletion request (customers), behind a two-step code.
     'customers/admin/deletion-requests/:id',
+    // Cancel a customer's pending sign-in email change (customers, phase 2b), behind a two-step code.
+    'customers/admin/customers/:id/email-change',
     // A saved view of the product list (catalog).
     'catalog/admin/saved-filters/:id',
     // Delete an unused photo of a platform product (catalog, P1).
@@ -2389,6 +2394,9 @@ const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/i
  */
 const CUSTOMERS_EXPORT_PATH = 'customers/admin/export';
 const MAX_EXPORT_BODY_BYTES = 48 * 1024;
+/** The email change of a customer carries one address (at most 254 characters): 1 KB is plenty. */
+const EMAIL_CHANGE_PATH = /^customers\/admin\/customers\/[0-9a-f-]{36}\/email$/i;
+const MAX_EMAIL_CHANGE_BODY_BYTES = 1024;
 /** Adding or removing up to 1000 ticked customers of a group (customers, phase 2a): the same cap. */
 const GROUP_MEMBERS_PATH = /^customers\/admin\/groups\/[0-9a-f-]{36}\/members\/(add|remove)$/i;
 
@@ -2397,6 +2405,7 @@ function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'POST' && target === CUSTOMERS_EXPORT_PATH) return MAX_EXPORT_BODY_BYTES;
   if (method === 'POST' && GROUP_MEMBERS_PATH.test(target)) return MAX_EXPORT_BODY_BYTES;
+  if (method === 'PUT' && EMAIL_CHANGE_PATH.test(target)) return MAX_EMAIL_CHANGE_BODY_BYTES;
   if (method === 'PUT' && BLOG_DRAFT_PATH.test(target)) return MAX_BLOG_DRAFT_BYTES;
   if (method === 'POST' && CATEGORY_IMPORT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
