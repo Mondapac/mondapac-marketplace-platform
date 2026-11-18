@@ -314,7 +314,6 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   'catalog/seller/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'notifications/seller/notices': { show: /^(unread|read|all)$/, before: UUID },
-  // The API's own opaque cursor (epoch milliseconds of the publication, an underscore, the review id).
   'reviews/seller/list': {
     view: /^(all|unanswered|answered|low)$/,
     reply: /^(none|published)$/,
@@ -347,6 +346,7 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     sort: /^(published|rating)$/,
     direction: /^(asc|desc)$/,
   },
+  // The API's own opaque cursor (epoch milliseconds of the publication, an underscore, the review id).
   'reviews/seller': { cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/ },
 };
 /** Per GET template with ids, the query keys passed on (same rules as {@link QUERY_KEYS}). */

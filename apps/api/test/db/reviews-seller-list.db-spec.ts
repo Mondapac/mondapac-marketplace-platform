@@ -105,6 +105,8 @@ describe.each(TEST_MARKETS)('seller review list in market %s (database)', (code)
       { rating: 5, title: 'Great', body: 'Would buy again', day: 5, reply: 'published' as const },
       { rating: 5, title: 'Great too', body: 'Same day', day: 5, reply: 'superseded' as const },
       { rating: 2, title: 'Another late one', body: 'Late again', day: 6, reply: null },
+      // Only an unescaped `%` or `_` would match the search for `100%_off`.
+      { rating: 3, title: '100xyoff', body: null, day: 6, reply: null },
     ];
     for (const row of plan) {
       const made = await insert(market, seller, row);

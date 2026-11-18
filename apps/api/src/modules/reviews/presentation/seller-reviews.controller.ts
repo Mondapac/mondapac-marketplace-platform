@@ -116,7 +116,7 @@ export class SellerReviewsController {
     description:
       'Needs reviews.seller.view. Views (all, unanswered, answered, low) with counts, filters ' +
       '(reply, minRating/maxRating 1 to 5, q = a review, order, Offer or product id or text in ' +
-      'the title or review, from/to published), sort (published or rating, with direction; ' +
+      'the title or review, from/to published), sort (published or rating, with direction; `view=low` caps maxRating at 2; ' +
       'newest first by default), page numbers with a total (`paging=pages`, default) or ' +
       'Previous/Next without one (`paging=prev-next`), and each row’s actions (open, reply, ' +
       'edit-reply, report; none that write in an acting-as session). Never the buyer. The older ' +
@@ -165,7 +165,8 @@ export class SellerReviewsController {
       'rating, title, review and published are always there. The reviews are `ids` ' +
       '(comma-separated, at most 200; an id that is not a published review of the shop refuses ' +
       'the whole file as not found) or the selector keys of the list, at most 10,000 (more: ' +
-      'batch.too-large with the total). Never the buyer. CSV: a text cell that starts with = + - @ ' +
+      'batch.too-large with the total). With `ids` the selector keys are ignored and the file keeps the ' +
+      'order of the ids. Never the buyer. CSV: a text cell that starts with = + - @ ' +
       'gets a leading quote. XLSX: every cell is a string value.',
   })
   @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })

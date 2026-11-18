@@ -210,11 +210,32 @@ describe.each([['AU'], ['ZZ']] as const)('seller review list in market %s', (cod
     ]);
   });
 
-  it('treats a hidden or removed reply as no reply', async () => {
-    const review = addReview();
-    addReply(review.id, { status: 'hidden' });
-    expect((await ok({ view: 'unanswered' })).items).toHaveLength(1);
-    expect((await ok({ view: 'answered' })).items).toHaveLength(0);
+  it('treats a hidden, removed or superseded reply as no reply', async () => {
+    for (const status of ['hidden', 'removed', 'superseded'] as const) {
+      reviews.productReviews.clear();
+      reviews.replies.clear();
+      const review = addReview();
+      addReply(review.id, { status });
+      expect((await ok({ view: 'unanswered' })).items).toHaveLength(1);
+      expect((await ok({ view: 'answered' })).items).toHaveLength(0);
+    }
+  });
+
+  it('answers an empty shop and a page past the end', async () => {
+    const empty = await ok();
+    expect([empty.items.length, empty.total, empty.hasNext]).toEqual([0, 0, false]);
+    expect(empty.counts).toEqual({ all: 0, unanswered: 0, answered: 0, low: 0 });
+    addReview();
+    const past = await ok({ page: 3, pageSize: 5 });
+    expect([past.items.length, past.hasNext]).toEqual([0, false]);
+  });
+
+  it('keeps view low at two stars at most and refuses an empty star range', async () => {
+    const one = addReview({ rating: 1 });
+    addReview({ rating: 5 });
+    expect((await ok({ view: 'low', maxRating: '5' })).items.map((r) => r.id)).toEqual([one.id]);
+    const bad = await query({ view: 'low', minRating: '3' });
+    expect(bad.ok).toBe(false);
   });
 
   it('sorts by published or rating with the id as tie-break', async () => {
@@ -330,6 +351,25 @@ describe.each([['AU'], ['ZZ']] as const)('seller review list in market %s', (cod
       const hidden = addReview({ status: 'hidden' });
       const hiddenResult = await exporter({ ids: hidden.id });
       expect(hiddenResult.ok ? null : hiddenResult.error.code).toBe('reviews.not-found');
+    });
+
+    it('writes a header-only file for an empty shop, and refuses an empty or oversized ids', async () => {
+      const empty = await exporter({});
+      expect(empty.ok).toBe(true);
+      if (empty.ok) expect((await text(empty.value)).trim().split(/\r?\n/)).toHaveLength(1);
+      const blank = await exporter({ ids: '' });
+      expect(blank.ok).toBe(false);
+      const many = Array.from({ length: 201 }, (_, i) => id<'ProductReview'>(0x8000 + i)).join(',');
+      const tooMany = await exporter({ ids: many });
+      expect(tooMany.ok ? null : tooMany.error).toMatchObject({
+        code: 'batch.too-large',
+        max: 200,
+      });
+      const review = addReview();
+      const dup = await exporter({ ids: `${review.id},${review.id}` });
+      expect(dup.ok).toBe(false);
+      const upper = await exporter({ ids: review.id.toUpperCase() });
+      expect(upper.ok).toBe(true);
     });
 
     it('writes an XLSX and refuses bad input', async () => {

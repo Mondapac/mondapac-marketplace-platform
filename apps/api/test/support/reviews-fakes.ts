@@ -314,7 +314,12 @@ export class MemoryReviews implements ReviewRepository {
             title: r.title,
             body: r.body,
             publishedAt: r.publishedAt,
-            hasReply: row.reply?.status === 'published',
+            hasReply: [...this.replies.values()].some(
+              (reply) =>
+                reply.reviewId === r.id &&
+                reply.sellerId === sellerId &&
+                reply.status === 'published',
+            ),
           },
         };
       });

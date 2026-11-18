@@ -22,6 +22,7 @@ import type {
   StoredSellerSummary,
   StoredStarSummary,
 } from '../application/ports/review.repository';
+import { escapeLikeTerm } from '../../../platform/text/like-escape';
 import type { QueueTab } from '../domain/moderation';
 import {
   EMPTY_SELLER_REVIEW_FILTER,
@@ -59,8 +60,8 @@ function sellerReviewWhere(
   if (filter.text !== null) {
     and.push({
       OR: [
-        { title: { contains: filter.text, mode: 'insensitive' } },
-        { body: { contains: filter.text, mode: 'insensitive' } },
+        { title: { contains: escapeLikeTerm(filter.text), mode: 'insensitive' } },
+        { body: { contains: escapeLikeTerm(filter.text), mode: 'insensitive' } },
       ],
     });
   }

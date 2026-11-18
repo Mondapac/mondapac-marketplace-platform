@@ -261,7 +261,10 @@ export async function listSellerReviewRows(
   );
   if (!read.ok) throw new Error('reviews.query-seller-reviews: the read failed');
 
-  const page = listPage(read.value.rows, query.value, read.value.total);
+  const listed = listPage(read.value.rows, query.value, read.value.total);
+  // Page numbers stop at 10,000 rows, so Previous/Next must not offer a page that is refused.
+  const page =
+    offset + query.value.pageSize >= MAX_PAGED_ROWS ? { ...listed, hasNext: false } : listed;
   const granted =
     page.items.length === 0 || isActingAs(context)
       ? new Set<string>()
@@ -342,7 +345,7 @@ export async function exportSellerReviewRows(
   const { market } = context;
 
   let rows: readonly SellerReviewRow[];
-  if (!absent(record['ids'])) {
+  if (record['ids'] !== undefined) {
     if (typeof record['ids'] !== 'string') return listQueryInvalid('ids', 'type');
     const listed = parseExportIds(record['ids'], SELLER_REVIEW_EXPORT_MAX_IDS, (part) => {
       const parsed = parseId<'ProductReview'>(part.trim().toLowerCase());
