@@ -62,4 +62,12 @@ export class LateBoundSectionPeers implements CustomerSectionPeers {
   ]);
 
   readonly conversations = lateBound(this.#peers, 'conversations', ['adminCustomerConversations']);
+
+  readonly reviews = lateBound(this.#peers, 'reviews', [
+    'adminCustomerReviews',
+    'adminCustomerSellerRatings',
+    'adminCustomerHelpfulVotes',
+    'adminCustomerReviewReports',
+    'reviewAuthorOf',
+  ]);
 }
