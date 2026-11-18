@@ -194,6 +194,10 @@ describe.each(['AU', 'ZZ'] as const)('issuer-request list and export in market %
   it('says when more requests are open than the read cap', async () => {
     const { list, admin, open } = setup();
     for (let i = 0; i < 500; i += 1) open('halal', i);
+    const exact = await list.execute(admin(), { pageSize: 1 });
+    if (!exact.ok) throw new Error(JSON.stringify(exact.error));
+    expect(exact.value).toMatchObject({ truncated: false, counts: { all: 500 } });
+    open('halal', 501);
     const result = await list.execute(admin(), { pageSize: 1 });
     if (!result.ok) throw new Error(JSON.stringify(result.error));
     expect(result.value).toMatchObject({ truncated: true, counts: { all: 500 } });
@@ -202,7 +206,7 @@ describe.each(['AU', 'ZZ'] as const)('issuer-request list and export in market %
   it('refuses a selector export when the read was cut at the cap, but exports chosen ids', async () => {
     const { exporter, admin, open } = setup();
     const first = open('halal', 0);
-    for (let i = 1; i < 500; i += 1) open('halal', i);
+    for (let i = 1; i < 501; i += 1) open('halal', i);
     const whole = await exporter.execute(admin(), {});
     expect(whole).toMatchObject({ ok: false, error: { code: 'batch.too-large', max: 500 } });
     const chosen = await exporter.execute(admin(), { ids: first.id });

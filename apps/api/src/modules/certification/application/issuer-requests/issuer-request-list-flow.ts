@@ -169,17 +169,19 @@ const SPEC = {
   maxPage: MAX_PAGED_ROWS,
 } as const;
 
+/** Reads one row past the cap, so `truncated` is true only when requests were really left out. */
 async function readOpen(
   deps: IssuerRequestListDependencies,
   context: CallContext,
-): Promise<readonly IssuerRequestQueueEntry[]> {
+): Promise<{ readonly open: readonly IssuerRequestQueueEntry[]; readonly truncated: boolean }> {
   const read = await deps.unitOfWork.run<readonly IssuerRequestQueueEntry[], never>(
     context.market,
-    async () => ok(await deps.requests.openQueue(context.market, ISSUER_LIST_READ_CAP)),
+    async () => ok(await deps.requests.openQueue(context.market, ISSUER_LIST_READ_CAP + 1)),
     { readOnly: true },
   );
   if (!read.ok) throw new Error('certification.issuer-request-list: the read failed');
-  return read.value;
+  const truncated = read.value.length > ISSUER_LIST_READ_CAP;
+  return { open: truncated ? read.value.slice(0, ISSUER_LIST_READ_CAP) : read.value, truncated };
 }
 
 function select(
@@ -228,7 +230,7 @@ export async function listIssuerRequests(
   if (!selector.ok) return selector;
   const sort: IssuerRequestSort = { key: query.value.sort, direction: query.value.direction };
 
-  const open = await readOpen(deps, context);
+  const { open, truncated } = await readOpen(deps, context);
   const matching = select(open, selector.value, sort);
   const { offset, limit } = pageWindow(query.value);
   const window = matching.slice(offset, offset + limit);
@@ -250,7 +252,7 @@ export async function listIssuerRequests(
       actions: rowActions(entry, ISSUER_ROW_RULES, granted) as IssuerRequestRowAction[],
     })),
     counts: { all: open.length },
-    truncated: open.length >= ISSUER_LIST_READ_CAP,
+    truncated,
   });
 }
 
@@ -310,7 +312,7 @@ export async function exportIssuerRequests(
   const columns = parseExportColumns(record['columns'], ISSUER_REQUEST_EXPORT_COLUMNS);
   if (!columns.ok) return columns;
 
-  const open = await readOpen(deps, context);
+  const { open, truncated } = await readOpen(deps, context);
   let rows: IssuerRequestQueueEntry[];
   if (!absent(record['ids'])) {
     if (typeof record['ids'] !== 'string') return listQueryInvalid('ids', 'type');
@@ -336,7 +338,7 @@ export async function exportIssuerRequests(
     });
     // The read stops at the cap, so a file from the selector would silently miss the newest
     // requests: refuse it, and let the admin pick the rows by id.
-    if (open.length >= ISSUER_LIST_READ_CAP) {
+    if (truncated) {
       return err({ code: 'batch.too-large', max: ISSUER_LIST_READ_CAP });
     }
   }
