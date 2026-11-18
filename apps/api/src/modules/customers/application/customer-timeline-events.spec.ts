@@ -13,6 +13,7 @@ import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { CustomerListRow } from '../domain/customer-list';
+import { customerReviewTimelineSubscriptions } from '../presentation/subscribers/customer-review-timeline.subscriptions';
 import { customerTimelineSubscriptions } from '../presentation/subscribers/customer-timeline.subscriptions';
 import type { DirectoryRecordPeer } from './ports/customer-read-model-peers';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
@@ -26,6 +27,8 @@ import {
 // find their customer through ordering, account events name it; an account without a directory
 // row yet is written once identity confirms it; a repeated delivery or event writes one row; a peer
 // that cannot answer refuses (the delivery is retried); the subscriptions skip other populations.
+// Phase 2b, part 3: reviews' events find their author through reviews (as the system), and a
+// review that is gone or whose author was deleted writes nothing.
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const T0 = Temporal.Instant.from('2026-11-15T10:00:00Z');
@@ -38,6 +41,8 @@ const ALICE = id<'Account'>(0xa1);
 const NEWBIE = id<'Account'>(0xa2);
 const ORDER = id<'Order'>(0x0d1);
 const REFUND = id<'Refund'>(0x0f1);
+const REVIEW = id<'ProductReview'>(0x0b1);
+const DETACHED_REVIEW = id<'ProductReview'>(0x0b2);
 const delivery = (n: number, subscriber = 'customers.timeline-test'): EventDelivery => ({
   eventId: id<'event'>(0xe00 + n),
   subscriber,
@@ -53,6 +58,8 @@ describe.each(TEST_MARKET_IDS)('customer timeline from events in market %s', (co
   let identityKnows: Set<string>;
   let identityDown: boolean;
   let orderingDown: boolean;
+  let reviewsDown: boolean;
+  let authorAsked: CallContext[];
   let record: RecordCustomerTimeline;
 
   const row = (accountId: Id<'Account'>): CustomerListRow => ({
@@ -79,6 +86,8 @@ describe.each(TEST_MARKET_IDS)('customer timeline from events in market %s', (co
     identityKnows = new Set([ALICE, NEWBIE]);
     identityDown = false;
     orderingDown = false;
+    reviewsDown = false;
+    authorAsked = [];
     const clock = new FixedClock(T0);
     const deps: TimelineRecordDependencies = {
       unitOfWork: new FakeUnitOfWork(),
@@ -104,6 +113,14 @@ describe.each(TEST_MARKET_IDS)('customer timeline from events in market %s', (co
                 ),
           ),
         customerDirectoryPage: () => Promise.resolve(ok([])),
+      },
+      reviews: {
+        reviewAuthorOf: (context: CallContext, reviewId: string) => {
+          authorAsked.push(context);
+          if (reviewsDown) return Promise.resolve(err({ code: 'access.unavailable' }));
+          if (reviewId === 'nope') return Promise.resolve(err({ code: 'validation.failed' }));
+          return Promise.resolve(ok({ accountId: reviewId === REVIEW ? ALICE : null }));
+        },
       },
       ordering: {
         customerOrderStats: () => Promise.resolve(err({ code: 'unused' })),
@@ -244,6 +261,77 @@ describe.each(TEST_MARKET_IDS)('customer timeline from events in market %s', (co
     expect(orderDown).toEqual(err({ code: 'customers.unavailable' }));
   });
 
+  it('copies a review event onto its author, found through reviews as the system', async () => {
+    for (const [n, kind] of [
+      [1, 'review-held'],
+      [2, 'review-published'],
+      [3, 'review-hidden'],
+      [4, 'review-restored'],
+    ] as const) {
+      const result = await record.execute(system, {
+        kind,
+        reviewId: REVIEW,
+        eventId: id(0x110 + n),
+        occurredAt: T0.add({ minutes: n }),
+        delivery: delivery(30 + n),
+      });
+      expect(result).toEqual(ok({ recorded: true }));
+    }
+    expect(entriesOf(ALICE).map((e) => [e.kind, e.ref, e.actorAccountId])).toEqual([
+      ['review-held', null, null],
+      ['review-published', null, null],
+      ['review-hidden', null, null],
+      ['review-restored', null, null],
+    ]);
+    expect(authorAsked.every((context) => context.actor.kind === 'system')).toBe(true);
+  });
+
+  it('writes nothing for a review that is gone or detached, and retries when reviews cannot answer', async () => {
+    const detached = await record.execute(system, {
+      kind: 'review-published',
+      reviewId: DETACHED_REVIEW,
+      eventId: id(0x121),
+      occurredAt: T0,
+      delivery: delivery(41),
+    });
+    expect(detached).toEqual(ok({ recorded: false }));
+    const bad = await record.execute(system, {
+      kind: 'review-published',
+      reviewId: 'nope',
+      eventId: id(0x122),
+      occurredAt: T0,
+      delivery: delivery(42),
+    });
+    expect(bad).toEqual(err({ code: 'validation.failed' }));
+    reviewsDown = true;
+    const down = await record.execute(system, {
+      kind: 'review-hidden',
+      reviewId: REVIEW,
+      eventId: id(0x123),
+      occurredAt: T0,
+      delivery: delivery(43),
+    });
+    expect(down).toEqual(err({ code: 'customers.unavailable' }));
+    expect(entriesOf(ALICE)).toEqual([]);
+    reviewsDown = false;
+    const again = await record.execute(system, {
+      kind: 'review-hidden',
+      reviewId: REVIEW,
+      eventId: id(0x123),
+      occurredAt: T0,
+      delivery: delivery(44),
+    });
+    expect(again).toEqual(ok({ recorded: true }));
+    await record.execute(system, {
+      kind: 'review-hidden',
+      reviewId: REVIEW,
+      eventId: id(0x123),
+      occurredAt: T0,
+      delivery: delivery(45),
+    });
+    expect(entriesOf(ALICE)).toHaveLength(1);
+  });
+
   describe('subscriptions', () => {
     const find = (name: string) => {
       const found = customerTimelineSubscriptions(record).find((s) => s.name === name);
@@ -285,6 +373,31 @@ describe.each(TEST_MARKET_IDS)('customer timeline from events in market %s', (co
         system,
       );
       expect(entriesOf(ALICE).map((e) => e.kind)).toEqual(['email-verified']);
+    });
+
+    it('records each review event from its review id only, and throws on a refusal', async () => {
+      const subscriptions = customerReviewTimelineSubscriptions(record);
+      expect(subscriptions.map((s) => [s.name, s.event.type])).toEqual([
+        ['customers.timeline-review-published', 'reviews.review-published.v1'],
+        ['customers.timeline-review-held', 'reviews.review-held.v1'],
+        ['customers.timeline-review-hidden', 'reviews.review-hidden.v1'],
+        ['customers.timeline-review-restored', 'reviews.review-restored.v1'],
+      ]);
+      const hidden = subscriptions[2] as unknown as ReturnType<typeof find>;
+      await hidden.handle(
+        consumed(5, { reviewId: REVIEW, productId: id(0x301), sellerId: id(0x401) }),
+        delivery(24),
+        system,
+      );
+      expect(entriesOf(ALICE).map((e) => e.kind)).toEqual(['review-hidden']);
+      reviewsDown = true;
+      await expect(
+        hidden.handle(
+          consumed(6, { reviewId: REVIEW, productId: id(0x301), sellerId: id(0x401) }),
+          delivery(25),
+          system,
+        ),
+      ).rejects.toThrow(/refused: customers.unavailable/);
     });
 
     it('throws on a refusal, so the delivery is retried', async () => {

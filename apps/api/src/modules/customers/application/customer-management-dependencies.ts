@@ -12,6 +12,7 @@ import type { IdentityManagementPeer } from './ports/customer-management-peers';
 import type { CustomerNoteCipher, CustomerNoteRepository } from './ports/customer-notes.repository';
 import type { CustomerTimelineRepository } from './ports/customer-timeline.repository';
 import type { SheetWriter } from './ports/sheet-writer';
+import type { AccessProbe } from './saved-views/saved-view-shared';
 
 /**
  * What the admin's management of customers (phase 2, PR 2a: groups, notes, the timeline and the
@@ -37,6 +38,11 @@ export interface CustomerManagementDependencies {
   readonly addressCipher: Pick<AddressCipher, 'open'>;
   /** Who still names a group (a live promotion's segment); advisory, read when archiving. */
   readonly groupUsage: CustomerGroupUsageSource;
+  /**
+   * Whether the caller also holds `reviews.customer-review.view`: without it the timeline (read,
+   * export and so the Overview's last five) leaves out the review kinds (security review L1).
+   */
+  readonly reviewEventsCheck: AccessProbe;
   /** Bound at start by `CustomersReadModelsModule`; fails closed until then. */
   readonly identity: IdentityManagementPeer;
 }

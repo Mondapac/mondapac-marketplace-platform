@@ -595,6 +595,75 @@ Not built in part 2 (remaining):
   to show; not built (in-app notices go to sellers and admins only).
 - **Promotion usages (e)** remain as above.
 
+
+## Phase 2b, part 3 (reviews) (16 Nov 2026)
+
+The last sections of the customer page and the review events on the timeline (handoff item k).
+
+- **reviews' facade read by account.** `CustomerReviewsFacade` (`CUSTOMER_REVIEWS_FACADE`), four
+  reads behind the new plain platform key `reviews.customer-review.view` (not a seller key, not
+  seeded to Viewer), checked again in reviews for a platform admin who is not seller-scoped and not
+  acting as anyone. Read only and text-free: never a review's title or body, never a reporter's
+  account, never the author of a review the customer voted for. They answer whether reviews are on
+  or off in the Market (they are the history). Their own small dependency set
+  (`CustomerReviewsReader`, `PrismaCustomerReviewsReader`), not the big review repository.
+- **Four super lists, each with `/export`.** Under `customers/admin/customers/:accountId/`:
+  `POST reviews` (filter `status`; each row: ids, rating, anonymous, status, created/edited/published,
+  helpful votes, open reports and the latest moderation line: action, reason code, whether a
+  moderator did it, when; no moderation action here), `POST seller-ratings` (filter `status`),
+  `POST helpful-votes` (no filters) and `POST review-reports` (filter `role`: `by` the customer
+  made it, `about` it reports one of their reviews; a NULL reporter counts as someone else). Each
+  needs `customers.customers.view` and `reviews.customer-review.view`; each export also the
+  protected `customers.customers.export` with its step-up, audited as
+  `customers.customer-section.exported` (the sections `reviews`, `seller-ratings`,
+  `helpful-votes`, `review-reports` are back in `CUSTOMER_SECTIONS` and the catalogue snapshot).
+  customers mirrors reviews' status lists (it cannot import reviews: reviews reaches ordering,
+  which imports customers); the admin-facade-permission contract pins them.
+- **Index.** `20261117050300_reviews_reports_reporter_idx`:
+  `review_reports(market_id, reporter_account_id, created_at DESC)`, plain `CREATE INDEX` with
+  `lock_timeout` (no deployed environment; not partial, so not in the partial-index list; no grant,
+  so no change to the expected privileges), reversible. The reports about a customer's reviews and
+  the other three lists use existing indexes (`product_reviews`, `seller_ratings` and
+  `helpful_votes` by (market, account, created); the reports' (market, review, reporter) key).
+  The reports `about` the customer take two queries in the same read-only unit: the account's
+  review ids in the Market, then `review_id IN (...)` (Mojtaba, B1: a relation filter inside the
+  `OR` planned a hashed SubPlan with no `market_id`, a scan of every Market's reviews). Page and
+  count use the same filter.
+- **Reviews on the timeline.** New kinds `review-published`, `review-held`, `review-hidden`,
+  `review-restored` in the new category `reviews`. Subscriptions `customers.timeline-review-*` on
+  reviews' four events, registered by `CustomersSectionsModule` (it imports reviews). reviews'
+  events still carry no account: `RecordCustomerTimeline` asks `reviewAuthorOf` (new use case
+  `reviews.review-author-of`, rule `system`, so no person and no seller reaches it), then writes
+  once per delivery (`runOnce`, the customers inbox) and once per event. A review that is gone or
+  whose author was deleted writes nothing; reviews unavailable is refused and retried. No reference
+  on the entry (the timeline CHECK allows order, refund, group and note only).
+- **Review kinds need the reviews key (Hassan, L1).** The timeline read, its export and so the
+  Overview's last five show `review-published`, `review-held`, `review-hidden` and
+  `review-restored` only to a caller who also holds `reviews.customer-review.view`, asked through
+  the probe use case `customers.customer-review-events-check` (the gate decides). Without the key
+  the kinds leave the query itself (not the page afterwards), so the page and its total agree; a
+  filter on the `reviews` category or on review kinds only answers an empty list, not an error. A
+  probe the gate cannot answer is `access.unavailable`.
+- **Author removals.** reviews publishes no event when an author deletes their own review (there
+  is no removal event; `ReviewHidden` follows only a moderator's hide or remove of a published
+  review), so an author's removal does not appear on the timeline: the earlier `review-published`
+  entry stays and nothing follows it.
+- **Tests.** Unit on both Market fixtures (reviews' reads and refusals; the four sections through
+  the shared section spec; the timeline from review events and subscriptions), HTTP
+  (`customers-reviews-admin.e2e.spec.ts`: also a seller session, answered 403, and an acting-as
+  session, answered 401 `session.invalid` as on every admin route, on all eight routes; both view
+  keys without the export key refused on every export), PostgreSQL
+  (`reviews-customer-reads.db-spec.ts`, including both roles on both Markets).
+
+Not built in part 3:
+
+- **Consent on the timeline.** legal publishes no event (it has no outbox, and its flow says no
+  consent value reaches an event). Needs a decision: a legal outbox and an event such as
+  `legal.marketing-consent-changed.v1` (account and channel, no value), which customers would copy
+  as `consent-changed`. The consent history section (part 2) shows every change meanwhile.
+- `review-published` also follows an edit that passed the checks and a release from a hold, as
+  reviews' event does; the timeline cannot tell a first submission from those.
+
 - **Identity section** (logins over 90 days as a super list, sessions, sign out everywhere,
   send a password reset): the largest piece, an auth path (security review). `sign_in_records`
   holds the full IP and no geo data, so a "rough city" needs a geo lookup first.
@@ -655,3 +724,44 @@ Not built in part 2 (remaining):
   orders and takes the latest order's currency, which holds while a Market has one currency.
 - **Database.** The sort indexes on `last_order_at` and `followed_at` are `DESC NULLS LAST`, as the
   list sorts them; a CHECK ties `currency` to `order_count > 0`.
+
+## Phase 4a, PR 4a-1: sellers' invite links and the exclusive customer (2026-11-17)
+
+Plan sections 6, 7 and 7b (customers-management-plan-fa.html). API only; the seller panel's link
+card, the storefront's invite banner and the admin list's screens follow in the frontend phase.
+
+- **Tables** (`customers` schema): `seller_invite_links` (one live link per seller by a partial
+  unique index; a token of 26 Crockford symbols unique in the Market; a refresh revokes the old
+  link, whose customers stay attributed) and `seller_attributions` (one per account, foreign key to
+  the directory with cascade, so erasure removes it; status `active` or `rejected` with a reason
+  `seller-team` or `admin`; `flags` holds `link-burst`; a decision is a conditional update on
+  `version`). No raw SQL: concurrency rests on the unique indexes and the versioned update.
+- **Where the link lives**: in `customers`, not `sellers`, so the link and the attribution share
+  one module and one unit. Permission `customers.seller-invite-link.manage` (seller scope) for the
+  link; `customers.seller-attributions.manage` (platform, protected) for an admin decision.
+- **The claim**: the storefront resolves a token anonymously to the store's address only
+  (`GET customers/store-invitations/:token`). After sign-up and email verification the signed-in
+  customer claims it (`POST customers/me/store-invitation`). New sign-ups only: signed up within
+  the Market's `customers.invitations.signUpWindowDays`, no order, no attribution yet. Then the
+  store is followed for the customer (best effort, after the commit) and
+  `customers.seller-attribution-changed.v1` marks the customer `exclusive` in the seller's
+  customers read model (new view `referred`, filter `exclusive`).
+- **Burst count, review fixes**: the count is per seller (any of its links), so a refresh does not
+  reset it; the claim locks the live link's row first (a no-op update, no raw SQL), so concurrent
+  claims through it run one after another and the count is exact. The suspicious view's partial
+  index is written as Prisma writes the filter (`flags <> '{}'`), and a db-spec checks the plan.
+- **Abuse checks**: a customer whose sign-in address is on the seller's team (identity's
+  `ownAccountTiedToSeller`) is recorded as rejected (`seller-team`) and refused; an admin cannot
+  restore it. More attributions through one link in 24 hours than `burstPerDay` flag the new one
+  `link-burst`. Household and payment-method matches are not built: the platform has no such
+  signal (promotions' referral signals answer "unknown" too). The admin's manual reject or
+  restore covers the rest.
+- **Admin list** (`customers/admin/seller-attributions`): a super list (views suspicious, all,
+  active, rejected; email prefix search; filters seller, status, reject reason, flag, day range;
+  both paging modes; select all matching up to 10,000; saved filters under
+  `admin.customers.seller-attributions`; CSV/XLSX export behind the Customers export step-up,
+  audited without personal data). Rows show the seller id, not the store name.
+- **Market settings**: `customers.invitations` (AU: 7 days, 50 a day; ZZ: 3 days, 2 a day). A
+  Market without it has the feature off.
+- **For 4b**: `exclusiveSellerOf` (the seller of an active attribution recorded at or before an
+  instant) is ready for checkout's order-line freeze; the facade method comes with 4b.
