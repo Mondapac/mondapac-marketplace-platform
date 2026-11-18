@@ -2,8 +2,9 @@
 
 import { Banner, Button, Dialog, Select, TextField, toast } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { shortId } from '../shared/short-id.ts';
 import { formatMoney } from './format.ts';
 import { holdProblemOf } from './hold-errors.ts';
 import { NOTE_MAX, REJECTION_REASONS, type PriceHoldRow } from './types.ts';
@@ -11,8 +12,9 @@ import { NOTE_MAX, REJECTION_REASONS, type PriceHoldRow } from './types.ts';
 export type HoldDecision = 'approve' | 'reject';
 
 /**
- * The decision on one held price, opened from the row's Actions menu (confirmation level 3: it
- * money-affects the seller and the buyers, so it names the price and what follows; a rejection
+ * The decision on one held price, opened from the row's Actions menu (confirmation level 2: it
+ * names the product and the price and what follows; the platform owner decides if an approval needs
+ * level 3; a rejection
  * needs a reason code and may carry a note the seller reads). The API refuses a decision by the
  * account that submitted the price; the dialog shows that answer. A record that is no longer
  * pending closes the dialog and the list reads again.
@@ -41,11 +43,14 @@ export function HoldDecisionDialog({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  useEffect(() => {
+  const openKey = `${row?.recordId ?? ''}:${decision ?? ''}`;
+  const [seen, setSeen] = useState(openKey);
+  if (seen !== openKey) {
+    setSeen(openKey);
     setReasonCode('');
     setNote('');
     setProblem(null);
-  }, [row?.recordId, decision]);
+  }
 
   if (row === null || decision === null) return null;
   const price = formatMoney(row.amount, locale);
@@ -87,7 +92,9 @@ export function HoldDecisionDialog({
     <Dialog
       open
       size={decision === 'approve' ? 'default' : 'form'}
-      title={t(`dialog.${decision}.title`)}
+      title={t(`dialog.${decision}.title`, {
+        product: row.productName ?? t('name-unavailable', { id: shortId(row.offerId) }),
+      })}
       onClose={() => {
         if (!pending) onClose();
       }}
@@ -111,7 +118,7 @@ export function HoldDecisionDialog({
       <div className="flex flex-col gap-3">
         <p className="wrap-anywhere">
           {t(`dialog.${decision}.body`, {
-            product: row.productName ?? t('name-unavailable', { id: row.offerId.slice(0, 8) }),
+            product: row.productName ?? t('name-unavailable', { id: shortId(row.offerId) }),
             price,
           })}
         </p>

@@ -2390,27 +2390,7 @@
       "no-access": "You don't have access to held prices.",
       "back-home": "Back to dashboard",
       "unavailable": "Held prices could not be loaded. Try again later.",
-      "more": "Next page",
-      "empty": "No held prices are waiting for a decision.",
-      "view-only": "You can view this queue but not decide.",
-      "col": {
-        "product": "Product",
-        "price": "Held price",
-        "anchor": "Compared with",
-        "direction": "Change",
-        "submitted": "Submitted",
-        "actions": "Decision"
-      },
-      "direction": {
-        "up": "Increase",
-        "down": "Decrease"
-      },
-      "approve": "Approve",
-      "reject": "Reject",
       "cancel": "Cancel",
-      "approve-confirm": "Approve {price}? The price takes effect now.",
-      "approve-yes": "Yes, approve",
-      "reject-yes": "Reject price",
       "reason": {
         "label": "Reason",
         "choose": "Choose a reason",
@@ -2513,8 +2493,8 @@
         },
         "empty": {
           "title": "No held prices are waiting for a decision.",
-          "body": "Prices that need a second pair of eyes will show here.",
-          "no-match": "No held prices match",
+          "body": "Prices that need a second admin's decision will show here.",
+          "no-match": "No held prices match.",
           "no-match-help": "Change the search or the filters, or clear them."
         },
         "select": {
@@ -2563,13 +2543,13 @@
       },
       "dialog": {
         "approve": {
-          "title": "Approve this price?",
-          "body": "Approve {price} for {product}? The price takes effect now.",
+          "title": "Approve {product}?",
+          "body": "Approve {price} for {product}? The price takes effect now and the seller sees it as approved.",
           "confirm": "Approve price"
         },
         "reject": {
-          "title": "Reject this price?",
-          "body": "Reject the held price for {product}. The previous price stays.",
+          "title": "Reject {product}?",
+          "body": "Reject the held price for {product}. The previous price stays. The seller reads the reason you give.",
           "confirm": "Reject price"
         }
       }

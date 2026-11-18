@@ -20,7 +20,7 @@ import {
 
 const COLUMNS = {
   fixed: ['product'],
-  optional: ['price', 'reference', 'change', 'seller', 'kind', 'submitted'],
+  optional: ['seller', 'price', 'reference', 'change', 'kind', 'submitted'],
 } as const;
 
 /**
@@ -141,7 +141,7 @@ export function HoldsList({
             id,
             header,
             skeleton: 'date',
-            cell: (row) => <When iso={row.submittedAt} missing="-" />,
+            cell: (row) => <When iso={row.submittedAt} missing="—" />,
           };
       }
     },
