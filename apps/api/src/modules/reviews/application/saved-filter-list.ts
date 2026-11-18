@@ -1,6 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
 import type { ListDefinition, ListPayloadFailure } from '../../lists';
+import { parseSelector as parseSellerReviewSelector } from './seller-review-list-flow';
 import { REVIEWS_SELLER_SAVED_FILTER_SHARE, REVIEWS_SELLER_VIEW } from '../contracts/permissions';
 import { SELLER_REVIEW_SORT_KEYS, SELLER_REVIEW_VIEWS } from '../domain/seller-review-list';
 
@@ -109,8 +110,30 @@ export function parseSellerReviewFilterPayload(
   if (present(raw['q'])) {
     if (typeof raw['q'] !== 'string') return invalid('payload.q', 'type');
     const text = raw['q'].trim();
-    if (text.length > SELLER_REVIEW_SEARCH_MAX) return invalid('payload.q', 'too-long');
+    if (Array.from(text).length > SELLER_REVIEW_SEARCH_MAX) return invalid('payload.q', 'too-long');
     q = text === '' ? undefined : text;
+  }
+
+  // What a saved filter holds is exactly what the list accepts: the list's own closed parser reads
+  // the selector (control characters, the length in characters, the star range, the Low stars cap),
+  // so a filter that is shared with the store can always be applied.
+  const selector: Record<string, unknown> = { view: view.value };
+  if (reply.value !== undefined) selector['reply'] = reply.value;
+  if (minRating.value !== undefined) selector['minRating'] = minRating.value;
+  if (maxRating.value !== undefined) selector['maxRating'] = maxRating.value;
+  if (q !== undefined) selector['q'] = q;
+  const parsed = parseSellerReviewSelector(selector);
+  if (!parsed.ok) {
+    return {
+      ok: false,
+      error: {
+        code: 'validation.failed',
+        fields: parsed.error.fields.map((field) => ({
+          path: `payload.${field.path}`,
+          code: field.code,
+        })),
+      },
+    };
   }
 
   // The caller checked each part above; `view`, `sort` and `direction` are always set here.

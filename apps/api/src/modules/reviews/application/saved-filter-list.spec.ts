@@ -76,6 +76,12 @@ describe('seller reviews saved filters', () => {
       { path: 'payload.minRating', code: 'value' },
     ]);
     expect(fields({ ...base, within: '5' })).toEqual([{ path: 'payload.within', code: 'value' }]);
+    // What the list itself refuses is refused here too.
+    expect(fields({ ...base, q: 'a\nb' })).toEqual([{ path: 'payload.q', code: 'format' }]);
+    expect(fields({ ...base, q: '\u0000' })).toEqual([{ path: 'payload.q', code: 'format' }]);
+    expect(fields({ ...base, view: 'low', minRating: '3' })).toEqual([
+      { path: 'payload.maxRating', code: 'range' },
+    ]);
     expect(fields({ ...base, q: 'x'.repeat(101) })).toEqual([
       { path: 'payload.q', code: 'too-long' },
     ]);
