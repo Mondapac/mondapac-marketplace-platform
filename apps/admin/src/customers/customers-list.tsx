@@ -30,6 +30,8 @@ import { CustomersBulk } from './customers-bulk.tsx';
 import { CustomersFilterPanel } from './customers-filter-panel.tsx';
 import { CustomersSavedDialogs } from './customers-saved.tsx';
 import { dayOf } from './format.ts';
+import { GroupChips } from './group-chips.tsx';
+import type { CustomerGroup, CustomerGroupsAnswer, GroupRef } from './groups-types.ts';
 import {
   DEFAULT_COLUMNS,
   DEFAULT_QUERY,
@@ -90,10 +92,19 @@ export function CustomersList({
   paging,
   permissionKeys,
   csrfToken,
+  group = null,
+  onMembersChanged,
 }: {
   readonly accountId: string;
   readonly marketId: string;
   readonly marketName: string;
+  /**
+   * A group page's members (phase 2a): the list is scoped to this group, whose filter is fixed
+   * (no chip, not in the filter panel). Saved filters belong to the whole list and are left out.
+   */
+  readonly group?: CustomerGroup | null;
+  /** After customers were added to or removed from a group (the group page's count). */
+  readonly onMembersChanged?: () => void;
   /** The IANA zone the dates read in (ADR-0005). */
   readonly zone: string;
   readonly paging: 'pages' | 'prev-next';
@@ -113,6 +124,9 @@ export function CustomersList({
   const [statusTarget, setStatusTarget] = useState<StatusTarget | null>(null);
   // The Market's currency, as the rows carry it: the spent filter is typed in it.
   const [currency, setCurrency] = useState<string | null>(null);
+  // The Market's groups, for the Group filter and its chip (phase 2a); null until read.
+  const [groups, setGroups] = useState<readonly GroupRef[] | null>(null);
+  const fixedGroup = group?.groupId ?? null;
   const latest = useRef(0);
   const storageKey = prefsKey('admin', marketId, accountId, 'customers-columns');
 
@@ -131,6 +145,7 @@ export function CustomersList({
   }, [storageKey]);
 
   const loadSaved = useCallback(async (): Promise<SavedFiltersAnswer | null> => {
+    if (fixedGroup !== null) return null;
     const result = await callApi<SavedFiltersAnswer>(
       'GET',
       `customers/admin/saved-filters?listKey=${LIST_KEY}`,
@@ -138,7 +153,26 @@ export function CustomersList({
     if (!result.ok) return null;
     setSaved(result.body);
     return result.body;
+  }, [fixedGroup]);
+
+  const [groupsFailed, setGroupsFailed] = useState(false);
+  const loadGroups = useCallback(async () => {
+    setGroupsFailed(false);
+    const result = await callApi<CustomerGroupsAnswer>('GET', 'customers/admin/groups');
+    if (result.ok) setGroups(result.body.items);
+    else setGroupsFailed(true);
   }, []);
+
+  useEffect(() => {
+    if (fixedGroup === null) void loadGroups();
+  }, [fixedGroup, loadGroups]);
+
+  // The query as sent: a group page always carries its group.
+  const scoped = useCallback(
+    (next: Query): Query =>
+      fixedGroup === null ? next : { ...next, filters: { ...next.filters, group: fixedGroup } },
+    [fixedGroup],
+  );
 
   useEffect(() => {
     void loadSaved();
@@ -153,7 +187,7 @@ export function CustomersList({
         'POST',
         'customers/admin/list',
         {
-          ...selectorOf(next),
+          ...selectorOf(scoped(next)),
           sort: next.sort,
           direction: next.direction,
           page: next.page,
@@ -181,7 +215,7 @@ export function CustomersList({
       const known = result.body.items.find((row) => row.currency !== null)?.currency ?? null;
       if (known !== null) setCurrency(known);
     },
-    [csrfToken],
+    [csrfToken, scoped],
   );
 
   useEffect(() => {
@@ -229,11 +263,14 @@ export function CustomersList({
         : formatMinor(value, currency, locale);
     }
     if (key === 'ordersMin' || key === 'ordersMax') return number(Number(value));
+    if (key === 'group') {
+      return groups?.find((known) => known.groupId === value)?.name ?? t('filter.group-unknown');
+    }
     return value;
   };
   const chips = FILTER_KEYS.flatMap((key) => {
     const value = query.filters[key];
-    if (value === undefined) return [];
+    if (value === undefined || (key === 'group' && fixedGroup !== null)) return [];
     const label = t('chip', { field: t(`filter.chip.${key}`), value: chipValue(key, value) });
     return [{ key, label }];
   });
@@ -300,6 +337,17 @@ export function CustomersList({
           header: t('col.refunds'),
           numeric: true,
           cell: (row) => number(row.refundCount),
+        };
+      case 'groups':
+        return {
+          id,
+          header: t('col.groups'),
+          cell: (row) =>
+            (row.groups ?? []).length === 0 ? (
+              <span className="text-fg-muted">—</span>
+            ) : (
+              <GroupChips groups={row.groups ?? []} shown={2} />
+            ),
         };
     }
   };
@@ -402,7 +450,12 @@ export function CustomersList({
   return (
     <SuperList
       heading={{
-        subtitle: counts === null ? '' : t('subtitle', { count: counts.all, market: marketName }),
+        subtitle:
+          counts === null
+            ? ''
+            : group !== null
+              ? t('group-subtitle', { count: counts.all, group: group.name })
+              : t('subtitle', { count: counts.all, market: marketName }),
         actions: (
           <CustomersBulk
             selection={{
@@ -410,12 +463,22 @@ export function CustomersList({
               allMatching: selection.allMatching,
               total: failure === null ? total : 0,
             }}
-            query={query}
+            query={scoped(query)}
             columns={columns}
             permissionKeys={permissionKeys}
             csrfToken={csrfToken}
+            groups={groups}
+            groupsFailed={groupsFailed}
+            onRetryGroups={() => void loadGroups()}
+            group={group}
             onSelectAll={selection.selectAllMatching}
             onClear={selection.clear}
+            onMembersChanged={() => {
+              selection.clear();
+              void load(query);
+              if (fixedGroup === null) void loadGroups();
+              onMembersChanged?.();
+            }}
           />
         ),
       }}
@@ -462,6 +525,7 @@ export function CustomersList({
           <CustomersFilterPanel
             filters={query.filters}
             currency={currency}
+            groups={fixedGroup === null ? groups : null}
             onApply={(filters) => list.change({ filters })}
             close={close}
           />

@@ -15,6 +15,7 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import type { ConsentSource } from '../domain/marketing-consent';
 import { CustomerConsentFacadeImplementation } from '../presentation/customer-consent.facade';
 import type { LegalDependencies } from './legal-dependencies';
+import { RecordingLegalOutbox } from './testing/recording-legal-outbox';
 import { InMemoryMarketingConsents } from './testing/in-memory-marketing-consents';
 import { AdminCustomerConsentHistory } from './use-cases/admin-customer-consent-history.use-case';
 import { AdminCustomerConsent } from './use-cases/admin-customer-consent.use-case';
@@ -59,6 +60,7 @@ describe.each([['AU'], ['ZZ']] as const)(
         consents,
         ids: new SequenceIdGenerator(clock),
         clock,
+        outbox: new RecordingLegalOutbox(),
       };
       const facade = new CustomerConsentFacadeImplementation(
         new AdminCustomerConsent(gate, deps),

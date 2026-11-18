@@ -21,6 +21,7 @@ import {
 import { CUSTOMER_REVIEWS_FACADE, ReviewsModule, type CustomerReviewsFacade } from '../reviews';
 import { CUSTOMER_SECTION_PEERS } from './application/ports/customer-section-peers';
 import { RecordCustomerTimeline } from './application/use-cases/record-customer-timeline.use-case';
+import { customerConsentTimelineSubscriptions } from './presentation/subscribers/customer-consent-timeline.subscriptions';
 import { customerReviewTimelineSubscriptions } from './presentation/subscribers/customer-review-timeline.subscriptions';
 import type { LateBoundSectionPeers } from './infrastructure/late-bound-section-peers';
 import { CustomersModule } from './customers.module';
@@ -28,7 +29,7 @@ import { CustomersModule } from './customers.module';
 /**
  * Binds the customer page's sections (customers management phase 2b) to the modules that own
  * their data: identity, cart, notifications, engagement, legal, assistant and reviews (whose
- * events it also copies onto the author's timeline). A module of its own
+ * events it also copies onto the author's timeline, as it does legal's consent events). A module of its own
  * because several owners reach `ordering`, which imports `customers`: `CustomersModule` provides
  * the section use cases with peers that refuse (fail closed) until this module binds the real
  * facades at start. Registered beside the other customers binding modules in `modules/index.ts`;
@@ -47,10 +48,14 @@ import { CustomersModule } from './customers.module';
   ],
   providers: [
     // Phase 2b, part 3: reviews' events onto the author's timeline (the author through reviews).
+    // Part 4: legal's consent event onto the customer's timeline (channel only, no value).
     registerSubscriptionsFrom(
       'customers',
       [RecordCustomerTimeline],
-      (record: RecordCustomerTimeline) => customerReviewTimelineSubscriptions(record),
+      (record: RecordCustomerTimeline) => [
+        ...customerReviewTimelineSubscriptions(record),
+        ...customerConsentTimelineSubscriptions(record),
+      ],
     ),
   ],
 })

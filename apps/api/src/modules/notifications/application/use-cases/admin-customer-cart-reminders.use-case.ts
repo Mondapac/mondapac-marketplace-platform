@@ -1,6 +1,11 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
-import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import {
+  isPlatformAdminActor,
+  UseCase,
+  type AccessDeclaration,
+  type UseCaseGate,
+} from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type {
   AdminCartReminderSent,
@@ -40,13 +45,7 @@ export class AdminCustomerCartReminders extends UseCase<AdminCartRemindersReques
     context: CallContext,
     input: AdminCartRemindersRequest,
   ): Promise<Result<Page, Failure>> {
-    const { actor } = context;
-    if (
-      actor.kind !== 'authenticated' ||
-      actor.population !== 'admin' ||
-      actor.sellerId !== null ||
-      (Object.hasOwn(actor, 'actingAs') && (actor as { actingAs?: unknown }).actingAs != null)
-    ) {
+    if (!isPlatformAdminActor(context.actor)) {
       return err({ code: 'access.denied' });
     }
     const window = {

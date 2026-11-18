@@ -1,6 +1,7 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { CustomerAddressRevealed } from '../domain/audit';
+import { admitAdminAction, type AdminActionRefusal } from './admin-action-limits';
 import type { AddressRecord } from './ports/address.repository';
 import type { CustomerManagementDependencies } from './customer-management-dependencies';
 import { adminAccountOf, invalidField, isRecord } from './customer-list-flow';
@@ -13,7 +14,8 @@ import type { NoteFailure } from './customer-notes-flow';
 // and a timeline entry in one unit before the content is answered. The content is opened outside
 // the unit (the subject key is identity's) and never reaches a log or an error.
 
-export type CustomerAddressFailure = NoteFailure | { readonly code: 'customers.address-not-found' };
+export type CustomerAddressFailure =
+  NoteFailure | AdminActionRefusal | { readonly code: 'customers.address-not-found' };
 
 /** One address as the page shows it without the reveal key. */
 export interface CustomerAddressSummary {
@@ -109,6 +111,16 @@ export async function revealCustomerAddress(
     return err({ code: 'customers.address-not-found' });
   }
   const addressId: Id<'CustomerAddress'> = parsedAddress.value;
+  // Counted with the sign-in address reveal (security review of #969, L3), before anything is
+  // read: an unknown customer or address counts too.
+  const admitted = await admitAdminAction(
+    deps,
+    context,
+    me,
+    'pii-reveal',
+    'customers.admin-customer-address-reveal',
+  );
+  if (!admitted.ok) return admitted;
   const found = await deps.unitOfWork.run<AddressRecord, CustomerAddressFailure>(
     context.market,
     async () => {

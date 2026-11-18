@@ -15,6 +15,7 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import { LegalFacadeImplementation } from '../presentation/legal.facade';
 import type { LegalDependencies } from './legal-dependencies';
 import { InMemoryMarketingConsents } from './testing/in-memory-marketing-consents';
+import { RecordingLegalOutbox } from './testing/recording-legal-outbox';
 import { MarketingEmailConsentOf } from './use-cases/marketing-email-consent-of.use-case';
 import { SetEmailPreferences } from './use-cases/set-email-preferences.use-case';
 import { ViewEmailPreferences } from './use-cases/view-email-preferences.use-case';
@@ -56,6 +57,7 @@ describe.each([['AU'], ['ZZ']] as const)('marketing email consent in market %s',
   let clock: FixedClock;
   let store: InMemoryMarketingConsents;
   let units: FakeUnitOfWork;
+  let outbox: RecordingLegalOutbox;
   let uc: {
     view: ViewEmailPreferences;
     set: SetEmailPreferences;
@@ -67,11 +69,13 @@ describe.each([['AU'], ['ZZ']] as const)('marketing email consent in market %s',
     clock = new FixedClock(T0);
     store = new InMemoryMarketingConsents();
     units = new FakeUnitOfWork();
+    outbox = new RecordingLegalOutbox();
     const deps: LegalDependencies = {
       unitOfWork: units,
       consents: store,
       ids: new SequenceIdGenerator(clock),
       clock,
+      outbox,
     };
     uc = {
       view: new ViewEmailPreferences(gate, deps),
@@ -91,6 +95,7 @@ describe.each([['AU'], ['ZZ']] as const)('marketing email consent in market %s',
       value: { marketing: false, changedAt: null },
     });
     expect(store.changes).toEqual([]);
+    expect(outbox.events).toEqual([]);
     expect(await uc.consentOf.execute(system, { accountId: ALICE })).toEqual({
       ok: true,
       value: { granted: false },
@@ -124,6 +129,44 @@ describe.each([['AU'], ['ZZ']] as const)('marketing email consent in market %s',
     });
     // Bob never agreed.
     expect(await uc.view.execute(bob, {})).toMatchObject({ value: { marketing: false } });
+
+    // One event per real change, in the change's Market: the account and the channel, never the
+    // value or the source; the aggregate is the change appended to the history.
+    expect(outbox.events).toEqual([
+      expect.objectContaining({
+        type: 'legal.marketing-consent-changed.v1',
+        aggregateId: store.changes[0]!.id,
+        aggregateVersion: 1,
+        occurredAt: T0,
+        payload: { accountId: ALICE, channel: 'email' },
+        marketId: code,
+      }),
+      expect.objectContaining({
+        type: 'legal.marketing-consent-changed.v1',
+        aggregateId: store.changes[1]!.id,
+        occurredAt: T0.add({ minutes: 10 }),
+        payload: { accountId: ALICE, channel: 'email' },
+        marketId: code,
+      }),
+    ]);
+    expect(JSON.stringify(outbox.events)).not.toMatch(/granted|marketing"|sign-up|account"/);
+  });
+
+  it('writes no event when the change cannot be stored (one unit: neither or both)', async () => {
+    const failing = Object.assign(Object.create(store) as InMemoryMarketingConsents, {
+      record: () => Promise.reject(new Error('down')),
+    });
+    const deps: LegalDependencies = {
+      unitOfWork: units,
+      consents: failing,
+      ids: new SequenceIdGenerator(clock),
+      clock,
+      outbox,
+    };
+    await expect(
+      new SetEmailPreferences(gate, deps).execute(alice, { marketing: true }),
+    ).rejects.toThrow('down');
+    expect(outbox.events).toEqual([]);
   });
 
   it.each([
@@ -157,6 +200,11 @@ describe.each([['AU'], ['ZZ']] as const)('marketing email consent in market %s',
       [true, 'account'],
       [false, 'unsubscribe-link'],
     ]);
+    // The link's withdrawal is announced like any change; the repeated click is not.
+    expect(outbox.events.map((event) => event.payload)).toEqual([
+      { accountId: ALICE, channel: 'email' },
+      { accountId: ALICE, channel: 'email' },
+    ]);
   });
 
   it('serves the customer only; the consent check is for the system actor', async () => {
@@ -168,6 +216,7 @@ describe.each([['AU'], ['ZZ']] as const)('marketing email consent in market %s',
       expect(await uc.set.execute(other, { marketing: true })).toMatchObject({ ok: false });
     }
     expect(await uc.view.execute(anonymous, {})).toMatchObject({ ok: false });
+    expect(outbox.events).toEqual([]);
     expect(await uc.consentOf.execute(alice, { accountId: ALICE })).toMatchObject({ ok: false });
     expect(await uc.consentOf.execute(anonymous, { accountId: ALICE })).toMatchObject({
       ok: false,

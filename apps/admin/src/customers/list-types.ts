@@ -1,6 +1,8 @@
 // The admin Customers super list (customers management phase 1, B2): the API's answer, the
 // page's query and the conversions between the query, the request body and a saved filter.
 
+import type { GroupRef } from './groups-types.ts';
+
 export const LIST_PERMISSION = 'customers.customers.view';
 export const EXPORT_PERMISSION = 'customers.customers.export';
 export const SHARE_PERMISSION = 'customers.saved-filter.share';
@@ -26,6 +28,8 @@ export type Direction = 'asc' | 'desc';
 export const defaultDirection = (sort: Sort): Direction =>
   sort === 'name' || sort === 'email' ? 'asc' : 'desc';
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const SEARCH_MIN = 2;
 export const SEARCH_MAX = 80;
 export const PAGE_SIZE = 25;
@@ -46,6 +50,8 @@ export interface Filters {
   readonly ordersMax?: string;
   readonly spentMin?: string;
   readonly spentMax?: string;
+  /** A manual group's id (phase 2a): only its members. */
+  readonly group?: string;
 }
 export const FILTER_KEYS = [
   'status',
@@ -58,6 +64,7 @@ export const FILTER_KEYS = [
   'ordersMax',
   'spentMin',
   'spentMax',
+  'group',
 ] as const satisfies readonly (keyof Filters)[];
 export type FilterKey = (typeof FILTER_KEYS)[number];
 
@@ -104,6 +111,7 @@ export function apiFilters(f: Filters): Record<string, string | number | boolean
   for (const key of ['spentMin', 'spentMax'] as const) {
     if (f[key] !== undefined) filters[key] = f[key];
   }
+  if (f.group !== undefined) filters['group'] = f.group;
   return filters;
 }
 
@@ -123,6 +131,8 @@ export function filtersOfApi(raw: Readonly<Record<string, unknown>> | undefined)
       out[key] = String(value);
     }
   }
+  const group = raw['group'];
+  if (typeof group === 'string' && UUID.test(group)) out['group'] = group.toLowerCase();
   return out;
 }
 
@@ -150,6 +160,8 @@ export interface CustomerRow {
   readonly spentMinor: string;
   readonly currency: string | null;
   readonly refundCount: number;
+  /** The manual groups the customer is in (phase 2a; absent from an older API). */
+  readonly groups?: readonly GroupRef[];
 }
 
 export interface CustomersPage {
@@ -176,6 +188,7 @@ export const OPTIONAL_COLUMNS = [
   'last-order',
   'verified',
   'refunds',
+  'groups',
 ] as const;
 export type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number];
 export const DEFAULT_COLUMNS: readonly OptionalColumn[] = [
