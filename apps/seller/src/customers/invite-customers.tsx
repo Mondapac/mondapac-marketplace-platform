@@ -14,6 +14,7 @@ import {
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
+import { NOT_APPROVED_CODES } from './customers-list.tsx';
 import { InviteQr, downloadQrPng } from './invite-qr.tsx';
 import type { InviteLinkAnswer } from './types.ts';
 
@@ -21,7 +22,7 @@ const PATH = 'customers/seller/invite-link';
 
 /** The storefront address of an invite: its origin (from the panel's config) and the token. */
 export function inviteUrl(origin: string, token: string): string {
-  return `${origin.replace(/\/+$/, '')}/invite/${token}`;
+  return `${origin.replace(/\/+$/, '')}/invite/${encodeURIComponent(token)}`;
 }
 
 type Problem =
@@ -52,9 +53,10 @@ export function InviteCustomers({
 }) {
   const t = useTranslations('customers.invite');
   const tl = useTranslations('load');
+  const tc = useTranslations('customers');
   const [answer, setAnswer] = useState<InviteLinkAnswer | null>(null);
   const [problem, setProblem] = useState<Problem | null>(null);
-  const [denied, setDenied] = useState(false);
+  const [denied, setDenied] = useState<'denied' | 'not-approved' | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [working, setWorking] = useState(false);
   const [refreshProblem, setRefreshProblem] = useState<string | null>(null);
@@ -73,7 +75,7 @@ export function InviteCustomers({
       return;
     }
     if (result.failure.status === 403) {
-      setDenied(true);
+      setDenied(NOT_APPROVED_CODES.has(result.failure.code) ? 'not-approved' : 'denied');
       return;
     }
     setProblem(problemOf(result.failure));
@@ -111,7 +113,17 @@ export function InviteCustomers({
     );
   }
 
-  if (denied) {
+  if (denied === 'not-approved') {
+    return (
+      <EmptyState
+        size="page"
+        icon="lock"
+        title={tc('not-approved.title')}
+        body={tc('not-approved.body')}
+      />
+    );
+  }
+  if (denied !== null) {
     return <EmptyState size="page" icon="lock" title={t('denied.title')} body={t('denied.body')} />;
   }
   if (problem !== null) {

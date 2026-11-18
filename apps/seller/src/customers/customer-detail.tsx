@@ -28,6 +28,7 @@ type Outcome =
   | { readonly kind: 'ok'; readonly body: SellerCustomerDetail }
   | { readonly kind: 'not-found' }
   | { readonly kind: 'denied' }
+  | { readonly kind: 'not-approved' }
   | { readonly kind: 'throttled'; readonly minutes: number }
   | { readonly kind: 'unavailable' };
 
@@ -88,8 +89,8 @@ export function CustomerDetail({ code }: { readonly code: string }) {
       setOutcome(
         mapped.kind === 'throttled'
           ? mapped
-          : mapped.kind === 'denied'
-            ? { kind: 'denied' }
+          : mapped.kind === 'denied' || mapped.kind === 'not-approved'
+            ? { kind: mapped.kind }
             : { kind: 'unavailable' },
       );
     },
@@ -125,6 +126,17 @@ export function CustomerDetail({ code }: { readonly code: string }) {
         icon="users"
         title={t('detail.not-found.title')}
         body={t('detail.not-found.body')}
+        action={back}
+      />
+    );
+  }
+  if (outcome.kind === 'not-approved') {
+    return (
+      <EmptyState
+        size="page"
+        icon="lock"
+        title={t('not-approved.title')}
+        body={t('not-approved.body')}
         action={back}
       />
     );

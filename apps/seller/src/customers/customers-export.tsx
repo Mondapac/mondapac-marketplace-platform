@@ -82,6 +82,7 @@ export function CustomersExport({
   const number = (value: number) => numberFormat(locale, {}).format(value);
   const byCodes = !allMatching && selectedCodes.length > 0;
   const count = byCodes ? selectedCodes.length : (total ?? 0);
+  const tooMany = byCodes && selectedCodes.length > EXPORT_CODES_MAX;
 
   async function download(format: ExportFormat) {
     setBusy(true);
@@ -153,12 +154,18 @@ export function CustomersExport({
       <Button
         variant="secondary"
         className="gap-2"
-        disabled={disabled || busy || total === null || total === 0}
+        disabled={disabled || busy || total === null || total === 0 || tooMany}
+        aria-describedby={tooMany ? 'customers-export-hint' : undefined}
         onClick={() => setOpen(true)}
       >
         <Icon name="download" />
         {t('button')}
       </Button>
+      {tooMany ? (
+        <p id="customers-export-hint" role="status" className="w-full text-sm text-fg-muted">
+          {t('too-many-hint', { max: number(EXPORT_CODES_MAX) })}
+        </p>
+      ) : null}
       <ExportDialog
         open={open}
         onClose={() => setOpen(false)}

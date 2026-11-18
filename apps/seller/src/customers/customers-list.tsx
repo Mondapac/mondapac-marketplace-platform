@@ -51,12 +51,22 @@ const LIST_PATH = 'customers/seller/customers/list';
 type Failure =
   | { readonly kind: 'refused' }
   | { readonly kind: 'denied' }
+  | { readonly kind: 'not-approved' }
   | { readonly kind: 'throttled'; readonly minutes: number }
   | { readonly kind: 'unavailable' };
 
+/** The refusals that mean "this shop is not approved", which have their own notice. */
+export const NOT_APPROVED_CODES: ReadonlySet<string> = new Set([
+  'access.seller-not-approved',
+  'seller.not-eligible',
+]);
+
 /** What a failed list read means for the page: only a 403 hides it, a 429 says when to retry. */
 export function failureOf(failure: ApiFailure): Failure {
-  if (failure.status === 403) return { kind: 'denied' };
+  // A shop that is not approved gets the notice; any other 403 hides the page.
+  if (failure.status === 403) {
+    return NOT_APPROVED_CODES.has(failure.code) ? { kind: 'not-approved' } : { kind: 'denied' };
+  }
   if (failure.status === 429) {
     const seconds = failure.details?.retryAfterSeconds ?? 60;
     return { kind: 'throttled', minutes: Math.max(1, Math.ceil(seconds / 60)) };
@@ -337,6 +347,16 @@ export function CustomersList({
     />
   );
 
+  if (failure?.kind === 'not-approved') {
+    return (
+      <EmptyState
+        size="page"
+        icon="lock"
+        title={t('not-approved.title')}
+        body={t('not-approved.body')}
+      />
+    );
+  }
   if (failure?.kind === 'denied') {
     return <EmptyState size="page" icon="lock" title={t('denied.title')} body={t('denied.body')} />;
   }

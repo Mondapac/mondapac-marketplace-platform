@@ -106,4 +106,20 @@ describe('relay allowlist for customers and exclusive perks', () => {
     const headers = new Headers(upstream.mock.calls[0]?.[1]?.headers);
     expect(headers.get('x-market-id')).toBe('NZ');
   });
+
+  it('passes only type=CUSTOMER_GROUP and limit on the promotion list', async () => {
+    const upstream = upstreamOk();
+    const path = 'promotions/seller/promotions';
+    await relay(
+      config,
+      send('GET', `${path}?type=CUSTOMER_GROUP&limit=100&x=1`),
+      path.split('/'),
+      upstream,
+    );
+    await relay(config, send('GET', `${path}?type=REFERRAL`), path.split('/'), upstream);
+    expect(String(upstream.mock.calls[0]?.[0] as string)).toBe(
+      `http://api.test/${path}?type=CUSTOMER_GROUP&limit=100`,
+    );
+    expect(String(upstream.mock.calls[1]?.[0] as string)).toBe(`http://api.test/${path}`);
+  });
 });

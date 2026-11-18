@@ -4052,7 +4052,8 @@
         "exclusive": "Exclusive",
         "lastOrder": "Last order",
         "orders": "Orders",
-        "spent": "Spent ({currency})"
+        "spent": "Spent ({currency})",
+        "spent-plain": "Spent"
       },
       "any": "Any",
       "yes": "Yes",
@@ -4073,7 +4074,8 @@
       "chip-exclusive": "Exclusive: {value}",
       "chip-range": "{from} to {to}",
       "chip-from": "from {value}",
-      "chip-to": "up to {value}"
+      "chip-to": "up to {value}",
+      "spent-wait": "The amount can be filtered once the list shows a customer who has bought."
     },
     "sort": {
       "button": "Sort",
@@ -4175,7 +4177,8 @@
         "invalid": "The export could not use these filters.",
         "denied": "You do not have permission to export customers.",
         "unavailable": "The export could not be made. Try again."
-      }
+      },
+      "too-many-hint": "You can export at most {max} selected customers. Use \"Select all matching\" or clear some."
     },
     "detail": {
       "title": "Customer",
@@ -4332,6 +4335,10 @@
         "unavailable": "Perks could not be loaded. Try again in a moment.",
         "unknown": "Something went wrong. Try again."
       }
+    },
+    "not-approved": {
+      "title": "Your shop is not approved yet",
+      "body": "Customers open once your shop is approved. Finish your seller account setup first."
     }
   }
 }

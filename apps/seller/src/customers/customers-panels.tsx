@@ -119,6 +119,7 @@ export function CustomersFilterPanel({
     type: 'date' | 'text',
     legend: string,
     mode?: 'numeric' | 'decimal',
+    disabled = false,
   ) => (
     <fieldset className="flex flex-col gap-2">
       <legend className="mb-1 text-sm font-medium text-fg">{legend}</legend>
@@ -128,6 +129,7 @@ export function CustomersFilterPanel({
           type={type}
           {...(mode === undefined ? {} : { inputMode: mode })}
           value={draft[from]}
+          disabled={disabled}
           error={errors[from]}
           onChange={(event) => set(from, event.target.value)}
         />
@@ -136,6 +138,7 @@ export function CustomersFilterPanel({
           type={type}
           {...(mode === undefined ? {} : { inputMode: mode })}
           value={draft[to]}
+          disabled={disabled}
           error={errors[to]}
           onChange={(event) => set(to, event.target.value)}
         />
@@ -167,9 +170,15 @@ export function CustomersFilterPanel({
       </div>
       {range('lastOrderFrom', 'lastOrderTo', 'date', t('name.lastOrder'))}
       {range('ordersMin', 'ordersMax', 'text', t('name.orders'), 'numeric')}
-      {currency === null
-        ? null
-        : range('spentMin', 'spentMax', 'text', t('name.spent', { currency }), 'decimal')}
+      {range(
+        'spentMin',
+        'spentMax',
+        'text',
+        currency === null ? t('name.spent-plain') : t('name.spent', { currency }),
+        'decimal',
+        currency === null,
+      )}
+      {currency === null ? <p className="text-sm text-fg-muted">{t('spent-wait')}</p> : null}
       <div className="flex justify-end gap-2 border-t border-line-row pt-3">
         <Button variant="secondary" onClick={close}>
           {t('cancel')}

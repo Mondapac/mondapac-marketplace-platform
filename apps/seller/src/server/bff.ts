@@ -268,7 +268,8 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   // The seller's own promotions list: the type filter and the page size.
   'promotions/seller/promotions': {
-    type: /^[A-Z_]{1,40}$/,
+    // Only what the Exclusive perks page asks for.
+    type: /^CUSTOMER_GROUP$/,
     limit: /^[0-9]{1,3}$/,
   },
   'ordering/seller/saved-filters': { listKey: /^seller\.ordering\.orders$/ },
