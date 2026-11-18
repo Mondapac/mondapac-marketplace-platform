@@ -226,16 +226,23 @@ a merge or an import cannot be undone cleanly, so it waits for another admin's a
   answer is `null` when the area is not reviewed in the Market (the module applies the action at
   once, in the same unit, as before), the new request, or `system-requests.already-pending`
   (`pendingNumber`): one open proposal per subject (also a partial unique index).
-- The kind registers an applier (`registerSystemChangeApplier`): `apply` (in the approval's
-  serializable unit: compares the subject with `before`, runs the module's own checks, writes the
-  action as the approving admin naming the request; answers `applied`, `changed-since`, `gone` or
-  `not-permitted`) and `check` (before the unit, fail closed: at least the approving admin holds
-  the action's permission). `isInterested` and `describe` work as for a reverter. A kind is either
-  reviewed after (reverter) or approved first (applier), never both.
-- The request: `mode: 'approval'`, first activity `proposed`. Approve runs `check`, then `apply`
-  with the decision; anything but `applied` leaves it open and writes nothing. Reject and withdraw
-  change nothing and ask the module nothing (status `reverted`, decision `rejected` or
-  `withdrawn`). A proposal is never superseded and supersedes nothing (CHECK), so reject and
+- The kind registers an applier (`registerSystemChangeApplier(module, kind, area, permission,
+  token)`): the permission key the action needs, which system-requests checks itself (Hassan M1:
+  a module `check` that answers `ok` for anyone cannot let a reviewer run an action they may not
+  run); `apply` (in the approval's serializable unit: compares the subject with `before`, runs the
+  module's own checks, writes the action as the approving admin naming the request; answers
+  `applied`, `changed-since`, `gone` or `not-permitted`) and `check` (before the unit, fail closed:
+  the module's further rules and the checks that open a unit of their own). `isInterested` and
+  `describe` work as for a reverter. A kind is either reviewed after (reverter) or approved first
+  (applier), never both. Every module that registers an applier gets its own security review.
+- The request: `mode: 'approval'`, first activity `proposed`. Approve checks the registered key,
+  runs `check`, then checks the area's review key and the action's key once more as the last step
+  before the unit (Hassan L2; the authorisation check never runs inside the caller's unit), then
+  `apply` with the decision; anything but `applied` leaves it open and writes nothing. Reject and
+  withdraw change nothing and ask the module nothing (status `reverted`, decision `rejected` or
+  `withdrawn`); they need no registered kind, so a retired kind never leaves a proposal stuck
+  (Hassan L3). Two concurrent proposals of one subject: `findPendingProposal` takes the Market's
+  counter lock first, so the second sees the first and answers `already-pending` (Mojtaba). A proposal is never superseded and supersedes nothing (CHECK), so reject and
   withdraw never need it to be the subject's latest. High risk spends the step-up proof as usual.
 - Bulk approve and "select all matching" never take a proposal (`system-requests.one-by-one`; the
   matching filter leaves proposals out): each is applied on its own approval.

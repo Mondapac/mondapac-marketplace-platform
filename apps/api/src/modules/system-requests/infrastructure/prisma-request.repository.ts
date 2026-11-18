@@ -229,7 +229,18 @@ export class PrismaRequestRepository implements RequestRepository {
   }
 
   async findPendingProposal(market: MarketContext, subjectKind: string, subjectRef: string) {
-    const row = await this.prisma.tx(market).systemRequestsRequest.findFirst({
+    const tx = this.prisma.tx(market);
+    // The Market's counter row lock first, as `open` takes it: two proposals of one subject are
+    // then looked up one after the other, and the later one sees the earlier (Mojtaba, #1048).
+    await tx.systemRequestsRequestCounter.createMany({
+      data: [{ marketId: market.marketId, tenantId: market.tenantId, lastNumber: 0 }],
+      skipDuplicates: true,
+    });
+    await tx.systemRequestsRequestCounter.updateMany({
+      where: { marketId: market.marketId },
+      data: { lastNumber: { increment: 0 } },
+    });
+    const row = await tx.systemRequestsRequest.findFirst({
       where: {
         marketId: market.marketId,
         subjectKind,

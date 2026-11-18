@@ -77,6 +77,10 @@ const MAKER = id<'Account'>(0xa1);
 const CHECKER = id<'Account'>(0xa2);
 const OUTSIDER = id<'Account'>(0xa3);
 const STRANGER = id<'Account'>(0xa4);
+/** Reviews the catalogue but may not run the actions that wait for approval there. */
+const REVIEWER_ONLY = id<'Account'>(0xa5);
+/** The permission the catalog module would register with its appliers in these tests. */
+const DELETE_KEY = 'catalog.category.delete';
 const START = Temporal.Instant.from('2026-11-15T01:00:00Z');
 const SETTING = 'settings.market-setting';
 /** The kind the settings module would register in each area these tests use. */
@@ -108,10 +112,14 @@ const KEYS: Readonly<Record<string, readonly string[]>> = {
     SYSTEM_REQUESTS_MONEY_REVIEW.key,
     SYSTEM_REQUESTS_POLICY_VIEW.key,
     SYSTEM_REQUESTS_POLICY_MANAGE.key,
+    DELETE_KEY,
   ],
   [OUTSIDER]: [VIEW, SYSTEM_REQUESTS_POLICY_MANAGE.key],
   [STRANGER]: [],
+  [REVIEWER_ONLY]: [VIEW, SYSTEM_REQUESTS_CATALOGUE_REVIEW.key],
 };
+/** Keys taken from an account during a test (`${account}:${key}`), as a role change would. */
+const revoked = new Set<string>();
 
 describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) => {
   const market = testMarketContext(code, 'default');
@@ -123,7 +131,10 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       let allowed = rule.kind === 'system' ? actor.kind === 'system' : true;
       if (rule.kind === 'permissions') {
         const held = actor.kind === 'authenticated' ? (KEYS[actor.accountId] ?? []) : [];
-        allowed = rule.allOf.every((key) => held.includes(key));
+        const account = actor.kind === 'authenticated' ? actor.accountId : '';
+        allowed = rule.allOf.every(
+          (key) => held.includes(key) && !revoked.has(`${account}:${key}`),
+        );
       }
       return Promise.resolve(
         allowed
@@ -163,6 +174,7 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
     new type(gate, deps);
 
   beforeEach(() => {
+    revoked.clear();
     clock = new FixedClock(START);
     requests = new InMemoryRequests();
     policy = new InMemoryPolicy();
@@ -199,8 +211,20 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       'review-policy',
       new PolicyReverter(deps, DUE_DAYS_KIND),
     );
-    registry.facade.registerApplier('catalog', 'catalog.category', 'catalogue', applier);
-    registry.facade.registerApplier('catalog', 'catalog.listing', 'marketplace', applier);
+    registry.facade.registerApplier(
+      'catalog',
+      'catalog.category',
+      'catalogue',
+      DELETE_KEY,
+      applier,
+    );
+    registry.facade.registerApplier(
+      'catalog',
+      'catalog.listing',
+      'marketplace',
+      DELETE_KEY,
+      applier,
+    );
     registry.seal();
     recorder = new SystemRequestRecorderImplementation(deps);
   });
@@ -876,6 +900,62 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       for (const filed of [first, second, third]) {
         expect((await requests.find(market, filed.id))?.status).toBe('open');
       }
+      expect(applier.applied).toEqual([]);
+    });
+
+    it('checks the registered permission itself, whatever the module check answers', async () => {
+      // The fake's check answers ok for anyone: a reviewer without the action's key is still
+      // refused, before the module is asked (Hassan M1).
+      const filed = await propose(MAKER, 'a');
+      const refused = { ok: false, error: { code: 'system-requests.revert-not-permitted' } };
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(REVIEWER_ONLY), { requestId: filed.id }),
+      ).toEqual(refused);
+      expect(applier.checks).toEqual([]);
+      expect(applier.applied).toEqual([]);
+
+      // A key taken away while the module check runs is caught by the last look before the unit
+      // (Hassan L2): the action's permission, and the area's review key.
+      applier.onCheck = () => revoked.add(`${CHECKER}:${DELETE_KEY}`);
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: filed.id }),
+      ).toEqual(refused);
+      revoked.clear();
+      applier.onCheck = () => revoked.add(`${CHECKER}:${SYSTEM_REQUESTS_CATALOGUE_REVIEW.key}`);
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: filed.id }),
+      ).toEqual({ ok: false, error: { code: 'system-requests.not-reviewer' } });
+      expect(applier.applied).toEqual([]);
+      expect((await requests.find(market, filed.id))?.status).toBe('open');
+
+      revoked.clear();
+      applier.onCheck = undefined;
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: filed.id }),
+      ).toMatchObject({ ok: true, value: { status: 'approved' } });
+    });
+
+    it('lets a proposal whose kind is no longer registered be rejected or withdrawn', async () => {
+      const rejected = await propose(MAKER, 'a');
+      const withdrawn = await propose(MAKER, 'b');
+      const empty = new ReverterRegistry();
+      empty.seal();
+      deps = { ...deps, reverters: empty };
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: rejected.id }),
+      ).toEqual({ ok: false, error: { code: 'system-requests.revert-unavailable' } });
+      expect(
+        await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+          requestId: rejected.id,
+          reason: 'Kind retired',
+        }),
+      ).toMatchObject({ ok: true, value: { status: 'reverted', decision: 'rejected' } });
+      expect(
+        await useCase(WithdrawSystemRequest).execute(admin(MAKER), {
+          requestId: withdrawn.id,
+          reason: 'Kind retired',
+        }),
+      ).toMatchObject({ ok: true, value: { status: 'reverted', decision: 'withdrawn' } });
       expect(applier.applied).toEqual([]);
     });
 
@@ -1652,22 +1732,49 @@ describe('the reverter registry', () => {
     expect(registry.find('catalog.product')).toBeNull();
   });
 
-  it('takes an applier only with apply and check, never in the review-policy area', () => {
+  it('takes an applier only with a permission key, apply and check, never in the review-policy area', () => {
     const registry = new ReverterRegistry();
     const applier = {
       apply: () => Promise.resolve('applied' as const),
       check: () => Promise.resolve('ok' as const),
     };
     expect(() =>
-      registry.facade.registerApplier('catalog', 'catalog.category', 'catalogue', {
+      registry.facade.registerApplier('catalog', 'catalog.category', 'catalogue', DELETE_KEY, {
         apply: applier.apply,
       } as never),
     ).toThrow(ReverterRegistryError);
+    for (const permission of ['', 'Delete', undefined]) {
+      expect(() =>
+        registry.facade.registerApplier(
+          'catalog',
+          'catalog.category',
+          'catalogue',
+          permission as never,
+          applier,
+        ),
+      ).toThrow(ReverterRegistryError);
+    }
     expect(() =>
-      registry.registerApplier('system-requests', 'system-requests.x', 'review-policy', applier),
+      registry.registerApplier(
+        'system-requests',
+        'system-requests.x',
+        'review-policy',
+        DELETE_KEY,
+        applier,
+      ),
     ).toThrow(ReverterRegistryError);
-    registry.facade.registerApplier('catalog', 'catalog.category', 'catalogue', applier);
-    expect(registry.find('catalog.category')).toMatchObject({ mode: 'approval', applier });
+    registry.facade.registerApplier(
+      'catalog',
+      'catalog.category',
+      'catalogue',
+      DELETE_KEY,
+      applier,
+    );
+    expect(registry.find('catalog.category')).toMatchObject({
+      mode: 'approval',
+      applier,
+      permission: DELETE_KEY,
+    });
     expect(() =>
       registry.facade.register('catalog', 'catalog.category', 'catalogue', {
         revert: () => Promise.resolve('reverted' as const),

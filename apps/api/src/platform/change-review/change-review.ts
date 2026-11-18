@@ -155,7 +155,6 @@ export interface SystemActionProposer {
     context: CallContext,
     change: ProposedChange,
   ): Promise<Result<RecordedRequest | null, ProposeFailure>>;
-
 }
 
 export const SYSTEM_ACTION_PROPOSER = Symbol('SYSTEM_ACTION_PROPOSER');
@@ -240,8 +239,9 @@ export type ApplyOutcome = 'applied' | 'changed-since' | 'gone' | 'not-permitted
  * and events, as the approving admin, naming the request). Runs inside system-requests' open
  * serializable read-write unit, which also closes the request, so both commit or neither does.
  * It must compare the subject with `before` first and run every check its own use case runs
- * (validation, references, guards) except the caller's permission, which `check` covers. A reject
- * or withdraw of a proposal asks the applier nothing: nothing was applied.
+ * (validation, references, guards) except the caller's permissions, which system-requests (the
+ * key registered with the applier) and `check` cover. A reject or withdraw of a proposal asks the
+ * applier nothing: nothing was applied.
  */
 export interface SystemChangeApplier {
   apply(context: CallContext, request: RevertRequest): Promise<ApplyOutcome>;
@@ -249,8 +249,9 @@ export interface SystemChangeApplier {
   isInterested?(context: CallContext, request: RevertRequest): Promise<boolean>;
   /**
    * The checks of the action that open a unit of their own, run before the approval's unit
-   * opens: at least that the approving admin holds the permission the action needs. Must fail
-   * closed; `not-permitted` writes nothing and leaves the request open.
+   * opens (system-requests has already checked the permission key registered with the applier):
+   * any further permission or rule of the owning module's use case, reference checks against
+   * another module. Must fail closed; `not-permitted` writes nothing and leaves the request open.
    */
   check(context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'>;
   /** As {@link SystemChangeReverter.describe}. */
@@ -275,11 +276,17 @@ export interface SystemChangeReverters {
     area: ChangeReviewArea,
     reverter: SystemChangeReverter,
   ): void;
-  /** As `register`, for a kind whose actions wait for approval (`proposeChange`). */
+  /**
+   * As `register`, for a kind whose actions wait for approval (`proposeChange`). `permission` is
+   * the key the action needs (the one the owning module's own use case declares): system-requests
+   * checks that the approving admin holds it before the approval, whatever the applier's `check`
+   * answers.
+   */
   registerApplier(
     module: string,
     subjectKind: string,
     area: ChangeReviewArea,
+    permission: string,
     applier: SystemChangeApplier,
   ): void;
 }
@@ -310,19 +317,23 @@ export function registerSystemChangeReverter(
 
 /**
  * The one provider a module adds to register its applier for `subjectKind` (see
- * {@link SystemChangeApplier}); as {@link registerSystemChangeReverter} otherwise.
+ * {@link SystemChangeApplier}), with the permission key the action needs:
+ * `registerSystemChangeApplier('catalog', 'catalog.category-delete', 'catalogue',
+ * CATALOG_CATEGORY_DELETE.key, CATEGORY_DELETE_APPLIER)`; as {@link registerSystemChangeReverter}
+ * otherwise.
  */
 export function registerSystemChangeApplier(
   module: string,
   subjectKind: string,
   area: ChangeReviewArea,
+  permission: string,
   applier: InjectionToken,
 ): Provider {
   return {
     provide: Symbol(`system-requests:applier:${subjectKind}`),
     inject: [SYSTEM_CHANGE_REVERTERS, applier],
     useFactory: (registry: SystemChangeReverters, implementation: SystemChangeApplier) => {
-      registry.registerApplier(module, subjectKind, area, implementation);
+      registry.registerApplier(module, subjectKind, area, permission, implementation);
       return subjectKind;
     },
   };

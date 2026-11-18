@@ -172,6 +172,31 @@ describe('system requests (database integration)', () => {
       expect((await open(market, again)).superseded).toEqual([]);
     });
 
+    it('files one of two concurrent proposals of a subject; the other sees it pending', async () => {
+      // findPendingProposal takes the Market's counter lock first (Mojtaba, condition 1), so the
+      // second unit waits for the first to commit and then sees its proposal, instead of failing
+      // on the unique index.
+      const subjectRef = `race-${randomUUID()}`;
+      const attempt = () =>
+        inUnit(market, async () => {
+          const proposal = newRequest({
+            subjectRef,
+            mode: 'approval',
+            after: { action: 'delete' },
+          });
+          const pending = await requests.findPendingProposal(
+            market,
+            proposal.subjectKind,
+            subjectRef,
+          );
+          if (pending !== null) return 'already-pending';
+          await requests.open(market, proposal, randomUUID() as Id<'SystemRequestActivity'>);
+          return 'opened';
+        }).then(value);
+      const answers = await Promise.all([attempt(), attempt()]);
+      expect([...answers].sort()).toEqual(['already-pending', 'opened']);
+    });
+
     it('writes a decision once, and the database keeps it', async () => {
       const request = newRequest();
       await open(market, request);

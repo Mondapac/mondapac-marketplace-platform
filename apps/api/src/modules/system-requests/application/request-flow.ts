@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
-import type { ConsumedStepUp, StepUpRefusal } from '../../../platform/authz';
+import type { ConsumedStepUp, PermissionKey, StepUpRefusal } from '../../../platform/authz';
 import type {
   AppliedChange,
   ProposedChange,
@@ -187,10 +187,20 @@ async function reviews(
   context: CallContext,
   area: ReviewArea,
 ): Promise<boolean> {
+  return holds(deps, context, 'system-requests.review-area', [REVIEW_KEYS[area]]);
+}
+
+/** Whether the caller holds every key, asked of the authorisation check (fails closed). */
+async function holds(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  name: string,
+  keys: readonly [PermissionKey, ...PermissionKey[]],
+): Promise<boolean> {
   try {
     const decision = await deps.authorisation.check(context, {
-      name: 'system-requests.review-area',
-      rule: { kind: 'permissions', allOf: [REVIEW_KEYS[area]] },
+      name,
+      rule: { kind: 'permissions', allOf: keys },
     });
     return decision.allowed;
   } catch {
@@ -937,10 +947,14 @@ async function seenProposal(
 }
 
 /**
- * Approves a proposal: the owning module's `check` (the approving admin's permission for the
- * action, and the checks that open a unit of their own) before the unit, then, in one
- * serializable unit with the decision, its `apply`, which writes the action only if the subject
- * still holds `before`. Anything but `applied` writes nothing and leaves the request open.
+ * Approves a proposal. Before the unit: the action's permission, registered with the applier,
+ * checked here (Hassan M1: an owning module's `check` that answers `ok` for anyone cannot let a
+ * reviewer run an action they may not run), then the module's own `check`, then the area's review
+ * key and the action's permission once more, last thing before the unit opens (Hassan L2: the
+ * authorisation check reads committed state in a unit of its own and is never called inside the
+ * caller's, so this is as close to the decision as it can run). Then, in one serializable unit
+ * with the decision, the module's `apply`, which writes the action only if the subject still
+ * holds `before`. Anything but `applied` writes nothing and leaves the request open.
  */
 async function applyProposal(
   deps: SystemRequestsDependencies,
@@ -951,10 +965,14 @@ async function applyProposal(
 ): Promise<Result<RequestView, SystemRequestsFailure>> {
   const registered = deps.reverters.find(seen.subjectKind);
   if (registered?.mode !== 'approval') return err({ code: 'system-requests.revert-unavailable' });
-  const applier = registered.applier;
+  const { applier, permission } = registered;
+  const permitted = () => holds(deps, context, 'system-requests.apply-proposal', [permission]);
+  if (!(await permitted())) return err({ code: 'system-requests.revert-not-permitted' });
   const checked = await askCheck(context, seen, (c, r) => applier.check(c, r));
   if (!checked.ok) return checked;
   const areas = await reviewableAreas(deps, context);
+  if (!areas.has(seen.area)) return err({ code: 'system-requests.not-reviewer' });
+  if (!(await permitted())) return err({ code: 'system-requests.revert-not-permitted' });
   const decided = await deps.unitOfWork.run<RequestView, SystemRequestsFailure>(
     context.market,
     async () => {
@@ -1039,13 +1057,17 @@ async function revertRequest(
       if (request.supersededBy !== null) {
         return err({ code: 'system-requests.changed-since', newerRequestId: request.supersededBy });
       }
-      const registered = deps.reverters.find(request.subjectKind);
-      if (registered === null) return err({ code: 'system-requests.revert-unavailable' });
+      // A proposal was never applied: declining it or taking it back changes nothing, so it
+      // needs no registered kind (Hassan L3: else a kind no longer registered would leave its
+      // proposal, and through the one-open-proposal index its subject, stuck).
+      const registered = proposal ? null : deps.reverters.find(request.subjectKind);
+      if (!proposal && registered === null) {
+        return err({ code: 'system-requests.revert-unavailable' });
+      }
       const proof = await spendIfHigh(deps, context, request);
       if (!proof.ok) return proof;
-      // A proposal was never applied: declining it or taking it back changes nothing.
       if (!proposal) {
-        if (registered.mode !== 'review') throw new Error('system-requests: a kind changed mode');
+        if (registered?.mode !== 'review') throw new Error('system-requests: a kind changed mode');
         const outcome = await registered.reverter.revert(context, revertRequestOf(request));
         if (outcome === 'changed-since') {
           return err({ code: 'system-requests.changed-since', newerRequestId: null });
