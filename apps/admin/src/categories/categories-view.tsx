@@ -328,6 +328,7 @@ export function CategoriesView({
       </div>
       {adding ? (
         <CreateCategoryDialog
+          reviewed={tree.review?.reviewed === true}
           parent={null}
           parentName={null}
           treeVersion={tree.treeVersion}

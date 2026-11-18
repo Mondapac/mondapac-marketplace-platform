@@ -24,12 +24,31 @@ import {
   type CategoryWriteView,
 } from '../categories/category-editor';
 import { createCategoryInUnit } from '../categories/category-write-core';
+import { categoryCreatedValues, NOTHING_BEFORE } from '../catalogue-actions';
+import {
+  CATEGORY_CREATE_SUBJECT_KIND,
+  catalogueReview,
+  openCatalogueReview,
+  requestRef,
+  type CatalogueRequestRef,
+} from '../catalogue-review';
+import type { SystemRequestRecorder } from '../../../system-requests';
 
 export interface CategoryCreateInput {
   readonly [key: string]: unknown;
 }
 
-const KEYS = ['parentId', 'slug', 'texts', 'seo', 'showInMenu', 'treeVersion'] as const;
+const KEYS = ['parentId', 'slug', 'texts', 'seo', 'showInMenu', 'treeVersion', 'note'] as const;
+
+export interface CategoryCreateDependencies extends CategoryWriteDependencies {
+  /** Opens the review of the new category in Admin Inbox › System requests (area catalogue). */
+  readonly review: SystemRequestRecorder;
+}
+
+export interface CategoryCreateOutput {
+  readonly category: CategoryWriteView;
+  readonly request: CatalogueRequestRef;
+}
 
 /**
  * `platform-category.create` (categories package C3a; plan decision 5): an admin adds a category
@@ -40,10 +59,14 @@ const KEYS = ['parentId', 'slug', 'texts', 'seo', 'showInMenu', 'treeVersion'] a
  * check in its own locale and a locale the check cannot read is refused (fail closed). A
  * structural write: it names the tree version the page read. Rule: the key
  * `catalog.category-tree.edit`, the admin population, never an acting-as session.
+ *
+ * It goes live at once and is reviewed after (area catalogue, owner decision of 18 Nov 2026):
+ * where the Market reviews the area the request needs a `note`; a rejected or withdrawn create is
+ * discarded while the category never went live, else hidden (catalogue-structure-reverters.ts).
  */
 export class CategoryCreate extends UseCase<
   CategoryCreateInput,
-  { readonly category: CategoryWriteView },
+  CategoryCreateOutput,
   CategoryWriteFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -55,7 +78,7 @@ export class CategoryCreate extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: CategoryWriteDependencies,
+    private readonly deps: CategoryCreateDependencies,
   ) {
     super(gate);
   }
@@ -63,7 +86,7 @@ export class CategoryCreate extends UseCase<
   protected async handle(
     context: CallContext,
     input: CategoryCreateInput,
-  ): Promise<Result<{ readonly category: CategoryWriteView }, CategoryWriteFailure>> {
+  ): Promise<Result<CategoryCreateOutput, CategoryWriteFailure>> {
     const result = await this.#create(context, input);
     this.#logger.log({
       msg: 'catalog.category-create',
@@ -77,7 +100,7 @@ export class CategoryCreate extends UseCase<
   async #create(
     context: CallContext,
     input: CategoryCreateInput,
-  ): Promise<Result<{ readonly category: CategoryWriteView }, CategoryWriteFailure>> {
+  ): Promise<Result<CategoryCreateOutput, CategoryWriteFailure>> {
     const accountId = editorAccountOf(context);
     if (accountId === null) return err({ code: 'access.denied' });
     const body = closedInput(input, KEYS);
@@ -132,6 +155,8 @@ export class CategoryCreate extends UseCase<
     );
     if (claim !== null) return err(claim);
 
+    // Its own read-only unit, before this one (units do not nest).
+    const reviewPolicy = await catalogueReview(this.deps.review, context);
     return runStructural(this.deps, market, treeVersion.value, async (nodes, nextTreeVersion) => {
       const created = await createCategoryInUnit(
         this.deps,
@@ -141,7 +166,18 @@ export class CategoryCreate extends UseCase<
         { parentId, slug, texts: texts.value, seo: seo.value, showInMenu, maxDepth },
         nextTreeVersion,
       );
-      return created.ok ? ok({ category: created.value.category }) : created;
+      if (!created.ok) return created;
+      // The category is live (hidden); its review opens in the same unit.
+      const review = await openCatalogueReview(this.deps.review, context, reviewPolicy, {
+        subjectKind: CATEGORY_CREATE_SUBJECT_KIND,
+        subjectRef: created.value.node.id,
+        before: NOTHING_BEFORE,
+        after: categoryCreatedValues({ slug, parentId }),
+        note: body.value['note'],
+        tooLargePath: 'slug',
+      });
+      if (!review.ok) return err(review.error);
+      return ok({ category: created.value.category, request: requestRef(review.value) });
     });
   }
 }

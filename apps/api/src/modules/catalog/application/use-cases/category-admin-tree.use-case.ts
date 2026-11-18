@@ -23,6 +23,8 @@ import {
 import type { AdminCategoryReader } from '../ports/admin-category.reader';
 import type { AttributeAdminReader } from '../ports/attribute-admin.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { SystemRequestRecorder } from '../../../system-requests';
+import { catalogueReview, type CatalogueReview } from '../catalogue-review';
 import type { CategoryAttributeLinkStore } from '../ports/category-attribute-link.store';
 
 /** The query of the admin list: every key is optional. */
@@ -58,6 +60,11 @@ export interface CategoryAdminTreeOutput {
   /** Depth first, siblings in order; with `featureSetId`, only the rows whose effective set it is. */
   readonly categories: readonly CategoryTreeRowView[];
   readonly actions: ActionMap;
+  /**
+   * Whether a create, move or reorder is reviewed and a discard, merge or archive waits for
+   * approval in the Market (Admin Inbox › System requests, area catalogue): the page asks for a note.
+   */
+  readonly review: CatalogueReview;
 }
 
 export type CategoryAdminTreeFailure =
@@ -73,6 +80,8 @@ export interface CategoryAdminTreeDependencies {
   readonly categoryProbes: CategoryActionProbes;
   readonly linkStore: Pick<CategoryAttributeLinkStore, 'all'>;
   readonly attributeAdminReader: Pick<AttributeAdminReader, 'featureSets'>;
+  /** Reads the review policy of area catalogue, so the page asks for a note where it is reviewed. */
+  readonly review: Pick<SystemRequestRecorder, 'areaPolicy'>;
 }
 
 /**
@@ -193,6 +202,7 @@ export class CategoryAdminTree extends UseCase<
       complete: counted.complete,
       categories,
       actions: await categoryActions(context, this.deps.categoryProbes, null),
+      review: await catalogueReview(this.deps.review, context),
     });
   }
 }

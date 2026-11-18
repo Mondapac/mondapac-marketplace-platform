@@ -34,6 +34,10 @@ import { InMemoryReadModels } from './testing/in-memory-read-models';
 import { InMemoryAddresses } from './testing/in-memory-address-book';
 import { AdminCancelAccountDeletion } from './use-cases/admin-cancel-account-deletion.use-case';
 import { AdminListAccountDeletions } from './use-cases/admin-list-account-deletions.use-case';
+import { BuyerDeleteProbe } from './use-cases/buyer-delete-probe.use-case';
+import { DELETION_ROW_KEYS } from './admin-deletion-list-flow';
+import { MemoryAdminDeletionList } from './testing/in-memory-deletion-list';
+import { ExceljsSheetWriter } from '../../../platform/list-export/exceljs-sheet-writer';
 import { AdminRequestAccountDeletion } from './use-cases/admin-request-account-deletion.use-case';
 import { CancelAccountDeletion } from './use-cases/cancel-account-deletion.use-case';
 import { ExecuteAccountDeletions } from './use-cases/execute-account-deletions.use-case';
@@ -914,7 +918,14 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
     const pendingList = (
       input: Record<string, unknown> = {},
       context: CallContext = adminContext(),
-    ) => new AdminListAccountDeletions(gate, deps).execute(context, input);
+    ) =>
+      new AdminListAccountDeletions(gate, {
+        unitOfWork: deps.unitOfWork,
+        list: new MemoryAdminDeletionList(requests),
+        probes: { [DELETION_ROW_KEYS[0]]: new BuyerDeleteProbe(gate) },
+        sheetWriter: new ExceljsSheetWriter(),
+        clock,
+      }).execute(context, input);
     const actingAs = () =>
       ({
         ...adminContext(),
@@ -1317,26 +1328,36 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
         });
         await ask(buyer(BUYER, other));
         const page = await pendingList();
+        const counts = { pending: 2, executing: 0, cancelled: 0, completed: 0, all: 2 };
+        const closed = { cancelledAt: null, cancelReason: null, completedAt: null };
         expect(page).toEqual(
           ok({
             entries: [
               {
-                requestId: rowsOf(BUYER)[0]!.id,
+                id: rowsOf(BUYER)[0]!.id,
                 accountId: BUYER,
                 requestedAt: T0,
                 scheduledFor: T0.add({ hours: 30 * 24 }),
                 status: 'pending',
                 requestedBy: 'customer',
+                ...closed,
+                actions: ['cancel'],
               },
               {
-                requestId: rowsOf(OTHER_BUYER)[0]!.id,
+                id: rowsOf(OTHER_BUYER)[0]!.id,
                 accountId: OTHER_BUYER,
                 requestedAt: T0.add({ hours: 1 }),
                 scheduledFor: T0.add({ hours: 31 * 24 }),
                 status: 'pending',
                 requestedBy: 'admin',
+                ...closed,
+                actions: ['cancel'],
               },
             ],
+            counts,
+            total: 2,
+            page: 1,
+            pageSize: 25,
             nextCursor: null,
           }),
         );
@@ -1348,7 +1369,15 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       it('leaves out cancelled, executing and completed requests', async () => {
         await adminAsking();
         await adminCancelling(rowsOf()[0]!.id);
-        expect(await pendingList()).toEqual(ok({ entries: [], nextCursor: null }));
+        const page = await pendingList();
+        expect(page.ok && page.value.entries).toEqual([]);
+        expect(page.ok && page.value.counts).toEqual({
+          pending: 0,
+          executing: 0,
+          cancelled: 1,
+          completed: 0,
+          all: 1,
+        });
       });
 
       it('pages by a keyset cursor', async () => {
@@ -1374,7 +1403,7 @@ describe.each(TEST_MARKET_IDS)('buyer account deletion flow in market %s', (code
       it('rejects a bad status, limit or cursor, and anyone but an admin', async () => {
         expect(await pendingList({ status: 'executing' })).toEqual({
           ok: false,
-          error: { code: 'validation.failed', fields: [{ path: 'status', code: 'format' }] },
+          error: { code: 'validation.failed', fields: [{ path: 'status', code: 'value' }] },
         });
         for (const limit of [0, 101, -1, 1.5, '5']) {
           expect((await pendingList({ limit })).ok).toBe(false);
