@@ -7,6 +7,7 @@ import type { RecordSellerOrderPaid } from '../application/use-cases/record-sell
 import type { SellerLostDisputes } from '../application/use-cases/seller-lost-disputes.use-case';
 import type {
   CommissionPayoutsFacade,
+  ExclusiveBuyer,
   PaidSellerOrder,
   RefundedSellerOrder,
   SellerOrderDelivered,
@@ -23,8 +24,12 @@ export class CommissionPayoutsFacadeImplementation implements CommissionPayoutsF
     private readonly ownCommission: OwnCommissionOn,
   ) {}
 
-  commissionRates(context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
-    return this.rates.execute(context, { sellerIds });
+  commissionRates(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+    exclusive: ExclusiveBuyer | null = null,
+  ) {
+    return this.rates.execute(context, { sellerIds, exclusive });
   }
 
   ownCommissionOn(

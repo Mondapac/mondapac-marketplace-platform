@@ -326,19 +326,30 @@ function routePage(answer: ApiResult<unknown> = ok(overview())) {
         }) as ApiResult<never>,
       );
     if (path === `ordering/admin/customers/${ID}/refunds`)
-      return Promise.resolve(ok({ refunds: [] }) as ApiResult<never>);
+      return Promise.resolve(
+        ok({
+          items: [],
+          page: 1,
+          pageSize: 25,
+          paging: 'pages',
+          total: 0,
+          hasNext: false,
+        }) as ApiResult<never>,
+      );
     return Promise.resolve(refused(404, 'unknown'));
   });
 }
 
 describe('the customer page', () => {
   it('shows the tabs an admin may open', () => {
-    expect(tabsFor(new Set([VIEW]))).toEqual(['overview', 'money']);
+    expect(tabsFor(new Set([VIEW]))).toEqual(['overview', 'money', 'security']);
     expect(tabsFor(new Set([VIEW, 'ordering.order.view']))).toEqual([
       'overview',
       'orders',
       'money',
+      'security',
     ]);
+    expect(tabsFor(new Set())).toEqual(['overview', 'money']);
     expect(averageMinor('12550', 3)).toBe('4183');
     expect(averageMinor('0', 0)).toBeNull();
   });
@@ -625,6 +636,27 @@ describe('the customer export', () => {
   });
 });
 
+describe('Select all with the order number filter on', () => {
+  it('disables Select all with a hint, and keeps ticked-row export open', async () => {
+    render(
+      wrap(
+        <CustomersBulk
+          {...bulkProps}
+          orderNumberActive
+          selection={{ ids: [ID], allMatching: false, total: 9000 }}
+        />,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Bulk action/ }));
+    const blocked = await screen.findByRole('menuitem', {
+      name: /Select all 9,000 customers in this filter/,
+    });
+    expect(blocked.getAttribute('aria-disabled') ?? blocked.hasAttribute('disabled')).toBeTruthy();
+    expect(screen.getByText('Clear the order number filter to select all or export.')).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: /Export…/ })).toBeTruthy();
+  });
+});
+
 describe.each([
   { market: 'AU', currency: 'AUD', typed: '12.50', minor: '1250', shown: '$12.50' },
   { market: 'JP', currency: 'JPY', typed: '1250', minor: '1250', shown: 'JPY 1,250' },
@@ -796,6 +828,8 @@ describe('the customer page tabs', () => {
     fireEvent.keyDown(overviewTab, { key: 'ArrowRight' });
     expect(screen.getByRole('tab', { name: 'Orders' }).getAttribute('aria-selected')).toBe('true');
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Orders' }), { key: 'End' });
-    expect(screen.getByRole('tab', { name: 'Money' }).getAttribute('aria-selected')).toBe('true');
+    expect(
+      screen.getByRole('tab', { name: 'Account & security' }).getAttribute('aria-selected'),
+    ).toBe('true');
   });
 });
