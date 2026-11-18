@@ -3,7 +3,6 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   AdminCreditDecision,
-  AdminCreditPage,
   AdminCreditRecord,
   AdminCreditRepository,
   NewAdminCredit,
@@ -23,7 +22,7 @@ const toInstant = (date: Date): Temporal.Instant =>
 const dayDate = (localDay: string): Date => new Date(`${localDay}T00:00:00.000Z`);
 const dayText = (date: Date): string => date.toISOString().slice(0, 10);
 
-interface Row {
+export interface Row {
   readonly id: string;
   readonly customerAccountId: string;
   readonly amountMinor: bigint;
@@ -44,7 +43,7 @@ interface Row {
   readonly journalId: string | null;
 }
 
-const toRecord = (row: Row): AdminCreditRecord => ({
+export const toRecord = (row: Row): AdminCreditRecord => ({
   id: row.id as Id<'WalletCreditRequest'>,
   customerAccountId: row.customerAccountId as Id<'Account'>,
   amountMinor: row.amountMinor,
@@ -172,27 +171,6 @@ export class PrismaAdminCreditRepository implements AdminCreditRepository {
       },
     });
     return updated.count === 1;
-  }
-
-  async list(market: MarketContext, page: AdminCreditPage) {
-    const after = page.after;
-    const rows = await this.prisma.tx(market).walletAdminCreditRequest.findMany({
-      where: {
-        marketId: market.marketId,
-        status: { in: [...page.statuses] },
-        ...(after === null
-          ? {}
-          : {
-              OR: [
-                { requestedAt: { lt: toDate(after.requestedAt) } },
-                { requestedAt: toDate(after.requestedAt), id: { lt: after.id } },
-              ],
-            }),
-      },
-      orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
-      take: page.limit,
-    });
-    return rows.map(toRecord);
   }
 
   async duePending(market: MarketContext, now: Temporal.Instant, limit: number) {

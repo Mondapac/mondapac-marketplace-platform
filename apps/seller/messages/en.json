@@ -1197,20 +1197,36 @@
       },
       "tabs": "Offer sections"
     },
+    "add": {
+      "subtitle": "Your product · {market}",
+      "unsaved": "Unsaved product",
+      "offer": {
+        "title": "Your offer",
+        "help": "These belong to your offer on this product, not to the product itself."
+      },
+      "later": {
+        "tags": "Tags: save the draft first. Then you can add them here.",
+        "attributes": "Save the draft first. The details to fill in depend on the category you choose.",
+        "variants": "Save the draft first. Then you can choose the sizes or options you sell.",
+        "photos": "Save the draft first. Then you can add photos here."
+      },
+      "error": {
+        "not-saved": "Your product was created, but the page was not saved. {reason} Enter it again and press Save draft.",
+        "refused": "Your product was created, but some text was not saved because it holds a claim or a hidden character."
+      }
+    },
     "create": {
-      "title": "New product",
-      "intro": "Choose what you sell and add your first offer. You can add the product details next.",
+      "title": "Add product",
       "closed": "Your market does not let sellers add products yet.",
       "back": "Back to products",
       "type": "Product type",
       "condition": "Condition",
       "sku": "Your SKU",
       "sku-help": "Your own code for this offer. It must be unique among your open offers.",
-      "choose": "Choose",
+      "choose-type": "Choose a product type",
+      "choose-condition": "Choose a condition",
       "description": "Description ({locale})",
       "optional": "optional",
-      "submit": "Create product",
-      "creating": "Creating",
       "validation": {
         "summary": "Check the fields marked below.",
         "invalid": "This value is not valid.",
@@ -1300,6 +1316,8 @@
         "level-not-allowed": "Choose a more specific category. Products can't go on a department or group."
       },
       "tax-category": "Tax category",
+      "tax-category-placeholder": "Choose a tax category",
+      "tax-category-help": "Required. Separate from the product category: it decides GST on every seller's offer.",
       "variants": "Variants",
       "grid": {
         "step-axes": "1. What does this product come in?",
@@ -1465,14 +1483,18 @@
         "title-item": "add a title",
         "category-item": "choose a category",
         "tax-item": "choose the tax category",
-        "details-item": "fill in the required details"
+        "details-item": "fill in the required details",
+        "type-item": "choose a product type",
+        "sku-item": "enter your SKU",
+        "save-item": "save the draft first"
       },
       "organisation": {
         "title": "Organisation",
         "market": "Market",
         "scope": "Scope",
         "scope-own": "Your product",
-        "type": "Type"
+        "type": "Type",
+        "type-unset": "Choose it in Your offer"
       },
       "paused": {
         "title": "Mondapac paused this product.",

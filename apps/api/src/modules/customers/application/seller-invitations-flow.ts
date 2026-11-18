@@ -734,3 +734,17 @@ export async function decideAttributions(
     },
   );
 }
+
+/**
+ * The seller whose exclusive customer the signed-in customer is now, for checkout (phase 4b: the
+ * order line's exclusive seller and its lower commission). The account is the session's, never a
+ * request field; a Login-as session is refused.
+ */
+export async function ownExclusiveSeller(
+  deps: InvitationDependencies,
+  context: CallContext,
+): Promise<Result<ExclusiveSeller | null, InvitationFailure>> {
+  const accountId = customerOf(context);
+  if (accountId === null) return err({ code: 'access.denied' });
+  return exclusiveSellerOf(deps, context, accountId, deps.clock.now());
+}

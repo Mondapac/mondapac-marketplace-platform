@@ -1756,12 +1756,24 @@ const marketSchema = z
      * this section the Market has no commission rate and checkout fails closed.
      * `payoutTerms` (package 6b): the Market's payout terms; every field is required, there is no
      * core default, and a Market without them has no payout terms (fail closed).
+     * `exclusiveCustomer` (customers phase 4b): the lower commission on a seller's lines bought by
+     * its exclusive customer (one who joined through its invite link): the rate in force is cut by
+     * `reductionBps` of itself (AU 5000 = half), never below `floorBps` (AU 300 = 3 %) and never
+     * above the rate in force, for `months` after the customer joined (AU 12). Without it there is
+     * no lower commission.
      */
     commissionPayouts: z
       .strictObject({
         defaultRateBps: z.number().int().min(0).max(3000),
         provisionalTaxRateBps: z.number().int().min(0).max(5000),
         payoutTerms: payoutTermsSchema.optional(),
+        exclusiveCustomer: z
+          .strictObject({
+            reductionBps: z.number().int().min(1).max(10000),
+            floorBps: z.number().int().min(0).max(3000),
+            months: z.number().int().min(1).max(60),
+          })
+          .optional(),
       })
       .optional(),
     /**

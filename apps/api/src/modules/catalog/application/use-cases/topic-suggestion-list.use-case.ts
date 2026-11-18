@@ -2,8 +2,18 @@ import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import {
+  listPage,
+  pageWindow,
+  parseListQuery,
+  heldKeys,
+  rowActions,
+  type ListPagingMode,
+  type PermissionProbe,
+  type RowActionRule,
+} from '../../../../platform/list-query';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { CATALOG_TOPIC_SUGGESTION_REVIEW } from '../../contracts/permissions';
+import { CATALOG_TOPIC_MANAGE, CATALOG_TOPIC_SUGGESTION_REVIEW } from '../../contracts/permissions';
 import { suggestTopicSlug } from '../../domain/topic';
 import { marketLocalesOf, type MarketLocales } from '../attributes/attribute-admin-views';
 import { closedInput, invalid, type ValidationFailure } from '../topics/topic-views';
@@ -14,7 +24,29 @@ import type { ProductRepository } from '../ports/product.repository';
 export const SUGGESTION_PAGE_DEFAULT = 50;
 export const SUGGESTION_PAGE_MAX = 100;
 
+/** One sort, by the time of the suggestion: `asc` (default) puts the one waiting longest first. */
+export const TOPIC_SUGGESTION_SORTS = ['created'] as const;
+export const SUGGESTION_MAX_PAGE = 100;
+const MAX_TEXT = 100;
+
+/**
+ * What each row action needs (the plan's table, row 11): `map` and `reject` decide with the list's own
+ * key; `approve` also creates a tag, so it needs `catalog.topic.manage` as its use case does.
+ */
+export const TOPIC_SUGGESTION_ACTION_RULES: readonly RowActionRule<Record<string, never>>[] = [
+  { id: 'approve', permission: CATALOG_TOPIC_MANAGE.key },
+  { id: 'map', permission: null },
+  { id: 'reject', permission: null },
+];
+
 export interface TopicSuggestionListInput {
+  readonly q?: unknown;
+  readonly sort?: unknown;
+  readonly direction?: unknown;
+  readonly page?: unknown;
+  readonly pageSize?: unknown;
+  readonly paging?: unknown;
+  /** The older panel's page size; an alias of `pageSize` until the panel pages by number. */
   readonly limit?: unknown;
 }
 
@@ -29,10 +61,18 @@ export interface SuggestionListItem {
   readonly productCode: string | null;
   /** The slug the free form of the label suggests, for the approve form. */
   readonly suggestedSlug: string;
+  /** The row actions of the Actions menu: `approve`, `map`, `reject`. */
+  readonly actions: readonly string[];
 }
 
 export interface TopicSuggestionListOutput {
   readonly items: readonly SuggestionListItem[];
+  /** Open suggestions matching the search over all pages; null in `prev-next` mode. */
+  readonly total: number | null;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly paging: ListPagingMode;
+  readonly hasNext: boolean;
   /** The locales an approval must name the tag in: the Market's default only, for now. */
   readonly requiredLocales: readonly string[];
   readonly locales: MarketLocales;
@@ -46,6 +86,7 @@ export interface TopicSuggestionListDependencies {
   readonly topicSuggestions: TopicSuggestionStore;
   readonly products: ProductRepository;
   readonly policy: CatalogMarketPolicy;
+  readonly topicManageProbe: PermissionProbe;
 }
 
 /**
@@ -93,21 +134,48 @@ export class TopicSuggestionList extends UseCase<
     if (context.actor.kind !== 'authenticated' || context.actor.population !== 'admin') {
       return err({ code: 'access.denied' });
     }
-    const body = closedInput(input ?? {}, ['limit']);
+    const body = closedInput(input ?? {}, [
+      'q',
+      'sort',
+      'direction',
+      'page',
+      'pageSize',
+      'paging',
+      'limit',
+    ]);
     if (!body.ok) return body;
-    let limit = SUGGESTION_PAGE_DEFAULT;
-    const rawLimit = body.value['limit'];
-    if (rawLimit !== undefined && rawLimit !== null) {
+    const absent = (value: unknown) => value === undefined || value === null || value === '';
+    let text: string | null = null;
+    const rawText = body.value['q'];
+    if (!absent(rawText)) {
+      if (typeof rawText !== 'string') return invalid('q', 'type');
+      const trimmed = rawText.trim();
+      if ([...trimmed].length > MAX_TEXT) return invalid('q', 'length');
+      if (/\p{Cc}/u.test(trimmed)) return invalid('q', 'format');
+      text = trimmed === '' ? null : trimmed;
+    }
+    const { limit: legacyLimit, ...rest } = body.value;
+    if (!absent(legacyLimit)) {
+      if (!absent(rest['pageSize'])) return invalid('limit', 'conflict');
       if (
-        typeof rawLimit !== 'number' ||
-        !Number.isInteger(rawLimit) ||
-        rawLimit < 1 ||
-        rawLimit > SUGGESTION_PAGE_MAX
+        typeof legacyLimit !== 'number' ||
+        !Number.isInteger(legacyLimit) ||
+        legacyLimit < 1 ||
+        legacyLimit > SUGGESTION_PAGE_MAX
       ) {
         return invalid('limit', 'range');
       }
-      limit = rawLimit;
     }
+    const paged = parseListQuery(absent(legacyLimit) ? rest : { ...rest, pageSize: legacyLimit }, {
+      sorts: TOPIC_SUGGESTION_SORTS,
+      defaultSort: 'created',
+      defaultDirection: () => 'asc',
+      defaultPageSize: SUGGESTION_PAGE_DEFAULT,
+      maxPageSize: SUGGESTION_PAGE_MAX,
+      maxPage: SUGGESTION_MAX_PAGE,
+    });
+    if (!paged.ok) return paged;
+    const window = pageWindow(paged.value);
     const { market } = context;
     let locales: MarketLocales;
     try {
@@ -115,10 +183,28 @@ export class TopicSuggestionList extends UseCase<
     } catch {
       return err({ code: 'access.unavailable' });
     }
+    const granted = await heldKeys(context, {
+      [CATALOG_TOPIC_MANAGE.key]: this.deps.topicManageProbe,
+    });
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
-        const open = await this.deps.topicSuggestions.listOpen(market, limit);
+        const filter = { text };
+        const total =
+          paged.value.paging === 'pages'
+            ? await this.deps.topicSuggestions.countOpen(market, filter)
+            : null;
+        const found =
+          total !== null && window.offset >= total
+            ? []
+            : await this.deps.topicSuggestions.pageOpen(market, {
+                ...filter,
+                direction: paged.value.direction,
+                offset: window.offset,
+                limit: window.limit,
+              });
+        // The extra row of the prev-next read only tells there is a next page; it is not shown.
+        const open = found.slice(0, paged.value.pageSize);
         const items: SuggestionListItem[] = [];
         for (const suggestion of open) {
           const state = suggestion.state;
@@ -132,13 +218,31 @@ export class TopicSuggestionList extends UseCase<
             productId: state.productId,
             productCode: product === null ? null : product.state.productCode,
             suggestedSlug: suggestTopicSlug(state.label),
+            actions: rowActions({}, TOPIC_SUGGESTION_ACTION_RULES, granted),
           });
         }
-        return ok({ items, requiredLocales: [locales.default], locales });
+        return ok({
+          items,
+          total,
+          hasNextRow: found.length > paged.value.pageSize,
+          requiredLocales: [locales.default],
+          locales,
+        });
       },
       { readOnly: true },
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
-    return ok(read.value);
+    const { items, total, hasNextRow } = read.value;
+    const page = listPage(items, paged.value, total);
+    return ok({
+      items: page.items,
+      total: page.total,
+      page: page.page,
+      pageSize: page.pageSize,
+      paging: page.paging,
+      hasNext: paged.value.paging === 'pages' ? page.hasNext : hasNextRow,
+      requiredLocales: read.value.requiredLocales,
+      locales: read.value.locales,
+    });
   }
 }
