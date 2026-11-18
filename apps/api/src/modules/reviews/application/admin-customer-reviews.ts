@@ -1,5 +1,6 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import { isPlatformAdminActor } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type {
   AdminCustomerHelpfulVote,
@@ -17,7 +18,6 @@ import {
   type ReviewStatus,
   type SellerRatingStatus,
 } from '../domain/rules';
-import { isActingAs } from './caller';
 import type { AccountWindow, CustomerReviewsReader } from './ports/customer-reviews.reader';
 
 // The admin's reads of one customer's reviews (customers management phase 2b, part 3): what they
@@ -35,17 +35,6 @@ export interface AdminCustomerReviewsDependencies {
 const MAX_WINDOW = 10_001;
 
 const REPORT_ROLES: readonly ReviewReportRole[] = ['by', 'about'];
-
-/** A platform admin: not a seller's member, not acting as anyone (fail closed). */
-function isPlatformAdmin(context: CallContext): boolean {
-  const { actor } = context;
-  return (
-    actor.kind === 'authenticated' &&
-    actor.population === 'admin' &&
-    actor.sellerId === null &&
-    !isActingAs(context)
-  );
-}
 
 function windowOf(request: AdminCustomerReviewsRequest): AccountWindow {
   return {
@@ -73,7 +62,7 @@ async function page<R, S>(
   count: () => Promise<number>,
   view: (row: S) => R,
 ): Promise<Result<AdminCustomerReviewsPage<R>, CustomerReviewsFailure>> {
-  if (!isPlatformAdmin(context)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   const window = windowOf(request);
   const read = await deps.unitOfWork.run(
     context.market,
