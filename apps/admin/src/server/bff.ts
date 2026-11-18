@@ -116,6 +116,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'customers/admin/saved-filters',
     // The saved views of the admin Sales lists (lists; query: `listKey`, see QUERY_SHAPES).
     'lists/admin/saved-filters',
+    // The manual customer groups (customers, phase 2a), at most 500 per Market.
+    'customers/admin/groups',
     // The buyer account deletion setting, read again after a conflict, and the pending deletion
     // requests (customers; query: `cursor`, `limit`).
     'customers/admin/account-deletion-settings',
@@ -331,6 +333,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'customers/admin/export',
     // Save the current view of a Sales list as a tab (lists): a closed body, for me or everyone.
     'lists/admin/saved-filters',
+    // Make a manual customer group (customers, phase 2a).
+    'customers/admin/groups',
   ]),
 };
 
@@ -371,6 +375,14 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'identity/admin/customers/:id/enable',
     // The audit row of a customer page tab, written before the tab's data is read (customers).
     'customers/admin/customers/:id/tab-opened',
+    // Customers phase 2a: a group's members (one or in bulk, by ids or the list's selector), a
+    // customer's internal notes, and the activity timeline (a super list read in the body, and its
+    // export behind a fresh two-step code).
+    'customers/admin/groups/:id/members/add',
+    'customers/admin/groups/:id/members/remove',
+    'customers/admin/customers/:id/notes',
+    'customers/admin/customers/:id/activity',
+    'customers/admin/customers/:id/activity/export',
     'identity/admin/invitations/:id/resend',
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
@@ -537,6 +549,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'ordering/admin/saved-filters/:id',
     // A saved view of a Sales list: its name and who can use it (lists).
     'lists/admin/saved-filters/:id',
+    // Rename, describe, archive or restore a manual customer group (customers, phase 2a), and
+    // change a customer's display name (identity owns the write).
+    'customers/admin/groups/:id',
+    'customers/admin/customers/:id/display-name',
     'sellers/admin/:id/review/manual-register-check',
     // Whether the seller may propose categories (sellers, SEL-26; categories C9-0).
     'sellers/admin/:id/category-proposals',
@@ -679,6 +695,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'wallet/admin/customers/:id/history',
     // The customer page (customers): the overview, audited by the API.
     'customers/admin/customers/:id',
+    // One manual group (customers, phase 2a) and a customer's internal notes (query: `limit`,
+    // `cursor`).
+    'customers/admin/groups/:id',
+    'customers/admin/customers/:id/notes',
     // The customer page's Money tab: the newest refunds (ordering) and the wallet credits from
     // promotions (promotions; query: `limit`, `cursor`).
     'ordering/admin/customers/:id/refunds',
@@ -1314,6 +1334,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'wallet/admin/customers/:id/history': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'promotions/admin/customers/:id/credits': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'lists/admin/saved-filters': { listKey: SALES_LIST_KEY },
+  'customers/admin/customers/:id/notes': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'commission-payouts/admin/payouts': {
     view: /^(all|awaiting-approval|sending|paid|failed|not-sent)$/,
     status:
@@ -1522,6 +1543,7 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'promotions/admin/customers/:id/credits': ['limit', 'cursor'],
   // The older page of a certificate's history: the API's own entry id and a small page size.
   'certification/admin/seller-certificates/:id/history': ['beforeId', 'limit'],
+  'customers/admin/customers/:id/notes': ['limit', 'cursor'],
 };
 /** A note for reviewers in a query: 1 to 500 characters (any, newlines included). */
 const NOTE_SHAPE = /^[\s\S]{1,500}$/;
@@ -1772,11 +1794,14 @@ const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/i
  */
 const CUSTOMERS_EXPORT_PATH = 'customers/admin/export';
 const MAX_EXPORT_BODY_BYTES = 48 * 1024;
+/** Adding or removing up to 1000 ticked customers of a group (customers, phase 2a): the same cap. */
+const GROUP_MEMBERS_PATH = /^customers\/admin\/groups\/[0-9a-f-]{36}\/members\/(add|remove)$/i;
 
 /** The body cap of a request: the larger upload caps on their own paths, 16 KB for the rest. */
 function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'POST' && target === CUSTOMERS_EXPORT_PATH) return MAX_EXPORT_BODY_BYTES;
+  if (method === 'POST' && GROUP_MEMBERS_PATH.test(target)) return MAX_EXPORT_BODY_BYTES;
   if (method === 'PUT' && BLOG_DRAFT_PATH.test(target)) return MAX_BLOG_DRAFT_BYTES;
   if (method === 'POST' && CATEGORY_IMPORT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
