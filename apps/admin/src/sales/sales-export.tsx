@@ -186,6 +186,8 @@ export function useSalesExport(input: {
   readonly columns: readonly string[];
   readonly zone: string;
   readonly selection: ExportSelection;
+  /** A list whose export has its own rules for the query (ids alone, no zone): it builds the string. */
+  readonly buildQuery?: (format: ExportFormat) => string;
 }): { readonly item: ActionMenuItem; readonly dialog: ReactNode; readonly busy: boolean } {
   const t = useTranslations('sales-lists.export');
   const locale = useLocale();
@@ -214,13 +216,15 @@ export function useSalesExport(input: {
     setBusy(true);
     const work = downloadSalesExport({
       path: input.path,
-      query: exportQuery({
-        listQuery: input.listQuery,
-        format,
-        columns: input.columns,
-        zone: input.zone,
-        selection,
-      }),
+      query:
+        input.buildQuery?.(format) ??
+        exportQuery({
+          listQuery: input.listQuery,
+          format,
+          columns: input.columns,
+          zone: input.zone,
+          selection,
+        }),
       format,
       fallbackName: input.fallbackName,
       zone: input.zone,

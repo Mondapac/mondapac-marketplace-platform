@@ -1189,29 +1189,113 @@
       "back-home": "Back to dashboard",
       "unavailable": "Certificates could not be loaded.",
       "more": "Next page",
-      "total": "{count, plural, =0 {Nothing is waiting for a decision.} one {# submission is waiting for a decision, oldest first.} other {# submissions are waiting for a decision, oldest first.}}",
-      "empty": "No certificates are waiting for a decision.",
-      "empty-page": "Nothing on this page. Go back to the first page.",
       "first-page": "First page",
+      "intro": "Seller certificates waiting for a decision. Open one to review it and decide.",
+      "zone-note": "Times are shown in {zone}.",
+      "views": "Queue views",
+      "view": {
+        "all": "All",
+        "initial": "New",
+        "resubmission": "Resubmitted",
+        "renewal": "Renewal"
+      },
       "seller-id-sr": ", seller {id}",
       "seller-fallback": "Not yet approved",
       "submission-no": "Submission {n}",
       "no-issuer": "Not named",
+      "row-name": "the certificate of {store}",
       "col": {
         "seller": "Seller",
         "type": "Type",
         "kind": "Kind",
         "issuer": "Issuer",
         "waiting": "Waiting since",
-        "actions": "Actions"
+        "actions": "Actions",
+        "submission-no": "Submission",
+        "certificate-id": "Certificate ID",
+        "submission-id": "Submission ID",
+        "seller-id": "Seller ID"
       },
       "kind": {
         "initial": "New",
         "resubmission": "Resubmitted",
         "renewal": "Renewal"
       },
-      "review": "Review",
-      "review-row": "Review the certificate of {store}"
+      "search": {
+        "label": "Search",
+        "placeholder": "Certificate ID or submission ID",
+        "invalid": "Enter a full certificate ID or submission ID."
+      },
+      "chip-search": "ID is {text}",
+      "chip-seller": "Seller is {name}",
+      "filter": {
+        "title": "Filter the queue",
+        "name": {
+          "type": "Type",
+          "submitted": "Submitted"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "queue": "Review order",
+          "submitted": "Waiting since",
+          "type": "Type"
+        },
+        "queue": {
+          "first": "Renewals first, then oldest",
+          "second": "Reverse review order"
+        },
+        "submitted": {
+          "first": "Longest waiting first",
+          "second": "Newest first"
+        },
+        "type": {
+          "first": "A to Z",
+          "second": "Z to A"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# submission matches} other {# submissions match}}",
+      "range": "{from}-{to} of {total}",
+      "truncated": "More than {limit} submissions are waiting. The list shows the oldest {limit}; the newest are not listed until some are decided.",
+      "loading": "Loading certificates...",
+      "error": {
+        "unavailable": "The queue couldn't be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "all": "No certificates are waiting for a decision.",
+        "initial": "No new certificates are waiting.",
+        "resubmission": "No resubmitted certificates are waiting.",
+        "renewal": "No renewals are waiting.",
+        "no-match": "No submissions match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all submissions on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# submission selected} other {# submissions selected}}",
+        "all": "{count, plural, one {The # matching submission is selected} other {All # matching submissions are selected}}",
+        "all-open": "All matching submissions are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# submission selected} other {# submissions selected}}",
+        "all-open": "All matching submissions selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "open": "Open",
+        "decide": "Decide…"
+      }
     },
     "tabs": {
       "label": "Certificates sections",
