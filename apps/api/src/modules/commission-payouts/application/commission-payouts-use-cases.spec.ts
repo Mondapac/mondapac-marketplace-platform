@@ -977,8 +977,63 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
           sellerOrderId: SELLER_ORDER,
           sellerId: SELLER_A,
           eligibleAt: T0.add({ hours: 24 * 14 }),
+          onHold: false,
+          disputeLost: false,
         }),
       );
+    });
+
+    it('says when a payout hold covers the seller order and when a chargeback took its money (Hassan M-2)', async () => {
+      await record();
+      await deps.anchors.insertIfAbsent(market, anchor());
+      const hold = (sellerOrderId: Id<'SellerOrder'> | null, n: number) =>
+        deps.holds.insertIfAbsent(market, {
+          id: id<'PayoutHold'>(0x900 + n),
+          sellerId: SELLER_A,
+          sellerOrderId,
+          reason: 'dispute',
+          origin: 'system',
+          sourceRef: `dispute-${n}`,
+          placedBy: null,
+          placedAt: T0,
+          releasedAt: null,
+          releasedBy: null,
+          releaseReason: null,
+        });
+      const read = async () => {
+        const answer = await anchorOf(SELLER_ORDER);
+        return answer.ok ? { onHold: answer.value.onHold, lost: answer.value.disputeLost } : null;
+      };
+      // A hold on another seller order of the seller does not count.
+      await hold(id<'SellerOrder'>(0x5fe), 1);
+      expect(await read()).toEqual({ onHold: false, lost: false });
+      await hold(SELLER_ORDER, 2);
+      expect(await read()).toEqual({ onHold: true, lost: false });
+      await deps.holds.releaseBySource(market, 'dispute', 'dispute-2', {
+        releasedAt: T0,
+        releasedBy: null,
+        reason: 'resolved',
+      });
+      expect(await read()).toEqual({ onHold: false, lost: false });
+      // A hold on the whole seller covers it too.
+      await hold(null, 3);
+      expect(await read()).toEqual({ onHold: true, lost: false });
+      const sale = ledger.rows.find((r) => r.kind === 'sale')!;
+      const debit = (kind: 'dispute-debit' | 'dispute-reinstate', n: number, amount: bigint) =>
+        deps.ledger.append(market, [
+          {
+            ...sale,
+            id: id<'LedgerEntry'>(0x950 + n),
+            kind,
+            orderLineId: null,
+            amount: { ...sale.amount, amount },
+            sourceId: id<'Dispute'>(0x960),
+          },
+        ]);
+      await debit('dispute-debit', 1, 500n);
+      expect((await read())?.lost).toBe(true);
+      await debit('dispute-reinstate', 2, 500n);
+      expect((await read())?.lost).toBe(false);
     });
 
     it('is not anchored without the ledger rows, without an anchor, or with another seller', async () => {

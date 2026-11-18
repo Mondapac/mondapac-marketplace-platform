@@ -157,6 +157,24 @@ export class PrismaCreditRepository implements CreditRepository {
     return updated.count === 1;
   }
 
+  async postpone(
+    market: MarketContext,
+    id: Id<'PromotionCredit'>,
+    until: Temporal.Instant,
+  ): Promise<boolean> {
+    const at = new Date(until.epochMilliseconds);
+    const updated = await this.prisma.tx(market).promotionsCreditIssuance.updateMany({
+      where: {
+        marketId: market.marketId,
+        id,
+        status: 'PENDING',
+        grantAfter: { not: null, lt: at },
+      },
+      data: { grantAfter: at },
+    });
+    return updated.count === 1;
+  }
+
   async reservedTotal(market: MarketContext, promotionId: Id<'Promotion'>): Promise<bigint> {
     const sum = await this.prisma.tx(market).promotionsCreditIssuance.aggregate({
       where: { marketId: market.marketId, promotionId, status: { in: ['PENDING', 'GRANTED'] } },
