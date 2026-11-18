@@ -27,3 +27,5 @@ export const LEGAL_CUSTOMER_CONSENT_VIEW = 'legal.customer-consent.view' as Perm
 /** assistant: the count and dates of a customer's assistant conversations. */
 export const ASSISTANT_CUSTOMER_CONVERSATION_VIEW =
   'assistant.customer-conversation.view' as PermissionKey;
+/** reviews: a customer's reviews, the seller ratings they gave, their votes and the reports. */
+export const REVIEWS_CUSTOMER_REVIEW_VIEW = 'reviews.customer-review.view' as PermissionKey;
