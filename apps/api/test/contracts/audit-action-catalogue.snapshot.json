@@ -2144,6 +2144,18 @@
     }
   },
   {
+    "action": "identity.invitation.reverted",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "requestId": "id",
+      "roleId": "id"
+    }
+  },
+  {
     "action": "identity.invitation.revoked",
     "targetType": "identity.invitation",
     "targetId": "id",
@@ -2167,6 +2179,19 @@
     }
   },
   {
+    "action": "identity.role.creation-reverted",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "removedKeys": "listOf(permissionKey, max 40)",
+      "scope": "enumOf(platform|seller)"
+    },
+    "after": {
+      "requestId": "id"
+    }
+  },
+  {
     "action": "identity.role.deleted",
     "targetType": "identity.role",
     "targetId": "id",
@@ -2177,6 +2202,19 @@
       "sellerId": "optional(id)"
     },
     "after": null
+  },
+  {
+    "action": "identity.role.deletion-approved",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "removedKeys": "listOf(permissionKey, max 40)",
+      "scope": "enumOf(platform|seller)"
+    },
+    "after": {
+      "requestId": "id"
+    }
   },
   {
     "action": "identity.role.reverted",

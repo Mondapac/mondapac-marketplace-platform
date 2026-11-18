@@ -22,8 +22,12 @@ import { useRef, useState } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import {
   isNoteFailure,
+  requestLabel,
+  requestOf,
   ReviewNoteField,
   trimmedNote,
+  useAlreadyPending,
+  useSentForApproval,
   useSentForReview,
 } from '../shared/review-note.tsx';
 import { useSettingsChrome } from '../settings/settings-chrome.ts';
@@ -85,10 +89,16 @@ export function RoleEditor({
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
   const sentForReview = useSentForReview();
+  const sentForApproval = useSentForApproval();
+  const alreadyPending = useAlreadyPending();
+  const review = useTranslations('review-note');
+  // The delete dialog's own note: a delete waits for approval where the Market reviews people.
+  const [deleteNote, setDeleteNote] = useState('');
+  const [deleteNoteError, setDeleteNoteError] = useState<'required' | 'rejected' | null>(null);
 
   const editing = role !== undefined;
-  // Only an edit of a custom role is reviewed; creating one is not.
-  const reviewed = editing && catalogue.review?.reviewed === true;
+  // Creating and editing a custom role are reviewed after; deleting one waits for approval.
+  const reviewed = catalogue.review?.reviewed === true;
   const keyInfo = new Map(catalogue.keys.map((entry) => [entry.key, entry]));
   const groups = groupByResource(catalogue.keys.map((entry) => entry.key));
   const canDelete = editing && role.actions.delete.allowed;
@@ -213,8 +223,9 @@ export function RoleEditor({
       live.attempt();
       return;
     }
-    // An edit that changes nothing opens no request: no note is asked for or sent.
-    const noted = reviewed && count > 0;
+    // An edit that changes nothing opens no request: no note is asked for or sent. A creation
+    // always opens one where reviewed.
+    const noted = reviewed && (!editing || count > 0);
     const sentNote = noted ? trimmedNote(note) : null;
     if (noted && sentNote === null) {
       setNoteError('required');
@@ -237,7 +248,12 @@ export function RoleEditor({
             },
             csrfToken,
           )
-        : await callApi<Written>('POST', 'identity/admin/roles', body, csrfToken);
+        : await callApi<Written>(
+            'POST',
+            'identity/admin/roles',
+            sentNote === null ? body : { ...body, note: sentNote },
+            csrfToken,
+          );
       if (!result.ok) {
         await fail(result.failure);
         return;
@@ -250,8 +266,12 @@ export function RoleEditor({
         sentForReview(result.body);
         router.refresh();
       } else {
-        // The page of the new role shows the outcome.
+        // The page of the new role shows the outcome, and the review it opened.
         toast.flash('success', t('editor.saved'));
+        const request = requestOf(result.body);
+        if (request !== null) {
+          toast.flash('info', review('sent', { number: requestLabel(request) }));
+        }
         router.push(`/settings/roles/${result.body.roleId}`);
       }
     });
@@ -259,16 +279,40 @@ export function RoleEditor({
 
   async function remove() {
     if (!editing) return;
+    setDeleteNoteError(null);
+    // Where people is reviewed the delete waits for approval: a note is asked for and sent.
+    const sentNote = reviewed ? trimmedNote(deleteNote) : null;
+    if (reviewed && sentNote === null) {
+      setDeleteNoteError('required');
+      return;
+    }
     await run(async () => {
       const result = await callApi<Written>(
         'DELETE',
         `identity/admin/roles/${role.roleId}`,
-        { expectedVersion: version },
+        sentNote === null
+          ? { expectedVersion: version }
+          : { expectedVersion: version, note: sentNote },
         csrfToken,
       );
+      if (!result.ok && reviewed && isNoteFailure(result.failure)) {
+        setDeleteNoteError(deleteNote.trim() === '' ? 'required' : 'rejected');
+        return;
+      }
       setConfirmDelete(false);
       if (!result.ok) {
+        const pending = alreadyPending(result.failure);
+        if (pending !== null) {
+          setProblem(pending);
+          return;
+        }
         await fail(result.failure);
+        return;
+      }
+      setDeleteNote('');
+      // 202: the delete waits for another admin's approval; the role stays as it is.
+      if (result.status === 202 && sentForApproval(result.body)) {
+        router.refresh();
         return;
       }
       router.push('/settings/roles');
@@ -449,7 +493,10 @@ export function RoleEditor({
           open={confirmDelete}
           title={t('editor.delete-title', { name: initialName })}
           onClose={() => {
-            if (!pending) setConfirmDelete(false);
+            if (!pending) {
+              setConfirmDelete(false);
+              setDeleteNoteError(null);
+            }
           }}
           actions={
             <>
@@ -467,6 +514,21 @@ export function RoleEditor({
           }
         >
           <p>{t('editor.delete-body')}</p>
+          {reviewed ? (
+            <>
+              <p>{t('editor.delete-requested-body')}</p>
+              <ReviewNoteField
+                value={deleteNote}
+                onChange={(next) => {
+                  setDeleteNote(next);
+                  setDeleteNoteError(null);
+                }}
+                error={deleteNoteError ?? undefined}
+                disabled={pending}
+                approval
+              />
+            </>
+          ) : null}
         </Dialog>
       </SettingsPage>
     </div>

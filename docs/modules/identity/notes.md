@@ -82,7 +82,8 @@ SERIALIZABLE (HF5 (a)), not by this lock.
 ## People changes in Admin Inbox › System requests (2026-11-15)
 
 Area `people` (on by default, high risk). Revertible changes only; creating, deleting, inviting
-and revoking are out (owner decision of 15 Nov 2026).
+and revoking were out (owner decision of 15 Nov 2026; creating, inviting and the role delete are
+hooked since 18 Nov, see the next section).
 
 - **Hooked writes.** `EditPlatformRole` (kind `identity.platform-role`, subject = role id, values
   `{name, permissionKeys}`), `AssignAdminRole` (`identity.admin-roles`, subject = admin account id,
@@ -121,3 +122,44 @@ and revoking are out (owner decision of 15 Nov 2026).
 - **Wiring.** identity imports no module (ADR-0018 decision 4), so it reaches the recorder and the
   reverter registry through the port `platform/change-review/change-review.ts`, which
   system-requests implements and re-exports from its contracts.
+
+## Creations and the role delete in System requests (2026-11-18)
+
+Owner decision of 18 Nov 2026 ("mixed"): a create goes live at once and is reviewed after; a
+delete waits for another admin's approval. Area `people`, always high risk.
+
+- **Create a custom platform role** (`CreatePlatformRole`, kind `identity.platform-role-creation`,
+  subject = role id, values `{exists: false}` before and `{exists: true, name, permissionKeys}`
+  after): the review opens in the creation's serializable unit with the body's `note`; a missing
+  note keeps nothing. A reject or withdraw deletes the role only while it confers exactly the keys
+  it was created with (a rename alone does not matter) and nobody holds it: held is
+  `not-permitted`, other keys `changed-since`, already deleted `gone`. Audited
+  `identity.role.creation-reverted` (removed keys, `requestId`), event `role-deleted.v1`.
+- **Invite an admin** (`InviteAdmin`, kind `identity.admin-invitation`, subject = invitation id,
+  values `{exists: false}` / `{exists: true, roleId}`; never the address): the review opens in the
+  invitation's unit (the mail counters roll back with a refused note). A reject or withdraw, under
+  the acceptance's invitation lock: still pending (expired or not) it is revoked
+  (`identity.invitation.reverted`, `requestId`); accepted, the account it created is disabled,
+  every session revoked and every challenge voided, as the enabling's revert does
+  (`identity.account-status.reverted`), never the last Platform Administrator who can sign in;
+  revoked meanwhile or an account no longer active is `changed-since`; purged (30 days after its
+  decision) is `gone`. The invitee (the account that accepted it, or the account of the invited
+  address) may not decide it (`isInterested`).
+- **Delete a custom platform role** (`DeletePlatformRole`, kind `identity.platform-role-deletion`,
+  approval mode): every check of the delete runs first (reach, version, grant, `role.in-use`),
+  then the unit files the proposal with `{name, permissionKeys, version}` and the `note` and writes
+  nothing else: `role.delete-requested` with `request`, HTTP 202. One waits per role (409
+  `system-requests.already-pending`, `details.pendingNumber`). The applier is registered with
+  `identity.platform-role.delete` (system-requests checks the approver holds it); its `check`
+  (read-only unit) and its `apply` (in the approval's serializable unit) re-read the approver
+  (active, verified, the key, can edit the role, R1 and R11), and `apply` deletes only a role still
+  at the asked name, keys and version (`changed-since`) and held by nobody (`not-permitted`),
+  audited `identity.role.deletion-approved` as the approver with `requestId`.
+- **Where people is off** the three routes behave as before (`request: null`, the delete at once).
+- **Not reviewed:** revoking an invitation (it only narrows access), re-sending one, the first-admin
+  routine (system actor), the seller role editor.
+- **Labels.** A created or deleted role shows its name (to an admin who may list roles); an
+  invitation shows the display name of the admin who accepted it, a pending one shows none.
+- **Panel.** The role editor asks for a note on create and in the delete dialog where people is
+  reviewed, and on 202 says "Sent for approval (SR-n)" and keeps the role; the invite dialog asks
+  for a note (from the team list's `review`) and announces the request.

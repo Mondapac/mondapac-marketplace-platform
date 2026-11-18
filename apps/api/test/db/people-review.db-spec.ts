@@ -11,6 +11,8 @@ import {
 } from '../../src/modules/identity/application/ports/session.repository';
 import { AssignAdminRole } from '../../src/modules/identity/application/use-cases/assign-admin-role.use-case';
 import { CreatePlatformRole } from '../../src/modules/identity/application/use-cases/create-platform-role.use-case';
+import { DeletePlatformRole } from '../../src/modules/identity/application/use-cases/delete-platform-role.use-case';
+import { InviteAdmin } from '../../src/modules/identity/application/use-cases/invite-admin.use-case';
 import { DisableAdminAccount } from '../../src/modules/identity/application/use-cases/disable-admin-account.use-case';
 import { EditPlatformRole } from '../../src/modules/identity/application/use-cases/edit-platform-role.use-case';
 import { EnableAdminAccount } from '../../src/modules/identity/application/use-cases/enable-admin-account.use-case';
@@ -35,6 +37,10 @@ import { testDatabaseUrl } from './test-database';
 // revert that would widen access is refused and the request stays open. A disable opens
 // nothing. A reviewer never decides a change about themselves (their own account, or a role they
 // hold now): approve and reject answer `system-requests.own-subject`. The reviewer's step-up proof is stubbed (its spend is system-requests' own test).
+// Owner decision of 18 Nov 2026 ("mixed"): creating a custom platform role and inviting an admin
+// are reviewed after (a reject deletes the unheld role, revokes the pending invitation or
+// disables the admin who accepted it); deleting a custom platform role waits for another admin's
+// approval, which deletes it only while it is unchanged and unheld.
 // Accounts and roles are new per test, so no other spec's rows are met.
 
 const CREATED = '2026-11-15T00:00:00Z';
@@ -129,6 +135,7 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
     const made = await app.get(CreatePlatformRole).execute(as(root), {
       name: `People ${randomUUID().slice(0, 8)}`,
       permissionKeys: keys,
+      note: 'A role for the test',
     });
     if (!made.ok) throw new Error(JSON.stringify(made.error));
     return made.value.roleId;
@@ -156,7 +163,8 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
         [code, accountId],
       )
     ).rows[0]!.status;
-  const requestsOf = async (subjectRef: string) =>
+  /** The requests of a subject, by number; of one kind only when `kind` is given. */
+  const requestsOf = async (subjectRef: string, kind?: string) =>
     (
       await sql.query<{
         id: Id<'SystemRequest'>;
@@ -169,8 +177,9 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
         note: string;
       }>(
         `SELECT id, status, risk, area, subject_kind, before, after, note
-         FROM system_requests.requests WHERE market_id = $1 AND subject_ref = $2 ORDER BY number`,
-        [code, subjectRef],
+         FROM system_requests.requests WHERE market_id = $1 AND subject_ref = $2
+           AND ($3::text IS NULL OR subject_kind = $3) ORDER BY number`,
+        [code, subjectRef, kind ?? null],
       )
     ).rows;
   const auditOf = async (action: string, targetId: string) =>
@@ -309,7 +318,10 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
       error: { code: 'system-requests.revert-not-permitted' },
     });
     expect(await keysOf(role)).toEqual([]);
-    expect((await requestsOf(role)).map((r) => r.status)).toEqual(['reverted', 'open']);
+    expect((await requestsOf(role, 'identity.platform-role')).map((r) => r.status)).toEqual([
+      'reverted',
+      'open',
+    ]);
   });
 
   it('disables again an admin whose enabling is rejected, ending its sessions; a disable opens nothing', async () => {
@@ -387,7 +399,9 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
     expect(await approve(holder, roleRequest)).toEqual(ownSubject);
     expect(await reject(holder, roleRequest)).toEqual(ownSubject);
     expect(await keysOf(reviewers)).toContain('identity.platform-role.view');
-    expect((await requestsOf(reviewers)).map((r) => r.status)).toEqual(['open']);
+    expect((await requestsOf(reviewers, 'identity.platform-role')).map((r) => r.status)).toEqual([
+      'open',
+    ]);
 
     // The reviewer's own role change (identity.admin-roles), here to the Platform Administrator.
     const promoted = await app
@@ -449,7 +463,7 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
     expect(await roleVersionOf(role)).toBe(version);
     expect(await auditOf('identity.role.updated', role)).toEqual(audits);
     expect(await outboxTypesOf(role)).toEqual(events);
-    expect(await requestsOf(role)).toEqual([]);
+    expect(await requestsOf(role, 'identity.platform-role')).toEqual([]);
   });
 
   it('disables again an admin whose enabling the author withdraws, ending its sessions', async () => {
@@ -510,5 +524,292 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
     expect((await requestsOf(former)).map((r) => r.status)).toEqual(['open']);
     expect(await auditOf('identity.account-role.reverted', member)).toEqual([]);
     expect(await auditOf('identity.account-role.reverted', former)).toEqual([]);
+  });
+  const approve = (reviewer: Id<'Account'>, requestId: Id<'SystemRequest'>) =>
+    app.get(ApproveSystemRequest).execute(as(reviewer), { requestId });
+  const roleExists = async (roleId: string) =>
+    (
+      await sql.query('SELECT 1 FROM identity.roles WHERE market_id = $1 AND id = $2', [
+        code,
+        roleId,
+      ])
+    ).rowCount === 1;
+  const auditRowsOf = async (action: string, targetId: string) =>
+    (
+      await sql.query<{ actor_id: string; before: unknown; after: unknown }>(
+        `SELECT actor_id, before, after FROM platform.audit_log
+         WHERE market_id = $1 AND action = $2 AND target_id = $3`,
+        [code, action, targetId],
+      )
+    ).rows;
+  const invitationOf = async (invitationId: string) =>
+    (
+      await sql.query<{ state: string; email: string | null }>(
+        'SELECT state, email FROM identity.invitations WHERE market_id = $1 AND id = $2',
+        [code, invitationId],
+      )
+    ).rows[0];
+  /** The invitation accepted by `accountId`, as the acceptance leaves it. */
+  const accepted = (invitationId: string, accountId: Id<'Account'>) =>
+    sql.query(
+      `UPDATE identity.invitations SET state = 'accepted', email = NULL, email_normalized = NULL,
+         display_name = NULL, decided_at = now(), accepted_account_id = $3, version = version + 1
+       WHERE market_id = $1 AND id = $2`,
+      [code, invitationId, accountId],
+    );
+
+  it('keeps nothing of a creation without a note; a reject deletes the unheld role, audited with the request', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const name = `Created ${randomUUID().slice(0, 8)}`;
+    const create = app.get(CreatePlatformRole);
+
+    const refused = await create.execute(as(root), {
+      name,
+      permissionKeys: ['identity.admin-account.view'],
+    });
+    expect(refused).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    expect(
+      (
+        await sql.query('SELECT 1 FROM identity.roles WHERE market_id = $1 AND name = $2', [
+          code,
+          name,
+        ])
+      ).rowCount,
+    ).toBe(0);
+
+    const made = await create.execute(as(root), {
+      name,
+      permissionKeys: ['identity.admin-account.view'],
+      note: 'For the support desk',
+    });
+    if (!made.ok || made.value.request === null) throw new Error('no request opened');
+    const roleId = made.value.roleId;
+    expect(await requestsOf(roleId)).toMatchObject([
+      {
+        id: made.value.request.id,
+        status: 'open',
+        risk: 'high',
+        area: 'people',
+        subject_kind: 'identity.platform-role-creation',
+        before: { exists: false },
+        after: { exists: true, name, permissionKeys: ['identity.admin-account.view'] },
+      },
+    ]);
+
+    // Held: the reject is refused and the request stays open.
+    const holder = await admin(roleId);
+    expect(await reject(checker, made.value.request.id)).toEqual({
+      ok: false,
+      error: { code: 'system-requests.revert-not-permitted' },
+    });
+    expect(await roleExists(roleId)).toBe(true);
+    // The holder may not decide it (a role they hold).
+    await sql.query(
+      `UPDATE identity.role_assignments SET role_id = $3, version = version + 1
+       WHERE market_id = $1 AND account_id = $2`,
+      [code, holder, await seededRole('viewer')],
+    );
+
+    expect(await reject(checker, made.value.request.id)).toMatchObject({
+      ok: true,
+      value: { status: 'reverted', decision: 'rejected' },
+    });
+    expect(await roleExists(roleId)).toBe(false);
+    expect(await auditRowsOf('identity.role.creation-reverted', roleId)).toMatchObject([
+      {
+        actor_id: checker,
+        before: { scope: 'platform', removedKeys: ['identity.admin-account.view'] },
+        after: { requestId: made.value.request.id },
+      },
+    ]);
+    expect(await outboxTypesOf(roleId)).toEqual([
+      'identity.role-created.v1',
+      'identity.role-deleted.v1',
+    ]);
+    expect(
+      JSON.stringify(await auditRowsOf('identity.role.creation-reverted', roleId)),
+    ).not.toContain(name);
+  });
+
+  it('opens a review for an invitation, never with the address; a reject revokes it while pending', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const email = `Invited.${randomUUID()}@Review.example`;
+    const invite = app.get(InviteAdmin);
+    const viewer = await seededRole('viewer');
+
+    expect(
+      await invite.execute(as(root), { email, roleId: viewer, origin: '203.0.113.9' }),
+    ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    expect(
+      (
+        await sql.query(
+          'SELECT 1 FROM identity.invitations WHERE market_id = $1 AND email_normalized = $2',
+          [code, email.toLowerCase()],
+        )
+      ).rowCount,
+    ).toBe(0);
+
+    const issued = await invite.execute(as(root), {
+      email,
+      roleId: viewer,
+      origin: '203.0.113.9',
+      note: 'Joins support',
+    });
+    if (!issued.ok || issued.value.request === null) throw new Error('no request opened');
+    const invitationId = issued.value.invitationId;
+    const [opened] = await requestsOf(invitationId);
+    expect(opened).toMatchObject({
+      status: 'open',
+      risk: 'high',
+      subject_kind: 'identity.admin-invitation',
+      before: { exists: false },
+      after: { exists: true, roleId: viewer },
+    });
+    expect(JSON.stringify(opened).toLowerCase()).not.toContain(email.toLowerCase());
+
+    expect(await reject(checker, issued.value.request.id)).toMatchObject({
+      ok: true,
+      value: { status: 'reverted' },
+    });
+    expect(await invitationOf(invitationId)).toEqual({ state: 'revoked', email: null });
+    expect(await auditRowsOf('identity.invitation.reverted', invitationId)).toMatchObject([
+      { actor_id: checker, after: { kind: 'admin', roleId: viewer, requestId: opened!.id } },
+    ]);
+    const logged = JSON.stringify(logs.map((spy): unknown => spy.mock.calls)).toLowerCase();
+    expect(logged).not.toContain(email.toLowerCase());
+  });
+
+  it('disables the admin who accepted a rejected invitation and ends its sessions; the invitee never decides it', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const viewer = await seededRole('viewer');
+    const issued = await app.get(InviteAdmin).execute(as(root), {
+      email: `Accepting.${randomUUID()}@Review.example`,
+      roleId: viewer,
+      origin: '203.0.113.9',
+      note: 'Joins support',
+    });
+    if (!issued.ok || issued.value.request === null) throw new Error('no request opened');
+    const requestId = issued.value.request.id;
+    // The account its acceptance created (an admin with the invited role), with a live session.
+    const invitee = await admin(viewer);
+    await accepted(issued.value.invitationId, invitee);
+    await sessionOf(invitee);
+
+    const ownSubject = { ok: false, error: { code: 'system-requests.own-subject' } };
+    // A reviewer who accepted it: give the invitee the review keys through a custom role.
+    const reviewers = await customRole(root, [
+      'system-requests.request.view',
+      'system-requests.people.review',
+    ]);
+    await sql.query(
+      `UPDATE identity.role_assignments SET role_id = $3, version = version + 1
+       WHERE market_id = $1 AND account_id = $2`,
+      [code, invitee, reviewers],
+    );
+    expect(await approve(invitee, requestId)).toEqual(ownSubject);
+    expect(await reject(invitee, requestId)).toEqual(ownSubject);
+
+    expect(await reject(checker, requestId)).toMatchObject({ ok: true });
+    expect(await statusOf(invitee)).toBe('disabled');
+    expect(await revokedReasonsOf(invitee)).toEqual(['account-disabled']);
+    expect(await auditOf('identity.account-status.reverted', invitee)).toMatchObject([
+      { after: { status: 'disabled', requestId } },
+    ]);
+  });
+
+  it('a delete waits for approval: nothing written until another admin approves; unchanged and unheld only', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const roleId = await customRole(root, ['identity.admin-account.view']);
+    const remove = app.get(DeletePlatformRole);
+
+    expect(await remove.execute(as(root), { roleId, expectedVersion: 1 })).toMatchObject({
+      ok: false,
+      error: { code: 'validation.failed' },
+    });
+    const proposed = await remove.execute(as(root), {
+      roleId,
+      expectedVersion: 1,
+      note: 'No longer used',
+    });
+    if (!proposed.ok || proposed.value.request === null) throw new Error('no request filed');
+    expect(proposed.value.code).toBe('role.delete-requested');
+    const requestId = proposed.value.request.id;
+    expect(await roleExists(roleId)).toBe(true);
+    expect(await auditOf('identity.role.deleted', roleId)).toEqual([]);
+    expect(await requestsOf(roleId, 'identity.platform-role-deletion')).toMatchObject([
+      {
+        status: 'open',
+        risk: 'high',
+        before: { permissionKeys: ['identity.admin-account.view'], version: 1 },
+        after: { action: 'delete' },
+      },
+    ]);
+    // One waits per role.
+    expect(
+      await remove.execute(as(root), { roleId, expectedVersion: 1, note: 'Again' }),
+    ).toMatchObject({ ok: false, error: { code: 'system-requests.already-pending' } });
+    // The author never approves their own request.
+    expect(await approve(root, requestId)).toMatchObject({ ok: false });
+
+    // Held since: the approval is refused, nothing written, the request stays open.
+    const holder = await admin(roleId);
+    expect(await approve(checker, requestId)).toEqual({
+      ok: false,
+      error: { code: 'system-requests.revert-not-permitted' },
+    });
+    expect(await roleExists(roleId)).toBe(true);
+    await sql.query(
+      `UPDATE identity.role_assignments SET role_id = $3, version = version + 1
+       WHERE market_id = $1 AND account_id = $2`,
+      [code, holder, await seededRole('viewer')],
+    );
+
+    expect(await approve(checker, requestId)).toMatchObject({
+      ok: true,
+      value: { status: 'approved' },
+    });
+    expect(await roleExists(roleId)).toBe(false);
+    expect(await auditRowsOf('identity.role.deletion-approved', roleId)).toMatchObject([
+      {
+        actor_id: checker,
+        before: { scope: 'platform', removedKeys: ['identity.admin-account.view'] },
+        after: { requestId },
+      },
+    ]);
+    expect((await outboxTypesOf(roleId)).at(-1)).toBe('identity.role-deleted.v1');
+  });
+
+  it('refuses an approved delete of a role changed since it was asked for', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const roleId = await customRole(root, ['identity.admin-account.view']);
+    const proposed = await app.get(DeletePlatformRole).execute(as(root), {
+      roleId,
+      expectedVersion: 1,
+      note: 'No longer used',
+    });
+    if (!proposed.ok || proposed.value.request === null) throw new Error('no request filed');
+    const edited = await app.get(EditPlatformRole).execute(as(root), {
+      roleId,
+      expectedVersion: 1,
+      name: `Changed ${randomUUID().slice(0, 8)}`,
+      permissionKeys: ['identity.admin-account.view', 'identity.platform-role.view'],
+      note: 'Wider now',
+    });
+    expect(edited).toMatchObject({ ok: true });
+    expect(await approve(checker, proposed.value.request.id)).toMatchObject({
+      ok: false,
+      error: { code: 'system-requests.changed-since' },
+    });
+    expect(await roleExists(roleId)).toBe(true);
   });
 });

@@ -54,25 +54,57 @@ export function useSentForReview(): (body: unknown) => boolean {
   };
 }
 
+/**
+ * Says an action was sent for another admin's approval (a 202 answer with its request), e.g. a
+ * delete in a reviewed area: nothing changed yet. Returns whether it showed.
+ */
+export function useSentForApproval(): (body: unknown) => boolean {
+  const t = useTranslations('review-note');
+  return (body) => {
+    const request = requestOf(body);
+    if (request === null) return false;
+    toast.info(t('sent-for-approval', { number: requestLabel(request) }));
+    return true;
+  };
+}
+
+/**
+ * The text of a 409 `system-requests.already-pending`: the request that already waits (SR-n), or
+ * null for any other failure.
+ */
+export function useAlreadyPending(): (failure: ApiFailure) => string | null {
+  const t = useTranslations('review-note');
+  return (failure) => {
+    if (failure.code !== 'system-requests.already-pending') return null;
+    const pending = failure.details?.pendingNumber;
+    return typeof pending === 'number'
+      ? t('already-pending', { number: requestLabel({ id: '', number: pending }) })
+      : null;
+  };
+}
+
 /** The "Note for reviewers" field: multi-line, up to 500 characters, with a counter. */
 export function ReviewNoteField({
   value,
   onChange,
   error,
   disabled,
+  approval,
 }: {
   readonly value: string;
   readonly onChange: (next: string) => void;
   /** Which of the field's own messages to show. */
   readonly error?: 'required' | 'rejected' | undefined;
   readonly disabled?: boolean;
+  /** The action waits for approval (nothing changes until then), rather than being undoable. */
+  readonly approval?: boolean;
 }) {
   const t = useTranslations('review-note');
   return (
     <TextAreaField
       name="note"
       label={t('label')}
-      help={t('help')}
+      help={approval === true ? t('help-approval') : t('help')}
       rows={3}
       maxLength={REVIEW_NOTE_MAX}
       value={value}

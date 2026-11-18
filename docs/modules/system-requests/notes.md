@@ -169,6 +169,18 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
   lacks (or the Platform Administrator role) or enable an admin is `not-permitted`; a narrowing
   revert keeps the last Platform Administrator (else `not-permitted`). Audited as
   `identity.role.reverted`, `identity.account-role.reverted`, `identity.account-status.reverted`.
+  Since 18 Nov ("mixed"): `POST identity/admin/roles` (kind `identity.platform-role-creation`,
+  values `{exists: false}` / `{exists: true, name, permissionKeys}`; a reject deletes the role only
+  while nobody holds it and its keys are unchanged) and `POST identity/admin/invitations` (kind
+  `identity.admin-invitation`, subject = invitation id, values `{exists: false}` /
+  `{exists: true, roleId}`, never the address; a reject revokes it while pending, or disables the
+  admin who accepted it and ends their sessions) take `note`, are reviewed after and answer
+  `request`. `DELETE identity/admin/roles/:roleId` waits for approval (kind
+  `identity.platform-role-deletion`, applier key `identity.platform-role.delete`): `note` in the
+  body, 202 `{code: 'role.delete-requested', roleId, request}`, 409
+  `system-requests.already-pending`; the approval deletes the role only while unchanged (name,
+  keys, version) and unheld. Revoking an invitation is not reviewed. Details: identity notes,
+  "Creations and the role delete in System requests".
 
 ### Known limits (follow-ups)
 
@@ -208,10 +220,12 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
   takes the account's credential lock and the request's row in the opposite order. Postgres
   breaks it (40P01) and the unit of work's bounded retry runs the loser again, so nobody sees an
   error; under sustained contention the retries can run out and the call fails (to be repeated).
-- Inviting or creating an admin, and creating a platform role, are not reviewed (owner decision):
-  they are the cheapest way around the people review (create a wide role and invite into it
-  instead of widening an existing one). A follow-up to review them, or to require an approved
-  request before the new admin's first sign-in, is tracked.
+- Creating a platform role and inviting an admin are reviewed after since 18 Nov, so they go
+  live at once: an invitee can accept and sign in before the review, and a reject then disables
+  the account. Holding the first sign-in until the invitation's request is approved is a
+  follow-up. A created role that someone was given meanwhile cannot be deleted by a reject
+  (`not-permitted`): reject the role assignment first. An accepted invitation purged (30 days
+  after its decision) is `gone`; its account then has to be disabled by hand.
 
 ## Actions that wait for approval (approval mode)
 
