@@ -537,7 +537,7 @@ function ActivityList({
   return (
     <SuperList
       heading={{
-        subtitle: t('subtitle'),
+        subtitle: t('subtitle', { zone }),
         actions: keys.has(EXPORT_PERMISSION) ? (
           <Button
             variant="secondary"
