@@ -5,6 +5,7 @@ import type { RecentViewsOfGuest } from '../application/use-cases/recent-views-g
 import type { FollowedAmong } from '../application/use-cases/followed-among.use-case';
 import type { FollowsOfAccount } from '../application/use-cases/follows-of-account.use-case';
 import type { OwnFollowedAmong } from '../application/use-cases/own-followed-among.use-case';
+import type { FollowStore } from '../application/use-cases/follow-store.use-case';
 import type { EngagementFacade, RecentViewsRequest } from '../contracts/engagement.facade';
 
 /** The use cases behind the facade, one per method. */
@@ -15,6 +16,7 @@ export interface EngagementFacadeUseCases {
   readonly followedAmong: FollowedAmong;
   readonly ownFollowedAmong: OwnFollowedAmong;
   readonly followsOfAccount: FollowsOfAccount;
+  readonly followStore: FollowStore;
 }
 
 /**
@@ -50,5 +52,10 @@ export class EngagementFacadeImplementation implements EngagementFacade {
 
   followsOfAccount(context: CallContext, accountId: Id<'Account'>) {
     return this.useCases.followsOfAccount.execute(context, { accountId });
+  }
+
+  async followStore(context: CallContext, sellerId: Id<'Seller'>) {
+    const result = await this.useCases.followStore.execute(context, { sellerId });
+    return result.ok ? { ok: true as const, value: { following: result.value.following } } : result;
   }
 }

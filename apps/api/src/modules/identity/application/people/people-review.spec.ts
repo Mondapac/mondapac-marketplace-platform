@@ -28,15 +28,18 @@ import { openSession } from '../../domain/session';
 import { CheckedInRoleSeed } from '../../infrastructure/seed/checked-in-role-seed';
 import { AccountAuthorisationCheck } from '../access/account-authorisation-check';
 import { AssignAdminRole } from '../use-cases/assign-admin-role.use-case';
+import { ChangeActorLabels } from '../use-cases/change-actor-labels.use-case';
 import { DisableAdminAccount } from '../use-cases/disable-admin-account.use-case';
 import { EditPlatformRole } from '../use-cases/edit-platform-role.use-case';
 import { EnableAdminAccount } from '../use-cases/enable-admin-account.use-case';
 import { ListAdminTeam } from '../use-cases/list-admin-team.use-case';
+import { ListPlatformRoles } from '../use-cases/list-platform-roles.use-case';
 import { MarketConfigIdentityPolicy } from '../../infrastructure/market-config-identity-policy';
 import {
   AdminRolesReverter,
   AdminStatusReverter,
   PlatformRoleReverter,
+  type PeopleLabelReads,
   type PeopleReverterDependencies,
 } from './people-reverters';
 
@@ -66,6 +69,8 @@ const CHECKER = accountId(2);
 const MEMBER = accountId(3);
 const OFF = accountId(4);
 const UNKNOWN = accountId(99);
+const SHOPPER = accountId(5);
+const ELSEWHERE = accountId(6);
 
 const NARROW_KEYS = ['identity.admin-account.view'];
 const WIDE_KEYS = ['identity.admin-account.view', 'identity.platform-role.view'];
@@ -161,6 +166,27 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
     admin(2, CHECKER, roleOf('platform-administrator'));
     admin(3, MEMBER, NARROW);
     admin(4, OFF, NARROW, false);
+    const otherMarket = TEST_MARKETS.find((other) => other !== code)!;
+    // Not an admin of this Market: a customer here, and an admin of the other Market.
+    for (const [n, account, population, home] of [
+      [5, SHOPPER, 'customer', marketId],
+      [6, ELSEWHERE, 'admin', otherMarket],
+    ] as const) {
+      fakes.seedAccount({
+        id: account,
+        marketId: home as AccountState['marketId'],
+        population,
+        email: { typed: `p${n}@example.com`, normalized: `p${n}@example.com` },
+        displayName: `Person ${n}`,
+        status: 'active',
+        emailVerifiedAt: START,
+        existingAccountNoticeAt: null,
+        signedUpAt: START,
+        createdAt: START,
+        version: 1,
+        credential: { passwordHash: fakeHashOf('x'), changedAt: START },
+      });
+    }
 
     const clock = new FixedClock(START);
     const permissions = realPermissionRegistry();
@@ -205,7 +231,18 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       audit: fakes.audit,
       clock,
     };
+    const labels: PeopleLabelReads = {
+      adminNames: new ChangeActorLabels(gate, {
+        unitOfWork: fakes.unitOfWork,
+        accounts: fakes.accountRepository,
+        memberships: fakes.membershipRepository,
+        grants: fakes.grantReader,
+        effectiveKeys,
+      }),
+      platformRoles: new ListPlatformRoles(gate, { ...common, permissions }),
+    };
     return {
+      labels,
       assign: new AssignAdminRole(gate, { ...common, permissions }),
       edit: new EditPlatformRole(gate, {
         ...common,
@@ -223,9 +260,10 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
         factors: fakes.factorRepository,
         policy: new MarketConfigIdentityPolicy(markets),
       }),
-      roleReverter: new PlatformRoleReverter(reverters),
-      rolesReverter: new AdminRolesReverter(reverters),
-      statusReverter: new AdminStatusReverter(reverters),
+      reverters,
+      roleReverter: new PlatformRoleReverter(reverters, labels),
+      rolesReverter: new AdminRolesReverter(reverters, labels),
+      statusReverter: new AdminStatusReverter(reverters, labels),
     };
   }
 
@@ -574,6 +612,56 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       await expect(
         statusReverter.revert(system, request(OFF, { status: 'disabled' }, { status: 'active' })),
       ).rejects.toThrow(/signed-in admin/);
+    });
+  });
+
+  describe('labels for the queue (describe)', () => {
+    it("names this Market's admins by display name, and no one else", async () => {
+      const { rolesReverter, statusReverter } = setUp();
+      const refs = [MEMBER, OFF, SHOPPER, ELSEWHERE, UNKNOWN, 'not-an-id'];
+      const expected = new Map([
+        [MEMBER, 'Admin 3'],
+        [OFF, 'Admin 4'],
+      ]);
+      expect(await rolesReverter.describe(as(CHECKER), refs)).toEqual(expected);
+      expect(await statusReverter.describe(as(CHECKER), refs)).toEqual(expected);
+      // A narrow admin may name admins too (any signed-in admin of the Market).
+      expect(await statusReverter.describe(as(MEMBER), [CHECKER])).toEqual(
+        new Map([[CHECKER, 'Admin 2']]),
+      );
+    });
+
+    it('names a custom role only for an admin who may list the platform roles', async () => {
+      const { roleReverter } = setUp();
+      const refs = [NARROW, WIDE, roleOf('platform-administrator'), GONE_ROLE];
+      expect(await roleReverter.describe(as(CHECKER), refs)).toEqual(
+        new Map([
+          [NARROW, 'Narrow'],
+          [WIDE, 'Wide'],
+        ]),
+      );
+      // MEMBER's role lacks identity.platform-role.view: no label.
+      expect(await roleReverter.describe(as(MEMBER), refs)).toEqual(new Map());
+    });
+
+    it('answers no label on a refusal or a failure, never an error', async () => {
+      const { rolesReverter, roleReverter, reverters } = setUp();
+      // A disabled admin and the system actor are refused by identity's own reads.
+      expect(await rolesReverter.describe(as(OFF), [MEMBER])).toEqual(new Map());
+      expect(await roleReverter.describe(as(OFF), [NARROW])).toEqual(new Map());
+      const system = testCallContext(market, 'system', 'people-review-0004');
+      expect(await rolesReverter.describe(system, [MEMBER])).toEqual(new Map());
+      expect(await roleReverter.describe(system, [NARROW])).toEqual(new Map());
+      const down: PeopleLabelReads = {
+        adminNames: { execute: () => Promise.reject(new Error('down')) },
+        platformRoles: { execute: () => Promise.reject(new Error('down')) },
+      };
+      expect(
+        await new AdminStatusReverter(reverters, down).describe(as(CHECKER), [MEMBER]),
+      ).toEqual(new Map());
+      expect(
+        await new PlatformRoleReverter(reverters, down).describe(as(CHECKER), [NARROW]),
+      ).toEqual(new Map());
     });
   });
 });

@@ -1,3 +1,7 @@
+import { QuoteOwnDiscounts } from './use-cases/quote-own-discounts.use-case';
+import { RedeemOwnDiscounts } from './use-cases/redeem-own-discounts.use-case';
+import { ListStaleRedemptions } from './use-cases/list-stale-redemptions.use-case';
+import { SettleRedemptions } from './use-cases/settle-redemptions.use-case';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -44,6 +48,8 @@ import { CreateOwnPromotion } from './use-cases/create-own-promotion.use-case';
 import { CreatePromotion } from './use-cases/create-promotion.use-case';
 import { EditPromotion } from './use-cases/edit-promotion.use-case';
 import { ListCustomerPromotionCredits } from './use-cases/list-customer-promotion-credits.use-case';
+import { ListCustomerPromotionUsages } from './use-cases/list-customer-promotion-usages.use-case';
+import type { RedemptionRecord } from '../domain/redemption';
 import { ListPromotionCredits } from './use-cases/list-promotion-credits.use-case';
 import { PreviewQuote } from './use-cases/preview-quote.use-case';
 import { QualifyReferralOnDelivery } from './use-cases/qualify-referral-on-delivery.use-case';
@@ -161,6 +167,10 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       make(QuoteDiscounts),
       make(RedeemDiscounts),
       make(CheckWasPrice),
+      make(QuoteOwnDiscounts),
+      make(RedeemOwnDiscounts),
+      make(ListStaleRedemptions),
+      make(SettleRedemptions),
     );
 
   beforeEach(async () => {
@@ -300,13 +310,18 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       expect((await make(CreateOwnPromotion).execute(seller(), follower())).ok).toBe(true);
 
       for (const body of [
-        group({ funding: 'SELLER', budgetMinor: undefined, testMode: false }),
         referral({ funding: 'SELLER', budgetMinor: undefined, testMode: false }),
         cashback({ funding: 'SELLER', budgetMinor: undefined, testMode: false }),
       ]) {
         const result = await make(CreateOwnPromotion).execute(seller(), body);
         expect(fields(result)).toContain('type:not-allowed');
       }
+      // A seller's customer-group discount is for its exclusive customers only.
+      const otherSegment = await make(CreateOwnPromotion).execute(
+        seller(),
+        group({ funding: 'SELLER', budgetMinor: undefined, testMode: false }),
+      );
+      expect(fields(otherSegment)).toContain('segment.kind:not-allowed');
       const wrong = await make(CreatePromotion).execute(admin(), follower());
       expect(fields(wrong)).toContain('type:not-allowed');
     });
@@ -656,6 +671,101 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       p3.storeFollows.throws = false;
       p3.storeFollows.broken = true;
       expect((await quote(request([line(1, 10000n, 1)]))).totals.goodsDiscount).toBe(0n);
+    });
+  });
+
+  describe('exclusive-customer discount (customers phase 4a)', () => {
+    const exclusive = (extra: Record<string, unknown> = {}) => ({
+      type: 'CUSTOMER_GROUP',
+      name: 'For our customers',
+      funding: 'SELLER',
+      startsAt: startsAt(),
+      reward: { kind: 'PERCENT', bps: 1000 },
+      segment: { kind: 'SELLER_EXCLUSIVE' },
+      ...extra,
+    });
+    const cart = () => request([line(1, 10000n, 1), line(2, 10000n, 1, SELLER_2)]);
+
+    it('lets a seller make it with its own money, on its own lines, for its exclusive customers', async () => {
+      const made = await sellerCreate(exclusive());
+      expect(made.segment).toMatchObject({ kind: 'SELLER_EXCLUSIVE' });
+      p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+      const out = await quote(cart());
+      expect(out.totals.goodsDiscount).toBe(1000n);
+      expect(out.totals.sellerShare).toBe(1000n);
+      expect(out.totals.platformShare).toBe(0n);
+      expect(p3.exclusiveCustomers.reads).toBe(1);
+    });
+
+    it('is not offered to another seller’s customer, an unattributed one, or with no customer', async () => {
+      await sellerCreate(exclusive());
+      expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+      p3.exclusiveCustomers.sellers.set(REFERRER, SELLER_2);
+      expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+      p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+      expect(
+        (await quote(request([line(1, 10000n, 1)], { customerAccountId: null }))).totals
+          .goodsDiscount,
+      ).toBe(0n);
+    });
+
+    it('fails closed when the attribution is unknown or the read throws', async () => {
+      await sellerCreate(exclusive());
+      p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+      p3.exclusiveCustomers.broken = true;
+      expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+      p3.exclusiveCustomers.broken = false;
+      p3.exclusiveCustomers.throws = true;
+      expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+    });
+
+    it('reads no attribution when no such discount is live', async () => {
+      p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+      await quote(cart());
+      expect(p3.exclusiveCustomers.reads).toBe(0);
+    });
+
+    it('is held to the seller maximum and takes no days, zones, platform money or test mode', async () => {
+      const own = (body: Record<string, unknown>) =>
+        make(CreateOwnPromotion).execute(seller(), body);
+      expect(
+        fields(
+          await own(
+            exclusive({ reward: { kind: 'PERCENT', bps: rules.sellerMaxDiscountBps + 1 } }),
+          ),
+        ),
+      ).toContain('reward.bps:exceeds-seller-maximum');
+      expect(
+        fields(
+          await own(
+            exclusive({ segment: { kind: 'SELLER_EXCLUSIVE', minDaysSinceLastOrder: 30 } }),
+          ),
+        ),
+      ).toContain('segment.minDaysSinceLastOrder:not-allowed');
+      expect(fields(await own(exclusive({ zones: ['BRIS-1'] })))).toContain('zones:not-allowed');
+      expect(fields(await own(exclusive({ funding: 'PLATFORM' })))).toContain(
+        'funding:seller-money-only',
+      );
+      expect(fields(await own(exclusive({ testMode: true })))).toContain('testMode:not-allowed');
+      expect(promotions.records.size).toBe(0);
+    });
+
+    it('is not an admin’s to make', async () => {
+      const result = await make(CreatePromotion).execute(
+        admin(),
+        group({ segment: { kind: 'SELLER_EXCLUSIVE' } }),
+      );
+      expect(fields(result)).toContain('segment.kind:not-allowed');
+    });
+
+    it('is not listed as a Follow gift', async () => {
+      await sellerCreate(exclusive());
+      expect(
+        await make(ViewStoreFollowGift).execute(
+          testCallContext(market, 'anonymous', 'promo3-anon-abcdef'),
+          { sellerId: SELLER },
+        ),
+      ).toEqual({ ok: true, value: { gifts: [] } });
     });
   });
 
@@ -1811,6 +1921,126 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           customerAccountId: REFERRER,
         }),
       ).toMatchObject({ ok: false });
+    });
+
+    it("lists the promotions one customer's orders used, newest first and in pages, never an order's head row (phase 2b, item e)", async () => {
+      const made = await adminCreate(group());
+      p3.redemptions.names.set(made.id, 'Welcome back');
+      const row = (
+        n: number,
+        over: Partial<RedemptionRecord> & Pick<RedemptionRecord, 'customerAccountId'>,
+      ): RedemptionRecord => ({
+        id: id<'Redemption'>(0x900 + n),
+        orderId: id<'Order'>(0x800 + n),
+        promotionKey: made.id,
+        promotionId: made.id,
+        kind: 'PROMOTION',
+        codeHash: null,
+        currency,
+        amount: BigInt(n * 100),
+        sellerShare: 0n,
+        platformShare: BigInt(n * 100),
+        units: null,
+        budgetMonth: null,
+        status: 'CONFIRMED',
+        releaseReason: null,
+        reservedAt: T0.add({ hours: n }),
+        confirmedAt: T0.add({ hours: n + 1 }),
+        releasedAt: null,
+        ...over,
+      });
+      await p3.redemptions.insertMany(market, [
+        row(1, { customerAccountId: REFERRER }),
+        row(2, {
+          customerAccountId: REFERRER,
+          promotionKey: 'first-order',
+          promotionId: null,
+          kind: 'FIRST_ORDER',
+          status: 'RESERVED',
+          confirmedAt: null,
+          codeHash: 'h',
+        }),
+        row(3, {
+          customerAccountId: REFERRER,
+          status: 'RELEASED',
+          releaseReason: 'ORDER_CANCELLED',
+          releasedAt: T0.add({ hours: 5 }),
+        }),
+        // An order's head row and another customer's row are never listed.
+        row(4, {
+          customerAccountId: REFERRER,
+          promotionKey: 'order',
+          promotionId: null,
+          kind: 'ORDER',
+        }),
+        row(5, { customerAccountId: NEWBIE }),
+      ]);
+      expect(ListCustomerPromotionUsages.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: ['promotions.promotion.view', 'customers.customers.view'],
+      });
+      const page = await make(ListCustomerPromotionUsages).execute(admin(), {
+        customerAccountId: REFERRER,
+        limit: 2,
+      });
+      if (!page.ok) throw new Error('list failed');
+      expect(
+        page.value.items.map((u) => [u.record.amount, u.record.status, u.promotionName]),
+      ).toEqual([
+        [300n, 'RELEASED', 'Welcome back'],
+        [200n, 'RESERVED', null],
+      ]);
+      expect(page.value.items.every((u) => u.record.currency === currency)).toBe(true);
+      const rest = await make(ListCustomerPromotionUsages).execute(admin(), {
+        customerAccountId: REFERRER,
+        limit: 2,
+        cursor: page.value.nextCursor!,
+      });
+      expect(rest.ok && rest.value.items.map((u) => u.record.amount)).toEqual([100n]);
+      expect(rest.ok && rest.value.nextCursor).toBeNull();
+      const nobody = await make(ListCustomerPromotionUsages).execute(admin(), {
+        customerAccountId: NEWBIE_2,
+      });
+      expect(nobody.ok && nobody.value.items).toEqual([]);
+      expect(
+        fields(
+          await make(ListCustomerPromotionUsages).execute(admin(), {
+            customerAccountId: 'x',
+            limit: 101,
+            cursor: 'not-a-cursor!',
+          }),
+        ),
+      ).toEqual(['customerAccountId:value', 'limit:value', 'cursor:value']);
+      // Reads work while promotions are switched off; the acting-as session is refused.
+      expect((await make(SetPromotionsStatus).execute(admin(), { status: 'off' })).ok).toBe(true);
+      const off = await make(ListCustomerPromotionUsages).execute(admin(), {
+        customerAccountId: REFERRER,
+      });
+      expect(off.ok && off.value.items).toHaveLength(3);
+      expect(
+        await make(ListCustomerPromotionUsages).execute(actingAs(admin()), {
+          customerAccountId: REFERRER,
+        }),
+      ).toMatchObject({ ok: false });
+      expect(
+        await make(ListCustomerPromotionUsages).execute(seller(), {
+          customerAccountId: REFERRER,
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      // An admin without the customers view key (or the promotions view key) is refused.
+      const asked: unknown[] = [];
+      gate = createUseCaseGate(markets, {
+        check: (_context, declaration): Promise<AccessDecision> => {
+          asked.push(declaration.rule);
+          return Promise.resolve({ allowed: false, denial: { code: 'access.denied' } });
+        },
+      });
+      expect(
+        await make(ListCustomerPromotionUsages).execute(admin(), {
+          customerAccountId: REFERRER,
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      expect(asked).toEqual([ListCustomerPromotionUsages.access.rule]);
     });
   });
 });

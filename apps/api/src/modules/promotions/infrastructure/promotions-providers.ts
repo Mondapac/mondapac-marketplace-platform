@@ -9,6 +9,7 @@ import { ENGAGEMENT_FACADE, type EngagementFacade } from '../../engagement';
 import { FacadeStoreFollows } from './facade-store-follows';
 import {
   FacadeCustomerGroupMembership,
+  FacadeExclusiveCustomers,
   FacadeCustomerOrderHistory,
 } from './facade-customer-order-history';
 import { PRICING_FACADE, type PricingFacade } from '../../pricing';
@@ -28,9 +29,11 @@ import {
 } from '../application/ports/credit.repository';
 import {
   CUSTOMER_GROUP_MEMBERSHIP,
+  EXCLUSIVE_CUSTOMERS,
   CUSTOMER_ORDER_HISTORY,
   STORE_FOLLOWS,
   type CustomerGroupMembership,
+  type ExclusiveCustomers,
   type CustomerOrderHistory,
   type StoreFollows,
 } from '../application/ports/customer-facts';
@@ -187,6 +190,12 @@ export const promotionsProviders: readonly FactoryProvider[] = [
     inject: [CUSTOMERS_READ_FACADE],
     useFactory: (customers: CustomersReadFacade): CustomerGroupMembership =>
       new FacadeCustomerGroupMembership(customers),
+  },
+  {
+    provide: EXCLUSIVE_CUSTOMERS,
+    inject: [CUSTOMERS_READ_FACADE],
+    useFactory: (customers: CustomersReadFacade): ExclusiveCustomers =>
+      new FacadeExclusiveCustomers(customers),
   },
   {
     provide: STORE_FOLLOWS,

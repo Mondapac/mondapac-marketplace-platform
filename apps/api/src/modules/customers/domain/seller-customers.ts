@@ -69,16 +69,20 @@ export interface SellerCustomerEntry {
   readonly currency: string | null;
   readonly follower: boolean;
   readonly followedAt: Temporal.Instant | null;
+  /** The customer signed up through this seller's invite link and the attribution is active. */
+  readonly exclusive: boolean;
 }
 
 /**
- * The rows one customer should have: one per seller they bought from or follow, sorted by seller.
- * A seller with neither has no row (and its row, if any, is removed).
+ * The rows one customer should have: one per seller they bought from, follow or are the exclusive
+ * customer of (phase 4), sorted by seller. A seller with none of these has no row (and its row, if
+ * any, is removed).
  */
 export function sellerCustomerEntriesOf(
   accountId: Id<'Account'>,
   totals: readonly SellerOrderTotals[],
   follows: readonly FollowedStore[],
+  exclusiveSellerId: Id<'Seller'> | null = null,
 ): SellerCustomerEntry[] {
   const bySeller = new Map<string, SellerCustomerEntry>();
   for (const total of totals) {
@@ -93,6 +97,7 @@ export function sellerCustomerEntriesOf(
       currency: total.currency,
       follower: false,
       followedAt: null,
+      exclusive: false,
     });
   }
   for (const follow of follows) {
@@ -106,9 +111,27 @@ export function sellerCustomerEntriesOf(
         lastOrderAt: null,
         spentMinor: 0n,
         currency: null,
+        exclusive: false,
       }),
       follower: true,
       followedAt: follow.followedAt,
+    });
+  }
+  if (exclusiveSellerId !== null) {
+    const seen = bySeller.get(exclusiveSellerId);
+    bySeller.set(exclusiveSellerId, {
+      ...(seen ?? {
+        sellerId: exclusiveSellerId,
+        accountId,
+        orderCount: 0,
+        firstOrderAt: null,
+        lastOrderAt: null,
+        spentMinor: 0n,
+        currency: null,
+        follower: false,
+        followedAt: null,
+      }),
+      exclusive: true,
     });
   }
   return [...bySeller.values()].sort((a, b) =>
@@ -119,7 +142,7 @@ export function sellerCustomerEntriesOf(
 // The seller's Customers list (a super list: views, search, filters, sort, paging, select all,
 // export). Saved filters arrive with the shared list kit's generic endpoints (B0-1b).
 
-export const SELLER_CUSTOMER_VIEWS = ['all', 'buyers', 'followers'] as const;
+export const SELLER_CUSTOMER_VIEWS = ['all', 'buyers', 'followers', 'referred'] as const;
 export type SellerCustomerTab = (typeof SELLER_CUSTOMER_VIEWS)[number];
 
 export const SELLER_CUSTOMER_SORTS = [
@@ -134,6 +157,7 @@ export type SellerCustomerSort = (typeof SELLER_CUSTOMER_SORTS)[number];
 
 export const SELLER_CUSTOMER_FILTER_KEYS = [
   'follower',
+  'exclusive',
   'lastOrderFrom',
   'lastOrderTo',
   'ordersMin',
@@ -153,6 +177,8 @@ export interface SellerCustomerSelector {
   /** The stored-form prefix of a code, or null. */
   readonly codePrefix: string | null;
   readonly follower: boolean | null;
+  /** Only the customers who signed up through the shop's link (true) or the others (false). */
+  readonly exclusive: boolean | null;
   readonly lastOrderFrom: string | null;
   readonly lastOrderTo: string | null;
   readonly ordersMin: number | null;
@@ -197,6 +223,7 @@ export function parseSellerCustomerSelector(input: {
     view,
     codePrefix,
     follower: null as boolean | null,
+    exclusive: null as boolean | null,
     lastOrderFrom: null as string | null,
     lastOrderTo: null as string | null,
     ordersMin: null as number | null,
@@ -213,10 +240,11 @@ export function parseSellerCustomerSelector(input: {
       }
     }
     const path = (key: string) => `filters.${key}`;
-    if (present(filters['follower'])) {
-      const value = filters['follower'];
-      if (value !== true && value !== false) return err({ path: path('follower'), code: 'value' });
-      selector.follower = value;
+    for (const key of ['follower', 'exclusive'] as const) {
+      if (!present(filters[key])) continue;
+      const value = filters[key];
+      if (value !== true && value !== false) return err({ path: path(key), code: 'value' });
+      selector[key] = value;
     }
     for (const key of ['lastOrderFrom', 'lastOrderTo'] as const) {
       if (!present(filters[key])) continue;

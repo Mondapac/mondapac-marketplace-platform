@@ -15,6 +15,9 @@ export interface CustomerReadModelRepository {
 
   hasDirectory(market: MarketContext, accountId: Id<'Account'>): Promise<boolean>;
 
+  /** When the customer signed up, from the directory row; null when there is no row. */
+  signedUpAtOf(market: MarketContext, accountId: Id<'Account'>): Promise<Temporal.Instant | null>;
+
   /** Inserts or replaces the stats row of one customer. */
   upsertStats(
     market: MarketContext,

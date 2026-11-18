@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -8,7 +8,7 @@ import messages from '../../messages/en.json';
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi, type ApiResult } from '../api/client.ts';
-import { StepUpProvider, STEP_UP_CANCELLED, useGuardedCall } from './step-up.tsx';
+import { StepUpProvider, STEP_UP_CANCELLED, useGuardedCall, useStepUpProof } from './step-up.tsx';
 
 const call = vi.mocked(callApi);
 const PATH = 'wallet/admin/credits';
@@ -296,5 +296,86 @@ describe('step-up code dialog: admin extras', () => {
     await waitFor(() => expect(answer().textContent).toBe('ok'));
     fireEvent.click(screen.getByRole('button', { name: 'Run' }));
     expect(await screen.findByRole('dialog')).toBeTruthy();
+  });
+});
+
+/** A screen that asks for a proof for a refusal it got another way (a file download). */
+function ProofProbe({
+  failure,
+  csrf,
+}: {
+  readonly failure: ApiFailureLike;
+  readonly csrf?: string;
+}) {
+  const prove = useStepUpProof();
+  const [answers, setAnswers] = useState<readonly string[]>([]);
+  const record = (value: string) => setAnswers((current) => [...current, value]);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          void prove(failure, csrf).then(record);
+          void prove(failure, csrf).then(record);
+        }}
+      >
+        Prove
+      </button>
+      <output aria-label="Proofs">{answers.join('|')}</output>
+    </>
+  );
+}
+type ApiFailureLike = Parameters<ReturnType<typeof useStepUpProof>>[0];
+
+describe('step-up proof for a call made outside the guarded client', () => {
+  const proofs = () => screen.getByRole('status', { name: 'Proofs' });
+  const showProof = (failure: ApiFailureLike, csrf: string | null = 'csrf-1') => {
+    render(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <StepUpProvider>
+          <ProofProbe failure={failure} {...(csrf === null ? {} : { csrf })} />
+        </StepUpProvider>
+      </NextIntlClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Prove' }));
+  };
+
+  it('asks nothing for a refusal that is not a step-up, or without a CSRF token', async () => {
+    showProof({ status: 409, code: 'conflict.stale' });
+    await waitFor(() => expect(proofs().textContent).toBe('not-asked|not-asked'));
+    cleanup();
+    showProof({ status: 403, code: 'second-factor.required', details: { actionKey: 'x.y' } }, null);
+    await waitFor(() => expect(proofs().textContent).toBe('not-asked|not-asked'));
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('opens one dialog for two refusals at once, and answers verified once the code is good', async () => {
+    call.mockResolvedValueOnce(verified);
+    showProof({
+      status: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'customers.customers.export' },
+    });
+    expect(await screen.findAllByRole('dialog', { name: 'Confirm it is you' })).toHaveLength(1);
+    typeCode('123456');
+    // The second ask, made while the dialog was open, is answered "cancelled" at once.
+    await waitFor(() => expect(proofs().textContent).toBe('cancelled|verified'));
+    expect(call).toHaveBeenCalledWith(
+      'POST',
+      VERIFY,
+      { actionKey: 'customers.customers.export', code: '123456' },
+      'csrf-1',
+    );
+  });
+
+  it('answers cancelled when the dialog is closed', async () => {
+    showProof({
+      status: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'customers.customers.export' },
+    });
+    const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(proofs().textContent).toBe('cancelled|cancelled'));
   });
 });

@@ -27,6 +27,7 @@ import type {
 import { trendMonths, type SellerCustomerDependencies } from './seller-customers-flow';
 import { RecordingAudit } from './testing/in-memory-account-deletion';
 import { InMemoryReadModels } from './testing/in-memory-read-models';
+import { InMemorySellerAttributions } from './testing/in-memory-seller-invitations';
 import {
   InMemorySellerCustomers,
   ScriptedCustomerCodes,
@@ -35,6 +36,11 @@ import { AdminSellerCustomersList } from './use-cases/admin-seller-customers-lis
 import { AdminSellerCustomersSummary } from './use-cases/admin-seller-customers-summary.use-case';
 import { ReconcileSellerCustomers } from './use-cases/reconcile-seller-customers.use-case';
 import { SellerCustomerDetail } from './use-cases/seller-customer-detail.use-case';
+import { ORDERING_SELLER_ORDER_VIEW } from '../../ordering';
+import {
+  SELLER_ORDER_VIEW_KEY,
+  SellerOrderCustomers,
+} from './use-cases/seller-order-customers.use-case';
 import { SellerCustomersCodes } from './use-cases/seller-customers-codes.use-case';
 import { SellerCustomersExport } from './use-cases/seller-customers-export.use-case';
 import { SellerCustomersList } from './use-cases/seller-customers-list.use-case';
@@ -217,6 +223,7 @@ describe.each([
   let readModels: InMemoryReadModels;
   let audit: RecordingAudit;
   let codes: ScriptedCustomerCodes;
+  let attributions: InMemorySellerAttributions;
   let uc: {
     sync: SyncSellerCustomers;
     reconcile: ReconcileSellerCustomers;
@@ -224,6 +231,7 @@ describe.each([
     codes: SellerCustomersCodes;
     export: SellerCustomersExport;
     detail: SellerCustomerDetail;
+    orderCustomers: SellerOrderCustomers;
     adminList: AdminSellerCustomersList;
     summary: AdminSellerCustomersSummary;
   };
@@ -257,6 +265,7 @@ describe.each([
     readModels = new InMemoryReadModels();
     audit = new RecordingAudit();
     codes = new ScriptedCustomerCodes();
+    attributions = new InMemorySellerAttributions(readModels.directory);
     const deps: SellerCustomerDependencies = {
       ...peers,
       identity: peers.identity,
@@ -274,6 +283,7 @@ describe.each([
         },
       },
       zones: { zoneOf: () => markets.get(market.marketId).timezone },
+      attributions,
     };
     uc = {
       sync: new SyncSellerCustomers(gate, deps),
@@ -282,6 +292,7 @@ describe.each([
       codes: new SellerCustomersCodes(gate, deps),
       export: new SellerCustomersExport(gate, deps),
       detail: new SellerCustomerDetail(gate, deps),
+      orderCustomers: new SellerOrderCustomers(gate, deps),
       adminList: new AdminSellerCustomersList(gate, deps),
       summary: new AdminSellerCustomersSummary(gate, deps),
     };
@@ -370,6 +381,48 @@ describe.each([
     });
   });
 
+  it('marks the customer exclusive to the seller they joined through while it is active', async () => {
+    const attribution = {
+      accountId: BOB,
+      sellerId: SHOP,
+      linkId: id<'SellerInviteLink'>(0x11),
+      attributedAt: T0,
+      status: 'active' as const,
+      rejectReason: null,
+      flags: [],
+      decidedByAccountId: null,
+      decidedAt: null,
+      version: 1,
+    };
+    await attributions.insert(market, attribution);
+    peers.totals.set(BOB, [bought(RIVAL, 1, 100n)]);
+    await sync(BOB);
+    // The referring shop gets a row even before any order or follow; the other shop's is plain.
+    expect(rows.rows.map((row) => [row.sellerId, row.exclusive]).sort()).toEqual(
+      [
+        [SHOP, true],
+        [RIVAL, false],
+      ].sort(),
+    );
+    const referred = await uc.list.execute(seller(SHOP), { view: 'referred' });
+    expect(referred).toMatchObject({ ok: true, value: { counts: { referred: 1 } } });
+    expect(referred.ok && referred.value.items).toEqual([
+      expect.objectContaining({ exclusive: true, firstName: 'Omar' }),
+    ]);
+    expect(await uc.list.execute(seller(RIVAL), { view: 'referred' })).toMatchObject({
+      value: { items: [], counts: { referred: 0 } },
+    });
+
+    // An admin rejected it: the row leaves the referred view (the shop keeps nothing else of it).
+    await attributions.update(
+      market,
+      { ...attribution, status: 'rejected', rejectReason: 'admin', version: 2 },
+      1,
+    );
+    await sync(BOB);
+    expect(rows.rows.map((row) => row.sellerId)).toEqual([RIVAL]);
+  });
+
   it('goes on past an account whose sync fails, and counts it', async () => {
     peers.totals.set(ALICE, [bought(SHOP, 1, 100n)]);
     peers.follows.set(BOB, [{ sellerId: SHOP, followedAt: T0 }]);
@@ -377,6 +430,64 @@ describe.each([
     expect(await uc.reconcile.execute(system, {})).toEqual({
       ok: true,
       value: { accounts: 1, rows: 1, failed: 1, capped: false },
+    });
+  });
+
+  describe('the customer of a seller order (2026-11-17)', () => {
+    beforeEach(async () => {
+      peers.totals.set(ALICE, [bought(SHOP, 2, 4500n), bought(RIVAL, 7, 99_000n)]);
+      await sync(ALICE);
+    });
+
+    it('answers the shop its own code and first name only, and nothing for an account it lacks', async () => {
+      const shopCode = rows.rows.find((r) => r.sellerId === SHOP && r.accountId === ALICE)!.code;
+      const answer = await uc.orderCustomers.execute(seller(SHOP), { accountIds: [ALICE, BOB] });
+      if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+      expect([...answer.value]).toEqual([[ALICE, { code: shopCode, firstName: 'Maryam' }]]);
+      const text = JSON.stringify([...answer.value.values()]);
+      for (const secret of ['Rahimi', '@example.test', '4500']) expect(text).not.toContain(secret);
+      // The rival shop gets its own code, never the shop's.
+      const rival = await uc.orderCustomers.execute(seller(RIVAL), { accountIds: [ALICE] });
+      expect(rival.ok && rival.value.get(ALICE)?.code).not.toBe(shopCode);
+      // Another Market's rows are not read.
+      const elsewhere = await uc.orderCustomers.execute(seller(SHOP, {}, other), {
+        accountIds: [ALICE],
+      });
+      expect(elsewhere.ok && elsewhere.value.size).toBe(0);
+    });
+
+    it("asks for ordering's order view key, as the order page itself", () => {
+      expect(SELLER_ORDER_VIEW_KEY).toBe(ORDERING_SELLER_ORDER_VIEW.key);
+      expect(SellerOrderCustomers.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: [ORDERING_SELLER_ORDER_VIEW.key],
+      });
+    });
+
+    it('refuses an admin, a Login as Seller session, a bad id and too many accounts', async () => {
+      expect(await uc.orderCustomers.execute(admin, { accountIds: [ALICE] })).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(
+        await uc.orderCustomers.execute(seller(SHOP, { actingAs: { adminAccountId: 'x' } }), {
+          accountIds: [ALICE],
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      expect(
+        await uc.orderCustomers.execute(seller(SHOP), {
+          accountIds: ['not-an-id' as Id<'Account'>],
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      expect(
+        await uc.orderCustomers.execute(seller(SHOP), {
+          accountIds: Array.from({ length: 101 }, () => ALICE),
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      expect(await uc.orderCustomers.execute(seller(SHOP), { accountIds: [] })).toEqual({
+        ok: true,
+        value: new Map(),
+      });
     });
   });
 
@@ -391,7 +502,7 @@ describe.each([
     it('shows the seller its own customers by code and first name only', async () => {
       const page = await uc.list.execute(seller(SHOP), { page: 1 });
       if (!page.ok) throw new Error(JSON.stringify(page.error));
-      expect(page.value.counts).toEqual({ all: 2, buyers: 1, followers: 1 });
+      expect(page.value.counts).toEqual({ all: 2, buyers: 1, followers: 1, referred: 0 });
       expect(page.value.paging).toMatchObject({ total: 2, page: 1, pageSize: 25 });
       const alice = page.value.items.find((row) => row.orderCount > 0)!;
       expect(alice.code).toMatch(/^\d{4}-\d{4}$/);
@@ -531,7 +642,7 @@ describe.each([
       });
       const summary = await uc.summary.execute(admin, { sellerId: SHOP });
       if (!summary.ok) throw new Error('summary refused');
-      expect(summary.value.counts).toEqual({ all: 2, buyers: 1, followers: 1 });
+      expect(summary.value.counts).toEqual({ all: 2, buyers: 1, followers: 1, referred: 0 });
       expect(summary.value.months).toHaveLength(12);
       expect(summary.value.months.at(-1)).toMatchObject({ newBuyers: 1, newFollowers: 1 });
     });

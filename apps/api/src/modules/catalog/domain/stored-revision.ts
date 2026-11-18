@@ -3,8 +3,8 @@ import type { ContentHash, Id } from '@mondapac/shared-kernel';
 import type { SensitiveReason } from './product-revision-policy';
 import type { RevisionContent } from './revision-content';
 
-/** `submission`, `revert` or `tax-override` (data design 3.7; D 4.2 rows 1 and 6, D 4.3). */
-export type RevisionKind = 'submission' | 'revert' | 'tax-override';
+/** `submission`, `revert`, `tax-override` or `category-override` (C5a) (data design 3.7; D 4.2 rows 1 and 6, D 4.3). */
+export type RevisionKind = 'submission' | 'revert' | 'tax-override' | 'category-override';
 
 /**
  * A frozen revision as the store keeps it (data design 3.7 to 3.10): the record around the
