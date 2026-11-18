@@ -161,6 +161,21 @@ const STEM_SOURCES = [
   'βιολογικ',
   'endors',
   'afic',
+  // Malaysia (Malay) and European languages. Words that already contain a listed stem
+  // (glutenfrei, vegetariano, biologisch, zertifiziert's "zertif") are covered by it.
+  'ecolog',
+  'zertifi',
+  'sijil',
+  'disahkan',
+  'diperakui',
+  'ditauliah',
+  'sembelih',
+  'alergi',
+  'alergia',
+  'koser',
+  'helal',
+  'toyyib',
+  'jakim',
 ];
 const STEMS = STEM_SOURCES.map((stem) => `${START}(?:${stem})${REST}`);
 // A stem that must end where the window ends (an optional plural aside): "hara" + "masala" is no claim.
@@ -178,6 +193,7 @@ const WORDS = [
 ].map((word) => `${START}${word}${END}`);
 
 const FOODS = String.raw`(?:pork|swine|alcohol|lard|gelatin|nuts?|dairy|lactose|meat|milk|eggs?|gluten|wheat|sesame|shellfish)`;
+const OTHER_FOODS = String.raw`(?:porc|porco|cerdo|maiale|suino|schwein\w*|varken\w*|babi|svin\w*|alcool|alcohol|alkohol|alcol|alkoholi|gelatin\w*|laktos\w*|lactos\w*|gluten\w*|melk|milch|lait|leche|latte|oeuf\w*|huevo\w*|ei|eier|telur)`;
 const FREE_FROM = [
   String.raw`(?:pork|alcohol|lard|gelatin|lactose|dairy|nut|egg|soy|meat|milk|wheat|sesame|shellfish|sugar|fat|msg|gmo)[\s-]*free${END}`,
   String.raw`${START}(?:no|without|free\s+from)[\s-]+(?:lactose|dairy|nuts?|pork|alcohol|lard|gelatin|sugar|meat|milk|eggs?)${END}`,
@@ -188,6 +204,10 @@ const FREE_FROM = [
   String.raw`${START}no-?(?:pork|swine)${END}`,
   String.raw`allerg`,
   String.raw`sertifi`,
+  // "Free of" in other languages: "ohne Schweinefleisch", "sans porc", "bebas babi", "senza alcol".
+  String.raw`${START}(?:sans|sin|senza|ohne|zonder|tanpa|bebas|uden|utan|sem)[\s-]+${OTHER_FOODS}${END}`,
+  String.raw`${START}tiada[\s-]+${OTHER_FOODS}${END}`,
+  String.raw`${OTHER_FOODS}[\s-]*(?:frei|vrij|fri|libre|gratis)${END}`,
 ];
 
 // Arabic, Persian (spelled with the Persian letters the fold produces; no ZWNJ) and Hebrew
