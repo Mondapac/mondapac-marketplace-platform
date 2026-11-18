@@ -11,6 +11,12 @@ import type {
   PriceSeriesRepository,
 } from '../application/ports/price-series.repository';
 import { assertSerializableUnit } from '../application/serializable-unit';
+import {
+  compareHolds,
+  type HoldListFilter,
+  type HoldSort,
+  type HoldViewCounts,
+} from '../domain/hold-list';
 import type { PriceAmount } from '../domain/price-amount';
 import {
   PriceSeries,
@@ -312,6 +318,42 @@ const RECORDS_IN_ORDER = {
   specialRecords: { orderBy: [{ submittedAt: 'asc' as const }, { id: 'asc' as const }] },
 };
 
+/** The `where` of one stream for a hold-list filter (the stream's own columns; the twin of `holdMatches`). */
+function holdWhere(market: MarketContext, filter: HoldListFilter, stream: 'regular' | 'special') {
+  const series = {
+    ...(filter.sellerId === null ? {} : { sellerId: filter.sellerId }),
+  };
+  return {
+    marketId: market.marketId,
+    status: 'pending-review',
+    ...(filter.direction === null || stream === 'special'
+      ? {}
+      : { holdDirection: filter.direction }),
+    ...(Object.keys(series).length === 0 ? {} : { series }),
+    ...(filter.recordOrOfferId === null
+      ? {}
+      : {
+          OR: [{ id: filter.recordOrOfferId }, { series: { offerId: filter.recordOrOfferId } }],
+        }),
+    ...(filter.from === null && filter.to === null
+      ? {}
+      : {
+          submittedAt: {
+            ...(filter.from === null ? {} : { gte: toDate(filter.from) }),
+            ...(filter.to === null ? {} : { lt: toDate(filter.to) }),
+          },
+        }),
+    ...(filter.minAmount === null && filter.maxAmount === null
+      ? {}
+      : {
+          amountMinor: {
+            ...(filter.minAmount === null ? {} : { gte: filter.minAmount }),
+            ...(filter.maxAmount === null ? {} : { lte: filter.maxAmount }),
+          },
+        }),
+  };
+}
+
 const HOLD_SERIES = {
   series: { select: { id: true, offerId: true, variantId: true, sellerId: true } },
 };
@@ -478,6 +520,92 @@ export class PrismaPriceSeriesRepository implements PriceSeriesRepository {
           (a.recordId < b.recordId ? -1 : a.recordId > b.recordId ? 1 : 0),
       )
       .slice(0, limit);
+  }
+
+  async queryPendingHolds(
+    market: MarketContext,
+    filter: HoldListFilter,
+    sort: HoldSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly PendingHoldView[]> {
+    const tx = this.prisma.tx(market);
+    const effective: HoldSort = sort;
+    const orderBy =
+      effective.key === 'submitted'
+        ? [{ submittedAt: effective.direction }, { id: effective.direction }]
+        : [{ amountMinor: effective.direction }, { id: effective.direction }];
+    const take = offset + limit;
+    const where = (stream: 'regular' | 'special') => holdWhere(market, filter, stream);
+    const regular =
+      filter.kind === 'special'
+        ? []
+        : await tx.pricingRegularPriceRecord.findMany({
+            where: where('regular'),
+            include: HOLD_SERIES,
+            orderBy,
+            take,
+          });
+    const special =
+      filter.kind === 'regular' || filter.direction === 'up'
+        ? []
+        : await tx.pricingSpecialPriceRecord.findMany({
+            where: where('special'),
+            include: HOLD_SERIES,
+            orderBy,
+            take,
+          });
+    return [...regular.map(holdFromRow), ...special.map(specialHoldFromRow)]
+      .sort((a, b) => compareHolds(a, b, effective))
+      .slice(offset, offset + limit);
+  }
+
+  async countPendingHoldsWhere(market: MarketContext, filter: HoldListFilter): Promise<number> {
+    const tx = this.prisma.tx(market);
+    const regular =
+      filter.kind === 'special'
+        ? 0
+        : await tx.pricingRegularPriceRecord.count({ where: holdWhere(market, filter, 'regular') });
+    const special =
+      filter.kind === 'regular' || filter.direction === 'up'
+        ? 0
+        : await tx.pricingSpecialPriceRecord.count({ where: holdWhere(market, filter, 'special') });
+    return regular + special;
+  }
+
+  async pendingHoldViewCounts(market: MarketContext): Promise<HoldViewCounts> {
+    const tx = this.prisma.tx(market);
+    const base = { marketId: market.marketId, status: 'pending-review' };
+    const regularUp = await tx.pricingRegularPriceRecord.count({
+      where: { ...base, holdDirection: 'up' },
+    });
+    const regularDown = await tx.pricingRegularPriceRecord.count({
+      where: { ...base, holdDirection: 'down' },
+    });
+    const special = await tx.pricingSpecialPriceRecord.count({ where: base });
+    return {
+      all: regularUp + regularDown + special,
+      regular: regularUp + regularDown,
+      special,
+      up: regularUp,
+      down: regularDown + special,
+    };
+  }
+
+  async findPendingHoldsByIds(
+    market: MarketContext,
+    recordIds: readonly (Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>)[],
+  ): Promise<readonly PendingHoldView[]> {
+    if (recordIds.length === 0) return [];
+    const tx = this.prisma.tx(market);
+    const where = {
+      marketId: market.marketId,
+      status: 'pending-review',
+      id: { in: [...recordIds] },
+    };
+    const regular = await tx.pricingRegularPriceRecord.findMany({ where, include: HOLD_SERIES });
+    const special = await tx.pricingSpecialPriceRecord.findMany({ where, include: HOLD_SERIES });
+    return [...regular.map(holdFromRow), ...special.map(specialHoldFromRow)];
   }
 
   async findPendingHold(
