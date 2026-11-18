@@ -1,3 +1,7 @@
+import { QuoteOwnDiscounts } from './use-cases/quote-own-discounts.use-case';
+import { RedeemOwnDiscounts } from './use-cases/redeem-own-discounts.use-case';
+import { ListStaleRedemptions } from './use-cases/list-stale-redemptions.use-case';
+import { SettleRedemptions } from './use-cases/settle-redemptions.use-case';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import {
@@ -129,6 +133,10 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
       make(QuoteDiscounts),
       make(RedeemDiscounts),
       make(CheckWasPrice),
+      make(QuoteOwnDiscounts),
+      make(RedeemOwnDiscounts),
+      make(ListStaleRedemptions),
+      make(SettleRedemptions),
     );
   const delivery = (): EventDelivery => ({
     eventId: id<'event'>(0xe000 + ++events),
@@ -327,6 +335,97 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
       expected: summaryOf(await quote(cart)),
     });
     expect(result).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+  });
+
+  describe("checkout under the customer's own session", () => {
+    const buyer2 = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'customer',
+        accountId: BUYER_2,
+        sessionId: id<'Session'>(0x65),
+        sellerId: null,
+      }),
+      'redeem-customer2-abcdef',
+    );
+
+    it('quotes and redeems as the signed-in customer, for that customer only', async () => {
+      const own = await created(make(CreateOwnPromotion).execute(seller(), sale()));
+      // The customer is the session's: a request naming nobody is quoted for that account.
+      const cart = request([line(1, 5000n, 2)], { testMode: false, customerAccountId: null });
+      const quoted = await facade().quote(customer, cart);
+      expect(quoted).toMatchObject({ ok: true, value: { totals: { goodsDiscount: 1000n } } });
+      if (!quoted.ok) return;
+      const redeemed = await facade().redeem(customer, {
+        orderId: order(80),
+        customerAccountId: BUYER,
+        request: cart,
+        expected: summaryOf(quoted.value),
+      });
+      expect(redeemed).toEqual({ ok: true, value: { outcome: 'redeemed' } });
+      expect(redemptions.discounts).toEqual([
+        expect.objectContaining({
+          orderId: order(80),
+          promotionId: own.id,
+          customerAccountId: BUYER,
+        }),
+      ]);
+    });
+
+    it("refuses another customer's account, a test order, a seller or admin session and acting-as", async () => {
+      await created(make(CreateOwnPromotion).execute(seller(), sale()));
+      const cart = request([line(1, 5000n, 1)], { testMode: false });
+      const expected = summaryOf(await quote(cart));
+      const redeemAs = (context: typeof customer, customerAccountId: Id<'Account'>, req = cart) =>
+        facade().redeem(context, { orderId: order(81), customerAccountId, request: req, expected });
+
+      // The request is for BUYER: another customer can neither quote nor redeem it.
+      expect(await facade().quote(buyer2, cart)).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(await redeemAs(buyer2, BUYER)).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(await redeemAs(buyer2, BUYER_2)).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      // A customer session never quotes or redeems a test order.
+      const test = { ...cart, testMode: true };
+      expect(await facade().quote(customer, test)).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(await redeemAs(customer, BUYER, test)).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      // Only a customer: a seller or an admin session gets nothing.
+      expect(await facade().quote(seller(), cart)).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(await redeemAs(admin(), BUYER)).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      // Never an acting-as session, even one on the buyer's own account.
+      const actingAs = {
+        ...customer,
+        actor: { ...customer.actor, actingAs: { adminAccountId: id<'Account'>(0xad) } },
+      } as unknown as typeof customer;
+      expect(await facade().quote(actingAs, cart)).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(await redeemAs(actingAs, BUYER)).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(redemptions.discounts).toHaveLength(0);
+    });
   });
 
   describe('single-use codes', () => {
@@ -662,6 +761,102 @@ describe.each([['AU'], ['ZZ']] as const)('promotions redemption in market %s', (
         expect(result.error.quote.enabled).toBe(false);
       }
       expect(redemptions.discounts).toHaveLength(0);
+    });
+  });
+
+  describe("the safety sweep (ordering's settle-stale-redemptions)", () => {
+    it('lists orders whose RESERVED redemptions are older than the instant, within the limit', async () => {
+      await created(make(CreateOwnPromotion).execute(seller(), sale()));
+      for (const n of [80, 81]) {
+        const { redeem } = await priced(
+          order(n),
+          request([line(1, 5000n, 1)], { testMode: false }),
+        );
+        expect((await redeem()).ok).toBe(true);
+      }
+      expect(await pay(order(81))).toEqual({ ok: true, value: { outcome: 'confirmed' } });
+      const later = T0.add({ hours: 2 });
+
+      expect(await facade().staleRedemptions(system, { before: T0, limit: 10 })).toEqual({
+        ok: true,
+        value: [],
+      });
+      expect(await facade().staleRedemptions(system, { before: later, limit: 10 })).toEqual({
+        ok: true,
+        value: [order(80)],
+      });
+      // The next page starts after the last order id of the one before.
+      expect(
+        await facade().staleRedemptions(system, { before: later, limit: 10, after: order(80) }),
+      ).toEqual({ ok: true, value: [] });
+      expect(
+        await facade().staleRedemptions(system, { before: later, limit: 10, after: order(79) }),
+      ).toEqual({ ok: true, value: [order(80)] });
+    });
+
+    it('confirms a paid order and releases a cancelled one, once', async () => {
+      await created(make(CreateOwnPromotion).execute(seller(), sale()));
+      for (const n of [82, 83]) {
+        const { redeem } = await priced(
+          order(n),
+          request([line(1, 5000n, 1)], { testMode: false }),
+        );
+        expect((await redeem()).ok).toBe(true);
+      }
+      const settle = (orderId: Id<'Order'>, outcome: 'paid' | 'cancelled') =>
+        facade().settleRedemptions(system, { orderId, outcome });
+
+      expect(await settle(order(82), 'paid')).toEqual({
+        ok: true,
+        value: { outcome: 'confirmed' },
+      });
+      expect(await settle(order(82), 'paid')).toEqual({ ok: true, value: { outcome: 'nothing' } });
+      expect(await settle(order(83), 'cancelled')).toEqual({
+        ok: true,
+        value: { outcome: 'released' },
+      });
+      expect(await settle(order(83), 'cancelled')).toEqual({
+        ok: true,
+        value: { outcome: 'nothing' },
+      });
+      expect(redemptions.rows.map((r) => [r.orderId, r.status])).toEqual(
+        expect.arrayContaining([
+          [order(82), 'CONFIRMED'],
+          [order(83), 'RELEASED'],
+        ]),
+      );
+      expect(
+        await facade().staleRedemptions(system, { before: T0.add({ hours: 2 }), limit: 10 }),
+      ).toEqual({ ok: true, value: [] });
+    });
+
+    it('is system only, and refuses a bad request', async () => {
+      const later = T0.add({ hours: 2 });
+      expect(await facade().staleRedemptions(customer, { before: later, limit: 10 })).toMatchObject(
+        { ok: false, error: { code: 'access.denied' } },
+      );
+      expect(
+        await facade().settleRedemptions(customer, { orderId: order(84), outcome: 'cancelled' }),
+      ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+      expect(
+        await facade().staleRedemptions(system, {
+          before: later,
+          limit: 10,
+          after: 'not-an-id' as Id<'Order'>,
+        }),
+      ).toEqual({ ok: false, error: { code: 'validation.failed' } });
+      for (const limit of [0, 101, 1.5]) {
+        expect(await facade().staleRedemptions(system, { before: later, limit })).toEqual({
+          ok: false,
+          error: { code: 'validation.failed' },
+        });
+      }
+      expect(
+        await facade().settleRedemptions(system, {
+          orderId: order(84),
+          outcome: 'refunded' as 'paid',
+        }),
+      ).toEqual({ ok: false, error: { code: 'validation.failed' } });
     });
   });
 });

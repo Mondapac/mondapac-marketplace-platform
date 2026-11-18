@@ -158,6 +158,20 @@ window.fetch = ((input: string, init?: RequestInit) => {
       taxCategoryCodes: ['gst-free-food', 'gst'],
       categories,
     };
+  } else if (path === 'catalog/admin/platform-products/category-picker') {
+    body = {
+      locale: 'en',
+      choices: [
+        {
+          id: id(13),
+          level: 4,
+          name: 'Basmati rice',
+          path: ['Pantry', 'Rice and grains', 'Rice', 'Basmati rice'],
+          general: false,
+          status: 'active',
+        },
+      ],
+    };
   } else if (path === `catalog/admin/platform-products/${PRODUCT}` && init?.method === 'GET') {
     body = scenarios[scenario];
   } else if (path.endsWith(`/${PRODUCT}/images`)) {

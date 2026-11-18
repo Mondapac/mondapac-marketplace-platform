@@ -37,6 +37,7 @@ const browser = await chromium.launch();
 const views = [
   ['admin-add-empty-page', 'new', 'Add product', null, null],
   ['admin-add-filled-page', 'new', 'Add product', 'fill', null],
+  ['admin-add-type-error-page', 'new', 'Add product', 'type-error', null],
   ['admin-add-empty', 'add', 'Add product', null, null],
   ['admin-edit-published-revision', 'published', 'Sella basmati rice', null, null],
   ['admin-edit-inactive', 'inactive', 'This product is inactive', null, null],
@@ -71,6 +72,11 @@ for (const scheme of ['light', 'dark']) {
         await page.getByRole('switch', { name: 'Active' }).click();
         await page.getByText('Turn off Sella basmati rice?').waitFor();
       }
+      if (action === 'type-error') {
+        await page.getByLabel('Title').fill('Sella basmati rice 5 kg');
+        await page.getByRole('button', { name: 'Save draft' }).click();
+        await page.getByText('Choose a product type.').first().waitFor();
+      }
       if (action === 'fill') {
         await page.getByLabel('Product type').selectOption('grocery');
         await page.getByLabel('Title').fill('Sella basmati rice 5 kg');
@@ -80,7 +86,7 @@ for (const scheme of ['light', 'dark']) {
           .fill(
             'Tilda Sella basmati is an extra-long grain rice, parboiled and aged for two years.',
           );
-        await page.getByRole('combobox', { name: /Product category/ }).click();
+        await page.getByRole('combobox', { name: 'Add a category' }).click();
         await page.getByRole('option', { name: /Basmati rice/ }).click();
         // The multiple choice stays open (a sheet on a phone): close it.
         await page.keyboard.press('Escape');

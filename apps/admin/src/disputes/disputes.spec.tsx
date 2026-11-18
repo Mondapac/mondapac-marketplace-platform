@@ -256,6 +256,30 @@ describe('disputes list', () => {
       'commission-payouts/admin/disputes?filter=needs-response&limit=25&cursor=c2',
     );
   });
+
+  it('keeps the rows on screen while more load, instead of adding a skeleton row', async () => {
+    call.mockResolvedValueOnce(page([row()], 'c2'));
+    render(wrap(<DisputesList zone={ZONE} />));
+    await screen.findByRole('table');
+    let finish: (value: ReturnType<typeof page>) => void = () => undefined;
+    call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    // The table stays, marked busy; the loading label is announced once; no skeleton is drawn.
+    await waitFor(() =>
+      expect(screen.getByRole('table').closest('[aria-busy]')?.getAttribute('aria-busy')).toBe(
+        'true',
+      ),
+    );
+    expect(screen.getAllByRole('row')).toHaveLength(2);
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    expect(screen.queryByTestId('table-skeleton')).toBeNull();
+    finish(page([]));
+    await waitFor(() =>
+      expect(screen.getByRole('table').closest('[aria-busy]')?.getAttribute('aria-busy')).toBe(
+        'false',
+      ),
+    );
+  });
 });
 
 describe('dispute detail', () => {

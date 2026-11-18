@@ -2,7 +2,12 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
-import type { AttributeValueSuggestionStore } from '../application/ports/attribute-value-suggestion.store';
+import type { Prisma } from '../../../generated/prisma/client';
+import type {
+  AttributeValueSuggestionStore,
+  OpenSuggestionsFilter,
+  OpenSuggestionsPage,
+} from '../application/ports/attribute-value-suggestion.store';
 import {
   AttributeValueSuggestion,
   type SuggestionNoticeState,
@@ -43,6 +48,20 @@ interface Row {
  * of `where`. A decision and a notice move are each one conditional update at the version read,
  * in the granted columns only; the guard trigger refuses any other change.
  */
+/** Escapes `\`, `%` and `_`, so a search term is matched as typed (LIKE patterns). */
+const literal = (term: string): string => term.replace(/[\\%_]/g, (char) => `\\${char}`);
+
+const openWhere = (
+  market: MarketContext,
+  filter: OpenSuggestionsFilter,
+): Prisma.CatalogAttributeValueSuggestionWhereInput => ({
+  marketId: market.marketId,
+  status: 'open',
+  ...(filter.text === null
+    ? {}
+    : { label: { contains: literal(filter.text), mode: 'insensitive' } }),
+});
+
 export class PrismaAttributeValueSuggestionStore implements AttributeValueSuggestionStore {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -154,16 +173,23 @@ export class PrismaAttributeValueSuggestionStore implements AttributeValueSugges
     });
   }
 
-  async listOpen(
+  async pageOpen(
     market: MarketContext,
-    limit: number,
+    page: OpenSuggestionsPage,
   ): Promise<readonly AttributeValueSuggestion[]> {
     const rows = await this.prisma.tx(market).catalogAttributeValueSuggestion.findMany({
-      where: { marketId: market.marketId, status: 'open' },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      take: limit,
+      where: openWhere(market, page),
+      orderBy: [{ createdAt: page.direction }, { id: page.direction }],
+      skip: page.offset,
+      take: page.limit,
     });
     return rows.map(suggestionOf);
+  }
+
+  async countOpen(market: MarketContext, filter: OpenSuggestionsFilter): Promise<number> {
+    return this.prisma
+      .tx(market)
+      .catalogAttributeValueSuggestion.count({ where: openWhere(market, filter) });
   }
 
   async listOfProduct(

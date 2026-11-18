@@ -6,6 +6,11 @@ import {
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import {
+  FakePublishedStores,
+  RecordingEngagementOutbox,
+} from '../../src/modules/engagement/application/testing/in-memory-engagement';
+import { PrismaStoreFollowRepository } from '../../src/modules/engagement/infrastructure/prisma-store-follow.repository';
 import { ForgetAccount } from '../../src/modules/engagement/application/use-cases/forget-account.use-case';
 import { PurgeExpiredEvents } from '../../src/modules/engagement/application/use-cases/purge-expired-events.use-case';
 import { RecentViewsOfCustomer } from '../../src/modules/engagement/application/use-cases/recent-views.use-case';
@@ -66,7 +71,17 @@ describe.each(TEST_MARKETS)('behaviour store in market %s (database)', (code) =>
   });
   beforeEach(() => clock.set(T0));
 
-  const deps = () => ({ unitOfWork: db.unitOfWork, events, settings, guestTokens, ids, clock });
+  const deps = () => ({
+    unitOfWork: db.unitOfWork,
+    events,
+    settings,
+    guestTokens,
+    follows: new PrismaStoreFollowRepository(db.service),
+    stores: new FakePublishedStores(),
+    outbox: new RecordingEngagementOutbox(),
+    ids,
+    clock,
+  });
   const customer = (target: MarketContext, accountId: Id<'Account'>) =>
     testCallContext(
       target,
@@ -310,6 +325,9 @@ describe.each(TEST_MARKETS)('behaviour store in market %s (database)', (code) =>
     );
     expect(await insertRow(account, 'search-performed', { query: ' x' })).toBe(CHECK);
     expect(await insertRow(account, 'category-viewed', {})).toBe(CHECK);
+    // An addition without its offer and variant: the CHECK is what lets
+    // `cartAdditionsOfAccount` page with skip/take and agree with its count (no row dropped).
+    expect(await insertRow(account, 'added-to-cart', {})).toBe(CHECK);
     expect(
       await insertRow({ account: null, guest: hash }, 'search-performed', { query: 'x' }),
     ).toBe('allowed');

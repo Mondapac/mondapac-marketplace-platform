@@ -8,14 +8,13 @@ import {
   DescriptionWriter,
   Dialog,
   LoadError,
-  SearchSelect,
   Select,
-  SkeletonRows,
   TextAreaField,
   TextField,
   UnsavedBar,
   toast,
   useUnsavedChangesGuard,
+  FormSkeleton,
   type SearchSelectLabels,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -26,7 +25,7 @@ import { AfterSaveCard, ImagesAfterSave } from './pre-creation.tsx';
 import { AddSizesDialog } from './add-sizes-dialog.tsx';
 import { canAddSizes, maxAxesOf, publishedAxesOf } from './add-sizes.ts';
 import { AttributesSection } from './attributes-section.tsx';
-import { categoryOptions } from './category-options.ts';
+import { CategoriesField } from './categories-field.tsx';
 import { writerCategory, writerDetails } from './writer-inputs.ts';
 import {
   attributeInputsOf,
@@ -167,6 +166,7 @@ export function ProductEdit({
   readonly startProblem?: StartProblem;
 }) {
   const t = useTranslations('catalog.productForm');
+  const tr = useTranslations('route');
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   // Bumped to remount the form on freshly read data.
   const [generation, setGeneration] = useState(0);
@@ -200,7 +200,16 @@ export function ProductEdit({
     void load();
   }, [load]);
 
-  if (phase.kind === 'loading') return <SkeletonRows label={t('loading')} rows={6} />;
+  if (phase.kind === 'loading') {
+    return (
+      <FormSkeleton
+        label={t('loading')}
+        slowLabel={tr('slow')}
+        header
+        sections={[{ fields: 4 }, { fields: 3 }, { fields: 3 }]}
+      />
+    );
+  }
   if (phase.kind === 'failed') {
     return (
       <LoadError message={t('load-failed')} retryLabel={t('retry')} onRetry={() => void load()} />
@@ -372,7 +381,6 @@ export function EditForm({
     remove: (name) => t('select.remove', { name }),
     limitReached: (max) => t('select.limit', { max }),
   };
-  const categories = categoryOptions(form.categories, defaultLocale);
 
   // What the freeze refused about the tags, in words, until the admin changes the tags.
   const tagIssues = problem?.topicIssues ?? [];
@@ -386,12 +394,8 @@ export function EditForm({
     inputs,
   });
   // An Add page has nothing to publish yet: saving the draft comes first.
-  // With no categories to choose from (they could not be loaded) "choose a category" cannot be done here.
-  const categoriesUnavailable = creating !== null && form.categories.length === 0;
   const blockerItems = [
-    ...missing
-      .filter((item) => !(item === 'category' && categoriesUnavailable))
-      .map((item) => t(`blockers.${item}`)),
+    ...missing.map((item) => t(`blockers.${item}`)),
     ...(creating === null ? [] : [t('blockers.save')]),
   ];
   const blockers =
@@ -918,27 +922,19 @@ export function EditForm({
             )}
           </Card>
           <Card title={t('category')}>
-            <SearchSelect
-              multiple
-              alwaysSearch
-              name="categoryIds"
-              label={t('field.categories')}
-              help={
-                categoriesUnavailable
-                  ? t('create.categories-unavailable')
-                  : t(
-                      categoryIds.length === 0
-                        ? 'field.categories-help-empty'
-                        : 'field.categories-help',
-                    )
-              }
-              placeholder={t('field.categories-placeholder')}
-              disabled={categoriesUnavailable}
-              options={categories}
-              value={categories.filter((option) => categoryIds.includes(option.value))}
-              labels={labels}
-              onChange={(picked) => {
-                setCategoryIds(picked.map((option) => option.value));
+            <CategoriesField
+              categories={form.categories}
+              categoryIds={categoryIds}
+              defaultLocale={defaultLocale}
+              issues={problem?.categoryIssues}
+              onChange={(ids) => {
+                setCategoryIds(ids);
+                // The refusals named the old list; they say nothing about this one.
+                setProblem((current) =>
+                  current?.categoryIssues === undefined
+                    ? current
+                    : { ...current, categoryIssues: { items: {} } },
+                );
                 edited();
               }}
             />

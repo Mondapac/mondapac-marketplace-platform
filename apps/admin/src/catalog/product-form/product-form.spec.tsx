@@ -13,6 +13,7 @@ import type { callApi } from '../../api/client.ts';
 const mocks = vi.hoisted(() => ({
   call: vi.fn<typeof callApi>(),
   images: vi.fn<typeof callApi>(),
+  picker: vi.fn<typeof callApi>(),
 }));
 vi.mock('@mondapac/ui', async (original) => ({
   ...(await original<typeof Ui>()),
@@ -23,7 +24,9 @@ vi.mock('../../api/client.ts', () => ({
   callApi: ((...args: Parameters<typeof callApi>) =>
     args[0] === 'GET' && args[1].endsWith('/images')
       ? mocks.images(...args)
-      : mocks.call(...args)) as typeof callApi,
+      : args[0] === 'GET' && args[1].endsWith('/category-picker')
+        ? mocks.picker(...args)
+        : mocks.call(...args)) as typeof callApi,
 }));
 
 import { expectToast } from '../../../test/toast-spy.ts';
@@ -170,6 +173,32 @@ beforeEach(() => {
   vi.clearAllMocks();
   call.mockReset();
   mocks.images.mockReset();
+  mocks.picker.mockReset();
+  mocks.picker.mockResolvedValue({
+    ok: true,
+    status: 200,
+    body: {
+      locale: 'en',
+      choices: [
+        {
+          id: CHILD,
+          level: 4,
+          name: 'Rice',
+          path: ['Pantry', 'Rice'],
+          general: false,
+          status: 'active',
+        },
+        {
+          id: CATEGORY,
+          level: 3,
+          name: 'Pantry',
+          path: ['Pantry'],
+          general: true,
+          status: 'hidden',
+        },
+      ],
+    },
+  });
   // The library holds the photo the saved draft names, as it does after an upload.
   mocks.images.mockResolvedValue({ ok: true, status: 200, body: { images: [LIBRARY_PHOTO] } });
   Object.defineProperty(window, 'location', {
@@ -248,8 +277,9 @@ describe('the add page', () => {
     expect(screen.getByText(/^To publish:/)).toBeTruthy();
     expect(screen.queryByText('Unsaved product')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
-    // Category and tax come from the options read; the cards that need the product show a helper.
-    expect(screen.getByRole('combobox', { name: /Product category/ })).toBeTruthy();
+    // The category picker is read when opened; tax comes from the options read; the cards that need the product show a helper.
+    expect(screen.getByRole('combobox', { name: 'Add a category' })).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
     expect(
       screen.getByText('Choose a category first. Its feature set lists what to fill in here.'),
     ).toBeTruthy();
@@ -266,8 +296,8 @@ describe('the add page', () => {
     await screen.findByLabelText('Product type');
     pick('simple');
     type('Sella rice');
-    fireEvent.click(screen.getByRole('combobox', { name: /Product category/ }));
-    fireEvent.click(await screen.findByRole('option', { name: 'Pantry › Rice' }));
+    fireEvent.click(screen.getByRole('combobox', { name: 'Add a category' }));
+    fireEvent.click(await screen.findByRole('option', { name: /^Pantry › Rice/ }));
     fireEvent.change(screen.getByLabelText('Tax category'), { target: { value: 'gst-free' } });
     expect(screen.getByText('To publish: save the draft first.')).toBeTruthy();
     call.mockResolvedValueOnce(created).mockResolvedValueOnce(saved);
@@ -276,17 +306,6 @@ describe('the add page', () => {
     const content = lastBody(2)['content'] as Record<string, unknown>;
     expect(content['categoryIds']).toEqual([CHILD]);
     expect(content['taxCategoryCode']).toBe('gst-free');
-  });
-
-  it('says so when the categories could not be loaded', async () => {
-    call.mockResolvedValueOnce(ok({ ...OPTIONS, categories: [] }));
-    mount();
-    await screen.findByLabelText('Product type');
-    expect(
-      screen.getByText(
-        "Categories can't be loaded right now. Save the draft and choose them on the next page.",
-      ),
-    ).toBeTruthy();
   });
 
   it('asks for the type and posts nothing without it', async () => {
@@ -320,14 +339,13 @@ describe('the add page', () => {
     expect(line.parentElement?.getAttribute('aria-live')).toBe('polite');
   });
 
-  it('disables the category picker and leaves "choose a category" out when categories are unavailable', async () => {
+  it('keeps the category picker usable on an Add page whose options list no categories', async () => {
     call.mockResolvedValueOnce(ok({ ...OPTIONS, categories: [] }));
     mount();
     await screen.findByLabelText('Product type');
-    expect(
-      screen.getByRole<HTMLInputElement>('combobox', { name: /Product category/ }).disabled,
-    ).toBe(true);
-    expect(screen.getByText(/^To publish:/).textContent).not.toContain('choose a category');
+    // The picker has its own read; it does not depend on the options.
+    expect(screen.getByRole('combobox', { name: 'Add a category' })).toBeTruthy();
+    expect(screen.getByText(/^To publish:/).textContent).toContain('choose a category');
   });
 
   it('names the page and offers the way back while loading and when loading failed', async () => {
@@ -639,10 +657,10 @@ describe('the edit form', () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        'Only a category or subcategory (levels 3 and 4). It decides the product details and variant types.',
+        "Choose a category or subcategory. Products can't go on a department or group.",
       ),
     ).toBeTruthy();
-    expect(screen.getByText('Choose a category or subcategory')).toBeTruthy();
+    expect(screen.getByText(/No category chosen yet/)).toBeTruthy();
     expect(screen.getByText('Choose a tax category')).toBeTruthy();
     expect(screen.getByText(/Sellers can't find it until you publish/)).toBeTruthy();
   });
@@ -721,7 +739,7 @@ describe('the edit form', () => {
   it('files a product in categories picked by their full path from a searchable list', async () => {
     call.mockResolvedValueOnce(ok(view()));
     mountEdit();
-    const box = await screen.findByRole('combobox', { name: /Product category/ });
+    const box = await screen.findByRole('combobox', { name: 'Add a category' });
     fireEvent.click(box);
     fireEvent.click(await screen.findByRole('option', { name: 'Pantry › Rice' }));
     call.mockResolvedValueOnce(ok({ variantIds: [], refusedFields: [] }));
