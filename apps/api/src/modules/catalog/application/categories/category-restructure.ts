@@ -252,7 +252,8 @@ export async function runRestructure(
         });
         if (node.id === current.id) {
           targetVersion = version;
-          await announceChanged(deps, context, node.id, version - 1);
+          const changedAt = version - 1; // the first of its two new versions; `finish` takes the second
+          await announceChanged(deps, context, node.id, changedAt);
         } else {
           await announceChanged(deps, context, node.id, version);
         }
