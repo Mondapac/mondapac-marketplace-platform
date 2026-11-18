@@ -60,12 +60,21 @@ export async function callApi<T>(
   const parsed: unknown = await response.json().catch((): unknown => null);
   if (response.ok) return { ok: true, status: response.status, body: parsed as T };
   const failure = parsed as Partial<ApiFailure> | null;
+  // A 429 carries its wait in the Retry-After header; it is read here when the body has none.
+  const header = Number(response.headers?.get('retry-after') ?? '');
+  const details =
+    response.status === 429 &&
+    failure?.details?.retryAfterSeconds === undefined &&
+    Number.isFinite(header) &&
+    header > 0
+      ? { ...failure?.details, retryAfterSeconds: header }
+      : failure?.details;
   return {
     ok: false,
     failure: {
       status: response.status,
       code: typeof failure?.code === 'string' ? failure.code : 'unknown',
-      ...(failure?.details === undefined ? {} : { details: failure.details }),
+      ...(details === undefined ? {} : { details }),
     },
   };
 }

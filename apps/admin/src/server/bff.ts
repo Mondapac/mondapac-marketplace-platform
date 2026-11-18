@@ -380,6 +380,16 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/customers/:id/notes',
     'customers/admin/customers/:id/activity',
     'customers/admin/customers/:id/activity/export',
+    // Customers phase 2b, part B (Account & security): the sign-ins super list (NO export route:
+    // owner decision), the reveal of one sign-in's address or one delivery address (no body), sign
+    // out everywhere, the password reset mail, and the consent history with its export.
+    'customers/admin/customers/:id/sign-ins',
+    'customers/admin/customers/:id/sign-ins/:id/reveal',
+    'customers/admin/customers/:id/sessions/end',
+    'customers/admin/customers/:id/password-reset',
+    'customers/admin/customers/:id/addresses/:id/reveal',
+    'customers/admin/customers/:id/consent-history',
+    'customers/admin/customers/:id/consent-history/export',
     'identity/admin/invitations/:id/resend',
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
@@ -696,6 +706,13 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // `cursor`).
     'customers/admin/groups/:id',
     'customers/admin/customers/:id/notes',
+    // Customers phase 2b, part B: the live sessions (identity), the delivery addresses as suburb
+    // and country (customers), the marketing consent (legal) and the personalization switch
+    // (engagement, read from the behaviour answer). No query keys.
+    'customers/admin/customers/:id/sessions',
+    'customers/admin/customers/:id/addresses',
+    'customers/admin/customers/:id/consent',
+    'customers/admin/customers/:id/behaviour',
     // The customer page's Money tab: the newest refunds (ordering) and the wallet credits from
     // promotions (promotions; query: `limit`, `cursor`).
     'ordering/admin/customers/:id/refunds',

@@ -333,12 +333,14 @@ function routePage(answer: ApiResult<unknown> = ok(overview())) {
 
 describe('the customer page', () => {
   it('shows the tabs an admin may open', () => {
-    expect(tabsFor(new Set([VIEW]))).toEqual(['overview', 'money']);
+    expect(tabsFor(new Set([VIEW]))).toEqual(['overview', 'money', 'security']);
     expect(tabsFor(new Set([VIEW, 'ordering.order.view']))).toEqual([
       'overview',
       'orders',
       'money',
+      'security',
     ]);
+    expect(tabsFor(new Set())).toEqual(['overview', 'money']);
     expect(averageMinor('12550', 3)).toBe('4183');
     expect(averageMinor('0', 0)).toBeNull();
   });
@@ -796,6 +798,8 @@ describe('the customer page tabs', () => {
     fireEvent.keyDown(overviewTab, { key: 'ArrowRight' });
     expect(screen.getByRole('tab', { name: 'Orders' }).getAttribute('aria-selected')).toBe('true');
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Orders' }), { key: 'End' });
-    expect(screen.getByRole('tab', { name: 'Money' }).getAttribute('aria-selected')).toBe('true');
+    expect(
+      screen.getByRole('tab', { name: 'Account & security' }).getAttribute('aria-selected'),
+    ).toBe('true');
   });
 });
