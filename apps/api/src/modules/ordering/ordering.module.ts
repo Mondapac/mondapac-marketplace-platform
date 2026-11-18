@@ -64,13 +64,16 @@ import type { MarketZones } from './application/ports/ship-to-retention.reposito
 import { AdminExportDocuments } from './application/use-cases/admin-export-documents.use-case';
 import { AdminExportRefunds } from './application/use-cases/admin-export-refunds.use-case';
 import { AdminExportShipments } from './application/use-cases/admin-export-shipments.use-case';
-import { SHEET_WRITER, type SheetWriter } from '../../platform/list-export/sheet-writer';
 import type { Clock } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { purgeSettledShipToJob } from './presentation/jobs/purge-settled-ship-to.job';
 import { CHECKOUT_GATEWAY } from './application/ports/checkout-gateway';
 import { DELIVERY_METHOD_POLICY } from './application/ports/delivery-method-policy';
 import { ORDER_LABELS } from './application/ports/order-labels';
+import {
+  CARRIER_PROGRESS_READER,
+  type CarrierProgressReader,
+} from './application/ports/carrier-progress.reader';
 import { ORDER_TAX_CATEGORIES } from './application/ports/order-tax-categories';
 import { ORDER_PRODUCTS } from './application/ports/order-products';
 import { ORDER_REPOSITORY } from './application/ports/order.repository';
@@ -174,6 +177,7 @@ import { SellerMarkUnavailable } from './application/use-cases/seller-mark-unava
 import { BookReadyCarrierDelivery } from './application/use-cases/book-ready-carrier-delivery.use-case';
 import { SellerViewOrder } from './application/use-cases/seller-view-order.use-case';
 import { SellerViewOrderDocument } from './application/use-cases/seller-view-order-document.use-case';
+import { SellerViewOrderDocuments } from './application/use-cases/seller-view-order-documents.use-case';
 import { DeliveryQuotes } from './application/use-cases/delivery-quotes.use-case';
 import { PayByCard } from './application/use-cases/pay-by-card.use-case';
 import { StartCheckout } from './application/use-cases/start-checkout.use-case';
@@ -436,6 +440,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerViewOrder,
       SellerViewOrderActivity,
       SellerViewOrderDocument,
+      SellerViewOrderDocuments,
       SellerMarkOrderReady,
       SellerMarkUnavailable,
       SellerConfirmPickup,
@@ -475,13 +480,20 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: AdminListShipments,
-      inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_SHIPMENT_LIST_READER, ORDER_LABELS],
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        ADMIN_SHIPMENT_LIST_READER,
+        ORDER_LABELS,
+        CARRIER_PROGRESS_READER,
+      ],
       useFactory: (
         gate: UseCaseGate,
         unitOfWork: UnitOfWork,
         shipments: AdminShipmentListReader,
         labels: OrderLabels,
-      ) => new AdminListShipments(gate, { unitOfWork, shipments, labels }),
+        carrierProgress: CarrierProgressReader,
+      ) => new AdminListShipments(gate, { unitOfWork, shipments, labels, carrierProgress }),
     },
     {
       provide: AdminListDocuments,
@@ -505,13 +517,26 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     },
     {
       provide: AdminExportShipments,
-      inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_SHIPMENT_LIST_READER, ...EXPORT_PORTS],
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        ADMIN_SHIPMENT_LIST_READER,
+        CARRIER_PROGRESS_READER,
+        ...EXPORT_PORTS,
+      ],
       useFactory: (
         gate: UseCaseGate,
         unitOfWork: UnitOfWork,
         shipments: AdminShipmentListReader,
+        carrierProgress: CarrierProgressReader,
         ...ports: ExportPorts
-      ) => new AdminExportShipments(gate, { unitOfWork, shipments, ...exportDeps(ports) }),
+      ) =>
+        new AdminExportShipments(gate, {
+          unitOfWork,
+          shipments,
+          carrierProgress,
+          ...exportDeps(ports),
+        }),
     },
     {
       provide: AdminExportRefunds,

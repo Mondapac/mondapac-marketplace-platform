@@ -346,6 +346,105 @@ describe('generic saved filters over HTTP (integration)', () => {
       expect(store.rows.size).toBe(1);
     });
 
+    it.each([
+      [
+        'admin.ordering.shipments',
+        {
+          v: 1,
+          tab: 'attention',
+          filters: { deliveryMethod: 'pickup', attention: 'no-carrier', paid: 'last-7-days' },
+          sort: 'paid',
+          direction: 'desc',
+        },
+        { v: 1, filters: { shipped: '2026-11-01' } },
+        'payload.filters.shipped',
+      ],
+      [
+        'admin.ordering.refunds',
+        {
+          v: 1,
+          tab: 'pending',
+          filters: { reason: 'damaged', lossBearer: 'seller', requested: 'this-month' },
+          sort: 'amount',
+          direction: 'asc',
+        },
+        { v: 1, q: 'refund text' },
+        'payload.q',
+      ],
+      [
+        'admin.ordering.documents',
+        { v: 1, tab: 'credit-note', filters: { issued: 'last-month' }, sort: 'issued' },
+        { v: 2 },
+        'payload.v',
+      ],
+    ] as const)(
+      'gives the Sales list %s saved filters: create, list, reorder, update, delete, and a 400 for a bad payload',
+      async (listKey, payload, badPayload, badPath) => {
+        await boot();
+        await seeded(code);
+        const session = sessionOf(code, VIEWER, 1);
+        const body = { listKey, name: 'Mine', visibility: 'me', payload };
+
+        const first = await call('post', code, '', session).send(body);
+        const second = await call('post', code, '', session).send({
+          ...body,
+          name: 'Second',
+          payload: { v: 1 },
+        });
+        expect(first.status).toBe(201);
+        expect(second.status).toBe(201);
+        expect((first.body as { payload: unknown }).payload).toEqual(payload);
+
+        const reordered = await call('put', code, '/order', session).send({
+          listKey,
+          ids: [idOf(second), idOf(first)],
+        });
+        const updated = await call('put', code, `/${idOf(first)}`, session).send({
+          listKey,
+          name: 'Renamed',
+          visibility: 'me',
+        });
+        const listed = await call('get', code, `?listKey=${listKey}`, session);
+
+        expect(reordered.status).toBe(200);
+        expect(updated.status).toBe(200);
+        expect(listed.status).toBe(200);
+        const items = (listed.body as { items: { id: string; name: string; payload: unknown }[] })
+          .items;
+        expect(items.map((i) => [i.id, i.name])).toEqual([
+          [idOf(second), 'Second'],
+          [idOf(first), 'Renamed'],
+        ]);
+        expect(items[1]!.payload).toEqual(payload);
+
+        const shared = await call('post', code, '', session).send({
+          ...body,
+          name: 'For all',
+          visibility: 'everyone',
+        });
+        expect(shared.status).toBe(403);
+
+        const invalid = await call('post', code, '', session).send({
+          ...body,
+          name: 'Bad',
+          payload: badPayload,
+        });
+        expect(invalid.status).toBe(400);
+        expect(invalid.body).toMatchObject({
+          code: 'validation.failed',
+          details: { fields: [{ path: badPath }] },
+        });
+
+        const removed = await call('delete', code, `/${idOf(first)}?listKey=${listKey}`, session);
+        expect(removed.status).toBe(200);
+        expect(store.rows.size).toBe(1);
+        const left = await call('get', code, `?listKey=${listKey}`, session);
+        expect((left.body as { items: { id: string }[] }).items.map((i) => i.id)).toEqual([
+          idOf(second),
+        ]);
+      },
+    );
+
     it('never shows a Market the filters of another', async () => {
       await boot();
       await seeded(code);

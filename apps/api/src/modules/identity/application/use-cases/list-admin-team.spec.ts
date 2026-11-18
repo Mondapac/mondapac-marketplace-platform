@@ -112,6 +112,7 @@ const LEAD_KEYS = [
   'sellers.business-activity.view',
   'shipping.fleet-selection.view',
   'shipping.delivery-settings.view',
+  'shipping.carrier-delivery.view',
   'blog.post.read',
   'promotions.promotion.view',
   'ordering.order.view',

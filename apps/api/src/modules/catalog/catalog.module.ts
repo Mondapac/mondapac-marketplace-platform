@@ -93,6 +93,8 @@ import { AdminProductPause } from './application/use-cases/admin-product-pause.u
 import { ProductPauseProbe } from './application/use-cases/product-pause-probe.use-case';
 import { ProductDeleteProbe } from './application/use-cases/product-delete-probe.use-case';
 import { PlatformProductRetireProbe } from './application/use-cases/platform-product-retire-probe.use-case';
+import { AttributeEditProbe } from './application/use-cases/attribute-edit-probe.use-case';
+import { AttributeRestructureProbe } from './application/use-cases/attribute-restructure-probe.use-case';
 import { PlatformProductEditProbe } from './application/use-cases/platform-product-edit-probe.use-case';
 import { OwnProductEditProbe } from './application/use-cases/own-product-edit-probe.use-case';
 import { IMPORT_FILE_STORE } from './application/ports/import-file-store';
@@ -243,6 +245,7 @@ import { simpleProductType } from './domain/product-types/simple';
 import { PlatformProductController } from './presentation/platform-product.controller';
 import { OfferReviewController } from './presentation/offer-review.controller';
 import { OwnOfferController } from './presentation/own-offer.controller';
+import { OwnOffersExport } from './application/use-cases/own-offers-export.use-case';
 import { OwnProductsExport } from './application/use-cases/own-products-export.use-case';
 import { OwnProductsList } from './application/use-cases/own-products-list.use-case';
 import { OwnProductRead } from './application/use-cases/own-product-read.use-case';
@@ -645,6 +648,8 @@ const PORT = {
   deleteProbe: ProductDeleteProbe,
   retireProbe: PlatformProductRetireProbe,
   platformEditProbe: PlatformProductEditProbe,
+  attributeEditProbe: AttributeEditProbe,
+  attributeRestructureProbe: AttributeRestructureProbe,
   ownEditProbe: OwnProductEditProbe,
   resume: AdminProductResume,
   withdraw: AdminProductWithdraw,
@@ -1245,6 +1250,8 @@ const REVERTERS = [
       unitOfWork: true,
       attributeAdminReader: true,
       policy: true,
+      attributeEditProbe: true,
+      attributeRestructureProbe: true,
     }),
     useCaseProvider(AttributeAdminGet, {
       unitOfWork: true,
@@ -1622,6 +1629,7 @@ const REVERTERS = [
       policy: true,
       familyResolver: true,
       emailStore: true,
+      attributeEditProbe: true,
     }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,
@@ -2175,6 +2183,8 @@ const REVERTERS = [
     useCaseProvider(ProductDeleteProbe, {}),
     useCaseProvider(PlatformProductRetireProbe, {}),
     useCaseProvider(PlatformProductEditProbe, {}),
+    useCaseProvider(AttributeEditProbe, {}),
+    useCaseProvider(AttributeRestructureProbe, {}),
     useCaseProvider(OwnProductEditProbe, {}),
     useCaseProvider(AdminProductsList, {
       unitOfWork: true,
@@ -2726,6 +2736,13 @@ const REVERTERS = [
       ownReader: true,
       policy: true,
       ownEditProbe: true,
+    }),
+    useCaseProvider(OwnOffersExport, {
+      unitOfWork: true,
+      ownReader: true,
+      policy: true,
+      sheetWriter: true,
+      clock: true,
     }),
     useCaseProvider(OwnProductsExport, {
       unitOfWork: true,

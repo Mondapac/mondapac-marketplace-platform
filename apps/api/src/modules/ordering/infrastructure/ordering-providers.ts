@@ -73,6 +73,11 @@ import {
 import { PICKUP_CODE_VAULT, type PickupCodeVault } from '../application/ports/pickup-code-vault';
 import { ConfigOrderingPolicy } from './config-ordering-policy';
 import { FacadeOrderLabels } from './facade-order-labels';
+import { FacadeCarrierProgressReader } from './facade-carrier-progress.reader';
+import {
+  CARRIER_PROGRESS_READER,
+  type CarrierProgressReader,
+} from '../application/ports/carrier-progress.reader';
 import { FacadeOrderTaxCategories } from './facade-order-tax-categories';
 import { FacadeOrderProducts } from './facade-order-products';
 import { ORDER_PRODUCTS, type OrderProducts } from '../application/ports/order-products';
@@ -109,8 +114,6 @@ import { PrismaSalesRankingReader } from './prisma-sales-ranking.reader';
 import { StripeCheckoutGateway } from './stripe-checkout-gateway';
 import { SubjectKeyPickupCodeVault } from './subject-key-pickup-code-vault';
 import { SubjectKeyShipToCipher } from './subject-key-ship-to-cipher';
-import { SHEET_WRITER, type SheetWriter } from '../../../platform/list-export/sheet-writer';
-import { ExceljsSheetWriter } from '../../../platform/list-export/exceljs-sheet-writer';
 
 /**
  * Binds the ports of ordering. Only this layer may reach `PrismaService`, subject keys and the
@@ -169,7 +172,6 @@ export const orderingProviders: readonly FactoryProvider[] = [
     useFactory: (markets: MarketRegistry): MarketZones => new RegistryMarketZones(markets),
   },
   /** The XLSX writer of the Sales list exports (the shared list-export kit). */
-  { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
   {
     provide: SAVED_FILTER_REPOSITORY,
     inject: [SAVED_FILTER_STORE],
@@ -274,6 +276,12 @@ export const orderingProviders: readonly FactoryProvider[] = [
       markets: MarketRegistry,
       customers: CustomersReadFacade,
     ): OrderLabels => new FacadeOrderLabels(catalog, sellers, identity, markets, customers),
+  },
+  {
+    provide: CARRIER_PROGRESS_READER,
+    inject: [SHIPPING_FACADE],
+    useFactory: (shipping: ShippingFacade): CarrierProgressReader =>
+      new FacadeCarrierProgressReader(shipping),
   },
   {
     provide: CUSTOMER_PAYMENTS_READER,

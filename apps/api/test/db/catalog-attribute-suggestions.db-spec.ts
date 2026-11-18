@@ -195,10 +195,26 @@ describe.each(TEST_MARKETS)('catalog attribute suggestions in market %s (databas
 
   it('lists open suggestions, counts a seller’s, and names a product’s open attribute codes', async () => {
     const { definition, product, suggestion } = await opened();
-    const listed = await read(market, () => store.listOpen(market, 500));
+    const all = { text: null, direction: 'asc', offset: 0, limit: 500 } as const;
+    const listed = await read(market, () => store.pageOpen(market, all));
     expect(listed.map((row) => row.state.id)).toContain(suggestion.state.id);
-    const inOther = await read(other, () => store.listOpen(other, 500));
+    const inOther = await read(other, () => store.pageOpen(other, all));
     expect(inOther.map((row) => row.state.id)).not.toContain(suggestion.state.id);
+    // Counted and searched by the seller's text; a wildcard is matched as typed.
+    const total = await read(market, () => store.countOpen(market, { text: null }));
+    expect(total).toBe(listed.length);
+    const label = suggestion.state.label;
+    const byText = await read(market, () =>
+      store.pageOpen(market, { ...all, text: label.slice(0, 4).toUpperCase(), limit: 5 }),
+    );
+    expect(byText.map((row) => row.state.id)).toContain(suggestion.state.id);
+    expect(await read(market, () => store.countOpen(market, { text: '%' }))).toBe(0);
+    const newest = await read(market, () =>
+      store.pageOpen(market, { ...all, direction: 'desc', limit: 1 }),
+    );
+    expect(newest).toHaveLength(1);
+    const seenInOther = await read(other, () => store.pageOpen(other, { ...all, text: label }));
+    expect(seenInOther.map((row) => row.state.id)).not.toContain(suggestion.state.id);
     expect(
       await read(market, () => store.openCountOfSeller(market, seller)),
     ).toBeGreaterThanOrEqual(1);
