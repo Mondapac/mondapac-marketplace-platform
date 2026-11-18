@@ -174,6 +174,8 @@ describe('seller read routes over HTTP (integration)', () => {
               Promise.resolve({ draft: 0, pendingFirstPublish: 0, changesNeeded: 0, published: 0 }),
             pendingReviewCount: () => Promise.resolve(0),
             productForm: () => Promise.resolve({ fields: [], categories: [] }),
+            productCategories: () =>
+              Promise.resolve([{ categoryId: 'c1', parentId: null, names: { en: 'Pantry' } }]),
           }),
     }));
   }
@@ -669,6 +671,12 @@ describe('seller read routes over HTTP (integration)', () => {
         productTypes: string[];
         conditions: string[];
         locales: { default: string; supported: string[] };
+        taxCategoryCodes: string[];
+        categories: {
+          categoryId: string;
+          parentId: string | null;
+          names: Record<string, string>;
+        }[];
         sellerCanCreateProduct: boolean;
         productStatuses: string[];
         offerStatuses: string[];
@@ -676,6 +684,10 @@ describe('seller read routes over HTTP (integration)', () => {
       expect(body.productTypes.length).toBeGreaterThan(0);
       expect(body.conditions.length).toBeGreaterThan(0);
       expect(body.locales.supported).toContain(body.locales.default);
+      expect(body.taxCategoryCodes.length).toBeGreaterThan(0);
+      expect(body.categories).toEqual([
+        { categoryId: 'c1', parentId: null, names: { en: 'Pantry' } },
+      ]);
       expect(typeof body.sellerCanCreateProduct).toBe('boolean');
       expect(body.productStatuses).toEqual(
         expect.arrayContaining(['draft', 'unpublished', 'published']),

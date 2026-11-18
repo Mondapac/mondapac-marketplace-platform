@@ -11,6 +11,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { portalHostOf } from './portal-host.ts';
 import { Icon, type IconName } from '../icon/icon.tsx';
 
 /** Gap between the menu and its trigger, and the least space kept to the viewport edge. */
@@ -220,7 +221,7 @@ export function Menu({ label, items, icon, title, width = 'default', align = 'en
                 </button>
               ))}
             </div>,
-            document.body,
+            portalHostOf(trigger.current),
           )
         : null}
     </div>

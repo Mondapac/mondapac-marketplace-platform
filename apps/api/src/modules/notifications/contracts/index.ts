@@ -2,8 +2,15 @@
 // Other modules may import only what this file exports, through ../index.ts.
 export { NOTIFICATIONS_AUDIT_ACTIONS } from '../domain/audit';
 export {
+  NOTIFICATIONS_CUSTOMER_CART_REMINDER_VIEW,
   NOTIFICATIONS_PERMISSIONS,
   NOTIFICATIONS_SUPPORT_CONTACT_MANAGE,
   NOTIFICATIONS_SUPPORT_CONTACT_VIEW,
 } from './permissions';
 export { SUPPORT_CONTACT_FACADE, type SupportContactFacade } from './support-contact.facade';
+export {
+  CUSTOMER_REMINDERS_FACADE,
+  type AdminCartReminderSent,
+  type AdminCartRemindersRequest,
+  type CustomerRemindersFacade,
+} from './customer-reminders.facade';

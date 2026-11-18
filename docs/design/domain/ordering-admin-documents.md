@@ -26,3 +26,16 @@ A super list (CLAUDE.md rule 14); saved filters and CSV/XLSX export follow on th
 - **Row actions:** `view-order` on both; `download-order-document` on confirmations (the order
   document admins already get on the order page). A credit note has no document of its own yet.
 - **Follow-up:** an index `(market_id, issued_at DESC, id DESC)` on credit notes when they grow.
+- **Export (2026-11-16):** `GET ordering/admin/documents/export`, the same rule, with the list's
+  own filter keys (no paging or sort keys), `format` (`csv` default, `xlsx`), `columns` (the
+  column picker's keys in the order shown; the fixed ones are always first; absent = every
+  column), `ids` (the selected rows: seller order ids for confirmations, credit note ids for credit notes; at most 200, `batch.too-large` past it) and `zone`
+  (IANA; default the Market's zone). At most 10,000 rows, else 413 `batch.too-large` with
+  `details.total`. It reads through the list flow a page of 100 at a time (shared code:
+  `application/sales-list-export.ts`, columns in `sales-list-export-columns.ts`), so customer name
+  and email are filled only with `identity.customer-account.view`. Money is two columns (plain
+  decimal in major units, then the currency); times are ISO 8601 with the zone's offset; codes
+  are the API's codes. A name `search` is resolved once per file, and one that matched too many
+  parties is refused (`search` `too-broad`) rather than giving a short file; the tab counts are not
+  read on the streamed pages; a failed customer lookup fails the file (a store name stays advisory:
+  the Seller ID is there). File: `order-confirmations-<day>` or `credit-notes-<day>` (never "invoices"; no number column); the credit-note-only keys (`documentId`, `refundId`, `reason`) are accepted and skipped on the confirmations tab.

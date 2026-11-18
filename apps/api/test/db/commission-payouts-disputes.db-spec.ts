@@ -22,6 +22,7 @@ import type {
   LateBoundDisputeSource,
   LateBoundOrderPaymentLookup,
 } from '../../src/modules/commission-payouts/infrastructure/late-bound-dispute-ports';
+import { PrismaAdminDisputeListReader } from '../../src/modules/commission-payouts/infrastructure/prisma-admin-dispute-list.reader';
 import { PrismaDisputeRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-dispute.repository';
 import { PrismaPayoutCursorRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-payout-cursor.repository';
 import { PrismaPayoutHoldRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-payout-hold.repository';
@@ -79,6 +80,7 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
   let dispatcher: EventDispatcher;
   let logs: jest.SpyInstance[];
   let disputes: PrismaDisputeRepository;
+  let list: PrismaAdminDisputeListReader;
   let ledger: PrismaLedgerRepository;
   let holds: PrismaPayoutHoldRepository;
   let cursors: PrismaPayoutCursorRepository;
@@ -118,6 +120,7 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
     await owner.connect();
     db = createPersistence({ databaseUrl: disputesTestDatabaseUrl() });
     disputes = new PrismaDisputeRepository(db.service);
+    list = new PrismaAdminDisputeListReader(db.service);
     ledger = new PrismaLedgerRepository(db.service);
     holds = new PrismaPayoutHoldRepository(db.service);
     cursors = new PrismaPayoutCursorRepository(db.service);
@@ -532,21 +535,31 @@ describe.each(TEST_MARKETS)('dispute effects in market %s (database)', (code) =>
         updatedAt: T0.add({ hours: 24 * 300 }),
       });
       await value(other, () => disputes.insert(other, foreign));
-      const page1 = await value(market, () =>
-        disputes.list(market, { bucket: 'under-review', limit: 2, after: null }),
-      );
+      const underReview = {
+        bucket: 'under-review' as const,
+        status: null,
+        moneyState: null,
+        caseOrOrderId: null,
+        from: null,
+        to: null,
+        dueBefore: null,
+        minAmount: null,
+        maxAmount: null,
+        orderIds: null,
+      };
+      const newest = { key: 'opened', direction: 'desc' } as const;
+      const page1 = await value(market, () => list.page(market, underReview, newest, 0, 2));
       expect(page1.map((c) => c.disputeId)).toEqual([mine[2]!.disputeId, mine[1]!.disputeId]);
       const page2 = await value(market, () =>
-        disputes.list(market, {
-          bucket: 'under-review',
-          limit: 2,
-          after: { openedAt: page1[1]!.openedAt, disputeId: page1[1]!.disputeId },
+        list.page(market, underReview, newest, 0, 2, {
+          openedAt: page1[1]!.openedAt,
+          disputeId: page1[1]!.disputeId,
         }),
       );
       expect(page2[0]!.disputeId).toBe(mine[0]!.disputeId);
       expect(page2.map((c) => c.disputeId)).not.toContain(foreign.disputeId);
-      const counts = await value(market, () => disputes.counts(market));
-      expect(counts.get('under-review')).toBeGreaterThanOrEqual(3);
+      const counts = await value(market, () => list.countByBucket(market));
+      expect(counts['under-review']).toBeGreaterThanOrEqual(3);
       const found = await value(market, () =>
         disputes.findMany(market, [mine[0]!.disputeId, foreign.disputeId]),
       );

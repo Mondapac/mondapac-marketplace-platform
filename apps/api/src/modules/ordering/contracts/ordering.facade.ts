@@ -1,4 +1,9 @@
 import type { CallContext, Id, Money, Result, Temporal } from '@mondapac/shared-kernel';
+import type {
+  AdminCustomerPaymentsFailure,
+  CustomerPaymentsPage,
+  CustomerPaymentsRequest,
+} from '../application/use-cases/admin-customer-payments.use-case';
 import type { AccessDenied } from '../../../platform/authz';
 import type { RefundReason } from '../domain/refund';
 
@@ -182,7 +187,62 @@ export interface CustomerOrderAccounts {
 
 export type CustomerOrderStatsFailure = AccessDenied | { readonly code: 'validation.failed' };
 
+/**
+ * What one customer's confirmed orders add up to with one seller (customers management phase 3).
+ * `spentMinor` is the seller orders' gross less their succeeded refunds (never below zero), in
+ * `currency`. No personal data.
+ */
+export interface CustomerSellerStats {
+  readonly sellerId: Id<'Seller'>;
+  readonly orderCount: number;
+  readonly firstOrderAt: Temporal.Instant;
+  readonly lastOrderAt: Temporal.Instant;
+  readonly spentMinor: bigint;
+  readonly currency: string;
+}
+
+/** The most seller orders one page of {@link OrderingFacade.sellerCustomerOrders} holds. */
+export const MAX_SELLER_CUSTOMER_ORDERS = 100;
+
+/** One of the seller's own paid seller orders of a customer: ids, money and fulfilment only. */
+export interface SellerCustomerOrder {
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly orderId: Id<'Order'>;
+  readonly paidAt: Temporal.Instant;
+  readonly total: Money;
+  readonly fulfilment: 'to-ship' | 'shipped' | 'delivered';
+  readonly deliveredAt: Temporal.Instant | null;
+}
+
+export interface SellerCustomerOrders {
+  readonly items: readonly SellerCustomerOrder[];
+  readonly total: number;
+}
+
+export type SellerCustomerOrdersFailure = AccessDenied | { readonly code: 'validation.failed' };
+
 export interface OrderingFacade {
+  /** Rule `system`: one customer's confirmed-order totals per seller (customers phase 3). */
+  customerSellerStats(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<readonly CustomerSellerStats[], CustomerOrderStatsFailure>>;
+
+  /**
+   * Rule `permissions [ordering.seller-order.view]`: a page of the calling seller's own paid
+   * seller orders of one customer, newest first (`pageSize` 1 to 100). The seller comes from the
+   * session. The account id is what `customers` resolved from the seller's own customer code and
+   * is never answered back.
+   */
+  sellerCustomerOrders(
+    context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly page: number;
+      readonly pageSize: number;
+    },
+  ): Promise<Result<SellerCustomerOrders, SellerCustomerOrdersFailure>>;
+
   /** Rule `system`: the customers read model's order totals for one account. */
   customerOrderStats(
     context: CallContext,
@@ -290,6 +350,43 @@ export interface OrderingFacade {
     context: CallContext,
     accountId: Id<'Account'>,
   ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;
+
+  /**
+   * The customer account that placed an order, by the order's id, for the admin Customers search
+   * (customers management phase 2b). Rule `permissions [ordering.order.view]`, a platform admin not
+   * acting as a seller. Unknown, malformed and another Market's ids are `ordering.order-not-found`.
+   */
+  adminOrderAccountOf(
+    context: CallContext,
+    orderId: string,
+  ): Promise<
+    Result<
+      { readonly accountId: Id<'Account'> },
+      | AccessDenied
+      | { readonly code: 'access.unavailable' }
+      | { readonly code: 'ordering.order-not-found' }
+    >
+  >;
+
+  /**
+   * One customer's orders as payments (state, payment state, amount, the provider's payment id,
+   * created), filtered, sorted and paged, with the captured totals per currency ("Paid"). For the
+   * customer page's Payments section in `payments` (customers management phase 2b). Rule
+   * `permissions [payments.customer-payment.view]`, a platform admin not acting as a seller.
+   */
+  adminCustomerPayments(
+    context: CallContext,
+    request: CustomerPaymentsRequest,
+  ): Promise<Result<CustomerPaymentsPage, AdminCustomerPaymentsFailure | AccessDenied>>;
+
+  /**
+   * The ids of one customer's orders, newest first, at most `limit` (1 to 10,001), for the
+   * customer page's Disputes section in `payments`. Same rule as `adminCustomerPayments`.
+   */
+  adminCustomerOrderIds(
+    context: CallContext,
+    request: { readonly accountId: Id<'Account'>; readonly limit: number },
+  ): Promise<Result<readonly Id<'Order'>[], AdminCustomerPaymentsFailure | AccessDenied>>;
 
   /**
    * The signed-in customer's own seller orders whose fulfilment is `delivered`, delivered at or

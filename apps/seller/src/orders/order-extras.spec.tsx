@@ -382,17 +382,7 @@ describe('Order timeline', () => {
   });
 });
 
-const SHIP_TO = {
-  recipientFirstName: 'Sara',
-  recipientLastName: 'Khan',
-  phone: '+61400000000',
-  line1: '1 Queen St',
-  line2: null,
-  suburb: 'Brisbane City',
-  region: 'QLD',
-  postcode: '4000',
-  countryCode: 'AU',
-};
+const CUSTOMER = { code: 'K7QM-2XTR', firstName: 'Sara' };
 
 describe('Packing slip', () => {
   it('opens from the order page in a new tab', () => {
@@ -402,24 +392,14 @@ describe('Packing slip', () => {
     expect(link.getAttribute('target')).toBe('_blank');
   });
 
-  it('prints the units still to send and the address, with no prices', () => {
+  it('prints the units still to send and the customer code and first name, with no prices', () => {
     const print = vi.spyOn(window, 'print').mockImplementation(() => undefined);
     render(
       wrap(
         <PackingSlip
           order={order({
             buyerNote: 'Leave at the door',
-            shipTo: {
-              recipientFirstName: 'Sara',
-              recipientLastName: 'Khan',
-              phone: '+61400000000',
-              line1: '1 Queen St',
-              line2: null,
-              suburb: 'Brisbane City',
-              region: 'QLD',
-              postcode: '4000',
-              countryCode: 'AU',
-            },
+            customer: CUSTOMER,
             refunds: [
               {
                 refundId: 'r1',
@@ -438,8 +418,10 @@ describe('Packing slip', () => {
       ),
     );
     expect(screen.getByRole('heading', { name: 'Packing slip' })).toBeTruthy();
-    expect(screen.getByText('Sara Khan')).toBeTruthy();
-    expect(screen.getByText('Brisbane City QLD 4000')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Customer' })).toBeTruthy();
+    expect(screen.getByText('K7QM-2XTR')).toBeTruthy();
+    expect(screen.getByText(/· Sara/)).toBeTruthy();
+    expect(screen.queryByText(/Khan|Queen St|\+61/)).toBeNull();
     expect(screen.getByText('Leave at the door')).toBeTruthy();
     expect(screen.getByText(/Aged Basmati Rice/)).toBeTruthy();
     expect(screen.queryByText('Dates')).toBeNull();
@@ -472,21 +454,38 @@ describe('Packing slip', () => {
       })),
     });
     cleanup();
-    render(wrap(<PackingSlip order={{ ...refundedInFull, shipTo: SHIP_TO }} />));
+    render(wrap(<PackingSlip order={{ ...refundedInFull, customer: CUSTOMER }} />));
     expect(screen.getByText(/no packing slip to print/)).toBeTruthy();
-    expect(screen.queryByText('Sara Khan')).toBeNull();
+    expect(screen.queryByText('K7QM-2XTR')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Print' })).toBeNull();
   });
 
-  it('says when there is no address', () => {
-    render(wrap(<PackingSlip order={order({ shipTo: null })} />));
-    expect(screen.getByText('No delivery address is on this order.')).toBeTruthy();
+  it('says when the customer code is not ready yet', () => {
+    render(wrap(<PackingSlip order={order({ customer: null })} />));
+    expect(screen.getByText("The customer's code is not ready yet.")).toBeTruthy();
   });
 
-  it('shows no address and no note once the API withholds both (30 days after delivery)', () => {
-    render(wrap(<PackingSlip order={order({ shipTo: null, buyerNote: null })} />));
-    expect(screen.getByText('No delivery address is on this order.')).toBeTruthy();
+  it('shows no note once the API withholds it (30 days after delivery)', () => {
+    render(wrap(<PackingSlip order={order({ customer: CUSTOMER, buyerNote: null })} />));
     expect(screen.queryByRole('heading', { name: 'Note from the customer' })).toBeNull();
-    expect(screen.queryByText('Sara Khan')).toBeNull();
+    expect(screen.getByText('K7QM-2XTR')).toBeTruthy();
+  });
+});
+
+describe('Customer card on the order page', () => {
+  it('shows the code and first name only, with the reason', () => {
+    mount({}, order({ customer: CUSTOMER }));
+    expect(screen.getByRole('heading', { name: 'Customer' })).toBeTruthy();
+    expect(screen.getByText('K7QM-2XTR')).toBeTruthy();
+    expect(screen.getByText('Sara')).toBeTruthy();
+    expect(screen.getByText(/courier has the delivery address/)).toBeTruthy();
+  });
+
+  it('says when the code is not ready, and shows no card on a list row', () => {
+    mount({}, order({ customer: null }));
+    expect(screen.getByText(/code is not ready yet/)).toBeTruthy();
+    cleanup();
+    mount({}, order());
+    expect(screen.queryByRole('heading', { name: 'Customer' })).toBeNull();
   });
 });
