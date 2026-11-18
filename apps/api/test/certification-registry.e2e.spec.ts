@@ -12,6 +12,7 @@ import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
+import { SYSTEM_REQUEST_RECORDER } from '../src/modules/system-requests';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { OUTBOX_WRITER } from '../src/platform/events/outbox-writer';
 import { loadMarketConfigs } from '../src/platform/market-config/market-config';
@@ -19,6 +20,7 @@ import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { MemoryOutbox } from './support/certification-fakes';
 import { FakeRegistryCipher, MemoryRegistry } from './support/certification-registry-fakes';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
+import { RecordingReview } from './support/system-request-fakes';
 import { createTestApp } from './support/test-app';
 import {
   panelHeaders,
@@ -62,6 +64,8 @@ describe('certification registry routes over HTTP (integration)', () => {
   let clock: FixedClock;
   let registry: MemoryRegistry;
   let outbox: MemoryOutbox;
+  /** System requests' recorder; area certification is not reviewed unless a test says so. */
+  let review: RecordingReview;
   let logged: string[];
   const http = () => request(app.getHttpServer());
 
@@ -79,7 +83,9 @@ describe('certification registry routes over HTTP (integration)', () => {
           .overrideProvider(CERTIFICATION_REGISTRY_REPOSITORY)
           .useValue(registry)
           .overrideProvider(REGISTRY_CIPHER)
-          .useValue(new FakeRegistryCipher()),
+          .useValue(new FakeRegistryCipher())
+          .overrideProvider(SYSTEM_REQUEST_RECORDER)
+          .useValue(review),
     }));
     const out = process.stdout.write.bind(process.stdout);
     jest.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown, ...rest: unknown[]) => {
@@ -205,6 +211,7 @@ describe('certification registry routes over HTTP (integration)', () => {
     clock = new FixedClock(START);
     registry = new MemoryRegistry();
     outbox = new MemoryOutbox();
+    review = new RecordingReview();
     logged = [];
   });
   afterEach(async () => {
@@ -389,6 +396,64 @@ describe('certification registry routes over HTTP (integration)', () => {
         'certification.relaxation-proposed.v1',
         'certification.certification-type-activated.v1',
       ]);
+    }, 30_000);
+
+    it('asks for a note on a published type revision while area certification is reviewed', async () => {
+      review.review('certification', 'medium');
+      await boot();
+      await seeded(code);
+      const a = sessionOf(code, EDITOR_A, 8);
+      const read = await http().get(`${types}/${TYPE}`).set(a).expect(200);
+      const body = read.body as {
+        review: unknown;
+        published: { content: TypeRevisionContent };
+      };
+      expect(body.review).toEqual({ reviewed: true, risk: 'medium' });
+      const { content } = body.published;
+      const renamed: TypeRevisionContent = {
+        ...content,
+        locales: Object.fromEntries(
+          Object.entries(content.locales).map(([l, c]) => [l, { ...c, name: 'Qorvane Seal' }]),
+        ),
+      };
+
+      const noNote = await http()
+        .post(`${types}/${TYPE}/revisions`)
+        .set(a)
+        .send({ version: 1, content: renamed })
+        .expect(400);
+      expect(noNote.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'note', code: 'required' }] },
+      });
+      // The unit here does not roll the memory store back; the unit spec and
+      // test/db/certification-system-requests.db-spec.ts prove the refusal leaves nothing behind.
+      expect(review.opened).toEqual([]);
+      registry.state.types.get(TYPE)!.publishedRevisionId = TYPE_REVISION;
+      registry.state.types.get(TYPE)!.version = 1;
+      outbox.events.length = 0;
+
+      const saved = await http()
+        .post(`${types}/${TYPE}/revisions`)
+        .set(a)
+        .send({ version: 1, content: renamed, note: 'Brand name' })
+        .expect(200);
+      expect(saved.body).toMatchObject({
+        outcome: 'published',
+        version: 2,
+        request: { id: expect.any(String) as string, number: 1 },
+      });
+      expect(review.opened).toEqual([
+        expect.objectContaining({
+          area: 'certification',
+          subjectKind: 'certification.type-revision',
+          subjectRef: TYPE,
+          before: { revisionId: TYPE_REVISION, revisionNo: 1 },
+          note: 'Brand name',
+        }),
+      ]);
+      // The note is the reviewer's, not the log's.
+      expect(logged.join('')).not.toContain('Brand name');
     }, 30_000);
 
     it('takes a closed JSON body with the CSRF token only', async () => {

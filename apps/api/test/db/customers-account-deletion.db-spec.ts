@@ -603,6 +603,26 @@ describe.each(TEST_MARKETS)(
         [code, (await rows(BUYER))[0]!.id],
       );
       expect(completed.rowCount).toBe(1);
+      // Phase 2b: the customer page's tombstone reads when the erasure completed, in this Market
+      // only; an account never erased has none.
+      const completedAt = (target: typeof market, accountId: Id<'Account'>) =>
+        db.unitOfWork.run(
+          target,
+          async () =>
+            ok(
+              await new PrismaAccountDeletionRequestRepository(db.service).completedAt(
+                target,
+                accountId,
+              ),
+            ),
+          { readOnly: true },
+        );
+      const tomb = await completedAt(market, BUYER);
+      expect(tomb.ok && tomb.value !== null).toBe(true);
+      const none = await completedAt(market, OTHER_BUYER);
+      expect(none.ok && none.value).toBeNull();
+      const foreign = await completedAt(marketOf(otherMarketOf(code)), BUYER);
+      expect(foreign.ok && foreign.value).toBeNull();
     });
 
     const requestRepo = () => new PrismaAccountDeletionRequestRepository(db.service);

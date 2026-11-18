@@ -1,12 +1,16 @@
 import type { Finding } from '../domain/checks';
 import type { FieldProblem } from '../domain/fields';
+import type { MediaRefusalCode } from './ports/blog-image-processor';
 
 /** The refusals of the blog's use cases. Codes, field paths and finding codes: never a value. */
 export type BlogFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'validation.failed'; readonly fields: readonly FieldProblem[] }
-  /** A dependency (Market config, catalog, sellers, certification) could not answer: fail closed. */
-  | { readonly code: 'blog.unavailable' }
+  /**
+   * A dependency (Market config, catalog, sellers, certification, the object store) could not
+   * answer: fail closed. `retryAfterSeconds` when too many pictures are being processed at once.
+   */
+  | { readonly code: 'blog.unavailable'; readonly retryAfterSeconds?: number }
   | { readonly code: 'blog.post-not-found' }
   | { readonly code: 'blog.post-archived' }
   /** The action does not fit where the post is in its life. */
@@ -33,7 +37,11 @@ export type BlogFailure =
   /** Public reads: the post was on the site and is not now (410), or there is none (404). */
   | { readonly code: 'blog.gone' }
   | { readonly code: 'blog.not-found' }
-  | { readonly code: 'conflict.stale' };
+  | { readonly code: 'conflict.stale' }
+  /** The picture is not in the media library of the Market (or the size is not one it has). */
+  | { readonly code: 'blog.media-not-found' }
+  /** The upload was refused before or while it was decoded. */
+  | { readonly code: Exclude<MediaRefusalCode, 'file.busy'> };
 
 export const invalid = (path: string, code = 'format'): BlogFailure => ({
   code: 'validation.failed',

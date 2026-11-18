@@ -171,7 +171,7 @@ describe.each(TEST_MARKETS)('customers management in market %s (database)', (cod
       const found = await inUnit(market, () => groups.find(market, made.id));
       expect(found?.memberCount).toBe(2);
       const listed = await inUnit(market, () =>
-        reader.ids(market, { selector: { ...BLANK, group: made.id }, now: T0 }, 100),
+        reader.ids(market, { selector: { ...BLANK, group: made.id }, now: T0, zone: 'UTC' }, 100),
       );
       expect([...listed].sort()).toEqual([a, b].sort());
       const [row] = await inUnit(market, () => reader.rowsByIds(market, [a]));
@@ -342,6 +342,23 @@ describe.each(TEST_MARKETS)('customers management in market %s (database)', (cod
       expect(
         await inUnit(market, () => timeline.count(market, { ...query, from: at(5), to: null })),
       ).toBe(2);
+      expect(await inUnit(other, () => timeline.count(other, query))).toBe(0);
+    });
+
+    it('keeps a consent change with its channel as the detail, once per event (part 4)', async () => {
+      const accountId = await customer();
+      const consent = entry(accountId, { kind: 'consent-changed', detail: 'email' });
+      expect(await inUnit(market, () => timeline.record(market, consent, T0))).toBe(true);
+      expect(
+        await inUnit(market, () => timeline.record(market, { ...consent, id: ids.next() }, T0)),
+      ).toBe(false);
+      const query = { accountId, kinds: ['consent-changed' as const], from: null, to: null };
+      const rows = await inUnit(market, () =>
+        timeline.page(market, query, 'desc', { offset: 0, limit: 10 }),
+      );
+      expect(rows.map((row) => [row.kind, row.detail, row.ref])).toEqual([
+        ['consent-changed', 'email', null],
+      ]);
       expect(await inUnit(other, () => timeline.count(other, query))).toBe(0);
     });
 

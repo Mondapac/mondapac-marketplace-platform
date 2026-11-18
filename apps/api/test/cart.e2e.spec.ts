@@ -119,6 +119,7 @@ describe('cart routes over HTTP', () => {
   async function boot(code: string) {
     const currency = code === 'AU' ? 'AUD' : 'JPY';
     const facts: LineFactsSource = {
+      offerSellUnits: () => Promise.resolve(null),
       sellerMinimums: (_c, sellerIds) =>
         Promise.resolve(new Map(sellerIds.map((sellerId) => [sellerId, sellerMinimum] as const))),
       lineDisplays: (_c, refs) =>

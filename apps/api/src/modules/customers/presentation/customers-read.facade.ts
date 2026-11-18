@@ -2,6 +2,7 @@ import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type { ReadCustomerLastOrder } from '../application/use-cases/read-customer-last-order.use-case';
 import type { ReadCustomerGroupMembership } from '../application/use-cases/read-customer-group-membership.use-case';
 import type { ReadOwnLastOrder } from '../application/use-cases/read-own-last-order.use-case';
+import type { SellerOrderCustomers } from '../application/use-cases/seller-order-customers.use-case';
 import type { CustomersReadFacade } from '../contracts';
 
 /** Passes the caller's `CallContext` unchanged to one use case each, so the gate runs. */
@@ -10,6 +11,7 @@ export class CustomersReadFacadeImplementation implements CustomersReadFacade {
     private readonly lastOrder: ReadCustomerLastOrder,
     private readonly ownLastOrder: ReadOwnLastOrder,
     private readonly membership: ReadCustomerGroupMembership,
+    private readonly orderCustomers: SellerOrderCustomers,
   ) {}
 
   lastOrderAt(context: CallContext, accountId: Id<'Account'>) {
@@ -22,5 +24,9 @@ export class CustomersReadFacadeImplementation implements CustomersReadFacade {
 
   isGroupMember(context: CallContext, groupId: string, accountId: Id<'Account'>) {
     return this.membership.execute(context, { groupId, accountId });
+  }
+
+  sellerOrderCustomers(context: CallContext, accountIds: readonly Id<'Account'>[]) {
+    return this.orderCustomers.execute(context, { accountIds });
   }
 }

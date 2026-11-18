@@ -15,7 +15,7 @@ export {
   type AccountMenuProps,
 } from './shell/account-menu.tsx';
 export { Icon, type IconName, type IconProps } from './icon/icon.tsx';
-export { Tabs, type TabItem, type TabsProps } from './shell/tabs.tsx';
+export { Tabs, tabIdOf, type TabItem, type TabsProps } from './shell/tabs.tsx';
 export { BackLink } from './shell/back-link.tsx';
 export { ShortcutGrid, type Shortcut } from './shell/shortcut-grid.tsx';
 export { RouteError, RouteLoading, type RouteErrorProps } from './shell/route-states.tsx';
@@ -27,6 +27,15 @@ export {
   type NavigationProgressProps,
 } from './loading/navigation-progress.tsx';
 export { Spinner } from './loading/spinner.tsx';
+export {
+  DetailSkeleton,
+  FormSkeleton,
+  TableSkeleton,
+  type DetailSkeletonProps,
+  type FormSkeletonProps,
+  type TableSkeletonColumn,
+  type TableSkeletonProps,
+} from './loading/section-skeletons.tsx';
 export {
   SettingsSkeleton,
   type SettingsSkeletonProps,
@@ -60,6 +69,15 @@ export {
   type NavSection,
   type NavItem,
 } from './shell/nav.ts';
+export {
+  NavBadgeProvider,
+  NAV_BADGE_CAP,
+  badgeText,
+  sumBadges,
+  useNavBadges,
+  useSetNavBadge,
+  type NavBadgeValue,
+} from './shell/nav-badges.tsx';
 export { AuthLayout, type AuthLayoutProps, type AuthShowcaseCard } from './auth/auth-layout.tsx';
 export { Banner, type BannerProps, type BannerTone } from './form/banner.tsx';
 export {
@@ -97,6 +115,19 @@ export {
   type SearchSelectProps,
   type SearchSelectSingleProps,
 } from './select/search-select.tsx';
+export {
+  CategoryChooser,
+  type CategoryChooserLabels,
+  type CategoryChooserProps,
+} from './select/category-chooser.tsx';
+export {
+  MAX_PRODUCT_CATEGORIES,
+  addCategory,
+  choiceLabel,
+  makePrimary,
+  removeCategory,
+  type CategoryChoice,
+} from './select/category-chooser-logic.ts';
 export { LoadError, type LoadErrorProps } from './form/load-error.tsx';
 export { Badge, type BadgeProps, type BadgeTone } from './form/badge.tsx';
 export { EmptyState, type EmptyStateProps, type EmptyStateSize } from './form/empty-state.tsx';
@@ -200,6 +231,18 @@ export {
 } from './data/ledger.tsx';
 export { ActivityTable, formatCount, type ActivityColumn } from './dashboard/activity-table.tsx';
 export {
+  ActivityCardSkeleton,
+  DashboardLoading,
+  DistributionCardSkeleton,
+  StatCardSkeleton,
+  activitySkeletonColumns,
+  type ActivityCardSkeletonProps,
+  type ActivitySkeletonColumn,
+  type DistributionCardSkeletonProps,
+  type StatCardSkeletonProps,
+} from './dashboard/dashboard-loading.tsx';
+export { DashboardSlot, type DashboardSource } from './dashboard/dashboard-slot.tsx';
+export {
   DashboardCard,
   DistributionBar,
   StatCard,
@@ -210,6 +253,7 @@ export {
   type StatTone,
 } from './dashboard/dashboard.tsx';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
+export { SidePanel, type SidePanelProps } from './overlay/side-panel.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
 export {
   ActionMenu,

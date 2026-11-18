@@ -144,6 +144,16 @@ export interface PromotionRepository {
     now: Temporal.Instant,
   ): Promise<number>;
   /**
+   * How many promotions of the Market name this manual customer group in their MANUAL_GROUP
+   * segment and are live or may become live: ACTIVE, PENDING_APPROVAL or PAUSED, and not ended at
+   * `now` (customers management phase 2b: the warning when an admin archives the group).
+   */
+  countGroupSegmentUses(
+    market: MarketContext,
+    groupId: string,
+    now: Temporal.Instant,
+  ): Promise<number>;
+  /**
    * The co-funded campaigns a seller may join now: ACTIVE, not ended at `now` (a campaign that has
    * not started yet is included), and aimed at all sellers or at this one. Soonest start first.
    */

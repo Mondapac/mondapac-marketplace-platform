@@ -101,6 +101,18 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
     return row === null ? null : toRequest(row);
   }
 
+  async completedAt(market: MarketContext, accountId: Id<'Account'>) {
+    // Index account_deletion_requests_completed_idx (market_id, account_id) WHERE completed.
+    const row = await this.prisma.tx(market).customersAccountDeletionRequest.findFirst({
+      where: { marketId: market.marketId, accountId, status: 'completed' },
+      select: { completedAt: true },
+      orderBy: [{ completedAt: 'desc' }],
+    });
+    return row?.completedAt == null
+      ? null
+      : Temporal.Instant.fromEpochMilliseconds(row.completedAt.getTime());
+  }
+
   async cancel(
     market: MarketContext,
     id: Id<'AccountDeletionRequest'>,

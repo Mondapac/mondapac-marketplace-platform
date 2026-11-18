@@ -83,17 +83,49 @@ details only for event posts, slug against redirect under a transaction lock), t
 the migration. `posts.scheduled_by` is set exactly with `scheduled_at` (CHECK). The post pointers
 to versions are deferrable composite keys.
 
+## Media library
+
+Added with the admin blog editor (blog media upload). `blog.media` (one row per picture: uploader
+account id, size of the `large` rendition, uploaded byte count, `created_at`) and
+`blog.media_renditions` (`large` fits 1600x1600, `thumb` fits 400x400, JPEG only, never enlarged;
+`object_key` is `blog-media/<id>/<size>` by CHECK, with its SHA-256) are insert-only (grants SELECT,
+INSERT). Migration `20261116130000_blog_media`. No alt text is stored: alt belongs to the post
+(`coverAlt`, an image block's `alt`), where the checks and the content filter already read it.
+
+- Upload (`blog.media.edit`, admin only): JSON `{ data }`, standard base64, at most 4 MiB decoded,
+  longest side at least 400 px. The shared `platform/images` pipeline decides the type by content
+  (JPEG, PNG, WebP), bounds the decode, drops every metadata block and writes new JPEGs; the upload is
+  never stored. Files first, then the row and the audit row (`blog.media.upload`) in one unit; when the
+  row cannot be written the files are removed. A busy pipeline answers 503 `blog.unavailable` with
+  `Retry-After`. Rate: the platform's per-origin limiter (`default` class) and the pipeline's bounded
+  queue, as for the storefront slide images; no malware scan (the picture is re-encoded, as catalog's
+  photos are). The API reads the large body only for `POST /blog/admin/media` with an admin session
+  cookie and the CSRF header (`configure-app.ts`).
+- List and read (`blog.post.read`): newest first, 40 a page; one rendition as `image/jpeg` with
+  `Cache-Control: private, no-store`, `nosniff` and `Content-Security-Policy: sandbox`. The object key
+  comes from the row and the bytes must match the stored hash.
+- References: on create, draft save and reviewer edit, `coverImageId` and every image block's
+  `imageId` must be a picture of the post's own Market (`validation.failed`, `content.coverImageId` or
+  `content.body[i].imageId`, code `not-found`), for platform and seller posts alike. A version stored
+  earlier with an id that is in no library still loads and shows; the automatic checks (submit,
+  approve, run-checks) stop it with `image-not-found` at the path, and with `images-unverifiable` when
+  the library cannot be read (fail closed).
+- Not built: a public rendition route for buyers, a seller upload route, and the removal of unused
+  pictures (a sweep would add DELETE with its own migration).
+
 ## Permissions
 
 `blog.post.read` (also in the Viewer seed, version 20), `blog.post.edit`, `blog.post.review`,
-`blog.post.publish` (protected), `blog.post.pause`, `blog.taxonomy.edit`, `blog.seller-post.edit`
-(seller scope), `sellers.blog-access.edit` (Platform Administrator).
+`blog.post.publish` (protected), `blog.post.pause`, `blog.taxonomy.edit`, `blog.media.edit` (not in
+any default role, like the other edit keys), `blog.seller-post.edit` (seller scope),
+`sellers.blog-access.edit` (Platform Administrator).
 
 ## HTTP
 
 Admin `blog/admin/posts` (list, create, view, draft, reviewer-edit, submit, checks, approve,
 request-changes, publish, schedule put and delete, pause, resume, archive, slug, featured,
-event-status, copy-package) and `blog/admin/taxonomy`; seller `blog/seller` (taxonomy, posts list,
+event-status, copy-package), `blog/admin/taxonomy` and `blog/admin/media` (list, upload,
+`:media/:size`); seller `blog/seller` (taxonomy, posts list,
 create, view, draft, submit, archive, event-status); public `blog` (posts with market, kind,
 category and paging, `posts/:slug`, `events/upcoming`, `taxonomy`).
 
@@ -101,7 +133,8 @@ category and paging, `posts/:slug`, `events/upcoming`, `taxonomy`).
 
 - Notifications: there is no per-account notification seam, so the submit, decision and publish
   events are emitted to the outbox with no consumer.
-- Image ids and brand, category and page link targets are not verified against their modules.
+- Brand, category and page link targets are not verified against their modules (image ids are
+  checked against the media library, see above).
 - Out of scope: the new-seller-form flag, preview links, withdraw from review. A seller's "delete" is
   archive.
 - The version cap is 100 per post (a CHECK); raising it needs a migration.

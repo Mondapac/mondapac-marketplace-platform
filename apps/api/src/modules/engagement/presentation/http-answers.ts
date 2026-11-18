@@ -8,6 +8,9 @@ import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 
 export const ENGAGEMENT_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
+  'engagement.store-not-found': 404,
+  'engagement.follow-limit': 409,
+  'engagement.unavailable': 503,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
