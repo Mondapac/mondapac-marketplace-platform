@@ -24,11 +24,14 @@ import type {
   CustomersCheckoutFacade,
   DeliveryAddress,
   DeliveryAddressFailure,
+  ExclusiveSellerAnswer,
+  ExclusiveSellerFailure,
 } from '../../src/modules/customers';
 import type {
   CommissionPayoutsFacade,
   CommissionPayoutsFailure,
   CommissionRateMap,
+  ExclusiveBuyer,
   PaidSellerOrder,
   RefundedSellerOrder,
   SellerOrderDelivered,
@@ -1092,21 +1095,30 @@ export class FakeCommission implements CommissionPayoutsFacade {
   down = false;
   recordFails: CommissionPayoutsFailure | null = null;
   recorded: PaidSellerOrder[] = [];
+  /** The lower rate the exclusive seller's lines get (by seller), as commission-payouts decides. */
+  exclusiveRates = new Map<string, number>();
+  readonly exclusiveAsked: (ExclusiveBuyer | null)[] = [];
   commissionRates(
     _c: CallContext,
     sellerIds: readonly Id<'Seller'>[],
+    exclusive: ExclusiveBuyer | null = null,
   ): Promise<Result<CommissionRateMap, CommissionPayoutsFailure>> {
+    this.exclusiveAsked.push(exclusive);
     if (this.down) return Promise.resolve(err({ code: 'commission-payouts.rate-unavailable' }));
     return Promise.resolve(
       ok(
         new Map(
           sellerIds.map((sellerId) => {
             const own = this.rates.get(sellerId);
+            const lowered =
+              exclusive?.sellerId === sellerId ? this.exclusiveRates.get(sellerId) : undefined;
             return [
               sellerId,
-              own === undefined
-                ? { rateBps: this.marketRateBps, source: 'market' as const }
-                : { rateBps: own, source: 'seller' as const },
+              {
+                rateBps: lowered ?? own ?? this.marketRateBps,
+                source: own === undefined ? ('market' as const) : ('seller' as const),
+                reason: lowered === undefined ? ('standard' as const) : ('exclusive' as const),
+              },
             ] as const;
           }),
         ),
@@ -1561,6 +1573,24 @@ export class FakeCustomers implements CustomersCheckoutFacade {
   readonly addresses = new Map<string, { accountId: string; address: DeliveryAddress }>();
   failure: DeliveryAddressFailure | null = null;
   readonly calls: unknown[] = [];
+  /** The exclusive seller of each account (customers phase 4b); none when absent. */
+  readonly exclusive = new Map<string, ExclusiveSellerAnswer>();
+  exclusiveFailure: ExclusiveSellerFailure | null = null;
+  exclusiveThrows = false;
+  exclusiveReads = 0;
+
+  ownExclusiveSeller(
+    context: CallContext,
+  ): Promise<Result<ExclusiveSellerAnswer | null, ExclusiveSellerFailure>> {
+    this.exclusiveReads += 1;
+    if (this.exclusiveThrows) return Promise.reject(new Error('customers unreachable'));
+    if (this.exclusiveFailure !== null) return Promise.resolve(err(this.exclusiveFailure));
+    const actor = context.actor;
+    if (actor.kind !== 'authenticated' || actor.population !== 'customer') {
+      return Promise.resolve(err({ code: 'access.denied' }));
+    }
+    return Promise.resolve(ok(this.exclusive.get(actor.accountId) ?? null));
+  }
 
   deliveryAddress(
     context: CallContext,

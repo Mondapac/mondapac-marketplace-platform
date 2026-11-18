@@ -3443,6 +3443,51 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       ).toEqual([1000, 1000, 1500]);
     });
 
+    it("freezes the exclusive seller and its lower rate on that seller's lines only (customers phase 4b)", async () => {
+      const since = T0.subtract({ hours: 24 * 10 });
+      customers.exclusive.set(ACCOUNT, { sellerId: SELLER_A, since });
+      commission.exclusiveRates.set(SELLER_A, 750);
+      const order = await placed();
+      expect(customers.exclusiveReads).toBe(1);
+      expect(commission.exclusiveAsked.at(-1)).toEqual({ sellerId: SELLER_A, since });
+      const linesOf = (sellerId: Id<'Seller'>) => {
+        const sellerOrder = order.sellerOrders.find((s) => s.sellerId === sellerId)!;
+        return order.lines
+          .filter((l) => l.sellerOrderId === sellerOrder.id)
+          .map((l) => [l.commissionRateBps, l.commissionRateReason, l.exclusiveSeller]);
+      };
+      expect(linesOf(SELLER_A)).toEqual([
+        [750, 'exclusive', true],
+        [750, 'exclusive', true],
+      ]);
+      expect(linesOf(SELLER_B)).toEqual([[1500, 'standard', false]]);
+    });
+
+    it('marks the exclusive seller even when no lower rate applies', async () => {
+      customers.exclusive.set(ACCOUNT, { sellerId: SELLER_B, since: T0 });
+      const order = await placed();
+      expect(order.lines.map((l) => [l.commissionRateReason, l.exclusiveSeller]).sort()).toEqual([
+        ['standard', false],
+        ['standard', false],
+        ['standard', true],
+      ]);
+    });
+
+    it('places the order at the standard rate when the exclusive seller cannot be read', async () => {
+      commission.exclusiveRates.set(SELLER_A, 750);
+      customers.exclusive.set(ACCOUNT, { sellerId: SELLER_A, since: T0 });
+      customers.exclusiveFailure = { code: 'customers.unavailable' };
+      const failed = await placed();
+      expect(failed.lines.every((l) => l.commissionRateReason === 'standard')).toBe(true);
+      expect(failed.lines.some((l) => l.exclusiveSeller)).toBe(false);
+      expect(commission.exclusiveAsked.at(-1)).toBeNull();
+      customers.exclusiveFailure = null;
+      customers.exclusiveThrows = true;
+      const thrown = await placed();
+      expect(thrown.lines.every((l) => l.commissionRateReason === 'standard')).toBe(true);
+      expect(commission.exclusiveAsked.at(-1)).toBeNull();
+    });
+
     it('opens no order when the rates cannot be read (fail closed)', async () => {
       commission.down = true;
       expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
