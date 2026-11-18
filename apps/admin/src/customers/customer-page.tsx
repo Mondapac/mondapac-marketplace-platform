@@ -13,6 +13,7 @@ import {
   SkeletonRows,
   Tabs,
   tabIdOf,
+  useMediaQuery,
   type MenuItem,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -22,10 +23,15 @@ import { callApi } from '../api/client.ts';
 import { OrdersList } from '../orders/orders-list.tsx';
 import { numberFormat } from '../shared/intl.ts';
 import { formatMinor } from '../wallet/money.ts';
+import { RecentActivity } from './customer-activity.tsx';
+import { CustomerEditDialog } from './customer-edit.tsx';
+import { CustomerGroupsCard } from './customer-groups-card.tsx';
 import { CustomerMoney } from './customer-money.tsx';
+import { CustomerNotes } from './customer-notes.tsx';
 import { CustomerStatusDialog, type StatusTarget } from './customer-status.tsx';
 import { copyText } from './customers-list.tsx';
 import { dayOf } from './format.ts';
+import { CUSTOMER_EDIT } from './groups-types.ts';
 import { STATUS_PERMISSION, titleOf } from './list-types.ts';
 import {
   BUYER_DELETE,
@@ -133,6 +139,11 @@ export function CustomerPage({
   const [statusTarget, setStatusTarget] = useState<StatusTarget | null>(null);
   const [deleteSignal, setDeleteSignal] = useState(0);
   const [pendingDeletion, setPendingDeletion] = useState(false);
+  const [editing, setEditing] = useState(false);
+  // Bumped when the page did something that lands on the timeline (a note, a group, a rename).
+  const [activityRefresh, setActivityRefresh] = useState(0);
+  // On a phone, Edit… moves into the More menu (Reza, 16 Nov).
+  const wide = useMediaQuery('(min-width: 40rem)');
   const panel = useRef<HTMLDivElement>(null);
   const id = encodeURIComponent(accountId);
   const pendingChanged = useCallback(
@@ -173,6 +184,17 @@ export function CustomerPage({
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Reads the header and Overview again without the loading state (after a group change). */
+  const refresh = useCallback(async () => {
+    const result = await callApi<CustomerOverview>('GET', `customers/admin/customers/${id}`);
+    if (result.ok) {
+      setPage((current) =>
+        current.state === 'ready' ? { state: 'ready', customer: result.body } : current,
+      );
+    }
+    setActivityRefresh((value) => value + 1);
+  }, [id]);
 
   // The wallet balance (Overview tile and Money figure), from wallet, under its own key.
   useEffect(() => {
@@ -278,7 +300,11 @@ export function CustomerPage({
       : null;
   const walletTile = keys.has(WALLET_VIEW) && wallet !== 'off';
 
+  const canEdit = keys.has(CUSTOMER_EDIT);
   const more: MenuItem[] = [
+    ...(canEdit && !wide
+      ? [{ id: 'edit', label: t('header.edit'), onSelect: () => setEditing(true) }]
+      : []),
     ...(keys.has(STATUS_PERMISSION)
       ? [
           {
@@ -346,6 +372,11 @@ export function CustomerPage({
               <LinkButton variant="secondary" href={`/wallet/credits?customer=${id}`}>
                 {t('header.view-wallet')}
               </LinkButton>
+            ) : null}
+            {canEdit && wide ? (
+              <Button variant="secondary" onClick={() => setEditing(true)}>
+                {t('header.edit')}
+              </Button>
             ) : null}
             {more.length === 0 ? null : (
               <Menu label={t('header.more')} icon="more-horizontal" items={more} />
@@ -430,6 +461,30 @@ export function CustomerPage({
                 wide={!walletTile}
               />
             </ul>
+            <CustomerGroupsCard
+              accountId={accountId}
+              groups={customer.groups ?? []}
+              keys={keys}
+              csrfToken={csrfToken}
+              onChanged={() => void refresh()}
+            />
+            <CustomerNotes
+              accountId={accountId}
+              keys={keys}
+              csrfToken={csrfToken}
+              zone={zone}
+              onAdded={() => setActivityRefresh((value) => value + 1)}
+            />
+            <RecentActivity
+              accountId={accountId}
+              adminAccountId={adminAccountId}
+              marketId={marketId}
+              keys={keys}
+              csrfToken={csrfToken}
+              zone={zone}
+              paging={paging}
+              refresh={activityRefresh}
+            />
             <Card title={t('overview.profile')}>
               <DataList
                 missing={t('overview.not-given')}
@@ -505,6 +560,22 @@ export function CustomerPage({
           />
         )}
       </div>
+      <CustomerEditDialog
+        open={editing}
+        accountId={accountId}
+        email={customer.email}
+        displayName={customer.displayName}
+        csrfToken={csrfToken}
+        onClose={() => setEditing(false)}
+        onSaved={(displayName) => {
+          setPage((current) =>
+            current.state === 'ready'
+              ? { state: 'ready', customer: { ...current.customer, displayName } }
+              : current,
+          );
+          setActivityRefresh((value) => value + 1);
+        }}
+      />
       <CustomerStatusDialog
         target={statusTarget}
         csrfToken={csrfToken}
