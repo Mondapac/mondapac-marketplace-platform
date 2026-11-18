@@ -148,6 +148,7 @@ describe.each(['AU', 'ZZ'] as const)('claim policy reviews in market %s', (code)
     };
     const row = (basis: string) => ({ selector: 'platform-category', categoryId: food, basis });
     return {
+      ids,
       registry,
       policies,
       audit,
@@ -313,6 +314,64 @@ describe.each(['AU', 'ZZ'] as const)('claim policy reviews in market %s', (code)
     await refusedWithoutWriting(r, requestOf(r), 'not-permitted');
   });
 
+  it('answers not-permitted for the revert of every request a claim-policy save opens', async () => {
+    // A claim-policy save is published at once only when it relaxes nothing, so restoring the
+    // rows before always loosens enforcement: every such request can be approved, never reverted.
+    const r = rig();
+    const meat = r.ids.next<'Category'>();
+    r.catalog.add(market, meat);
+    const rowOf = (categoryId: string, basis: string) => ({
+      selector: 'platform-category',
+      categoryId,
+      basis,
+    });
+    const versionOf = () => [...r.policies.state.policies.values()][0]?.version ?? 0;
+    const publish = async (rows: readonly ReturnType<typeof rowOf>[], note: string) => {
+      const saved = await unwrap(
+        r.save.execute(r.admin(), { typeId: r.typeId, version: versionOf(), rows, note }),
+      );
+      expect(saved).toMatchObject({
+        outcome: 'published',
+        request: { number: expect.any(Number) as number },
+      });
+      const request = requestOf(r, r.review.opened.length - 1);
+      expect(await r.check(request)).toBe('ok');
+      await refusedWithoutWriting(r, request, 'not-permitted');
+    };
+
+    // The first save, of a seller-required row and of a no-claims row.
+    await publish([rowOf(r.food, 'SELLER_REQUIRED')], 'Seller needed');
+    // A stricter basis for a row.
+    await publish([rowOf(r.food, 'NOT_APPLICABLE')], 'No claims');
+    // A row added.
+    await publish(
+      [rowOf(r.food, 'NOT_APPLICABLE'), rowOf(meat, 'SELLER_REQUIRED')],
+      'Meat needs a seller',
+    );
+    // After a relaxation a second admin approved (it opens no request), a save that tightens
+    // the relaxed row again.
+    const pending = await unwrap(
+      r.save.execute(r.admin(), {
+        typeId: r.typeId,
+        version: versionOf(),
+        rows: [rowOf(r.food, 'NOT_APPLICABLE'), rowOf(meat, 'SELLER_OR_MANUFACTURER')],
+      }),
+    );
+    if (pending.outcome !== 'pending-second-admin') throw new Error('not pending');
+    await unwrap(
+      r.approve.execute(r.admin(), {
+        typeId: r.typeId,
+        proposalId: pending.proposalId,
+        version: 1,
+      }),
+    );
+    await publish(
+      [rowOf(r.food, 'NOT_APPLICABLE'), rowOf(meat, 'NOT_APPLICABLE')],
+      'No meat claims',
+    );
+    expect(r.review.opened).toHaveLength(4);
+  });
+
   it('never loosens enforcement: reverting a stricter row is not permitted', async () => {
     const r = rig();
     await unwrap(
@@ -424,9 +483,16 @@ describe.each(['AU', 'ZZ'] as const)('claim policy reviews in market %s', (code)
     );
   });
 
-  it('restores no rows when only a manufacturer basis row would go', async () => {
+  it('restores no rows when only a manufacturer basis row would go, audited with no restored revision', async () => {
+    // No save opens a request with no revision before whose revert relaxes nothing (a first
+    // published save always adds a row that is not a manufacturer basis, see above). The path is
+    // kept so the reverter decides by the rule, not by that invariant of the save; the request is
+    // built by hand here.
     const r = rig();
     const loose = await relaxed(r, 0, 'SELLER_OR_MANUFACTURER');
+    r.outbox.events.length = 0;
+    r.audit.entries.length = 0;
+    const policy = { ...policyOf(r) };
     const request: RevertRequest = {
       requestId: REQUEST_ID,
       subjectRef: r.typeId,
@@ -435,10 +501,26 @@ describe.each(['AU', 'ZZ'] as const)('claim policy reviews in market %s', (code)
     };
     expect(await r.revert(request)).toBe('reverted');
     expect(rowsOf(r)).toEqual([]);
-    expect(r.audit.entries.at(-1)).toMatchObject({
-      action: 'certification.claim-policy.reverted',
-      after: { restoredRevisionId: null, requestId: REQUEST_ID },
-    });
+    const now = policyOf(r).publishedRevisionId!;
+    expect(r.audit.entries).toEqual([
+      expect.objectContaining({
+        action: 'certification.claim-policy.reverted',
+        targetId: policy.id,
+        before: { revisionId: loose },
+        after: {
+          typeId: r.typeId,
+          revisionId: now,
+          restoredRevisionId: null,
+          requestId: REQUEST_ID,
+        },
+      }),
+    ]);
+    expect(r.outbox.events).toEqual([
+      expect.objectContaining({
+        type: 'certification.claim-policy-changed.v1',
+        payload: { policyId: policy.id, revisionId: now, typeId: r.typeId },
+      }),
+    ]);
   });
 
   it('is not permitted while a relaxation waits, and changed-since when the lock races', async () => {

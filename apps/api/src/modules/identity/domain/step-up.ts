@@ -9,6 +9,7 @@ export const STEP_UP_ACTION_KEYS = [
   'catalog.offer.delete',
   'customers.account-deletion-settings.change',
   'customers.buyer-account.delete',
+  'customers.customer-email.change',
   'customers.customers.export',
   'identity.second-factor.manage',
   'identity.team.change-role',

@@ -390,6 +390,21 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   of reservations whose order never settles (the order is stored before the redemption, so every row has an
   order that ordering cancels or confirms; the sweep covers a crash between them).
 
+## Customers phase 4a, PR 4a-2: the seller's exclusive-customer discount (2026-11-17)
+
+- New segment `SELLER_EXCLUSIVE` of the `CUSTOMER_GROUP` type: a seller's own discount for the
+  customers who joined through its invite link (customers 4a-1). Seller-funded, on the seller's
+  own lines (layer `SELLER_CART`), held to the Market's seller maximum like any seller promotion,
+  and reviewed after publish like the store-follower offer. No days, group or zones.
+- A seller may make `CUSTOMER_GROUP` only with this segment (any other: `segment.kind`
+  not-allowed); an admin may not use this segment.
+- The quote asks `customers.exclusiveSellerOf` (port `ExclusiveCustomers`, system actor only) once
+  per quote, only when such a discount is live; unknown or failing answers fail closed (no
+  discount). The admin preview takes `customer.exclusiveSellerId` and reads nothing.
+- Migration `20261117060000_promotions_seller_exclusive_segment`: `promotions_type_funding_check`
+  lets the seller pay a customer-group discount exactly for this segment; `promotions_phase3_check`
+  accepts the segment with no days and no group. `down.sql` refuses while such rows exist.
+
 ## Package T2: discounts at checkout (part B, ordering side)
 
 Migration `20261117040000_ordering_discounts`: `order_lines` gains `discount_amount` with its seller and platform
@@ -430,3 +445,16 @@ total covers what is left); the cancel reason `discount-changed`. Existing rows 
 - Follow-ups: orders at no cost (a 100% voucher) need an owner decision; manual-group audiences do not match under the customer's context yet (customers' group check is
   system-only); the admin panel's cancel-reason list lacks `discount-changed` and the web checkout has no code
   field yet (part C); the refund release waits for the owner's decision.
+- **A customer's usages** (customers management phase 2b, item e; 17 Nov 2026):
+  `GET promotions/admin/customers/:customerAccountId/usages` (`promotions.list-customer-promotion-usages`,
+  `promotions.promotion.view` and `customers.customers.view`, like every customer-page tab; admin only, refused in
+  an acting-as session). One row per discount an order of the
+  customer took (stored promotion with its name, first-order offer or zone free delivery; never an order's head
+  row), newest reservation first then id, keyset pages of 1 to 100 (default 50) through
+  `redemptions_customer_newest_idx`. A row carries the order, the discount (minor units and currency), whether a
+  single-use code was used (the code is never kept), the status (RESERVED can still be released; only CONFIRMED
+  counts as used), the release reason and the three instants; never the seller or platform share. Works while the
+  Market switch is off. No migration. `usedAt` is the reservation instant (when checkout took the discount);
+  `confirmedAt` and `releasedAt` say how it ended. There is no total: the tab pages with "Load more", like the
+  other per-customer histories. It is a plain table, not a super list (rule 14): one customer's discounts rarely
+  pass 50 rows; if the product wants a super list here, filters and a count are a follow-up.

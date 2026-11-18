@@ -150,8 +150,23 @@ const STATUS_KEYS = {
   published: 'published',
 } as const;
 
-const countOf = (counts: OfferStatusCounts, status: OfferStatus): number =>
+export const countOf = (counts: OfferStatusCounts, status: OfferStatus): number =>
   status in STATUS_KEYS ? counts[STATUS_KEYS[status as keyof typeof STATUS_KEYS]] : 0;
+
+/** The list's filter of a parsed query (the export reads the same rows). */
+export function offerFilterOf(
+  q: Pick<ParsedOfferListQuery, 'view' | 'status' | 'listed' | 'text'>,
+  locale: string,
+  offerIds: OwnOffersFilter['offerIds'] = null,
+): OwnOffersFilter {
+  return {
+    statuses: VIEW_STATUSES[q.view].filter((status) => q.status === null || status === q.status),
+    listed: q.listed,
+    text: q.text,
+    locale,
+    offerIds,
+  };
+}
 
 export type OwnOffersListFailure =
   { readonly code: 'access.denied' } | { readonly code: 'access.unavailable' } | ValidationFailure;
@@ -219,12 +234,7 @@ export class OwnOffersList extends UseCase<
     } catch {
       return err({ code: 'access.unavailable' });
     }
-    const filter: OwnOffersFilter = {
-      statuses: VIEW_STATUSES[q.view].filter((status) => q.status === null || status === q.status),
-      listed: q.listed,
-      text: q.text,
-      locale,
-    };
+    const filter = offerFilterOf(q, locale);
     const window = pageWindow(q);
     const read = await this.deps.unitOfWork.run(
       market,

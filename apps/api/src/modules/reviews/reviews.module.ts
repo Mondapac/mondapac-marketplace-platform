@@ -22,6 +22,13 @@ import { IdentityModule } from '../identity';
 import { ORDERING_FACADE, OrderingModule } from '../ordering';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import { REVIEW_REPOSITORY } from './application/ports/review.repository';
+import { CUSTOMER_REVIEWS_READER } from './application/ports/customer-reviews.reader';
+import type { AdminCustomerReviewsDependencies } from './application/admin-customer-reviews';
+import { AdminCustomerHelpfulVotes } from './application/use-cases/admin-customer-helpful-votes.use-case';
+import { AdminCustomerReviewReports } from './application/use-cases/admin-customer-review-reports.use-case';
+import { AdminCustomerReviews } from './application/use-cases/admin-customer-reviews.use-case';
+import { AdminCustomerSellerRatings } from './application/use-cases/admin-customer-seller-ratings.use-case';
+import { ReviewAuthorOf } from './application/use-cases/review-author-of.use-case';
 import { REVIEWER_NAMES } from './application/ports/reviewer-names';
 import { REVIEWS_POLICY } from './application/ports/reviews-policy';
 import { SELLER_AFFINITY } from './application/ports/seller-affinity';
@@ -53,6 +60,7 @@ import { ViewProductSummary } from './application/use-cases/view-product-summary
 import { ViewReviewsSettings } from './application/use-cases/view-reviews-settings.use-case';
 import { ViewSellerSummary } from './application/use-cases/view-seller-summary.use-case';
 import {
+  CUSTOMER_REVIEWS_FACADE,
   REVIEWS_AUDIT_ACTIONS,
   REVIEWS_FACADE,
   REVIEWS_PERMISSIONS,
@@ -69,6 +77,7 @@ import {
 } from './presentation/reviews.controller';
 import { SellerReviewsController } from './presentation/seller-reviews.controller';
 import { ReviewsFacadeImplementation } from './presentation/reviews.facade';
+import { CustomerReviewsFacadeImplementation } from './presentation/customer-reviews.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: ReviewsDependencies) => U;
 
@@ -88,6 +97,21 @@ const PORTS: readonly [keyof ReviewsDependencies, InjectionToken][] = [
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
+
+type CustomerReadClass<U> = new (gate: UseCaseGate, deps: AdminCustomerReviewsDependencies) => U;
+
+/** The admin's reads of one customer (customers management phase 2b): their own, smaller deps. */
+function customerReadProvider<U>(type: CustomerReadClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_REVIEWS_READER],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AdminCustomerReviewsDependencies['unitOfWork'],
+      reader: AdminCustomerReviewsDependencies['reader'],
+    ) => new type(gate, { unitOfWork, reader }),
+  };
+}
 
 /** The repair job's interval: the smallest `reviews.summaryRebuildMinutes` of the hosted Markets. */
 function summaryRebuildEvery(markets: MarketRegistry): Temporal.Duration {
@@ -163,6 +187,31 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       EditReviewReply,
       ReportReview,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    // Customers management phase 2b, part 3: the admin's reads of one customer's reviews.
+    ...[
+      AdminCustomerReviews,
+      AdminCustomerSellerRatings,
+      AdminCustomerHelpfulVotes,
+      AdminCustomerReviewReports,
+      ReviewAuthorOf,
+    ].map((type) => customerReadProvider(type as CustomerReadClass<unknown>)),
+    {
+      provide: CUSTOMER_REVIEWS_FACADE,
+      inject: [
+        AdminCustomerReviews,
+        AdminCustomerSellerRatings,
+        AdminCustomerHelpfulVotes,
+        AdminCustomerReviewReports,
+        ReviewAuthorOf,
+      ],
+      useFactory: (
+        reviews: AdminCustomerReviews,
+        ratings: AdminCustomerSellerRatings,
+        votes: AdminCustomerHelpfulVotes,
+        reports: AdminCustomerReviewReports,
+        author: ReviewAuthorOf,
+      ) => new CustomerReviewsFacadeImplementation(reviews, ratings, votes, reports, author),
+    },
     {
       provide: REVIEWS_FACADE,
       inject: [
@@ -188,6 +237,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ],
     ),
   ],
-  exports: [REVIEWS_FACADE],
+  exports: [REVIEWS_FACADE, CUSTOMER_REVIEWS_FACADE],
 })
 export class ReviewsModule {}

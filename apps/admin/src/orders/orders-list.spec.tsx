@@ -19,6 +19,7 @@ import {
   type SavedFilter,
   type SavedFiltersAnswer,
 } from './orders-saved.ts';
+import messages from '../../messages/en.json';
 import { order, part, wrap } from './orders-test-kit.tsx';
 import { FILTERS, type AdminOrder, type AdminOrderPage, type AdminOrderRow } from './types.ts';
 
@@ -470,6 +471,46 @@ describe('order list columns', () => {
     await waitFor(() => expect(headers()).toEqual(['Order', 'Status', 'Total']));
   });
 
+  it("scopes a customer's Orders tab to them, keeps its own columns and has no Customer column", async () => {
+    const CUSTOMER = '0190a000-0000-7000-8000-0000000000c1';
+    window.localStorage.setItem(COLUMNS_KEY, '["customer","total"]');
+    serve(() => pageOf([row()]));
+    mount({ customerAccountId: CUSTOMER });
+    const table = await screen.findByRole('table');
+    const asked = call.mock.calls.map((args) => args[1]);
+    expect(
+      asked.some((path) => path.startsWith(`ordering/admin/orders?accountId=${CUSTOMER}&`)),
+    ).toBe(true);
+    // No saved filters on a customer's tab: they belong to the Orders page.
+    expect(asked.some((path) => path.startsWith(SAVED_PATH))).toBe(false);
+    const shown = within(table)
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent);
+    expect(shown).not.toContain('Customer');
+    expect(shown).toContain('Total');
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    expect(within(panel).queryByRole('checkbox', { name: 'Customer' })).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    // The Orders page's choice is untouched; the tab keeps its own.
+    expect(window.localStorage.getItem(COLUMNS_KEY)).toBe('["customer","total"]');
+    expect(
+      window.localStorage.getItem(
+        'mp:admin:AU:0190a000-0000-7000-8000-0000000000f1:customer-orders-columns',
+      ),
+    ).not.toContain('"customer"');
+    // Each order links back to this customer's Orders tab.
+    expect(within(table).getAllByRole('link')[0]?.getAttribute('href')).toContain(
+      `customer=${CUSTOMER}&from=orders`,
+    );
+    // So does the row's Actions menu (Open order here; Cancel, notes and refunds alike).
+    fireEvent.click(within(table).getAllByRole('button', { name: /^Actions for / })[0]!);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Open order' }));
+    expect(push).toHaveBeenLastCalledWith(
+      `/orders/${row().orderId}?customer=${CUSTOMER}&from=orders`,
+    );
+  });
+
   it('ignores a stored column that no longer exists, and works when storage refuses', async () => {
     window.localStorage.setItem(COLUMNS_KEY, '["margin","paid","status","paid"]');
     serve(() => pageOf([row()]));
@@ -702,6 +743,97 @@ describe('order list saved filters', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete Captured' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete filter' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Captured' })).toBeNull());
+  });
+
+  it("moves an own filter and saves the order of the admin's own filters, as tabs", async () => {
+    const A = saved();
+    const B = saved({ id: '0190a000-0000-7000-8000-0000000000ac', name: 'Big orders' });
+    const THEIRS = saved({
+      id: '0190a000-0000-7000-8000-0000000000ab',
+      name: 'Shared by Sam',
+      visibility: 'everyone',
+      ownedByMe: false,
+      canManage: false,
+    });
+    let items = [A, B, THEIRS];
+    call.mockImplementation(((method: string, path: string) => {
+      if (path === 'lists/admin/saved-filters/order') {
+        items = [B, A, THEIRS];
+        return Promise.resolve({ ok: true, status: 200, body: { ids: [B.id, A.id] } });
+      }
+      if (path.startsWith(SAVED_PATH)) return Promise.resolve(savedAnswer(items));
+      return Promise.resolve(ok(pageOf([row()])));
+    }) as never);
+    render(
+      wrap(
+        <>
+          <OrdersList {...LIST} zone="UTC" csrfToken="csrf-2" />
+          <Toaster labels={{ region: 'Action notifications', close: 'Close notification' }} />
+        </>,
+      ),
+    );
+    await screen.findByRole('button', { name: 'Big orders' });
+    fireEvent.click(screen.getByRole('button', { name: 'Manage filters' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Manage filters' });
+    expect(within(dialog).getByRole('button', { name: 'Move Paid, captured up' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(within(dialog).queryByRole('button', { name: 'Move Shared by Sam down' })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move Paid, captured down' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'PUT',
+        'lists/admin/saved-filters/order',
+        { listKey: 'admin.ordering.orders', ids: [B.id, A.id] },
+        'csrf-2',
+      ),
+    );
+    expect(await screen.findByText('Moved “Paid, captured”')).toBeTruthy();
+    // The tabs follow the new order.
+    await waitFor(() => {
+      const tabs = screen
+        .getAllByRole('button')
+        .map((button) => button.textContent ?? '')
+        .filter((text) => text === 'Big orders' || text === 'Paid, captured');
+      expect(tabs).toEqual(['Big orders', 'Paid, captured']);
+    });
+    toast.dismiss();
+  });
+
+  it('says a refused move in a banner, reads the filters again and keeps their order', async () => {
+    const A = saved();
+    const B = saved({ id: '0190a000-0000-7000-8000-0000000000ac', name: 'Big orders' });
+    let reads = 0;
+    call.mockImplementation(((method: string, path: string) => {
+      if (path === 'lists/admin/saved-filters/order') {
+        return Promise.resolve({
+          ok: false,
+          failure: {
+            status: 422,
+            code: 'validation.failed',
+            details: { fields: [{ path: 'ids' }] },
+          },
+        });
+      }
+      if (path.startsWith(SAVED_PATH)) {
+        reads += 1;
+        return Promise.resolve(savedAnswer([A, B]));
+      }
+      return Promise.resolve(ok(pageOf([row()])));
+    }) as never);
+    mount({ csrfToken: 'csrf-2' });
+    await screen.findByRole('button', { name: 'Big orders' });
+    fireEvent.click(screen.getByRole('button', { name: 'Manage filters' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Manage filters' });
+    const before = reads;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move Paid, captured down' }));
+    expect(await within(dialog).findByText(messages.orders.saved.error.unavailable)).toBeTruthy();
+    await waitFor(() => expect(reads).toBeGreaterThan(before));
+    const names = within(dialog)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '');
+    expect(names[0]).toContain('Paid, captured');
   });
 });
 
