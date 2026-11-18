@@ -1,18 +1,17 @@
 import { Banner, LoadError } from '@mondapac/ui';
-import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
+import { headers } from 'next/headers';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
+import { panelHostFor } from '../../../../src/server/bff.ts';
+import { panelConfig } from '../../../../src/server/config.ts';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
+import { toId } from '../../../../src/sales/search-route.ts';
+import { localZone } from '../../../../src/shared/format.ts';
 import { typeNames } from '../../../../src/certificates/format.ts';
 import { CertificatesTabs } from '../../../../src/certificates/tabs.tsx';
-import { RequestsTable } from '../../../../src/certificates/requests/requests-table.tsx';
-import {
-  API_REQUESTS,
-  PAGE_SIZE,
-  REQUESTS_VIEW_PERMISSION,
-  type RequestPage,
-} from '../../../../src/certificates/requests/types.ts';
+import { RequestsList } from '../../../../src/certificates/requests/requests-list.tsx';
+import { REQUESTS_VIEW_PERMISSION } from '../../../../src/certificates/requests/types.ts';
 import { TYPE_VIEW_PERMISSION, type TypesList } from '../../../../src/certificates/types.ts';
 
 export async function generateMetadata() {
@@ -20,22 +19,21 @@ export async function generateMetadata() {
   return { title: t('certificates.requests.title') };
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 /**
- * Certificates > Issuer requests (certificate issuers design A12): the open requests of sellers whose
- * issuer is not in the registry, oldest first, in keyset pages. Needs the issuer view permission.
+ * Certificates > Issuer requests (certificate issuers design A12): the open requests of sellers
+ * whose issuer is not in the registry, as a super list that the client loads (search, filters,
+ * sort and paging are its own queries). The page reads the Market's List paging setting, and the
+ * type names for a reader who may view the types. Needs the issuer view permission.
  */
 export default async function IssuerRequestsPage({
   searchParams,
 }: {
   readonly searchParams: Promise<{
-    readonly after?: string | readonly string[];
     readonly answered?: string | readonly string[];
+    readonly sellerId?: string | readonly string[];
   }>;
 }) {
-  const { after, answered } = await searchParams;
-  const cursor = typeof after === 'string' && UUID.test(after) ? after : null;
+  const { answered, sellerId } = await searchParams;
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
@@ -49,40 +47,33 @@ export default async function IssuerRequestsPage({
       {body}
     </AdminShell>
   );
-  const message = (key: 'no-access' | 'unavailable') => (
-    <>
-      {key === 'unavailable' ? (
-        <LoadError
-          className="flex flex-col items-start gap-3"
-          message={t('certificates.requests.unavailable')}
-          retryLabel={t('load.retry')}
-        />
-      ) : (
+  if (!keys.includes(REQUESTS_VIEW_PERMISSION)) {
+    return shell(
+      <>
         <p className="text-fg-muted">{t('certificates.requests.no-access')}</p>
-      )}
-      <p className="mt-4">
-        <a className="font-medium text-link underline" href="/">
-          {t('certificates.queue.back-home')}
-        </a>
-      </p>
-    </>
-  );
-  if (!keys.includes(REQUESTS_VIEW_PERMISSION)) return shell(message('no-access'));
+        <p className="mt-4">
+          <a className="font-medium text-link underline" href="/">
+            {t('certificates.queue.back-home')}
+          </a>
+        </p>
+      </>,
+    );
+  }
 
-  const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
-  if (cursor !== null) query.set('afterId', cursor);
-  const [result, types] = await Promise.all([
-    serverGet<RequestPage>(`${API_REQUESTS}?${query.toString()}`),
+  // List paging (settings): page numbers only when the Market says so. A value that cannot be
+  // read means Previous and next, which works for any number of requests.
+  const [mode, types] = await Promise.all([
+    serverGet<{ readonly listPaging: string }>('settings/admin/list-paging'),
     keys.includes(TYPE_VIEW_PERMISSION)
       ? serverGet<TypesList>('certification/admin/types')
       : Promise.resolve(null),
   ]);
-  if (result.kind === 'signed-out') redirect('/session-ended');
-  if (result.kind === 'forbidden') return shell(message('no-access'));
-  if (result.kind !== 'ok') return shell(message('unavailable'));
+  const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
   const locale = await getLocale();
   const names = typeNames(types?.kind === 'ok' ? types.body.items : [], locale);
-  const next = result.body.nextAfterId;
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
+  // A link from a seller page may name one seller; anything that is not an id is ignored.
+  const seller = typeof sellerId === 'string' ? toId(sellerId) : null;
 
   return shell(
     <div className="flex flex-col gap-4">
@@ -90,25 +81,15 @@ export default async function IssuerRequestsPage({
       {answered === '1' ? (
         <Banner tone="success">{t('certificates.requests.answered')}</Banner>
       ) : null}
-      <p className="text-sm text-fg-muted">
-        {t('certificates.requests.total', { count: result.body.total })}
-      </p>
-      <RequestsTable rows={result.body.items} typeNames={names} morePages={next !== null} />
-      <div className="flex gap-4">
-        {cursor === null ? null : (
-          <a className="font-medium text-link underline" href="/certificates/issuer-requests">
-            {t('certificates.queue.first-page')}
-          </a>
-        )}
-        {next === null ? null : (
-          <a
-            className="font-medium text-link underline"
-            href={`/certificates/issuer-requests?after=${encodeURIComponent(next)}`}
-          >
-            {t('certificates.queue.more')}
-          </a>
-        )}
-      </div>
+      <RequestsList
+        paging={paging}
+        accountId={gate.session.accountId}
+        marketId={marketId}
+        csrfToken={gate.session.csrfToken}
+        zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
+        typeNames={Object.fromEntries(names)}
+        sellerId={seller}
+      />
     </div>,
   );
 }

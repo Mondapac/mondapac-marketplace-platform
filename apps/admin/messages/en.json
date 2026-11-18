@@ -1654,18 +1654,17 @@
       "no-access": "You don't have access to issuer requests.",
       "unavailable": "Issuer requests could not be loaded.",
       "total": "{count, plural, =0 {No request is open.} one {# request is open, oldest first.} other {# requests are open, oldest first.}}",
-      "empty": "No issuer requests are open.",
-      "empty-page": "Nothing on this page. Go back to the first page.",
       "answered": "Request answered. The seller gets an email.",
       "col": {
         "seller": "Seller",
         "type": "Type",
-        "files": "Files",
-        "waiting": "Waiting since (UTC)"
+        "submitted": "Submitted",
+        "documents": "Files",
+        "request-id": "Request ID",
+        "seller-id": "Seller ID"
       },
       "seller-fallback": "Not yet approved",
       "seller-id": "Seller ID {id}",
-      "open-request": "Open request",
       "back": "Back to issuer requests",
       "state": {
         "open": "Open",
@@ -1732,9 +1731,81 @@
         "csrf": "Your session needs a refresh. Reload the page.",
         "unavailable": "The service is not available. Try again.",
         "unknown": "Something went wrong. Nothing was recorded.",
-        "downloads-off": "Downloads are switched off."
+        "downloads-off": "Downloads are switched off.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them.",
+        "list-unavailable": "Issuer requests couldn't be loaded."
       },
-      "open-request-from": "Open request from {store}, seller {id}"
+      "back-home": "Back to dashboard",
+      "tabs": "Issuer request views",
+      "tab": {
+        "all": "All"
+      },
+      "row-name": "request {id}",
+      "loading": "Loading issuer requests...",
+      "truncated": "Showing the {count} oldest open requests. Answer some to see newer ones.",
+      "search": {
+        "label": "Search",
+        "placeholder": "Request ID",
+        "not-an-id": "Enter a whole request ID, for example from an email or a support ticket."
+      },
+      "chip-search": "Request {id}",
+      "chip-seller": "Seller is {name}",
+      "match": "{count, plural, one {# request matches} other {# requests match}}",
+      "range": "{from} to {to} of {total}",
+      "range-open": "{from} to {to}",
+      "sorted": "Sorted by {field}: {order}",
+      "filter": {
+        "title": "Filter issuer requests",
+        "name": {
+          "type": "Type",
+          "submitted": "Submitted"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "submitted": "Submitted",
+          "type": "Type"
+        },
+        "submitted": {
+          "first": "Oldest first",
+          "second": "Newest first"
+        },
+        "type": {
+          "first": "A to Z",
+          "second": "Z to A"
+        }
+      },
+      "select": {
+        "page": "Select all requests on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+        "all": "{count, plural, one {The # matching request is selected} other {All # matching requests are selected}}",
+        "all-open": "All matching requests are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+        "all-open": "All matching requests selected"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "open": "Open request",
+        "answer": "Answer request"
+      },
+      "empty": {
+        "none": "No issuer requests are open.",
+        "no-match": "No requests match",
+        "no-match-help": "Try other filters or clear them."
+      }
     },
     "types": {
       "title": "Certificate types",
