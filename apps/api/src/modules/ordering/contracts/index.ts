@@ -42,6 +42,8 @@ export {
   type OrderNoticeFailure,
   type OwnOpenObligations,
   type OwnOpenObligationsFailure,
+  type DeliveredSellerOrderFacts,
+  type DeliveredSellerOrderFactsFailure,
   type OrderPaymentRef,
   type OrderPaymentRefFailure,
   type SellerOrderCustomerName,

@@ -17,6 +17,7 @@ import type {
   ActivityKind,
   ChangeValues,
   Decision,
+  RequestMode,
   RequestStatus,
   SystemRequest,
 } from '../domain/request';
@@ -31,6 +32,7 @@ interface Row {
   readonly area: string;
   readonly subjectKind: string;
   readonly subjectRef: string;
+  readonly mode: string;
   readonly risk: string;
   readonly status: string;
   readonly before: Prisma.JsonValue;
@@ -53,6 +55,7 @@ const toRequest = (row: Row): SystemRequest => ({
   area: row.area as ReviewArea,
   subjectKind: row.subjectKind,
   subjectRef: row.subjectRef,
+  mode: row.mode as RequestMode,
   risk: row.risk as Risk,
   status: row.status as RequestStatus,
   before: row.before as ChangeValues,
@@ -120,6 +123,7 @@ function whereOf(
     ...(filter.decidedBy === undefined ? {} : { decidedByAccountId: filter.decidedBy }),
     ...(filter.subjectKind === undefined ? {} : { subjectKind: filter.subjectKind }),
     ...(filter.subjectRef === undefined ? {} : { subjectRef: filter.subjectRef }),
+    ...(filter.modes === undefined ? {} : { mode: { in: [...filter.modes] } }),
     ...(filter.number === undefined ? {} : { number: filter.number }),
     ...(and.length === 0 ? {} : { AND: and }),
   };
@@ -146,15 +150,20 @@ export class PrismaRequestRepository implements RequestRepository {
       data: { lastNumber: { increment: 1 } },
       select: { lastNumber: true },
     });
-    const earlier = await tx.systemRequestsRequest.findMany({
-      where: {
-        marketId: market.marketId,
-        subjectKind: request.subjectKind,
-        subjectRef: request.subjectRef,
-        supersededByRequestId: null,
-      },
-      select: { id: true },
-    });
+    // A proposal changes nothing, so it supersedes nothing and is never superseded.
+    const earlier =
+      request.mode === 'approval'
+        ? []
+        : await tx.systemRequestsRequest.findMany({
+            where: {
+              marketId: market.marketId,
+              subjectKind: request.subjectKind,
+              subjectRef: request.subjectRef,
+              mode: 'review',
+              supersededByRequestId: null,
+            },
+            select: { id: true },
+          });
     await tx.systemRequestsRequest.create({
       data: {
         id: request.id,
@@ -164,6 +173,7 @@ export class PrismaRequestRepository implements RequestRepository {
         area: request.area,
         subjectKind: request.subjectKind,
         subjectRef: request.subjectRef,
+        mode: request.mode,
         risk: request.risk,
         status: 'open',
         before: request.before as Prisma.InputJsonValue,
@@ -187,7 +197,7 @@ export class PrismaRequestRepository implements RequestRepository {
         marketId: market.marketId,
         tenantId: market.tenantId,
         requestId: request.id,
-        kind: 'applied',
+        kind: request.mode === 'approval' ? 'proposed' : 'applied',
         actorAccountId: request.requestedBy,
         at: toDate(request.appliedAt),
         body: null,
@@ -215,6 +225,30 @@ export class PrismaRequestRepository implements RequestRepository {
     const row = await this.prisma
       .tx(market)
       .systemRequestsRequest.findFirst({ where: { marketId: market.marketId, id } });
+    return row === null ? null : toRequest(row);
+  }
+
+  async findPendingProposal(market: MarketContext, subjectKind: string, subjectRef: string) {
+    const tx = this.prisma.tx(market);
+    // The Market's counter row lock first, as `open` takes it: two proposals of one subject are
+    // then looked up one after the other, and the later one sees the earlier (Mojtaba, #1048).
+    await tx.systemRequestsRequestCounter.createMany({
+      data: [{ marketId: market.marketId, tenantId: market.tenantId, lastNumber: 0 }],
+      skipDuplicates: true,
+    });
+    await tx.systemRequestsRequestCounter.updateMany({
+      where: { marketId: market.marketId },
+      data: { lastNumber: { increment: 0 } },
+    });
+    const row = await tx.systemRequestsRequest.findFirst({
+      where: {
+        marketId: market.marketId,
+        subjectKind,
+        subjectRef,
+        mode: 'approval',
+        status: 'open',
+      },
+    });
     return row === null ? null : toRequest(row);
   }
 

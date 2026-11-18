@@ -42,6 +42,7 @@ import { ConfigPromotionsPolicy } from '../infrastructure/config-promotions-poli
 import { PromotionsFacadeImplementation } from '../presentation/promotions.facade';
 import type { PromotionsDependencies } from './promotions-dependencies';
 import { ApplyReferralCode } from './use-cases/apply-referral-code.use-case';
+import { GrantDueCredits } from './use-cases/grant-due-credits.use-case';
 import { CashbackOnDelivery } from './use-cases/cashback-on-delivery.use-case';
 import { CheckWasPrice } from './use-cases/check-was-price.use-case';
 import { CreateOwnPromotion } from './use-cases/create-own-promotion.use-case';
@@ -309,13 +310,17 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       }
       expect((await make(CreateOwnPromotion).execute(seller(), follower())).ok).toBe(true);
 
-      for (const body of [
+      const sellerReferral = await make(CreateOwnPromotion).execute(
+        seller(),
         referral({ funding: 'SELLER', budgetMinor: undefined, testMode: false }),
+      );
+      expect(fields(sellerReferral)).toContain('type:not-allowed');
+      // A seller's cashback is for its exclusive customers only (customers phase 4c).
+      const sellerCashback = await make(CreateOwnPromotion).execute(
+        seller(),
         cashback({ funding: 'SELLER', budgetMinor: undefined, testMode: false }),
-      ]) {
-        const result = await make(CreateOwnPromotion).execute(seller(), body);
-        expect(fields(result)).toContain('type:not-allowed');
-      }
+      );
+      expect(fields(sellerCashback)).toContain('segment.kind:required');
       // A seller's customer-group discount is for its exclusive customers only.
       const otherSegment = await make(CreateOwnPromotion).execute(
         seller(),
@@ -447,6 +452,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
         idempotencyKey: 'promotions:cashback:x1',
         createdAt: T0,
         settledAt: T0,
+        grantAfter: null,
       });
       const low = await make(SetPromotionBudget).execute(admin(), {
         promotionId: made.id,
@@ -957,13 +963,17 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       testOrder?: boolean;
       orderId?: Id<'Order'>;
       goodsCurrency?: string;
+      sellerId?: Id<'Seller'>;
+      exclusiveSeller?: boolean;
     } = {},
   ) => {
     const facts = {
       orderId: over.orderId ?? id<'Order'>(0x0d00 + n),
       sellerOrderId: id<'SellerOrder'>(0x5000 + n),
+      sellerId: over.sellerId ?? SELLER,
       customerAccountId: who,
       goodsPaid: money(goodsMinor, over.goodsCurrency ?? currency),
+      exclusiveSeller: over.exclusiveSeller ?? true,
       placedAt: over.placedAt ?? T0.add({ hours: 1 }),
       deliveredAt: T0.add({ hours: 48 }),
       testOrder: over.testOrder ?? false,
@@ -1073,6 +1083,286 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
         await adminCreate(cashback({ name: 'Large', reward: { kind: 'PERCENT', bps: 400 } }));
         await run(deliverOrder(1, REFERRER, 10000n));
         expect(credits().map((c) => c.amountMinor)).toEqual([400n]);
+      });
+
+      describe('a seller’s own cashback for its exclusive customers (customers phase 4c)', () => {
+        const sellerCashback = (extra: Record<string, unknown> = {}) =>
+          sellerCreate({
+            type: 'CASHBACK',
+            name: 'Our cashback',
+            funding: 'SELLER',
+            startsAt: startsAt(),
+            reward: { kind: 'PERCENT', bps: 500 },
+            capMinor: '400',
+            segment: { kind: 'SELLER_EXCLUSIVE' },
+            ...extra,
+          });
+        const ledger = () => p3.sellerCashbackLedger;
+
+        it('credits the exclusive customer on the seller’s own order and debits the seller, whatever the tax ruling', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const facts = deliverOrder(1, REFERRER, 10000n);
+          const d = delivery();
+          expect(await run(facts, d)).toEqual({ ok: true, value: { outcome: 'issued' } });
+          // 5% of 100.00 is 5.00, held to the seller's per-order cap of 4.00.
+          expect(p3.walletCredit.grants).toHaveLength(1);
+          expect(p3.walletCredit.grants[0]).toMatchObject({
+            accountId: REFERRER,
+            amount: money(400n, currency),
+          });
+          expect(credits()[0]).toMatchObject({ status: 'GRANTED', amountMinor: 400n });
+          expect(ledger().entries).toEqual([
+            expect.objectContaining({
+              creditId: credits()[0]!.id,
+              orderId: facts.orderId,
+              sellerOrderId: facts.sellerOrderId,
+              sellerId: SELLER,
+              amount: 400n,
+              currency,
+            }),
+          ]);
+          // A redelivery, and a new event for the same order, neither credit nor debit again.
+          expect(await run(facts, d)).toEqual({ ok: true, value: { outcome: 'already-handled' } });
+          await run(facts);
+          expect(credits()).toHaveLength(1);
+          expect(p3.walletCredit.grants).toHaveLength(1);
+          expect(ledger().entries).toHaveLength(1);
+        });
+
+        it('gives nothing to another seller’s customer, an unattributed one, or on another seller’s order', async () => {
+          await sellerCashback();
+          await run(deliverOrder(1, REFERRER, 10000n));
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER_2);
+          await run(deliverOrder(2, REFERRER, 10000n));
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          await run(deliverOrder(3, REFERRER, 10000n, { sellerId: SELLER_2 }));
+          expect(credits()).toHaveLength(0);
+          expect(ledger().calls).toBe(0);
+        });
+
+        it('retries when the customer’s seller cannot be read, and asks only when a seller cashback is live', async () => {
+          await adminCreate(cashback({ testMode: !confirmed }));
+          await run(deliverOrder(1, REFERRER, 10000n));
+          expect(p3.exclusiveCustomers.reads).toBe(0);
+          await sellerCashback();
+          p3.exclusiveCustomers.broken = true;
+          const facts = deliverOrder(2, REFERRER, 10000n);
+          expect(await run(facts)).toEqual({ ok: false, error: { code: 'promotions.try-again' } });
+          p3.exclusiveCustomers.broken = false;
+          p3.exclusiveCustomers.throws = true;
+          expect(await run(facts)).toEqual({ ok: false, error: { code: 'promotions.try-again' } });
+        });
+
+        it('keeps the credit pending while the seller ledger refuses, then debits once on the retry', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const facts = deliverOrder(1, REFERRER, 10000n);
+          ledger().fails = true;
+          expect(await run(facts)).toEqual({ ok: false, error: { code: 'promotions.try-again' } });
+          expect(credits()[0]!.status).toBe('PENDING');
+          ledger().fails = false;
+          expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'issued' } });
+          // The wallet answers the repeat with the same journal: the customer is credited once.
+          expect(p3.walletCredit.grants).toHaveLength(1);
+          expect(ledger().entries).toHaveLength(1);
+          expect(credits()[0]!.status).toBe('GRANTED');
+        });
+
+        it('fails for good, debiting nothing, when the wallet is off', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          p3.walletCredit.failure = { retry: true, code: 'wallet.disabled' };
+          expect(await run(deliverOrder(1, REFERRER, 10000n))).toEqual({
+            ok: true,
+            value: { outcome: 'failed' },
+          });
+          expect(credits()[0]).toMatchObject({ status: 'FAILED', failureCode: 'wallet.disabled' });
+          expect(ledger().calls).toBe(0);
+        });
+
+        it('pays the larger of the platform’s and the seller’s cashback, not both', async () => {
+          // The platform's real money is in play only with the ruling confirmed; otherwise its
+          // promotion is test mode and only notes.
+          await adminCreate(
+            cashback({ testMode: !confirmed, reward: { kind: 'PERCENT', bps: 200 } }),
+          );
+          await sellerCashback({ capMinor: '1000' });
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          await run(deliverOrder(1, REFERRER, 10000n));
+          expect(credits().map((c) => c.amountMinor)).toEqual([500n]);
+          expect(ledger().entries.map((e) => e.amount)).toEqual([500n]);
+        });
+      });
+
+      describe('waiting for the seller order’s payout release (customers phase 4c, Hassan H-1)', () => {
+        const HOLD = { hours: 24 * 14 };
+        const grantDue = () => make(GrantDueCredits).execute(system, undefined);
+        const sellerCashback = () =>
+          sellerCreate({
+            type: 'CASHBACK',
+            name: 'Our cashback',
+            funding: 'SELLER',
+            startsAt: startsAt(),
+            reward: { kind: 'PERCENT', bps: 500 },
+            capMinor: '400',
+            segment: { kind: 'SELLER_EXCLUSIVE' },
+          });
+        /** Delivered now, released after the hold. */
+        const deliverHeld = (n: number, goods = 10000n) => {
+          const facts = deliverOrder(n, REFERRER, goods);
+          p3.payoutAnchors.anchors.set(facts.sellerOrderId, {
+            sellerId: facts.sellerId,
+            eligibleAt: clock.now().add(HOLD),
+          });
+          return facts;
+        };
+
+        it('reserves the credit at delivery and credits it, with the seller debit, only once the payout is released', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const facts = deliverHeld(1);
+          expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'pending' } });
+          expect(credits()[0]).toMatchObject({ status: 'PENDING', amountMinor: 400n });
+          expect(credits()[0]!.grantAfter).not.toBeNull();
+          expect(p3.walletCredit.calls).toBe(0);
+          // A redelivery waits too.
+          expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'pending' } });
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 0, retried: 0 },
+          });
+          clock.advance(Temporal.Duration.from(HOLD));
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 1, failed: 0, retried: 0 },
+          });
+          expect(credits()[0]).toMatchObject({
+            status: 'GRANTED',
+            amountMinor: 400n,
+            grantAfter: null,
+          });
+          expect(p3.walletCredit.grants.map((g) => g.amount)).toEqual([money(400n, currency)]);
+          expect(p3.sellerCashbackLedger.entries.map((e) => e.amount)).toEqual([400n]);
+          // Done: the next run finds nothing.
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 0, retried: 0 },
+          });
+        });
+
+        it('lowers the credit for what refunds gave back inside the hold, and cancels it when nothing is left', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const kept = deliverHeld(1);
+          const gone = deliverHeld(2);
+          await run(kept);
+          await run(gone);
+          // 6000 of 10000 refunded: 5 % of 4000 is 200, under the 400 reserved.
+          p3.orderFacts.add({ ...kept, goodsPaid: money(4000n, currency) });
+          p3.orderFacts.add({ ...gone, goodsPaid: money(0n, currency) });
+          clock.advance(Temporal.Duration.from(HOLD));
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 1, failed: 1, retried: 0 },
+          });
+          const bySource = new Map(credits().map((c) => [c.sourceId, c]));
+          expect(bySource.get(kept.sellerOrderId)).toMatchObject({
+            status: 'GRANTED',
+            amountMinor: 200n,
+          });
+          expect(bySource.get(gone.sellerOrderId)).toMatchObject({
+            status: 'FAILED',
+            failureCode: 'order-refunded',
+          });
+          expect(p3.walletCredit.grants.map((g) => g.amount)).toEqual([money(200n, currency)]);
+          expect(p3.sellerCashbackLedger.entries.map((e) => e.amount)).toEqual([200n]);
+        });
+
+        it('cancels a seller’s cashback whose customer stopped being its exclusive customer during the hold', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          await run(deliverHeld(1));
+          p3.exclusiveCustomers.sellers.delete(REFERRER);
+          clock.advance(Temporal.Duration.from(HOLD));
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 1, retried: 0 },
+          });
+          expect(credits()[0]).toMatchObject({ status: 'FAILED', failureCode: 'not-exclusive' });
+          expect(p3.walletCredit.calls).toBe(0);
+          expect(p3.sellerCashbackLedger.calls).toBe(0);
+        });
+
+        it('tries again next run when the facts, the attribution or the ledger cannot be reached', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const facts = deliverHeld(1);
+          await run(facts);
+          clock.advance(Temporal.Duration.from(HOLD));
+          p3.orderFacts.orders.delete(facts.sellerOrderId);
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 0, retried: 1 },
+          });
+          p3.orderFacts.add(facts);
+          p3.exclusiveCustomers.broken = true;
+          expect((await grantDue()).ok && credits()[0]!.status).toBe('PENDING');
+          p3.exclusiveCustomers.broken = false;
+          p3.sellerCashbackLedger.fails = true;
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 0, retried: 1 },
+          });
+          // The amount is final now; the wallet holds it under its key, the seller is not debited.
+          expect(credits()[0]).toMatchObject({ status: 'PENDING', grantAfter: null });
+          p3.sellerCashbackLedger.fails = false;
+          // A fixed credit is finished as it is, after a while, with no new check.
+          p3.exclusiveCustomers.sellers.delete(REFERRER);
+          clock.advance(Temporal.Duration.from({ minutes: 61 }));
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 1, failed: 0, retried: 0 },
+          });
+          expect(p3.walletCredit.grants).toHaveLength(1);
+          expect(p3.sellerCashbackLedger.entries).toHaveLength(1);
+        });
+
+        it('makes the platform’s real cashback wait too', async () => {
+          await adminCreate(cashback({ testMode: !confirmed }));
+          const facts = deliverHeld(1);
+          const result = await run(facts);
+          if (confirmed) {
+            expect(result).toEqual({ ok: true, value: { outcome: 'pending' } });
+            clock.advance(Temporal.Duration.from(HOLD));
+            expect((await grantDue()).ok && credits()[0]!.status).toBe('GRANTED');
+          } else {
+            // A test-mode note never waits: it moves no money.
+            expect(result).toEqual({ ok: true, value: { outcome: 'recorded' } });
+          }
+        });
+
+        it('retries while the payout anchor is unknown, and credits nothing on an anchor of another seller', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          p3.payoutAnchors.broken = true;
+          const facts = deliverOrder(1, REFERRER, 10000n);
+          expect(await run(facts)).toEqual({ ok: false, error: { code: 'promotions.try-again' } });
+          p3.payoutAnchors.broken = false;
+          p3.payoutAnchors.anchors.set(facts.sellerOrderId, {
+            sellerId: SELLER_2,
+            eligibleAt: clock.now(),
+          });
+          expect((await run(facts)).ok).toBe(true);
+          expect(credits()).toHaveLength(0);
+        });
+
+        it('gives a seller’s cashback nothing when the order was not flagged exclusive at checkout', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          await run(deliverOrder(1, REFERRER, 10000n, { exclusiveSeller: false }));
+          expect(credits()).toHaveLength(0);
+        });
       });
 
       it('does nothing, and reads no order fact, with no live cashback or with the switch off', async () => {
@@ -1801,6 +2091,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
         idempotencyKey: 'promotions:cashback:a1234567',
         createdAt: T0,
         settledAt: T0,
+        grantAfter: null,
       });
       const listed = await make(ListPromotionCredits).execute(admin(), { promotionId: made.id });
       expect(listed.ok && listed.value.items).toHaveLength(1);
@@ -1836,6 +2127,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           // Three share an instant: the id breaks the tie.
           createdAt: T0.add({ hours: n <= 3 ? 1 : n }),
           settledAt: T0,
+          grantAfter: null,
         });
       }
       await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
@@ -1885,6 +2177,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           idempotencyKey: `promotions:cashback:cust000${n}`,
           createdAt: T0.add({ hours: n }),
           settledAt: T0,
+          grantAfter: null,
         });
       await credit(1, first.id, REFERRER);
       await credit(2, second.id, REFERRER);
