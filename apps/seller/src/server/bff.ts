@@ -37,6 +37,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'reviews/seller',
     'payments/seller/payout-account',
     'ordering/seller/orders',
+    // The shop's invite link and its sign-up count (customers phase 4a).
+    'customers/seller/invite-link',
+    // The seller's own promotions (query: `type`, `limit`): the exclusive discount is one of them.
+    'promotions/seller/promotions',
     // The Offer list (list mode: tabs, search, filters, sort and page; the API validates every value).
     'catalog/seller/offers',
     // The Offers export (file): the list's selector, the format, the columns and the selected ids.
@@ -96,6 +100,14 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set(['sellers/store-profile/logo', 'sellers/store-profile/banner']),
   POST: new Set([
+    // The Customers list (a JSON body: view, search, filters, sort, page) and its export as a file
+    // (the body names at most 1,000 codes, or the list's selector). Reads, but the filters are a document.
+    'customers/seller/customers/list',
+    'customers/seller/customers/export',
+    // Draws a new invite link; the old one stops working. No body.
+    'customers/seller/invite-link/refresh',
+    // A seller promotion (the exclusive discount is one of type CUSTOMER_GROUP).
+    'promotions/seller/promotions',
     // The packing slips of a selection of orders (up to 50 ids in the body; a read).
     'ordering/seller/orders/documents',
     // A description draft from the "Write with AI" modal (catalog, AIS-03): the form's title,
@@ -202,8 +214,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'reviews/seller/:id/report',
     // "Refresh now" of the seller's health (queues a recount; 15-minute cooldown).
     'sellers/own-health/refresh',
+    // Pause and resume one of the seller's own promotions.
+    'promotions/seller/promotions/:id/pause',
+    'promotions/seller/promotions/:id/resume',
   ],
-  PATCH: ['reviews/seller/:id/reply'],
+  PATCH: ['reviews/seller/:id/reply', 'promotions/seller/promotions/:id'],
   DELETE: [
     'catalog/seller/offers/:id',
     'catalog/seller/products/:id/images/:id',
@@ -218,6 +233,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // An import (polled) and its CSV report (query: `kind`).
     'catalog/seller/imports/:id',
     'catalog/seller/imports/:id/report',
+    // One of the shop's customers by code (query: `page`, `pageSize` of their orders).
+    'customers/seller/customers/:code',
   ],
 };
 
@@ -248,6 +265,11 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     status: /^(to-ship|shipped|delivered)$/,
     from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
     to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
+  },
+  // The seller's own promotions list: the type filter and the page size.
+  'promotions/seller/promotions': {
+    type: /^[A-Z_]{1,40}$/,
+    limit: /^[0-9]{1,3}$/,
   },
   'ordering/seller/saved-filters': { listKey: /^seller\.ordering\.orders$/ },
   'commission-payouts/seller/ledger': { limit: null, cursor: null },
@@ -321,6 +343,7 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
 };
 /** Per GET template with ids, the query keys passed on (same rules as {@link QUERY_KEYS}). */
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
+  'customers/seller/customers/:code': { page: /^[0-9]{1,4}$/, pageSize: /^[0-9]{1,3}$/ },
   'catalog/seller/imports/:id/report': { kind: /^(errors|full)$/ },
 };
 const QUERY_VALUE_MAX = 512;
@@ -352,6 +375,9 @@ function upstreamQuery(method: string, path: readonly string[], requestUrl: stri
 }
 
 /** The picture sizes the panel may ask for: a product photo's three, and a store image's small. */
+/** A customer code as the shop knows it (`XXXX-XXXX`); a typed start is shorter, so this is only the shape. */
+const CUSTOMER_CODE = /^[0-9A-Za-z-]{1,12}$/;
+
 const PHOTO_SIZES: ReadonlySet<string> = new Set(['thumb', 'medium', 'large', 'small']);
 
 function matches(template: string, path: readonly string[]): boolean {
@@ -363,7 +389,9 @@ function matches(template: string, path: readonly string[]): boolean {
         ? UUID.test(path[index] ?? '')
         : part === ':size'
           ? PHOTO_SIZES.has(path[index] ?? '')
-          : part === path[index],
+          : part === ':code'
+            ? CUSTOMER_CODE.test(path[index] ?? '')
+            : part === path[index],
     )
   );
 }

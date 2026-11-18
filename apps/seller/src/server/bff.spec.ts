@@ -13,6 +13,7 @@ const config: PanelConfig = {
   locale: 'en-AU',
   supportEmail: 'support@example.com',
   storefrontAddress: null,
+  storefrontOrigin: null,
   clientAddressKey: null,
 };
 
