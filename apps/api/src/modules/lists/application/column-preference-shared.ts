@@ -42,11 +42,7 @@ export function bodyOf(
 }
 
 /** The list a request names, when it has a column choice at all. */
-export function columnListOf(
-  registry: ListRegistry,
-  value: unknown,
-  population: ListPopulation = 'admin',
-) {
+export function columnListOf(registry: ListRegistry, value: unknown, population: ListPopulation) {
   const list = registry.lookup(value, population);
   if (!list.ok) return list;
   if (list.value.columns === undefined) return invalid('listKey', 'value');

@@ -15,7 +15,7 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { ListDefinition } from '../../contracts';
-import { ListRegistry } from '../saved-filter-shared';
+import { callerOf, ListRegistry } from '../saved-filter-shared';
 import { ColumnPreferenceSave } from './column-preference-save.use-case';
 import { SellerColumnPreferenceGet } from './seller-column-preference-get.use-case';
 import { SellerColumnPreferenceReset } from './seller-column-preference-reset.use-case';
@@ -214,6 +214,22 @@ describe.each(['AU', 'ZZ'] as const)('seller column preferences in market %s', (
     expect(failure(await down.get.execute(down.as(who), { listKey: PRODUCTS }))).toBe(
       'access.unavailable',
     );
+  });
+
+  it('names an acting-as marker on a minted seller actor access.acting-as-refused', () => {
+    const who = member([PRODUCTS_VIEW]);
+    const actor = Object.assign(
+      Object.create(Object.getPrototypeOf(who.context.actor) as object | null),
+      {
+        ...who.context.actor,
+        actingAs: { adminAccountId: ids.next() },
+      },
+    ) as CallContext['actor'];
+    expect(callerOf({ ...who.context, actor }, 'seller')).toEqual({
+      ok: false,
+      error: { code: 'access.acting-as-refused' },
+    });
+    expect(callerOf(who.context, 'seller').ok).toBe(true);
   });
 
   it('keeps admin and seller apart in both directions', async () => {

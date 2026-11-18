@@ -8,7 +8,7 @@ import type {
 import { handleColumnPreferenceReset } from './column-preference-reset.use-case';
 
 /**
- * `lists.seller-column-preference-reset`: the admin use case for a seller list: the same checks of the list's view key, run for
+ * `lists.seller-column-preference-reset`: the column use case for a seller list: the same checks of the list's view key, run for
  * the `seller` population. The caller must be a seller session with a store; an acting-as session
  * is refused. A store-scoped list keeps the choice per member and store, an account-scoped list per
  * account. Open to a seller whose store is not yet approved, like the other seller list routes.

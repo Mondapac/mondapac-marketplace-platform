@@ -41,6 +41,7 @@ import { closedBody, refusalWith } from './http-answers';
 export const COLUMN_PREFERENCE_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
   'access.unavailable': 503,
+  'access.acting-as-refused': 403,
 });
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
