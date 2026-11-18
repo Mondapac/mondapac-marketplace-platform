@@ -306,7 +306,10 @@ export function QueueTable({
                 />
               </td>
               <th scope="row" className={`${cell} text-start font-normal lg:min-w-72 max-lg:ps-8`}>
-                <a href={requestPath(row.id)} className="font-medium text-link underline">
+                <a
+                  href={requestPath(row.id)}
+                  className="font-medium text-link underline max-lg:inline-flex max-lg:min-h-11 max-lg:items-center"
+                >
                   {row.displayNumber}
                 </a>
                 <span className="mt-0.5 block break-words text-fg-muted max-lg:line-clamp-2">
@@ -319,7 +322,7 @@ export function QueueTable({
               <td className={`${labelled} max-lg:hidden`}>
                 <RiskBadge risk={row.risk} />
               </td>
-              <td className={`${corner} max-lg:pe-8`}>
+              <td className={`${corner} max-lg:pe-14`}>
                 <StatusBadges request={row} />
               </td>
               {/* On a phone the area and risk badges share one line under the note. */}

@@ -356,7 +356,7 @@ export function RequestDetail({
       ) : null}
       {open && mine ? <Banner tone="info">{t('banner.own')}</Banner> : null}
       {request.status === 'approved' ? (
-        <p role="status" className="text-sm text-fg-secondary">
+        <p role="status" className="break-words text-sm text-fg-secondary">
           {t('outcome.approved', {
             name: who(request.decidedBy, request.decidedByName),
             date: decidedOn,
@@ -364,7 +364,7 @@ export function RequestDetail({
         </p>
       ) : null}
       {request.status === 'reverted' ? (
-        <p role="status" className="text-sm text-fg-secondary">
+        <p role="status" className="break-words text-sm text-fg-secondary">
           {t(`outcome.${request.decision === 'withdrawn' ? 'withdrawn' : 'rejected'}`, {
             name: who(request.decidedBy, request.decidedByName),
             date: decidedOn,
