@@ -70,18 +70,18 @@ function useCartGuard() {
  * True once the buyer's live cart has changed since this card was first shown with the live cart.
  * The numbers on an older card (quantities, what can still be added, what the list adds up to)
  * were true when the assistant wrote it, so the card says so and its button stays off until the
- * buyer asks again. A cart that has not been read yet (`live` false) never counts as a change.
+ * buyer asks again. A cart that has not been read yet (`cartReady` false) never counts as a change.
  */
 function useCartChanged(): boolean {
-  const { live, cart } = useStore();
+  const { cartReady, cart } = useStore();
   const signature = Object.keys(cart)
     .sort()
     .map((key) => `${key}:${cart[key]?.quantity ?? 0}`)
     .join('|');
   const [shown, setShown] = useState<string | null>(null);
   useEffect(() => {
-    if (live && shown === null) setShown(signature);
-  }, [live, shown, signature]);
+    if (cartReady && shown === null) setShown(signature);
+  }, [cartReady, shown, signature]);
   return shown !== null && shown !== signature;
 }
 
@@ -205,6 +205,7 @@ export function CartActionCardView({
 
   const choose = async (how: 'save' | 'remove') => {
     setStep('busy');
+    setActed(true);
     try {
       if (!(await guard.moveAway(how))) {
         setStep('failed');
@@ -222,7 +223,9 @@ export function CartActionCardView({
   const canAdd = card.action !== 'add' || ceiling > 0;
   const addNotPossible = card.action === 'add' && (card.cartFull === true || ceiling === 0);
   const live = guard.live;
-  const outdated = useCartChanged() && step === 'idle';
+  const [acted, setActed] = useState(false);
+  const outdated = useCartChanged() && step === 'idle' && !acted;
+  const outdatedId = `${uid}-outdated`;
 
   return (
     <section className="ascc" aria-label={title}>
@@ -276,7 +279,7 @@ export function CartActionCardView({
             <button
               type="button"
               aria-label={t('cart-less')}
-              disabled={quantity <= 1 || step === 'busy' || step === 'done'}
+              disabled={quantity <= 1 || step === 'busy' || step === 'done' || outdated}
               onClick={() => setWanted(quantity - 1)}
             >
               −
@@ -287,7 +290,7 @@ export function CartActionCardView({
             <button
               type="button"
               aria-label={t('cart-more')}
-              disabled={quantity >= ceiling || step === 'busy' || step === 'done'}
+              disabled={quantity >= ceiling || step === 'busy' || step === 'done' || outdated}
               onClick={() => setWanted(quantity + 1)}
             >
               +
@@ -328,7 +331,7 @@ export function CartActionCardView({
             </p>
           ) : null}
           {outdated ? (
-            <p className="asnote" role="status">
+            <p className="asnote" id={outdatedId}>
               {t('cart-card-outdated')}
             </p>
           ) : null}
@@ -340,6 +343,7 @@ export function CartActionCardView({
                 type="button"
                 className={card.action === 'remove' ? 'btn small alt' : 'btn small'}
                 disabled={step === 'busy' || outdated}
+                aria-describedby={outdated ? outdatedId : undefined}
                 onClick={() => void press()}
               >
                 {step === 'busy'
@@ -377,11 +381,7 @@ export function CartSummaryCardView({
   return (
     <section className="ascc" aria-label={t('cart-summary-title')}>
       <p className="ascc-t">{t('cart-summary-lines', { count: card.lineCount })}</p>
-      {outdated ? (
-        <p className="asnote" role="status">
-          {t('cart-card-outdated')}
-        </p>
-      ) : null}
+      {outdated ? <p className="asnote">{t('cart-card-outdated-summary')}</p> : null}
       {card.groups.map((group, at) => (
         <div className="ascc-group" key={group.sellerId ?? `g${at}`}>
           <div className="ascc-gh">
@@ -599,6 +599,7 @@ export function BasketProposalCardView({
 
   const chooseAway = async (how: 'save' | 'remove') => {
     setStep('busy');
+    setActed(true);
     try {
       if (!(await guard.moveAway(how))) {
         setMoveFailed(true);
@@ -620,7 +621,10 @@ export function BasketProposalCardView({
   const everyLineAdded = ready.length > 0 && ready.every((row) => results[rowKey(row)] === 'ok');
   const locked = step === 'busy';
   // Before anything was added from this card, a changed cart makes its list and total old news.
-  const outdated = useCartChanged() && step === 'idle' && Object.keys(results).length === 0;
+  const [acted, setActed] = useState(false);
+  const outdated =
+    useCartChanged() && step === 'idle' && !acted && Object.keys(results).length === 0;
+  const outdatedId = `${uid}-outdated`;
 
   // Rows sit under the store of the product they now name, with that store's subtotal of the
   // lines in the list (the grand total below is the sum, so who is paid is never hidden).
@@ -858,7 +862,7 @@ export function BasketProposalCardView({
             </p>
           ) : null}
           {outdated ? (
-            <p className="asnote" role="status">
+            <p className="asnote" id={outdatedId}>
               {t('cart-card-outdated')}
             </p>
           ) : null}
@@ -872,6 +876,7 @@ export function BasketProposalCardView({
                 disabled={
                   locked || outdated || ready.length === 0 || oneStoreBroken || everyLineAdded
                 }
+                aria-describedby={outdated ? outdatedId : undefined}
                 onClick={() => void press()}
               >
                 {locked
