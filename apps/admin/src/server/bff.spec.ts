@@ -2850,6 +2850,34 @@ describe('relay of the wallet and step-up routes', () => {
     );
   });
 
+  it('passes the held-price super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `pricing/admin/price-holds/list?view=up&kind=regular&q=${id}&sellerId=${id}&sort=amount&direction=desc&paging=prev-next&page=2&pageSize=50&from=2026-11-02T00:00:00Z&minAmount=100&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/pricing/admin/price-holds/list?view=up&kind=regular&q=${id}&sellerId=${id}&from=2026-11-02T00%3A00%3A00Z&minAmount=100&sort=amount&direction=desc&paging=prev-next&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'pricing/admin/price-holds/list?view=open&change=sideways&sort=name&q=abc&minAmount=-1&paging=all',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/pricing/admin/price-holds/list',
+    );
+    const file = await run(
+      'GET',
+      `pricing/admin/price-holds/export?format=xlsx&columns=record-id,window&ids=${id}&view=down&page=2&paging=pages`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/pricing/admin/price-holds/export?format=xlsx&columns=record-id%2Cwindow&ids=${id}&view=down`,
+    );
+    expect((await run('POST', 'pricing/admin/price-holds/list')).response.status).toBe(404);
+  });
+
   it.each([
     ['GET', 'commission-payouts/admin/payouts'],
     ['GET', `commission-payouts/admin/payouts/${id}`],

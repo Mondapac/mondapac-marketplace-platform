@@ -44,6 +44,18 @@ closed (`v: 1`; date filters are relative presets, never dates; search text is n
 - Routes: `GET/PUT/DELETE /lists/admin/column-preferences` (`listKey` in the query or body). No
   audit: it is a personal preference. Ids the list no longer offers are dropped on read.
 
+## B0-1b (seller)
+
+- Routes: the same five as the admin ones under `/lists/seller/saved-filters`. The use case bodies
+  are shared (`handleSavedFilter*`); the seller classes only declare their own access
+  (`own-resources`, `whenSellerNotApproved: 'allow'`, so a store still onboarding can use them).
+- `ListDefinition.scope`: `store` (default; rows kept per store, shareable with the store through
+  `shareKey`) or `account` (rows kept per seller account across its stores, `seller_id` null).
+  `shareKey` is optional: without it a filter is always private. `seller.catalog.products` is
+  store-scoped with the own-share key; `seller.ordering.orders` is account-scoped with no share key.
+- An acting-as (Login as Seller) session is refused with `access.acting-as-refused` (403) in every
+  use case; admin and seller lists never answer each other's routes.
+
 ## Phase 4 lists (PR10)
 
 - Registered admin lists: `admin.commission-payouts.payouts` (21), `admin.commission-payouts.disputes`
@@ -58,9 +70,10 @@ closed (`v: 1`; date filters are relative presets, never dates; search text is n
   lower case, instants as ISO text in UTC, minor units as digits). Every saved text (`q` and each filter
   value) must be a string: `null` or another type is `type`, a control, private-use, surrogate or
   unassigned character is `format`, and blank text is left out.
-- The compact lists 27 and 28 have no saved filters. The seller Payouts list (33) joins when the
-  seller saved-filter routes (`/lists/seller/saved-filters`) exist.
+- The compact lists 27 and 28 have no saved filters. The seller Payouts list (33) joins on the
+  seller routes (B0-1b) in a follow-up.
 
 ## Not here yet
 
-- B0-1b seller side: `/lists/seller/saved-filters` and the seller lists' definitions.
+- Seller column preferences (the seller panels' column vocabulary) and the switch of the panels to
+  the generic routes.
