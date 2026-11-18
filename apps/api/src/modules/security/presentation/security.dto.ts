@@ -4,6 +4,7 @@ import { ALERT_RESOLUTIONS, ALERT_STATES } from '../domain/alert';
 import { DELIVERY_CHANNELS, DELIVERY_OUTCOMES } from '../domain/delivery';
 import { ALERT_KEY_TYPES } from '../domain/rules';
 import { SEVERITIES } from '../domain/severity';
+import type { AlertListPage } from '../application/use-cases/query-security-alerts.use-case';
 import type {
   AlertPage,
   AlertSummaryView,
@@ -185,5 +186,40 @@ export function onCallBody(view: OnCallView): OnCallBody {
     })),
     channels: view.channels,
     businessHours: view.businessHours,
+  };
+}
+
+export class AlertListRowBody extends AlertSummaryBody {
+  @ApiProperty({ type: [String], description: 'open, acknowledge and resolve, as the caller may.' })
+  actions!: string[];
+}
+
+export class AlertViewCountsBody {
+  @ApiProperty() all!: number;
+  @ApiProperty() open!: number;
+  @ApiProperty() acknowledged!: number;
+  @ApiProperty() critical!: number;
+  @ApiProperty() resolved!: number;
+}
+
+export class AlertListPageBody {
+  @ApiProperty({ type: [AlertListRowBody] }) items!: AlertListRowBody[];
+  @ApiProperty({ type: AlertViewCountsBody }) counts!: AlertViewCountsBody;
+  @ApiProperty({ nullable: true, type: Number }) total!: number | null;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+}
+
+export function alertListBody(page: AlertListPage): AlertListPageBody {
+  return {
+    items: page.items.map((row) => ({ ...alertSummaryBody(row), actions: [...row.actions] })),
+    counts: { ...page.counts },
+    total: page.total,
+    page: page.page,
+    pageSize: page.pageSize,
+    paging: page.paging,
+    hasNext: page.hasNext,
   };
 }

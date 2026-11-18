@@ -19,6 +19,7 @@ import {
   ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
+  ApiPayloadTooLargeResponse,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -37,6 +38,10 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { QueryPriceHolds } from '../application/use-cases/query-price-holds.use-case';
+import { ExportPriceHolds } from '../application/use-cases/export-price-holds.use-case';
+import { EXPORT_FORMATS, writeChunks } from '../../../platform/list-export';
+import { HOLD_EXPORT_COLUMNS, HOLD_LIST_VIEWS, HOLD_SORT_KEYS } from '../domain/hold-list';
 import { ApprovePriceHold } from '../application/use-cases/approve-price-hold.use-case';
 import {
   ListPriceHolds,
@@ -47,6 +52,7 @@ import { ViewPriceHold } from '../application/use-cases/view-price-hold.use-case
 import { closedBody, fail } from './http-answers';
 import {
   PriceHoldApproved,
+  PriceHoldListBody,
   PriceHoldPageBody,
   PriceHoldRejected,
   PriceHoldRow,
@@ -89,6 +95,8 @@ export class AdminPriceHoldController {
 
   constructor(
     private readonly list: ListPriceHolds,
+    private readonly query: QueryPriceHolds,
+    private readonly exportHolds: ExportPriceHolds,
     private readonly view: ViewPriceHold,
     private readonly approve: ApprovePriceHold,
     private readonly reject: RejectPriceHold,
@@ -125,6 +133,127 @@ export class AdminPriceHoldController {
       next: result.value.next,
       total: result.value.total,
     };
+  }
+
+  // Before `:recordId`, so `list` and `export` are never read as a record id.
+  @Get('list')
+  @ApiOperation({
+    summary: 'The held prices as a super list (admin)',
+    description:
+      'Needs pricing.price-hold.view. Views (all, regular, special, up, down) with counts, ' +
+      'filters (kind, change, q = a record or Offer id, sellerId, from/to submitted, ' +
+      'minAmount/maxAmount in minor units), sort (submitted or amount, with direction; oldest ' +
+      'submission first by default), page numbers with a total (`paging=pages`, default) or ' +
+      'Previous/Next without one (`paging=prev-next`), and each row’s actions. The older queue ' +
+      'route keeps its cursor answer.',
+  })
+  @ApiQuery({ name: 'view', required: false, enum: HOLD_LIST_VIEWS })
+  @ApiQuery({ name: 'kind', required: false, enum: ['regular', 'special'] })
+  @ApiQuery({ name: 'change', required: false, enum: ['up', 'down'] })
+  @ApiQuery({ name: 'q', required: false, description: 'A record id or an Offer id, exact.' })
+  @ApiQuery({ name: 'sellerId', required: false })
+  @ApiQuery({ name: 'from', required: false, description: 'Submitted at or after (ISO instant).' })
+  @ApiQuery({ name: 'to', required: false, description: 'Submitted before (ISO instant).' })
+  @ApiQuery({ name: 'minAmount', required: false, description: 'Held amount, minor units.' })
+  @ApiQuery({ name: 'maxAmount', required: false, description: 'Held amount, minor units.' })
+  @ApiQuery({ name: 'sort', required: false, enum: HOLD_SORT_KEYS })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'From 1; page x pageSize at most 10,000.',
+  })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 100; default 25.' })
+  @ApiOkResponse({ type: PriceHoldListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async listHolds(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<PriceHoldListBody> {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.query.execute(context, numbersOf(query));
+    this.log('pricing.query-price-holds-route', context, result.ok ? 'listed' : result.error.code);
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    const page = result.value;
+    return {
+      items: page.items.map((row) => ({ ...rowOf(row), actions: [...row.actions] })),
+      counts: { ...page.counts },
+      total: page.total,
+      page: page.page,
+      pageSize: page.pageSize,
+      paging: page.paging,
+      hasNext: page.hasNext,
+    };
+  }
+
+  @Get('export')
+  @ApiOperation({
+    summary: 'Export the held prices of the list as a file (admin)',
+    description:
+      'Needs pricing.price-hold.view. `format` is csv (default) or xlsx. `columns` is the ' +
+      `comma-separated optional columns in the order shown (${HOLD_EXPORT_COLUMNS.join(', ')}); ` +
+      'product, variant, store, kind, direction, held amount, reference amount, currency and ' +
+      'submitted are always there; amounts are decimals of the currency. The records are `ids` ' +
+      '(comma-separated, at most 200; an id that is not a pending record of the Market refuses ' +
+      'the whole file as not found) or the selector keys of the list, at most 10,000 (more: ' +
+      'batch.too-large with the total). CSV: a text cell that starts with = + - @ gets a leading ' +
+      'quote. XLSX: every cell is a string value. No Cost, no submitter.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({ name: 'columns', required: false })
+  @ApiQuery({ name: 'ids', required: false })
+  @ApiOkResponse({
+    description: 'price-holds-<date>.csv or price-holds-<date>.xlsx, as an attachment',
+  })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'pricing.hold.not-found' })
+  @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large (details.max, total)' })
+  async download(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportHolds.execute(context, { ...query });
+    this.log('pricing.export-price-holds-route', context, result.ok ? 'export' : result.error.code);
+    if (!result.ok) {
+      const error =
+        result.error.code === 'batch.too-large'
+          ? fail(413, 'batch.too-large', {
+              max: result.error.max,
+              ...(result.error.total === undefined ? {} : { total: result.error.total }),
+            })
+          : refusal(result.error, context, this.#logger);
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      await writeChunks(response, chunks);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logger.warn({
+        msg: 'pricing.export-price-holds',
+        code: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+    }
   }
 
   @Get(':recordId')
@@ -265,6 +394,15 @@ export class AdminPriceHoldController {
       correlationId: context.correlationId,
     });
   }
+}
+
+/** `page` and `pageSize` become numbers (or -1, which the use case refuses). */
+function numbersOf(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...query };
+  for (const key of ['page', 'pageSize']) {
+    if (out[key] !== undefined) out[key] = parseLimit(out[key]);
+  }
+  return out;
 }
 
 /** The `limit` query: absent is the default; anything else must be a whole number (the use case checks the range). */

@@ -13,6 +13,7 @@ export type PrefsKind =
   | 'single-key'
   | 'products-columns'
   | 'orders-columns'
+  | 'offers-columns'
   | 'customers-columns'
   | 'customer-orders-columns'
   | 'shipments-columns'

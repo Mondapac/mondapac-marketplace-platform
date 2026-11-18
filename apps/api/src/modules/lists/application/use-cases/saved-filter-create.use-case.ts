@@ -9,10 +9,12 @@ import {
   MAX_SHARED_SAVED_FILTERS,
   type SavedFilterStore,
   type StoredFilter,
+  type ListPopulation,
 } from '../../contracts';
 import { ListsFilterSharedAudit } from '../../domain/audit';
 import {
-  adminOf,
+  callerOf,
+  storeOf,
   auditListOf,
   canShareOf,
   holds,
@@ -81,88 +83,102 @@ export class SavedFilterCreate extends UseCase<
     super(gate);
   }
 
-  protected async handle(
+  protected handle(
     context: CallContext,
     input: SavedFilterCreateInput,
   ): Promise<Result<SavedFilterView, SavedFilterCreateFailure>> {
-    const admin = adminOf(context);
-    if (admin === null) return err({ code: 'access.denied' });
-    if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-      return invalid('body', 'type');
-    }
-    for (const key of Object.keys(input)) if (!KEYS.has(key)) return invalid(key, 'unknown');
-    const { deps } = this;
-    const list = deps.registry.lookup(input.listKey, 'admin');
-    if (!list.ok) return list;
-    const name = nameOf(input.name);
-    if (!name.ok) return name;
-    const visibility = visibilityOf(input.visibility);
-    if (!visibility.ok) return visibility;
-
-    const viewed = await holds(
-      deps.authorisation,
-      context,
-      'lists.saved-filter-create-view',
-      list.value.viewKey,
-    );
-    if (!viewed.ok) return viewed;
-    const payload = list.value.parsePayload(input.payload);
-    if (!payload.ok) return payload;
-    const canShare = await canShareOf(
-      deps.authorisation,
-      context,
-      'lists.saved-filter-create',
-      list.value,
-    );
-    if (!canShare.ok) return canShare;
-    if (visibility.value === 'everyone' && !canShare.value) return err({ code: 'access.denied' });
-
-    const { market } = context;
-    const listKey = list.value.listKey;
-    const written = await deps.unitOfWork.run<StoredFilter, SavedFilterCreateFailure>(
-      market,
-      async () => {
-        if (
-          (await deps.store.countOwnedBy(market, null, listKey, admin.accountId)) >=
-          MAX_SAVED_FILTERS_PER_OWNER
-        ) {
-          return err({ code: 'saved-filter.limit-reached', max: MAX_SAVED_FILTERS_PER_OWNER });
-        }
-        if (
-          visibility.value === 'everyone' &&
-          (await deps.store.countShared(market, null, listKey)) >= MAX_SHARED_SAVED_FILTERS
-        ) {
-          return err({ code: 'saved-filter.shared-limit-reached', max: MAX_SHARED_SAVED_FILTERS });
-        }
-        const now = deps.clock.now();
-        const filter: StoredFilter = {
-          id: deps.ids.next<'SavedFilter'>(),
-          listKey,
-          ownerAccountId: admin.accountId,
-          sellerId: null,
-          visibility: visibility.value,
-          name: name.value,
-          payload: payload.value,
-          position: await deps.store.nextPosition(market, null, listKey, admin.accountId),
-          createdAt: now,
-          updatedAt: now,
-        };
-        if ((await deps.store.add(market, filter)) === 'name-taken') {
-          return err({ code: 'saved-filter.name-taken' });
-        }
-        if (filter.visibility === 'everyone') {
-          await deps.audit.record(
-            context,
-            ListsFilterSharedAudit.entry(filter.id, {
-              after: { listKey: auditListOf(filter.listKey), visibility: 'everyone' },
-            }),
-          );
-        }
-        return ok(filter);
-      },
-      { isolation: 'serializable' },
-    );
-    if (!written.ok) return written;
-    return ok(viewOf(written.value, admin.accountId, canShare.value));
+    return handleSavedFilterCreate('admin', this.deps, context, input);
   }
+}
+
+/**
+ * The body of the use case for one population: the admin class and the seller class of
+ * `seller-saved-filters` run it with their own population, so the rules stay in one place.
+ */
+export async function handleSavedFilterCreate(
+  population: ListPopulation,
+  deps: SavedFilterCreateDependencies,
+  context: CallContext,
+  input: SavedFilterCreateInput,
+): Promise<Result<SavedFilterView, SavedFilterCreateFailure>> {
+  const caller = callerOf(context, population);
+  if (!caller.ok) return caller;
+  const member = caller.value;
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return invalid('body', 'type');
+  }
+  for (const key of Object.keys(input)) if (!KEYS.has(key)) return invalid(key, 'unknown');
+  const list = deps.registry.lookup(input.listKey, population);
+  if (!list.ok) return list;
+  const sellerId = storeOf(member, list.value);
+  const name = nameOf(input.name);
+  if (!name.ok) return name;
+  const visibility = visibilityOf(input.visibility);
+  if (!visibility.ok) return visibility;
+
+  const viewed = await holds(
+    deps.authorisation,
+    context,
+    'lists.saved-filter-create-view',
+    list.value.viewKey,
+  );
+  if (!viewed.ok) return viewed;
+  const payload = list.value.parsePayload(input.payload);
+  if (!payload.ok) return payload;
+  const canShare = await canShareOf(
+    deps.authorisation,
+    context,
+    'lists.saved-filter-create',
+    list.value,
+  );
+  if (!canShare.ok) return canShare;
+  if (visibility.value === 'everyone' && !canShare.value) return err({ code: 'access.denied' });
+
+  const { market } = context;
+  const listKey = list.value.listKey;
+  const written = await deps.unitOfWork.run<StoredFilter, SavedFilterCreateFailure>(
+    market,
+    async () => {
+      if (
+        (await deps.store.countOwnedBy(market, sellerId, listKey, member.accountId)) >=
+        MAX_SAVED_FILTERS_PER_OWNER
+      ) {
+        return err({ code: 'saved-filter.limit-reached', max: MAX_SAVED_FILTERS_PER_OWNER });
+      }
+      if (
+        visibility.value === 'everyone' &&
+        (await deps.store.countShared(market, sellerId, listKey)) >= MAX_SHARED_SAVED_FILTERS
+      ) {
+        return err({ code: 'saved-filter.shared-limit-reached', max: MAX_SHARED_SAVED_FILTERS });
+      }
+      const now = deps.clock.now();
+      const filter: StoredFilter = {
+        id: deps.ids.next<'SavedFilter'>(),
+        listKey,
+        ownerAccountId: member.accountId,
+        sellerId,
+        visibility: visibility.value,
+        name: name.value,
+        payload: payload.value,
+        position: await deps.store.nextPosition(market, sellerId, listKey, member.accountId),
+        createdAt: now,
+        updatedAt: now,
+      };
+      if ((await deps.store.add(market, filter)) === 'name-taken') {
+        return err({ code: 'saved-filter.name-taken' });
+      }
+      if (filter.visibility === 'everyone') {
+        await deps.audit.record(
+          context,
+          ListsFilterSharedAudit.entry(filter.id, {
+            after: { listKey: auditListOf(filter.listKey), visibility: 'everyone' },
+          }),
+        );
+      }
+      return ok(filter);
+    },
+    { isolation: 'serializable' },
+  );
+  if (!written.ok) return written;
+  return ok(viewOf(written.value, member.accountId, canShare.value));
 }
