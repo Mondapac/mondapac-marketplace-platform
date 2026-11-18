@@ -11,9 +11,7 @@ export interface PlatformProductOptionsOutput {
   /** The product types the Market offers, in the Market's order. */
   readonly productTypes: readonly string[];
   readonly locales: { readonly default: string; readonly supported: readonly string[] };
-  /** The Market's tax categories, as the product read lists them. */
-  readonly taxCategoryCodes: readonly string[];
-  /** The same categories with the label key each is shown by. */
+  /** The Market's tax categories with the label key each is shown by, as the product read's `form` lists them. */
   readonly taxCategories: readonly TaxCategoryOption[];
   /** The active platform categories, in the shape of `form.categories` of the product read. */
   readonly categories: readonly ProductFormCategory[];
@@ -57,14 +55,12 @@ export class PlatformProductOptions extends UseCase<
   ): Promise<Result<PlatformProductOptionsOutput, PlatformProductOptionsFailure>> {
     const { market } = context;
     let productTypes: readonly string[];
-    let taxCategoryCodes: readonly string[];
     let taxCategories: readonly TaxCategoryOption[];
     let locales: { default: string; supported: readonly string[] };
     try {
       const configured = this.deps.policy.locales(market);
       locales = { default: configured.default, supported: [...configured.supported] };
       productTypes = [...this.deps.policy.productTypes(market)];
-      taxCategoryCodes = [...this.deps.policy.taxCategoryCodes(market)];
       taxCategories = this.deps.policy.taxCategories(market).map((category) => ({ ...category }));
     } catch {
       return err({ code: 'access.unavailable' });
@@ -87,7 +83,6 @@ export class PlatformProductOptions extends UseCase<
     return ok({
       productTypes,
       locales,
-      taxCategoryCodes,
       taxCategories,
       categories: read.ok ? read.value : [],
     });

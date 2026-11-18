@@ -65,7 +65,6 @@ const view = (over: Partial<ProductView> = {}): ProductView => ({
   lastChangedAt: '2026-11-05T01:00:00.000Z',
   createdAt: '2026-11-05T01:00:00.000Z',
   form: {
-    taxCategoryCodes: ['gst-free', 'gst'],
     taxCategories: [
       { code: 'gst-free', labelKey: 'catalog.tax.gst-free' },
       { code: 'gst', labelKey: 'catalog.tax.taxable' },
@@ -228,7 +227,6 @@ describe('the add page', () => {
   const OPTIONS = {
     productTypes: ['simple', 'configurable'],
     locales: { default: 'en', supported: ['en'] },
-    taxCategoryCodes: ['gst-free', 'gst'],
     taxCategories: [
       { code: 'gst-free', labelKey: 'catalog.tax.gst-free' },
       { code: 'gst', labelKey: 'catalog.tax.taxable' },
