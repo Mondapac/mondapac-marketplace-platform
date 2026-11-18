@@ -89,7 +89,8 @@ export interface ListRequestRefused {
 }
 
 const KEYS = ['tab', 'kind', 'outsideArea', 'areaCode', 'search', 'after', 'limit'] as const;
-const AREA_CODE = /^[a-z0-9][a-z0-9-]{0,63}$/u;
+/** A service area code as a filter takes it (the shape of the configured codes). */
+export const AREA_CODE = /^[a-z0-9][a-z0-9-]{0,63}$/u;
 const MAX_ECHOED_UNKNOWN = 10;
 const UNSAFE_NAME = /[\p{Cc}\p{Cf}\p{Cs}]/gu;
 const SEARCH_FORBIDDEN = /[\p{Cc}\p{Cf}\p{Cs}]/u;

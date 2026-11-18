@@ -132,7 +132,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'ordering/admin/saved-filters',
     // The saved views of the customer list (customers; query: `listKey`).
     'customers/admin/saved-filters',
-    // The saved views of the admin Sales lists (lists; query: `listKey`, see QUERY_SHAPES).
+    // The saved views of the admin lists on the generic routes (lists; query: `listKey`, see
+    // QUERY_SHAPES).
     'lists/admin/saved-filters',
     // The manual customer groups (customers, phase 2a), at most 500 per Market.
     'customers/admin/groups',
@@ -349,7 +350,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'customers/admin/list',
     'customers/admin/saved-filters',
     'customers/admin/export',
-    // Save the current view of a Sales list as a tab (lists): a closed body, for me or everyone.
+    // Save the current view of a list as a tab (lists): a closed body, for me or everyone.
     'lists/admin/saved-filters',
     // Make a manual customer group (customers, phase 2a).
     'customers/admin/groups',
@@ -608,7 +609,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // A saved view of the customer list (customers).
     'customers/admin/saved-filters/:id',
     'ordering/admin/saved-filters/:id',
-    // A saved view of a Sales list: its name and who can use it (lists).
+    // A saved view of a list: its name and who can use it (lists).
     'lists/admin/saved-filters/:id',
     // Rename, describe, archive or restore a manual customer group (customers, phase 2a), and
     // change a customer's display name (identity owns the write).
@@ -688,7 +689,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/saved-filters/:id',
     // A saved view of the order list (ordering).
     'ordering/admin/saved-filters/:id',
-    // A saved view of a Sales list (lists); the list key is in the query.
+    // A saved view of a list (lists); the list key is in the query.
     'lists/admin/saved-filters/:id',
   ],
   // The seller's commission rate and ledger, read from the seller review page.
@@ -796,8 +797,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** An opaque API cursor (base64url or dotted ids): URL-safe characters only. */
 const CURSOR = /^[A-Za-z0-9._~:=-]{1,256}$/;
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
-/** The lists whose saved views cross the generic route: the three Sales lists (and Orders). */
-const SALES_LIST_KEY = /^admin\.ordering\.(orders|shipments|refunds|documents)$/;
+/**
+ * The lists whose saved views cross the generic route: Orders and the three Sales lists, Issuer
+ * requests and the certificate review queue, and the Sellers list and its health queue.
+ */
+const LISTS_SAVED_FILTER_KEY =
+  /^admin\.(ordering\.(orders|shipments|refunds|documents)|certification\.(issuer-requests|review-queue)|sellers\.(list|health-queue))$/;
 
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   // The System requests queue: the view, search, filters, sort and either page numbers or a
@@ -1708,7 +1713,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'promotions/admin/customers/:id/credits': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   // Customers phase 2b, part A.
   'promotions/admin/customers/:id/usages': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
-  'lists/admin/saved-filters': { listKey: SALES_LIST_KEY },
+  'lists/admin/saved-filters': { listKey: LISTS_SAVED_FILTER_KEY },
   'customers/admin/customers/:id/notes': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'commission-payouts/admin/payouts': {
     view: /^(all|awaiting-approval|sending|paid|failed|not-sent)$/,
@@ -1926,7 +1931,7 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 const NOTE_SHAPE = /^[\s\S]{1,500}$/;
 /** DELETE templates whose query crosses: the version seen and the closed reason code. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
-  'lists/admin/saved-filters/:id': { listKey: SALES_LIST_KEY },
+  'lists/admin/saved-filters/:id': { listKey: LISTS_SAVED_FILTER_KEY },
   'ordering/admin/refund-limits/sellers/:id': { expectedVersion: /^[0-9]{1,9}$/ },
   // The note for the reviewers (System requests), 1 to 500 characters; the API checks it too.
   'commission-payouts/admin/sellers/:id/commission-rate': { note: NOTE_SHAPE },

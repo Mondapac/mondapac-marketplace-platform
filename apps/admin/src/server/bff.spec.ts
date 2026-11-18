@@ -3738,6 +3738,50 @@ describe('relay of the saved views of the Sales lists', () => {
     },
   );
 
+  it.each([
+    'admin.certification.issuer-requests',
+    'admin.certification.review-queue',
+    'admin.sellers.health-queue',
+    'admin.sellers.list',
+  ])('relays the saved views of %s, and keeps its key on delete', async (listKey) => {
+    const listed = upstreamOk();
+    await relay(
+      config,
+      request('GET', `lists/admin/saved-filters?listKey=${listKey}&extra=1`),
+      ['lists', 'admin', 'saved-filters'],
+      listed,
+    );
+    expect(listed.mock.calls[0]?.[0]).toBe(
+      `http://api.test/lists/admin/saved-filters?listKey=${listKey}`,
+    );
+    const removed = upstreamOk();
+    await relay(
+      config,
+      request('DELETE', `lists/admin/saved-filters/${id}?listKey=${listKey}`),
+      ['lists', 'admin', 'saved-filters', id],
+      removed,
+    );
+    expect(removed.mock.calls[0]?.[0]).toBe(
+      `http://api.test/lists/admin/saved-filters/${id}?listKey=${listKey}`,
+    );
+  });
+
+  it.each([
+    'admin.certification.issuers',
+    'admin.sellers.lists',
+    'admin.sellers.health-queue.x',
+    'seller.sellers.list',
+  ])('drops the list key %s, which is no list on the generic route', async (listKey) => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', `lists/admin/saved-filters?listKey=${listKey}`),
+      ['lists', 'admin', 'saved-filters'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/lists/admin/saved-filters');
+  });
+
   it('drops a list key that is not a Sales list', async () => {
     const upstream = upstreamOk();
     await relay(

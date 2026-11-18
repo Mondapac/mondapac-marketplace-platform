@@ -20,6 +20,8 @@ import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
 import { changeTrailProvider, IdentityModule } from '../identity';
+import { ListsModule, registerLists } from '../lists';
+import { SELLERS_LISTS } from './application/saved-filters/list-definitions';
 import { BUSINESS_FILE_REVISION_REPOSITORY } from './application/ports/business-file-revision.repository';
 import { REVIEWER_NOTIFIER } from './application/ports/reviewer-notifier';
 import { REVISION_CONTENT_SEALER } from './application/ports/revision-content-sealer';
@@ -376,7 +378,7 @@ const REVIEW_DECISION_PORTS = {
  * case waits for the audit writer and the acting-as flag, see the slice 3 note in the data design).
  */
 @Module({
-  imports: [IdentityModule],
+  imports: [IdentityModule, ListsModule],
   controllers: [
     MyFileController,
     ReviewReadController,
@@ -407,6 +409,7 @@ const REVIEW_DECISION_PORTS = {
     registerAuditActions('sellers', SELLERS_AUDIT_ACTIONS),
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
     registerPermissions('sellers', SELLERS_PERMISSIONS),
+    registerLists('sellers', SELLERS_LISTS),
     registerStepUpActions('sellers', SELLERS_STEP_UP_ACTIONS),
     ...sellerProviders,
     ...storeProfileProviders,
