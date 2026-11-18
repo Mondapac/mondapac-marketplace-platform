@@ -1,6 +1,9 @@
--- Reverses 20261118150000_lists_drop_old_saved_filters: recreates the two old tables exactly as
+-- Reverses 20261118150000_lists_drop_old_saved_filters: recreates the two old tables as
 -- the migrations 20261031110000, 20261107150000 (catalog) and 20261112200000 (ordering) left them,
--- and fills them from `lists.saved_filters` by list key, so a rollback keeps every filter.
+-- and fills them from `lists.saved_filters` by list key, so a rollback keeps every filter. (The column
+-- order of the catalog table differs from the original, where `seller_id` was added last.) The
+-- fill fails loudly on a row that is valid in the shared table but breaks an old rule (a
+-- non-product seller catalog list with no store, or a shared seller order filter).
 SET lock_timeout = '5s';
 
 CREATE TABLE "catalog"."saved_filters" (

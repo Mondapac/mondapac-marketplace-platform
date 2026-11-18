@@ -121,9 +121,6 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // docs/design/data/catalog.md 2.4 (variants V5): a variant SKU is unique per seller.
   'catalog.offer_sell_units_market_id_seller_id_variant_sku_key':
     'CREATE UNIQUE INDEX offer_sell_units_market_id_seller_id_variant_sku_key ON catalog.offer_sell_units USING btree (market_id, seller_id, variant_sku) WHERE (variant_sku IS NOT NULL)',
-  // docs/design/data/catalog.md 3.28: a filter name is unique per owner, and a shared filter name
-  // per list among the filters shared with everyone; each in an admin form (no store) and a seller
-  // form (per store).
   // Categories package C5a (Move products): one queued or running move per source category, the
   // runner's claim order, and the moved items whose seller notice is still open.
   'catalog.category_product_move_jobs_market_id_source_open_key':
@@ -305,7 +302,6 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // least-failed first.
   'ordering.seller_orders_unrecorded_ledger_idx':
     "CREATE INDEX seller_orders_unrecorded_ledger_idx ON ordering.seller_orders USING btree (market_id, ledger_attempts, order_id) WHERE (ledger_state = 'pending'::text)",
-  // Order lists: the saved filters shared with everyone keep one name per list.
   // Seller health: the nightly feed reads the seller's orders marked ready in a few days.
   'ordering.seller_orders_seller_ready_at_idx':
     'CREATE INDEX seller_orders_seller_ready_at_idx ON ordering.seller_orders USING btree (market_id, seller_id, ready_at) WHERE (ready_at IS NOT NULL)',
