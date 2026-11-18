@@ -54,7 +54,8 @@ import type { ValidationFailure } from './category-admin-views';
  *    again on the locked tree; a plan that now names an id the check did not clear is
  *    `conflict.stale`. Above the Market's `maxCategoryChangeTags` tags it is
  *    `category.impact-too-large`. Then every change gets a revision (the reason note on the acted-on
- *    category's), every changed category its `platform-category-changed` event, every published
+ *    category's), every changed category its `platform-category-changed` event (the acted-on one
+ *    at the first of its two new versions; the caller's own event takes the second, Q-K3), every published
  *    product under the affected categories has its Offers' `active` tags marked `rechecking` with
  *    the entry path `category-change`, and the request of its published revision is made pending
  *    again (`requestForCategoryChange`), so the fan-out job asks `evaluateClaims` again against the
@@ -245,10 +246,16 @@ export async function runRestructure(
           patch: patchOf(change),
           authorAccountId: spec.accountId,
           now: at,
-          ...(node.id === current.id ? { reason: spec.reason } : {}),
+          // The acted-on category gets two events in this unit, `changed` here and the action's
+          // own in `finish`: two version steps, one per event (catalog data design Q-K3).
+          ...(node.id === current.id ? { reason: spec.reason, events: 2 } : {}),
         });
-        if (node.id === current.id) targetVersion = version;
-        await announceChanged(deps, context, node.id, version);
+        if (node.id === current.id) {
+          targetVersion = version;
+          await announceChanged(deps, context, node.id, version - 1);
+        } else {
+          await announceChanged(deps, context, node.id, version);
+        }
       }
 
       let tagsMarked = 0;
