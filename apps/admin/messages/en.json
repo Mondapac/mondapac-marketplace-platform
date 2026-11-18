@@ -5811,7 +5811,8 @@
       "tab": {
         "overview": "Overview",
         "orders": "Orders",
-        "money": "Money"
+        "money": "Money",
+        "security": "Account & security"
       },
       "header": {
         "verified": "Email verified",
@@ -5822,7 +5823,9 @@
         "view-wallet": "View wallet",
         "more": "More actions",
         "delete": "Delete account…",
-        "edit": "Edit…"
+        "edit": "Edit…",
+        "password-reset": "Send password reset…",
+        "sign-out": "Sign out everywhere…"
       },
       "overview": {
         "figures": "Customer figures",
@@ -6423,6 +6426,218 @@
           "denied": "You don’t have access to export.",
           "unavailable": "The file could not be made. Try again.",
           "cancelled": "Export cancelled."
+        }
+      }
+    },
+    "security": {
+      "cancel": "Cancel",
+      "retry": "Retry",
+      "loading": "Loading {section}…",
+      "failed": "{section} could not be loaded.",
+      "index": {
+        "label": "On this page"
+      },
+      "jump": {
+        "label": "Jump to",
+        "placeholder": "Choose a section"
+      },
+      "section": {
+        "sessions": "Active sessions",
+        "sign-ins": "Sign-ins, last 90 days",
+        "addresses": "Addresses",
+        "privacy": "Privacy",
+        "deletion": "Deletion request"
+      },
+      "device": {
+        "unknown": "Unknown device",
+        "of": "{browser} on {system}"
+      },
+      "channel": {
+        "email": "Email"
+      },
+      "error": {
+        "throttled": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+        "denied": "You don’t have access to do this.",
+        "gone": "This record no longer exists. Reload the page.",
+        "not-eligible": "This account is disabled or its email is not verified, so no mail can be sent.",
+        "unavailable": "This could not be done right now. Try again.",
+        "unknown": "This could not be done. Try again."
+      },
+      "reveal": {
+        "tag": "Revealed, recorded",
+        "hidden-ip": "The IP address was hidden again after 5 minutes.",
+        "hidden-address": "The full address was hidden again after 5 minutes."
+      },
+      "sessions": {
+        "sign-out": "Sign out everywhere…",
+        "empty": "No active sessions.",
+        "started": "Signed in {time}",
+        "last-seen": "Last seen {time}",
+        "more": "Showing the 50 most recently used sessions."
+      },
+      "sign-out": {
+        "title": "Sign out everywhere?",
+        "body": "Every session of this customer ends now.",
+        "confirm": "Sign out everywhere",
+        "done": "{count, plural, one {# session} other {# sessions}} ended."
+      },
+      "password-reset": {
+        "title": "Send a password reset?",
+        "body": "The customer gets an email with a reset link. Their password stays until they use it.",
+        "confirm": "Send reset email",
+        "done": "Password reset email sent."
+      },
+      "addresses": {
+        "empty": "This customer has no saved addresses.",
+        "default": "Default",
+        "added": "Added {date}",
+        "erased": "Address erased",
+        "show": "Show full address…",
+        "hide": "Hide address",
+        "show-for": "Show full address for {place}…",
+        "hide-for": "Hide address for {place}",
+        "reveal": {
+          "title": "Show the full address?",
+          "body": "Showing the full address is recorded.",
+          "confirm": "Show address"
+        },
+        "field": {
+          "recipient": "Recipient",
+          "phone": "Phone",
+          "lines": "Street",
+          "place": "Suburb and postcode",
+          "notes": "Courier note"
+        }
+      },
+      "consent": {
+        "title": "Marketing consent",
+        "empty": "No consent channels.",
+        "never": "Never changed",
+        "changed": "Changed {time}",
+        "granted": "Granted",
+        "not-granted": "Not granted"
+      },
+      "personalization": {
+        "title": "Personalisation",
+        "on": "On",
+        "off": "Off",
+        "never": "Never changed",
+        "changed": "Changed {time}"
+      },
+      "deletion": {
+        "none": "No deletion request is open for this customer.",
+        "pending": "Deletion requested on {requested}. The account is erased on {scheduled} unless the request is cancelled.",
+        "executing": "Deletion requested on {date}. The account is being erased now.",
+        "pending-banner": "A deletion request is open. See the banner at the top of the page."
+      },
+      "consent-history": {
+        "title": "Consent history",
+        "subtitle": "Every change of this customer’s marketing consent.",
+        "zone": "Times in {zone}.",
+        "views": "Consent history",
+        "view": {
+          "all": "All changes"
+        },
+        "caption": "Consent history",
+        "loading": "Loading consent history…",
+        "empty": "No consent changes yet.",
+        "granted": "Granted",
+        "withdrawn": "Withdrawn",
+        "sorted": "Sorted by time, {order}",
+        "range-open": "{from}–{to}",
+        "row": {
+          "name": "Change at {time}"
+        },
+        "col": {
+          "time": "Time",
+          "channel": "Channel",
+          "change": "Change",
+          "source": "Source"
+        },
+        "source": {
+          "sign-up": "Sign-up",
+          "account": "Account settings",
+          "unsubscribe-link": "Unsubscribe link"
+        },
+        "error": {
+          "unavailable": "The consent history could not be loaded."
+        },
+        "export": {
+          "button": "Export…",
+          "title": "Export consent history",
+          "body": "The file has every change, at most 10,000. You confirm with a two-step code, and the export is recorded.",
+          "pending": "Preparing the file…",
+          "done": "Consent history exported.",
+          "error": {
+            "too-large": "Up to {max, number} rows can be exported at once; this list has {total, number}.",
+            "enrol": "Set up two-step verification on your profile to export.",
+            "denied": "You don’t have access to export.",
+            "unavailable": "The file could not be made. Try again.",
+            "cancelled": "Export cancelled."
+          }
+        }
+      },
+      "sign-ins": {
+        "subtitle": "Sign-in attempts of the last 90 days. The full IP address is shown only per row, and every reveal is recorded.",
+        "zone": "Times in {zone}.",
+        "views": "Sign-in results",
+        "view": {
+          "all": "All sign-ins",
+          "failed": "Failed"
+        },
+        "caption": "Sign-ins",
+        "loading": "Loading sign-ins…",
+        "empty": "No sign-ins in the last 90 days.",
+        "empty-filtered": "No sign-ins match",
+        "sorted": "Sorted by time, {order}",
+        "match": "{count, plural, one {# sign-in} other {# sign-ins}}",
+        "range-open": "{from}–{to}",
+        "result": {
+          "success": "Signed in",
+          "failure": "Failed",
+          "credential-change": "Credential change",
+          "other": "Other"
+        },
+        "col": {
+          "time": "Time",
+          "result": "Result",
+          "device": "Device",
+          "city": "Rough city"
+        },
+        "row": {
+          "name": "Sign-in at {time}",
+          "menu": "Actions for {name}",
+          "show-ip": "Show IP…",
+          "hide-ip": "Hide IP address",
+          "nothing": "No actions"
+        },
+        "reveal": {
+          "title": "Show the full IP address?",
+          "body": "Showing the full IP address is recorded.",
+          "confirm": "Show IP address"
+        },
+        "filter": {
+          "button": "Filter",
+          "title": "Filter sign-ins",
+          "result": "Result",
+          "when": "Date",
+          "from": "From",
+          "to": "To",
+          "apply": "Apply",
+          "cancel": "Cancel",
+          "error": {
+            "day": "Enter a date.",
+            "range": "The end comes before the start."
+          }
+        },
+        "chip": {
+          "result": "Result: {result}",
+          "from": "From {day}",
+          "to": "To {day}"
+        },
+        "error": {
+          "invalid": "This filter cannot be used. Clear it and try again.",
+          "unavailable": "The sign-ins could not be loaded."
         }
       }
     }

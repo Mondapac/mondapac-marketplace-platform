@@ -2,6 +2,7 @@
 // needs, and the answers it reads. Every section reads from its owning module by account id.
 
 import type { CustomerRow } from './list-types.ts';
+import { BEHAVIOUR_VIEW, CONSENT_VIEW, SIGN_IN_VIEW, VIEW_KEY } from './security-types.ts';
 
 export const ORDERS_VIEW = 'ordering.order.view';
 export const WALLET_VIEW = 'wallet.credit.view';
@@ -9,7 +10,7 @@ export const WALLET_ISSUE = 'wallet.credit.issue';
 export const PROMOTIONS_VIEW = 'promotions.promotion.view';
 export const BUYER_DELETE = 'customers.buyer-account.delete';
 
-export const TABS = ['overview', 'orders', 'money'] as const;
+export const TABS = ['overview', 'orders', 'money', 'security'] as const;
 export type Tab = (typeof TABS)[number];
 
 export const isTab = (value: unknown): value is Tab =>
@@ -20,7 +21,14 @@ export const isTab = (value: unknown): value is Tab =>
  * always has its Spent and Refunded figures (they come with the page); its sections need keys.
  */
 export const tabsFor = (keys: ReadonlySet<string>): readonly Tab[] =>
-  TABS.filter((tab) => tab !== 'orders' || keys.has(ORDERS_VIEW));
+  TABS.filter(
+    (tab) =>
+      (tab !== 'orders' || keys.has(ORDERS_VIEW)) &&
+      // Account & security (part B): addresses need only the page's own key, so it is nearly
+      // always there; the other sections add theirs.
+      (tab !== 'security' ||
+        [VIEW_KEY, SIGN_IN_VIEW, CONSENT_VIEW, BEHAVIOUR_VIEW].some((key) => keys.has(key))),
+  );
 
 /** GET customers/admin/customers/:accountId: the header and the Overview. */
 export interface CustomerOverview extends CustomerRow {
