@@ -7,6 +7,7 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import { RecordingSecurityEvents } from '../../../../test/support/recording-security-events';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { AuthorisationCheck, StepUpProofConsumer } from '../../../platform/authz';
@@ -20,6 +21,7 @@ import type { IdentityManagementPeer } from './ports/customer-management-peers';
 import type { SheetWriter } from './ports/sheet-writer';
 import { ActorOrMarketDayZone } from '../infrastructure/actor-or-market-day-zone';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
+import { MemoryAdminActionLimits } from './testing/memory-admin-action-limits';
 import {
   FakeNoteCipher,
   InMemoryCustomerGroups,
@@ -189,6 +191,8 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
       identity,
       dayZone: new ActorOrMarketDayZone(markets, identity),
       reviewEventsCheck: probe,
+      adminLimits: new MemoryAdminActionLimits(markets, clock),
+      securityEvents: new RecordingSecurityEvents(),
     };
     const admin = (keys: readonly string[], inMarket: MarketContext = market) => {
       const accountId = ids.next<'Account'>();

@@ -42,6 +42,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Market's order confirmations and credit notes (ordering, Sales > Invoices), read-only:
     // the list (query: the kind, search, issued dates and paging; see QUERY_KEYS).
     'ordering/admin/documents',
+    // The export of the Invoices list (order confirmations or credit notes, by `kind`) as a CSV or
+    // XLSX file (ordering): the list's own filter, the visible columns, the chosen ids and the zone.
+    'ordering/admin/documents/export',
     // The Market's buyer assistant settings, read again after another admin saved first.
     'assistant/admin/settings',
     // The Market's support email, read again after another admin saved first.
@@ -895,6 +898,20 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'from',
     'to',
   ],
+  // The Invoices export: the list's filter keys (no paging or sort), the file's format and
+  // columns, the chosen ids and the zone of its times.
+  'ordering/admin/documents/export': [
+    'kind',
+    'format',
+    'columns',
+    'ids',
+    'zone',
+    'q',
+    'search',
+    'sellerId',
+    'from',
+    'to',
+  ],
   'ordering/admin/saved-filters': ['listKey'],
   'customers/admin/saved-filters': ['listKey'],
   'lists/admin/saved-filters': ['listKey'],
@@ -1192,6 +1209,29 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     // The API's own cursor: epoch milliseconds of the issue time, a dot and the document id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
     // An id or a name: free text, up to the box's 80 characters.
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
+  },
+  'ordering/admin/documents/export': {
+    kind: /^(order-confirmation|credit-note)$/,
+    format: /^(csv|xlsx)$/,
+    columns: exportColumns([
+      'sellerOrderId',
+      'store',
+      'customer',
+      'issued',
+      'total',
+      'tax',
+      'shipping',
+      'documentId',
+      'refundId',
+      'reason',
+    ]),
+    ids: EXPORT_IDS,
+    zone: EXPORT_ZONE,
+    sellerId: UUID,
     q: SEARCH_TEXT,
     search: SEARCH_TEXT,
     from: ISO_INSTANT,
@@ -1523,6 +1563,7 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
+  'ordering/admin/documents/export:ids': 7400,
   'ordering/admin/refunds/export:ids': 7400,
   'ordering/admin/shipments/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,

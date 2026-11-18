@@ -266,6 +266,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX seller_attributions_market_id_suspicious_idx ON customers.seller_attributions USING btree (market_id, attributed_at DESC, account_id DESC) WHERE ((status = 'rejected'::text) OR (flags <> '{}'::text[]))",
   'customers.seller_invite_links_one_live_per_seller_key':
     'CREATE UNIQUE INDEX seller_invite_links_one_live_per_seller_key ON customers.seller_invite_links USING btree (market_id, seller_id) WHERE (revoked_at IS NULL)',
+  'identity.accounts_market_id_pending_email_requested_at_idx':
+    'CREATE INDEX accounts_market_id_pending_email_requested_at_idx ON identity.accounts USING btree (market_id, pending_email_requested_at) WHERE (pending_email_requested_at IS NOT NULL)',
   'identity.accounts_market_id_signed_up_at_unverified_idx':
     'CREATE INDEX accounts_market_id_signed_up_at_unverified_idx ON identity.accounts USING btree (market_id, signed_up_at) WHERE (email_verified_at IS NULL)',
   'identity.invitations_market_id_email_pending_platform_key':
