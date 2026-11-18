@@ -32,6 +32,15 @@ export type ApiResult<T> =
   | { readonly ok: true; readonly status: number; readonly body: T }
   | { readonly ok: false; readonly failure: ApiFailure };
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** A wait is believed only as a whole number of seconds from 1 to 86400. */
+function validWait(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 86400;
+}
+
 export async function callApi<T>(
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   path: string,
@@ -60,12 +69,26 @@ export async function callApi<T>(
   const parsed: unknown = await response.json().catch((): unknown => null);
   if (response.ok) return { ok: true, status: response.status, body: parsed as T };
   const failure = parsed as Partial<ApiFailure> | null;
+  // A 429 carries its wait in the body or the Retry-After header. Only a whole number of seconds
+  // from 1 to 86400 is believed; anything else is dropped and the caller's default applies.
+  const bodyDetails: Record<string, unknown> | undefined = isPlainObject(failure?.details)
+    ? { ...failure.details }
+    : undefined;
+  if (bodyDetails !== undefined && !validWait(bodyDetails.retryAfterSeconds)) {
+    delete bodyDetails.retryAfterSeconds;
+  }
+  let details = bodyDetails;
+  if (response.status === 429 && details?.retryAfterSeconds === undefined) {
+    const raw = response.headers?.get('retry-after') ?? '';
+    const header = /^\d{1,6}$/.test(raw.trim()) ? Number(raw.trim()) : Number.NaN;
+    if (validWait(header)) details = { ...details, retryAfterSeconds: header };
+  }
   return {
     ok: false,
     failure: {
       status: response.status,
       code: typeof failure?.code === 'string' ? failure.code : 'unknown',
-      ...(failure?.details === undefined ? {} : { details: failure.details }),
+      ...(details === undefined ? {} : { details: details }),
     },
   };
 }
