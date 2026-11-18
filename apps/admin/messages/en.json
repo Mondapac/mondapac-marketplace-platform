@@ -11374,7 +11374,7 @@
   "shipments": {
     "title": "Shipments",
     "page-title": "Shipments",
-    "intro": "One row for each seller in each paid order. Carrier tracking updates aren't shown here yet; open the order for details.",
+    "intro": "One row for each seller in each paid order. Add the Carrier progress column to see what the delivery fleet last reported; open the order for details.",
     "no-access": "You don't have access to shipments.",
     "back-home": "Back to home",
     "tabs": "Shipment views",
