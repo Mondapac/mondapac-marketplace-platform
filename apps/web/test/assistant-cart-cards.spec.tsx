@@ -309,6 +309,37 @@ const wrap = (
 
 const action = (extra: object = {}): CartAction => cartActionOf(actionBody(extra))!;
 
+const liveBody = (quantity: number) => ({
+  groups: [
+    {
+      sellerId: SELLER,
+      sellerName: 'Halal Corner',
+      subtotal: aud(String(1250 * quantity)),
+      minimumOrder: { state: 'none', minimum: null },
+      lines: [
+        {
+          lineId: LINE,
+          offerId: OFFER,
+          variantId: VARIANT,
+          quantity,
+          state: 'buyable',
+          reason: null,
+          unitPrice: aud('1250'),
+          previousPrice: null,
+          availability: { status: 'in-stock', onlyLeft: null },
+          display: {
+            productId: null,
+            productName: 'Lamb mince',
+            variantLabel: null,
+            imageId: null,
+          },
+        },
+      ],
+    },
+  ],
+  lineCount: 1,
+});
+
 describe('the cart-action card', () => {
   it('changes nothing until the buyer clicks, then adds the chosen quantity with the cart route', async () => {
     wrap(<CartActionCardView card={action()} />);
@@ -453,37 +484,6 @@ describe('the cart-action card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByRole('button', { name: 'Add to cart' })).toBeTruthy();
     expect(called('POST', 'cart/items')).toHaveLength(0);
-  });
-
-  const liveBody = (quantity: number) => ({
-    groups: [
-      {
-        sellerId: SELLER,
-        sellerName: 'Halal Corner',
-        subtotal: aud(String(1250 * quantity)),
-        minimumOrder: { state: 'none', minimum: null },
-        lines: [
-          {
-            lineId: LINE,
-            offerId: OFFER,
-            variantId: VARIANT,
-            quantity,
-            state: 'buyable',
-            reason: null,
-            unitPrice: aud('1250'),
-            previousPrice: null,
-            availability: { status: 'in-stock', onlyLeft: null },
-            display: {
-              productId: null,
-              productName: 'Lamb mince',
-              variantLabel: null,
-              imageId: null,
-            },
-          },
-        ],
-      },
-    ],
-    lineCount: 1,
   });
 
   it('marks an older card as out of date once the cart changes, and turns its button off', async () => {
@@ -799,6 +799,35 @@ describe('the basket proposal card', () => {
       'disabled',
       true,
     );
+  });
+
+  it('marks the basket card once another card changes the cart, but not after its own add', async () => {
+    answers['GET cart'] = { status: 200, body: liveBody(2) };
+    wrap(
+      <>
+        <BasketProposalCardView card={proposal()} />
+        <CartActionCardView card={action()} />
+      </>,
+      liveCartOf(liveBody(1), null),
+    );
+    const [basket, adder] = screen.getAllByRole('region');
+    expect(within(basket!).queryByText(/may be wrong/)).toBeNull();
+    fireEvent.click(within(adder!).getByRole('button', { name: 'Add to cart' }));
+    expect(await within(basket!).findByText(/may be wrong/)).toBeTruthy();
+    expect(
+      within(basket!)
+        .getByRole('button', { name: /^Add 1 of 3 items to cart/ })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+  });
+
+  it('never marks a basket card for the cart changes of its own add', async () => {
+    answers['GET cart'] = { status: 200, body: liveBody(2) };
+    wrap(<BasketProposalCardView card={proposal()} />, liveCartOf(liveBody(1), null));
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1 of 3 items to cart' }));
+    await waitFor(() => expect(called('POST', 'cart/items')).toHaveLength(1));
+    await screen.findByText(/1 item added/);
+    expect(screen.queryByText(/may be wrong/)).toBeNull();
   });
 
   it('removing a line takes it out of the add', () => {
