@@ -643,7 +643,7 @@ describe.each([
               {
                 slug: 'alpha-market',
                 name: 'Alpha',
-                logo: expect.objectContaining({ id: logo.id }),
+                logo: { id: logo.id, width: 512, height: 512 },
               },
             ],
             [bare, { slug: 'beta-market', name: 'Beta', logo: null }],
