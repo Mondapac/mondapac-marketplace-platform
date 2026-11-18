@@ -142,6 +142,7 @@ describe('ManageFiltersDialog', () => {
         input: { name: string; visibility: 'me' | 'everyone' },
       ) => Promise<SavedFilterProblem | null>;
       onDelete: (id: string) => Promise<SavedFilterProblem | null>;
+      onReorder: (ids: readonly string[], movedId: string) => Promise<SavedFilterProblem | null>;
       filters: ManagedFilter[];
     }> = {},
   ) =>
@@ -151,9 +152,18 @@ describe('ManageFiltersDialog', () => {
         onClose={() => undefined}
         filters={over.filters ?? filters}
         canShare={over.canShare ?? true}
-        labels={manageLabels}
+        labels={
+          over.onReorder === undefined
+            ? manageLabels
+            : {
+                ...manageLabels,
+                moveUp: (name) => `Move ${name} up`,
+                moveDown: (name) => `Move ${name} down`,
+              }
+        }
         onUpdate={over.onUpdate ?? (() => Promise.resolve(null))}
         onDelete={over.onDelete ?? (() => Promise.resolve(null))}
+        {...(over.onReorder === undefined ? {} : { onReorder: over.onReorder })}
       />,
     );
 
@@ -221,6 +231,31 @@ describe('ManageFiltersDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete filter' }));
     expect(await screen.findByText('Denied')).toBeTruthy();
     expect(screen.getByRole('group', { name: 'Delete Mine' })).toBeTruthy();
+  });
+
+  it('offers no move buttons without onReorder (the seller panel)', () => {
+    mount();
+    expect(screen.queryByRole('button', { name: /^Move / })).toBeNull();
+  });
+
+  it("moves the viewer's own filters only, and sends all their ids in the new order", async () => {
+    const onReorder = vi.fn(() => Promise.resolve(null));
+    mount({ onReorder });
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Move Mine up' }).disabled).toBe(
+      true,
+    );
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Move Shared down' }).disabled,
+    ).toBe(true);
+    expect(screen.queryByRole('button', { name: /^Move Theirs/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Move Mine down' }));
+    await waitFor(() => expect(onReorder).toHaveBeenCalledWith(['b', 'a'], 'a'));
+  });
+
+  it('says a refused move in a banner', async () => {
+    mount({ onReorder: () => Promise.resolve('unavailable') });
+    fireEvent.click(screen.getByRole('button', { name: 'Move Shared up' }));
+    expect(await screen.findByText(errors.unavailable)).toBeTruthy();
   });
 
   it('says there is nothing saved yet', () => {

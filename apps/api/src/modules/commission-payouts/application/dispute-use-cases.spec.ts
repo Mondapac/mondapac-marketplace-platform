@@ -19,6 +19,13 @@ import {
   RecordingSecurityEvents,
 } from '../../../../test/support/commission-payouts-dispute-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
+import { MemoryAdminDisputeList } from '../../../../test/support/commission-payouts-dispute-list-fakes';
+import {
+  FakeStoreSearch,
+  ScriptedProbe,
+} from '../../../../test/support/commission-payouts-list-fakes';
+import { ExceljsSheetWriter } from '../../../platform/list-export';
+import type { AdminDisputeListDependencies } from './admin-dispute-list-flow';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
@@ -184,6 +191,17 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
       amountMinor,
       reasonCode,
     });
+  /** The admin Disputes list over the same cases and ledger. */
+  const listDeps = (): AdminDisputeListDependencies => ({
+    unitOfWork: new FakeUnitOfWork(),
+    list: new MemoryAdminDisputeList(disputes, ledger),
+    disputes,
+    sellerNames: names,
+    storeSearch: new FakeStoreSearch(names.names),
+    probes: { [COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE.key]: new ScriptedProbe(true) },
+    sheetWriter: new ExceljsSheetWriter(),
+    clock,
+  });
   const activeHolds = () => [...holds.rows.values()].filter((h) => h.releasedAt === null);
 
   beforeEach(async () => {
@@ -437,8 +455,8 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
         await new ViewDispute(gate, deps).execute(foreign, { disputeId: DISPUTE }),
       ).toMatchObject({ ok: false, error: { code: 'commission-payouts.dispute-not-found' } });
       expect(
-        (await new ListDisputes(gate, deps).execute(foreign, {})).ok &&
-          (await new ListDisputes(gate, deps).execute(foreign, {})),
+        (await new ListDisputes(gate, listDeps()).execute(foreign, {})).ok &&
+          (await new ListDisputes(gate, listDeps()).execute(foreign, {})),
       ).toMatchObject({ value: { disputes: [] } });
     });
   });
@@ -716,7 +734,7 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
     });
 
     it('lists by bucket with counts, store names and the money state', async () => {
-      const list = await new ListDisputes(gate, deps).execute(admin, {});
+      const list = await new ListDisputes(gate, listDeps()).execute(admin, {});
       expect(list).toMatchObject({
         ok: true,
         value: {
@@ -742,15 +760,17 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
         { sellerId: SELLER_A, storeName: 'Alpha Store' },
         { sellerId: SELLER_B, storeName: null },
       ]);
-      const empty = await new ListDisputes(gate, deps).execute(admin, { filter: 'won' });
+      const empty = await new ListDisputes(gate, listDeps()).execute(admin, { filter: 'won' });
       expect(empty).toMatchObject({ ok: true, value: { disputes: [] } });
       names.unavailable = true;
-      expect(await new ListDisputes(gate, deps).execute(admin, {})).toMatchObject({ ok: true });
+      expect(await new ListDisputes(gate, listDeps()).execute(admin, {})).toMatchObject({
+        ok: true,
+      });
     });
 
     it('refuses a bad filter, cursor or limit, and every caller but an admin', async () => {
       expect(
-        await new ListDisputes(gate, deps).execute(admin, {
+        await new ListDisputes(gate, listDeps()).execute(admin, {
           filter: 'x',
           cursor: 'y',
           limit: 0,
@@ -760,14 +780,14 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
         error: {
           code: 'validation.failed',
           fields: [
-            { path: 'filter', code: 'format' },
-            { path: 'cursor', code: 'format' },
+            { path: 'filter', code: 'value' },
             { path: 'limit', code: 'range' },
+            { path: 'cursor', code: 'format' },
           ],
         },
       });
       for (const context of [sellerA, customer, system]) {
-        expect(await new ListDisputes(gate, deps).execute(context, {})).toMatchObject({
+        expect(await new ListDisputes(gate, listDeps()).execute(context, {})).toMatchObject({
           ok: false,
           error: { code: 'access.denied' },
         });
@@ -786,11 +806,11 @@ describe.each([['AU'], ['ZZ']] as const)('dispute effects in market %s', (code) 
         delivery: delivery(),
         disputeId: second,
       });
-      const first = await new ListDisputes(gate, deps).execute(admin, { limit: 1 });
+      const first = await new ListDisputes(gate, listDeps()).execute(admin, { limit: 1 });
       expect(first.ok && first.value.disputes.map((d) => d.disputeId)).toEqual([second]);
       const cursor = first.ok ? first.value.nextCursor : null;
       expect(cursor).not.toBeNull();
-      const next = await new ListDisputes(gate, deps).execute(admin, { limit: 1, cursor });
+      const next = await new ListDisputes(gate, listDeps()).execute(admin, { limit: 1, cursor });
       expect(next.ok && next.value.disputes.map((d) => d.disputeId)).toEqual([DISPUTE]);
       expect(next.ok && next.value.nextCursor).toBeNull();
     });

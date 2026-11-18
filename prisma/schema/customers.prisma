@@ -93,8 +93,9 @@ model CustomersAccountDeletionRequest {
   /// request and while an admin's is open. CHECK: set if and only if an admin request has no reason.
   redactedAt         DateTime? @map("redacted_at") @db.Timestamptz(6)
 
-  // Hand-written partial indexes (the migration): one open request per account, the due query
-  // (pending, by date) and the stale-claim query (executing, by claim time).
+  // Hand-written partial indexes (the migrations): one open request per account, the due query
+  // (pending, by date), the stale-claim query (executing, by claim time) and the customer page's
+  // tombstone lookup (completed, by account; phase 2b).
   @@map("account_deletion_requests")
   @@schema("customers")
 }
@@ -171,6 +172,10 @@ model CustomersCustomerDirectory {
   /// The admins' notes and the activity timeline (phase 2); the rows go with this one.
   notes            CustomersCustomerNote[]
   timeline         CustomersCustomerTimelineEntry[]
+  /// The customer's relation with each seller (phase 3); deleted with the directory row.
+  sellerCustomers  CustomersSellerCustomer[]
+  /// The seller whose invite link the customer signed up through (phase 4); deleted with this row.
+  attribution      CustomersSellerAttribution?
 
   @@id([marketId, accountId])
   @@index([marketId, signedUpAt(sort: Desc), accountId(sort: Desc)])
@@ -335,5 +340,99 @@ model CustomersCustomerTimelineEntry {
   @@unique([marketId, accountId, sourceEventId])
   @@index([marketId, accountId, occurredAt(sort: Desc), id(sort: Desc)])
   @@map("customer_timeline")
+  @@schema("customers")
+}
+
+/// One customer as one seller sees them (customers management phase 3): a read model kept by the
+/// customer's confirmed orders with that seller (through `ordering`) and the customer's follow of
+/// the store (through `engagement`), replaced, never incremented, by the sync and the nightly
+/// reconcile. A row exists only while there is a relation (CHECK): bought, follows, or (phase 4)
+/// exclusive. `customer_code` is drawn at random when the row is first written and never changes;
+/// it is unique per seller and unrelated between sellers, so two sellers cannot match their lists.
+/// The seller sees the code and the first name (from the directory), never the account id or the
+/// email. Deleted with the customer's directory row (foreign key, ON DELETE CASCADE).
+model CustomersSellerCustomer {
+  marketId     String                     @map("market_id") @db.VarChar(8)
+  tenantId     String                     @map("tenant_id")
+  sellerId     String                     @map("seller_id") @db.Uuid
+  accountId    String                     @map("account_id") @db.Uuid
+  /// XXXX-XXXX in Crockford base32 (CHECK).
+  customerCode String                     @map("customer_code") @db.VarChar(9)
+  orderCount   Int                        @map("order_count")
+  firstOrderAt DateTime?                  @map("first_order_at") @db.Timestamptz(6)
+  lastOrderAt  DateTime?                  @map("last_order_at") @db.Timestamptz(6)
+  /// The confirmed seller orders' totals less the refunds that succeeded, minor units of `currency`.
+  spentMinor   BigInt                     @map("spent_minor")
+  currency     String?                    @db.VarChar(3)
+  follower     Boolean
+  /// When the current follow started; set exactly when `follower` (CHECK).
+  followedAt   DateTime?                  @map("followed_at") @db.Timestamptz(6)
+  /// The customer signed up through this seller's invite link and the attribution is active (phase 4).
+  exclusive    Boolean                    @default(false)
+  createdAt    DateTime                   @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime                   @map("updated_at") @db.Timestamptz(6)
+  directory    CustomersCustomerDirectory @relation(fields: [marketId, accountId], references: [marketId, accountId], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, sellerId, accountId])
+  @@unique([marketId, sellerId, customerCode])
+  @@index([marketId, accountId])
+  @@index([marketId, sellerId, lastOrderAt(sort: Desc), accountId(sort: Desc)])
+  @@index([marketId, sellerId, followedAt(sort: Desc), accountId(sort: Desc)])
+  @@map("seller_customers")
+  @@schema("customers")
+}
+
+/// A seller's invite link (customers management phase 4a). The token is the public part of the
+/// link the seller shares (and prints as a QR code), so it is kept as is: anyone who may see the
+/// store may see it. At most one link of a seller is live; a refresh revokes it and draws another.
+model CustomersSellerInviteLink {
+  id                 String                       @id @db.Uuid
+  marketId           String                       @map("market_id") @db.VarChar(8)
+  tenantId           String                       @map("tenant_id")
+  sellerId           String                       @map("seller_id") @db.Uuid
+  /// 26 symbols of Crockford base32: 130 random bits (CHECK).
+  token              String                       @db.VarChar(26)
+  /// The seller-side account that drew it (identity account id, no foreign key).
+  createdByAccountId String                       @map("created_by_account_id") @db.Uuid
+  createdAt          DateTime                     @map("created_at") @db.Timestamptz(6)
+  revokedAt          DateTime?                    @map("revoked_at") @db.Timestamptz(6)
+  attributions       CustomersSellerAttribution[]
+
+  @@unique([marketId, token])
+  @@unique([marketId, id])
+  /// The partial unique index "one live link per seller" is hand-written in the migration.
+  @@map("seller_invite_links")
+  @@schema("customers")
+}
+
+/// The seller a customer signed up through (phase 4a): at most one per customer, never moved to
+/// another seller. `active` makes the customer the seller's exclusive customer; `rejected` (the
+/// seller's own team, or an admin) does not. Ids, instants and codes only.
+model CustomersSellerAttribution {
+  marketId           String                     @map("market_id") @db.VarChar(8)
+  tenantId           String                     @map("tenant_id")
+  accountId          String                     @map("account_id") @db.Uuid
+  sellerId           String                     @map("seller_id") @db.Uuid
+  linkId             String                     @map("link_id") @db.Uuid
+  attributedAt       DateTime                   @map("attributed_at") @db.Timestamptz(6)
+  /// active or rejected (CHECK).
+  status             String
+  /// Why it is rejected: seller-team or admin; null exactly while active (CHECK).
+  rejectReason       String?                    @map("reject_reason")
+  /// What looked unusual when it was recorded: link-burst (CHECK).
+  flags              String[]                   @default([])
+  /// The admin who last rejected or restored it (identity account id, no foreign key).
+  decidedByAccountId String?                    @map("decided_by_account_id") @db.Uuid
+  decidedAt          DateTime?                  @map("decided_at") @db.Timestamptz(6)
+  version            Int
+  directory          CustomersCustomerDirectory @relation(fields: [marketId, accountId], references: [marketId, accountId], onDelete: Cascade, onUpdate: Restrict)
+  link               CustomersSellerInviteLink  @relation(fields: [marketId, linkId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, accountId])
+  @@index([marketId, sellerId, attributedAt(sort: Desc), accountId(sort: Desc)])
+  @@index([marketId, attributedAt(sort: Desc), accountId(sort: Desc)])
+  /// Serves the foreign key to the link (its RESTRICT check).
+  @@index([marketId, linkId, attributedAt])
+  @@map("seller_attributions")
   @@schema("customers")
 }

@@ -25,6 +25,7 @@ import {
   ApiPayloadTooLargeResponse,
   ApiServiceUnavailableResponse,
   ApiTags,
+  ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
@@ -37,6 +38,10 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { AdminCustomerOverview } from '../application/use-cases/admin-customer-overview.use-case';
+import { AdminCustomerEmailChangeCancel } from '../application/use-cases/admin-customer-email-change-cancel.use-case';
+import { AdminCustomerEmailChangeRequest } from '../application/use-cases/admin-customer-email-change-request.use-case';
+import { clientAddressFrom } from '../../../platform/http/client-address';
+import { clientOriginOf } from '../../../platform/rate-limit/client-origin';
 import { AdminCustomerTabOpened } from '../application/use-cases/admin-customer-tab-opened.use-case';
 import { AdminCustomersExport } from '../application/use-cases/admin-customers-export.use-case';
 import { AdminCustomersIds } from '../application/use-cases/admin-customers-ids.use-case';
@@ -45,8 +50,8 @@ import { AdminSavedFilterCreate } from '../application/use-cases/admin-saved-fil
 import { AdminSavedFilterDelete } from '../application/use-cases/admin-saved-filter-delete.use-case';
 import { AdminSavedFilterUpdate } from '../application/use-cases/admin-saved-filter-update.use-case';
 import { AdminSavedFiltersList } from '../application/use-cases/admin-saved-filters-list.use-case';
-import { CUSTOMERS_EXPORT_STEP_UP } from '../contracts/step-up';
-import { closedBody, refusal } from './http-answers';
+import { CUSTOMER_EMAIL_CHANGE_STEP_UP, CUSTOMERS_EXPORT_STEP_UP } from '../contracts/step-up';
+import { closedBody, fail, refusal } from './http-answers';
 import { writeChunks } from './write-chunks';
 
 const ERROR = { type: Object };
@@ -77,6 +82,8 @@ export class AdminCustomersController {
     private readonly filterDelete: AdminSavedFilterDelete,
     private readonly overview: AdminCustomerOverview,
     private readonly tabOpened: AdminCustomerTabOpened,
+    private readonly emailChangeRequest: AdminCustomerEmailChangeRequest,
+    private readonly emailChangeCancel: AdminCustomerEmailChangeCancel,
   ) {}
 
   @Post('list')
@@ -87,11 +94,15 @@ export class AdminCustomersController {
       'Needs customers.customers.view. Body: `view` (all, new, active, inactive, never-ordered, ' +
       'disabled, pending-deletion), `q` (2 to 80 characters: a sign-in address prefix or a part of ' +
       'the display name), `filters` (status, verified, joinedFrom, joinedTo, lastOrderFrom, ' +
-      'lastOrderTo, ordersMin, ordersMax, spentMin, spentMax in minor units), `sort` (joined, name, ' +
+      'lastOrderTo as YYYY-MM-DD in the admin’s own zone, else the Market’s, ordersMin, ordersMax, ' +
+      'spentMin, spentMax in minor units), `sort` (joined, name, ' +
       'email, last-order, orders, spent) and `direction`. With `page` (and `pageSize`, at most 100) ' +
       'the answer carries `paging.total` (the page-number mode of the List paging setting, at most ' +
       '10,000 rows deep); without it `cursor` and `limit` read the next page without a total. ' +
-      '`counts` is the size of every tab. The rows are personal data.',
+      '`counts` is the size of every tab. `orderNumber` (an order’s id, as the panels show it) ' +
+      'narrows the list to the customer who placed it; it also needs ordering.order.view (403 ' +
+      'access.denied without it), and an unknown or another Market’s order matches nobody. The ' +
+      'rows are personal data.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: Object })
@@ -115,6 +126,7 @@ export class AdminCustomersController {
       'pageSize',
       'cursor',
       'limit',
+      'orderNumber',
     ]);
     if (checked instanceof HttpException) throw checked;
     const result = await this.list.execute(context, body);
@@ -221,7 +233,7 @@ export class AdminCustomersController {
   @ApiOperation({
     summary: 'List the saved filters of the Customers list',
     description:
-      'Needs customers.customers.view. Query `listKey` (admin.customers.customers). The caller’s own ' +
+      'Needs customers.customers.view. Query `listKey` (admin.customers.customers or admin.customers.seller-attributions). The caller’s own ' +
       'filters first, then the ones shared with everyone by other admins.',
   })
   @ApiOkResponse({ type: Object })
@@ -332,10 +344,16 @@ export class AdminCustomersController {
     summary: 'One customer: the header and the Overview tab',
     description:
       'Needs customers.customers.view. The profile (sign-in address, name, status, email verified, ' +
-      'joined) and what the orders add up to (count, spent, refunds, first and last order). The ' +
+      'joined), what the orders add up to (count, spent, refunds, first and last order) and ' +
+      '`deletionRequest`: the open deletion request (requestId, status pending or executing, ' +
+      'requestedAt, scheduledFor) or null. The ' +
       'wallet balance, the orders (`GET ordering/admin/orders?accountId=`) and the money tab are ' +
+      'read from their owning modules. `pendingEmailChange` (email, requestedAt) is the sign-in ' +
+      'email an admin asked for and the customer has not confirmed yet, or null. The others are ' +
       'read from their owning modules, each under its own permission. Every open is audited. ' +
-      '404 customers.customer-not-found for a customer of another Market, or none. Personal data.',
+      'An erased customer (account deletion completed) answers a tombstone, `{ accountId, ' +
+      'status: "deleted", deletedAt }`, and nothing else. 404 customers.customer-not-found for a ' +
+      'customer of another Market, or none. Personal data.',
   })
   @ApiOkResponse({ type: Object })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
@@ -383,6 +401,103 @@ export class AdminCustomersController {
     const checked = closedBody(request, body, ['tab']);
     if (checked instanceof HttpException) throw checked;
     const result = await this.tabOpened.execute(context, { ...(body as object), accountId });
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return result.value;
+  }
+
+  @Put('customers/:accountId/email')
+  @HttpCode(200)
+  @RequiresStepUp('customers.customer-email.change')
+  @ApiOperation({
+    summary: "Ask to change a customer's sign-in email",
+    description:
+      'Needs customers.customers.view and customers.customer-email.change (protected) and a fresh ' +
+      `two-step proof of this admin session for \`${CUSTOMER_EMAIL_CHANGE_STEP_UP}\` (POST ` +
+      '/identity/admin/step-up/verify, valid 5 minutes, spent by the request). Body: `email`. A link ' +
+      'goes to the new address and a warning to the current one; the customer keeps signing in ' +
+      'with the current address until they confirm the new one with their password. A newer ' +
+      'request replaces an older one; the current address again answers `changed: false` and ' +
+      'spends nothing. Audited by identity (ids only). Personal data: never logged.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: Object })
+  @ApiOkResponse({ description: '`{ changed, requestedAt }`' })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    ...ERROR,
+    description: 'access.denied, request.csrf, second-factor.required or enrolment-required',
+  })
+  @ApiNotFoundResponse({ ...ERROR, description: 'customers.customer-not-found' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description:
+      'customers.customer-not-eligible (disabled or unverified), customers.email-taken, ' +
+      'customers.account-deletion-pending',
+  })
+  @ApiTooManyRequestsResponse({
+    ...ERROR,
+    description: 'request.throttled (details.retryAfterSeconds)',
+  })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'customers.unavailable or access.unavailable',
+  })
+  async requestEmailChange(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('accountId') accountId: string,
+    @Body() body: unknown,
+  ): Promise<unknown> {
+    response.setHeader('Cache-Control', 'no-store');
+    const checked = closedBody(request, body, ['email']);
+    if (checked instanceof HttpException) throw checked;
+    // The admin's client (ADR-0037): the mail.origin counter's key; never a forwarded header.
+    const origin = clientOriginOf(clientAddressFrom(request));
+    if (origin === null) throw fail(503, 'customers.unavailable');
+    const result = await this.emailChangeRequest.execute(context, {
+      ...(body as object),
+      accountId,
+      origin,
+    });
+    if (!result.ok) {
+      if (result.error.code === 'request.throttled') {
+        response.setHeader('Retry-After', String(result.error.retryAfterSeconds));
+      }
+      throw refusal(result.error, context, this.#logger);
+    }
+    return result.value;
+  }
+
+  @Delete('customers/:accountId/email-change')
+  @RequiresStepUp('customers.customer-email.change')
+  @ApiOperation({
+    summary: "Cancel a customer's pending sign-in email change",
+    description:
+      'Needs customers.customers.view and customers.customer-email.change (protected) and a fresh ' +
+      `two-step proof for \`${CUSTOMER_EMAIL_CHANGE_STEP_UP}\`. The pending address is cleared and ` +
+      'the mailed link stops working. Audited by identity.',
+  })
+  @ApiHeader(CSRF)
+  @ApiOkResponse({ description: '`{ cancelled: true }`' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    ...ERROR,
+    description: 'access.denied, request.csrf, second-factor.required or enrolment-required',
+  })
+  @ApiNotFoundResponse({
+    ...ERROR,
+    description: 'customers.customer-not-found or customers.email-change-not-found',
+  })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'customers.unavailable' })
+  async cancelEmailChange(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('accountId') accountId: string,
+  ): Promise<unknown> {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.emailChangeCancel.execute(context, { accountId });
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return result.value;
   }

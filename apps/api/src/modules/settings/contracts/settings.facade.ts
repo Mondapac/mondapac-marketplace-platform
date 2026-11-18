@@ -1,5 +1,5 @@
 import type { CallContext } from '@mondapac/shared-kernel';
-import type { AiModelTierSetting } from '../domain/definitions';
+import type { AiModelTierSetting, CartMode } from '../domain/definitions';
 
 /**
  * What other modules read from the settings store (ADR-0026 decision 2). Each method carries the
@@ -13,6 +13,13 @@ export interface SettingsFacade {
   aiDescriptionWriter(
     context: CallContext,
   ): Promise<{ readonly enabled: boolean; readonly tier: AiModelTierSetting }>;
+
+  /**
+   * The Market's Cart mode (`multi-store` or `single-store`), for any caller (guest, customer,
+   * panel user). Never an error: a store that cannot be read, a refusal or a throw answers
+   * `multi-store`, today's behaviour (ADR-0026 decision 5).
+   */
+  cartMode(context: CallContext): Promise<CartMode>;
 }
 
 export const SETTINGS_FACADE = Symbol('SETTINGS_FACADE');

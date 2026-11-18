@@ -1,3 +1,4 @@
+import { hasClaimWord, hasLookAlikeScripts } from '@mondapac/shared-kernel';
 import { MASKED, maskPersonalData } from './personal-data';
 
 /**
@@ -40,56 +41,6 @@ const LOGISTICS = new RegExp(
   'iu',
 );
 
-// Certification claims of any type (CERT-01 types are data; these are the words a model uses).
-const CERTIFICATION = new RegExp(
-  [
-    String.raw`\bhala+l\b`,
-    String.raw`\bharam\b`,
-    String.raw`\bkosher\b`,
-    String.raw`\bvegan\b`,
-    String.raw`\borganic\b`,
-    String.raw`\bcertif(?:ied|icate|ication)s?\b`,
-    String.raw`\bzabihah?\b`,
-    'حلال',
-    'حرام',
-    'ذبح',
-    'گواهی',
-    'ارگانیک',
-  ].join('|'),
-  'iu',
-);
-
-// Letters that look like Latin ones, folded before the certification words are tested (L3).
-const LOOK_ALIKES: Readonly<Record<string, string>> = {
-  а: 'a',
-  е: 'e',
-  о: 'o',
-  р: 'p',
-  с: 'c',
-  х: 'x',
-  у: 'y',
-  і: 'i',
-  ӏ: 'l',
-  ⅼ: 'l',
-  ı: 'i',
-  α: 'a',
-  ο: 'o',
-  ε: 'e',
-  κ: 'k',
-  ν: 'v',
-  ѕ: 's',
-  һ: 'h',
-  ԁ: 'd',
-  ɡ: 'g',
-  ᴢ: 'z',
-  ʜ: 'h',
-};
-const LOOK_ALIKE = new RegExp(`[${Object.keys(LOOK_ALIKES).join('')}]`, 'giu');
-const folded = (sentence: string): string =>
-  sentence
-    .normalize('NFKC')
-    .replace(LOOK_ALIKE, (letter) => LOOK_ALIKES[letter.toLowerCase()] ?? letter);
-
 // Inert rendering (R9): no markup, links or images reach the buyer from a model.
 const MARKDOWN_IMAGE = /!\[[^\]]*\]\([^)]*\)/g;
 const MARKDOWN_LINK = /\[([^\]]*)\]\([^)]*\)/g;
@@ -100,7 +51,7 @@ const MARKUP_CHARACTERS = /[*_`#>|~]/g;
 // A bare domain (an off-platform address without a scheme), with any path (Hassan, M1).
 const BARE_DOMAIN = /\b[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*\.\p{L}{2,}\b(?:\/\S*)?/gu;
 // Controls and format characters, except the Persian zero-width non-joiner and line breaks.
-const INVISIBLE = /(?![\n‌])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+const INVISIBLE = /(?![\n\u200C])[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{DI}]/gu;
 
 // A sentence ends at . ! ? or ؟ followed by a space, or at a line break ("$12.50" stays whole).
 const SENTENCE_BREAK = /(?<=[.!?؟])\s+|\n+/u;
@@ -137,7 +88,7 @@ export function guardReply(text: string): GuardedReply {
   for (const part of inert(text).split(SENTENCE_BREAK)) {
     const sentence = part.replace(/\s+/gu, ' ').trim();
     if (sentence.length === 0 || !/[\p{L}\p{N}]/u.test(sentence)) continue;
-    if (CERTIFICATION.test(folded(sentence))) {
+    if (hasClaimWord(sentence) || hasLookAlikeScripts(sentence)) {
       notices.add('see-certification');
       continue;
     }
@@ -149,5 +100,25 @@ export function guardReply(text: string): GuardedReply {
     sentences.push(sentence);
     length += sentence.length + 1;
   }
+  // A word split across sentences ("h. a. l. a. l.") is read again over the whole kept reply.
+  if (sentences.length > 0 && hasClaimWord(sentences.join(' '))) {
+    return { sentences: [], notices: ['see-certification'] };
+  }
   return { sentences, notices: [...notices] };
+}
+
+/**
+ * Whether a short text carries nothing the guard would drop or change: no certification, price,
+ * stock, delivery, contact, link or markup. Used for list lines the model passes to a tool, which
+ * reach the buyer on a card and so must pass the same checks as a reply (ADR-0019 R1, R9).
+ */
+export function isClaimFree(text: string): boolean {
+  if (hasClaimWord(text) || hasLookAlikeScripts(text)) return false;
+  const guarded = guardReply(text);
+  return (
+    guarded.notices.length === 0 &&
+    guarded.sentences.length === 1 &&
+    guarded.sentences[0] === text.trim() &&
+    maskPersonalData(text) === text
+  );
 }

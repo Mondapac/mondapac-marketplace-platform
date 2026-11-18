@@ -154,3 +154,70 @@ export interface AccountRepository {
 
 /** Nest token of the {@link AccountRepository}. */
 export const ACCOUNT_REPOSITORY = Symbol('ACCOUNT_REPOSITORY');
+
+/**
+ * Thrown by {@link AccountRepository.save} when the account's new sign-in address is held by
+ * another account of the same Market and population (the unique key decides; customers admin
+ * email change). The statement failed, so the caller's unit is rolled back as a whole.
+ */
+export class AccountEmailTakenError extends Error {
+  override readonly name = 'AccountEmailTakenError';
+  constructor(readonly accountId: Id<'Account'>) {
+    super('identity.accounts: the new sign-in address is held by another account');
+  }
+}
+
+/** One "your sign-in email was changed" notice, opened (customers admin email change). */
+export interface EmailChangeNotice {
+  /** The address before the change, as typed: the recipient. */
+  readonly previousEmail: string;
+  /** The address after the change, as typed: shown masked. */
+  readonly newEmail: string;
+}
+
+/**
+ * The parts of an email change kept beside the account (customers admin email change). Every
+ * method runs in the caller's open unit and takes the `MarketContext` only.
+ *
+ * - One notice per confirmed change (Hassan M1), keyed by the account version the confirmation
+ *   produced (the event's aggregate version), both addresses sealed under the account's subject
+ *   key (Hassan R11: no plain previous address anywhere). The confirmation's unit stores it; the
+ *   handler of that change's event opens it and deletes exactly that row, so two quick changes
+ *   each keep their own notice. An erased account's key is destroyed: its notices never open.
+ * - A pending address lapses with its link: the hourly purge clears the ones asked for at or
+ *   before `before`, one version step each (Hassan: "cleared lazily on read and by the existing
+ *   purge").
+ */
+export interface EmailChangeStore {
+  /** Seals and stores the notice of the change that produced `accountVersion`. */
+  recordNotice(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    accountVersion: number,
+    notice: EmailChangeNotice,
+    now: Temporal.Instant,
+  ): Promise<void>;
+
+  /**
+   * The notice of the change that produced `accountVersion`, opened: `missing` when none waits
+   * (already sent), `unreadable` when the account's key was destroyed.
+   */
+  noticeOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    accountVersion: number,
+  ): Promise<EmailChangeNotice | 'missing' | 'unreadable'>;
+
+  /** Deletes exactly that notice (compare-and-delete on the full key); true when it was there. */
+  forgetNotice(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    accountVersion: number,
+  ): Promise<boolean>;
+
+  /** Clears the pending addresses asked for at or before `before` (lapsed, as the read); answers how many. */
+  clearLapsedPendingEmails(market: MarketContext, before: Temporal.Instant): Promise<number>;
+}
+
+/** Nest token of the {@link EmailChangeStore}. */
+export const EMAIL_CHANGE_STORE = Symbol('EMAIL_CHANGE_STORE');

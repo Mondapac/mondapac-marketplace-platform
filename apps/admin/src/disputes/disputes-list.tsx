@@ -1,6 +1,15 @@
 'use client';
 
-import { Banner, Button, EmptyState, LoadError, SkeletonRows } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  EmptyState,
+  LoadError,
+  ListLoadingStatus,
+  ListRefreshing,
+  TableSkeleton,
+  useListLoading,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -28,6 +37,7 @@ export function DisputesList({ zone }: { readonly zone: string }) {
   const [next, setNext] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState<'first' | 'more' | null>(null);
+  const status = useListLoading(loading, rows.length > 0);
   const [now] = useState(() => Date.now());
   const latest = useRef(0);
 
@@ -105,11 +115,32 @@ export function DisputesList({ zone }: { readonly zone: string }) {
           onRetry={() => void load(null)}
         />
       ) : null}
-      {rows.length > 0 ? <DisputesTable rows={rows} zone={zone} now={now} /> : null}
+      {rows.length > 0 ? (
+        <ListRefreshing refreshing={status.refreshing} busy={loading}>
+          <DisputesTable rows={rows} zone={zone} now={now} />
+        </ListRefreshing>
+      ) : null}
       {!loading && failed === null && rows.length === 0 ? (
         <EmptyState icon="shield-check" title={t(`empty.${filter}`)} />
       ) : null}
-      {loading ? <SkeletonRows label={t('loading')} rows={rows.length > 0 ? 1 : 3} /> : null}
+      {loading && rows.length === 0 ? (
+        <TableSkeleton
+          label={t('loading')}
+          slowLabel={tl('slow')}
+          rows={PAGE_SIZE}
+          columns={[
+            { header: t('col.case'), kind: 'title' },
+            { header: t('col.money'), kind: 'status' },
+            { header: t('col.sellers'), kind: 'text' },
+            { header: t('col.reason'), kind: 'text' },
+            { header: t('col.evidence'), kind: 'date' },
+            { header: t('col.amount'), kind: 'number' },
+          ]}
+        />
+      ) : null}
+      {loading && rows.length > 0 ? (
+        <ListLoadingStatus label={t('loading')} slow={false} slowLabel={tl('slow')} />
+      ) : null}
       {failed === 'more' ? <Banner tone="critical">{t('error.unavailable')}</Banner> : null}
       {next !== null && !loading ? (
         <div>

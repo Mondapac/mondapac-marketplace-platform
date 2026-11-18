@@ -2,6 +2,7 @@
 // keys. Other modules may import only what this file exports, through ../index.ts.
 export { SHIPPING_AUDIT_ACTIONS } from '../domain/audit';
 export {
+  SHIPPING_CARRIER_DELIVERY_VIEW,
   SHIPPING_DELIVERY_SETTINGS_MANAGE,
   SHIPPING_DELIVERY_SETTINGS_VIEW,
   SHIPPING_FLEET_SELECTION_MANAGE,
@@ -37,7 +38,9 @@ export {
   DeliveryFallbackOverCap,
   SHIPPING_EVENTS,
 } from '../domain/events';
+export type { CarrierProgressView } from '../domain/carrier-progress';
 export {
+  MAX_CARRIER_PROGRESS_IDS,
   SHIPPING_FACADE,
   type CarrierBookingOutcome,
   type CarrierDeliveryProgress,
