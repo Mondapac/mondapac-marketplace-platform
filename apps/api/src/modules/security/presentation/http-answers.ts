@@ -12,6 +12,7 @@ export const SECURITY_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'security.conflict': 409,
   'security.alert-state': 409,
   'security.s1-resolver-only': 403,
+  'batch.too-large': 413,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
