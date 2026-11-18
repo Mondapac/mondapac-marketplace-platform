@@ -24,6 +24,12 @@ export interface AccountDeletionRequestRepository {
     accountId: Id<'Account'>,
   ): Promise<AccountDeletionRequest | null>;
 
+  /**
+   * When the account's deletion completed (the erasure ran), or null when it never did. The
+   * customer page answers a tombstone with it instead of not-found (phase 2, PR 2b).
+   */
+  completedAt(market: MarketContext, accountId: Id<'Account'>): Promise<Temporal.Instant | null>;
+
   /** Closes a pending request as cancelled; false when it was not pending (claimed, closed or gone). */
   cancel(
     market: MarketContext,

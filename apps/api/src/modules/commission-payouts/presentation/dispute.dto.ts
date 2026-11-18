@@ -1,8 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { DisputeDecisionView } from '../application/use-cases/decide-dispute.use-case';
 import type {
-  DisputeListView,
-  DisputeRowView,
+  AdminDisputeListPage,
+  AdminDisputeRow,
   MoneyView,
 } from '../application/use-cases/list-disputes.use-case';
 import type { OwnDisputeView } from '../application/use-cases/list-own-disputes.use-case';
@@ -12,6 +12,7 @@ import type {
   DisputeSellerOrderView,
   TimelineView,
 } from '../application/use-cases/view-dispute.use-case';
+import { DISPUTE_ROW_ACTIONS } from '../domain/admin-dispute-list';
 import {
   DECISION_BEARERS,
   DECISION_REASON_CODES,
@@ -52,9 +53,19 @@ class DisputeRowBody {
   @ApiProperty({ format: 'date-time', nullable: true, type: String }) evidenceDueBy!: string | null;
   @ApiProperty({ type: MoneyBody }) amount!: MoneyBody;
   @ApiProperty({ format: 'date-time' }) openedAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+  @ApiProperty({
+    enum: DISPUTE_ROW_ACTIONS,
+    isArray: true,
+    description:
+      'The row Actions menu: open always; decide on a case that waits for a decision when the ' +
+      'caller holds commission-payouts.dispute.attribute (the decision checks it again).',
+  })
+  actions!: string[];
 }
 
 class DisputeCountsBody {
+  @ApiProperty() all!: number;
   @ApiProperty() 'needs-response'!: number;
   @ApiProperty() 'decision-needed'!: number;
   @ApiProperty() 'under-review'!: number;
@@ -63,11 +74,30 @@ class DisputeCountsBody {
 }
 
 export class DisputeListBody {
-  @ApiProperty({ type: DisputeCountsBody, description: 'The number of cases per bucket.' })
+  @ApiProperty({
+    type: DisputeCountsBody,
+    description: 'The number of cases per view for the Market, whatever the filter.',
+  })
   counts!: DisputeCountsBody;
-  @ApiProperty({ type: [DisputeRowBody], description: 'Newest opened first.' })
+  @ApiProperty({ type: [DisputeRowBody], description: "In the list's sort (newest opened first)." })
   disputes!: DisputeRowBody[];
-  @ApiProperty({ nullable: true, type: String }) nextCursor!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Page numbers: the cases that match. Previous/Next: null.',
+  })
+  total!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Page numbers: the page; else null.' })
+  page!: number | null;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'Previous/Next: the cursor of the next page, or null on the last one.',
+  })
+  nextCursor!: string | null;
+  @ApiProperty({ description: 'The store search matched more stores than it can carry.' })
+  searchCapped!: boolean;
 }
 
 class DecidedBody {
@@ -194,7 +224,7 @@ export class OwnDisputesBody {
   disputes!: OwnDisputeBody[];
 }
 
-const rowBody = (row: DisputeRowView): DisputeRowBody => ({
+const rowBody = (row: AdminDisputeRow): DisputeRowBody => ({
   disputeId: row.disputeId,
   orderId: row.orderId,
   sellers: row.sellers.map((s) => ({ sellerId: s.sellerId, storeName: s.storeName })),
@@ -205,12 +235,18 @@ const rowBody = (row: DisputeRowView): DisputeRowBody => ({
   evidenceDueBy: row.evidenceDueBy === null ? null : row.evidenceDueBy.toString(),
   amount: money(row.amount),
   openedAt: row.openedAt.toString(),
+  updatedAt: row.updatedAt.toString(),
+  actions: [...row.actions],
 });
 
-export const disputeListBody = (view: DisputeListView): DisputeListBody => ({
+export const disputeListBody = (view: AdminDisputeListPage): DisputeListBody => ({
   counts: { ...view.counts },
   disputes: view.disputes.map(rowBody),
+  total: view.total,
+  page: view.page,
+  pageSize: view.pageSize,
   nextCursor: view.nextCursor,
+  searchCapped: view.searchCapped,
 });
 
 const decidedBody = (view: DecisionView): DecidedBody => ({

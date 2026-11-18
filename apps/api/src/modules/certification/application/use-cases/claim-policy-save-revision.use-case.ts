@@ -18,6 +18,13 @@ import { changeReasonIn } from '../../domain/registry';
 import type { TypeDefaultBasis } from '../../domain/type-revision';
 import { MAX_CATALOG_REFERENCE_IDS } from '../ports/catalog-references';
 import type { StoredPolicy } from '../ports/claim-policy.repository';
+import {
+  CERTIFICATION_REVIEW_AREA,
+  CLAIM_POLICY_SUBJECT_KIND,
+  requestRef,
+  revisionValues,
+  type CertificationRequestRef,
+} from '../registry/certification-review';
 import { policyVersionIn, type ClaimPolicyDependencies } from '../registry/claim-policy.shared';
 import {
   adminOf,
@@ -34,6 +41,11 @@ export interface ClaimPolicySaveRevisionInput {
   readonly rows: unknown;
   /** Optional, at most 500 characters; stored only encrypted on the revision (design 3.7). */
   readonly reason?: unknown;
+  /**
+   * The admin's note for the reviewer (Admin Inbox › System requests, area certification): 1 to
+   * 500 characters, needed only when the save is published while the Market reviews the area.
+   */
+  readonly note?: unknown;
 }
 
 export type ClaimPolicySaveRevisionOutput =
@@ -45,6 +57,8 @@ export type ClaimPolicySaveRevisionOutput =
       readonly revisionNo: number;
       readonly version: number;
       readonly changes: readonly PolicyRowChange[];
+      /** The review this publication opened; null when the Market does not review the area. */
+      readonly request: CertificationRequestRef;
     }
   | {
       readonly outcome: 'pending-second-admin';
@@ -56,6 +70,8 @@ export type ClaimPolicySaveRevisionOutput =
       /** The policy is unchanged until the approval. */
       readonly version: number;
       readonly changes: readonly PolicyRowChange[];
+      /** Always null: nothing is live yet; the second admin's approval is the check. */
+      readonly request: null;
     };
 
 export type ClaimPolicySaveRevisionFailure =
@@ -76,6 +92,8 @@ interface Snapshot {
   readonly defaultBasis: TypeDefaultBasis;
   readonly policy: StoredPolicy | null;
   readonly publishedRows: readonly PolicyRow[];
+  /** The published revision's number; null before the first. */
+  readonly publishedRevisionNo: number | null;
 }
 
 const logger = new Logger('ClaimPolicyRevision');
@@ -91,7 +109,9 @@ const logger = new Logger('ClaimPolicyRevision');
  * type's default) is saved and a `claim-policy-revision` proposal waits `pending` for a second
  * admin (audit `.claim-policy.relaxation-requested`, `relaxation-proposed.v1`). While one waits,
  * every save is refused (`review.proposal-pending`). The first save of a type creates its policy
- * (version 0 read). The write unit locks the policy row first, then reads again. Rule: key
+ * (version 0 read). The write unit locks the policy row first, then reads again. A published
+ * revision opens its review in Admin Inbox › System requests in the same unit (area
+ * certification; a refusal, such as a missing `note`, rolls the save back). Rule: key
  * `certification.claim-policy.edit` (protected), the admin population, not acting-as.
  */
 export class ClaimPolicySaveRevision extends UseCase<
@@ -142,16 +162,19 @@ export class ClaimPolicySaveRevision extends UseCase<
           if (typeRevision === null) throw new Error('certification type without its revision');
           const policy = await deps.policies.policyOfType(market, typeId);
           let publishedRows: readonly PolicyRow[] = [];
+          let publishedRevisionNo: number | null = null;
           if (policy?.publishedRevisionId != null) {
             const published = await deps.policies.revision(market, policy.publishedRevisionId);
             if (published === null) throw new Error('claim policy without its revision');
             publishedRows = published.rows;
+            publishedRevisionNo = published.revisionNo;
           }
           return ok({
             typeRevisionId: type.publishedRevisionId,
             defaultBasis: typeRevision.content.defaultBasis,
             policy,
             publishedRows,
+            publishedRevisionNo,
           });
         },
         { readOnly: true },
@@ -265,6 +288,24 @@ export class ClaimPolicySaveRevision extends UseCase<
               payload: { policyId: policy.id, revisionId, typeId },
             }),
           ]);
+          // The publication is live; its review opens in the same unit, under the policy's row
+          // lock taken above (a refusal, such as a missing note, rolls it all back).
+          const review = await deps.review.openReview(context, {
+            area: CERTIFICATION_REVIEW_AREA,
+            subjectKind: CLAIM_POLICY_SUBJECT_KIND,
+            subjectRef: typeId,
+            before: revisionValues(
+              policy.publishedRevisionId === null || snapshot.publishedRevisionNo === null
+                ? null
+                : { id: policy.publishedRevisionId, revisionNo: snapshot.publishedRevisionNo },
+            ),
+            after: revisionValues(
+              { id: revisionId, revisionNo },
+              changes.map((change) => change.path),
+            ),
+            note: input.note,
+          });
+          if (!review.ok) return err(review.error);
           return ok({
             outcome: 'published' as const,
             typeId,
@@ -273,6 +314,7 @@ export class ClaimPolicySaveRevision extends UseCase<
             revisionNo,
             version: policy.version + 1,
             changes,
+            request: requestRef(review.value),
           });
         }
 
@@ -313,6 +355,7 @@ export class ClaimPolicySaveRevision extends UseCase<
           proposalId,
           version: policy.version,
           changes,
+          request: null,
         });
       })
       .catch((error: unknown) =>

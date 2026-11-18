@@ -1,4 +1,6 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { SYSTEM_REQUEST_RECORDER } from '../src/modules/system-requests';
+import { RecordingReview } from './support/system-request-fakes';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -53,6 +55,7 @@ const dId = (n: number) => `01990000-0000-7000-8000-${(0xd000 + n).toString(16).
 
 describe('category attribute links over HTTP (integration)', () => {
   let app: NestExpressApplication;
+  let reviews = new RecordingReview();
   const tree = new MemoryCategoryTree();
   const links = new MemoryCategoryAttributeLinkStore(tree);
   const reader = new MemoryAttributeAdminReader();
@@ -67,6 +70,8 @@ describe('category attribute links over HTTP (integration)', () => {
           .override(builder)
           .overrideProvider(CLOCK)
           .useValue(new FixedClock(START))
+          .overrideProvider(SYSTEM_REQUEST_RECORDER)
+          .useValue(reviews)
           .overrideProvider(CATEGORY_ATTRIBUTE_LINK_STORE)
           .useValue(links)
           .overrideProvider(CATEGORY_TREE_READER)
@@ -203,6 +208,7 @@ describe('category attribute links over HTTP (integration)', () => {
   const linksOf = (category: string) => `/catalog/admin/categories/${category}/attribute-links`;
 
   beforeEach(() => {
+    reviews = new RecordingReview();
     fakes.reset();
     links.reset();
     tree.reset();
@@ -252,6 +258,7 @@ describe('category attribute links over HTTP (integration)', () => {
           revisionNo: 1,
           version: 1,
         },
+        request: null,
       });
       expect(links.authors.map((a) => a.author)).toEqual([EDITOR]);
 
@@ -318,6 +325,47 @@ describe('category attribute links over HTTP (integration)', () => {
           (f) => f.code,
         ),
       ).toEqual(['colour']);
+    }, 30_000);
+
+    it('says on the read whether a save is reviewed, asks for a note then, and answers the request', async () => {
+      await boot();
+      await seeded(code);
+      const editor = adminSession(code, EDITOR, 2);
+      const unreviewed = await http().get(linksOf(CAT_P)).set(editor).expect(200);
+      expect(unreviewed.body).toMatchObject({ review: { reviewed: false, risk: 'low' } });
+
+      reviews.review('catalogue', 'medium');
+      const reviewed = await http().get(linksOf(CAT_P)).set(editor).expect(200);
+      expect(reviewed.body).toMatchObject({ review: { reviewed: true, risk: 'medium' } });
+
+      const saved = await http()
+        .put(linksOf(CAT_P))
+        .set(editor)
+        .send({ featureSetId: SET_A, filters: ['colour'], note: 'Pantry goods filter by colour' })
+        .expect(200);
+      expect(saved.body).toMatchObject({
+        links: { categoryId: CAT_P, version: 1 },
+        request: { number: 1 },
+      });
+      expect(reviews.opened[0]).toMatchObject({
+        area: 'catalogue',
+        subjectKind: 'catalog.category-attribute-links',
+        subjectRef: CAT_P,
+        before: { featureSetId: null, filters: [] },
+        after: { featureSetId: SET_A, filters: ['colour'] },
+      });
+      // A save without a note is refused where the area is reviewed (400 on note); the rollback of
+      // what it wrote is proved on the real unit of work in the database spec.
+      const missing = await http()
+        .put(linksOf(CAT_P))
+        .set(editor)
+        .send({ version: 1, featureSetId: SET_A, filters: [] })
+        .expect(400);
+      expect(missing.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'note', code: 'required' }] },
+      });
+      expect(reviews.opened).toHaveLength(1);
     }, 30_000);
 
     it('refuses filters that are unknown, drafts, not filterable or repeated', async () => {

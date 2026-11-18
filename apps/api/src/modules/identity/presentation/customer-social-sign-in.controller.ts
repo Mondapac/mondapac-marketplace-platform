@@ -18,6 +18,7 @@ import {
 import { readCookie, sessionCookie } from '../../../platform/call-context/session-cookie';
 import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientAddressOf, clientOriginOf } from '../../../platform/rate-limit/client-origin';
+import { deviceOf } from '../domain/device';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import { DescribeSocialSignIn } from '../application/use-cases/describe-social-sign-in.use-case';
 import { LinkSignInProvider } from '../application/use-cases/link-sign-in-provider.use-case';
@@ -239,7 +240,7 @@ export class CustomerSocialSignInController {
     if (origin === null || address === null) return finish('failed', 'access.unavailable');
     const signedIn = await this.signInWithProvider.execute(context, {
       ...input,
-      client: { origin, address },
+      client: { origin, address, device: deviceOf(request.get('user-agent')) },
     });
     if (!signedIn.ok) {
       return finish(OUTCOME_OF[signedIn.error.code] ?? 'failed', signedIn.error.code);

@@ -10,9 +10,9 @@ import {
   EmptyState,
   LoadError,
   SearchSelect,
-  SkeletonRows,
   Tabs,
   toast,
+  DetailSkeleton,
   type ActionMenuItem,
   type DataListRow,
   type SearchSelectOption,
@@ -197,7 +197,9 @@ export function AttributeDetailPanel({
       aria-busy={load.state === 'loading'}
       className="flex min-w-0 flex-col gap-4 rounded-lg border border-line bg-surface p-4 sm:p-5"
     >
-      {load.state === 'loading' ? <SkeletonRows label={t('loading')} rows={6} /> : null}
+      {load.state === 'loading' ? (
+        <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={6} framed={false} />
+      ) : null}
       {load.state === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3"

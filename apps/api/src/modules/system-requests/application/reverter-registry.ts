@@ -1,4 +1,7 @@
-import type { SystemChangeReverter, SystemChangeReverters } from '../contracts/reverters';
+import type {
+  SystemChangeReverter,
+  SystemChangeReverters,
+} from '../../../platform/change-review/change-review';
 import { isPolicyArea, type ReviewArea } from '../domain/areas';
 import { isSubjectKind } from '../domain/request';
 
@@ -69,6 +72,9 @@ export class ReverterRegistry implements ReverterLookup {
     }
     if (typeof reverter?.revert !== 'function') {
       throw new ReverterRegistryError(`The reverter of "${subjectKind}" has no revert method`);
+    }
+    if (reverter.describe !== undefined && typeof reverter.describe !== 'function') {
+      throw new ReverterRegistryError(`The reverter of "${subjectKind}" has a bad describe`);
     }
     this.#reverters.set(subjectKind, Object.freeze({ reverter, area }));
   }

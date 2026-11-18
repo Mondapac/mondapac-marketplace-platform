@@ -3,6 +3,7 @@ import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { INVITATION_KINDS, type InvitationKind } from '../../domain/invitation';
+import type { EmailChangeStore } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { InvitationRepository } from '../ports/invitation.repository';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
@@ -29,6 +30,8 @@ export interface PurgeExpiredOutput {
   readonly links: number;
   readonly challenges: number;
   readonly invitations: number;
+  /** Pending email changes cleared because their link's lifetime has passed (when wired). */
+  readonly pendingEmails?: number;
 }
 
 export type PurgeExpiredFailure = { readonly code: 'access.denied' };
@@ -43,6 +46,11 @@ export interface PurgeExpiredDependencies {
   readonly invitations: InvitationRepository;
   readonly policy: IdentityMarketPolicy;
   readonly clock: Clock;
+  /**
+   * Customers admin email change: a pending address lapses with its link (Hassan's answer 3) and
+   * is cleared here; absent in tests that do not cover it.
+   */
+  readonly emailChanges?: EmailChangeStore;
 }
 
 /**
@@ -144,7 +152,23 @@ export class PurgeExpired extends UseCase<
       ),
     );
 
+    const emailChanges = this.deps.emailChanges;
+    const changeLifetime = this.deps.policy.linkLifetimeMinutes(market, 'confirm-email-change');
+    const purgedPending =
+      emailChanges === undefined || changeLifetime === null
+        ? null
+        : await unitOfWork.run(market, async () =>
+            ok(
+              await emailChanges.clearLapsedPendingEmails(
+                market,
+                now.subtract({ minutes: changeLifetime }),
+              ),
+            ),
+          );
     return ok({
+      ...(purgedPending === null
+        ? {}
+        : { pendingEmails: purgedPending.ok ? purgedPending.value : 0 }),
       sessions: purgedSessions.ok ? purgedSessions.value : 0,
       throttles: purgedThrottles.ok ? purgedThrottles.value : 0,
       signInRecords: purgedRecords,
