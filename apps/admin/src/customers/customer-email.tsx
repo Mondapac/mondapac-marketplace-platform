@@ -272,6 +272,11 @@ export function CancelEmailChangeDialog({
       onClose();
       return;
     }
+    if (result.failure.code === 'request.throttled') {
+      const seconds = result.failure.details?.retryAfterSeconds;
+      setError(t('throttled', { minutes: Math.max(1, Math.ceil((seconds ?? 60) / 60)) }));
+      return;
+    }
     setError(t(result.failure.status === 403 ? 'denied' : 'failed'));
   }
 

@@ -6234,7 +6234,8 @@
         "done": "Email change cancelled.",
         "gone": "There is no pending email change any more.",
         "failed": "The email change could not be cancelled. Try again.",
-        "denied": "You don’t have access to cancel email changes."
+        "denied": "You don’t have access to cancel email changes.",
+        "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}."
       }
     }
   },

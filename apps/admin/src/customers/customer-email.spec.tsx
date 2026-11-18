@@ -41,8 +41,20 @@ const OPEN_ITEM = 'Edit email…';
 const PENDING_ITEM = 'Change pending email…';
 
 const markets = [
-  { marketId: 'AU', currency: 'AUD', zone: 'Australia/Brisbane', date: '10 Nov 2026, 1:30 pm' },
-  { marketId: 'NZ', currency: 'NZD', zone: 'Pacific/Auckland', date: '10 Nov 2026, 4:30 pm' },
+  {
+    marketId: 'AU',
+    currency: 'AUD',
+    zone: 'Australia/Brisbane',
+    date: '10 Nov 2026, 1:30 pm',
+    zoneName: 'AEST',
+  },
+  {
+    marketId: 'NZ',
+    currency: 'NZD',
+    zone: 'Pacific/Auckland',
+    date: '10 Nov 2026, 4:30 pm',
+    zoneName: 'NZDT',
+  },
 ] as const;
 
 const row = (currency: string): CustomerRow => ({
@@ -188,6 +200,7 @@ describe.each(markets)('Edit email, Market $marketId', (market) => {
     expect(await screen.findByText('Pending new email')).toBeTruthy();
     const banner = screen.getByText(/Waiting for new@example.com to confirm/);
     expect(banner.textContent).toContain(`Requested ${market.date}`);
+    expect(banner.textContent).toContain(market.zoneName);
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Edit email' })).toBeNull());
   });
 
@@ -205,7 +218,7 @@ describe.each(markets)('Edit email, Market $marketId', (market) => {
   });
 
   it.each([
-    ['validation.failed', 422, 'Enter a valid email address.'],
+    ['validation.failed', 400, 'Enter a valid email address.'],
     ['customers.email-taken', 409, 'This email is already used by another account.'],
     [
       'customers.customer-not-eligible',
@@ -327,6 +340,21 @@ describe.each(markets)('Edit email, Market $marketId', (market) => {
       }),
     ).toBeTruthy();
     expect(screen.queryByText('Pending new email')).toBeNull();
+  });
+
+  it('keeps the confirmation open with the wait when the cancel is throttled', async () => {
+    route(
+      overview({ pendingEmailChange: PENDING }, currency),
+      [],
+      [refused(429, 'request.throttled', { retryAfterSeconds: 150 })],
+    );
+    render(wrap(<CustomerPage {...props(market)} permissionKeys={[VIEW, KEY]} />));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel email change…' }));
+    const confirm = await screen.findByRole('dialog', { name: 'Cancel the email change?' });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Cancel email change' }));
+    expect(
+      await within(confirm).findByText('Too many attempts. Try again in 3 minutes.'),
+    ).toBeTruthy();
   });
 
   it('offers no cancel button in the banner without the key', async () => {

@@ -1197,6 +1197,12 @@ describe('relay of the customers list and customer page', () => {
       expect((await relay(config, send('PUT', email, big), pathOf(email), upstream)).status).toBe(
         413,
       );
+      // Another PUT of the same customer keeps the usual 16 KB cap.
+      const name = `customers/admin/customers/${ID}/display-name`;
+      const longer = JSON.stringify({ displayName: 'a'.repeat(1100) });
+      expect((await relay(config, send('PUT', name, longer), pathOf(name), upstream)).status).toBe(
+        200,
+      );
     });
 
     it('forwards only the notes paging keys', async () => {
