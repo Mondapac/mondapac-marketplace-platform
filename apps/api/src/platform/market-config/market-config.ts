@@ -1916,7 +1916,8 @@ const marketSchema = z
      * `codeLength` and `alphabet` (upper-case letters and digits, each once; at least 60 bits) of
      * a referral code. `cashback` (absent means the Market has no cashback): `maxBps` the most of
      * the goods paid that a promotion may credit and `maxCapMinor` the most one order may be
-     * credited. The credits themselves (amounts, caps, budgets) are promotion data.
+     * credited; `sellerMinBps` (absent means none) the least a seller's own cashback for its
+     * exclusive customers may credit (customers phase 4c). The credits themselves (amounts, caps, budgets) are promotion data.
      * Whether promotions are on is not config: an admin sets it at runtime
      * (`promotions.market_settings`), off by default.
      */
@@ -1978,7 +1979,12 @@ const marketSchema = z
           .strictObject({
             maxBps: z.number().int().min(1).max(10000),
             maxCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+            sellerMinBps: z.number().int().min(1).max(10000).optional(),
           })
+          .refine(
+            (value) => value.sellerMinBps === undefined || value.sellerMinBps <= value.maxBps,
+            'sellerMinBps must not exceed maxBps',
+          )
           .optional(),
         firstOrder: z
           .strictObject({

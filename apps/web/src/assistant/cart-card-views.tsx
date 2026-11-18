@@ -437,6 +437,13 @@ const rowKey = (row: { pick: BasketOptionView; packs: number }) =>
 /** The most packs of one line the planner ever proposes; the cart route has its own limit. */
 const PACKS_MAX = 99;
 
+/** The most packs of this product the buyer can set: the server's own ceiling, never above PACKS_MAX. */
+const packsLimit = (option: BasketOptionView) =>
+  Math.max(1, Math.min(PACKS_MAX, option.maxQuantity ?? PACKS_MAX));
+
+/** A pick can go into the cart only with a sell unit and a ceiling above zero (0 = none to add). */
+const addable = (option: BasketOptionView) => option.variantId !== null && option.maxQuantity !== 0;
+
 /** A planned shopping list: edit packs, swap a product, drop a line, then add the whole list. */
 export function BasketProposalCardView({
   card,
@@ -490,13 +497,17 @@ export function BasketProposalCardView({
       ...row,
       pick,
       choices,
-      packs: edit?.packs ?? (swapped ? (pick.quantity ?? 1) : row.packs),
+      // The planner's pack count (or the buyer's edit) never goes past what the product allows.
+      packs: Math.min(
+        edit?.packs ?? (swapped ? (pick.quantity ?? 1) : row.packs),
+        packsLimit(pick),
+      ),
       chosen: swapped,
       off: edit?.off ?? (uncertainIndexes.has(row.itemIndex) && !swapped),
     };
   });
   const active = rows.filter((row) => !row.off);
-  const ready = active.filter((row) => row.pick.variantId !== null);
+  const ready = active.filter((row) => addable(row.pick));
   const sellers = [...new Set(active.map((row) => row.pick.sellerId))];
   const oneStoreBroken = card.mode === 'single-store' && sellers.length > 1;
   const totals = useMemo(() => {
@@ -535,6 +546,11 @@ export function BasketProposalCardView({
       setStep('done');
     }
   }, [ready, results, guard]);
+
+  // The buyer is told why "+" is off: the product's own ceiling is reached.
+  const uid = useId();
+  const atCeiling = (row: { pick: BasketOptionView; packs: number }) =>
+    row.pick.maxQuantity !== null && row.packs >= packsLimit(row.pick);
 
   const [moveFailed, setMoveFailed] = useState(false);
   const press = async () => {
@@ -632,7 +648,11 @@ export function BasketProposalCardView({
         ) : (
           <div className="ascb-edit">
             <div className="ascc-qty">
-              <div role="group" aria-label={t('cart-quantity')}>
+              <div
+                role="group"
+                aria-label={t('cart-quantity')}
+                aria-describedby={atCeiling(row) ? `${uid}-max-${row.itemIndex}` : undefined}
+              >
                 <button
                   type="button"
                   aria-label={t('cart-less')}
@@ -647,12 +667,17 @@ export function BasketProposalCardView({
                 <button
                   type="button"
                   aria-label={t('cart-more')}
-                  disabled={locked || row.packs >= PACKS_MAX}
+                  disabled={locked || row.packs >= packsLimit(row.pick)}
                   onClick={() => patch(row.itemIndex, { packs: row.packs + 1 })}
                 >
                   +
                 </button>
               </div>
+              {atCeiling(row) ? (
+                <small id={`${uid}-max-${row.itemIndex}`} className="ascb-why">
+                  {t('basket-max-packs', { count: packsLimit(row.pick) })}
+                </small>
+              ) : null}
             </div>
             <button
               type="button"
@@ -665,7 +690,7 @@ export function BasketProposalCardView({
             </button>
           </div>
         )}
-        {!row.off && row.pick.variantId === null ? (
+        {!row.off && !addable(row.pick) ? (
           <small className="ascb-why">{t('basket-cannot-add')}</small>
         ) : null}
         {row.choices.length > 0 ? (

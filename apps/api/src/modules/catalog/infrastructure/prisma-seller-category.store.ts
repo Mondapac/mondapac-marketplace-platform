@@ -1,5 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, IdGenerator, MarketContext } from '@mondapac/shared-kernel';
+import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   NewCategoryProposal,
@@ -7,6 +8,8 @@ import type {
   ProposalDecision,
   SellerCategoryStore,
   ShelfActor,
+  PendingProposalsFilter,
+  PendingProposalsPage,
 } from '../application/ports/seller-category.store';
 import type {
   CategoryProposalView,
@@ -16,6 +19,7 @@ import type {
   ShelfText,
   ShelfView,
 } from '../domain/seller-category';
+import { likeLiteral } from './like-literal';
 import { offerFromRow } from './prisma-offer.repository';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
@@ -79,6 +83,15 @@ const SHELF_ORDER: Readonly<Record<string, number>> = {
  * statement goes through `PrismaService.tx(market)` with `marketId` at the top level of `where`;
  * the guard triggers refuse any change the grants allow but the lifecycle does not.
  */
+const pendingWhere = (
+  market: MarketContext,
+  filter: PendingProposalsFilter,
+): Prisma.CatalogCategoryProposalWhereInput => ({
+  marketId: market.marketId,
+  status: 'pending',
+  ...(filter.nameKey === null ? {} : { normalisedName: { contains: likeLiteral(filter.nameKey) } }),
+});
+
 export class PrismaSellerCategoryStore implements SellerCategoryStore {
   constructor(
     private readonly prisma: PrismaService,
@@ -238,6 +251,25 @@ export class PrismaSellerCategoryStore implements SellerCategoryStore {
       take: page.limit,
     });
     return rows.map(proposalOf);
+  }
+
+  async pagePending(
+    market: MarketContext,
+    page: PendingProposalsPage,
+  ): Promise<readonly CategoryProposalView[]> {
+    const rows = await this.prisma.tx(market).catalogCategoryProposal.findMany({
+      where: pendingWhere(market, page),
+      orderBy: [{ createdAt: page.direction }, { id: page.direction }],
+      skip: page.offset,
+      take: page.limit,
+    });
+    return rows.map(proposalOf);
+  }
+
+  async countPending(market: MarketContext, filter: PendingProposalsFilter): Promise<number> {
+    return this.prisma.tx(market).catalogCategoryProposal.count({
+      where: pendingWhere(market, filter),
+    });
   }
 
   async listOfSeller(

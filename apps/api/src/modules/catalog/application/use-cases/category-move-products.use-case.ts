@@ -1,6 +1,13 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, IdGenerator, Result } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  Clock,
+  Id,
+  IdGenerator,
+  MarketContext,
+  Result,
+} from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -17,12 +24,22 @@ import type { CategoryProductMoveStore } from '../ports/category-product-move.st
 import { categoryIdOf, closedInput, editorAccountOf, invalid } from '../categories/category-editor';
 import type { ValidationFailure } from '../categories/category-admin-views';
 import { reasonOf } from '../categories/category-restructure';
+import type { SystemActionProposer, SystemRequestRecorder } from '../../../system-requests';
+import { productsMoveValues } from '../catalogue-actions';
+import {
+  CATEGORY_PRODUCTS_MOVE_SUBJECT_KIND,
+  catalogueReview,
+  noteOr,
+  proposeCatalogueAction,
+  requestRef,
+  type ProposedOr,
+} from '../catalogue-review';
 
 export interface CategoryMoveProductsInput {
   readonly [key: string]: unknown;
 }
 
-const KEYS = ['categoryId', 'targetId', 'reason'] as const;
+const KEYS = ['categoryId', 'targetId', 'reason', 'note'] as const;
 
 export interface CategoryMoveProductsOutput {
   readonly jobId: Id<'CategoryMoveJob'>;
@@ -41,7 +58,8 @@ export type CategoryMoveProductsFailure =
   | { readonly code: 'category.not-editable' }
   | { readonly code: 'category.no-products' }
   | { readonly code: 'category.move-in-progress' }
-  | { readonly code: 'catalog.categories-unavailable' };
+  | { readonly code: 'catalog.categories-unavailable' }
+  | { readonly code: 'system-requests.already-pending'; readonly pendingNumber: number };
 
 export interface CategoryMoveProductsDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -51,6 +69,10 @@ export interface CategoryMoveProductsDependencies {
   readonly audit: AuditWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  /** The review policy of area catalogue (whether the move waits for approval). */
+  readonly review: Pick<SystemRequestRecorder, 'areaPolicy'>;
+  /** Files the move for a second admin's approval (Admin Inbox › System requests). */
+  readonly proposer: SystemActionProposer;
 }
 
 /**
@@ -64,10 +86,15 @@ export interface CategoryMoveProductsDependencies {
  * Rule: `catalog.category-tree.restructure` (protected) and `catalog.product.approve`; refused in an
  * acting-as session. Refused when X has no published product and when X already has a queued or
  * running job.
+ *
+ * Where the Market reviews area catalogue it waits for a second admin's approval (owner decision
+ * of 18 Nov 2026): after the same checks the answer is the proposal (`request`; the `note`, or the
+ * reason note when none is given) and no job starts. The approval runs the same checks and starts
+ * the job as the approving admin (catalogue-appliers.ts); the job then runs as any other.
  */
 export class CategoryMoveProducts extends UseCase<
   CategoryMoveProductsInput,
-  CategoryMoveProductsOutput,
+  ProposedOr<CategoryMoveProductsOutput>,
   CategoryMoveProductsFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -90,11 +117,11 @@ export class CategoryMoveProducts extends UseCase<
   protected async handle(
     context: CallContext,
     input: CategoryMoveProductsInput,
-  ): Promise<Result<CategoryMoveProductsOutput, CategoryMoveProductsFailure>> {
+  ): Promise<Result<ProposedOr<CategoryMoveProductsOutput>, CategoryMoveProductsFailure>> {
     const result = await this.#run(context, input);
     this.#logger.log({
       msg: 'catalog.category-move-products',
-      code: result.ok ? 'queued' : result.error.code,
+      code: result.ok ? ('jobId' in result.value ? 'queued' : 'proposed') : result.error.code,
       marketId: context.market.marketId,
       correlationId: context.correlationId,
     });
@@ -104,7 +131,7 @@ export class CategoryMoveProducts extends UseCase<
   async #run(
     context: CallContext,
     input: CategoryMoveProductsInput,
-  ): Promise<Result<CategoryMoveProductsOutput, CategoryMoveProductsFailure>> {
+  ): Promise<Result<ProposedOr<CategoryMoveProductsOutput>, CategoryMoveProductsFailure>> {
     const accountId = editorAccountOf(context);
     if (accountId === null) return err({ code: 'access.denied' });
     const body = closedInput(input, KEYS);
@@ -127,55 +154,136 @@ export class CategoryMoveProducts extends UseCase<
     } catch {
       return err({ code: 'access.unavailable' });
     }
-    const jobId = deps.ids.next<'CategoryMoveJob'>();
-    const done = await deps.unitOfWork.run<CategoryMoveProductsOutput, CategoryMoveProductsFailure>(
+    // Its own read-only unit, before this one (units do not nest).
+    const policy = await catalogueReview(deps.review, context);
+    const done = await deps.unitOfWork.run<
+      ProposedOr<CategoryMoveProductsOutput>,
+      CategoryMoveProductsFailure
+    >(
       market,
       async () => {
-        const nodes = await deps.adminCategoryReader.categories(market, MAX_TREE_NODES + 1);
-        if (nodes.length > MAX_TREE_NODES) return err({ code: 'catalog.categories-unavailable' });
-        const from = nodes.find((node) => node.id === source.value);
-        if (from === undefined) return err({ code: 'category.not-found' });
-        if (!nodes.some((node) => node.id === target.value)) {
-          return err({ code: 'category.target-not-found' });
-        }
-        if (from.status !== 'active' && from.status !== 'hidden') {
-          return err({ code: 'category.not-editable' });
-        }
-        const issues = checkProductCategories(nodes, [target.value], maxLevel);
-        if (issues.length > 0) {
-          const first = issues[0]!;
-          return err(
-            first.code === 'category.level-not-allowed'
-              ? { code: 'category.level-not-allowed' }
-              : first.code === 'category.not-available'
-                ? { code: 'category.not-editable' }
-                : { code: 'category.target-not-found' },
-          );
-        }
-        const products = await deps.moveStore.countProducts(market, source.value);
-        if (products === 0) return err({ code: 'category.no-products' });
-        const now = deps.clock.now();
-        const inserted = await deps.moveStore.insertJob(market, {
-          id: jobId,
-          sourceCategoryId: source.value,
-          targetCategoryId: target.value,
-          reason: reason.value,
-          createdByAccountId: accountId,
-          total: products,
-          now,
+        const checked = await checkProductsMove(deps, market, {
+          sourceId: source.value,
+          targetId: target.value,
+          maxLevel,
         });
-        if (!inserted) return err({ code: 'category.move-in-progress' });
-        await deps.audit.record(
-          context,
-          PlatformCategoryProductsMoveStartedAudit.entry(source.value, {
-            before: { products },
-            after: { targetCategoryId: target.value, jobId, reasonGiven: true },
-          }),
-        );
-        return ok({ jobId, products });
+        if (!checked.ok) return checked;
+        if (policy.reviewed) {
+          const proposed = await proposeCatalogueAction(deps.proposer, context, policy, {
+            subjectKind: CATEGORY_PRODUCTS_MOVE_SUBJECT_KIND,
+            subjectRef: source.value,
+            before: { status: checked.value.source.status },
+            after: productsMoveValues({
+              action: 'move-products',
+              targetId: target.value,
+              reason: reason.value,
+              products: checked.value.products,
+            }),
+            note: noteOr(body.value['note'], reason.value),
+            tooLargePath: 'reason',
+          });
+          if (!proposed.ok) return err(proposed.error);
+          const request = requestRef(proposed.value);
+          if (request !== null) return ok({ request });
+        }
+        return startProductsMoveInUnit(deps, context, accountId, {
+          sourceId: source.value,
+          targetId: target.value,
+          reason: reason.value,
+          products: checked.value.products,
+          requestId: null,
+        });
       },
       { timeoutMs: 30_000 },
     );
     return done;
   }
+}
+
+/**
+ * The checks of a move of products, inside the open unit: X is a live category of the Market, Y a
+ * live category on an allowed level, and X has published products (their count). Shared by the
+ * route and by the approval of a proposed move.
+ */
+export async function checkProductsMove(
+  deps: Pick<CategoryMoveProductsDependencies, 'adminCategoryReader' | 'moveStore'>,
+  market: MarketContext,
+  move: {
+    readonly sourceId: Id<'Category'>;
+    readonly targetId: Id<'Category'>;
+    readonly maxLevel: number;
+  },
+): Promise<
+  Result<
+    { readonly source: { readonly status: string }; readonly products: number },
+    CategoryMoveProductsFailure
+  >
+> {
+  const nodes = await deps.adminCategoryReader.categories(market, MAX_TREE_NODES + 1);
+  if (nodes.length > MAX_TREE_NODES) return err({ code: 'catalog.categories-unavailable' });
+  const from = nodes.find((node) => node.id === move.sourceId);
+  if (from === undefined) return err({ code: 'category.not-found' });
+  if (!nodes.some((node) => node.id === move.targetId)) {
+    return err({ code: 'category.target-not-found' });
+  }
+  if (from.status !== 'active' && from.status !== 'hidden') {
+    return err({ code: 'category.not-editable' });
+  }
+  const issues = checkProductCategories(nodes, [move.targetId], move.maxLevel);
+  if (issues.length > 0) {
+    const first = issues[0]!;
+    return err(
+      first.code === 'category.level-not-allowed'
+        ? { code: 'category.level-not-allowed' }
+        : first.code === 'category.not-available'
+          ? { code: 'category.not-editable' }
+          : { code: 'category.target-not-found' },
+    );
+  }
+  const products = await deps.moveStore.countProducts(market, move.sourceId);
+  if (products === 0) return err({ code: 'category.no-products' });
+  return ok({ source: { status: from.status }, products });
+}
+
+/**
+ * Starts the job inside the open unit, after {@link checkProductsMove}: one queued job per source
+ * (`category.move-in-progress` while another is queued or running) and its audit row, naming the
+ * request whose approval started it (null for an admin's own start).
+ */
+export async function startProductsMoveInUnit(
+  deps: Pick<CategoryMoveProductsDependencies, 'moveStore' | 'audit' | 'clock' | 'ids'>,
+  context: CallContext,
+  accountId: Id<'Account'>,
+  move: {
+    readonly sourceId: Id<'Category'>;
+    readonly targetId: Id<'Category'>;
+    readonly reason: string;
+    readonly products: number;
+    readonly requestId: Id<'SystemRequest'> | null;
+  },
+): Promise<Result<CategoryMoveProductsOutput, CategoryMoveProductsFailure>> {
+  const jobId = deps.ids.next<'CategoryMoveJob'>();
+  const inserted = await deps.moveStore.insertJob(context.market, {
+    id: jobId,
+    sourceCategoryId: move.sourceId,
+    targetCategoryId: move.targetId,
+    reason: move.reason,
+    createdByAccountId: accountId,
+    total: move.products,
+    now: deps.clock.now(),
+  });
+  if (!inserted) return err({ code: 'category.move-in-progress' });
+  await deps.audit.record(
+    context,
+    PlatformCategoryProductsMoveStartedAudit.entry(move.sourceId, {
+      before: { products: move.products },
+      after: {
+        targetCategoryId: move.targetId,
+        jobId,
+        reasonGiven: true,
+        requestId: move.requestId,
+      },
+    }),
+  );
+  return ok({ jobId, products: move.products });
 }
