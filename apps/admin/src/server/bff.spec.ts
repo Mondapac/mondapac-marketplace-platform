@@ -3834,10 +3834,10 @@ describe('relay of the shipments export', () => {
     });
   });
 
-  it('passes all 13 export column ids, in the order the list shows them', async () => {
+  it('passes all 14 export column ids, in the order the list shows them', async () => {
     const upstream = upstreamOk();
     const all =
-      'store,customer,paid,delivery,carrier,total,ready,shipped,delivered,fleet,shipping,refunded,sellerOrderId';
+      'store,customer,paid,delivery,carrier,carrierProgress,total,ready,shipped,delivered,fleet,shipping,refunded,sellerOrderId';
     const response = await relay(config, get(`?columns=${all}`), path, upstream);
     expect(response.status).toBe(200);
     expect(new URL(upstream.mock.calls[0]?.[0] as string).searchParams.get('columns')).toBe(all);

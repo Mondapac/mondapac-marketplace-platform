@@ -12049,7 +12049,7 @@
   "shipments": {
     "title": "Shipments",
     "page-title": "Shipments",
-    "intro": "One row for each seller in each paid order. Carrier tracking updates aren't shown here yet; open the order for details.",
+    "intro": "One row for each seller in each paid order. Add the Carrier progress column to see what the delivery fleet last reported; open the order for details.",
     "no-access": "You don't have access to shipments.",
     "back-home": "Back to home",
     "tabs": "Shipment views",
@@ -12136,6 +12136,7 @@
       "paid": "Paid",
       "delivery": "Delivery",
       "carrier": "Carrier and tracking",
+      "carrier-progress": "Carrier progress",
       "total": "Total (incl. tax)",
       "ready": "Ready",
       "shipped": "Shipped",
@@ -12144,6 +12145,23 @@
       "fee": "Delivery fee (incl. tax)",
       "refunded": "Refunded (incl. tax)",
       "seller-order": "Seller order ID"
+    },
+    "carrier-progress": {
+      "label": {
+        "booked": "Booked",
+        "picked-up": "Picked up",
+        "delivered": "Delivered",
+        "exception": "Exception",
+        "cancelled": "Cancelled",
+        "unknown": "Unknown"
+      },
+      "updated": "Updated {time}",
+      "proof": "Proof of delivery",
+      "booked-on": "Booked on {fleet}",
+      "advisory": "Reported by the carrier booking. Can differ from Stage for a short time.",
+      "not-available": "Not available",
+      "not-available-title": "Carrier progress could not be loaded. Try again later.",
+      "none-sr": "No carrier booking"
     },
     "window": "{start} to {end}",
     "carrier": {
