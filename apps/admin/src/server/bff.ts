@@ -87,6 +87,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // list's own query.
     'commission-payouts/admin/disputes',
     'commission-payouts/admin/disputes/export',
+    // The held prices as a super list (pricing; query: `view`, `kind`, `change`, `q`, `sellerId`,
+    // `from`, `to`, `minAmount`, `maxAmount`, `sort`, `direction`, `paging`, `page`, `pageSize`) and
+    // its export as a file (the chosen ids or the list's own query). The decisions are POSTs below.
+    'pricing/admin/price-holds/list',
+    'pricing/admin/price-holds/export',
     // The buyer-review moderation queue (reviews), read-only list (query: `tab`, `cursor`,
     // `limit`); one review is read by its dialog and again after an action.
     'reviews/admin/moderation',
@@ -1052,6 +1057,39 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
+  // The view, filters, sort and page mode of the held-price super list (the API validates them).
+  'pricing/admin/price-holds/list': [
+    'view',
+    'kind',
+    'change',
+    'q',
+    'sellerId',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+    'paging',
+    'page',
+    'pageSize',
+  ],
+  'pricing/admin/price-holds/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'kind',
+    'change',
+    'q',
+    'sellerId',
+    'from',
+    'to',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+  ],
   'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
   'catalog/admin/products': [
     'view',
@@ -1491,6 +1529,46 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^(opened|amount|evidence-due|updated)$/,
     direction: /^(asc|desc)$/,
   },
+  'pricing/admin/price-holds/list': {
+    view: /^(all|regular|special|up|down)$/,
+    kind: /^(regular|special)$/,
+    change: /^(up|down)$/,
+    // A record id or an Offer id, exact.
+    q: UUID,
+    sellerId: UUID,
+    // ISO instants: the submission (`to` excluded).
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The held amount in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(submitted|amount)$/,
+    direction: /^(asc|desc)$/,
+    paging: /^(pages|prev-next)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'pricing/admin/price-holds/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(offer-id|variant-id|seller-id|record-id|window|anchor)(,(offer-id|variant-id|seller-id|record-id|window|anchor)){0,5}$/,
+    // At most 200 record ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(all|regular|special|up|down)$/,
+    kind: /^(regular|special)$/,
+    change: /^(up|down)$/,
+    // A record id or an Offer id, exact.
+    q: UUID,
+    sellerId: UUID,
+    // ISO instants: the submission (`to` excluded).
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The held amount in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(submitted|amount)$/,
+    direction: /^(asc|desc)$/,
+  },
   'catalog/admin/products': {
     view: /^(active|all|inactive)$/,
     scope: /^(PLATFORM|SELLER)$/,
@@ -1794,6 +1872,7 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'commission-payouts/admin/payouts/export:ids': 7400,
   'wallet/admin/credit-requests/export:ids': 7400,
   'commission-payouts/admin/disputes/export:ids': 7400,
+  'pricing/admin/price-holds/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
   'payments/admin/connected-accounts/export:ids': 7400,
