@@ -208,6 +208,41 @@ describe('GrantPolicy.canGrant', () => {
   });
 });
 
+describe('GrantPolicy.needsSystemRole (a sensitive role, owner decision of 18 Nov 2026)', () => {
+  it('is true for the system role and for a role that confers a protected key', () => {
+    const systemRole = role({ id: ADMIN_SYSTEM, scope: 'platform', kind: 'system' });
+    expect(GrantPolicy.needsSystemRole(systemRole, catalogue)).toBe(true);
+    const custom = role({
+      id: ONBOARDING,
+      scope: 'platform',
+      kind: 'custom',
+      effectiveKeys: new Set(['identity.seller-access.view', 'identity.platform-role.edit']),
+    });
+    expect(GrantPolicy.needsSystemRole(custom, catalogue)).toBe(true);
+  });
+
+  it('is false for a role without a protected key, and agrees with canGrant for a non-holder', () => {
+    const plain = role({
+      id: ONBOARDING,
+      scope: 'platform',
+      effectiveKeys: new Set(['identity.seller-access.view']),
+    });
+    expect(GrantPolicy.needsSystemRole(plain, catalogue)).toBe(false);
+    expect(GrantPolicy.canGrant(onboardingAdmin, plain, catalogue).ok).toBe(true);
+    const sensitive = role({
+      id: ONBOARDING,
+      scope: 'platform',
+      effectiveKeys: new Set(['identity.seller-access.view', 'identity.admin-account.invite']),
+    });
+    const holder: GrantingActor = {
+      ...onboardingAdmin,
+      effectiveKeys: new Set([...onboardingAdmin.effectiveKeys, 'identity.admin-account.invite']),
+    };
+    expect(GrantPolicy.needsSystemRole(sensitive, catalogue)).toBe(true);
+    expect(GrantPolicy.canGrant(holder, sensitive, catalogue).ok).toBe(false);
+  });
+});
+
 describe('GrantPolicy.canActOn', () => {
   const target = (over: Partial<ActedOnAccount>): ActedOnAccount => ({
     accountId: id<'Account'>(301),

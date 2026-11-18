@@ -9,6 +9,8 @@ import {
   isNoteFailure,
   ReviewNoteField,
   trimmedNote,
+  useAlreadyPending,
+  useSentForApproval,
   useSentForReview,
 } from '../shared/review-note.tsx';
 import { roleLabel } from './role-label.ts';
@@ -222,7 +224,12 @@ export function InviteAdminDialog({
   const [note, setNote] = useState('');
   const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
   const sentForReview = useSentForReview();
+  const sentForApproval = useSentForApproval();
+  const alreadyPending = useAlreadyPending();
   const options = useMemo(() => roleOptions(root, roles), [root, roles]);
+  // Owner decision of 18 Nov 2026: where people is reviewed, an invitation to a sensitive role
+  // (the Platform Administrator, or a role with a protected permission) waits for approval.
+  const waits = reviewed && roles.some((role) => role.roleId === roleId && role.sensitive === true);
 
   useEffect(() => {
     if (!open) {
@@ -266,8 +273,13 @@ export function InviteAdminDialog({
       );
       if (result.ok) {
         onClose();
-        toast.success(t('dialog.invite.toast-sent', { email: address }));
-        sentForReview(result.body);
+        const body = result.body as { readonly code?: unknown } | null;
+        // Nothing was sent yet: only the approval request is announced.
+        if (body?.code === 'invitation.proposed') sentForApproval(result.body);
+        else {
+          toast.success(t('dialog.invite.toast-sent', { email: address }));
+          sentForReview(result.body);
+        }
         router.refresh();
         return;
       }
@@ -278,6 +290,11 @@ export function InviteAdminDialog({
       }
       if (reviewed && isNoteFailure(failure)) {
         setNoteError(note.trim() === '' ? 'required' : 'rejected');
+        return;
+      }
+      const pending = alreadyPending(failure);
+      if (pending !== null) {
+        setProblem(pending);
         return;
       }
       if (failure.code === 'validation.failed') {
@@ -312,7 +329,7 @@ export function InviteAdminDialog({
             {t('dialog.invite.cancel')}
           </Button>
           <Button loading={flight.pending} onClick={() => void submit()}>
-            {t('dialog.invite.action')}
+            {waits ? t('dialog.invite.action-approval') : t('dialog.invite.action')}
           </Button>
         </>
       }
@@ -338,12 +355,14 @@ export function InviteAdminDialog({
         <p className="text-sm text-fg-muted">
           {t('dialog.invite.help', { duration: t('dialog.invite.duration') })}
         </p>
+        {waits ? <Banner tone="info">{t('dialog.invite.approval-body')}</Banner> : null}
         {reviewed ? (
           <ReviewNoteField
             value={note}
             onChange={setNote}
             error={noteError ?? undefined}
             disabled={flight.pending}
+            approval={waits}
           />
         ) : null}
         {problem === null ? null : <Banner tone="critical">{problem}</Banner>}

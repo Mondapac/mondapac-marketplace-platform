@@ -100,6 +100,25 @@ describe('admin team table', () => {
     expect(within(rows[5]!).getByText('No role')).toBeTruthy();
   });
 
+  it("shows a sensitive role's invitation as awaiting approval, not as invited", async () => {
+    await show({
+      items: [
+        invitation({
+          status: 'awaiting-approval',
+          role: {
+            roleId: '0190a000-0000-7000-8000-0000000000a1',
+            kind: 'system',
+            seedCode: 'platform-administrator',
+          },
+        }),
+      ],
+      next: null,
+    });
+    const rows = screen.getAllByRole('row');
+    expect(within(rows[1]!).getByText('Awaiting approval')).toBeTruthy();
+    expect(within(rows[1]!).queryByText('Invited')).toBeNull();
+  });
+
   it('says it is just the actor so far on an empty first page only', async () => {
     await show({ items: [], next: null });
     expect(screen.getByText("It's just you so far")).toBeTruthy();

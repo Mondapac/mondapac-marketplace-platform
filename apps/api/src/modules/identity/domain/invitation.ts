@@ -39,6 +39,12 @@ export interface InvitationState {
   readonly tokenHash: Uint8Array | null;
   /** Set with the hash at dispatch; a re-send replaces both. */
   readonly expiresAt: Temporal.Instant | null;
+  /**
+   * An admin invitation to a sensitive role that waits for another admin's approval (owner
+   * decision of 18 Nov 2026): no mail, no token, never dispatched or re-sent, until `release`.
+   * Only on a pending admin invitation without a token.
+   */
+  readonly heldForApproval: boolean;
   readonly state: InvitationStateCode;
   readonly decidedAt: Temporal.Instant | null;
   readonly acceptedAccountId: Id<'Account'> | null;
@@ -68,16 +74,32 @@ export function invitationStatusAt(
  * admin team list's re-send hint (slice 8c).
  */
 export function invitationReissuableAt(
-  invitation: Pick<InvitationState, 'state' | 'createdAt'>,
+  invitation: Pick<InvitationState, 'state' | 'createdAt' | 'heldForApproval'>,
   now: Temporal.Instant,
   lifetimeMinutes: number,
 ): boolean {
   if (!Number.isInteger(lifetimeMinutes) || lifetimeMinutes < 1) {
     throw new RangeError('reissue: a positive whole lifetime in minutes is required');
   }
-  if (invitation.state !== 'pending') return false;
+  // A held invitation was never sent: a re-send would mail it before the approval.
+  if (invitation.state !== 'pending' || invitation.heldForApproval) return false;
   const cutoff = invitation.createdAt.add({ minutes: lifetimeMinutes });
   return Temporal.Instant.compare(now, cutoff) < 0;
+}
+
+/** What {@link Invitation.issue} and {@link Invitation.hold} are given. */
+export interface IssueInput {
+  readonly id: Id<'Invitation'>;
+  readonly marketId: MarketId;
+  readonly kind: InvitationKind;
+  readonly email: EmailAddress;
+  /** Required for, and only for, a seller-owner invitation. */
+  readonly displayName?: string | null;
+  readonly roleId: Id<'Role'>;
+  /** Required for seller-owner and staff; null for admin. */
+  readonly sellerId: Id<'Seller'> | null;
+  readonly invitedByAccountId: Id<'Account'> | null;
+  readonly now: Temporal.Instant;
 }
 
 /** An invitation that cannot be used now: one answer for every cause (8.6 row 1). */
@@ -103,6 +125,10 @@ export class InvitationInvariantError extends Error {
  *   that need other aggregates (the role still exists, the inviter may still grant it, HF5 (b))
  *   belong to the accepting use case.
  * - `revoke`: the inviter's side withdraws a pending invitation.
+ * - `hold` and `release` (owner decision of 18 Nov 2026): an admin invitation to a sensitive role
+ *   is stored held, without the issue event, so no mail and no token exist; the approval of its
+ *   System request releases it, which records the issue event the mail handler dispatches on.
+ *   A held invitation is never dispatched, re-sent or accepted.
  *
  * The email, role, seller and kind never change: a different one is a new invitation (3.4).
  * Times come from the caller's `Clock`; every change raises the version by one (C5). Events
@@ -126,20 +152,23 @@ export class Invitation {
     this.#state = Invitation.freeze(state);
   }
 
-  static issue(input: {
-    readonly id: Id<'Invitation'>;
-    readonly marketId: MarketId;
-    readonly kind: InvitationKind;
-    readonly email: EmailAddress;
-    /** Required for, and only for, a seller-owner invitation. */
-    readonly displayName?: string | null;
-    readonly roleId: Id<'Role'>;
-    /** Required for seller-owner and staff; null for admin. */
-    readonly sellerId: Id<'Seller'> | null;
-    readonly invitedByAccountId: Id<'Account'> | null;
-    readonly now: Temporal.Instant;
-  }): Invitation {
-    const invitation = new Invitation(
+  static issue(input: IssueInput): Invitation {
+    const invitation = Invitation.created(input, false);
+    invitation.recordIssued(input.now);
+    return invitation;
+  }
+
+  /**
+   * A pending admin invitation held for approval (owner decision of 18 Nov 2026): stored like an
+   * issued one, but without `identity.invitation-issued.v1`, so the mail handler never sends it.
+   * Only {@link release} lets it go out.
+   */
+  static hold(input: IssueInput & { readonly kind: 'admin' }): Invitation {
+    return Invitation.created(input, true);
+  }
+
+  private static created(input: IssueInput, heldForApproval: boolean): Invitation {
+    return new Invitation(
       {
         id: input.id,
         marketId: input.marketId,
@@ -151,6 +180,7 @@ export class Invitation {
         invitedByAccountId: input.invitedByAccountId,
         tokenHash: null,
         expiresAt: null,
+        heldForApproval,
         state: 'pending',
         decidedAt: null,
         acceptedAccountId: null,
@@ -159,16 +189,31 @@ export class Invitation {
       },
       null,
     );
-    const { id, kind, sellerId } = invitation.#state;
-    invitation.#events.push(
+  }
+
+  /** `identity.invitation-issued.v1` at the current version: the mail handler sends on it. */
+  private recordIssued(now: Temporal.Instant): void {
+    const { id, kind, sellerId, version } = this.#state;
+    this.#events.push(
       InvitationIssued.record({
         aggregateId: id,
-        aggregateVersion: 1,
-        occurredAt: input.now,
+        aggregateVersion: version,
+        occurredAt: now,
         payload: { invitationId: id, kind, sellerId },
       }),
     );
-    return invitation;
+  }
+
+  /**
+   * The approval of a held invitation (owner decision of 18 Nov 2026): it is no longer held, its
+   * version rises and `identity.invitation-issued.v1` is recorded, which the mail handler
+   * dispatches with a token, as for an issue. Only a held, pending invitation.
+   */
+  release(now: Temporal.Instant): Result<void, InvitationRejected> {
+    if (this.#state.state !== 'pending' || !this.#state.heldForApproval) return err(REJECTED);
+    this.change({ heldForApproval: false });
+    this.recordIssued(now);
+    return ok(undefined);
   }
 
   static restore(state: InvitationState): Invitation {
@@ -205,7 +250,11 @@ export class Invitation {
 
   /** Whether the invitation may be accepted at `now`: dispatched, pending and unexpired. */
   usableAt(now: Temporal.Instant): boolean {
-    return this.#state.tokenHash !== null && this.statusAt(now) === 'pending';
+    return (
+      this.#state.tokenHash !== null &&
+      !this.#state.heldForApproval &&
+      this.statusAt(now) === 'pending'
+    );
   }
 
   /**
@@ -217,7 +266,8 @@ export class Invitation {
     now: Temporal.Instant,
     lifetimeMinutes: number,
   ): Result<void, InvitationRejected> {
-    if (this.#state.state !== 'pending') return err(REJECTED);
+    // A held invitation is never dispatched: no token exists before its approval.
+    if (this.#state.state !== 'pending' || this.#state.heldForApproval) return err(REJECTED);
     if (tokenHash.length !== 32 || !Number.isInteger(lifetimeMinutes) || lifetimeMinutes < 1) {
       throw new RangeError('dispatch: a 32-byte hash and a positive whole lifetime are required');
     }
@@ -277,15 +327,7 @@ export class Invitation {
   reissue(now: Temporal.Instant, lifetimeMinutes: number): Result<void, InvitationRejected> {
     if (!this.reissuableAt(now, lifetimeMinutes)) return err(REJECTED);
     this.change({ tokenHash: null, expiresAt: null });
-    const { id, kind, sellerId, version } = this.#state;
-    this.#events.push(
-      InvitationIssued.record({
-        aggregateId: id,
-        aggregateVersion: version,
-        occurredAt: now,
-        payload: { invitationId: id, kind, sellerId },
-      }),
-    );
+    this.recordIssued(now);
     return ok(undefined);
   }
 
@@ -295,7 +337,13 @@ export class Invitation {
    */
   revoke(now: Temporal.Instant): Result<void, InvitationRejected> {
     if (this.#state.state !== 'pending') return err(REJECTED);
-    this.change({ state: 'revoked', decidedAt: now, email: null, displayName: null });
+    this.change({
+      state: 'revoked',
+      decidedAt: now,
+      email: null,
+      displayName: null,
+      heldForApproval: false,
+    });
     const { id, kind, sellerId, version } = this.#state;
     this.#events.push(
       InvitationRevoked.record({
@@ -346,6 +394,9 @@ export class Invitation {
     }
     if ((state.tokenHash === null) !== (state.expiresAt === null)) {
       throw new InvitationInvariantError('the token hash and the expiry are set together');
+    }
+    if (state.heldForApproval && !(pending && state.kind === 'admin' && state.tokenHash === null)) {
+      throw new InvitationInvariantError('held only while a pending admin invitation, unsent');
     }
     if (pending !== (state.decidedAt === null)) {
       throw new InvitationInvariantError('a decision instant once decided, and only then');

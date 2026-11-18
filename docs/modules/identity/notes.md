@@ -158,6 +158,33 @@ delete waits for another admin's approval. Area `people`, always high risk.
   (active, verified, the key, can edit the role, R1 and R11), and `apply` deletes only a role still
   at the asked name, keys and version (`changed-since`) and held by nobody (`not-permitted`),
   audited `identity.role.deletion-approved` as the approver with `requestId`.
+- **Invite an admin with a sensitive role** (owner decision of 18 Nov 2026, 14:06Z; kind
+  `identity.admin-invitation-sensitive`, approval mode). Sensitive is the existing R3/R11
+  predicate, `GrantPolicy.needsSystemRole`: the role is the system role (the Platform
+  Administrator) or confers a protected key, i.e. giving it needs the system role (the same rule
+  `canGrant` applies; `roleIsSensitive` in `roles/granting.ts`, `sensitive` on the role catalogue).
+  Every check of the invite runs first (actor, reach, grant, `account.exists`, the mail counters,
+  one pending invitation per address); then the unit files the proposal with values `{roleId,
+  roleVersion}` / `{action: 'invite', roleId}` and the `note`, and stores the invitation **held**
+  (`invitations.held_for_approval`): pending, with the address as every pending invitation keeps
+  it, but without `identity.invitation-issued.v1`, so the mail handler never sends it and no token
+  exists. Audited `identity.invitation.proposed` with `requestId`; `invitation.proposed`, HTTP 202.
+  The domain refuses to dispatch, re-send or accept a held invitation, and the mail handler skips
+  one; the team list shows it `awaiting-approval` with re-send denied. The address stays out of
+  the request's values, the audit rows and the logs. **Approval** (applier registered with
+  `InviteAdmin`'s `allOf` keys; `check` in a read-only unit, `apply` in the approval's serializable
+  unit, under the acceptance's invitation lock): the approver is an active, verified admin with
+  the invite key who could give the role now (`roleGrantVerdict`: R1, R3, R11), the invitation is
+  still held for the same role (`changed-since` once revoked or replaced), the role is at the
+  asked version (`changed-since`; deleted is `gone`), the inviter could still issue it and the
+  address has no admin account yet (`not-permitted`). Then it is released (the issue event at the
+  next version, so the mail and its token follow) and audited `identity.invitation.approved` as
+  the approver with `requestId`. The mail counters are spent when it is asked for (one mail per
+  approval). **Reject or withdraw** send nothing; the held row stays pending until the inviter
+  revokes it or, as a never-sent invitation, it passes its kind's lifetime (then a new invitation
+  replaces it and the hourly purge deletes it). An approval later than that lifetime answers
+  `gone`: invite again. The invitee (the admin account of the address, if one exists) may not
+  decide it. Where people is off, the invitation is issued at once as any other.
 - **Where people is off** the three routes behave as before (`request: null`, the delete at once).
 - **Not reviewed:** revoking an invitation (it only narrows access), re-sending one, the first-admin
   routine (system actor), the seller role editor.
@@ -165,4 +192,7 @@ delete waits for another admin's approval. Area `people`, always high risk.
   invitation shows the display name of the admin who accepted it, a pending one shows none.
 - **Panel.** The role editor asks for a note on create and in the delete dialog where people is
   reviewed, and on 202 says "Sent for approval (SR-n)" and keeps the role; the invite dialog asks
-  for a note (from the team list's `review`) and announces the request.
+  for a note (from the team list's `review`) and announces the request. For a sensitive role
+  (`sensitive` of the role catalogue) where people is reviewed, the invite dialog says another
+  admin must approve it and nothing is sent until then, its button reads "Send for approval", and
+  the 202 announces "Sent for approval (SR-n)" only; the team list shows "Awaiting approval".

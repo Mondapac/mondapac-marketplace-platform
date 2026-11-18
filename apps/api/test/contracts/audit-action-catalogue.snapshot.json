@@ -2122,6 +2122,18 @@
     }
   },
   {
+    "action": "identity.invitation.approved",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "requestId": "id",
+      "roleId": "id"
+    }
+  },
+  {
     "action": "identity.invitation.issued",
     "targetType": "identity.invitation",
     "targetId": "id",
@@ -2129,6 +2141,18 @@
     "before": null,
     "after": {
       "kind": "enumOf(seller-owner|staff|admin)",
+      "roleId": "id"
+    }
+  },
+  {
+    "action": "identity.invitation.proposed",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "requestId": "id",
       "roleId": "id"
     }
   },

@@ -383,6 +383,7 @@
         "active": "Active",
         "invited": "Invited",
         "expired": "Invitation expired",
+        "awaiting-approval": "Awaiting approval",
         "deactivated": "Deactivated"
       },
       "role": {
@@ -448,6 +449,8 @@
           "help": "They'll get an email with a link to set their own password. The link works for {duration}.",
           "duration": "72 hours",
           "action": "Send invitation",
+          "action-approval": "Send for approval",
+          "approval-body": "This role has protected permissions, so another admin must approve the invitation in Admin Inbox > System requests. Nothing is sent until then.",
           "cancel": "Cancel",
           "toast-sent": "Invitation sent to {email}."
         },

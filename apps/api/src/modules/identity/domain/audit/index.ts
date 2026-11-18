@@ -454,6 +454,39 @@ export const InvitationRevokedAudit = defineAuditAction({
 });
 
 /**
+ * An admin invited someone with a sensitive role (the Platform Administrator, or a role with a
+ * protected permission) where area people is reviewed: the invitation is stored held and waits
+ * for another admin's approval in Admin Inbox › System requests (owner decision of 18 Nov 2026).
+ * No mail was sent. Target: the invitation. `requestId` names the System request.
+ */
+export const InvitationProposedAudit = defineAuditAction({
+  action: 'identity.invitation.proposed',
+  targetType: 'identity.invitation',
+  actors: ['authenticated'],
+  after: {
+    kind: auditField.enumOf(INVITATION_KINDS),
+    roleId: auditField.id(),
+    requestId: auditField.id(),
+  },
+});
+
+/**
+ * Another admin approved a held admin invitation in Admin Inbox › System requests: it is released
+ * and its mail goes now. The actor is the approving admin. Target: the invitation. `requestId`
+ * names the System request.
+ */
+export const InvitationApprovedAudit = defineAuditAction({
+  action: 'identity.invitation.approved',
+  targetType: 'identity.invitation',
+  actors: ['authenticated'],
+  after: {
+    kind: auditField.enumOf(INVITATION_KINDS),
+    roleId: auditField.id(),
+    requestId: auditField.id(),
+  },
+});
+
+/**
  * A reviewer rejected, or its author withdrew, an admin invitation in Admin Inbox › System
  * requests while it was still pending, and it was revoked (its link stops working, the address is
  * cleared). Target: the invitation. `requestId` names the System request. An invitation already
@@ -807,6 +840,8 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   InvitationReissuedAudit,
   InvitationRevokedAudit,
   InvitationRevertedAudit,
+  InvitationProposedAudit,
+  InvitationApprovedAudit,
   InvitationAcceptedAudit,
   SecondFactorActivatedAudit,
   SecondFactorReplacedAudit,

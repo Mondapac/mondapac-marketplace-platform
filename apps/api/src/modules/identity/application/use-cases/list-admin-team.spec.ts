@@ -370,6 +370,7 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
       invitedByAccountId: ROOT,
       tokenHash: TOKEN_HASH,
       expiresAt: START.add({ hours: 1 }),
+      heldForApproval: false,
       state: 'pending',
       decidedAt: null,
       acceptedAccountId: null,

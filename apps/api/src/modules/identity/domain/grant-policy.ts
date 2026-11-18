@@ -63,6 +63,10 @@ const SELLER_SCOPE_GRANTS_PROTECTED_OR_SYSTEM = false;
 const notGrantable = (reason: NotGrantableReason): Result<never, NotGrantable> =>
   err({ code: 'role.not-grantable', reason });
 
+/** Whether the role confers a protected key (R11). */
+const confersProtectedKey = (role: GrantedRole, catalogue: ProtectedKeyCatalogue): boolean =>
+  [...role.effectiveKeys].some((key) => catalogue.isProtected(key));
+
 const isSubset = (inner: ReadonlySet<string>, outer: ReadonlySet<string>): boolean => {
   for (const key of inner) if (!outer.has(key)) return false;
   return true;
@@ -87,7 +91,7 @@ export const GrantPolicy = Object.freeze({
     catalogue: ProtectedKeyCatalogue,
   ): Result<void, NotGrantable> {
     if (role.scope !== actor.scope) return notGrantable('scope');
-    const protectedKey = [...role.effectiveKeys].some((key) => catalogue.isProtected(key));
+    const protectedKey = confersProtectedKey(role, catalogue);
     if (role.scope === 'seller' && !SELLER_SCOPE_GRANTS_PROTECTED_OR_SYSTEM) {
       if (role.kind === 'system') return notGrantable('seller-system-role');
       if (protectedKey) return notGrantable('seller-protected-key');
@@ -98,6 +102,17 @@ export const GrantPolicy = Object.freeze({
     }
     if (protectedKey && !actor.holdsSystemRole) return notGrantable('protected-key');
     return ok(undefined);
+  },
+
+  /**
+   * Whether giving `role` needs the system role of its scope (R3, R11): it is the system role (the
+   * Platform Administrator in platform scope) or it confers a protected key. The one predicate of
+   * {@link canGrant}'s system-role rules, and of a "sensitive" role: an admin invitation to one
+   * waits for another admin's approval where area people is reviewed (owner decision of 18 Nov
+   * 2026).
+   */
+  needsSystemRole(role: GrantedRole, catalogue: ProtectedKeyCatalogue): boolean {
+    return role.kind === 'system' || confersProtectedKey(role, catalogue);
   },
 
   /**
