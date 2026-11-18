@@ -368,21 +368,53 @@ export class OwnOfferStatusCounts {
   @ApiProperty() pendingFirstPublish!: number;
   @ApiProperty() changesNeeded!: number;
   @ApiProperty() published!: number;
+  @ApiProperty({ required: false, description: 'List mode: the sum of the four.' }) all?: number;
+}
+
+/** One row of the Offer list in list mode: the Offer with the row actions the caller may run. */
+export class OwnOfferListItemDto extends OwnOfferViewDto {
+  @ApiProperty({
+    type: [String],
+    enum: ['open', 'edit', 'submit', 'delete'],
+    required: false,
+    description:
+      'List mode only: the row Actions menu, in menu order, from the caller’s permissions and the ' +
+      'Offer’s status. The action checks its key again when it runs.',
+  })
+  actions?: string[];
 }
 
 export class OwnOfferList {
-  @ApiProperty({ type: [OwnOfferViewDto] }) items!: OwnOfferViewDto[];
+  @ApiProperty({ type: [OwnOfferListItemDto] }) items!: OwnOfferListItemDto[];
   @ApiProperty({
     nullable: true,
     type: String,
-    description: 'Send as `afterId` for the next page; null on the last page.',
+    required: false,
+    description: 'Keyset mode: send as `afterId` for the next page; null on the last page.',
   })
-  nextAfterId!: string | null;
+  nextAfterId?: string | null;
   @ApiProperty({
     type: OwnOfferStatusCounts,
-    description: "All the seller's Offers per status (deleted left out), whatever the page.",
+    description:
+      "The seller's Offers per status (deleted left out). Keyset mode: whatever the page. List " +
+      'mode: for the same search and on-sale filter, with `all` their sum.',
   })
   counts!: OwnOfferStatusCounts;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    required: false,
+    description: 'List mode `pages`: the Offers matching, over all pages; null in `prev-next`.',
+  })
+  total?: number | null;
+  @ApiProperty({ type: Number, required: false, description: 'List mode: this page, from 1.' })
+  page?: number;
+  @ApiProperty({ type: Number, required: false, description: 'List mode: rows per page.' })
+  pageSize?: number;
+  @ApiProperty({ type: String, enum: ['pages', 'prev-next'], required: false })
+  paging?: 'pages' | 'prev-next';
+  @ApiProperty({ type: Boolean, required: false, description: 'List mode: a next page exists.' })
+  hasNext?: boolean;
 }
 
 export class OwnProductOptionsLocales {
@@ -401,6 +433,18 @@ export class OwnProductOptions {
   conditions!: string[];
   @ApiProperty({ type: OwnProductOptionsLocales })
   locales!: OwnProductOptionsLocales;
+  @ApiProperty({
+    type: [String],
+    description:
+      "The Market's tax category codes, as `form.taxCategoryCodes` of the product read lists them.",
+  })
+  taxCategoryCodes!: string[];
+  @ApiProperty({
+    type: [OwnFormCategory],
+    description:
+      'The active platform categories a product may be filed under, as `form.categories` of the product read lists them (the list does not depend on the product).',
+  })
+  categories!: OwnFormCategory[];
   @ApiProperty({
     description:
       'False when the Market does not let sellers create products (the form should not open).',

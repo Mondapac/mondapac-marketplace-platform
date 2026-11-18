@@ -18,6 +18,7 @@ export {
   type SellerRatingReason,
 } from '../domain/rules';
 export {
+  REVIEWS_CUSTOMER_REVIEW_VIEW,
   REVIEWS_MODERATION_MODERATE,
   REVIEWS_MODERATION_REMOVE,
   REVIEWS_MODERATION_QUEUE,
@@ -27,6 +28,18 @@ export {
   REVIEWS_SETTINGS_VIEW,
 } from './permissions';
 export { REVIEWS_STEP_UP_ACTIONS } from './step-up';
+export {
+  CUSTOMER_REVIEWS_FACADE,
+  type AdminCustomerHelpfulVote,
+  type AdminCustomerReview,
+  type AdminCustomerReviewReport,
+  type AdminCustomerReviewsPage,
+  type AdminCustomerReviewsRequest,
+  type AdminCustomerSellerRating,
+  type CustomerReviewsFacade,
+  type CustomerReviewsFailure,
+  type ReviewReportRole,
+} from './customer-reviews.facade';
 export {
   MAX_RATING_TOTALS_PAGE,
   REVIEWS_FACADE,

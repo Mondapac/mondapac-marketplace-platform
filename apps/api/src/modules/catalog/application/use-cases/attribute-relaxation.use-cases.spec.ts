@@ -32,6 +32,7 @@ import { AttributeRelaxationConfirm } from './attribute-relaxation-confirm.use-c
 import { AttributeRelaxationListOpen } from './attribute-relaxation-list-open.use-case';
 import { AttributeRelaxationRequestCreate } from './attribute-relaxation-request.use-case';
 import { ExpireRelaxationRequests } from './expire-relaxation-requests.use-case';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 
 // The two-person request to clear `material` (catalog design 8.2; attributes A2 part 3), in
 // memory on both Market fixtures: who may ask, confirm and cancel; the 72-hour expiry by the
@@ -104,6 +105,7 @@ describe.each(['AU', 'ZZ'] as const)('material relaxation in market %s', (code) 
       audit,
       clock,
       ids,
+      review: new RecordingReview(),
     };
     return {
       create: new AttributeDefinitionCreate(gate, deps),

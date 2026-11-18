@@ -30,6 +30,16 @@ export type ReadFailure =
   | { readonly code: 'ordering.search-unavailable' }
   | { readonly code: 'ordering.order-not-found' };
 
+/**
+ * What an export adds to an admin Sales list read: the selected rows (`ids`, an AND beside the
+ * filter) and, on its Previous/Next pages, no tab counts (`skipCounts`: the file never shows them,
+ * so they are answered as zeros instead of being read on every page).
+ */
+export interface ListScope {
+  readonly ids?: readonly string[] | null;
+  readonly skipCounts?: boolean;
+}
+
 export const DEFAULT_PAGE_SIZE = 25;
 export const MAX_PAGE_SIZE = 100;
 const STATUSES: readonly OrderStatus[] = ['pending-payment', 'confirmed', 'cancelled'];
@@ -66,6 +76,11 @@ export interface ListInput {
   readonly pageSize?: unknown;
   readonly sort?: unknown;
   readonly direction?: unknown;
+  /**
+   * With `page`: `pages` (page numbers and the total, the default) or `prev-next` (Previous and
+   * Next, no count: the answer says `hasNext`). The panel sends the Market's "List paging" setting.
+   */
+  readonly paging?: unknown;
   readonly paymentState?: unknown;
   readonly sellerId?: unknown;
   /** Admin only: the orders of one customer account (the customer page's Orders tab). */
@@ -197,12 +212,13 @@ interface OffsetRequest {
   readonly page: number;
   readonly pageSize: number;
   readonly sort: OrderSort;
+  readonly paging: 'pages' | 'prev-next';
 }
 
 /** The offset-page request of a list input, or null when the caller asked for the cursor page. */
 function offsetOf(input: ListInput): Result<OffsetRequest | null, ReadFailure> {
   if (input.page === undefined) {
-    const stray = (['pageSize', 'sort', 'direction'] as const).filter(
+    const stray = (['pageSize', 'sort', 'direction', 'paging'] as const).filter(
       (k) => input[k] !== undefined,
     );
     return stray.length === 0
@@ -239,12 +255,17 @@ function offsetOf(input: ListInput): Result<OffsetRequest | null, ReadFailure> {
     if (input.direction === 'asc' || input.direction === 'desc') direction = input.direction;
     else fields.push({ path: 'direction', code: 'value' });
   }
+  let paging: OffsetRequest['paging'] = 'pages';
+  if (input.paging !== undefined) {
+    if (input.paging === 'pages' || input.paging === 'prev-next') paging = input.paging;
+    else fields.push({ path: 'paging', code: 'value' });
+  }
   if (page !== null && fields.length === 0 && page * pageSize > MAX_PAGED_ROWS) {
     fields.push({ path: 'page', code: 'too-deep' });
   }
   return fields.length > 0 || page === null
     ? err({ code: 'validation.failed', fields })
-    : ok({ page, pageSize, sort: { key, direction } });
+    : ok({ page, pageSize, sort: { key, direction }, paging });
 }
 
 function cut<T extends { orderId: Id<'Order'>; createdAt: Temporal.Instant }>(
@@ -459,6 +480,7 @@ export async function listAllOrders(
       readonly rows: OrderPageView<AdminOrderView>;
       readonly counts: OrderStatusCounts;
       readonly total: number | null;
+      readonly hasNext: boolean;
     },
     ReadFailure
   >(
@@ -466,27 +488,35 @@ export async function listAllOrders(
     async () => {
       const counts = await deps.orders.countAll(context.market);
       if (request !== null) {
-        const [rows, total] = await Promise.all([
+        // Previous and Next reads one extra row and never counts (a count over a large list is what
+        // that mode avoids).
+        const prevNext = request.paging === 'prev-next';
+        const [read, total] = await Promise.all([
           deps.orders.pageAll(
             context.market,
             filter,
             request.sort,
             (request.page - 1) * request.pageSize,
-            request.pageSize,
+            prevNext ? request.pageSize + 1 : request.pageSize,
           ),
-          deps.orders.countMatching(context.market, filter),
+          prevNext ? Promise.resolve(null) : deps.orders.countMatching(context.market, filter),
         ]);
+        const rows = prevNext ? read.slice(0, request.pageSize) : read;
         return ok({
           rows: { orders: rows.map(adminOrderView), nextCursor: null },
           counts,
           total,
+          hasNext: prevNext
+            ? read.length > request.pageSize && request.page * request.pageSize < MAX_PAGED_ROWS
+            : request.page * request.pageSize < Math.min(total ?? 0, MAX_PAGED_ROWS),
         });
       }
       const rows = await deps.orders.listAll(context.market, filter, {
         ...page,
         limit: page.limit + 1,
       });
-      return ok({ rows: cut(rows.map(adminOrderView), page.limit), counts, total: null });
+      const cutRows = cut(rows.map(adminOrderView), page.limit);
+      return ok({ rows: cutRows, counts, total: null, hasNext: cutRows.nextCursor !== null });
     },
     { readOnly: true },
   );
@@ -496,9 +526,15 @@ export async function listAllOrders(
     nextCursor: read.value.rows.nextCursor,
     counts: read.value.counts,
     paging:
-      request === null || read.value.total === null
+      request === null
         ? null
-        : { total: read.value.total, page: request.page, pageSize: request.pageSize },
+        : {
+            mode: request.paging,
+            total: read.value.total,
+            page: request.page,
+            pageSize: request.pageSize,
+            hasNext: read.value.hasNext,
+          },
     searchCapped,
     searchScope,
   });

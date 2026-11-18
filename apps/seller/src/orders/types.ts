@@ -52,17 +52,13 @@ export interface SellerOrderRefund {
   readonly settledAt: string | null;
 }
 
-/** The delivery address the customer chose; null for older orders and once the account is erased. */
-export interface ShipTo {
-  readonly recipientFirstName: string;
-  readonly recipientLastName: string;
-  readonly phone: string;
-  readonly line1: string;
-  readonly line2: string | null;
-  readonly suburb: string;
-  readonly region: string | null;
-  readonly postcode: string;
-  readonly countryCode: string;
+/**
+ * How the shop knows the customer of its order: their code for the shop and first name only,
+ * never the address, the full name or the phone (the platform books the delivery).
+ */
+export interface SellerOrderCustomer {
+  readonly code: string;
+  readonly firstName: string | null;
 }
 
 export interface SellerOrderView {
@@ -89,17 +85,52 @@ export interface SellerOrderView {
   readonly pickup?: PickupStatus | null;
   /** Every refund of this order; absent on list rows. */
   readonly refunds?: readonly SellerOrderRefund[];
-  readonly shipTo?: ShipTo | null;
+  /** Absent on list rows; null while the shop's customer code is not given yet. */
+  readonly customer?: SellerOrderCustomer | null;
   /** The customer's note to the shop (plain text); null when none. */
   readonly buyerNote?: string | null;
   readonly lines: readonly OrderLineView[];
 }
 
-export interface SellerOrderPage {
+/** The row actions the API names (`actions` of a list row); an id this panel does not know is ignored. */
+export const ROW_ACTIONS = [
+  'open',
+  'packing-slip',
+  'copy-number',
+  'ready',
+  'hand-over',
+  'mark-delivered',
+  'report-unavailable',
+] as const;
+export type RowAction = (typeof ROW_ACTIONS)[number];
+
+/** One row of the list: the seller order and what the caller may run on it. */
+export interface SellerOrderRow extends SellerOrderView {
+  readonly actions: readonly string[];
+}
+
+export interface SellerOrderCounts {
+  readonly toShip: number;
+  readonly shipped: number;
+  readonly delivered: number;
+}
+
+/** A cursor read (the board, the dashboard): the orders without their row actions. */
+export interface SellerOrderCursorPage {
   readonly sellerOrders: readonly SellerOrderView[];
   readonly nextCursor: string | null;
-  /** Page mode only: how many orders match the filter, the page shown and its size. */
+}
+
+export interface SellerOrderPage {
+  readonly sellerOrders: readonly SellerOrderRow[];
+  readonly nextCursor: string | null;
+  /** The shop's orders per fulfilment state, whatever the filter. */
+  readonly counts?: SellerOrderCounts;
+  /** `pages` mode only: how many orders match the filter. Null in `prev-next` and cursor mode. */
   readonly total?: number | null;
+  readonly paging?: 'pages' | 'prev-next' | null;
+  /** Whether a page after this one exists. */
+  readonly hasNext?: boolean;
   readonly page?: number | null;
   readonly pageSize?: number | null;
 }

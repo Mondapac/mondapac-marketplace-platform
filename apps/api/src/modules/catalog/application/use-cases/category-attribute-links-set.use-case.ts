@@ -22,6 +22,15 @@ import {
   parseCategoryLinks,
   type FilterRefusal,
 } from '../attributes/category-links';
+import {
+  catalogueReview,
+  CATEGORY_LINKS_SUBJECT_KIND,
+  linksValues,
+  openCatalogueReview,
+  requestRef,
+  type CatalogueRequestRef,
+} from '../catalogue-review';
+import type { SystemRequestRecorder } from '../../../system-requests';
 import type { AttributeAdminReader } from '../ports/attribute-admin.reader';
 import type { CategoryAttributeLinkStore } from '../ports/category-attribute-link.store';
 
@@ -35,6 +44,8 @@ export interface CategoryAttributeLinksSetOutput {
   readonly filters: readonly string[];
   readonly revisionNo: number;
   readonly version: number;
+  /** The review the change opened in Admin Inbox › System requests; null when none. */
+  readonly request: CatalogueRequestRef;
 }
 
 export type CategoryAttributeLinksSetFailure =
@@ -57,11 +68,13 @@ export interface CategoryAttributeLinksSetDependencies {
   readonly audit: AuditWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  /** Opens the review of the change in Admin Inbox › System requests (area catalogue). */
+  readonly review: SystemRequestRecorder;
 }
 
-const KEYS = ['categoryId', 'version', 'featureSetId', 'filters'] as const;
+const KEYS = ['categoryId', 'version', 'featureSetId', 'filters', 'note'] as const;
 
-const shapeOf = (link: CategoryAttributeLink | null) => ({
+export const linkAuditShape = (link: CategoryAttributeLink | null) => ({
   revisionNo: link?.state.revisionNo ?? 0,
   hasFeatureSet: link?.state.familyId != null,
   filterCount: link?.state.filters.length ?? 0,
@@ -75,6 +88,11 @@ const shapeOf = (link: CategoryAttributeLink | null) => ({
  * active; every filter must be an active definition that is allowed as a filter and has a
  * filterable type. The request names the version the admin saw (omitted when the category has no
  * link yet): a later one is `category-links.stale`. A change is a new insert-only revision.
+ *
+ * It goes live at once and is reviewed after (area catalogue, Admin Inbox › System requests):
+ * where the Market reviews that area the request needs a `note` (1 to 500 characters), the change
+ * and its review commit together, and a rejected or withdrawn change is restored by the reverter
+ * in catalogue-reverters.ts.
  */
 export class CategoryAttributeLinksSet extends UseCase<
   CategoryAttributeLinksSetInput,
@@ -136,6 +154,8 @@ export class CategoryAttributeLinksSet extends UseCase<
     if (!parsed.ok) return parsed;
     const { market } = context;
     const { linkStore } = this.deps;
+    // Its own read-only unit, before this one (units do not nest).
+    const reviewPolicy = await catalogueReview(this.deps.review, context);
     try {
       return await this.deps.unitOfWork.run<
         CategoryAttributeLinksSetOutput,
@@ -194,10 +214,26 @@ export class CategoryAttributeLinksSet extends UseCase<
         await this.deps.audit.record(
           context,
           CategoryAttributesChangedAudit.entry(categoryId, {
-            before: shapeOf(existing),
-            after: shapeOf(next.value),
+            before: linkAuditShape(existing),
+            after: linkAuditShape(next.value),
           }),
         );
+        // The change is live; its review opens in the same unit (a refusal rolls it back).
+        const review = await openCatalogueReview(this.deps.review, context, reviewPolicy, {
+          subjectKind: CATEGORY_LINKS_SUBJECT_KIND,
+          subjectRef: categoryId,
+          before: linksValues({
+            featureSetId: existing?.state.familyId ?? null,
+            filters: existing?.state.filters ?? [],
+          }),
+          after: linksValues({
+            featureSetId: next.value.state.familyId,
+            filters: next.value.state.filters,
+          }),
+          note: body.value['note'],
+          tooLargePath: 'filters',
+        });
+        if (!review.ok) return err(review.error);
         const { state } = next.value;
         return ok({
           categoryId: state.categoryId,
@@ -205,6 +241,7 @@ export class CategoryAttributeLinksSet extends UseCase<
           filters: state.filters,
           revisionNo: state.revisionNo,
           version: state.version,
+          request: requestRef(review.value),
         });
       });
     } catch (error) {
