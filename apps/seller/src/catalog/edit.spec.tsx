@@ -87,6 +87,18 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('EditForm', () => {
+  it('keeps the card order: Status, Product, then Organisation', () => {
+    mount();
+    const status = screen.getByRole('button', { name: 'Submit for review' });
+    const title = screen.getByLabelText('Title');
+    const organisation = screen.getByRole('heading', { name: 'Organisation' });
+    const follows = (a: HTMLElement, b: HTMLElement) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(status, title)).toBe(true);
+    expect(follows(title, organisation)).toBe(true);
+    expect(screen.queryByText('Your offer')).toBeNull();
+  });
+
   it('saves only the texts and sends every other draft key back unchanged', async () => {
     call.mockResolvedValue(saved);
     mount();
