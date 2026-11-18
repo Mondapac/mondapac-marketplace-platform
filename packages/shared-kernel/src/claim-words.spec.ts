@@ -257,6 +257,8 @@ const claims = [
   'Rein pflanzlich',
   'Plantaardig',
   'Fleischlos',
+  'It is \u04BB\u0430\u04CF\u0430\u04CF rice',
+  'It is \u04BB\u0430\u0430\u0430\u04CF\u0430\u04CF rice',
 ];
 
 describe('claim words', () => {

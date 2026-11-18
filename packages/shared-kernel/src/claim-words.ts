@@ -1,8 +1,8 @@
 /**
  * The words and the folding every AI text guard shares (ADR-0019 R1, R13): which spellings of a
  * certification, religious-standard or diet claim a model reply must never carry. Pure, with no
- * import (shared kernel, ADR-0008). The assistant's reply guard and its list-line check use it; the
- * catalog draft guard keeps its own copy until it is moved here (follow-up).
+ * import (shared kernel, ADR-0008). The assistant's reply guard and its list-line check use it, and
+ * so does the catalog description draft guard.
  *
  * Only functions are exported: a shared regular expression could be altered by any importer.
  */
@@ -403,7 +403,11 @@ function replaceLeet(text: string): string {
 function skeletonOf(folded: string): string {
   return folded.replace(
     SKELETON_LETTER,
-    (letter) => SKELETON[letter.toLowerCase()] ?? SKELETON[letter] ?? letter,
+    (letter) =>
+      SKELETON[letter.toLowerCase()] ??
+      SKELETON[letter] ??
+      SKELETON[letter.toUpperCase()] ??
+      letter,
   );
 }
 
