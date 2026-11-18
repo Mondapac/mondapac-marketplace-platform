@@ -4,10 +4,18 @@ import { Banner, Button, Card, Select, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
 import { callApi } from '../api/client.ts';
-import { descriptionOf } from './create-form.tsx';
 import { readable } from './format.ts';
 import { offerEditProblemOf } from './offer-edit-errors.ts';
 import type { OfferView, ProductOptions } from './types.ts';
+
+/** Empty locales are left out: the API takes only the texts the seller wrote. */
+function descriptionOf(values: Readonly<Record<string, string>>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(values)
+      .map(([locale, text]) => [locale, text.trim()] as const)
+      .filter(([, text]) => text !== ''),
+  );
+}
 
 /** The whole description to send: edited locales replace the old text, others are kept as they were. */
 export function descriptionWith(

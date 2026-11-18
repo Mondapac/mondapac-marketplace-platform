@@ -80,6 +80,9 @@ export interface Locales {
 export interface ProductOptions {
   readonly productTypes: readonly string[];
   readonly locales: Locales;
+  /** The Market's tax categories and the active platform categories, as the product read lists them. */
+  readonly taxCategoryCodes: readonly string[];
+  readonly categories: readonly FormCategory[];
 }
 
 /** `POST catalog/admin/platform-products`. */
@@ -154,9 +157,17 @@ export interface Submitted {
   readonly published: boolean;
 }
 
-/** A code from the API as readable text (`dry-goods` to `Dry goods`). */
+/** Abbreviations that stay in capitals when a code is shown as words (`gst-free` is `GST free`). */
+const ACRONYMS: ReadonlySet<string> = new Set(['gst', 'vat', 'abn', 'sku', 'gtin', 'url', 'id']);
+
+/** A code from the API as readable text (`dry-goods` to `Dry goods`, `gst_free_food` to `GST free food`). */
 export function readable(code: string): string {
-  const text = code.replace(/[-_]+/g, ' ').trim();
+  const words = code
+    .replace(/[-_]+/g, ' ')
+    .trim()
+    .split(' ')
+    .map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word));
+  const text = words.join(' ');
   return text === '' ? code : text.charAt(0).toUpperCase() + text.slice(1);
 }
 

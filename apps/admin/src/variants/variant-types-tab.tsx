@@ -8,9 +8,10 @@ import {
   LoadError,
   RadioGroup,
   Select,
-  SkeletonRows,
   TextField,
   toast,
+  DetailSkeleton,
+  FormSkeleton,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -91,7 +92,13 @@ export function VariantTypesTab({
       >
         {load.state === 'loading' ? (
           <div className="p-4">
-            <SkeletonRows label={t('loading')} rows={4} />
+            <DetailSkeleton
+              label={t('loading')}
+              slowLabel={tl('slow')}
+              rows={4}
+              title={false}
+              framed={false}
+            />
           </div>
         ) : null}
         {load.state === 'failed' ? (
@@ -248,9 +255,11 @@ function VariantTypePanel({
     ) : load.state === 'missing' ? (
       <EmptyState size="card" icon="columns" title={t('missing')} />
     ) : (
-      <div className="rounded-lg border border-line bg-surface p-4">
-        <SkeletonRows label={t('loading')} rows={6} />
-      </div>
+      <FormSkeleton
+        label={t('loading')}
+        slowLabel={tl('slow')}
+        sections={[{ fields: 3 }, { fields: 3 }]}
+      />
     );
   }
   if (load.state !== 'ready') return null;

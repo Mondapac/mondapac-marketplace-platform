@@ -1,6 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { LedgerState } from '../../domain/order';
-import type { Refund, RefundTarget } from '../../domain/refund';
+import type { Refund, RefundReason, RefundState, RefundTarget } from '../../domain/refund';
 import type { RefundLimit, RefundUsage } from '../../domain/refund-limits';
 
 /** A pending refund with the PaymentIntent it gives money back from. */
@@ -75,6 +75,23 @@ export interface RefundRepository {
   ): Promise<
     readonly { readonly refund: Refund; readonly creditNoteId: Id<'CreditNote'> | null }[]
   >;
+
+  /**
+   * One page of the refunds of the orders one customer placed (the customer page's Refunds super
+   * list, phase 2b), filtered and sorted, with the credit note id when it succeeded. The sort's
+   * tie-break is the refund id, so pages never repeat or skip a refund.
+   */
+  pageForAccount(
+    market: MarketContext,
+    query: AccountRefundQuery,
+    order: { readonly sort: AccountRefundSort; readonly direction: 'asc' | 'desc' },
+    window: { readonly offset: number; readonly limit: number },
+  ): Promise<
+    readonly { readonly refund: Refund; readonly creditNoteId: Id<'CreditNote'> | null }[]
+  >;
+
+  /** How many refunds {@link pageForAccount} matches over all pages. */
+  countForAccount(market: MarketContext, query: AccountRefundQuery): Promise<number>;
 
   /**
    * The seller's own seller order with what earlier refunds gave back, or null: another shop's
@@ -213,5 +230,17 @@ export interface RefundRepository {
     limit: number,
   ): Promise<readonly PendingRefund[]>;
 }
+
+/** What the customer page's Refunds list selects (phase 2b). */
+export interface AccountRefundQuery {
+  readonly accountId: Id<'Account'>;
+  readonly states: readonly RefundState[] | null;
+  readonly reasons: readonly RefundReason[] | null;
+  /** Requested at or after `from`, before `to`. */
+  readonly from: Temporal.Instant | null;
+  readonly to: Temporal.Instant | null;
+}
+
+export type AccountRefundSort = 'requested' | 'amount';
 
 export const REFUND_REPOSITORY = Symbol('REFUND_REPOSITORY');

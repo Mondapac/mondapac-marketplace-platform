@@ -89,6 +89,8 @@ describe('markCollected', () => {
     sellerId: '01990000-0000-7000-8000-0000000000b1' as Id<'Seller'>,
     subtotal: 1000n,
     shipping: 0n,
+    discount: 0n,
+    shippingDiscount: 0n,
     shippingTaxRateBps: null,
     shippingTax: null,
     shippingTaxInclusive: null,

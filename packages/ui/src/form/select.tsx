@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, type SelectHTMLAttributes } from 'react';
+import { useId, type Ref, type SelectHTMLAttributes } from 'react';
 
 export interface SelectOption {
   readonly value: string;
@@ -18,6 +18,8 @@ export interface SelectProps extends Omit<
   readonly placeholder?: string;
   readonly help?: string;
   readonly error?: string | undefined;
+  /** The select element, for a caller that moves focus to it. */
+  readonly ref?: Ref<HTMLSelectElement>;
 }
 
 /** A labelled native select with help and error text wired through aria-describedby. */

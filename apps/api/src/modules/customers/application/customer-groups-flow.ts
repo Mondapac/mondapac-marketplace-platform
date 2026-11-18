@@ -15,6 +15,7 @@ import {
   type CustomerGroupWithCount,
 } from '../domain/customer-groups';
 import type { TimelineEntry } from '../domain/customer-timeline';
+import type { GroupLiveUse } from '../contracts/group-usage';
 import type { CustomerManagementDependencies } from './customer-management-dependencies';
 import {
   adminAccountOf,
@@ -52,6 +53,12 @@ export interface CustomerGroupView {
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly version: number;
+  /**
+   * Only on the answer of an archive (phase 2b): whether a live promotion's customer-group
+   * segment still names the group (`some`), none does, or it could not be checked (`unknown`).
+   * Advisory: the archive is done either way, and such a promotion matches nobody from now on.
+   */
+  readonly liveSegmentUse?: GroupLiveUse;
 }
 
 export const groupView = (group: CustomerGroupWithCount): CustomerGroupView => ({
@@ -204,6 +211,13 @@ export async function updateGroup(
   if (archived !== undefined && typeof archived !== 'boolean') {
     return invalidField('archived', 'type');
   }
+  // Whether something of another module (a live promotion's segment) still names the group, read
+  // before the unit (the owner's own read and access check) and only for an archive.
+  let liveUse: GroupLiveUse | null = null;
+  if (archived === true) {
+    const uses = await deps.groupUsage.liveUsesOf(context, groupId);
+    liveUse = !uses.ok ? 'unknown' : uses.value > 0 ? 'some' : 'none';
+  }
   const now = deps.clock.now();
   return deps.unitOfWork.run<CustomerGroupView, GroupFailure>(context.market, async () => {
     const group = await deps.groups.find(context.market, groupId);
@@ -216,6 +230,7 @@ export async function updateGroup(
       archived === undefined || archived === wasArchived ? group.archivedAt : archived ? now : null;
     const renamed = nextName !== group.name;
     const describedChanged = nextDescription !== group.description;
+    const archiving = !wasArchived && nextArchivedAt !== null;
     if (!renamed && !describedChanged && nextArchivedAt === group.archivedAt) {
       return ok(groupView(group));
     }
@@ -238,19 +253,19 @@ export async function updateGroup(
           archived: nextArchivedAt !== null,
           renamed,
           describedChanged,
+          liveSegmentUse: archiving ? (liveUse ?? 'unknown') : 'not-checked',
         },
       }),
     );
-    return ok(
-      groupView({
-        ...group,
-        name: nextName,
-        description: nextDescription,
-        archivedAt: nextArchivedAt,
-        updatedAt: now,
-        version: group.version + 1,
-      }),
-    );
+    const view = groupView({
+      ...group,
+      name: nextName,
+      description: nextDescription,
+      archivedAt: nextArchivedAt,
+      updatedAt: now,
+      version: group.version + 1,
+    });
+    return ok(archiving ? { ...view, liveSegmentUse: liveUse ?? 'unknown' } : view);
   });
 }
 
@@ -314,6 +329,8 @@ export async function changeMembers(
   if (!selector.ok) return selector;
   const now = deps.clock.now();
   const { market } = context;
+  // Read before the unit opens: "select all matching" reads its day filters in this zone.
+  const zone = await deps.dayZone.zoneOf(context);
 
   return deps.unitOfWork.run<MembersChangeOutput, GroupFailure>(market, async () => {
     const group = await deps.groups.find(market, groupId);
@@ -324,7 +341,7 @@ export async function changeMembers(
     if (named !== null) {
       ids = named;
     } else {
-      const query = { selector: selector.value, now };
+      const query = { selector: selector.value, now, zone };
       ids = await deps.listReader.ids(market, query, GROUP_BULK_MATCHING_MAX + 1);
       if (ids.length > GROUP_BULK_MATCHING_MAX) {
         const total = await deps.listReader.count(market, query);

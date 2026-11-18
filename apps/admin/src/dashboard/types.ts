@@ -43,3 +43,12 @@ export interface AdminDashboardData {
   readonly accounts: Widget<ConnectedAccountPage> | null;
   readonly orders: Widget<DashboardOrderPage> | null;
 }
+
+/**
+ * The dashboard's reads as the page passes them: a widget the session has no key for is null at
+ * once, any other is the promise of its answer (null when the API refuses after all), so each
+ * card streams in on its own. Tests pass the answers themselves.
+ */
+export type AdminDashboardSources = {
+  readonly [K in keyof AdminDashboardData]: AdminDashboardData[K] | Promise<AdminDashboardData[K]>;
+};

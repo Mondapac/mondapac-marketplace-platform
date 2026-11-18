@@ -343,6 +343,7 @@ export class StartSellerSecondFactorEnrolment extends UseCase<
       address: client.address,
       sessionId: null,
       correlationId: context.correlationId,
+      device: client.device ?? null,
     };
     await this.deps.records.add(context.market, record);
     await recordSignInSecurityEvent(this.deps.securityEvents, context, record);

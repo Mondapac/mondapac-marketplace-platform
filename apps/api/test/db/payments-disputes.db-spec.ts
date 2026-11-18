@@ -100,6 +100,64 @@ describe.each(TEST_MARKETS)('dispute store in market %s (database)', (code) => {
     expect(await value(other, () => store.findMany(other, [dispute.id]))).toEqual([]);
   });
 
+  it("pages one customer's disputes by their orders, filtered and sorted, in its own Market only", async () => {
+    const orderA = randomUUID();
+    const orderB = randomUUID();
+    const first = record({
+      orderId: orderA,
+      amountMinor: 500n,
+      openedAt: T0.subtract({ hours: 5 }),
+    });
+    const second = record({
+      orderId: orderB,
+      amountMinor: 9000n,
+      openedAt: T0.subtract({ hours: 1 }),
+    });
+    const elsewhere = record({ amountMinor: 100n });
+    for (const dispute of [first, second, elsewhere]) {
+      await value(market, () => store.insert(market, dispute));
+    }
+    const query = { orderIds: [orderA, orderB], statuses: null, from: null, to: null };
+
+    expect(
+      (
+        await value(market, () =>
+          store.pageOfOrders(
+            market,
+            query,
+            { sort: 'opened', direction: 'desc' },
+            { offset: 0, limit: 10 },
+          ),
+        )
+      ).map((row) => row.id),
+    ).toEqual([second.id, first.id]);
+    expect(
+      (
+        await value(market, () =>
+          store.pageOfOrders(
+            market,
+            query,
+            { sort: 'amount', direction: 'asc' },
+            { offset: 1, limit: 1 },
+          ),
+        )
+      ).map((row) => row.id),
+    ).toEqual([second.id]);
+    expect(await value(market, () => store.countOfOrders(market, query))).toBe(2);
+    expect(
+      await value(market, () =>
+        store.countOfOrders(market, { ...query, from: T0.subtract({ hours: 3 }), to: T0 }),
+      ),
+    ).toBe(1);
+    expect(
+      await value(market, () => store.countOfOrders(market, { ...query, statuses: ['won'] })),
+    ).toBe(0);
+    expect(await value(market, () => store.countOfOrders(market, { ...query, orderIds: [] }))).toBe(
+      0,
+    );
+    expect(await value(other, () => store.countOfOrders(other, query))).toBe(0);
+  });
+
   it('updates only at the expected version and never with an older read', async () => {
     const dispute = record();
     await value(market, () => store.insert(market, dispute));
