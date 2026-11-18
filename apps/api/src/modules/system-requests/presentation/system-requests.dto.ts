@@ -5,6 +5,7 @@ import {
   DECISIONS,
   displayNumber,
   REQUEST_ACTIONS,
+  REQUEST_MODES,
   REQUEST_STATUSES,
   REQUEST_VIEWS,
 } from '../domain/request';
@@ -37,6 +38,15 @@ export class RequestBody {
   @ApiProperty({ description: '`<module>.<subject>`, e.g. system-requests.policy-area.' })
   subjectKind!: string;
   @ApiProperty() subjectRef!: string;
+  @ApiProperty({
+    enum: REQUEST_MODES,
+    description:
+      'review: the change went live when made, and a reject restores the value before. ' +
+      'approval: the action (a delete, a merge, an import) waits for approval and is applied by ' +
+      'it; a reject or withdraw changes nothing (status reverted, nothing applied). `before` is ' +
+      'what the subject held when asked, `after` describes the action.',
+  })
+  mode!: string;
   @ApiProperty({
     type: String,
     nullable: true,
@@ -320,6 +330,7 @@ export const requestBody = (view: RequestView): RequestBody => ({
   area: view.area,
   subjectKind: view.subjectKind,
   subjectRef: view.subjectRef,
+  mode: view.mode,
   subjectLabel: view.subjectLabel,
   risk: view.risk,
   status: view.status,

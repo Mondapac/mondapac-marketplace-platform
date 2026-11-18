@@ -44,6 +44,12 @@ export interface CreditRecord {
   readonly idempotencyKey: string;
   readonly createdAt: Temporal.Instant;
   readonly settledAt: Temporal.Instant | null;
+  /**
+   * A PENDING cashback waits until this instant: the seller order's payout release (customers
+   * phase 4c), so a refund or a dispute inside the hold still lowers or cancels it. Null once its
+   * amount is final (the wallet may then be called) and for every other credit.
+   */
+  readonly grantAfter: Temporal.Instant | null;
 }
 
 export interface ReferralRecord {

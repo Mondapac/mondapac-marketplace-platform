@@ -328,6 +328,7 @@ export class SystemRequestsController {
       'Needs system-requests.request.view and, per request, its area review key. 1 to 100 ' +
       'distinct ids; each is decided on its own and answered with approved or its refusal ' +
       '(system-requests.not-low-risk for medium and high, which are reviewed one by one; ' +
+      'system-requests.one-by-one for a proposal, which is applied when approved; ' +
       'system-requests.own-request and system-requests.own-subject for a change by or about ' +
       'the reviewer). ' +
       'Refused in an acting-as session. Audited per request.',

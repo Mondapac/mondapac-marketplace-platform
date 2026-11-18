@@ -66,6 +66,7 @@ export const SAVED_FILTER_STATUS: Readonly<Record<string, number>> = Object.free
   'saved-filter.limit-reached': 409,
   'saved-filter.shared-limit-reached': 409,
   'access.unavailable': 503,
+  'access.acting-as-refused': 403,
 });
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
