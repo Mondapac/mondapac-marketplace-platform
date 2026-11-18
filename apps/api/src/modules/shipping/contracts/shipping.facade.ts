@@ -327,7 +327,7 @@ export interface ShippingFacade {
    * Where the real-time carrier deliveries of some seller orders stand, for an admin list (the
    * Shipments list's carrier progress), keyed by seller order id. Each value holds exactly
    * `fleet` (the fleet that holds the booking), `progress`, `carrierStatus` (the carrier's last
-   * raw code, or null when it is not of the shape `^[A-Za-z0-9_.-]{1,60}$`), `updatedAt` (when
+   * raw code, or null when it is not of the shape `^[A-Za-z0-9][A-Za-z0-9_.-]{0,59}$`), `updatedAt` (when
    * the PLATFORM recorded the last change of progress or status, not the carrier's event time)
    * and `proofOfDelivery`. Never the carrier reference or the tracking link. A seller order
    * without a carrier booking, or of another Market, is absent. Duplicates are removed; more

@@ -41,8 +41,10 @@ already show on the admin order page). One row per seller order of a paid order.
   `shipping.carrier-delivery.view` (shipping answers `access.denied`) or the lookup failed; then
   every `carrierProgress` is null and the column shows "Not available". With the flag true, null
   means no carrier booking (a pickup, a seller-shipped order, not booked yet) and shows "—". The
-  lookup never fails the list. Only ids the page asked about are shown. The export columns follow
-  separately.
+  lookup never fails the list. Only ids the page asked about are shown. The export writes it as
+  the picker column `carrierProgress`: "Carrier progress", "Carrier status", "Carrier updated"
+  (in the export's zone); all three are empty when the row's `carrierProgress` is null (no booking,
+  or not available to this admin).
 - **Not here:** filtering or sorting by carrier progress (it would need a mirror column on
   `seller_orders`, never a join into `shipping`), and any admin action on a shipment (row actions
   are `view-order` and `copy-tracking-reference`).
