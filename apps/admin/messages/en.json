@@ -5701,6 +5701,7 @@
         "button": "Bulk action",
         "selected": "{count, plural, one {# customer selected} other {# customers selected}}",
         "select-all": "Select all {count, number} customers in this filter",
+        "select-all-blocked": "Clear the order number filter to select all or export.",
         "clear": "Clear selection",
         "export": "Export…",
         "export-help": "CSV or XLSX, with the columns shown",
@@ -5730,8 +5731,7 @@
         "add-to-group-help": "Put the selected customers in a manual group",
         "remove-from-group": "Remove from group…",
         "remove-from-this-group": "Remove from this group…",
-        "remove-from-group-help": "Take the selected customers out of a group",
-        "select-all-blocked": "Clear the order number filter to select all or export."
+        "remove-from-group-help": "Take the selected customers out of a group"
       },
       "saved": {
         "manage-link": "Manage filters",
@@ -5827,11 +5827,11 @@
         "more": "More actions",
         "delete": "Delete account…",
         "edit": "Edit…",
+        "password-reset": "Send password reset…",
+        "sign-out": "Sign out everywhere…",
         "edit-email": "Edit email…",
         "change-pending-email": "Change pending email…",
-        "email-pending": "Pending new email",
-        "password-reset": "Send password reset…",
-        "sign-out": "Sign out everywhere…"
+        "email-pending": "Pending new email"
       },
       "overview": {
         "figures": "Customer figures",
@@ -5869,57 +5869,6 @@
           "spent": "Spent",
           "refunded": "Refunded",
           "wallet": "Wallet balance"
-        },
-        "refunds": {
-          "title": "Refunds and credit notes",
-          "empty": "No refunds",
-          "order": "Order {id}",
-          "col": {
-            "order": "Order",
-            "state": "Status",
-            "amount": "Amount",
-            "requested": "Requested",
-            "credit-note": "Credit note",
-            "reason": "Reason",
-            "settled": "Settled"
-          },
-          "state": {
-            "pending": "Pending",
-            "succeeded": "Refunded",
-            "failed": "Failed"
-          },
-          "no-credit-note": "None",
-          "capped": "The newest {max} refunds are shown. Older ones are on each order's page.",
-          "subtitle": "Refunds on this customer’s orders.",
-          "views": "Refund state",
-          "caption": "Customer refunds",
-          "empty-filtered": "No refunds match.",
-          "view": {
-            "all": "All",
-            "succeeded": "Refunded",
-            "pending": "Pending",
-            "failed": "Failed"
-          },
-          "sort": {
-            "requested": "Requested",
-            "amount": "Amount"
-          },
-          "choice": {
-            "name": "Reason",
-            "value": {
-              "not-received": "Not received",
-              "damaged": "Arrived damaged",
-              "wrong-item": "Wrong item",
-              "not-as-described": "Not as described",
-              "seller-cancelled": "Seller cancelled",
-              "other": "Other",
-              "item-unavailable": "Item unavailable"
-            }
-          },
-          "export": {
-            "title": "Export refunds",
-            "done": "Refunds exported."
-          }
         },
         "wallet": {
           "title": "Wallet history",
@@ -5969,7 +5918,6 @@
           },
           "capped": "The newest {max} promotion credits are shown."
         },
-        "not-yet": "Payments per order, chargebacks and discount code usage are not listed here yet.",
         "list": {
           "filter": {
             "button": "Filter",
@@ -6137,6 +6085,57 @@
             "done": "Disputes exported."
           }
         },
+        "refunds": {
+          "title": "Refunds and credit notes",
+          "subtitle": "Refunds on this customer’s orders.",
+          "views": "Refund state",
+          "caption": "Customer refunds",
+          "empty": "No refunds",
+          "empty-filtered": "No refunds match.",
+          "order": "Order {id}",
+          "no-credit-note": "None",
+          "view": {
+            "all": "All",
+            "succeeded": "Refunded",
+            "pending": "Pending",
+            "failed": "Failed"
+          },
+          "col": {
+            "order": "Order",
+            "amount": "Amount",
+            "state": "Status",
+            "reason": "Reason",
+            "requested": "Requested",
+            "settled": "Settled",
+            "credit-note": "Credit note"
+          },
+          "sort": {
+            "requested": "Requested",
+            "amount": "Amount"
+          },
+          "state": {
+            "pending": "Pending",
+            "succeeded": "Refunded",
+            "failed": "Failed"
+          },
+          "choice": {
+            "name": "Reason",
+            "value": {
+              "not-received": "Not received",
+              "damaged": "Arrived damaged",
+              "wrong-item": "Wrong item",
+              "not-as-described": "Not as described",
+              "seller-cancelled": "Seller cancelled",
+              "other": "Other",
+              "item-unavailable": "Item unavailable"
+            }
+          },
+          "export": {
+            "title": "Export refunds",
+            "done": "Refunds exported."
+          },
+          "capped": "The newest {max} refunds are shown. Older ones are on each order's page."
+        },
         "usages": {
           "title": "Promotions used",
           "empty": "No promotions used yet.",
@@ -6167,7 +6166,8 @@
             "ORDER_CANCELLED": "Order cancelled",
             "ORDER_REFUNDED": "Order refunded"
           }
-        }
+        },
+        "not-yet": "Payments per order, chargebacks and discount code usage are not listed here yet."
       },
       "deleted": {
         "title": "Account deleted",
@@ -6439,45 +6439,6 @@
           "unavailable": "The file could not be made. Try again.",
           "cancelled": "Export cancelled."
         }
-      }
-    },
-    "email": {
-      "title": "Edit email",
-      "current": "Current email",
-      "pending": "Pending new email",
-      "new": "New email",
-      "note": "We email a confirmation link to the new address and a notice to the current one. The current address keeps working until the customer confirms.",
-      "replaces": "Sending again replaces the pending request.",
-      "send": "Send confirmation",
-      "cancel": "Cancel",
-      "step-up": "You will be asked for a two-step code next.",
-      "sent": "Confirmation sent to {email}.",
-      "error": {
-        "required": "Enter the new email.",
-        "invalid": "Enter a valid email address.",
-        "same": "This is already the current email.",
-        "taken": "This email is already used by another account.",
-        "not-eligible": "A disabled or unverified account cannot change its email. Enable or verify it first.",
-        "deletion-pending": "This customer has a deletion request pending. Cancel it first.",
-        "not-found": "This customer no longer exists.",
-        "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}.",
-        "denied": "You don’t have access to change emails.",
-        "unavailable": "The confirmation could not be sent. Try again."
-      },
-      "banner": {
-        "text": "Waiting for {email} to confirm. The current address stays until then. Requested {date}.",
-        "cancel": "Cancel email change…"
-      },
-      "cancel-change": {
-        "title": "Cancel the email change?",
-        "body": "{email} will not be used and its confirmation link stops working. The current address stays.",
-        "confirm": "Cancel email change",
-        "keep": "Keep it",
-        "done": "Email change cancelled.",
-        "gone": "There is no pending email change any more.",
-        "failed": "The email change could not be cancelled. Try again.",
-        "denied": "You don’t have access to cancel email changes.",
-        "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}."
       }
     },
     "security": {
@@ -6911,6 +6872,45 @@
           "status": "Status",
           "created": "Reported"
         }
+      }
+    },
+    "email": {
+      "title": "Edit email",
+      "current": "Current email",
+      "pending": "Pending new email",
+      "new": "New email",
+      "note": "We email a confirmation link to the new address and a notice to the current one. The current address keeps working until the customer confirms.",
+      "replaces": "Sending again replaces the pending request.",
+      "send": "Send confirmation",
+      "cancel": "Cancel",
+      "step-up": "You will be asked for a two-step code next.",
+      "sent": "Confirmation sent to {email}.",
+      "error": {
+        "required": "Enter the new email.",
+        "invalid": "Enter a valid email address.",
+        "same": "This is already the current email.",
+        "taken": "This email is already used by another account.",
+        "not-eligible": "A disabled or unverified account cannot change its email. Enable or verify it first.",
+        "deletion-pending": "This customer has a deletion request pending. Cancel it first.",
+        "not-found": "This customer no longer exists.",
+        "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+        "denied": "You don’t have access to change emails.",
+        "unavailable": "The confirmation could not be sent. Try again."
+      },
+      "banner": {
+        "text": "Waiting for {email} to confirm. The current address stays until then. Requested {date}.",
+        "cancel": "Cancel email change…"
+      },
+      "cancel-change": {
+        "title": "Cancel the email change?",
+        "body": "{email} will not be used and its confirmation link stops working. The current address stays.",
+        "confirm": "Cancel email change",
+        "keep": "Keep it",
+        "done": "Email change cancelled.",
+        "gone": "There is no pending email change any more.",
+        "failed": "The email change could not be cancelled. Try again.",
+        "denied": "You don’t have access to cancel email changes.",
+        "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}."
       }
     }
   },
