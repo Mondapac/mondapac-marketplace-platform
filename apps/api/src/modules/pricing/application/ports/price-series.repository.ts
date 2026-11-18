@@ -1,6 +1,7 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { PriceAmount } from '../../domain/price-amount';
 import type { PriceSeries } from '../../domain/price-series';
+import type { HoldListFilter, HoldSort, HoldViewCounts } from '../../domain/hold-list';
 
 /** The priced unit (pricing design 2.1; ADR-0024 decision 1). */
 export interface PriceSeriesKey {
@@ -88,6 +89,30 @@ export interface PriceSeriesRepository {
 
   /** How many records of the Market are pending review, regular and special together. */
   countPendingHolds(market: MarketContext): Promise<number>;
+
+  /**
+   * One page of the pending records that meet `filter`, in `sort` (the record id breaks ties),
+   * skipping `offset` rows (page numbers and Previous/Next both read by offset, at most 10,000).
+   */
+  queryPendingHolds(
+    market: MarketContext,
+    filter: HoldListFilter,
+    sort: HoldSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly PendingHoldView[]>;
+
+  /** How many pending records meet `filter`. */
+  countPendingHoldsWhere(market: MarketContext, filter: HoldListFilter): Promise<number>;
+
+  /** The Market's pending records per view, whatever the filter. */
+  pendingHoldViewCounts(market: MarketContext): Promise<HoldViewCounts>;
+
+  /** The pending records among `recordIds` (a decided or foreign id is simply absent). */
+  findPendingHoldsByIds(
+    market: MarketContext,
+    recordIds: readonly (Id<'RegularPriceRecord'> | Id<'SpecialPriceRecord'>)[],
+  ): Promise<readonly PendingHoldView[]>;
 
   /** One record of the queue by id, or null when absent, foreign or no longer pending. */
   findPendingHold(

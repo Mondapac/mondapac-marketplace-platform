@@ -135,6 +135,20 @@ describe('QueueList', () => {
     expect(window.location.search).toContain('view=needs-my-review');
   });
 
+  it('lays a phone card out with a 44 px number link, room for the menu and the whole note', async () => {
+    call.mockResolvedValue(ok(page([row(1, { note: 'x'.repeat(200) })])));
+    mount();
+    const link = await screen.findByRole('link', { name: 'SR-1041' });
+    expect(link.className).toContain('max-lg:min-h-11');
+    const line = link.closest('tr') as HTMLElement;
+    // The status cell clears the 44 px menu button, and the note spans the card, never clamped.
+    expect(within(line).getByText('Open').closest('td')?.className).toContain('max-lg:pe-14');
+    const note = within(line).getByText('x'.repeat(200));
+    expect(note.className).toContain('max-lg:col-span-2');
+    expect(note.className).not.toContain('line-clamp');
+    expect(link.closest('th')?.className).toContain('max-lg:contents');
+  });
+
   it('shows 10,000+ at the cap of a view count', async () => {
     call.mockResolvedValue(
       ok(page([row(1)], { counts: counts({ all: 10_000, approved: 10_000 }) })),
