@@ -76,9 +76,13 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Market's ship-to retention (ordering): whether and when delivery addresses are deleted.
     'ordering/admin/ship-to-retention',
     'wallet/admin/credit-requests',
-    // The payment dispute cases (commission-payouts), read-only list (query: `filter`, `cursor`,
-    // `limit`); one case is read by the page server and again after a decision.
+    // The payment dispute cases (commission-payouts; the Disputes super list), read-only list
+    // (query: `view` or the older `filter`, `status`, `money`, `q`, `search`, the filters, `sort`,
+    // `direction`, `page`, `pageSize`, or `cursor` and `limit`); one case is read by the page
+    // server and again after a decision. The export of the list as a file: the chosen ids or the
+    // list's own query.
     'commission-payouts/admin/disputes',
+    'commission-payouts/admin/disputes/export',
     // The buyer-review moderation queue (reviews), read-only list (query: `tab`, `cursor`,
     // `limit`); one review is read by its dialog and again after an action.
     'reviews/admin/moderation',
@@ -956,7 +960,45 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'direction',
   ],
   'wallet/admin/credit-requests': ['status', 'cursor', 'limit'],
-  'commission-payouts/admin/disputes': ['filter', 'cursor', 'limit'],
+  // The view, search, filters and page mode of the Disputes super list (the API validates them).
+  'commission-payouts/admin/disputes': [
+    'view',
+    'filter',
+    'status',
+    'money',
+    'q',
+    'search',
+    'sellerId',
+    'from',
+    'to',
+    'dueBefore',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+  ],
+  'commission-payouts/admin/disputes/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'status',
+    'money',
+    'q',
+    'search',
+    'sellerId',
+    'from',
+    'to',
+    'dueBefore',
+    'minAmount',
+    'maxAmount',
+    'sort',
+    'direction',
+  ],
   'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
   'catalog/admin/products': [
     'view',
@@ -1306,10 +1348,51 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/,
   },
   'commission-payouts/admin/disputes': {
+    view: /^(all|needs-response|decision-needed|under-review|won|closed)$/,
     filter: /^(needs-response|decision-needed|under-review|won|closed)$/,
+    status:
+      /^(warning_needs_response|warning_under_review|warning_closed|needs_response|under_review|won|lost|prevented)$/,
+    money: /^(withdrawn|inquiry|reinstated|none)$/,
+    // A dispute id or an order id, exact.
+    q: UUID,
+    sellerId: UUID,
+    // ISO instants: the opening (`to` excluded) and the evidence deadline.
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    dueBefore: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The disputed amount in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(opened|amount|evidence-due|updated)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
     limit: /^[0-9]{1,3}$/,
     // The API's own cursor: epoch milliseconds of the opening, a dot and the dispute id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'commission-payouts/admin/disputes/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(reason|stripe-status|money|evidence-due|closed|updated|seller-ids)(,(reason|stripe-status|money|evidence-due|closed|updated|seller-ids)){0,6}$/,
+    // At most 200 dispute ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(all|needs-response|decision-needed|under-review|won|closed)$/,
+    status:
+      /^(warning_needs_response|warning_under_review|warning_closed|needs_response|under_review|won|lost|prevented)$/,
+    money: /^(withdrawn|inquiry|reinstated|none)$/,
+    // A dispute id or an order id, exact.
+    q: UUID,
+    sellerId: UUID,
+    // ISO instants: the opening (`to` excluded) and the evidence deadline.
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    dueBefore: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    // The disputed amount in minor units.
+    minAmount: /^[0-9]{1,15}$/,
+    maxAmount: /^[0-9]{1,15}$/,
+    sort: /^(opened|amount|evidence-due|updated)$/,
+    direction: /^(asc|desc)$/,
   },
   'catalog/admin/products': {
     view: /^(active|all|inactive)$/,
@@ -1641,6 +1724,7 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'ordering/admin/shipments/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
   'blog/admin/posts/export:ids': 7400,
+  'commission-payouts/admin/disputes/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
   'payments/admin/connected-accounts/export:ids': 7400,

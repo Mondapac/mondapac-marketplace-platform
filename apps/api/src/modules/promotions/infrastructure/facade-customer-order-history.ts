@@ -2,6 +2,7 @@ import type { CustomersReadFacade } from '../../customers';
 import type {
   CustomerGroupMembership,
   CustomerOrderHistory,
+  ExclusiveCustomers,
 } from '../application/ports/customer-facts';
 
 /**
@@ -51,5 +52,23 @@ export class FacadeCustomerGroupMembership implements CustomerGroupMembership {
     const read = await this.customers.isGroupMember(context, groupId, accountId);
     if (!read.ok) return { known: false };
     return { known: true, value: read.value.member };
+  }
+}
+
+/**
+ * {@link ExclusiveCustomers} on `customers`' read facade (customers phase 4a). Only the system actor
+ * (the quote) asks; any other caller (an admin's preview) and any failure is "unknown", so the
+ * seller's exclusive-customer discount is not offered.
+ */
+export class FacadeExclusiveCustomers implements ExclusiveCustomers {
+  constructor(private readonly customers: CustomersReadFacade) {}
+
+  async exclusiveSellerOf(
+    ...[context, accountId, at]: Parameters<ExclusiveCustomers['exclusiveSellerOf']>
+  ): ReturnType<ExclusiveCustomers['exclusiveSellerOf']> {
+    if (context.actor.kind !== 'system') return { known: false };
+    const read = await this.customers.exclusiveSellerOf(context, accountId, at);
+    if (!read.ok) return { known: false };
+    return { known: true, value: read.value === null ? null : read.value.sellerId };
   }
 }
