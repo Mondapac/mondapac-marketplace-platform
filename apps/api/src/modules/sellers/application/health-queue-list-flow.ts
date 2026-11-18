@@ -35,6 +35,7 @@ import {
   type HealthQueueView,
 } from '../domain/health-queue-list';
 import { SELLER_HEALTH_METRICS, type SellerHealthMetric } from '../domain/seller-health';
+import { UNHEALTHY_QUEUE_MAX } from './ports/seller-health.store';
 import {
   readHealthQueue,
   type SellerHealthQueueDependencies,
@@ -110,6 +111,7 @@ function parseSelector(record: HealthQueueListInput): Result<HealthQueueFilter, 
   if (!absent(record['metric'])) {
     const found = SELLER_HEALTH_METRICS.find((candidate) => candidate === record['metric']);
     if (found === undefined) return listQueryInvalid('metric', 'value');
+    if (view !== 'all' && view !== found) return listQueryInvalid('metric', 'conflict');
     metric = found;
   }
   let prefix: string | null = null;
@@ -273,8 +275,7 @@ export async function exportHealthQueue(
     if (!query.ok) return query;
     const selector = parseSelector(record);
     if (!selector.ok) return selector;
-    if (queue.value.truncated)
-      return err({ code: 'batch.too-large', max: queue.value.items.length });
+    if (queue.value.truncated) return err({ code: 'batch.too-large', max: UNHEALTHY_QUEUE_MAX });
     rows = select(queue.value.items, selector.value, {
       key: query.value.sort,
       direction: query.value.direction,

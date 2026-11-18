@@ -197,6 +197,7 @@ describe.each(['AU', 'ZZ'] as const)('"Needs a look" list and export in market %
       { minScore: '101' },
       { minScore: '50', maxScore: '10' },
       { sort: 'orders' },
+      { view: 'reports', metric: 'late-ready' },
     ]) {
       expect(await query.execute(admin(), input)).toMatchObject({
         ok: false,
@@ -260,8 +261,40 @@ describe.each(['AU', 'ZZ'] as const)('"Needs a look" list and export in market %
       error: { code: 'batch.too-large', max: 200 },
     });
     setTruncated(true);
-    expect(await run({})).toMatchObject({ ok: false, error: { code: 'batch.too-large' } });
+    expect(await run({})).toMatchObject({
+      ok: false,
+      error: { code: 'batch.too-large', max: 200 },
+    });
     expect((await run({ ids: mine })).ok).toBe(true);
+  });
+
+  it('keeps score boundaries, ties and desc sorts in order', async () => {
+    const { ask, add } = setup();
+    const low = add('Low', 0);
+    const high = add('High', 100);
+    const tieA = add('Tie A', 50);
+    const tieB = add('Tie B', 50);
+    const idsOf = async (input: Record<string, unknown>) =>
+      (await ask(input)).items.map((r) => r.sellerId);
+    expect(await idsOf({ minScore: '0', maxScore: '0' })).toEqual([low]);
+    expect(await idsOf({ minScore: '100' })).toEqual([high]);
+    const asc = await idsOf({});
+    expect(asc[0]).toBe(low);
+    expect(asc[3]).toBe(high);
+    expect(asc.slice(1, 3)).toEqual([tieA, tieB].sort());
+    expect((await idsOf({ sort: 'score', direction: 'desc' }))[0]).toBe(high);
+  });
+
+  it('exports in the chosen ids order and the chosen column order', async () => {
+    const { exporter, admin, add } = setup();
+    const a = add('Alpha', 5);
+    const b = add('Beta', 7);
+    const done = await exporter.execute(admin(), { ids: `${b},${a}`, columns: 'day,seller-id' });
+    if (!done.ok) throw new Error(JSON.stringify(done.error));
+    const lines = (await text(done.value)).trim().split('\n');
+    expect(lines[0]).toContain('Measured on,Seller ID');
+    expect(lines[1]).toContain('Beta');
+    expect(lines[2]).toContain('Alpha');
   });
 
   it('turns away a caller without the permission', async () => {
