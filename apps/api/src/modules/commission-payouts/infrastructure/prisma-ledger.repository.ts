@@ -2,7 +2,13 @@ import { money, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { LedgerPage, LedgerRepository } from '../application/ports/ledger.repository';
-import { isCredit, LEDGER_KINDS, type LedgerEntry, type LedgerKind } from '../domain/ledger';
+import {
+  isCredit,
+  LEDGER_KINDS,
+  savingsOf,
+  type LedgerEntry,
+  type LedgerKind,
+} from '../domain/ledger';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
@@ -19,6 +25,8 @@ export interface Row {
   readonly currency: string;
   readonly rateBps: number | null;
   readonly baseAmount: bigint | null;
+  readonly standardRateBps?: number | null;
+  readonly savedAmount?: bigint | null;
   readonly sourceId: string | null;
   readonly occurredAt: Date;
   readonly recordedAt: Date;
@@ -35,6 +43,9 @@ export const toEntry = (row: Row): LedgerEntry => ({
   amount: money(row.amount, row.currency),
   rateBps: row.rateBps,
   baseAmount: row.baseAmount,
+  ...(row.savedAmount === undefined || row.savedAmount === null
+    ? {}
+    : { standardRateBps: row.standardRateBps ?? null, savedAmount: row.savedAmount }),
   sourceId: row.sourceId as Id<'Refund'> | Id<'Dispute'> | null,
   occurredAt: toInstant(row.occurredAt),
   recordedAt: toInstant(row.recordedAt),
@@ -98,6 +109,8 @@ export class PrismaLedgerRepository implements LedgerRepository {
         currency: entry.amount.currency,
         rateBps: entry.rateBps,
         baseAmount: entry.baseAmount,
+        standardRateBps: entry.standardRateBps ?? null,
+        savedAmount: entry.savedAmount ?? null,
         sourceId: entry.sourceId,
         occurredAt: toDate(entry.occurredAt),
         recordedAt: toDate(entry.recordedAt),
@@ -114,6 +127,36 @@ export class PrismaLedgerRepository implements LedgerRepository {
       take: page.limit,
     });
     return rows.map(toEntry);
+  }
+
+  savingsBetween(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ) {
+    // One grouped sum per window on the partial index of the rows that carry a saving.
+    const tx = this.prisma.tx(market);
+    return Promise.all(
+      windows.map(async ({ from, to }) => {
+        const groups = await tx.commissionPayoutsLedgerEntry.groupBy({
+          by: ['currency', 'kind'],
+          where: {
+            marketId: market.marketId,
+            sellerId,
+            savedAmount: { not: null },
+            occurredAt: { gte: toDate(from), lt: toDate(to) },
+          },
+          _sum: { savedAmount: true },
+        });
+        return savingsOf(
+          groups.map((group) => ({
+            currency: group.currency,
+            kind: group.kind,
+            saved: group._sum.savedAmount ?? 0n,
+          })),
+        );
+      }),
+    );
   }
 
   async sums(market: MarketContext, sellerId: Id<'Seller'>) {

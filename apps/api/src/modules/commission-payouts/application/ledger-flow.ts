@@ -194,6 +194,10 @@ const idOf = <K extends string>(value: unknown): Id<K> | null => {
 const isAmount = (value: unknown): value is bigint =>
   typeof value === 'bigint' && value >= 0n && value <= 9_000_000_000_000_000n;
 
+/** A line's standard rate: absent or null, or a rate never below the line's own. */
+const standardRateFits = (standard: unknown, rateBps: number): boolean =>
+  standard === undefined || standard === null || (isRateBps(standard) && standard >= rateBps);
+
 /** Checks the facts ordering sends; anything malformed refuses the whole seller order. */
 function checkPaid(paid: PaidSellerOrder, currency: string): readonly string[] {
   const bad: string[] = [];
@@ -216,7 +220,8 @@ function checkPaid(paid: PaidSellerOrder, currency: string): readonly string[] {
       seen.has(lineId) ||
       !isAmount(line.lineAmount) ||
       typeof line.taxInclusive !== 'boolean' ||
-      !isRateBps(line.commissionRateBps)
+      !isRateBps(line.commissionRateBps) ||
+      !standardRateFits(line.commissionStandardRateBps, line.commissionRateBps)
     ) {
       bad.push('lines');
       break;
@@ -268,15 +273,22 @@ export async function recordSellerOrderPaid(
       sourceId: null,
     });
     const base = commissionBase(line.lineAmount, line.taxInclusive, settings.provisionalTaxRateBps);
+    const commission = commissionOn(base, line.commissionRateBps);
+    // A line lowered for the buyer's exclusive seller keeps what the seller saved: the commission
+    // the standard rate would have taken on the same base, less what was taken.
+    const standard = line.commissionStandardRateBps ?? null;
     entries.push({
       ...common,
       id: deps.ids.next<'LedgerEntry'>(),
       orderLineId: line.orderLineId,
       kind: 'commission',
-      amount: money(commissionOn(base, line.commissionRateBps), paid.currency),
+      amount: money(commission, paid.currency),
       rateBps: line.commissionRateBps,
       baseAmount: base,
       sourceId: null,
+      ...(standard === null
+        ? {}
+        : { standardRateBps: standard, savedAmount: commissionOn(base, standard) - commission }),
     });
   }
   if (paid.shipping > 0n) {
@@ -420,11 +432,13 @@ export async function recordRefund(
         ) {
           return inconsistent;
         }
+        const saved = commission.savedAmount ?? null;
         const reversed = reverseLine(
           {
             sale: sale.amount.amount,
             commission: commission.amount.amount,
             commissionBase: commission.baseAmount,
+            saved,
           },
           line.unitsBefore,
           line.units,
@@ -451,6 +465,10 @@ export async function recordRefund(
           amount: money(reversed.commission, refund.currency),
           rateBps: commission.rateBps,
           baseAmount: reversed.base,
+          // The part of the saving the refund gives back, in the same cumulative proportion.
+          ...(saved === null || reversed.saved === undefined || commission.standardRateBps == null
+            ? {}
+            : { standardRateBps: commission.standardRateBps, savedAmount: reversed.saved }),
         });
       }
       if (refund.shipping !== null) {

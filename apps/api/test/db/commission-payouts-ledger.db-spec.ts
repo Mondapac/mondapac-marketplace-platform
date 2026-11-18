@@ -275,6 +275,92 @@ describe.each(TEST_MARKETS)('commission-payouts stores in market %s (database)',
     expect(await insert('commission', true, 0, 0, 1000)).toBe('allowed');
     expect(await insert('sale', true, 1, null, null)).toBe('allowed');
   });
+  it("keeps a lowered line's saving, sums it by window net of refunds, and checks it (customers 4b)", async () => {
+    const sellerId = ids.next<'Seller'>();
+    const paid = factOf(sellerId);
+    // Line 1 was lowered for the buyer's exclusive seller: 75 taken at 7.5 %, 150 at 15 %.
+    const lowered: LedgerEntry = {
+      ...paid[1]!,
+      amount: money(75n, currency),
+      rateBps: 750,
+      standardRateBps: 1500,
+      savedAmount: 75n,
+    };
+    await value(market, () => ledger.append(market, [paid[0]!, lowered, ...paid.slice(2)]));
+    const stored = await value(market, () =>
+      ledger.listSellerOrder(market, paid[0]!.sellerOrderId),
+    );
+    expect(stored.find((r) => r.id === lowered.id)).toMatchObject({
+      standardRateBps: 1500,
+      savedAmount: 75n,
+    });
+    expect(stored.find((r) => r.id === paid[3]!.id)).not.toHaveProperty('savedAmount');
+    const refundId = ids.next<'Refund'>();
+    await value(market, () =>
+      ledger.append(market, [
+        {
+          ...reversal(paid[0]!, 'refund-commission', refundId, 25n, paid[0]!.orderLineId, {
+            rateBps: 750,
+            baseAmount: 333n,
+          }),
+          standardRateBps: 1500,
+          savedAmount: 25n,
+          occurredAt: T0.add({ hours: 30 }),
+        },
+      ]),
+    );
+    const windows = [
+      { from: T0.subtract({ hours: 1 }), to: T0.add({ hours: 1 }) },
+      { from: T0.add({ hours: 1 }), to: T0.add({ hours: 48 }) },
+      { from: T0.subtract({ hours: 1 }), to: T0.add({ hours: 48 }) },
+    ];
+    // The refund's window gives back more than it saved: nothing is left to show there.
+    expect(await value(market, () => ledger.savingsBetween(market, sellerId, windows))).toEqual([
+      [{ currency, saved: 75n }],
+      [],
+      [{ currency, saved: 50n }],
+    ]);
+    expect(await value(other, () => ledger.savingsBetween(other, sellerId, windows))).toEqual([
+      [],
+      [],
+      [],
+    ]);
+
+    const insert = (
+      kind: string,
+      rate: number | null,
+      standard: number | null,
+      saved: number | null,
+    ) =>
+      code_(
+        sql.query(
+          `INSERT INTO commission_payouts.ledger_entries (id, market_id, tenant_id, seller_id, order_id, seller_order_id, order_line_id, kind, amount, currency, rate_bps, base_amount, standard_rate_bps, saved_amount, occurred_at, recorded_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 10, $9, $10, $11, $12, $13, now(), now())`,
+          [
+            ids.next(),
+            market.marketId,
+            market.tenantId,
+            ids.next(),
+            ids.next(),
+            ids.next(),
+            ids.next(),
+            kind,
+            currency,
+            rate,
+            rate === null ? null : 1000,
+            standard,
+            saved,
+          ],
+        ),
+      );
+    expect(await insert('commission', 750, 1500, null)).toBe(CHECK);
+    expect(await insert('commission', 750, null, 10)).toBe(CHECK);
+    expect(await insert('commission', 750, 700, 10)).toBe(CHECK);
+    expect(await insert('commission', 750, 1500, -1)).toBe(CHECK);
+    expect(await insert('sale', null, 1500, 10)).toBe(CHECK);
+    expect(await insert('commission', 750, 1500, 75)).toBe('allowed');
+  });
+
   it('gives each partial refund of a line its own rows, and a replay of a refund none', async () => {
     const sellerId = ids.next<'Seller'>();
     const paid = factOf(sellerId);

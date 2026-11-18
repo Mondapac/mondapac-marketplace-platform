@@ -932,3 +932,20 @@ card, the storefront's invite banner and the admin list's screens follow in the 
   force; `exclusive` only when it is lower.
 - Migration `20261117080000_ordering_exclusive_seller_commission`: two columns with constant
   defaults (no rewrite) and a CHECK (`exclusive` needs `exclusive_seller` and a frozen rate).
+
+## Phase 4b follow-up: the seller's savings on exclusive customers (2026-11-18)
+
+- Checkout also freezes `ordering.order_lines.commission_standard_rate_bps` on a lowered line: the
+  seller's rate in force at placement (`CommissionRate.standardRateBps`). Null on every other line
+  and on lines lowered before this column (their saving is unknown, never guessed).
+- The ledger's `commission` row of such a line keeps `standard_rate_bps` and `saved_amount`
+  (the commission at the standard rate on the same base, less what was taken); each
+  `refund-commission` row gives back its part of the saving in the same cumulative proportion as the
+  commission, so a full refund gives back exactly the saving. CHECK: both or neither, commission
+  kinds only, never below the row's rate, never negative. Partial index on (market, seller,
+  occurred_at) where a saving exists.
+- `GET commission-payouts/seller/exclusive-commission` (`commission-payouts.earnings.view`, the
+  seller's own only): `rule` (the seller's rate in force now, the lower rate and the months; null
+  when the Market has none), `zone` (the Market's), `months` (the last 12, per currency, savings
+  less what refunds gave back, by the rows' `occurred_at`) and `thisMonth`.
+

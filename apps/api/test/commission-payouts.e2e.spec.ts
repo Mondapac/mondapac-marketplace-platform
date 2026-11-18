@@ -31,6 +31,7 @@ import {
   COMMISSION_PAYOUTS_PAYOUT_VIEW,
 } from '../src/modules/commission-payouts/contracts/permissions';
 import { ViewCommissionRate } from '../src/modules/commission-payouts/application/use-cases/view-commission-rate.use-case';
+import { ViewOwnExclusiveCommission } from '../src/modules/commission-payouts/application/use-cases/view-own-exclusive-commission.use-case';
 import { ViewOwnLedger } from '../src/modules/commission-payouts/application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from '../src/modules/commission-payouts/application/use-cases/view-seller-ledger.use-case';
 import { ExportSellerLedger } from '../src/modules/commission-payouts/application/use-cases/export-seller-ledger.use-case';
@@ -238,6 +239,8 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           .useValue(stub('seller-ledger'))
           .overrideProvider(ViewOwnLedger)
           .useValue(stub('own-ledger'))
+          .overrideProvider(ViewOwnExclusiveCommission)
+          .useValue(stub('own-exclusive-commission'))
           .overrideProvider(ViewSellerPayoutTerms)
           .useValue(stub('view-terms'))
           .overrideProvider(SetSellerPayoutTerms)
@@ -568,6 +571,70 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       { name: 'seller-ledger', input: { sellerId: SELLER, cursor: 'abc', limit: 10 } },
       { name: 'own-ledger', input: { cursor: undefined, limit: undefined } },
     ]);
+  });
+
+  it('serves the seller its exclusive-customer commission and savings, with money as strings', async () => {
+    await boot();
+    const months = Array.from({ length: 12 }, (_, index) => ({
+      month: `2026-${String(index + 1).padStart(2, '0')}`,
+      saved: index === 11 ? [{ amount: 75n, currency }] : [],
+    }));
+    next = ok({
+      rule: { standardRateBps: 1500, exclusiveRateBps: 750, months: 12 },
+      zone: 'Australia/Brisbane',
+      months,
+    });
+    const own = await call(
+      'get',
+      'seller',
+      '/commission-payouts/seller/exclusive-commission',
+      seller(),
+    );
+    expect(own.status).toBe(200);
+    expect(own.headers['cache-control']).toBe('no-store');
+    expect(own.body).toEqual({
+      rule: { standardRateBps: 1500, exclusiveRateBps: 750, months: 12 },
+      zone: 'Australia/Brisbane',
+      months: months.map((m) => ({
+        month: m.month,
+        saved: m.saved.map((s) => ({ amount: s.amount.toString(), currency })),
+      })),
+      thisMonth: [{ amount: '75', currency }],
+    });
+    expect(calls).toEqual([{ name: 'own-exclusive-commission', input: {} }]);
+
+    next = ok({ rule: null, zone: 'Australia/Brisbane', months: [] });
+    const none = await call(
+      'get',
+      'seller',
+      '/commission-payouts/seller/exclusive-commission',
+      seller(),
+    );
+    expect(none.body).toEqual({
+      rule: null,
+      zone: 'Australia/Brisbane',
+      months: [],
+      thisMonth: [],
+    });
+
+    next = err({ code: 'commission-payouts.rate-unavailable' });
+    const down = await call(
+      'get',
+      'seller',
+      '/commission-payouts/seller/exclusive-commission',
+      seller(),
+    );
+    expect(down.status).toBe(503);
+    // An admin session on the seller route is not signed in there.
+    next = err({ code: 'access.denied' });
+    const byAdmin = await call(
+      'get',
+      'seller',
+      '/commission-payouts/seller/exclusive-commission',
+      admin(),
+    );
+    expect(byAdmin.status).toBe(403);
+    expect(actors.at(-1)).toBe('anonymous');
   });
 
   it('passes the seller page list queries through and streams their exports', async () => {

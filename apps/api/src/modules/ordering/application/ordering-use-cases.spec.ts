@@ -3484,13 +3484,19 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         const sellerOrder = order.sellerOrders.find((s) => s.sellerId === sellerId)!;
         return order.lines
           .filter((l) => l.sellerOrderId === sellerOrder.id)
-          .map((l) => [l.commissionRateBps, l.commissionRateReason, l.exclusiveSeller]);
+          .map((l) => [
+            l.commissionRateBps,
+            l.commissionRateReason,
+            l.exclusiveSeller,
+            l.commissionStandardRateBps,
+          ]);
       };
+      // The lowered lines also keep the rate they would have carried (for the seller's savings).
       expect(linesOf(SELLER_A)).toEqual([
-        [750, 'exclusive', true],
-        [750, 'exclusive', true],
+        [750, 'exclusive', true, 1500],
+        [750, 'exclusive', true, 1500],
       ]);
-      expect(linesOf(SELLER_B)).toEqual([[1500, 'standard', false]]);
+      expect(linesOf(SELLER_B)).toEqual([[1500, 'standard', false, null]]);
     });
 
     it('marks the exclusive seller even when no lower rate applies', async () => {
