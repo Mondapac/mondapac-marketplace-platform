@@ -3155,7 +3155,7 @@
       },
       "scope": {
         "label": "What it can do",
-        "help": "Cart suggestions wait for the real cart connection and a security review.",
+        "help": "Cart suggestions add cart cards to answers. The buyer confirms every change; the assistant never edits a cart by itself. Keep \"Answer questions only\" until the assistant has been tested with a real AI model for this feature.",
         "read-only": "Answer questions only",
         "cart-suggestions": "Answer and suggest cart actions"
       },
@@ -3173,7 +3173,8 @@
         "english": "English only"
       },
       "basket": {
-        "label": "Basket proposals from a list"
+        "label": "Basket proposals from a list",
+        "help": "Off by default. Lets the assistant turn a typed or pasted shopping list into a basket card that the buyer reviews; it adds nothing to a cart by itself. It works with either choice of \"What it can do\", and only while \"Assistant switched on\" is on. Keep it off until the assistant has been tested with a real AI model for this feature."
       },
       "welcome": {
         "label": "Welcome message",
