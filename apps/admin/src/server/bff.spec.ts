@@ -1063,6 +1063,77 @@ describe('relay of the connected accounts list', () => {
   });
 });
 
+describe('relay of the customers list and customer page', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const get = (target: string) =>
+    new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const pathOf = (target: string) => target.split('?')[0]!.split('/');
+
+  it("forwards one customer's orders (accountId, a UUID only)", async () => {
+    const upstream = upstreamOk();
+    const target = `ordering/admin/orders?accountId=${ID}&page=1`;
+    await relay(config, get(target), pathOf(target), upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/ordering/admin/orders?accountId=${ID}&page=1`,
+    );
+    // A malformed scope is refused, never dropped (that would list the whole Market's orders).
+    const bad = 'ordering/admin/orders?accountId=someone&page=1';
+    const refused = await relay(config, get(bad), pathOf(bad), upstream);
+    expect(refused.status).toBe(400);
+    expect(upstream).toHaveBeenCalledOnce();
+  });
+
+  it('relays the Money tab reads that the client builds from a variable path', async () => {
+    for (const target of [
+      `ordering/admin/customers/${ID}/refunds`,
+      `promotions/admin/customers/${ID}/credits`,
+      `wallet/admin/customers/${ID}/history`,
+    ]) {
+      const upstream = upstreamOk();
+      const response = await relay(config, get(target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it('forwards the wallet journal and promotion credit paging, and nothing else', async () => {
+    const upstream = upstreamOk();
+    const wallet = `wallet/admin/customers/${ID}/history?limit=20&cursor=abc.1&x=1`;
+    await relay(config, get(wallet), pathOf(wallet), upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/customers/${ID}/history?cursor=abc.1&limit=20`,
+    );
+    const credits = `promotions/admin/customers/${ID}/credits?limit=100&cursor=a%20b`;
+    await relay(config, get(credits), pathOf(credits), upstream);
+    expect(upstream.mock.calls[1]?.[0]).toBe(
+      `http://api.test/promotions/admin/customers/${ID}/credits?limit=100`,
+    );
+  });
+
+  it('takes an export naming 1000 ticked ids, and still caps a larger body', async () => {
+    const upstream = upstreamOk();
+    const ids = Array.from({ length: 1000 }, () => ID);
+    const body = JSON.stringify({ format: 'csv', columns: ['name'], ids });
+    expect(body.length).toBeGreaterThan(16 * 1024);
+    const path = ['customers', 'admin', 'export'];
+    const ok = await relay(config, post(path.join('/'), sameOrigin, body), path, upstream);
+    expect(ok.status).toBe(200);
+    const big = await relay(
+      config,
+      post(path.join('/'), sameOrigin, 'x'.repeat(48 * 1024 + 1)),
+      path,
+      upstream,
+    );
+    expect(big.status).toBe(413);
+    // The larger cap is the export's only.
+    const list = ['customers', 'admin', 'list'];
+    const other = await relay(config, post(list.join('/'), sameOrigin, body), list, upstream);
+    expect(other.status).toBe(413);
+  });
+});
+
 describe('relay of the orders list', () => {
   const get = (query: string) =>
     new Request(`http://admin.localhost:3002/api/ordering/admin/orders${query}`, {

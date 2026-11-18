@@ -9,6 +9,7 @@ import { known } from '../sellers/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { FallbackId } from './fallback-id.tsx';
 import type { OrderColumn } from './orders-columns.ts';
+import { orderHref, type CustomerOrigin } from './order-href.ts';
 import { OrderStatusBadge } from './status-badge.tsx';
 import { PAYMENT_STATES, type AdminOrderRow } from './types.ts';
 
@@ -39,6 +40,7 @@ export function OrdersTable({
   empty,
   skeletonRows,
   actions,
+  fromCustomer,
 }: {
   readonly rows: readonly AdminOrderRow[];
   readonly columns: readonly OrderColumn[];
@@ -50,6 +52,8 @@ export function OrdersTable({
   readonly skeletonRows?: number;
   /** The Actions menu of a row; a row with no items has none. */
   readonly actions: (row: AdminOrderRow) => readonly MenuItem[];
+  /** Opened from a customer's page: each order's Back returns to that tab. */
+  readonly fromCustomer?: CustomerOrigin;
 }) {
   const t = useTranslations('orders');
   const content = (column: OrderColumn, order: AdminOrderRow): ReactNode => {
@@ -74,7 +78,9 @@ export function OrdersTable({
       id: 'order',
       header: t('col.order'),
       primary: true,
-      cell: (order) => <OrderLink orderId={order.orderId} />,
+      cell: (order) => (
+        <OrderLink orderId={order.orderId} href={orderHref(order.orderId, fromCustomer)} />
+      ),
     },
     {
       id: 'status',

@@ -337,7 +337,9 @@ export class AdminCustomersController {
     summary: 'One customer: the header and the Overview tab',
     description:
       'Needs customers.customers.view. The profile (sign-in address, name, status, email verified, ' +
-      'joined) and what the orders add up to (count, spent, refunds, first and last order). The ' +
+      'joined), what the orders add up to (count, spent, refunds, first and last order) and ' +
+      '`deletionRequest`: the open deletion request (requestId, status pending or executing, ' +
+      'requestedAt, scheduledFor) or null. The ' +
       'wallet balance, the orders (`GET ordering/admin/orders?accountId=`) and the money tab are ' +
       'read from their owning modules, each under its own permission. Every open is audited. ' +
       'An erased customer (account deletion completed) answers a tombstone, `{ accountId, ' +

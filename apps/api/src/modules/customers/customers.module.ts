@@ -299,7 +299,7 @@ function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
 
 type PageUseCaseClass<U> = new (gate: UseCaseGate, deps: CustomerPageDependencies) => U;
 
-/** The customer page use cases: the list reads plus the audit writer. */
+/** The customer page use cases: the list reads, the audit writer and the open deletion request. */
 function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
@@ -309,6 +309,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       CUSTOMER_LIST_READER,
       CLOCK,
       AUDIT_WRITER,
+      ACCOUNT_DELETION_REQUEST_REPOSITORY,
       CUSTOMER_TIMELINE_REPOSITORY,
       ID_GENERATOR,
       ADMIN_DAY_ZONE,
@@ -321,6 +322,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
       listReader: CustomerPageDependencies['listReader'],
       clock: CustomerPageDependencies['clock'],
       audit: CustomerPageDependencies['audit'],
+      deletionRequests: CustomerPageDependencies['deletionRequests'],
       timeline: CustomerPageDependencies['timeline'],
       ids: CustomerPageDependencies['ids'],
       dayZone: CustomerPageDependencies['dayZone'],
@@ -332,6 +334,7 @@ function pageUseCaseProvider<U>(type: PageUseCaseClass<U>): FactoryProvider<U> {
         listReader,
         clock,
         audit,
+        deletionRequests,
         timeline,
         ids,
         dayZone,

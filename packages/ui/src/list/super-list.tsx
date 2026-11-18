@@ -40,6 +40,8 @@ export interface SuperListProps {
     readonly placeholder: string;
     readonly value: string;
     readonly maxLength: number;
+    /** What the search matches, read with the field (the placeholder is only a hint). */
+    readonly help?: string;
     readonly onChange: (value: string) => void;
     /** Enter searches at once, without the typing pause. */
     readonly onSubmit: (value: string) => void;
@@ -168,6 +170,7 @@ export function SuperList({
           placeholder={search.placeholder}
           value={search.value}
           maxLength={search.maxLength}
+          {...(search.help === undefined ? {} : { help: search.help })}
           className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
           onChange={(event) => search.onChange(event.target.value)}
           onBlur={search.onBlur}
