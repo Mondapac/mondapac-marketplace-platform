@@ -40,6 +40,7 @@ import { AttributeDefinitionEdit } from './attribute-definition-edit.use-case';
 import { AttributeFilesExport } from './attribute-files-export.use-case';
 import { AttributeImportCheck } from './attribute-import-check.use-case';
 import { AttributeImportRun } from './attribute-import-run.use-case';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 
 // The attribute export and import (attributes package A9) in memory, on both Market fixtures: the
 // keys and the admin population; the export's columns per language, the Missing filter and the
@@ -157,6 +158,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute files in market %s', (code) => {
       audit,
       clock,
       ids,
+      review: new RecordingReview(),
     };
     const create = new AttributeDefinitionCreate(gate, editDeps);
     const edit = new AttributeDefinitionEdit(gate, editDeps);

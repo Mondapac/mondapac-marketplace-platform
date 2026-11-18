@@ -18,7 +18,7 @@ import {
   type SavedFilter,
   type SavedFiltersAnswer,
 } from './orders-saved.ts';
-import type { OrderFilters, SortId } from './orders-query.ts';
+import type { Query } from './orders-query.ts';
 
 const TOAST = { id: 'orders-saved-filter' };
 
@@ -53,6 +53,8 @@ function useLabels(limits: SavedFiltersAnswer['limits']): SavedViewLabels {
         deleteNamed: (name) => t('manage.delete-named', { name }),
         deleteOwn: (name) => t('manage.delete-own', { name }),
         deleteShared: (name) => t('manage.delete-shared', { name }),
+        moveUp: (name) => t('manage.move-up', { name }),
+        moveDown: (name) => t('manage.move-down', { name }),
       },
       error: (problem) =>
         t(`error.${problem}`, {
@@ -70,8 +72,8 @@ function useLabels(limits: SavedFiltersAnswer['limits']): SavedViewLabels {
 export function OrdersSavedViews({
   dialog,
   onClose,
-  filters,
-  sort,
+  query,
+  zone,
   summary,
   saved,
   csrfToken,
@@ -80,15 +82,16 @@ export function OrdersSavedViews({
 }: {
   readonly dialog: 'save' | 'manage' | null;
   readonly onClose: () => void;
-  readonly filters: OrderFilters;
-  readonly sort: SortId;
+  readonly query: Query;
+  /** The zone the saved days are read in. */
+  readonly zone: string;
   /** What the filter holds, in words. */
   readonly summary: string;
   readonly saved: SavedFiltersAnswer;
   readonly csrfToken: string;
   /** A new filter was saved: the list reloads and shows it. */
   readonly onSaved: (filter: SavedFilter) => void;
-  /** A filter was renamed, shared or deleted: the list reloads. */
+  /** A filter was renamed, shared, deleted or moved: the list reloads. */
   readonly onChanged: () => void;
 }) {
   const t = useTranslations('orders.saved');
@@ -108,7 +111,7 @@ export function OrdersSavedViews({
           const result = await callApi<SavedFilter>(
             'POST',
             'ordering/admin/saved-filters',
-            { listKey: LIST_KEY, name, visibility, payload: payloadOf(filters, sort) },
+            { listKey: LIST_KEY, name, visibility, payload: payloadOf(query, zone, new Date()) },
             csrfToken,
           );
           if (!result.ok) return problemOf(result.failure);
@@ -149,6 +152,24 @@ export function OrdersSavedViews({
             return problemOf(result.failure);
           }
           toast.success(t('toast.deleted', { name }), TOAST);
+          onChanged();
+          return null;
+        }}
+        onReorder={async (ids, movedId) => {
+          // The order of the admin's own filters (their tabs), through the shared lists route.
+          const result = await callApi<{ ids: readonly string[] }>(
+            'PUT',
+            'lists/admin/saved-filters/order',
+            { listKey: LIST_KEY, ids },
+            csrfToken,
+          );
+          if (!result.ok) {
+            // A refused order may mean the filters changed meanwhile: reload them under the banner.
+            onChanged();
+            return problemOf(result.failure);
+          }
+          const name = saved.items.find((item) => item.id === movedId)?.name ?? '';
+          toast.success(t('toast.moved', { name }), TOAST);
           onChanged();
           return null;
         }}

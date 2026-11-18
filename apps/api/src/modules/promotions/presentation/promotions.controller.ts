@@ -38,8 +38,10 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { ApplyReferralCode } from '../application/use-cases/apply-referral-code.use-case';
 import { ListCustomerPromotionCredits } from '../application/use-cases/list-customer-promotion-credits.use-case';
+import { ListCustomerPromotionUsages } from '../application/use-cases/list-customer-promotion-usages.use-case';
 import { ListPromotionCredits } from '../application/use-cases/list-promotion-credits.use-case';
 import { ViewMyReferral } from '../application/use-cases/view-my-referral.use-case';
+import { ViewStoreFollowGift } from '../application/use-cases/view-store-follow-gift.use-case';
 import { GenerateBatchCodes } from '../application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from '../application/use-cases/view-batch-code-summary.use-case';
 import { CreateOwnPromotion } from '../application/use-cases/create-own-promotion.use-case';
@@ -77,6 +79,8 @@ import {
   ApplyReferralRequest,
   CreditsBody,
   creditsBody,
+  CustomerUsagesBody,
+  customerUsagesBody,
   MyReferralBody,
   myReferralBody,
   BatchCodeSummaryBody,
@@ -291,6 +295,7 @@ export class AdminPromotionsController {
     private readonly campaignMembers: ViewCampaignMembers,
     private readonly activity: ViewPromotionActivity,
     private readonly customerCredits: ListCustomerPromotionCredits,
+    private readonly customerUsages: ListCustomerPromotionUsages,
   ) {}
 
   @Get('settings')
@@ -779,6 +784,43 @@ export class AdminPromotionsController {
     });
     return creditsBody(
       settle(this.#logger, 'promotions.list-customer-credits-route', context, result, 'read'),
+    );
+  }
+
+  @Get('customers/:customerAccountId/usages')
+  @ApiOperation({
+    summary: 'The promotions one customer used (admin viewer)',
+    description:
+      'Needs promotions.promotion.view and customers.customers.view. One row per discount an ' +
+      'order took (stored promotion, first-order offer or free delivery), newest first, a page ' +
+      'at a time (pass nextCursor as ' +
+      'cursor). RESERVED rows can still be released; only CONFIRMED rows count as used. Works ' +
+      'while promotions are switched off. A customer with none gets an empty page.',
+  })
+  @ApiParam({ name: 'customerAccountId', format: 'uuid' })
+  @ApiQuery({ name: 'limit', required: false, description: '1 to 100; default 50.' })
+  @ApiQuery({ name: 'cursor', required: false, description: 'nextCursor of the previous page.' })
+  @ApiOkResponse({ type: CustomerUsagesBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async customerUsagesOf(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('customerAccountId') customerAccountId: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    noStore(response);
+    const unknown = closedQuery(query, ['limit', 'cursor']);
+    if (unknown !== null) throw unknown;
+    const result = await this.customerUsages.execute(context, {
+      customerAccountId,
+      limit: limitOf(query.limit),
+      cursor: query.cursor,
+    });
+    return customerUsagesBody(
+      settle(this.#logger, 'promotions.list-customer-usages-route', context, result, 'read'),
     );
   }
 
@@ -1335,5 +1377,39 @@ export class CustomerReferralController {
     return appliedReferralBody(
       settle(this.#logger, 'promotions.apply-referral-route', context, result, 'applied'),
     );
+  }
+}
+
+/**
+ * A store's "Follow gift" (customers management phase 3): its live store-follower offers, for the
+ * store page and the moment after Follow. Public (no session read); no customer data.
+ */
+@ApiTags('promotions')
+@RoutePopulation('customer')
+@Controller('promotions/stores')
+export class StoreFollowGiftController {
+  readonly #logger = new Logger('StoreFollowGiftController');
+
+  constructor(private readonly gift: ViewStoreFollowGift) {}
+
+  @Get(':sellerId/follow-gift')
+  @ApiOperation({
+    summary: "A store's live follower offers (the Follow gift)",
+    description:
+      'The seller’s ACTIVE store-follower promotions that have started and not ended, not in test ' +
+      'mode and without a code, newest first (at most 5). An empty list while promotions are off ' +
+      'in the Market. Applied at checkout only while the customer follows the store.',
+  })
+  @ApiOkResponse({ type: Object })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async followGift(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('sellerId') sellerId: string,
+  ) {
+    noStore(response);
+    const result = await this.gift.execute(context, { sellerId });
+    return settle(this.#logger, 'promotions.view-store-follow-gift-route', context, result, 'read');
   }
 }

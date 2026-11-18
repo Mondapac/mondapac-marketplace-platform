@@ -2,7 +2,7 @@ import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { SellerDashboard } from '../../src/dashboard/dashboard.tsx';
-import { loadSellerDashboard } from '../../src/dashboard/load.ts';
+import { startSellerDashboard } from '../../src/dashboard/load.ts';
 import { SETUP_ROOT } from '../../src/setup/steps.ts';
 import { requireSession } from '../../src/server/session.ts';
 import { SellerShell } from '../../src/server/seller-shell.tsx';
@@ -20,7 +20,8 @@ export default async function HomePage() {
   }
   // Until the seller is approved the limited shell has one page: the account setup (ID-UX F5).
   if (gate.session.sellerAccessState !== 'approved') redirect(SETUP_ROOT);
-  const data = await loadSellerDashboard(gate.session);
+  // Not awaited: each card streams in with its own read (panel loading L4).
+  const data = startSellerDashboard(gate.session);
   return (
     <SellerShell session={gate.session} activeId="s_home" title={t('home.title')}>
       <div className="flex flex-col gap-6">

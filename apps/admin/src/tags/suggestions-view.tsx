@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, EmptyState, LoadError, SkeletonRows, Tabs } from '@mondapac/ui';
+import { Banner, EmptyState, LoadError, Tabs, DetailSkeleton } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -106,7 +106,7 @@ export function SuggestionsView({
 
   let body: React.ReactNode;
   if (load.state === 'loading') {
-    body = <SkeletonRows label={t('loading')} rows={3} />;
+    body = <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={3} />;
   } else if (load.state === 'failed') {
     body = (
       <LoadError

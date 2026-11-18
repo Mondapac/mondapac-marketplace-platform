@@ -34,6 +34,8 @@ const offer: OfferView = {
 const options: ProductOptions = {
   productTypes: ['grocery'],
   conditions: ['new', 'used'],
+  taxCategoryCodes: [],
+  categories: [],
   locales: { default: 'en-AU', supported: ['en-AU', 'ar'] },
   sellerCanCreateProduct: true,
 };

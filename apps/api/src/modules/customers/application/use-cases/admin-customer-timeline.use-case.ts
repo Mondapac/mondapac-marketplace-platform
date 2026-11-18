@@ -12,7 +12,9 @@ import {
 /**
  * `customers.admin-customer-timeline`: one page of a customer's activity timeline (a super list:
  * event type and date filters, sort by time, page numbers or Previous and Next). Every read is an
- * audited open of the page (tab `activity`). Rule: `customers.customers.view`.
+ * audited open of the page (tab `activity`). Rule: `customers.customers.view`; the review kinds
+ * only for a caller who also holds `reviews.customer-review.view` (asked through
+ * `customers.customer-review-events-check`).
  */
 export class AdminCustomerTimeline extends UseCase<
   unknown,

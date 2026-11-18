@@ -33,3 +33,30 @@ export class CustomerVerificationEmailAccepted {
   @ApiProperty({ enum: ['verification-resend.accepted'] })
   code!: 'verification-resend.accepted';
 }
+
+/**
+ * The body that confirms a sign-in email an admin changed (customers admin email change): the
+ * token from the fragment of the link mailed to the new address and the account's password.
+ */
+export class CustomerConfirmEmailChangeRequest {
+  @ApiProperty({
+    description:
+      "The token from the fragment of the mail's link (never in a URL the server sees). Never " +
+      'logged or echoed.',
+    example: 'ml1_…',
+  })
+  token!: string;
+
+  @ApiProperty({
+    description:
+      'The password of the account, at most 1024 bytes. Never trimmed, logged or echoed.',
+    format: 'password',
+  })
+  password!: string;
+}
+
+/** The change is confirmed; no session is opened: the customer signs in with the new address. */
+export class CustomerEmailChangeConfirmed {
+  @ApiProperty({ enum: ['email-change.confirmed'] })
+  code!: 'email-change.confirmed';
+}

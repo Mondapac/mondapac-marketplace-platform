@@ -73,6 +73,16 @@
   "identity.mail.confirm-second-factor-reset.seller.heading": "Confirm the reset of two-step sign-in",
   "identity.mail.confirm-second-factor-reset.seller.body": "MondaPac support started turning off two-step sign-in on your seller account. Nothing changes until you confirm. If you confirm, two-step sign-in is turned off, every session ends and you sign in with your password alone until you set it up again. Open the link below to confirm. The link works for {duration} and only once.",
   "identity.mail.confirm-second-factor-reset.seller.action": "Turn off two-step sign-in",
+  "identity.mail.confirm-email-change.customer.subject": "Confirm the new sign-in email of your MondaPac account",
+  "identity.mail.confirm-email-change.customer.heading": "Confirm your new sign-in email",
+  "identity.mail.confirm-email-change.customer.body": "MondaPac support was asked to change the sign-in email of a customer account to this address. Nothing changes until you confirm. To confirm, open the link below and enter the account's password. Once confirmed, you sign in with this address and every device is signed out. The link works for {duration} and only once.",
+  "identity.mail.confirm-email-change.customer.action": "Confirm the new email",
+  "identity.mail.email-change-requested.customer.subject": "A change of your MondaPac sign-in email was requested",
+  "identity.mail.email-change-requested.customer.heading": "A change of your sign-in email was requested",
+  "identity.mail.email-change-requested.customer.body": "On {time} our support team asked to change the sign-in email of your customer account to {address}. Nothing changes until the change is confirmed from that address with your password. You still sign in with this address.",
+  "identity.mail.email-changed.customer.subject": "Your MondaPac sign-in email was changed",
+  "identity.mail.email-changed.customer.heading": "Your sign-in email was changed",
+  "identity.mail.email-changed.customer.body": "On {time} the sign-in email of your customer account was changed to {address}. Every device was signed out. This address no longer signs in to the account.",
   "identity.mail.invitation.seller.subject": "You are invited to sell on MondaPac",
   "identity.mail.invitation.seller.heading": "Your seller account invitation",
   "identity.mail.invitation.seller.body": "MondaPac has created a seller account for you. Open the link below to choose your password. The invitation works for {duration} and only once.",
@@ -101,5 +111,6 @@
   "identity.mail.common.account-line.admin": "This email is about your MondaPac admin account.",
   "identity.mail.common.ignore": "If you didn't ask for this, you can ignore this email.",
   "identity.mail.common.not-you": "If this wasn't you, reset your password from the sign-in page straight away.",
+  "identity.mail.common.contact-support": "If this wasn't you, contact MondaPac support straight away.",
   "identity.mail.common.footer": "This is an automatic message from MondaPac. Replies are not read."
 }
