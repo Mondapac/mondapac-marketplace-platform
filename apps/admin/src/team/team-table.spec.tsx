@@ -4,9 +4,13 @@ import { createTranslator } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { TeamTable } from './team-table.tsx';
+import type { RowTarget } from './row-actions.tsx';
 import type { AccountRow, InvitationRow, TeamPage } from './types.ts';
 
-vi.mock('./row-actions.tsx', () => ({ RowActions: () => null }));
+const rowActions = vi.hoisted(() =>
+  vi.fn<(props: { readonly target: RowTarget }) => null>(() => null),
+);
+vi.mock('./row-actions.tsx', () => ({ RowActions: rowActions }));
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
   getLocale: () => Promise.resolve('en-AU'),
@@ -117,6 +121,23 @@ describe('admin team table', () => {
     const rows = screen.getAllByRole('row');
     expect(within(rows[1]!).getByText('Awaiting approval')).toBeTruthy();
     expect(within(rows[1]!).queryByText('Invited')).toBeNull();
+  });
+
+  it("hands an awaiting-approval row's denied re-send to its actions (Sajad on PR #1081)", async () => {
+    rowActions.mockClear();
+    await show({
+      items: [
+        invitation({
+          status: 'awaiting-approval',
+          actions: { resend: { allowed: false, code: 'invitation.rejected' }, revoke: hint },
+        }),
+      ],
+      next: null,
+    });
+    expect(rowActions.mock.calls.at(-1)?.[0].target).toMatchObject({
+      kind: 'invitation',
+      hints: { resend: { allowed: false, code: 'invitation.rejected' }, revoke: hint },
+    });
   });
 
   it('says it is just the actor so far on an empty first page only', async () => {

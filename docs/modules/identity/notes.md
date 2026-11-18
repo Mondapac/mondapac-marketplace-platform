@@ -181,8 +181,13 @@ delete waits for another admin's approval. Area `people`, always high risk.
   next version, so the mail and its token follow) and audited `identity.invitation.approved` as
   the approver with `requestId`. The mail counters are spent when it is asked for (one mail per
   approval). **Reject or withdraw** send nothing; the held row stays pending until the inviter
-  revokes it or, as a never-sent invitation, it passes its kind's lifetime (then a new invitation
-  replaces it and the hourly purge deletes it). An approval later than that lifetime answers
+  revokes it ("Cancel invitation" on the team list, allowed on a held row; it frees the address at
+  once) or, as a never-sent invitation, it passes its kind's lifetime (then a new invitation
+  replaces it and the hourly purge deletes it). Releasing it lazily when a new invitation meets a
+  held row whose proposal is closed (Hassan, PR #1081) needs a way to read that proposal: the
+  platform port offers none (`openReview`, `areaPolicy`, `proposeChange` only), system-requests
+  publishes no decision event, and identity imports no module, so it is a documented limit until
+  the port gains a proposal read or a decision event. An approval later than that lifetime answers
   `gone`: invite again. The invitee (the admin account of the address, if one exists) may not
   decide it. Where people is off, the invitation is issued at once as any other.
 - **Where people is off** the three routes behave as before (`request: null`, the delete at once).

@@ -156,6 +156,29 @@ describe('team row actions', () => {
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/session-ended'));
   });
 
+  it("keeps an awaiting-approval invitation's re-send disabled with its reason, and sends nothing (Sajad on PR #1081)", () => {
+    show({
+      kind: 'invitation',
+      id: ID,
+      name: 'new@example.test',
+      // The team list's hint for a held invitation: the re-send command refuses it.
+      hints: { resend: { allowed: false, code: 'invitation.rejected' }, revoke: ok },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for new@example.test' }));
+    const resend = screen.getByRole('menuitem', { name: /Resend invitation/ });
+    expect(resend.getAttribute('aria-disabled')).toBe('true');
+    expect(
+      screen.getByText("This invitation can't be sent again. We've refreshed the list."),
+    ).toBeTruthy();
+    // Cancelling it stays possible: it frees the address.
+    expect(
+      screen.getByRole('menuitem', { name: /Cancel invitation/ }).getAttribute('aria-disabled'),
+    ).not.toBe('true');
+    fireEvent.click(resend);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(call).not.toHaveBeenCalled();
+  });
+
   it('resends an invitation at once and cancels it after a confirmation', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: {} });
     show({

@@ -519,6 +519,39 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
     expect(invitationRow(listed, seeded.expired)!.actions.resend).toEqual(yes);
   });
 
+  it('shows a held invitation as awaiting approval, its re-send denied as the command refuses it (Sajad on PR #1081)', async () => {
+    const { list, commands } = setUp();
+    const held = seedInvitation(11, {
+      roleId: roleOf('platform-administrator'),
+      heldForApproval: true,
+      tokenHash: null,
+      expiresAt: null,
+      version: 1,
+    });
+
+    const listed = await page(list, ROOT);
+
+    expect(invitationRow(listed, held)).toMatchObject({
+      status: 'awaiting-approval',
+      expiresAt: null,
+      actions: { resend: no('invitation.rejected'), revoke: yes },
+    });
+    // The hint is the command's own verdict: nothing is sent before the approval.
+    expect(
+      await commands.resend.execute(as(ROOT), { invitationId: held, origin: '203.0.113.9' }),
+    ).toEqual({ ok: false, error: { code: 'invitation.rejected' } });
+    expect(fakes.invitations.get(held)).toMatchObject({ heldForApproval: true, version: 1 });
+    // Revoking it (allowed) frees the address: the documented way after a rejected proposal.
+    expect(await commands.revoke.execute(as(ROOT), { invitationId: held })).toMatchObject({
+      ok: true,
+    });
+    expect(fakes.invitations.get(held)).toMatchObject({
+      state: 'revoked',
+      heldForApproval: false,
+      email: null,
+    });
+  });
+
   it('gives an admin without the system role R1 and R3 answers (LEAD)', async () => {
     const { list } = setUp();
     const seeded = seedInvitations();

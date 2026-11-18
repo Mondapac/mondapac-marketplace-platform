@@ -232,7 +232,9 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
   holds the invitation, address included, and sends nothing until the approval. A reject or
   withdraw asks identity nothing, so the held row stays pending (still blocking a new invitation
   to that address) until the inviter revokes it or it passes the admin invitation lifetime, after
-  which it is replaced or purged; an approval after that lifetime answers `gone`.
+  which it is replaced or purged; an approval after that lifetime answers `gone`. Identity cannot
+  release it on its own when the proposal closes: the port has no proposal read and no decision
+  event (follow-up, Hassan on PR #1081).
 
 ## Actions that wait for approval (approval mode)
 
