@@ -44,7 +44,7 @@ import { TopicEdit } from '../application/use-cases/topic-edit.use-case';
 import { TopicGet } from '../application/use-cases/topic-get.use-case';
 import { TopicList } from '../application/use-cases/topic-list.use-case';
 import { TopicCreateRequest, TopicEditRequest, TopicListBody, TopicWrapBody } from './topic.dto';
-import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
+import { closedBody, numericQuery, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 
 /**
@@ -98,13 +98,27 @@ export class TopicAdminController {
   @ApiOperation({
     summary: 'List topics',
     description:
-      'Needs catalog.topic.read. By slug, keyset-paged: send `nextAfterId` of the previous page as ' +
-      '`afterId`. `status` and `group` filter; `search` matches a name or synonym in any locale ' +
-      'or the slug. `limit` is 1 to 100 (default 25).',
+      'Needs catalog.topic.read. Read by page number (`page`, `pageSize`, with a total) or ' +
+      'Previous and Next (`paging=prev-next`), sorted by `sort` (slug, status, group, created, ' +
+      'updated) and `direction`; or, as the older panel and the pickers do, keyset-paged by slug: ' +
+      'send `nextAfterId` of the previous page as `afterId` (`afterId`/`limit` do not mix with the ' +
+      'page keys). `status` and `group` filter; `q` (older name `search`) matches a name or ' +
+      'synonym in any locale or the slug. `pageSize` and `limit` are 1 to 100. Each row names the ' +
+      '`actions` the caller may run.',
   })
   @ApiQuery({ name: 'status', required: false, enum: ['active', 'archived'] })
   @ApiQuery({ name: 'group', required: false, enum: ['occasion', 'cuisine', 'use'] })
-  @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'search', required: false, deprecated: true, description: 'Older name of q.' })
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    enum: ['slug', 'status', 'group', 'created', 'updated'],
+  })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'pageSize', required: false })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
   @ApiQuery({ name: 'afterId', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiOkResponse({ type: TopicListBody })
@@ -117,7 +131,7 @@ export class TopicAdminController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<TopicListBody> {
-    const result = await this.listTopics.execute(context, pageQuery(query));
+    const result = await this.listTopics.execute(context, numericQuery(pageQuery(query)));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as TopicListBody)
       : refusal(result.error, response, context);

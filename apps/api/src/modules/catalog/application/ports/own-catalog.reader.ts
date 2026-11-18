@@ -353,6 +353,13 @@ export interface OwnCatalogReader {
    */
   productForm(market: MarketContext, familyCode: string): Promise<ProductForm>;
 
+  /**
+   * The active platform categories a product may be filed under: the `categories` of
+   * {@link productForm}, which does not depend on the family. The product form options read it
+   * before any product exists.
+   */
+  productCategories(market: MarketContext): Promise<readonly ProductFormCategory[]>;
+
   /** The working copies of the given products (at most 100 ids), in no order. */
   findWorkingCopies(
     market: MarketContext,

@@ -61,7 +61,7 @@ import {
   MergeQueueDismissedBody,
   MergeQueueDismissRequest,
 } from './brand.dto';
-import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
+import { closedBody, numericQuery, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 
 /**
@@ -138,12 +138,21 @@ export class BrandAdminController {
   @ApiOperation({
     summary: 'List brands',
     description:
-      'Needs catalog.brand.read. By name, keyset-paged: send `nextAfterId` of the previous page ' +
-      'as `afterId`. `status` filters; `search` matches the name, the slug or an alias. `limit` is ' +
-      '1 to 100 (default 25).',
+      'Needs catalog.brand.read. Read by page number (`page`, `pageSize`, with a total) or ' +
+      'Previous and Next (`paging=prev-next`, no total), sorted by `sort` (name, status, created, ' +
+      'updated) and `direction`; or, as the older panel does, keyset-paged by name: send ' +
+      '`nextAfterId` of the previous page as `afterId` (`afterId`/`limit` do not mix with the page ' +
+      'keys). `status` filters; `q` (older name `search`) matches the name, the slug or an alias. ' +
+      '`pageSize` and `limit` are 1 to 100. Each row names the `actions` the caller may run.',
   })
   @ApiQuery({ name: 'status', required: false, enum: ['draft', 'active', 'archived'] })
-  @ApiQuery({ name: 'search', required: false })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'search', required: false, deprecated: true, description: 'Older name of q.' })
+  @ApiQuery({ name: 'sort', required: false, enum: ['name', 'status', 'created', 'updated'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'pageSize', required: false })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
   @ApiQuery({ name: 'afterId', required: false })
   @ApiQuery({ name: 'limit', required: false })
   @ApiOkResponse({ type: BrandListBody })
@@ -156,7 +165,7 @@ export class BrandAdminController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<BrandListBody> {
-    const result = await this.listBrands.execute(context, pageQuery(query));
+    const result = await this.listBrands.execute(context, numericQuery(pageQuery(query)));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as BrandListBody)
       : refusal(result.error, response, context);

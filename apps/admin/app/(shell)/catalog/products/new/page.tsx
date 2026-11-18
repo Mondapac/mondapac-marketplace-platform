@@ -2,8 +2,13 @@ import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../../src/server/session.ts';
-import { ProductCreateForm } from '../../../../../src/catalog/product-form/create-form.tsx';
-import { EDIT_PERMISSION } from '../../../../../src/catalog/product-form/types.ts';
+import { panelConfig } from '../../../../../src/server/config.ts';
+import { displayZone } from '../../../../../src/shared/format.ts';
+import { ProductAdd } from '../../../../../src/catalog/product-form/add-form.tsx';
+import {
+  EDIT_PERMISSION,
+  TOPIC_READ_PERMISSION,
+} from '../../../../../src/catalog/product-form/types.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -21,7 +26,13 @@ export default async function AddProductPage() {
   return (
     <AdminShell session={gate.session} activeId="products" title={title}>
       {allowed ? (
-        <ProductCreateForm csrfToken={gate.session.csrfToken} />
+        <ProductAdd
+          csrfToken={gate.session.csrfToken}
+          marketName={panelConfig().marketName}
+          timeZone={displayZone(gate.session.timezone)}
+          canReadTags={gate.session.permissionKeys.includes(TOPIC_READ_PERMISSION)}
+          permissionKeys={gate.session.permissionKeys}
+        />
       ) : (
         <>
           <p className="text-fg-muted">{t('catalog.productForm.no-access')}</p>
