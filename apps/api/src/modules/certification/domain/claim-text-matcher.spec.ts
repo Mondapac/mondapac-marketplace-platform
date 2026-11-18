@@ -1,5 +1,6 @@
 import type { CertificationTypeCode } from './claim-types';
 import {
+  collapseRuns,
   compactForm,
   latinContextFold,
   matchClaimTerms,
@@ -568,5 +569,67 @@ describe('claim text matcher: speed (Hassan S4, #380 M1)', () => {
     );
     // One table per text: 20 types cost about the same as 1; per-type tables cost about 20 times.
     expect([many < 6 * base + 50]).toEqual([true]);
+  });
+});
+
+describe('claim text matcher: stretched letters', () => {
+  it('folds a run of one character to one', () => {
+    expect(collapseRuns('haaalal')).toBe('halal');
+    expect(collapseRuns('hhaallaall')).toBe('halal');
+    expect(collapseRuns('')).toBe('');
+    expect(collapseRuns('😀😀a')).toBe('😀a');
+  });
+
+  it.each([
+    'haaalal',
+    'haaaaaaaaalal',
+    'hhhaaallaaalll',
+    'HAAALLLAAALLL',
+    'h-a-a-a-l-a-l',
+    'ha aa lal',
+    'hаааlal', // Cyrillic а stretched inside a Latin word
+    'hаааlаl',
+    'ааа halal',
+    'haaa١al', // a stretch next to a look-alike digit
+    'h4444l4l',
+    'hallllal',
+    'halalllllll',
+    'xxhaaalalxx',
+  ])('flags %s as halal', (text) => {
+    expect([
+      text,
+      run(AU, text).includes('halal:compact') || run(AU, text).includes('halal:token'),
+    ]).toEqual([text, true]);
+  });
+
+  it('flags a stretched word of another type and of another Market', () => {
+    expect(run(AU, 'koooosher')).toEqual(['kosher:compact']);
+    expect(run(AU, 'veeegaaan')).toEqual(['vegan:compact']);
+    expect(run(ZZ, 'zzzedpuuure')).toEqual(['zed-pure:compact']);
+  });
+
+  it('flags a term with doubled letters when the text stretches them', () => {
+    const vocab: ClaimVocabularyEntry[] = [{ typeCode: code('cheese'), terms: ['cheese'] }];
+    expect(run(vocab, 'chhheeeese')).toEqual(['cheese:compact']);
+    expect(run(vocab, 'chese')).toEqual(['cheese:compact']);
+  });
+
+  it('does not use a term that folds to almost nothing, and leaves ordinary text alone', () => {
+    const vocab: ClaimVocabularyEntry[] = [
+      { typeCode: code('stretchy'), terms: ['aaaaaaa'] },
+      { typeCode: code('halal'), terms: ['halal'] },
+    ];
+    // "aaaaaaa" folds to "a": it keeps its plain compact match and gains no stretch match.
+    expect(run(vocab, 'a bat and a cat')).toEqual([]);
+    expect(run(vocab, 'aaaaaaa')).toEqual(['stretchy:token']);
+    expect(run(AU, 'hello world, fresh bread and milk')).toEqual([]);
+    expect(run(AU, 'hal')).toEqual([]);
+  });
+
+  it('stays linear on a long run of one letter', () => {
+    const text = 'h' + 'a'.repeat(19_000) + 'lal';
+    const started = performance.now();
+    expect(run(AU, text)).toEqual(['halal:compact']);
+    expect(performance.now() - started).toBeLessThan(2_000);
   });
 });

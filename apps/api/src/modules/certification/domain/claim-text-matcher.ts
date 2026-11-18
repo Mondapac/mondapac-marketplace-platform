@@ -41,6 +41,12 @@ export interface PreparedVocabulary {
     readonly typeCode: CertificationTypeCode;
     readonly phrases: readonly (readonly string[])[];
     readonly compacts: readonly string[];
+    /**
+     * The compact forms with every run of one repeated character folded to a single one
+     * (`collapseRuns`), for the stretch pass; a term that folds to fewer than
+     * `MIN_COLLAPSED_LENGTH` characters is left out, as it would match almost any text.
+     */
+    readonly collapsed: readonly string[];
   }[];
 }
 
@@ -241,11 +247,31 @@ export function compactForm(normalised: string): string {
   return mapChars(normalised, LEET_MAP).replace(SEPARATOR, '');
 }
 
+/**
+ * A run of the same character folded to one: «haaalal» and «hhaallaall» read as «halal». Applied
+ * to the compact form of both the text and the terms, so a stretched word is found whatever the
+ * letter that was stretched, and in any script the skeleton maps to the same letters (a Cyrillic
+ * «ааа» is `aaa` by then). Linear in the length; no backtracking.
+ */
+export function collapseRuns(compact: string): string {
+  let out = '';
+  let last = '';
+  for (const ch of compact) {
+    if (ch !== last) out += ch;
+    last = ch;
+  }
+  return out;
+}
+
+/** A term shorter than this once its runs are folded is not used in the stretch pass. */
+const MIN_COLLAPSED_LENGTH = 3;
+
 export function prepareVocabulary(vocabulary: readonly ClaimVocabularyEntry[]): PreparedVocabulary {
   return {
     entries: vocabulary.map((entry) => {
       const phrases: string[][] = [];
       const compacts: string[] = [];
+      const collapsed: string[] = [];
       for (const term of entry.terms) {
         const normalised = normaliseClaimText(term);
         const tokens = tokenise(normalised);
@@ -256,8 +282,10 @@ export function prepareVocabulary(vocabulary: readonly ClaimVocabularyEntry[]): 
         }
         phrases.push(tokens);
         compacts.push(compact);
+        const folded = collapseRuns(compact);
+        if ([...folded].length >= MIN_COLLAPSED_LENGTH) collapsed.push(folded);
       }
-      return { typeCode: entry.typeCode, phrases, compacts };
+      return { typeCode: entry.typeCode, phrases, compacts, collapsed };
     }),
   };
 }
@@ -360,6 +388,7 @@ export function matchClaimTerms(
     const readings = [normaliseClaimText(text), normaliseClaimText(text, true)].map((n) => ({
       tokens: tokenise(n),
       compact: compactForm(n),
+      collapsed: collapseRuns(compactForm(n)),
     }));
     const matches: ClaimTermMatch[] = [];
     let table: readonly PieceCount[] | null | undefined; // built lazily, once for this text
@@ -383,7 +412,11 @@ export function matchClaimTerms(
       }
       if (
         found === null &&
-        readings.some(({ compact }) => entry.compacts.some((c) => compact.includes(c)))
+        readings.some(
+          ({ compact, collapsed }) =>
+            entry.compacts.some((c) => compact.includes(c)) ||
+            entry.collapsed.some((c) => collapsed.includes(c)),
+        )
       ) {
         found = { typeCode: entry.typeCode, pass: 'compact', span: null };
       }
