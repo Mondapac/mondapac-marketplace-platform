@@ -61,7 +61,6 @@ const session = (permissionKeys: string[]): AdminSession => ({
 });
 const signedIn = (...keys: string[]) =>
   mocks.session.mockResolvedValue({ kind: 'ok', session: session(keys) });
-const SELLER = '0190a000-0000-7000-8000-0000000000a1';
 
 const renderPage = (page: ReactNode) =>
   render(
