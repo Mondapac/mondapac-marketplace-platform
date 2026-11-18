@@ -11,6 +11,7 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
+import { shortInstantInZone } from '../../shared/format.ts';
 import { known } from '../../sellers/format.ts';
 import { shortId } from '../../shared/short-id.ts';
 import { FallbackId } from '../../orders/fallback-id.tsx';
@@ -19,6 +20,7 @@ import { CustomerCell } from '../customer-cell.tsx';
 import { MONEY_COLUMNS, type OptionalColumn } from './shipments-columns.ts';
 import {
   DELIVERY_ATTENTIONS,
+  CARRIER_PROGRESS,
   DELIVERY_METHODS,
   STAGES,
   type ShipmentRow,
@@ -101,6 +103,82 @@ function CarrierCell({ row }: { readonly row: ShipmentRow }) {
   );
 }
 
+const PROGRESS_TONE: Record<string, BadgeTone> = {
+  booked: 'neutral',
+  'picked-up': 'info',
+  delivered: 'success',
+  exception: 'critical',
+  cancelled: 'neutral',
+};
+
+/**
+ * What the carrier booking reports: the progress as a badge, then (each only when there is
+ * something to say) the proof marker, the carrier's own code, when it was recorded and the fleet
+ * when it differs from the row's. Advisory: it can disagree with the Stage, and both show as given.
+ */
+function CarrierProgressCell({
+  row,
+  available,
+  zone,
+}: {
+  readonly row: ShipmentRow;
+  readonly available: boolean;
+  readonly zone: string;
+}) {
+  const t = useTranslations('shipments.carrier-progress');
+  const locale = useLocale();
+  if (!available) {
+    return (
+      <EmptyWord>
+        <span title={t('not-available-title')}>{t('not-available')}</span>
+      </EmptyWord>
+    );
+  }
+  const progress = row.carrierProgress;
+  if (progress === null) {
+    return (
+      <>
+        <EmptyWord>
+          <span aria-hidden="true">{'\u2014'}</span>
+        </EmptyWord>
+        <span className="sr-only">{t('none-sr')}</span>
+      </>
+    );
+  }
+  const state = known(progress.progress, CARRIER_PROGRESS);
+  const status = progress.carrierStatus?.trim() ?? '';
+  const fleet = progress.fleet.trim();
+  const showFleet = fleet !== '' && fleet !== (row.fleet?.trim() ?? null);
+  return (
+    <div className="flex min-w-0 flex-col items-start gap-1">
+      <span title={t('advisory')}>
+        <Badge tone={PROGRESS_TONE[state] ?? 'neutral'}>
+          {state === 'exception' ? <Icon name="alert-triangle" /> : null}
+          {t(`label.${state}`)}
+        </Badge>
+      </span>
+      {progress.proofOfDelivery ? (
+        <span className="text-sm text-fg-muted">
+          <Icon name="check" /> {t('proof')}
+        </span>
+      ) : null}
+      {status === '' ? null : (
+        <span className="text-sm text-fg-muted [overflow-wrap:anywhere]" title={status}>
+          {status}
+        </span>
+      )}
+      <span className="text-sm whitespace-nowrap text-fg-muted">
+        {t('updated', { time: shortInstantInZone(progress.updatedAt, locale, zone, true) })}
+      </span>
+      {showFleet ? (
+        <span className="text-sm text-fg-muted [overflow-wrap:anywhere]" title={fleet}>
+          {t('booked-on', { fleet })}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * The shipments of one page, from one column definition (`SuperTable`): a box to select the row,
  * the order reference, the stage, then the columns the admin chose in their order, and the row
@@ -112,6 +190,7 @@ export function ShipmentsTable({
   rows,
   columns,
   zone,
+  carrierProgressAvailable,
   selection,
   empty,
   skeletonRows,
@@ -120,6 +199,8 @@ export function ShipmentsTable({
   readonly rows: readonly ShipmentRow[];
   readonly columns: readonly OptionalColumn[];
   readonly zone: string;
+  /** False when the carrier progress of the page could not be loaded. */
+  readonly carrierProgressAvailable: boolean;
   readonly selection: RowSelectionState;
   /** Shown in place of the rows when there are none, under the column headers. */
   readonly empty?: ReactNode;
@@ -141,6 +222,8 @@ export function ShipmentsTable({
         return <DeliveryCell row={row} zone={zone} />;
       case 'carrier':
         return <CarrierCell row={row} />;
+      case 'carrier-progress':
+        return <CarrierProgressCell row={row} available={carrierProgressAvailable} zone={zone} />;
       case 'total':
         return <MoneyCell money={row.total} strong />;
       case 'ready':

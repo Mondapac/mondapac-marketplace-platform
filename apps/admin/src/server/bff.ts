@@ -1123,6 +1123,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
       'paid',
       'delivery',
       'carrier',
+      'carrierProgress',
       'fleet',
       'ready',
       'shipped',

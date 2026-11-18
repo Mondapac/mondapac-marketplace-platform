@@ -11461,6 +11461,7 @@
       "paid": "Paid",
       "delivery": "Delivery",
       "carrier": "Carrier and tracking",
+      "carrier-progress": "Carrier progress",
       "total": "Total (incl. tax)",
       "ready": "Ready",
       "shipped": "Shipped",
@@ -11469,6 +11470,23 @@
       "fee": "Delivery fee (incl. tax)",
       "refunded": "Refunded (incl. tax)",
       "seller-order": "Seller order ID"
+    },
+    "carrier-progress": {
+      "label": {
+        "booked": "Booked",
+        "picked-up": "Picked up",
+        "delivered": "Delivered",
+        "exception": "Exception",
+        "cancelled": "Cancelled",
+        "unknown": "Unknown"
+      },
+      "updated": "Updated {time}",
+      "proof": "Proof of delivery",
+      "booked-on": "Booked on {fleet}",
+      "advisory": "Reported by the carrier booking. Can differ from Stage for a short time.",
+      "not-available": "Not available",
+      "not-available-title": "Carrier progress could not be loaded. Try again later.",
+      "none-sr": "No carrier booking"
     },
     "window": "{start} to {end}",
     "carrier": {
