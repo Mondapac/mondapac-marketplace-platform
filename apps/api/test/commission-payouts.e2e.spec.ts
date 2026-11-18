@@ -9,6 +9,7 @@ import { ClearSellerPayoutTerms } from '../src/modules/commission-payouts/applic
 import { ListSellerPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/list-seller-payout-holds.use-case';
 import { ApprovePayout } from '../src/modules/commission-payouts/application/use-cases/approve-payout.use-case';
 import { ListOwnPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/list-own-payout-holds.use-case';
+import { ExportOwnPayouts } from '../src/modules/commission-payouts/application/use-cases/export-own-payouts.use-case';
 import { ListOwnPayouts } from '../src/modules/commission-payouts/application/use-cases/list-own-payouts.use-case';
 import { ListPayouts } from '../src/modules/commission-payouts/application/use-cases/list-payouts.use-case';
 import { ExportPayouts } from '../src/modules/commission-payouts/application/use-cases/export-payouts.use-case';
@@ -266,6 +267,8 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           .useValue(stub('next-payout'))
           .overrideProvider(ListOwnPayouts)
           .useValue(stub('own-payouts'))
+          .overrideProvider(ExportOwnPayouts)
+          .useValue(stub('export-own-payouts'))
           .overrideProvider(ListOwnPayoutHolds)
           .useValue(stub('own-payout-holds')),
     }));
@@ -1194,8 +1197,22 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
             createdAt: START,
             updatedAt: START,
             reason: 'cooling-off',
+            actions: ['open'],
           },
         ],
+        counts: {
+          all: 1,
+          scheduled: 0,
+          'awaiting-approval': 0,
+          'on-its-way': 0,
+          paid: 0,
+          'not-sent': 1,
+          failed: 0,
+          settled: 0,
+        },
+        total: null,
+        page: null,
+        pageSize: 5,
         nextCursor: null,
       });
       const history = await call(
@@ -1206,10 +1223,17 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       );
       expect(history.status).toBe(200);
       expect(history.body).toMatchObject({
-        payouts: [{ payoutId: PAYOUT, status: 'not-sent', reason: 'cooling-off' }],
+        payouts: [
+          { payoutId: PAYOUT, status: 'not-sent', reason: 'cooling-off', actions: ['open'] },
+        ],
+        counts: { all: 1, 'not-sent': 1 },
+        total: null,
+        page: null,
+        pageSize: 5,
         nextCursor: null,
       });
       expect(Object.keys((history.body as { payouts: object[] }).payouts[0]!).sort()).toEqual([
+        'actions',
         'createdAt',
         'gross',
         'netted',
@@ -1241,7 +1265,61 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           },
         ],
       });
-      expect(calls.map((c) => c.name)).toEqual(['next-payout', 'own-payouts', 'own-payout-holds']);
+      // Page numbers arrive as numbers; the filters as text for the use case to check.
+      await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts?page=2&pageSize=25&status=paid&sort=amount',
+        session,
+      );
+      expect(calls.map((c) => c.name)).toEqual([
+        'next-payout',
+        'own-payouts',
+        'own-payout-holds',
+        'own-payouts',
+      ]);
+      expect(calls[1]!.input).toEqual({ limit: 5 });
+      expect(calls[3]!.input).toEqual({ page: 2, pageSize: 25, status: 'paid', sort: 'amount' });
+    });
+
+    it('sends the seller its payouts file, and maps a refusal', async () => {
+      await boot();
+      const session = seller();
+      const chunks = ['\uFEFFCreated\r\n', 'row\r\n'];
+      next = ok({
+        filename: 'payouts-2026-11-02.csv',
+        contentType: 'text/csv; charset=utf-8',
+        chunks,
+      });
+      const file = await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts/export?status=paid&format=csv',
+        session,
+      );
+      expect(file.status).toBe(200);
+      expect(file.headers['content-disposition']).toBe(
+        'attachment; filename="payouts-2026-11-02.csv"',
+      );
+      expect(file.headers['cache-control']).toBe('no-store');
+      expect(file.text).toContain('row');
+      next = err({ code: 'commission-payouts.payout-not-found' });
+      const missing = await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts/export?ids=x',
+        session,
+      );
+      expect(missing.status).toBe(404);
+      next = err({ code: 'batch.too-large', max: 10000, total: 10001 });
+      expect(
+        (await call('get', 'seller', '/commission-payouts/seller/payouts/export', session)).status,
+      ).toBe(413);
+      expect(calls).toEqual([
+        { name: 'export-own-payouts', input: { status: 'paid', format: 'csv' } },
+        { name: 'export-own-payouts', input: { ids: 'x' } },
+        { name: 'export-own-payouts', input: {} },
+      ]);
     });
 
     it('treats an admin session on the seller payout routes as not signed in', async () => {

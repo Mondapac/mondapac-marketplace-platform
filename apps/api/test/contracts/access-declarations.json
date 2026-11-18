@@ -273,6 +273,11 @@
     "whenSellerNotApproved": "deny"
   },
   {
+    "name": "commission-payouts.export-own-payouts",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "commission-payouts.list-own-disputes",
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"

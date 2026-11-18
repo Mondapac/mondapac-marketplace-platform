@@ -49,7 +49,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The estimated next payout, the payout history (query: `limit`, `cursor`) and the money on
     // hold (commission-payouts, package 6d). The seller id is the session's, never a parameter.
     'commission-payouts/seller/payouts/next',
+    // The earnings list (super list 33; query: the keys in QUERY_KEYS) and the same rows as a
+    // file (CSV or XLSX, an attachment).
     'commission-payouts/seller/payouts',
+    'commission-payouts/seller/payouts/export',
     'commission-payouts/seller/payout-holds',
     // The topbar bell (in-app notifications package 2): the list (query: `show`, `before`) and
     // the unread count it polls.
@@ -223,6 +226,19 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/;
+/** The earnings list's filters and sort (commission-payouts validates every value again). */
+const OWN_PAYOUT_SELECTOR: Readonly<Record<string, RegExp>> = {
+  status: /^(scheduled|awaiting-approval|on-its-way|paid|not-sent|failed|settled)$/,
+  // A payout id, exact.
+  q: UUID,
+  from: ISO_INSTANT,
+  to: ISO_INSTANT,
+  minAmount: /^[0-9]{1,15}$/,
+  maxAmount: /^[0-9]{1,15}$/,
+  sort: /^(created|amount|slot)$/,
+  direction: /^(asc|desc)$/,
+};
 /** Per GET target, the query keys passed on and, where set, the shape each value must have. */
 const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
   // The page mode and the filters of the orders list (the API validates every value).
@@ -251,10 +267,22 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   'ordering/seller/saved-filters': { listKey: /^seller\.ordering\.orders$/ },
   'commission-payouts/seller/ledger': { limit: null, cursor: null },
-  // The API's own cursor: epoch milliseconds of the creation, a dot and the payout id.
+  // The earnings list: page numbers with a total, or Previous/Next with the API's own cursor
+  // (epoch milliseconds of the creation, a dot and the payout id).
   'commission-payouts/seller/payouts': {
     limit: /^[0-9]{1,3}$/,
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+    page: /^[0-9]{1,5}$/,
+    pageSize: /^[0-9]{1,3}$/,
+    ...OWN_PAYOUT_SELECTOR,
+  },
+  // The export: the list's selector (no page), the format, the extra columns and the chosen ids
+  // (at most 200, see QUERY_VALUE_MAX_FOR).
+  'commission-payouts/seller/payouts/export': {
+    format: /^(csv|xlsx)$/,
+    columns: /^(gross|netted|slot|updated)(,(gross|netted|slot|updated)){0,3}$/,
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    ...OWN_PAYOUT_SELECTOR,
   },
   'identity/seller/team': { after: UUID },
   'catalog/seller/topics': { search: null, afterId: UUID, limit: /^[0-9]{1,3}$/ },
@@ -327,6 +355,8 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 100 ids of 36 characters and 99 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/seller/products/export:productIds': 3700,
+  // 200 ids of 36 characters and 199 commas.
+  'commission-payouts/seller/payouts/export:ids': 7400,
   'ordering/seller/orders/export:ids': 3700,
   'catalog/seller/offers/export:offerIds': 3700,
 };

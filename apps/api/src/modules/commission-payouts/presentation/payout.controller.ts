@@ -1,4 +1,5 @@
 import {
+  applyDecorators,
   Body,
   Controller,
   Get,
@@ -38,6 +39,26 @@ import { RequiresStepUp } from '../../../platform/authz';
 import { ApprovePayout } from '../application/use-cases/approve-payout.use-case';
 import { ListOwnPayoutHolds } from '../application/use-cases/list-own-payout-holds.use-case';
 import { ListOwnPayouts } from '../application/use-cases/list-own-payouts.use-case';
+import { ExportOwnPayouts } from '../application/use-cases/export-own-payouts.use-case';
+import { OWN_PAYOUT_EXPORT_COLUMNS, OWN_PAYOUT_SORT_KEYS } from '../domain/own-payout-list';
+
+/** The Earnings list's filter and sort keys (list and export). */
+const OWN_PAYOUT_QUERY = [
+  {
+    name: 'status',
+    required: false,
+    enum: ['scheduled', 'awaiting-approval', 'on-its-way', 'paid', 'not-sent', 'failed', 'settled'],
+  },
+  { name: 'q', required: false, description: 'A payout id, exact.' },
+  { name: 'from', required: false, description: 'Created at or after (ISO instant).' },
+  { name: 'to', required: false, description: 'Created before (ISO instant).' },
+  { name: 'minAmount', required: false, description: 'The transfer, minor units.' },
+  { name: 'maxAmount', required: false, description: 'The transfer, minor units.' },
+  { name: 'sort', required: false, enum: [...OWN_PAYOUT_SORT_KEYS] },
+  { name: 'direction', required: false, enum: ['asc', 'desc'] },
+];
+const ownPayoutQueries = () => applyDecorators(...OWN_PAYOUT_QUERY.map((q) => ApiQuery(q)));
+import { sendExport } from './list-export-route';
 import { ListPayouts } from '../application/use-cases/list-payouts.use-case';
 import { ExportPayouts } from '../application/use-cases/export-payouts.use-case';
 import { EXPORT_FORMATS, writeChunks } from '../../../platform/list-export';
@@ -58,8 +79,8 @@ import {
   NextPayoutBody,
   ownPayoutHoldsBody,
   OwnPayoutHoldsBody,
-  ownPayoutsBody,
-  OwnPayoutsBody,
+  ownPayoutListBody,
+  OwnPayoutListBody,
   payoutDetailBody,
   PayoutDetailBody,
   payoutListBody,
@@ -337,6 +358,7 @@ export class SellerPayoutsController {
   constructor(
     private readonly next: ViewNextPayout,
     private readonly history: ListOwnPayouts,
+    private readonly exportOwn: ExportOwnPayouts,
     private readonly holds: ListOwnPayoutHolds,
   ) {}
 
@@ -371,22 +393,31 @@ export class SellerPayoutsController {
   @Get('payouts')
   @ApiOperation({
     summary: "The seller's payouts",
-    description: 'Newest first. A payout that was voided never happened and is not listed.',
+    description:
+      'The Earnings super list (list 33). A payout that was voided never happened and is not ' +
+      'listed. Filters: status (scheduled, awaiting-approval, on-its-way, paid, not-sent, failed, ' +
+      'settled), q (a payout id, exact), from and to (ISO instants on the creation), minAmount ' +
+      'and maxAmount (the transfer in minor units). Page numbers: page, pageSize (default 25, at ' +
+      'most 100; page x pageSize at most 10,000), sort (created, amount, slot) and direction. ' +
+      'Previous/Next: limit (default 50) and cursor, newest first, with no page, pageSize, sort ' +
+      'or direction. counts covers every shown payout of the seller.',
   })
   @ApiQuery(CURSOR)
   @ApiQuery(LIMIT)
-  @ApiOkResponse({ type: OwnPayoutsBody })
+  @ownPayoutQueries()
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'pageSize', required: false, type: Number })
+  @ApiOkResponse({ type: OwnPayoutListBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
   async payouts(
     @Call() context: CallContext,
-    @Query('cursor') cursor: unknown,
-    @Query('limit') limit: unknown,
+    @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.history.execute(context, { cursor, limit: parseLimit(limit) });
+    const result = await this.history.execute(context, numbersOf(query));
     logRoute(
       this.#logger,
       'commission-payouts.list-own-payouts-route',
@@ -394,7 +425,43 @@ export class SellerPayoutsController {
       result.ok ? 'read' : result.error.code,
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
-    return ownPayoutsBody(result.value);
+    return ownPayoutListBody(result.value);
+  }
+
+  @Get('payouts/export')
+  @ApiOperation({
+    summary: "Export the seller's payouts as a file",
+    description:
+      '`format` is csv (default) or xlsx. `columns` is the comma-separated optional columns in ' +
+      `the order shown (${OWN_PAYOUT_EXPORT_COLUMNS.join(', ')}); payout id, status, amount, ` +
+      'currency and created are always there; amounts are decimals of the currency. The ' +
+      "payouts are `ids` (at most 200; an id that is not one of the seller's payouts refuses " +
+      'the whole file as not found; the filter keys are then ignored) or the filter keys of the ' +
+      'list with sort and direction, at most 10,000 (more: batch.too-large with the total).',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({ name: 'columns', required: false })
+  @ApiQuery({ name: 'ids', required: false })
+  @ownPayoutQueries()
+  @ApiOkResponse({ description: 'payouts-<date>.csv or payouts-<date>.xlsx, as an attachment' })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'commission-payouts.payout-not-found' })
+  @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large (details.max, total)' })
+  async exportPayouts(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportOwn.execute(context, { ...query });
+    await sendExport(
+      response,
+      result,
+      context,
+      this.#logger,
+      'commission-payouts.export-own-payouts-route',
+    );
   }
 
   @Get('payout-holds')
