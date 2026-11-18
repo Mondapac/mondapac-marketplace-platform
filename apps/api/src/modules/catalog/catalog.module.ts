@@ -2812,7 +2812,7 @@ const REVERTERS = [
       outbox: true,
       clock: true,
     }),
-    useCaseProvider(PlatformProductOptions, { policy: true }),
+    useCaseProvider(PlatformProductOptions, { policy: true, unitOfWork: true, ownReader: true }),
     useCaseProvider(OwnCategoryPicker, {
       unitOfWork: true,
       adminCategoryReader: true,
