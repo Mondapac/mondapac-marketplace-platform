@@ -965,8 +965,8 @@ async function applyProposal(
 ): Promise<Result<RequestView, SystemRequestsFailure>> {
   const registered = deps.reverters.find(seen.subjectKind);
   if (registered?.mode !== 'approval') return err({ code: 'system-requests.revert-unavailable' });
-  const { applier, permission } = registered;
-  const permitted = () => holds(deps, context, 'system-requests.apply-proposal', [permission]);
+  const { applier, permissions } = registered;
+  const permitted = () => holds(deps, context, 'system-requests.apply-proposal', permissions);
   if (!(await permitted())) return err({ code: 'system-requests.revert-not-permitted' });
   const checked = await askCheck(context, seen, (c, r) => applier.check(c, r));
   if (!checked.ok) return checked;

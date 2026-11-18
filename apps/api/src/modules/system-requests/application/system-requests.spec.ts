@@ -1773,8 +1773,24 @@ describe('the reverter registry', () => {
     expect(registry.find('catalog.category')).toMatchObject({
       mode: 'approval',
       applier,
-      permission: DELETE_KEY,
+      permissions: [DELETE_KEY],
     });
+    // Several keys: all are required; an empty list or a bad key is refused.
+    registry.facade.registerApplier(
+      'catalog',
+      'catalog.products-move',
+      'catalogue',
+      [DELETE_KEY, 'catalog.product.approve'],
+      applier,
+    );
+    expect(registry.find('catalog.products-move')).toMatchObject({
+      permissions: [DELETE_KEY, 'catalog.product.approve'],
+    });
+    for (const keys of [[], [DELETE_KEY, 'Bad']]) {
+      expect(() =>
+        registry.facade.registerApplier('catalog', 'catalog.other', 'catalogue', keys, applier),
+      ).toThrow(ReverterRegistryError);
+    }
     expect(() =>
       registry.facade.register('catalog', 'catalog.category', 'catalogue', {
         revert: () => Promise.resolve('reverted' as const),

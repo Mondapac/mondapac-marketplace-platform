@@ -278,15 +278,15 @@ export interface SystemChangeReverters {
   ): void;
   /**
    * As `register`, for a kind whose actions wait for approval (`proposeChange`). `permission` is
-   * the key the action needs (the one the owning module's own use case declares): system-requests
-   * checks that the approving admin holds it before the approval, whatever the applier's `check`
-   * answers.
+   * the key the action needs, or every key when the owning module's use case declares several
+   * (`allOf`): system-requests checks that the approving admin holds them all before the approval,
+   * whatever the applier's `check` answers.
    */
   registerApplier(
     module: string,
     subjectKind: string,
     area: ChangeReviewArea,
-    permission: string,
+    permission: string | readonly string[],
     applier: SystemChangeApplier,
   ): void;
 }
@@ -317,7 +317,7 @@ export function registerSystemChangeReverter(
 
 /**
  * The one provider a module adds to register its applier for `subjectKind` (see
- * {@link SystemChangeApplier}), with the permission key the action needs:
+ * {@link SystemChangeApplier}), with the permission key the action needs (or every key its use case declares, as an array):
  * `registerSystemChangeApplier('catalog', 'catalog.category-delete', 'catalogue',
  * CATALOG_CATEGORY_DELETE.key, CATEGORY_DELETE_APPLIER)`; as {@link registerSystemChangeReverter}
  * otherwise.
@@ -326,7 +326,7 @@ export function registerSystemChangeApplier(
   module: string,
   subjectKind: string,
   area: ChangeReviewArea,
-  permission: string,
+  permission: string | readonly string[],
   applier: InjectionToken,
 ): Provider {
   return {

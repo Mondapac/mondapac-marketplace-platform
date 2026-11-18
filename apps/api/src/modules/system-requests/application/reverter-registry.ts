@@ -30,8 +30,8 @@ export type RegisteredKind =
       readonly area: ReviewArea;
       readonly reverter: null;
       readonly applier: SystemChangeApplier;
-      /** The permission key the approving admin must hold, checked by system-requests itself. */
-      readonly permission: PermissionKey;
+      /** The permission keys the approving admin must all hold, checked by system-requests itself. */
+      readonly permissions: readonly [PermissionKey, ...PermissionKey[]];
       readonly hooks: SubjectHooks;
     };
 
@@ -74,7 +74,7 @@ export class ReverterRegistry implements ReverterLookup {
       module: string,
       subjectKind: string,
       area: Parameters<SystemChangeReverters['registerApplier']>[2],
-      permission: string,
+      permission: string | readonly string[],
       applier: SystemChangeApplier,
     ) => {
       if (!isPolicyArea(area)) {
@@ -105,24 +105,29 @@ export class ReverterRegistry implements ReverterLookup {
   }
 
   /**
-   * Registers a kind whose actions wait for approval: the permission key the approving admin must
-   * hold (checked by system-requests itself before the approval's unit), and an applier with
+   * Registers a kind whose actions wait for approval: the permission key (or keys, all required)
+   * the approving admin must hold (checked by system-requests itself before the approval's unit), and an applier with
    * `apply` and `check`.
    */
   registerApplier(
     module: string,
     subjectKind: string,
     area: ReviewArea,
-    permission: string,
+    permission: string | readonly string[],
     applier: SystemChangeApplier,
   ): void {
     this.#checkKind(module, subjectKind, area);
     if (area === 'review-policy') {
       throw new ReverterRegistryError('The review policy has no actions that wait for approval');
     }
-    if (!isDeclarablePermissionKey(permission)) {
-      throw new ReverterRegistryError(`The applier of "${subjectKind}" needs a permission key`);
+    const keys: readonly unknown[] = typeof permission === 'string' ? [permission] : permission;
+    if (!Array.isArray(keys) || keys.length === 0 || !keys.every(isDeclarablePermissionKey)) {
+      throw new ReverterRegistryError(`The applier of "${subjectKind}" needs its permission keys`);
     }
+    const permissions = Object.freeze([...new Set(keys)]) as unknown as readonly [
+      PermissionKey,
+      ...PermissionKey[],
+    ];
     if (typeof applier?.apply !== 'function' || typeof applier.check !== 'function') {
       throw new ReverterRegistryError(`The applier of "${subjectKind}" needs apply and check`);
     }
@@ -136,7 +141,7 @@ export class ReverterRegistry implements ReverterLookup {
         area,
         reverter: null,
         applier,
-        permission: permission as PermissionKey,
+        permissions,
         hooks: applier,
       }),
     );
