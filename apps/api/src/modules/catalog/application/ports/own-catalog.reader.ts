@@ -107,6 +107,8 @@ export interface OwnOffersFilter {
   readonly text: string | null;
   /** The locale the product name is searched in. */
   readonly locale: string;
+  /** Only these Offers (the rows an export names); absent or null keeps all that match. */
+  readonly offerIds?: readonly Id<'Offer'>[] | null;
 }
 
 /** The filters of the seller's product list; `statuses` is already narrowed by view and status. */
@@ -254,6 +256,25 @@ export interface OwnCatalogReader {
     filter: OwnOffersFilter,
     order: { readonly sort: OwnOfferSort; readonly direction: OwnSortDirection },
     page: { readonly offset: number; readonly limit: number },
+  ): Promise<readonly Offer[]>;
+
+  /**
+   * The ids of the Offers `filter` keeps, in `order` (ties on the id), at most `limit`: the
+   * snapshot an export reads its rows by.
+   */
+  listOfferIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnOffersFilter,
+    order: { readonly sort: OwnOfferSort; readonly direction: OwnSortDirection },
+    limit: number,
+  ): Promise<readonly Id<'Offer'>[]>;
+
+  /** The seller's own Offers of these ids that are not deleted, in the order of `ids`. */
+  listOffersByIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    ids: readonly Id<'Offer'>[],
   ): Promise<readonly Offer[]>;
 
   /**
