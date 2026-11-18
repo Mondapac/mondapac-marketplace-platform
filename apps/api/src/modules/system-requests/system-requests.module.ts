@@ -8,6 +8,10 @@ import {
 } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { registerEvents } from '../../platform/events/event-catalogue';
+import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
+import { MarketRegistry } from '../../platform/market-config/market-registry';
+import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import {
   AUTHORISATION_CHECK,
   registerPermissions,
@@ -21,12 +25,16 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { IdentityModule } from '../identity';
+import { ADMIN_NAMES } from './application/ports/admin-names';
+import { MARKET_ZONE, type MarketZone } from './application/ports/market-zone';
+import type { OverdueReminderDependencies } from './application/overdue-reminder-flow';
 import { POLICY_REPOSITORY } from './application/ports/policy.repository';
 import { REQUEST_REPOSITORY } from './application/ports/request.repository';
 import { DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './application/policy-flow';
 import { ReverterRegistry } from './application/reverter-registry';
 import { SystemRequestRecorderImplementation } from './application/system-request-recorder';
 import type { SystemRequestsDependencies } from './application/system-requests-dependencies';
+import { ApproveMatchingSystemRequests } from './application/use-cases/approve-matching-system-requests.use-case';
 import { ApproveSystemRequest } from './application/use-cases/approve-system-request.use-case';
 import { ApproveSystemRequests } from './application/use-cases/approve-system-requests.use-case';
 import { ChangeAreaReviewPolicy } from './application/use-cases/change-area-review-policy.use-case';
@@ -34,6 +42,7 @@ import { ChangeReviewDueDays } from './application/use-cases/change-review-due-d
 import { CommentOnSystemRequest } from './application/use-cases/comment-on-system-request.use-case';
 import { CountSystemRequests } from './application/use-cases/count-system-requests.use-case';
 import { ListSystemRequests } from './application/use-cases/list-system-requests.use-case';
+import { RemindOverdueSystemRequests } from './application/use-cases/remind-overdue-system-requests.use-case';
 import { RejectSystemRequest } from './application/use-cases/reject-system-request.use-case';
 import { ViewReviewPolicy } from './application/use-cases/view-review-policy.use-case';
 import { ViewSystemRequest } from './application/use-cases/view-system-request.use-case';
@@ -45,7 +54,10 @@ import {
   SYSTEM_REQUESTS_PERMISSIONS,
   SYSTEM_REQUESTS_STEP_UP_ACTIONS,
 } from './contracts';
+import { SYSTEM_REQUESTS_EVENTS } from './domain/events';
+import { RegistryMarketZone } from './infrastructure/registry-market-zone';
 import { systemRequestsProviders } from './infrastructure/system-requests-providers';
+import { remindOverdueSystemRequestsJob } from './presentation/jobs/remind-overdue-system-requests.job';
 import { SystemRequestsController } from './presentation/system-requests.controller';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: SystemRequestsDependencies) => U;
@@ -56,6 +68,8 @@ const POLICY_AREA_REVERTER = Symbol('SYSTEM_REQUESTS_POLICY_AREA_REVERTER');
 const DUE_DAYS_REVERTER = Symbol('SYSTEM_REQUESTS_DUE_DAYS_REVERTER');
 /** The registry itself (lookup and seal), kept inside the module; others get its facade. */
 const REVERTER_REGISTRY = Symbol('SYSTEM_REQUESTS_REVERTER_REGISTRY');
+/** What the overdue reminder run needs (a smaller set than the admin use cases'). */
+const REMINDER_DEPENDENCIES = Symbol('SYSTEM_REQUESTS_REMINDER_DEPENDENCIES');
 
 const PORTS: readonly [keyof SystemRequestsDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
@@ -65,6 +79,7 @@ const PORTS: readonly [keyof SystemRequestsDependencies, InjectionToken][] = [
   ['authorisation', AUTHORISATION_CHECK],
   ['stepUp', STEP_UP_CONSUMER],
   ['audit', AUDIT_WRITER],
+  ['adminNames', ADMIN_NAMES],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
@@ -96,6 +111,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   providers: [
     PersistenceModule.auditWriterFor('system-requests'),
     registerAuditActions('system-requests', SYSTEM_REQUESTS_AUDIT_ACTIONS),
+    PersistenceModule.outboxWriterFor('system-requests'),
+    registerEvents('system-requests', SYSTEM_REQUESTS_EVENTS),
     registerPermissions('system-requests', SYSTEM_REQUESTS_PERMISSIONS),
     registerStepUpActions('system-requests', SYSTEM_REQUESTS_STEP_UP_ACTIONS),
     ...systemRequestsProviders,
@@ -113,6 +130,44 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           Object.fromEntries(PORTS.map(([name], index) => [name, values[index]])),
         ) as unknown as SystemRequestsDependencies,
     },
+    {
+      provide: MARKET_ZONE,
+      inject: [MarketRegistry],
+      useFactory: (markets: MarketRegistry): MarketZone => new RegistryMarketZone(markets),
+    },
+    {
+      provide: REMINDER_DEPENDENCIES,
+      inject: [
+        UNIT_OF_WORK,
+        REQUEST_REPOSITORY,
+        POLICY_REPOSITORY,
+        OUTBOX_WRITER,
+        MARKET_ZONE,
+        ID_GENERATOR,
+        CLOCK,
+      ],
+      useFactory: (
+        unitOfWork: OverdueReminderDependencies['unitOfWork'],
+        requests: OverdueReminderDependencies['requests'],
+        policy: OverdueReminderDependencies['policy'],
+        outbox: OverdueReminderDependencies['outbox'],
+        zone: OverdueReminderDependencies['zone'],
+        ids: OverdueReminderDependencies['ids'],
+        clock: OverdueReminderDependencies['clock'],
+      ): OverdueReminderDependencies =>
+        Object.freeze({ unitOfWork, requests, policy, outbox, zone, ids, clock }),
+    },
+    {
+      provide: RemindOverdueSystemRequests,
+      inject: [USE_CASE_GATE, REMINDER_DEPENDENCIES],
+      useFactory: (gate: UseCaseGate, deps: OverdueReminderDependencies) =>
+        new RemindOverdueSystemRequests(gate, deps),
+    },
+    registerJobsFrom(
+      'system-requests',
+      [RemindOverdueSystemRequests],
+      (remind: RemindOverdueSystemRequests) => [remindOverdueSystemRequestsJob(remind)],
+    ),
     ...[
       ListSystemRequests,
       CountSystemRequests,
@@ -120,6 +175,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CommentOnSystemRequest,
       ApproveSystemRequest,
       ApproveSystemRequests,
+      ApproveMatchingSystemRequests,
       RejectSystemRequest,
       WithdrawSystemRequest,
       ViewReviewPolicy,

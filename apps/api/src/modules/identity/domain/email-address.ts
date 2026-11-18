@@ -35,3 +35,29 @@ export function parseEmailAddress(raw: unknown): Result<EmailAddress, EmailAddre
   }
   return ok({ typed, normalized });
 }
+
+/** One character a masked address may show: an ASCII letter or digit; anything else is hidden. */
+const SHOWN = /^[a-z0-9]$/;
+/** A top-level domain a masked address may show; any other is hidden. */
+const SHOWN_TLD = /^[a-z0-9-]{1,24}$/;
+
+/**
+ * An address masked for a notice to another mailbox (customers admin email change; Hassan R9):
+ * the first character of the local part and of the domain, then `***`, and the top-level domain,
+ * from the normalised address: `maryam@example.com` → `m***@e***.com`. Locale-free, plain ASCII
+ * (a character outside `[a-z0-9]` shows as `*`), so the value needs no escaping in any mail and
+ * never carries the full address or markup.
+ */
+export function maskEmailAddress(email: EmailAddress): string {
+  const at = email.normalized.lastIndexOf('@');
+  const local = email.normalized.slice(0, at);
+  const domain = email.normalized.slice(at + 1);
+  const first = (value: string): string => {
+    const char = Array.from(value)[0] ?? '';
+    return SHOWN.test(char) ? char : '*';
+  };
+  const dot = domain.lastIndexOf('.');
+  const tld = dot < 0 ? '' : domain.slice(dot + 1);
+  const shownTld = dot < 0 ? '' : SHOWN_TLD.test(tld) ? `.${tld}` : '.***';
+  return `${first(local)}***@${first(domain)}***${shownTld}`;
+}

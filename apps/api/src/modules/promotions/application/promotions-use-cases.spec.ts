@@ -1,3 +1,7 @@
+import { QuoteOwnDiscounts } from './use-cases/quote-own-discounts.use-case';
+import { RedeemOwnDiscounts } from './use-cases/redeem-own-discounts.use-case';
+import { ListStaleRedemptions } from './use-cases/list-stale-redemptions.use-case';
+import { SettleRedemptions } from './use-cases/settle-redemptions.use-case';
 import { money, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import type { PromotionRecord } from '../domain/promotion';
@@ -60,6 +64,7 @@ import { PauseOwnPromotion } from './use-cases/pause-own-promotion.use-case';
 import { PausePromotion } from './use-cases/pause-promotion.use-case';
 import { PreviewQuote } from './use-cases/preview-quote.use-case';
 import { QuoteDiscounts } from './use-cases/quote-discounts.use-case';
+import { RedeemDiscounts } from './use-cases/redeem-discounts.use-case';
 import { ResumeOwnPromotion } from './use-cases/resume-own-promotion.use-case';
 import { ResumePromotion } from './use-cases/resume-promotion.use-case';
 import { SetCoFundingOptIn } from './use-cases/set-co-funding-opt-in.use-case';
@@ -263,7 +268,12 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
     it('a quote with the switch off is the cart with no discount', async () => {
       const result = await new PromotionsFacadeImplementation(
         make(QuoteDiscounts),
+        make(RedeemDiscounts),
         make(CheckWasPrice),
+        make(QuoteOwnDiscounts),
+        make(RedeemOwnDiscounts),
+        make(ListStaleRedemptions),
+        make(SettleRedemptions),
       ).quote(system, {
         lines: [
           {
@@ -1346,7 +1356,15 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
     });
 
     it('applies a live seller sale and nothing else on a cart without a promotion', async () => {
-      const facade = new PromotionsFacadeImplementation(make(QuoteDiscounts), make(CheckWasPrice));
+      const facade = new PromotionsFacadeImplementation(
+        make(QuoteDiscounts),
+        make(RedeemDiscounts),
+        make(CheckWasPrice),
+        make(QuoteOwnDiscounts),
+        make(RedeemOwnDiscounts),
+        make(ListStaleRedemptions),
+        make(SettleRedemptions),
+      );
       const before = await facade.quote(system, request());
       expect(before.ok && before.value.applied).toEqual([]);
 
@@ -1360,7 +1378,15 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
     });
 
     it('does not apply a paused promotion, or one that has not started yet', async () => {
-      const facade = new PromotionsFacadeImplementation(make(QuoteDiscounts), make(CheckWasPrice));
+      const facade = new PromotionsFacadeImplementation(
+        make(QuoteDiscounts),
+        make(RedeemDiscounts),
+        make(CheckWasPrice),
+        make(QuoteOwnDiscounts),
+        make(RedeemOwnDiscounts),
+        make(ListStaleRedemptions),
+        make(SettleRedemptions),
+      );
       const created = await make(CreateOwnPromotion).execute(seller(), sale());
       if (!created.ok) throw new Error('create failed');
       await make(PauseOwnPromotion).execute(seller(), { promotionId: created.value.id });
@@ -1372,7 +1398,15 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
     });
 
     it('starts a promotion at its start time and ends it at its end time', async () => {
-      const facade = new PromotionsFacadeImplementation(make(QuoteDiscounts), make(CheckWasPrice));
+      const facade = new PromotionsFacadeImplementation(
+        make(QuoteDiscounts),
+        make(RedeemDiscounts),
+        make(CheckWasPrice),
+        make(QuoteOwnDiscounts),
+        make(RedeemOwnDiscounts),
+        make(ListStaleRedemptions),
+        make(SettleRedemptions),
+      );
       await make(CreateOwnPromotion).execute(
         seller(),
         sale({
@@ -1391,7 +1425,15 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
     });
 
     it('applies a test-mode promotion to a test order only', async () => {
-      const facade = new PromotionsFacadeImplementation(make(QuoteDiscounts), make(CheckWasPrice));
+      const facade = new PromotionsFacadeImplementation(
+        make(QuoteDiscounts),
+        make(RedeemDiscounts),
+        make(CheckWasPrice),
+        make(QuoteOwnDiscounts),
+        make(RedeemOwnDiscounts),
+        make(ListStaleRedemptions),
+        make(SettleRedemptions),
+      );
       await make(CreatePromotion).execute(
         admin(),
         platformCart({ testMode: true, name: 'Test only' }),
@@ -1824,7 +1866,15 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
           ...extra,
         });
       const facade = () =>
-        new PromotionsFacadeImplementation(make(QuoteDiscounts), make(CheckWasPrice));
+        new PromotionsFacadeImplementation(
+          make(QuoteDiscounts),
+          make(RedeemDiscounts),
+          make(CheckWasPrice),
+          make(QuoteOwnDiscounts),
+          make(RedeemOwnDiscounts),
+          make(ListStaleRedemptions),
+          make(SettleRedemptions),
+        );
       const mismatch = {
         ok: false,
         error: { code: 'validation.failed', fields: [{ path: 'currency', code: 'mismatch' }] },
@@ -2012,7 +2062,12 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
         });
         const quoted = await new PromotionsFacadeImplementation(
           make(QuoteDiscounts),
+          make(RedeemDiscounts),
           make(CheckWasPrice),
+          make(QuoteOwnDiscounts),
+          make(RedeemOwnDiscounts),
+          make(ListStaleRedemptions),
+          make(SettleRedemptions),
         ).quote(system, request);
         expect(quoted.ok).toBe(true);
         expect(promotions.lastScope).toEqual({

@@ -25,8 +25,20 @@ export const PAYMENTS_CONNECTED_ACCOUNT_VIEW = definePermission('payments', {
   protected: false,
 });
 
+/**
+ * See one customer's payments (per order: state, amount, the provider's payment id, created; the
+ * captured total) and disputes (state, amount, reason, opened, due by) on the customer page
+ * (customers management phase 2b). Never a card detail; the provider's dispute ids stay out.
+ */
+export const PAYMENTS_CUSTOMER_PAYMENT_VIEW = definePermission('payments', {
+  key: 'payments.customer-payment.view',
+  scope: 'platform',
+  protected: false,
+});
+
 export const PAYMENTS_PERMISSIONS = declarePermissions('payments', [
   PAYMENTS_CONNECTED_ACCOUNT_VIEW,
+  PAYMENTS_CUSTOMER_PAYMENT_VIEW,
   PAYMENTS_PAYOUT_ACCOUNT_MANAGE,
   PAYMENTS_PAYOUT_ACCOUNT_VIEW,
 ]);

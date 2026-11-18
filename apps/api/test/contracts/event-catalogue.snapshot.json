@@ -1,5 +1,12 @@
 [
   {
+    "type": "assistant.spend-cap-reached.v1",
+    "aggregateType": "assistant-spend-day",
+    "fields": {
+      "cap": "enumOf(daily|monthly)"
+    }
+  },
+  {
     "type": "blog.post-approved.v1",
     "aggregateType": "blog-post",
     "fields": {
@@ -675,6 +682,31 @@
     "fields": {}
   },
   {
+    "type": "customers.seller-attribution-changed.v1",
+    "aggregateType": "seller-attribution",
+    "fields": {
+      "accountId": "id",
+      "sellerId": "id",
+      "status": "enumOf(active|rejected)"
+    }
+  },
+  {
+    "type": "engagement.store-followed.v1",
+    "aggregateType": "store-follow",
+    "fields": {
+      "accountId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "engagement.store-unfollowed.v1",
+    "aggregateType": "store-follow",
+    "fields": {
+      "accountId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
     "type": "identity.account-disabled.v1",
     "aggregateType": "account",
     "fields": {
@@ -684,6 +716,22 @@
   },
   {
     "type": "identity.account-display-name-changed.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id",
+      "population": "enumOf(customer|seller|admin)"
+    }
+  },
+  {
+    "type": "identity.account-email-change-requested.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id",
+      "population": "enumOf(customer|seller|admin)"
+    }
+  },
+  {
+    "type": "identity.account-email-changed.v1",
     "aggregateType": "account",
     "fields": {
       "accountId": "id",
@@ -773,7 +821,7 @@
     "fields": {
       "linkId": "id",
       "accountId": "id",
-      "purpose": "enumOf(verify-email|reset-password|enrol-second-factor|confirm-second-factor-reset)"
+      "purpose": "enumOf(verify-email|reset-password|enrol-second-factor|confirm-second-factor-reset|confirm-email-change)"
     }
   },
   {
@@ -905,12 +953,27 @@
     }
   },
   {
+    "type": "legal.marketing-consent-changed.v1",
+    "aggregateType": "marketing-consent-change",
+    "fields": {
+      "accountId": "id",
+      "channel": "enumOf(email)"
+    }
+  },
+  {
     "type": "ordering.order-paid.v1",
     "aggregateType": "order",
     "fields": {
       "orderId": "id",
       "sellerOrderIds": "listOf(id)",
       "sellerIds": "listOf(id)"
+    }
+  },
+  {
+    "type": "ordering.order-cancelled.v1",
+    "aggregateType": "order",
+    "fields": {
+      "orderId": "id"
     }
   },
   {
@@ -1203,6 +1266,16 @@
     "aggregateType": "seo-settings",
     "fields": {
       "version": "integer"
+    }
+  },
+  {
+    "type": "system-requests.request-overdue.v1",
+    "aggregateType": "request-reminder",
+    "fields": {
+      "requestId": "id",
+      "number": "integer",
+      "area": "enumOf(people|money|delivery|catalogue|certification|marketplace|content|review-policy)",
+      "ageDays": "integer"
     }
   }
 ]

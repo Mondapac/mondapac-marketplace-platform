@@ -6,7 +6,12 @@ import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { BatchCodeCrypto } from './ports/batch-code-crypto';
 import type { CreditRepository, ReferralRepository } from './ports/credit.repository';
-import type { CustomerOrderHistory, StoreFollows } from './ports/customer-facts';
+import type {
+  CustomerGroupMembership,
+  ExclusiveCustomers,
+  CustomerOrderHistory,
+  StoreFollows,
+} from './ports/customer-facts';
 import type { DeliveredOrderFacts } from './ports/order-facts';
 import type { ReferralSignals } from './ports/referral-signals';
 import type { WalletCredit } from './ports/wallet-credit';
@@ -16,6 +21,7 @@ import type { MarketSettingRepository } from './ports/market-setting.repository'
 import type { OptInRepository } from './ports/opt-in.repository';
 import type { PriceHistory } from './ports/price-history';
 import type { PromotionRepository } from './ports/promotion.repository';
+import type { RedemptionRepository } from './ports/redemption.repository';
 import type { PromotionsPolicy } from './ports/promotions-policy';
 import type { ReviewQueueRepository } from './ports/review-queue.repository';
 import type { SellerActivity } from './ports/seller-activity';
@@ -39,6 +45,8 @@ export interface PromotionsDependencies {
   readonly batchCodes: BatchCodeRepository;
   readonly codeCrypto: BatchCodeCrypto;
   readonly flashSales: FlashSales;
+  /** What orders took from the promotions, with the usage counters and the codes (package T2). */
+  readonly redemptions: RedemptionRepository;
   readonly sellerActivity: SellerActivity;
   readonly priceHistory: PriceHistory;
   /** Seller campaigns (package PB2): the commission rate and the seller's catalogue. */
@@ -48,6 +56,10 @@ export interface PromotionsDependencies {
   /** When a customer last ordered (customer-group segment; "new customer" of a referral). */
   readonly orderHistory: CustomerOrderHistory;
   readonly storeFollows: StoreFollows;
+  /** Whether a customer is in a manual customer group (customer-group segment MANUAL_GROUP). */
+  readonly groupMembership: CustomerGroupMembership;
+  /** Whose exclusive customer the customer is (customer-group segment SELLER_EXCLUSIVE). */
+  readonly exclusiveCustomers: ExclusiveCustomers;
   readonly orderFacts: DeliveredOrderFacts;
   readonly referralSignals: ReferralSignals;
   readonly walletCredit: WalletCredit;

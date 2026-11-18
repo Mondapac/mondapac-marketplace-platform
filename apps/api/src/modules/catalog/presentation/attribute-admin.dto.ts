@@ -1,4 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  CatalogueRequestRef,
+  CatalogueReviewBody,
+  NOTE_DESCRIPTION,
+  REQUEST_DESCRIPTION,
+} from './catalogue-review.dto';
 import { ATTRIBUTE_DATA_TYPES, MEASURE_DIMENSIONS } from '@mondapac/shared-kernel';
 
 // Answers of the admin attribute and feature-set reads (attributes plan, package A1). Codes, the
@@ -205,6 +211,11 @@ export class AttributeDetailBody extends AttributeSummaryBody {
   @ApiProperty({ type: MarketLocalesBody }) locales!: MarketLocalesBody;
   @ApiProperty({ type: [MarketUnitBody], description: 'Units a measure attribute may offer.' })
   units!: MarketUnitBody[];
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description: 'Whether a save is reviewed in this Market: the form then asks for a note.',
+  })
+  review!: CatalogueReviewBody;
 }
 
 export class FeatureSetListItemBody {
@@ -302,6 +313,7 @@ export class AttributeCreateRequest extends AttributeContentRequest {
 
 export class AttributeEditRequest extends AttributeContentRequest {
   @ApiProperty({ description: 'The version the admin saw.' }) version!: number;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class AttributeVersionRequest {
@@ -318,6 +330,11 @@ export class AttributeWriteBody {
 
 export class AttributeWriteWrapBody {
   @ApiProperty({ type: AttributeWriteBody }) attribute!: AttributeWriteBody;
+}
+
+export class AttributeEditWrapBody extends AttributeWriteWrapBody {
+  @ApiProperty({ type: CatalogueRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: CatalogueRequestRef | null;
 }
 
 // The two-person request to clear `material` (catalog design 8.2; attributes A2 part 3).
@@ -461,6 +478,7 @@ export class CategoryLinksSetRequest {
     description: 'The version the admin saw; omitted when the category has no link yet.',
   })
   version?: number;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class CategoryLinksOwnBody {
@@ -498,6 +516,11 @@ export class CategoryLinksBody {
   @ApiProperty({ format: 'uuid' }) categoryId!: string;
   @ApiProperty({ type: CategoryLinksOwnBody, nullable: true }) own!: CategoryLinksOwnBody | null;
   @ApiProperty({ type: CategoryLinksEffectiveBody }) effective!: CategoryLinksEffectiveBody;
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description: 'Whether a save is reviewed in this Market: the editor then asks for a note.',
+  })
+  review!: CatalogueReviewBody;
 }
 
 export class CategoryLinksSetBody {
@@ -510,6 +533,8 @@ export class CategoryLinksSetBody {
 
 export class CategoryLinksSetWrapBody {
   @ApiProperty({ type: CategoryLinksSetBody }) links!: CategoryLinksSetBody;
+  @ApiProperty({ type: CatalogueRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: CatalogueRequestRef | null;
 }
 
 export class MissingDetailsItemBody {

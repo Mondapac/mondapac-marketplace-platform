@@ -21,12 +21,14 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
+import { legalOutbox } from './legal-outbox-support';
 import { testDatabaseUrl } from './test-database';
 
 // The marketing consent store as the application role, in both Market fixtures: the real use
 // cases on the real unit of work record a change once (current row and history), never read
 // across Markets or accounts, and keep one row per account under concurrent writes; the CHECKs
-// refuse an unknown channel or source.
+// refuse an unknown channel or source. Each change writes `legal.marketing-consent-changed.v1` in
+// its own unit (account and channel only); a change that rolls back writes no event.
 
 const T0 = Temporal.Instant.from('2026-10-18T09:00:00Z');
 const CHECK = '23514';
@@ -40,11 +42,13 @@ describe.each(TEST_MARKETS)('marketing consent store in market %s (database)', (
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
   let db: Persistence;
   let consents: PrismaMarketingConsentRepository;
+  let outbox: ReturnType<typeof legalOutbox>;
   let sql: Client;
 
   beforeAll(async () => {
     db = createPersistence();
     consents = new PrismaMarketingConsentRepository(db.service);
+    outbox = legalOutbox(db, ids);
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
   });
@@ -53,7 +57,21 @@ describe.each(TEST_MARKETS)('marketing consent store in market %s (database)', (
     await sql.end();
   });
 
-  const deps = () => ({ unitOfWork: db.unitOfWork, consents, ids, clock });
+  const deps = () => ({ unitOfWork: db.unitOfWork, consents, ids, clock, outbox });
+  const eventsOf = async (accountId: string) =>
+    (
+      await sql.query<{
+        type: string;
+        market_id: string;
+        aggregate_type: string;
+        aggregate_version: number;
+        payload: unknown;
+      }>(
+        `SELECT type, market_id, aggregate_type, aggregate_version, payload FROM legal.outbox
+          WHERE payload ->> 'accountId' = $1 ORDER BY occurred_at, event_id`,
+        [accountId],
+      )
+    ).rows;
   const customer = (target: MarketContext, accountId: Id<'Account'>) =>
     testCallContext(
       target,
@@ -123,6 +141,15 @@ describe.each(TEST_MARKETS)('marketing consent store in market %s (database)', (
       { granted: true, source: 'sign-up', market_id: code },
       { granted: false, source: 'unsubscribe-link', market_id: code },
     ]);
+    // One event per recorded change, never the value or the source.
+    const event = {
+      type: 'legal.marketing-consent-changed.v1',
+      market_id: code,
+      aggregate_type: 'marketing-consent-change',
+      aggregate_version: 1,
+      payload: { accountId: alice, channel: 'email' },
+    };
+    expect(await eventsOf(alice)).toEqual([event, event]);
   });
 
   it('keeps one row per account when the same customer saves at the same time', async () => {
@@ -140,6 +167,8 @@ describe.each(TEST_MARKETS)('marketing consent store in market %s (database)', (
     );
     expect(rows.rows[0]).toEqual({ n: 1 });
     expect(await historyOf(accountId)).toHaveLength(1);
+    // The serialization losers rolled back their event with their change.
+    expect(await eventsOf(accountId)).toHaveLength(1);
   });
 
   it('refuses an unknown channel or source at the database', async () => {

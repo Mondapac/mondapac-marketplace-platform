@@ -5,10 +5,12 @@ import {
   FLEET_SELECTION_CHANGES,
   FLEET_SELECTION_CONFLICTS,
   updateFleetSelectionModel,
+  type FleetModelChange,
   type FleetSelectionFailure,
 } from '../fleet-selection-flow';
-import type { FleetSelectionModel } from '../../domain/fleet-selection';
 import type { ShippingDependencies } from '../shipping-dependencies';
+
+export type { FleetModelChange };
 
 /** `shipping.update-fleet-selection-model`: an admin renames or reshapes a model (protected key). */
 export class UpdateFleetSelectionModel extends UseCase<
@@ -17,8 +19,9 @@ export class UpdateFleetSelectionModel extends UseCase<
     readonly name: unknown;
     readonly rule: unknown;
     readonly expectedVersion: unknown;
+    readonly note?: unknown;
   },
-  FleetSelectionModel,
+  FleetModelChange,
   FleetSelectionFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -40,8 +43,9 @@ export class UpdateFleetSelectionModel extends UseCase<
       readonly name: unknown;
       readonly rule: unknown;
       readonly expectedVersion: unknown;
+      readonly note?: unknown;
     },
-  ): Promise<Result<FleetSelectionModel, FleetSelectionFailure>> {
+  ): Promise<Result<FleetModelChange, FleetSelectionFailure>> {
     const result = await updateFleetSelectionModel(this.deps, context, input);
     // On a conflict the winning save is named.
     return this.deps.trail.namingTheWinner(

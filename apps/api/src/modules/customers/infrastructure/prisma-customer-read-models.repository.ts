@@ -57,6 +57,17 @@ export class PrismaCustomerReadModelRepository implements CustomerReadModelRepos
     return count > 0;
   }
 
+  async signedUpAtOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+  ): Promise<Temporal.Instant | null> {
+    const row = await this.prisma.tx(market).customersCustomerDirectory.findFirst({
+      where: { marketId: market.marketId, accountId },
+      select: { signedUpAt: true },
+    });
+    return row === null ? null : Temporal.Instant.fromEpochMilliseconds(row.signedUpAt.getTime());
+  }
+
   async ensureStats(
     market: MarketContext,
     accountId: Id<'Account'>,
@@ -147,9 +158,10 @@ export class PrismaCustomerReadModelRepository implements CustomerReadModelRepos
 
   async removeAllOf(market: MarketContext, accountId: Id<'Account'>): Promise<void> {
     const tx = this.prisma.tx(market);
-    // One statement and one lock order (the sync writes the directory row first): the stats row
-    // goes with its directory row through the foreign key's cascade. A stats row without a
-    // directory row cannot exist.
+    // One statement and one lock order (the sync and every phase 2 writer touch the directory row
+    // first): the stats row, the group memberships, the admins' notes (already unreadable once the
+    // key is destroyed) and the timeline go with the directory row through their foreign keys'
+    // cascade. None of them can exist without a directory row.
     await tx.customersCustomerDirectory.deleteMany({
       where: { marketId: market.marketId, accountId },
     });

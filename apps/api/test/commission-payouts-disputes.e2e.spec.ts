@@ -4,6 +4,7 @@ import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { DecideDispute } from '../src/modules/commission-payouts/application/use-cases/decide-dispute.use-case';
+import { ExportDisputes } from '../src/modules/commission-payouts/application/use-cases/export-disputes.use-case';
 import { ListDisputes } from '../src/modules/commission-payouts/application/use-cases/list-disputes.use-case';
 import { ListOwnDisputes } from '../src/modules/commission-payouts/application/use-cases/list-own-disputes.use-case';
 import { ViewDispute } from '../src/modules/commission-payouts/application/use-cases/view-dispute.use-case';
@@ -68,6 +69,8 @@ describe.each(TEST_MARKETS)('disputes over HTTP in market %s', (code) => {
           .useValue(clock)
           .overrideProvider(ListDisputes)
           .useValue(stub('list-disputes'))
+          .overrideProvider(ExportDisputes)
+          .useValue(stub('export-disputes'))
           .overrideProvider(ViewDispute)
           .useValue(stub('view-dispute'))
           .overrideProvider(DecideDispute)
@@ -195,7 +198,6 @@ describe.each(TEST_MARKETS)('disputes over HTTP in market %s', (code) => {
   const money = (amountMinor: bigint) => ({ amountMinor, currency });
 
   const listView = () => ({
-    counts: { 'needs-response': 1, 'decision-needed': 0, 'under-review': 0, won: 0, closed: 0 },
     disputes: [
       {
         disputeId: DISPUTE,
@@ -208,9 +210,23 @@ describe.each(TEST_MARKETS)('disputes over HTTP in market %s', (code) => {
         evidenceDueBy: START,
         amount: money(2000n),
         openedAt: START,
+        updatedAt: START,
+        actions: ['open'],
       },
     ],
+    counts: {
+      all: 1,
+      'needs-response': 1,
+      'decision-needed': 0,
+      'under-review': 0,
+      won: 0,
+      closed: 0,
+    },
+    total: null,
+    page: null,
+    pageSize: 10,
     nextCursor: null,
+    searchCapped: false,
   });
   const detailView = () => ({
     disputeId: DISPUTE,
@@ -284,7 +300,14 @@ describe.each(TEST_MARKETS)('disputes over HTTP in market %s', (code) => {
     expect(response.status).toBe(200);
     expect(response.headers['cache-control']).toBe('no-store');
     expect(response.body).toEqual({
-      counts: { 'needs-response': 1, 'decision-needed': 0, 'under-review': 0, won: 0, closed: 0 },
+      counts: {
+        all: 1,
+        'needs-response': 1,
+        'decision-needed': 0,
+        'under-review': 0,
+        won: 0,
+        closed: 0,
+      },
       disputes: [
         {
           disputeId: DISPUTE,
@@ -297,13 +320,78 @@ describe.each(TEST_MARKETS)('disputes over HTTP in market %s', (code) => {
           evidenceDueBy: START.toString(),
           amount: { amountMinor: '2000', currency },
           openedAt: START.toString(),
+          updatedAt: START.toString(),
+          actions: ['open'],
         },
       ],
+      total: null,
+      page: null,
+      pageSize: 10,
       nextCursor: null,
+      searchCapped: false,
     });
+    expect(response.text).not.toContain('dp_');
     expect(calls).toEqual([
       { name: 'list-disputes', input: { filter: 'needs-response', cursor: 'abc', limit: 10 } },
     ]);
+  });
+
+  it('passes the super list query with page numbers as numbers', async () => {
+    await boot();
+    next = ok({ ...listView(), total: 1, page: 2, pageSize: 25 });
+    const response = await call(
+      'get',
+      'admin',
+      `${LIST}?view=won&money=withdrawn&search=alpha&sort=amount&direction=asc&page=2&pageSize=25`,
+      admin(),
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ total: 1, page: 2, pageSize: 25 });
+    expect(calls).toEqual([
+      {
+        name: 'list-disputes',
+        input: {
+          view: 'won',
+          money: 'withdrawn',
+          search: 'alpha',
+          sort: 'amount',
+          direction: 'asc',
+          page: 2,
+          pageSize: 25,
+        },
+      },
+    ]);
+    next = err({ code: 'commission-payouts.search-unavailable' });
+    expect((await call('get', 'admin', `${LIST}?search=alpha`, admin())).status).toBe(503);
+  });
+
+  it('streams the export as an attachment and refuses an export over the cap with its total', async () => {
+    await boot();
+    // The controller reads the chunks with for await, which takes a plain list as well.
+    next = ok({
+      filename: 'disputes-2026-11-02.csv',
+      contentType: 'text/csv; charset=utf-8',
+      chunks: ['\uFEFFDispute ID\r\n', `${DISPUTE}\r\n`],
+    });
+    const file = await call('get', 'admin', `${LIST}/export?view=won&columns=reason`, admin());
+    expect(file.status).toBe(200);
+    expect(file.headers['content-disposition']).toBe(
+      'attachment; filename="disputes-2026-11-02.csv"',
+    );
+    expect(file.headers['cache-control']).toBe('no-store');
+    expect(file.headers['x-content-type-options']).toBe('nosniff');
+    expect(file.text).toContain(DISPUTE);
+    expect(calls).toEqual([{ name: 'export-disputes', input: { view: 'won', columns: 'reason' } }]);
+    next = err({ code: 'batch.too-large', max: 10000, total: 12000 });
+    const big = await call('get', 'admin', `${LIST}/export`, admin());
+    expect(big.status).toBe(413);
+    expect(big.body).toEqual({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10000, total: 12000 },
+    });
+    next = err({ code: 'commission-payouts.dispute-not-found' });
+    expect((await call('get', 'admin', `${LIST}/export?ids=${DISPUTE}`, admin())).status).toBe(404);
   });
 
   it('shows one case with its seller orders and timeline', async () => {

@@ -22,6 +22,9 @@ import { panelHeaders, TEST_MARKETS } from './support/test-config';
 // delete with the real guards, controllers, gate and use cases, identity's database ports as
 // in-memory fakes and a fixed clock. Sessions are seeded into the fake store.
 
+/** A reviewed write's answer (Admin Inbox › System requests). */
+type Reviewed = { code: string; request: unknown; review: unknown };
+
 const START = Temporal.Instant.from('2026-10-09T10:00:00Z');
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 };
 const CANARY = 'Canary Role Name 7c41';
@@ -243,6 +246,58 @@ describe('role editor over HTTP (integration, slice 10)', () => {
       expect([platform.status, seller.status]).toEqual([201, 201]);
     });
 
+    it('platform: an edit takes a note and answers its review where people is reviewed', async () => {
+      await boot({ limit: 5 });
+      await seeded(code);
+      fakes.review.review('people', 'high');
+      const root = sessionOf(code, ROOT, 'admin');
+      const created = await call('post', code, 'admin', 'roles', root, {
+        name: 'Reviewed',
+        permissionKeys: ['identity.platform-role.view'],
+      });
+      const roleId = (created.body as { roleId: string }).roleId;
+      const listed = await call('get', code, 'admin', 'roles', root);
+      expect((listed.body as { review: unknown }).review).toEqual({ reviewed: true, risk: 'high' });
+
+      const body = {
+        name: 'Reviewed',
+        permissionKeys: ['identity.platform-role.view', 'identity.admin-account.view'],
+        expectedVersion: 1,
+      };
+      const badNote = await call('put', code, 'admin', `roles/${roleId}`, root, {
+        ...body,
+        note: ['x'],
+      });
+      expect([badNote.status, (badNote.body as Reviewed).code]).toEqual([400, 'validation.failed']);
+      const edited = await call('put', code, 'admin', `roles/${roleId}`, root, {
+        ...body,
+        note: 'Needs the team list',
+      });
+      expect([edited.status, edited.body]).toEqual([
+        200,
+        { code: 'role.updated', roleId, request: { id: expect.any(String) as string, number: 1 } },
+      ]);
+      // Without a note the edit is refused (its unit keeps nothing: test/db/people-review).
+      const noNote = await call('put', code, 'admin', `roles/${roleId}`, root, {
+        name: 'Reviewed',
+        permissionKeys: ['identity.platform-role.view'],
+        expectedVersion: 2,
+      });
+      expect([noNote.status, (noNote.body as Reviewed).code]).toEqual([400, 'validation.failed']);
+      expect(fakes.review.opened).toMatchObject([
+        {
+          area: 'people',
+          subjectKind: 'identity.platform-role',
+          subjectRef: roleId,
+          risk: 'high',
+          note: 'Needs the team list',
+        },
+      ]);
+      // Seller roles are not reviewed: their catalogue carries no review.
+      const seller = await call('get', code, 'seller', 'roles', sessionOf(code, OWNER, 'seller'));
+      expect((seller.body as { review?: unknown }).review).toBeUndefined();
+    });
+
     it('platform: creates, lists with the name, edits and deletes a custom role; logs no name', async () => {
       await boot({ limit: 5 });
       await seeded(code);
@@ -273,7 +328,10 @@ describe('role editor over HTTP (integration, slice 10)', () => {
         permissionKeys: ['identity.platform-role.view'],
         expectedVersion: 1,
       });
-      expect([edited.status, edited.body]).toEqual([200, { code: 'role.updated', roleId }]);
+      expect([edited.status, edited.body]).toEqual([
+        200,
+        { code: 'role.updated', roleId, request: null },
+      ]);
 
       // The tab that still holds version 1 is stale on both verbs; the read now says 2.
       const staleEdit = await call('put', code, 'admin', `roles/${roleId}`, root, {

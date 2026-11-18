@@ -35,6 +35,7 @@ export function Sidebar({
     href: item.href,
     icon: item.icon,
     label: label(item.labelKey),
+    ...(item.badgeSource === undefined ? {} : { badgeSource: item.badgeSource }),
   });
   // Resolved here, on the server: the client tree gets plain text, not the label function.
   const { menu, footer } = splitNavPlacement(items);

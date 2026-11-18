@@ -48,6 +48,8 @@ interface Common {
   readonly segment: {
     readonly kind: SegmentKind;
     readonly minDaysSinceLastOrder: number | null;
+    /** MANUAL_GROUP: the manual customer group. */
+    readonly groupId: string | null;
   } | null;
   /** REFERRAL: the credit of the new customer (`reward.amount` is the referrer's). */
   readonly refereeRewardMinor: bigint | null;
@@ -123,7 +125,11 @@ function common(record: PromotionRecord): Common {
     segment:
       record.segmentKind === null
         ? null
-        : { kind: record.segmentKind, minDaysSinceLastOrder: record.segmentMinDays },
+        : {
+            kind: record.segmentKind,
+            minDaysSinceLastOrder: record.segmentMinDays,
+            groupId: record.segmentGroupId,
+          },
     refereeRewardMinor: record.refereeRewardMinor,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,

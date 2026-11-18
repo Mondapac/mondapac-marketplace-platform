@@ -7,8 +7,8 @@ import {
   Dialog,
   EmptyState,
   LoadError,
-  SkeletonRows,
   toast,
+  DetailSkeleton,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -122,7 +122,9 @@ export function WaitingTab({
       aria-busy={load.state === 'loading' || refreshing}
       className="flex min-w-0 flex-col gap-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
     >
-      {load.state === 'loading' ? <SkeletonRows label={t('loading')} rows={3} /> : null}
+      {load.state === 'loading' ? (
+        <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={3} title={false} />
+      ) : null}
       {load.state === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3"

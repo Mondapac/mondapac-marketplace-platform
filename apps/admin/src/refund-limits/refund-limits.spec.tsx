@@ -166,6 +166,17 @@ describe('Market default panel', () => {
     expect(screen.queryByRole('button', { name: 'Edit default cap' })).toBeNull();
   });
 
+  it('opens in a drawer and asks before Cancel throws away a typed value', () => {
+    panel(limits({ marketDefault: limit(), inForce: 'market' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit default cap' }));
+    fireEvent.change(screen.getByLabelText('Most refunds in 24 hours'), { target: { value: '9' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('dialog', { name: 'Discard your input?' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    expect(screen.getByLabelText<HTMLInputElement>('Most refunds in 24 hours').value).toBe('9');
+    expect(call).not.toHaveBeenCalled();
+  });
+
   it('validates before sending, then saves minor units with the version seen', async () => {
     panel(limits({ marketDefault: limit(), inForce: 'market' }));
     fireEvent.click(screen.getByRole('button', { name: 'Edit default cap' }));
