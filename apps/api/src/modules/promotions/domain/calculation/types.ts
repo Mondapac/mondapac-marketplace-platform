@@ -63,7 +63,12 @@ export type Audience =
   /** A customer who follows the promotion's seller (a promotion with a seller owner only). */
   | { readonly kind: 'STORE_FOLLOWER' }
   /** A customer the admin put in one of the Market's manual groups (live groups only). */
-  | { readonly kind: 'MANUAL_GROUP'; readonly groupId: string };
+  | { readonly kind: 'MANUAL_GROUP'; readonly groupId: string }
+  /**
+   * A customer who joined through the promotion's seller's invite link and is its exclusive
+   * customer (a promotion with a seller owner only).
+   */
+  | { readonly kind: 'SELLER_EXCLUSIVE' };
 
 /**
  * What is known about the customer of the order. A field that is null (or a customer that is
@@ -79,6 +84,8 @@ export interface CustomerFacts {
    * whose answer is unknown is left out, so its promotion does not apply. Absent: none known.
    */
   readonly memberOfGroupIds?: readonly string[] | null;
+  /** The seller whose exclusive customer this is; null when none or unknown. Absent: unknown. */
+  readonly exclusiveSellerId?: string | null;
 }
 
 /** One promotion as the calculation sees it (already filtered to the live ones by the caller). */

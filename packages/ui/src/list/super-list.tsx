@@ -35,11 +35,14 @@ export interface SuperListProps {
   readonly notice?: ReactNode;
   /** Built-in tabs with their counts, then the saved filters, and "Manage filters…". */
   readonly views: ListViewsBarProps;
-  readonly search: {
+  /** Left out for a list its API cannot search (a customer's activity): no search box. */
+  readonly search?: {
     readonly label: string;
     readonly placeholder: string;
     readonly value: string;
     readonly maxLength: number;
+    /** What the search matches, read with the field (the placeholder is only a hint). */
+    readonly help?: string;
     readonly onChange: (value: string) => void;
     /** Enter searches at once, without the typing pause. */
     readonly onSubmit: (value: string) => void;
@@ -163,19 +166,24 @@ export function SuperList({
       {notice}
       <ListViewsBar {...views} />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <SearchField
-          label={search.label}
-          placeholder={search.placeholder}
-          value={search.value}
-          maxLength={search.maxLength}
-          className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
-          onChange={(event) => search.onChange(event.target.value)}
-          onBlur={search.onBlur}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') search.onSubmit(search.value.trim());
-          }}
-        />
-        {search.extra}
+        {search === undefined ? null : (
+          <>
+            <SearchField
+              label={search.label}
+              placeholder={search.placeholder}
+              value={search.value}
+              maxLength={search.maxLength}
+              {...(search.help === undefined ? {} : { help: search.help })}
+              className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
+              onChange={(event) => search.onChange(event.target.value)}
+              onBlur={search.onBlur}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') search.onSubmit(search.value.trim());
+              }}
+            />
+            {search.extra}
+          </>
+        )}
         {/* The real toolbar shows while the first page loads, but cannot act on rows yet. */}
         {toolbar !== undefined ? toolbar : null}
         {toolbar === undefined && hasTools ? (

@@ -1,0 +1,511 @@
+{
+  "shipments": {
+    "listKey": "admin.ordering.shipments",
+    "payloads": [
+      {
+        "v": 1,
+        "tab": "all"
+      },
+      {
+        "v": 1,
+        "tab": "attention"
+      },
+      {
+        "v": 1,
+        "tab": "to-prepare"
+      },
+      {
+        "v": 1,
+        "tab": "ready"
+      },
+      {
+        "v": 1,
+        "tab": "shipped"
+      },
+      {
+        "v": 1,
+        "tab": "delivered"
+      },
+      {
+        "v": 1,
+        "tab": "refunded"
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "deliveryMethod": "pickup"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "deliveryMethod": "instant"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "deliveryMethod": "same_day"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "deliveryMethod": "scheduled"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "attention": "any"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "attention": "no-carrier"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "attention": "carrier-unknown"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "attention": "cancel-unknown"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "paid": "today"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "paid": "yesterday"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "paid": "last-7-days"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "paid": "last-30-days"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "paid": "this-month"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "paid": "last-month"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "shipped": "today"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "shipped": "yesterday"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "shipped": "last-7-days"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "shipped": "last-30-days"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "shipped": "this-month"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "shipped": "last-month"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "direction": "asc"
+      },
+      {
+        "v": 1,
+        "tab": "all"
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "sort": "shipped",
+        "direction": "asc"
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "sort": "shipped"
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "sort": "delivered",
+        "direction": "asc"
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "sort": "delivered"
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "sort": "total",
+        "direction": "asc"
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "sort": "total"
+      },
+      {
+        "v": 1,
+        "tab": "refunded",
+        "filters": {
+          "deliveryMethod": "scheduled",
+          "attention": "cancel-unknown",
+          "paid": "last-month",
+          "shipped": "last-month"
+        },
+        "sort": "total",
+        "direction": "asc"
+      }
+    ]
+  },
+  "refunds": {
+    "listKey": "admin.ordering.refunds",
+    "payloads": [
+      {
+        "v": 1,
+        "tab": "all"
+      },
+      {
+        "v": 1,
+        "tab": "pending"
+      },
+      {
+        "v": 1,
+        "tab": "succeeded"
+      },
+      {
+        "v": 1,
+        "tab": "failed"
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "reason": "not-received"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "reason": "damaged"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "reason": "wrong-item"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "reason": "not-as-described"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "reason": "seller-cancelled"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "reason": "item-unavailable"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "reason": "other"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "actor": "admin"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "actor": "seller"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "lossBearer": "seller"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "lossBearer": "platform"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "ledger": "waiting"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "ledger": "recorded"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "requested": "today"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "requested": "yesterday"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "requested": "last-7-days"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "requested": "last-30-days"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "requested": "this-month"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "filters": {
+          "requested": "last-month"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "direction": "asc"
+      },
+      {
+        "v": 1,
+        "tab": "all"
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "sort": "settled",
+        "direction": "asc"
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "sort": "settled"
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "sort": "amount",
+        "direction": "asc"
+      },
+      {
+        "v": 1,
+        "tab": "all",
+        "sort": "amount"
+      },
+      {
+        "v": 1,
+        "tab": "failed",
+        "filters": {
+          "reason": "other",
+          "actor": "seller",
+          "lossBearer": "platform",
+          "ledger": "recorded",
+          "requested": "last-month"
+        },
+        "sort": "amount",
+        "direction": "asc"
+      }
+    ]
+  },
+  "documents": {
+    "listKey": "admin.ordering.documents",
+    "payloads": [
+      {
+        "v": 1,
+        "tab": "order-confirmation"
+      },
+      {
+        "v": 1,
+        "tab": "credit-note"
+      },
+      {
+        "v": 1,
+        "tab": "order-confirmation",
+        "filters": {
+          "issued": "today"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "order-confirmation",
+        "filters": {
+          "issued": "yesterday"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "order-confirmation",
+        "filters": {
+          "issued": "last-7-days"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "order-confirmation",
+        "filters": {
+          "issued": "last-30-days"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "order-confirmation",
+        "filters": {
+          "issued": "this-month"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "order-confirmation",
+        "filters": {
+          "issued": "last-month"
+        }
+      },
+      {
+        "v": 1,
+        "tab": "order-confirmation",
+        "direction": "asc"
+      },
+      {
+        "v": 1,
+        "tab": "order-confirmation"
+      },
+      {
+        "v": 1,
+        "tab": "order-confirmation",
+        "sort": "amount",
+        "direction": "asc"
+      },
+      {
+        "v": 1,
+        "tab": "order-confirmation",
+        "sort": "amount"
+      },
+      {
+        "v": 1,
+        "tab": "credit-note",
+        "filters": {
+          "issued": "last-month"
+        },
+        "sort": "amount",
+        "direction": "asc"
+      }
+    ]
+  }
+}

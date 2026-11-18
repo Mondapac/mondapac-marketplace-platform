@@ -13,11 +13,15 @@ export type PrefsKind =
   | 'single-key'
   | 'products-columns'
   | 'orders-columns'
+  | 'customers-columns'
+  | 'customer-orders-columns'
   | 'shipments-columns'
   | 'refunds-columns'
+  | 'invoices-columns'
   | 'system-requests-columns'
   | 'system-requests-view'
-  | 'system-requests-query';
+  | 'system-requests-query'
+  | 'customer-activity-columns';
 
 /** The storage key of one list of one account in one Market of one panel. */
 export function prefsKey(

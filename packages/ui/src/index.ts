@@ -15,7 +15,7 @@ export {
   type AccountMenuProps,
 } from './shell/account-menu.tsx';
 export { Icon, type IconName, type IconProps } from './icon/icon.tsx';
-export { Tabs, type TabItem, type TabsProps } from './shell/tabs.tsx';
+export { Tabs, tabIdOf, type TabItem, type TabsProps } from './shell/tabs.tsx';
 export { BackLink } from './shell/back-link.tsx';
 export { ShortcutGrid, type Shortcut } from './shell/shortcut-grid.tsx';
 export { RouteError, RouteLoading, type RouteErrorProps } from './shell/route-states.tsx';
@@ -115,6 +115,19 @@ export {
   type SearchSelectProps,
   type SearchSelectSingleProps,
 } from './select/search-select.tsx';
+export {
+  CategoryChooser,
+  type CategoryChooserLabels,
+  type CategoryChooserProps,
+} from './select/category-chooser.tsx';
+export {
+  MAX_PRODUCT_CATEGORIES,
+  addCategory,
+  choiceLabel,
+  makePrimary,
+  removeCategory,
+  type CategoryChoice,
+} from './select/category-chooser-logic.ts';
 export { LoadError, type LoadErrorProps } from './form/load-error.tsx';
 export { Badge, type BadgeProps, type BadgeTone } from './form/badge.tsx';
 export { EmptyState, type EmptyStateProps, type EmptyStateSize } from './form/empty-state.tsx';
@@ -240,6 +253,7 @@ export {
   type StatTone,
 } from './dashboard/dashboard.tsx';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
+export { SidePanel, type SidePanelProps } from './overlay/side-panel.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
 export {
   ActionMenu,

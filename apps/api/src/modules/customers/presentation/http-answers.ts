@@ -1,6 +1,6 @@
 import { HttpException, type Logger } from '@nestjs/common';
 import type { CallContext } from '@mondapac/shared-kernel';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 
 // The parts of an address book route that every route shares: the error format
@@ -32,11 +32,33 @@ export const CUSTOMERS_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'customers.group-name-taken': 409,
   'customers.group-limit-reached': 409,
   'customers.group-archived': 409,
+  // Customers admin email change ('customers.customer-not-eligible' is shared with phase 2).
+  'customers.email-taken': 409,
+  'customers.account-deletion-pending': 409,
+  'customers.email-change-not-found': 404,
   // Phase 2b: the sections other modules own.
   'customers.sign-in-not-found': 404,
   'customers.password-reset-recently-requested': 429,
+  // Security review of #969 (L2/L3): the per-admin limits of the reveals and the password reset.
+  'request.throttled': 429,
   'customers.seller-customer-not-found': 404,
+  // Phase 4a.
+  'customers.invitation-not-found': 404,
+  'customers.invitation-not-eligible': 409,
 });
+
+/**
+ * Sets `Retry-After` for a refusal that carries `retryAfterSeconds` (`request.throttled`), the
+ * same seconds as its `details.retryAfterSeconds`.
+ */
+export function setRetryAfter(
+  response: Response,
+  result: { readonly ok: boolean; readonly error?: unknown },
+): void {
+  if (result.ok) return;
+  const seconds = (result.error as { retryAfterSeconds?: unknown } | undefined)?.retryAfterSeconds;
+  if (typeof seconds === 'number') response.setHeader('Retry-After', String(seconds));
+}
 
 export function fail(status: number, code: string, details?: object): HttpException {
   return new HttpException({ statusCode: status, code, ...(details ? { details } : {}) }, status);
@@ -104,11 +126,17 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  if (typeof error.retryAfterSeconds === 'number') {
+    return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
+  }
   if (Array.isArray(error.blockers)) return fail(status, error.code, { blockers: error.blockers });
   if (typeof error.actionKey === 'string') {
     return fail(status, error.code, { actionKey: error.actionKey });
   }
   if (error.limit !== undefined) return fail(status, error.code, { limit: error.limit });
+  if (typeof error.retryAfterSeconds === 'number') {
+    return fail(status, error.code, { retryAfterSeconds: error.retryAfterSeconds });
+  }
   if (typeof error.max === 'number') {
     return fail(status, error.code, {
       max: error.max,

@@ -306,7 +306,7 @@ describe('PanelTools', () => {
         'page:x',
       ]),
     );
-    mount({ keys: [...KEYS, 'identity.customer-account.view', 'commission-payouts.dispute.view'] });
+    mount({ keys: [...KEYS, 'customers.customers.view', 'commission-payouts.dispute.view'] });
     expect(JSON.parse(window.localStorage.getItem('mp:admin:AU:acc-1:recent')!)).toEqual([
       'page:orders',
       'page:sellers',
@@ -371,7 +371,7 @@ describe('PanelTools', () => {
   it('refuses a sixth pin with a notice, and unpins to make room', () => {
     const keys = [
       ...KEYS,
-      'identity.customer-account.view',
+      'customers.customers.view',
       'catalog.product.view',
       'storefront.slide.read',
     ];

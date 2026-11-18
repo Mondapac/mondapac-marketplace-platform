@@ -310,13 +310,18 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       expect((await make(CreateOwnPromotion).execute(seller(), follower())).ok).toBe(true);
 
       for (const body of [
-        group({ funding: 'SELLER', budgetMinor: undefined, testMode: false }),
         referral({ funding: 'SELLER', budgetMinor: undefined, testMode: false }),
         cashback({ funding: 'SELLER', budgetMinor: undefined, testMode: false }),
       ]) {
         const result = await make(CreateOwnPromotion).execute(seller(), body);
         expect(fields(result)).toContain('type:not-allowed');
       }
+      // A seller's customer-group discount is for its exclusive customers only.
+      const otherSegment = await make(CreateOwnPromotion).execute(
+        seller(),
+        group({ funding: 'SELLER', budgetMinor: undefined, testMode: false }),
+      );
+      expect(fields(otherSegment)).toContain('segment.kind:not-allowed');
       const wrong = await make(CreatePromotion).execute(admin(), follower());
       expect(fields(wrong)).toContain('type:not-allowed');
     });
@@ -666,6 +671,101 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
       p3.storeFollows.throws = false;
       p3.storeFollows.broken = true;
       expect((await quote(request([line(1, 10000n, 1)]))).totals.goodsDiscount).toBe(0n);
+    });
+  });
+
+  describe('exclusive-customer discount (customers phase 4a)', () => {
+    const exclusive = (extra: Record<string, unknown> = {}) => ({
+      type: 'CUSTOMER_GROUP',
+      name: 'For our customers',
+      funding: 'SELLER',
+      startsAt: startsAt(),
+      reward: { kind: 'PERCENT', bps: 1000 },
+      segment: { kind: 'SELLER_EXCLUSIVE' },
+      ...extra,
+    });
+    const cart = () => request([line(1, 10000n, 1), line(2, 10000n, 1, SELLER_2)]);
+
+    it('lets a seller make it with its own money, on its own lines, for its exclusive customers', async () => {
+      const made = await sellerCreate(exclusive());
+      expect(made.segment).toMatchObject({ kind: 'SELLER_EXCLUSIVE' });
+      p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+      const out = await quote(cart());
+      expect(out.totals.goodsDiscount).toBe(1000n);
+      expect(out.totals.sellerShare).toBe(1000n);
+      expect(out.totals.platformShare).toBe(0n);
+      expect(p3.exclusiveCustomers.reads).toBe(1);
+    });
+
+    it('is not offered to another seller’s customer, an unattributed one, or with no customer', async () => {
+      await sellerCreate(exclusive());
+      expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+      p3.exclusiveCustomers.sellers.set(REFERRER, SELLER_2);
+      expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+      p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+      expect(
+        (await quote(request([line(1, 10000n, 1)], { customerAccountId: null }))).totals
+          .goodsDiscount,
+      ).toBe(0n);
+    });
+
+    it('fails closed when the attribution is unknown or the read throws', async () => {
+      await sellerCreate(exclusive());
+      p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+      p3.exclusiveCustomers.broken = true;
+      expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+      p3.exclusiveCustomers.broken = false;
+      p3.exclusiveCustomers.throws = true;
+      expect((await quote(cart())).totals.goodsDiscount).toBe(0n);
+    });
+
+    it('reads no attribution when no such discount is live', async () => {
+      p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+      await quote(cart());
+      expect(p3.exclusiveCustomers.reads).toBe(0);
+    });
+
+    it('is held to the seller maximum and takes no days, zones, platform money or test mode', async () => {
+      const own = (body: Record<string, unknown>) =>
+        make(CreateOwnPromotion).execute(seller(), body);
+      expect(
+        fields(
+          await own(
+            exclusive({ reward: { kind: 'PERCENT', bps: rules.sellerMaxDiscountBps + 1 } }),
+          ),
+        ),
+      ).toContain('reward.bps:exceeds-seller-maximum');
+      expect(
+        fields(
+          await own(
+            exclusive({ segment: { kind: 'SELLER_EXCLUSIVE', minDaysSinceLastOrder: 30 } }),
+          ),
+        ),
+      ).toContain('segment.minDaysSinceLastOrder:not-allowed');
+      expect(fields(await own(exclusive({ zones: ['BRIS-1'] })))).toContain('zones:not-allowed');
+      expect(fields(await own(exclusive({ funding: 'PLATFORM' })))).toContain(
+        'funding:seller-money-only',
+      );
+      expect(fields(await own(exclusive({ testMode: true })))).toContain('testMode:not-allowed');
+      expect(promotions.records.size).toBe(0);
+    });
+
+    it('is not an admin’s to make', async () => {
+      const result = await make(CreatePromotion).execute(
+        admin(),
+        group({ segment: { kind: 'SELLER_EXCLUSIVE' } }),
+      );
+      expect(fields(result)).toContain('segment.kind:not-allowed');
+    });
+
+    it('is not listed as a Follow gift', async () => {
+      await sellerCreate(exclusive());
+      expect(
+        await make(ViewStoreFollowGift).execute(
+          testCallContext(market, 'anonymous', 'promo3-anon-abcdef'),
+          { sellerId: SELLER },
+        ),
+      ).toEqual({ ok: true, value: { gifts: [] } });
     });
   });
 
