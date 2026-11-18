@@ -799,6 +799,11 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  {
+    "name": "promotions.view-my-upcoming-cashback",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "promotions.view-store-follow-gift", "rule": "anonymous" },
   {
     "name": "reviews.cast-helpful-vote",

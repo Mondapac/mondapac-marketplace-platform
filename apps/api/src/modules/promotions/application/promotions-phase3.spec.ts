@@ -59,6 +59,7 @@ import { RedeemDiscounts } from './use-cases/redeem-discounts.use-case';
 import { SetPromotionBudget } from './use-cases/set-promotion-budget.use-case';
 import { SetPromotionsStatus } from './use-cases/set-promotions-status.use-case';
 import { ViewMyReferral } from './use-cases/view-my-referral.use-case';
+import { ViewMyUpcomingCashback } from './use-cases/view-my-upcoming-cashback.use-case';
 import { ViewStoreFollowGift } from './use-cases/view-store-follow-gift.use-case';
 import type { PromotionRecord } from '../domain/promotion';
 
@@ -1277,6 +1278,56 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           });
           expect(p3.walletCredit.grants.map((g) => g.amount)).toEqual([money(200n, currency)]);
           expect(p3.sellerCashbackLedger.entries.map((e) => e.amount)).toEqual([200n]);
+        });
+
+        it('shows the customer their own waiting cashback with its date, and nothing once credited (display only)', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const facts = deliverHeld(1);
+          await run(facts);
+          const upcoming = (context: CallContext, input: { orderId?: string } = {}) =>
+            make(ViewMyUpcomingCashback).execute(context, input);
+          const release = clock.now().add(HOLD);
+          const expected = {
+            ok: true,
+            value: {
+              cashback: [
+                { orderId: facts.orderId, amountMinor: 400n, currency, creditOn: release },
+              ],
+            },
+          };
+          expect(await upcoming(customerOf(REFERRER))).toEqual(expected);
+          expect(await upcoming(customerOf(REFERRER), { orderId: facts.orderId })).toEqual(
+            expected,
+          );
+          // Another customer, another order: none. No wallet call, no balance change.
+          expect(await upcoming(customerOf(NEWBIE))).toEqual({ ok: true, value: { cashback: [] } });
+          expect(await upcoming(customerOf(REFERRER), { orderId: id<'Order'>(0x0eee) })).toEqual({
+            ok: true,
+            value: { cashback: [] },
+          });
+          expect(p3.walletCredit.calls).toBe(0);
+          expect(await upcoming(customerOf(REFERRER), { orderId: 'x' })).toMatchObject({
+            ok: false,
+            error: { code: 'validation.failed' },
+          });
+          expect(await upcoming(admin())).toMatchObject({ ok: false });
+          // Past its day but not yet paid: on its way, no date.
+          clock.advance(Temporal.Duration.from(HOLD));
+          expect(await upcoming(customerOf(REFERRER))).toMatchObject({
+            value: { cashback: [{ creditOn: null }] },
+          });
+          await grantDue();
+          expect(await upcoming(customerOf(REFERRER))).toEqual({
+            ok: true,
+            value: { cashback: [] },
+          });
+          // Promotions off: an empty list.
+          await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
+          expect(await upcoming(customerOf(REFERRER))).toEqual({
+            ok: true,
+            value: { cashback: [] },
+          });
         });
 
         it('cancels a seller’s cashback whose customer stopped being its exclusive customer during the hold', async () => {

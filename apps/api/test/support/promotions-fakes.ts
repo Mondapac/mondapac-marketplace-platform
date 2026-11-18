@@ -1192,6 +1192,30 @@ export class MemoryCredits implements CreditRepository {
         .slice(0, limit),
     );
   }
+  listWaitingCashback(
+    _market: MarketContext,
+    recipient: Id<'Account'>,
+    limit: number,
+    orderId?: Id<'Order'>,
+  ) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (r) =>
+            r.recipientAccountId === recipient &&
+            r.kind === 'CASHBACK' &&
+            r.status === 'PENDING' &&
+            (orderId === undefined || r.orderId === orderId),
+        )
+        .sort(
+          (a, b) =>
+            b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds ||
+            (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+        )
+        .slice(0, limit),
+    );
+  }
+
   listForRecipient(
     _market: MarketContext,
     recipient: Id<'Account'>,
