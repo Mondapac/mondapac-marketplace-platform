@@ -1,16 +1,24 @@
 import type { CallContext } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { BLOG_POST_READ } from '../../contracts/permissions';
-import type { BlogDependencies } from '../blog-dependencies';
-import type { BlogFailure } from '../failures';
-import { listPostsForAdmin } from '../read-flow';
-import type { FlowInput, FlowValue } from '../flow-types';
+import {
+  listAdminPosts,
+  type AdminPostListDependencies,
+  type AdminPostListFailure,
+  type AdminPostListPage,
+} from '../admin-post-list-flow';
 
-/** `blog.list-posts`: The posts of the Market, newest first, by status, kind, owner or seller. */
+export type { AdminPostListPage };
+
+/**
+ * `blog.list-posts`: the posts of the Market (the Blog posts super list, list 26): views by
+ * status with counts, filters, search, sort, page numbers or Previous/Next, and each row's
+ * actions. Ids, titles, slugs, states and times only.
+ */
 export class ListBlogPosts extends UseCase<
-  FlowInput<typeof listPostsForAdmin>,
-  FlowValue<typeof listPostsForAdmin>,
-  BlogFailure
+  { readonly query?: unknown },
+  AdminPostListPage,
+  AdminPostListFailure
 > {
   static override readonly access: AccessDeclaration = {
     name: 'blog.list-posts',
@@ -19,12 +27,12 @@ export class ListBlogPosts extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: BlogDependencies,
+    private readonly deps: AdminPostListDependencies,
   ) {
     super(gate);
   }
 
-  protected handle(context: CallContext, input: FlowInput<typeof listPostsForAdmin>) {
-    return listPostsForAdmin(this.deps, context, input);
+  protected handle(context: CallContext, input: { readonly query?: unknown }) {
+    return listAdminPosts(this.deps, context, input);
   }
 }
