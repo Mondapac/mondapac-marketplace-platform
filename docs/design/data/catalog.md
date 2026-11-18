@@ -946,6 +946,8 @@ own unit. No address is stored; it is read from `identity` at send time.
 
 ### 3.28 `saved_filters` (Catalogue > Products saved views; domain 9.2d)
 
+> **Dropped (migration `20261118150000_lists_drop_old_saved_filters`).** The filters live in `lists.saved_filters` (ADR-0049, `docs/modules/lists/notes.md`); the rest of this section is the history of the table and the rules it carried, which the shared table keeps.
+
 A named saved view of an admin list: the tab, search, filters and sort, for one admin (`me`) or for
 every admin of the Market who can see the list (`everyone`). Catalog owns the table because the
 first list is the product list; `list_key` (`admin.catalog.products` today) lets another admin list

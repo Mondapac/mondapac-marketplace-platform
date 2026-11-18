@@ -124,14 +124,6 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // docs/design/data/catalog.md 3.28: a filter name is unique per owner, and a shared filter name
   // per list among the filters shared with everyone; each in an admin form (no store) and a seller
   // form (per store).
-  'catalog.saved_filters_owner_name_key':
-    'CREATE UNIQUE INDEX saved_filters_owner_name_key ON catalog.saved_filters USING btree (market_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NULL)',
-  'catalog.saved_filters_shared_name_key':
-    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON catalog.saved_filters USING btree (market_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NULL))",
-  'catalog.saved_filters_seller_owner_name_key':
-    'CREATE UNIQUE INDEX saved_filters_seller_owner_name_key ON catalog.saved_filters USING btree (market_id, seller_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NOT NULL)',
-  'catalog.saved_filters_seller_shared_name_key':
-    "CREATE UNIQUE INDEX saved_filters_seller_shared_name_key ON catalog.saved_filters USING btree (market_id, seller_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NOT NULL))",
   // Categories package C5a (Move products): one queued or running move per source category, the
   // runner's claim order, and the moved items whose seller notice is still open.
   'catalog.category_product_move_jobs_market_id_source_open_key':
@@ -314,8 +306,6 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'ordering.seller_orders_unrecorded_ledger_idx':
     "CREATE INDEX seller_orders_unrecorded_ledger_idx ON ordering.seller_orders USING btree (market_id, ledger_attempts, order_id) WHERE (ledger_state = 'pending'::text)",
   // Order lists: the saved filters shared with everyone keep one name per list.
-  'ordering.saved_filters_shared_name_key':
-    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON ordering.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
   // Seller health: the nightly feed reads the seller's orders marked ready in a few days.
   'ordering.seller_orders_seller_ready_at_idx':
     'CREATE INDEX seller_orders_seller_ready_at_idx ON ordering.seller_orders USING btree (market_id, seller_id, ready_at) WHERE (ready_at IS NOT NULL)',
