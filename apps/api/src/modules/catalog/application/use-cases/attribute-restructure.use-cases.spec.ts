@@ -35,6 +35,7 @@ import { AttributeImpactGet } from './attribute-impact-get.use-case';
 import { AttributeConvert } from './attribute-convert.use-case';
 import { AttributeMerge } from './attribute-merge.use-case';
 import { AttributeValuesMerge } from './attribute-values-merge.use-case';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 
 // Merging values, archiving and the archive of a material attribute by two administrators
 // (attributes A8), in memory on both Market fixtures. The SQL and its guard trigger are in
@@ -117,6 +118,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
       audit,
       clock,
       ids,
+      review: new RecordingReview(),
     };
     return {
       create: new AttributeDefinitionCreate(gate, deps),

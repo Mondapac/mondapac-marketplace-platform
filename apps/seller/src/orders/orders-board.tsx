@@ -6,9 +6,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { shortInstant } from '../catalog/format.ts';
 import { formatMinor } from '../price/money.ts';
-import { NO_DAYS, queryOf } from './orders-query.ts';
+import { boardQuery } from './orders-query.ts';
 import { shortId, statusOf, TONE } from './status.ts';
-import type { Fulfilment, SellerOrderPage, SellerOrderView } from './types.ts';
+import type { Fulfilment, SellerOrderCursorPage, SellerOrderView } from './types.ts';
 
 /** The board's stages, in the order an order moves through them. */
 export const BOARD_STAGES = ['to-ship', 'ready', 'shipped', 'delivered'] as const;
@@ -62,10 +62,10 @@ export function OrdersBoard() {
   const load = useCallback(async (source: Fulfilment, cursor: string | null) => {
     const ticket = ++tickets.current[source];
     setSources((all) => ({ ...all, [source]: { ...all[source], loading: true, failed: false } }));
-    const result = await callApi<SellerOrderPage>(
+    const result = await callApi<SellerOrderCursorPage>(
       'GET',
       // No days on the board, so the zone reads nothing.
-      queryOf(source, NO_DAYS, 'UTC', { paging: 'prev-next', cursor }),
+      boardQuery(source, cursor),
     );
     if (ticket !== tickets.current[source]) return;
     if (!result.ok) {

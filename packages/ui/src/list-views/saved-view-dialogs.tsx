@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../form/badge.tsx';
 import { Banner } from '../form/banner.tsx';
 import { Button } from '../form/button.tsx';
 import { EmptyState } from '../form/empty-state.tsx';
 import { RadioGroup } from '../form/radio-group.tsx';
 import { TextField } from '../form/text-field.tsx';
+import { Icon } from '../icon/icon.tsx';
 import { Dialog } from '../overlay/dialog.tsx';
 
 // The two dialogs of the saved views of a list (Figma "Save filter" and "Manage filters"), written
@@ -46,6 +47,9 @@ export interface SavedViewLabels {
     readonly deleteNamed: (name: string) => string;
     readonly deleteOwn: (name: string) => string;
     readonly deleteShared: (name: string) => string;
+    /** Reordering (only with `onReorder`): the buttons that move an own filter up or down. */
+    readonly moveUp?: (name: string) => string;
+    readonly moveDown?: (name: string) => string;
   };
   readonly error: (problem: SavedViewProblem) => string;
 }
@@ -199,7 +203,14 @@ function Row({
   onMode,
   onRename,
   onDelete,
+  move,
 }: {
+  /** Moves this filter one place (own filters only); null when it cannot move that way. */
+  readonly move?: {
+    readonly up: (() => void) | null;
+    readonly down: (() => void) | null;
+    readonly busy: boolean;
+  };
   readonly view: SavedViewItem;
   readonly canShare: boolean;
   readonly labels: SavedViewLabels;
@@ -265,7 +276,33 @@ function Row({
           </div>
         </div>
         {view.canManage && !editing && !deleting ? (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {move === undefined ||
+            labels.manage.moveUp === undefined ||
+            labels.manage.moveDown === undefined ? null : (
+              <>
+                <Button
+                  variant="secondary"
+                  aria-label={labels.manage.moveUp(view.name)}
+                  title={labels.manage.moveUp(view.name)}
+                  data-move={`${view.id}:up`}
+                  disabled={move.up === null || move.busy}
+                  onClick={() => move.up?.()}
+                >
+                  <Icon name="chevron-up" />
+                </Button>
+                <Button
+                  variant="secondary"
+                  aria-label={labels.manage.moveDown(view.name)}
+                  title={labels.manage.moveDown(view.name)}
+                  data-move={`${view.id}:down`}
+                  disabled={move.down === null || move.busy}
+                  onClick={() => move.down?.()}
+                >
+                  <Icon name="chevron-down" />
+                </Button>
+              </>
+            )}
             <Button
               variant="secondary"
               aria-label={labels.manage.editNamed(view.name)}
@@ -361,7 +398,9 @@ function Row({
 
 /**
  * The Manage filters dialog: every saved view the person can see, with rename, who can use it and
- * delete for the ones they may manage. Reordering is not offered. A delete of a filter that is
+ * delete for the ones they may manage. Reordering is offered only when the list passes
+ * `onReorder` (and the two move labels): the person's own filters get Move up and Move down, and
+ * `onReorder` gets the ids of all their own filters in the new order. A delete of a filter that is
  * already gone should resolve to null: it is what the person wanted.
  */
 export function ManageViewsDialog({
@@ -373,7 +412,13 @@ export function ManageViewsDialog({
   idPrefix,
   onRename,
   onDelete,
+  onReorder,
 }: {
+  /** Saves a new order of the person's own filters; null when it worked, else the problem. */
+  readonly onReorder?: (
+    ids: readonly string[],
+    movedId: string,
+  ) => Promise<SavedViewProblem | null>;
   readonly open: boolean;
   readonly onClose: () => void;
   readonly views: readonly SavedViewItem[];
@@ -388,10 +433,49 @@ export function ManageViewsDialog({
   readonly onDelete: (id: string) => Promise<SavedViewProblem | null>;
 }) {
   const [mode, setMode] = useState<Mode>(null);
+  const [moving, setMoving] = useState(false);
+  const focusAfter = useRef<{ id: string; step: -1 | 1 } | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const [moveProblem, setMoveProblem] = useState<SavedViewProblem | null>(null);
 
   useEffect(() => {
-    if (!open) setMode(null);
+    if (!open) {
+      setMode(null);
+      setMoveProblem(null);
+    }
   }, [open]);
+
+  // After a move the person keeps their place: focus goes back to the button they used, or, when
+  // the row has reached an end and that button is now disabled, to the row's other move button.
+  useEffect(() => {
+    const pending = focusAfter.current;
+    if (pending === null) return;
+    focusAfter.current = null;
+    const find = (dir: string) =>
+      listRef.current?.querySelector<HTMLButtonElement>(`[data-move="${pending.id}:${dir}"]`) ??
+      null;
+    const used = find(pending.step === -1 ? 'up' : 'down');
+    const other = find(pending.step === -1 ? 'down' : 'up');
+    (used !== null && !used.disabled ? used : other)?.focus();
+  }, [views]);
+
+  const own = views.filter((view) => view.ownedByMe).map((view) => view.id);
+  async function moveBy(id: string, step: -1 | 1) {
+    if (onReorder === undefined) return;
+    const at = own.indexOf(id);
+    const ids = [...own];
+    ids.splice(at, 1);
+    ids.splice(at + step, 0, id);
+    setMoving(true);
+    setMoveProblem(null);
+    focusAfter.current = { id, step };
+    const refused = await onReorder(ids, id);
+    setMoving(false);
+    if (refused !== null) {
+      focusAfter.current = null;
+      setMoveProblem(refused);
+    }
+  }
 
   return (
     <Dialog
@@ -416,9 +500,24 @@ export function ManageViewsDialog({
           <p className="text-sm text-fg-muted">
             {canShare ? labels.manage.helpShare : labels.manage.helpOwn}
           </p>
-          <ul className="divide-y divide-line">
+          {moveProblem === null ? null : (
+            <Banner tone="critical">{labels.error(moveProblem)}</Banner>
+          )}
+          <ul ref={listRef} className="divide-y divide-line">
             {views.map((view) => (
               <Row
+                move={
+                  onReorder === undefined || !view.ownedByMe
+                    ? undefined
+                    : {
+                        up: own.indexOf(view.id) > 0 ? () => void moveBy(view.id, -1) : null,
+                        down:
+                          own.indexOf(view.id) < own.length - 1
+                            ? () => void moveBy(view.id, 1)
+                            : null,
+                        busy: moving,
+                      }
+                }
                 key={view.id}
                 view={view}
                 canShare={canShare}

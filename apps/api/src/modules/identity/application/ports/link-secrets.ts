@@ -26,7 +26,12 @@ export const LINK_TOKENS = Symbol('LINK_TOKENS');
  * Market file: `seller-review-queue` exists only for `admin`.
  */
 export interface LinkPages {
-  readonly customer: 'verify-email' | 'sign-in' | 'reset-password';
+  readonly customer:
+    | 'verify-email'
+    | 'sign-in'
+    | 'reset-password'
+    /** Customers admin email change: the storefront's confirmation page. */
+    | 'confirm-email-change';
   /**
    * Slice 9 adds the seller panel's invitation acceptance page (E9). A Market whose config has no
    * such page answers null, and no seller invitation is issued there.

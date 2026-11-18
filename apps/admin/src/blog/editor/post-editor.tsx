@@ -9,10 +9,10 @@ import {
   LinkButton,
   LoadError,
   Select,
-  SkeletonRows,
   TextAreaField,
   TextField,
   toast,
+  FormSkeleton,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -49,6 +49,7 @@ export function PostEditor({
   readonly zone: string;
 }) {
   const t = useTranslations('blog.editor');
+  const tr = useTranslations('route');
   const tc = useTranslations('blog');
   const locale = useLocale();
   const [load, setLoad] = useState<Load>('loading');
@@ -203,7 +204,15 @@ export function PostEditor({
     setFindings(result.body.findings);
   }
 
-  if (load === 'loading') return <SkeletonRows label={t('loading')} rows={5} />;
+  if (load === 'loading') {
+    return (
+      <FormSkeleton
+        label={t('loading')}
+        slowLabel={tr('slow')}
+        sections={[{ fields: 3 }, { fields: 2 }, { fields: 3 }]}
+      />
+    );
+  }
   if (load === 'failed' || post === null || draft === null || taxonomy === null) {
     return (
       <LoadError

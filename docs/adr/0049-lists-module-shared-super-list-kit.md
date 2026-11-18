@@ -1,10 +1,10 @@
 # ADR-0049: A `lists` Module for the Shared Super List Kit
 
-**Status:** Proposed — 2026-11-15, on the project owner's «ساخت» of the super list plan (project
-thread, 15 Nov 2026). Mohammad (software-architect) reviews the module boundary; Mojtaba
-(database-designer, Opus) the migration; Hassan (security-tester, Opus) the permission checks. Their
-review is not yet recorded here. The number 0049 is taken here without the board: renumber it if
-another ADR took it first.
+**Status:** Accepted — 2026-11-15, on the project owner's «ساخت» of the super list plan (project
+thread, 15 Nov 2026). Reviews on PR #918 (head 47d8c7ed): Hassan (security-tester, Opus) approved the
+permission checks, the `own-resources` pattern and the audit; Mojtaba (database-designer) approved the
+migration and the `UPDATE (position)` grant; Mohammad (software-architect) approved the module
+boundary. The number 0049 is taken here without the board: renumber it if another ADR took it first.
 **Relates to:** ADR-0008 decision 6 (module boundaries), ADR-0042 (the `settings` module is the
 precedent for a small shared module), CLAUDE.md rule 14 (super list)
 
@@ -48,12 +48,38 @@ need them. Left alone, each list's module would add a third, fourth and fifth co
 - Rolling the migration back loses every filter saved after the copy and leaves the old tables
   stale: the release runbook says so.
 
+## B0-1b: registry and generic routes
+
+- A module registers its lists with `registerLists(owner, definitions)` (a provider, like
+  `registerAuditActions`). A definition has the list key, the population, the `viewKey`, the
+  `shareKey` and a payload parser. `lists` imports no module that owns a list (its only module import is `identity`, for the
+  `AuthorisationCheck` port, like every module that checks permissions); the registry refuses a duplicate key,
+  a key that does not start with `<population>.<owner>.`, and a key outside the audit vocabulary.
+- The use cases (list, create, update, delete, reorder) declare `own-resources` (and
+  `whenSellerNotApproved: 'deny'`). Their first step is a fail-closed `AuthorisationCheck` of the
+  definition's `viewKey` (and `shareKey` when visibility `everyone` is touched); a denial or an
+  unavailable check refuses the call before anything is read. The access-declaration contract
+  accepts this, so the fallback of one thin use case per population was not needed. Hassan's review (15 Nov 2026,
+  approve) accepts this pattern; refusals of the list keys are logged by `lists`, and a throwing
+  authorisation port refuses with `access.unavailable`.
+- Reorder takes the full list of the caller's own ids of one list and rewrites the positions in one
+  serializable unit; the app role gets `UPDATE (position)` and no other identity column.
+- Planned for the seller PR, additive: a `scope: 'store' | 'account'` field on `ListDefinition`
+  (seller Orders is account-scoped and cannot be shared, so it has no `shareKey`); admin
+  definitions stay valid unchanged. Follow-ups: seal the registry after bootstrap; sort the
+  reorder updates by id to give one lock order.
+- The routes are `/lists/admin/saved-filters`; the seller routes and the seller lists' definitions
+  follow in a later PR (the design note lists both).
+- `20261115160000_lists_saved_filters` says position never changes after the insert; since
+  B0-1b it does (reorder). A merged migration is not edited, so this line is the record.
+
 ## Consequences
 
-- A new list needs a definition and no migration; the table's `list_key` CHECK already allows any
+- A new list needs a definition, a key in `LISTS_AUDIT_LIST_KEYS` (a file inside `lists`, with the
+  audit snapshot, because audit enums are closed) and no migration; the table's `list_key` CHECK already allows any
   dotted key.
 - Two modules write to `lists.saved_filters` through one contract; rules of who may rename or share
-  stay in the owning module until B0-1b moves them behind the generic endpoints.
+  stay in the owning module for the old routes; the generic admin routes (B0-1b) hold them in `lists`.
 - The old catalog and ordering tables are dead weight for one release; rolling the migration back
   loses only the filters saved after the copy.
 - A list key is a string both sides must agree on; a typo creates a list nobody opens. The owning

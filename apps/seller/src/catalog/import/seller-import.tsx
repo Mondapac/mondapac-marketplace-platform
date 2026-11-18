@@ -9,7 +9,7 @@ import {
   FileButton,
   Icon,
   RadioGroup,
-  SkeletonRows,
+  FormSkeleton,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -328,7 +328,16 @@ export function SellerImport({
           <span role="alert">{t(`action-error.${actionFailed}`)}</span>
         </Banner>
       )}
-      {phase.kind === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
+      {phase.kind === 'loading' ? (
+        <FormSkeleton
+          label={t('loading')}
+          slowLabel={tl('slow')}
+          sections={[
+            { fields: 2, description: true },
+            { fields: 2, description: true },
+          ]}
+        />
+      ) : null}
       {phase.kind === 'broken' ? (
         <Banner tone="critical">
           <div className="flex flex-wrap items-center justify-between gap-3">

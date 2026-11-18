@@ -295,6 +295,38 @@ describe.each([['AU'], ['ZZ']] as const)('security alerts in market %s', (code) 
       expect(ruleAlerts('money-movement-alert')).toHaveLength(2);
     });
 
+    it('keeps one bulk-reveal alert per admin however many reveals record the event (Hassan L1)', async () => {
+      const revealer = id<'Account'>(0xc7);
+      const reveal = (reveals: number, minutesAgo: number, targetId = revealer) =>
+        event('customers.pii-reveal.bulk', {
+          targetId,
+          payload: { reveals: String(reveals) },
+          minutesAgo,
+        });
+      // The write at the alert count failed, so the first event is the next reveal's.
+      reveal(41, 3);
+      reveal(42, 2);
+      await evaluate();
+      expect(ruleAlerts('admin-bulk-pii-reveal')).toEqual([
+        expect.objectContaining({
+          severity: 's2',
+          state: 'open',
+          keyType: 'account',
+          keyValue: revealer,
+          eventCount: 2,
+        }),
+      ]);
+
+      clock.advance(Temporal.Duration.from({ minutes: 1 }));
+      reveal(43, 0.5);
+      reveal(40, 0.5, id<'Account'>(0xc8));
+      await evaluate();
+      const alertsOf = (key: string) =>
+        ruleAlerts('admin-bulk-pii-reveal').filter((alert) => alert.keyValue === key);
+      expect(alertsOf(revealer)).toEqual([expect.objectContaining({ eventCount: 3 })]);
+      expect(alertsOf(id<'Account'>(0xc8))).toHaveLength(1);
+    });
+
     it('logs a failing rule and runs the others', async () => {
       failedSignIns(10);
       const broken = { ...SECURITY_RULES[2]!, code: 'broken' } as (typeof SECURITY_RULES)[number];

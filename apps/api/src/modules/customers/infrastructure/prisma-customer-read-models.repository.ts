@@ -57,6 +57,17 @@ export class PrismaCustomerReadModelRepository implements CustomerReadModelRepos
     return count > 0;
   }
 
+  async signedUpAtOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+  ): Promise<Temporal.Instant | null> {
+    const row = await this.prisma.tx(market).customersCustomerDirectory.findFirst({
+      where: { marketId: market.marketId, accountId },
+      select: { signedUpAt: true },
+    });
+    return row === null ? null : Temporal.Instant.fromEpochMilliseconds(row.signedUpAt.getTime());
+  }
+
   async ensureStats(
     market: MarketContext,
     accountId: Id<'Account'>,

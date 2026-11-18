@@ -14,10 +14,27 @@ export type CommissionPayoutsFailure =
    */
   | { readonly code: 'commission-payouts.terms-unavailable' };
 
-/** The rate in force for a seller now: its own rate if an admin set one, else the Market's. */
+/**
+ * Why a line carries its rate: `standard` (the rate in force) or `exclusive` (the lower rate for
+ * the seller's exclusive customer, customers phase 4b).
+ */
+export type CommissionRateReason = 'standard' | 'exclusive';
+
+/**
+ * The rate in force for a seller now: its own rate if an admin set one, else the Market's; for the
+ * seller whose exclusive customer the buyer is, the Market's lower rate on top (`reason`).
+ */
 export interface CommissionRate {
   readonly rateBps: number;
   readonly source: 'seller' | 'market';
+  readonly reason: CommissionRateReason;
+}
+
+/** The buyer's exclusive seller, as checkout read it from customers (customers phase 4b). */
+export interface ExclusiveBuyer {
+  readonly sellerId: Id<'Seller'>;
+  /** When the buyer joined the seller (its attribution). */
+  readonly since: Temporal.Instant;
 }
 
 /** The rate of every requested seller (each requested seller is present). */
@@ -134,6 +151,7 @@ export interface CommissionPayoutsFacade {
   commissionRates(
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
+    exclusive?: ExclusiveBuyer | null,
   ): Promise<Result<CommissionRateMap, CommissionPayoutsFailure>>;
 
   /**

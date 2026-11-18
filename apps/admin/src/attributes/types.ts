@@ -17,6 +17,8 @@ export const PAGE_SIZE = 50;
 
 /** What a write answers (attributes A2): enough to read the attribute again. */
 export interface AttributeWrite {
+  /** The review a save opened (Admin Inbox > System requests); absent or null when none. */
+  readonly request?: { readonly id: string; readonly number: number } | null;
   readonly attribute: {
     readonly id: string;
     readonly code: string;
@@ -146,6 +148,8 @@ export interface AttributeDisplay {
 }
 
 export interface AttributeDetail extends AttributeSummary {
+  /** Whether a save is reviewed here (Admin Inbox > System requests): the form then asks for a note. */
+  readonly review?: { readonly reviewed: boolean; readonly risk: string };
   readonly createdByKind: 'seed' | 'admin';
   readonly createdAt: string;
   readonly version: number;

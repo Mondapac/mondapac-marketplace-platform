@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, EmptyState, LoadError, SkeletonRows, Tabs } from '@mondapac/ui';
+import { Badge, Banner, EmptyState, LoadError, Tabs, DetailSkeleton } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -90,7 +90,9 @@ export function CategoryDetails({
     void fetchDetail();
   }, [fetchDetail]);
 
-  if (load === 'loading') return <SkeletonRows label={t('details.loading')} rows={4} />;
+  if (load === 'loading') {
+    return <DetailSkeleton label={t('details.loading')} slowLabel={tl('slow')} rows={4} />;
+  }
   if (load === 'missing') return <EmptyState icon="layout" title={t('details.missing')} />;
   if (load === 'failed' || body === null) {
     return (
@@ -315,7 +317,17 @@ function ProductsTab({ body }: { readonly body: DetailBody }) {
   }, [fetchImpact]);
 
   const count = useCount(impact?.complete ?? true);
-  if (load === 'loading') return <SkeletonRows label={t('details.loading')} rows={3} />;
+  if (load === 'loading') {
+    return (
+      <DetailSkeleton
+        label={t('details.loading')}
+        slowLabel={tl('slow')}
+        rows={6}
+        title={false}
+        framed={false}
+      />
+    );
+  }
   if (load === 'failed' || impact === null) {
     return (
       <LoadError
