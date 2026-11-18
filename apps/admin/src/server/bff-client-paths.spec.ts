@@ -38,6 +38,9 @@ const files = [
   ...readdirSync(path.join(src, 'orders'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'orders', name)),
+  ...readdirSync(path.join(src, 'customers'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'customers', name)),
   // The helper the three Sales lists share (their saved filters).
   ...readdirSync(path.join(src, 'sales'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
@@ -141,6 +144,15 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'POST customers/admin/buyers/:id/deletion-requests',
         'GET settings/admin/market-settings',
         'PUT settings/admin/market-settings',
+        'POST customers/admin/list',
+        'GET customers/admin/saved-filters',
+        'POST customers/admin/saved-filters',
+        'PUT customers/admin/saved-filters/:id',
+        'DELETE customers/admin/saved-filters/:id',
+        'GET customers/admin/customers/:id',
+        'POST customers/admin/customers/:id/tab-opened',
+        'POST identity/admin/customers/:id/disable',
+        'POST identity/admin/customers/:id/enable',
       ]),
     );
   });

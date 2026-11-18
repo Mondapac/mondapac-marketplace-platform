@@ -61,7 +61,7 @@ const ACTIONS = [
     anyOf: ['identity.platform-role.view', 'identity.platform-role.create'],
   },
   { id: 'without-owner', href: '/sellers/without-owner', anyOf: ['identity.seller-access.view'] },
-  { id: 'find-customer', href: '/customers', anyOf: ['identity.customer-account.view'] },
+  { id: 'find-customer', href: '/customers', anyOf: ['customers.customers.view'] },
 ] as const;
 
 function Time({ iso }: { readonly iso: string | null }) {

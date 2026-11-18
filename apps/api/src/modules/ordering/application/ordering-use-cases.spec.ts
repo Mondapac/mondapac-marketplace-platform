@@ -75,6 +75,10 @@ import { BookReadyCarrierDelivery } from './use-cases/book-ready-carrier-deliver
 import { MyDeliveredSellerOrders } from './use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './use-cases/seller-order-customer-names.use-case';
 import { SellerViewOrderDocument } from './use-cases/seller-view-order-document.use-case';
+import {
+  MAX_BULK_DOCUMENTS,
+  SellerViewOrderDocuments,
+} from './use-cases/seller-view-order-documents.use-case';
 import { OrderPaymentRefQuery } from './use-cases/order-payment-ref.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { ViewOrderDocument } from './use-cases/view-order-document.use-case';
@@ -4597,6 +4601,54 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         err({ code: 'ordering.seller-order-not-found' }),
       );
       expect((await ofSeller(customer, sellerOrderA)).ok).toBe(false);
+    });
+
+    describe('bulk packing slips', () => {
+      const bulk = (context: CallContext, sellerOrderIds: unknown) =>
+        new SellerViewOrderDocuments(gate, deps).execute(context, { sellerOrderIds });
+
+      it('gives the own paid parts, hides foreign, unpaid and unknown ids alike, drops repeats', async () => {
+        const paid = await placed();
+        await confirm(paid.id);
+        const unpaid = await placed();
+        const mineA = sellerOrderOf(paid.id, SELLER_A);
+        const mineB = sellerOrderOf(paid.id, SELLER_B);
+        const unpaidA = sellerOrderOf(unpaid.id, SELLER_A);
+        const unknown = id<'SellerOrder'>(0xdead);
+        const result = await bulk(sellerA, [mineA, mineB, unpaidA, unknown, mineA]);
+        if (!result.ok) throw new Error(result.error.code);
+        expect(result.value.documents.map((d) => d.sellerOrderId)).toEqual([mineA]);
+        expect(result.value.documents[0]!.parts.map((p) => p.sellerId)).toEqual([SELLER_A]);
+        expect(result.value.unavailable).toEqual([mineB, unpaidA, unknown]);
+      });
+
+      it('refuses an empty list, more than the cap, a bad id and a non-array', async () => {
+        const failed = { ok: false, error: { code: 'validation.failed' } };
+        expect(await bulk(sellerA, [])).toMatchObject(failed);
+        expect(await bulk(sellerA, undefined)).toMatchObject(failed);
+        expect(await bulk(sellerA, 'x')).toMatchObject(failed);
+        expect(await bulk(sellerA, ['not-an-id'])).toMatchObject(failed);
+        const many = Array.from({ length: MAX_BULK_DOCUMENTS + 1 }, (_, i) =>
+          id<'SellerOrder'>(0x1000 + i),
+        );
+        expect(await bulk(sellerA, many)).toMatchObject(failed);
+      });
+
+      it('refuses a customer and fails closed while numbered invoices are on', async () => {
+        const order = await placed();
+        await confirm(order.id);
+        const mine = sellerOrderOf(order.id, SELLER_A);
+        expect((await bulk(customer, [mine])).ok).toBe(false);
+        class InvoicesOn extends ConfigOrderingPolicy {
+          override invoicesEnabled(): boolean {
+            return true;
+          }
+        }
+        deps = { ...deps, policy: new InvoicesOn(markets, testAreas) };
+        expect(await bulk(sellerA, [mine])).toEqual(
+          err({ code: 'ordering.invoice-numbering-unavailable' }),
+        );
+      });
     });
 
     it('fails closed while numbered tax invoices are switched on but not built', async () => {
