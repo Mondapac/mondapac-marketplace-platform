@@ -19,4 +19,14 @@ export class FacadePublishedStores implements PublishedStores {
       return err({ code: 'engagement.unavailable' as const });
     }
   }
+
+  async cardsOf(...[context, sellerIds]: Parameters<PublishedStores['cardsOf']>) {
+    if (sellerIds.length === 0) return ok(new Map());
+    try {
+      const read = await this.sellers.publishedStoreCards(context, sellerIds);
+      return read.ok ? ok(read.value) : err({ code: 'engagement.unavailable' as const });
+    } catch {
+      return err({ code: 'engagement.unavailable' as const });
+    }
+  }
 }
