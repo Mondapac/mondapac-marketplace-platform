@@ -33,33 +33,36 @@ export function useOrderRowActions(
 
   return (row) => {
     const page = `/orders/${encodeURIComponent(row.orderId)}`;
+    // From a customer's tab every way into the order keeps the way back to that tab.
+    const into = orderHref(row.orderId, from);
+    const withQuery = (extra: string) => `${into}${into.includes('?') ? '&' : '?'}${extra}`;
     return ROW_ACTIONS.filter((action) => row.actions.includes(action)).map((action): MenuItem => {
       switch (action) {
         case 'open':
           return {
             id: action,
             label: t('open'),
-            onSelect: () => router.push(orderHref(row.orderId, from)),
+            onSelect: () => router.push(into),
           };
         case 'print-document':
           return { id: action, label: t('print'), onSelect: () => router.push(`${page}/document`) };
         case 'copy-number':
           return { id: action, label: t('copy-number'), onSelect: () => void copy(row.orderId) };
         case 'add-note':
-          return { id: action, label: t('add-note'), onSelect: () => router.push(`${page}#notes`) };
+          return { id: action, label: t('add-note'), onSelect: () => router.push(`${into}#notes`) };
         case 'refund':
           return {
             id: action,
             label: t('refund'),
             tone: 'critical',
-            onSelect: () => router.push(`${page}#seller-orders`),
+            onSelect: () => router.push(`${into}#seller-orders`),
           };
         case 'cancel':
           return {
             id: action,
             label: t('cancel', { id: shortId(row.orderId) }),
             tone: 'critical',
-            onSelect: () => router.push(`${page}?do=cancel`),
+            onSelect: () => router.push(withQuery('do=cancel')),
           };
       }
     });

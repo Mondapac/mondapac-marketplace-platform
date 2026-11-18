@@ -648,6 +648,41 @@ export const SellerAccessReappliedAudit = defineAuditAction({
   },
 });
 
+/**
+ * An admin asked to change a customer's sign-in email (customers admin email change). Target: the
+ * customer's account. The admin is the row's actor; `stepUpSessionId` is the admin session whose
+ * fresh two-step proof was spent in the same unit (Hassan R4, R10). Never an address.
+ */
+export const AccountEmailChangeRequestedAudit = defineAuditAction({
+  action: 'identity.account.email-change-requested',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { stepUpSessionId: auditField.id() },
+});
+
+/** An admin cancelled a pending email change (as {@link AccountEmailChangeRequestedAudit}). */
+export const AccountEmailChangeCancelledAudit = defineAuditAction({
+  action: 'identity.account.email-change-cancelled',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { stepUpSessionId: auditField.id() },
+});
+
+/**
+ * The customer confirmed the change with the link mailed to the new address and the account's
+ * password: the address was swapped, every session ended (`revokedSessions`) and the account's
+ * other links stopped working, in the same unit. Target: the account. `ANONYMOUS`: the link and
+ * the password bound the account, named in `boundSubjectId`; the attempt is also a sign-in record
+ * (outcome `email-changed`), and a refused one is a sign-in record with its code (Hassan R10).
+ * Never an address.
+ */
+export const AccountEmailChangedAudit = defineAuditAction({
+  action: 'identity.account.email-changed',
+  targetType: 'identity.account',
+  actors: ['anonymous'],
+  after: { boundSubjectId: auditField.id(), revokedSessions: auditField.integer() },
+});
+
 /** Every audited action of identity, for its module's registration. */
 /**
  * An admin changed a customer account's display name from the customer page (customers management
@@ -730,6 +765,9 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   OtherSessionsSignedOutAudit,
   AccountErasedAudit,
   AccountSessionsEndedForErasureAudit,
+  AccountEmailChangeRequestedAudit,
+  AccountEmailChangeCancelledAudit,
+  AccountEmailChangedAudit,
   CustomerRenamedByAdminAudit,
   CustomerSignInAddressRevealedAudit,
   CustomerSessionsEndedByAdminAudit,

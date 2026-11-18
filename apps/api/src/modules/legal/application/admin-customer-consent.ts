@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import { isPlatformAdminActor } from '../../../platform/authz';
 import type {
   AdminConsentChange,
   AdminConsentHistoryRequest,
@@ -18,16 +19,6 @@ type Dependencies = Pick<LegalDependencies, 'unitOfWork' | 'consents'>;
 /** The largest page an admin's read answers (an export reads 10,000 and one more). */
 const MAX_WINDOW = 10_001;
 
-function isPlatformAdmin(context: CallContext): boolean {
-  const { actor } = context;
-  return (
-    actor.kind === 'authenticated' &&
-    actor.population === 'admin' &&
-    actor.sellerId === null &&
-    !(Object.hasOwn(actor, 'actingAs') && (actor as { actingAs?: unknown }).actingAs != null)
-  );
-}
-
 const isChannel = (value: string): value is MarketingChannel =>
   (MARKETING_CHANNELS as readonly string[]).includes(value);
 
@@ -36,7 +27,7 @@ export async function readAdminCustomerConsent(
   context: CallContext,
   accountId: Id<'Account'>,
 ): Promise<Result<{ readonly channels: readonly AdminConsentState[] }, CustomerConsentFailure>> {
-  if (!isPlatformAdmin(context)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   const read = await deps.unitOfWork.run(
     context.market,
     async () => {
@@ -68,7 +59,7 @@ export async function readAdminConsentHistory(
     CustomerConsentFailure
   >
 > {
-  if (!isPlatformAdmin(context)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   // A channel legal does not know has no changes; it never widens the read.
   const channels = request.channels === null ? null : request.channels.filter(isChannel);
   const window = {

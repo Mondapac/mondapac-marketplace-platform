@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import { isPlatformAdminActor } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type {
   AdminCustomerCart,
@@ -27,22 +28,12 @@ export interface AdminCartDependencies {
  */
 export const SAVED_READ_CAP = MAX_SAVED_ITEMS * 2;
 
-export function isPlatformAdmin(context: CallContext): boolean {
-  const { actor } = context;
-  return (
-    actor.kind === 'authenticated' &&
-    actor.population === 'admin' &&
-    actor.sellerId === null &&
-    !(Object.hasOwn(actor, 'actingAs') && (actor as { actingAs?: unknown }).actingAs != null)
-  );
-}
-
 export async function readAdminCustomerCart(
   deps: AdminCartDependencies,
   context: CallContext,
   accountId: Id<'Account'>,
 ): Promise<Result<AdminCustomerCart, CartAdminFailure>> {
-  if (!isPlatformAdmin(context)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   const read = await deps.unitOfWork.run(
     context.market,
     async () => {
@@ -85,7 +76,7 @@ export async function readAdminSavedItems(
     CartAdminFailure
   >
 > {
-  if (!isPlatformAdmin(context)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   const read = await deps.unitOfWork.run(
     context.market,
     async () => ok(await deps.saved.list(context.market, request.accountId, SAVED_READ_CAP)),

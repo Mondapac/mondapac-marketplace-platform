@@ -12,6 +12,13 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import type { ApiFailure } from '../api/client.ts';
 import { useStepUpProof } from '../step-up/step-up.tsx';
+import { GroupMembersDialog, type MembersAction } from './group-members-dialog.tsx';
+import {
+  GROUPS_MANAGE,
+  MEMBER_IDS_MAX,
+  type CustomerGroup,
+  type GroupRef,
+} from './groups-types.ts';
 import {
   EXPORT_PERMISSION,
   SELECT_MAX,
@@ -36,6 +43,7 @@ const EXPORT_COLUMN: Readonly<Record<OptionalColumn, readonly string[]>> = {
   'last-order': ['last-order'],
   verified: ['verified'],
   refunds: ['refunds'],
+  groups: ['groups'],
 };
 
 export interface CustomersSelection {
@@ -79,24 +87,51 @@ export function CustomersBulk({
   columns,
   permissionKeys,
   csrfToken,
+  groups = null,
+  groupsFailed = false,
+  onRetryGroups,
+  group = null,
   onSelectAll,
   onClear,
+  onMembersChanged = () => undefined,
 }: {
   readonly selection: CustomersSelection;
   readonly query: Query;
   readonly columns: readonly OptionalColumn[];
   readonly permissionKeys: readonly string[];
   readonly csrfToken: string;
+  /** The Market's groups for Add to group… and Remove from group… (phase 2a). */
+  readonly groups?: readonly GroupRef[] | null;
+  /** The groups could not be read (the dialog offers Retry). */
+  readonly groupsFailed?: boolean;
+  readonly onRetryGroups?: () => void;
+  /** A group page's own group: Remove from this group only. */
+  readonly group?: CustomerGroup | null;
   readonly onSelectAll: () => void;
   readonly onClear: () => void;
+  readonly onMembersChanged?: () => void;
 }) {
   const t = useTranslations('customers.list.bulk');
   const prove = useStepUpProof();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [members, setMembers] = useState<MembersAction | null>(null);
   const count = selection.allMatching ? selection.total : selection.ids.length;
+  const canExport = permissionKeys.includes(EXPORT_PERMISSION);
+  const canManage = permissionKeys.includes(GROUPS_MANAGE);
 
-  if (!permissionKeys.includes(EXPORT_PERMISSION)) return null;
+  if (!canExport && !canManage) return null;
+
+  const openMembers = (action: MembersAction) => {
+    // More ticked rows than the API takes would change every customer the filter matches.
+    if (!selection.allMatching && selection.ids.length > MEMBER_IDS_MAX) {
+      toast.error(t('error.too-many-ticked-group', { max: MEMBER_IDS_MAX }), {
+        id: 'customers-group-members',
+      });
+      return;
+    }
+    setMembers(action);
+  };
 
   async function exportFile(format: ExportFormat) {
     if (!selection.allMatching && selection.ids.length > EXPORT_IDS_MAX) {
@@ -193,13 +228,39 @@ export function CustomersBulk({
   }
 
   const items: ActionMenuItem[] = [
-    {
-      id: 'export',
-      label: t('export'),
-      description: t('export-help'),
-      icon: 'download',
-      onSelect: () => setOpen(true),
-    },
+    ...(canManage && group === null
+      ? [
+          {
+            id: 'add-to-group',
+            label: t('add-to-group'),
+            description: t('add-to-group-help'),
+            icon: 'plus' as const,
+            onSelect: () => openMembers('add'),
+          },
+        ]
+      : []),
+    ...(canManage
+      ? [
+          {
+            id: 'remove-from-group',
+            label: group === null ? t('remove-from-group') : t('remove-from-this-group'),
+            description: t('remove-from-group-help'),
+            icon: 'x' as const,
+            onSelect: () => openMembers('remove'),
+          },
+        ]
+      : []),
+    ...(canExport
+      ? [
+          {
+            id: 'export',
+            label: t('export'),
+            description: t('export-help'),
+            icon: 'download' as const,
+            onSelect: () => setOpen(true),
+          },
+        ]
+      : []),
   ];
   const links = [
     // Select all is offered up to the export's own cap; above it the filter has to be narrowed.
@@ -243,6 +304,22 @@ export function CustomersBulk({
           setOpen(false);
           void exportFile(format);
         }}
+      />
+      <GroupMembersDialog
+        action={members}
+        count={count}
+        groups={groups}
+        groupsFailed={groupsFailed}
+        {...(onRetryGroups === undefined ? {} : { onRetryGroups })}
+        fixedGroup={
+          group === null
+            ? null
+            : { groupId: group.groupId, name: group.name, archived: group.archived }
+        }
+        target={selection.allMatching ? { selector: selectorOf(query) } : { ids: selection.ids }}
+        csrfToken={csrfToken}
+        onClose={() => setMembers(null)}
+        onDone={onMembersChanged}
       />
     </>
   );

@@ -312,6 +312,13 @@ Owned by `customers` (the buyer's delivery address book). `addressBookLimit` (re
 postcode must match (same grammar as the `sellers` address format; AU four digits); `regions`, the
 closed list of regions (AU states and territories), or an empty list for a Market whose addresses
 carry no region. Without the section the address book routes answer `customers.unavailable` (503).
+`adminActionLimits` (required; security review of #969, L2/L3): per admin account and fixed hour,
+`passwordResetsPerHour` (AU 20) "send password reset" actions on the customer page and
+`piiRevealsPerHour` (AU 60) reveals of a customer's personal data, the sign-in address and the
+delivery address sharing one count; a further attempt answers 429 `request.throttled`.
+`piiRevealAlertAt` (AU 40, at most `piiRevealsPerHour`) is the reveal count from which each reveal
+records a security event, kept as one live security-centre alert per admin (`admin-bulk-pii-reveal`). Each 1 to 1000. Without the
+section those admin actions answer `access.unavailable` (503).
 
 ## `search` section (optional)
 

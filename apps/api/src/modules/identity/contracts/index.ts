@@ -6,6 +6,9 @@
 export {
   AccountDisabled,
   AccountDisplayNameChanged,
+  // Consumed by customers' read model and timeline (admin email change).
+  AccountEmailChanged,
+  AccountEmailChangeRequested,
   AccountEmailVerified,
   AccountEnabled,
   CustomerAccountRegistered,
@@ -30,6 +33,9 @@ export {
   type CustomerAccountRef,
   type CustomerAccountSummary,
   type CustomerDirectoryRecord,
+  type CustomerEmailChangeCancelFailure,
+  type CustomerEmailChangeFailure,
+  type CustomerPendingEmailChange,
   type CustomerShortName,
   type IdentityFacade,
   type IdentityValidationFailed,

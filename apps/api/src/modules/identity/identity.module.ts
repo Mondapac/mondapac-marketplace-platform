@@ -48,7 +48,11 @@ import {
 } from './application/access/session-authenticator';
 import { ACCESS_DECISION_REPOSITORY } from './application/ports/access-decision.repository';
 import { ACCESS_REVIEWERS } from './application/ports/access-reviewers';
-import { ACCOUNT_REPOSITORY, type AccountRepository } from './application/ports/account.repository';
+import {
+  ACCOUNT_REPOSITORY,
+  EMAIL_CHANGE_STORE,
+  type AccountRepository,
+} from './application/ports/account.repository';
 import { COMMON_PASSWORD_LIST } from './application/ports/common-password-list';
 import { IDENTITY_MAIL_COMPOSER } from './application/ports/identity-mails';
 import { IDENTITY_MARKET_POLICY } from './application/ports/identity-market-policy';
@@ -179,6 +183,13 @@ import { ListRegisteredSellers } from './application/use-cases/list-registered-s
 import { ContactEmailOf } from './application/use-cases/contact-email-of.use-case';
 import { OwnOwnerEmail } from './application/use-cases/own-owner-email.use-case';
 import { CustomerAccountOf } from './application/use-cases/customer-account-of.use-case';
+import { AdminRequestCustomerEmailChange } from './application/use-cases/admin-request-customer-email-change.use-case';
+import { AdminCancelCustomerEmailChange } from './application/use-cases/admin-cancel-customer-email-change.use-case';
+import { ConfirmCustomerEmailChange } from './application/use-cases/confirm-customer-email-change.use-case';
+import { CustomerPendingEmailOf } from './application/use-cases/customer-pending-email-of.use-case';
+import { CancelCustomerEmailChangeForDeletion } from './application/use-cases/cancel-customer-email-change-for-deletion.use-case';
+import { SendEmailChangeRequestedMail } from './application/use-cases/send-email-change-requested-mail.use-case';
+import { SendEmailChangedMail } from './application/use-cases/send-email-changed-mail.use-case';
 import { SearchCustomerAccounts } from './application/use-cases/search-customer-accounts.use-case';
 import { CustomerAccountSummaries } from './application/use-cases/customer-account-summaries.use-case';
 import { CustomerShortNames } from './application/use-cases/customer-short-names.use-case';
@@ -236,7 +247,10 @@ import { IDENTITY_PERMISSIONS } from './contracts/permissions';
 import { SELLER_ACCESS_CONTRACT } from './contracts/seller-access.contract';
 import { IDENTITY_AUDIT_ACTIONS } from './domain/audit';
 import { IDENTITY_EVENTS } from './domain/events';
-import { accountRepositoryProvider } from './infrastructure/account-repository.provider';
+import {
+  accountRepositoryProvider,
+  emailChangeStoreProvider,
+} from './infrastructure/account-repository.provider';
 import { linkProviders } from './infrastructure/links/link-providers';
 import { MarketConfigIdentityPolicy } from './infrastructure/market-config-identity-policy';
 import { Argon2idPasswordHasher } from './infrastructure/passwords/argon2id-password-hasher';
@@ -266,6 +280,7 @@ import { AdminSessionController } from './presentation/admin-session.controller'
 import { AdminSellersController } from './presentation/admin-sellers.controller';
 import { AdminTeamController } from './presentation/admin-team.controller';
 import { CustomerEmailVerificationController } from './presentation/customer-email-verification.controller';
+import { CustomerEmailChangeController } from './presentation/customer-email-change.controller';
 import { CustomerPasswordController } from './presentation/customer-password.controller';
 import { CustomerProfileController } from './presentation/customer-profile.controller';
 import { CustomerSessionController } from './presentation/customer-session.controller';
@@ -334,6 +349,7 @@ const PORT = {
   signInProviders: SIGN_IN_PROVIDERS_PORT,
   flowSecrets: SIGN_IN_PROVIDER_FLOW_SECRETS,
   externalIdentities: EXTERNAL_IDENTITY_REPOSITORY,
+  emailChanges: EMAIL_CHANGE_STORE,
   review: SYSTEM_REQUEST_RECORDER,
 } as const satisfies Record<string, InjectionToken>;
 
@@ -518,6 +534,7 @@ function useCaseProvider<D, U>(
     CustomerSessionController,
     CustomerSocialSignInController,
     CustomerEmailVerificationController,
+    CustomerEmailChangeController,
     SellerSignUpController,
     SellerSessionController,
     SellerSecondFactorController,
@@ -552,6 +569,7 @@ function useCaseProvider<D, U>(
       useFactory: (markets: MarketRegistry) => new MarketConfigIdentityPolicy(markets),
     },
     accountRepositoryProvider,
+    emailChangeStoreProvider,
     ...sessionProviders,
     ...linkProviders,
     ...sellerProviders,
@@ -692,6 +710,84 @@ function useCaseProvider<D, U>(
       links: true,
       policy: true,
       clock: true,
+      emailChanges: true,
+    }),
+    // Customers admin email change (design note of 16 Nov 2026, Mohammad's and Hassan's reviews).
+    useCaseProvider(AdminRequestCustomerEmailChange, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+      links: true,
+      throttles: true,
+      keys: true,
+      targets: true,
+      policy: true,
+      stepUp: true,
+      stepUpActions: true,
+      factors: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AdminCancelCustomerEmailChange, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+      links: true,
+      stepUp: true,
+      stepUpActions: true,
+      factors: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(CancelCustomerEmailChangeForDeletion, {
+      unitOfWork: true,
+      accounts: true,
+      links: true,
+      clock: true,
+    }),
+    useCaseProvider(ConfirmCustomerEmailChange, {
+      unitOfWork: true,
+      accounts: true,
+      sessions: true,
+      throttles: true,
+      records: true,
+      securityEvents: true,
+      hasher: true,
+      tokens: true,
+      keys: true,
+      policy: true,
+      clock: true,
+      ids: true,
+      links: true,
+      outbox: true,
+      linkTokens: true,
+      audit: true,
+      emailChanges: true,
+    }),
+    useCaseProvider(CustomerPendingEmailOf, {
+      unitOfWork: true,
+      accounts: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(SendEmailChangeRequestedMail, {
+      unitOfWork: true,
+      accounts: true,
+      composer: true,
+      transport: true,
+      policy: true,
+    }),
+    useCaseProvider(SendEmailChangedMail, {
+      unitOfWork: true,
+      accounts: true,
+      composer: true,
+      transport: true,
+      policy: true,
+      emailChanges: true,
     }),
     useCaseProvider(ConfirmCustomerEmail, {
       unitOfWork: true,
@@ -1931,6 +2027,10 @@ function useCaseProvider<D, U>(
         CustomerDirectoryPage,
         OwnAccountTiedToSeller,
         EraseCustomerAccount,
+        AdminRequestCustomerEmailChange,
+        AdminCancelCustomerEmailChange,
+        CustomerPendingEmailOf,
+        CancelCustomerEmailChangeForDeletion,
         AdminRenameCustomer,
         AdminCustomerSignIns,
         AdminCustomerSessions,
@@ -1960,6 +2060,10 @@ function useCaseProvider<D, U>(
         customerDirectoryPage: CustomerDirectoryPage,
         ownAccountTiedToSeller: OwnAccountTiedToSeller,
         eraseCustomerAccount: EraseCustomerAccount,
+        adminRequestCustomerEmailChange: AdminRequestCustomerEmailChange,
+        adminCancelCustomerEmailChange: AdminCancelCustomerEmailChange,
+        customerPendingEmailOf: CustomerPendingEmailOf,
+        cancelCustomerEmailChangeForDeletion: CancelCustomerEmailChangeForDeletion,
         adminRenameCustomer: AdminRenameCustomer,
         adminCustomerSignIns: AdminCustomerSignIns,
         adminCustomerSessions: AdminCustomerSessions,
@@ -1989,6 +2093,10 @@ function useCaseProvider<D, U>(
           customerDirectoryPage,
           ownAccountTiedToSeller,
           eraseCustomerAccount,
+          adminRequestCustomerEmailChange,
+          adminCancelCustomerEmailChange,
+          customerPendingEmailOf,
+          cancelCustomerEmailChangeForDeletion,
           adminRenameCustomer,
           adminCustomerSignIns,
           adminCustomerSessions,
@@ -2065,6 +2173,8 @@ function useCaseProvider<D, U>(
         SendSecondFactorMail,
         SendSellerAccessMail,
         SendOtherSessionsSignedOutMail,
+        SendEmailChangeRequestedMail,
+        SendEmailChangedMail,
       ],
       (
         sendLinkMail: SendLinkMail,
@@ -2075,6 +2185,8 @@ function useCaseProvider<D, U>(
         sendSecondFactorMail: SendSecondFactorMail,
         sendSellerAccessMail: SendSellerAccessMail,
         sendOtherSessionsSignedOutMail: SendOtherSessionsSignedOutMail,
+        sendEmailChangeRequestedMail: SendEmailChangeRequestedMail,
+        sendEmailChangedMail: SendEmailChangedMail,
       ) =>
         identityMailSubscriptions(
           sendLinkMail,
@@ -2085,6 +2197,8 @@ function useCaseProvider<D, U>(
           sendSecondFactorMail,
           sendSellerAccessMail,
           sendOtherSessionsSignedOutMail,
+          sendEmailChangeRequestedMail,
+          sendEmailChangedMail,
         ),
     ),
   ],
