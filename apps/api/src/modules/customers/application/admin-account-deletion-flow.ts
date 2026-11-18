@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
-import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
+import { err, ok, parseId } from '@mondapac/shared-kernel';
+import type { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import {
   StaleAggregateError,
@@ -12,7 +13,6 @@ import {
   scheduledForRequest,
   type AccountDeletionBlocker,
   type AccountDeletionRequest,
-  type AccountDeletionRequester,
 } from '../domain/account-deletion-request';
 import type { FieldError } from '../domain/account-deletion-settings';
 import { AccountDeletionCancelledByAdmin, AccountDeletionRequestedByAdmin } from '../domain/audit';
@@ -28,7 +28,6 @@ import {
   waitingPeriodInForce,
   type AccountDeletionSettingsFailure,
 } from './account-deletion-settings-flow';
-import type { PendingCursor } from './ports/account-deletion-request.repository';
 
 const logger = new Logger('AdminAccountDeletion');
 
@@ -73,28 +72,6 @@ export type AdminCancelDeletionFailure =
   | { readonly code: 'customers.account-deletion-in-progress' }
   | { readonly code: 'customers.conflict' }
   | StepUpRefusal;
-
-export type AdminListDeletionFailure =
-  | { readonly code: 'access.denied' }
-  | { readonly code: 'validation.failed'; readonly fields: readonly FieldError[] };
-
-/** One row of the pending list: no name, no email, no ticket text. */
-export interface PendingDeletionRequestView {
-  readonly requestId: Id<'AccountDeletionRequest'>;
-  readonly accountId: Id<'Account'>;
-  readonly requestedAt: Temporal.Instant;
-  readonly scheduledFor: Temporal.Instant;
-  readonly status: 'pending';
-  readonly requestedBy: AccountDeletionRequester;
-}
-
-export interface PendingDeletionRequestPage {
-  readonly entries: readonly PendingDeletionRequestView[];
-  readonly nextCursor: string | null;
-}
-
-export const DELETION_LIST_DEFAULT_LIMIT = 20;
-export const DELETION_LIST_MAX_LIMIT = 100;
 
 /** A platform admin on a real admin session: not the system, a seller, a buyer or an acting-as session. */
 function adminActor(context: CallContext): Id<'Account'> | null {
@@ -343,70 +320,4 @@ export async function cancelAccountDeletionForBuyer(
     if (isConflict(error)) return err({ code: 'customers.conflict' });
     throw error;
   }
-}
-
-const encodeCursor = (cursor: PendingCursor): string =>
-  `${cursor.scheduledFor.epochMilliseconds}.${cursor.id}`;
-
-function decodeCursor(value: unknown): PendingCursor | undefined {
-  const match = typeof value === 'string' ? /^([0-9]{1,15})\.([0-9a-f-]{36})$/.exec(value) : null;
-  if (match === null) return undefined;
-  const id = parseId<'AccountDeletionRequest'>(match[2]!);
-  if (!id.ok) return undefined;
-  return {
-    scheduledFor: Temporal.Instant.fromEpochMilliseconds(Number(match[1])),
-    id: id.value,
-  };
-}
-
-/**
- * `GET customers/admin/deletion-requests?status=pending`: the Market's pending requests, the
- * earliest date first, a page at a time. Ids, dates and who asked: no name, email or ticket text.
- */
-export async function listPendingDeletionRequests(
-  deps: AccountDeletionDependencies,
-  context: CallContext,
-  input: { readonly status?: unknown; readonly cursor?: unknown; readonly limit?: unknown },
-): Promise<Result<PendingDeletionRequestPage, AdminListDeletionFailure>> {
-  if (adminActor(context) === null) return err({ code: 'access.denied' });
-  const fields: FieldError[] = [];
-  if ((input?.status ?? 'pending') !== 'pending') fields.push({ path: 'status', code: 'format' });
-  let limit = DELETION_LIST_DEFAULT_LIMIT;
-  if (input?.limit !== undefined) {
-    const value = input.limit;
-    if (
-      typeof value === 'number' &&
-      Number.isSafeInteger(value) &&
-      value >= 1 &&
-      value <= DELETION_LIST_MAX_LIMIT
-    ) {
-      limit = value;
-    } else fields.push({ path: 'limit', code: 'range' });
-  }
-  const after = input?.cursor === undefined ? null : decodeCursor(input.cursor);
-  if (after === undefined) fields.push({ path: 'cursor', code: 'format' });
-  if (fields.length > 0 || after === undefined) return err({ code: 'validation.failed', fields });
-  return deps.unitOfWork.run<PendingDeletionRequestPage, AdminListDeletionFailure>(
-    context.market,
-    async () => {
-      const rows = await deps.requests.listPending(context.market, { after, limit: limit + 1 });
-      const page = rows.slice(0, limit);
-      const last = page[page.length - 1];
-      return ok({
-        entries: page.map((row) => ({
-          requestId: row.id,
-          accountId: row.accountId,
-          requestedAt: row.requestedAt,
-          scheduledFor: row.scheduledFor,
-          status: 'pending' as const,
-          requestedBy: row.requestedBy,
-        })),
-        nextCursor:
-          rows.length > limit && last !== undefined
-            ? encodeCursor({ scheduledFor: last.scheduledFor, id: last.id })
-            : null,
-      });
-    },
-    { readOnly: true },
-  );
 }

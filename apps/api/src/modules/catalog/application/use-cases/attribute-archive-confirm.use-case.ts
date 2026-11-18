@@ -150,6 +150,7 @@ export class AttributeArchiveConfirm extends UseCase<
               status: 'archived',
               relaxationRequestId: requestId,
               requestedByAccountId: request.state.requestedByAccountId,
+              requestId: null,
             },
           }),
         );

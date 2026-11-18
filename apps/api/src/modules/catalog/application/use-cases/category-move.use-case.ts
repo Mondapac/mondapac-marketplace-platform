@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { err } from '@mondapac/shared-kernel';
+import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CATALOG_CATEGORY_TREE_RESTRUCTURE } from '../../contracts/permissions';
@@ -12,20 +12,33 @@ import {
   editorAccountOf,
   invalid,
   versionOf,
-  type CategoryWriteView,
 } from '../categories/category-editor';
 import {
   reasonOf,
   runRestructure,
   type CategoryRestructureDependencies,
   type CategoryRestructureFailure,
+  type CategoryRestructureRouteDependencies,
+  type RestructureOutput,
+  type RestructureSpec,
 } from '../categories/category-restructure';
+import type { EditableCategory } from '../../domain/category-edit';
+import { categoryParentValues } from '../catalogue-actions';
+import {
+  CATEGORY_MOVE_SUBJECT_KIND,
+  catalogueReview,
+  isProposal,
+  noteOr,
+  openCatalogueReview,
+  requestRef,
+  type CatalogueRequestRef,
+} from '../catalogue-review';
 
 export interface CategoryMoveInput {
   readonly [key: string]: unknown;
 }
 
-const KEYS = ['categoryId', 'treeVersion', 'parentId', 'reason'] as const;
+const KEYS = ['categoryId', 'treeVersion', 'parentId', 'reason', 'note'] as const;
 
 /**
  * `platform-category.move` (categories package C4a; catalog design 4.6; plan section 4): an admin
@@ -35,10 +48,15 @@ const KEYS = ['categoryId', 'treeVersion', 'parentId', 'reason'] as const;
  * or 2, certificate rules on the categories that leave the products' paths (C-4), and more tags
  * than `catalog.maxCategoryChangeTags`. Badges under the subtree are checked again (M1). Rule: the
  * protected key `catalog.category-tree.restructure`; refused in an acting-as session.
+ *
+ * It goes live at once and is reviewed after (area catalogue, owner decision of 18 Nov 2026):
+ * where the Market reviews the area it needs a `note` (the reason note when none is given), and a
+ * rejected or withdrawn move is moved back while the category is still under the new parent
+ * (catalogue-structure-reverters.ts).
  */
 export class CategoryMove extends UseCase<
   CategoryMoveInput,
-  { readonly category: CategoryWriteView },
+  RestructureOutput,
   CategoryRestructureFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -50,7 +68,7 @@ export class CategoryMove extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: CategoryRestructureDependencies,
+    private readonly deps: CategoryRestructureRouteDependencies,
   ) {
     super(gate);
   }
@@ -58,7 +76,7 @@ export class CategoryMove extends UseCase<
   protected async handle(
     context: CallContext,
     input: CategoryMoveInput,
-  ): Promise<Result<{ readonly category: CategoryWriteView }, CategoryRestructureFailure>> {
+  ): Promise<Result<RestructureOutput, CategoryRestructureFailure>> {
     const result = await this.#run(context, input);
     this.#logger.log({
       msg: 'catalog.category-move',
@@ -72,7 +90,7 @@ export class CategoryMove extends UseCase<
   async #run(
     context: CallContext,
     input: CategoryMoveInput,
-  ): Promise<Result<{ readonly category: CategoryWriteView }, CategoryRestructureFailure>> {
+  ): Promise<Result<RestructureOutput, CategoryRestructureFailure>> {
     const accountId = editorAccountOf(context);
     if (accountId === null) return err({ code: 'access.denied' });
     const body = closedInput(input, KEYS);
@@ -93,38 +111,96 @@ export class CategoryMove extends UseCase<
     if (!reason.ok) return reason;
     const { market } = context;
     const maxDepth = this.deps.policy.maxCategoryDepth(market);
+    // Its own read-only unit, before the change's (units do not nest).
+    const policy = await catalogueReview(this.deps.review, context);
 
-    return runRestructure(this.deps, context, {
-      accountId,
-      targetId: id.value,
-      treeVersion: treeVersion.value,
-      reason: reason.value,
-      kind: 'move',
-      plan: (nodes, target, read) =>
-        planMove(nodes, target, parentId, maxDepth, read.directProducts),
-      finish: async ({ target, plan, tagsMarked, targetVersion }) => {
-        await this.deps.audit.record(
-          context,
-          PlatformCategoryMovedAudit.entry(target.id, {
-            before: { parentId: target.parentId, level: plan.levelBefore },
-            after: {
-              parentId,
-              level: plan.levelAfter,
-              subtreeSize: plan.affectedIds.length,
-              tagsMarked,
-              reasonGiven: true,
-            },
-          }),
-        );
-        await this.deps.outbox.append(context, [
-          PlatformCategoryMoved.record({
-            aggregateId: target.id,
-            aggregateVersion: targetVersion,
-            occurredAt: this.deps.clock.now(),
-            payload: { categoryId: target.id, checkedIds: plan.retirementCheckIds },
-          }),
-        ]);
-      },
-    });
+    const moved = await runRestructure(
+      this.deps,
+      context,
+      moveSpec(this.deps, context, {
+        accountId,
+        targetId: id.value,
+        parentId,
+        treeVersion: treeVersion.value,
+        reason: reason.value,
+        maxDepth,
+        requestId: null,
+        // The move is live; its review opens in the same unit (a refusal rolls it back).
+        opened: async (target) => {
+          const review = await openCatalogueReview(this.deps.review, context, policy, {
+            subjectKind: CATEGORY_MOVE_SUBJECT_KIND,
+            subjectRef: target.id,
+            before: categoryParentValues(target.parentId),
+            after: categoryParentValues(parentId),
+            note: noteOr(body.value['note'], reason.value),
+            tooLargePath: 'parentId',
+          });
+          return review.ok ? ok(requestRef(review.value)) : err(review.error);
+        },
+      }),
+    );
+    if (!moved.ok) return moved;
+    // A move never waits for approval: it files no proposal.
+    if (isProposal(moved.value)) throw new Error('catalog: a move was proposed');
+    return ok(moved.value);
   }
+}
+
+/**
+ * The move of `targetId` under `parentId` as one restructure (shared by the route and by the
+ * revert of a reviewed move, which moves it back naming the request in `requestId`): the plan, the
+ * audit row and the `platform-category-moved` event; then `opened`, which opens the move's review
+ * (the route) or answers no request (a revert).
+ */
+export function moveSpec(
+  deps: Pick<CategoryRestructureDependencies, 'audit' | 'outbox' | 'clock'>,
+  context: CallContext,
+  move: {
+    readonly accountId: Id<'Account'>;
+    readonly targetId: Id<'Category'>;
+    readonly parentId: Id<'Category'> | null;
+    readonly treeVersion: number;
+    readonly reason: string;
+    readonly maxDepth: number;
+    readonly requestId: Id<'SystemRequest'> | null;
+    readonly opened: (
+      target: EditableCategory,
+    ) => Promise<Result<CatalogueRequestRef, CategoryRestructureFailure>>;
+  },
+): RestructureSpec {
+  const { parentId } = move;
+  return {
+    accountId: move.accountId,
+    targetId: move.targetId,
+    treeVersion: move.treeVersion,
+    reason: move.reason,
+    kind: 'move',
+    plan: (nodes, target, read) =>
+      planMove(nodes, target, parentId, move.maxDepth, read.directProducts),
+    finish: async ({ target, plan, tagsMarked, targetVersion }) => {
+      await deps.audit.record(
+        context,
+        PlatformCategoryMovedAudit.entry(target.id, {
+          before: { parentId: target.parentId, level: plan.levelBefore },
+          after: {
+            parentId,
+            level: plan.levelAfter,
+            subtreeSize: plan.affectedIds.length,
+            tagsMarked,
+            reasonGiven: true,
+            requestId: move.requestId,
+          },
+        }),
+      );
+      await deps.outbox.append(context, [
+        PlatformCategoryMoved.record({
+          aggregateId: target.id,
+          aggregateVersion: targetVersion,
+          occurredAt: deps.clock.now(),
+          payload: { categoryId: target.id, checkedIds: plan.retirementCheckIds },
+        }),
+      ]);
+      return move.opened(target);
+    },
+  };
 }

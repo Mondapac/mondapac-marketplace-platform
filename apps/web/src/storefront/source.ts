@@ -74,6 +74,7 @@ import type {
   StorefrontContent,
   StoreProducts,
   UnavailableProduct,
+  UpcomingCashback,
 } from './types.ts';
 
 /**
@@ -498,6 +499,34 @@ export async function loadAccountOrder(id: string): Promise<AccountOrder | null 
   const path = `orders/${id.toLowerCase()}` as const;
   const [read, labels] = await Promise.all([sessionGet(path), orderLabels()]);
   return read.kind === 'ok' ? accountOrderOf(read.body, labels, shipToLine(read.body)) : null;
+}
+
+/**
+ * The order's cashback that waits for the seller's payout release (customers phase 4c), for the
+ * line "cashback X will be credited on date Y". Display only; an empty list on sample data, for
+ * a page key that is not an order id, and when the read fails (the line is simply not shown).
+ */
+export async function loadUpcomingCashback(id: string): Promise<readonly UpcomingCashback[]> {
+  if (!storefrontIsLive() || !isOrderId(id)) return [];
+  const read = await sessionGet<{
+    cashback: { amountMinor: string; currency: string; creditOn: string | null }[];
+  }>(`promotions/cashback/upcoming?orderId=${id.toLowerCase()}`);
+  if (read.kind !== 'ok' || !Array.isArray(read.body?.cashback)) return [];
+  return read.body.cashback.flatMap((c) => {
+    const amount = Number(c.amountMinor);
+    return /^\d+$/u.test(c.amountMinor) && Number.isSafeInteger(amount) && amount > 0
+      ? [
+          {
+            amount: { amount, currency: c.currency },
+            // The day of the instant, as the order pages show their dates.
+            creditOn:
+              typeof c.creditOn === 'string' && /^\d{4}-\d{2}-\d{2}T/u.test(c.creditOn)
+                ? c.creditOn.slice(0, 10)
+                : null,
+          },
+        ]
+      : [];
+  });
 }
 
 async function orderLabels() {

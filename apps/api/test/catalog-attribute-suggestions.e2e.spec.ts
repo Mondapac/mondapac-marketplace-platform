@@ -477,6 +477,54 @@ describe('value suggestions over HTTP (integration)', () => {
       expect(suggestions.rows.get(suggestionId)!.state.status).toBe('open');
     });
 
+    it('decides several at once: approves with the seller text, skips a stale row, rejects with a reason', async () => {
+      await boot();
+      await seeded(code);
+      const first = waiting();
+      const moderator = adminSession(code, MODERATOR, 1);
+      const bulk = `${QUEUE}/bulk-decide`;
+      const approved = await http()
+        .post(bulk)
+        .set(moderator)
+        .send({
+          action: 'approve',
+          items: [
+            { id: first, version: 1 },
+            { id: id<'AttributeValueSuggestion'>(0xcdfe), version: 1 },
+          ],
+        })
+        .expect(200);
+      expect(approved.body).toMatchObject({
+        action: 'approve',
+        counts: { done: 1, skipped: 1, failed: 0 },
+      });
+      expect(suggestions.rows.get(first)!.state.status).toBe('approved');
+      const second = waiting('Jumbo');
+      const rejected = await http()
+        .post(bulk)
+        .set(moderator)
+        .send({
+          action: 'reject',
+          reason: 'Not a size we sell.',
+          items: [
+            { id: second, version: 9 },
+            { id: second, version: 1 },
+          ],
+        })
+        .expect(400);
+      expect(rejected.body).toMatchObject({ code: 'validation.failed' });
+      const done = await http()
+        .post(bulk)
+        .set(moderator)
+        .send({
+          action: 'reject',
+          reason: 'Not a size we sell.',
+          items: [{ id: second, version: 1 }],
+        })
+        .expect(200);
+      expect(done.body).toMatchObject({ counts: { done: 1, skipped: 0, failed: 0 } });
+    });
+
     it('maps to an existing value and rejects with a reason', async () => {
       await boot();
       await seeded(code);

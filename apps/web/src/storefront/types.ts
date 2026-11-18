@@ -1016,3 +1016,13 @@ export interface BrandPage {
   readonly products: StoreProducts;
   readonly all: boolean;
 }
+
+/**
+ * Cashback an order earned that is not in the wallet yet (customers phase 4c): display only, never
+ * part of a balance. `creditOn` is the day (YYYY-MM-DD) it is expected (the seller's payout
+ * release), or null once that has passed and it is on its way.
+ */
+export interface UpcomingCashback {
+  readonly amount: { readonly amount: number; readonly currency: string };
+  readonly creditOn: string | null;
+}

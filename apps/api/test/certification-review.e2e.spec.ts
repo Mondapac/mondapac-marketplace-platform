@@ -332,6 +332,33 @@ describe('admin certificate review over HTTP (integration)', () => {
       });
       expect(JSON.stringify(queue.body)).not.toContain('HC-1234');
 
+      // The super list: the same submission with its view counts and row actions, and the export.
+      const listed = await http().get(`${base}/list?pageSize=10`).set(h).expect(200);
+      expect(listed.headers['cache-control']).toContain('no-store');
+      expect(listed.body).toMatchObject({
+        total: 1,
+        truncated: false,
+        counts: { all: 1 },
+        items: [{ certificateId: CERTIFICATE, submissionId: SUBMISSION, version: 3 }],
+      });
+      expect((listed.body as { items: { actions: string[] }[] }).items[0]?.actions).toContain(
+        'open',
+      );
+      expect(JSON.stringify(listed.body)).not.toContain('HC-1234');
+      await http().get(`${base}/list?sort=bogus`).set(h).expect(400);
+      const exported = await http()
+        .get(`${base}/export?format=csv&ids=${CERTIFICATE}`)
+        .set(h)
+        .expect(200);
+      expect(exported.headers['content-disposition']).toMatch(
+        /^attachment; filename="certificate-queue-.*\.csv"$/,
+      );
+      expect(exported.text).not.toContain('HC-1234');
+      await http()
+        .get(`${base}/export?ids=00000000-0000-4000-8000-000000000001`)
+        .set(h)
+        .expect(404);
+
       const page = await http().get(`${base}/${CERTIFICATE}`).set(h).expect(200);
       expect(page.headers['cache-control']).toContain('no-store');
       expect(page.body).toMatchObject({
@@ -464,6 +491,10 @@ describe('admin certificate review over HTTP (integration)', () => {
       await seeded(code);
       const viewer = headers(code, sessionOf(code, VIEWER, 4));
       await http().get(base).set(viewer).expect(200);
+      const viewerList = await http().get(`${base}/list`).set(viewer).expect(200);
+      expect((viewerList.body as { items: { actions: string[] }[] }).items[0]?.actions).toEqual([
+        'open',
+      ]);
       await http().get(`${base}/${CERTIFICATE}`).set(viewer).expect(403);
       await http()
         .post(`${base}/${CERTIFICATE}/decline`)
