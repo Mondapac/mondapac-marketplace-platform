@@ -5,10 +5,19 @@ import { AdminRenameCustomer } from '../../src/modules/identity/application/use-
 import {
   BUYER_ACCOUNT_DELETE,
   CUSTOMERS_CUSTOMER_EDIT,
+  CUSTOMERS_CUSTOMER_EMAIL_CHANGE,
   CUSTOMERS_CUSTOMER_EXPORT,
   CUSTOMERS_CUSTOMER_VIEW,
   CUSTOMERS_GROUPS_MANAGE,
 } from '../../src/modules/customers/contracts/permissions';
+import {
+  CUSTOMER_EMAIL_CHANGE_STEP_UP,
+  CUSTOMERS_EXPORT_STEP_UP,
+  CUSTOMERS_STEP_UP_ACTIONS,
+} from '../../src/modules/customers/contracts/step-up';
+import { AdminCancelCustomerEmailChange } from '../../src/modules/identity/application/use-cases/admin-cancel-customer-email-change.use-case';
+import { AdminRequestCustomerEmailChange } from '../../src/modules/identity/application/use-cases/admin-request-customer-email-change.use-case';
+import { CustomerPendingEmailOf } from '../../src/modules/identity/application/use-cases/customer-pending-email-of.use-case';
 import * as SECTION_KEYS from '../../src/modules/customers/application/section-keys';
 import { AdminCustomerPasswordReset as CustomersPasswordReset } from '../../src/modules/customers/application/use-cases/admin-customer-password-reset.use-case';
 import { AdminCustomerSessions as CustomersSessions } from '../../src/modules/customers/application/use-cases/admin-customer-sessions.use-case';
@@ -69,7 +78,6 @@ import { AdminCustomerSignIns as IdentityCustomerSignIns } from '../../src/modul
 import { AdminRevealCustomerSignIn as IdentityRevealCustomerSignIn } from '../../src/modules/identity/application/use-cases/admin-reveal-customer-sign-in.use-case';
 import { AdminSendCustomerPasswordReset as IdentitySendCustomerPasswordReset } from '../../src/modules/identity/application/use-cases/admin-send-customer-password-reset.use-case';
 import { AdminSignOutCustomer as IdentitySignOutCustomer } from '../../src/modules/identity/application/use-cases/admin-sign-out-customer.use-case';
-import { CUSTOMERS_EXPORT_STEP_UP } from '../../src/modules/customers/contracts/step-up';
 import {
   CUSTOMER_DATA_EXPORT_KEY as ORDERING_CUSTOMER_DATA_EXPORT_KEY,
   CUSTOMER_DATA_EXPORT_STEP_UP as ORDERING_CUSTOMER_DATA_EXPORT_STEP_UP,
@@ -121,6 +129,38 @@ describe('the admin edit facade use case of identity', () => {
       kind: 'permissions',
       allOf: [CUSTOMERS_CUSTOMER_EDIT.key],
     });
+  });
+});
+
+// Hassan R4 (customers admin email change): identity's request and cancel run under customers'
+// protected key, checked again in identity's own unit; the customer page's pending read runs under
+// customers' view key. The literals are cast in identity; this pins them to customers' declarations.
+describe('the admin email change use cases of identity', () => {
+  it.each([
+    ['identity.admin-request-customer-email-change', AdminRequestCustomerEmailChange],
+    ['identity.admin-cancel-customer-email-change', AdminCancelCustomerEmailChange],
+  ] as const)('%s requires exactly customers.customer-email.change', (name, useCase) => {
+    expect(useCase.access.name).toBe(name);
+    expect(useCase.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [CUSTOMERS_CUSTOMER_EMAIL_CHANGE.key],
+    });
+    expect(CUSTOMERS_CUSTOMER_EMAIL_CHANGE.protected).toBe(true);
+  });
+
+  it('identity.customer-pending-email-of requires exactly customers.customers.view', () => {
+    expect(CustomerPendingEmailOf.access.name).toBe('identity.customer-pending-email-of');
+    expect(CustomerPendingEmailOf.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [CUSTOMERS_CUSTOMER_VIEW.key],
+    });
+  });
+
+  it('the step-up action is the change key, required by default and locked', () => {
+    expect(CUSTOMER_EMAIL_CHANGE_STEP_UP).toBe(CUSTOMERS_CUSTOMER_EMAIL_CHANGE.key);
+    expect(
+      CUSTOMERS_STEP_UP_ACTIONS.find((action) => action.key === CUSTOMER_EMAIL_CHANGE_STEP_UP),
+    ).toMatchObject({ defaultRequired: true, locked: true, audience: 'admin' });
   });
 });
 

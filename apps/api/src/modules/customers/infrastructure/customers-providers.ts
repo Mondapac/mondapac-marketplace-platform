@@ -27,6 +27,8 @@ import {
   type AccountDeletionRequestRepository,
 } from '../application/ports/account-deletion-request.repository';
 import { ACCOUNT_DELETION_PEERS } from '../application/ports/account-deletion-peers';
+import { EMAIL_CHANGE_PEER } from '../application/ports/email-change-peer';
+import { LateBoundEmailChangePeer } from './late-bound-email-change-peer';
 import {
   CUSTOMER_READ_MODEL_REPOSITORY,
   type CustomerReadModelRepository,
@@ -137,6 +139,10 @@ export const customersProviders: readonly FactoryProvider[] = [
   {
     provide: ACCOUNT_DELETION_PEERS,
     useFactory: (): LateBoundAccountDeletionPeers => new LateBoundAccountDeletionPeers(),
+  },
+  {
+    provide: EMAIL_CHANGE_PEER,
+    useFactory: (): LateBoundEmailChangePeer => new LateBoundEmailChangePeer(),
   },
   {
     provide: ACCOUNT_DELETION_SETTINGS_REPOSITORY,

@@ -10,6 +10,7 @@ import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
+import type { SubscriberContext } from '../../../platform/events/event-subscriptions';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type {
@@ -18,6 +19,10 @@ import type {
   OrderStatsPeerValue,
 } from './ports/customer-read-model-peers';
 import type { ReadModelDependencies } from './read-model-dependencies';
+import {
+  CUSTOMER_EMAIL_CHANGED_SUBSCRIBER,
+  customerReadModelSubscriptions,
+} from '../presentation/subscribers/customer-read-model.subscriptions';
 import { InMemoryReadModels } from './testing/in-memory-read-models';
 import { ReadCustomerLastOrder } from './use-cases/read-customer-last-order.use-case';
 import { ReadOwnLastOrder } from './use-cases/read-own-last-order.use-case';
@@ -194,6 +199,37 @@ describe.each(TEST_MARKET_IDS)('customer read models in market %s', (code) => {
       spentMinor: 25_000n,
       refundCount: 1,
     });
+  });
+
+  it('copies the new sign-in email on identity.account-email-changed.v1 (customers.read-model-email-changed)', async () => {
+    const subscriber = customerReadModelSubscriptions(sync()).find(
+      (registered) => registered.name === CUSTOMER_EMAIL_CHANGED_SUBSCRIBER,
+    )!;
+    expect(subscriber.event.type).toBe('identity.account-email-changed.v1');
+    const event = (population: string, n: number) =>
+      ({
+        eventId: id<'event'>(0xf0 + n),
+        type: 'identity.account-email-changed.v1',
+        occurredAt: T0,
+        market,
+        aggregateType: 'account',
+        aggregateId: ALICE,
+        aggregateVersion: 5,
+        correlationId: 'read-model-system-abcd',
+        causationId: null,
+        payload: { accountId: ALICE, population },
+      }) as never;
+    await sync().execute(system, { accountId: ALICE, delivery: delivery(1) });
+    const key = `${market.marketId}:${ALICE}`;
+    expect(models.directory.get(key)).toMatchObject({ email: 'Alice@Example.com' });
+    // identity swapped the address: the directory follows the event.
+    peers.accounts.set(ALICE, record(ALICE, { email: 'Alice.New@Mailbox.test' }));
+    await subscriber.handle(event('customer', 1), delivery(2), system as SubscriberContext);
+    expect(models.directory.get(key)).toMatchObject({ email: 'Alice.New@Mailbox.test' });
+    // Another population's event is not a customer's: the row is left as it is.
+    peers.accounts.set(ALICE, record(ALICE, { email: 'Ignored@Mailbox.test' }));
+    await subscriber.handle(event('seller', 2), delivery(3), system as SubscriberContext);
+    expect(models.directory.get(key)).toMatchObject({ email: 'Alice.New@Mailbox.test' });
   });
 
   it('follows a disabled account and an unverified email', async () => {

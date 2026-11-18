@@ -77,6 +77,11 @@ it('maps every refusal code of the customers routes to its exact status', () => 
     'second-factor.required': 403,
     'second-factor.enrolment-required': 403,
     'customers.unavailable': 503,
+    // Customers admin email change ('customers.customer-not-eligible' is shared with phase 2).
+    'customers.email-taken': 409,
+    'customers.account-deletion-pending': 409,
+    'customers.email-change-not-found': 404,
+    'request.throttled': 429,
   });
 });
 
