@@ -3,6 +3,7 @@ import type {
   SystemChangeReverter,
   SystemChangeReverters,
 } from '../../../platform/change-review/change-review';
+import { isDeclarablePermissionKey, type PermissionKey } from '../../../platform/authz';
 import { isPolicyArea, type ReviewArea } from '../domain/areas';
 import { isSubjectKind } from '../domain/request';
 
@@ -29,6 +30,8 @@ export type RegisteredKind =
       readonly area: ReviewArea;
       readonly reverter: null;
       readonly applier: SystemChangeApplier;
+      /** The permission key the approving admin must hold, checked by system-requests itself. */
+      readonly permission: PermissionKey;
       readonly hooks: SubjectHooks;
     };
 
@@ -71,12 +74,13 @@ export class ReverterRegistry implements ReverterLookup {
       module: string,
       subjectKind: string,
       area: Parameters<SystemChangeReverters['registerApplier']>[2],
+      permission: string,
       applier: SystemChangeApplier,
     ) => {
       if (!isPolicyArea(area)) {
         throw new ReverterRegistryError(`${JSON.stringify(area)} is not a reviewed area`);
       }
-      this.registerApplier(module, subjectKind, area, applier);
+      this.registerApplier(module, subjectKind, area, permission, applier);
     },
   });
 
@@ -101,18 +105,23 @@ export class ReverterRegistry implements ReverterLookup {
   }
 
   /**
-   * Registers a kind whose actions wait for approval; it needs `apply` and `check` (the approving
-   * admin's permission is always checked before the unit).
+   * Registers a kind whose actions wait for approval: the permission key the approving admin must
+   * hold (checked by system-requests itself before the approval's unit), and an applier with
+   * `apply` and `check`.
    */
   registerApplier(
     module: string,
     subjectKind: string,
     area: ReviewArea,
+    permission: string,
     applier: SystemChangeApplier,
   ): void {
     this.#checkKind(module, subjectKind, area);
     if (area === 'review-policy') {
       throw new ReverterRegistryError('The review policy has no actions that wait for approval');
+    }
+    if (!isDeclarablePermissionKey(permission)) {
+      throw new ReverterRegistryError(`The applier of "${subjectKind}" needs a permission key`);
     }
     if (typeof applier?.apply !== 'function' || typeof applier.check !== 'function') {
       throw new ReverterRegistryError(`The applier of "${subjectKind}" needs apply and check`);
@@ -122,7 +131,14 @@ export class ReverterRegistry implements ReverterLookup {
     }
     this.#reverters.set(
       subjectKind,
-      Object.freeze({ mode: 'approval', area, reverter: null, applier, hooks: applier }),
+      Object.freeze({
+        mode: 'approval',
+        area,
+        reverter: null,
+        applier,
+        permission: permission as PermissionKey,
+        hooks: applier,
+      }),
     );
   }
 

@@ -499,6 +499,8 @@ export class FakeApplier implements SystemChangeApplier {
   /** Refs whose `apply` the owning module refuses now. */
   readonly refused = new Set<string>();
   readonly interested = new Set<string>();
+  /** Runs while `check` runs (for example to take a key away meanwhile). */
+  onCheck: (() => void) | undefined;
 
   set(market: string, ref: string, value: Readonly<Record<string, unknown>>): void {
     this.values.set(`${market}:${ref}`, value);
@@ -510,6 +512,7 @@ export class FakeApplier implements SystemChangeApplier {
 
   check(_context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'> {
     this.checks.push(request);
+    this.onCheck?.();
     return Promise.resolve(this.checkRefused.has(request.subjectRef) ? 'not-permitted' : 'ok');
   }
 

@@ -92,7 +92,11 @@ export interface RequestRepository {
     activityId: Id<'SystemRequestActivity'>,
   ): Promise<{ readonly number: number; readonly superseded: readonly Id<'SystemRequest'>[] }>;
   find(market: MarketContext, id: Id<'SystemRequest'>): Promise<SystemRequest | null>;
-  /** The subject's open approval-mode request (at most one, by a unique index), if any. */
+  /**
+   * The subject's open approval-mode request (at most one, by a unique index), if any. Takes the
+   * Market's counter row lock first (as `open` does), so two proposals of one subject in
+   * concurrent units are looked up one after the other and the later one sees the earlier.
+   */
   findPendingProposal(
     market: MarketContext,
     subjectKind: string,
