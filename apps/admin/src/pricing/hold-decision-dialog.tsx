@@ -122,6 +122,22 @@ export function HoldDecisionDialog({
             price,
           })}
         </p>
+        {row.window === undefined ? null : (
+          <p className="text-sm text-fg-muted">
+            {t('dialog.window', {
+              from: new Intl.DateTimeFormat(locale, {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+                timeZone: 'UTC',
+              }).format(new Date(row.window.startsAt)),
+              to: new Intl.DateTimeFormat(locale, {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+                timeZone: 'UTC',
+              }).format(new Date(row.window.endsAt)),
+            })}
+          </p>
+        )}
         {problem === null ? null : (
           <div role="alert">
             <Banner tone="critical">{tr(problem)}</Banner>

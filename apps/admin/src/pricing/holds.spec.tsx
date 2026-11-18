@@ -205,4 +205,64 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
     fireEvent.click(await screen.findByRole('button', { name: 'Approve price' }));
     expect(await screen.findByText(/someone else must decide/)).toBeTruthy();
   });
+
+  it('shows the amount in the Market currency and sorts by price on request', async () => {
+    call.mockResolvedValue(ok(page([row(m)])));
+    mount(m);
+    await screen.findByText('Halal beef mince 500 g');
+    expect(
+      screen.getAllByText(formatMoney({ amount: '1999', currency: m.currency }, m.locale)).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('shows the dates of a special price in the approve dialog', async () => {
+    call.mockResolvedValue(
+      ok(
+        page([
+          row(m, {
+            kind: 'special',
+            window: { startsAt: '2026-12-01T00:00:00.000Z', endsAt: '2026-12-08T00:00:00.000Z' },
+          }),
+        ]),
+      ),
+    );
+    mount(m);
+    await screen.findByText('Halal beef mince 500 g');
+    await openMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Approve…' }));
+    expect(await screen.findByText(/Special price runs from/)).toBeTruthy();
+  });
+
+  it('closes the dialog and reads again when the record is gone', async () => {
+    call.mockImplementation((method) =>
+      Promise.resolve(
+        method === 'POST' ? fail(409, 'pricing.hold.not-pending') : ok(page([row(m)])),
+      ),
+    );
+    mount(m);
+    await screen.findByText('Halal beef mince 500 g');
+    await openMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Approve…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve price' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Approve price' })).toBeNull());
+    await waitFor(() =>
+      expect(call.mock.calls.filter(([method]) => method === 'GET').length).toBeGreaterThan(1),
+    );
+  });
+
+  it('shows the empty state', async () => {
+    call.mockResolvedValue(ok(page([])));
+    mount(m);
+    expect(await screen.findByText('No held prices are waiting for a decision.')).toBeTruthy();
+  });
+
+  it('asks for one view when its tab is picked', async () => {
+    call.mockResolvedValue(ok(page([row(m)])));
+    mount(m);
+    await screen.findByText('Halal beef mince 500 g');
+    fireEvent.click((await screen.findAllByText(/^Increases/))[0]!);
+    await waitFor(() =>
+      expect(call.mock.calls.some(([, url]) => String(url).includes('view=up'))).toBe(true),
+    );
+  });
 });

@@ -2386,7 +2386,7 @@
   },
   "pricing": {
     "holds": {
-      "title": "Pricing",
+      "title": "Held prices",
       "no-access": "You don't have access to held prices.",
       "back-home": "Back to dashboard",
       "unavailable": "Held prices could not be loaded. Try again later.",
@@ -2434,10 +2434,6 @@
           "up": "Increases",
           "down": "Decreases"
         },
-        "search": {
-          "label": "Search held prices",
-          "placeholder": "Product or store"
-        },
         "filter": {
           "title": "Filter held prices",
           "kind": "Price type",
@@ -2481,7 +2477,6 @@
           "kind": "Price type",
           "submitted": "Submitted"
         },
-        "chip-search": "Search: {text}",
         "loading": "Loading held prices",
         "match": "{count, plural, one {# held price matches} other {# held prices match}}",
         "range": "{from}–{to} of {total}",
@@ -2551,7 +2546,8 @@
           "title": "Reject {product}?",
           "body": "Reject the held price for {product}. The previous price stays. The seller reads the reason you give.",
           "confirm": "Reject price"
-        }
+        },
+        "window": "Special price runs from {from} to {to} (UTC)."
       }
     }
   },
