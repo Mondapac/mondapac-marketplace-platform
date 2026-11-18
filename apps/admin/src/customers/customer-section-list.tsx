@@ -29,6 +29,7 @@ import { callApi, type ApiFailure } from '../api/client.ts';
 import { startOfDay } from '../sales/day-start.ts';
 import { numberFormat } from '../shared/intl.ts';
 import { useStepUpProof } from '../step-up/step-up.tsx';
+import { minutesOf } from './security-shared.tsx';
 import { EXPORT_PERMISSION } from './list-types.ts';
 
 // One customer-page section that is a super list (customers management phase 2b: Shopping and
@@ -104,7 +105,7 @@ function exportFailureOf(failure: ApiFailure): ExportFailure {
   }
   if (failure.status === 429) {
     return new ExportFailure('throttled', {
-      minutes: Math.max(1, Math.ceil((failure.details?.retryAfterSeconds ?? 60) / 60)),
+      minutes: minutesOf(failure, 60),
     });
   }
   if (failure.code === 'second-factor.enrolment-required') return new ExportFailure('enrol');
@@ -243,9 +244,7 @@ export function SectionList<R>(props: SectionListProps<R>) {
           return;
         }
         if (result.failure.status === 429) {
-          setMinutes(
-            Math.max(1, Math.ceil((result.failure.details?.retryAfterSeconds ?? 60) / 60)),
-          );
+          setMinutes(minutesOf(result.failure, 60));
         }
         setFailure(
           result.failure.status === 403
@@ -359,7 +358,8 @@ export function SectionList<R>(props: SectionListProps<R>) {
     }
   }
 
-  if (failure === 'denied' && answer === null) return null;
+  // A 403 on any page hides the whole section, as it does on the first load.
+  if (failure === 'denied') return null;
 
   const ranged = filter.kind === 'range' && (query.from !== '' || query.to !== '');
   const filtered = ranged || (filter.kind === 'values' && query.view !== 'all');
@@ -401,7 +401,7 @@ export function SectionList<R>(props: SectionListProps<R>) {
     <Card title={t('title')}>
       <SuperList
         heading={{
-          subtitle: t('subtitle'),
+          subtitle: t('subtitle', { zone }),
           ...(aside_ === null ? {} : { note: aside_ }),
           actions: keys.has(EXPORT_PERMISSION) ? (
             <Button
@@ -506,7 +506,7 @@ export function SectionList<R>(props: SectionListProps<R>) {
             : null
         }
         failure={
-          failure === null || failure === 'denied'
+          failure === null
             ? null
             : {
                 message:

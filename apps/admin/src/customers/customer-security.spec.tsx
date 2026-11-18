@@ -268,14 +268,95 @@ describe('the Account & security tab', () => {
     expect(await screen.findByText('Sign-in at', { exact: false })).toBeTruthy();
   });
 
-  it('is a "Jump to" select on phones that moves focus to the section heading', async () => {
+  it('is a "Jump to" select on phones that scrolls without moving focus and resets itself', async () => {
     media(false);
     route();
     render(security());
     await sessionsShown();
     expect(screen.queryByRole('navigation', { name: 'On this page' })).toBeNull();
-    fireEvent.change(screen.getByLabelText('Jump to'), { target: { value: 'addresses' } });
-    expect(document.activeElement?.id).toBe('security-addresses-title');
+    const scroll = vi.fn();
+    const target = document.getElementById('security-addresses-title')!;
+    target.scrollIntoView = scroll;
+    const select = screen.getByLabelText<HTMLSelectElement>('Jump to');
+    select.focus();
+    fireEvent.change(select, { target: { value: 'addresses' } });
+    expect(scroll).toHaveBeenCalled();
+    expect(document.activeElement).toBe(select);
+    expect(select.value).toBe('');
+  });
+
+  it('puts the index first in the DOM and marks the clicked section as current', async () => {
+    route();
+    const { container } = render(security());
+    await sessionsShown();
+    const index = screen.getByRole('navigation', { name: 'On this page' });
+    expect(container.querySelector('nav')).toBe(index);
+    const link = within(index).getByRole('link', { name: 'Addresses' });
+    expect(link.getAttribute('aria-current')).toBeNull();
+    fireEvent.click(link);
+    expect(link.getAttribute('aria-current')).toBe('location');
+    expect(
+      within(index).getByRole('link', { name: 'Privacy' }).getAttribute('aria-current'),
+    ).toBeNull();
+  });
+
+  it('shows a loading skeleton in each section before its answer', () => {
+    call.mockImplementation(() => new Promise(() => undefined));
+    render(security());
+    for (const name of ['Active sessions', 'Addresses', 'Marketing consent', 'Personalisation']) {
+      expect(screen.getByText(`Loading ${name}…`)).toBeTruthy();
+    }
+  });
+
+  it('shows the wait when a section read is throttled', async () => {
+    route((_method, path) =>
+      path === `${BASE}/addresses`
+        ? refused(429, 'request.throttled', { retryAfterSeconds: 180 })
+        : undefined,
+    );
+    render(security());
+    expect(await screen.findByText('Too many requests. Try again in 3 minutes.')).toBeTruthy();
+  });
+
+  it('says why Sign out everywhere is disabled when there are no sessions', async () => {
+    route((_method, path) =>
+      path === `${BASE}/sessions` ? ok({ items: [], more: false }) : undefined,
+    );
+    render(security());
+    const button = await screen.findByRole('button', { name: 'Sign out everywhere…' });
+    expect(button.hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText('No active sessions to sign out.')).toBeTruthy();
+  });
+
+  it('says more sessions exist when the list is cut', async () => {
+    route((_method, path) =>
+      path === `${BASE}/sessions`
+        ? ok({
+            items: [
+              {
+                device: 'chrome.windows',
+                signedInAt: '2026-11-10T02:30:00.000Z',
+                lastActiveAt: '2026-11-17T02:30:00.000Z',
+              },
+            ],
+            more: true,
+          })
+        : undefined,
+    );
+    render(security());
+    expect(await screen.findByText('Showing the 50 most recently used sessions.')).toBeTruthy();
+  });
+
+  it('shows a consent channel with no change date', async () => {
+    route((_method, path) =>
+      path === `${BASE}/consent`
+        ? ok({ channels: [{ channel: 'email', granted: false, source: null, changedAt: null }] })
+        : undefined,
+    );
+    render(security());
+    const list = await screen.findByRole('list', { name: 'Marketing consent' });
+    expect(within(list).getByText('Never changed')).toBeTruthy();
+    expect(within(list).getByText('Not granted')).toBeTruthy();
   });
 
   it('shows the tab with the page key alone, and not without any section key', () => {
@@ -330,7 +411,7 @@ describe('the Account & security tab', () => {
       // The other sections are not blocked.
       expect(await screen.findByText('Personalisation')).toBeTruthy();
       failing = false;
-      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
       expect(await screen.findByText(after)).toBeTruthy();
       expect(screen.queryByText(message)).toBeNull();
     },
@@ -344,7 +425,7 @@ describe('the Account & security tab', () => {
     render(security());
     expect(await screen.findByText('The sign-ins could not be loaded.')).toBeTruthy();
     failing = false;
-    fireEvent.click(screen.getAllByRole('button', { name: 'Retry' })[0]!);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Try again' })[0]!);
     expect(await screen.findByText(/Sign-in at/)).toBeTruthy();
   });
 
@@ -495,6 +576,45 @@ describe('the reveal rule', () => {
     expect(screen.queryByText('12 Wattle Street')).toBeNull();
   });
 
+  it('hides a revealed address when the page is hidden or left', async () => {
+    route();
+    render(security());
+    const reveal = async () => {
+      fireEvent.click(
+        await screen.findByRole('button', { name: /Show full address for Indooroopilly/ }),
+      );
+      fireEvent.click(await screen.findByRole('button', { name: 'Show address' }));
+      await screen.findByText('12 Wattle Street');
+    };
+    await reveal();
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'));
+    });
+    expect(screen.queryByText('12 Wattle Street')).toBeNull();
+    await reveal();
+    const state = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    state.mockRestore();
+    expect(screen.queryByText('12 Wattle Street')).toBeNull();
+  });
+
+  it('keeps the sign-in IP dialog open with the wait when throttled', async () => {
+    route((_method, path) =>
+      path === `${BASE}/sign-ins/${S1}/reveal`
+        ? refused(429, 'request.throttled', { retryAfterSeconds: 600 })
+        : undefined,
+    );
+    render(security());
+    const [menu] = await screen.findAllByRole('button', { name: /^Actions for Sign-in at/ });
+    fireEvent.click(menu!);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Show IP…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Show IP address' }));
+    expect(await screen.findByText('Too many requests. Try again in 10 minutes.')).toBeTruthy();
+    expect(screen.queryByText('203.0.113.9')).toBeNull();
+  });
+
   it('reveals one sign-in’s IP from the row Actions menu, in place and recorded', async () => {
     route();
     render(security());
@@ -540,10 +660,9 @@ describe('the reveal rule', () => {
 
     route();
     render(security({ keys: ['customers.customers.view', 'identity.customer-sign-in.view'] }));
-    const [other] = await screen.findAllByRole('button', { name: /^Actions for Sign-in at/ });
-    fireEvent.click(other!);
-    expect(await screen.findByRole('menuitem', { name: 'No actions' })).toBeTruthy();
-    expect(screen.queryByRole('menuitem', { name: 'Show IP…' })).toBeNull();
+    await screen.findAllByText('Signed in');
+    const [other] = screen.queryAllByRole('button', { name: /^Actions for Sign-in at/ });
+    expect(other).toBeUndefined();
   });
 });
 
@@ -664,6 +783,24 @@ describe('the header actions', () => {
     await waitFor(() =>
       expect(call.mock.calls.filter((args) => args[1] === `${BASE}/sessions`)).toHaveLength(2),
     );
+  });
+
+  it('keeps the sign out dialog open with the wait on a 429', async () => {
+    route((_method, path) => {
+      if (path === BASE) return ok(overview);
+      if (path === `${BASE}/sessions/end`)
+        return refused(429, 'request.throttled', { retryAfterSeconds: 240 });
+      return undefined;
+    });
+    render(wrap(page()));
+    await sessionsShown();
+    await open('Sign out everywhere…');
+    const dialog = await screen.findByRole('dialog', { name: 'Sign out everywhere?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Sign out everywhere' }));
+    expect(
+      await within(dialog).findByText('Too many requests. Try again in 4 minutes.'),
+    ).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Sign out everywhere?' })).toBeTruthy();
   });
 
   it('also signs out from the Active sessions section', async () => {

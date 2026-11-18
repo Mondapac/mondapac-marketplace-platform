@@ -32,6 +32,7 @@ import { startOfDay } from '../sales/day-start.ts';
 import { numberFormat } from '../shared/intl.ts';
 import { useStepUpProof } from '../step-up/step-up.tsx';
 import { EXPORT_PERMISSION } from './list-types.ts';
+import { minutesOf } from './security-shared.tsx';
 import { MONEY_MAX_ROWS, type ListAnswer } from './money-types.ts';
 
 const PAGE_SIZES = [25, 50, 100] as const;
@@ -115,6 +116,9 @@ function exportFailureOf(failure: ApiFailure): ExportFailure {
       total: failure.details?.total ?? 0,
     });
   }
+  if (failure.status === 429) {
+    return new ExportFailure('throttled', { minutes: minutesOf(failure, 60) });
+  }
   if (failure.code === 'second-factor.enrolment-required') return new ExportFailure('enrol');
   if (failure.status === 401 || failure.status === 403) return new ExportFailure('denied');
   return new ExportFailure('unavailable');
@@ -155,7 +159,10 @@ export function MoneyList<Row, Answer extends ListAnswer<Row>>({
   const prove = useStepUpProof();
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [loading, setLoading] = useState(true);
-  const [failure, setFailure] = useState<'denied' | 'invalid' | 'unavailable' | null>(null);
+  const [failure, setFailure] = useState<'denied' | 'invalid' | 'throttled' | 'unavailable' | null>(
+    null,
+  );
+  const [minutes, setMinutes] = useState(1);
   const [columns, setColumns] = useState<readonly string[]>(spec.defaultOptional);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -234,12 +241,15 @@ export function MoneyList<Row, Answer extends ListAnswer<Row>>({
           window.location.assign('/session-ended');
           return;
         }
+        if (result.failure.status === 429) setMinutes(minutesOf(result.failure, 60));
         setFailure(
           result.failure.status === 403
             ? 'denied'
-            : result.failure.code === 'validation.failed'
-              ? 'invalid'
-              : 'unavailable',
+            : result.failure.status === 429
+              ? 'throttled'
+              : result.failure.code === 'validation.failed'
+                ? 'invalid'
+                : 'unavailable',
         );
         return;
       }
@@ -500,13 +510,16 @@ export function MoneyList<Row, Answer extends ListAnswer<Row>>({
           failure === null
             ? null
             : {
-                message: tm(`error.${failure}`),
-                ...(failure === 'unavailable'
+                message:
+                  failure === 'throttled'
+                    ? tm('error.throttled', { minutes })
+                    : tm(`error.${failure}`),
+                ...(failure === 'unavailable' || failure === 'throttled'
                   ? { retry: { label: tm('retry'), onClick: () => void load(query) } }
                   : {}),
               }
         }
-        firstLoadError={answer === null && failure === 'unavailable'}
+        firstLoadError={answer === null && (failure === 'unavailable' || failure === 'throttled')}
         loading={loading}
         status={status}
         loadingLabel={tm('loading', { section: t('title') })}

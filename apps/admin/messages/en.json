@@ -5701,6 +5701,7 @@
         "button": "Bulk action",
         "selected": "{count, plural, one {# customer selected} other {# customers selected}}",
         "select-all": "Select all {count, number} customers in this filter",
+        "select-all-blocked": "Clear the order number filter to select all or export.",
         "clear": "Clear selection",
         "export": "Export…",
         "export-help": "CSV or XLSX, with the columns shown",
@@ -5945,6 +5946,7 @@
           "error": {
             "invalid": "This filter cannot be used. Clear it and try again.",
             "unavailable": "This list could not be loaded.",
+            "throttled": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
             "denied": "You don’t have access to this list."
           },
           "export": {
@@ -5956,6 +5958,7 @@
               "enrol": "Set up two-step verification on your profile to export.",
               "denied": "You don’t have access to export.",
               "unavailable": "The file could not be made. Try again.",
+              "throttled": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
               "cancelled": "Export cancelled."
             }
           }
@@ -6137,6 +6140,8 @@
           "with-code": "with a code",
           "load-more": "Load more",
           "more-failed": "More rows could not be loaded.",
+          "more-loaded": "{count, plural, one {# more row loaded} other {# more rows loaded}}",
+          "throttled": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
           "col": {
             "used": "Used",
             "offer": "Promotion",
@@ -6334,7 +6339,7 @@
       "empty": "No activity yet.",
       "empty-filtered": "No activity matches",
       "by-at": "{actor} · {time}",
-      "subtitle": "What happened to this account, and what admins did on it. Times in your zone.",
+      "subtitle": "What happened to this account, and what admins did on it. Times in {zone}.",
       "views": "Activity type",
       "view": {
         "all": "All",
@@ -6435,7 +6440,7 @@
     },
     "security": {
       "cancel": "Cancel",
-      "retry": "Retry",
+      "retry": "Try again",
       "loading": "Loading {section}…",
       "failed": "{section} could not be loaded.",
       "index": {
@@ -6475,6 +6480,7 @@
       "sessions": {
         "sign-out": "Sign out everywhere…",
         "empty": "No active sessions.",
+        "sign-out-none": "No active sessions to sign out.",
         "started": "Signed in {time}",
         "last-seen": "Last seen {time}",
         "more": "Showing the 50 most recently used sessions."
@@ -6612,8 +6618,7 @@
           "name": "Sign-in at {time}",
           "menu": "Actions for {name}",
           "show-ip": "Show IP…",
-          "hide-ip": "Hide IP address",
-          "nothing": "No actions"
+          "hide-ip": "Hide IP address"
         },
         "reveal": {
           "title": "Show the full IP address?",
@@ -6710,7 +6715,7 @@
       },
       "saved": {
         "title": "Saved for later",
-        "subtitle": "Items the customer saved for later. Times in your zone.",
+        "subtitle": "Items the customer saved for later. Times in {zone}.",
         "caption": "Saved for later",
         "empty": "Nothing saved for later.",
         "export-title": "Export saved for later",
@@ -6786,10 +6791,10 @@
       "moderation-line": "{action}: {reason} ({by})",
       "by-moderator": "a moderator",
       "by-system": "automatic",
-      "open-moderation": "Open in moderation",
+      "open-moderation": "Open moderation queue",
       "reviews": {
         "title": "Reviews written",
-        "subtitle": "Reviews this customer wrote, with their status. The text is never shown here. Times in your zone.",
+        "subtitle": "Reviews this customer wrote, with their status. The text is never shown here. Times in {zone}.",
         "caption": "Reviews written",
         "empty": "This customer has not written a review.",
         "export-title": "Export reviews",
@@ -6815,7 +6820,7 @@
       },
       "ratings": {
         "title": "Seller ratings given",
-        "subtitle": "Ratings this customer gave sellers after an order. Times in your zone.",
+        "subtitle": "Ratings this customer gave sellers after an order. Times in {zone}.",
         "caption": "Seller ratings given",
         "empty": "This customer has not rated a seller.",
         "export-title": "Export seller ratings",

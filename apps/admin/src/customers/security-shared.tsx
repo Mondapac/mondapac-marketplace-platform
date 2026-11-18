@@ -12,7 +12,8 @@ import { REVEAL_MS, deviceParts } from './security-types.ts';
 
 export type Read<T> =
   | { readonly state: 'loading' }
-  | { readonly state: 'failed' }
+  /** `minutes` is set on a 429: how long the API asks to wait. */
+  | { readonly state: 'failed'; readonly minutes: number | null }
   | { readonly state: 'hidden' }
   | { readonly state: 'ready'; readonly body: T };
 
@@ -57,7 +58,10 @@ export function useRead<T>(
         hidden.current?.();
         return;
       }
-      setRead({ state: 'failed' });
+      setRead({
+        state: 'failed',
+        minutes: result.failure.status === 429 ? minutesOf(result.failure, 60) : null,
+      });
     });
     return () => {
       live = false;
@@ -88,7 +92,11 @@ export function ReadBody<T>({
     return (
       <Banner tone="critical">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <span>{t('failed', { section: label })}</span>
+          <span>
+            {read.minutes === null
+              ? t('failed', { section: label })
+              : t('error.throttled', { minutes: read.minutes })}
+          </span>
           <Button variant="secondary" onClick={retry}>
             {t('retry')}
           </Button>
@@ -139,7 +147,12 @@ export function deviceText(code: string | null, t: ReturnType<typeof useTranslat
 
 /** The whole minutes of a wait, at least one. */
 export function minutesOf(failure: ApiFailure, fallbackSeconds: number): number {
-  return Math.max(1, Math.ceil((failure.details?.retryAfterSeconds ?? fallbackSeconds) / 60));
+  const wait = failure.details?.retryAfterSeconds;
+  const seconds =
+    typeof wait === 'number' && Number.isInteger(wait) && wait >= 1 && wait <= 86400
+      ? wait
+      : fallbackSeconds;
+  return Math.max(1, Math.ceil(seconds / 60));
 }
 
 /**
@@ -200,6 +213,23 @@ export function useReveals<T>(hiddenNote: string) {
     },
     [hide],
   );
+
+  // A revealed value never outlives the page: it hides when the page is left or put in the
+  // background (pagehide, or the tab turning hidden).
+  useEffect(() => {
+    const hideAll = () => {
+      for (const id of [...timers.current.keys()]) hide(id, true);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') hideAll();
+    };
+    window.addEventListener('pagehide', hideAll);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', hideAll);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [hide]);
 
   useEffect(() => {
     const held = timers.current;

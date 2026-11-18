@@ -1184,7 +1184,6 @@ describe('relay of the customers list and customer page', () => {
     });
   });
 
-
   describe('customers phase 2b part C: shopping and reviews', () => {
     const SECTIONS = [
       'saved-items',
@@ -1255,7 +1254,6 @@ describe('relay of the customers list and customer page', () => {
       );
     });
   });
-
 
   describe('customers phase 2b, part B: account and security', () => {
     const A = '0190a000-0000-7000-8000-0000000000c1';

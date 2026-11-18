@@ -15,6 +15,7 @@ vi.mock('next/navigation', () => ({
 import { Toaster } from '@mondapac/ui';
 import { callApi, type ApiResult } from '../api/client.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
+import { CustomerPage } from './customer-page.tsx';
 import { CustomerShopping } from './customer-shopping.tsx';
 import { ASSISTANT_VIEW, BEHAVIOUR_VIEW, CART_VIEW, REMINDER_VIEW, tabsFor } from './page-types.ts';
 
@@ -255,6 +256,52 @@ describe('the Shopping tab', () => {
     expect(await screen.findByText('Too many requests. Try again in 3 minutes.')).toBeTruthy();
   });
 
+  it('shows a loading skeleton in each section before its answer', () => {
+    call.mockImplementation(() => new Promise(() => undefined));
+    render(wrap(<CustomerShopping {...base} />));
+    for (const name of ['Current cart', 'Saved for later', 'Behaviour summary']) {
+      expect(screen.getByText(new RegExp(`^Loading ${name}`))).toBeTruthy();
+    }
+  });
+
+  it('tells the admin when to try again after a throttled list (429)', async () => {
+    route({ 'saved-items': refused(429, 'request.throttled', { retryAfterSeconds: 180 }) });
+    render(wrap(<CustomerShopping {...base} keys={new Set([CART_VIEW])} />));
+    expect(await screen.findByText('Too many requests. Try again in 3 minutes.')).toBeTruthy();
+  });
+
+  it('hides a list refused (403) on a later page', async () => {
+    route();
+    const inner = call.getMockImplementation()!;
+    call.mockImplementation((method, path, body, csrf) => {
+      if (path.endsWith('/saved-items')) {
+        return (body as { page?: number }).page === 2
+          ? Promise.resolve(refused(403, 'access.denied'))
+          : Promise.resolve(
+              ok(
+                page(
+                  [
+                    {
+                      savedItemId: 's1',
+                      offerId: OFFER,
+                      variantId: VARIANT,
+                      savedAt: '2026-11-05T02:30:00.000Z',
+                    },
+                  ],
+                  { total: 60, hasNext: true },
+                ),
+              ) as ApiResult<never>,
+            );
+      }
+      return inner(method, path, body, csrf);
+    });
+    render(wrap(<CustomerShopping {...base} keys={new Set([CART_VIEW])} />));
+    const saved = (await title('Saved for later')).closest('section')!;
+    await within(saved).findByRole('table', {}, { timeout: 5000 });
+    fireEvent.click(within(saved).getByRole('button', { name: /Next/ }));
+    await waitFor(() => expect(noTitle('Saved for later')).toBeNull());
+  });
+
   it('turns the admin’s local days into instants for the add-to-cart filter', async () => {
     route();
     render(wrap(<CustomerShopping {...base} />));
@@ -362,11 +409,86 @@ describe('the Shopping tab export', () => {
     },
   );
 
+  it('says how long to wait when the export is throttled (429)', async () => {
+    route();
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({ code: 'request.throttled', details: { retryAfterSeconds: 420 } }),
+            { status: 429 },
+          ),
+        ),
+    );
+    render(
+      wrap(
+        <CustomerShopping {...base} keys={new Set([CART_VIEW, 'customers.customers.export'])} />,
+      ),
+    );
+    const saved = (await title('Saved for later')).closest('section')!;
+    await within(saved).findByRole('table', {}, { timeout: 5000 });
+    fireEvent.click(within(saved).getByRole('button', { name: 'Export…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Export saved for later' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    expect(
+      await screen.findByText('Too many requests. Try again in 7 minutes.', undefined, {
+        timeout: 5000,
+      }),
+    ).toBeTruthy();
+  });
+
   it('has no Export button without the export key', async () => {
     route();
     render(wrap(<CustomerShopping {...base} keys={new Set([CART_VIEW])} />));
     const saved = (await title('Saved for later')).closest('section')!;
     await within(saved).findByRole('table', {}, { timeout: 5000 });
     expect(within(saved).queryByRole('button', { name: 'Export…' })).toBeNull();
+  });
+});
+
+describe('opening the Shopping tab', () => {
+  it('is not audited with tab-opened', async () => {
+    const overview = {
+      accountId: ID,
+      email: 'sara@example.com',
+      displayName: 'Sara Ahmadi',
+      status: 'active',
+      emailVerified: true,
+      signedUpAt: '2026-10-01T02:30:00.000Z',
+      lastOrderAt: null,
+      orderCount: 0,
+      spentMinor: '0',
+      currency: 'AUD',
+      refundCount: 0,
+      firstOrderAt: null,
+      refundedMinor: '0',
+    };
+    route();
+    const inner = call.getMockImplementation()!;
+    call.mockImplementation((method, path, body, csrf) =>
+      path === `customers/admin/customers/${ID}`
+        ? Promise.resolve(ok(overview) as ApiResult<never>)
+        : inner(method, path, body, csrf),
+    );
+    render(
+      wrap(
+        <CustomerPage
+          accountId={ID}
+          adminAccountId="admin-1"
+          marketId="AU"
+          initialTab="shopping"
+          csrfToken="csrf"
+          zone="Australia/Brisbane"
+          paging="pages"
+          waitingPeriodDays={30}
+          permissionKeys={[...base.keys, 'customers.customers.view']}
+        />,
+      ),
+    );
+    await screen.findByRole('heading', { name: 'Sara Ahmadi' });
+    await title('Current cart');
+    expect(call.mock.calls.some((args) => String(args[1]).endsWith('/tab-opened'))).toBe(false);
   });
 });

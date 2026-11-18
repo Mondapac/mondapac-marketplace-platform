@@ -636,6 +636,27 @@ describe('the customer export', () => {
   });
 });
 
+describe('Select all with the order number filter on', () => {
+  it('disables Select all with a hint, and keeps ticked-row export open', async () => {
+    render(
+      wrap(
+        <CustomersBulk
+          {...bulkProps}
+          orderNumberActive
+          selection={{ ids: [ID], allMatching: false, total: 9000 }}
+        />,
+      ),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Bulk action/ }));
+    const blocked = await screen.findByRole('menuitem', {
+      name: /Select all 9,000 customers in this filter/,
+    });
+    expect(blocked.getAttribute('aria-disabled') ?? blocked.hasAttribute('disabled')).toBeTruthy();
+    expect(screen.getByText('Clear the order number filter to select all or export.')).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: /Export…/ })).toBeTruthy();
+  });
+});
+
 describe.each([
   { market: 'AU', currency: 'AUD', typed: '12.50', minor: '1250', shown: '$12.50' },
   { market: 'JP', currency: 'JPY', typed: '1250', minor: '1250', shown: 'JPY 1,250' },

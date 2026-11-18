@@ -15,6 +15,7 @@ vi.mock('next/navigation', () => ({
 import { Toaster } from '@mondapac/ui';
 import { callApi, type ApiResult } from '../api/client.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
+import { CustomerPage } from './customer-page.tsx';
 import { CustomerReviews } from './customer-reviews.tsx';
 import { REVIEWS_VIEW, tabsFor } from './page-types.ts';
 
@@ -214,20 +215,33 @@ describe('the Reviews tab', () => {
     );
   });
 
-  it('offers Open in moderation on a review only to an admin who may open the queue', async () => {
+  it('links to the moderation queue only for an admin who may open it', async () => {
     route();
     const { unmount } = render(wrap(<CustomerReviews {...base} />));
     const card = (await title('Reviews written')).closest('section')!;
     await within(card).findByRole('table', {}, { timeout: 5000 });
-    const menus = within(card).getAllByRole('button', { name: /Actions for/ });
-    fireEvent.click(menus[0]!);
-    expect(await screen.findByRole('menuitem', { name: 'Open in moderation' })).toBeTruthy();
+    const link = screen.getByRole('link', { name: 'Open moderation queue' });
+    expect(link.getAttribute('href')).toBe('/reviews/moderation');
+    expect(within(card).queryByRole('button', { name: /Actions for/ })).toBeNull();
     unmount();
     cleanup();
     render(wrap(<CustomerReviews {...base} keys={new Set([REVIEWS_VIEW])} />));
     const plain = (await title('Reviews written')).closest('section')!;
     await within(plain).findByRole('table');
-    expect(within(plain).queryByRole('button', { name: /Actions for/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open moderation queue' })).toBeNull();
+  });
+
+  it('shows a loading skeleton in each list before its answer', () => {
+    call.mockImplementation(() => new Promise(() => undefined));
+    render(wrap(<CustomerReviews {...base} />));
+    for (const name of [
+      'Reviews written',
+      'Seller ratings given',
+      'Helpful votes cast',
+      'Review reports',
+    ]) {
+      expect(screen.getByText(new RegExp(`^Loading ${name}`))).toBeTruthy();
+    }
   });
 });
 
@@ -326,5 +340,50 @@ describe('the Reviews tab export', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Export reviews' }, { timeout: 5000 });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
     expect(await screen.findByText(/Up to 10,000 rows can be exported at once/)).toBeTruthy();
+  });
+});
+
+describe('opening the Reviews tab', () => {
+  it('is not audited with tab-opened', async () => {
+    const overview = {
+      accountId: ID,
+      email: 'sara@example.com',
+      displayName: 'Sara Ahmadi',
+      status: 'active',
+      emailVerified: true,
+      signedUpAt: '2026-10-01T02:30:00.000Z',
+      lastOrderAt: null,
+      orderCount: 0,
+      spentMinor: '0',
+      currency: 'AUD',
+      refundCount: 0,
+      firstOrderAt: null,
+      refundedMinor: '0',
+    };
+    route();
+    const inner = call.getMockImplementation()!;
+    call.mockImplementation((method, path, body, csrf) =>
+      path === `customers/admin/customers/${ID}`
+        ? Promise.resolve(ok(overview) as ApiResult<never>)
+        : inner(method, path, body, csrf),
+    );
+    render(
+      wrap(
+        <CustomerPage
+          accountId={ID}
+          adminAccountId="admin-1"
+          marketId="AU"
+          initialTab="reviews"
+          csrfToken="csrf"
+          zone="Australia/Brisbane"
+          paging="pages"
+          waitingPeriodDays={30}
+          permissionKeys={[...base.keys, 'customers.customers.view']}
+        />,
+      ),
+    );
+    await screen.findByRole('heading', { name: 'Sara Ahmadi' });
+    await title('Reviews written');
+    expect(call.mock.calls.some((args) => String(args[1]).endsWith('/tab-opened'))).toBe(false);
   });
 });

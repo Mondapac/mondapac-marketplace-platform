@@ -38,9 +38,9 @@ const wrap = (node: ReactNode, locale = 'en-AU') => (
   </NextIntlClientProvider>
 );
 const ok = <T,>(body: T): ApiResult<T> => ({ ok: true, status: 200, body });
-const refused = (status: number, code: string): ApiResult<never> => ({
+const refused = (status: number, code: string, details?: object): ApiResult<never> => ({
   ok: false,
-  failure: { status, code },
+  failure: { status, code, ...(details === undefined ? {} : { details }) },
 });
 
 const ID = '0190a000-0000-7000-8000-0000000000a1';
@@ -319,6 +319,73 @@ describe('the Money tab sections of phase 2b', () => {
   });
 });
 
+describe('the Money tab loading and throttling', () => {
+  it('shows a loading skeleton in each new list before its answer', () => {
+    call.mockImplementation(() => new Promise(() => undefined));
+    render(wrap(<CustomerMoney {...props()} />));
+    for (const name of ['Payments', 'Disputes', 'Refunds and credit notes', 'Promotions used']) {
+      expect(screen.getByText(new RegExp(`^Loading ${name}`))).toBeTruthy();
+    }
+  });
+
+  it('says how long to wait when a money list is throttled (429), with Try again', async () => {
+    route({ payments: refused(429, 'request.throttled', { retryAfterSeconds: 150 }) });
+    render(wrap(<CustomerMoney {...props()} />));
+    expect(await screen.findByText('Too many requests. Try again in 3 minutes.')).toBeTruthy();
+    expect(await screen.findByText('CN-0001')).toBeTruthy();
+  });
+
+  it('hides a money list that is refused (403) on a later page, not only the first', async () => {
+    let page2 = false;
+    route();
+    const inner = call.getMockImplementation()!;
+    call.mockImplementation((method, path, body, csrf) => {
+      if (path === `payments/admin/customers/${ID}/payments`) {
+        const wanted = (body as { page?: number }).page ?? 1;
+        if (wanted > 1) return Promise.resolve(refused(403, 'access.denied'));
+        page2 = true;
+        return Promise.resolve(
+          ok({
+            ...list([payment('AUD', '12550')], 60),
+            paid: [{ amount: '12550', currency: 'AUD' }],
+          }) as ApiResult<never>,
+        );
+      }
+      return inner(method, path, body, csrf);
+    });
+    render(wrap(<CustomerMoney {...props()} keys={new Set([VIEW, PAY])} />));
+    const section = (await screen.findByRole('heading', { name: 'Payments' })).closest('section')!;
+    await within(section).findByRole('table');
+    expect(page2).toBe(true);
+    fireEvent.click(within(section).getByRole('button', { name: /Next/ }));
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Payments' })).toBeNull());
+  });
+
+  it('hides the wallet and promotion credits on a 403, as an absent section', async () => {
+    call.mockImplementation((_method, path) =>
+      Promise.resolve(
+        path.startsWith('wallet/admin/') || path.startsWith('promotions/admin/customers/')
+          ? refused(403, 'access.denied')
+          : refused(404, 'unknown'),
+      ),
+    );
+    render(
+      wrap(
+        <CustomerMoney
+          {...props()}
+          keys={new Set([VIEW, 'wallet.credit.view', 'promotions.promotion.view'])}
+        />,
+      ),
+    );
+    await waitFor(() => expect(call).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Wallet history' })).toBeNull(),
+    );
+    expect(screen.queryByText(/could not be loaded/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+});
+
 describe('the Money tab export', () => {
   const createObjectURL = vi.fn(() => 'blob:x');
   beforeEach(() => {
@@ -391,6 +458,29 @@ describe('the Money tab export', () => {
       expect(createObjectURL).toHaveBeenCalledOnce();
     },
   );
+
+  it('says how long to wait when the export is throttled (429)', async () => {
+    route();
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ code: 'request.throttled', details: { retryAfterSeconds: 300 } }),
+        {
+          status: 429,
+        },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    render(wrap(<CustomerMoney {...props()} keys={new Set([VIEW, EXPORT, ORDERS])} />));
+    await screen.findByText('CN-0001');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Export…' })[0]!);
+    const dialog = await screen.findByRole('dialog', { name: 'Export refunds' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    expect(
+      await screen.findByText('Too many requests. Try again in 5 minutes.', undefined, {
+        timeout: 3000,
+      }),
+    ).toBeTruthy();
+  });
 
   it('says how many rows can be exported when the filter is too large', async () => {
     route();
@@ -474,6 +564,40 @@ describe('promotion usages', () => {
     fail = false;
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Ramadan')).toBeTruthy();
+  });
+
+  it('announces the rows a Load more added', async () => {
+    route({
+      usages: (cursor) =>
+        cursor === null
+          ? ok({ items: [usage({ id: 'u-1' })], nextCursor: 'c1.2' })
+          : ok({ items: [usage({ id: 'u-2', promotionName: 'Ramadan' })], nextCursor: null }),
+    });
+    render(wrap(<CustomerMoney {...props()} keys={only} />));
+    await screen.findByText('Eid sale');
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    await screen.findByText('Ramadan');
+    const note = screen.getByText('1 more row loaded');
+    expect(note.getAttribute('role')).toBe('status');
+  });
+
+  it('shows the wait when the first read or Load more is throttled (429)', async () => {
+    route({ usages: () => refused(429, 'request.throttled', { retryAfterSeconds: 120 }) });
+    const first = render(wrap(<CustomerMoney {...props()} keys={only} />));
+    expect(await screen.findByText('Too many requests. Try again in 2 minutes.')).toBeTruthy();
+    first.unmount();
+    cleanup();
+    route({
+      usages: (cursor) =>
+        cursor === null
+          ? ok({ items: [usage()], nextCursor: 'c1.2' })
+          : refused(429, 'request.throttled', { retryAfterSeconds: 60 }),
+    });
+    render(wrap(<CustomerMoney {...props()} keys={only} />));
+    await screen.findByText('Eid sale');
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    expect(await screen.findByText('Too many requests. Try again in 1 minute.')).toBeTruthy();
+    expect(screen.getByText('Eid sale')).toBeTruthy();
   });
 
   it('shows the discount in the usage currency (JPY has no minor unit)', async () => {

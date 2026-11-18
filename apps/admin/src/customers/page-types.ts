@@ -20,14 +20,7 @@ export const REVIEWS_VIEW = 'reviews.customer-review.view';
 /** The tabs of part C and the keys of their sections: a tab shows when the admin holds one. */
 export const SHOPPING_KEYS = [CART_VIEW, REMINDER_VIEW, BEHAVIOUR_VIEW, ASSISTANT_VIEW] as const;
 
-export const TABS = [
-  'overview',
-  'orders',
-  'money',
-  'shopping',
-  'reviews',
-  'security',
-] as const;
+export const TABS = ['overview', 'orders', 'money', 'shopping', 'reviews', 'security'] as const;
 export type Tab = (typeof TABS)[number];
 
 export const isTab = (value: unknown): value is Tab =>

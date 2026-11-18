@@ -12,18 +12,23 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { callApi } from '../api/client.ts';
+import { callApi, type ApiFailure } from '../api/client.ts';
 import { orderHref } from '../orders/order-href.ts';
 import { shortId } from '../shared/short-id.ts';
 import { formatMinor } from '../wallet/money.ts';
 import { timeOf } from './format.ts';
+import { minutesOf } from './security-shared.tsx';
 import type { PromotionUsage, PromotionUsages } from './money-types.ts';
 
 const PAGE = 25;
 
+/** The wait of a 429 in whole minutes, or null for any other failure. */
+const waitOf = (failure: ApiFailure): number | null =>
+  failure.status === 429 ? minutesOf(failure, 60) : null;
+
 type State =
   | { readonly state: 'loading' }
-  | { readonly state: 'failed' }
+  | { readonly state: 'failed'; readonly minutes: number | null }
   | { readonly state: 'denied' }
   | {
       readonly state: 'ready';
@@ -50,6 +55,8 @@ export function CustomerPromotionUsages({
   const locale = useLocale();
   const [load, setLoad] = useState<State>({ state: 'loading' });
   const [more, setMore] = useState<'idle' | 'busy' | 'failed'>('idle');
+  const [moreMinutes, setMoreMinutes] = useState<number | null>(null);
+  const [loaded, setLoaded] = useState('');
   const latest = useRef(0);
   const id = encodeURIComponent(accountId);
 
@@ -66,7 +73,11 @@ export function CustomerPromotionUsages({
     } else if (result.failure.status === 401) {
       window.location.assign('/session-ended');
     } else {
-      setLoad({ state: result.failure.status === 403 ? 'denied' : 'failed' });
+      setLoad(
+        result.failure.status === 403
+          ? { state: 'denied' }
+          : { state: 'failed', minutes: waitOf(result.failure) },
+      );
     }
   }, [id]);
 
@@ -78,6 +89,7 @@ export function CustomerPromotionUsages({
     if (load.state !== 'ready' || load.nextCursor === null) return;
     const ticket = latest.current;
     setMore('busy');
+    setLoaded('');
     const result = await callApi<PromotionUsages>(
       'GET',
       `promotions/admin/customers/${id}/usages?limit=${PAGE}&cursor=${encodeURIComponent(load.nextCursor)}`,
@@ -85,10 +97,16 @@ export function CustomerPromotionUsages({
     if (ticket !== latest.current) return;
     if (!result.ok) {
       if (result.failure.status === 401) window.location.assign('/session-ended');
-      else setMore('failed');
+      else if (result.failure.status === 403) setLoad({ state: 'denied' });
+      else {
+        setMoreMinutes(waitOf(result.failure));
+        setMore('failed');
+      }
       return;
     }
     setMore('idle');
+    setMoreMinutes(null);
+    setLoaded(t('more-loaded', { count: result.body.items.length }));
     setLoad({
       state: 'ready',
       items: [...load.items, ...result.body.items],
@@ -171,7 +189,11 @@ export function CustomerPromotionUsages({
       ) : load.state === 'failed' ? (
         <Banner tone="critical">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span>{tp('section-failed', { section: t('title') })}</span>
+            <span>
+              {load.minutes === null
+                ? tp('section-failed', { section: t('title') })
+                : t('throttled', { minutes: load.minutes })}
+            </span>
             <Button variant="secondary" onClick={() => void first()}>
               {tp('retry')}
             </Button>
@@ -187,11 +209,20 @@ export function CustomerPromotionUsages({
             columns={columns}
             empty={<EmptyState size="compact" icon="tag" title={t('empty')} />}
           />
-          {more === 'failed' ? (
-            <Banner tone="critical">
-              <span>{t('more-failed')}</span>
-            </Banner>
-          ) : null}
+          <p role="status" aria-live="polite" className="sr-only">
+            {loaded}
+          </p>
+          <div role="alert">
+            {more === 'failed' ? (
+              <Banner tone="critical">
+                <span>
+                  {moreMinutes === null
+                    ? t('more-failed')
+                    : t('throttled', { minutes: moreMinutes })}
+                </span>
+              </Banner>
+            ) : null}
+          </div>
           {load.nextCursor === null ? null : (
             <div>
               <Button

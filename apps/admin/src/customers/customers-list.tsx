@@ -493,6 +493,7 @@ export function CustomersList({
             onRetryGroups={() => void loadGroups()}
             group={group}
             onSelectAll={selection.selectAllMatching}
+            orderNumberActive={orderNumber !== undefined}
             onClear={selection.clear}
             onMembersChanged={() => {
               selection.clear();

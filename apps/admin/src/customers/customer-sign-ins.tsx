@@ -268,9 +268,6 @@ export function CustomerSignIns({
     ...columns.map(optional),
   ];
   const rowItems = (row: SignIn): MenuItem[] => {
-    if (!canReveal) {
-      return [{ id: 'none', label: t('row.nothing'), disabled: true, onSelect: () => undefined }];
-    }
     return reveals.shown.has(row.signInId)
       ? [{ id: 'hide-ip', label: t('row.hide-ip'), onSelect: () => reveals.hide(row.signInId) }]
       : [{ id: 'show-ip', label: t('row.show-ip'), onSelect: () => setRevealTarget(row.signInId) }];
@@ -390,11 +387,15 @@ export function CustomerSignIns({
             rowId={(row) => row.signInId}
             rowName={timeName}
             columns={tableColumns}
-            actions={{
-              header: tl('col.actions'),
-              label: (name) => t('row.menu', { name }),
-              items: rowItems,
-            }}
+            {...(canReveal
+              ? {
+                  actions: {
+                    header: tl('col.actions'),
+                    label: (name: string) => t('row.menu', { name }),
+                    items: rowItems,
+                  },
+                }
+              : {})}
             empty={
               <EmptyState
                 size="compact"

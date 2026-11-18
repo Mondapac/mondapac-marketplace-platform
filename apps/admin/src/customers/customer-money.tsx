@@ -29,6 +29,7 @@ import {
 type Load<T> =
   | { readonly state: 'loading' }
   | { readonly state: 'failed' }
+  | { readonly state: 'hidden' }
   | { readonly state: 'ready'; readonly body: T };
 
 const WALLET_PAGE = 20;
@@ -48,7 +49,7 @@ function useRead<T>(path: string | null) {
     if (ticket !== latest.current) return;
     if (result.ok) setLoad({ state: 'ready', body: result.body });
     else if (result.failure.status === 401) window.location.assign('/session-ended');
-    else setLoad({ state: 'failed' });
+    else setLoad({ state: result.failure.status === 403 ? 'hidden' : 'failed' });
   }, [path]);
   useEffect(() => {
     void run();
@@ -68,6 +69,8 @@ function Section({
   readonly children: () => React.ReactNode;
 }) {
   const t = useTranslations('customers.page');
+  // A 403 hides the section; it is not an error.
+  if (load.state === 'hidden') return null;
   return (
     <Card title={title}>
       {load.state === 'loading' ? (

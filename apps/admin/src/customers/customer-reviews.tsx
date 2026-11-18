@@ -1,6 +1,7 @@
 'use client';
 
-import { Badge, type BadgeTone, type MenuItem } from '@mondapac/ui';
+import { Badge, type BadgeTone } from '@mondapac/ui';
+import Link from 'next/link';
 import { useLocale, useTranslations } from 'next-intl';
 import { Stars } from '../reviews/stars.tsx';
 import { VIEW_PERMISSION as MODERATION_QUEUE } from '../reviews/types.ts';
@@ -185,21 +186,17 @@ export function CustomerReviews(context: SectionContext) {
     { id: 'created', cell: (row) => time(row.createdAt) },
   ];
 
-  // The queue has no link to one review, so "Open in moderation" opens the queue itself; it is
-  // offered only to an admin who may open the queue.
-  const openQueue = (): readonly MenuItem[] =>
-    context.keys.has(MODERATION_QUEUE)
-      ? [
-          {
-            id: 'moderation',
-            label: t('open-moderation'),
-            onSelect: () => window.location.assign(`/reviews/moderation`),
-          },
-        ]
-      : [];
-
   return (
     <div className="flex flex-col gap-4">
+      {/* The queue has no link to one review, so one link opens the queue itself; it is offered
+          only to an admin who may open it. */}
+      {context.keys.has(MODERATION_QUEUE) ? (
+        <p className="text-sm">
+          <Link href="/reviews/moderation" className="font-medium text-link underline">
+            {t('open-moderation')}
+          </Link>
+        </p>
+      ) : null}
       <SectionList<ReviewRow>
         {...context}
         path="reviews"
@@ -220,7 +217,6 @@ export function CustomerReviews(context: SectionContext) {
         sortColumn="created"
         rowId={(row) => row.reviewId}
         rowName={(row) => shortId(row.reviewId)}
-        rowActions={openQueue}
       />
       <SectionList<RatingRow>
         {...context}

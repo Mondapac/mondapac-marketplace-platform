@@ -2,7 +2,7 @@
 
 import { Badge, Button, Select, useMediaQuery } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { CustomerConsentHistory } from './customer-consent-history.tsx';
 import { CustomerSignIns } from './customer-sign-ins.tsx';
@@ -85,7 +85,7 @@ export function CustomerSecurity({
   const t = useTranslations('customers.security');
   const desktop = useMediaQuery('(min-width: 64rem)');
   const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
-  const [jumped, setJumped] = useState('');
+  const [current, setCurrent] = useState<string | null>(null);
   const hide = useCallback(
     (part: string) =>
       setGone((current) => (current.has(part) ? current : new Set(current).add(part))),
@@ -109,11 +109,38 @@ export function CustomerSecurity({
     return true;
   });
 
-  function jump(id: string) {
+  /** Scrolls to a section; the desktop index also moves focus to its heading, the phone select does not. */
+  function jump(id: string, focus: boolean) {
     const heading = document.getElementById(`security-${id}-title`);
     heading?.scrollIntoView?.({ block: 'start' });
-    heading?.focus();
+    if (focus) heading?.focus();
+    setCurrent(id);
   }
+
+  // The index marks the section being read. jsdom and old browsers have no IntersectionObserver;
+  // there the last clicked entry stands in.
+  const shownKey = shown.join(',');
+  useEffect(() => {
+    if (!desktop || typeof IntersectionObserver === 'undefined') return;
+    const visible = new Set<string>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.section ?? '';
+          if (entry.isIntersecting) visible.add(id);
+          else visible.delete(id);
+        }
+        const first = shownKey.split(',').find((id) => visible.has(id));
+        if (first !== undefined) setCurrent(first);
+      },
+      { rootMargin: '0px 0px -60% 0px' },
+    );
+    for (const id of shownKey.split(',')) {
+      const node = document.getElementById(`security-${id}`);
+      if (node !== null) observer.observe(node);
+    }
+    return () => observer.disconnect();
+  }, [desktop, shownKey]);
 
   const body = (
     <div className="flex min-w-0 flex-1 flex-col gap-4">
@@ -185,18 +212,21 @@ export function CustomerSecurity({
 
   return desktop ? (
     <div className="flex items-start gap-6">
-      {body}
-      <nav aria-label={t('index.label')} className="sticky top-4 w-52 shrink-0 self-start">
+      <nav
+        aria-label={t('index.label')}
+        className="sticky top-4 order-last w-52 shrink-0 self-start"
+      >
         <p className="mb-2 text-sm font-medium text-fg-secondary">{t('index.label')}</p>
         <ul className="flex flex-col gap-1 border-s border-line ps-3">
           {shown.map((id) => (
             <li key={id}>
               <a
                 href={`#security-${id}`}
-                className="block py-1 text-sm text-fg-secondary hover:text-fg"
+                aria-current={current === id ? 'location' : undefined}
+                className="block py-1 text-sm text-fg-secondary hover:text-fg aria-[current=location]:font-medium aria-[current=location]:text-fg"
                 onClick={(event) => {
                   event.preventDefault();
-                  jump(id);
+                  jump(id, true);
                 }}
               >
                 {t(`section.${id}`)}
@@ -205,17 +235,19 @@ export function CustomerSecurity({
           ))}
         </ul>
       </nav>
+      {body}
     </div>
   ) : (
     <div className="flex flex-col gap-4">
       <Select
         label={t('jump.label')}
         placeholder={t('jump.placeholder')}
-        value={jumped}
+        value=""
         options={shown.map((id) => ({ value: id, label: t(`section.${id}`) }))}
         onChange={(event) => {
-          setJumped(event.target.value);
-          if (event.target.value !== '') jump(event.target.value);
+          // Scroll only: focus stays on the select, which goes back to its placeholder.
+          const value = event.target.value;
+          if (value !== '') jump(value, false);
         }}
       />
       {body}
@@ -248,19 +280,28 @@ function SessionsSection({
   );
   if (read.state === 'hidden') return null;
   const ready = read.state === 'ready' ? read.body : null;
+  const noSessions = ready !== null && ready.items.length === 0;
   return (
     <SectionFrame
       id="sessions"
       title={t('section.sessions')}
       actions={
         keys.has(SESSION_END) ? (
-          <Button
-            variant="secondary"
-            disabled={ready !== null && ready.items.length === 0}
-            onClick={onSignOut}
-          >
-            {t('sessions.sign-out')}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {noSessions ? (
+              <span id="security-sessions-none" className="text-sm text-fg-muted">
+                {t('sessions.sign-out-none')}
+              </span>
+            ) : null}
+            <Button
+              variant="secondary"
+              disabled={noSessions}
+              aria-describedby={noSessions ? 'security-sessions-none' : undefined}
+              onClick={onSignOut}
+            >
+              {t('sessions.sign-out')}
+            </Button>
+          </div>
         ) : undefined
       }
     >
