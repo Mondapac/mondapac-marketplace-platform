@@ -187,6 +187,35 @@ export interface OfferView {
   }[];
 }
 
+/** The row actions the list names (`actions` of a list row); Prices and Stock are added by the panel. */
+export const OFFER_ROW_ACTIONS = ['open', 'edit', 'submit', 'delete'] as const;
+
+/** One row of the Offer list: the Offer and what the caller may run on it. */
+export interface OfferListRow extends OfferView {
+  readonly actions: readonly string[];
+}
+
+/** The seller's Offers per status for the same search and on-sale filter, and all together. */
+export interface OfferListCounts {
+  readonly draft: number;
+  readonly pendingFirstPublish: number;
+  readonly changesNeeded: number;
+  readonly published: number;
+  readonly all: number;
+}
+
+/** `GET catalog/seller/offers` in list mode. */
+export interface OfferListPage {
+  readonly items: readonly OfferListRow[];
+  /** `pages` mode only; null in `prev-next`. */
+  readonly total: number | null;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly paging: 'pages' | 'prev-next';
+  readonly hasNext: boolean;
+  readonly counts: OfferListCounts;
+}
+
 /** One sell unit (variant) of an offer: `GET catalog/seller/offers/:id/sell-units` -> `units`. */
 export interface SellUnitView {
   readonly variantId: string;

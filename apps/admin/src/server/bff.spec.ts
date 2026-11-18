@@ -2439,6 +2439,43 @@ describe('relay of the wallet and step-up routes', () => {
     );
   });
 
+  it('passes the Account deletion requests super list query and its export only in the shapes the API takes', async () => {
+    const listed = await run(
+      'GET',
+      `customers/admin/deletion-requests?view=cancelled&requestedBy=admin&cancelReason=sign-in&q=${id}&from=2026-11-01T00:00:00Z&scheduledBefore=2026-12-01T00:00:00Z&sort=cancelled&direction=asc&page=2&pageSize=25&ticket=x`,
+      readHeaders,
+    );
+    expect(listed.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/customers/admin/deletion-requests?view=cancelled&requestedBy=admin&cancelReason=sign-in&q=${id}&from=2026-11-01T00%3A00%3A00Z&scheduledBefore=2026-12-01T00%3A00%3A00Z&sort=cancelled&direction=asc&page=2&pageSize=25`,
+    );
+    const dropped = await run(
+      'GET',
+      'customers/admin/deletion-requests?view=open&requestedBy=seller&q=someone@example.com&sort=account&pageSize=500&from=2026-11-01',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/customers/admin/deletion-requests',
+    );
+    const file = await run(
+      'GET',
+      `customers/admin/deletion-requests/export?format=xlsx&columns=cancelled,completed&ids=${id}&view=all&page=2&reason=x`,
+      readHeaders,
+    );
+    expect(file.response.status).toBe(200);
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/customers/admin/deletion-requests/export?format=xlsx&columns=cancelled%2Ccompleted&ids=${id}&view=all`,
+    );
+    const many = Array.from({ length: 200 }, () => id).join(',');
+    const chosen = await run(
+      'GET',
+      `customers/admin/deletion-requests/export?ids=${many}`,
+      readHeaders,
+    );
+    expect(chosen.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/customers/admin/deletion-requests/export?ids=${many.replaceAll(',', '%2C')}`,
+    );
+  });
+
   it('passes only status, search, afterId and limit of the brand list, each in its shape', async () => {
     const { upstream } = await run(
       'GET',
@@ -4243,5 +4280,44 @@ describe('relay of the invoices export', () => {
       (await relay(config, post('ordering/admin/documents/export'), path, upstream)).status,
     ).toBe(404);
     expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay of the security alert super list', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const get = async (path: string) => {
+    const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    const response = await relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin }),
+      path.split('?')[0]!.split('/'),
+      upstream,
+    );
+    return { response, url: upstream.mock.calls[0]?.[0] as string | undefined };
+  };
+
+  it('passes the list keys of its own and drops the rest', async () => {
+    const { url } = await get(
+      'security/admin/alerts/list?view=critical&severity=s1,s2&rule=sign-in-failures-ip&keyType=ip&keyValue=203.0.113.7&minEvents=5&sort=events&direction=asc&paging=prev-next&page=2&pageSize=50&x=1',
+    );
+    expect(url).toBe(
+      'http://api.test/security/admin/alerts/list?view=critical&severity=s1%2Cs2&rule=sign-in-failures-ip&keyType=ip&keyValue=203.0.113.7&minEvents=5&sort=events&direction=asc&paging=prev-next&page=2&pageSize=50',
+    );
+    const bad = await get('security/admin/alerts/list?view=other&minEvents=0&pageSize=500');
+    expect(bad.url).toBe('http://api.test/security/admin/alerts/list');
+  });
+
+  it('keeps the single-alert route apart from the list and the export', async () => {
+    const one = await get(`security/admin/alerts/${ID}`);
+    expect(one.response.status).toBe(404);
+  });
+
+  it('relays 200 selected ids whole and refuses a malformed filter instead of widening the file', async () => {
+    const ids = Array.from({ length: 200 }, () => ID).join(',');
+    const { url } = await get(`security/admin/alerts/export?format=csv&ids=${ids}`);
+    expect(url).toContain(`ids=${encodeURIComponent(ids)}`);
+    const bad = await get('security/admin/alerts/export?format=csv&view=other');
+    expect(bad.response.status).toBe(400);
+    expect(bad.url).toBeUndefined();
   });
 });

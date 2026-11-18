@@ -3,9 +3,12 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import type {
   AppliedChange,
   PolicyArea,
+  ProposedChange,
+  ProposeFailure,
   RecordedRequest,
   RecordFailure,
   Risk,
+  SystemActionProposer,
   SystemRequestRecorder,
 } from '../../src/modules/system-requests';
 
@@ -34,6 +37,11 @@ export class RecordingReview implements SystemRequestRecorder {
     this.asked.length = 0;
     this.failNext = false;
     this.counter = 0;
+  }
+
+  /** Whether the area is switched on (for the proposer fake that shares this policy). */
+  isReviewed(area: PolicyArea): Risk | undefined {
+    return this.reviewed.get(area);
   }
 
   areaPolicy(
@@ -75,6 +83,78 @@ export class RecordingReview implements SystemRequestRecorder {
     );
   }
 }
+
+/**
+ * System requests' action proposer in memory (approval mode), sharing the area policy of a
+ * {@link RecordingReview}. An area that is off answers `ok(null)` (the caller applies at once);
+ * otherwise the proposal is kept in `proposed`, checked as the real proposer does (note 1 to 500
+ * characters, one waiting proposal per subject: `system-requests.already-pending`). `settle(ref)`
+ * frees a subject again (an approval, rejection or withdrawal).
+ */
+export class RecordingProposer implements SystemActionProposer {
+  readonly proposed: ProposedChange[] = [];
+  private readonly pending = new Map<string, number>();
+  private counter = 0;
+
+  constructor(private readonly policy: RecordingReview) {}
+
+  reset(): void {
+    this.proposed.length = 0;
+    this.pending.clear();
+    this.counter = 0;
+  }
+
+  settle(subjectKind: string, subjectRef: string): void {
+    this.pending.delete(`${subjectKind}:${subjectRef}`);
+  }
+
+  proposeChange(
+    _context: CallContext,
+    change: ProposedChange,
+  ): Promise<Result<RecordedRequest | null, ProposeFailure>> {
+    const risk = this.policy.isReviewed(change.area);
+    if (risk === undefined) return Promise.resolve(ok(null));
+    const note = typeof change.note === 'string' ? change.note.trim() : '';
+    if (note.length === 0 || note.length > 500) {
+      return Promise.resolve(
+        err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] }),
+      );
+    }
+    const key = `${change.subjectKind}:${change.subjectRef}`;
+    const waiting = this.pending.get(key);
+    if (waiting !== undefined) {
+      return Promise.resolve(
+        err({ code: 'system-requests.already-pending', pendingNumber: waiting }),
+      );
+    }
+    this.counter += 1;
+    this.pending.set(key, 900 + this.counter);
+    this.proposed.push(change);
+    return Promise.resolve(
+      ok({
+        id: requestId(0x900 + this.counter),
+        number: 900 + this.counter,
+        risk: change.risk ?? risk,
+        reviewDueAt: Temporal.Instant.from('2026-11-08T10:00:00Z'),
+      }),
+    );
+  }
+}
+
+/**
+ * The output of an action that may wait for approval, when it was done at once (its area is off);
+ * throws on a proposal (an answer holding only `request`).
+ */
+export function applied<V>(value: V): Exclude<V, OnlyRequest> {
+  if (typeof value === 'object' && value !== null) {
+    const keys = Object.keys(value);
+    if (keys.length === 1 && keys[0] === 'request') throw new Error('sent for approval');
+  }
+  return value as Exclude<V, OnlyRequest>;
+}
+
+/** A proposal's answer: only the request filed (its `request` is never null). */
+type OnlyRequest = { readonly request: { readonly id: unknown; readonly number: unknown } };
 
 const stable = (value: unknown): string =>
   JSON.stringify(value, (_key, inner: unknown) =>
