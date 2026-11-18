@@ -248,6 +248,7 @@ import { simpleProductType } from './domain/product-types/simple';
 import { PlatformProductController } from './presentation/platform-product.controller';
 import { OfferReviewController } from './presentation/offer-review.controller';
 import { OwnOfferController } from './presentation/own-offer.controller';
+import { OwnOffersExport } from './application/use-cases/own-offers-export.use-case';
 import { OwnProductsExport } from './application/use-cases/own-products-export.use-case';
 import { OwnProductsList } from './application/use-cases/own-products-list.use-case';
 import { OwnProductRead } from './application/use-cases/own-product-read.use-case';
@@ -2751,6 +2752,13 @@ const REVERTERS = [
       ownReader: true,
       policy: true,
       ownEditProbe: true,
+    }),
+    useCaseProvider(OwnOffersExport, {
+      unitOfWork: true,
+      ownReader: true,
+      policy: true,
+      sheetWriter: true,
+      clock: true,
     }),
     useCaseProvider(OwnProductsExport, {
       unitOfWork: true,

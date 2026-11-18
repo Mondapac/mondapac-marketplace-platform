@@ -14,7 +14,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import type { Account } from '../../domain/account';
 import { accountRoleAssigned, SellerAccessFounded, SellerMemberAdded } from '../../domain/audit';
 import type { EmailAddress } from '../../domain/email-address';
-import type { OneTimeLink } from '../../domain/one-time-link';
+import type { LinkPurpose, OneTimeLink } from '../../domain/one-time-link';
 import type { SellerAccess, SellerAccessStateCode } from '../../domain/seller-access';
 import { openSession, type Session } from '../../domain/session';
 import {
@@ -23,7 +23,7 @@ import {
   type ThrottleReservation,
   type ThrottleRule,
 } from '../../domain/throttle';
-import type { AccountRepository } from '../ports/account.repository';
+import { AccountEmailTakenError, type AccountRepository } from '../ports/account.repository';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { OneTimeLinkRepository } from '../ports/one-time-link.repository';
 import type { PasswordHasher, PasswordHasherBusy } from '../ports/password-hasher';
@@ -67,8 +67,33 @@ export interface SignInClient {
  */
 export type SignInIdentifier =
   | { readonly kind: 'email'; readonly email: EmailAddress }
-  /** `tokenHash` null: the presented token does not have a token's shape; it still counts. */
-  | { readonly kind: 'link'; readonly tokenHash: Uint8Array | null };
+  /**
+   * `tokenHash` null: the presented token does not have a token's shape; it still counts.
+   * `purpose`: the link's purpose this attempt accepts (Hassan R1), `verify-email` when absent; a
+   * link of any other purpose answers `link.rejected`, as an unknown one does.
+   */
+  | {
+      readonly kind: 'link';
+      readonly tokenHash: Uint8Array | null;
+      readonly purpose?: LinkPurpose;
+    };
+
+/**
+ * The closing step of a link attempt that is not an email verification (Hassan R1: the admin
+ * email change's confirmation). It runs inside the closing unit, after the correct password, the
+ * credential lock, the account read again (`account`) and the reservation given back, in place of
+ * the verification and the session: it decides from the account and the link read with the token,
+ * and either refuses (`err`, before it writes anything: the attempt is recorded `link.rejected`) or
+ * makes its change, saves the account (with any re-hash already applied) and answers `outcome`,
+ * the code of the sign-in record. No session is opened. A save that meets the unique email key
+ * (`AccountEmailTakenError`) rolls the whole unit back and answers `link.rejected`.
+ */
+export type LinkCloser<T> = (closing: {
+  readonly context: CallContext;
+  readonly account: Account;
+  readonly link: OneTimeLink;
+  readonly now: Temporal.Instant;
+}) => Promise<Result<{ readonly outcome: string; readonly value: T }, 'rejected'>>;
 
 /** The populations that sign in with a password alone in Phase 2 (admins need a factor, slice 7). */
 export type SignInPopulation = 'customer' | 'seller';
@@ -177,13 +202,15 @@ type Closed =
     }
   | { readonly kind: 'admin-step'; readonly step: AdminSecondStepOutcome }
   | { readonly kind: 'seller-step'; readonly step: SellerSecondStepOutcome }
+  | { readonly kind: 'link-closed'; readonly value: unknown }
   | { readonly kind: 'refused'; readonly code: Refused; readonly reason?: string };
 
 /** What the reservation and closing units of one attempt produce, for every population. */
 type Outcome =
   | { readonly kind: 'signed-in'; readonly value: SignedIn }
   | { readonly kind: 'admin-step'; readonly step: AdminSecondStepOutcome }
-  | { readonly kind: 'seller-step'; readonly step: SellerSecondStepOutcome };
+  | { readonly kind: 'seller-step'; readonly step: SellerSecondStepOutcome }
+  | { readonly kind: 'link-closed'; readonly value: unknown };
 
 const UNAVAILABLE = Object.freeze({ code: 'access.unavailable' as const });
 
@@ -272,10 +299,55 @@ export class SignInFlow {
     if (this.population === 'admin') {
       throw new Error('SignInFlow: an admin signs in through runAdmin (AC 10)');
     }
-    const outcome = await this.#run(context, identifier, password, client, options, null, null);
+    if (identifier.kind === 'link' && (identifier.purpose ?? 'verify-email') !== 'verify-email') {
+      throw new Error('SignInFlow: a link of another purpose closes through runLinkClose');
+    }
+    const outcome = await this.#run(
+      context,
+      identifier,
+      password,
+      client,
+      options,
+      null,
+      null,
+      null,
+    );
     if (!outcome.ok) return outcome;
     if (outcome.value.kind !== 'signed-in') throw new Error('SignInFlow: a factor step');
     return ok(outcome.value.value);
+  }
+
+  /**
+   * The sign-in sequence with a link of `purpose` in place of the email (Hassan R1): the same
+   * reservation, counters, password check, credential lock and records as {@link run}, but the
+   * closing unit runs `closer` in place of the verification and opens no session. Customer
+   * population only. A disabled account answers `link.rejected` here (Hassan R7), never
+   * `account.disabled`.
+   */
+  async runLinkClose<T>(
+    context: CallContext,
+    tokenHash: Uint8Array | null,
+    purpose: LinkPurpose,
+    password: string,
+    client: SignInClient,
+    closer: LinkCloser<T>,
+  ): Promise<Result<T, SignInRefusal>> {
+    if (this.population !== 'customer' || purpose === 'verify-email') {
+      throw new Error('SignInFlow: runLinkClose is for a customer link of another purpose');
+    }
+    const outcome = await this.#run(
+      context,
+      { kind: 'link', tokenHash, purpose },
+      password,
+      client,
+      {},
+      null,
+      null,
+      closer,
+    );
+    if (!outcome.ok) return outcome;
+    if (outcome.value.kind !== 'link-closed') throw new Error('SignInFlow: not a link close');
+    return ok(outcome.value.value as T);
   }
 
   /**
@@ -304,6 +376,7 @@ export class SignInFlow {
       options,
       null,
       sellerPolicy,
+      null,
     );
     if (!outcome.ok) return outcome;
     if (outcome.value.kind === 'seller-step') return ok(outcome.value.step);
@@ -331,6 +404,7 @@ export class SignInFlow {
       {},
       adminPolicy,
       null,
+      null,
     );
     if (!outcome.ok) return outcome;
     if (outcome.value.kind !== 'admin-step') throw new Error('SignInFlow: an admin session');
@@ -345,6 +419,7 @@ export class SignInFlow {
     options: SignInOptions,
     adminPolicy: AdminSecondStepPolicy | null,
     sellerPolicy: SellerSecondStepPolicy | null,
+    closer: LinkCloser<unknown> | null,
   ): Promise<Result<Outcome, SignInRefusal>> {
     const { market } = context;
     const { policy, keys, unitOfWork, throttles, accounts, hasher } = this.deps;
@@ -363,7 +438,9 @@ export class SignInFlow {
         : null;
     const lifetime =
       population === 'admin' ? null : (kept ?? policy.sessionLifetime(market, population));
-    if (population !== 'admin' && lifetime === null) return err(UNAVAILABLE);
+    if (population !== 'admin' && closer === null && lifetime === null) return err(UNAVAILABLE);
+    const linkPurpose: LinkPurpose =
+      identifier.kind === 'link' ? (identifier.purpose ?? 'verify-email') : 'verify-email';
     const persistent = population === 'customer' || kept !== null;
     const rules = policy.signInThrottles(market);
     const originCounter: ThrottleCounter = {
@@ -413,7 +490,7 @@ export class SignInFlow {
               ? null
               : await this.linkDeps!.links.findByTokenHash(market, identifier.tokenHash);
           account =
-            link !== null && link.usableFor('verify-email', now)
+            link !== null && link.usableFor(linkPurpose, now)
               ? await accounts.findById(market, link.state.accountId)
               : null;
           if (account !== null && account.state.population !== population) account = null;
@@ -539,6 +616,16 @@ export class SignInFlow {
           await this.record(context, client, accountId, code, null, now);
           return ok({ kind: 'refused', code });
         };
+        // Hassan R1, R6: a link of another purpose closes through its own step, and no session.
+        if (closer !== null && link !== null) {
+          // R7: a disabled account is one more cause of link.rejected; the link stays unused.
+          if (current.state.status !== 'active') return refuse('link.rejected');
+          if (rehashed !== null && rehashed.ok) current.rehashPassword(rehashed.value);
+          const closing = await closer({ context, account: current, link, now });
+          if (!closing.ok) return refuse('link.rejected');
+          await this.record(context, client, accountId, closing.value.outcome, null, now);
+          return ok({ kind: 'link-closed', value: closing.value.value });
+        }
         // 3.1: no link is used for a disabled account; it stays unused.
         if (link !== null && current.state.status !== 'active') return refuse('account.disabled');
         if (link === null && !current.isEmailVerified) {
@@ -641,6 +728,24 @@ export class SignInFlow {
         return ok({ kind: 'signed-in', session, sellerAccess: seller?.state.state ?? null });
       }),
     );
+    if (!closed.ok && closed.error === 'rejected') {
+      // The unique email key refused the closing step's save: the unit rolled back as a whole
+      // (the link stays unused, the attempt stays counted). The attempt is still recorded.
+      const recorded = await this.#failClosed(context, 'closing', () =>
+        unitOfWork.run(market, async () => {
+          await this.record(
+            context,
+            client,
+            account?.state.id ?? null,
+            'link.rejected',
+            null,
+            this.deps.clock.now(),
+          );
+          return ok(undefined);
+        }),
+      );
+      return recorded.ok ? err({ code: 'link.rejected' }) : err(UNAVAILABLE);
+    }
     if (!closed.ok) return err(UNAVAILABLE);
     const outcome = closed.value;
     if (outcome.kind === 'refused') {
@@ -650,6 +755,7 @@ export class SignInFlow {
     }
     if (outcome.kind === 'admin-step') return ok({ kind: 'admin-step', step: outcome.step });
     if (outcome.kind === 'seller-step') return ok({ kind: 'seller-step', step: outcome.step });
+    if (outcome.kind === 'link-closed') return ok({ kind: 'link-closed', value: outcome.value });
     return ok({
       kind: 'signed-in',
       value: {
@@ -710,10 +816,12 @@ export class SignInFlow {
     context: CallContext,
     unit: 'release' | 'closing',
     run: () => Promise<Result<T, E>>,
-  ): Promise<Result<T, E | 'unavailable'>> {
+  ): Promise<Result<T, E | 'unavailable' | 'rejected'>> {
     try {
       return await run();
-    } catch {
+    } catch (error) {
+      // Only a link close saves an address: the unique key's refusal is its `link.rejected`.
+      if (unit === 'closing' && error instanceof AccountEmailTakenError) return err('rejected');
       this.#logger.warn({
         msg: 'identity.sign-in.unit-unavailable',
         unit,

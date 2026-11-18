@@ -1,13 +1,8 @@
 import { money, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type {
-  DisputePage,
-  DisputeRepository,
-  SellerOrderRef,
-} from '../application/ports/dispute.repository';
+import type { DisputeRepository, SellerOrderRef } from '../application/ports/dispute.repository';
 import {
-  DISPUTE_BUCKETS,
   type DecisionBearer,
   type DecisionReasonCode,
   type DisputeBucket,
@@ -23,7 +18,7 @@ const optionalInstant = (date: Date | null) => (date === null ? null : toInstant
 const optionalDate = (instant: Temporal.Instant | null) =>
   instant === null ? null : toDate(instant);
 
-interface CaseRow {
+export interface CaseRow {
   readonly disputeId: string;
   readonly orderId: string;
   readonly providerDisputeId: string;
@@ -47,7 +42,7 @@ interface CaseRow {
   readonly updatedAt: Date;
 }
 
-const toCase = (row: CaseRow): DisputeCase => ({
+export const toCase = (row: CaseRow): DisputeCase => ({
   disputeId: row.disputeId as Id<'Dispute'>,
   orderId: row.orderId as Id<'Order'>,
   providerDisputeId: row.providerDisputeId,
@@ -173,42 +168,6 @@ export class PrismaDisputeRepository implements DisputeRepository {
       where: { marketId: market.marketId, disputeId },
       data: { bucket, updatedAt: toDate(now) },
     });
-  }
-
-  async list(market: MarketContext, page: DisputePage) {
-    const after = page.after;
-    const rows = await this.prisma.tx(market).commissionPayoutsDisputeCase.findMany({
-      where: {
-        marketId: market.marketId,
-        ...(page.bucket === null ? {} : { bucket: page.bucket }),
-        ...(after === null
-          ? {}
-          : {
-              OR: [
-                { openedAt: { lt: toDate(after.openedAt) } },
-                { openedAt: toDate(after.openedAt), disputeId: { lt: after.disputeId } },
-              ],
-            }),
-      },
-      orderBy: [{ openedAt: 'desc' }, { disputeId: 'desc' }],
-      take: page.limit,
-    });
-    return rows.map(toCase);
-  }
-
-  async counts(market: MarketContext) {
-    const groups = await this.prisma.tx(market).commissionPayoutsDisputeCase.groupBy({
-      by: ['bucket'],
-      where: { marketId: market.marketId },
-      _count: { _all: true },
-    });
-    const counts = new Map<DisputeBucket, number>();
-    for (const group of groups) {
-      if ((DISPUTE_BUCKETS as readonly string[]).includes(group.bucket)) {
-        counts.set(group.bucket as DisputeBucket, group._count._all);
-      }
-    }
-    return counts;
   }
 
   async findMany(market: MarketContext, disputeIds: readonly Id<'Dispute'>[]) {

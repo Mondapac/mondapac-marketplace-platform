@@ -95,7 +95,6 @@ export class InMemorySellerCustomers implements SellerCustomerRepository {
         ...entry,
         marketId: market.marketId,
         code,
-        exclusive: false,
         createdAt: now,
       });
     }
@@ -135,6 +134,8 @@ export class InMemorySellerCustomers implements SellerCustomerRepository {
       if (row.marketId !== market.marketId || row.sellerId !== query.sellerId) return false;
       if (s.view === 'buyers' && row.orderCount === 0) return false;
       if (s.view === 'followers' && !row.follower) return false;
+      if (s.view === 'referred' && !row.exclusive) return false;
+      if (s.exclusive !== null && row.exclusive !== s.exclusive) return false;
       if (s.codePrefix !== null && !row.code.startsWith(s.codePrefix)) return false;
       if (s.follower !== null && row.follower !== s.follower) return false;
       const last = row.lastOrderAt?.epochMilliseconds ?? null;
@@ -195,6 +196,7 @@ export class InMemorySellerCustomers implements SellerCustomerRepository {
       all: rows.length,
       buyers: rows.filter((row) => row.orderCount > 0).length,
       followers: rows.filter((row) => row.follower).length,
+      referred: rows.filter((row) => row.exclusive).length,
     } satisfies Record<SellerCustomerTab, number>);
   }
 

@@ -14,8 +14,11 @@ export function OrdersColumnsPanel({
   columns,
   onSave,
   close,
+  without,
 }: {
   readonly columns: readonly OrderColumn[];
+  /** A column this list never shows (the Customer column on a customer's Orders tab). */
+  readonly without?: OrderColumn;
   readonly onSave: (columns: readonly OrderColumn[]) => void;
   readonly close: () => void;
 }) {
@@ -24,8 +27,8 @@ export function OrdersColumnsPanel({
   return (
     <ListColumnsPanel
       columns={columns}
-      optional={OPTIONAL_COLUMNS}
-      defaults={DEFAULT_COLUMNS}
+      optional={OPTIONAL_COLUMNS.filter((column) => column !== without)}
+      defaults={DEFAULT_COLUMNS.filter((column) => column !== without)}
       fixed={(['order', 'status'] as const).map((id) => ({ id, label: t(`col.${id}`) }))}
       optionalLabel={(column) => t(`col.${column as OrderColumn}`)}
       labels={{
@@ -37,7 +40,7 @@ export function OrdersColumnsPanel({
         reset: ts('reset'),
         save: ts('save'),
       }}
-      onSave={(next) => onSave(cleanColumns(next))}
+      onSave={(next) => onSave(cleanColumns(next).filter((column) => column !== without))}
       close={close}
     />
   );
