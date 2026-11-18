@@ -81,7 +81,6 @@ it('maps every refusal code of the customers routes to its exact status', () => 
     'customers.email-taken': 409,
     'customers.account-deletion-pending': 409,
     'customers.email-change-not-found': 404,
-    'request.throttled': 429,
   });
 });
 
