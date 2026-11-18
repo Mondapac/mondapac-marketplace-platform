@@ -2502,6 +2502,33 @@ describe('relay of the wallet and step-up routes', () => {
     }
   });
 
+  it('passes the Disputes super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `commission-payouts/admin/disputes?view=won&money=withdrawn&status=lost&q=${id}&search=alpha&sort=evidence-due&direction=asc&page=2&pageSize=50&dueBefore=2026-11-02T00:00:00Z&minAmount=100&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/disputes?view=won&status=lost&money=withdrawn&q=${id}&search=alpha&dueBefore=2026-11-02T00%3A00%3A00Z&minAmount=100&sort=evidence-due&direction=asc&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'commission-payouts/admin/disputes?view=open&money=gone&sort=name&q=abc&minAmount=-1',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/admin/disputes',
+    );
+    const file = await run(
+      'GET',
+      `commission-payouts/admin/disputes/export?format=xlsx&columns=reason,seller-ids&ids=${id}&view=closed&page=2&cursor=1.x`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/disputes/export?format=xlsx&columns=reason%2Cseller-ids&ids=${id}&view=closed`,
+    );
+  });
+
   it.each([
     ['GET', 'commission-payouts/admin/payouts'],
     ['GET', `commission-payouts/admin/payouts/${id}`],

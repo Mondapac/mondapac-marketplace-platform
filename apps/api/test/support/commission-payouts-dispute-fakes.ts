@@ -12,7 +12,6 @@ import type {
   ProviderDispute,
 } from '../../src/modules/commission-payouts/application/ports/dispute-source';
 import type {
-  DisputePage,
   DisputeRepository,
   SellerOrderRef,
 } from '../../src/modules/commission-payouts/application/ports/dispute.repository';
@@ -122,33 +121,6 @@ export class MemoryDisputes implements DisputeRepository {
       this.cases.set(scoped(market, disputeId), { ...stored, bucket, updatedAt: now });
     }
     return Promise.resolve();
-  }
-  list(market: MarketContext, page: DisputePage) {
-    const mine = [...this.cases.entries()]
-      .filter(([k]) => k.startsWith(`${market.marketId}:`))
-      .map(([, c]) => c)
-      .filter((c) => page.bucket === null || c.bucket === page.bucket)
-      .sort(
-        (a, b) =>
-          b.openedAt.epochMilliseconds - a.openedAt.epochMilliseconds ||
-          b.disputeId.localeCompare(a.disputeId),
-      )
-      .filter(
-        (c) =>
-          page.after === null ||
-          c.openedAt.epochMilliseconds < page.after.openedAt.epochMilliseconds ||
-          (c.openedAt.epochMilliseconds === page.after.openedAt.epochMilliseconds &&
-            c.disputeId < page.after.disputeId),
-      );
-    return Promise.resolve(mine.slice(0, page.limit));
-  }
-  counts(market: MarketContext) {
-    const counts = new Map<DisputeBucket, number>();
-    for (const [k, c] of this.cases.entries()) {
-      if (k.startsWith(`${market.marketId}:`))
-        counts.set(c.bucket, (counts.get(c.bucket) ?? 0) + 1);
-    }
-    return Promise.resolve(counts as ReadonlyMap<DisputeBucket, number>);
   }
   findMany(market: MarketContext, disputeIds: readonly Id<'Dispute'>[]) {
     return Promise.resolve(disputeIds.flatMap((id) => this.cases.get(scoped(market, id)) ?? []));
