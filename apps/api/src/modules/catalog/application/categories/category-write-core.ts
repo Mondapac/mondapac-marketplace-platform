@@ -10,6 +10,7 @@ import {
 import {
   PlatformCategoryCreatedAudit,
   PlatformCategoryDetailsChangedAudit,
+  PlatformCategoryDetailsRevertedAudit,
 } from '../../domain/audit';
 import { PlatformCategoryCreated } from '../../domain/events';
 import {
@@ -133,6 +134,11 @@ export interface EditSpec {
   readonly showInMenu: boolean;
   /** The version the admin saw; null when the caller holds the tree locked and has no version to name. */
   readonly version: number | null;
+  /**
+   * Set only by the revert of a reviewed edit (System requests): the audit row then says the
+   * details came back by that request, not that an admin saved them.
+   */
+  readonly revertedBy?: Id<'SystemRequest'>;
 }
 
 /** `platform-category.edit-details` inside the open unit (a save that changes nothing writes nothing). */
@@ -178,26 +184,29 @@ export async function editDetailsInUnit(
     authorAccountId: accountId,
     now: deps.clock.now(),
   });
+  const shape = (
+    revisionNo: number,
+    texts: readonly CategoryText[],
+    showInMenu: boolean,
+    seo: CategorySeo,
+  ) => ({
+    revisionNo,
+    localeCount: texts.length,
+    showInMenu,
+    noindex: seo.noindex,
+    seoTitleSet: seo.title !== null,
+    seoDescriptionSet: seo.description !== null,
+  });
+  const was = shape(target.revisionNo, target.texts, target.showInMenu, target.seo);
+  const now = shape(target.revisionNo + 1, spec.texts, spec.showInMenu, spec.seo);
   await deps.audit.record(
     context,
-    PlatformCategoryDetailsChangedAudit.entry(target.id, {
-      before: {
-        revisionNo: target.revisionNo,
-        localeCount: target.texts.length,
-        showInMenu: target.showInMenu,
-        noindex: target.seo.noindex,
-        seoTitleSet: target.seo.title !== null,
-        seoDescriptionSet: target.seo.description !== null,
-      },
-      after: {
-        revisionNo: target.revisionNo + 1,
-        localeCount: spec.texts.length,
-        showInMenu: spec.showInMenu,
-        noindex: spec.seo.noindex,
-        seoTitleSet: spec.seo.title !== null,
-        seoDescriptionSet: spec.seo.description !== null,
-      },
-    }),
+    spec.revertedBy === undefined
+      ? PlatformCategoryDetailsChangedAudit.entry(target.id, { before: was, after: now })
+      : PlatformCategoryDetailsRevertedAudit.entry(target.id, {
+          before: was,
+          after: { ...now, requestId: spec.revertedBy },
+        }),
   );
   await announceChanged(deps, context, target.id, newVersion);
   return ok({

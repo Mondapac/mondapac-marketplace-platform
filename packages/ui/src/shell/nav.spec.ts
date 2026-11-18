@@ -145,6 +145,18 @@ describe('navSections', () => {
     expect(shape(['a2.view', 'b1.view', 'b2.view'])).toEqual(['home', 'b[b1,b2]', 'a2', 'tail']);
   });
 
+  it('keeps the header of an alwaysGroup group over its one visible item', () => {
+    const groups = (grouped.groups ?? []).map((group) =>
+      group.id === 'c' ? { ...group, alwaysGroup: true } : group,
+    );
+    const items = visibleNavItems(grouped, new Set(['c1.view']));
+    expect(
+      navSections(groups, items).map((section) =>
+        section.kind === 'item' ? section.item.id : `${section.group.id}[${section.items.length}]`,
+      ),
+    ).toEqual(['home', 'c[1]', 'tail']);
+  });
+
   it('is a flat list without groups, and treats an unknown group id as ungrouped', () => {
     const items = visibleNavItems(grouped, new Set(['a1.view', 'a2.view']));
     expect(navSections(undefined, items).every((section) => section.kind === 'item')).toBe(true);
@@ -189,6 +201,15 @@ describe('navTrail with groups', () => {
   it('adds no group label for an item shown flat (the only visible one of its group)', () => {
     expect(navTrail(items.slice(0, 2), 'x', 'Detail', label, groups)).toEqual([
       { label: 'nav.home', href: '/' },
+      { label: 'nav.x', href: '/x' },
+    ]);
+  });
+
+  it('keeps the label of an alwaysGroup group over its one visible item', () => {
+    const always = [{ ...groups[0], alwaysGroup: true }];
+    expect(navTrail(items.slice(0, 2), 'x', 'Detail', label, always)).toEqual([
+      { label: 'nav.home', href: '/' },
+      { label: 'nav.group.g' },
       { label: 'nav.x', href: '/x' },
     ]);
   });

@@ -38,12 +38,28 @@ const files = [
   ...readdirSync(path.join(src, 'orders'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'orders', name)),
+  ...readdirSync(path.join(src, 'customers'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'customers', name)),
+  // The helper the three Sales lists share (their saved filters).
+  ...readdirSync(path.join(src, 'sales'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'sales', name)),
+  ...readdirSync(path.join(src, 'sales', 'shipments'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'sales', 'shipments', name)),
+  ...readdirSync(path.join(src, 'sales', 'refunds'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'sales', 'refunds', name)),
+  ...readdirSync(path.join(src, 'sales', 'invoices'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'sales', 'invoices', name)),
   ...readdirSync(path.join(src, 'lists-settings'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'lists-settings', name)),
   path.join(src, 'step-up', 'step-up.tsx'),
 ];
-const CALL = /(?:callApi|guarded)(?:<[^>]*>)?\(\s*'(GET|PUT|POST|DELETE)',\s*(['`])([^'`]+)\2/g;
+const CALL = /(?:callApi|guarded)(?:<[^(]*>)?\(\s*'(GET|PUT|POST|DELETE)',\s*(['`])([^'`]+)\2/g;
 
 function calls(): { method: string; target: string }[] {
   const found: { method: string; target: string }[] = [];
@@ -71,7 +87,7 @@ function calls(): { method: string; target: string }[] {
   return found;
 }
 
-describe('every path the wallet, dispute, review moderation, account deletion and step-up client code calls passes the relay allowlist', () => {
+describe('every path the wallet, dispute, review moderation, account deletion, shipments, refunds, invoices and step-up client code calls passes the relay allowlist', () => {
   const found = calls();
 
   it('finds the calls it is meant to check', () => {
@@ -108,10 +124,19 @@ describe('every path the wallet, dispute, review moderation, account deletion an
         'POST ordering/admin/orders/:id/cancel',
         'POST ordering/admin/orders/:id/notes',
         'POST ordering/admin/orders/:id/seller-orders/:id/refunds',
+        'GET ordering/admin/orders',
+        'GET ordering/admin/shipments',
+        'GET ordering/admin/refunds',
+        'GET ordering/admin/documents',
         'GET ordering/admin/saved-filters',
         'POST ordering/admin/saved-filters',
         'PUT ordering/admin/saved-filters/:id',
         'DELETE ordering/admin/saved-filters/:id',
+        'GET lists/admin/saved-filters',
+        'POST lists/admin/saved-filters',
+        'PUT lists/admin/saved-filters/order',
+        'PUT lists/admin/saved-filters/:id',
+        'DELETE lists/admin/saved-filters/:id',
         'GET customers/admin/account-deletion-settings',
         'PUT customers/admin/account-deletion-settings',
         'GET customers/admin/deletion-requests',
@@ -119,6 +144,26 @@ describe('every path the wallet, dispute, review moderation, account deletion an
         'POST customers/admin/buyers/:id/deletion-requests',
         'GET settings/admin/market-settings',
         'PUT settings/admin/market-settings',
+        'POST customers/admin/list',
+        'GET customers/admin/saved-filters',
+        'POST customers/admin/saved-filters',
+        'PUT customers/admin/saved-filters/:id',
+        'DELETE customers/admin/saved-filters/:id',
+        'GET customers/admin/customers/:id',
+        'POST customers/admin/customers/:id/tab-opened',
+        // Customers phase 2a: groups, notes, activity and the name edit.
+        'GET customers/admin/customers/:id/notes',
+        'GET customers/admin/groups',
+        'GET customers/admin/groups/:id',
+        'POST customers/admin/customers/:id/activity',
+        'POST customers/admin/customers/:id/notes',
+        'POST customers/admin/groups',
+        'POST customers/admin/groups/:id/members/add',
+        'POST customers/admin/groups/:id/members/remove',
+        'PUT customers/admin/customers/:id/display-name',
+        'PUT customers/admin/groups/:id',
+        'POST identity/admin/customers/:id/disable',
+        'POST identity/admin/customers/:id/enable',
       ]),
     );
   });

@@ -27,6 +27,15 @@ export class RecordingReview implements SystemRequestRecorder {
     return this;
   }
 
+  /** Every area off again, and nothing opened or asked (a shared fake between tests). */
+  reset(): void {
+    this.reviewed.clear();
+    this.opened.length = 0;
+    this.asked.length = 0;
+    this.failNext = false;
+    this.counter = 0;
+  }
+
   areaPolicy(
     _context: CallContext,
     area: PolicyArea,
@@ -46,6 +55,8 @@ export class RecordingReview implements SystemRequestRecorder {
     }
     const risk = this.reviewed.get(change.area);
     if (risk === undefined) return Promise.resolve(ok(null));
+    // As the real recorder does: a change whose values did not change opens nothing.
+    if (stable(change.before) === stable(change.after)) return Promise.resolve(ok(null));
     const note = typeof change.note === 'string' ? change.note.trim() : '';
     if (note.length === 0 || note.length > 500) {
       return Promise.resolve(
@@ -64,6 +75,13 @@ export class RecordingReview implements SystemRequestRecorder {
     );
   }
 }
+
+const stable = (value: unknown): string =>
+  JSON.stringify(value, (_key, inner: unknown) =>
+    typeof inner === 'object' && inner !== null && !Array.isArray(inner)
+      ? Object.fromEntries(Object.entries(inner).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : inner,
+  );
 
 const requestId = (n: number): Id<'SystemRequest'> => {
   const parsed = parseId(

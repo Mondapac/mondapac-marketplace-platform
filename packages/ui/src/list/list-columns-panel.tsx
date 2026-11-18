@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Button } from '../form/button.tsx';
 import { CheckboxRow } from '../form/checkbox-row.tsx';
+import { ROW_ACTIONS_COLUMN_ID } from '../data/card-table.ts';
 import { IconButton } from '../form/icon-button.tsx';
 
 export interface ListColumnsLabels {
@@ -38,8 +39,8 @@ export interface ListColumnsPanelProps {
  * can reorder). Save keeps the choice; Reset puts the defaults back in the form.
  */
 export function ListColumnsPanel({
-  columns,
-  optional,
+  columns: shownNow,
+  optional: optionalIn,
   defaults,
   fixed,
   optionalLabel,
@@ -47,6 +48,9 @@ export function ListColumnsPanel({
   onSave,
   close,
 }: ListColumnsPanelProps) {
+  // The row Actions column is always there: it can be neither hidden nor moved.
+  const columns = shownNow.filter((column) => column !== ROW_ACTIONS_COLUMN_ID);
+  const optional = optionalIn.filter((column) => column !== ROW_ACTIONS_COLUMN_ID);
   const [shown, setShown] = useState<readonly string[]>(columns);
   // The shown columns first, in their order, then the hidden ones in the standard order.
   const all = [...shown, ...optional.filter((column) => !shown.includes(column))];

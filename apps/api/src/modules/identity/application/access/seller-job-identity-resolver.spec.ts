@@ -51,6 +51,8 @@ const JOB_CONTINUES: Record<SessionRevokedReason, boolean> = {
   'seller-suspended': false,
   'signed-out-elsewhere': false,
   'account-erasure': false,
+  'email-changed': false,
+  'admin-signed-out': false,
 };
 
 /** The reasons `revokeAllOf` is called with for an account. */
@@ -63,6 +65,8 @@ const ACCOUNT_BULK_REASONS: readonly SessionRevokedReason[] = [
   'account-disabled',
   'signed-out-elsewhere',
   'account-erasure',
+  'email-changed',
+  'admin-signed-out',
 ];
 
 describe.each(TEST_MARKETS)('SellerJobIdentityResolver in market %s', (code) => {

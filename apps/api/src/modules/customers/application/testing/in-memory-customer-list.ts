@@ -8,6 +8,7 @@ import {
   type CustomerView,
   type SortDirection,
 } from '../../domain/customer-list';
+import { localDayEnd, localDayStart } from '../../domain/local-day';
 import type { CustomerListQuery, CustomerListReader } from '../ports/customer-list.reader';
 
 /** The Customers list reader over an array of rows, one array per Market (for unit tests). */
@@ -22,10 +23,19 @@ export class InMemoryCustomerList implements CustomerListReader {
     return this.rowsOf.get(market.marketId) ?? [];
   }
 
+  /** `sellerId:accountId` of the follows the "store followed" filter matches. */
+  readonly followers = new Set<string>();
+
   #match(market: MarketContext, query: CustomerListQuery): CustomerListRow[] {
     const { selector, now } = query;
     const day = 24 * 3_600_000;
     return this.#all(market).filter((row) => {
+      if (
+        selector.followsSellerId != null &&
+        !this.followers.has(`${selector.followsSellerId}:${row.accountId}`)
+      ) {
+        return false;
+      }
       switch (selector.view) {
         case 'new':
           if (row.signedUpAt.epochMilliseconds < now.epochMilliseconds - NEW_WINDOW_DAYS * day)
@@ -52,12 +62,25 @@ export class InMemoryCustomerList implements CustomerListReader {
         case 'all':
           break;
       }
+      if (selector.accountIds != null && !selector.accountIds.includes(row.accountId)) return false;
       if (selector.status !== null && row.status !== selector.status) return false;
       if (selector.verified !== null && row.emailVerified !== selector.verified) return false;
       if (selector.ordersMin !== null && row.orderCount < selector.ordersMin) return false;
       if (selector.ordersMax !== null && row.orderCount > selector.ordersMax) return false;
       if (selector.spentMin !== null && row.spentMinor < selector.spentMin) return false;
       if (selector.spentMax !== null && row.spentMinor > selector.spentMax) return false;
+      if (selector.group !== null && !row.groups.some((group) => group.groupId === selector.group))
+        return false;
+      const inDays = (at: Temporal.Instant | null, from: string | null, to: string | null) => {
+        if (from === null && to === null) return true;
+        if (at === null) return false;
+        const start = from === null ? null : localDayStart(from, query.zone);
+        const end = to === null ? null : localDayEnd(to, query.zone);
+        if (start !== null && at.epochMilliseconds < start.epochMilliseconds) return false;
+        return end === null || at.epochMilliseconds < end.epochMilliseconds;
+      };
+      if (!inDays(row.signedUpAt, selector.joinedFrom, selector.joinedTo)) return false;
+      if (!inDays(row.lastOrderAt, selector.lastOrderFrom, selector.lastOrderTo)) return false;
       if (selector.text !== null) {
         const text = selector.text.toLowerCase();
         const byEmail = row.email.toLowerCase().startsWith(text);
@@ -113,12 +136,13 @@ export class InMemoryCustomerList implements CustomerListReader {
       ordersMax: null,
       spentMin: null,
       spentMax: null,
+      group: null,
     } as const;
     return Promise.resolve(
       Object.fromEntries(
         CUSTOMER_VIEWS.map((view) => [
           view,
-          this.#match(market, { selector: { ...blank, view }, now }).length,
+          this.#match(market, { selector: { ...blank, view }, now, zone: 'UTC' }).length,
         ]),
       ) as Record<CustomerView, number>,
     );

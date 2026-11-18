@@ -25,6 +25,7 @@ import {
   FakeEventFeed,
   InMemorySecurityAlerts,
   RecordingMessenger,
+  StaticAdminNames,
   StaticRoster,
   testRoster,
   type FakeEvent,
@@ -109,6 +110,7 @@ describe.each([['AU'], ['ZZ']] as const)('security alerts in market %s', (code) 
   let messenger: RecordingMessenger;
   let roster: StaticRoster;
   let audit: Audit;
+  let names: StaticAdminNames;
   let deps: SecurityDependencies;
   let eventNo: number;
   const useCase = <U>(type: new (g: typeof gate, d: SecurityDependencies) => U) =>
@@ -155,6 +157,7 @@ describe.each([['AU'], ['ZZ']] as const)('security alerts in market %s', (code) 
     messenger = new RecordingMessenger();
     roster = new StaticRoster(testRoster({ ali: ALI, hassan: HASSAN }));
     audit = new Audit();
+    names = new StaticAdminNames({ [HASSAN]: 'Hassan R.', [KAZEM]: 'Kazem M.' });
     eventNo = 0;
     deps = {
       unitOfWork: new FakeUnitOfWork(),
@@ -163,6 +166,7 @@ describe.each([['AU'], ['ZZ']] as const)('security alerts in market %s', (code) 
       roster,
       messenger,
       audit,
+      names,
       clock,
       ids: new SequenceIdGenerator(clock),
     };
@@ -289,6 +293,38 @@ describe.each([['AU'], ['ZZ']] as const)('security alerts in market %s', (code) 
       ]);
       await evaluate();
       expect(ruleAlerts('money-movement-alert')).toHaveLength(2);
+    });
+
+    it('keeps one bulk-reveal alert per admin however many reveals record the event (Hassan L1)', async () => {
+      const revealer = id<'Account'>(0xc7);
+      const reveal = (reveals: number, minutesAgo: number, targetId = revealer) =>
+        event('customers.pii-reveal.bulk', {
+          targetId,
+          payload: { reveals: String(reveals) },
+          minutesAgo,
+        });
+      // The write at the alert count failed, so the first event is the next reveal's.
+      reveal(41, 3);
+      reveal(42, 2);
+      await evaluate();
+      expect(ruleAlerts('admin-bulk-pii-reveal')).toEqual([
+        expect.objectContaining({
+          severity: 's2',
+          state: 'open',
+          keyType: 'account',
+          keyValue: revealer,
+          eventCount: 2,
+        }),
+      ]);
+
+      clock.advance(Temporal.Duration.from({ minutes: 1 }));
+      reveal(43, 0.5);
+      reveal(40, 0.5, id<'Account'>(0xc8));
+      await evaluate();
+      const alertsOf = (key: string) =>
+        ruleAlerts('admin-bulk-pii-reveal').filter((alert) => alert.keyValue === key);
+      expect(alertsOf(revealer)).toEqual([expect.objectContaining({ eventCount: 3 })]);
+      expect(alertsOf(id<'Account'>(0xc8))).toHaveLength(1);
     });
 
     it('logs a failing rule and runs the others', async () => {
@@ -575,6 +611,52 @@ describe.each([['AU'], ['ZZ']] as const)('security alerts in market %s', (code) 
         expectedVersion: 1,
       });
       expect(result.ok).toBe(false);
+    });
+
+    it('names who acknowledged and who resolved, and tells an s1 resolver apart', async () => {
+      const alert = await openS2();
+      const ack = await useCase(AcknowledgeSecurityAlert).execute(admin(KAZEM), {
+        alertId: alert.id,
+        expectedVersion: 1,
+      });
+      expect(ack).toMatchObject({
+        ok: true,
+        value: {
+          acknowledgedByName: 'Kazem M.',
+          resolvedByName: null,
+          viewerResolvesCritical: false,
+        },
+      });
+      const done = await useCase(ResolveSecurityAlert).execute(admin(HASSAN), {
+        alertId: alert.id,
+        expectedVersion: 2,
+        resolution: 'false-positive',
+        note: 'A seller mistyped their password.',
+      });
+      expect(done).toMatchObject({
+        ok: true,
+        value: {
+          acknowledgedByName: 'Kazem M.',
+          resolvedByName: 'Hassan R.',
+          viewerResolvesCritical: true,
+        },
+      });
+      const page = await useCase(ListSecurityAlerts).execute(admin(VIEWER), { state: 'resolved' });
+      expect(page.ok && page.value.alerts.map((row) => row.acknowledgedByName)).toEqual([
+        'Kazem M.',
+      ]);
+      // Nothing to name: no lookup at all.
+      names.asked.length = 0;
+      await useCase(ListSecurityAlerts).execute(admin(VIEWER), { state: 'open' });
+      expect(names.asked).toEqual([]);
+      // A refused lookup shows the alert without names; no roster, no s1 resolver.
+      names.refusing = true;
+      roster.value = null;
+      const plain = await useCase(ViewSecurityAlert).execute(admin(ALI), { alertId: alert.id });
+      expect(plain).toMatchObject({
+        ok: true,
+        value: { acknowledgedByName: null, resolvedByName: null, viewerResolvesCritical: false },
+      });
     });
 
     it('shows the summary and the on-call view with names only', async () => {

@@ -1,6 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { CalculationOutput } from '../domain/calculation/types';
 import type { CreditPage } from '../application/use-cases/list-promotion-credits.use-case';
+import type { UsagePage } from '../application/use-cases/list-customer-promotion-usages.use-case';
+import { REDEMPTION_STATUSES, RELEASE_REASONS } from '../domain/redemption';
 import type { AppliedReferral } from '../application/use-cases/apply-referral-code.use-case';
 import type { MyReferralView } from '../application/use-cases/view-my-referral.use-case';
 import { PROMOTIONS_STATUSES } from '../domain/market-status';
@@ -65,13 +67,23 @@ export class FlashBody {
 }
 
 export class SegmentBody {
-  @ApiProperty({ enum: ['RETURNING_CUSTOMER', 'DELIVERY_ZONE'] }) kind!: string;
+  @ApiProperty({
+    enum: ['RETURNING_CUSTOMER', 'DELIVERY_ZONE', 'MANUAL_GROUP', 'SELLER_EXCLUSIVE'],
+  })
+  kind!: string;
   @ApiProperty({
     nullable: true,
     type: Number,
     description: 'RETURNING_CUSTOMER: whole days since the last order.',
   })
   minDaysSinceLastOrder!: number | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description: 'MANUAL_GROUP: the manual customer group (customers module).',
+  })
+  groupId!: string | null;
 }
 
 class PromotionCommonBody {
@@ -293,7 +305,11 @@ export class PromotionRequest {
     type: Object,
     description:
       'CUSTOMER_GROUP (admin): `{ kind: "RETURNING_CUSTOMER", minDaysSinceLastOrder? }` (the ' +
-      'Market\'s default days when left out) or `{ kind: "DELIVERY_ZONE" }` with `zones`.',
+      'Market\'s default days when left out), `{ kind: "DELIVERY_ZONE" }` with `zones`, or ' +
+      '`{ kind: "MANUAL_GROUP", groupId }` (a manual customer group; a customer gets it only ' +
+      'while the group is live and they are in it, fail closed). CUSTOMER_GROUP (seller): ' +
+      '`{ kind: "SELLER_EXCLUSIVE" }` only: the seller\'s own discount, on its items and with its ' +
+      'money, for the customers who joined through its invite link (fail closed).',
   })
   segment?: object;
   @ApiProperty({
@@ -510,7 +526,9 @@ export class QuoteRequestBody {
     type: Object,
     description:
       'Customer facts to try a customer-group or store-follower promotion with: ' +
-      '`{ daysSinceLastOrder?, followedSellerIds? }`. A field left out is unknown, so the ' +
+      '`{ daysSinceLastOrder?, followedSellerIds?, memberOfGroupIds?, exclusiveSellerId? }`. A ' +
+      'field left out is ' +
+      'unknown, so the ' +
       'promotions that need it do not apply.',
   })
   customer?: object;
@@ -572,7 +590,11 @@ function common(view: Common) {
     segment:
       view.segment === null
         ? null
-        : { kind: view.segment.kind, minDaysSinceLastOrder: view.segment.minDaysSinceLastOrder },
+        : {
+            kind: view.segment.kind,
+            minDaysSinceLastOrder: view.segment.minDaysSinceLastOrder,
+            groupId: view.segment.groupId,
+          },
     refereeRewardMinor: minorOrNull(view.refereeRewardMinor),
     createdAt: iso(view.createdAt),
     updatedAt: iso(view.updatedAt),
@@ -811,6 +833,70 @@ export function creditsBody(page: CreditPage): CreditsBody {
       failureCode: credit.failureCode,
       createdAt: iso(credit.createdAt),
       settledAt: credit.settledAt === null ? null : iso(credit.settledAt),
+    })),
+  };
+}
+
+export class CustomerUsageBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) orderId!: string;
+  @ApiProperty({
+    enum: ['PROMOTION', 'FIRST_ORDER', 'FREE_SHIPPING'],
+    description: 'A stored promotion, the first-order offer or a zone free-delivery offer.',
+  })
+  kind!: string;
+  @ApiProperty({ format: 'uuid', nullable: true, type: String }) promotionId!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The stored promotion name; null for a settings-based offer.',
+  })
+  promotionName!: string | null;
+  @ApiProperty({ description: 'The discount, minor units, digits only.' }) amountMinor!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'ISO 4217.' }) currency!: string | null;
+  @ApiProperty({
+    description: 'True when the order redeemed a single-use code (the code itself is not kept).',
+  })
+  usedCode!: boolean;
+  @ApiProperty({
+    enum: REDEMPTION_STATUSES,
+    description: 'RESERVED can still be released; CONFIRMED counts as used.',
+  })
+  status!: string;
+  @ApiProperty({ enum: RELEASE_REASONS, nullable: true, type: String }) releaseReason!:
+    string | null;
+  @ApiProperty({ description: 'When the order took the discount.' }) usedAt!: string;
+  @ApiProperty({ nullable: true, type: String }) confirmedAt!: string | null;
+  @ApiProperty({ nullable: true, type: String }) releasedAt!: string | null;
+}
+
+export class CustomerUsagesBody {
+  @ApiProperty({ type: [CustomerUsageBody] }) items!: CustomerUsageBody[];
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Pass as `cursor` for the next page; null on the last page.',
+  })
+  nextCursor!: string | null;
+}
+
+export function customerUsagesBody(page: UsagePage): CustomerUsagesBody {
+  return {
+    nextCursor: page.nextCursor,
+    items: page.items.map(({ record, promotionName }) => ({
+      id: record.id,
+      orderId: record.orderId,
+      kind: record.kind,
+      promotionId: record.promotionId,
+      promotionName,
+      amountMinor: minor(record.amount),
+      currency: record.currency,
+      usedCode: record.codeHash !== null,
+      status: record.status,
+      releaseReason: record.releaseReason,
+      usedAt: iso(record.reservedAt),
+      confirmedAt: record.confirmedAt === null ? null : iso(record.confirmedAt),
+      releasedAt: record.releasedAt === null ? null : iso(record.releasedAt),
     })),
   };
 }

@@ -37,6 +37,17 @@ import { ApprovePayout } from './application/use-cases/approve-payout.use-case';
 import { ListOwnPayoutHolds } from './application/use-cases/list-own-payout-holds.use-case';
 import { ListOwnPayouts } from './application/use-cases/list-own-payouts.use-case';
 import { ListPayouts } from './application/use-cases/list-payouts.use-case';
+import { ExportPayouts } from './application/use-cases/export-payouts.use-case';
+import { PayoutApproveProbe } from './application/use-cases/payout-approve-probe.use-case';
+import { PayoutHoldPlaceProbe } from './application/use-cases/payout-hold-place-probe.use-case';
+import { PayoutHoldReleaseProbe } from './application/use-cases/payout-hold-release-probe.use-case';
+import { ADMIN_PAYOUT_LIST_READER } from './application/ports/admin-payout-list.reader';
+import { STORE_NAME_SEARCH } from './application/ports/store-name-search';
+import {
+  PAYOUT_ROW_KEYS,
+  type AdminPayoutListDependencies,
+} from './application/admin-payout-list-flow';
+import { SHEET_WRITER } from '../../platform/list-export';
 import { ReconcileInstructions } from './application/use-cases/reconcile-instructions.use-case';
 import { RunPayouts } from './application/use-cases/run-payouts.use-case';
 import { ViewNextPayout } from './application/use-cases/view-next-payout.use-case';
@@ -46,9 +57,16 @@ import { AdminPayoutsController, SellerPayoutsController } from './presentation/
 import { payoutRunJob, reconcileInstructionsJob } from './presentation/jobs/payout-jobs';
 import { DISPUTE_SOURCE, ORDER_PAYMENT_LOOKUP } from './application/ports/dispute-source';
 import { DISPUTE_REPOSITORY } from './application/ports/dispute.repository';
-import { SELLER_NAMES } from './application/ports/seller-names';
+import { SELLER_NAMES, type SellerNames } from './application/ports/seller-names';
 import { DecideDispute } from './application/use-cases/decide-dispute.use-case';
 import { ListDisputes } from './application/use-cases/list-disputes.use-case';
+import { ExportDisputes } from './application/use-cases/export-disputes.use-case';
+import { DisputeAttributeProbe } from './application/use-cases/dispute-attribute-probe.use-case';
+import { ADMIN_DISPUTE_LIST_READER } from './application/ports/admin-dispute-list.reader';
+import {
+  DISPUTE_ROW_KEYS,
+  type AdminDisputeListDependencies,
+} from './application/admin-dispute-list-flow';
 import { ListOwnDisputes } from './application/use-cases/list-own-disputes.use-case';
 import { SyncDispute } from './application/use-cases/sync-dispute.use-case';
 import { ViewDispute } from './application/use-cases/view-dispute.use-case';
@@ -88,6 +106,13 @@ import { ViewCommissionRate } from './application/use-cases/view-commission-rate
 import { ViewSellerPayoutTerms } from './application/use-cases/view-seller-payout-terms.use-case';
 import { ViewOwnLedger } from './application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from './application/use-cases/view-seller-ledger.use-case';
+import { ExportSellerLedger } from './application/use-cases/export-seller-ledger.use-case';
+import { ExportSellerPayoutHolds } from './application/use-cases/export-seller-payout-holds.use-case';
+import { SELLER_PAGE_LIST_READER } from './application/ports/seller-page-list.reader';
+import {
+  HOLD_ROW_KEYS,
+  type SellerPageListDependencies,
+} from './application/seller-page-lists-flow';
 import { COMMISSION_PAYOUTS_FACADE, COMMISSION_PAYOUTS_PERMISSIONS } from './contracts';
 import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from './domain/audit';
 import { commissionPayoutsProviders } from './infrastructure/commission-payouts-providers';
@@ -198,6 +223,136 @@ function payoutUseCaseProvider<U>(type: PayoutUseCaseClass<U>): FactoryProvider<
   };
 }
 
+type PayoutListUseCaseClass<U> = new (gate: UseCaseGate, deps: AdminPayoutListDependencies) => U;
+
+/** The admin Payouts list and its export (super list 21) share one dependency object. */
+function payoutListUseCaseProvider<U>(type: PayoutListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      ADMIN_PAYOUT_LIST_READER,
+      SELLER_NAMES,
+      STORE_NAME_SEARCH,
+      PayoutApproveProbe,
+      PayoutHoldPlaceProbe,
+      PayoutHoldReleaseProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AdminPayoutListDependencies['unitOfWork'],
+      payouts: AdminPayoutListDependencies['payouts'],
+      sellerNames: AdminPayoutListDependencies['sellerNames'],
+      storeSearch: AdminPayoutListDependencies['storeSearch'],
+      approve: PayoutApproveProbe,
+      place: PayoutHoldPlaceProbe,
+      release: PayoutHoldReleaseProbe,
+      sheetWriter: AdminPayoutListDependencies['sheetWriter'],
+      clock: AdminPayoutListDependencies['clock'],
+    ) => {
+      const [approveKey, placeKey, releaseKey] = PAYOUT_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        payouts,
+        sellerNames,
+        storeSearch,
+        probes: { [approveKey]: approve, [placeKey]: place, [releaseKey]: release },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
+type DisputeListUseCaseClass<U> = new (gate: UseCaseGate, deps: AdminDisputeListDependencies) => U;
+
+/** The admin Disputes list and its export (super list 23) share one dependency object. */
+function disputeListUseCaseProvider<U>(type: DisputeListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      ADMIN_DISPUTE_LIST_READER,
+      DISPUTE_REPOSITORY,
+      SELLER_NAMES,
+      STORE_NAME_SEARCH,
+      DisputeAttributeProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AdminDisputeListDependencies['unitOfWork'],
+      list: AdminDisputeListDependencies['list'],
+      disputes: AdminDisputeListDependencies['disputes'],
+      sellerNames: AdminDisputeListDependencies['sellerNames'],
+      storeSearch: AdminDisputeListDependencies['storeSearch'],
+      attribute: DisputeAttributeProbe,
+      sheetWriter: AdminDisputeListDependencies['sheetWriter'],
+      clock: AdminDisputeListDependencies['clock'],
+    ) => {
+      const [attributeKey] = DISPUTE_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        list,
+        disputes,
+        sellerNames,
+        storeSearch,
+        probes: { [attributeKey]: attribute },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
+type SellerPageListUseCaseClass<U> = new (gate: UseCaseGate, deps: SellerPageListDependencies) => U;
+
+/** The seller page's ledger and holds lists and their exports (super lists 27 and 28). */
+function sellerPageListUseCaseProvider<U>(type: SellerPageListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      LEDGER_REPOSITORY,
+      SELLER_PAGE_LIST_READER,
+      COMMISSION_POLICY,
+      SELLER_DIRECTORY,
+      PayoutHoldReleaseProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: SellerPageListDependencies['unitOfWork'],
+      ledger: SellerPageListDependencies['ledger'],
+      lists: SellerPageListDependencies['lists'],
+      policy: SellerPageListDependencies['policy'],
+      sellers: SellerPageListDependencies['sellers'],
+      release: PayoutHoldReleaseProbe,
+      sheetWriter: SellerPageListDependencies['sheetWriter'],
+      clock: SellerPageListDependencies['clock'],
+    ) => {
+      const [releaseKey] = HOLD_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        ledger,
+        lists,
+        policy,
+        sellers,
+        probes: { [releaseKey]: release },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
 function disputeUseCaseProvider<U>(type: DisputeUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
@@ -256,13 +411,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerEvents('commission-payouts', COMMISSION_PAYOUTS_EVENTS),
     {
       provide: COMMISSION_RATE_REVERTER,
-      inject: PORTS.map(([, token]) => token),
-      useFactory: (...values: unknown[]) => new CommissionRateReverter(dependenciesOf(values)),
+      inject: [SELLER_NAMES, ...PORTS.map(([, token]) => token)],
+      useFactory: (names: SellerNames, ...values: unknown[]) =>
+        new CommissionRateReverter(dependenciesOf(values), names),
     },
     {
       provide: PAYOUT_TERMS_REVERTER,
-      inject: PORTS.map(([, token]) => token),
-      useFactory: (...values: unknown[]) => new PayoutTermsReverter(dependenciesOf(values)),
+      inject: [SELLER_NAMES, ...PORTS.map(([, token]) => token)],
+      useFactory: (names: SellerNames, ...values: unknown[]) =>
+        new PayoutTermsReverter(dependenciesOf(values), names),
     },
     registerSystemChangeReverter(
       'commission-payouts',
@@ -308,29 +465,40 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ClearSellerPayoutTerms,
       PlacePayoutHold,
       ReleasePayoutHold,
-      ListSellerPayoutHolds,
-      ViewSellerLedger,
       ViewOwnLedger,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
-    ...[
-      SyncDispute,
-      ListDisputes,
-      ViewDispute,
-      DecideDispute,
-      ListOwnDisputes,
-      SellerLostDisputes,
-    ].map((type) => disputeUseCaseProvider(type as DisputeUseCaseClass<unknown>)),
+    ...[SyncDispute, ViewDispute, DecideDispute, ListOwnDisputes, SellerLostDisputes].map((type) =>
+      disputeUseCaseProvider(type as DisputeUseCaseClass<unknown>),
+    ),
     ...[
       RunPayouts,
       ReconcileInstructions,
       ApplyTransferChange,
-      ListPayouts,
       ViewPayout,
       ApprovePayout,
       ViewNextPayout,
       ListOwnPayouts,
       ListOwnPayoutHolds,
     ].map((type) => payoutUseCaseProvider(type as PayoutUseCaseClass<unknown>)),
+    ...[ViewSellerLedger, ExportSellerLedger, ListSellerPayoutHolds, ExportSellerPayoutHolds].map(
+      (type) => sellerPageListUseCaseProvider(type as SellerPageListUseCaseClass<unknown>),
+    ),
+    ...[ListPayouts, ExportPayouts].map((type) =>
+      payoutListUseCaseProvider(type as PayoutListUseCaseClass<unknown>),
+    ),
+    ...[ListDisputes, ExportDisputes].map((type) =>
+      disputeListUseCaseProvider(type as DisputeListUseCaseClass<unknown>),
+    ),
+    ...[
+      PayoutApproveProbe,
+      PayoutHoldPlaceProbe,
+      PayoutHoldReleaseProbe,
+      DisputeAttributeProbe,
+    ].map((type): FactoryProvider => ({
+      provide: type,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new type(gate),
+    })),
     // Package 6d: the payout run (every 15 minutes) and the reconciliation of instructed
     // transfers (every 5 minutes), once per Market under the scheduler's advisory lock.
     registerJobsFrom(

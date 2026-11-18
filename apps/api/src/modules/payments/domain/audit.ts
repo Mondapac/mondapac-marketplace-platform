@@ -77,6 +77,32 @@ export const TransferAbandoned = defineAuditAction({
   after: { sellerId: auditField.optional(auditField.id()) },
 });
 
+/** The audit target type of a customer's data an admin exported; the target id is the account id. */
+export const CUSTOMER_ACCOUNT_TARGET = 'payments.customer-account';
+
+const EXPORTED_AFTER = {
+  format: auditField.enumOf(['csv', 'xlsx'] as const),
+  rowCount: auditField.integer(),
+  stepUpSessionId: auditField.id(),
+  stepUpVerifiedAt: auditField.instant(),
+};
+
+/** An admin exported one customer's payments from the customer page (phase 2b). Counts only. */
+export const CustomerPaymentsExported = defineAuditAction({
+  action: 'payments.customer-payments.exported',
+  targetType: CUSTOMER_ACCOUNT_TARGET,
+  actors: ['authenticated'],
+  after: EXPORTED_AFTER,
+});
+
+/** An admin exported one customer's disputes from the customer page (phase 2b). Counts only. */
+export const CustomerDisputesExported = defineAuditAction({
+  action: 'payments.customer-disputes.exported',
+  targetType: CUSTOMER_ACCOUNT_TARGET,
+  actors: ['authenticated'],
+  after: EXPORTED_AFTER,
+});
+
 export const PAYMENTS_AUDIT_ACTIONS = [
   PayoutChangeRecorded,
   PayoutSchedulePaused,
@@ -85,4 +111,6 @@ export const PAYMENTS_AUDIT_ACTIONS = [
   TransferExecuted,
   TransferFenceBreached,
   TransferAbandoned,
+  CustomerPaymentsExported,
+  CustomerDisputesExported,
 ] as const;

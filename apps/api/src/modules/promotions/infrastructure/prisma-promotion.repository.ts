@@ -64,6 +64,7 @@ interface Row {
   readonly flashTimeZone: string | null;
   readonly segmentKind: string | null;
   readonly segmentMinDays: number | null;
+  readonly segmentGroupId: string | null;
   readonly refereeRewardMinor: bigint | null;
   readonly targets: readonly { readonly kind: string; readonly value: string }[];
   readonly tiers: readonly {
@@ -136,6 +137,7 @@ function toRecord(row: Row): PromotionRecord {
     flashTimeZone: row.flashTimeZone,
     segmentKind: row.segmentKind as SegmentKind | null,
     segmentMinDays: row.segmentMinDays,
+    segmentGroupId: row.segmentGroupId,
     refereeRewardMinor: row.refereeRewardMinor,
     createdByAccountId: row.createdByAccountId as Id<'Account'>,
     createdAt: fromDate(row.createdAt),
@@ -172,6 +174,7 @@ const editable = (record: PromotionRecord) => ({
   flashTimeZone: record.flashTimeZone,
   segmentKind: record.segmentKind,
   segmentMinDays: record.segmentMinDays,
+  segmentGroupId: record.segmentGroupId,
   refereeRewardMinor: record.refereeRewardMinor,
   updatedAt: toDate(record.updatedAt),
 });
@@ -616,6 +619,23 @@ export class PrismaPromotionRepository implements PromotionRepository {
       take: 200,
     });
     return rows.map(toRecord);
+  }
+
+  countGroupSegmentUses(
+    market: MarketContext,
+    groupId: string,
+    now: Temporal.Instant,
+  ): Promise<number> {
+    const at = toDate(now);
+    return this.prisma.tx(market).promotionsPromotion.count({
+      where: {
+        marketId: market.marketId,
+        segmentKind: 'MANUAL_GROUP',
+        segmentGroupId: groupId,
+        status: { in: ['ACTIVE', 'PENDING_APPROVAL', 'PAUSED'] },
+        OR: [{ endsAt: null }, { endsAt: { gt: at } }],
+      },
+    });
   }
 
   countCounting(

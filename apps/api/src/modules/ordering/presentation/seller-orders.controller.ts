@@ -20,6 +20,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiResponse,
   ApiServiceUnavailableResponse,
@@ -37,10 +38,12 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { SellerConfirmPickup } from '../application/use-cases/seller-confirm-pickup.use-case';
 import { SellerDeliverOrder } from '../application/use-cases/seller-deliver-order.use-case';
+import { SellerExportOrders } from '../application/use-cases/seller-export-orders.use-case';
 import { SellerListOrders } from '../application/use-cases/seller-list-orders.use-case';
 import { SellerMarkOrderReady } from '../application/use-cases/seller-mark-order-ready.use-case';
 import { SellerMarkUnavailable } from '../application/use-cases/seller-mark-unavailable.use-case';
 import { SellerViewOrderDocument } from '../application/use-cases/seller-view-order-document.use-case';
+import { SellerViewOrderDocuments } from '../application/use-cases/seller-view-order-documents.use-case';
 import { SellerViewOrder } from '../application/use-cases/seller-view-order.use-case';
 import { SellerAddOrderNote } from '../application/use-cases/seller-add-order-note.use-case';
 import { SellerListOrderNotes } from '../application/use-cases/seller-list-order-notes.use-case';
@@ -53,7 +56,8 @@ import {
   SellerNoteRequestBody,
   sellerNoteBody,
 } from './seller-order-notes.dto';
-import { OrderDocumentBody, orderDocumentBody } from './documents.dto';
+import { OrderDocumentBody, OrderDocumentsBody, orderDocumentBody } from './documents.dto';
+import { sendOrdersExport } from './export-response';
 import { closedBody, refusal } from './http-answers';
 import {
   RefundBody,
@@ -94,11 +98,13 @@ export class SellerOrdersController {
 
   constructor(
     private readonly list: SellerListOrders,
+    private readonly exportOrders: SellerExportOrders,
     private readonly view: SellerViewOrder,
     private readonly markReady: SellerMarkOrderReady,
     private readonly confirmPickup: SellerConfirmPickup,
     private readonly deliver: SellerDeliverOrder,
     private readonly documentOf: SellerViewOrderDocument,
+    private readonly documentsOf: SellerViewOrderDocuments,
     private readonly markUnavailable: SellerMarkUnavailable,
     private readonly notesOf: SellerListOrderNotes,
     private readonly addNote: SellerAddOrderNote,
@@ -121,6 +127,21 @@ export class SellerOrdersController {
   @ApiQuery({ name: 'pageSize', required: false, description: '1 to 100; default 25. Needs page.' })
   @ApiQuery({ name: 'sort', required: false, enum: ['paid', 'total'], description: 'Needs page.' })
   @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'paging',
+    required: false,
+    enum: ['pages', 'prev-next'],
+    description:
+      'The Market’s List paging setting, only with `page` (else 422 `needs-page`): `pages` answers ' +
+      'the total, `prev-next` answers `hasNext` and no total. Default `pages`. Both stop at row ' +
+      '10,000 (`too-deep`); `hasNext` is false on the last reachable page.',
+  })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description:
+      'A seller order id or an order id (the reference in the order emails), exact: trimmed and case-insensitive; any other text is 422 `format` on `q`.',
+  })
   @ApiQuery({ name: 'from', required: false, description: 'ISO instant: paid at or after it.' })
   @ApiQuery({ name: 'to', required: false, description: 'ISO instant: paid before it.' })
   @ApiOkResponse({ type: SellerOrderPageBody })
@@ -144,6 +165,8 @@ export class SellerOrdersController {
       pageSize: parseLimit(query['pageSize']),
       sort: query['sort'],
       direction: query['direction'],
+      paging: query['paging'],
+      q: query['q'],
       from: query['from'],
       to: query['to'],
     });
@@ -154,6 +177,46 @@ export class SellerOrdersController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return sellerOrderPageBody(result.value);
+  }
+
+  @Get('export')
+  @ApiOperation({
+    summary: "The shop's paid orders as a CSV file",
+    description:
+      'Needs ordering.seller-order.view. The seller orders the list shows for the same filter ' +
+      '(status = fulfilment step, from, to), newest payment first, at most 10,000: more is 413 ' +
+      'batch.too-large (details.max, details.matching). One row per seller order; no buyer name, ' +
+      'email, phone or address. The file streams as an attachment.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: ['csv'] })
+  @ApiQuery({ name: 'status', required: false, enum: ['to-ship', 'shipped', 'delivered'] })
+  @ApiQuery({ name: 'from', required: false, description: 'ISO instant: paid at or after it.' })
+  @ApiQuery({ name: 'to', required: false, description: 'ISO instant: paid before it.' })
+  @ApiOkResponse({
+    description: 'text/csv; charset=utf-8 (seller-orders-<date>.csv), as an attachment',
+  })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large' })
+  async download(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportOrders.execute(context, { ...query });
+    this.log(
+      'ordering.seller-export-orders-route',
+      context,
+      result.ok ? 'exported' : result.error.code,
+    );
+    await sendOrdersExport(
+      result,
+      context,
+      response,
+      this.#logger,
+      'ordering.seller-export-orders',
+    );
   }
 
   @Get(':sellerOrderId')
@@ -177,6 +240,50 @@ export class SellerOrdersController {
     this.log('ordering.seller-view-order-route', context, result.ok ? 'read' : result.error.code);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return sellerOrderShipBody(result.value);
+  }
+
+  @Post('documents')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "The documents of up to 50 of the shop's paid orders (packing slips)",
+    description:
+      'Needs ordering.seller-order.view. Body: {sellerOrderIds: 1 to 50 uuids}. Each id is read ' +
+      "like the single document (its part only). Ids that are not the shop's, unknown or not " +
+      'paid come back in `unavailable` without a reason. Not a write: it needs the CSRF header ' +
+      'only because it carries a body.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ schema: { type: 'object', additionalProperties: false } })
+  @ApiOkResponse({ type: OrderDocumentsBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: 'ordering.invoice-numbering-unavailable or access.unavailable',
+  })
+  async documents(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, body, ['sellerOrderIds']);
+    if (invalid !== null) throw invalid;
+    const result = await this.documentsOf.execute(context, {
+      sellerOrderIds: (body as Record<string, unknown>).sellerOrderIds,
+    });
+    this.log(
+      'ordering.seller-view-order-documents-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return {
+      documents: result.value.documents.map(orderDocumentBody),
+      unavailable: [...result.value.unavailable],
+    };
   }
 
   @Get(':sellerOrderId/document')
