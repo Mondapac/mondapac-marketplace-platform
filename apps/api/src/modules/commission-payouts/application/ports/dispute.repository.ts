@@ -1,13 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { DisputeBucket, DisputeCase, DisputeDecision } from '../../domain/dispute';
 
-/** One page of the admin list: newest opened first; the cursor is the last row of the page. */
-export interface DisputePage {
-  readonly bucket: DisputeBucket | null;
-  readonly limit: number;
-  readonly after: { readonly openedAt: Temporal.Instant; readonly disputeId: Id<'Dispute'> } | null;
-}
-
 export interface SellerOrderRef {
   readonly sellerOrderId: Id<'SellerOrder'>;
   readonly sellerId: Id<'Seller'>;
@@ -38,11 +31,6 @@ export interface DisputeRepository {
     bucket: DisputeBucket,
     now: Temporal.Instant,
   ): Promise<void>;
-
-  list(market: MarketContext, page: DisputePage): Promise<readonly DisputeCase[]>;
-
-  /** The number of cases per bucket (buckets with none are absent). */
-  counts(market: MarketContext): Promise<ReadonlyMap<DisputeBucket, number>>;
 
   findMany(
     market: MarketContext,

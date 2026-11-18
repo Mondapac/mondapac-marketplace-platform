@@ -1,6 +1,10 @@
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
-import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
+import {
+  testAuthenticatedActor,
+  testCallContext,
+  testMarketContext,
+} from '@mondapac/shared-kernel/testing';
 import { FakeShipping } from '../../../../test/support/ordering-fakes';
 import { FacadeCarrierProgressReader } from './facade-carrier-progress.reader';
 
@@ -19,7 +23,17 @@ const SO2 = id<'SellerOrder'>(0x502);
 const EXTRA = id<'SellerOrder'>(0x5ff);
 
 describe.each(['AU', 'ZZ'] as const)('carrier progress through the facade in market %s', (code) => {
-  const context = testCallContext(testMarketContext(code, 'default'), 'system', 'progress-0001');
+  // The caller is an admin, as on the Shipments list (shipping checks its own key).
+  const market = testMarketContext(code, 'default');
+  const context = testCallContext(
+    market,
+    testAuthenticatedActor(market, {
+      population: 'admin',
+      accountId: id<'Account'>(0x601),
+      sessionId: id<'Session'>(0x602),
+      sellerId: null,
+    }),
+  );
   const view = {
     fleet: 'doordash_drive',
     progress: 'delivered' as const,
@@ -55,13 +69,15 @@ describe.each(['AU', 'ZZ'] as const)('carrier progress through the facade in mar
     ]);
   });
 
-  it('answers not available, with nothing, for an admin without the key', async () => {
+  it('answers not available, with nothing, for an admin without the key, and a new answer each time', async () => {
     const shipping = new FakeShipping();
     shipping.carrierProgress.set(SO1, view);
     shipping.carrierProgressRefusal = 'access.denied';
     const answer = await new FacadeCarrierProgressReader(shipping).progressOf(context, [SO1]);
     expect(answer.available).toBe(false);
     expect(answer.progress.size).toBe(0);
+    const again = await new FacadeCarrierProgressReader(shipping).progressOf(context, [SO1]);
+    expect(again.progress).not.toBe(answer.progress);
   });
 
   it('throws on every other refusal (the list then shows no progress)', async () => {
