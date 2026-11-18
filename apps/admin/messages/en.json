@@ -1760,10 +1760,10 @@
       },
       "basis": {
         "SELLER_CERT_REQUIRED": "Seller certificate required",
-        "SELLER_OR_MANUFACTURER": "Seller or manufacturer certificate",
-        "NO_BADGE_ALLOWED": "No badge allowed",
         "SELLER_REQUIRED": "Seller certificate required",
-        "NOT_APPLICABLE": "No certificate needed"
+        "SELLER_OR_MANUFACTURER": "Seller or manufacturer certificate",
+        "NOT_APPLICABLE": "No certificate needed",
+        "NO_BADGE_ALLOWED": "No badge allowed"
       },
       "detail": {
         "title": "Certificate type",
@@ -1796,6 +1796,7 @@
         "locale-description-in": "Description for customers ({locale})",
         "locale-terms-in": "Claim terms ({locale})",
         "revise": "Change this type",
+        "policy": "Claim basis policy",
         "inactive-note": "No new certificates of this type can be added. Existing certificates and badges stay.",
         "revision-waiting": "A change to this type is waiting for a second admin.",
         "reactivation-waiting": "A reactivation is waiting for a second admin.",
@@ -1808,8 +1809,7 @@
           "withdrawn": "Proposal withdrawn.",
           "revision-published": "Change published.",
           "revision-pending": "Change saved. A second admin has to approve it before it is published."
-        },
-        "policy": "Claim basis policy"
+        }
       },
       "revise": {
         "title": "Change a certificate type",
@@ -1933,28 +1933,6 @@
         "policy-row": "Policy row",
         "reason-erased": "Reason removed"
       },
-      "error": {
-        "invalid": "Check the details and try again.",
-        "unchanged": "Nothing has changed since the published revision.",
-        "revision-invalid": "The API refused the change. Check the wording and the settings.",
-        "gone": "This type no longer exists. Reload the page.",
-        "already-inactive": "This type is already inactive. Reload the page.",
-        "already-active": "This type is already active. Reload the page.",
-        "proposal-gone": "This proposal no longer exists. Reload the page.",
-        "proposal-pending": "A proposal is already waiting. Reload the page.",
-        "proposal-closed": "This proposal was already answered. Reload the page.",
-        "second-admin": "A different admin has to answer this proposal.",
-        "stale": "This type changed while you were looking. Reload the page.",
-        "retry": "Something changed at the same time. Try again.",
-        "denied": "Your role can't change certificate types.",
-        "acting-as": "This can't be done while you're signed in as the seller.",
-        "throttled": "Too many requests. Try again in a minute.",
-        "csrf": "Your session needs a refresh. Reload the page.",
-        "unavailable": "The service is not available right now. Try again in a few minutes.",
-        "unknown": "Something went wrong. Try again.",
-        "not-proposer": "Only the admin who proposed this can withdraw it.",
-        "policy-invalid": "The API refused the rows. Check them and try again."
-      },
       "policy": {
         "title": "Claim basis policy",
         "back": "Back to the type",
@@ -2032,6 +2010,28 @@
           "too-many": "There are too many rows.",
           "row-invalid": "A row is not valid."
         }
+      },
+      "error": {
+        "invalid": "Check the details and try again.",
+        "unchanged": "Nothing has changed since the published revision.",
+        "revision-invalid": "The API refused the change. Check the wording and the settings.",
+        "policy-invalid": "The API refused the rows. Check them and try again.",
+        "gone": "This type no longer exists. Reload the page.",
+        "already-inactive": "This type is already inactive. Reload the page.",
+        "already-active": "This type is already active. Reload the page.",
+        "proposal-gone": "This proposal no longer exists. Reload the page.",
+        "proposal-pending": "A proposal is already waiting. Reload the page.",
+        "proposal-closed": "This proposal was already answered. Reload the page.",
+        "second-admin": "A different admin has to answer this proposal.",
+        "stale": "This type changed while you were looking. Reload the page.",
+        "retry": "Something changed at the same time. Try again.",
+        "denied": "Your role can't change certificate types.",
+        "acting-as": "This can't be done while you're signed in as the seller.",
+        "throttled": "Too many requests. Try again in a minute.",
+        "csrf": "Your session needs a refresh. Reload the page.",
+        "unavailable": "The service is not available right now. Try again in a few minutes.",
+        "unknown": "Something went wrong. Try again.",
+        "not-proposer": "Only the admin who proposed this can withdraw it."
       }
     }
   },
@@ -3501,16 +3501,16 @@
   "review-note": {
     "label": "Note for reviewers",
     "help": "Say why you are making this change. It applies at once; a reviewer reads your note in Admin Inbox > System requests and can undo the change.",
+    "help-approval": "Say why. The admin who decides reads it in Admin Inbox > System requests.",
     "counter": "{count} / {max}",
     "sent": "Sent for review as {number}",
+    "sent-for-approval": "Sent for approval ({number})",
+    "send-for-approval": "Send for approval",
+    "approval-body": "Nothing changes until another admin approves it in Admin Inbox > System requests.",
     "error": {
       "required": "Write a note for the reviewers (1 to 500 characters).",
       "rejected": "The note was refused. Write 1 to 500 characters."
-    },
-    "help-approval": "Say why. The admin who decides reads it in Admin Inbox > System requests.",
-    "sent-for-approval": "Sent for approval ({number})",
-    "send-for-approval": "Send for approval",
-    "approval-body": "Nothing changes until another admin approves it in Admin Inbox > System requests."
+    }
   },
   "commission": {
     "title": "Commission",
@@ -6972,6 +6972,45 @@
         }
       }
     },
+    "email": {
+      "title": "Edit email",
+      "current": "Current email",
+      "pending": "Pending new email",
+      "new": "New email",
+      "note": "We email a confirmation link to the new address and a notice to the current one. The current address keeps working until the customer confirms.",
+      "replaces": "Sending again replaces the pending request.",
+      "send": "Send confirmation",
+      "cancel": "Cancel",
+      "step-up": "You will be asked for a two-step code next.",
+      "sent": "Confirmation sent to {email}.",
+      "error": {
+        "required": "Enter the new email.",
+        "invalid": "Enter a valid email address.",
+        "same": "This is already the current email.",
+        "taken": "This email is already used by another account.",
+        "not-eligible": "A disabled or unverified account cannot change its email. Enable or verify it first.",
+        "deletion-pending": "This customer has a deletion request pending. Cancel it first.",
+        "not-found": "This customer no longer exists.",
+        "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+        "denied": "You don’t have access to change emails.",
+        "unavailable": "The confirmation could not be sent. Try again."
+      },
+      "banner": {
+        "text": "Waiting for {email} to confirm. The current address stays until then. Requested {date}.",
+        "cancel": "Cancel email change…"
+      },
+      "cancel-change": {
+        "title": "Cancel the email change?",
+        "body": "{email} will not be used and its confirmation link stops working. The current address stays.",
+        "confirm": "Cancel email change",
+        "keep": "Keep it",
+        "done": "Email change cancelled.",
+        "gone": "There is no pending email change any more.",
+        "failed": "The email change could not be cancelled. Try again.",
+        "denied": "You don’t have access to cancel email changes.",
+        "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}."
+      }
+    },
     "seller-picker": {
       "search": "Search stores",
       "help": "Type part of the store name",
@@ -7401,45 +7440,6 @@
         }
       },
       "saved-shared-help": "Everyone: every admin who can see customers gets it as a tab. The search term is not kept in a shared filter, because it holds part of a customer’s email; keep it in a filter only you can use."
-    },
-    "email": {
-      "title": "Edit email",
-      "current": "Current email",
-      "pending": "Pending new email",
-      "new": "New email",
-      "note": "We email a confirmation link to the new address and a notice to the current one. The current address keeps working until the customer confirms.",
-      "replaces": "Sending again replaces the pending request.",
-      "send": "Send confirmation",
-      "cancel": "Cancel",
-      "step-up": "You will be asked for a two-step code next.",
-      "sent": "Confirmation sent to {email}.",
-      "error": {
-        "required": "Enter the new email.",
-        "invalid": "Enter a valid email address.",
-        "same": "This is already the current email.",
-        "taken": "This email is already used by another account.",
-        "not-eligible": "A disabled or unverified account cannot change its email. Enable or verify it first.",
-        "deletion-pending": "This customer has a deletion request pending. Cancel it first.",
-        "not-found": "This customer no longer exists.",
-        "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}.",
-        "denied": "You don’t have access to change emails.",
-        "unavailable": "The confirmation could not be sent. Try again."
-      },
-      "banner": {
-        "text": "Waiting for {email} to confirm. The current address stays until then. Requested {date}.",
-        "cancel": "Cancel email change…"
-      },
-      "cancel-change": {
-        "title": "Cancel the email change?",
-        "body": "{email} will not be used and its confirmation link stops working. The current address stays.",
-        "confirm": "Cancel email change",
-        "keep": "Keep it",
-        "done": "Email change cancelled.",
-        "gone": "There is no pending email change any more.",
-        "failed": "The email change could not be cancelled. Try again.",
-        "denied": "You don’t have access to cancel email changes.",
-        "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}."
-      }
     }
   },
   "account-deletion": {
@@ -11705,61 +11705,6 @@
       }
     },
     "list": {
-      "label": "Variants",
-      "filters": "Filter variants",
-      "search": {
-        "label": "Search variants",
-        "placeholder": "Product, code, GTIN or SKU"
-      },
-      "search-placeholder": "Product, code, GTIN or SKU",
-      "type": "Variant type",
-      "type-all": "All variant types",
-      "issues": "Issues",
-      "issue-count": "{issue} · {count}",
-      "issue": {
-        "no-seller-selling": "No seller selling",
-        "missing-gtin": "Missing GTIN",
-        "duplicate-gtin": "Duplicate GTIN",
-        "no-image": "No image",
-        "missing-language": "Missing language"
-      },
-      "stock-note": "Stock is not shown here yet.",
-      "loading": "Loading variants",
-      "load-error": "The variants could not be loaded.",
-      "more-error": "More variants could not be loaded.",
-      "empty": {
-        "title": "No variants yet",
-        "no-match": "No variants match",
-        "no-match-help": "Change the search or the filters, or clear them."
-      },
-      "empty-filtered": "No variants match",
-      "clear": "Clear filters",
-      "col": {
-        "variant": "Product · variant",
-        "code": "Code",
-        "gtin": "GTIN",
-        "sellers": "Sellers",
-        "issues": "Issues"
-      },
-      "no-label": "No label",
-      "paused": "Paused",
-      "shown": "{count, plural, one {# variant shown} other {# variants shown}}",
-      "more": "Show more",
-      "export": {
-        "csv": "CSV",
-        "xlsx": "XLSX",
-        "pending": "Preparing the file",
-        "done": "File downloaded",
-        "too-large": "More than {max} variants match. Narrow the filter and export again.",
-        "unavailable": "The file could not be made. Try again in a moment.",
-        "title": "Export variants",
-        "body": "The file holds every variant the current view, search and filters match.",
-        "legend": "File format",
-        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
-        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
-        "confirm": "Export",
-        "cancel": "Cancel"
-      },
       "title": "Variants",
       "intro": "Every variant of the live products in this Market, with what needs fixing. Stock is not shown here yet.",
       "tabs": "Variant views",
@@ -11770,6 +11715,10 @@
         "duplicate-gtin": "Duplicate GTIN",
         "no-image": "No image",
         "missing-language": "Missing language"
+      },
+      "search": {
+        "label": "Search variants",
+        "placeholder": "Product, code, GTIN or SKU"
       },
       "filter": {
         "title": "Filter variants",
@@ -11799,7 +11748,17 @@
         }
       },
       "sorted": "Sorted by {field}, {order}",
+      "col": {
+        "variant": "Product · variant",
+        "code": "Code",
+        "gtin": "GTIN",
+        "sellers": "Sellers",
+        "issues": "Issues"
+      },
       "chip-search": "Search: {text}",
+      "no-label": "No label",
+      "paused": "Paused",
+      "loading": "Loading variants",
       "match": "{count, plural, one {# variant matches} other {# variants match}}",
       "range": "{from}–{to} of {total}",
       "too-many": "More than {limit} variants match. Add a search or a filter to see the rest.",
@@ -11807,6 +11766,11 @@
       "error": {
         "unavailable": "The variants could not be loaded.",
         "refused": "The search or filter cannot be used. Change it and try again."
+      },
+      "empty": {
+        "title": "No variants yet",
+        "no-match": "No variants match",
+        "no-match-help": "Change the search or the filters, or clear them."
       },
       "select": {
         "page": "Select all variants on this page",
@@ -11834,7 +11798,43 @@
         "selected": "{count, plural, one {# variant selected} other {# variants selected}}",
         "all-open": "All matching variants selected",
         "export": "Export…"
-      }
+      },
+      "export": {
+        "title": "Export variants",
+        "body": "The file holds every variant the current view, search and filters match.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "confirm": "Export",
+        "cancel": "Cancel",
+        "pending": "Preparing the file",
+        "done": "File downloaded",
+        "too-large": "More than {max} variants match. Narrow the filter and export again.",
+        "unavailable": "The file could not be made. Try again in a moment."
+      },
+      "label": "Variants",
+      "filters": "Filter variants",
+      "search-placeholder": "Product, code, GTIN or SKU",
+      "type": "Variant type",
+      "type-all": "All variant types",
+      "issues": "Issues",
+      "issue-count": "{issue} · {count}",
+      "issue": {
+        "no-seller-selling": "No seller selling",
+        "missing-gtin": "Missing GTIN",
+        "duplicate-gtin": "Duplicate GTIN",
+        "no-image": "No image",
+        "missing-language": "Missing language"
+      },
+      "stock-note": "Stock is not shown here yet.",
+      "load-error": "The variants could not be loaded.",
+      "more-error": "More variants could not be loaded.",
+      "empty-filtered": "No variants match",
+      "clear": "Clear filters",
+      "shown": "{count, plural, one {# variant shown} other {# variants shown}}",
+      "more": "Show more"
     }
   },
   "promotionsSettings": {
