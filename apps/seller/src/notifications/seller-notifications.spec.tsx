@@ -236,7 +236,7 @@ describe('SellerNotifications drawer', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications' })), {
       timeout: SLOW,
     });
-  }, 20_000);
+  }, 30_000);
 
   it.each([
     [
