@@ -273,7 +273,9 @@ describe('the add page', () => {
     );
     // The type is chosen in the Organisation card; Publish waits; no unsaved bar before an edit.
     expect(screen.getByLabelText('Product type')).toBeTruthy();
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Publish' }).disabled).toBe(true);
+    const publish = screen.getByRole<HTMLButtonElement>('button', { name: 'Publish' });
+    expect(publish.disabled).toBe(false);
+    expect(publish.getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByText(/^To publish:/)).toBeTruthy();
     expect(screen.queryByText('Unsaved product')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Discard product' })).toBeNull();
@@ -328,11 +330,17 @@ describe('the add page', () => {
     expect(screen.queryByText('Choose a product type.')).toBeNull();
   });
 
-  it('ties the disabled Publish to the line that says why, in a polite live region', async () => {
+  it('keeps the unavailable Publish focusable, tied to the line that says why, and a click does nothing', async () => {
     call.mockResolvedValueOnce(ok(OPTIONS));
     mount();
     await screen.findByLabelText('Product type');
     const publish = screen.getByRole('button', { name: 'Publish' });
+    publish.focus();
+    expect(document.activeElement).toBe(publish);
+    expect(publish.getAttribute('aria-disabled')).toBe('true');
+    const calls = call.mock.calls.length;
+    fireEvent.click(publish);
+    expect(call.mock.calls.length).toBe(calls);
     const line = screen.getByText(/^To publish:/);
     expect(publish.getAttribute('aria-describedby')).toBe(line.id);
     expect(line.id).not.toBe('');
@@ -648,7 +656,9 @@ describe('the edit form', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Add product' })).toBeTruthy();
     expect(screen.getByText('Platform product · Australia')).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Publish' }).disabled).toBe(true);
+    const publish = screen.getByRole<HTMLButtonElement>('button', { name: 'Publish' });
+    expect(publish.disabled).toBe(false);
+    expect(publish.getAttribute('aria-disabled')).toBe('true');
     expect(
       screen.getByText('To publish: add a title, choose a category and choose the tax category.'),
     ).toBeTruthy();
@@ -1186,9 +1196,9 @@ describe('a published product', () => {
     mountEdit();
     await screen.findByLabelText('Title');
     expect(screen.queryByText(/unpublished changes/)).toBeNull();
-    expect(
-      screen.getByRole<HTMLButtonElement>('button', { name: 'Publish revision 2' }).disabled,
-    ).toBe(true);
+    const revision = screen.getByRole<HTMLButtonElement>('button', { name: 'Publish revision 2' });
+    expect(revision.disabled).toBe(false);
+    expect(revision.getAttribute('aria-disabled')).toBe('true');
   });
 
   it('confirms "Publish revision N of <title>?" and submits the revision', async () => {

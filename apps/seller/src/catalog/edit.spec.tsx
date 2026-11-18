@@ -229,9 +229,11 @@ describe('EditForm', () => {
         },
       }),
     );
-    expect(
-      screen.getByRole<HTMLButtonElement>('button', { name: 'Submit for review' }).disabled,
-    ).toBe(true);
+    const submitButton = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Submit for review',
+    });
+    expect(submitButton.disabled).toBe(false);
+    expect(submitButton.getAttribute('aria-disabled')).toBe('true');
     expect(
       screen.getByText('To submit: choose a category and choose the tax category.'),
     ).toBeTruthy();
