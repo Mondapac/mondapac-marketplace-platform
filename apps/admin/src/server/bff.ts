@@ -36,6 +36,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Market's refunds (ordering, Sales > Refunds), read-only: the list (query: the tab,
     // search, filters and paging; see QUERY_KEYS).
     'ordering/admin/refunds',
+    // The export of the Refunds list as a CSV or XLSX file (ordering): the list's own filter,
+    // the visible columns, the chosen ids and the zone (see QUERY_KEYS).
+    'ordering/admin/refunds/export',
     // The Market's order confirmations and credit notes (ordering, Sales > Invoices), read-only:
     // the list (query: the kind, search, issued dates and paging; see QUERY_KEYS).
     'ordering/admin/documents',
@@ -838,6 +841,24 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'from',
     'to',
   ],
+  // The Refunds export: the list's filter keys (no paging or sort), the file's format and
+  // columns, the chosen ids and the zone of its times.
+  'ordering/admin/refunds/export': [
+    'format',
+    'columns',
+    'ids',
+    'zone',
+    'state',
+    'q',
+    'search',
+    'reason',
+    'actor',
+    'lossBearer',
+    'ledger',
+    'sellerId',
+    'from',
+    'to',
+  ],
   // The Invoices list: the tab (`kind`), the search (`q` or `search`), the issued dates and the
   // paging of either List paging mode (the API refuses the two modes mixed).
   'ordering/admin/documents': [
@@ -1102,6 +1123,39 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     // The API's own cursor: epoch milliseconds of the request, a dot and the refund id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
     // An id, a Stripe refund id or a name: free text, up to the box's 80 characters.
+    q: SEARCH_TEXT,
+    search: SEARCH_TEXT,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
+  },
+  'ordering/admin/refunds/export': {
+    format: /^(csv|xlsx)$/,
+    columns: exportColumns([
+      'refundId',
+      'sellerOrderId',
+      'store',
+      'customer',
+      'amount',
+      'tax',
+      'shipping',
+      'reason',
+      'actor',
+      'lossBearer',
+      'requested',
+      'settled',
+      'ledger',
+      'stripeRefundId',
+      'creditNote',
+    ]),
+    ids: EXPORT_IDS,
+    zone: EXPORT_ZONE,
+    state: /^(pending|succeeded|failed)$/,
+    reason:
+      /^(not-received|damaged|wrong-item|not-as-described|seller-cancelled|item-unavailable|other)$/,
+    actor: /^(admin|seller)$/,
+    lossBearer: /^(seller|platform)$/,
+    ledger: /^(waiting|recorded)$/,
+    sellerId: UUID,
     q: SEARCH_TEXT,
     search: SEARCH_TEXT,
     from: ISO_INSTANT,
@@ -1447,6 +1501,7 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 200 ids of 36 characters and 199 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/admin/products/export:ids': 7400,
+  'ordering/admin/refunds/export:ids': 7400,
   'ordering/admin/shipments/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,

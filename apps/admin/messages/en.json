@@ -11356,8 +11356,7 @@
     "bulk": {
       "button": "Bulk action",
       "selected": "{count, plural, one {# refund selected} other {# refunds selected}}",
-      "all-open": "All matching refunds selected",
-      "none-yet": "No bulk actions are available for refunds yet."
+      "all-open": "All matching refunds selected"
     },
     "actions": {
       "header": "Actions",
