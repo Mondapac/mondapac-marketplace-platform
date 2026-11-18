@@ -7,6 +7,18 @@ import type { VariantRequest, VariantRequestStatus } from '../../domain/variant-
  * is one conditional update out of `open`, and a notice move is one conditional update out of
  * `pending`.
  */
+/** The filter of the admin list of open requests. */
+export interface OpenRequestsFilter {
+  /** A fragment of the product code; null: all. */
+  readonly productCode: string | null;
+}
+
+export interface OpenRequestsPage extends OpenRequestsFilter {
+  readonly direction: 'asc' | 'desc';
+  readonly offset: number;
+  readonly limit: number;
+}
+
 export interface VariantRequestStore {
   findById(market: MarketContext, id: Id<'VariantRequest'>): Promise<VariantRequest | null>;
 
@@ -41,8 +53,15 @@ export interface VariantRequestStore {
     since: Temporal.Instant,
   ): Promise<number>;
 
-  /** Open requests, oldest first, at most `limit`. */
-  listOpen(market: MarketContext, limit: number): Promise<readonly VariantRequest[]>;
+  /**
+   * Open requests for the admin list, one page: by creation time (`oldest` first or `newest`),
+   * `offset` rows skipped, at most `limit`, optionally only those of products whose code holds
+   * `productCode` (case-insensitive).
+   */
+  pageOpen(market: MarketContext, page: OpenRequestsPage): Promise<readonly VariantRequest[]>;
+
+  /** How many open requests match the same filter (the total of the list). */
+  countOpen(market: MarketContext, filter: OpenRequestsFilter): Promise<number>;
 
   /**
    * One seller's requests, newest first (by id, a UUID v7), keyset-paged: rows after `afterId`

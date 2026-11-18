@@ -24,18 +24,25 @@ export interface SuperListTool {
 export interface SuperListProps {
   /** Above the tabs: what the list holds in words, then the bulk action menu and page actions. */
   readonly heading: {
+    /** A page title (h1) above the subtitle; omit it when the shell's top bar already names the page. */
+    readonly title?: string;
     readonly subtitle: string;
     /** A second small muted line under the subtitle (for example the zone the times are in). */
     readonly note?: string;
     readonly actions?: ReactNode;
   };
+  /** A notice between the heading and the tabs (for example a view-only banner). */
+  readonly notice?: ReactNode;
   /** Built-in tabs with their counts, then the saved filters, and "Manage filters…". */
   readonly views: ListViewsBarProps;
-  readonly search: {
+  /** Left out for a list its API cannot search (a customer's activity): no search box. */
+  readonly search?: {
     readonly label: string;
     readonly placeholder: string;
     readonly value: string;
     readonly maxLength: number;
+    /** What the search matches, read with the field (the placeholder is only a hint). */
+    readonly help?: string;
     readonly onChange: (value: string) => void;
     /** Enter searches at once, without the typing pause. */
     readonly onSubmit: (value: string) => void;
@@ -47,6 +54,11 @@ export interface SuperListProps {
   readonly filter?: SuperListTool;
   readonly sort?: SuperListTool;
   readonly columns?: SuperListTool;
+  /**
+   * The tool buttons in place of `filter`, `sort` and `columns`, for a list whose phone layout
+   * opens them in a sheet. Give it the whole `fieldset`, disabled while `status.skeleton` shows.
+   */
+  readonly toolbar?: ReactNode;
   /** "Sorted by Name, A to Z". */
   readonly sortedLine?: string;
   /** The chips and their buttons; null while nothing is filtered and nothing can be saved. */
@@ -107,11 +119,13 @@ function Tool({
  */
 export function SuperList({
   heading,
+  notice,
   views,
   search,
   filter,
   sort,
   columns,
+  toolbar,
   sortedLine,
   chips,
   failure,
@@ -129,36 +143,50 @@ export function SuperList({
   const hasTools = filter !== undefined || sort !== undefined || columns !== undefined;
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        {heading.note === undefined ? (
+      <div
+        className={`flex flex-wrap justify-between gap-x-4 gap-y-3 ${heading.title === undefined ? 'items-center' : 'items-start'}`}
+      >
+        {heading.title === undefined && heading.note === undefined ? (
           <p className="min-w-0 text-sm text-fg-muted">{heading.subtitle}</p>
         ) : (
-          <div className="flex min-w-0 flex-col gap-1">
-            <p className="text-sm text-fg-muted">{heading.subtitle}</p>
-            <p className="text-sm text-fg-muted">{heading.note}</p>
+          <div className={`flex min-w-0 flex-col ${heading.title === undefined ? 'gap-1' : ''}`}>
+            {heading.title === undefined ? null : (
+              <h1 className="text-2xl font-semibold">{heading.title}</h1>
+            )}
+            <p className="min-h-5 text-sm text-fg-muted">{heading.subtitle}</p>
+            {heading.note === undefined ? null : (
+              <p className="text-sm text-fg-muted">{heading.note}</p>
+            )}
           </div>
         )}
         {heading.actions === undefined ? null : (
           <div className="flex flex-wrap items-center gap-2">{heading.actions}</div>
         )}
       </div>
+      {notice}
       <ListViewsBar {...views} />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <SearchField
-          label={search.label}
-          placeholder={search.placeholder}
-          value={search.value}
-          maxLength={search.maxLength}
-          className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
-          onChange={(event) => search.onChange(event.target.value)}
-          onBlur={search.onBlur}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') search.onSubmit(search.value.trim());
-          }}
-        />
-        {search.extra}
+        {search === undefined ? null : (
+          <>
+            <SearchField
+              label={search.label}
+              placeholder={search.placeholder}
+              value={search.value}
+              maxLength={search.maxLength}
+              {...(search.help === undefined ? {} : { help: search.help })}
+              className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
+              onChange={(event) => search.onChange(event.target.value)}
+              onBlur={search.onBlur}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') search.onSubmit(search.value.trim());
+              }}
+            />
+            {search.extra}
+          </>
+        )}
         {/* The real toolbar shows while the first page loads, but cannot act on rows yet. */}
-        {hasTools ? (
+        {toolbar !== undefined ? toolbar : null}
+        {toolbar === undefined && hasTools ? (
           <fieldset disabled={skeleton} className="flex min-w-0 items-center gap-2">
             {filter === undefined ? null : <Tool tool={filter} kind="filter" />}
             {sort === undefined ? null : <Tool tool={sort} kind="sort" />}

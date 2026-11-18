@@ -106,6 +106,17 @@ export const MAIL_KEYS = [
   'identity.mail.seller-reinstated.seller.heading',
   'identity.mail.seller-reinstated.seller.body',
   'identity.mail.seller-reinstated.seller.action',
+  'identity.mail.confirm-email-change.customer.subject',
+  'identity.mail.confirm-email-change.customer.heading',
+  'identity.mail.confirm-email-change.customer.body',
+  'identity.mail.confirm-email-change.customer.action',
+  'identity.mail.email-change-requested.customer.subject',
+  'identity.mail.email-change-requested.customer.heading',
+  'identity.mail.email-change-requested.customer.body',
+  'identity.mail.email-changed.customer.subject',
+  'identity.mail.email-changed.customer.heading',
+  'identity.mail.email-changed.customer.body',
+  'identity.mail.common.contact-support',
   'identity.mail.common.account-line.customer',
   'identity.mail.common.account-line.seller',
   'identity.mail.common.account-line.admin',
@@ -204,15 +215,21 @@ export class CatalogueMailComposer implements IdentityMailComposer {
       mail.template === 'reset-password' ||
       mail.template === 'enrol-second-factor' ||
       mail.template === 'confirm-second-factor-reset' ||
+      mail.template === 'confirm-email-change' ||
       mail.template === 'invitation' ||
       mail.template === 'staff-invitation'
     ) {
       values['duration'] = formatDuration(locale, mail.lifetimeMinutes);
     }
+    const emailChangeNotice =
+      mail.template === 'email-change-requested' || mail.template === 'email-changed';
     const notice =
       mail.template === 'password-changed' ||
       mail.template === 'second-factor-changed' ||
-      mail.template === 'other-sessions-signed-out';
+      mail.template === 'other-sessions-signed-out' ||
+      emailChangeNotice;
+    // The new address, masked by code (Hassan R9): never the full address, in any mail.
+    if (emailChangeNotice) values['address'] = mail.maskedEmail;
     // E5 and E6 quote the admin's reason (`ux.md` 3.4): text the domain checked (no control or
     // bidi character), filled into a plain-text body only, never the subject.
     if (mail.template === 'seller-rejected' || mail.template === 'seller-suspended') {
@@ -224,7 +241,7 @@ export class CatalogueMailComposer implements IdentityMailComposer {
       const timezone = this.markets.get(market.marketId).timezone;
       values['time'] = formatInstant(locale, timezone, mail.changedAt);
     } else if (mail.template !== 'seller-suspended') {
-      values['url'] = mail.url;
+      values['url'] = (mail as { url: string }).url;
     }
     const fill = (template: string): string =>
       template.replace(PLACEHOLDER, (_match, name: string) => {
@@ -254,11 +271,14 @@ export class CatalogueMailComposer implements IdentityMailComposer {
         : [`${line(key('action'))}: ${(mail as { url: string }).url}`];
     // E3 and the decision mails E4 to E7 answer no request of the reader, so "ignore this" does
     // not fit them (identity design 8.7; `ux.md` 3.4).
-    const closing: MailKey[] = notice
-      ? ['identity.mail.common.not-you']
-      : mail.template === 'reviewer-notice' || DECISION_MAILS.has(mail.template)
-        ? []
-        : ['identity.mail.common.ignore'];
+    // The email change notices send the reader to support, not to a reset (Hassan R9).
+    const closing: MailKey[] = emailChangeNotice
+      ? ['identity.mail.common.contact-support']
+      : notice
+        ? ['identity.mail.common.not-you']
+        : mail.template === 'reviewer-notice' || DECISION_MAILS.has(mail.template)
+          ? []
+          : ['identity.mail.common.ignore'];
     const text = [
       line(key('heading')),
       line(key(body)),

@@ -5,6 +5,10 @@ import {
   MARKET_SETTING_REPOSITORY,
   type MarketSettingRepository,
 } from '../application/ports/market-setting.repository';
+import {
+  CUSTOMER_REVIEWS_READER,
+  type CustomerReviewsReader,
+} from '../application/ports/customer-reviews.reader';
 import { REVIEW_REPOSITORY, type ReviewRepository } from '../application/ports/review.repository';
 import { REVIEWER_NAMES, type ReviewerNames } from '../application/ports/reviewer-names';
 import { REVIEWS_POLICY, type ReviewsPolicy } from '../application/ports/reviews-policy';
@@ -14,6 +18,7 @@ import {
   type SellerOverlapSource,
 } from '../application/ports/seller-overlap';
 import { ConfigReviewsPolicy } from './config-reviews-policy';
+import { PrismaCustomerReviewsReader } from './prisma-customer-reviews.reader';
 import { PrismaMarketSettingRepository } from './prisma-market-setting.repository';
 import { PrismaReviewRepository } from './prisma-review.repository';
 import { UnavailableSellerOverlap } from './unavailable-seller-overlap';
@@ -27,6 +32,12 @@ export const reviewsProviders: readonly FactoryProvider[] = [
     provide: REVIEW_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): ReviewRepository => new PrismaReviewRepository(prisma),
+  },
+  {
+    provide: CUSTOMER_REVIEWS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomerReviewsReader =>
+      new PrismaCustomerReviewsReader(prisma),
   },
   {
     provide: MARKET_SETTING_REPOSITORY,

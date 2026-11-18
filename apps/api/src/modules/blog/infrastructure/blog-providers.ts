@@ -4,7 +4,12 @@ import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { CERTIFICATION_FACADE, type CertificationFacade } from '../../certification';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
+import {
+  BLOG_IMAGE_PROCESSOR,
+  type BlogImageProcessor,
+} from '../application/ports/blog-image-processor';
 import { BLOG_LINKS, type BlogLinks } from '../application/ports/blog-links';
+import { BLOG_MEDIA_STORE, type BlogMediaStore } from '../application/ports/blog-media.store';
 import { BLOG_POLICY, type BlogPolicy } from '../application/ports/blog-policy';
 import { BLOG_REPOSITORY, type BlogRepository } from '../application/ports/blog.repository';
 import {
@@ -15,7 +20,9 @@ import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../../pla
 import { PrismaAdminPostListReader } from './prisma-admin-post-list.reader';
 import { ConfigBlogPolicy } from './config-blog-policy';
 import { FacadeBlogLinks } from './facade-blog-links';
+import { PrismaBlogMediaStore } from './prisma-blog-media.store';
 import { PrismaBlogRepository } from './prisma-blog.repository';
+import { SharpBlogImageProcessor } from './sharp-blog-image-processor';
 
 /** Binds the ports of the blog. Only this layer may reach `PrismaService`. */
 export const blogProviders: readonly FactoryProvider[] = [
@@ -47,5 +54,14 @@ export const blogProviders: readonly FactoryProvider[] = [
       sellers: SellersFacade,
       certification: CertificationFacade,
     ): BlogLinks => new FacadeBlogLinks(catalog, sellers, certification),
+  },
+  {
+    provide: BLOG_MEDIA_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): BlogMediaStore => new PrismaBlogMediaStore(prisma),
+  },
+  {
+    provide: BLOG_IMAGE_PROCESSOR,
+    useFactory: (): BlogImageProcessor => new SharpBlogImageProcessor(),
   },
 ];

@@ -17,12 +17,15 @@ import {
   type SortDirection,
 } from '../domain/customer-list';
 import { emailSearchKey } from '../domain/customer-read-models';
+import { localDayEnd, localDayStart } from '../domain/local-day';
 
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
-const startOfDay = (day: string): Date => new Date(`${day}T00:00:00Z`);
-const startOfNextDay = (day: string): Date =>
-  new Date(Temporal.Instant.from(`${day}T00:00:00Z`).epochMilliseconds + 24 * 3_600_000);
+/** A day of a filter, already validated, as the instants it starts and ends in the query's zone. */
+const startOfDay = (day: string, zone: string): Date =>
+  new Date((localDayStart(day, zone) as Temporal.Instant).epochMilliseconds);
+const startOfNextDay = (day: string, zone: string): Date =>
+  new Date((localDayEnd(day, zone) as Temporal.Instant).epochMilliseconds);
 const daysBefore = (now: Temporal.Instant, days: number): Date =>
   new Date(now.epochMilliseconds - days * 24 * 3_600_000);
 
@@ -100,6 +103,8 @@ export class PrismaCustomerListReader implements CustomerListReader {
     const counts = await Promise.all(
       CUSTOMER_VIEWS.map((view) =>
         this.count(market, {
+          // The tabs count back from now and carry no day filter, so the zone plays no part.
+          zone: 'UTC',
           selector: {
             ...empty,
             view,
@@ -156,7 +161,7 @@ export class PrismaCustomerListReader implements CustomerListReader {
   }
 
   async #where(market: MarketContext, query: CustomerListQuery): Promise<Where> {
-    const { selector, now } = query;
+    const { selector, now, zone } = query;
     const and: Where[] = [];
 
     switch (selector.view) {
@@ -188,6 +193,12 @@ export class PrismaCustomerListReader implements CustomerListReader {
       }
     }
 
+    if (selector.accountIds != null) and.push({ accountId: { in: [...selector.accountIds] } });
+    if (selector.followsSellerId != null) {
+      and.push({
+        sellerCustomers: { some: { sellerId: selector.followsSellerId, follower: true } },
+      });
+    }
     if (selector.status !== null) and.push({ status: selector.status });
     if (selector.group !== null) {
       and.push({ groupMemberships: { some: { groupId: selector.group } } });
@@ -196,8 +207,8 @@ export class PrismaCustomerListReader implements CustomerListReader {
     if (selector.joinedFrom !== null || selector.joinedTo !== null) {
       and.push({
         signedUpAt: {
-          ...(selector.joinedFrom === null ? {} : { gte: startOfDay(selector.joinedFrom) }),
-          ...(selector.joinedTo === null ? {} : { lt: startOfNextDay(selector.joinedTo) }),
+          ...(selector.joinedFrom === null ? {} : { gte: startOfDay(selector.joinedFrom, zone) }),
+          ...(selector.joinedTo === null ? {} : { lt: startOfNextDay(selector.joinedTo, zone) }),
         },
       });
     }
@@ -208,10 +219,10 @@ export class PrismaCustomerListReader implements CustomerListReader {
             lastOrderAt: {
               ...(selector.lastOrderFrom === null
                 ? {}
-                : { gte: startOfDay(selector.lastOrderFrom) }),
+                : { gte: startOfDay(selector.lastOrderFrom, zone) }),
               ...(selector.lastOrderTo === null
                 ? {}
-                : { lt: startOfNextDay(selector.lastOrderTo) }),
+                : { lt: startOfNextDay(selector.lastOrderTo, zone) }),
             },
           },
         },

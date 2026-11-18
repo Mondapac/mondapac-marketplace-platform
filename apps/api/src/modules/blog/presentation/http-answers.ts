@@ -32,6 +32,12 @@ export const BLOG_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'conflict.stale': 409,
   'blog.checks-failed': 422,
   'blog.unavailable': 503,
+  'blog.media-not-found': 404,
+  'file.too-large': 413,
+  'file.unsupported-type': 415,
+  'file.too-many-pixels': 422,
+  'file.too-small': 422,
+  'file.unreadable': 422,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {

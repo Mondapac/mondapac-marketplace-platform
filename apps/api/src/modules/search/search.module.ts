@@ -337,9 +337,14 @@ function productDetailProvider<U>(
     requestReindexProvider,
     {
       provide: SEARCH_ASSISTANT_FACADE,
-      inject: [SearchProducts, ListBestsellers, ListSpecials],
-      useFactory: (search: SearchProducts, bestsellers: ListBestsellers, specials: ListSpecials) =>
-        new SearchAssistantFacadeImplementation(search, bestsellers, specials),
+      inject: [SearchProducts, ListBestsellers, ListSpecials, ViewProductDetail, SearchStores],
+      useFactory: (
+        search: SearchProducts,
+        bestsellers: ListBestsellers,
+        specials: ListSpecials,
+        detail: ViewProductDetail,
+        stores: SearchStores,
+      ) => new SearchAssistantFacadeImplementation(search, bestsellers, specials, detail, stores),
     },
     registerSubscriptionsFrom(
       'search',
