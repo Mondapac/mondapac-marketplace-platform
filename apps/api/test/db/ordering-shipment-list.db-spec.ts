@@ -186,6 +186,8 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
           taxInclusive: true,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
+          commissionRateReason: 'standard',
+          exclusiveSeller: false,
           taxRateBps: null,
           taxAmount: null,
           taxCategoryCode: null,

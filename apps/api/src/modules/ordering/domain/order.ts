@@ -55,6 +55,16 @@ export interface OrderLine {
    */
   readonly commissionRateBps: number | null;
   /**
+   * Why the line carries its rate, frozen with it (customers phase 4b): `standard`, or `exclusive`
+   * (the Market's lower rate for the seller's exclusive customer).
+   */
+  readonly commissionRateReason: 'standard' | 'exclusive';
+  /**
+   * Whether the buyer was the exclusive customer of the line's seller at placement (joined through
+   * its invite link), whether or not a lower rate applied. Lines before phase 4b: false.
+   */
+  readonly exclusiveSeller: boolean;
+  /**
    * The tax rate and the tax of the line, frozen at placement from `tax` (ADR-0039 decision 4).
    * Both null only on lines placed before tax was recorded. The tax is part of `lineAmount` when
    * the price includes tax, and added on top of it otherwise.

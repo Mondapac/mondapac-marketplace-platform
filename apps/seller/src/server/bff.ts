@@ -237,7 +237,11 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     to: null,
   },
   'ordering/seller/orders/export': {
-    format: /^csv$/,
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(delivery|items|currency|subtotal|shipping|tax|total|carrier|tracking|ready|shipped|delivered)(,(delivery|items|currency|subtotal|shipping|tax|total|carrier|tracking|ready|shipped|delivered)){0,11}$/,
+    // At most 100 selected seller order ids, one list page.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
     status: /^(to-ship|shipped|delivered)$/,
     from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
     to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
@@ -320,6 +324,7 @@ const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 100 ids of 36 characters and 99 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/seller/products/export:productIds': 3700,
+  'ordering/seller/orders/export:ids': 3700,
   'catalog/seller/offers/export:offerIds': 3700,
 };
 

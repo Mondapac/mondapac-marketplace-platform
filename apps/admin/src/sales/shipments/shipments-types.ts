@@ -31,6 +31,26 @@ export const defaultDirection = (): Direction => 'desc';
 export const ROW_ACTIONS = ['view-order', 'copy-tracking-reference'] as const;
 export type RowAction = (typeof ROW_ACTIONS)[number];
 
+export const CARRIER_PROGRESS = [
+  'booked',
+  'picked-up',
+  'delivered',
+  'exception',
+  'cancelled',
+] as const;
+
+/** What the carrier booking reports (advisory; it can differ from the stage for a short time). */
+export interface CarrierProgress {
+  /** A value this panel does not know is shown as Unknown. */
+  readonly progress: string;
+  /** The carrier's own code, seller or carrier text. */
+  readonly carrierStatus: string | null;
+  readonly updatedAt: string;
+  readonly proofOfDelivery: boolean;
+  /** Seller text. */
+  readonly fleet: string;
+}
+
 export interface ShipmentRow {
   readonly sellerOrderId: string;
   readonly orderId: string;
@@ -54,6 +74,8 @@ export interface ShipmentRow {
   readonly trackingRef: string | null;
   readonly fleet: string | null;
   readonly deliveryAttention: string | null;
+  /** Null when the order has no carrier booking. */
+  readonly carrierProgress: CarrierProgress | null;
   readonly shipping: Money;
   readonly total: Money;
   readonly refunded: Money;
@@ -72,6 +94,8 @@ export interface ShipmentCounts {
 export interface ShipmentsPage {
   readonly shipments: readonly ShipmentRow[];
   readonly counts: ShipmentCounts;
+  /** False when the carrier progress of this page could not be loaded: every row's is unknown. */
+  readonly carrierProgressAvailable: boolean;
   /** Null on a Previous and next page. */
   readonly total: number | null;
   readonly page: number | null;
