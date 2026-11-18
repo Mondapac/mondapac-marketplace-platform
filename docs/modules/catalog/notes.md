@@ -39,20 +39,25 @@ known.
   by `blankProduct(options)`); admin `/catalog/products/new` renders `ProductAdd`, which reads
   the options client-side and gives `EditForm` the `creating` prop.
 - **Nothing is created until the first Save draft.** Opening the page, typing and leaving writes
-  nothing. Publish and Submit are inactive while adding.
+  nothing. Publish (admin) and Submit for review (seller) are inactive until the product exists.
 - **Save sequence (`createAndSave`).** `POST` create (seller: type, condition, SKU; admin: type
   only), then `PUT .../draft` with the page content and the `variantIds` returned by the create,
   then `router.replace` to the edit URL. Before leaving, `flushSync(() => setDirty(false))`
   releases the unsaved-changes guard so it does not prompt. A busy ref (not state) blocks a
   double submit. A 401 at either call goes to `/session-ended`. Once the create has succeeded,
   a failed or refused draft save still moves to the edit page and is told there (seller: toast;
-  admin: `?saved=failed|refused`, read by `startProblemOf`), because a second Save draft would
-  find the SKU taken. A failed create stays on the page with its problem shown.
+  admin: `?saved=failed|refused`, read by `startProblemOf`), because for the seller a second Save draft would
+  find the SKU taken (the admin create has no SKU). A failed create stays on the page with its problem shown.
 - **Reads before the first save** come from the options endpoints, not a product read:
-  `GET catalog/seller/products/options` and `GET catalog/platform/products/options` (use cases
+  `GET catalog/seller/products/options` and `GET catalog/admin/platform-products/options` (use cases
   `OwnProductOptions`, `PlatformProductOptions`): product types, locales, tax categories,
-  categories (seller also conditions and `sellerCanCreateProduct`). A failed category read
+  categories (seller also conditions and `sellerCanCreateProduct`; the seller's product types are
+  filtered to the types that seller may sell). A failed category read
   degrades to an empty list; the other answers stay usable.
+- **Loading and guards.** The seller page loads the options server-side; when
+  `sellerCanCreateProduct` is false it shows `catalog.create.closed` instead of the form. The
+  admin page loads them client-side with loading, failed and retry states, and shows a no-access
+  message (with a back link) when the session lacks the edit permission.
 - **Seller and admin differ in one card.** The seller gets a "Your offer" card (type,
   condition, SKU; all required, checked before the call). The admin picks the product type in
   the Organisation card; a missing type is reported at the top and focuses the field.
