@@ -117,6 +117,39 @@ class MemoryTopics implements TopicRepository, TopicReader {
         })),
     );
   }
+  #matching(filter: { status: string | null; group: string | null; search: string | null }) {
+    return this.#inMarket({ marketId: this.#current } as MarketContext)
+      .filter((row) => filter.status === null || row.status === filter.status)
+      .filter((row) => filter.group === null || row.group === filter.group)
+      .filter(
+        (row) =>
+          filter.search === null ||
+          row.terms.some((t) => t.text.toLowerCase().includes(filter.search!.toLowerCase())),
+      );
+  }
+  #current = '';
+  page(market: MarketContext, query: Parameters<TopicReader['page']>[1]) {
+    this.#current = market.marketId;
+    const sign = query.direction === 'asc' ? 1 : -1;
+    const keyOf = (row: TopicState): string =>
+      query.sort === 'slug'
+        ? row.slug
+        : query.sort === 'status'
+          ? row.status
+          : query.sort === 'group'
+            ? row.group
+            : query.sort === 'created'
+              ? row.createdAt.toString()
+              : row.updatedAt.toString();
+    const sorted = this.#matching(query).sort(
+      (a, b) => sign * (keyOf(a).localeCompare(keyOf(b)) || a.id.localeCompare(b.id)),
+    );
+    return Promise.resolve(sorted.slice(query.offset, query.offset + query.limit));
+  }
+  count(market: MarketContext, filter: Parameters<TopicReader['count']>[1]) {
+    this.#current = market.marketId;
+    return Promise.resolve(this.#matching(filter).length);
+  }
   list(market: MarketContext, query: Parameters<TopicReader['list']>[1]) {
     const items = this.#inMarket(market)
       .filter((row) => query.status === null || row.status === query.status)

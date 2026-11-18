@@ -124,7 +124,10 @@ describe('RequestDetail', () => {
     expect(within(card).getByText('15%')).toBeTruthy();
     expect(within(card).getByText('12%')).toBeTruthy();
     expect(within(card).getAllByText('changed', { exact: false }).length).toBeGreaterThan(0);
-    fireEvent.click(within(card).getByRole('button', { name: '1 unchanged field' }));
+    const unchanged = within(card).getByRole('button', { name: '1 unchanged field' });
+    // A 44 px target on a phone.
+    expect(unchanged.className).toContain('max-sm:min-h-11');
+    fireEvent.click(unchanged);
     expect(within(card).getAllByText('standard').length).toBeTruthy();
     // History: oldest first, with a word for a kind the panel does not know.
     expect(screen.getByText('applied the change')).toBeTruthy();
@@ -214,7 +217,7 @@ describe('RequestDetail', () => {
         decidedBy: ME,
         decidedAt: '2026-11-12T01:00:00.000Z',
       },
-      'Approved by you on 12 Nov 2026. The change stayed live.',
+      'Approved. The change stayed live.',
     ],
     [
       'rejected',
@@ -226,7 +229,7 @@ describe('RequestDetail', () => {
         decidedAt: '2026-11-12T01:00:00.000Z',
         decisionReason: 'Too low',
       },
-      'Rejected by Omar L. on 12 Nov 2026. Reason: Too low.',
+      'Rejected. The previous value was put back.',
     ],
     [
       'withdrawn',
@@ -238,14 +241,16 @@ describe('RequestDetail', () => {
         decidedAt: '2026-11-12T01:00:00.000Z',
         decisionReason: 'Mistake',
       },
-      'Withdrawn by Sara K. on 12 Nov 2026. Reason: Mistake.',
+      'Withdrawn. The previous value was put back.',
     ],
   ] as const)(
     'shows the outcome line of a %s request and no actions',
     async (_name, over, text) => {
       call.mockResolvedValue(ok(detail({ ...over, actions: ['open', 'copy-link', 'approve'] })));
       mount();
-      expect(await screen.findByText(text)).toBeTruthy();
+      const line = await screen.findByText(text);
+      // The long reason and name live in the facts; the line is short and wraps unbroken text.
+      expect(line.className).toContain('break-words');
       expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
       expect(
         screen.getByRole('heading', { name: 'Values at the time of the change' }),
@@ -314,7 +319,7 @@ describe('RequestDetail decisions', () => {
       undefined,
       'csrf',
     );
-    expect(await screen.findByText(/Approved by you on/)).toBeTruthy();
+    expect(await screen.findByText('Approved. The change stayed live.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
   });
 

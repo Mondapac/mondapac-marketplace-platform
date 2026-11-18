@@ -361,8 +361,37 @@ describe('tag suggestions over HTTP (integration)', () => {
       expect(listed.headers['cache-control']).toBe('no-store');
       expect(listed.body).toMatchObject({
         requiredLocales: [localeOf(code)],
-        items: [{ id: suggestionId, version: 1, label: 'Tag 1 fun', suggestedSlug: 'tag-1-fun' }],
+        total: 1,
+        page: 1,
+        paging: 'pages',
+        hasNext: false,
+        items: [
+          {
+            id: suggestionId,
+            version: 1,
+            label: 'Tag 1 fun',
+            suggestedSlug: 'tag-1-fun',
+            actions: ['approve', 'map', 'reject'],
+          },
+        ],
       });
+      const reviewOnly = await http()
+        .get(QUEUE)
+        .set(session(code, 'admin', REVIEW_ONLY, 2))
+        .expect(200);
+      expect((reviewOnly.body as { items: { actions: string[] }[] }).items[0]?.actions).toEqual([
+        'map',
+        'reject',
+      ]);
+      const aliased = await http()
+        .get(`${QUEUE}?limit=5&q=fun`)
+        .set(session(code, 'admin', REVIEWER, 1))
+        .expect(200);
+      expect(aliased.body).toMatchObject({ pageSize: 5, total: 1 });
+      await http()
+        .get(`${QUEUE}?limit=abc`)
+        .set(session(code, 'admin', REVIEWER, 1))
+        .expect(400);
       await http()
         .get(QUEUE)
         .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') })

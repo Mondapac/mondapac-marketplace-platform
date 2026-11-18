@@ -46,6 +46,12 @@ const tokens = new RandomSessionTokens();
 /** Topics per Market; the list is the real reader's contract on active filter, search and keyset. */
 class MemoryTopics implements TopicReader {
   readonly byMarket = new Map<string, TopicState[]>();
+  page() {
+    return Promise.resolve([]);
+  }
+  count() {
+    return Promise.resolve(0);
+  }
   list(market: MarketContext, query: Parameters<TopicReader['list']>[1]) {
     const all = [...(this.byMarket.get(market.marketId) ?? [])].sort((a, b) =>
       a.slug.localeCompare(b.slug),

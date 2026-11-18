@@ -207,6 +207,19 @@ describe.each(TEST_MARKETS)(
         reader.list(other, { status: null, search: unique, afterId: null, limit: 10 }),
       );
       expect(foreign.items).toEqual([]);
+      // The numbered read: sorted both ways, offset, count, and a wildcard matched as typed.
+      const filter = { status: null, search: unique } as const;
+      expect(await inUnit(() => reader.count(market, filter))).toBe(3);
+      const desc = await inUnit(() =>
+        reader.page(market, { ...filter, sort: 'code', direction: 'desc', offset: 1, limit: 5 }),
+      );
+      expect(desc.map((i) => i.code)).toEqual([states[1]!.code, states[0]!.code]);
+      const byStatus = await inUnit(() =>
+        reader.page(market, { ...filter, sort: 'status', direction: 'asc', offset: 0, limit: 5 }),
+      );
+      expect(byStatus.map((i) => i.status)).toEqual(['active', 'active', 'inactive']);
+      expect(await inUnit(() => reader.count(market, { status: null, search: '%' }))).toBe(0);
+      expect(await inUnitOf(other)(() => reader.count(other, filter))).toBe(0);
     });
 
     it('enforces the CHECKs of the three tables', async () => {
