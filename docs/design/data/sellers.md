@@ -1592,6 +1592,19 @@ refuses, the seller `reviewer-notice` reservation is released (the Market one st
   50 ms: then keep the counters in a table updated in the same unit as the file change, or cache them
   for a few seconds.
 
+- **Super list 15 (2026-11-18; no schema change; pending Mojtaba review).** `POST
+  /sellers/admin/sellers/list` reads the three file tabs with `ORDER BY ... OFFSET ... LIMIT` and a
+  filtered `count(*)` (`countMatching`, page-number mode only), the four identity state tabs by
+  walking `identity`'s keyset pages (at most 20 calls of 100, so 2,000 rows deep). Orders: All
+  `seller_id` (the primary key, either direction); Incomplete `(last_changed_at, seller_id)` in one
+  direction (the partial index of A4 serves both directions); Awaiting review
+  `(created_at, seller_id)` on the pending revisions (no index in that order; the pending set is
+  small); `name` = `(store_name_key, seller_id)` on `seller_files_market_id_store_name_key_idx`
+  (NULLS LAST ascending, first descending, so the index can be read either way; the `seller_id`
+  tie needs an incremental sort). OFFSET is bounded to 10,000 rows. Revisit trigger: the p95 of
+  `sellers.seller-list-query` above 200 ms, or a Market above 50,000 sellers; then a keyset per
+  sort, or an index `(market_id, store_name_key, seller_id)`.
+
 ## 24. Slice 7a-decide migration `20261010113051_sellers_review_decisions` (2026-10-10)
 - `seller_files`: `public_store_name` (set with the approved pointer, CHECK both null or both set), and the decision intent `decision_intent`, `decision_attempt_id`, `decision_revision_id`, `decision_intent_since` (all four set or all null; the revision is a foreign key to this file's revisions). Partial index `(market_id, decision_intent_since) WHERE decision_intent IS NOT NULL` for the reconciliation job.
 - `review_checks` (PK market, revision, check code; FK to the revision with cascade): only `manual-register-check` is written in this slice; `observed_register_outcome` is set exactly for it. Grants SELECT, INSERT, UPDATE.

@@ -89,6 +89,9 @@ class StubList implements SellerListRepository {
   counts() {
     return Promise.resolve(emptyCounts);
   }
+  countMatching(market: MarketContext) {
+    return Promise.resolve((this.rows.get(market.marketId) ?? []).length);
+  }
   overflow = false;
   searchCandidates() {
     return Promise.resolve({ ids: this.overflow ? [] : [sellerId(1)], overflow: this.overflow });
@@ -688,6 +691,102 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
       expect((max.body as { items: unknown[] }).items).toHaveLength(3);
       expect((max.body as { next: unknown }).next).toBeNull();
       expect(list.queries.map((q) => q.take)).toEqual([2, 51]);
+    });
+
+    it('serves the super list (list 15) and its file over POST, and refuses the others', async () => {
+      await boot();
+      await seeded(code);
+      list.rows.set(code, [row(1), row(2)]);
+      const route = (
+        path: 'list' | 'export',
+        headers: Record<string, string> | null,
+        body: unknown,
+        { csrf = true } = {},
+      ) => {
+        const call = http()
+          .post(`/sellers/admin/sellers/${path}`)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') });
+        if (headers === null) return call.send(body as object);
+        return call
+          .set('cookie', headers.cookie!)
+          .set(csrf ? { 'x-csrf-token': headers['x-csrf-token']! } : {})
+          .send(body as object);
+      };
+
+      const listed = await route('list', sessionHeaders(code, ROOT, 41), {
+        view: 'awaiting-review',
+        q: CANARY,
+        pageSize: 10,
+      });
+      expect(listed.status).toBe(200);
+      expect(listed.headers['cache-control']).toBe('no-store');
+      expect(listed.body).toMatchObject({
+        tab: 'awaiting-review',
+        total: 2,
+        page: 1,
+        pageSize: 10,
+        paging: 'pages',
+        hasNext: false,
+        stateCounts: { approved: 2 },
+        healthUnavailable: false,
+      });
+      const items = (listed.body as { items: { sellerId: string; actions: string[] }[] }).items;
+      expect(items.map((item) => [item.sellerId, item.actions])).toEqual([
+        [sellerId(1), ['open']],
+        [sellerId(2), ['open']],
+      ]);
+      const hidden = await route('list', sessionHeaders(code, LISTER, 42), {});
+      expect(hidden.status).toBe(200);
+      expect(hidden.body).toMatchObject({ stateCounts: null });
+      expect(
+        (hidden.body as { items: { status: string; owner: unknown }[] }).items.map((item) => [
+          item.status,
+          item.owner,
+        ]),
+      ).toEqual([
+        ['hidden', null],
+        ['hidden', null],
+      ]);
+      expect(
+        (await route('list', sessionHeaders(code, LISTER, 43), { view: 'approved' })).status,
+      ).toBe(403);
+      expect((await route('list', sessionHeaders(code, ROOT, 44), { sort: 'bogus' })).status).toBe(
+        400,
+      );
+      expect((await route('list', sessionHeaders(code, SUPPORT, 45), {})).status).toBe(403);
+      expect((await route('list', null, {})).status).toBe(401);
+      expect(
+        (await route('list', sessionHeaders(code, ROOT, 46), {}, { csrf: false })).status,
+      ).toBe(403);
+
+      const file = await route('export', sessionHeaders(code, ROOT, 47), {
+        ids: `${sellerId(1)}`,
+        columns: 'seller-id',
+      });
+      expect(file.status).toBe(200);
+      expect(file.headers['cache-control']).toBe('no-store');
+      expect(file.headers['content-disposition']).toMatch(
+        /^attachment; filename="sellers-\d{4}-\d{2}-\d{2}\.csv"$/,
+      );
+      expect(file.text).toContain('Shop 1,shop-1,awaiting-review,');
+      expect(file.text).toContain(OWNER.email);
+      const missing = await route('export', sessionHeaders(code, ROOT, 48), {
+        ids: '01990000-0000-7000-8000-0000000000ff',
+      });
+      expect(missing.status).toBe(404);
+      expect(missing.body).toMatchObject({ code: 'file.not-found' });
+      const many = Array.from({ length: 201 }, (_, i) => sellerId(100 + i)).join(',');
+      const tooMany = await route('export', sessionHeaders(code, ROOT, 49), { ids: many });
+      expect(tooMany.status).toBe(413);
+      expect(tooMany.body).toMatchObject({ code: 'batch.too-large', details: { max: 200 } });
+      const blank = await route('export', sessionHeaders(code, LISTER, 50), {});
+      expect(blank.status).toBe(200);
+      expect(blank.text).not.toContain(OWNER.email);
+      expect((await route('export', sessionHeaders(code, SUPPORT, 51), {})).status).toBe(403);
+
+      // Neither the search term nor a name or an address reaches a log line.
+      expect(JSON.stringify(logLines)).not.toContain(CANARY);
+      expect(JSON.stringify(logLines)).not.toMatch(/wombat/i);
     });
 
     it('is 503 sellers.unavailable, not an empty list, when identity cannot answer', async () => {

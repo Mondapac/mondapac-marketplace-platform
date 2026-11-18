@@ -105,6 +105,11 @@ import { ReviewRegisterCheckRead } from './application/use-cases/review-register
 import { PurgeExpired } from './application/use-cases/purge-expired.use-case';
 import { SweepOrphanStoreImageFiles } from './application/use-cases/sweep-orphan-store-image-files.use-case';
 import { SellerList } from './application/use-cases/list.use-case';
+import type { SellerSuperListDependencies } from './application/seller-super-list-flow';
+import { SellerListExport } from './application/use-cases/seller-list-export.use-case';
+import { SellerListQuery } from './application/use-cases/seller-list-query.use-case';
+import { SellerStatusViewProbe } from './application/use-cases/seller-status-view-probe.use-case';
+import { ExceljsSheetWriter } from '../../platform/list-export';
 import { ServiceAreaNamesEdit } from './application/use-cases/service-area-names-edit.use-case';
 import {
   ServiceAreaNamesList,
@@ -729,6 +734,50 @@ const REVIEW_DECISION_PORTS = {
       clock: true,
       areaNames: true,
     }),
+    // The Sellers super list (list 15) and its export, over HTTP through SellerListController,
+    // under `sellers.seller.view`; the status probe asks the gate for
+    // `identity.seller-access.view` (the status, the owner and the identity state tabs).
+    {
+      provide: SellerStatusViewProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new SellerStatusViewProbe(gate),
+    },
+    ...[SellerListQuery, SellerListExport].map((type): FactoryProvider => ({
+      provide: type,
+      inject: [
+        USE_CASE_GATE,
+        PORT.unitOfWork,
+        PORT.list,
+        PORT.directory,
+        PORT.onboardingAreas,
+        PORT.healthStore,
+        PORT.clock,
+        PORT.areaNames,
+        SellerStatusViewProbe,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: SellerSuperListDependencies['unitOfWork'],
+        list: SellerSuperListDependencies['list'],
+        directory: SellerSuperListDependencies['directory'],
+        onboardingAreas: SellerSuperListDependencies['onboardingAreas'],
+        healthStore: SellerSuperListDependencies['healthStore'],
+        clock: SellerSuperListDependencies['clock'],
+        areaNames: SellerSuperListDependencies['areaNames'],
+        statusProbe: SellerStatusViewProbe,
+      ) =>
+        new type(gate, {
+          unitOfWork,
+          list,
+          directory,
+          onboardingAreas,
+          healthStore,
+          clock,
+          areaNames,
+          statusProbe,
+          sheetWriter: new ExceljsSheetWriter(),
+        }),
+    })),
     // Editable service area names (ADR-0041), over HTTP through ServiceAreaNamesController: the
     // page under `sellers.seller.view`, the edit under `sellers.service-area.edit`.
     {
