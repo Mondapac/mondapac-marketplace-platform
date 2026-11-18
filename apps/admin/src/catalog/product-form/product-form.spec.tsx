@@ -1199,6 +1199,10 @@ describe('a published product', () => {
     const revision = screen.getByRole<HTMLButtonElement>('button', { name: 'Publish revision 2' });
     expect(revision.disabled).toBe(false);
     expect(revision.getAttribute('aria-disabled')).toBe('true');
+    const callsBefore = call.mock.calls.length;
+    fireEvent.click(revision);
+    expect(call.mock.calls.length).toBe(callsBefore);
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('confirms "Publish revision N of <title>?" and submits the revision', async () => {

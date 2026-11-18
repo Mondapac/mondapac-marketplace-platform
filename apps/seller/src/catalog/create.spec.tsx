@@ -421,6 +421,8 @@ describe('Add product page', () => {
     submit.focus();
     expect(document.activeElement).toBe(submit);
     expect(submit.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(submit);
+    expect(call).not.toHaveBeenCalled();
     const line = screen.getByText(/^To submit:/);
     expect(submit.getAttribute('aria-describedby')).toBe(line.id);
     expect(line.parentElement?.getAttribute('aria-live')).toBe('polite');
