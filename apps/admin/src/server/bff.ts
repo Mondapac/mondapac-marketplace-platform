@@ -97,6 +97,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // its export as a file (the chosen ids or the list's own query). The decisions are POSTs below.
     'pricing/admin/price-holds/list',
     'pricing/admin/price-holds/export',
+    // The certificate review queue as a super list (certification; query: `view`, `kind`, `type`,
+    // `q`, `sellerId`, `from`, `to`, `sort`, `direction`, `paging`, `page`, `pageSize`) and its
+    // export as a file (the chosen ids or the list's own query). One certificate is read by its
+    // page server.
+    'certification/admin/seller-certificates/list',
+    'certification/admin/seller-certificates/export',
     // The buyer-review moderation queue (reviews), read-only list (query: `tab`, `cursor`,
     // `limit`); one review is read by its dialog and again after an action.
     'reviews/admin/moderation',
@@ -1133,6 +1139,35 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
+  // The view, filters, sort and page mode of the certificate queue super list (the API validates).
+  'certification/admin/seller-certificates/list': [
+    'view',
+    'kind',
+    'type',
+    'q',
+    'sellerId',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'paging',
+    'page',
+    'pageSize',
+  ],
+  'certification/admin/seller-certificates/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'kind',
+    'type',
+    'q',
+    'sellerId',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
   'catalog/admin/products': [
     'view',
@@ -1677,6 +1712,36 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^(submitted|amount)$/,
     direction: /^(asc|desc)$/,
   },
+  'certification/admin/seller-certificates/list': {
+    view: /^(all|initial|resubmission|renewal)$/,
+    kind: /^(initial|resubmission|renewal)$/,
+    type: /^[a-z0-9][a-z0-9_-]{0,63}$/,
+    // A certificate id or a submission id, exact.
+    q: UUID,
+    sellerId: UUID,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
+    sort: /^(queue|submitted|type)$/,
+    direction: /^(asc|desc)$/,
+    paging: /^(pages|prev-next)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'certification/admin/seller-certificates/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(certificate-id|submission-id|seller-id|submission-no)(,(certificate-id|submission-id|seller-id|submission-no)){0,3}$/,
+    ids: UUID_LIST_200,
+    view: /^(all|initial|resubmission|renewal)$/,
+    kind: /^(initial|resubmission|renewal)$/,
+    type: /^[a-z0-9][a-z0-9_-]{0,63}$/,
+    q: UUID,
+    sellerId: UUID,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
+    sort: /^(queue|submitted|type)$/,
+    direction: /^(asc|desc)$/,
+  },
   'catalog/admin/products': {
     view: /^(active|all|inactive)$/,
     scope: /^(PLATFORM|SELLER)$/,
@@ -2013,6 +2078,7 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'wallet/admin/credit-requests/export:ids': 7400,
   'commission-payouts/admin/disputes/export:ids': 7400,
   'pricing/admin/price-holds/export:ids': 7400,
+  'certification/admin/seller-certificates/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
   'payments/admin/connected-accounts/export:ids': 7400,
