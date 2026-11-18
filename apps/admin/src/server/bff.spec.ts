@@ -1133,6 +1133,182 @@ describe('relay of the customers list and customer page', () => {
     expect(other.status).toBe(413);
   });
 
+  describe('customers phase 2b, part A: payments, disputes, refunds and promotion usages', () => {
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it.each([
+      ['POST', `payments/admin/customers/${ID}/payments`],
+      ['POST', `payments/admin/customers/${ID}/payments/export`],
+      ['POST', `payments/admin/customers/${ID}/disputes`],
+      ['POST', `payments/admin/customers/${ID}/disputes/export`],
+      ['POST', `ordering/admin/customers/${ID}/refunds`],
+      ['POST', `ordering/admin/customers/${ID}/refunds/export`],
+      ['GET', `promotions/admin/customers/${ID}/usages?limit=50&cursor=abc.1`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['GET', `payments/admin/customers/${ID}/payments`],
+      ['GET', `payments/admin/customers/${ID}/disputes`],
+      ['PUT', `payments/admin/customers/${ID}/payments`],
+      ['POST', `payments/admin/customers/${ID}/payments/purge`],
+      ['POST', `promotions/admin/customers/${ID}/usages`],
+      ['DELETE', `ordering/admin/customers/${ID}/refunds`],
+      ['POST', `payments/admin/customers/not-a-uuid/payments`],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('forwards only the usages paging keys', async () => {
+      const upstream = upstreamOk();
+      const target = `promotions/admin/customers/${ID}/usages?limit=50&cursor=abc.1&status=x`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/promotions/admin/customers/${ID}/usages?limit=50&cursor=abc.1`,
+      );
+    });
+  });
+
+  describe('customers phase 2b part C: shopping and reviews', () => {
+    const SECTIONS = [
+      'saved-items',
+      'cart-reminders',
+      'cart-additions',
+      'assistant-conversations',
+      'reviews',
+      'seller-ratings',
+      'helpful-votes',
+      'review-reports',
+    ];
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it.each([
+      ...SECTIONS.flatMap((name) => [
+        ['POST', `customers/admin/customers/${ID}/${name}`],
+        ['POST', `customers/admin/customers/${ID}/${name}/export`],
+      ]),
+      ['GET', `customers/admin/customers/${ID}/cart`],
+      ['GET', `customers/admin/customers/${ID}/behaviour`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ...SECTIONS.flatMap((name) => [
+        ['GET', `customers/admin/customers/${ID}/${name}`],
+        ['PUT', `customers/admin/customers/${ID}/${name}`],
+        ['GET', `customers/admin/customers/${ID}/${name}/export`],
+      ]),
+      ['POST', `customers/admin/customers/${ID}/cart`],
+      ['DELETE', `customers/admin/customers/${ID}/behaviour`],
+      ['POST', `customers/admin/customers/${ID}/reviews/purge`],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('takes a list body under the 16 KB cap and refuses a larger one', async () => {
+      const upstream = upstreamOk();
+      const target = `customers/admin/customers/${ID}/reviews`;
+      const big = JSON.stringify({ filters: { status: ['x'.repeat(17 * 1024)] } });
+      expect(
+        (await relay(config, send('POST', target, big), pathOf(target), upstream)).status,
+      ).toBe(413);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('forwards no query string of the cart read', async () => {
+      const upstream = upstreamOk();
+      const target = `customers/admin/customers/${ID}/cart?x=1`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/customers/admin/customers/${ID}/cart`,
+      );
+    });
+  });
+
+  describe('customers phase 2b, part B: account and security', () => {
+    const A = '0190a000-0000-7000-8000-0000000000c1';
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+    const base = `customers/admin/customers/${ID}`;
+
+    it.each([
+      ['GET', `${base}/sessions`],
+      ['GET', `${base}/addresses`],
+      ['GET', `${base}/consent`],
+      ['GET', `${base}/behaviour`],
+      ['POST', `${base}/sign-ins`],
+      ['POST', `${base}/sign-ins/${A}/reveal`],
+      ['POST', `${base}/sessions/end`],
+      ['POST', `${base}/password-reset`],
+      ['POST', `${base}/addresses/${A}/reveal`],
+      ['POST', `${base}/consent-history`],
+      ['POST', `${base}/consent-history/export`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['POST', `${base}/sign-ins/export`],
+      ['GET', `${base}/sign-ins`],
+      ['POST', `${base}/sign-ins/not-a-uuid/reveal`],
+      ['GET', `${base}/sessions/end`],
+      ['PUT', `${base}/addresses/${A}/reveal`],
+      ['DELETE', `${base}/sessions`],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('drops query keys on the reads', async () => {
+      const upstream = upstreamOk();
+      const target = `${base}/sessions?limit=5`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${base}/sessions`);
+    });
+  });
+
   describe('customers phase 2a: groups, notes, activity and the name edit', () => {
     const G = '0190a000-0000-7000-8000-0000000000b1';
     const send = (method: string, target: string, body = '{}') =>
@@ -2031,6 +2207,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['PUT', 'promotions/admin/free-shipping/logan'],
     ['PUT', 'promotions/admin/free-shipping/Gold_Coast-2'],
     ['GET', 'wallet/admin/credit-requests'],
+    ['GET', 'wallet/admin/credit-requests/export'],
     ['POST', 'wallet/admin/credits'],
     ['POST', 'identity/admin/step-up/verify'],
     ['GET', `wallet/admin/customers/${id}`],
@@ -2453,7 +2630,7 @@ describe('relay of the wallet and step-up routes', () => {
     expect(response.status).toBe(403);
   });
 
-  it('passes only the status, cursor and limit of the requests list, in their shapes', async () => {
+  it("passes the older queue's status, cursor and limit of the requests list, in their shapes", async () => {
     const cursor = `1790000000000.${id}`;
     const { upstream } = await run(
       'GET',
@@ -2469,6 +2646,41 @@ describe('relay of the wallet and step-up routes', () => {
       readHeaders,
     );
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/wallet/admin/credit-requests');
+  });
+
+  it('passes the Credit requests super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `wallet/admin/credit-requests?view=all&status=expired&reason=promotion&approvalReason=daily-cap&q=${id}&requestedBy=me&from=2026-11-01T00:00:00Z&minAmount=100&sort=expires&direction=asc&page=2&pageSize=50&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/credit-requests?view=all&status=expired&reason=promotion&approvalReason=daily-cap&q=${id}&requestedBy=me&from=2026-11-01T00%3A00%3A00Z&minAmount=100&sort=expires&direction=asc&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'wallet/admin/credit-requests?view=mine&reason=gift&requestedBy=you&q=abc&sort=customer&pageSize=101&maxAmount=-1',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/wallet/admin/credit-requests',
+    );
+    const file = await run(
+      'GET',
+      `wallet/admin/credit-requests/export?format=xlsx&columns=note,journal&ids=${id}&view=decided&page=2&cursor=1.x`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/credit-requests/export?format=xlsx&columns=note%2Cjournal&ids=${id}&view=decided`,
+    );
+    const badFile = await run(
+      'GET',
+      'wallet/admin/credit-requests/export?format=pdf&columns=fingerprint&ids=x',
+      readHeaders,
+    );
+    expect(badFile.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/wallet/admin/credit-requests/export',
+    );
   });
 
   it('passes no query on the customer summary or the settings', async () => {
@@ -2527,6 +2739,34 @@ describe('relay of the wallet and step-up routes', () => {
     expect(file.upstream.mock.calls[0]?.[0]).toBe(
       `http://api.test/commission-payouts/admin/disputes/export?format=xlsx&columns=reason%2Cseller-ids&ids=${id}&view=closed`,
     );
+  });
+
+  it('passes the held-price super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `pricing/admin/price-holds/list?view=up&kind=regular&q=${id}&sellerId=${id}&sort=amount&direction=desc&paging=prev-next&page=2&pageSize=50&from=2026-11-02T00:00:00Z&minAmount=100&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/pricing/admin/price-holds/list?view=up&kind=regular&q=${id}&sellerId=${id}&from=2026-11-02T00%3A00%3A00Z&minAmount=100&sort=amount&direction=desc&paging=prev-next&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'pricing/admin/price-holds/list?view=open&change=sideways&sort=name&q=abc&minAmount=-1&paging=all',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/pricing/admin/price-holds/list',
+    );
+    const file = await run(
+      'GET',
+      `pricing/admin/price-holds/export?format=xlsx&columns=record-id,window&ids=${id}&view=down&page=2&paging=pages`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/pricing/admin/price-holds/export?format=xlsx&columns=record-id%2Cwindow&ids=${id}&view=down`,
+    );
+    expect((await run('POST', 'pricing/admin/price-holds/list')).response.status).toBe(404);
   });
 
   it.each([
@@ -2760,7 +3000,7 @@ describe('relay of the product list', () => {
       );
       await relay(
         config,
-        get('ordering/admin/orders/export?format=xlsx&status=shipped&paymentState=free&from=today'),
+        get('ordering/admin/orders/export?format=pdf&status=shipped&paymentState=free&from=today'),
         exportPath,
         upstream,
       );
@@ -3760,10 +4000,10 @@ describe('relay of the shipments export', () => {
     });
   });
 
-  it('passes all 13 export column ids, in the order the list shows them', async () => {
+  it('passes all 14 export column ids, in the order the list shows them', async () => {
     const upstream = upstreamOk();
     const all =
-      'store,customer,paid,delivery,carrier,total,ready,shipped,delivered,fleet,shipping,refunded,sellerOrderId';
+      'store,customer,paid,delivery,carrier,carrierProgress,total,ready,shipped,delivered,fleet,shipping,refunded,sellerOrderId';
     const response = await relay(config, get(`?columns=${all}`), path, upstream);
     expect(response.status).toBe(200);
     expect(new URL(upstream.mock.calls[0]?.[0] as string).searchParams.get('columns')).toBe(all);

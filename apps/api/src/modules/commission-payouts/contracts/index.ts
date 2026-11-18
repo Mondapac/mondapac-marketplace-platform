@@ -22,6 +22,8 @@ export {
   type CommissionPayoutsFailure,
   type CommissionRate,
   type CommissionRateMap,
+  type CommissionRateReason,
+  type ExclusiveBuyer,
   type OwnCommissionPreview,
   type DeliverySource,
   type PaidLine,

@@ -65,6 +65,7 @@ it('maps the refusal codes of the saved-filter routes to their statuses', () => 
     'saved-filter.limit-reached': 409,
     'saved-filter.shared-limit-reached': 409,
     'access.unavailable': 503,
+    'access.acting-as-refused': 403,
   });
 });
 

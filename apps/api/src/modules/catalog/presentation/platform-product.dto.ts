@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
+  OwnFormCategory,
   OwnProductForm,
   OwnProductOptionsLocales,
   OwnVariantView,
@@ -157,6 +158,13 @@ export class PlatformProductOptionsView {
   @ApiProperty({ type: [String], description: 'The product types the Market offers.' })
   productTypes!: string[];
   @ApiProperty({ type: OwnProductOptionsLocales }) locales!: OwnProductOptionsLocales;
+  @ApiProperty({ type: [String], description: "The Market's tax category codes." })
+  taxCategoryCodes!: string[];
+  @ApiProperty({
+    type: [OwnFormCategory],
+    description: 'Active platform categories, as `form.categories` of the product read.',
+  })
+  categories!: OwnFormCategory[];
 }
 
 export class PlatformRevisionView {

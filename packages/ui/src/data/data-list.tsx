@@ -56,7 +56,7 @@ export function DataList({
       className={
         stacked
           ? 'grid gap-y-3'
-          : 'grid gap-x-6 gap-y-1 sm:grid-cols-[minmax(0,var(--mp-size-data-label))_minmax(0,1fr)] sm:gap-y-3'
+          : 'grid max-sm:grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-1 sm:grid-cols-[minmax(0,var(--mp-size-data-label))_minmax(0,1fr)] sm:gap-y-3'
       }
     >
       {rows.map((row) => (

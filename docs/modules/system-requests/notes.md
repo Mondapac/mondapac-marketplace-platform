@@ -354,4 +354,10 @@ The admin panel pages (queue, detail, review policy, menu badge) are built. Left
   and filters match, in the list's order, with the columns shown.
 - Requested by and Decided by pickers: the team list is not relayed to the browser and needs a
   different permission, so those two filters work from ids in the address only.
-- Phone layout: built (bottom sheets, sticky action bar) but not yet checked by hand on a phone.
+- Phone layout: checked on a 390x844 phone emulation, at 768 and 1280, in light and dark (queue,
+  detail, review policy, menu badge in the drawer; loaded, empty and error states). Fixed: the
+  detail facts overflowed on an unbroken name or reason, the status badges sat under the row menu,
+  the reject sheet cut its title, the card note was squeezed beside the badges and cut, the
+  outcome line repeated the facts, and the card number link, the unchanged-fields button and the view
+  tabs were under 44 px. Remaining: the row checkbox hit area is 40 px (shared `SelectBox`), and the
+  policy page Switch and "Awaiting review" link are 24 px tall (shared `Switch`).

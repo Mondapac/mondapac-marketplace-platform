@@ -469,6 +469,7 @@ export function ShipmentsList({
           rows={shown}
           columns={columns}
           zone={zone}
+          carrierProgressAvailable={answer?.carrierProgressAvailable === true}
           empty={empty}
           skeletonRows={skeleton ? listSkeletonRowCount(PAGE_SIZE) : undefined}
           // Rows kept after a failed refresh belong to another list than the query: no actions.
