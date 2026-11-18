@@ -487,8 +487,6 @@ const BASE_HEADERS = [
   'Store',
   'Slug',
   'Status',
-  'Owner name',
-  'Owner email',
   'Kind',
   'Submitted',
   'Service area',
@@ -505,8 +503,6 @@ function cellsOf(row: SellerListRow, picked: readonly SellerListExportColumn[]):
     row.storeName ?? '',
     row.slug ?? '',
     row.status === null || row.status === 'hidden' ? '' : row.status,
-    row.owner?.displayName ?? '',
-    row.owner?.email ?? '',
     row.kind ?? '',
     row.submittedAt ?? '',
     row.serviceAreaName ?? row.serviceAreaCode ?? '',
@@ -523,9 +519,9 @@ function cellsOf(row: SellerListRow, picked: readonly SellerListExportColumn[]):
  * The sellers of the list as a CSV or XLSX file: the chosen `ids` (seller ids, at most 200; an id
  * with no file in the Market refuses the whole request as not found; no filter or sort beside
  * them) or what the selector keys match, in the list's sort, read in pages of 100. More than
- * {@link LIST_EXPORT_MAX_ROWS} is refused whole (`batch.too-large`). The status and the owner's
- * name and email are blank unless the caller holds `identity.seller-access.view`; a state tab
- * needs it. CSV cells that start with = + - @ get a leading quote (the shared builder).
+ * {@link LIST_EXPORT_MAX_ROWS} is refused whole (`batch.too-large`). The status is blank
+ * unless the caller holds `identity.seller-access.view`; a state tab needs it. The owner's name and
+ * email are never exported (security review: personal data, no export permission or audit). CSV cells that start with = + - @ get a leading quote (the shared builder).
  */
 export async function exportSellers(
   deps: SellerSuperListDependencies,

@@ -194,9 +194,9 @@ export class SellerListController {
       'optional columns (seller-id). The rows are `ids` (comma-separated seller ids, at most ' +
       '200; an id with no seller file in the Market refuses the whole file as file.not-found; no ' +
       'selector or sort beside them) or the selector and sort of the list, at most 10,000 ' +
-      '(batch.too-large with the total). Columns: store, slug, status, owner name, owner email, ' +
+      '(batch.too-large with the total). Columns: store, slug, status, ' +
       'kind, submitted, service area, timezone, created, last changed, health band and score; ' +
-      'the status and the owner are blank without identity.seller-access.view. CSV: a text cell ' +
+      'the status is blank without identity.seller-access.view. The owner\u2019s name and email are never in a file. CSV: a text cell ' +
       'that starts with = + - @ gets a leading quote. XLSX: every cell is a string.',
   })
   @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })

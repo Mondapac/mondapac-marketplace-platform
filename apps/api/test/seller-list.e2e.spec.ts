@@ -769,7 +769,7 @@ describe('admin seller list over HTTP (integration, slice 6)', () => {
         /^attachment; filename="sellers-\d{4}-\d{2}-\d{2}\.csv"$/,
       );
       expect(file.text).toContain('Shop 1,shop-1,awaiting-review,');
-      expect(file.text).toContain(OWNER.email);
+      expect(file.text).not.toContain(OWNER.email);
       const missing = await route('export', sessionHeaders(code, ROOT, 48), {
         ids: '01990000-0000-7000-8000-0000000000ff',
       });

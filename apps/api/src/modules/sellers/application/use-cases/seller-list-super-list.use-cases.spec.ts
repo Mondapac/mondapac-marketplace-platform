@@ -555,21 +555,59 @@ describe.each(TEST_MARKET_IDS)('the Sellers super list in market %s', (code) => 
       expect(done.value.filename).toBe('sellers-2026-11-10.csv');
       const rows = await lines(done.value);
       expect(rows[0]).toBe(
-        'Store,Slug,Status,Owner name,Owner email,Kind,Submitted,Service area,Timezone,Created,' +
+        'Store,Slug,Status,Kind,Submitted,Service area,Timezone,Created,' +
           'Last changed,Health band,Health score,Seller ID',
       );
       expect(rows).toHaveLength(3);
       expect(rows[1]).toContain('Beta,beta,');
       expect(rows[1]).toContain(b);
       expect(rows[2]).toContain(`'=HYPERLINK`);
-      expect(rows[2]).toContain('Owner A,owner-a@example.com,onboarding,');
+      expect(rows[2]).toContain(',onboarding,');
+      // The owner's name and sign-in address are personal data: never in a file (security review).
+      expect(rows.join('\n')).not.toContain('owner-a@example.com');
+      expect(rows.join('\n')).not.toContain('Owner A');
       expect(rows[2]).toContain('Open Area,Australia/Brisbane');
 
       const xlsx = await t.exporter.execute(t.admin(), { format: 'xlsx', view: 'awaiting-review' });
       expect(xlsx.ok && xlsx.value.filename).toBe('sellers-2026-11-10.xlsx');
     });
 
-    it('leaves the status and the owner blank without identity.seller-access.view', async () => {
+    it('exports in the chosen sort and keeps the filters of the list', async () => {
+      const t = setUp();
+      const a = t.add({ storeName: 'Alpha' });
+      const b = t.add({ storeName: 'Beta' });
+      const c = t.add({ storeName: 'Gamma' });
+      const done = await t.exporter.execute(t.admin(), {
+        sort: 'name',
+        direction: 'desc',
+        columns: 'seller-id',
+      });
+      if (!done.ok) throw new Error(JSON.stringify(done.error));
+      const rows = (await lines(done.value)).slice(1);
+      expect(rows.map((row) => row.split(',')[0])).toEqual(['Gamma', 'Beta', 'Alpha']);
+      expect(rows[0]).toContain(c);
+      expect(rows[2]).toContain(a);
+      const some = await t.exporter.execute(t.admin(), { q: 'be' });
+      if (!some.ok) throw new Error(JSON.stringify(some.error));
+      const found = await lines(some.value);
+      expect(found).toHaveLength(2);
+      expect(found[1]).toContain('Beta');
+      expect(b).toBeDefined();
+    });
+
+    it('exports the chosen ids with the status blank without the key', async () => {
+      const t = setUp();
+      const one = t.add({ storeName: '+cmd|calc' });
+      t.directory.owners.set(one, { displayName: 'Owner', email: SECRET_EMAIL });
+      const done = await t.exporter.execute(t.admin({ status: false }), { ids: one });
+      if (!done.ok) throw new Error(JSON.stringify(done.error));
+      const body = await text(done.value);
+      expect(body).toContain(`'+cmd|calc`);
+      expect(body).not.toContain(SECRET_EMAIL);
+      expect(t.access.manyCalls).toHaveLength(0);
+    });
+
+    it('leaves the status blank without identity.seller-access.view', async () => {
       const t = setUp();
       const one = t.add({ storeName: 'Shop' });
       t.directory.owners.set(one, { displayName: 'Owner', email: SECRET_EMAIL });
@@ -579,7 +617,7 @@ describe.each(TEST_MARKET_IDS)('the Sellers super list in market %s', (code) => 
       const body = await text(done.value);
       expect(body).not.toContain(SECRET_EMAIL);
       expect(body).not.toContain('Owner,');
-      expect(body.split('\r\n')[1]).toMatch(/^Shop,shop-\d+,,,,,/u);
+      expect(body.split('\r\n')[1]).toMatch(/^Shop,shop-\d+,,,/u);
       expect(t.access.manyCalls).toHaveLength(0);
       expect(await t.exporter.execute(t.admin({ status: false }), { view: 'approved' })).toEqual({
         ok: false,
