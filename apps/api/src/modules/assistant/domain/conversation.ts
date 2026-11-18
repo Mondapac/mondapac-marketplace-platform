@@ -143,6 +143,7 @@ export const retentionInForce = (storedDays: number, currentDays: number): numbe
 /** A card of a stored reply: the kind and ids it was stored with, never its text or price. */
 export type StoredCard =
   | { readonly kind: 'product'; readonly offerId: string }
+  | { readonly kind: 'seller'; readonly sellerId: string }
   | { readonly kind: 'page'; readonly page: SitePage }
   | { readonly kind: 'support' };
 
@@ -152,6 +153,7 @@ export function storedCardOf(ref: string): StoredCard | null {
   const [kind, value, ...rest] = ref.split(':');
   if (rest.length > 0 || value === undefined || value.length === 0) return null;
   if (kind === 'product' && parseId(value).ok) return { kind: 'product', offerId: value };
+  if (kind === 'seller' && parseId(value).ok) return { kind: 'seller', sellerId: value };
   if (kind === 'page' && (SITE_PAGES as readonly string[]).includes(value)) {
     return { kind: 'page', page: value as SitePage };
   }

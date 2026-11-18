@@ -23,11 +23,29 @@ import {
   type AttributeWriteView,
 } from '../attributes/attribute-editor';
 import { cancelOpenRelaxation } from '../attributes/attribute-relaxation';
+import {
+  ATTRIBUTE_DEFINITION_SUBJECT_KIND,
+  attributeContent,
+  attributeValues,
+  catalogueReview,
+  openCatalogueReview,
+  requestRef,
+  type CatalogueRequestRef,
+} from '../catalogue-review';
+import type { SystemRequestRecorder } from '../../../system-requests';
 import type { AttributeRelaxationStore } from '../ports/attribute-relaxation.store';
 import type { AttributeDefinitionWriteDependencies } from './attribute-definition-create.use-case';
 
 export interface AttributeDefinitionEditDependencies extends AttributeDefinitionWriteDependencies {
   readonly relaxations: AttributeRelaxationStore;
+  /** Opens the review of the edit in Admin Inbox › System requests (area catalogue). */
+  readonly review: SystemRequestRecorder;
+}
+
+/** What an edit answers: the definition as written and the review it opened, if any. */
+export interface AttributeDefinitionEditOutput {
+  readonly attribute: AttributeWriteView;
+  readonly request: CatalogueRequestRef;
 }
 
 export interface AttributeDefinitionEditInput {
@@ -40,7 +58,7 @@ export type AttributeDefinitionEditFailure =
   | { readonly code: 'attribute.not-found' }
   | { readonly code: 'attribute.stale' };
 
-const EDIT_KEYS = ['attributeId', 'version', ...CONTENT_KEYS] as const;
+const EDIT_KEYS = ['attributeId', 'version', ...CONTENT_KEYS, 'note'] as const;
 
 /**
  * `attribute-definition.edit` (attributes plan, package A2): an admin saves the whole content of a
@@ -54,10 +72,15 @@ const EDIT_KEYS = ['attributeId', 'version', ...CONTENT_KEYS] as const;
  * needs the two-person request (catalog design 8.2). Turning `material` on applies at once. Every
  * customer-visible text passes the claim-text check, fail closed. One audit row. An open request
  * to clear `material` named the version this edit replaces, so the same unit cancels it (Q-K14).
+ *
+ * It goes live at once and is reviewed after (area catalogue, Admin Inbox › System requests):
+ * where the Market reviews that area the request needs a `note` (1 to 500 characters), the edit
+ * and its review commit together, and a rejected or withdrawn edit is restored by the reverter
+ * in catalogue-reverters.ts. A save that changes no content opens no review.
  */
 export class AttributeDefinitionEdit extends UseCase<
   AttributeDefinitionEditInput,
-  { readonly attribute: AttributeWriteView },
+  AttributeDefinitionEditOutput,
   AttributeDefinitionEditFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -77,7 +100,7 @@ export class AttributeDefinitionEdit extends UseCase<
   protected async handle(
     context: CallContext,
     input: AttributeDefinitionEditInput,
-  ): Promise<Result<{ readonly attribute: AttributeWriteView }, AttributeDefinitionEditFailure>> {
+  ): Promise<Result<AttributeDefinitionEditOutput, AttributeDefinitionEditFailure>> {
     const result = await this.#edit(context, input);
     this.#logger.log({
       msg: 'catalog.attribute-definition-edit',
@@ -91,7 +114,7 @@ export class AttributeDefinitionEdit extends UseCase<
   async #edit(
     context: CallContext,
     input: AttributeDefinitionEditInput,
-  ): Promise<Result<{ readonly attribute: AttributeWriteView }, AttributeDefinitionEditFailure>> {
+  ): Promise<Result<AttributeDefinitionEditOutput, AttributeDefinitionEditFailure>> {
     const accountId = editorAccountOf(context);
     if (accountId === null) return err({ code: 'access.denied' });
     const body = closedInput(input, EDIT_KEYS);
@@ -117,9 +140,11 @@ export class AttributeDefinitionEdit extends UseCase<
     const claim = await refuseClaimContent(this.deps, context, content.value);
     if (claim !== null) return err(claim);
 
+    // Its own read-only unit, before this one (units do not nest).
+    const reviewPolicy = await catalogueReview(this.deps.review, context);
     try {
       return await this.deps.unitOfWork.run<
-        { readonly attribute: AttributeWriteView },
+        AttributeDefinitionEditOutput,
         AttributeDefinitionEditFailure
       >(market, async () => {
         const { attributeStore } = this.deps;
@@ -149,7 +174,20 @@ export class AttributeDefinitionEdit extends UseCase<
           }),
         );
         await cancelOpenRelaxation(this.deps, context, market, id);
-        return ok({ attribute: writeViewOf(next.value) });
+        // The edit is live; its review opens in the same unit (a refusal rolls the edit back).
+        if (attributeContent(found.state) === attributeContent(next.value.state)) {
+          return ok({ attribute: writeViewOf(next.value), request: null });
+        }
+        const review = await openCatalogueReview(this.deps.review, context, reviewPolicy, {
+          subjectKind: ATTRIBUTE_DEFINITION_SUBJECT_KIND,
+          subjectRef: id,
+          before: attributeValues(found.state),
+          after: attributeValues(next.value.state),
+          note: body.value['note'],
+          tooLargePath: 'names',
+        });
+        if (!review.ok) return err(review.error);
+        return ok({ attribute: writeViewOf(next.value), request: requestRef(review.value) });
       });
     } catch (error) {
       if (error instanceof StaleAggregateError) return err({ code: 'attribute.stale' });

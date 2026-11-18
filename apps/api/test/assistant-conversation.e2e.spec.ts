@@ -205,6 +205,121 @@ describe.each(TEST_MARKETS)('the assistant conversation over HTTP in market %s',
     expect(typeof calls[0]!.input['origin']).toBe('string');
   });
 
+  it('streams the cart cards with every Money as a string of minor units (S1-B1)', async () => {
+    await boot();
+    const OFFER = id<'Offer'>(0xd101);
+    const LINE = id<'CartLine'>(0xd102);
+    const VARIANT = id<'Variant'>(0xd103);
+    const SELLER = id<'Seller'>(0xd104);
+    next = ok({
+      conversationId: CONVERSATION,
+      cards: [
+        {
+          kind: 'cart-action',
+          action: 'add',
+          offerId: OFFER,
+          productId: null,
+          sellerId: SELLER,
+          sellerName: 'Fresh Farm',
+          name: 'Ghee',
+          lineId: null,
+          currentQuantity: null,
+          quantity: 2,
+          limited: false,
+          cartFull: false,
+          units: [
+            {
+              variantId: VARIANT,
+              label: '500 g',
+              price: money(1250n, currency),
+              taxInclusive: true,
+              maxQuantity: 5,
+              lineId: LINE,
+              inCart: 1,
+              addable: 4,
+            },
+            {
+              variantId: id<'Variant'>(0xd105),
+              label: null,
+              price: null,
+              taxInclusive: null,
+              maxQuantity: null,
+              lineId: null,
+              inCart: 0,
+              addable: 0,
+            },
+          ],
+          cartMode: 'single-store',
+          otherStore: null,
+        },
+        {
+          kind: 'cart',
+          lineCount: 2,
+          total: null,
+          groups: [
+            {
+              sellerId: SELLER,
+              sellerName: 'Fresh Farm',
+              subtotal: money(2500n, currency),
+              minimumOrder: { state: 'met', minimum: money(2000n, currency) },
+              lines: [
+                {
+                  lineId: LINE,
+                  offerId: OFFER,
+                  variantId: VARIANT,
+                  productId: null,
+                  name: 'Ghee',
+                  variantLabel: '500 g',
+                  quantity: 2,
+                  state: 'buyable',
+                  unitPrice: money(1250n, currency),
+                  maxQuantity: 5,
+                },
+              ],
+            },
+            {
+              sellerId: null,
+              sellerName: null,
+              subtotal: null,
+              minimumOrder: { state: 'check-unavailable', minimum: null },
+              lines: [],
+            },
+          ],
+        },
+      ],
+      sentences: ['You can confirm on the card.'],
+      notices: [],
+      guestToken: null,
+    });
+
+    const res = await http().post(PATH).set({ 'x-market-id': code }).send({ text: 'add ghee' });
+
+    expect(res.status).toBe(200);
+    const cards = framesOf(res.text)
+      .filter(([name]) => name === 'card')
+      .map(([, data]) => data as Record<string, unknown>);
+    expect(cards[0]).toMatchObject({
+      kind: 'cart-action',
+      units: [
+        { price: { amount: '1250', currency }, addable: 4 },
+        { price: null, addable: 0 },
+      ],
+      otherStore: null,
+    });
+    expect(cards[1]).toMatchObject({
+      kind: 'cart',
+      total: null,
+      groups: [
+        {
+          subtotal: { amount: '2500', currency },
+          minimumOrder: { state: 'met', minimum: { amount: '2000', currency } },
+          lines: [{ unitPrice: { amount: '1250', currency }, maxQuantity: 5 }],
+        },
+        { subtotal: null, minimumOrder: { minimum: null } },
+      ],
+    });
+  });
+
   it("passes the guest's own cookie of this Market, and a malformed one as not a token", async () => {
     await boot();
     const other = code === 'AU' ? 'ZZ' : 'AU';

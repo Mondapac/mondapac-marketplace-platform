@@ -1,4 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  CatalogueRequestRef,
+  CatalogueReviewBody,
+  NOTE_DESCRIPTION,
+  REQUEST_DESCRIPTION,
+} from './catalogue-review.dto';
 
 // Answers of the admin category read routes (categories package C1). Ids, slugs, names and counts;
 // never an account id of a seller or a permission key.
@@ -165,6 +171,12 @@ export class CategoryDetailBody {
   details!: CategoryEditDetailsBody;
   @ApiProperty({ description: 'The tree version a structural change of this category must name.' })
   treeVersion!: number;
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description:
+      'Whether a details save is reviewed in this Market: the form then asks for a note.',
+  })
+  review!: CatalogueReviewBody;
 }
 
 export class CategoryImpactBody {
@@ -244,6 +256,7 @@ export class CategoryEditDetailsRequest {
       '`POST :categoryId/image/remove`); a details save never changes it. A value is refused.',
   })
   imageId?: string | null;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class CategoryTreeVersionRequest {
@@ -296,6 +309,11 @@ export class CategoryWriteWrapBody {
   @ApiProperty({ type: CategoryWriteBody }) category!: CategoryWriteBody;
 }
 
+export class CategoryEditDetailsWrapBody extends CategoryWriteWrapBody {
+  @ApiProperty({ type: CatalogueRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: CatalogueRequestRef | null;
+}
+
 export class CategoryImageSetRequest {
   @ApiProperty({ description: 'The category version the admin saw.' }) version!: number;
   @ApiProperty({
@@ -319,4 +337,39 @@ export class CategoryImageBody {
 export class CategoryImageWriteBody {
   @ApiProperty({ type: CategoryWriteBody }) category!: CategoryWriteBody;
   @ApiProperty({ type: CategoryImageBody, nullable: true }) image!: CategoryImageBody | null;
+}
+
+export class CategoryMoveProductsRequest {
+  @ApiProperty({
+    format: 'uuid',
+    description:
+      'The category the products go to: level 3 up to the Market depth, active or hidden.',
+  })
+  targetId!: string;
+  @ApiProperty(REASON) reason!: string;
+}
+
+export class CategoryMoveProductsStartedBody {
+  @ApiProperty({ format: 'uuid' }) jobId!: string;
+  @ApiProperty({ description: 'Published products the job will move (a preview).' })
+  products!: number;
+}
+
+export class CategoryMoveJobBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) sourceCategoryId!: string;
+  @ApiProperty({ format: 'uuid' }) targetCategoryId!: string;
+  @ApiProperty({ enum: ['queued', 'running', 'done', 'failed'] }) state!: string;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) startedAt!: string | null;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) finishedAt!: string | null;
+  @ApiProperty() total!: number;
+  @ApiProperty() moved!: number;
+  @ApiProperty() skipped!: number;
+  @ApiProperty() failed!: number;
+}
+
+export class CategoryMoveProductsProgressBody {
+  @ApiProperty({ type: [CategoryMoveJobBody], description: 'The newest jobs, newest first.' })
+  jobs!: CategoryMoveJobBody[];
 }

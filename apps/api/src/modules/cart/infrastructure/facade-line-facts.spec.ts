@@ -341,6 +341,49 @@ describe.each([
     });
   });
 
+  describe('offerSellUnits (assistant cart cards)', () => {
+    const OFF = id<'Variant'>(8);
+    const PROPOSED = id<'Variant'>(9);
+    const units = async (over: Parameters<typeof build>[0]) =>
+      build(over).facts.offerSellUnits(context, OFFER);
+
+    it("answers the published, selling units in catalog's order with the seller and product", async () => {
+      const offer: OfferSellUnits = {
+        ...published,
+        sellUnits: [
+          { variantId: OFF, state: 'published', selling: false, variantSku: null },
+          { variantId: VARIANT, state: 'published', selling: true, variantSku: null },
+          { variantId: PROPOSED, state: 'proposed', selling: true, variantSku: null },
+        ],
+      };
+      expect(await units({ offer })).toEqual({
+        sellerId: SELLER,
+        productId: id<'Product'>(4),
+        variantIds: [VARIANT],
+      });
+    });
+
+    it.each([
+      ['unknown or of another Market', null],
+      ['not published', { ...published, status: 'deleted' as const }],
+      ['not listed', { ...published, listed: false }],
+    ])('is absent for an Offer %s', async (_name, offer) => {
+      expect(await units({ offer })).toBe('absent');
+    });
+
+    it('is null when catalog refuses or throws (fail closed)', async () => {
+      expect(await units({ catalog: 'fail' })).toBeNull();
+      const throwing = new FacadeLineFacts(
+        { offerSellUnits: () => Promise.reject(new Error('down')) } as unknown as CatalogFacade,
+        {} as SellersFacade,
+        {} as PricingFacade,
+        {} as InventoryFacade,
+        markets,
+      );
+      expect(await throwing.offerSellUnits(context, OFFER)).toBeNull();
+    });
+  });
+
   describe('sellerNames', () => {
     const OTHER = id<'Seller'>(6);
     const THIRD = id<'Seller'>(7);

@@ -7,6 +7,7 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import { RecordingSecurityEvents } from '../../../../test/support/recording-security-events';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { AuthorisationCheck, StepUpProofConsumer } from '../../../platform/authz';
@@ -18,13 +19,19 @@ import type { CustomerListRow } from '../domain/customer-list';
 import type { CustomerManagementDependencies } from './customer-management-dependencies';
 import type { IdentityManagementPeer } from './ports/customer-management-peers';
 import type { SheetWriter } from './ports/sheet-writer';
+import { ActorOrMarketDayZone } from '../infrastructure/actor-or-market-day-zone';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
+import { MemoryAdminActionLimits } from './testing/memory-admin-action-limits';
 import {
   FakeNoteCipher,
   InMemoryCustomerGroups,
   InMemoryCustomerNotes,
   InMemoryCustomerTimeline,
 } from './testing/in-memory-customer-management';
+import { CustomerGroupUsageRegistry } from '../contracts/group-usage';
+import { InMemoryAddresses, ReversibleAddressCipher } from './testing/in-memory-address-book';
+import { AdminCustomerAddressReveal } from './use-cases/admin-customer-address-reveal.use-case';
+import { AdminCustomerAddresses } from './use-cases/admin-customer-addresses.use-case';
 import { AdminCustomerGroupCreate } from './use-cases/admin-customer-group-create.use-case';
 import { AdminCustomerGroupMembersAdd } from './use-cases/admin-customer-group-members-add.use-case';
 import { AdminCustomerGroupMembersRemove } from './use-cases/admin-customer-group-members-remove.use-case';
@@ -37,6 +44,8 @@ import { AdminCustomerRename } from './use-cases/admin-customer-rename.use-case'
 import { AdminCustomerTimeline } from './use-cases/admin-customer-timeline.use-case';
 import { AdminCustomerTimelineExport } from './use-cases/admin-customer-timeline-export.use-case';
 import { ReadCustomerGroupMembership } from './use-cases/read-customer-group-membership.use-case';
+import { CustomerReviewEventsCheck } from './use-cases/customer-review-events-check.use-case';
+import { CustomerConsentEventsCheck } from './use-cases/customer-consent-events-check.use-case';
 
 // Customers management phase 2 (PR 2a) in memory, on both Market fixtures: manual groups (access
 // keys, names unique whatever the case, versions, archive, members by ids and by "select all
@@ -51,6 +60,9 @@ const MANAGE = 'customers.groups.manage';
 const NOTES = 'customers.customer-notes.write';
 const EDIT = 'customers.customers.edit';
 const EXPORT = 'customers.customers.export';
+const REVEAL = 'customers.customer-address.reveal';
+const REVIEWS = 'reviews.customer-review.view';
+const CONSENT = 'legal.customer-consent.view';
 
 describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code) => {
   const market: MarketContext = testMarketContext(code, 'default');
@@ -137,8 +149,45 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
         Promise.resolve(
           ok(accountIds.map((accountId) => ({ accountId, displayName: 'Admin One' }))),
         ),
+      describeActor: () => Promise.resolve(ok({ timezone: ownZone.value })),
+    };
+    const ownZone = { value: null as string | null };
+    const addresses = new InMemoryAddresses();
+    const addressCipher = new ReversibleAddressCipher();
+    /** What promotions answers for a group's live segment uses: a count, a refusal, or a throw. */
+    const groupUses = { answer: 0 as number | 'refused' | 'throws', asked: [] as string[] };
+    const usageRegistry = new CustomerGroupUsageRegistry();
+    usageRegistry.register({
+      liveUsesOf: (_context, groupId) => {
+        groupUses.asked.push(groupId);
+        if (groupUses.answer === 'throws') return Promise.reject(new Error('down'));
+        return Promise.resolve(
+          groupUses.answer === 'refused' ? err({ code: 'access.denied' }) : ok(groupUses.answer),
+        );
+      },
+    });
+    const reviewsCheck = new CustomerReviewEventsCheck(gate);
+    /** Whether the review-events probe answers as the gate does, or cannot answer. */
+    const probeState = { unavailable: false };
+    const probe: CustomerManagementDependencies['reviewEventsCheck'] = {
+      execute: (context, input) =>
+        probeState.unavailable
+          ? Promise.resolve(err({ code: 'access.unavailable' }))
+          : reviewsCheck.execute(context, input),
+    };
+    const consentCheck = new CustomerConsentEventsCheck(gate);
+    /** Whether the consent-events probe answers as the gate does, or cannot answer. */
+    const consentProbeState = { unavailable: false };
+    const consentProbe: CustomerManagementDependencies['consentEventsCheck'] = {
+      execute: (context, input) =>
+        consentProbeState.unavailable
+          ? Promise.resolve(err({ code: 'access.unavailable' }))
+          : consentCheck.execute(context, input),
     };
     const deps: CustomerManagementDependencies = {
+      groupUsage: usageRegistry,
+      addresses,
+      addressCipher,
       unitOfWork,
       groups,
       notes,
@@ -151,6 +200,11 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
       stepUp: consumer,
       sheetWriter,
       identity,
+      dayZone: new ActorOrMarketDayZone(markets, identity),
+      reviewEventsCheck: probe,
+      consentEventsCheck: consentProbe,
+      adminLimits: new MemoryAdminActionLimits(markets, clock),
+      securityEvents: new RecordingSecurityEvents(),
     };
     const admin = (keys: readonly string[], inMarket: MarketContext = market) => {
       const accountId = ids.next<'Account'>();
@@ -170,6 +224,14 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
     };
     return {
       deps,
+      probeState,
+      consentProbeState,
+      groupUses,
+      addresses,
+      addressCipher,
+      listAddresses: new AdminCustomerAddresses(gate, deps),
+      revealAddress: new AdminCustomerAddressReveal(gate, deps),
+      ownZone,
       audits,
       listReader,
       groups,
@@ -264,6 +326,55 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
         archived: true,
       });
       expect(archived.ok && archived.value.archived).toBe(true);
+    });
+
+    it('warns on an archive while a live promotion names the group, and audits the answer (phase 2b)', async () => {
+      const t = setup();
+      const manager = t.admin([VIEW, MANAGE]);
+      const archiveAnswer = async (answer: number | 'refused' | 'throws') => {
+        t.groupUses.answer = answer;
+        const made = await t.create.execute(manager.context, { name: `G ${String(answer)}` });
+        if (!made.ok) throw new Error('create failed');
+        const archived = await t.update.execute(manager.context, {
+          groupId: made.value.groupId,
+          expectedVersion: 1,
+          archived: true,
+        });
+        if (!archived.ok) throw new Error('archive failed');
+        return archived.value.liveSegmentUse;
+      };
+      expect(await archiveAnswer(2)).toBe('some');
+      expect(await archiveAnswer(0)).toBe('none');
+      expect(await archiveAnswer('refused')).toBe('unknown');
+      expect(await archiveAnswer('throws')).toBe('unknown');
+      const changed = t.audits.filter((e) => e.action === 'customers.customer-group.changed');
+      expect(changed.map((e) => (e.after as { liveSegmentUse: string }).liveSegmentUse)).toEqual([
+        'some',
+        'none',
+        'unknown',
+        'unknown',
+      ]);
+      // A rename asks nothing and records `not-checked`.
+      const made = await t.create.execute(manager.context, { name: 'Plain' });
+      if (!made.ok) throw new Error('create failed');
+      const asked = t.groupUses.asked.length;
+      const renamed = await t.update.execute(manager.context, {
+        groupId: made.value.groupId,
+        expectedVersion: 1,
+        name: 'Plainer',
+      });
+      expect(renamed.ok && renamed.value.liveSegmentUse).toBeUndefined();
+      expect(t.groupUses.asked).toHaveLength(asked);
+      expect(t.audits.at(-1)?.after).toMatchObject({ liveSegmentUse: 'not-checked' });
+    });
+
+    it('answers unknown, never none, while no module has registered a usage source', async () => {
+      const registry = new CustomerGroupUsageRegistry();
+      const t = setup();
+      const answer = await registry.liveUsesOf(t.system, 'g');
+      expect(answer.ok).toBe(false);
+      registry.register({ liveUsesOf: () => Promise.resolve(ok(0)) });
+      expect(() => registry.register({ liveUsesOf: () => Promise.resolve(ok(0)) })).toThrow();
     });
 
     it('adds and removes members by ids, skipping ids that are no customer of the Market', async () => {
@@ -611,6 +722,195 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
       expect(opened).toHaveLength(3);
     });
 
+    it('shows the review kinds only with reviews’ own key, filtered in the query (L1)', async () => {
+      const { t, customer } = await withEntries();
+      const review = (kind: 'review-published' | 'review-hidden', days: number) => ({
+        id: ids.next<'CustomerTimelineEntry'>(),
+        accountId: customer.accountId,
+        occurredAt: NOW.subtract({ hours: 24 * days }),
+        kind,
+        ref: null,
+        actorAccountId: null,
+        detail: null,
+        sourceEventId: ids.next(),
+      });
+      await t.timeline.recordMany(
+        market,
+        [review('review-published', 3), review('review-hidden', 0.5)],
+        NOW,
+      );
+      const viewer = t.admin([VIEW]);
+      const both = t.admin([VIEW, REVIEWS]);
+      const read = async (who: { context: CallContext }, extra: Record<string, unknown> = {}) => {
+        const page = await t.readTimeline.execute(who.context, {
+          accountId: customer.accountId,
+          ...extra,
+        });
+        if (!page.ok) throw new Error(page.error.code);
+        return { kinds: page.value.items.map((item) => item.kind), total: page.value.total };
+      };
+      // Without the key: not on any page, not in the total, so the pages agree with it.
+      expect(await read(viewer)).toEqual({
+        kinds: ['note-added', 'order-paid', 'order-paid', 'signed-up'],
+        total: 4,
+      });
+      const first = await read(viewer, { pageSize: 2 });
+      expect(first).toEqual({ kinds: ['note-added', 'order-paid'], total: 4 });
+      const second = await read(viewer, { pageSize: 2, page: 2 });
+      expect(second.kinds).toEqual(['order-paid', 'signed-up']);
+      // The category or the kinds alone: an empty list, not an error.
+      expect(await read(viewer, { filters: { category: 'reviews' } })).toEqual({
+        kinds: [],
+        total: 0,
+      });
+      expect(await read(viewer, { filters: { kinds: ['review-hidden', 'signed-up'] } })).toEqual({
+        kinds: ['signed-up'],
+        total: 1,
+      });
+      // With it: every kind, and the category.
+      expect(await read(both, { pageSize: 5 })).toEqual({
+        kinds: ['review-hidden', 'note-added', 'order-paid', 'review-published', 'order-paid'],
+        total: 6,
+      });
+      expect((await read(both, { filters: { category: 'reviews' } })).total).toBe(2);
+      // A check the gate cannot answer is no page at all.
+      t.probeState.unavailable = true;
+      expect(
+        failure(await t.readTimeline.execute(both.context, { accountId: customer.accountId })),
+      ).toBe('access.unavailable');
+      t.probeState.unavailable = false;
+
+      // The export: the same rule on the same query.
+      const exporter = t.admin([VIEW, EXPORT]);
+      const reviewer = t.admin([VIEW, EXPORT, REVIEWS]);
+      const lines = async (who: { context: CallContext }) => {
+        const file = await t.exportTimeline.execute(who.context, {
+          accountId: customer.accountId,
+        });
+        if (!file.ok) throw new Error(file.error.code);
+        return (await collect(file.value.chunks)).split('\r\n').filter((line) => line !== '');
+      };
+      const plain = await lines(exporter);
+      expect(plain).toHaveLength(5);
+      expect(plain.join('\n')).not.toContain('review-');
+      expect(await lines(reviewer)).toHaveLength(7);
+      const none = await t.exportTimeline.execute(exporter.context, {
+        accountId: customer.accountId,
+        filters: { category: 'reviews' },
+      });
+      if (!none.ok) throw new Error(none.error.code);
+      expect((await collect(none.value.chunks)).split('\r\n').filter((l) => l !== '')).toHaveLength(
+        1,
+      );
+    });
+
+    it('shows the consent kind only with legal’s consent key, filtered in the query (part 4)', async () => {
+      const { t, customer } = await withEntries();
+      const consent = (days: number) => ({
+        id: ids.next<'CustomerTimelineEntry'>(),
+        accountId: customer.accountId,
+        occurredAt: NOW.subtract({ hours: 24 * days }),
+        kind: 'consent-changed' as const,
+        ref: null,
+        actorAccountId: null,
+        detail: 'email',
+        sourceEventId: ids.next(),
+      });
+      await t.timeline.recordMany(market, [consent(20), consent(0.5)], NOW);
+      const read = async (who: { context: CallContext }, extra: Record<string, unknown> = {}) => {
+        const page = await t.readTimeline.execute(who.context, {
+          accountId: customer.accountId,
+          ...extra,
+        });
+        if (!page.ok) throw new Error(page.error.code);
+        return {
+          rows: page.value.items.map((item) => [item.kind, item.category, item.detail]),
+          total: page.value.total,
+        };
+      };
+      // Without legal's key: not on the page, not in the total (the count would tell the value),
+      // and a filter on the kind alone is an empty list.
+      const viewer = t.admin([VIEW]);
+      expect((await read(viewer)).total).toBe(4);
+      expect(await read(viewer, { filters: { kinds: ['consent-changed'] } })).toEqual({
+        rows: [],
+        total: 0,
+      });
+      expect((await read(viewer, { filters: { category: 'account' } })).rows).toEqual([
+        ['signed-up', 'account', null],
+      ]);
+      // With it: the channel as the detail, in the account category; never a value.
+      const legal = t.admin([VIEW, CONSENT]);
+      expect(await read(legal, { filters: { category: 'account' } })).toEqual({
+        rows: [
+          ['consent-changed', 'account', 'email'],
+          ['consent-changed', 'account', 'email'],
+          ['signed-up', 'account', null],
+        ],
+        total: 3,
+      });
+      // The review key does not open the consent kind, nor the other way round.
+      const reviewer = t.admin([VIEW, REVIEWS]);
+      expect((await read(reviewer, { filters: { kinds: ['consent-changed'] } })).total).toBe(0);
+      // A check the gate cannot answer is no page at all.
+      t.consentProbeState.unavailable = true;
+      expect(
+        failure(await t.readTimeline.execute(legal.context, { accountId: customer.accountId })),
+      ).toBe('access.unavailable');
+      t.consentProbeState.unavailable = false;
+
+      // The export: the same rule on the same query.
+      const lines = async (keys: readonly string[]) => {
+        const file = await t.exportTimeline.execute(t.admin(keys).context, {
+          accountId: customer.accountId,
+        });
+        if (!file.ok) throw new Error(file.error.code);
+        return (await collect(file.value.chunks)).split('\r\n').filter((line) => line !== '');
+      };
+      const plain = await lines([VIEW, EXPORT]);
+      expect(plain).toHaveLength(5);
+      expect(plain.join('\n')).not.toContain('consent-changed');
+      expect(await lines([VIEW, EXPORT, CONSENT])).toHaveLength(7);
+    });
+
+    it('reads the from and to days in the Market’s zone, or in the admin’s own (ADR-0005)', async () => {
+      const t = setup();
+      const viewer = t.admin([VIEW]);
+      const customer = row();
+      t.listReader.add(market, customer);
+      // 14:30Z is already the next day in Brisbane (UTC+10) but not yet in Tokyo (UTC+9).
+      const edge = Temporal.Instant.from('2026-11-01T14:30:00Z');
+      await t.timeline.record(
+        market,
+        {
+          id: ids.next<'CustomerTimelineEntry'>(),
+          accountId: customer.accountId,
+          occurredAt: edge,
+          kind: 'signed-up',
+          ref: null,
+          actorAccountId: null,
+          detail: null,
+          sourceEventId: ids.next(),
+        },
+        NOW,
+      );
+      const local = edge.toZonedDateTimeISO(markets.get(market.marketId).timezone).toPlainDate();
+      expect(local.toString()).toBe(market.marketId === 'AU' ? '2026-11-02' : '2026-11-01');
+      const kinds = async (from: string, to: string) => {
+        const read = await t.readTimeline.execute(viewer.context, {
+          accountId: customer.accountId,
+          filters: { from, to },
+        });
+        return read.ok ? read.value.items.map((item) => item.kind) : read.error.code;
+      };
+      expect(await kinds(local.toString(), local.toString())).toEqual(['signed-up']);
+      const next = local.add({ days: 1 }).toString();
+      expect(await kinds(next, next)).toEqual([]);
+      t.ownZone.value = 'UTC';
+      expect(await kinds('2026-11-01', '2026-11-01')).toEqual(['signed-up']);
+      expect(await kinds('2026-11-02', '2026-11-02')).toEqual([]);
+    });
+
     it('exports behind a fresh step-up and the export key, without names of customers', async () => {
       const { t, customer } = await withEntries();
       const viewer = t.admin([VIEW]);
@@ -636,6 +936,119 @@ describe.each(['AU', 'ZZ'] as const)('customers management in market %s', (code)
         (entry) => entry.action === 'customers.customer-timeline.exported',
       );
       expect(exported).toBeDefined();
+    });
+  });
+
+  describe('addresses (phase 2b)', () => {
+    const content = {
+      recipientFirstName: 'Aisha',
+      recipientLastName: 'Rahman',
+      phone: '+61412345678',
+      line1: '1 Hidden Street',
+      line2: null,
+      suburb: 'Sunnybank',
+      region: null,
+      postcode: code === 'AU' ? '4109' : '1000001',
+      deliveryNotes: 'Leave at the side gate',
+    };
+    async function seeded(t: ReturnType<typeof setup>, inMarket: MarketContext = market) {
+      const customer = row();
+      t.listReader.add(inMarket, customer);
+      const sealed = await t.addressCipher.seal(inMarket, customer.accountId, content);
+      if (!sealed.ok) throw new Error('seal failed');
+      const addressId = ids.next<'CustomerAddress'>();
+      await t.addresses.insert(inMarket, {
+        id: addressId,
+        accountId: customer.accountId,
+        sealed: sealed.value,
+        countryCode: code === 'AU' ? 'AU' : 'ZZ',
+        isDefault: true,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      return { accountId: customer.accountId, addressId };
+    }
+
+    it('shows suburb and country only with the view key, and writes no audit row for it', async () => {
+      const t = setup();
+      const { accountId, addressId } = await seeded(t);
+      const listed = await t.listAddresses.execute(t.admin([VIEW]).context, { accountId });
+      expect(listed.ok && listed.value.items).toEqual([
+        {
+          addressId,
+          suburb: 'Sunnybank',
+          countryCode: code === 'AU' ? 'AU' : 'ZZ',
+          isDefault: true,
+          createdAt: NOW.toString(),
+        },
+      ]);
+      expect(JSON.stringify(listed)).not.toContain('Hidden');
+      expect(failure(await t.listAddresses.execute(t.admin([]).context, { accountId }))).toBe(
+        'access.denied',
+      );
+      t.addressCipher.destroyed.add(accountId);
+      const erased = await t.listAddresses.execute(t.admin([VIEW]).context, { accountId });
+      expect(erased.ok && erased.value.items[0]?.suburb).toBeNull();
+      expect(t.audits).toEqual([]);
+    });
+
+    it('reveals one address in full only with the protected key, audited and on the timeline', async () => {
+      const t = setup();
+      const { accountId, addressId } = await seeded(t);
+      const viewer = t.admin([VIEW]);
+      expect(failure(await t.revealAddress.execute(viewer.context, { accountId, addressId }))).toBe(
+        'access.denied',
+      );
+      const revealer = t.admin([VIEW, REVEAL]);
+      const shown = await t.revealAddress.execute(revealer.context, { accountId, addressId });
+      expect(shown.ok && shown.value).toMatchObject({
+        addressId,
+        line1: '1 Hidden Street',
+        deliveryNotes: 'Leave at the side gate',
+      });
+      expect(t.audits.map((entry) => [entry.action, entry.after])).toEqual([
+        ['customers.customer-address.revealed', { addressId }],
+      ]);
+      expect(JSON.stringify(t.audits)).not.toContain('Hidden');
+      const entries = t.timeline.entries.get(`${market.marketId}:${accountId}`) ?? [];
+      expect(entries.map((entry) => [entry.kind, entry.actorAccountId, entry.detail])).toEqual([
+        ['address-revealed', revealer.accountId, 'address'],
+      ]);
+    });
+
+    it('treats another customer’s address, another Market’s customer and a bad id as not found', async () => {
+      const t = setup();
+      const mine = await seeded(t);
+      const theirs = await seeded(t);
+      const foreign = await seeded(t, otherMarket);
+      const revealer = t.admin([VIEW, REVEAL]);
+      expect(
+        failure(
+          await t.revealAddress.execute(revealer.context, {
+            accountId: mine.accountId,
+            addressId: theirs.addressId,
+          }),
+        ),
+      ).toBe('customers.address-not-found');
+      expect(failure(await t.revealAddress.execute(revealer.context, foreign))).toBe(
+        'customers.customer-not-found',
+      );
+      expect(
+        failure(
+          await t.revealAddress.execute(revealer.context, {
+            accountId: mine.accountId,
+            addressId: 'nope',
+          }),
+        ),
+      ).toBe('customers.address-not-found');
+      expect(
+        failure(await t.revealAddress.execute(revealer.context, { ...mine, extra: true })),
+      ).toBe('validation.failed');
+      t.addressCipher.destroyed.add(mine.accountId);
+      expect(failure(await t.revealAddress.execute(revealer.context, mine))).toBe(
+        'customers.address-not-found',
+      );
+      expect(t.audits).toEqual([]);
     });
   });
 

@@ -34,3 +34,24 @@ model ListsSavedFilter {
   @@map("saved_filters")
   @@schema("lists")
 }
+
+/// The columns a user chose to show in a list, in order: one row per account and list (and per
+/// store for a store-scoped seller list). `columns` is a JSON array of column ids from the
+/// vocabulary the owning module registered for the list. `owner_account_id` and `seller_id` are
+/// ids of other modules with no foreign key.
+model ListsColumnPreference {
+  id             String   @id @db.Uuid
+  marketId       String   @map("market_id") @db.VarChar(8)
+  tenantId       String   @map("tenant_id")
+  ownerAccountId String   @map("owner_account_id") @db.Uuid
+  sellerId       String?  @map("seller_id") @db.Uuid
+  listKey        String   @map("list_key")
+  /// A JSON array of at most 1 KB (CHECK).
+  columns        Json
+  createdAt      DateTime @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([marketId, id])
+  @@map("column_preferences")
+  @@schema("lists")
+}

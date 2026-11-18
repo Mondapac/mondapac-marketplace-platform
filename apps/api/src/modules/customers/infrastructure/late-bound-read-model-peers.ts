@@ -6,7 +6,7 @@ const UNAVAILABLE = () => Promise.resolve(err({ code: 'customers.unavailable' })
 
 /**
  * The peers of the read models, refusing (fail closed) until `CustomersReadModelsModule` binds the
- * real `identity` and `ordering` facades at start.
+ * real `identity`, `ordering` and `engagement` facades at start.
  */
 export class LateBoundReadModelPeers implements CustomerReadModelPeers {
   #bound: CustomerReadModelPeers | null = null;
@@ -48,5 +48,27 @@ export class LateBoundReadModelPeers implements CustomerReadModelPeers {
       request: { readonly orderId: string; readonly refundId: string },
     ) =>
       this.#bound === null ? UNAVAILABLE() : this.#bound.ordering.refundNotice(context, request),
+    customerSellerStats: (context: CallContext, accountId: Id<'Account'>) =>
+      this.#bound === null
+        ? UNAVAILABLE()
+        : this.#bound.ordering.customerSellerStats(context, accountId),
+    sellerCustomerOrders: (
+      context: CallContext,
+      request: {
+        readonly accountId: Id<'Account'>;
+        readonly page: number;
+        readonly pageSize: number;
+      },
+    ) =>
+      this.#bound === null
+        ? UNAVAILABLE()
+        : this.#bound.ordering.sellerCustomerOrders(context, request),
+  };
+
+  readonly engagement = {
+    followsOfAccount: (context: CallContext, accountId: Id<'Account'>) =>
+      this.#bound === null
+        ? UNAVAILABLE()
+        : this.#bound.engagement.followsOfAccount(context, accountId),
   };
 }

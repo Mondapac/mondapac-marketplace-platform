@@ -1,4 +1,6 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { SYSTEM_REQUEST_RECORDER } from '../src/modules/system-requests';
+import { RecordingReview } from './support/system-request-fakes';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -188,11 +190,13 @@ describe.each(TEST_MARKETS)(
   'admin category routes over HTTP in market %s (integration)',
   (code) => {
     let app: NestExpressApplication;
+    let reviews = new RecordingReview();
     const clock = new FixedClock(START);
     const http = () => request(app.getHttpServer());
     const market = testMarketContext(code, PLATFORM_TENANT_ID);
 
     beforeEach(async () => {
+      reviews = new RecordingReview();
       fakes.reset();
       editStore.reset();
       categoryImages.reset();
@@ -218,6 +222,8 @@ describe.each(TEST_MARKETS)(
             .override(builder)
             .overrideProvider(CLOCK)
             .useValue(clock)
+            .overrideProvider(SYSTEM_REQUEST_RECORDER)
+            .useValue(reviews)
             .overrideProvider(ADMIN_CATEGORY_READER)
             .useValue(reader)
             .overrideProvider(CATEGORY_ATTRIBUTE_LINK_STORE)
@@ -614,6 +620,48 @@ describe.each(TEST_MARKETS)(
           .expect((response) => {
             expect((response.body as { code: string }).code).toBe('category.reorder-edge');
           });
+      });
+
+      it('says on the read whether a details save is reviewed, asks for a note then, and answers the request', async () => {
+        const session = adminSession(MODERATOR, 26);
+        const unreviewed = await http().get(`${BASE}/${LEAF}`).set(session).expect(200);
+        expect(unreviewed.body).toMatchObject({ review: { reviewed: false, risk: 'low' } });
+        const created = await http().post(BASE).set(session).send(body()).expect(201);
+        const newId = (created.body as { category: { id: string } }).category.id;
+        const edit = (extra: Record<string, unknown> = {}) =>
+          http()
+            .patch(`${BASE}/${newId}`)
+            .set(session)
+            .send({ version: 1, texts: { [english]: { name: 'Basmati' } }, ...extra });
+
+        reviews.review('catalogue', 'medium');
+        const reviewed = await http().get(`${BASE}/${LEAF}`).set(session).expect(200);
+        expect(reviewed.body).toMatchObject({ review: { reviewed: true, risk: 'medium' } });
+
+        const saved = await edit({ note: 'Renamed for the new aisle' }).expect(200);
+        expect(saved.body).toMatchObject({
+          category: { version: 2, revisionNo: 2 },
+          request: { number: 1 },
+        });
+        expect(reviews.opened).toHaveLength(1);
+        expect(reviews.opened[0]).toMatchObject({
+          area: 'catalogue',
+          subjectKind: 'catalog.category-details',
+          subjectRef: newId,
+          note: 'Renamed for the new aisle',
+        });
+        // A save without a note is refused where the area is reviewed (400 on note); the rollback
+        // of what it wrote is proved on the real unit of work in the database spec.
+        const missing = await http()
+          .patch(`${BASE}/${newId}`)
+          .set(session)
+          .send({ version: 2, texts: { [english]: { name: 'Jasmine' } } })
+          .expect(400);
+        expect(missing.body).toMatchObject({
+          code: 'validation.failed',
+          details: { fields: [{ path: 'note', code: 'required' }] },
+        });
+        expect(reviews.opened).toHaveLength(1);
       });
 
       it('answers 409 for a stale tree and a taken slug, 422 for a claim word, 400 for an unknown field', async () => {

@@ -12,6 +12,7 @@ import { SettingsReverter } from './application/settings-reverter';
 import { registerSystemChangeReverter, SYSTEM_REQUEST_RECORDER } from '../system-requests';
 import { ChangeAiSetting } from './application/use-cases/change-ai-setting.use-case';
 import { ReadAiDescriptionWriter } from './application/use-cases/read-ai-description-writer.use-case';
+import { ReadCartMode } from './application/use-cases/read-cart-mode.use-case';
 import { ViewAiSettings } from './application/use-cases/view-ai-settings.use-case';
 import { ChangeCartModeSetting } from './application/use-cases/change-cart-mode-setting.use-case';
 import { ChangeListPagingSetting } from './application/use-cases/change-list-paging-setting.use-case';
@@ -77,6 +78,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewAiSettings,
       ChangeAiSetting,
       ReadAiDescriptionWriter,
+      ReadCartMode,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: SETTINGS_REVERTER,
@@ -91,8 +93,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ),
     {
       provide: SETTINGS_FACADE,
-      inject: [ReadAiDescriptionWriter],
-      useFactory: (read: ReadAiDescriptionWriter) => new SettingsFacadeImplementation(read),
+      inject: [ReadAiDescriptionWriter, ReadCartMode],
+      useFactory: (read: ReadAiDescriptionWriter, cartMode: ReadCartMode) =>
+        new SettingsFacadeImplementation(read, cartMode),
     },
   ],
   exports: [SETTINGS_FACADE],
