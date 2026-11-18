@@ -2673,7 +2673,12 @@ const REVERTERS = [
       clock: true,
       ids: true,
     }),
-    useCaseProvider(OwnProductOptions, { policy: true, allowedTypes: true }),
+    useCaseProvider(OwnProductOptions, {
+      policy: true,
+      allowedTypes: true,
+      unitOfWork: true,
+      ownReader: true,
+    }),
     useCaseProvider(OwnProductImageUpload, {
       unitOfWork: true,
       products: true,
