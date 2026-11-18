@@ -85,6 +85,7 @@ describe('system requests (database integration)', () => {
       area: 'catalogue',
       subjectKind: 'settings.market-setting',
       subjectRef: `ref-${randomUUID()}`,
+      mode: 'review',
       risk: 'medium',
       before: { size: 25 },
       after: { size: 50 },
@@ -120,6 +121,55 @@ describe('system requests (database integration)', () => {
       expect(
         value(await inUnit(otherMarket, () => requests.find(otherMarket, first.id))),
       ).toBeNull();
+    });
+
+    it('keeps a proposal (approval mode) apart: no supersession either way, one open per subject', async () => {
+      const proposal = newRequest({ mode: 'approval', after: { action: 'delete' } });
+      const opened = await open(market, proposal);
+      expect(opened.superseded).toEqual([]);
+      const lines = value(await inUnit(market, () => requests.activity(market, proposal.id)));
+      expect(lines.map((line) => line.kind)).toEqual(['proposed']);
+      expect(
+        value(
+          await inUnit(market, () =>
+            requests.findPendingProposal(market, proposal.subjectKind, proposal.subjectRef),
+          ),
+        ),
+      ).toMatchObject({ id: proposal.id, mode: 'approval', status: 'open' });
+      // A change of the same subject supersedes no proposal.
+      const change = newRequest({ subjectRef: proposal.subjectRef });
+      expect((await open(market, change)).superseded).toEqual([]);
+      // A second open proposal of the subject is refused by the unique index.
+      await expect(
+        open(market, newRequest({ subjectRef: proposal.subjectRef, mode: 'approval' })),
+      ).rejects.toThrow();
+      // The database refuses a superseded proposal and a changed mode.
+      expect(
+        await sqlState(
+          owner,
+          `UPDATE system_requests.requests SET superseded_by_request_id = $2 WHERE id = $1`,
+          [proposal.id, change.id],
+        ),
+      ).toBe(CHECK_VIOLATION);
+      expect(
+        await sqlState(sql, `UPDATE system_requests.requests SET mode = 'review' WHERE id = $1`, [
+          proposal.id,
+        ]),
+      ).toBe(INSUFFICIENT_PRIVILEGE);
+      // Decided, the subject may be proposed again.
+      value(
+        await inUnit(market, () =>
+          requests.decide(market, proposal.id, {
+            status: 'reverted',
+            decision: 'withdrawn',
+            decidedBy: proposal.requestedBy,
+            decidedAt: nowMs(),
+            reason: 'Wrong category',
+          }),
+        ),
+      );
+      const again = newRequest({ subjectRef: proposal.subjectRef, mode: 'approval' });
+      expect((await open(market, again)).superseded).toEqual([]);
     });
 
     it('writes a decision once, and the database keeps it', async () => {

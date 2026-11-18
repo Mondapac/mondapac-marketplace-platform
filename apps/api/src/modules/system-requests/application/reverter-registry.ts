@@ -1,15 +1,36 @@
 import type {
+  SystemChangeApplier,
   SystemChangeReverter,
   SystemChangeReverters,
 } from '../../../platform/change-review/change-review';
 import { isPolicyArea, type ReviewArea } from '../domain/areas';
 import { isSubjectKind } from '../domain/request';
 
-/** A registered kind: its reverter and the one area its changes are reviewed in. */
-export interface RegisteredKind {
-  readonly reverter: SystemChangeReverter;
-  readonly area: ReviewArea;
-}
+/** How a kind's requests work: reviewed after the change is live, or applied once approved. */
+export type RequestMode = 'review' | 'approval';
+
+/** What both a reverter and an applier may answer about their subjects. */
+export type SubjectHooks = Pick<SystemChangeReverter, 'isInterested' | 'describe'>;
+
+/**
+ * A registered kind and the one area its changes are reviewed in: a reverter (changes applied at
+ * once, reviewed after) or an applier (actions applied only once approved).
+ */
+export type RegisteredKind =
+  | {
+      readonly mode: 'review';
+      readonly area: ReviewArea;
+      readonly reverter: SystemChangeReverter;
+      readonly applier: null;
+      readonly hooks: SubjectHooks;
+    }
+  | {
+      readonly mode: 'approval';
+      readonly area: ReviewArea;
+      readonly reverter: null;
+      readonly applier: SystemChangeApplier;
+      readonly hooks: SubjectHooks;
+    };
 
 /** What system-requests itself reads from the registry. */
 export interface ReverterLookup {
@@ -46,6 +67,17 @@ export class ReverterRegistry implements ReverterLookup {
       }
       this.register(module, subjectKind, area, reverter);
     },
+    registerApplier: (
+      module: string,
+      subjectKind: string,
+      area: Parameters<SystemChangeReverters['registerApplier']>[2],
+      applier: SystemChangeApplier,
+    ) => {
+      if (!isPolicyArea(area)) {
+        throw new ReverterRegistryError(`${JSON.stringify(area)} is not a reviewed area`);
+      }
+      this.registerApplier(module, subjectKind, area, applier);
+    },
   });
 
   /** Registers a kind; `review-policy` only for system-requests' own kinds. */
@@ -55,6 +87,46 @@ export class ReverterRegistry implements ReverterLookup {
     area: ReviewArea,
     reverter: SystemChangeReverter,
   ): void {
+    this.#checkKind(module, subjectKind, area);
+    if (typeof reverter?.revert !== 'function') {
+      throw new ReverterRegistryError(`The reverter of "${subjectKind}" has no revert method`);
+    }
+    if (reverter.describe !== undefined && typeof reverter.describe !== 'function') {
+      throw new ReverterRegistryError(`The reverter of "${subjectKind}" has a bad describe`);
+    }
+    this.#reverters.set(
+      subjectKind,
+      Object.freeze({ mode: 'review', area, reverter, applier: null, hooks: reverter }),
+    );
+  }
+
+  /**
+   * Registers a kind whose actions wait for approval; it needs `apply` and `check` (the approving
+   * admin's permission is always checked before the unit).
+   */
+  registerApplier(
+    module: string,
+    subjectKind: string,
+    area: ReviewArea,
+    applier: SystemChangeApplier,
+  ): void {
+    this.#checkKind(module, subjectKind, area);
+    if (area === 'review-policy') {
+      throw new ReverterRegistryError('The review policy has no actions that wait for approval');
+    }
+    if (typeof applier?.apply !== 'function' || typeof applier.check !== 'function') {
+      throw new ReverterRegistryError(`The applier of "${subjectKind}" needs apply and check`);
+    }
+    if (applier.describe !== undefined && typeof applier.describe !== 'function') {
+      throw new ReverterRegistryError(`The applier of "${subjectKind}" has a bad describe`);
+    }
+    this.#reverters.set(
+      subjectKind,
+      Object.freeze({ mode: 'approval', area, reverter: null, applier, hooks: applier }),
+    );
+  }
+
+  #checkKind(module: string, subjectKind: string, area: ReviewArea): void {
     if (this.#sealed) throw new ReverterRegistryError('The reverter registry is sealed');
     if (!isSubjectKind(subjectKind)) {
       throw new ReverterRegistryError(`${JSON.stringify(subjectKind)} is not a subject kind`);
@@ -70,13 +142,6 @@ export class ReverterRegistry implements ReverterLookup {
     if (area === 'review-policy' && module !== OWN_MODULE) {
       throw new ReverterRegistryError(`Only ${OWN_MODULE} registers in the review-policy area`);
     }
-    if (typeof reverter?.revert !== 'function') {
-      throw new ReverterRegistryError(`The reverter of "${subjectKind}" has no revert method`);
-    }
-    if (reverter.describe !== undefined && typeof reverter.describe !== 'function') {
-      throw new ReverterRegistryError(`The reverter of "${subjectKind}" has a bad describe`);
-    }
-    this.#reverters.set(subjectKind, Object.freeze({ reverter, area }));
   }
 
   find(subjectKind: string): RegisteredKind | null {

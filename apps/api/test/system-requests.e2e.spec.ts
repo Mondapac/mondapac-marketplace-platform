@@ -69,6 +69,7 @@ const EXPECTED: Readonly<Record<SystemRequestsFailure['code'], number>> = {
   'system-requests.revert-unavailable': 503,
   'system-requests.revert-not-permitted': 403,
   'system-requests.not-low-risk': 409,
+  'system-requests.one-by-one': 409,
   'system-requests.policy-conflict': 409,
 };
 
@@ -220,6 +221,7 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     area: 'catalogue',
     subjectKind: 'settings.market-setting',
     subjectRef: 'list-paging',
+    mode: 'review',
     risk: 'medium',
     status: 'open',
     before: { size: 25 },

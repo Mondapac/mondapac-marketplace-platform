@@ -20,6 +20,9 @@ model SystemRequestsRequest {
   subjectKind           String    @map("subject_kind")
   /// Which one of the kind changed (e.g. the area code or the setting code).
   subjectRef        String    @map("subject_ref")
+  /// review (the change went live when made; a reject restores the value before) or approval (the
+  /// action waits for another admin's approval and is applied by it; CHECK). Never updated.
+  mode                  String    @default("review")
   /// low, medium or high (CHECK).
   risk                  String
   /// open, approved or reverted (CHECK).

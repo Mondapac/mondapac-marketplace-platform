@@ -213,6 +213,38 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
   instead of widening an existing one). A follow-up to review them, or to require an approved
   request before the new admin's first sign-in, is tracked.
 
+## Actions that wait for approval (approval mode)
+
+Owner decision of 18 Nov 2026 ("mixed"): a create or a move goes live at once and is reviewed
+after, as every change so far (a reject undoes it: discard, hide, revoke or move back). A delete,
+a merge or an import cannot be undone cleanly, so it waits for another admin's approval instead.
+
+- Port: `SYSTEM_ACTION_PROPOSER` (`SystemActionProposer.proposeChange`, same implementation as the
+  recorder). The owning module checks the admin's permission and validates the action as it would
+  before applying it, then calls `proposeChange` in its open unit with `before` (what the subject
+  holds now) and `after` (the action, e.g. `{action: 'delete'}`). It writes nothing else. The
+  answer is `null` when the area is not reviewed in the Market (the module applies the action at
+  once, in the same unit, as before), the new request, or `system-requests.already-pending`
+  (`pendingNumber`): one open proposal per subject (also a partial unique index).
+- The kind registers an applier (`registerSystemChangeApplier`): `apply` (in the approval's
+  serializable unit: compares the subject with `before`, runs the module's own checks, writes the
+  action as the approving admin naming the request; answers `applied`, `changed-since`, `gone` or
+  `not-permitted`) and `check` (before the unit, fail closed: at least the approving admin holds
+  the action's permission). `isInterested` and `describe` work as for a reverter. A kind is either
+  reviewed after (reverter) or approved first (applier), never both.
+- The request: `mode: 'approval'`, first activity `proposed`. Approve runs `check`, then `apply`
+  with the decision; anything but `applied` leaves it open and writes nothing. Reject and withdraw
+  change nothing and ask the module nothing (status `reverted`, decision `rejected` or
+  `withdrawn`). A proposal is never superseded and supersedes nothing (CHECK), so reject and
+  withdraw never need it to be the subject's latest. High risk spends the step-up proof as usual.
+- Bulk approve and "select all matching" never take a proposal (`system-requests.one-by-one`; the
+  matching filter leaves proposals out): each is applied on its own approval.
+- Migration `20261118100000_system_requests_approval_mode`: `requests.mode` (no update grant), the
+  CHECK and partial unique index above, activity kind `proposed`. Its `down.sql` refuses to run
+  while any proposal exists.
+- Which actions use it, per module, and their panel pages: follow-up PRs (plan in the project
+  files, `handoffs/system-requests/deferred-hooks-plan.md`).
+
 ## Supersession and locks
 
 A new request on a subject supersedes the subject's open-ended earlier requests: they can be
@@ -311,8 +343,8 @@ or the values.
 - Saved filters, column picker and CSV/XLSX export come with the shared super-list kit (phase 0,
   handoffs in `super-list/`).
 - The area hooks in the other owning modules (roles, payouts, delivery, catalogue, ...) are
-  follow-ups, one per module, for changes that can be reverted only (owner decision of 15 Nov
-  2026: creating, deleting, merging, moving and importing get their own design later).
+  follow-ups, one per module. Creating and moving are reviewed after; deleting, merging and
+  importing wait for approval (owner decision of 18 Nov 2026, "Actions that wait for approval").
 - An impact count per request, and email reminders (the reminder is an in-app admin notice).
 - Excluding the author from their own request's reminder: notices are Market-wide and shown by
   permission (below), so an author who also holds the area's review key sees it too.
