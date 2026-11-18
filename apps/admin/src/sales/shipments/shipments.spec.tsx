@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { visibleNavItems, toast, Toaster } from '@mondapac/ui';
+import { Badge, visibleNavItems, toast, Toaster, type BadgeTone } from '@mondapac/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
 import { adminNav } from '../../nav.ts';
@@ -1702,13 +1702,17 @@ describe('Shipments carrier progress column', () => {
     ['exception', 'Exception', 'critical'],
     ['cancelled', 'Cancelled', 'neutral'],
     ['teleported', 'Unknown', 'neutral'],
-  ])('shows %s as the label %s', async (value, label) => {
+  ])('shows %s as the label %s in the %s tone', async (value, label, tone) => {
+    // The library Badge of that tone, rendered alone, gives the class list the cell must use.
+    const reference = render(<Badge tone={tone as BadgeTone}>x</Badge>);
+    const toneClass = reference.getByText('x').className;
+    reference.unmount();
     turnOn();
     serve(() => pageWith(progress({ progress: value }), { stage: 'to-prepare' }));
     mount();
     await screen.findByRole('columnheader', { name: 'Carrier progress' });
     const cell = cellOf();
-    expect(within(cell).getByText(label)).toBeTruthy();
+    expect(within(cell).getByText(label).className).toBe(toneClass);
     expect(cell.querySelector('svg') !== null).toBe(value === 'exception');
     expect(cell.querySelector('[title^="Reported by the carrier booking"]')).not.toBeNull();
   });
