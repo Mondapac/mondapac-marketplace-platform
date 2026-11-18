@@ -81,10 +81,28 @@ export class TopicLocalesBody {
   supported!: string[];
 }
 
+export class TopicListItemBody extends TopicBody {
+  @ApiProperty({
+    type: [String],
+    description: 'The row actions of the Actions menu the caller may run: edit.',
+  })
+  actions!: string[];
+}
+
 export class TopicListBody {
-  @ApiProperty({ type: [TopicBody] }) items!: TopicBody[];
+  @ApiProperty({ type: [TopicListItemBody] }) items!: TopicListItemBody[];
   @ApiProperty({ nullable: true, type: String, description: 'The `afterId` of the next page.' })
   nextAfterId!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Topics matching over all pages; null in prev-next mode and on a cursor read.',
+  })
+  total!: number | null;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty({ description: 'Whether a page after this one exists.' }) hasNext!: boolean;
   @ApiProperty({ type: TopicLocalesBody }) locales!: TopicLocalesBody;
   @ApiProperty({ type: [String], description: 'The groups a topic may sit in.' })
   groups!: string[];

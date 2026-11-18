@@ -12,6 +12,7 @@ import { useState, type ReactNode } from 'react';
 import { useCategoryChoices } from './category-choices.ts';
 import type { CategoryIssues } from './category-issues.ts';
 import { pickLabel } from './draft-content.ts';
+import { readable } from './format.ts';
 import type { FormCategory } from './types.ts';
 
 /** Where the product is filed (platform categories), its tax category and, below them, its tags. */
@@ -119,8 +120,9 @@ export function ClassificationSection({
       <Select
         name="taxCategoryCode"
         label={t('tax-category')}
-        placeholder={t('attribute.unset')}
-        options={taxCategoryCodes.map((code) => ({ value: code, label: code }))}
+        placeholder={t('tax-category-placeholder')}
+        help={t('tax-category-help')}
+        options={taxCategoryCodes.map((code) => ({ value: code, label: readable(code) }))}
         value={taxCategoryCode}
         onChange={(event) => onTax(event.target.value)}
       />

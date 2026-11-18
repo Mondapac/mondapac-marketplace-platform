@@ -23,8 +23,16 @@ export interface ListDefinition {
   readonly population: ListPopulation;
   /** The key that lets the caller see the list, hence its saved filters. */
   readonly viewKey: PermissionKey;
-  /** The key that lets the caller share a filter with everyone or manage a shared one. */
-  readonly shareKey: PermissionKey;
+  /**
+   * The key that lets the caller share a filter with everyone or manage a shared one. Absent: a
+   * filter of this list is always private (the seller order list).
+   */
+  readonly shareKey?: PermissionKey;
+  /**
+   * Whose rows a seller list keeps: `store` (default) one set per store, `account` one per seller
+   * account across its stores. An admin list has no store and ignores it.
+   */
+  readonly scope?: 'store' | 'account';
   /**
    * The ids of the columns a user may show, hide and reorder in this list (the ones after the
    * columns that are always shown). Absent: the list has no column choice and refuses one.

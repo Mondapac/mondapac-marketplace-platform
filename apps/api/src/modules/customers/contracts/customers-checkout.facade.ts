@@ -1,5 +1,6 @@
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { ExclusiveSellerAnswer, ExclusiveSellerFailure } from './customers-read.facade';
 
 /**
  * A delivery address as checkout copies it onto an order. PERSONAL DATA: never logged, never in
@@ -33,6 +34,15 @@ export interface CustomersCheckoutFacade {
     context: CallContext,
     addressId: unknown,
   ): Promise<Result<DeliveryAddress, DeliveryAddressFailure>>;
+
+  /**
+   * The seller whose exclusive customer the signed-in customer is now (an active attribution), or
+   * null; customers phase 4b. Customer only, the session's own account. A failure means "not
+   * exclusive" to the caller (fail closed: the standard commission).
+   */
+  ownExclusiveSeller(
+    context: CallContext,
+  ): Promise<Result<ExclusiveSellerAnswer | null, ExclusiveSellerFailure>>;
 }
 
 /** Nest token of the {@link CustomersCheckoutFacade}, provided and exported by `CustomersModule`. */

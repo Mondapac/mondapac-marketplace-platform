@@ -32,7 +32,7 @@ export interface TabsProps {
 export const tabIdOf = (panelId: string, id: string): string => `${panelId}-tab-${id}`;
 
 const BASE =
-  'flex min-h-12 shrink-0 items-center whitespace-nowrap border-b-2 px-1 focus-visible:outline-2 focus-visible:outline-focus';
+  'flex min-h-12 min-w-11 shrink-0 items-center justify-center whitespace-nowrap border-b-2 px-1 focus-visible:outline-2 focus-visible:outline-focus';
 const ACTIVE = `${BASE} border-accent font-medium text-fg`;
 const IDLE = `${BASE} border-transparent text-fg-muted hover:text-fg`;
 
