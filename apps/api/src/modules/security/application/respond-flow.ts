@@ -140,9 +140,13 @@ export function namesFor(
   context: CallContext,
   alerts: readonly SecurityAlert[],
 ): Promise<Names> {
-  const ids = alerts.flatMap((alert) =>
-    [alert.acknowledgedBy, alert.resolvedBy].filter((id): id is string => id !== null),
-  );
+  const ids = [
+    ...new Set(
+      alerts.flatMap((alert) =>
+        [alert.acknowledgedBy, alert.resolvedBy].filter((id): id is string => id !== null),
+      ),
+    ),
+  ];
   return ids.length === 0 ? Promise.resolve(NO_NAMES) : deps.names.namesOf(context, ids);
 }
 

@@ -204,6 +204,13 @@ describe.each(TEST_MARKETS)('security alert list in market %s (database)', (code
       ).length;
       expect(counts.ok && counts.value[view]).toBeGreaterThanOrEqual(own);
     }
+    // The grouped counts equal the filtered counts of each view, pollution from other specs included.
+    for (const view of ALERT_LIST_VIEWS) {
+      const filtered = await inUnit(market, () =>
+        repository.countListWhere(market, { ...EMPTY_ALERT_LIST_FILTER, view }),
+      );
+      expect(counts.ok && counts.value[view]).toBe(filtered.ok ? filtered.value : null);
+    }
     const foreignOne = await open(foreign, { day: 2 });
     const found = await inUnit(market, () =>
       repository.findByIds(market, [subjects[0]!.id, subjects[1]!.id, foreignOne.id]),

@@ -175,6 +175,34 @@ describe.each([['AU'], ['ZZ']] as const)('security alert list in market %s', (co
     expect(ids(await ok({ to: b.openedAt.toString() }))).toEqual([a.id]);
   });
 
+  it('keeps the view counts whatever the filter, and combines the critical view with severity', async () => {
+    const a = addAlert({ severity: 's1' });
+    addAlert({ severity: 's2' });
+    addAlert({ severity: 's1', state: 'resolved' });
+    const all = (await ok()).counts;
+    expect(all).toEqual({ all: 3, open: 2, acknowledged: 0, critical: 1, resolved: 1 });
+    expect((await ok({ view: 'resolved' })).counts).toEqual(all);
+    expect(ids(await ok({ view: 'critical', severity: 's1' }))).toEqual([a.id]);
+    expect(ids(await ok({ view: 'critical', severity: 's1,s2' }))).toEqual([a.id]);
+    const none = await ok({ view: 'critical', severity: 's2' });
+    expect(none.items).toEqual([]);
+    expect(none.total).toBe(0);
+  });
+
+  it('stops at 10,000 rows: no Next on the last window and no page past it', async () => {
+    for (let i = 0; i < 10_001; i += 1) addAlert();
+    const last = await ok({ paging: 'prev-next', page: 400, pageSize: 25 });
+    expect(last.items).toHaveLength(25);
+    expect(last.hasNext).toBe(false);
+    expect((await ok({ paging: 'prev-next', page: 399, pageSize: 25 })).hasNext).toBe(true);
+    for (const input of [
+      { page: 401, pageSize: 25 },
+      { page: 101, pageSize: 100 },
+    ]) {
+      expect((await query(input)).ok).toBe(false);
+    }
+  });
+
   it('masks an address key in the rows', async () => {
     addAlert({ keyValue: '203.0.113.7', rule: 'sign-in-failures-ip' }, 'ip');
     const page = await ok();
@@ -213,7 +241,7 @@ describe.each([['AU'], ['ZZ']] as const)('security alert list in market %s', (co
       { keyType: 'user' },
       { keyValue: 'a\nb' },
       { keyValue: 'a‮b' },
-      { keyValue: 'a'.repeat(101) },
+      { keyValue: 'a'.repeat(65) },
       { minEvents: '0' },
       { minEvents: 'x' },
       { sort: 'rule' },
@@ -247,6 +275,12 @@ describe.each([['AU'], ['ZZ']] as const)('security alert list in market %s', (co
       const critical = addAlert({ severity: 's1' });
       expect(await actionsOf(critical, adminCtx(RESPONDER))).toEqual(['open', 'acknowledge']);
       expect(await actionsOf(critical, adminCtx(ALI))).toEqual(['open', 'acknowledge', 'resolve']);
+    });
+
+    it('offers an acknowledged s1 alert’s Resolve only to the roster’s resolvers', async () => {
+      const critical = addAlert({ severity: 's1', state: 'acknowledged' });
+      expect(await actionsOf(critical, adminCtx(RESPONDER))).toEqual(['open']);
+      expect(await actionsOf(critical, adminCtx(HASSAN))).toEqual(['open', 'resolve']);
     });
 
     it('offers only Open without the respond key', async () => {

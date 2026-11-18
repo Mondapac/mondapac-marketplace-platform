@@ -1328,7 +1328,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     rule: /^[a-z][a-z0-9-]{0,59}$/,
     keyType: /^(account|ip|market|event)$/,
     // An account id, an address, the Market code or an event id, exact (the API validates it again).
-    keyValue: /^[\s\S]{1,100}$/,
+    keyValue: /^[\s\S]{1,64}$/,
     minEvents: /^[1-9][0-9]{0,8}$/,
     from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
     to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
@@ -1349,7 +1349,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     rule: /^[a-z][a-z0-9-]{0,59}$/,
     keyType: /^(account|ip|market|event)$/,
     // An account id, an address, the Market code or an event id, exact (the API validates it again).
-    keyValue: /^[\s\S]{1,100}$/,
+    keyValue: /^[\s\S]{1,64}$/,
     minEvents: /^[1-9][0-9]{0,8}$/,
     from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
     to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,

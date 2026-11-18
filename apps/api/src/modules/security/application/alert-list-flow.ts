@@ -117,7 +117,8 @@ export interface AlertListPage extends ListPage<AlertListRow> {
   readonly counts: AlertViewCounts;
 }
 
-const KEY_VALUE_MAX = 100;
+// The column holds 64 characters, so a longer value could never match.
+const KEY_VALUE_MAX = 64;
 const MIN_EVENTS = /^[1-9]\d{0,8}$/;
 
 const hasControl = (text: string): boolean =>

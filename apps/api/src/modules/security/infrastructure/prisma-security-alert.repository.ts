@@ -9,13 +9,7 @@ import type {
   SecurityAlertRepository,
 } from '../application/ports/security-alert.repository';
 import type { AlertResolution, AlertState, SecurityAlert } from '../domain/alert';
-import {
-  ALERT_LIST_VIEWS,
-  EMPTY_ALERT_LIST_FILTER,
-  type AlertListFilter,
-  type AlertSort,
-  type AlertViewCounts,
-} from '../domain/alert-list';
+import { type AlertListFilter, type AlertSort, type AlertViewCounts } from '../domain/alert-list';
 import type { DeliveryChannel, DeliveryOutcome } from '../domain/delivery';
 import type { AlertKeyType } from '../domain/rules';
 import { SEVERITIES, type SecuritySeverity } from '../domain/severity';
@@ -305,19 +299,22 @@ export class PrismaSecurityAlertRepository implements SecurityAlertRepository {
   }
 
   async viewCounts(market: MarketContext): Promise<AlertViewCounts> {
-    const tx = this.prisma.tx(market);
-    const counts = await Promise.all(
-      ALERT_LIST_VIEWS.map((view) =>
-        tx.securityAlert.count({ where: listWhere(market, { ...EMPTY_ALERT_LIST_FILTER, view }) }),
-      ),
-    );
-    return {
-      all: counts[0]!,
-      open: counts[1]!,
-      acknowledged: counts[2]!,
-      critical: counts[3]!,
-      resolved: counts[4]!,
-    };
+    // One grouped read; every view is a sum of its (state, severity) groups.
+    const rows = await this.prisma.tx(market).securityAlert.groupBy({
+      by: ['state', 'severity'],
+      where: { marketId: market.marketId },
+      _count: { _all: true },
+    });
+    const counts = { all: 0, open: 0, acknowledged: 0, critical: 0, resolved: 0 };
+    for (const row of rows) {
+      const n = row._count._all;
+      counts.all += n;
+      if (row.state === 'open') counts.open += n;
+      else if (row.state === 'acknowledged') counts.acknowledged += n;
+      else if (row.state === 'resolved') counts.resolved += n;
+      if (row.severity === 's1' && row.state !== 'resolved') counts.critical += n;
+    }
+    return counts;
   }
 
   async findByIds(
