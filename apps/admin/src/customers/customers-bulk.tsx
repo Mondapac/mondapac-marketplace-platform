@@ -93,6 +93,7 @@ export function CustomersBulk({
   group = null,
   onSelectAll,
   onClear,
+  orderNumberActive = false,
   onMembersChanged = () => undefined,
 }: {
   readonly selection: CustomersSelection;
@@ -109,6 +110,11 @@ export function CustomersBulk({
   readonly group?: CustomerGroup | null;
   readonly onSelectAll: () => void;
   readonly onClear: () => void;
+  /**
+   * The order-number chip is on. The API's selector has no order number, so "select all matching"
+   * would act on the whole tab: it is disabled, and ticked rows (by id) stay allowed.
+   */
+  readonly orderNumberActive?: boolean;
   readonly onMembersChanged?: () => void;
 }) {
   const t = useTranslations('customers.list.bulk');
@@ -262,9 +268,20 @@ export function CustomersBulk({
         ]
       : []),
   ];
+  const offerSelectAll =
+    !selection.allMatching && selection.total > count && selection.total <= SELECT_MAX;
+  if (offerSelectAll && orderNumberActive) {
+    items.push({
+      id: 'select-all',
+      label: t('select-all', { count: selection.total }),
+      description: t('select-all-blocked'),
+      disabled: true,
+      onSelect: () => undefined,
+    });
+  }
   const links = [
     // Select all is offered up to the export's own cap; above it the filter has to be narrowed.
-    ...(!selection.allMatching && selection.total > count && selection.total <= SELECT_MAX
+    ...(offerSelectAll && !orderNumberActive
       ? [
           {
             id: 'select-all',
