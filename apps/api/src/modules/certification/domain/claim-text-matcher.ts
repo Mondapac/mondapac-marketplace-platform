@@ -164,6 +164,12 @@ function skeletonRound(s: string, visualDigits: boolean): string {
 const SEPARATOR_CHAR = /^(?:[^\p{L}\p{N}]|\p{Lm})$/u;
 
 /**
+ * Neither a letter of a script nor a reason to stop looking for Latin context: a separator or a
+ * number. «ha1ا1al» is halal: the digits beside the alef are skipped, as separators are.
+ */
+const NEUTRAL_CHAR = /^(?:[^\p{L}]|\p{Lm})$/u;
+
+/**
  * An Arabic-script letter with an ASCII-letter look-alike that has no Arabic letter directly
  * next to it, inside Latin text, is read as that letter: «haاal» is halal (Hassan S1). Only a
  * DIRECTLY adjacent Arabic letter blocks the fold (as before Hassan S5, so nothing that folded
@@ -181,25 +187,37 @@ export function latinContextFold(s: string): string {
   let last = '';
   for (let i = 0; i < chars.length; i++) {
     before[i] = last;
-    if (!SEPARATOR_CHAR.test(chars[i]!)) last = chars[i]!;
+    if (!NEUTRAL_CHAR.test(chars[i]!)) last = chars[i]!;
   }
   last = '';
   for (let i = chars.length - 1; i >= 0; i--) {
     after[i] = last;
-    if (!SEPARATOR_CHAR.test(chars[i]!)) last = chars[i]!;
+    if (!NEUTRAL_CHAR.test(chars[i]!)) last = chars[i]!;
+  }
+  // A run of the same character is one unit: «haااal» (a stretched alef) is read like «haاal».
+  // Each position knows the first and last of its run; the neighbours are those outside it.
+  const runStart: number[] = new Array<number>(chars.length);
+  const runEnd: number[] = new Array<number>(chars.length);
+  for (let i = 0; i < chars.length; i++) {
+    runStart[i] = i > 0 && chars[i - 1] === chars[i] ? runStart[i - 1]! : i;
+  }
+  for (let i = chars.length - 1; i >= 0; i--) {
+    runEnd[i] = i < chars.length - 1 && chars[i + 1] === chars[i] ? runEnd[i + 1]! : i;
   }
   return chars
     .map((ch, i) => {
       if (!ARABIC_SCRIPT.test(ch)) return ch;
-      if (ARABIC_LETTER.test(chars[i - 1] ?? '') || ARABIC_LETTER.test(chars[i + 1] ?? ''))
+      const first = runStart[i]!;
+      const last = runEnd[i]!;
+      if (ARABIC_LETTER.test(chars[first - 1] ?? '') || ARABIC_LETTER.test(chars[last + 1] ?? ''))
         return ch;
-      // Latin context: the directly adjacent character (main's rule, which also counts Latin
-      // modifier letters such as U+1D2F) or the nearest non-separator (Hassan #380 re-review).
+      // Latin context: the character directly beside the run (main's rule, which also counts
+      // Latin modifier letters such as U+1D2F) or the nearest non-separator (Hassan #380 re-review).
       const latinContext =
-        LATIN_LETTER.test(chars[i - 1] ?? '') ||
-        LATIN_LETTER.test(chars[i + 1] ?? '') ||
-        LATIN_LETTER.test(before[i]!) ||
-        LATIN_LETTER.test(after[i]!);
+        LATIN_LETTER.test(chars[first - 1] ?? '') ||
+        LATIN_LETTER.test(chars[last + 1] ?? '') ||
+        LATIN_LETTER.test(before[first]!) ||
+        LATIN_LETTER.test(after[last]!);
       if (!latinContext) return ch;
       const prototype = UTS39_CONFUSABLES.get(ch)?.toLowerCase();
       return prototype !== undefined && /^[a-z]+$/.test(prototype) ? prototype : ch;

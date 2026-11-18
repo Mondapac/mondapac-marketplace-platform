@@ -632,4 +632,33 @@ describe('claim text matcher: stretched letters', () => {
     expect(run(AU, text)).toEqual(['halal:compact']);
     expect(performance.now() - started).toBeLessThan(2_000);
   });
+
+  it.each([
+    'haااal', // two alefs between Latin letters
+    'haاااal',
+    'haااlal',
+    'haا\u200bاal', // zero-width space between them
+    'haاـاal', // tatweel between them
+    'kههsher', // a stretched heh
+    'haa1ا1al',
+    'ha1ا1al', // digits either side of one alef
+    'haاا-اal',
+  ])('flags a stretched Arabic-script look-alike inside a Latin word: %s', (text) => {
+    const found = run(AU, text);
+    expect([text, found.length > 0]).toEqual([text, true]);
+  });
+
+  it('still reads an Arabic word of its own as Arabic', () => {
+    expect(run(AU, 'حلااال')).toEqual(['halal:compact']);
+    expect(run(AU, 'كتاااب')).toEqual([]);
+    expect(run(AU, 'ااا')).toEqual([]);
+  });
+
+  it('is knowingly over-inclusive across a word break, as the compact pass already is', () => {
+    // Folding a doubled letter and dropping the space reads these as the term (fail closed).
+    for (const text of ['shall always', 'hall allowance', 'veg ganache']) {
+      expect([text, run(AU, text).length > 0]).toEqual([text, true]);
+    }
+    expect(run(AU, 'a hall of fame')).toEqual([]);
+  });
 });
