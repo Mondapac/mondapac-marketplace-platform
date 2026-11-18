@@ -6,18 +6,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../messages/en.json';
 import { AccountArea } from '../src/account/account-area.tsx';
 import { forgetCsrfToken } from '../src/account/customer-api.ts';
-import { FollowControl, readFollowIntent } from '../src/account/follow-button.tsx';
+import { ANNOUNCE_MS, FollowControl, readFollowIntent } from '../src/account/follow-button.tsx';
 import { MyStores, UNDO_MS } from '../src/account/my-stores.tsx';
 import { AccountSettings } from '../src/account/settings.tsx';
 import { reportedPath, reportedTitle } from '../src/analytics/page-path.ts';
 import { clearInvite, keepInvite, readInvite } from '../src/invite/invite-cookie.ts';
-import { InviteJoiner, InviteSignUpLine } from '../src/invite/invite-ui.tsx';
+import {
+  InviteBanner,
+  InviteInvalidNote,
+  InviteJoiner,
+  InviteSignUpLine,
+} from '../src/invite/invite-ui.tsx';
 import { StoreProvider, useStore } from '../src/shell/store-context.tsx';
 import { loadAccount } from '../src/storefront/source.ts';
 
+const search = vi.hoisted(() => ({ value: '' }));
 vi.mock('next/navigation', () => ({
   usePathname: () => '/s/green-grocer',
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(search.value),
   useRouter: () => ({ push: () => undefined, replace: () => undefined }),
 }));
 
@@ -60,6 +66,7 @@ const state = (following: boolean): Answer => ({
 
 beforeEach(() => {
   calls = [];
+  search.value = '';
   forgetCsrfToken();
   fetchMock.mockClear();
   vi.stubGlobal('fetch', fetchMock);
@@ -116,14 +123,14 @@ describe('Follow button', () => {
     expect(button.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(button);
     expect(screen.getByTestId('login').textContent).toBe('open');
-    expect(readFollowIntent()).toEqual({ sellerId: SELLER, path: '/s/green-grocer' });
+    expect(readFollowIntent()).toMatchObject({ sellerId: SELLER, path: '/s/green-grocer' });
     expect(count('PUT', FOLLOW)).toBe(0);
   });
 
   it('applies a follow kept before sign-in once the customer is signed in', async () => {
     window.sessionStorage.setItem(
       'follow-intent',
-      JSON.stringify({ sellerId: SELLER, path: '/s/green-grocer' }),
+      JSON.stringify({ sellerId: SELLER, path: '/s/green-grocer', at: Date.now() }),
     );
     show(store());
     await waitFor(() => expect(count('PUT', FOLLOW)).toBe(1));
@@ -183,6 +190,57 @@ describe('Follow button', () => {
     );
   });
 
+  it('words a 429 with the wait', async () => {
+    answers[`PUT ${FOLLOW}`] = { status: 429, body: { details: { retryAfterSeconds: 150 } } };
+    show(store());
+    fireEvent.click(await screen.findByRole('button', { name: /^Follow/ }));
+    expect((await screen.findByRole('alert')).textContent).toContain('Try again in 3 minutes.');
+  });
+
+  it('opens the log-in dialog when an unfollow finds the session gone', async () => {
+    answers[`GET ${FOLLOW}`] = state(true);
+    show(store());
+    const button = await screen.findByRole('button', { name: /Following/ });
+    answers[`DELETE ${FOLLOW}`] = signedOut;
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.getByTestId('login').textContent).toBe('open'));
+    expect(screen.getByRole('button', { name: /Following/ }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+  });
+
+  it('shows the status line after a follow and takes it away after a few seconds', async () => {
+    show(store());
+    const button = await screen.findByRole('button', { name: /^Follow/ });
+    await waitFor(() => expect(count('GET', FOLLOW)).toBe(1));
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(document.querySelector('.fl-live')?.textContent).toBe('Following Green Grocer'),
+    );
+    await act(() => {
+      vi.advanceTimersByTime(ANNOUNCE_MS + 50);
+      return Promise.resolve();
+    });
+    expect(document.querySelector('.fl-live')?.textContent).toBe('');
+  });
+
+  it('drops a kept follow after 10 minutes and refuses a path that leaves the site', () => {
+    const keep = (path: string, at: number) =>
+      window.sessionStorage.setItem(
+        'follow-intent',
+        JSON.stringify({ sellerId: SELLER, path, at }),
+      );
+    keep('/s/green-grocer', Date.now());
+    expect(readFollowIntent()?.path).toBe('/s/green-grocer');
+    keep('/s/green-grocer', Date.now() - 11 * 60 * 1000);
+    expect(readFollowIntent()).toBeNull();
+    keep('//evil.example', Date.now());
+    expect(readFollowIntent()).toBeNull();
+    keep('/\\evil.example', Date.now());
+    expect(readFollowIntent()).toBeNull();
+  });
+
   it('shows the privacy text and its help line', async () => {
     show(store());
     expect(await screen.findByText(/The store sees your first name and a code only/)).toBeTruthy();
@@ -226,8 +284,28 @@ describe('Follow button', () => {
       ).toBe('/s/green-grocer');
       fireEvent.keyDown(document, { key: 'Escape' });
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: /Following/ }));
     },
   );
+
+  it('writes a fixed gift in the Market currency (JPY has no decimals)', async () => {
+    answers[`GET promotions/stores/${SELLER}/follow-gift`] = {
+      status: 200,
+      body: {
+        gifts: [
+          {
+            name: 'Gift',
+            reward: { kind: 'FIXED', amountMinor: '500' },
+            currency: 'JPY',
+            minSpendMinor: null,
+            endsAt: null,
+          },
+        ],
+      },
+    };
+    show(store());
+    expect(await screen.findByText(/Follow to get Gift: (¥|￥)500 off/)).toBeTruthy();
+  });
 
   it('shows the gift line on the store page for a visitor, and a failed gift read is silent', async () => {
     answers[`GET promotions/stores/${SELLER}/follow-gift`] = {
@@ -255,8 +333,8 @@ describe('Follow button', () => {
   });
 });
 
-const ROW_A = { sellerId: SELLER, slug: 'green-grocer', followedAt: '2026-11-10T01:00:00Z' };
-const ROW_B = { sellerId: SELLER_B, slug: null, followedAt: '2026-10-01T01:00:00Z' };
+const ROW_A = { sellerId: SELLER, slug: 'green-grocer', followedAt: '2026-11-10T12:00:00Z' };
+const ROW_B = { sellerId: SELLER_B, slug: null, followedAt: '2026-10-01T12:00:00Z' };
 const LIST = 'customers/me/followed-stores';
 
 function myStores() {
@@ -373,6 +451,37 @@ describe('My stores', () => {
     await waitFor(() => expect(count('PUT', `customers/me/followed-stores/${SELLER_B}`)).toBe(1));
     expect(await screen.findAllByRole('button', { name: /Following/ })).toHaveLength(2);
   });
+
+  it('says why Undo was refused, then drops the row and moves focus to the heading', async () => {
+    answers[`PUT customers/me/followed-stores/${SELLER_B}`] = {
+      status: 409,
+      body: { code: 'engagement.follow-limit' },
+    };
+    answers[`GET ${LIST}`] = { status: 200, body: { items: [ROW_B], total: 1, nextCursor: null } };
+    myStores();
+    await screen.findByRole('heading', { name: /Stores you follow/ });
+    const button = await screen.findByRole('button', { name: /Following/ });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fireEvent.click(button);
+    fireEvent.click(await screen.findByRole('button', { name: /Undo/ }));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'You follow the maximum number of stores',
+    );
+    await act(() => {
+      vi.advanceTimersByTime(UNDO_MS + 50);
+      return Promise.resolve();
+    });
+    expect(document.querySelector('.ms-off')).toBeNull();
+    expect(document.activeElement?.id).toBe('stores-head');
+  });
+
+  it('opens the log-in dialog when an unfollow finds the session gone', async () => {
+    myStores();
+    await screen.findByRole('link', { name: 'Green Grocer' });
+    answers[`DELETE customers/me/followed-stores/${SELLER_B}`] = signedOut;
+    fireEvent.click(screen.getAllByRole('button', { name: /Following/ })[1]!);
+    await waitFor(() => expect(screen.getByTestId('login').textContent).toBe('open'));
+  });
 });
 
 describe('Invite link', () => {
@@ -406,45 +515,112 @@ describe('Invite link', () => {
     expect(screen.queryByText(/You're joining through/)).toBeNull();
   });
 
-  it('joins after sign-in and says the store is followed', async () => {
+  const JOIN = 'customers/me/store-invitation';
+  const join = () => screen.findByRole('button', { name: 'Join Green Grocer' });
+
+  it('makes no call for a kept link until the customer clicks Join', async () => {
     keepInvite('abcDEF123456', 'Green Grocer');
-    answers['POST customers/me/store-invitation'] = {
-      status: 200,
-      body: { slug: 'green-grocer', following: true },
-    };
+    answers[`POST ${JOIN}`] = { status: 200, body: { slug: 'green-grocer', following: true } };
     show(<InviteJoiner />);
+    const button = await join();
+    expect(screen.getByText(/The store sees your first name and a customer code/)).toBeTruthy();
+    expect(count('POST', JOIN)).toBe(0);
+    fireEvent.click(button);
     expect(await screen.findByText('You joined Green Grocer and follow it.')).toBeTruthy();
+    expect(count('POST', JOIN)).toBe(1);
     expect(readInvite()).toBeNull();
   });
 
-  it('words an ineligible link quietly and keeps the account', async () => {
+  it('a signed-in visitor of the invite page is asked, never joined', async () => {
+    answers[`POST ${JOIN}`] = { status: 200, body: { slug: 'green-grocer', following: true } };
+    show(<InviteBanner token="abcDEF123456" slug="green-grocer" storeName="Green Grocer" />);
+    const button = await join();
+    expect(count('POST', JOIN)).toBe(0);
+    expect(readInvite()).toBeNull();
+    expect(window.location.pathname).toBe('/s/green-grocer');
+    fireEvent.click(button);
+    await waitFor(() => expect(count('POST', JOIN)).toBe(1));
+  });
+
+  it('a signed-out visitor keeps the token and sees Create account and Sign in', async () => {
+    answers['GET identity/customer/session'] = signedOut;
+    show(<InviteBanner token="abcDEF123456" slug="green-grocer" storeName="Green Grocer" />);
+    const create = await screen.findByRole('link', { name: 'Create account' });
+    expect(create.getAttribute('href')).toBe('/account?create=1');
+    await waitFor(() => expect(readInvite()?.token).toBe('abcDEF123456'));
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(screen.getByTestId('login').textContent).toBe('open');
+    expect(count('POST', JOIN)).toBe(0);
+  });
+
+  it('No thanks forgets the link and calls nothing', async () => {
     keepInvite('abcDEF123456', 'Green Grocer');
-    answers['POST customers/me/store-invitation'] = {
+    show(<InviteJoiner />);
+    await join();
+    fireEvent.click(screen.getByRole('button', { name: 'No thanks' }));
+    expect(readInvite()).toBeNull();
+    expect(count('POST', JOIN)).toBe(0);
+  });
+
+  it('words an ineligible link quietly and forgets it', async () => {
+    keepInvite('abcDEF123456', 'Green Grocer');
+    answers[`POST ${JOIN}`] = {
       status: 409,
       body: { code: 'customers.invitation-not-eligible' },
     };
     show(<InviteJoiner />);
+    fireEvent.click(await join());
     expect(
       await screen.findByText("This link can't be used for an existing account."),
     ).toBeTruthy();
+    expect(readInvite()).toBeNull();
   });
 
   it('retries once after 2 seconds on customers.unavailable, then notes it', async () => {
     keepInvite('abcDEF123456', 'Green Grocer');
-    answers['POST customers/me/store-invitation'] = {
-      status: 503,
-      body: { code: 'customers.unavailable' },
-    };
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    answers[`POST ${JOIN}`] = { status: 503, body: { code: 'customers.unavailable' } };
     show(<InviteJoiner />);
-    await waitFor(() => expect(count('POST', 'customers/me/store-invitation')).toBe(1));
+    const button = await join();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fireEvent.click(button);
+    await waitFor(() => expect(count('POST', JOIN)).toBe(1));
     await act(() => {
       vi.advanceTimersByTime(2100);
       return Promise.resolve();
     });
-    await waitFor(() => expect(count('POST', 'customers/me/store-invitation')).toBe(2));
+    await waitFor(() => expect(count('POST', JOIN)).toBe(2));
     expect(await screen.findByText(/We couldn't add you to Green Grocer just now/)).toBeTruthy();
     expect(readInvite()).toBeNull();
+  });
+
+  it('shows the invalid-link note on the home page and dismisses it', () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <InviteInvalidNote />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText('This invite link is no longer valid.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByText('This invite link is no longer valid.')).toBeNull();
+  });
+
+  it('Create account (?create=1) opens the log-in page on the sign-up form', async () => {
+    answers['GET identity/customer/session'] = signedOut;
+    search.value = 'create=1';
+    show(
+      <AccountArea source={{ ...sampleAccount, live: true }}>
+        <p>account</p>
+      </AccountArea>,
+    );
+    expect(await screen.findByRole('heading', { name: 'Create your account' })).toBeTruthy();
+  });
+
+  it('signing in with a kept link makes no join call by itself', async () => {
+    keepInvite('abcDEF123456', 'Green Grocer');
+    show(<InviteJoiner />);
+    await join();
+    await waitFor(() => expect(count('GET', 'identity/customer/session')).toBe(1));
+    expect(count('POST', JOIN)).toBe(0);
   });
 
   it('does nothing without a session', async () => {

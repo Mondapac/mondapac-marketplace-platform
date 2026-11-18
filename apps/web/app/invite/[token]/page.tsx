@@ -31,7 +31,7 @@ export default async function InvitePage({ params }: Props) {
   if (shop === undefined) redirect('/?invite=invalid');
   return (
     <>
-      <InviteBanner token={token} storeName={shop.name} />
+      <InviteBanner token={token} slug={shop.id} storeName={shop.name} />
       <SellerPage shop={shop} ratingsShown={SELLER_RATINGS_SHOWN} />
     </>
   );

@@ -478,7 +478,9 @@
       "unfollowed-announce": "Unfollowed {store}",
       "following-announce": "Following {store}",
       "row-error": "Couldn't update. Try again.",
-      "unavailable": "This store isn't available."
+      "unavailable": "This store isn't available.",
+      "undo-limit": "You follow the maximum number of stores, so this one can't be followed again.",
+      "undo-gone": "This store isn't available, so it can't be followed again."
     }
   },
   "reviews": {
@@ -1607,7 +1609,8 @@
     "percent-off": "{percent}% off",
     "amount-off": "{amount} off",
     "min-spend": "from {amount}",
-    "until": "until {date}"
+    "until": "until {date}",
+    "error-throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}."
   },
   "invite": {
     "banner-title": "{store} invited you.",
@@ -1623,7 +1626,12 @@
       "joined": "You joined {store} and follow it.",
       "joined-only": "You joined {store}.",
       "not-eligible": "This link can't be used for an existing account.",
-      "unavailable": "We couldn't add you to {store} just now. Your account is ready."
-    }
+      "unavailable": "We couldn't add you to {store} just now. Your account is ready.",
+      "declined": "You didn't join {store}."
+    },
+    "join": "Join {store}",
+    "join-help": "Joining makes {store} your store and follows it. The store sees your first name and a customer code, never your email.",
+    "decline": "No thanks",
+    "joining": "Joining…"
   }
 }

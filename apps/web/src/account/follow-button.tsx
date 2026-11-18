@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { formatDate } from '../format/date.ts';
+import { formatInstantDay } from '../format/instant.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
@@ -26,12 +26,21 @@ import { useDialog } from './use-dialog.ts';
 // The privacy line says what the store sees. After a new Follow, the store's live follower offers
 // show in a small dialog; a failed gift read is silent.
 
+/** How long the status line stays. */
+export const ANNOUNCE_MS = 5000;
+
 const INTENT_KEY = 'follow-intent';
 
 interface Intent {
   readonly sellerId: string;
   readonly path: string;
+  /** When the buyer tapped Follow (ms); an intent older than {@link INTENT_MAX_AGE_MS} is dropped. */
+  readonly at: number;
 }
+
+const INTENT_MAX_AGE_MS = 10 * 60 * 1000;
+/** A path of this site only: one slash first, never `//` or `/\` (those leave the site). */
+const LOCAL_PATH = /^\/(?![/\\])/;
 
 /** The follow a signed-out buyer asked for, if any (read by the log-in dialog and the button). */
 export function readFollowIntent(): Intent | null {
@@ -43,9 +52,12 @@ export function readFollowIntent(): Intent | null {
       parsed !== null &&
       isSellerId((parsed as Intent).sellerId) &&
       typeof (parsed as Intent).path === 'string' &&
-      (parsed as Intent).path.startsWith('/')
+      LOCAL_PATH.test((parsed as Intent).path) &&
+      typeof (parsed as Intent).at === 'number' &&
+      Date.now() - (parsed as Intent).at < INTENT_MAX_AGE_MS
     )
       return parsed as Intent;
+    if (parsed !== null) window.sessionStorage.removeItem(INTENT_KEY);
   } catch {
     // Storage is blocked: no intent is kept.
   }
@@ -60,15 +72,15 @@ export function clearFollowIntent(): void {
   }
 }
 
-function keepFollowIntent(intent: Intent): void {
+function keepFollowIntent(intent: Omit<Intent, 'at'>): void {
   try {
-    window.sessionStorage.setItem(INTENT_KEY, JSON.stringify(intent));
+    window.sessionStorage.setItem(INTENT_KEY, JSON.stringify({ ...intent, at: Date.now() }));
   } catch {
     // The buyer taps Follow again after signing in.
   }
 }
 
-type Problem = 'failed' | 'not-found' | 'limit' | null;
+type Problem = 'failed' | 'not-found' | 'limit' | 'throttled' | null;
 
 /** One gift as one line: "10% off, from $50, until 30 Nov 2026". */
 export function useGiftLine(): (gift: FollowGift) => string {
@@ -95,11 +107,7 @@ export function useGiftLine(): (gift: FollowGift) => string {
       if (gift.endsAt !== null)
         parts.push(
           t('until', {
-            date: formatDate(gift.endsAt.slice(0, 10), locale, {
-              day: 'numeric',
-              month: 'short',
-              year: 'numeric',
-            }),
+            date: formatInstantDay(gift.endsAt, locale),
           }),
         );
       return parts.join(', ');
@@ -131,6 +139,8 @@ export function FollowControl({
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem>(null);
   const [announce, setAnnounce] = useState('');
+  const [wait, setWait] = useState(1);
+  const button = useRef<HTMLButtonElement>(null);
   const [help, setHelp] = useState(false);
   const [gifts, setGifts] = useState<readonly FollowGift[]>([]);
   const [dialog, setDialog] = useState<readonly FollowGift[] | null>(null);
@@ -138,6 +148,8 @@ export function FollowControl({
   const active = live && isSellerId(sellerId);
   const signedIn = customer !== null;
   const busyRef = useRef(false);
+  // The buyer changed the follow here: a slower read of the old state must not undo it.
+  const touched = useRef(false);
 
   // The store's offers for followers, for the line under the button (the page only).
   useEffect(() => {
@@ -155,6 +167,7 @@ export function FollowControl({
     async (id: string) => {
       if (busyRef.current) return;
       busyRef.current = true;
+      touched.current = true;
       setBusy(true);
       setProblem(null);
       setFollowing(true);
@@ -169,6 +182,10 @@ export function FollowControl({
       }
       setFollowing(false);
       if (result.kind === 'signed-out') return setLoginOpen(true);
+      if (result.kind === 'throttled') {
+        setWait(Math.max(1, Math.ceil((result.retryAfterSeconds ?? 60) / 60)));
+        return setProblem('throttled');
+      }
       if (result.kind === 'invalid' && result.code === 'engagement.store-not-found')
         return setProblem('not-found');
       if (result.kind === 'invalid' && result.code === 'engagement.follow-limit')
@@ -177,6 +194,13 @@ export function FollowControl({
     },
     [storeName, t, setLoginOpen],
   );
+
+  // The status line ("Following {store}") shows for a few seconds, then goes.
+  useEffect(() => {
+    if (announce === '') return;
+    const timer = setTimeout(() => setAnnounce(''), ANNOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [announce]);
 
   // What the buyer's account says now; a follow asked for before signing in is applied here.
   useEffect(() => {
@@ -189,7 +213,8 @@ export function FollowControl({
       return;
     }
     void readFollow(sellerId).then((read) => {
-      if (current) setFollowing(read.kind === 'ok' ? read.value.following : null);
+      if (current && !touched.current)
+        setFollowing(read.kind === 'ok' ? read.value.following : null);
     });
     return () => {
       current = false;
@@ -201,6 +226,7 @@ export function FollowControl({
   const unfollow = async () => {
     if (busyRef.current) return;
     busyRef.current = true;
+    touched.current = true;
     setBusy(true);
     setProblem(null);
     setFollowing(false);
@@ -209,6 +235,11 @@ export function FollowControl({
     setBusy(false);
     if (result.kind === 'ok') return setAnnounce(t('unfollowed-announce', { store: storeName }));
     setFollowing(true);
+    if (result.kind === 'signed-out') return setLoginOpen(true);
+    if (result.kind === 'throttled') {
+      setWait(Math.max(1, Math.ceil((result.retryAfterSeconds ?? 60) / 60)));
+      return setProblem('throttled');
+    }
     setProblem('failed');
   };
 
@@ -230,6 +261,7 @@ export function FollowControl({
         type="button"
         aria-pressed={on}
         aria-describedby={problem === null ? undefined : `${helpId}-err`}
+        ref={button}
         disabled={busy}
         onClick={onClick}
       >
@@ -244,11 +276,13 @@ export function FollowControl({
         <p className="fl-err" id={`${helpId}-err`} role="alert">
           {problem === 'not-found'
             ? t('error-not-found')
-            : problem === 'limit'
-              ? t.rich('error-limit', {
-                  link: (chunks) => <Link href="/account/stores">{chunks}</Link>,
-                })
-              : t('error-failed')}
+            : problem === 'throttled'
+              ? t('error-throttled', { minutes: wait })
+              : problem === 'limit'
+                ? t.rich('error-limit', {
+                    link: (chunks) => <Link href="/account/stores">{chunks}</Link>,
+                  })
+                : t('error-failed')}
         </p>
       )}
       {variant === 'page' && !on && gifts.length > 0 ? (
@@ -274,7 +308,11 @@ export function FollowControl({
           gifts={dialog}
           storeName={storeName}
           shopHref={variant === 'card' && slug !== undefined ? `/s/${slug}` : undefined}
-          onClose={() => setDialog(null)}
+          onClose={() => {
+            setDialog(null);
+            // The button was disabled while the follow ran, so focus went nowhere: bring it back.
+            button.current?.focus({ preventScroll: true });
+          }}
         />
       )}
     </div>

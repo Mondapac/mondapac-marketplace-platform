@@ -5,8 +5,8 @@
 
 export const INVITE_TOKEN_COOKIE = 'invite-token';
 export const INVITE_STORE_COOKIE = 'invite-store';
-/** Two weeks: a sign-up with an email confirmation takes days at most. */
-const MAX_AGE_SECONDS = 14 * 24 * 60 * 60;
+/** One day: long enough for a sign-up and its email confirmation, short for a credential. */
+const MAX_AGE_SECONDS = 24 * 60 * 60;
 
 /** The shape an invite token must have to be kept (the API refuses any other as unknown). */
 export const TOKEN_SHAPE = /^[A-Za-z0-9_-]{8,200}$/;

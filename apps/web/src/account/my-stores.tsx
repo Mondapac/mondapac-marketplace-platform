@@ -3,7 +3,7 @@
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { formatDate } from '../format/date.ts';
+import { formatInstantDay } from '../format/instant.ts';
 import { SellerLogo } from '../product/seller-logo.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import { storeImageSrc } from '../storefront/real-sellers.ts';
@@ -29,7 +29,7 @@ import {
 export const UNDO_MS = 5000;
 
 type Phase = 'loading' | 'ready' | 'failed' | 'throttled';
-type RowState = 'following' | 'unfollowed' | 'busy' | 'failed';
+type RowState = 'following' | 'unfollowed' | 'busy' | 'failed' | 'refused-limit' | 'refused-gone';
 
 /** A store's name read: a name, or nothing (then the row shows the address). */
 /** A copy of the row states without one seller. */
@@ -44,7 +44,7 @@ type Named = PublicStoreName | 'unknown';
 export function MyStores() {
   const t = useTranslations('account.stores');
   const title = useTranslations('account.titles')('stores');
-  const { live, customer } = useStore();
+  const { live, customer, setLoginOpen } = useStore();
   const [rows, setRows] = useState<readonly FollowedStore[]>([]);
   const [total, setTotal] = useState(0);
   const [next, setNext] = useState<string | null>(null);
@@ -57,6 +57,10 @@ export function MyStores() {
   const asked = useRef(new Set<string>());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const [announce, setAnnounce] = useState('');
+  const rowsRef = useRef<readonly FollowedStore[]>([]);
+  rowsRef.current = rows;
+  // Where focus goes after a row leaves: the next row's button, else the heading.
+  const [refocus, setRefocus] = useState<string | null>(null);
 
   const nameRows = useCallback((items: readonly FollowedStore[]) => {
     for (const { slug } of items) {
@@ -112,8 +116,24 @@ export function MyStores() {
     setMoreFailed(outcome !== 'ok');
   };
 
+  useEffect(() => {
+    if (refocus === null) return;
+    const lost = document.activeElement === null || document.activeElement === document.body;
+    if (lost) {
+      const target =
+        refocus === ''
+          ? document.getElementById('stores-head')
+          : document.querySelector<HTMLElement>(`[data-store-row="${refocus}"] button`);
+      target?.focus({ preventScroll: true });
+    }
+    setRefocus(null);
+  }, [refocus, rows]);
+
   const drop = (sellerId: string) => {
     timers.current.delete(sellerId);
+    const at = rowsRef.current.findIndex((row) => row.sellerId === sellerId);
+    const neighbour = rowsRef.current[at + 1] ?? rowsRef.current[at - 1];
+    setRefocus(neighbour?.sellerId ?? '');
     setRows((current) => current.filter((row) => row.sellerId !== sellerId));
     setTotal((count) => Math.max(0, count - 1));
     setState((current) => omit(current, sellerId));
@@ -122,6 +142,11 @@ export function MyStores() {
   const unfollow = async (row: FollowedStore, label: string) => {
     setState((current) => ({ ...current, [row.sellerId]: 'busy' }));
     const result = await unfollowStore(row.sellerId);
+    if (result.kind === 'signed-out') {
+      setState((current) => omit(current, row.sellerId));
+      setLoginOpen(true);
+      return;
+    }
     if (result.kind !== 'ok') {
       setState((current) => ({ ...current, [row.sellerId]: 'failed' }));
       return;
@@ -144,8 +169,12 @@ export function MyStores() {
       setState((current) => omit(current, row.sellerId));
       return;
     }
-    // The store cannot be followed again (not public now, or the limit): the row leaves.
-    setState((current) => ({ ...current, [row.sellerId]: 'unfollowed' }));
+    // The store cannot be followed again (the limit, or not public now): say why; the row leaves.
+    const limit = result.kind === 'invalid' && result.code === 'engagement.follow-limit';
+    setState((current) => ({
+      ...current,
+      [row.sellerId]: limit ? 'refused-limit' : 'refused-gone',
+    }));
     timers.current.set(
       row.sellerId,
       setTimeout(() => drop(row.sellerId), UNDO_MS),
@@ -155,13 +184,16 @@ export function MyStores() {
   return (
     <AccountFrame title={title}>
       <section className="ac-card" aria-labelledby="stores-head">
-        <h2 id="stores-head">{t('heading', { count: total })}</h2>
+        <h2 id="stores-head" tabIndex={-1}>
+          {t('heading', { count: total })}
+        </h2>
         <p className="ac-sub">{t('privacy')}</p>
         <div className="ac-live" role="status" aria-live="polite">
           {announce}
         </div>
         {phase === 'loading' ? (
-          <div aria-busy="true" aria-label={t('loading')}>
+          <div role="status" aria-busy="true">
+            <span className="fl-sr">{t('loading')}</span>
             {[0, 1, 2].map((n) => (
               <div className="ms-row ms-skel" key={n} aria-hidden="true" />
             ))}
@@ -247,13 +279,9 @@ function StoreRow({
     row.slug !== null && named !== undefined && named !== 'unknown' && named.logoId !== null
       ? { src: storeImageSrc(row.slug, named.logoId, 'small'), width: 64, height: 64 }
       : undefined;
-  const since = formatDate(row.followedAt.slice(0, 10), locale, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
+  const since = formatInstantDay(row.followedAt, locale);
   return (
-    <li className={hidden ? 'ms-row ms-off' : 'ms-row'}>
+    <li className={hidden ? 'ms-row ms-off' : 'ms-row'} data-store-row={row.sellerId}>
       <SellerLogo logo={undefined} image={logo} />
       <div className="ms-id">
         {hidden || row.slug === null ? (
@@ -265,7 +293,11 @@ function StoreRow({
         )}
         <small>{t('since', { date: since })}</small>
       </div>
-      {state === 'unfollowed' ? (
+      {state === 'refused-limit' || state === 'refused-gone' ? (
+        <p className="ms-undo" role="alert">
+          {state === 'refused-limit' ? t('undo-limit') : t('undo-gone')}
+        </p>
+      ) : state === 'unfollowed' ? (
         <p className="ms-undo">
           {t('unfollowed')}{' '}
           <button
