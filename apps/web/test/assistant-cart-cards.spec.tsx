@@ -627,6 +627,72 @@ describe('the basket proposal card', () => {
     });
   });
 
+  it('says why "+" is off when the ceiling is reached, and counts up to a ceiling of 3', () => {
+    const card = proposal();
+    const limited = {
+      ...card,
+      stores: card.stores.map((store) => ({
+        ...store,
+        lines: store.lines.map((line) => ({ ...line, quantity: 1, maxQuantity: 3 })),
+      })),
+    } as BasketProposalView;
+    wrap(<BasketProposalCardView card={limited} />);
+    const group = screen.getAllByRole('group', { name: 'Quantity' })[0]!;
+    const more = within(group).getByRole('button', { name: 'One more' });
+    expect(screen.queryByText(/The most you can add/)).toBeNull();
+    fireEvent.click(more);
+    fireEvent.click(more);
+    expect(within(group).getByRole('status').textContent).toBe('3');
+    expect(more).toHaveProperty('disabled', true);
+    const note = screen.getByText('The most you can add is 3 packs.');
+    expect(group.getAttribute('aria-describedby')).toBe(note.id);
+  });
+
+  it('leaves a product with nothing left to add out of the list and the total', () => {
+    const card = proposal();
+    const none = {
+      ...card,
+      stores: card.stores.map((store) => ({
+        ...store,
+        lines: store.lines.map((line) => ({ ...line, maxQuantity: 0 })),
+      })),
+    } as BasketProposalView;
+    wrap(<BasketProposalCardView card={none} />);
+    expect(screen.getByText(/cannot be added from here/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Add 0 of 3 items to cart/ })).toHaveProperty(
+      'disabled',
+      true,
+    );
+  });
+
+  it('starts a swapped-to product from its own, lower ceiling', () => {
+    const card = proposal();
+    const swapped = {
+      ...card,
+      stores: card.stores.map((store) => ({
+        ...store,
+        lines: store.lines.map((line) => ({
+          ...line,
+          alternatives: line.alternatives.map((option) => ({
+            ...option,
+            quantity: 5,
+            maxQuantity: 2,
+          })),
+        })),
+      })),
+    } as BasketProposalView;
+    wrap(<BasketProposalCardView card={swapped} />);
+    const group = screen.getAllByRole('group', { name: 'Quantity' })[0]!;
+    fireEvent.click(within(group).getByRole('button', { name: 'One more' })); // lamb 2 -> 3
+    fireEvent.click(screen.getAllByRole('button', { name: /^Use this/ })[0]!);
+    const after = screen.getAllByRole('group', { name: 'Quantity' })[0]!;
+    expect(within(after).getByRole('status').textContent).toBe('2');
+    expect(within(after).getByRole('button', { name: 'One more' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+  });
+
   it('removing a line takes it out of the add', () => {
     wrap(<BasketProposalCardView card={proposal()} />);
     fireEvent.click(screen.getByRole('button', { name: /^Remove from list/ }));
