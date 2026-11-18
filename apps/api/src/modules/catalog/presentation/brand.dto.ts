@@ -40,10 +40,28 @@ export class BrandWrapBody {
   @ApiProperty({ type: BrandBody }) brand!: BrandBody;
 }
 
+export class BrandListItemBody extends BrandBody {
+  @ApiProperty({
+    type: [String],
+    description: 'The row actions of the Actions menu the caller may run: edit, merge, deactivate.',
+  })
+  actions!: string[];
+}
+
 export class BrandListBody {
-  @ApiProperty({ type: [BrandBody] }) items!: BrandBody[];
+  @ApiProperty({ type: [BrandListItemBody] }) items!: BrandListItemBody[];
   @ApiProperty({ nullable: true, type: String, description: 'The `afterId` of the next page.' })
   nextAfterId!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Brands matching over all pages; null in prev-next mode and on a cursor read.',
+  })
+  total!: number | null;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty({ description: 'Whether a page after this one exists.' }) hasNext!: boolean;
 }
 
 export class BrandCreateRequest {

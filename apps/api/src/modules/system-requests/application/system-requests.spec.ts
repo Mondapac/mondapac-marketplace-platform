@@ -808,6 +808,32 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
           input,
         );
 
+      it('reports own-subject for a matching request about the reviewer and approves the others', async () => {
+        const mine = await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        const theirs = await change(MAKER, 'b', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        subjects.interested.add(`${CHECKER}:a`);
+        expect(await matching(CHECKER, { view: 'all-open' })).toEqual({
+          ok: true,
+          value: {
+            approved: [{ id: theirs.id, number: theirs.number }],
+            failed: [{ id: mine.id, code: 'system-requests.own-subject' }],
+            // The count is a query and cannot ask the owning module, so it still counts the
+            // request about the reviewer; the next call approves nothing, and the panel stops.
+            remaining: 1,
+          },
+        });
+        expect(await matching(CHECKER, { view: 'all-open' })).toEqual({
+          ok: true,
+          value: {
+            approved: [],
+            failed: [{ id: mine.id, code: 'system-requests.own-subject' }],
+            remaining: 1,
+          },
+        });
+        expect((await requests.find(market, mine.id))?.status).toBe('open');
+        expect(subjects.reverts).toEqual([]);
+      });
+
       it('approves the low-risk requests the caller may decide among those that match', async () => {
         const first = await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
         const second = await change(MAKER, 'b', { v: 1 }, { v: 2 }, { area: 'marketplace' });

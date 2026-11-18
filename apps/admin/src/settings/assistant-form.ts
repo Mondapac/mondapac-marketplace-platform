@@ -42,7 +42,7 @@ export interface AssistantForm {
   readonly dailySpendCap: string;
   readonly monthlySpendCap: string;
   readonly supportHandoff: SupportHandoff;
-  /** Carried unchanged until the panel has its switch (S1-F2): the PUT needs every field. */
+  /** "Basket proposals from a list" switch; off by default. */
   readonly basketProposals: boolean;
   readonly welcomeText: string;
 }

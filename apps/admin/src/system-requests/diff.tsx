@@ -222,6 +222,7 @@ export function ChangeDiff({
         <div className="border-t border-line-row px-4 py-2">
           <Button
             variant="link"
+            className="max-sm:min-h-11"
             aria-expanded={showSame}
             onClick={() => setShowSame((current) => !current)}
           >

@@ -482,6 +482,22 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
         reader.list(market, { status: 'draft', search: unique, afterId: null, limit: 5 }),
       );
       expect(drafts.items).toEqual([]);
+      // The numbered read: sorted both ways, offset, count, and a wildcard matched as typed.
+      const filter = { status: 'active', search: unique } as const;
+      expect(await inUnit(() => reader.count(market, filter))).toBe(3);
+      const asc = await inUnit(() =>
+        reader.page(market, { ...filter, sort: 'name', direction: 'asc', offset: 1, limit: 5 }),
+      );
+      expect(asc.map((state) => state.name)).toEqual([`Zz${unique} b`, `Zz${unique} c`]);
+      const desc = await inUnit(() =>
+        reader.page(market, { ...filter, sort: 'name', direction: 'desc', offset: 0, limit: 1 }),
+      );
+      expect(desc.map((state) => state.name)).toEqual([`Zz${unique} c`]);
+      const byCreated = await inUnit(() =>
+        reader.page(market, { ...filter, sort: 'created', direction: 'asc', offset: 0, limit: 5 }),
+      );
+      expect(byCreated).toHaveLength(3);
+      expect(await inUnit(() => reader.count(market, { status: null, search: '%' }))).toBe(0);
     });
 
     it('knows whether a seller has an ownBrand product in this Market only', async () => {

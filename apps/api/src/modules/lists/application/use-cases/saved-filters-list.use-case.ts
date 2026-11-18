@@ -3,10 +3,11 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import type { SavedFilterStore, StoredFilter } from '../../contracts';
+import type { SavedFilterStore, StoredFilter, ListPopulation } from '../../contracts';
 import { inTabOrder } from '../../domain/saved-filter-rules';
 import {
-  adminOf,
+  callerOf,
+  storeOf,
   canShareOf,
   holds,
   viewOf,
@@ -62,53 +63,68 @@ export class SavedFiltersList extends UseCase<
     super(gate);
   }
 
-  protected async handle(
+  protected handle(
     context: CallContext,
     input: SavedFiltersListInput,
   ): Promise<Result<SavedFiltersListOutput, SavedFiltersListFailure>> {
-    const admin = adminOf(context);
-    if (admin === null) return err({ code: 'access.denied' });
-    if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-      return err({ code: 'validation.failed', fields: [{ path: 'query', code: 'type' }] });
-    }
-    for (const key of Object.keys(input)) {
-      if (!KEYS.has(key))
-        return err({ code: 'validation.failed', fields: [{ path: key, code: 'unknown' }] });
-    }
-    const { deps } = this;
-    const list = deps.registry.lookup(input.listKey, 'admin');
-    if (!list.ok) return list;
-    const viewed = await holds(
-      deps.authorisation,
-      context,
-      'lists.saved-filters-list-view',
-      list.value.viewKey,
-    );
-    if (!viewed.ok) return viewed;
-    const canShare = await canShareOf(
-      deps.authorisation,
-      context,
-      'lists.saved-filters-list',
-      list.value,
-    );
-    if (!canShare.ok) return canShare;
-
-    const { market } = context;
-    const read = await deps.unitOfWork.run<readonly StoredFilter[], never>(
-      market,
-      async () => ok(await deps.store.visibleTo(market, null, list.value.listKey, admin.accountId)),
-      { readOnly: true },
-    );
-    if (!read.ok) return read;
-    // A saved document the list no longer reads (its vocabulary moved on) is left out, so the
-    // panel never opens a tab it cannot apply.
-    const usable = read.value.filter((filter) => list.value.parsePayload(filter.payload).ok);
-    return ok({
-      listKey: list.value.listKey,
-      items: inTabOrder(usable, admin.accountId).map((filter) =>
-        viewOf(filter, admin.accountId, canShare.value),
-      ),
-      canShare: canShare.value,
-    });
+    return handleSavedFiltersList('admin', this.deps, context, input);
   }
+}
+
+/**
+ * The body of the use case for one population: the admin class and the seller class of
+ * `seller-saved-filters` run it with their own population, so the rules stay in one place.
+ */
+export async function handleSavedFiltersList(
+  population: ListPopulation,
+  deps: SavedFiltersListDependencies,
+  context: CallContext,
+  input: SavedFiltersListInput,
+): Promise<Result<SavedFiltersListOutput, SavedFiltersListFailure>> {
+  const caller = callerOf(context, population);
+  if (!caller.ok) return caller;
+  const member = caller.value;
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    return err({ code: 'validation.failed', fields: [{ path: 'query', code: 'type' }] });
+  }
+  for (const key of Object.keys(input)) {
+    if (!KEYS.has(key))
+      return err({ code: 'validation.failed', fields: [{ path: key, code: 'unknown' }] });
+  }
+  const list = deps.registry.lookup(input.listKey, population);
+  if (!list.ok) return list;
+  const sellerId = storeOf(member, list.value);
+  const viewed = await holds(
+    deps.authorisation,
+    context,
+    'lists.saved-filters-list-view',
+    list.value.viewKey,
+  );
+  if (!viewed.ok) return viewed;
+  const canShare = await canShareOf(
+    deps.authorisation,
+    context,
+    'lists.saved-filters-list',
+    list.value,
+  );
+  if (!canShare.ok) return canShare;
+
+  const { market } = context;
+  const read = await deps.unitOfWork.run<readonly StoredFilter[], never>(
+    market,
+    async () =>
+      ok(await deps.store.visibleTo(market, sellerId, list.value.listKey, member.accountId)),
+    { readOnly: true },
+  );
+  if (!read.ok) return read;
+  // A saved document the list no longer reads (its vocabulary moved on) is left out, so the
+  // panel never opens a tab it cannot apply.
+  const usable = read.value.filter((filter) => list.value.parsePayload(filter.payload).ok);
+  return ok({
+    listKey: list.value.listKey,
+    items: inTabOrder(usable, member.accountId).map((filter) =>
+      viewOf(filter, member.accountId, canShare.value),
+    ),
+    canShare: canShare.value,
+  });
 }

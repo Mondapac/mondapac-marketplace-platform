@@ -1,13 +1,20 @@
+import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CATALOG_PLATFORM_PRODUCT_EDIT } from '../../contracts/permissions';
+import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { OwnCatalogReader, ProductFormCategory } from '../ports/own-catalog.reader';
 
 export interface PlatformProductOptionsOutput {
   /** The product types the Market offers, in the Market's order. */
   readonly productTypes: readonly string[];
   readonly locales: { readonly default: string; readonly supported: readonly string[] };
+  /** The Market's tax categories, as the product read lists them. */
+  readonly taxCategoryCodes: readonly string[];
+  /** The active platform categories, in the shape of `form.categories` of the product read. */
+  readonly categories: readonly ProductFormCategory[];
 }
 
 export type PlatformProductOptionsFailure =
@@ -15,11 +22,13 @@ export type PlatformProductOptionsFailure =
 
 export interface PlatformProductOptionsDependencies {
   readonly policy: CatalogMarketPolicy;
+  readonly unitOfWork: UnitOfWork;
+  readonly ownReader: OwnCatalogReader;
 }
 
 /**
- * `platform-product.options` (catalog design 8.2): what the admin panel's create form offers,
- * from the Market configuration. Opens no unit of its own. Rule: the key
+ * `platform-product.options` (catalog design 8.2): what the admin panel's Add page offers: the Market configuration (types, locales, tax
+ * categories) and the active platform categories (one read-only unit). Rule: the key
  * `catalog.platform-product.edit`, as the form that uses it.
  */
 export class PlatformProductOptions extends UseCase<
@@ -39,20 +48,38 @@ export class PlatformProductOptions extends UseCase<
     super(gate);
   }
 
-  protected handle(
+  readonly #logger = new Logger('PlatformProductOptions');
+
+  protected async handle(
     context: CallContext,
   ): Promise<Result<PlatformProductOptionsOutput, PlatformProductOptionsFailure>> {
     const { market } = context;
+    let productTypes: readonly string[];
+    let taxCategoryCodes: readonly string[];
+    let locales: { default: string; supported: readonly string[] };
     try {
-      const locales = this.deps.policy.locales(market);
-      return Promise.resolve(
-        ok({
-          productTypes: [...this.deps.policy.productTypes(market)],
-          locales: { default: locales.default, supported: [...locales.supported] },
-        }),
-      );
+      const configured = this.deps.policy.locales(market);
+      locales = { default: configured.default, supported: [...configured.supported] };
+      productTypes = [...this.deps.policy.productTypes(market)];
+      taxCategoryCodes = [...this.deps.policy.taxCategoryCodes(market)];
     } catch {
-      return Promise.resolve(err({ code: 'access.unavailable' }));
+      return err({ code: 'access.unavailable' });
     }
+    // The category list does not depend on a product or its family: the Add page needs it before
+    // the product exists.
+    const read = await this.deps.unitOfWork
+      .run(market, async () => ok(await this.deps.ownReader.productCategories(market)), {
+        readOnly: true,
+      })
+      .catch(() => ({ ok: false as const }));
+    // A failed category read degrades to an empty list: the other answers stay usable.
+    if (!read.ok) {
+      this.#logger.warn({
+        msg: 'catalog.platform-product-options.categories-unavailable',
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+    }
+    return ok({ productTypes, locales, taxCategoryCodes, categories: read.ok ? read.value : [] });
   }
 }
