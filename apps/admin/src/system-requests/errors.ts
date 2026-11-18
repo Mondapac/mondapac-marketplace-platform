@@ -87,6 +87,8 @@ export function bulkReasonKey(code: string): string {
       return 'own';
     case 'not-reviewer':
       return 'not-reviewer';
+    case 'one-by-one':
+      return 'one-by-one';
     case 'not-found':
       return 'not-found';
     default:

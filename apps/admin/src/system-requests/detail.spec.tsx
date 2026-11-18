@@ -32,6 +32,7 @@ const detail = (over: Partial<SystemRequestDetail> = {}): SystemRequestDetail =>
   subjectRef: '0190a000-0000-7000-8000-0000000009ff',
   risk: 'medium',
   status: 'open',
+  mode: 'review',
   before: { rateBps: 1500, label: 'standard' },
   after: { rateBps: 1200, label: 'standard' },
   note: 'Lower the rate\nfor the pilot <b>sellers</b>',
@@ -655,5 +656,120 @@ describe('RequestDetail high-risk step-up', () => {
       'csrf',
     ]);
     expect(posts[2]).toEqual(posts[0]);
+  });
+
+  describe('an action that waits for approval', () => {
+    const proposal = (over: Partial<SystemRequestDetail> = {}) =>
+      detail({
+        mode: 'approval',
+        subjectKind: 'catalog.brand',
+        before: { name: 'Acme Foods', products: 12 },
+        after: { action: 'merge', intoId: 'b-2', intoName: 'Acme Foods Pty' },
+        activity: [
+          {
+            id: 'p1',
+            kind: 'proposed',
+            actor: OTHER,
+            actorName: 'Sara K.',
+            at: '2026-11-10T01:00:00.000Z',
+            body: null,
+          },
+        ],
+        ...over,
+      });
+
+    it('shows the badge, the requested action and the current values, with no diff', async () => {
+      call.mockResolvedValue(ok(proposal()));
+      mount();
+      await screen.findByRole('heading', { level: 1 });
+      expect(screen.getByText('Waits for approval')).toBeTruthy();
+      expect(screen.getByRole('heading', { name: 'Requested action' })).toBeTruthy();
+      expect(screen.getByText('Merge into Acme Foods Pty')).toBeTruthy();
+      expect(screen.getByRole('heading', { name: 'What the subject holds now' })).toBeTruthy();
+      expect(screen.getByText('Acme Foods')).toBeTruthy();
+      expect(screen.queryByRole('heading', { name: 'What changed' })).toBeNull();
+      expect(screen.queryByText(/This change is already live/)).toBeNull();
+      expect(screen.getByText(/Nothing has changed yet\./)).toBeTruthy();
+      expect(screen.getByText('asked for the action')).toBeTruthy();
+    });
+
+    it('names a plain action and says what to expect from each decision', async () => {
+      call.mockResolvedValue(ok(proposal({ after: { action: 'delete' } })));
+      mount();
+      await screen.findByRole('heading', { level: 1 });
+      expect(screen.getByText('Delete')).toBeTruthy();
+      open('Approve');
+      expect(
+        await screen.findByRole('heading', { name: 'Approve SR-1042 and apply the action?' }),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+      const dialog = (await screen.findByRole('heading', { name: 'Reject SR-1042?' })).closest(
+        'dialog',
+      ) as HTMLElement;
+      expect(within(dialog).getByText(/Nothing will change\./)).toBeTruthy();
+      fireEvent.change(within(dialog).getByLabelText('Reason (shown to the author)'), {
+        target: { value: 'Not needed' },
+      });
+      call.mockResolvedValueOnce(ok(proposal({ status: 'reverted', decision: 'rejected' })));
+      call.mockResolvedValueOnce(
+        ok(
+          proposal({
+            status: 'reverted',
+            decision: 'rejected',
+            decidedBy: ME,
+            decidedAt: '2026-11-12T01:00:00.000Z',
+            decisionReason: 'Not needed',
+            actions: [],
+          }),
+        ),
+      );
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Reject' }));
+      await expectToast('SR-1042 rejected. Nothing was changed.');
+      expect(await screen.findByText(/Declined by you on/)).toBeTruthy();
+      expect(screen.getAllByText('Declined').length).toBeGreaterThan(0);
+      expect(screen.queryByText(/Reverted/)).toBeNull();
+    });
+
+    it('words a withdrawn proposal as not applied, and an approved one as applied', async () => {
+      call.mockResolvedValue(
+        ok(
+          proposal({
+            status: 'reverted',
+            decision: 'withdrawn',
+            requestedBy: ME,
+            decidedBy: ME,
+            decidedAt: '2026-11-12T01:00:00.000Z',
+            decisionReason: 'Mistake',
+            actions: [],
+          }),
+        ),
+      );
+      mount();
+      expect(await screen.findByText(/Withdrawn by you on .* Nothing was changed/)).toBeTruthy();
+      expect(screen.getByText('Withdrawn, not applied')).toBeTruthy();
+      cleanup();
+      call.mockResolvedValue(
+        ok(
+          proposal({
+            status: 'approved',
+            decision: 'approved',
+            decidedBy: OTHER,
+            decidedByName: 'Sara K.',
+            decidedAt: '2026-11-12T01:00:00.000Z',
+            actions: [],
+          }),
+        ),
+      );
+      mount();
+      expect(await screen.findByText(/The action was applied\./)).toBeTruthy();
+    });
+
+    it('gives the author the withdraw action in its own words', async () => {
+      call.mockResolvedValue(ok(proposal({ requestedBy: ME, actions: ['open', 'withdraw'] })));
+      mount();
+      expect(await screen.findByText(/You asked for this action\./)).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Withdraw my request' })).toBeTruthy();
+    });
   });
 });

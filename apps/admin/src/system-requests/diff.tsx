@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Card } from '@mondapac/ui';
+import { Banner, Button, Card, DataList } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState, type ReactNode } from 'react';
 import { numberFormat } from '../shared/intl.ts';
@@ -233,5 +233,81 @@ export function ChangeDiff({
         </div>
       ) : null}
     </Card>
+  );
+}
+
+/** The action names the panel words; any other is shown by its own name. */
+const ACTIONS = ['delete', 'merge', 'import'] as const;
+
+/**
+ * The "Requested action" card of a request that waits for approval: the action (from
+ * `after.action`) with its details, and what the subject holds now (`before`) as the values the
+ * action would apply to. There is no Current/Proposed diff: nothing has been changed. Without
+ * `after` or `before` a note says who may see them.
+ */
+export function RequestedAction({
+  kind,
+  before,
+  after,
+  history,
+}: {
+  readonly kind: string;
+  readonly before: Values | null;
+  readonly after: Values | null;
+  /** The request is decided: the card is a record of what was asked. */
+  readonly history: boolean;
+}) {
+  const t = useTranslations('system-requests.requested');
+  if (after === null) {
+    return (
+      <Card title={t('title')}>
+        <Banner tone="info">{t('hidden')}</Banner>
+      </Card>
+    );
+  }
+  const action = typeof after['action'] === 'string' ? after['action'] : null;
+  const into =
+    typeof after['intoName'] === 'string' && after['intoName'] !== '' ? after['intoName'] : null;
+  const name =
+    action === 'merge' && into !== null
+      ? t('merge-into', { name: into })
+      : action === null
+        ? t('unknown-action')
+        : (ACTIONS as readonly string[]).includes(action)
+          ? t(`action.${action}`)
+          : humanKey(action);
+  const details = Object.entries(after).filter(
+    ([key]) => key !== 'action' && !(key === 'intoName' && into !== null),
+  );
+  return (
+    <>
+      <Card title={history ? t('title-history') : t('title')}>
+        <p className="text-base font-medium text-fg">{name}</p>
+        {details.length > 0 ? (
+          <DataList
+            missing={t('none')}
+            rows={details.map(([key, value]) => ({
+              label: humanKey(key),
+              value: <Value kind={kind} field={key} value={value} />,
+            }))}
+          />
+        ) : null}
+      </Card>
+      <Card title={t('current-title')}>
+        {before === null ? (
+          <Banner tone="info">{t('hidden')}</Banner>
+        ) : Object.keys(before).length === 0 ? (
+          <p className="text-sm text-fg-muted">{t('none')}</p>
+        ) : (
+          <DataList
+            missing={t('none')}
+            rows={Object.entries(before).map(([key, value]) => ({
+              label: humanKey(key),
+              value: <Value kind={kind} field={key} value={value} />,
+            }))}
+          />
+        )}
+      </Card>
+    </>
   );
 }
