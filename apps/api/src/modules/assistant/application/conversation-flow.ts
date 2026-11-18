@@ -25,7 +25,8 @@ import { AssistantSpendCapReached } from '../domain/events';
 import { instructionsFor } from '../domain/instructions';
 import { maskPersonalData } from '../domain/personal-data';
 import { guardReply } from '../domain/reply-guard';
-import { parseToolCall, TOOL_DECLARATIONS } from '../domain/tools';
+import { linesAreBuyersOwn } from '../domain/plan-basket';
+import { parseToolCall, toolDeclarationsFor } from '../domain/tools';
 import type { AssistantDependencies } from './assistant-dependencies';
 import type {
   ConversationOwner,
@@ -149,7 +150,7 @@ interface Turn {
 
 /**
  * The model loop of one buyer turn, outside any unit of work (ADR-0019 decision 6): the model
- * answers or asks for READ tools, the server runs them with the buyer's own `CallContext` and
+ * answers or asks for the READ tools of the Market's scope, the server runs them with the buyer's own `CallContext` and
  * shows their cards, for at most four calls and 25 seconds. A failed or slow provider ends the
  * turn with the `unavailable` notice and the support card; a refusal with `refused`.
  */
@@ -185,6 +186,14 @@ async function runModel(
     turn.cards.push(...cards.slice(0, Math.max(0, MAX_CARDS_PER_TURN - 1 - turn.cards.length)));
   };
 
+  // What the buyer wrote in this conversation, masked: a basket line must be made of these words.
+  const buyerTexts = [
+    ...history.filter((message) => message.role === 'buyer').map((message) => message.text),
+    text,
+  ];
+  // One plan per turn: it is 40 searches (cost and load), and the prompt asks for one.
+  let planned = false;
+
   for (let round = 0; round < MAX_MODEL_ROUNDS; round++) {
     const spent = started.until(deps.clock.now()).total({ unit: 'milliseconds' });
     const left = TURN_BUDGET_MS - spent;
@@ -196,9 +205,9 @@ async function runModel(
       context.market.marketId,
       settings.modelTier,
       {
-        system: instructionsFor(settings.replyLanguage),
+        system: instructionsFor(settings.replyLanguage, settings.scope),
         messages,
-        tools: TOOL_DECLARATIONS,
+        tools: toolDeclarationsFor(settings.scope, settings.basketProposals),
         maxOutputTokens: MAX_OUTPUT_TOKENS,
       },
       Math.min(MODEL_TIMEOUT_MS, left),
@@ -230,8 +239,15 @@ async function runModel(
     const results: ModelBlock[] = [];
     for (const [index, call] of calls.entries()) {
       const request =
-        index < MAX_TOOL_CALLS_PER_ROUND ? parseToolCall(call.name, call.input) : null;
-      if (request === null) {
+        index < MAX_TOOL_CALLS_PER_ROUND
+          ? parseToolCall(call.name, call.input, settings.scope)
+          : null;
+      // A tool the Market's settings do not offer is refused even if the model asks for it.
+      const refusedPlan =
+        request?.tool === 'plan_basket' &&
+        (!settings.basketProposals || planned || !linesAreBuyersOwn(request.items, buyerTexts));
+      if (request?.tool === 'plan_basket' && !refusedPlan) planned = true;
+      if (request === null || refusedPlan) {
         results.push({
           type: 'tool-result',
           callId: call.id,

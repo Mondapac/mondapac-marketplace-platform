@@ -1,4 +1,18 @@
 import { CertificationModule } from '../certification';
+import { registerSystemChangeReverter, SYSTEM_REQUEST_RECORDER } from '../system-requests';
+import {
+  AttributeDefinitionReverter,
+  CategoryDetailsReverter,
+  CategoryLinksReverter,
+  type CatalogueRevertDependencies,
+} from './application/catalogue-reverters';
+import {
+  ATTRIBUTE_DEFINITION_SUBJECT_KIND,
+  CATALOGUE_REVIEW_AREA,
+  CATEGORY_DETAILS_SUBJECT_KIND,
+  CATEGORY_LINKS_SUBJECT_KIND,
+  NO_REVIEW,
+} from './application/catalogue-review';
 import { CatalogReferencesModule } from './infrastructure/catalog-references.module';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import {
@@ -87,6 +101,11 @@ import { AttributeRestructureProbe } from './application/use-cases/attribute-res
 import { PlatformProductEditProbe } from './application/use-cases/platform-product-edit-probe.use-case';
 import { OwnProductEditProbe } from './application/use-cases/own-product-edit-probe.use-case';
 import { IMPORT_FILE_STORE } from './application/ports/import-file-store';
+import { CATEGORY_PRODUCT_MOVE_STORE } from './application/ports/category-product-move.store';
+import { CategoryMoveProducts } from './application/use-cases/category-move-products.use-case';
+import { CategoryMoveProductsProgress } from './application/use-cases/category-move-products-progress.use-case';
+import { CategoryMoveProductsRun } from './application/use-cases/category-move-products-run.use-case';
+import { runCategoryProductMovesJob } from './presentation/jobs/run-category-product-moves.job';
 import { PLATFORM_IMPORT_REPOSITORY } from './application/ports/platform-import.repository';
 import { PlatformImportDiscard } from './application/use-cases/platform-import-discard.use-case';
 import { PlatformImportResume } from './application/use-cases/platform-import-resume.use-case';
@@ -154,7 +173,10 @@ import { PRODUCT_LINKING_READER } from './application/ports/product-linking.read
 import { ProductsForLinkingQuery } from './application/use-cases/products-for-linking.use-case';
 import { SELLER_PRODUCT_OWNERS_READER } from './application/ports/seller-product-owners.reader';
 import { SellerProductOwnersQuery } from './application/use-cases/seller-product-owners.use-case';
-import { CATEGORY_TREE_READER } from './application/ports/category-tree.reader';
+import {
+  CATEGORY_TREE_READER,
+  type CategoryTreeReader,
+} from './application/ports/category-tree.reader';
 import { CategoryTreeQuery } from './application/use-cases/category-tree.use-case';
 import { CategorySlugResolveQuery } from './application/use-cases/category-slug-resolve.use-case';
 import { PublicCategoryTreeQuery } from './application/use-cases/public-category-tree.use-case';
@@ -226,6 +248,7 @@ import { simpleProductType } from './domain/product-types/simple';
 import { PlatformProductController } from './presentation/platform-product.controller';
 import { OfferReviewController } from './presentation/offer-review.controller';
 import { OwnOfferController } from './presentation/own-offer.controller';
+import { OwnOffersExport } from './application/use-cases/own-offers-export.use-case';
 import { OwnProductsExport } from './application/use-cases/own-products-export.use-case';
 import { OwnProductsList } from './application/use-cases/own-products-list.use-case';
 import { OwnProductRead } from './application/use-cases/own-product-read.use-case';
@@ -311,6 +334,8 @@ import { OwnProductController } from './presentation/own-product.controller';
 import { OwnTopicController } from './presentation/own-topic.controller';
 import { OwnTopicList } from './application/use-cases/own-topic-list.use-case';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
+import { OwnCategoryPicker } from './application/use-cases/own-category-picker.use-case';
+import { PlatformCategoryPicker } from './application/use-cases/platform-category-picker.use-case';
 import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from './application/use-cases/own-product-save-draft.use-case';
 import { OwnProductSetOwnBrand } from './application/use-cases/own-product-set-own-brand.use-case';
@@ -523,7 +548,8 @@ import {
   OwnDescriptionWriterController,
 } from './presentation/description-writer.controller';
 import { SettingsModule } from '../settings';
-import { ListsModule } from '../lists';
+import { ListsModule, registerLists } from '../lists';
+import { CATALOG_LISTS } from './application/saved-filters/list-definitions';
 import { VARIANT_ADMIN_READER } from './application/ports/variant-admin.reader';
 import { VARIANT_TYPE_SETTINGS_STORE } from './application/ports/variant-type-settings.store';
 import { AdminVariantTypeGet } from './application/use-cases/admin-variant-type-get.use-case';
@@ -549,6 +575,8 @@ const CATEGORY_ACTION_PROBES = Symbol('CATEGORY_ACTION_PROBES');
 const OWN_IMPORT_PRODUCT_CREATE = Symbol('CATALOG_OWN_IMPORT_PRODUCT_CREATE');
 const OWN_IMPORT_OFFER_CREATE = Symbol('CATALOG_OWN_IMPORT_OFFER_CREATE');
 const OWN_IMPORT_OFFER_EDIT = Symbol('CATALOG_OWN_IMPORT_OFFER_EDIT');
+/** The attribute edit the file import runs: the same use case, with no review (import is not reviewed). */
+const ATTRIBUTE_IMPORT_EDIT = Symbol('CATALOG_ATTRIBUTE_IMPORT_EDIT');
 const OWN_IMPORT_IMAGE_UPLOAD = Symbol('CATALOG_OWN_IMPORT_IMAGE_UPLOAD');
 const NO_SAVE_BUDGET = { reserveSaves: (): Promise<null> => Promise.resolve(null) } as const;
 
@@ -633,6 +661,7 @@ const PORT = {
   withdraw: AdminProductWithdraw,
   retire: PlatformProductRetire,
   importJobs: PLATFORM_IMPORT_REPOSITORY,
+  moveStore: CATEGORY_PRODUCT_MOVE_STORE,
   sellerJobs: SELLER_IMPORT_REPOSITORY,
   importFacts: SELLER_IMPORT_FACTS_READER,
   ownRowCreate: OwnImportRowCreate,
@@ -669,7 +698,8 @@ const PORT = {
   familyResolver: ProductFamilyResolver,
   attributeStore: ATTRIBUTE_DEFINITION_STORE,
   attributeCreate: AttributeDefinitionCreate,
-  attributeEdit: AttributeDefinitionEdit,
+  attributeEdit: ATTRIBUTE_IMPORT_EDIT,
+  review: SYSTEM_REQUEST_RECORDER,
   featureSetStore: FEATURE_SET_STORE,
   linkStore: CATEGORY_ATTRIBUTE_LINK_STORE,
   relaxations: ATTRIBUTE_RELAXATION_STORE,
@@ -795,6 +825,46 @@ const RESTRUCTURE_DEPS = {
   ids: true,
 } as const;
 
+const ATTRIBUTE_EDIT_PORTS = {
+  unitOfWork: true,
+  attributeStore: true,
+  relaxations: true,
+  policy: true,
+  matcher: true,
+  claimLocales: true,
+  audit: true,
+  clock: true,
+  ids: true,
+  review: true,
+} as const;
+
+/** The ports the reverters of area catalogue (Admin Inbox › System requests) are built from. */
+const REVERT_PORTS = [
+  ['store', CATEGORY_EDIT_STORE],
+  ['categories', PLATFORM_CATEGORY_REPOSITORY],
+  ['linkStore', CATEGORY_ATTRIBUTE_LINK_STORE],
+  ['attributeAdminReader', ATTRIBUTE_ADMIN_READER],
+  ['attributeStore', ATTRIBUTE_DEFINITION_STORE],
+  ['relaxations', ATTRIBUTE_RELAXATION_STORE],
+  ['unitOfWork', UNIT_OF_WORK],
+  ['policy', CATALOG_MARKET_POLICY],
+  ['matcher', CLAIM_TEXT_MATCHER],
+  ['claimLocales', CLAIM_TERM_LOCALES],
+  ['contentFilter', ContentFilter],
+  ['authorisation', AUTHORISATION_CHECK],
+  ['audit', AUDIT_WRITER],
+  ['outbox', OUTBOX_WRITER],
+  ['clock', CLOCK],
+  ['ids', ID_GENERATOR],
+] as const satisfies readonly (readonly [keyof CatalogueRevertDependencies, InjectionToken])[];
+
+/** The reverters of area catalogue, registered with System requests below. */
+const REVERTERS = [
+  [CATEGORY_DETAILS_SUBJECT_KIND, CategoryDetailsReverter],
+  [ATTRIBUTE_DEFINITION_SUBJECT_KIND, AttributeDefinitionReverter],
+  [CATEGORY_LINKS_SUBJECT_KIND, CategoryLinksReverter],
+] as const;
+
 @Module({
   controllers: [
     PlatformProductController,
@@ -854,6 +924,7 @@ const RESTRUCTURE_DEPS = {
     PersistenceModule.outboxWriterFor('catalog'),
     PersistenceModule.auditWriterFor('catalog'),
     registerAuditActions('catalog', CATALOG_AUDIT_ACTIONS),
+    registerLists('catalog', CATALOG_LISTS),
     registerEvents('catalog', CATALOG_EVENTS),
     productTypeProvider,
     {
@@ -915,6 +986,7 @@ const RESTRUCTURE_DEPS = {
         PRODUCT_REVISION_REPOSITORY,
         ProductFamilyResolver,
         TOPIC_READER,
+        CATEGORY_TREE_READER,
       ],
       useFactory: (
         attributes: AttributeRepository,
@@ -925,6 +997,7 @@ const RESTRUCTURE_DEPS = {
         revisions: ProductRevisionRepository,
         familyResolver: ProductFamilyResolver,
         topics: TopicReader,
+        categories: CategoryTreeReader,
       ): FreezeRevision =>
         new FreezeRevision({
           attributes,
@@ -935,6 +1008,7 @@ const RESTRUCTURE_DEPS = {
           suggestions,
           revisions,
           topics,
+          categories,
         }),
     },
     serviceProvider(ProductFamilyResolver, {
@@ -1195,6 +1269,7 @@ const RESTRUCTURE_DEPS = {
       unitOfWork: true,
       attributeAdminReader: true,
       policy: true,
+      review: true,
     }),
     useCaseProvider(FeatureSetAdminList, { unitOfWork: true, attributeAdminReader: true }),
     useCaseProvider(AttributeDefinitionCreate, {
@@ -1207,17 +1282,14 @@ const RESTRUCTURE_DEPS = {
       clock: true,
       ids: true,
     }),
-    useCaseProvider(AttributeDefinitionEdit, {
-      unitOfWork: true,
-      attributeStore: true,
-      relaxations: true,
-      policy: true,
-      matcher: true,
-      claimLocales: true,
-      audit: true,
-      clock: true,
-      ids: true,
-    }),
+    useCaseProvider(AttributeDefinitionEdit, ATTRIBUTE_EDIT_PORTS),
+    portVariantProvider(
+      ATTRIBUTE_IMPORT_EDIT,
+      AttributeDefinitionEdit,
+      ATTRIBUTE_EDIT_PORTS,
+      { review: NO_REVIEW },
+      [],
+    ),
     useCaseProvider(AttributeRelaxationRequestCreate, {
       unitOfWork: true,
       attributeStore: true,
@@ -1554,12 +1626,14 @@ const RESTRUCTURE_DEPS = {
       audit: true,
       clock: true,
       ids: true,
+      review: true,
     }),
     useCaseProvider(CategoryAttributeLinksGet, {
       unitOfWork: true,
       linkStore: true,
       treeReader: true,
       attributeAdminReader: true,
+      review: true,
     }),
     useCaseProvider(ProductsMissingDetailsList, {
       unitOfWork: true,
@@ -1604,6 +1678,7 @@ const RESTRUCTURE_DEPS = {
       adminCategoryReader: true,
       policy: true,
       categoryProbes: true,
+      review: true,
     }),
     useCaseProvider(CategoryImpact, {
       unitOfWork: true,
@@ -1672,6 +1747,23 @@ const RESTRUCTURE_DEPS = {
       outbox: true,
       clock: true,
       ids: true,
+      review: true,
+    }),
+    ...REVERTERS.flatMap(([kind, Reverter]) => {
+      const token = Symbol(`CATALOG_REVERTER:${kind}`);
+      return [
+        {
+          provide: token,
+          inject: REVERT_PORTS.map(([, port]) => port),
+          useFactory: (...values: unknown[]) =>
+            new Reverter(
+              Object.fromEntries(
+                REVERT_PORTS.map(([name], index) => [name, values[index]]),
+              ) as unknown as CatalogueRevertDependencies,
+            ),
+        },
+        registerSystemChangeReverter('catalog', kind, CATALOGUE_REVIEW_AREA, token),
+      ];
     }),
     useCaseProvider(CategoryReorder, {
       contentFilter: true,
@@ -2177,6 +2269,34 @@ const RESTRUCTURE_DEPS = {
       rowSave: true,
       rowSubmit: true,
     }),
+    useCaseProvider(CategoryMoveProducts, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      moveStore: true,
+      policy: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(CategoryMoveProductsProgress, { unitOfWork: true, moveStore: true }),
+    useCaseProvider(CategoryMoveProductsRun, {
+      unitOfWork: true,
+      moveStore: true,
+      products: true,
+      revisions: true,
+      familyResolver: true,
+      adminCategoryReader: true,
+      policy: true,
+      offers: true,
+      requests: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      ids: true,
+      ownerContacts: true,
+      mailSettings: true,
+      mailTransport: true,
+    }),
     useCaseProvider(PlatformImportRowSave, { saveDraft: true }),
     useCaseProvider(PlatformImportRowSubmit, { submit: true, authorisation: true }),
     useCaseProvider(PlatformImportPurge, {
@@ -2553,7 +2673,12 @@ const RESTRUCTURE_DEPS = {
       clock: true,
       ids: true,
     }),
-    useCaseProvider(OwnProductOptions, { policy: true, allowedTypes: true }),
+    useCaseProvider(OwnProductOptions, {
+      policy: true,
+      allowedTypes: true,
+      unitOfWork: true,
+      ownReader: true,
+    }),
     useCaseProvider(OwnProductImageUpload, {
       unitOfWork: true,
       products: true,
@@ -2633,6 +2758,13 @@ const RESTRUCTURE_DEPS = {
       policy: true,
       ownEditProbe: true,
     }),
+    useCaseProvider(OwnOffersExport, {
+      unitOfWork: true,
+      ownReader: true,
+      policy: true,
+      sheetWriter: true,
+      clock: true,
+    }),
     useCaseProvider(OwnProductsExport, {
       unitOfWork: true,
       ownReader: true,
@@ -2652,7 +2784,12 @@ const RESTRUCTURE_DEPS = {
       familyResolver: true,
       topicReader: true,
     }),
-    useCaseProvider(OwnOffersList, { unitOfWork: true, ownReader: true, policy: true }),
+    useCaseProvider(OwnOffersList, {
+      unitOfWork: true,
+      ownReader: true,
+      policy: true,
+      ownEditProbe: true,
+    }),
     useCaseProvider(OwnOfferRead, {
       unitOfWork: true,
       offers: true,
@@ -2675,7 +2812,17 @@ const RESTRUCTURE_DEPS = {
       outbox: true,
       clock: true,
     }),
-    useCaseProvider(PlatformProductOptions, { policy: true }),
+    useCaseProvider(PlatformProductOptions, { policy: true, unitOfWork: true, ownReader: true }),
+    useCaseProvider(OwnCategoryPicker, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      policy: true,
+    }),
+    useCaseProvider(PlatformCategoryPicker, {
+      unitOfWork: true,
+      adminCategoryReader: true,
+      policy: true,
+    }),
     useCaseProvider(PlatformProductRead, {
       unitOfWork: true,
       products: true,
@@ -2762,6 +2909,7 @@ const RESTRUCTURE_DEPS = {
         ReconcileTags,
         SendOfferOwnerNotices,
         PlatformImportRun,
+        CategoryMoveProductsRun,
         PlatformImportPurge,
         OwnImportRun,
         OwnImportPurge,
@@ -2781,6 +2929,7 @@ const RESTRUCTURE_DEPS = {
         reconcile: ReconcileTags,
         notices: SendOfferOwnerNotices,
         importRun: PlatformImportRun,
+        categoryMoves: CategoryMoveProductsRun,
         importPurge: PlatformImportPurge,
         sellerRun: OwnImportRun,
         sellerPurge: OwnImportPurge,
@@ -2799,6 +2948,7 @@ const RESTRUCTURE_DEPS = {
         reconcileTagsJob(reconcile),
         sendOfferOwnerNoticesJob(notices),
         platformImportRunJob(importRun),
+        runCategoryProductMovesJob(categoryMoves),
         purgePlatformImportsJob(importPurge),
         ownImportRunJob(sellerRun),
         purgeSellerImportsJob(sellerPurge),

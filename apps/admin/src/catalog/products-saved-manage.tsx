@@ -4,13 +4,14 @@ import { ManageFiltersDialog as ManageDialog, toast, type ManageFiltersLabels } 
 import { useTranslations } from 'next-intl';
 import { callApi } from '../api/client.ts';
 import { problemOf, useSavedFilterFieldLabels } from './products-saved-save.tsx';
-import type { SavedFilter } from './products-saved-types.ts';
+import { LIST_KEY, type SavedFilter } from './products-saved-types.ts';
 
 /**
  * The Manage filters dialog (Figma "Manage filters"): every saved view the admin can see, with
- * rename, who can use it and delete for the ones they may manage. Reordering is not offered (the
- * design shows none). Each change is a toast, and the page's tabs refresh. The dialog itself is the
- * shared one; this wraps it with the admin saved-filter routes and its words.
+ * rename, who can use it and delete for the ones they may manage, and Move up and Move down for
+ * their own (the order of their tabs; saved through the shared lists route, as the Sales lists
+ * do). Each change is a toast, and the page's tabs refresh. The dialog itself is the shared one;
+ * this wraps it with the admin saved-filter routes and its words.
  */
 export function ManageFiltersDialog({
   open,
@@ -48,6 +49,8 @@ export function ManageFiltersDialog({
     emptyHelp: t('manage.empty-help'),
     helpShare: t('manage.help-share'),
     helpOwn: t('manage.help-own'),
+    moveUp: (name) => t('manage.move-up', { name }),
+    moveDown: (name) => t('manage.move-down', { name }),
   };
   return (
     <ManageDialog
@@ -83,6 +86,23 @@ export function ManageFiltersDialog({
         }
         const name = filters.find((filter) => filter.id === id)?.name ?? '';
         toast.success(t('toast.deleted', { name }), { id: 'products-saved-filter' });
+        onChanged();
+        return null;
+      }}
+      onReorder={async (ids, movedId) => {
+        const result = await callApi<{ ids: readonly string[] }>(
+          'PUT',
+          'lists/admin/saved-filters/order',
+          { listKey: LIST_KEY, ids },
+          csrfToken,
+        );
+        if (!result.ok) {
+          // A refused order may mean the filters changed meanwhile: reload them under the banner.
+          onChanged();
+          return problemOf(result.failure);
+        }
+        const name = filters.find((filter) => filter.id === movedId)?.name ?? '';
+        toast.success(t('toast.moved', { name }), { id: 'products-saved-filter' });
         onChanged();
         return null;
       }}

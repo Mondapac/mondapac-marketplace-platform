@@ -4,7 +4,7 @@
 
 import type { OfferView, Page } from '../catalog/types.ts';
 import type { Ledger } from '../earnings/types.ts';
-import type { SellerOrderPage } from '../orders/types.ts';
+import type { SellerOrderCursorPage } from '../orders/types.ts';
 import type { PayoutAccount } from '../payout/types.ts';
 import type { SourcesView } from '../stock/types.ts';
 
@@ -38,7 +38,7 @@ export interface LowStockPage {
 
 export interface SellerDashboardData {
   /** A widget is null when the session does not hold the permission its read needs. */
-  readonly orders: Widget<SellerOrderPage> | null;
+  readonly orders: Widget<SellerOrderCursorPage> | null;
   readonly offers: Widget<Page<OfferView>> | null;
   readonly ledger: Widget<Ledger> | null;
   readonly payout: Widget<PayoutAccount> | null;
@@ -46,3 +46,13 @@ export interface SellerDashboardData {
   /** Needs the same key as `sources` (inventory.stock.view). */
   readonly lowStock: Widget<LowStockPage> | null;
 }
+
+/**
+ * The dashboard's reads as the page passes them: a widget the session has no key for is null at
+ * once, any other is the promise of its answer (null when the API refuses after all), so each
+ * card streams in on its own. Tests pass the answers themselves.
+ */
+export type SellerDashboardSources = {
+  readonly [K in keyof SellerDashboardData]:
+    SellerDashboardData[K] | Promise<SellerDashboardData[K]>;
+};

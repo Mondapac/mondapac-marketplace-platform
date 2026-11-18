@@ -5,6 +5,8 @@ import type { StorefrontAppearance } from './storefront-appearance';
 import type { PASSWORD_CHANGE_CAUSES } from './events';
 import {
   AccountDisabled,
+  AccountEmailChanged,
+  AccountEmailChangeRequested,
   AccountEmailVerified,
   AccountEnabled,
   AccountDisplayNameChanged,
@@ -67,6 +69,14 @@ export interface AccountState {
   readonly locale?: string | null;
   /** A customer's kept storefront look; null/absent = no choice. Customer accounts only. */
   readonly appearance?: StorefrontAppearance | null;
+  /**
+   * The new sign-in address an admin asked for, waiting for the customer's confirmation from that
+   * mailbox (customers admin email change); null/absent = none. Customer accounts only. The
+   * account signs in with {@link email} until the change is confirmed.
+   */
+  readonly pendingEmail?: EmailAddress | null;
+  /** When the pending address was asked for; set exactly when {@link pendingEmail} is. */
+  readonly pendingEmailRequestedAt?: Temporal.Instant | null;
   readonly status: 'active' | 'disabled';
   readonly emailVerifiedAt: Temporal.Instant | null;
   readonly existingAccountNoticeAt: Temporal.Instant | null;
@@ -76,6 +86,15 @@ export interface AccountState {
   readonly version: number;
   readonly credential: PasswordCredential;
 }
+
+/** A pending change of the sign-in email, as an admin sees it. */
+export interface PendingEmailChange {
+  readonly email: EmailAddress;
+  readonly requestedAt: Temporal.Instant;
+}
+
+/** Why a change of the sign-in email cannot be confirmed: one answer for every cause. */
+export type EmailChangeRejected = { readonly code: 'link.rejected' };
 
 /** What a repeated sign-up did (identity design 3.2, 6.7). */
 export type SignUpAgainOutcome = 'unverified-replaced' | 'verified-notice' | 'unchanged';
@@ -347,6 +366,139 @@ export class Account {
       }),
     );
     return true;
+  }
+
+  /**
+   * The pending change of the sign-in email, or null when there is none or it has lapsed: a
+   * pending address lives as long as its link may (`lifetimeMinutes` from the request, the link's
+   * lifetime in this Market), and a lapsed one reads as none (Hassan: cleared lazily on read and
+   * by the purge).
+   */
+  pendingEmailChange(now: Temporal.Instant, lifetimeMinutes: number): PendingEmailChange | null {
+    const email = this.#state.pendingEmail ?? null;
+    const requestedAt = this.#state.pendingEmailRequestedAt ?? null;
+    if (email === null || requestedAt === null) return null;
+    if (Temporal.Instant.compare(now, requestedAt.add({ minutes: lifetimeMinutes })) >= 0) {
+      return null;
+    }
+    return { email, requestedAt };
+  }
+
+  /**
+   * An admin asks to change a customer's sign-in email (customers admin email change). Only an
+   * active, verified customer account takes one. The address, parsed by the caller, waits as the
+   * pending address; the account keeps signing in with the current one until the customer
+   * confirms ({@link confirmEmailChange}). A newer request replaces an older one. The current
+   * address again changes nothing and records nothing (`false`). Records
+   * `identity.account-email-change-requested.v1`. The link is the caller's: it requests it in the
+   * same unit, at the same instant, which binds the link to this request (Hassan R2).
+   */
+  requestEmailChange(input: {
+    readonly email: EmailAddress;
+    readonly now: Temporal.Instant;
+  }): Result<boolean, AccountNotEligible> {
+    const { email, now } = input;
+    const state = this.#state;
+    if (
+      state.population !== 'customer' ||
+      state.status !== 'active' ||
+      state.emailVerifiedAt === null
+    ) {
+      return err({ code: 'account.not-eligible' });
+    }
+    if (email.normalized === state.email.normalized) return ok(false);
+    const version = state.version + 1;
+    this.#state = Object.freeze({
+      ...state,
+      pendingEmail: Object.freeze({ typed: email.typed, normalized: email.normalized }),
+      pendingEmailRequestedAt: now,
+      version,
+    });
+    this.#events.push(
+      AccountEmailChangeRequested.record({
+        aggregateId: state.id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { accountId: state.id, population: state.population },
+      }),
+    );
+    return ok(true);
+  }
+
+  /**
+   * An admin cancels the pending change (or the purge clears a lapsed one): the pending address
+   * is cleared in one version step, without an event (Mohammad 4). False when none was pending.
+   */
+  cancelEmailChange(): boolean {
+    const state = this.#state;
+    if ((state.pendingEmail ?? null) === null && (state.pendingEmailRequestedAt ?? null) === null) {
+      return false;
+    }
+    this.#state = Object.freeze({
+      ...state,
+      pendingEmail: null,
+      pendingEmailRequestedAt: null,
+      version: state.version + 1,
+    });
+    return true;
+  }
+
+  /**
+   * The customer confirms the change with the link mailed to the pending address and the account's
+   * password (Hassan R1, R2, R6): the account must be an active, verified customer account whose
+   * pending request is the one the link was requested with (`requestedAt`, the link's request
+   * instant) and has not lapsed (`lifetimeMinutes` after it was asked for, the boundary of
+   * {@link pendingEmailChange}); otherwise `link.rejected`, one answer for every cause. The pending address becomes the
+   * sign-in email, verified now (the link proved the mailbox), and the pending columns are cleared,
+   * in one version step that records `identity.account-email-changed.v1` and nothing else (Mohammad
+   * 4: no `account-email-verified`). Answers the previous address, for the notice the caller
+   * queues in the same unit; the sessions and the other links are the caller's too.
+   */
+  confirmEmailChange(input: {
+    readonly requestedAt: Temporal.Instant;
+    readonly now: Temporal.Instant;
+    /**
+     * The Market's lifetime of the change's link: the pending address lapses at its request plus
+     * this, whatever the link's own expiry (a mail sent late issues a link that outlives it).
+     */
+    readonly lifetimeMinutes: number;
+  }): Result<EmailAddress, EmailChangeRejected> {
+    const { requestedAt, now, lifetimeMinutes } = input;
+    const state = this.#state;
+    const pending = state.pendingEmail ?? null;
+    const pendingAt = state.pendingEmailRequestedAt ?? null;
+    if (
+      state.population !== 'customer' ||
+      state.status !== 'active' ||
+      state.emailVerifiedAt === null ||
+      pending === null ||
+      pendingAt === null ||
+      // Compared at the store's precision: both instants are written by one unit at one `now`.
+      pendingAt.epochMilliseconds !== requestedAt.epochMilliseconds ||
+      // One boundary with the read and the purge (Sajad 5): lapsed is lapsed.
+      this.pendingEmailChange(now, lifetimeMinutes) === null
+    ) {
+      return err({ code: 'link.rejected' });
+    }
+    const previous = state.email;
+    const version = state.version + 1;
+    this.#state = Object.freeze({
+      ...state,
+      email: pending,
+      emailVerifiedAt: now,
+      pendingEmail: null,
+      pendingEmailRequestedAt: null,
+      version,
+    });
+    this.#events.push(
+      AccountEmailChanged.record({
+        aggregateId: state.id,
+        aggregateVersion: version,
+        occurredAt: now,
+        payload: { accountId: state.id, population: state.population },
+      }),
+    );
+    return ok(previous);
   }
 
   /**

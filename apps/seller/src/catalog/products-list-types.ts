@@ -36,6 +36,8 @@ export interface ProductRow {
   readonly hasPendingRevision: boolean;
   readonly lastChangedAt: string;
   readonly createdAt: string;
+  /** The row actions this seller may run: `open`, `edit` (server-computed). */
+  readonly actions?: readonly string[];
 }
 
 export interface ViewCounts {
