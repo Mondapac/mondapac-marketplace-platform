@@ -158,6 +158,10 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'GET customers/admin/groups',
         'GET customers/admin/groups/:id',
         'POST customers/admin/customers/:id/activity',
+        // Customers phase 2b, part C: the cart and behaviour reads (the eight super lists post to a
+        // computed path; bff.spec.ts checks those and their exports one by one).
+        'GET customers/admin/customers/:id/cart',
+        'GET customers/admin/customers/:id/behaviour',
         'POST customers/admin/customers/:id/notes',
         'POST customers/admin/groups',
         'POST customers/admin/groups/:id/members/add',

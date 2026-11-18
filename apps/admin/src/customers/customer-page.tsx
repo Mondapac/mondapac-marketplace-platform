@@ -27,6 +27,8 @@ import { RecentActivity } from './customer-activity.tsx';
 import { CustomerEditDialog } from './customer-edit.tsx';
 import { CustomerGroupsCard } from './customer-groups-card.tsx';
 import { CustomerMoney } from './customer-money.tsx';
+import { CustomerReviews } from './customer-reviews.tsx';
+import { CustomerShopping } from './customer-shopping.tsx';
 import { CustomerNotes } from './customer-notes.tsx';
 import { CustomerSecurity } from './customer-security.tsx';
 import { CustomerSecurityActionDialog, type SecurityAction } from './customer-security-actions.tsx';
@@ -563,6 +565,29 @@ export function CustomerPage({
             sessionsVersion={sessionsVersion}
             onSignOut={() => setSecurityAction('sign-out')}
           />
+        ) : tab === 'shopping' || tab === 'reviews' ? (
+          // Phase 2b part C: each section reads on its own, under its own key.
+          tab === 'shopping' ? (
+            <CustomerShopping
+              accountId={accountId}
+              adminAccountId={adminAccountId}
+              marketId={marketId}
+              csrfToken={csrfToken}
+              zone={zone}
+              paging={paging}
+              keys={keys}
+            />
+          ) : (
+            <CustomerReviews
+              accountId={accountId}
+              adminAccountId={adminAccountId}
+              marketId={marketId}
+              csrfToken={csrfToken}
+              zone={zone}
+              paging={paging}
+              keys={keys}
+            />
+          )
         ) : audits[tab] === 'failed' ? (
           <Banner tone="critical">
             <div className="flex flex-wrap items-center justify-between gap-3">

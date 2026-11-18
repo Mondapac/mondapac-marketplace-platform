@@ -5812,7 +5812,9 @@
         "overview": "Overview",
         "orders": "Orders",
         "money": "Money",
-        "security": "Account & security"
+        "security": "Account & security",
+        "shopping": "Shopping",
+        "reviews": "Reviews"
       },
       "header": {
         "verified": "Email verified",
@@ -6125,7 +6127,8 @@
           "export": {
             "title": "Export refunds",
             "done": "Refunds exported."
-          }
+          },
+          "capped": "The newest {max} refunds are shown. Older ones are on each order's page."
         },
         "usages": {
           "title": "Promotions used",
@@ -6155,7 +6158,8 @@
             "ORDER_CANCELLED": "Order cancelled",
             "ORDER_REFUNDED": "Order refunded"
           }
-        }
+        },
+        "not-yet": "Payments per order, chargebacks and discount code usage are not listed here yet."
       },
       "deleted": {
         "title": "Account deleted",
@@ -6638,6 +6642,227 @@
         "error": {
           "invalid": "This filter cannot be used. Clear it and try again.",
           "unavailable": "The sign-ins could not be loaded."
+        }
+      }
+    },
+    "sections": {
+      "loading": "Loading {section}…",
+      "retry": "Try again",
+      "views": "Show in {section}",
+      "view-all": "All",
+      "row-menu": "Actions for {name}",
+      "empty-filtered": "Nothing matches this filter",
+      "sorted": "Sorted by {field}, {order}",
+      "match": "{count, plural, one {# entry} other {# entries}}",
+      "range": "{from}–{to} of {total}",
+      "range-open": "{from}–{to}",
+      "error": {
+        "unavailable": "{section} could not be loaded.",
+        "invalid": "This filter cannot be used. Clear it and try again.",
+        "throttled": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}."
+      },
+      "filter": {
+        "button": "Filter",
+        "title": "Filter by date",
+        "when": "Date",
+        "from": "From",
+        "to": "To",
+        "apply": "Apply",
+        "cancel": "Cancel",
+        "error": {
+          "day": "Enter a date.",
+          "range": "The end comes before the start."
+        }
+      },
+      "chip": {
+        "from": "From {day}",
+        "to": "To {day}"
+      },
+      "export": {
+        "button": "Export…",
+        "body": "The file has every row of this filter, at most 10,000. You confirm with a two-step code, and the export is recorded.",
+        "pending": "Preparing the file…",
+        "done": "File exported.",
+        "error": {
+          "too-large": "Up to {max, number} rows can be exported at once; this filter has {total, number}. Narrow it first.",
+          "enrol": "Set up two-step verification on your profile to export.",
+          "denied": "You don’t have access to export.",
+          "unavailable": "The file could not be made. Try again.",
+          "throttled": "Too many requests. Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+          "cancelled": "Export cancelled."
+        }
+      }
+    },
+    "shopping": {
+      "cart": {
+        "title": "Current cart",
+        "caption": "Lines of the current cart",
+        "empty": "The cart is empty.",
+        "changed": "Last changed {time}",
+        "saved-count": "{count, plural, one {# item saved for later} other {# items saved for later}}",
+        "col": {
+          "offer": "Offer",
+          "variant": "Variant",
+          "price": "Price when added",
+          "quantity": "Quantity",
+          "added": "Added"
+        }
+      },
+      "saved": {
+        "title": "Saved for later",
+        "subtitle": "Items the customer saved for later. Times in your zone.",
+        "caption": "Saved for later",
+        "empty": "Nothing saved for later.",
+        "export-title": "Export saved for later",
+        "col": {
+          "offer": "Offer",
+          "variant": "Variant",
+          "saved": "Saved"
+        }
+      },
+      "reminders": {
+        "title": "Abandoned-cart reminders sent",
+        "subtitle": "Reminders taken for sending in the last 30 days. A taken reminder is not proof of delivery.",
+        "caption": "Abandoned-cart reminders",
+        "empty": "No reminders in the last 30 days.",
+        "export-title": "Export reminders",
+        "stage": "Reminder {stage}",
+        "col": {
+          "stage": "Reminder",
+          "cart-changed": "Cart changed",
+          "sent": "Taken for sending"
+        }
+      },
+      "additions": {
+        "title": "Added to cart in the last 12 months",
+        "subtitle": "Each time the customer added an item to a cart. Nothing is kept while personalization is off.",
+        "caption": "Add-to-cart history",
+        "empty": "Nothing added to a cart in the last 12 months.",
+        "export-title": "Export add-to-cart history",
+        "col": {
+          "offer": "Offer",
+          "variant": "Variant",
+          "added": "Added"
+        }
+      },
+      "behaviour": {
+        "title": "Behaviour summary",
+        "personalization": "Personalization",
+        "on": "On",
+        "off": "Off",
+        "changed": "Changed {time}",
+        "window": "The last 12 months. Search text is never shown.",
+        "figures": "Behaviour figures",
+        "figure": {
+          "productViews": "Product views",
+          "categoryViews": "Category views",
+          "cartAdditions": "Added to cart"
+        },
+        "top": "Most viewed categories",
+        "top-empty": "No category views yet.",
+        "category": "Category",
+        "views": "{count, plural, one {# view} other {# views}}"
+      },
+      "assistant": {
+        "title": "Assistant conversations",
+        "subtitle": "When each conversation started and last had a message. What was said is never shown.",
+        "caption": "Assistant conversations",
+        "empty": "No assistant conversations.",
+        "export-title": "Export assistant conversations",
+        "count": "{count, plural, one {# conversation} other {# conversations}} in all",
+        "col": {
+          "started": "Started",
+          "last": "Last message"
+        }
+      }
+    },
+    "reviews": {
+      "yes": "Yes",
+      "no": "No",
+      "role": {
+        "by": "Made by the customer",
+        "about": "About their review"
+      },
+      "moderation-line": "{action}: {reason} ({by})",
+      "by-moderator": "a moderator",
+      "by-system": "automatic",
+      "open-moderation": "Open in moderation",
+      "reviews": {
+        "title": "Reviews written",
+        "subtitle": "Reviews this customer wrote, with their status. The text is never shown here. Times in your zone.",
+        "caption": "Reviews written",
+        "empty": "This customer has not written a review.",
+        "export-title": "Export reviews",
+        "view": {
+          "published": "Published",
+          "held": "Held",
+          "hidden": "Hidden",
+          "removed": "Removed",
+          "deleted-by-author": "Deleted by buyer"
+        },
+        "col": {
+          "review": "Review",
+          "status": "Status",
+          "product": "Product",
+          "seller": "Seller",
+          "anonymous": "Anonymous",
+          "helpful": "Helpful votes",
+          "reports": "Open reports",
+          "moderation": "Last moderation",
+          "edited": "Edited",
+          "created": "Written"
+        }
+      },
+      "ratings": {
+        "title": "Seller ratings given",
+        "subtitle": "Ratings this customer gave sellers after an order. Times in your zone.",
+        "caption": "Seller ratings given",
+        "empty": "This customer has not rated a seller.",
+        "export-title": "Export seller ratings",
+        "view": {
+          "published": "Published",
+          "hidden": "Hidden",
+          "removed": "Removed"
+        },
+        "col": {
+          "satisfaction": "Rating",
+          "status": "Status",
+          "seller": "Seller",
+          "order": "Seller order",
+          "described": "As described",
+          "arrived": "Arrived OK",
+          "reason": "Reason",
+          "created": "Given"
+        }
+      },
+      "votes": {
+        "title": "Helpful votes cast",
+        "subtitle": "Reviews this customer marked helpful. The review’s author is never shown.",
+        "caption": "Helpful votes cast",
+        "empty": "This customer has not voted on a review.",
+        "export-title": "Export helpful votes",
+        "col": {
+          "review": "Review",
+          "product": "Product",
+          "voted": "Voted"
+        }
+      },
+      "reports": {
+        "title": "Review reports",
+        "subtitle": "Reports this customer made, and reports about their reviews. The reporter is never shown.",
+        "caption": "Review reports",
+        "empty": "No review reports.",
+        "export-title": "Export review reports",
+        "view": {
+          "by": "Made by the customer",
+          "about": "About their reviews"
+        },
+        "col": {
+          "role": "Report",
+          "review": "Review",
+          "reason": "Reason",
+          "status": "Status",
+          "created": "Reported"
         }
       }
     }

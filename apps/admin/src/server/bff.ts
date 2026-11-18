@@ -398,6 +398,25 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/customers/:id/addresses/:id/reveal',
     'customers/admin/customers/:id/consent-history',
     'customers/admin/customers/:id/consent-history/export',
+    // Customers phase 2b, part C (Shopping and Reviews tabs): the super lists are read in the
+    // body (filters, direction, page, pageSize, paging), each with its export behind a fresh
+    // two-step code. Ids, counts and instants only; never a review's text or a search text.
+    'customers/admin/customers/:id/saved-items',
+    'customers/admin/customers/:id/saved-items/export',
+    'customers/admin/customers/:id/cart-reminders',
+    'customers/admin/customers/:id/cart-reminders/export',
+    'customers/admin/customers/:id/cart-additions',
+    'customers/admin/customers/:id/cart-additions/export',
+    'customers/admin/customers/:id/assistant-conversations',
+    'customers/admin/customers/:id/assistant-conversations/export',
+    'customers/admin/customers/:id/reviews',
+    'customers/admin/customers/:id/reviews/export',
+    'customers/admin/customers/:id/seller-ratings',
+    'customers/admin/customers/:id/seller-ratings/export',
+    'customers/admin/customers/:id/helpful-votes',
+    'customers/admin/customers/:id/helpful-votes/export',
+    'customers/admin/customers/:id/review-reports',
+    'customers/admin/customers/:id/review-reports/export',
     'identity/admin/invitations/:id/resend',
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
@@ -720,6 +739,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/customers/:id/sessions',
     'customers/admin/customers/:id/addresses',
     'customers/admin/customers/:id/consent',
+    // Customers phase 2b, part C: the current cart and the behaviour summary (cart, engagement).
+    'customers/admin/customers/:id/cart',
     'customers/admin/customers/:id/behaviour',
     // The customer page's Money tab: the newest refunds (ordering) and the wallet credits from
     // promotions (promotions; query: `limit`, `cursor`).
