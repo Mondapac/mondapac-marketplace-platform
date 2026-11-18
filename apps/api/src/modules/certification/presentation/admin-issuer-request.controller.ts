@@ -189,7 +189,8 @@ export class AdminIssuerRequestController {
       `comma-separated optional columns in the order shown (${ISSUER_REQUEST_EXPORT_COLUMNS.join(', ')}); ` +
       'type, store and submitted are always there. The requests are `ids` (comma-separated, at ' +
       'most 200; an id that is not an open request of the Market refuses the whole file as not ' +
-      'found) or the selector keys of the list. No typed name, no file. CSV: a text cell that ' +
+      'found) or the selector keys of the list (refused with batch.too-large when 500 or more ' +
+      'requests are open, because the read stops there; pick the rows by id). No typed name, no file. CSV: a text cell that ' +
       'starts with = + - @ gets a leading quote. XLSX: every cell is a string value.',
   })
   @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })

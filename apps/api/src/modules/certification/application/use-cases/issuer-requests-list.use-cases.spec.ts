@@ -108,6 +108,7 @@ describe.each(['AU', 'ZZ'] as const)('issuer-request list and export in market %
     });
     expect(result.value.items[1]?.storeName).toBeNull();
     expect(result.value.counts).toEqual({ all: 2 });
+    expect(result.value.truncated).toBe(false);
     expect(result.value.total).toBe(2);
   });
 
@@ -165,6 +166,14 @@ describe.each(['AU', 'ZZ'] as const)('issuer-request list and export in market %
     if (!prevNext.ok) throw new Error(JSON.stringify(prevNext.error));
     expect(prevNext.value).toMatchObject({ total: null, hasNext: false });
     expect(prevNext.value.items).toHaveLength(1);
+    // Past the end is an empty page; a page beyond 10,000 rows, a bad size or mode is refused.
+    const past = await list.execute(admin(), { page: 9, pageSize: 2 });
+    if (!past.ok) throw new Error(JSON.stringify(past.error));
+    expect(past.value).toMatchObject({ items: [], hasNext: false, total: 5 });
+    for (const input of [{ page: 10_000, pageSize: 100 }, { pageSize: 101 }, { paging: 'x' }]) {
+      const bad = await list.execute(admin(), input);
+      expect(bad).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    }
   });
 
   it('refuses an unknown key, a bad value, and never lists another Market', async () => {
@@ -180,6 +189,24 @@ describe.each(['AU', 'ZZ'] as const)('issuer-request list and export in market %
     if (!result.ok) throw new Error(JSON.stringify(result.error));
     expect(result.value.items).toEqual([]);
     expect(result.value.counts).toEqual({ all: 0 });
+  });
+
+  it('says when more requests are open than the read cap', async () => {
+    const { list, admin, open } = setup();
+    for (let i = 0; i < 500; i += 1) open('halal', i);
+    const result = await list.execute(admin(), { pageSize: 1 });
+    if (!result.ok) throw new Error(JSON.stringify(result.error));
+    expect(result.value).toMatchObject({ truncated: true, counts: { all: 500 } });
+  });
+
+  it('refuses a selector export when the read was cut at the cap, but exports chosen ids', async () => {
+    const { exporter, admin, open } = setup();
+    const first = open('halal', 0);
+    for (let i = 1; i < 500; i += 1) open('halal', i);
+    const whole = await exporter.execute(admin(), {});
+    expect(whole).toMatchObject({ ok: false, error: { code: 'batch.too-large', max: 500 } });
+    const chosen = await exporter.execute(admin(), { ids: first.id });
+    expect(chosen.ok).toBe(true);
   });
 
   it('exports the list or the chosen ids as CSV with formula-safe cells', async () => {
@@ -211,6 +238,22 @@ describe.each(['AU', 'ZZ'] as const)('issuer-request list and export in market %
     expect(dup).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
     const wrong = await exporter.execute(admin(), { format: 'pdf' });
     expect(wrong).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    // The chosen ids are the whole selection: a filter or sort beside them is refused.
+    for (const extra of [{ sort: 'bogus' }, { type: 'halal' }, { q: mine.id }]) {
+      const clash = await exporter.execute(admin(), { ids: mine.id, ...extra });
+      expect(clash).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    }
+    const tooMany = await exporter.execute(admin(), {
+      ids: Array.from(
+        { length: 201 },
+        (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+      ).join(','),
+    });
+    expect(tooMany).toMatchObject({ ok: false, error: { code: 'batch.too-large', max: 200 } });
+    const badColumn = await exporter.execute(admin(), { columns: 'typed-name' });
+    expect(badColumn).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    const strayKey = await exporter.execute(admin(), { page: 2 });
+    expect(strayKey).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
   });
 
   it('turns away a caller who is not an admin', async () => {

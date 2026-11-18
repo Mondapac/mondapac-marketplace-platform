@@ -68,6 +68,10 @@ export class IssuerRequestListView {
   @ApiProperty() hasNext!: boolean;
   @ApiProperty({ description: 'Every open request of the Market (up to the read cap).' })
   counts!: { all: number };
+  @ApiProperty({
+    description: 'True when more requests are open than the 500 read; the newest are not listed.',
+  })
+  truncated!: boolean;
 }
 
 class IssuerRequestAnswerView {

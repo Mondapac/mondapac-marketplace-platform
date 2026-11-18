@@ -2,8 +2,6 @@ import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import {
   buildExportFile,
-  checkExportSize,
-  LIST_EXPORT_MAX_ROWS,
   parseExportColumns,
   parseExportFormat,
   parseExportIds,
@@ -112,6 +110,8 @@ export interface IssuerRequestListRow {
 export interface IssuerRequestListPage extends ListPage<IssuerRequestListRow> {
   /** Every open request of the Market (up to the read cap), whatever the filter. */
   readonly counts: { readonly all: number };
+  /** True when the Market has more open requests than the read cap: the newest are not read. */
+  readonly truncated: boolean;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -250,6 +250,7 @@ export async function listIssuerRequests(
       actions: rowActions(entry, ISSUER_ROW_RULES, granted) as IssuerRequestRowAction[],
     })),
     counts: { all: open.length },
+    truncated: open.length >= ISSUER_LIST_READ_CAP,
   });
 }
 
@@ -313,6 +314,9 @@ export async function exportIssuerRequests(
   let rows: IssuerRequestQueueEntry[];
   if (!absent(record['ids'])) {
     if (typeof record['ids'] !== 'string') return listQueryInvalid('ids', 'type');
+    // The chosen ids are the whole selection: a filter or a sort beside them is a mistake.
+    const clash = [...SELECTOR_KEYS, 'sort', 'direction'].find((key) => !absent(record[key]));
+    if (clash !== undefined) return listQueryInvalid(clash, 'with-ids');
     const listed = parseExportIds(record['ids'], ISSUER_EXPORT_MAX_IDS, (part) => {
       const text = part.trim().toLowerCase();
       return UUID.test(text) ? text : null;
@@ -330,8 +334,11 @@ export async function exportIssuerRequests(
       key: query.value.sort,
       direction: query.value.direction,
     });
-    const size = checkExportSize(Math.min(rows.length, LIST_EXPORT_MAX_ROWS + 1), rows.length);
-    if (!size.ok) return size;
+    // The read stops at the cap, so a file from the selector would silently miss the newest
+    // requests: refuse it, and let the admin pick the rows by id.
+    if (open.length >= ISSUER_LIST_READ_CAP) {
+      return err({ code: 'batch.too-large', max: ISSUER_LIST_READ_CAP });
+    }
   }
 
   const names = await namesOf(deps, context, rows);
