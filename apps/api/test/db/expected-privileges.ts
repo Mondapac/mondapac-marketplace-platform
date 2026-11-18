@@ -1081,6 +1081,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['changed_at', 'granted', 'source'],
     },
     'legal.marketing_consent_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Customers phase 2b, part 4: legal's outbox (consent changed), as every module's outbox.
+    'legal.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Engagement (personalization 1a): behaviour events are inserted and deleted (retention purge,
     // switch off, account deletion), never changed; the switch changes and goes with the account.
     'engagement.behaviour_events': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },

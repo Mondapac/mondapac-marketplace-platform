@@ -167,7 +167,7 @@ export class AdminShipmentsController {
     name: 'columns',
     required: false,
     description:
-      'Comma-separated, in the order shown: sellerOrderId, store, customer, paid, delivery, carrier, fleet, ready, shipped, delivered, shipping, total, refunded.',
+      'Comma-separated, in the order shown: sellerOrderId, store, customer, paid, delivery, carrier, carrierProgress, fleet, ready, shipped, delivered, shipping, total, refunded. carrierProgress (progress, carrier status, when the platform recorded it) is empty without shipping.carrier-delivery.view.',
   })
   @ApiQuery({
     name: 'ids',

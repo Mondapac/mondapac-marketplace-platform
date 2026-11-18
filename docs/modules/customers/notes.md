@@ -766,6 +766,50 @@ Follow-up of Hassan's review of #969 (findings L2, L3, I3).
   address reveal in `customers-management-admin.e2e.spec.ts`, both Markets, the CHECK in
   `rate-limit-counters.db-spec.ts`.
 
+## Phase 2b, part 4: consent on the timeline; promotion usages not built (16 Nov 2026)
+
+- **Consent on the timeline (rest of item k).** legal publishes `legal.marketing-consent-changed.v1`
+  from its new outbox (migration `20261117050700_legal_outbox`; docs/modules/legal/notes.md): the
+  account and the channel, never the value or the source. Subscription
+  `customers.timeline-consent-changed`, registered by `CustomersSectionsModule` (which already
+  imports legal), hands it to `RecordCustomerTimeline` (rule `system`; `runOnce` and the customers
+  inbox; once per event by the source event id). New kind `consent-changed` in the `account`
+  category, the channel as the entry's `detail` (a code; anything else is `validation.failed`), no
+  reference, no actor. An account without a directory row yet is refused and retried as for the
+  other account events; an erased account gets nothing. No customers migration: the kind and
+  detail CHECKs are code alphabets.
+- **Consent entries need legal's key (decision).** The task suggested `customers.customers.view`
+  might be enough, since an entry carries no value. It is not: only real changes are recorded and
+  the default is "not granted", so the number of `consent-changed` entries tells whether the
+  customer consents now, which is what `legal.customer-consent.view` guards on the consent
+  section. So the timeline read, its export and the Overview's last five show `consent-changed`
+  only to a caller who also holds `legal.customer-consent.view`, through the probe use case
+  `customers.customer-consent-events-check` (the gate decides), exactly as the review kinds need
+  `reviews.customer-review.view`: without the key the kind leaves the query (page and total agree),
+  a filter on it alone is an empty list, a probe the gate cannot answer is `access.unavailable`.
+  The two probes are independent (the review key does not open the consent kind). Pinned in
+  `test/contracts/admin-facade-permission.contract.spec.ts`.
+- **No new permission key, audit action or security event.** The registry, the Viewer exclusion
+  list, the role seed and the audit snapshot are unchanged; the event catalogue snapshot and the
+  subscriber list gain the new type and subscriber. The probe has a permission rule, so it is not
+  in `access-declarations.json`.
+- **Promotion usages per customer (item e): not built, blocked.** There is still no per-account
+  redemption data: checkout never calls promotions (ordering has no promotion or discount on an
+  order), `promotion_usage` holds per-promotion counters that nothing writes yet, and
+  `promotion_batch_codes.used_at` is never set (promotions package T2, "marking a code used on
+  redemption", is open). A read and route over an empty or invented table would show nothing true.
+  Needs, first: promotions package T2 (apply the quote at checkout, a redemption row per order and
+  promotion with the account, the discount as Money, the time and a status, released or reversed
+  on cancel or refund), designed with Mohammad and Mojtaba. Then this read is a promotions facade
+  read keyed by account behind its own key, as planned.
+- **Tests.** Unit on both Market fixtures: legal writes one event per real change, none for a
+  no-op or a failed write, never a value (`legal-use-cases.spec.ts`); the subscription records once
+  per event with the channel, skips an erased account, retries a missing directory row, refuses a
+  bad channel (`customer-timeline-events.spec.ts`); the gate on the read and the export
+  (`customer-management.spec.ts`). PostgreSQL: the event row in `legal.outbox` with the change and
+  rolled back with a serialization loser (`legal-marketing-consent.db-spec.ts`), the timeline row
+  (`customers-management.db-spec.ts`), privileges and the partial-index list.
+
 - **Identity section** (logins over 90 days as a super list, sessions, sign out everywhere,
   send a password reset): the largest piece, an auth path (security review). `sign_in_records`
   holds the full IP and no geo data, so a "rough city" needs a geo lookup first.
@@ -867,3 +911,24 @@ card, the storefront's invite banner and the admin list's screens follow in the 
   Market without it has the feature off.
 - **For 4b**: `exclusiveSellerOf` (the seller of an active attribution recorded at or before an
   instant) is ready for checkout's order-line freeze; the facade method comes with 4b.
+- PR 4a-2: use case `customers.read-exclusive-seller` (rule `system`) and the read facade method
+  `exclusiveSellerOf(context, accountId, at)` for promotions' exclusive-customer discount (and
+  for 4b's checkout freeze). Ids and the instant only.
+
+## Phase 4b: the lower commission for an exclusive customer (2026-11-17)
+
+- Use case `customers.read-own-exclusive-seller` (rule `own-resources`, customer only, Login-as
+  refused) behind the checkout facade method `ownExclusiveSeller(context)`: the signed-in
+  customer's exclusive seller now (an active attribution), or null.
+- Checkout (ordering) asks it once per order; any failure or throw means none (standard rate).
+  It passes the answer to commission-payouts' `commissionRates`, which lowers the exclusive
+  seller's rate while the window is open, and freezes on every line `exclusive_seller` and
+  `commission_rate_reason` (`standard` | `exclusive`).
+- Market setting `commissionPayouts.exclusiveCustomer` `{ reductionBps, floorBps, months }`
+  (AU 5000/300/12: half, floor 3 %, 12 months; ZZ 2500/500/6). It lives with the commission
+  settings (commission-payouts owns the rate), not under `customers` as the handoff named it.
+  The window runs from the attribution (`since`), in UTC months. A Market without it has no lower
+  rate. The lower rate is `max(floor, floor(rate × (1 − reduction)))`, never above the rate in
+  force; `exclusive` only when it is lower.
+- Migration `20261117080000_ordering_exclusive_seller_commission`: two columns with constant
+  defaults (no rewrite) and a CHECK (`exclusive` needs `exclusive_seller` and a frozen rate).

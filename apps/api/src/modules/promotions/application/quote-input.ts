@@ -192,6 +192,21 @@ export function parseSimulatedCustomer(
       }
     }
   }
+  let exclusiveSellerId: string | null = null;
+  if (raw.exclusiveSellerId !== undefined && raw.exclusiveSellerId !== null) {
+    const parsed =
+      typeof raw.exclusiveSellerId === 'string' ? parseId<'Seller'>(raw.exclusiveSellerId) : null;
+    if (parsed === null || !parsed.ok) {
+      issues.push({ path: 'customer.exclusiveSellerId', code: 'value' });
+    } else {
+      exclusiveSellerId = parsed.value;
+    }
+  }
   if (issues.length > 0) return err(issues);
-  return ok({ daysSinceLastOrder: days, followedSellerIds: followed, memberOfGroupIds: groups });
+  return ok({
+    daysSinceLastOrder: days,
+    followedSellerIds: followed,
+    memberOfGroupIds: groups,
+    exclusiveSellerId,
+  });
 }

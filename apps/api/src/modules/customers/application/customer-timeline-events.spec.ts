@@ -13,6 +13,7 @@ import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { CustomerListRow } from '../domain/customer-list';
+import { customerConsentTimelineSubscriptions } from '../presentation/subscribers/customer-consent-timeline.subscriptions';
 import { customerReviewTimelineSubscriptions } from '../presentation/subscribers/customer-review-timeline.subscriptions';
 import { customerTimelineSubscriptions } from '../presentation/subscribers/customer-timeline.subscriptions';
 import type { DirectoryRecordPeer } from './ports/customer-read-model-peers';
@@ -28,7 +29,8 @@ import {
 // row yet is written once identity confirms it; a repeated delivery or event writes one row; a peer
 // that cannot answer refuses (the delivery is retried); the subscriptions skip other populations.
 // Phase 2b, part 3: reviews' events find their author through reviews (as the system), and a
-// review that is gone or whose author was deleted writes nothing.
+// review that is gone or whose author was deleted writes nothing. Part 4: legal's consent event
+// names the account and the channel; the entry keeps the channel as its detail, never a value.
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const T0 = Temporal.Instant.from('2026-11-15T10:00:00Z');
@@ -398,6 +400,65 @@ describe.each(TEST_MARKET_IDS)('customer timeline from events in market %s', (co
           system,
         ),
       ).rejects.toThrow(/refused: customers.unavailable/);
+    });
+
+    it('records a consent change with its channel only, once, and throws on a refusal', async () => {
+      const subscriptions = customerConsentTimelineSubscriptions(record);
+      expect(subscriptions.map((s) => [s.name, s.event.type])).toEqual([
+        ['customers.timeline-consent-changed', 'legal.marketing-consent-changed.v1'],
+      ]);
+      const changed = subscriptions[0] as unknown as ReturnType<typeof find>;
+      await changed.handle(
+        consumed(7, { accountId: ALICE, channel: 'email' }),
+        delivery(26),
+        system,
+      );
+      // The same delivery again, and the same event on a new delivery: one entry.
+      await changed.handle(
+        consumed(7, { accountId: ALICE, channel: 'email' }),
+        delivery(26),
+        system,
+      );
+      await changed.handle(
+        consumed(7, { accountId: ALICE, channel: 'email' }),
+        delivery(27),
+        system,
+      );
+      expect(entriesOf(ALICE)).toEqual([
+        expect.objectContaining({
+          kind: 'consent-changed',
+          detail: 'email',
+          ref: null,
+          actorAccountId: null,
+          occurredAt: T0,
+          sourceEventId: id(0x207),
+        }),
+      ]);
+      // An account identity does not know (erased) gets nothing; one it knows without a directory
+      // row yet is retried.
+      await changed.handle(
+        consumed(8, { accountId: id<'Account'>(0xdead), channel: 'email' }),
+        delivery(28),
+        system,
+      );
+      expect(entriesOf(id<'Account'>(0xdead))).toEqual([]);
+      await expect(
+        changed.handle(consumed(9, { accountId: NEWBIE, channel: 'email' }), delivery(29), system),
+      ).rejects.toThrow(/refused: customers.unavailable/);
+    });
+
+    it('refuses a consent change with a channel that is not a code', async () => {
+      expect(
+        await record.execute(system, {
+          kind: 'consent-changed',
+          accountId: ALICE,
+          channel: 'E-mail <x>',
+          eventId: id(0x120),
+          occurredAt: T0,
+          delivery: delivery(30),
+        }),
+      ).toEqual(err({ code: 'validation.failed' }));
+      expect(entriesOf(ALICE)).toEqual([]);
     });
 
     it('throws on a refusal, so the delivery is retried', async () => {

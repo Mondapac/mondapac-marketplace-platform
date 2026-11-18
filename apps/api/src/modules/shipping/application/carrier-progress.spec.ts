@@ -55,7 +55,18 @@ describe('the carrier-delivery key and the access declaration', () => {
     for (const shown of ['SCHEDULED', 'picked_up', 'en-route.2', 'A'.repeat(60)]) {
       expect(shownCarrierStatus(shown)).toBe(shown);
     }
-    for (const hidden of ['=1+1', '<b>X</b>', '"x"', 'a b', '+SUM(A1)', '', 'A'.repeat(61)]) {
+    for (const hidden of [
+      '=1+1',
+      '<b>X</b>',
+      '"x"',
+      'a b',
+      '+SUM(A1)',
+      '-A1',
+      '_x',
+      '.5',
+      '',
+      'A'.repeat(61),
+    ]) {
       expect(shownCarrierStatus(hidden)).toBeNull();
     }
   });

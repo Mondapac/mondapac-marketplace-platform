@@ -40,6 +40,8 @@ import { AdminSellerAttributionsExport } from './use-cases/admin-seller-attribut
 import { AdminSellerAttributionsIds } from './use-cases/admin-seller-attributions-ids.use-case';
 import { AdminSellerAttributionsList } from './use-cases/admin-seller-attributions-list.use-case';
 import { JoinStoreByInvitation } from './use-cases/join-store-by-invitation.use-case';
+import { ReadExclusiveSeller } from './use-cases/read-exclusive-seller.use-case';
+import { ReadOwnExclusiveSeller } from './use-cases/read-own-exclusive-seller.use-case';
 import { ResolveStoreInvitation } from './use-cases/resolve-store-invitation.use-case';
 import { SellerInviteLinkRefresh } from './use-cases/seller-invite-link-refresh.use-case';
 import { SellerInviteLinkView } from './use-cases/seller-invite-link-view.use-case';
@@ -427,6 +429,53 @@ describe.each(['AU', 'ZZ'] as const)('invite links in market %s', (code) => {
     expect(
       await exclusiveSellerOf(deps, customer(alice), alice, T0.subtract({ hours: 1 })),
     ).toEqual(ok(null));
+  });
+
+  it('answers the exclusive seller to the system actor only (customers.read-exclusive-seller)', async () => {
+    const token = await drawLink();
+    const alice = signUp();
+    await join(alice, token);
+    const read = new ReadExclusiveSeller(gate, deps);
+    const system = testCallContext(market, 'system', `invite-links-${code}-system`);
+    expect(await read.execute(system, { accountId: alice, at: T0.add({ hours: 1 }) })).toEqual(
+      ok({ sellerId: SHOP, since: T0 }),
+    );
+    expect(await read.execute(system, { accountId: id<'Account'>(0xbeef), at: T0 })).toEqual(
+      ok(null),
+    );
+    expect(
+      await read.execute(system, { accountId: 'nope' as Id<'Account'>, at: T0 }),
+    ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    expect(
+      await read.execute(system, {
+        accountId: alice,
+        at: T0.toString() as unknown as Temporal.Instant,
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    expect(await read.execute(customer(alice), { accountId: alice, at: T0 })).toMatchObject({
+      ok: false,
+      error: { code: 'access.denied' },
+    });
+  });
+
+  it('answers the signed-in customer’s own exclusive seller now (customers.read-own-exclusive-seller)', async () => {
+    const token = await drawLink();
+    const alice = signUp();
+    await join(alice, token);
+    const read = new ReadOwnExclusiveSeller(gate, deps);
+    expect(await read.execute(customer(alice), {})).toEqual(ok({ sellerId: SHOP, since: T0 }));
+    expect(await read.execute(customer(id<'Account'>(0xbeef)), {})).toEqual(ok(null));
+    // Rejected by an admin: no longer exclusive.
+    attributions.rows[0] = { ...attributions.rows[0]!, status: 'rejected', rejectReason: 'admin' };
+    expect(await read.execute(customer(alice), {})).toEqual(ok(null));
+    for (const other of [seller(SHOP), admin, anonymous]) {
+      expect(await read.execute(other, {})).toMatchObject({ ok: false });
+    }
+    const loginAs = {
+      ...customer(alice),
+      actor: { ...customer(alice).actor, actingAs: { adminAccountId: id<'Account'>(0xad) } },
+    } as unknown as CallContext;
+    expect(await read.execute(loginAs, {})).toMatchObject({ ok: false });
   });
 
   it('keeps the attribution when the follow fails', async () => {

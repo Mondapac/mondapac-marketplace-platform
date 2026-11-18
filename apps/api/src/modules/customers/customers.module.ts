@@ -53,6 +53,7 @@ import { CreateAddress } from './application/use-cases/create-address.use-case';
 import { DeleteAddress } from './application/use-cases/delete-address.use-case';
 import { ListAddresses } from './application/use-cases/list-addresses.use-case';
 import { ReadDeliveryAddress } from './application/use-cases/read-delivery-address.use-case';
+import { ReadOwnExclusiveSeller } from './application/use-cases/read-own-exclusive-seller.use-case';
 import { SetDefaultAddress } from './application/use-cases/set-default-address.use-case';
 import { UpdateAddress } from './application/use-cases/update-address.use-case';
 import {
@@ -126,6 +127,7 @@ import { AdminSavedFilterUpdate } from './application/use-cases/admin-saved-filt
 import { AdminSavedFiltersList } from './application/use-cases/admin-saved-filters-list.use-case';
 import { SavedFilterShareCheck } from './application/use-cases/saved-filter-share-check.use-case';
 import { CustomerReviewEventsCheck } from './application/use-cases/customer-review-events-check.use-case';
+import { CustomerConsentEventsCheck } from './application/use-cases/customer-consent-events-check.use-case';
 import type { CustomerManagementDependencies } from './application/customer-management-dependencies';
 import { CUSTOMER_GROUP_REPOSITORY } from './application/ports/customer-groups.repository';
 import {
@@ -188,6 +190,7 @@ import {
   type TimelineRecordDependencies,
 } from './application/use-cases/record-customer-timeline.use-case';
 import { ReadCustomerGroupMembership } from './application/use-cases/read-customer-group-membership.use-case';
+import { ReadExclusiveSeller } from './application/use-cases/read-exclusive-seller.use-case';
 import { AdminCustomerManagementController } from './presentation/admin-customer-management.controller';
 import type { SellerCustomerDependencies } from './application/seller-customers-flow';
 import {
@@ -473,6 +476,7 @@ const MANAGEMENT_PORTS: readonly [
   ['addressCipher', ADDRESS_CIPHER],
   ['groupUsage', CUSTOMER_GROUP_USAGE_REGISTRY],
   ['reviewEventsCheck', CustomerReviewEventsCheck],
+  ['consentEventsCheck', CustomerConsentEventsCheck],
   ['adminLimits', ADMIN_ACTION_LIMITS],
   ['securityEvents', SECURITY_EVENTS],
 ];
@@ -624,6 +628,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ].map((type) => sellerCustomerUseCaseProvider(type as SellerCustomerUseCaseClass<unknown>)),
     ...[
       SellerInviteLinkView,
+      ReadExclusiveSeller,
+      ReadOwnExclusiveSeller,
       SellerInviteLinkRefresh,
       ResolveStoreInvitation,
       JoinStoreByInvitation,
@@ -796,6 +802,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (gate: UseCaseGate): CustomerReviewEventsCheck =>
         new CustomerReviewEventsCheck(gate),
     },
+    {
+      provide: CustomerConsentEventsCheck,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate): CustomerConsentEventsCheck =>
+        new CustomerConsentEventsCheck(gate),
+    },
     ...[
       AdminSavedFiltersList,
       AdminSavedFilterCreate,
@@ -808,14 +820,16 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         ReadCustomerLastOrder,
         ReadOwnLastOrder,
         ReadCustomerGroupMembership,
+        ReadExclusiveSeller,
         SellerOrderCustomers,
       ],
       useFactory: (
         read: ReadCustomerLastOrder,
         own: ReadOwnLastOrder,
         membership: ReadCustomerGroupMembership,
+        exclusive: ReadExclusiveSeller,
         orderCustomers: SellerOrderCustomers,
-      ) => new CustomersReadFacadeImplementation(read, own, membership, orderCustomers),
+      ) => new CustomersReadFacadeImplementation(read, own, membership, exclusive, orderCustomers),
     },
     {
       provide: CUSTOMERS_ACCOUNT_DELETION_FACADE,
@@ -828,8 +842,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ]),
     {
       provide: CUSTOMERS_CHECKOUT_FACADE,
-      inject: [ReadDeliveryAddress],
-      useFactory: (read: ReadDeliveryAddress) => new CustomersCheckoutFacadeImplementation(read),
+      inject: [ReadDeliveryAddress, ReadOwnExclusiveSeller],
+      useFactory: (read: ReadDeliveryAddress, exclusive: ReadOwnExclusiveSeller) =>
+        new CustomersCheckoutFacadeImplementation(read, exclusive),
     },
   ],
   exports: [

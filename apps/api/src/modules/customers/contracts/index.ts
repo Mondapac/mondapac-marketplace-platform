@@ -11,6 +11,8 @@ export {
   CUSTOMERS_READ_FACADE,
   type CustomerLastOrderFailure,
   type CustomerGroupMembershipFailure,
+  type ExclusiveSellerAnswer,
+  type ExclusiveSellerFailure,
   type CustomersReadFacade,
   type SellerOrderCustomer,
   type SellerOrderCustomersFailure,

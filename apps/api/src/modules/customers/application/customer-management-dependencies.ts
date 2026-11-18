@@ -49,6 +49,11 @@ export interface CustomerManagementDependencies {
    * export and so the Overview's last five) leaves out the review kinds (security review L1).
    */
   readonly reviewEventsCheck: AccessProbe;
+  /**
+   * Whether the caller also holds `legal.customer-consent.view`: without it the timeline leaves
+   * out the consent kind (phase 2b, part 4).
+   */
+  readonly consentEventsCheck: AccessProbe;
   /** Bound at start by `CustomersReadModelsModule`; fails closed until then. */
   readonly identity: IdentityManagementPeer;
 }
