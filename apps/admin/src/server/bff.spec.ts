@@ -1133,6 +1133,182 @@ describe('relay of the customers list and customer page', () => {
     expect(other.status).toBe(413);
   });
 
+  describe('customers phase 2b, part A: payments, disputes, refunds and promotion usages', () => {
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it.each([
+      ['POST', `payments/admin/customers/${ID}/payments`],
+      ['POST', `payments/admin/customers/${ID}/payments/export`],
+      ['POST', `payments/admin/customers/${ID}/disputes`],
+      ['POST', `payments/admin/customers/${ID}/disputes/export`],
+      ['POST', `ordering/admin/customers/${ID}/refunds`],
+      ['POST', `ordering/admin/customers/${ID}/refunds/export`],
+      ['GET', `promotions/admin/customers/${ID}/usages?limit=50&cursor=abc.1`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['GET', `payments/admin/customers/${ID}/payments`],
+      ['GET', `payments/admin/customers/${ID}/disputes`],
+      ['PUT', `payments/admin/customers/${ID}/payments`],
+      ['POST', `payments/admin/customers/${ID}/payments/purge`],
+      ['POST', `promotions/admin/customers/${ID}/usages`],
+      ['DELETE', `ordering/admin/customers/${ID}/refunds`],
+      ['POST', `payments/admin/customers/not-a-uuid/payments`],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('forwards only the usages paging keys', async () => {
+      const upstream = upstreamOk();
+      const target = `promotions/admin/customers/${ID}/usages?limit=50&cursor=abc.1&status=x`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/promotions/admin/customers/${ID}/usages?limit=50&cursor=abc.1`,
+      );
+    });
+  });
+
+  describe('customers phase 2b part C: shopping and reviews', () => {
+    const SECTIONS = [
+      'saved-items',
+      'cart-reminders',
+      'cart-additions',
+      'assistant-conversations',
+      'reviews',
+      'seller-ratings',
+      'helpful-votes',
+      'review-reports',
+    ];
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it.each([
+      ...SECTIONS.flatMap((name) => [
+        ['POST', `customers/admin/customers/${ID}/${name}`],
+        ['POST', `customers/admin/customers/${ID}/${name}/export`],
+      ]),
+      ['GET', `customers/admin/customers/${ID}/cart`],
+      ['GET', `customers/admin/customers/${ID}/behaviour`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ...SECTIONS.flatMap((name) => [
+        ['GET', `customers/admin/customers/${ID}/${name}`],
+        ['PUT', `customers/admin/customers/${ID}/${name}`],
+        ['GET', `customers/admin/customers/${ID}/${name}/export`],
+      ]),
+      ['POST', `customers/admin/customers/${ID}/cart`],
+      ['DELETE', `customers/admin/customers/${ID}/behaviour`],
+      ['POST', `customers/admin/customers/${ID}/reviews/purge`],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('takes a list body under the 16 KB cap and refuses a larger one', async () => {
+      const upstream = upstreamOk();
+      const target = `customers/admin/customers/${ID}/reviews`;
+      const big = JSON.stringify({ filters: { status: ['x'.repeat(17 * 1024)] } });
+      expect(
+        (await relay(config, send('POST', target, big), pathOf(target), upstream)).status,
+      ).toBe(413);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('forwards no query string of the cart read', async () => {
+      const upstream = upstreamOk();
+      const target = `customers/admin/customers/${ID}/cart?x=1`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/customers/admin/customers/${ID}/cart`,
+      );
+    });
+  });
+
+  describe('customers phase 2b, part B: account and security', () => {
+    const A = '0190a000-0000-7000-8000-0000000000c1';
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+    const base = `customers/admin/customers/${ID}`;
+
+    it.each([
+      ['GET', `${base}/sessions`],
+      ['GET', `${base}/addresses`],
+      ['GET', `${base}/consent`],
+      ['GET', `${base}/behaviour`],
+      ['POST', `${base}/sign-ins`],
+      ['POST', `${base}/sign-ins/${A}/reveal`],
+      ['POST', `${base}/sessions/end`],
+      ['POST', `${base}/password-reset`],
+      ['POST', `${base}/addresses/${A}/reveal`],
+      ['POST', `${base}/consent-history`],
+      ['POST', `${base}/consent-history/export`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['POST', `${base}/sign-ins/export`],
+      ['GET', `${base}/sign-ins`],
+      ['POST', `${base}/sign-ins/not-a-uuid/reveal`],
+      ['GET', `${base}/sessions/end`],
+      ['PUT', `${base}/addresses/${A}/reveal`],
+      ['DELETE', `${base}/sessions`],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('drops query keys on the reads', async () => {
+      const upstream = upstreamOk();
+      const target = `${base}/sessions?limit=5`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${base}/sessions`);
+    });
+  });
+
   describe('customers phase 2a: groups, notes, activity and the name edit', () => {
     const G = '0190a000-0000-7000-8000-0000000000b1';
     const send = (method: string, target: string, body = '{}') =>

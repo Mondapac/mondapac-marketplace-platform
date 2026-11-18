@@ -33,12 +33,17 @@ import {
 } from './customer-email.tsx';
 import { CustomerGroupsCard } from './customer-groups-card.tsx';
 import { CustomerMoney } from './customer-money.tsx';
+import { CustomerReviews } from './customer-reviews.tsx';
+import { CustomerShopping } from './customer-shopping.tsx';
 import { CustomerNotes } from './customer-notes.tsx';
+import { CustomerSecurity } from './customer-security.tsx';
+import { CustomerSecurityActionDialog, type SecurityAction } from './customer-security-actions.tsx';
 import { CustomerStatusDialog, type StatusTarget } from './customer-status.tsx';
 import { copyText } from './customers-list.tsx';
 import { dayOf } from './format.ts';
 import { CUSTOMER_EDIT } from './groups-types.ts';
 import { STATUS_PERMISSION, titleOf } from './list-types.ts';
+import { PASSWORD_RESET_SEND, SESSION_END } from './security-types.ts';
 import {
   BUYER_DELETE,
   EMAIL_CHANGE,
@@ -71,6 +76,9 @@ type TabAudit = 'pending' | 'ok' | 'failed';
 
 /** The one panel the tab row switches (ARIA tabs). */
 const PANEL_ID = 'customer-tab-panel';
+
+/** The tabs whose opening `tab-opened` records (the API accepts only these). */
+const AUDITED: readonly Tab[] = ['orders', 'money'];
 
 /** A figure of the Overview: what is counted, the value, and a muted line under it. */
 function Tile({
@@ -149,6 +157,9 @@ export function CustomerPage({
   const [editing, setEditing] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [cancelEmailOpen, setCancelEmailOpen] = useState(false);
+  // Account & security: the header's account actions and the sessions list they refresh.
+  const [securityAction, setSecurityAction] = useState<SecurityAction | null>(null);
+  const [sessionsVersion, setSessionsVersion] = useState(0);
   // Bumped when the page did something that lands on the timeline (a note, a group, a rename).
   const [activityRefresh, setActivityRefresh] = useState(0);
   // On a phone, Edit… moves into the More menu (Reza, 16 Nov).
@@ -229,9 +240,10 @@ export function CustomerPage({
     // The key set is fixed for the page's life.
   }, [id]);
 
-  // Orders and Money: the opening is audited once per visit, before their data is read.
+  // Orders and Money: the opening is audited once per visit, before their data is read. The API
+  // accepts no other tab (Account & security reads its own audited sections).
   useEffect(() => {
-    if (tab === 'overview' || page.state !== 'ready' || audits[tab] !== undefined) return;
+    if (!AUDITED.includes(tab) || page.state !== 'ready' || audits[tab] !== undefined) return;
     setAudits((current) => ({ ...current, [tab]: 'pending' }));
     void callApi('POST', `customers/admin/customers/${id}/tab-opened`, { tab }, csrfToken).then(
       (result) => setAudits((current) => ({ ...current, [tab]: result.ok ? 'ok' : 'failed' })),
@@ -340,6 +352,24 @@ export function CustomerPage({
             ...(active ? { tone: 'critical' as const } : {}),
             onSelect: () =>
               setStatusTarget({ accountId, email: customer.email, status: customer.status }),
+          },
+        ]
+      : []),
+    ...(keys.has(PASSWORD_RESET_SEND)
+      ? [
+          {
+            id: 'password-reset',
+            label: t('header.password-reset'),
+            onSelect: () => setSecurityAction('password-reset'),
+          },
+        ]
+      : []),
+    ...(keys.has(SESSION_END)
+      ? [
+          {
+            id: 'sign-out',
+            label: t('header.sign-out'),
+            onSelect: () => setSecurityAction('sign-out'),
           },
         ]
       : []),
@@ -558,6 +588,43 @@ export function CustomerPage({
               />
             </Card>
           </div>
+        ) : tab === 'security' ? (
+          <CustomerSecurity
+            accountId={accountId}
+            adminAccountId={adminAccountId}
+            marketId={marketId}
+            keys={keys}
+            csrfToken={csrfToken}
+            zone={zone}
+            paging={paging}
+            deletion={customer.deletionRequest ?? null}
+            deletionPending={pendingDeletion}
+            sessionsVersion={sessionsVersion}
+            onSignOut={() => setSecurityAction('sign-out')}
+          />
+        ) : tab === 'shopping' || tab === 'reviews' ? (
+          // Phase 2b part C: each section reads on its own, under its own key.
+          tab === 'shopping' ? (
+            <CustomerShopping
+              accountId={accountId}
+              adminAccountId={adminAccountId}
+              marketId={marketId}
+              csrfToken={csrfToken}
+              zone={zone}
+              paging={paging}
+              keys={keys}
+            />
+          ) : (
+            <CustomerReviews
+              accountId={accountId}
+              adminAccountId={adminAccountId}
+              marketId={marketId}
+              csrfToken={csrfToken}
+              zone={zone}
+              paging={paging}
+              keys={keys}
+            />
+          )
         ) : audits[tab] === 'failed' ? (
           <Banner tone="critical">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -590,6 +657,9 @@ export function CustomerPage({
         ) : (
           <CustomerMoney
             customer={customer}
+            adminAccountId={adminAccountId}
+            marketId={marketId}
+            csrfToken={csrfToken}
             keys={keys}
             zone={zone}
             paging={paging}
@@ -635,6 +705,13 @@ export function CustomerPage({
           setPendingEmail(null);
           setActivityRefresh((value) => value + 1);
         }}
+      />
+      <CustomerSecurityActionDialog
+        action={securityAction}
+        accountId={accountId}
+        csrfToken={csrfToken}
+        onClose={() => setSecurityAction(null)}
+        onSignedOut={() => setSessionsVersion((value) => value + 1)}
       />
       <CustomerStatusDialog
         target={statusTarget}
