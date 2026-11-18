@@ -470,6 +470,40 @@ describe('order list columns', () => {
     await waitFor(() => expect(headers()).toEqual(['Order', 'Status', 'Total']));
   });
 
+  it("scopes a customer's Orders tab to them, keeps its own columns and has no Customer column", async () => {
+    const CUSTOMER = '0190a000-0000-7000-8000-0000000000c1';
+    window.localStorage.setItem(COLUMNS_KEY, '["customer","total"]');
+    serve(() => pageOf([row()]));
+    mount({ customerAccountId: CUSTOMER });
+    const table = await screen.findByRole('table');
+    const asked = call.mock.calls.map((args) => args[1]);
+    expect(
+      asked.some((path) => path.startsWith(`ordering/admin/orders?accountId=${CUSTOMER}&`)),
+    ).toBe(true);
+    // No saved filters on a customer's tab: they belong to the Orders page.
+    expect(asked.some((path) => path.startsWith(SAVED_PATH))).toBe(false);
+    const shown = within(table)
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent);
+    expect(shown).not.toContain('Customer');
+    expect(shown).toContain('Total');
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    expect(within(panel).queryByRole('checkbox', { name: 'Customer' })).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    // The Orders page's choice is untouched; the tab keeps its own.
+    expect(window.localStorage.getItem(COLUMNS_KEY)).toBe('["customer","total"]');
+    expect(
+      window.localStorage.getItem(
+        'mp:admin:AU:0190a000-0000-7000-8000-0000000000f1:customer-orders-columns',
+      ),
+    ).not.toContain('"customer"');
+    // Each order links back to this customer's Orders tab.
+    expect(within(table).getAllByRole('link')[0]?.getAttribute('href')).toContain(
+      `customer=${CUSTOMER}&from=orders`,
+    );
+  });
+
   it('ignores a stored column that no longer exists, and works when storage refuses', async () => {
     window.localStorage.setItem(COLUMNS_KEY, '["margin","paid","status","paid"]');
     serve(() => pageOf([row()]));

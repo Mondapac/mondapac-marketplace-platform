@@ -4,6 +4,7 @@ import { toast, type MenuItem } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { shortId } from '../shared/short-id.ts';
+import { orderHref, type CustomerOrigin } from './order-href.ts';
 import { ROW_ACTIONS, type AdminOrderRow } from './types.ts';
 
 /**
@@ -14,7 +15,10 @@ import { ROW_ACTIONS, type AdminOrderRow } from './types.ts';
  * cancel dialog (with its reason, loss bearer and step-up) are; the page opens the cancel dialog
  * itself when it is reached from here.
  */
-export function useOrderRowActions(): (row: AdminOrderRow) => readonly MenuItem[] {
+export function useOrderRowActions(
+  /** Opened from a customer's page: Open keeps the way back to that tab. */
+  from?: CustomerOrigin,
+): (row: AdminOrderRow) => readonly MenuItem[] {
   const t = useTranslations('orders.row-actions');
   const router = useRouter();
 
@@ -32,7 +36,11 @@ export function useOrderRowActions(): (row: AdminOrderRow) => readonly MenuItem[
     return ROW_ACTIONS.filter((action) => row.actions.includes(action)).map((action): MenuItem => {
       switch (action) {
         case 'open':
-          return { id: action, label: t('open'), onSelect: () => router.push(page) };
+          return {
+            id: action,
+            label: t('open'),
+            onSelect: () => router.push(orderHref(row.orderId, from)),
+          };
         case 'print-document':
           return { id: action, label: t('print'), onSelect: () => router.push(`${page}/document`) };
         case 'copy-number':

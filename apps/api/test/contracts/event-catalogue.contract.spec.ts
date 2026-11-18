@@ -140,6 +140,12 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'customers.timeline-order-paid',
       'customers.timeline-refund-succeeded',
       'customers.timeline-registered',
+      // Customers phase 2b, part 3: reviews' events on the author's timeline (the author is asked
+      // of reviews by the system; the events carry no account).
+      'customers.timeline-review-held',
+      'customers.timeline-review-hidden',
+      'customers.timeline-review-published',
+      'customers.timeline-review-restored',
       'identity.existing-account-mail',
       'identity.invitation-mail',
       'identity.link-mail',
@@ -272,6 +278,10 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'ordering.record-delivery-anchor',
       'promotions.cashback-on-delivery',
       'promotions.qualify-referral-on-delivery',
+    ]);
+    expect(subscriptions.subscribersOf('reviews.review-hidden.v1')).toEqual([
+      'customers.timeline-review-hidden',
+      'notifications.seller-review-hidden-notice',
     ]);
     expect(subscriptions.subscribersOf('ordering.refund-succeeded.v1')).toEqual([
       'customers.read-model-refund-succeeded',

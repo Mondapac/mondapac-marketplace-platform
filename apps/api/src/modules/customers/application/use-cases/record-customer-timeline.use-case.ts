@@ -17,9 +17,12 @@ import {
   type ReadModelFailure,
 } from '../customer-read-model-flow';
 import type { ReadModelPeers } from '../ports/customer-read-model-peers';
+import type { ReviewsSectionPeer } from '../ports/customer-section-peers';
 import type { CustomerTimelineRepository } from '../ports/customer-timeline.repository';
 
 export interface TimelineRecordDependencies extends ReadModelPeers {
+  /** reviews' author lookup (rule `system`), bound at start; fails closed until then. */
+  readonly reviews: Pick<ReviewsSectionPeer, 'reviewAuthorOf'>;
   readonly unitOfWork: UnitOfWork;
   readonly timeline: CustomerTimelineRepository;
   readonly ids: IdGenerator;
@@ -34,11 +37,11 @@ export type RecordTimelineInput = {
 } & CustomerEventKindInput;
 
 /**
- * `customers.record-customer-timeline`: from a subscription on an `identity` account event or an
- * `ordering` order or refund event. Rule `system`. Copies the event onto the customer's timeline
+ * `customers.record-customer-timeline`: from a subscription on an `identity` account event, an
+ * `ordering` order or refund event or a `reviews` review event. Rule `system`. Copies the event onto the customer's timeline
  * (kind, instant, the order or refund id), once per delivery and once per event (the source event
- * id is unique per customer). The customer is the event's account, or the order's paying account
- * read through `ordering`. An event about an account the module does not know yet (the directory
+ * id is unique per customer). The customer is the event's account, the order's paying account
+ * read through `ordering`, or the review's author read through `reviews`. An event about an account the module does not know yet (the directory
  * row comes from another subscription) is refused while identity knows it, so the delivery is
  * retried after that row is written; an erased or unknown account gets nothing.
  */
@@ -78,6 +81,19 @@ export class RecordCustomerTimeline extends UseCase<
       if (!found.ok) return found;
       accountId = found.value;
       ref = { type: 'refund', id: input.refundId };
+    } else if ('reviewId' in input) {
+      // reviews' events name the review only (a seller must not tie it to a buyer): its author
+      // is asked as the system. A review that is gone or whose author was deleted gets nothing.
+      const author = await deps.reviews.reviewAuthorOf(context, input.reviewId);
+      if (!author.ok) {
+        return err({
+          code:
+            author.error.code === 'validation.failed'
+              ? 'validation.failed'
+              : 'customers.unavailable',
+        });
+      }
+      accountId = author.value.accountId;
     } else {
       const parsed = parseId<'Account'>(input.accountId);
       if (parsed === null || !parsed.ok) return err({ code: 'validation.failed' });
