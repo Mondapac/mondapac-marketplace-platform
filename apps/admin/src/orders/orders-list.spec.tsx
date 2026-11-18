@@ -1037,6 +1037,17 @@ describe('orders export', () => {
     expect(click).not.toHaveBeenCalled();
   });
 
+  it('stops ticking at 100 orders, the most one export names', async () => {
+    const many = Array.from({ length: 120 }, (_, index) =>
+      row({ orderId: `0190a000-0000-7000-8000-${String(index).padStart(12, '0')}` }),
+    );
+    serve(() => pageOf(many, { pageSize: 100 }));
+    mountWithToasts();
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all on this page' }));
+    expect(screen.getByText('100 orders selected')).toBeTruthy();
+  });
+
   it('says the export failed after any other failure', async () => {
     serve(() => pageOf([row()], { total: 60 }));
     mountWithToasts();

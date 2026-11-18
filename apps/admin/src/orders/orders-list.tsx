@@ -44,7 +44,7 @@ import { OrdersTable } from './orders-table.tsx';
 import { FILTERS, type AdminOrderPage, type OrderCounts, type StatusFilter } from './types.ts';
 
 /** Rows that can be ticked one by one; "Select all matching" has no such limit. */
-const SELECTION_MAX = 200;
+const SELECTION_MAX = 100;
 const OPEN_ENDED = Number.MAX_SAFE_INTEGER;
 
 type Failure = 'refused' | 'search-unavailable' | 'unavailable';

@@ -3120,8 +3120,8 @@
       "all-open": "All matching orders selected",
       "none-selected": "Tick orders to print slips, or export the whole list.",
       "export": "Export…",
-      "export-help": "CSV or XLSX: the ticked orders, or every order the tab and paid dates match.",
-      "export-searching": "A search can’t be exported as the whole list. Clear it, or tick the orders.",
+      "export-help": "CSV or XLSX: the ticked orders, or the whole list (the tab and paid dates).",
+      "export-searching": "Export can’t cover a search. Clear it, or tick the orders you want.",
       "print-slips": "Print packing slips",
       "print-slips-help": "Opens one page with a slip for each selected order (up to {max}).",
       "print-slips-all": "Tick the orders you want slips for. Slips can't be printed for every matching order at once."

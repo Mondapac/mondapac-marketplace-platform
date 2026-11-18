@@ -51,14 +51,13 @@ export function OrdersBulk({
       <ActionMenu
         label={t('button')}
         title={
-          !selected
-            ? t('export-help')
-            : selection.allMatching && selection.total === null
-              ? t('all-open')
-              : t('selected', { count })
+          selection.allMatching && selection.total === null
+            ? t('all-open')
+            : t('selected', { count })
         }
         items={[{ ...item, disabled: item.disabled === true || blocked }]}
         disabled={!selected || busy}
+        {...(selected ? {} : { hint: t('none-selected') })}
       />
       {/* A disabled item cannot take focus: the reason is plain text, not only a title. */}
       {nameSearch && selection.allMatching ? (

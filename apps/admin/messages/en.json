@@ -5488,8 +5488,9 @@
       "button": "Bulk action",
       "selected": "{count, plural, one {# order selected} other {# orders selected}}",
       "all-open": "All matching orders selected",
-      "export-help": "Select orders to export them as CSV or XLSX.",
-      "export-name-search": "A customer or store search cannot be exported as “all matching”. Clear it, or tick the orders."
+      "export-help": "CSV or XLSX, with the columns shown",
+      "export-name-search": "Export can’t cover a search. Clear it, or tick the orders you want.",
+      "none-selected": "Tick the orders you want to export."
     },
     "row-actions": {
       "header": "Actions",
