@@ -54,22 +54,19 @@ export function MyStores() {
   // Where focus goes after a row leaves: the next row's button, else the heading.
   const [refocus, setRefocus] = useState<string | null>(null);
 
-  const load = useCallback(
-    async (cursor: string | null) => {
-      const read = await readFollowedStores(cursor);
-      if (read.kind === 'ok') {
-        setRows((current) =>
-          cursor === null ? read.value.items : [...current, ...read.value.items],
-        );
-        setTotal(read.value.total);
-        setNext(read.value.nextCursor);
-        return 'ok' as const;
-      }
-      if (read.kind === 'throttled') setRetryAfter(read.retryAfterSeconds);
-      return read.kind === 'throttled' ? ('throttled' as const) : ('failed' as const);
-    },
-    [],
-  );
+  const load = useCallback(async (cursor: string | null) => {
+    const read = await readFollowedStores(cursor);
+    if (read.kind === 'ok') {
+      setRows((current) =>
+        cursor === null ? read.value.items : [...current, ...read.value.items],
+      );
+      setTotal(read.value.total);
+      setNext(read.value.nextCursor);
+      return 'ok' as const;
+    }
+    if (read.kind === 'throttled') setRetryAfter(read.retryAfterSeconds);
+    return read.kind === 'throttled' ? ('throttled' as const) : ('failed' as const);
+  }, []);
 
   const first = useCallback(async () => {
     setPhase('loading');
@@ -245,9 +242,7 @@ function StoreRow({
   const t = useTranslations('account.stores');
   const locale = useLocale();
   const hidden = row.slug === null;
-  const label = hidden
-    ? t('unavailable')
-    : (row.name ?? row.slug ?? '');
+  const label = hidden ? t('unavailable') : (row.name ?? row.slug ?? '');
   const logo =
     row.slug !== null && row.logoId !== null
       ? { src: storeImageSrc(row.slug, row.logoId, 'small'), width: 64, height: 64 }
