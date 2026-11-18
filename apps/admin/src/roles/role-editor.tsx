@@ -310,8 +310,9 @@ export function RoleEditor({
         return;
       }
       setDeleteNote('');
-      // 202: the delete waits for another admin's approval; the role stays as it is.
-      if (result.status === 202 && sentForApproval(result.body)) {
+      // 202: the delete waits for another admin's approval; the role stays as it is. The answer
+      // also names its code and role, so only its request is passed on as the proposal.
+      if (result.status === 202 && sentForApproval({ request: requestOf(result.body) })) {
         router.refresh();
         return;
       }

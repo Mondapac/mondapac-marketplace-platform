@@ -1,15 +1,27 @@
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { ReadDeliveryAddress } from '../application/use-cases/read-delivery-address.use-case';
+import type { ReadOwnExclusiveSeller } from '../application/use-cases/read-own-exclusive-seller.use-case';
 import type {
   CustomersCheckoutFacade,
   DeliveryAddress,
   DeliveryAddressFailure,
+  ExclusiveSellerAnswer,
+  ExclusiveSellerFailure,
 } from '../contracts';
 
 /** Passes the caller's `CallContext` unchanged to the use case, so the gate runs. */
 export class CustomersCheckoutFacadeImplementation implements CustomersCheckoutFacade {
-  constructor(private readonly read: ReadDeliveryAddress) {}
+  constructor(
+    private readonly read: ReadDeliveryAddress,
+    private readonly exclusive: ReadOwnExclusiveSeller,
+  ) {}
+
+  ownExclusiveSeller(
+    context: CallContext,
+  ): Promise<Result<ExclusiveSellerAnswer | null, ExclusiveSellerFailure>> {
+    return this.exclusive.execute(context, {});
+  }
 
   async deliveryAddress(
     context: CallContext,

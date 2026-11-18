@@ -2,7 +2,7 @@ import 'server-only';
 import { redirect } from 'next/navigation';
 import { VIEW_PERMISSION as OFFERS_VIEW, type OfferView, type Page } from '../catalog/types.ts';
 import { EARNINGS_VIEW_PERMISSION, type Ledger } from '../earnings/types.ts';
-import { ORDER_VIEW_PERMISSION, type SellerOrderPage } from '../orders/types.ts';
+import { ORDER_VIEW_PERMISSION, type SellerOrderCursorPage } from '../orders/types.ts';
 import { PAYOUT_VIEW_PERMISSION, type PayoutAccount } from '../payout/types.ts';
 import { serverGet, type ServerGet } from '../server/server-fetch.ts';
 import type { SellerSession } from '../server/session.ts';
@@ -45,8 +45,8 @@ function widget<T>(
 export function startSellerDashboard(session: SellerSession): SellerDashboardSources {
   const keys = new Set(session.permissionKeys);
   return {
-    orders: widget<SellerOrderPage>(keys.has(ORDER_VIEW_PERMISSION), () =>
-      serverGet<SellerOrderPage>(`ordering/seller/orders?limit=${COUNT_LIMIT}`),
+    orders: widget<SellerOrderCursorPage>(keys.has(ORDER_VIEW_PERMISSION), () =>
+      serverGet<SellerOrderCursorPage>(`ordering/seller/orders?limit=${COUNT_LIMIT}`),
     ),
     offers: widget<Page<OfferView>>(keys.has(OFFERS_VIEW), () =>
       serverGet<Page<OfferView>>(`catalog/seller/offers?limit=${COUNT_LIMIT}`),

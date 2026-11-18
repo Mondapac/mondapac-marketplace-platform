@@ -24,6 +24,7 @@ import { EnableAdminAccount } from '../../src/modules/identity/application/use-c
 import { SeedRoles } from '../../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { openSession } from '../../src/modules/identity/domain/session';
 import { ApproveSystemRequest } from '../../src/modules/system-requests/application/use-cases/approve-system-request.use-case';
+import { ViewSystemRequest } from '../../src/modules/system-requests/application/use-cases/view-system-request.use-case';
 import { RejectSystemRequest } from '../../src/modules/system-requests/application/use-cases/reject-system-request.use-case';
 import { WithdrawSystemRequest } from '../../src/modules/system-requests/application/use-cases/withdraw-system-request.use-case';
 import { STEP_UP_CONSUMER } from '../../src/platform/authz';
@@ -438,6 +439,89 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
     expect(await reject(target, enabled.value.request.id)).toEqual(ownSubject);
     expect(await statusOf(target)).toBe('active');
     expect((await requestsOf(target)).map((r) => r.status)).toEqual(['open']);
+  });
+
+  it("labels a people request with the admin's display name, and a role's name only for a viewer who may list roles", async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    // A reviewer who may see the queue and decide people changes, but not list platform roles.
+    const reviewer = await admin(
+      await customRole(root, [
+        'system-requests.request.view',
+        'system-requests.people.review',
+        'identity.admin-account.view',
+      ]),
+    );
+    const narrow = await customRole(root, ['identity.admin-account.view']);
+    const wide = await customRole(root, [
+      'identity.admin-account.view',
+      'identity.platform-role.view',
+    ]);
+    const member = await admin(narrow);
+    await sql.query(`UPDATE identity.accounts SET display_name = $2 WHERE id = $1`, [
+      member,
+      'Layla Haddad',
+    ]);
+
+    const assigned = await app
+      .get(AssignAdminRole)
+      .execute(as(root), { accountId: member, roleId: wide, note: 'Needs the role list' });
+    if (!assigned.ok || assigned.value.request === null) throw new Error('no request opened');
+    const roleName = `Labelled ${randomUUID().slice(0, 8)}`;
+    const edited = await app.get(EditPlatformRole).execute(as(root), {
+      roleId: narrow,
+      expectedVersion: 1,
+      name: roleName,
+      permissionKeys: ['identity.admin-account.view', 'identity.platform-role.view'],
+      note: 'Let them see roles',
+    });
+    if (!edited.ok || edited.value.request === null) throw new Error('no request opened');
+
+    const view = (viewer: Id<'Account'>, requestId: Id<'SystemRequest'>) =>
+      app.get(ViewSystemRequest).execute(as(viewer), { requestId });
+    // Any admin who sees the queue sees the admin's display name, never the sign-in address.
+    for (const viewer of [checker, reviewer]) {
+      expect(await view(viewer, assigned.value.request.id)).toMatchObject({
+        ok: true,
+        value: { subjectKind: 'identity.admin-roles', subjectLabel: 'Layla Haddad' },
+      });
+    }
+    // Never the sign-in address, whatever the viewer.
+    const { rows: emails } = await sql.query<{ email: string }>(
+      `SELECT email FROM identity.accounts WHERE id = $1`,
+      [member],
+    );
+    for (const viewer of [checker, reviewer]) {
+      const seen = JSON.stringify(await view(viewer, assigned.value.request.id));
+      expect(seen).not.toContain(emails[0]!.email);
+      expect(seen.toLowerCase()).not.toContain(emails[0]!.email.toLowerCase());
+    }
+    // An enabling (identity.admin-status) is labelled as a role change is. (An admin always has
+    // a display name: identity's table requires one, so no label ever falls back to the address.)
+    const named = await admin(narrow, 'disabled');
+    await sql.query(`UPDATE identity.accounts SET display_name = $2 WHERE id = $1`, [
+      named,
+      'Omar Saleh',
+    ]);
+    const enabled = await app
+      .get(EnableAdminAccount)
+      .execute(as(root), { accountId: named, note: 'Back from leave' });
+    if (!enabled.ok || enabled.value.request === null) throw new Error('no request opened');
+    expect(await view(reviewer, enabled.value.request.id)).toMatchObject({
+      ok: true,
+      value: { subjectKind: 'identity.admin-status', subjectLabel: 'Omar Saleh' },
+    });
+
+    // The role's name for an admin who may list roles; no label for one who may not.
+    expect(await view(checker, edited.value.request.id)).toMatchObject({
+      ok: true,
+      value: { subjectKind: 'identity.platform-role', subjectLabel: roleName },
+    });
+    expect(await view(reviewer, edited.value.request.id)).toMatchObject({
+      ok: true,
+      value: { subjectKind: 'identity.platform-role', subjectLabel: null },
+    });
   });
 
   it('keeps nothing of an enabling or a role edit without a note: no write, audit row or event', async () => {

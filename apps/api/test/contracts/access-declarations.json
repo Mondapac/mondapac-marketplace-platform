@@ -335,6 +335,11 @@
   },
   { "name": "customers.read-exclusive-seller", "rule": "system" },
   {
+    "name": "customers.read-own-exclusive-seller",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
     "name": "customers.read-own-last-order",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
@@ -633,6 +638,31 @@
     "name": "lists.saved-filters-reorder",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "lists.seller-saved-filter-create",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-saved-filter-delete",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-saved-filter-update",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-saved-filters-list",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-saved-filters-reorder",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
   },
   {
     "name": "notifications.count-own-unread-notices",

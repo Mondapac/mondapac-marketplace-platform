@@ -129,6 +129,8 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
     taxInclusive: true,
     reservationLineId: 'rl-1',
     commissionRateBps: null,
+    commissionRateReason: 'standard',
+    exclusiveSeller: false,
     taxRateBps: null,
     taxAmount: null,
     taxCategoryCode: null,

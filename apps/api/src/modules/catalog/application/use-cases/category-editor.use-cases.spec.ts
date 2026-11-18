@@ -42,7 +42,13 @@ import { CategoryReorder } from './category-reorder.use-case';
 import { CategoryShow } from './category-show.use-case';
 import { CategoryDetailsReverter, CategoryLinksReverter } from '../catalogue-reverters';
 import { categoryDetailsValues } from '../catalogue-review';
-import { RecordingReview } from '../../../../../test/support/system-request-fakes';
+import { CategoryActionApplier, type CatalogueStructureDependencies } from '../catalogue-appliers';
+import { CategoryCreateReverter, CategoryReorderReverter } from '../catalogue-structure-reverters';
+import {
+  applied,
+  RecordingProposer,
+  RecordingReview,
+} from '../../../../../test/support/system-request-fakes';
 
 // The tree editor's use cases in memory (categories package C3a), on both Market fixtures: the
 // key, the admin population and the acting-as refusal; the closed input; the tree-version guard;
@@ -97,6 +103,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
   let unitOpen: boolean;
   let claimInsideUnit: boolean;
   let review: RecordingReview;
+  let proposer: RecordingProposer;
 
   const check: AuthorisationCheck = {
     check: (_context, declaration) =>
@@ -181,7 +188,10 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
 
   const build = () => {
     const gate = createUseCaseGate(markets, check);
-    const deps: CategoryWriteDependencies = {
+    const deps: CategoryWriteDependencies & {
+      readonly review: RecordingReview;
+      readonly proposer: RecordingProposer;
+    } = {
       unitOfWork,
       store,
       categories: tree as unknown as PlatformCategoryRepository,
@@ -193,6 +203,8 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
       clock,
       ids,
       contentFilter: new ContentFilter(markets),
+      review,
+      proposer,
     };
     return {
       create: new CategoryCreate(gate, deps),
@@ -202,6 +214,8 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
       show: new CategoryShow(gate, deps),
       slug: new CategoryChangeSlug(gate, deps),
       discard: new CategoryDiscard(gate, deps),
+      // The appliers and reverters read only what these use cases do, plus the authorisation.
+      structure: { ...deps, authorisation: check } as unknown as CatalogueStructureDependencies,
     };
   };
 
@@ -243,6 +257,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
     unitOpen = false;
     claimInsideUnit = false;
     review = new RecordingReview();
+    proposer = new RecordingProposer(review);
   });
 
   describe('access', () => {
@@ -1298,7 +1313,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
         categoryId: cat(1),
         treeVersion: 1,
       });
-      expect(answer.ok && answer.value.category).toMatchObject({ status: 'archived' });
+      expect(answer.ok && applied(answer.value).category).toMatchObject({ status: 'archived' });
       expect(store.revisions.map((r) => r.kind)).toEqual(['discarded']);
       expect(audits.map((a) => a.action)).toEqual(['catalog.platform-category.discarded']);
     });
@@ -1316,6 +1331,264 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
       store.facts.set(cat(3), { everShown: false, productRevisions: 2 });
       expect(await run(3)).toEqual(err({ code: 'category.not-discardable' }));
       expect(tree.version).toBe(1);
+    });
+  });
+  describe('system requests (area catalogue, owner decision of 18 Nov 2026)', () => {
+    const note = 'Needed for the new range.';
+    const requestOf = (request: { readonly id: unknown } | null | undefined) =>
+      (request?.id ?? '01990000-0000-7000-8000-000000005eff') as never;
+
+    describe('create: applied now, reviewed after', () => {
+      it('opens a review with the new category, and needs a note', async () => {
+        review.review('catalogue');
+        const body = { slug: 'rice', texts: text('Rice'), treeVersion: 1 };
+        expect(await build().create.execute(context(), body)).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] }),
+        );
+        expect(store.rows.size).toBe(0);
+        const answer = await build().create.execute(context(), { ...body, note });
+        expect(answer.ok && answer.value.request).toMatchObject({ number: 1 });
+        expect(review.opened).toHaveLength(1);
+        expect(review.opened[0]).toMatchObject({
+          area: 'catalogue',
+          subjectKind: 'catalog.category-create',
+          before: { exists: false },
+          after: { exists: true, slug: 'rice', parentId: null },
+          note,
+        });
+      });
+
+      it('opens nothing where the area is off', async () => {
+        const answer = await build().create.execute(context(), {
+          slug: 'rice',
+          texts: text('Rice'),
+          treeVersion: 1,
+        });
+        expect(answer.ok && answer.value.request).toBeNull();
+        expect(review.opened).toEqual([]);
+      });
+
+      it('a reject discards it when it was never shown, and hides it when it went live', async () => {
+        review.review('catalogue');
+        const uc = build();
+        const answer = await uc.create.execute(context(), {
+          slug: 'rice',
+          texts: text('Rice'),
+          treeVersion: 1,
+          note,
+        });
+        if (!answer.ok) throw new Error(answer.error.code);
+        const id = answer.value.category.id;
+        const opened = review.opened[0]!;
+        const reverter = new CategoryCreateReverter(uc.structure);
+        const request = {
+          requestId: requestOf(answer.value.request),
+          subjectRef: opened.subjectRef,
+          before: opened.before,
+          after: opened.after,
+        };
+        expect(await reverter.check(context())).toBe('ok');
+        expect(await reverter.revert(context(), request)).toBe('reverted');
+        expect(store.rows.get(id)).toMatchObject({ status: 'archived' });
+        expect(audits.at(-1)).toMatchObject({
+          action: 'catalog.platform-category.discarded',
+          after: { requestId: request.requestId },
+        });
+
+        // Went live since: the reject hides it instead.
+        store.put(stored(5, null, { status: 'active' }));
+        store.facts.set(cat(5), { everShown: true, productRevisions: 0 });
+        expect(await reverter.revert(context(), { ...request, subjectRef: cat(5) })).toBe(
+          'reverted',
+        );
+        expect(store.rows.get(cat(5))).toMatchObject({ status: 'hidden' });
+      });
+
+      it('a reject of a category gone since answers gone and writes nothing', async () => {
+        const reverter = new CategoryCreateReverter(build().structure);
+        const before = audits.length;
+        expect(
+          await reverter.revert(context(), {
+            requestId: requestOf(null),
+            subjectRef: cat(9),
+            before: { exists: false },
+            after: { exists: true, slug: 'c9', parentId: null },
+          }),
+        ).toBe('gone');
+        expect(audits).toHaveLength(before);
+      });
+    });
+
+    describe('reorder: applied now, reviewed after', () => {
+      it('opens a review with both places, and a reject puts it back', async () => {
+        store.put(stored(1, null, { position: 0 }));
+        store.put(stored(2, null, { position: 1 }));
+        review.review('catalogue');
+        const uc = build();
+        const answer = await uc.reorder.execute(context(), {
+          categoryId: cat(2),
+          direction: 'up',
+          treeVersion: 1,
+          note,
+        });
+        if (!answer.ok) throw new Error(answer.error.code);
+        expect(answer.value.request).toMatchObject({ number: 1 });
+        const opened = review.opened[0]!;
+        expect(opened).toMatchObject({
+          subjectKind: 'catalog.category-reorder',
+          subjectRef: cat(2),
+          before: { position: 1, neighbourId: cat(1), neighbourPosition: 0 },
+          after: { position: 0, neighbourId: cat(1), neighbourPosition: 1 },
+        });
+        const reverter = new CategoryReorderReverter(uc.structure);
+        const request = {
+          requestId: requestOf(answer.value.request),
+          subjectRef: opened.subjectRef,
+          before: opened.before,
+          after: opened.after,
+        };
+        expect(await reverter.check(context())).toBe('ok');
+        expect(await reverter.revert(context(), request)).toBe('reverted');
+        expect(store.rows.get(cat(2))!.position).toBe(1);
+        expect(store.rows.get(cat(1))!.position).toBe(0);
+        // Back in place: a second reject finds it changed.
+        expect(await reverter.revert(context(), request)).toBe('changed-since');
+      });
+
+      it('needs a note where the area is reviewed, and moves nothing without one', async () => {
+        store.put(stored(1, null, { position: 0 }));
+        store.put(stored(2, null, { position: 1 }));
+        review.review('catalogue');
+        expect(
+          await build().reorder.execute(context(), {
+            categoryId: cat(2),
+            direction: 'up',
+            treeVersion: 1,
+          }),
+        ).toEqual(err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] }));
+        expect(store.rows.get(cat(2))!.position).toBe(1);
+        expect(tree.version).toBe(1);
+      });
+    });
+
+    describe('discard: waits for approval', () => {
+      const discardable = () => store.put(stored(1, null, { status: 'hidden' }));
+
+      it('files a proposal and changes nothing, then the approval discards it', async () => {
+        discardable();
+        review.review('catalogue');
+        const uc = build();
+        const answer = await uc.discard.execute(context(), {
+          categoryId: cat(1),
+          treeVersion: 1,
+          note,
+        });
+        if (!answer.ok) throw new Error(answer.error.code);
+        expect(answer.value).toEqual({
+          request: <unknown>expect.objectContaining({ number: 901 }),
+        });
+        expect(store.rows.get(cat(1))).toMatchObject({ status: 'hidden' });
+        expect(store.revisions).toEqual([]);
+        expect(audits).toEqual([]);
+        expect(tree.version).toBe(1);
+        const proposal = proposer.proposed[0]!;
+        expect(proposal).toMatchObject({
+          area: 'catalogue',
+          subjectKind: 'catalog.category-discard',
+          subjectRef: cat(1),
+          before: { status: 'hidden', version: 1, parentId: null },
+          after: { action: 'discard' },
+          note,
+        });
+
+        const applier = new CategoryActionApplier(uc.structure, ['discard']);
+        const request = {
+          requestId: requestOf('request' in answer.value ? answer.value.request : null),
+          subjectRef: proposal.subjectRef,
+          before: proposal.before,
+          after: proposal.after,
+        };
+        expect(await applier.check(context(), request)).toBe('ok');
+        expect(await applier.apply(context(), request)).toBe('applied');
+        expect(store.rows.get(cat(1))).toMatchObject({ status: 'archived' });
+        expect(audits.map((a) => a.action)).toEqual(['catalog.platform-category.discarded']);
+        expect(audits[0]).toMatchObject({ after: { requestId: request.requestId } });
+      });
+
+      it('answers changed-since when the category changed after the proposal', async () => {
+        discardable();
+        review.review('catalogue');
+        const uc = build();
+        await uc.discard.execute(context(), { categoryId: cat(1), treeVersion: 1, note });
+        const proposal = proposer.proposed[0]!;
+        store.put(stored(1, null, { status: 'hidden', version: 2 }));
+        const applier = new CategoryActionApplier(uc.structure, ['discard']);
+        const request = {
+          requestId: requestOf(null),
+          subjectRef: proposal.subjectRef,
+          before: proposal.before,
+          after: proposal.after,
+        };
+        expect(await applier.apply(context(), request)).toBe('changed-since');
+        expect(store.rows.get(cat(1))).toMatchObject({ status: 'hidden' });
+        expect(audits).toEqual([]);
+        expect(await applier.apply(context(), { ...request, subjectRef: cat(7) })).toBe('gone');
+      });
+
+      it('refuses a second proposal of the same category while one waits', async () => {
+        discardable();
+        review.review('catalogue');
+        const uc = build();
+        await uc.discard.execute(context(), { categoryId: cat(1), treeVersion: 1, note });
+        expect(
+          await uc.discard.execute(context(), { categoryId: cat(1), treeVersion: 1, note }),
+        ).toEqual(err({ code: 'system-requests.already-pending', pendingNumber: 901 }));
+      });
+
+      it('a reject changes nothing: the category stays as it was', async () => {
+        discardable();
+        review.review('catalogue');
+        await build().discard.execute(context(), { categoryId: cat(1), treeVersion: 1, note });
+        proposer.settle('catalog.category-discard', cat(1));
+        expect(store.rows.get(cat(1))).toMatchObject({ status: 'hidden', version: 1 });
+        expect(store.revisions).toEqual([]);
+      });
+
+      it('applies at once where the area is off', async () => {
+        discardable();
+        const answer = await build().discard.execute(context(), {
+          categoryId: cat(1),
+          treeVersion: 1,
+        });
+        expect(answer.ok && applied(answer.value).category).toMatchObject({ status: 'archived' });
+        expect(proposer.proposed).toEqual([]);
+      });
+
+      it('the approval fails closed for an approver without the key, and an applier of another kind', async () => {
+        discardable();
+        review.review('catalogue');
+        const uc = build();
+        await uc.discard.execute(context(), { categoryId: cat(1), treeVersion: 1, note });
+        const proposal = proposer.proposed[0]!;
+        const request = {
+          requestId: requestOf(null),
+          subjectRef: proposal.subjectRef,
+          before: proposal.before,
+          after: proposal.after,
+        };
+        allow = false;
+        expect(
+          await new CategoryActionApplier(uc.structure, ['discard']).check(context(), request),
+        ).toBe('not-permitted');
+        allow = true;
+        expect(
+          await new CategoryActionApplier(uc.structure, ['merge', 'archive']).apply(
+            context(),
+            request,
+          ),
+        ).toBe('gone');
+        expect(store.rows.get(cat(1))).toMatchObject({ status: 'hidden' });
+      });
     });
   });
 });

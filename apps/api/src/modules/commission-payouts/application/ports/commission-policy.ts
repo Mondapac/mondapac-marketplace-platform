@@ -1,4 +1,5 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
+import type { ExclusiveCommissionRule } from '../../domain/commission';
 
 /** The Market's commission settings (Market config `commissionPayouts`). */
 export interface CommissionSettings {
@@ -10,6 +11,8 @@ export interface CommissionSettings {
    */
   readonly provisionalTaxRateBps: number;
   readonly currency: string;
+  /** The lower commission for a seller's exclusive customer; null: none in this Market. */
+  readonly exclusiveCustomer: ExclusiveCommissionRule | null;
 }
 
 export interface CommissionPolicy {
