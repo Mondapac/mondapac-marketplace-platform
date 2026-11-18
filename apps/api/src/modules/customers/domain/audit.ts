@@ -275,6 +275,10 @@ export const CUSTOMER_SECTIONS = [
   'saved-items',
   'cart-reminders',
   'cart-additions',
+  'reviews',
+  'seller-ratings',
+  'helpful-votes',
+  'review-reports',
   'consent-history',
   'assistant-conversations',
 ] as const;

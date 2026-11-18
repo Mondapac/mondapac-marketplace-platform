@@ -504,8 +504,11 @@ describe('seller import page', () => {
     serve(view({ errors: 0, ready: 120, errorLines: [] }));
     mount();
     const steps = await screen.findByRole('list', { name: 'Import steps' });
-    expect(within(steps).getByText('Check file').closest('li')?.getAttribute('aria-current')).toBe(
-      'step',
+    // The steps bar shows while the import is still loading (step 1), so wait for the read.
+    await waitFor(() =>
+      expect(
+        within(steps).getByText('Check file').closest('li')?.getAttribute('aria-current'),
+      ).toBe('step'),
     );
   });
 });
