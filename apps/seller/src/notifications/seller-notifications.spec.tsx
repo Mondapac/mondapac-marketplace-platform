@@ -210,7 +210,10 @@ describe('SellerNotifications drawer', () => {
     counts = [{ unread: 1, newest: notice(NEW) }];
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 1 unread' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Mark all as read' }));
+    const markAll = await screen.findByRole('button', { name: 'Mark all as read' });
+    // The button stays disabled until the list has loaded; a click before that is ignored.
+    await waitFor(() => expect(markAll.hasAttribute('disabled')).toBe(false));
+    fireEvent.click(markAll);
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(
         'POST',
