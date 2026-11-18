@@ -64,6 +64,8 @@ describe('guardDraft', () => {
       'It is h.a.l.a.l rice.',
       'It is plant based.',
       'Great taste 美味.',
+      'It is \u04BB\u0430\u04CF\u0430\u04CF rice.',
+      'It is \u04BB\u0430\u0430\u0430\u04CF\u0430\u04CF rice.',
     ]) {
       expect(sentenceVerdict(text, facts)).toBe('certification');
     }
