@@ -97,6 +97,8 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'GET wallet/admin/settings',
         'PUT wallet/admin/settings',
         'GET wallet/admin/customers/:id',
+        // Customers phase 2b, part A: the promotions a customer used.
+        'GET promotions/admin/customers/:id/usages',
         'POST wallet/admin/credits',
         'GET wallet/admin/credit-requests',
         'POST wallet/admin/credit-requests/:id/approve',

@@ -553,6 +553,9 @@ export function CustomerPage({
         ) : (
           <CustomerMoney
             customer={customer}
+            adminAccountId={adminAccountId}
+            marketId={marketId}
+            csrfToken={csrfToken}
             keys={keys}
             zone={zone}
             paging={paging}

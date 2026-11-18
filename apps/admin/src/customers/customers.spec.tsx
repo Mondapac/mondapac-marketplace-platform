@@ -326,7 +326,16 @@ function routePage(answer: ApiResult<unknown> = ok(overview())) {
         }) as ApiResult<never>,
       );
     if (path === `ordering/admin/customers/${ID}/refunds`)
-      return Promise.resolve(ok({ refunds: [] }) as ApiResult<never>);
+      return Promise.resolve(
+        ok({
+          items: [],
+          page: 1,
+          pageSize: 25,
+          paging: 'pages',
+          total: 0,
+          hasNext: false,
+        }) as ApiResult<never>,
+      );
     return Promise.resolve(refused(404, 'unknown'));
   });
 }

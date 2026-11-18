@@ -1,12 +1,10 @@
 'use client';
 
 import {
-  Badge,
   Banner,
   Button,
   Card,
   EmptyState,
-  ListPagination,
   SkeletonRows,
   SuperTable,
   type SuperColumn,
@@ -14,18 +12,16 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
-import { numberFormat } from '../shared/intl.ts';
-import { orderHref } from '../orders/order-href.ts';
-import { shortId } from '../shared/short-id.ts';
 import { formatMinor } from '../wallet/money.ts';
+import { CustomerPromotionUsages } from './customer-money-usages.tsx';
 import { dayOf } from './format.ts';
+import { MoneyList } from './money-list.tsx';
+import { DISPUTES_SPEC, PAYMENTS_SPEC, PAYMENTS_VIEW, REFUNDS_SPEC } from './money-lists.tsx';
 import {
   ORDERS_VIEW,
   PROMOTIONS_VIEW,
-  REFUNDS_CAP,
   WALLET_VIEW,
   type CustomerOverview,
-  type CustomerRefunds,
   type PromotionCredits,
   type WalletHistory,
 } from './page-types.ts';
@@ -35,7 +31,6 @@ type Load<T> =
   | { readonly state: 'failed' }
   | { readonly state: 'ready'; readonly body: T };
 
-const REFUND_PAGE = 25;
 const WALLET_PAGE = 20;
 
 /** One read of an owning module, with Retry; a failed section leaves the others working. */
@@ -95,9 +90,9 @@ function Section({
 
 /**
  * The Money tab of the customer page: three figures (Spent and Refunded from the page, the wallet
- * balance from wallet), then the refunds with their credit notes (ordering), the wallet journal
- * (wallet) and the promotion credits (promotions), each under its own key and loaded on its own.
- * Payments per order, chargebacks and code usage have no read yet (phase 2 backend).
+ * balance from wallet), then the payments and disputes (payments) and the refunds with their
+ * credit notes (ordering) as super lists, the wallet journal (wallet), the promotion credits and
+ * the promotion usages (promotions), each under its own key and loaded on its own.
  */
 export function CustomerMoney({
   customer,
@@ -105,9 +100,15 @@ export function CustomerMoney({
   zone,
   paging,
   walletBalance,
+  adminAccountId,
+  marketId,
+  csrfToken,
 }: {
   readonly customer: CustomerOverview;
   readonly keys: ReadonlySet<string>;
+  readonly adminAccountId: string;
+  readonly marketId: string;
+  readonly csrfToken: string;
   readonly zone: string;
   readonly paging: 'pages' | 'prev-next';
   /** The wallet's available balance, or null when it is not shown or could not be read. */
@@ -117,14 +118,9 @@ export function CustomerMoney({
   const tp = useTranslations('customers.page');
   const locale = useLocale();
   const id = encodeURIComponent(customer.accountId);
-  const number = (value: number) => numberFormat(locale, {}).format(value);
   const money = (minor: string, currency: string | null) =>
     currency === null ? '—' : formatMinor(minor, currency, locale);
 
-  const refunds = useRead<CustomerRefunds>(
-    keys.has(ORDERS_VIEW) ? `ordering/admin/customers/${id}/refunds` : null,
-  );
-  const [refundPage, setRefundPage] = useState(1);
   const [walletCursors, setWalletCursors] = useState<readonly (string | null)[]>([null]);
   const walletCursor = walletCursors[walletCursors.length - 1] ?? null;
   const wallet = useRead<WalletHistory>(
@@ -155,63 +151,6 @@ export function CustomerMoney({
           },
         ]
       : []),
-  ];
-
-  type RefundRow = CustomerRefunds['refunds'][number];
-  const refundColumns: SuperColumn<RefundRow>[] = [
-    {
-      id: 'order',
-      header: t('refunds.col.order'),
-      primary: true,
-      cell: (row) => (
-        <a
-          className="font-medium text-link underline wrap-anywhere"
-          href={orderHref(row.orderId, { accountId: customer.accountId, tab: 'money' })}
-          title={row.orderId}
-        >
-          {t('refunds.order', { id: shortId(row.orderId) })}
-        </a>
-      ),
-    },
-    {
-      id: 'state',
-      header: t('refunds.col.state'),
-      corner: true,
-      cell: (row) => (
-        <Badge
-          tone={
-            row.state === 'succeeded'
-              ? 'success'
-              : row.state === 'failed'
-                ? 'critical'
-                : 'attention'
-          }
-        >
-          {t.has(`refunds.state.${row.state}`) ? t(`refunds.state.${row.state}`) : row.state}
-        </Badge>
-      ),
-    },
-    {
-      id: 'amount',
-      header: t('refunds.col.amount'),
-      numeric: true,
-      cell: (row) => formatMinor(row.amount.amount, row.amount.currency, locale),
-    },
-    {
-      id: 'requested',
-      header: t('refunds.col.requested'),
-      cell: (row) => dayOf(row.requestedAt, locale, zone),
-    },
-    {
-      id: 'credit-note',
-      header: t('refunds.col.credit-note'),
-      cell: (row) =>
-        row.creditNoteId === null ? (
-          <span className="text-fg-muted">{t('refunds.no-credit-note')}</span>
-        ) : (
-          <span className="font-mono text-xs wrap-anywhere">{row.creditNoteId}</span>
-        ),
-    },
   ];
 
   type WalletRow = WalletHistory['entries'][number];
@@ -278,16 +217,6 @@ export function CustomerMoney({
     },
   ];
 
-  const pagingLabels = {
-    rowsPerPage: tp('paging.rows-per-page'),
-    previous: tp('paging.previous'),
-    next: tp('paging.next'),
-    pages: tp('paging.pages'),
-    page: (page: number) => tp('paging.page', { page }),
-    narrowTitle: tp('paging.narrow-title'),
-    narrowBody: tp('paging.narrow-body'),
-  };
-
   return (
     <div className="flex flex-col gap-4">
       <ul aria-label={t('figures')} className="grid gap-3 sm:grid-cols-3">
@@ -301,49 +230,41 @@ export function CustomerMoney({
           </li>
         ))}
       </ul>
+      {keys.has(PAYMENTS_VIEW) ? (
+        <MoneyList
+          spec={PAYMENTS_SPEC}
+          accountId={customer.accountId}
+          adminAccountId={adminAccountId}
+          marketId={marketId}
+          keys={keys}
+          csrfToken={csrfToken}
+          zone={zone}
+          paging={paging}
+        />
+      ) : null}
+      {keys.has(PAYMENTS_VIEW) ? (
+        <MoneyList
+          spec={DISPUTES_SPEC}
+          accountId={customer.accountId}
+          adminAccountId={adminAccountId}
+          marketId={marketId}
+          keys={keys}
+          csrfToken={csrfToken}
+          zone={zone}
+          paging={paging}
+        />
+      ) : null}
       {keys.has(ORDERS_VIEW) ? (
-        <Section title={t('refunds.title')} load={refunds.load} retry={() => void refunds.retry()}>
-          {() => {
-            if (refunds.load.state !== 'ready') return null;
-            const all = refunds.load.body.refunds;
-            const rows = all.slice((refundPage - 1) * REFUND_PAGE, refundPage * REFUND_PAGE);
-            return (
-              <div className="flex flex-col gap-3">
-                <SuperTable
-                  caption={t('refunds.title')}
-                  rows={rows}
-                  rowId={(row) => row.refundId}
-                  rowName={(row) => row.orderId}
-                  columns={refundColumns}
-                  empty={<EmptyState size="compact" icon="receipt" title={t('refunds.empty')} />}
-                />
-                {all.length > REFUND_PAGE ? (
-                  <ListPagination
-                    mode={paging}
-                    page={refundPage}
-                    pageSize={REFUND_PAGE}
-                    pageSizes={[REFUND_PAGE]}
-                    total={all.length}
-                    maxRows={REFUNDS_CAP}
-                    range={tp('range', {
-                      from: number((refundPage - 1) * REFUND_PAGE + 1),
-                      to: number((refundPage - 1) * REFUND_PAGE + rows.length),
-                      total: number(all.length),
-                    })}
-                    labels={pagingLabels}
-                    onPage={setRefundPage}
-                    onPageSize={() => undefined}
-                  />
-                ) : null}
-                {all.length >= REFUNDS_CAP ? (
-                  <p className="text-sm text-fg-muted">
-                    {t('refunds.capped', { max: REFUNDS_CAP })}
-                  </p>
-                ) : null}
-              </div>
-            );
-          }}
-        </Section>
+        <MoneyList
+          spec={REFUNDS_SPEC}
+          accountId={customer.accountId}
+          adminAccountId={adminAccountId}
+          marketId={marketId}
+          keys={keys}
+          csrfToken={csrfToken}
+          zone={zone}
+          paging={paging}
+        />
       ) : null}
       {keys.has(WALLET_VIEW) ? (
         <Section title={t('wallet.title')} load={wallet.load} retry={() => void wallet.retry()}>
@@ -418,7 +339,9 @@ export function CustomerMoney({
           }
         </Section>
       ) : null}
-      <p className="text-sm text-fg-muted">{t('not-yet')}</p>
+      {keys.has(PROMOTIONS_VIEW) ? (
+        <CustomerPromotionUsages accountId={customer.accountId} zone={zone} />
+      ) : null}
     </div>
   );
 }

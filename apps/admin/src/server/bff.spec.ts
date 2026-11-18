@@ -1133,6 +1133,57 @@ describe('relay of the customers list and customer page', () => {
     expect(other.status).toBe(413);
   });
 
+  describe('customers phase 2b, part A: payments, disputes, refunds and promotion usages', () => {
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it.each([
+      ['POST', `payments/admin/customers/${ID}/payments`],
+      ['POST', `payments/admin/customers/${ID}/payments/export`],
+      ['POST', `payments/admin/customers/${ID}/disputes`],
+      ['POST', `payments/admin/customers/${ID}/disputes/export`],
+      ['POST', `ordering/admin/customers/${ID}/refunds`],
+      ['POST', `ordering/admin/customers/${ID}/refunds/export`],
+      ['GET', `promotions/admin/customers/${ID}/usages?limit=50&cursor=abc.1`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['GET', `payments/admin/customers/${ID}/payments`],
+      ['GET', `payments/admin/customers/${ID}/disputes`],
+      ['PUT', `payments/admin/customers/${ID}/payments`],
+      ['POST', `payments/admin/customers/${ID}/payments/purge`],
+      ['POST', `promotions/admin/customers/${ID}/usages`],
+      ['DELETE', `ordering/admin/customers/${ID}/refunds`],
+      ['POST', `payments/admin/customers/not-a-uuid/payments`],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('forwards only the usages paging keys', async () => {
+      const upstream = upstreamOk();
+      const target = `promotions/admin/customers/${ID}/usages?limit=50&cursor=abc.1&status=x`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/promotions/admin/customers/${ID}/usages?limit=50&cursor=abc.1`,
+      );
+    });
+  });
+
   describe('customers phase 2a: groups, notes, activity and the name edit', () => {
     const G = '0190a000-0000-7000-8000-0000000000b1';
     const send = (method: string, target: string, body = '{}') =>

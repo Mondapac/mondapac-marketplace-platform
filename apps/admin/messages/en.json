@@ -5566,7 +5566,8 @@
           "lastOrderFrom": "Last order",
           "ordersMin": "Orders",
           "spentMin": "Spent",
-          "group": "Group"
+          "group": "Group",
+          "orderNumber": "Order number"
         },
         "chip": {
           "status": "Status",
@@ -5579,7 +5580,8 @@
           "ordersMax": "Orders at most",
           "spentMin": "Spent at least",
           "spentMax": "Spent at most",
-          "group": "Group"
+          "group": "Group",
+          "orderNumber": "Order"
         },
         "status": {
           "active": "Active",
@@ -5598,7 +5600,11 @@
         },
         "minor-units": "{value, number} in minor units",
         "group-archived": "{name} (archived)",
-        "group-unknown": "A group you can no longer see"
+        "group-unknown": "A group you can no longer see",
+        "order-number": {
+          "help": "Finds the customer who placed this order.",
+          "error": "Enter the order ID, up to 64 characters."
+        }
       },
       "sort": {
         "button": "Sort",
@@ -5855,25 +5861,6 @@
           "refunded": "Refunded",
           "wallet": "Wallet balance"
         },
-        "refunds": {
-          "title": "Refunds and credit notes",
-          "empty": "No refunds",
-          "order": "Order {id}",
-          "col": {
-            "order": "Order",
-            "state": "Status",
-            "amount": "Amount",
-            "requested": "Requested",
-            "credit-note": "Credit note"
-          },
-          "state": {
-            "pending": "Pending",
-            "succeeded": "Refunded",
-            "failed": "Failed"
-          },
-          "no-credit-note": "None",
-          "capped": "The newest {max} refunds are shown. Older ones are on each order's page."
-        },
         "wallet": {
           "title": "Wallet history",
           "empty": "No wallet activity",
@@ -5922,7 +5909,250 @@
           },
           "capped": "The newest {max} promotion credits are shown."
         },
-        "not-yet": "Payments per order, chargebacks and discount code usage are not listed here yet."
+        "list": {
+          "filter": {
+            "button": "Filter",
+            "title": "Filter",
+            "when": "Date",
+            "from": "From",
+            "to": "To",
+            "apply": "Apply",
+            "cancel": "Cancel",
+            "error": {
+              "day": "Enter a date.",
+              "range": "The end comes before the start."
+            }
+          },
+          "chip": {
+            "from": "From {day}",
+            "to": "To {day}",
+            "choice": "{field}: {value}"
+          },
+          "sorted": "Sorted by {field}, {order}",
+          "match": "{count, plural, one {# row matches} other {# rows match}}",
+          "retry": "Retry",
+          "loading": "Loading {section}…",
+          "range-open": "{from}–{to}",
+          "row": {
+            "open": "Open order",
+            "menu": "Actions for {name}"
+          },
+          "error": {
+            "invalid": "This filter cannot be used. Clear it and try again.",
+            "unavailable": "This list could not be loaded.",
+            "denied": "You don’t have access to this list."
+          },
+          "export": {
+            "button": "Export…",
+            "body": "The file has every row of this filter, at most 10,000. You confirm with a two-step code, and the export is recorded.",
+            "pending": "Preparing the file…",
+            "error": {
+              "too-large": "Up to {max, number} rows can be exported at once; this filter has {total, number}. Narrow it first.",
+              "enrol": "Set up two-step verification on your profile to export.",
+              "denied": "You don’t have access to export.",
+              "unavailable": "The file could not be made. Try again.",
+              "cancelled": "Export cancelled."
+            }
+          }
+        },
+        "payments": {
+          "title": "Payments",
+          "subtitle": "The payment of each order this customer placed.",
+          "views": "Payment state",
+          "caption": "Customer payments",
+          "empty": "No payments yet.",
+          "empty-filtered": "No payments match.",
+          "order": "Order {id}",
+          "paid": "Paid, before refunds: {amount}",
+          "view": {
+            "all": "All",
+            "captured": "Paid",
+            "authorised": "Authorised",
+            "voided": "Voided",
+            "none": "No payment"
+          },
+          "col": {
+            "order": "Order",
+            "amount": "Amount",
+            "payment-state": "Payment",
+            "status": "Order status",
+            "payment-id": "Stripe payment ID",
+            "created": "Placed",
+            "confirmed": "Confirmed"
+          },
+          "sort": {
+            "created": "Placed",
+            "amount": "Amount"
+          },
+          "payment-state": {
+            "none": "No payment",
+            "authorised": "Authorised",
+            "captured": "Paid",
+            "voided": "Voided"
+          },
+          "status": {
+            "pending-payment": "Awaiting payment",
+            "confirmed": "Confirmed",
+            "cancelled": "Cancelled"
+          },
+          "choice": {
+            "name": "Order status",
+            "value": {
+              "pending-payment": "Awaiting payment",
+              "confirmed": "Confirmed",
+              "cancelled": "Cancelled"
+            }
+          },
+          "export": {
+            "title": "Export payments",
+            "done": "Payments exported."
+          }
+        },
+        "disputes": {
+          "title": "Disputes",
+          "subtitle": "Chargebacks and inquiries on this customer’s orders.",
+          "views": "Dispute state",
+          "caption": "Customer disputes",
+          "empty": "No disputes.",
+          "empty-filtered": "No disputes match.",
+          "order": "Order {id}",
+          "view": {
+            "all": "All",
+            "open": "Open",
+            "won": "Won",
+            "lost": "Lost",
+            "closed": "Closed"
+          },
+          "col": {
+            "order": "Order",
+            "amount": "Amount",
+            "status": "State",
+            "reason": "Reason",
+            "opened": "Opened",
+            "due": "Evidence due by",
+            "outcome": "Outcome"
+          },
+          "sort": {
+            "opened": "Opened",
+            "amount": "Amount",
+            "due": "Evidence due by"
+          },
+          "status": {
+            "warning_needs_response": "Inquiry: needs response",
+            "warning_under_review": "Inquiry: under review",
+            "warning_closed": "Inquiry: closed",
+            "needs_response": "Needs response",
+            "under_review": "Under review",
+            "won": "Won",
+            "lost": "Lost",
+            "prevented": "Prevented"
+          },
+          "reason": {
+            "bank_cannot_process": "Bank cannot process",
+            "check_returned": "Check returned",
+            "credit_not_processed": "Credit not processed",
+            "customer_initiated": "Customer initiated",
+            "debit_not_authorized": "Debit not authorised",
+            "duplicate": "Duplicate",
+            "fraudulent": "Fraudulent",
+            "general": "General",
+            "incorrect_account_details": "Incorrect account details",
+            "insufficient_funds": "Insufficient funds",
+            "noncompliant": "Non-compliant",
+            "product_not_received": "Product not received",
+            "product_unacceptable": "Product unacceptable",
+            "subscription_canceled": "Subscription cancelled",
+            "unrecognized": "Unrecognised",
+            "other": "Other"
+          },
+          "outcome": {
+            "won": "Won",
+            "lost": "Lost"
+          },
+          "export": {
+            "title": "Export disputes",
+            "done": "Disputes exported."
+          }
+        },
+        "refunds": {
+          "title": "Refunds and credit notes",
+          "subtitle": "Refunds on this customer’s orders.",
+          "views": "Refund state",
+          "caption": "Customer refunds",
+          "empty": "No refunds",
+          "empty-filtered": "No refunds match.",
+          "order": "Order {id}",
+          "no-credit-note": "None",
+          "view": {
+            "all": "All",
+            "succeeded": "Refunded",
+            "pending": "Pending",
+            "failed": "Failed"
+          },
+          "col": {
+            "order": "Order",
+            "amount": "Amount",
+            "state": "Status",
+            "reason": "Reason",
+            "requested": "Requested",
+            "settled": "Settled",
+            "credit-note": "Credit note"
+          },
+          "sort": {
+            "requested": "Requested",
+            "amount": "Amount"
+          },
+          "state": {
+            "pending": "Pending",
+            "succeeded": "Refunded",
+            "failed": "Failed"
+          },
+          "choice": {
+            "name": "Reason",
+            "value": {
+              "not-received": "Not received",
+              "damaged": "Arrived damaged",
+              "wrong-item": "Wrong item",
+              "not-as-described": "Not as described",
+              "seller-cancelled": "Seller cancelled",
+              "other": "Other",
+              "item-unavailable": "Item unavailable"
+            }
+          },
+          "export": {
+            "title": "Export refunds",
+            "done": "Refunds exported."
+          }
+        },
+        "usages": {
+          "title": "Promotions used",
+          "empty": "No promotions used yet.",
+          "order": "Order {id}",
+          "with-code": "with a code",
+          "load-more": "Load more",
+          "more-failed": "More rows could not be loaded.",
+          "col": {
+            "used": "Used",
+            "offer": "Promotion",
+            "amount": "Discount",
+            "status": "Status",
+            "order": "Order"
+          },
+          "kind": {
+            "PROMOTION": "Promotion",
+            "FIRST_ORDER": "First-order offer",
+            "FREE_SHIPPING": "Free shipping"
+          },
+          "status": {
+            "RESERVED": "Reserved",
+            "CONFIRMED": "Used",
+            "RELEASED": "Released"
+          },
+          "release": {
+            "ORDER_CANCELLED": "Order cancelled",
+            "ORDER_REFUNDED": "Order refunded"
+          }
+        }
       },
       "deleted": {
         "title": "Account deleted",

@@ -380,6 +380,14 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/customers/:id/notes',
     'customers/admin/customers/:id/activity',
     'customers/admin/customers/:id/activity/export',
+    // Customers phase 2b, part A (Money tab): one customer's payments, disputes and refunds as
+    // super lists read in the body, each with its export behind a fresh two-step code.
+    'payments/admin/customers/:id/payments',
+    'payments/admin/customers/:id/payments/export',
+    'payments/admin/customers/:id/disputes',
+    'payments/admin/customers/:id/disputes/export',
+    'ordering/admin/customers/:id/refunds',
+    'ordering/admin/customers/:id/refunds/export',
     'identity/admin/invitations/:id/resend',
     'identity/admin/invitations/:id/revoke',
     'identity/admin/sellers/:id/invitations',
@@ -700,6 +708,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // promotions (promotions; query: `limit`, `cursor`).
     'ordering/admin/customers/:id/refunds',
     'promotions/admin/customers/:id/credits',
+    // Customers phase 2b, part A: the promotions a customer used (promotions; query: `limit`,
+    // `cursor`).
+    'promotions/admin/customers/:id/usages',
     // One dispute case, read again after a decision (commission-payouts).
     'commission-payouts/admin/disputes/:id',
     // One buyer review for the moderator dialog (reviews).
@@ -1293,6 +1304,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'ordering/admin/orders': { accountId: UUID },
   'wallet/admin/customers/:id/history': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'promotions/admin/customers/:id/credits': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
+  // Customers phase 2b, part A.
+  'promotions/admin/customers/:id/usages': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'lists/admin/saved-filters': { listKey: SALES_LIST_KEY },
   'customers/admin/customers/:id/notes': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'commission-payouts/admin/payouts': {
@@ -1501,6 +1514,8 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/categories/:id/impact': ['action', 'targetId'],
   'wallet/admin/customers/:id/history': ['cursor', 'limit'],
   'promotions/admin/customers/:id/credits': ['limit', 'cursor'],
+  // Customers phase 2b, part A.
+  'promotions/admin/customers/:id/usages': ['limit', 'cursor'],
   // The older page of a certificate's history: the API's own entry id and a small page size.
   'certification/admin/seller-certificates/:id/history': ['beforeId', 'limit'],
   'customers/admin/customers/:id/notes': ['limit', 'cursor'],

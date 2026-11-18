@@ -57,22 +57,6 @@ export interface WalletHistory {
   readonly nextCursor: string | null;
 }
 
-/** GET ordering/admin/customers/:accountId/refunds (newest 100). */
-export interface CustomerRefunds {
-  readonly refunds: readonly {
-    readonly refundId: string;
-    readonly orderId: string;
-    readonly sellerOrderId: string;
-    readonly state: string;
-    readonly reason: string;
-    readonly amount: { readonly amount: string; readonly currency: string };
-    readonly requestedAt: string;
-    readonly settledAt: string | null;
-    readonly creditNoteId: string | null;
-  }[];
-}
-export const REFUNDS_CAP = 100;
-
 /** GET promotions/admin/customers/:id/credits. */
 export interface PromotionCredits {
   readonly items: readonly {

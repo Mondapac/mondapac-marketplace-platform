@@ -49,6 +49,7 @@ import {
   cleanColumns,
   defaultDirection,
   filterCount,
+  orderNumberOf,
   queryOfPayload,
   searchOf,
   selectorOf,
@@ -63,6 +64,7 @@ import {
   type Sort,
   type View,
 } from './list-types.ts';
+import { ORDERS_VIEW } from './page-types.ts';
 
 type Failure = 'denied' | 'invalid' | 'unavailable';
 
@@ -188,6 +190,9 @@ export function CustomersList({
         'customers/admin/list',
         {
           ...selectorOf(scoped(next)),
+          ...(orderNumberOf(next.orderNumber) === undefined
+            ? {}
+            : { orderNumber: orderNumberOf(next.orderNumber) }),
           sort: next.sort,
           direction: next.direction,
           page: next.page,
@@ -226,6 +231,7 @@ export function CustomersList({
   const selectionKey = JSON.stringify([
     query.view,
     query.q,
+    query.orderNumber,
     query.filters,
     query.sort,
     query.direction,
@@ -252,7 +258,9 @@ export function CustomersList({
   const counts = answer?.counts ?? null;
   const total = answer?.paging?.total ?? 0;
   // A search shorter than the minimum is not applied, so it neither filters nor can be saved.
-  const filtered = searchOf(query.q) !== undefined || filterCount(query.filters) > 0;
+  const orderNumber = orderNumberOf(query.orderNumber);
+  const filtered =
+    searchOf(query.q) !== undefined || filterCount(query.filters) > 0 || orderNumber !== undefined;
 
   const chipValue = (key: FilterKey, value: string): string => {
     if (key === 'status') return tc(`status.${value}`);
@@ -268,15 +276,28 @@ export function CustomersList({
     }
     return value;
   };
-  const chips = FILTER_KEYS.flatMap((key) => {
+  const canFindOrder = permissionKeys.includes(ORDERS_VIEW);
+  const filterChips = FILTER_KEYS.flatMap((key) => {
     const value = query.filters[key];
     if (value === undefined || (key === 'group' && fixedGroup !== null)) return [];
     const label = t('chip', { field: t(`filter.chip.${key}`), value: chipValue(key, value) });
-    return [{ key, label }];
+    return [{ key: key, label, patch: { filters: withoutFilter(key) } }];
   });
+  const chips = [
+    ...filterChips,
+    ...(orderNumber === undefined
+      ? []
+      : [
+          {
+            key: 'orderNumber',
+            label: t('chip', { field: t('filter.chip.orderNumber'), value: orderNumber }),
+            patch: { orderNumber: '' } as Partial<Query>,
+          },
+        ]),
+  ];
   const withoutFilter = (key: FilterKey): Filters =>
     Object.fromEntries(Object.entries(query.filters).filter(([name]) => name !== key));
-  const clearAll = () => list.reset({ q: '', filters: {} });
+  const clearAll = () => list.reset({ q: '', orderNumber: '', filters: {} });
 
   const summary = [
     t(`tab.${query.view}`),
@@ -520,12 +541,18 @@ export function CustomersList({
       }}
       filter={{
         label: t('filter.button'),
-        count: filterCount(query.filters),
+        count: filterCount(query.filters) + (orderNumber === undefined ? 0 : 1),
         panel: (close) => (
           <CustomersFilterPanel
             filters={query.filters}
             currency={currency}
             groups={fixedGroup === null ? groups : null}
+            {...(canFindOrder
+              ? {
+                  orderNumber: query.orderNumber,
+                  onApplyOrderNumber: (value: string) => list.change({ orderNumber: value }),
+                }
+              : {})}
             onApply={(filters) => list.change({ filters })}
             close={close}
           />
@@ -584,11 +611,11 @@ export function CustomersList({
                 key: chip.key,
                 label: chip.label,
                 removeLabel: t('chip-remove', { filter: chip.label }),
-                onRemove: () => list.change({ filters: withoutFilter(chip.key) }),
+                onRemove: () => list.change(chip.patch),
               })),
               clearAll: filtered ? { label: t('clear-all'), onClick: clearAll } : undefined,
               save:
-                saved === null || list.savedId !== null || !filtered
+                saved === null || list.savedId !== null || !filtered || orderNumber !== undefined
                   ? undefined
                   : { label: t('saved.save-link'), onClick: () => setDialog('save') },
               status: shortSearch
