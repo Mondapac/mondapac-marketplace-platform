@@ -1,9 +1,11 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { StepUpProofConsumer } from '../../../platform/authz';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import type { SecurityEvents } from '../../../platform/security-events/security-events';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { CustomerGroupUsageSource } from '../contracts/group-usage';
 import type { AddressCipher } from './ports/address-cipher';
+import type { AdminActionLimits } from './ports/admin-action-limits';
 import type { AddressRepository } from './ports/address.repository';
 import type { AdminDayZone } from './ports/admin-day-zone';
 import type { CustomerGroupRepository } from './ports/customer-groups.repository';
@@ -36,6 +38,10 @@ export interface CustomerManagementDependencies {
   /** The address book, for the customer page's Addresses section (phase 2b). */
   readonly addresses: Pick<AddressRepository, 'list' | 'find'>;
   readonly addressCipher: Pick<AddressCipher, 'open'>;
+  /** The per-admin limit of the address reveal (security review of #969, L3). */
+  readonly adminLimits: AdminActionLimits;
+  /** customers' own security event recorder: the bulk-reveal alert. */
+  readonly securityEvents: SecurityEvents;
   /** Who still names a group (a live promotion's segment); advisory, read when archiving. */
   readonly groupUsage: CustomerGroupUsageSource;
   /**
@@ -43,6 +49,11 @@ export interface CustomerManagementDependencies {
    * export and so the Overview's last five) leaves out the review kinds (security review L1).
    */
   readonly reviewEventsCheck: AccessProbe;
+  /**
+   * Whether the caller also holds `legal.customer-consent.view`: without it the timeline leaves
+   * out the consent kind (phase 2b, part 4).
+   */
+  readonly consentEventsCheck: AccessProbe;
   /** Bound at start by `CustomersReadModelsModule`; fails closed until then. */
   readonly identity: IdentityManagementPeer;
 }

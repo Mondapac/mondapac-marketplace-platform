@@ -1,10 +1,14 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { ConfirmSellerSecondFactor } from '../application/use-cases/confirm-seller-second-factor.use-case';
 import type { ContactEmailOf } from '../application/use-cases/contact-email-of.use-case';
 import type { OwnOwnerEmail } from '../application/use-cases/own-owner-email.use-case';
 import type { CustomerAccountOf } from '../application/use-cases/customer-account-of.use-case';
+import type { AdminRequestCustomerEmailChange } from '../application/use-cases/admin-request-customer-email-change.use-case';
+import type { AdminCancelCustomerEmailChange } from '../application/use-cases/admin-cancel-customer-email-change.use-case';
+import type { CustomerPendingEmailOf } from '../application/use-cases/customer-pending-email-of.use-case';
+import type { CancelCustomerEmailChangeForDeletion } from '../application/use-cases/cancel-customer-email-change-for-deletion.use-case';
 import type { SearchCustomerAccounts } from '../application/use-cases/search-customer-accounts.use-case';
 import type { CustomerAccountSummaries } from '../application/use-cases/customer-account-summaries.use-case';
 import type { CustomerShortNames } from '../application/use-cases/customer-short-names.use-case';
@@ -36,6 +40,9 @@ import type {
   CustomerAccountOfFailure,
   CustomerAccountRef,
   CustomerAccountSummary,
+  CustomerEmailChangeCancelFailure,
+  CustomerEmailChangeFailure,
+  CustomerPendingEmailChange,
   CustomerShortName,
   EndOtherCustomerSessionsFailure,
   IdentityFacade,
@@ -69,6 +76,10 @@ export interface IdentityFacadeUseCases {
   readonly customerDirectoryPage: CustomerDirectoryPage;
   readonly ownAccountTiedToSeller: OwnAccountTiedToSeller;
   readonly eraseCustomerAccount: EraseCustomerAccount;
+  readonly adminRequestCustomerEmailChange: AdminRequestCustomerEmailChange;
+  readonly adminCancelCustomerEmailChange: AdminCancelCustomerEmailChange;
+  readonly customerPendingEmailOf: CustomerPendingEmailOf;
+  readonly cancelCustomerEmailChangeForDeletion: CancelCustomerEmailChangeForDeletion;
   readonly adminRenameCustomer: AdminRenameCustomer;
   readonly adminCustomerSignIns: AdminCustomerSignIns;
   readonly adminCustomerSessions: AdminCustomerSessions;
@@ -149,6 +160,45 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     accountId: Id<'Account'>,
   ): Promise<Result<CustomerAccountRef | null, CustomerAccountOfFailure>> {
     return this.useCases.customerAccountOf.execute(context, { accountId });
+  }
+
+  requestCustomerEmailChangeForAdmin(
+    context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly email: string;
+      readonly origin: string;
+    },
+  ): Promise<
+    Result<
+      { readonly changed: boolean; readonly requestedAt: Temporal.Instant | null },
+      CustomerEmailChangeFailure
+    >
+  > {
+    return this.useCases.adminRequestCustomerEmailChange.execute(context, request);
+  }
+
+  cancelCustomerEmailChangeForAdmin(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<
+    Result<{ readonly code: 'email-change.cancelled' }, CustomerEmailChangeCancelFailure>
+  > {
+    return this.useCases.adminCancelCustomerEmailChange.execute(context, { accountId });
+  }
+
+  customerPendingEmailOf(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<CustomerPendingEmailChange | null, CustomerAccountOfFailure>> {
+    return this.useCases.customerPendingEmailOf.execute(context, { accountId });
+  }
+
+  cancelCustomerEmailChangeForDeletion(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly cancelled: boolean }, CustomerAccountOfFailure>> {
+    return this.useCases.cancelCustomerEmailChangeForDeletion.execute(context, { accountId });
   }
 
   customerAccountSummaries(

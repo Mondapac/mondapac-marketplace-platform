@@ -233,6 +233,12 @@ const linkTargetsSchema = z
       'verify-email': pageUrl,
       'sign-in': pageUrl,
       'reset-password': pageUrl,
+      /**
+       * The storefront page that confirms a sign-in email an admin changed (customers admin
+       * email change): it posts the token from the fragment with the password. Without it, or
+       * without the lifetime below, no such change can be asked for (`access.unavailable`).
+       */
+      'confirm-email-change': pageUrl.optional(),
     }),
     /**
      * The seller panel's pages (slice 5); absent for a Market without seller sign-up.
@@ -283,6 +289,20 @@ const linkTargetsSchema = z
     // Every seller page is on the origin of the seller sign-in page (Hassan L1, PR #212), as the
     // admin pages are on the review queue's: a seller token is only ever mailed to our own seller
     // panel, never to another host a config change might name.
+    // The same for the email change's confirmation page: on the storefront's own origin.
+    const customerSignIn = hostOf(targets.customer['sign-in']);
+    const confirmChange = targets.customer['confirm-email-change'];
+    if (
+      confirmChange !== undefined &&
+      customerSignIn !== null &&
+      hostOf(confirmChange)?.origin !== customerSignIn.origin
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'a customer page must have the origin of the customer sign-in page',
+        path: ['customer', 'confirm-email-change'],
+      });
+    }
     if (targets.seller !== undefined) {
       const signIn = hostOf(targets.seller['sign-in']);
       for (const [page, url] of Object.entries(targets.seller)) {
@@ -420,6 +440,9 @@ const identitySchema = z
         // Slice 12: the Seller Owner's confirmation of a reset an admin started, at most 24
         // hours (identity design 3.7, HF15).
         'confirm-second-factor-reset': z.number().int().min(1).max(1440).optional(),
+        // Customers admin email change: the confirmation link to the new address, at most 24
+        // hours (Hassan's answer 3); the pending address lapses with it.
+        'confirm-email-change': z.number().int().min(1).max(1440).optional(),
       }),
       targets: linkTargetsSchema,
     }),
@@ -2078,10 +2101,25 @@ const marketSchema = z
      * the most addresses one customer keeps (AU 20). `address`: the ISO 3166 country every
      * address is in, the postcode pattern and the closed region list (empty for a Market whose
      * addresses carry no region). Without this section the address book is unavailable.
+     * `adminActionLimits` (security review of #969, L2/L3): per admin account and fixed hour, the
+     * most "send password reset" actions and the most reveals of a customer's personal data (a
+     * sign-in's address and a delivery address share one count), and the reveal count at which a
+     * security alert is raised once (at most the reveal limit). Without this section those admin
+     * actions are refused (fail closed).
      */
     customers: z
       .strictObject({
         addressBookLimit: z.number().int().min(1).max(50),
+        adminActionLimits: z
+          .strictObject({
+            passwordResetsPerHour: z.number().int().min(1).max(1000),
+            piiRevealsPerHour: z.number().int().min(1).max(1000),
+            piiRevealAlertAt: z.number().int().min(1).max(1000),
+          })
+          .refine((limits) => limits.piiRevealAlertAt <= limits.piiRevealsPerHour, {
+            message: 'piiRevealAlertAt must not exceed piiRevealsPerHour',
+            path: ['piiRevealAlertAt'],
+          }),
         address: z
           .strictObject({
             countryCode: z.string().regex(/^[A-Z]{2}$/),
