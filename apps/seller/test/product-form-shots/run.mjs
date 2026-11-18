@@ -41,7 +41,8 @@ const fillAdd = async (page) => {
     .fill('Extra-long grain rice, parboiled and aged for two years.');
   await page.getByLabel('Product type').selectOption('grocery');
   await page.getByLabel(/Your SKU/).fill('RICE-5KG');
-  await page.getByLabel('Rice').check();
+  await page.getByRole('combobox', { name: 'Add a category' }).click();
+  await page.getByRole('option', { name: /Rice/ }).click();
   await page.getByLabel('Tax category').selectOption('gst-free-food');
 };
 const views = [

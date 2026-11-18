@@ -11,6 +11,17 @@ vi.mock('@mondapac/ui', async (original) => ({
   DescriptionWriter: () => null,
 }));
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+// The picker reads its own list (categories C5a); here the read is a fixed, already answered one.
+const pickerState = vi.hoisted(() => {
+  const value: { state: 'ready' | 'failed'; choices?: readonly unknown[] } = {
+    state: 'ready',
+    choices: [],
+  };
+  return { value };
+});
+vi.mock('./category-choices.ts', () => ({
+  useCategoryChoices: () => ({ choices: pickerState.value, load: () => undefined }),
+}));
 const replace = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace, refresh: vi.fn() }) }));
 
@@ -23,6 +34,14 @@ import type { ProductOptions } from './types.ts';
 import { expectFlash } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
+const RICE = {
+  id: 'c2',
+  level: 4,
+  name: 'Rice',
+  path: ['Pantry', 'Rice'],
+  general: false,
+  status: 'active',
+};
 const options: ProductOptions = {
   productTypes: ['grocery', 'dry-goods'],
   conditions: ['new', 'used'],
@@ -59,7 +78,14 @@ const realLocation = window.location;
 const assign = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
+  pickerState.value = { state: 'ready', choices: [RICE] };
   replace.mockReset();
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  })) as unknown as typeof window.matchMedia;
   Object.defineProperty(window, 'location', {
     value: { assign, reload: vi.fn() },
     writable: true,
@@ -81,7 +107,8 @@ function fill() {
   fireEvent.change(screen.getByLabelText(/Your SKU/), { target: { value: ' OIL-1L ' } });
 }
 function classify() {
-  fireEvent.click(screen.getByLabelText('Rice'));
+  fireEvent.click(screen.getByRole('combobox', { name: 'Add a category' }));
+  fireEvent.click(screen.getByRole('option', { name: /Rice/ }));
   fireEvent.change(screen.getByLabelText('Tax category'), { target: { value: 'gst-free-food' } });
 }
 const saveDraft = () => fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
@@ -97,7 +124,7 @@ describe('Add product page', () => {
     // Cards that need the saved product wait, empty.
     expect(screen.getAllByText(/Save the draft first\./).length).toBe(3);
     // Category and tax category work before the first save; tags wait for the product.
-    expect(screen.getByLabelText('Rice')).toBeTruthy();
+    expect(screen.getByRole('combobox', { name: 'Add a category' })).toBeTruthy();
     expect(screen.getByLabelText('Tax category')).toBeTruthy();
     expect(screen.getByText(/Tags: save the draft first/)).toBeTruthy();
     const submit = screen.getByRole('button', { name: 'Submit for review' });
@@ -341,6 +368,7 @@ describe('Add product page', () => {
   });
 
   it('tells the seller when the category list could not be loaded', () => {
+    pickerState.value = { state: 'failed' };
     render(
       <NextIntlClientProvider locale="en-AU" messages={messages}>
         <EditForm
@@ -354,17 +382,14 @@ describe('Add product page', () => {
         />
       </NextIntlClientProvider>,
     );
-    expect(
-      screen.getByText(
-        "Categories can't be loaded right now. Save the draft and choose them on the next page.",
-      ),
-    ).toBeTruthy();
-    expect(screen.queryByRole('checkbox')).toBeNull();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Add a category' }));
+    expect(screen.getByText("We couldn't load the categories.")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
   it('explains the category and the tax category, with readable tax names', () => {
     mount();
-    expect(screen.getByText(/Only a category or subcategory \(levels 3 and 4\)/)).toBeTruthy();
+    expect(screen.getByText(/Choose a category or subcategory\./)).toBeTruthy();
     expect(screen.getByText(/Required\. Separate from the product category/)).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Choose a tax category' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'GST free food' })).toBeTruthy();
@@ -378,7 +403,7 @@ describe('Add product page', () => {
       expect(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const submit = screen.getByRole('button', { name: 'Submit for review' });
     const title = screen.getByLabelText('Title');
-    const category = screen.getByLabelText('Rice');
+    const category = screen.getByRole('combobox', { name: 'Add a category' });
     const tax = screen.getByLabelText('Tax category');
     const type = screen.getByLabelText('Product type');
     const sku = screen.getByLabelText(/Your SKU/);

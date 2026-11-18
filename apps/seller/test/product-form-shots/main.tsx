@@ -75,7 +75,27 @@ const product: ProductView = {
   published: null,
   pending: null,
 };
-window.fetch = () => Promise.resolve(new Response(JSON.stringify({ images: [] }), { status: 200 }));
+const pickerChoices = [
+  {
+    id: id(11),
+    level: 4,
+    name: 'Rice',
+    path: ['Pantry', 'Rice'],
+    general: false,
+    status: 'active',
+  },
+];
+window.fetch = (input) =>
+  Promise.resolve(
+    new Response(
+      JSON.stringify(
+        String(input instanceof Request ? input.url : input).includes('category-picker')
+          ? { locale: 'en-AU', choices: pickerChoices }
+          : { images: [] },
+      ),
+      { status: 200 },
+    ),
+  );
 const scenario = new URLSearchParams(location.search).get('s') ?? 'edit';
 const shown: ProductView =
   scenario === 'paused'

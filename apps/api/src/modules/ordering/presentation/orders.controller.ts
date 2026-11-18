@@ -167,13 +167,16 @@ export class OrdersController {
     ...ERROR,
     description:
       'validation.failed (details.fields: addressId required or format; sellerNotes type, ' +
-      'range, format or length; deliveryMethods.<sellerId>.method, windowStart, windowEnd or quoteId)',
+      'range, format or length; deliveryMethods.<sellerId>.method, windowStart, windowEnd or ' +
+      'quoteId; code format)',
   })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
   @ApiConflictResponse({
     ...ERROR,
     description:
+      'ordering.price-changed (details.total: the discounts no longer held when they were ' +
+      'redeemed; the order was cancelled and nothing was charged), ' +
       'ordering.stock-insufficient (details.lines), ordering.cart-not-ready (details.sellers: ' +
       'sellerId, reason below-minimum or check-unavailable, minimum), ordering.delivery-quote-changed (details.quotes: sellerId, quoteId, total, validUntil; the delivery price moved, nothing was charged) or conflict.retry',
   })
@@ -184,8 +187,8 @@ export class OrdersController {
       'ordering.outside-delivery-area (the Market does not deliver to its postcode), ' +
       'ordering.delivery-method-unavailable (details.methodSellerIds: the seller does not offer ' +
       'the chosen method), ordering.pickup-unavailable (details.methodSellerIds: the seller has ' +
-      'no approved pickup address), ordering.cart-empty or ' +
-      'ordering.cart-not-purchasable (details.lineIndexes)',
+      'no approved pickup address), ordering.discount-code-not-applied (the code gives this ' +
+      'cart nothing), ordering.cart-empty or ordering.cart-not-purchasable (details.lineIndexes)',
   })
   @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'Not application/json' })
   @ApiServiceUnavailableResponse({
@@ -199,14 +202,25 @@ export class OrdersController {
     @Body() body: unknown,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const invalid = closedBody(request, body, ['addressId', 'sellerNotes', 'deliveryMethods']);
+    const invalid = closedBody(request, body, [
+      'addressId',
+      'sellerNotes',
+      'deliveryMethods',
+      'code',
+    ]);
     if (invalid !== null) throw this.refused(invalid, context);
-    const { addressId, sellerNotes, deliveryMethods } = body as {
+    const { addressId, sellerNotes, deliveryMethods, code } = body as {
       addressId?: unknown;
       sellerNotes?: unknown;
       deliveryMethods?: unknown;
+      code?: unknown;
     };
-    const result = await this.start.execute(context, { addressId, sellerNotes, deliveryMethods });
+    const result = await this.start.execute(context, {
+      addressId,
+      sellerNotes,
+      deliveryMethods,
+      code,
+    });
     this.log('ordering.start-checkout-route', context, result.ok ? 'started' : result.error.code);
     if (!result.ok) {
       if (result.error.code === 'request.throttled') {
@@ -278,16 +292,18 @@ export class OrdersController {
       'addressId',
       'sellerNotes',
       'deliveryMethods',
+      'code',
       'confirmationToken',
       'expectedTotal',
     ]);
     if (invalid !== null) throw this.refused(invalid, context);
-    const { addressId, sellerNotes, deliveryMethods, confirmationToken, expectedTotal } =
+    const { addressId, sellerNotes, deliveryMethods, code, confirmationToken, expectedTotal } =
       body as Record<string, unknown>;
     const result = await this.pay.execute(context, {
       addressId,
       sellerNotes,
       deliveryMethods,
+      code,
       confirmationToken,
       expectedTotal,
     });

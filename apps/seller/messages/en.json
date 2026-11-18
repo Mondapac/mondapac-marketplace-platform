@@ -115,6 +115,7 @@
     "intro": "Welcome, {name}. Here is what needs attention in your shop and your latest activity."
   },
   "dashboard": {
+    "loading": "Loading the dashboard",
     "view-all": "View all",
     "unnamed-product": "Unnamed product",
     "error": {
@@ -1021,6 +1022,16 @@
         }
       },
       "export-button": "Export",
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}"
+      },
+      "row": {
+        "menu": {
+          "open": "Open",
+          "edit": "Edit"
+        }
+      },
       "select": {
         "page": "Select all products on this page",
         "page-short": "Select all on this page",
@@ -1275,10 +1286,35 @@
       "attributes": "Product details",
       "classification": "Category and tags",
       "categories": "Categories",
-      "categories-none": "No categories are available yet.",
-      "categories-unavailable": "Categories can't be loaded right now. Save the draft and choose them on the next page.",
-      "categories-required": "required",
-      "categories-help": "Only a category or subcategory (levels 3 and 4). It decides the product details and variant types.",
+      "categories-hint": "Choose a category or subcategory. Products can't go on a department or group.",
+      "categories-general": "General",
+      "categories-general-hint": "Not in a subcategory",
+      "categories-primary": "Primary",
+      "categories-hidden": "Hidden",
+      "categories-make-primary": "Make primary",
+      "categories-make-primary-for": "Make primary: {name}",
+      "categories-remove": "Remove",
+      "categories-remove-for": "Remove {name}",
+      "categories-add": "Add a category",
+      "categories-add-placeholder": "Search categories",
+      "categories-empty": "No category chosen yet. The first one you choose is the primary category.",
+      "categories-limit": "A product can be in up to 3 categories. Remove one to add another.",
+      "categories-loading": "Loading categories…",
+      "categories-load-error": "We couldn't load the categories.",
+      "categories-retry": "Try again",
+      "categories-search": "Search categories",
+      "categories-no-results": "No category matches.",
+      "categories-added": "Added {name}.",
+      "categories-removed": "Removed {name}.",
+      "categories-made-primary": "{name} is now the primary category.",
+      "categories-error": {
+        "required": "Choose at least one category.",
+        "too-many": "A product can be in at most 3 categories.",
+        "duplicate": "You chose this category twice. Remove one.",
+        "unknown": "This category isn't available any more. Remove it and choose another.",
+        "not-available": "This category isn't available any more. Remove it and choose another.",
+        "level-not-allowed": "Choose a more specific category. Products can't go on a department or group."
+      },
       "tax-category": "Tax category",
       "tax-category-placeholder": "Choose a tax category",
       "tax-category-help": "Required. Separate from the product category: it decides GST on every seller's offer.",
@@ -2546,6 +2582,13 @@
         "amount": "Amount"
       }
     },
+    "customer": {
+      "title": "Customer",
+      "code": "Customer code",
+      "first-name": "First name",
+      "pending": "The customer's code is not ready yet. Check again in a minute.",
+      "hint": "You see the customer's code and first name only. MondaPac's courier has the delivery address."
+    },
     "totals": "Totals",
     "fulfilment": "Fulfilment",
     "shipped-on": "Shipped",
@@ -2647,6 +2690,15 @@
       "more": "Show more"
     },
     "range": "{from} to {to} of {total}",
+    "export": {
+      "button": "Export CSV",
+      "busy": "Preparing the file…",
+      "done": "The file of the orders on this list was downloaded.",
+      "too-large": "{matching} orders match, and one file holds at most {max}. Narrow the filters and export again.",
+      "too-large-plain": "Too many orders match for one file. Narrow the filters and export again.",
+      "invalid": "These filters cannot be exported. Change them and try again.",
+      "unavailable": "The file could not be created. Try again."
+    },
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the dates to reach the rest, or ask your platform admin to switch List paging to Previous and next.",
     "slip": {
       "open": "Print packing slip",
@@ -2654,9 +2706,8 @@
       "back": "Back to order",
       "print": "Print",
       "paid": "Paid {when}",
-      "ship-to": "Ship to",
-      "no-address": "No delivery address is on this order.",
-      "phone": "Phone: {phone}",
+      "ship-to": "Customer",
+      "no-customer": "The customer's code is not ready yet.",
       "items": "Items to pack",
       "no-items": "Nothing is left to pack on this order.",
       "not-available": "This order was sent or refunded in full, so there is no packing slip to print.",
