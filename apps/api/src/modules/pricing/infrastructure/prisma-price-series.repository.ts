@@ -320,8 +320,10 @@ const RECORDS_IN_ORDER = {
 
 /** The `where` of one stream for a hold-list filter (the stream's own columns; the twin of `holdMatches`). */
 function holdWhere(market: MarketContext, filter: HoldListFilter, stream: 'regular' | 'special') {
+  // The Market is named inside the relation filter too: the subquery on `price_series` is then
+  // scoped (and can use the `(market_id, offer_id, variant_id)` key), not a scan of every Market.
   const series = {
-    ...(filter.sellerId === null ? {} : { sellerId: filter.sellerId }),
+    ...(filter.sellerId === null ? {} : { marketId: market.marketId, sellerId: filter.sellerId }),
   };
   return {
     marketId: market.marketId,
@@ -333,7 +335,10 @@ function holdWhere(market: MarketContext, filter: HoldListFilter, stream: 'regul
     ...(filter.recordOrOfferId === null
       ? {}
       : {
-          OR: [{ id: filter.recordOrOfferId }, { series: { offerId: filter.recordOrOfferId } }],
+          OR: [
+            { id: filter.recordOrOfferId },
+            { series: { marketId: market.marketId, offerId: filter.recordOrOfferId } },
+          ],
         }),
     ...(filter.from === null && filter.to === null
       ? {}

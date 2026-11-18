@@ -23,7 +23,8 @@ import { ExceljsSheetWriter, type ExportFile } from '../../../../platform/list-e
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { ConfigPricingPolicyProvider } from '../../infrastructure/config-pricing-policy-provider';
-import type { AdminHoldListDependencies } from '../admin-hold-list-flow';
+import { EMPTY_HOLD_FILTER } from '../../domain/hold-list';
+import { HOLD_ROW_KEYS, type AdminHoldListDependencies } from '../admin-hold-list-flow';
 import type { HeldUnitLabel } from '../ports/held-labels';
 import { ExportPriceHolds } from './export-price-holds.use-case';
 import { QueryPriceHolds } from './query-price-holds.use-case';
@@ -80,7 +81,7 @@ describe.each(['AU', 'ZZ'] as const)('held-price list and export in market %s', 
       unitLabels: { labelsOf: () => Promise.resolve(names) },
       storeNames: { namesOf: () => Promise.resolve(stores) },
       probes: {
-        'pricing.price-hold.decide': {
+        [HOLD_ROW_KEYS[0]]: {
           execute: () => Promise.resolve({ ok: options.mayDecide ?? true }),
         },
       },
@@ -282,5 +283,85 @@ describe.each(['AU', 'ZZ'] as const)('held-price list and export in market %s', 
     expect(bad.ok).toBe(false);
     const stray = await t.exporter.execute(t.admin(), { page: 2 });
     expect(stray.ok).toBe(false);
+  });
+
+  it('refuses list and export to a caller without pricing.price-hold.view, reading nothing', async () => {
+    const t = setup();
+    const denyAll: AuthorisationCheck = {
+      check: () => Promise.resolve({ allowed: false, denial: { code: 'access.denied' } } as const),
+    };
+    const denied = createUseCaseGate(markets, denyAll);
+    let reads = 0;
+    const series = new Proxy(t.deps.series, {
+      get: (target, key, receiver) => {
+        reads += 1;
+        return Reflect.get(target, key, receiver) as unknown;
+      },
+    });
+    const deps = { ...t.deps, series };
+    const list = await new QueryPriceHolds(denied, deps).execute(t.admin(), {});
+    const file = await new ExportPriceHolds(denied, deps).execute(t.admin(), {});
+    expect(list).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+    expect(file).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+    expect(reads).toBe(0);
+  });
+
+  it('answers an empty list, and a page past the end, without rows or actions', async () => {
+    const t = setup();
+    const empty = await t.list.execute(t.admin(), {});
+    expect(empty.ok && empty.value).toMatchObject({
+      items: [],
+      total: 0,
+      counts: { all: 0, regular: 0, special: 0, up: 0, down: 0 },
+    });
+    await t.hold(big);
+    const past = await t.list.execute(t.admin(), { page: 3 });
+    expect(past.ok && past.value).toMatchObject({ items: [], total: 1, hasNext: false });
+  });
+
+  it('refuses a range that ends before it starts and a seller id that is not one', async () => {
+    const t = setup();
+    const refused = async (input: Record<string, unknown>) => {
+      const result = await t.list.execute(t.admin(), input);
+      return result.ok ? null : result.error;
+    };
+    expect(
+      await refused({ from: '2026-10-11T00:00:00Z', to: '2026-10-10T00:00:00Z' }),
+    ).toMatchObject({ code: 'validation.failed' });
+    expect(await refused({ sellerId: 'seller-1' })).toMatchObject({
+      fields: [{ path: 'sellerId', code: 'format' }],
+    });
+  });
+
+  it('refuses an export of more than 10,000 rows with the total, and more than 200 ids', async () => {
+    const t = setup();
+    const a = await t.hold(big);
+    const [row] = await t.deps.series.queryPendingHolds(
+      market,
+      EMPTY_HOLD_FILTER,
+      { key: 'submitted', direction: 'asc' },
+      0,
+      1,
+    );
+    const many = Array.from({ length: 10_001 }, () => row!);
+    const series = new Proxy(t.deps.series, {
+      get: (target, key, receiver) => {
+        if (key === 'queryPendingHolds') return () => Promise.resolve(many);
+        if (key === 'countPendingHoldsWhere') return () => Promise.resolve(12_345);
+        return Reflect.get(target, key, receiver) as unknown;
+      },
+    });
+    const capped = await new ExportPriceHolds(gate, { ...t.deps, series }).execute(t.admin(), {});
+    expect(capped).toEqual({
+      ok: false,
+      error: { code: 'batch.too-large', max: 10_000, total: 12_345 },
+    });
+    const ids = Array.from(
+      { length: 201 },
+      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+    );
+    const tooMany = await t.exporter.execute(t.admin(), { ids: ids.join(',') });
+    expect(tooMany).toMatchObject({ ok: false, error: { code: 'batch.too-large', max: 200 } });
+    expect(a.recordId).toBeDefined();
   });
 });
