@@ -2442,7 +2442,137 @@
         "unknown": "Something went wrong. Try again."
       },
       "name-unavailable": "Name unavailable ({id})",
-      "seller-fallback": "Seller {id}"
+      "seller-fallback": "Seller {id}",
+      "list": {
+        "title": "Held prices",
+        "intro": "Prices waiting for a decision, oldest first. Approve or reject each one from its Actions menu.",
+        "tabs": "Held price views",
+        "tab": {
+          "all": "All held prices",
+          "regular": "Regular prices",
+          "special": "Special prices",
+          "up": "Increases",
+          "down": "Decreases"
+        },
+        "search": {
+          "label": "Search held prices",
+          "placeholder": "Product or store"
+        },
+        "filter": {
+          "title": "Filter held prices",
+          "kind": "Price type",
+          "change": "Change",
+          "name": {
+            "kind": "Price type",
+            "change": "Change"
+          }
+        },
+        "kind": {
+          "regular": "Regular price",
+          "special": "Special price"
+        },
+        "direction": {
+          "up": "Increase",
+          "down": "Decrease"
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "submitted": "Date submitted",
+            "amount": "Held price"
+          },
+          "date": {
+            "first": "Oldest first",
+            "second": "Newest first"
+          },
+          "amount": {
+            "first": "Highest first",
+            "second": "Lowest first"
+          }
+        },
+        "sorted": "Sorted by {field}, {order}",
+        "col": {
+          "product": "Product",
+          "price": "Held price",
+          "reference": "Compared with",
+          "change": "Change",
+          "seller": "Store",
+          "kind": "Price type",
+          "submitted": "Submitted"
+        },
+        "chip-search": "Search: {text}",
+        "loading": "Loading held prices",
+        "match": "{count, plural, one {# held price matches} other {# held prices match}}",
+        "range": "{from}–{to} of {total}",
+        "too-many": "More than {limit} held prices match. Add a filter to see the rest.",
+        "no-access": "You do not have access to held prices.",
+        "error": {
+          "unavailable": "The held prices could not be loaded.",
+          "refused": "The search or filter cannot be used. Change it and try again."
+        },
+        "empty": {
+          "title": "No held prices are waiting for a decision.",
+          "body": "Prices that need a second pair of eyes will show here.",
+          "no-match": "No held prices match",
+          "no-match-help": "Change the search or the filters, or clear them."
+        },
+        "select": {
+          "page": "Select all held prices on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# held price selected} other {# held prices selected}}",
+          "all": "{count, plural, one {The # matching held price is selected} other {All # matching held prices are selected}}",
+          "all-open": "All matching held prices are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "actions": {
+          "header": "Actions",
+          "for": "Actions for {name}",
+          "open": "Open store",
+          "approve": "Approve…",
+          "reject": "Reject…"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# held price selected} other {# held prices selected}}",
+          "all-open": "All matching held prices selected",
+          "export": "Export…"
+        },
+        "export": {
+          "title": "Export held prices",
+          "body": "The file holds every held price the current view and filters match.",
+          "legend": "File format",
+          "csv": "CSV",
+          "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+          "xlsx": "XLSX",
+          "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+          "confirm": "Export",
+          "cancel": "Cancel",
+          "pending": "Preparing the file",
+          "done": "File downloaded",
+          "too-large": "More than {max} held prices match. Narrow the filter and export again.",
+          "unavailable": "The file could not be made. Try again in a moment."
+        },
+        "name-unavailable": "Name unavailable ({id})",
+        "seller-fallback": "Store {id}"
+      },
+      "dialog": {
+        "approve": {
+          "title": "Approve this price?",
+          "body": "Approve {price} for {product}? The price takes effect now.",
+          "confirm": "Approve price"
+        },
+        "reject": {
+          "title": "Reject this price?",
+          "body": "Reject the held price for {product}. The previous price stays.",
+          "confirm": "Reject price"
+        }
+      }
     }
   },
   "content": {
