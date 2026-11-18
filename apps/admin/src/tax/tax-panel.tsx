@@ -187,6 +187,7 @@ export function TaxPanel({
         <StrategyDialog
           strategy={open.strategy}
           categoryCodes={list.categoryCodes}
+          categories={list.categories}
           csrfToken={csrfToken}
           onClose={() => setOpen(null)}
           onSaved={() => void reload()}

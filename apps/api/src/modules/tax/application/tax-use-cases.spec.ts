@@ -168,6 +168,7 @@ describe.each([['AU'], ['ZZ']] as const)('tax strategies in market %s', (code) =
         builtInRateBps: builtIn,
         activeStrategyId: null,
         categoryCodes: categories,
+        categories: config.catalog!.taxCategories.map(({ code, labelKey }) => ({ code, labelKey })),
         strategies: [],
       }),
     );

@@ -28,6 +28,11 @@ export class StrategyBody {
   @ApiProperty({ format: 'date-time' }) updatedAt!: string;
 }
 
+export class StrategyCategory {
+  @ApiProperty({ example: 'gst-free' }) code!: string;
+  @ApiProperty({ example: 'catalog.tax.gst-free' }) labelKey!: string;
+}
+
 export class StrategyListBody {
   @ApiProperty({
     description: 'The built-in strategy of the Market, in basis points (1000 = 10 %).',
@@ -40,6 +45,11 @@ export class StrategyListBody {
     description: 'The tax categories a by-category strategy may name.',
   })
   categoryCodes!: string[];
+  @ApiProperty({
+    type: [StrategyCategory],
+    description: 'The same categories with the message key each is shown by.',
+  })
+  categories!: StrategyCategory[];
   @ApiProperty({ type: [StrategyBody], description: 'Newest first.' })
   strategies!: StrategyBody[];
 }
@@ -90,5 +100,6 @@ export const strategyListBody = (view: StrategyListView): StrategyListBody => ({
   builtInRateBps: view.builtInRateBps,
   activeStrategyId: view.activeStrategyId,
   categoryCodes: [...view.categoryCodes],
+  categories: view.categories.map(({ code, labelKey }) => ({ code, labelKey })),
   strategies: view.strategies.map(strategyBody),
 });
