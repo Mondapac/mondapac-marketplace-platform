@@ -221,6 +221,8 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
           taxInclusive: inclusive,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
+          commissionRateReason: 'standard',
+          exclusiveSeller: false,
           taxRateBps: inclusive ? 1000 : 1500,
           taxAmount: lineTax,
           taxCategoryCode: inclusive ? 'taxable' : 'zz_standard',

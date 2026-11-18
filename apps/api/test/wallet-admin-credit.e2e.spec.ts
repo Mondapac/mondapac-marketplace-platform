@@ -4,6 +4,7 @@ import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import type { AdminCreditView } from '../src/modules/wallet/application/admin-credit-flow';
+import { ExportAdminCreditRequests } from '../src/modules/wallet/application/use-cases/export-admin-credit-requests.use-case';
 import { ApproveAdminCredit } from '../src/modules/wallet/application/use-cases/approve-admin-credit.use-case';
 import { IssueAdminCredit } from '../src/modules/wallet/application/use-cases/issue-admin-credit.use-case';
 import { ListAdminCreditRequests } from '../src/modules/wallet/application/use-cases/list-admin-credit-requests.use-case';
@@ -68,6 +69,8 @@ describe.each(TEST_MARKETS)('admin credit over HTTP in market %s', (code) => {
           .useValue(stub('reject'))
           .overrideProvider(ListAdminCreditRequests)
           .useValue(stub('list'))
+          .overrideProvider(ExportAdminCreditRequests)
+          .useValue(stub('export'))
           .overrideProvider(ViewCustomerWallet)
           .useValue(stub('customer')),
     }));
@@ -321,7 +324,14 @@ describe.each(TEST_MARKETS)('admin credit over HTTP in market %s', (code) => {
   it('reads the request list and a customer summary without a proof', async () => {
     await boot();
     const session = sessionOf('admin');
-    next = ok({ entries: [view], nextCursor: 'abc' });
+    next = ok({
+      entries: [{ ...view, actions: ['open', 'approve', 'reject'] }],
+      counts: { pending: 1, decided: 0, granted: 0, all: 1 },
+      total: null,
+      page: null,
+      pageSize: 5,
+      nextCursor: 'abc',
+    });
     const list = await send(
       'get',
       '/wallet/admin/credit-requests?status=decided&limit=5&cursor=abc',
@@ -329,8 +339,31 @@ describe.each(TEST_MARKETS)('admin credit over HTTP in market %s', (code) => {
     );
     expect(list.status).toBe(200);
     expect(list.headers['cache-control']).toBe('no-store');
-    expect(list.body).toMatchObject({
-      entries: [{ id: REQUEST, amount: '6000' }],
+    expect(list.body).toEqual({
+      entries: [
+        {
+          id: REQUEST,
+          customerAccountId: CUSTOMER,
+          amount: '6000',
+          currency,
+          reasonCode: 'goodwill',
+          note: 'parcel lost',
+          status: 'pending',
+          approvalReason: 'issue-cap',
+          requestedBy: ADMIN,
+          requestedAt: START.toString(),
+          expiresAt: START.add({ hours: 168 }).toString(),
+          decidedBy: null,
+          decidedAt: null,
+          decisionReason: null,
+          journalId: null,
+          actions: ['open', 'approve', 'reject'],
+        },
+      ],
+      counts: { pending: 1, decided: 0, granted: 0, all: 1 },
+      total: null,
+      page: null,
+      pageSize: 5,
       nextCursor: 'abc',
     });
     next = ok({
@@ -365,5 +398,81 @@ describe.each(TEST_MARKETS)('admin credit over HTTP in market %s', (code) => {
       { name: 'list', input: { status: 'decided', cursor: 'abc', limit: 5 } },
       { name: 'customer', input: { customerAccountId: CUSTOMER } },
     ]);
+  });
+
+  it('passes the super list query on, page numbers as numbers and a bad number as -1', async () => {
+    await boot();
+    const session = sessionOf('admin');
+    next = ok({
+      entries: [],
+      counts: { pending: 0, decided: 0, granted: 0, all: 0 },
+      total: 0,
+      page: 2,
+      pageSize: 10,
+      nextCursor: null,
+    });
+    const list = await send(
+      'get',
+      '/wallet/admin/credit-requests?view=all&requestedBy=me&sort=amount&direction=asc&page=2&pageSize=10',
+      session,
+    );
+    expect(list.status).toBe(200);
+    expect(list.body).toMatchObject({ total: 0, page: 2, pageSize: 10 });
+    await send('get', '/wallet/admin/credit-requests?page=x', session);
+    expect(calls).toEqual([
+      {
+        name: 'list',
+        input: {
+          view: 'all',
+          requestedBy: 'me',
+          sort: 'amount',
+          direction: 'asc',
+          page: 2,
+          pageSize: 10,
+        },
+      },
+      { name: 'list', input: { page: -1 } },
+    ]);
+  });
+
+  it('streams the export as an attachment and refuses an export over the cap with its total', async () => {
+    await boot();
+    const session = sessionOf('admin');
+    // The controller reads the chunks with for await, which takes a plain list as well.
+    next = ok({
+      filename: 'credit-requests-2026-10-25.csv',
+      contentType: 'text/csv; charset=utf-8',
+      chunks: ['\uFEFFRequest ID\r\n', `${REQUEST}\r\n`],
+    });
+    const file = await send(
+      'get',
+      '/wallet/admin/credit-requests/export?view=decided&columns=note',
+      session,
+    );
+    expect(file.status).toBe(200);
+    expect(file.headers['content-disposition']).toBe(
+      'attachment; filename="credit-requests-2026-10-25.csv"',
+    );
+    expect(file.headers['cache-control']).toBe('no-store');
+    expect(file.headers['x-content-type-options']).toBe('nosniff');
+    expect(file.text).toContain(REQUEST);
+    expect(calls).toEqual([{ name: 'export', input: { view: 'decided', columns: 'note' } }]);
+    next = err({ code: 'batch.too-large', max: 10000, total: 12000 });
+    const big = await send('get', '/wallet/admin/credit-requests/export', session);
+    expect(big.status).toBe(413);
+    expect(big.body).toEqual({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10000, total: 12000 },
+    });
+    next = err({ code: 'wallet.credit-request-not-found' });
+    const missing = await send(
+      'get',
+      `/wallet/admin/credit-requests/export?ids=${REQUEST}`,
+      session,
+    );
+    expect(missing.status).toBe(404);
+    expect(missing.headers['cache-control']).toBe('no-store');
+    expect(calls.filter((c) => c.name === 'export')).toHaveLength(3);
   });
 });
