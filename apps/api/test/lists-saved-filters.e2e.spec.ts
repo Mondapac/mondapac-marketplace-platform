@@ -444,6 +444,88 @@ describe('generic saved filters over HTTP (integration)', () => {
       },
     );
 
+    it('gives the System requests queue saved filters: its view key to save, its share key to share', async () => {
+      await boot();
+      await seeded(code);
+      const roleWith = (n: number, keys: readonly string[]) => {
+        const roleId = id<'Role'>(0xc100 + n);
+        fakes.seedRole({
+          id: roleId,
+          marketId: code as AccountState['marketId'],
+          scope: 'platform',
+          kind: 'custom',
+          seedCode: null,
+          seedVersion: null,
+          sellerId: null,
+          name: `System requests ${n}`,
+          permissionKeys: [...keys],
+          version: 1,
+          createdAt: START,
+        });
+        return roleId;
+      };
+      const QUEUE_VIEWER = id<'Account'>(0xa010);
+      const QUEUE_SHARER = id<'Account'>(0xa011);
+      seedAdmin(code, QUEUE_VIEWER, 'queue', roleWith(1, ['system-requests.request.view']), 10);
+      seedAdmin(
+        code,
+        QUEUE_SHARER,
+        'queue-share',
+        roleWith(2, ['system-requests.request.view', 'system-requests.saved-filter.share']),
+        11,
+      );
+      const listKey = 'admin.system-requests.requests';
+      const payload = {
+        v: 1,
+        view: 'all-open',
+        filters: { area: ['money', 'people'], risk: ['high'], overdue: true },
+        sort: 'due',
+        direction: 'asc',
+      };
+      const body = { listKey, name: 'Urgent money', visibility: 'me', payload };
+
+      // The catalog Viewer does not see the queue, so it has no saved filters of it either.
+      const outsider = await call('get', code, `?listKey=${listKey}`, sessionOf(code, VIEWER, 1));
+      expect(outsider.status).toBe(403);
+
+      const viewer = sessionOf(code, QUEUE_VIEWER, 10);
+      const created = await call('post', code, '', viewer).send(body);
+      expect(created.status).toBe(201);
+      // Canonical form: the areas in the vocabulary's order.
+      expect((created.body as { payload: unknown }).payload).toEqual({
+        ...payload,
+        filters: { area: ['people', 'money'], risk: ['high'], overdue: true },
+      });
+      const listed = await call('get', code, `?listKey=${listKey}`, viewer);
+      expect(listed.status).toBe(200);
+      expect(listed.body).toMatchObject({ canShare: false, items: [{ name: 'Urgent money' }] });
+      const shareRefused = await call('post', code, '', viewer).send({
+        ...body,
+        name: 'For all',
+        visibility: 'everyone',
+      });
+      expect(shareRefused.status).toBe(403);
+      const badPayload = await call('post', code, '', viewer).send({
+        ...body,
+        name: 'Search',
+        payload: { v: 1, view: 'all', q: 'SR-1' },
+      });
+      expect(badPayload.status).toBe(400);
+      expect(badPayload.body).toMatchObject({ details: { fields: [{ path: 'payload.q' }] } });
+
+      const sharer = sessionOf(code, QUEUE_SHARER, 11);
+      const shared = await call('post', code, '', sharer).send({
+        ...body,
+        name: 'For all',
+        visibility: 'everyone',
+      });
+      expect(shared.status).toBe(201);
+      const seenByViewer = await call('get', code, `?listKey=${listKey}`, viewer);
+      expect(
+        (seenByViewer.body as { items: { name: string }[] }).items.map((i) => i.name).sort(),
+      ).toEqual(['For all', 'Urgent money']);
+    });
+
     it('never shows a Market the filters of another', async () => {
       await boot();
       await seeded(code);

@@ -3498,6 +3498,29 @@ describe('relay of the saved views of the Sales lists', () => {
     },
   );
 
+  it('relays the saved views of the System requests queue, and its key on delete', async () => {
+    const listed = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'lists/admin/saved-filters?listKey=admin.system-requests.requests&x=1'),
+      ['lists', 'admin', 'saved-filters'],
+      listed,
+    );
+    expect(listed.mock.calls[0]?.[0]).toBe(
+      'http://api.test/lists/admin/saved-filters?listKey=admin.system-requests.requests',
+    );
+    const removed = upstreamOk();
+    await relay(
+      config,
+      request('DELETE', `lists/admin/saved-filters/${id}?listKey=admin.system-requests.requests`),
+      ['lists', 'admin', 'saved-filters', id],
+      removed,
+    );
+    expect(removed.mock.calls[0]?.[0]).toBe(
+      `http://api.test/lists/admin/saved-filters/${id}?listKey=admin.system-requests.requests`,
+    );
+  });
+
   it('drops a list key that is not a Sales list', async () => {
     const upstream = upstreamOk();
     await relay(
@@ -3609,6 +3632,85 @@ describe('relay of the order list views', () => {
       expect(response.status, `${method} ${path}`).toBe(404);
       expect(fetchImpl).not.toHaveBeenCalled();
     }
+  });
+});
+
+describe('relay of the System requests export', () => {
+  const path = ['system-requests', 'admin', 'requests', 'export'];
+  const base = 'http://api.test/system-requests/admin/requests/export';
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/system-requests/admin/requests/export${query}`, {
+      method: 'GET',
+      headers: sameOrigin,
+    });
+  const ids = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, i) => `0190a000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+    ).join(',');
+
+  it('relays the list filter, its sort, the format, the columns, the ids and the zone, and drops paging', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get(
+        '?view=all-open&q=SR-12&area=money,people&risk=high&status=open&requestedBy=0190a000-0000-7000-8000-0000000000b1&appliedFrom=2026-11-01T00:00:00.000Z&appliedTo=2026-11-08T00:00:00.000Z&overdue=true&subjectKind=settings.market-setting&subjectRef=list-paging&sort=due&direction=asc&format=xlsx&columns=subject,comments&ids=' +
+          ids(2) +
+          '&zone=Australia/Brisbane&page=2&pageSize=25&cursor=abc&extra=1',
+      ),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    const url = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(url.origin + url.pathname).toBe(base);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      format: 'xlsx',
+      columns: 'subject,comments',
+      ids: ids(2),
+      zone: 'Australia/Brisbane',
+      view: 'all-open',
+      q: 'SR-12',
+      area: 'money,people',
+      risk: 'high',
+      status: 'open',
+      requestedBy: '0190a000-0000-7000-8000-0000000000b1',
+      appliedFrom: '2026-11-01T00:00:00.000Z',
+      appliedTo: '2026-11-08T00:00:00.000Z',
+      overdue: 'true',
+      subjectKind: 'settings.market-setting',
+      subjectRef: 'list-paging',
+      sort: 'due',
+      direction: 'asc',
+    });
+  });
+
+  it('passes 100 ids and an empty column list', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get(`?ids=${ids(100)}&columns=`), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `${base}?columns=&ids=${encodeURIComponent(ids(100))}`,
+    );
+  });
+
+  it.each([
+    ['101 ids', `?ids=${ids(101)}`],
+    ['an empty ids', '?ids='],
+    ['an id that is not a UUID', '?ids=not-an-id'],
+    ['a column that is not allowed', '?columns=subject,before'],
+    ['a format that is not allowed', '?format=xls'],
+    ['a zone that is a path', '?zone=../etc'],
+    // A malformed filter is refused rather than dropped: dropping it would widen the file.
+    ['a view that is not one', '?view=everything'],
+    ['a risk that is not one', '?risk=urgent'],
+    ['an author that is not an id', '?requestedBy=me'],
+    ['a repeated area', '?area=money&area=people'],
+    ['an applied day without a time', '?appliedFrom=2026-11-01'],
+  ])('answers 400 and calls nothing for %s', async (_name, query) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
   });
 });
 

@@ -30,11 +30,15 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { useSalesExport } from '../sales/sales-export.tsx';
+import { SalesSavedViews } from '../sales/sales-saved-views.tsx';
+import { useSavedFilters } from '../sales/sales-saved.ts';
 import { numberFormat } from '../shared/intl.ts';
 import { DecisionDialog, type Decide } from './decision-dialogs.tsx';
 import type { Refusal } from './errors.ts';
 import { QueueBulk } from './queue-bulk.tsx';
 import { QueueFilterPanel } from './queue-filter-panel.tsx';
+import { LIST_KEY, payloadOf, queryOf, somethingToSave, type SavedPayload } from './queue-saved.ts';
 import { QueueTable, useRowMenu } from './queue-table.tsx';
 import { RefusalBanner } from './refusal-banner.tsx';
 import {
@@ -52,6 +56,7 @@ import {
   countText,
   defaultDirection,
   filterCount,
+  filterParams,
   isView,
   queryFromSearch,
   queryString,
@@ -78,9 +83,11 @@ type ListFilter = 'area' | 'risk' | 'status';
  * The System requests queue, a super list (rule 14): the seven views with their counts, search,
  * the filter panel with removable chips, sort, the column picker, row selection with "select all
  * matching", bulk approve, page numbers with the total or Previous and next as the Market's List
- * paging setting says, and the phone layout (cards, bottom sheets). The admin's last view and
- * column choice live in this browser's storage; the address keeps the rest, so a request page can
- * link back to the same list. Saved filters and export wait for the kit's System requests routes.
+ * paging setting says, the phone layout (cards, bottom sheets), saved filters (personal, or shared
+ * with `system-requests.saved-filter.share`) as tabs after the views, and Export (CSV or XLSX of
+ * the ticked rows, or of every row the view and filters match). The admin's last view and column
+ * choice live in this browser's storage; the address keeps the rest, so a request page can link
+ * back to the same list.
  */
 export function QueueList({
   accountId,
@@ -100,6 +107,7 @@ export function QueueList({
   readonly initialSearch: string;
 }) {
   const t = useTranslations('system-requests');
+  const ts = useTranslations('sales-lists');
   const tl = useTranslations('load');
   const locale = useLocale();
   const desktop = useDesktop();
@@ -119,6 +127,12 @@ export function QueueList({
     kind: Decide;
     refusal: Refusal;
   } | null>(null);
+  // The saved filters: null until they load, and when the route cannot answer (the queue then has
+  // its built-in views only, no Save filter and no Manage filters). `savedId` is the saved tab on
+  // show; any change of search, filters or sort leaves it (it is no longer that filter).
+  const { saved, reload: loadSaved } = useSavedFilters<SavedPayload>(LIST_KEY);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
   const latest = useRef(0);
   const known = useRef(new Map<string, SystemRequest>());
   // True until the first answer when nothing says which view to open: Needs my review, or All
@@ -227,10 +241,33 @@ export function QueueList({
   const firstLoadError = answer === null && failure === 'unavailable';
   const skeleton = status.skeleton && failure === null;
 
-  /** Any change of what is asked for starts again at the first page. */
+  /** Any change of what is asked for starts again at the first page, and leaves a saved tab. */
   function change(patch: Partial<Query>) {
+    setSavedId(null);
     setCursors([null]);
     setQuery((current) => ({ ...current, page: 1, ...patch }));
+  }
+  /** A built-in view. Opened from a saved tab it starts from the defaults, not the saved filter. */
+  function openView(view: View) {
+    writeIds(browserStorage(), viewKey, [view]);
+    auto.current = false;
+    if (savedId === null) {
+      change({ view });
+      return;
+    }
+    setSavedId(null);
+    setDraft('');
+    setCursors([null]);
+    setQuery({ ...DEFAULT_QUERY, view, pageSize: query.pageSize });
+  }
+  /** A saved tab: the query its document holds, on the first page. */
+  function openSaved(id: string, payload: SavedPayload) {
+    auto.current = false;
+    const next = queryOf(payload, query.pageSize);
+    setSavedId(id);
+    setDraft('');
+    setCursors([null]);
+    setQuery(next);
   }
   const withFilters = (patch: Partial<Filters>) =>
     change({ filters: { ...query.filters, ...patch } });
@@ -238,6 +275,13 @@ export function QueueList({
     setDraft('');
     change({ q: '', filters: NO_FILTERS });
   };
+  // A saved tab that was deleted (here or by its owner) is no longer the one on show.
+  useEffect(() => {
+    if (savedId !== null && saved !== null && !saved.items.some((item) => item.id === savedId)) {
+      setSavedId(null);
+    }
+  }, [saved, savedId]);
+
   const goToPage = (page: number) => {
     focusList.current = true;
     setQuery((current) => ({ ...current, page }));
@@ -318,6 +362,44 @@ export function QueueList({
 
   const menuOf = useRowMenu((row, kind) => setDeciding({ row, kind }));
   const filterTotal = filterCount(query.filters);
+  // "Save filter" is offered on a built-in view that shows something a saved filter can keep.
+  const canSave = saved !== null && savedId === null && somethingToSave(query);
+  const summary = [
+    t(`view.${query.view}`),
+    ...chips.filter((chip) => chip.id !== 'subject').map((chip) => chip.label),
+    ...(query.sort !== DEFAULT_QUERY.sort || query.direction !== defaultDirection(query.sort)
+      ? [
+          ts('saved.summary-sort', {
+            field: `${t(`sort.field.${query.sort}`)}, ${t(
+              `sort.${query.sort}.${query.direction === defaultDirection(query.sort) ? 'first' : 'second'}`,
+            )}`,
+          }),
+        ]
+      : []),
+  ].join(' · ');
+
+  // Export: the ticked rows, or with none ticked (or "Select all matching") every row the view,
+  // search and filters match, in the list's order, with the columns shown.
+  const ticked = [...selection.selected];
+  const exportAll = selection.allMatching || ticked.length === 0;
+  const exporter = useSalesExport({
+    path: `${BASE}/requests/export`,
+    fallbackName: 'system-requests',
+    listQuery: (() => {
+      const params = filterParams(query, zone);
+      params.set('sort', query.sort);
+      params.set('direction', query.direction);
+      return params.toString();
+    })(),
+    columns,
+    zone,
+    selection: {
+      ids: exportAll ? [] : ticked,
+      allMatching: exportAll,
+      total: counts === null ? null : counts[query.view],
+    },
+    keepOrder: true,
+  });
 
   const filterPanel = (close: () => void) => (
     <QueueFilterPanel
@@ -400,19 +482,25 @@ export function QueueList({
       )}
       <ListViewsBar
         label={t('views')}
-        activeId={query.view}
+        activeId={savedId ?? query.view}
         onSelect={(id) => {
-          const view = id as View;
-          writeIds(browserStorage(), viewKey, [view]);
-          auto.current = false;
-          change({ view });
+          const filter = saved?.items.find((item) => item.id === id);
+          if (filter !== undefined) openSaved(id, filter.payload);
+          else if (isView(id)) openView(id);
         }}
-        items={VIEWS.map((view) => ({
-          id: view,
-          label: `${t(`view.${view}`)}${counts === null ? '' : ` (${countText(counts[view], number)})`}`,
-          ...(view === 'overdue' ? { tone: 'critical' as const } : {}),
-        }))}
-        manage={null}
+        items={[
+          ...VIEWS.map((view) => ({
+            id: view,
+            label: `${t(`view.${view}`)}${counts === null ? '' : ` (${countText(counts[view], number)})`}`,
+            ...(view === 'overdue' ? { tone: 'critical' as const } : {}),
+          })),
+          ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
+        ]}
+        manage={
+          saved === null
+            ? null
+            : { label: ts('saved.manage-link'), onClick: () => setDialog('manage') }
+        }
       />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <SearchField
@@ -483,14 +571,13 @@ export function QueueList({
               />
             </>
           )}
-          <span title={t('export.hint')} className="inline-flex">
-            <Button variant="secondary" disabled aria-describedby="sr-export-hint">
-              {t('export.button')}
-            </Button>
-            <span id="sr-export-hint" className="sr-only">
-              {t('export.hint')}
-            </span>
-          </span>
+          <Button
+            variant="secondary"
+            disabled={answer === null || matchingTotal === 0 || exporter.busy}
+            onClick={exporter.item.onSelect}
+          >
+            {t('export.button')}
+          </Button>
         </fieldset>
         <p className="text-sm text-fg-muted sm:ms-auto">
           {t('sorted', {
@@ -501,7 +588,7 @@ export function QueueList({
           })}
         </p>
       </div>
-      {chips.length > 0 ? (
+      {chips.length > 0 || canSave ? (
         <div className="flex flex-wrap items-center gap-2">
           {chips.map((chip) => (
             <FilterChip
@@ -511,9 +598,20 @@ export function QueueList({
               onRemove={chip.remove}
             />
           ))}
-          <Button variant="link" className="min-h-(--mp-size-control-sm)" onClick={clearAll}>
-            {t('filter.clear-all')}
-          </Button>
+          {chips.length > 0 ? (
+            <Button variant="link" className="min-h-(--mp-size-control-sm)" onClick={clearAll}>
+              {t('filter.clear-all')}
+            </Button>
+          ) : null}
+          {canSave ? (
+            <Button
+              variant="link"
+              className="min-h-(--mp-size-control-sm)"
+              onClick={() => setDialog('save')}
+            >
+              {ts('saved.save-link')}
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {failure === null || firstLoadError ? null : (
@@ -652,6 +750,28 @@ export function QueueList({
           reload();
         }}
       />
+      {exporter.dialog}
+      {saved === null ? null : (
+        <SalesSavedViews
+          dialog={dialog}
+          onClose={() => setDialog(null)}
+          listKey={LIST_KEY}
+          payload={payloadOf(query)}
+          summary={summary}
+          saved={saved}
+          csrfToken={csrfToken}
+          idPrefix="system-requests"
+          onSaved={(filter) => {
+            void loadSaved().then((items) => {
+              // Only a filter that is in the reloaded list can be the tab on show.
+              if (items?.some((item) => item.id === filter.id) === true) {
+                openSaved(filter.id, filter.payload);
+              }
+            });
+          }}
+          onChanged={() => void loadSaved()}
+        />
+      )}
       <BottomSheet
         open={!desktop && sheet === 'filter'}
         title={t('filter.title')}

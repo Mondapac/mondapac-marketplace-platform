@@ -41,8 +41,8 @@ const logger = new Logger('SystemRequestsList');
 // The System requests list (a super list, CLAUDE.md rule 14): views, search, filters, sort, page
 // numbers with a total or Previous and Next (the panel picks the mode from the Market's List
 // paging setting: `page` asks for page numbers, no `page` for a cursor), the count of every view
-// for the same search and filters, and each row's actions for the caller. Saved filters, the
-// column choice and the export come from the shared super list kit (phase 0) and are not here.
+// for the same search and filters, and each row's actions for the caller. Saved filters go
+// through the generic routes of `lists` (saved-filter-list.ts); the export is export-flow.ts.
 
 /** Page numbers stop at this row (the List paging design); beyond it the panel uses the cursor. */
 export const MAX_PAGED_ROWS = 10_000;
@@ -254,7 +254,7 @@ function decodeCursor(cursor: string, sort: RequestSort, direction: Direction): 
   }
 }
 
-interface ParsedQuery {
+export interface ParsedQuery {
   readonly view: RequestTab;
   readonly filter: RequestFilter;
   readonly sort: RequestSort;
@@ -264,7 +264,7 @@ interface ParsedQuery {
   readonly after: Keyset | null;
 }
 
-function parseQuery(input: ListInput): Result<ParsedQuery, SystemRequestsFailure> {
+export function parseQuery(input: ListInput): Result<ParsedQuery, SystemRequestsFailure> {
   const fields: FieldIssue[] = [];
   const view = input?.view === undefined || input.view === '' ? 'all-open' : input.view;
   if (!(REQUEST_VIEWS as readonly unknown[]).includes(view))
@@ -367,7 +367,7 @@ function parseQuery(input: ListInput): Result<ParsedQuery, SystemRequestsFailure
  */
 const FAR_FUTURE = Temporal.Instant.from('9999-12-31T00:00:00Z');
 
-const resolveNow = (filter: RequestFilter, now: Temporal.Instant): RequestFilter =>
+export const resolveNow = (filter: RequestFilter, now: Temporal.Instant): RequestFilter =>
   filter.dueBy !== undefined && filter.dueBy.epochMilliseconds > now.epochMilliseconds
     ? { ...filter, dueBy: now }
     : filter;

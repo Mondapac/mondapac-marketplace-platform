@@ -6,10 +6,8 @@ import request from 'supertest';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
-import type {
-  RequestView,
-  SystemRequestsFailure,
-} from '../src/modules/system-requests/application/request-flow';
+import type { ExportFailure } from '../src/modules/system-requests/application/export-flow';
+import type { RequestView } from '../src/modules/system-requests/application/request-flow';
 import { ApproveMatchingSystemRequests } from '../src/modules/system-requests/application/use-cases/approve-matching-system-requests.use-case';
 import { ApproveSystemRequest } from '../src/modules/system-requests/application/use-cases/approve-system-request.use-case';
 import { ApproveSystemRequests } from '../src/modules/system-requests/application/use-cases/approve-system-requests.use-case';
@@ -17,6 +15,7 @@ import { ChangeAreaReviewPolicy } from '../src/modules/system-requests/applicati
 import { ChangeReviewDueDays } from '../src/modules/system-requests/application/use-cases/change-review-due-days.use-case';
 import { CommentOnSystemRequest } from '../src/modules/system-requests/application/use-cases/comment-on-system-request.use-case';
 import { CountSystemRequests } from '../src/modules/system-requests/application/use-cases/count-system-requests.use-case';
+import { ExportSystemRequests } from '../src/modules/system-requests/application/use-cases/export-system-requests.use-case';
 import { ListSystemRequests } from '../src/modules/system-requests/application/use-cases/list-system-requests.use-case';
 import { RejectSystemRequest } from '../src/modules/system-requests/application/use-cases/reject-system-request.use-case';
 import { ViewReviewPolicy } from '../src/modules/system-requests/application/use-cases/view-review-policy.use-case';
@@ -52,10 +51,11 @@ const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
 /** Every code a system-requests use case answers, with its status. */
-const EXPECTED: Readonly<Record<SystemRequestsFailure['code'], number>> = {
+const EXPECTED: Readonly<Record<ExportFailure['code'], number>> = {
   'access.denied': 403,
   'access.unavailable': 503,
   'validation.failed': 400,
+  'batch.too-large': 413,
   'second-factor.required': 403,
   'second-factor.enrolment-required': 403,
   'system-requests.not-found': 404,
@@ -111,6 +111,8 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
           .useValue(stub('list'))
           .overrideProvider(CountSystemRequests)
           .useValue(stub('count'))
+          .overrideProvider(ExportSystemRequests)
+          .useValue(stub('export'))
           .overrideProvider(ViewSystemRequest)
           .useValue(stub('view'))
           .overrideProvider(CommentOnSystemRequest)
@@ -301,6 +303,57 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     );
     expect([401, 403, 404]).toContain(asCustomer.status);
     expect(calls).toHaveLength(1);
+  });
+
+  it('exports through its own route (not read as a request id): the file, no-store, or the refusal with its cap', async () => {
+    await boot();
+    const session = sessionOf('admin');
+    next = ok({
+      filename: 'system-requests-2026-11-15.csv',
+      contentType: 'text/csv; charset=utf-8',
+      chunks: (async function* () {
+        await Promise.resolve();
+        yield '\uFEFFRequest,Note\r\n';
+        yield 'SR-12,Raise the limit\r\n';
+      })(),
+    });
+    const file = await send(
+      'get',
+      '/system-requests/admin/requests/export?view=all&risk=high&format=csv&columns=subject',
+      session,
+    );
+    expect(file.status).toBe(200);
+    expect(file.headers['content-type']).toMatch(/^text\/csv/);
+    expect(file.headers['content-disposition']).toBe(
+      'attachment; filename="system-requests-2026-11-15.csv"',
+    );
+    expect(file.headers['cache-control']).toBe('no-store');
+    expect(file.headers['x-content-type-options']).toBe('nosniff');
+    expect(file.text).toContain('SR-12,Raise the limit');
+    expect(calls).toEqual([
+      {
+        name: 'export',
+        input: { view: 'all', risk: 'high', format: 'csv', columns: 'subject' },
+      },
+    ]);
+
+    next = err({ code: 'batch.too-large', max: 10_000, total: 12_345 });
+    const tooMany = await send('get', '/system-requests/admin/requests/export?view=all', session);
+    expect(tooMany.status).toBe(413);
+    expect(tooMany.headers['cache-control']).toBe('no-store');
+    expect(tooMany.body).toEqual({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10_000, total: 12_345 },
+    });
+    next = err({ code: 'system-requests.not-found' });
+    const gone = await send(
+      'get',
+      `/system-requests/admin/requests/export?ids=${REQUEST}`,
+      session,
+    );
+    expect(gone.status).toBe(404);
+    expect(calls.map((call) => call.name)).toEqual(['export', 'export', 'export']);
   });
 
   it('routes the badge count and the detail apart', async () => {

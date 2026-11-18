@@ -1,4 +1,5 @@
 import type { FactoryProvider } from '@nestjs/common';
+import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../../platform/list-export';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { IDENTITY_FACADE, type IdentityFacade } from '../../identity';
 import { ADMIN_NAMES, type AdminNames } from '../application/ports/admin-names';
@@ -28,4 +29,6 @@ export const systemRequestsProviders: readonly FactoryProvider[] = [
     inject: [IDENTITY_FACADE],
     useFactory: (identity: IdentityFacade): AdminNames => new FacadeAdminNames(identity),
   },
+  // The XLSX writer of the queue's export (the shared list export, ExcelJS).
+  { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
 ];

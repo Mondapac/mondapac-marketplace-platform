@@ -24,10 +24,14 @@ import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { SHEET_WRITER, type SheetWriter } from '../../platform/list-export';
 import { IdentityModule } from '../identity';
+import { ListsModule, registerLists } from '../lists';
 import { ADMIN_NAMES } from './application/ports/admin-names';
 import { MARKET_ZONE, type MarketZone } from './application/ports/market-zone';
+import type { SystemRequestsExportDependencies } from './application/export-flow';
 import type { OverdueReminderDependencies } from './application/overdue-reminder-flow';
+import { SYSTEM_REQUESTS_LISTS } from './application/saved-filter-list';
 import { POLICY_REPOSITORY } from './application/ports/policy.repository';
 import { REQUEST_REPOSITORY } from './application/ports/request.repository';
 import { DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './application/policy-flow';
@@ -41,6 +45,7 @@ import { ChangeAreaReviewPolicy } from './application/use-cases/change-area-revi
 import { ChangeReviewDueDays } from './application/use-cases/change-review-due-days.use-case';
 import { CommentOnSystemRequest } from './application/use-cases/comment-on-system-request.use-case';
 import { CountSystemRequests } from './application/use-cases/count-system-requests.use-case';
+import { ExportSystemRequests } from './application/use-cases/export-system-requests.use-case';
 import { ListSystemRequests } from './application/use-cases/list-system-requests.use-case';
 import { RemindOverdueSystemRequests } from './application/use-cases/remind-overdue-system-requests.use-case';
 import { RejectSystemRequest } from './application/use-cases/reject-system-request.use-case';
@@ -106,7 +111,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  */
 @Global()
 @Module({
-  imports: [IdentityModule],
+  imports: [IdentityModule, ListsModule],
   controllers: [SystemRequestsController],
   providers: [
     PersistenceModule.auditWriterFor('system-requests'),
@@ -115,6 +120,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerEvents('system-requests', SYSTEM_REQUESTS_EVENTS),
     registerPermissions('system-requests', SYSTEM_REQUESTS_PERMISSIONS),
     registerStepUpActions('system-requests', SYSTEM_REQUESTS_STEP_UP_ACTIONS),
+    // The queue's saved filters, through the generic routes of `lists` (rule 14).
+    registerLists('system-requests', SYSTEM_REQUESTS_LISTS),
     ...systemRequestsProviders,
     { provide: REVERTER_REGISTRY, useFactory: () => new ReverterRegistry() },
     {
@@ -129,6 +136,20 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         Object.freeze(
           Object.fromEntries(PORTS.map(([name], index) => [name, values[index]])),
         ) as unknown as SystemRequestsDependencies,
+    },
+    {
+      provide: ExportSystemRequests,
+      inject: [USE_CASE_GATE, DEPENDENCIES, SHEET_WRITER, MARKET_ZONE],
+      useFactory: (
+        gate: UseCaseGate,
+        deps: SystemRequestsDependencies,
+        sheetWriter: SheetWriter,
+        zone: MarketZone,
+      ) =>
+        new ExportSystemRequests(
+          gate,
+          Object.freeze<SystemRequestsExportDependencies>({ ...deps, sheetWriter, zone }),
+        ),
     },
     {
       provide: MARKET_ZONE,
