@@ -2066,10 +2066,25 @@ const marketSchema = z
      * the most addresses one customer keeps (AU 20). `address`: the ISO 3166 country every
      * address is in, the postcode pattern and the closed region list (empty for a Market whose
      * addresses carry no region). Without this section the address book is unavailable.
+     * `adminActionLimits` (security review of #969, L2/L3): per admin account and fixed hour, the
+     * most "send password reset" actions and the most reveals of a customer's personal data (a
+     * sign-in's address and a delivery address share one count), and the reveal count at which a
+     * security alert is raised once (at most the reveal limit). Without this section those admin
+     * actions are refused (fail closed).
      */
     customers: z
       .strictObject({
         addressBookLimit: z.number().int().min(1).max(50),
+        adminActionLimits: z
+          .strictObject({
+            passwordResetsPerHour: z.number().int().min(1).max(1000),
+            piiRevealsPerHour: z.number().int().min(1).max(1000),
+            piiRevealAlertAt: z.number().int().min(1).max(1000),
+          })
+          .refine((limits) => limits.piiRevealAlertAt <= limits.piiRevealsPerHour, {
+            message: 'piiRevealAlertAt must not exceed piiRevealsPerHour',
+            path: ['piiRevealAlertAt'],
+          }),
         address: z
           .strictObject({
             countryCode: z.string().regex(/^[A-Z]{2}$/),

@@ -11,6 +11,7 @@ import {
   type ListQuerySpec,
   type SortDirection,
 } from '../../../platform/list-query';
+import type { SecurityEvents } from '../../../platform/security-events/security-events';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import { CUSTOMERS_EXPORT_STEP_UP } from '../contracts/step-up';
 import { CustomerSectionExported, type CustomerSectionName } from '../domain/audit';
@@ -21,6 +22,7 @@ import {
   type ListValidationFailure,
 } from './customer-list-flow';
 import { accountIdOf } from './customer-page-flow';
+import type { AdminActionLimits } from './ports/admin-action-limits';
 import type { CustomerListReader } from './ports/customer-list.reader';
 import type { CustomerSectionPeers } from './ports/customer-section-peers';
 import type { CustomerTimelineRepository } from './ports/customer-timeline.repository';
@@ -44,6 +46,10 @@ export interface CustomerSectionDependencies {
   readonly sheetWriter: SheetWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  /** The per-admin limits of the reveal and the password reset (security review of #969). */
+  readonly adminLimits: AdminActionLimits;
+  /** customers' own security event recorder: the bulk-reveal alert. */
+  readonly securityEvents: SecurityEvents;
   /** The owning modules' facades, bound at start; each call fails closed until then. */
   readonly peers: CustomerSectionPeers;
 }

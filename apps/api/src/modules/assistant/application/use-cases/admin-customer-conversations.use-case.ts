@@ -1,6 +1,11 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
-import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import {
+  isPlatformAdminActor,
+  UseCase,
+  type AccessDeclaration,
+  type UseCaseGate,
+} from '../../../../platform/authz';
 import type {
   AdminConversationDates,
   AdminConversationsRequest,
@@ -42,13 +47,7 @@ export class AdminCustomerConversations extends UseCase<
     context: CallContext,
     input: AdminConversationsRequest,
   ): Promise<Result<Page, CustomerConversationsFailure>> {
-    const { actor } = context;
-    if (
-      actor.kind !== 'authenticated' ||
-      actor.population !== 'admin' ||
-      actor.sellerId !== null ||
-      (Object.hasOwn(actor, 'actingAs') && (actor as { actingAs?: unknown }).actingAs != null)
-    ) {
+    if (!isPlatformAdminActor(context.actor)) {
       return err({ code: 'access.denied' });
     }
     const window = {

@@ -13,6 +13,8 @@ import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
+import { SubjectRateLimits } from '../../platform/rate-limit/subject-rate-limits';
+import { SECURITY_EVENTS } from '../../platform/security-events/security-events';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import type { AccountDeletionDependencies } from './application/account-deletion-dependencies';
 import type { CustomersDependencies } from './application/customers-dependencies';
@@ -42,6 +44,7 @@ import { SyncCustomerReadModel } from './application/use-cases/sync-customer-rea
 import { CustomersReadFacadeImplementation } from './presentation/customers-read.facade';
 import { ADDRESS_CIPHER } from './application/ports/address-cipher';
 import { ADDRESS_POLICY } from './application/ports/address-policy';
+import { ADMIN_ACTION_LIMITS } from './application/ports/admin-action-limits';
 import { ADDRESS_REPOSITORY } from './application/ports/address.repository';
 import { SetAccountDeletionSettings } from './application/use-cases/set-account-deletion-settings.use-case';
 import { ViewAccountDeletionAvailability } from './application/use-cases/view-account-deletion-availability.use-case';
@@ -462,6 +465,8 @@ const MANAGEMENT_PORTS: readonly [
   ['addressCipher', ADDRESS_CIPHER],
   ['groupUsage', CUSTOMER_GROUP_USAGE_REGISTRY],
   ['reviewEventsCheck', CustomerReviewEventsCheck],
+  ['adminLimits', ADMIN_ACTION_LIMITS],
+  ['securityEvents', SECURITY_EVENTS],
 ];
 
 /** The admin's management of customers (phase 2): its ports, plus identity bound at start. */
@@ -495,6 +500,8 @@ const SECTION_PORTS: readonly [
   ['sheetWriter', SHEET_WRITER],
   ['clock', CLOCK],
   ['ids', ID_GENERATOR],
+  ['adminLimits', ADMIN_ACTION_LIMITS],
+  ['securityEvents', SECURITY_EVENTS],
 ];
 
 /** The customer page's sections other modules own (phase 2b): its ports, plus the owners bound at start. */
@@ -563,6 +570,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     },
     PersistenceModule.auditWriterFor('customers'),
     PersistenceModule.outboxWriterFor('customers'),
+    PersistenceModule.securityEventsFor('customers'),
+    SubjectRateLimits,
     registerAuditActions('customers', CUSTOMERS_AUDIT_ACTIONS),
     registerEvents('customers', CUSTOMERS_EVENTS),
     registerPermissions('customers', CUSTOMERS_PERMISSIONS),

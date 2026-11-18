@@ -664,6 +664,57 @@ Not built in part 3:
 - `review-published` also follows an edit that passed the checks and a release from a hold, as
   reviews' event does; the timeline cannot tell a first submission from those.
 
+## Per-admin limits on customer PII actions and the bulk-reveal alert (16 Nov 2026)
+
+Follow-up of Hassan's review of #969 (findings L2, L3, I3).
+
+- **Limits.** Per admin account and fixed one-hour window, from the Market's
+  `customers.adminActionLimits` (AU / ZZ fixture): `passwordResetsPerHour` 20 / 5 for "send
+  password reset", and `piiRevealsPerHour` 60 / 10 for the reveals of a customer's personal data,
+  the sign-in address (`sign-ins/:signInId/reveal`) and the delivery address
+  (`addresses/:addressId/reveal`) sharing one count. Past it the route answers 429
+  `request.throttled` with `details.retryAfterSeconds` and `Retry-After` (the seconds left in the
+  window). "Sign out everywhere" and the reads are not limited. A Market without the section, or a
+  counter that cannot be read, refuses with `access.unavailable` (503).
+- **Counters.** The platform's shared per-subject counters (`SubjectRateLimits`), new classes
+  `admin-customer-password-reset` and `admin-customer-pii-reveal` (3600-second windows), subject
+  `<market>:<admin account id>` stored as its keyed hash. Migration
+  `20261117050400_platform_rate_limit_admin_customer_classes` widens
+  `platform.rate_limit_counters_key_check` (no grant or index change), reversible.
+- **What counts.** Counted in the application layer after the gate allowed the call and the body
+  is closed, before the customer is looked up: a refused key, an acting-as session or a stray body
+  does not count; an unknown customer, sign-in or address does (no free probing). A refused
+  (throttled) attempt counts too: the windows are fixed, so trying on does not move the window's
+  end, and the count stays one atomic statement.
+- **Bulk-reveal alert.** From `piiRevealAlertAt` on (AU 40 / ZZ 6, at most the reveal limit),
+  every admitted reveal records the security event `customers.pii-reveal.bulk` (s2, target the
+  admin's account, payload `{ reveals }` only): at most `piiRevealsPerHour - piiRevealAlertAt + 1`
+  events per admin and window (AU 21). A reveal whose event cannot be recorded is refused
+  (`access.unavailable`, logged at error level), so one failed write never loses the alert and
+  every reveal past the alert count fails closed while it is unrecorded (Hassan L1 on #974; an
+  earlier version recorded only at the exact count, and a failure there lost the alert). The
+  security events have no dedupe key, so the dedupe is the security centre's: the rule
+  `admin-bulk-pii-reveal` (threshold 1, one-hour window, grouped by the event's target account)
+  keeps one live alert per admin and raises its event count with each later event. No migration.
+- **Fixed-window bursts (Hassan I2).** The windows are fixed, not sliding: an admin can use the
+  whole limit at the end of one window and again at the start of the next, so up to about twice
+  the limit (AU 120 reveals or 40 password resets) can pass within a few minutes around a window
+  boundary. The alert counts per window too: such a burst reaches the alert count in each window,
+  and if the first alert has been resolved meanwhile a second one opens (one live alert per admin
+  otherwise). The windows start at the admin's first counted attempt, not on the clock hour.
+- **I3.** The platform-admin check of the admin reads (authenticated admin, no seller, no
+  acting-as marker) is one helper, `isPlatformAdminActor` in `platform/authz`, used by identity's
+  customer security, cart, engagement, legal, reviews, notifications (support contact) and
+  assistant (settings). In the last two it replaces a population-only check; today no admin actor
+  has a seller or an acting-as marker, so no answer changes.
+- **Tests.** `admin-action-limits.spec.ts` (both Markets: limit then 429, another admin
+  unaffected, the window resets, the shared count, the event from the alert count on, a failed
+  event at the alert count recorded by the next reveal, only allowed calls counted, fail closed),
+  the evaluator keeping one alert per admin (`security-use-cases.spec.ts`), HTTP 429 mapping of the
+  sign-in reveal and the password reset in `customers-sections-admin.e2e.spec.ts` and of the
+  address reveal in `customers-management-admin.e2e.spec.ts`, both Markets, the CHECK in
+  `rate-limit-counters.db-spec.ts`.
+
 - **Identity section** (logins over 90 days as a super list, sessions, sign out everywhere,
   send a password reset): the largest piece, an auth path (security review). `sign_in_records`
   holds the full IP and no geo data, so a "rough city" needs a geo lookup first.

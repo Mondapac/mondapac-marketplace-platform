@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
+import { isPlatformAdminActor } from '../../../platform/authz';
 import {
   DEFAULT_ASSISTANT_SETTINGS,
   inRollout,
@@ -123,9 +124,6 @@ function auditSnapshot(version: number, settings: AssistantSettings) {
   };
 }
 
-const isAdmin = (context: CallContext): boolean =>
-  context.actor.kind === 'authenticated' && context.actor.population === 'admin';
-
 async function viewOf(
   deps: AssistantDependencies,
   context: CallContext,
@@ -170,7 +168,7 @@ export async function viewAssistantSettings(
   deps: AssistantDependencies,
   context: CallContext,
 ): Promise<Result<AssistantSettingsView, AssistantSettingsFailure>> {
-  if (!isAdmin(context)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   return deps.unitOfWork.run<AssistantSettingsView, AssistantSettingsFailure>(
     context.market,
     async () => {
@@ -284,7 +282,7 @@ export async function issuePreviewToken(
   deps: AssistantDependencies,
   context: CallContext,
 ): Promise<Result<PreviewTokenView, PreviewTokenFailure>> {
-  if (!isAdmin(context)) return err({ code: 'access.denied' });
+  if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   if (!deps.previewTokens.available()) return err({ code: 'assistant.preview-unavailable' });
   const issued = deps.previewTokens.issue(context.market, deps.clock.now());
   if (issued === null) return err({ code: 'assistant.preview-unavailable' });

@@ -56,6 +56,7 @@ it('maps every refusal code of the customers routes to its exact status', () => 
     'customers.invitation-not-eligible': 409,
     'customers.invitation-not-found': 404,
     'customers.password-reset-recently-requested': 429,
+    'request.throttled': 429,
     'customers.sign-in-not-found': 404,
     'customers.group-name-taken': 409,
     'customers.group-limit-reached': 409,

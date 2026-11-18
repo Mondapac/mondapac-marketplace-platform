@@ -1,5 +1,6 @@
 import type { FactoryProvider } from '@nestjs/common';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { SubjectRateLimits } from '../../../platform/rate-limit/subject-rate-limits';
 import { ADMIN_DAY_ZONE, type AdminDayZone } from '../application/ports/admin-day-zone';
 import { ActorOrMarketDayZone } from './actor-or-market-day-zone';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
@@ -13,6 +14,10 @@ import {
 } from '../application/ports/account-deletion-settings.repository';
 import { ADDRESS_CIPHER, type AddressCipher } from '../application/ports/address-cipher';
 import { ADDRESS_POLICY, type AddressPolicy } from '../application/ports/address-policy';
+import {
+  ADMIN_ACTION_LIMITS,
+  type AdminActionLimits,
+} from '../application/ports/admin-action-limits';
 import {
   ADDRESS_REPOSITORY,
   type AddressRepository,
@@ -96,6 +101,7 @@ import { LateBoundAccountDeletionPeers } from './late-bound-account-deletion-pee
 import { PrismaAccountDeletionRequestRepository } from './prisma-account-deletion-request.repository';
 import { PrismaAccountDeletionSettingsRepository } from './prisma-account-deletion-settings.repository';
 import { ConfigAddressPolicy } from './config-address-policy';
+import { SubjectAdminActionLimits } from './subject-admin-action-limits';
 import { PrismaAddressRepository } from './prisma-address.repository';
 import { SubjectKeyAddressCipher } from './subject-key-address-cipher';
 
@@ -115,6 +121,12 @@ export const customersProviders: readonly FactoryProvider[] = [
     provide: ADDRESS_POLICY,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): AddressPolicy => new ConfigAddressPolicy(markets),
+  },
+  {
+    provide: ADMIN_ACTION_LIMITS,
+    inject: [SubjectRateLimits, MarketRegistry],
+    useFactory: (counters: SubjectRateLimits, markets: MarketRegistry): AdminActionLimits =>
+      new SubjectAdminActionLimits(counters, markets),
   },
   {
     provide: ACCOUNT_DELETION_REQUEST_REPOSITORY,

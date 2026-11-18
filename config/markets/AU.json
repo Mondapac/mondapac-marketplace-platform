@@ -182,6 +182,11 @@
   },
   "customers": {
     "addressBookLimit": 20,
+    "adminActionLimits": {
+      "passwordResetsPerHour": 20,
+      "piiRevealsPerHour": 60,
+      "piiRevealAlertAt": 40
+    },
     "address": {
       "countryCode": "AU",
       "postcodePattern": "^[0-9]{4}$",

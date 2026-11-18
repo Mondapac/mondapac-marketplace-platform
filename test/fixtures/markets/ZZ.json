@@ -120,6 +120,11 @@
   },
   "customers": {
     "addressBookLimit": 5,
+    "adminActionLimits": {
+      "passwordResetsPerHour": 5,
+      "piiRevealsPerHour": 10,
+      "piiRevealAlertAt": 6
+    },
     "address": {
       "countryCode": "JP",
       "postcodePattern": "^[0-9]{7}$",
