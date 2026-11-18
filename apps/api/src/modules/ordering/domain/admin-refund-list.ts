@@ -30,6 +30,8 @@ export interface RefundSort {
 
 /** Every field is an AND; null leaves it out. */
 export interface RefundListFilter {
+  /** The selected rows of an export (refund ids, at most 200); null on the list itself. */
+  readonly ids: readonly string[] | null;
   readonly state: RefundState | null;
   /** An id the admin pasted: the refund's, its order's or its seller order's. */
   readonly reference: string | null;

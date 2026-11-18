@@ -53,6 +53,8 @@ interface OrderRow {
     readonly sellerId: string;
     readonly subtotalAmount: bigint;
     readonly shippingAmount: bigint;
+    readonly discountAmount: bigint;
+    readonly shippingDiscountAmount: bigint;
     readonly shippingTaxRateBps: number | null;
     readonly shippingTaxAmount: bigint | null;
     readonly shippingTaxInclusive: boolean | null;
@@ -85,9 +87,14 @@ interface OrderRow {
     readonly quantity: number;
     readonly unitAmount: bigint;
     readonly lineAmount: bigint;
+    readonly discountAmount: bigint;
+    readonly discountSellerShare: bigint;
+    readonly discountPlatformShare: bigint;
     readonly taxInclusive: boolean;
     readonly reservationLineId: string;
     readonly commissionRateBps: number | null;
+    readonly commissionRateReason: string;
+    readonly exclusiveSeller: boolean;
     readonly taxRateBps: number | null;
     readonly taxAmount: bigint | null;
     readonly taxCategoryCode: string | null;
@@ -105,6 +112,8 @@ const toSellerOrder = (s: SellerOrderRow): SellerOrder => ({
   sellerId: s.sellerId as Id<'Seller'>,
   subtotal: s.subtotalAmount,
   shipping: s.shippingAmount,
+  discount: s.discountAmount,
+  shippingDiscount: s.shippingDiscountAmount,
   shippingTaxRateBps: s.shippingTaxRateBps,
   shippingTax: s.shippingTaxAmount,
   shippingTaxInclusive: s.shippingTaxInclusive,
@@ -150,9 +159,14 @@ const toLine = (l: LineRow, currency: string): OrderLine => ({
   quantity: l.quantity,
   unitPrice: money(l.unitAmount, currency),
   lineAmount: l.lineAmount,
+  discountAmount: l.discountAmount,
+  discountSellerShare: l.discountSellerShare,
+  discountPlatformShare: l.discountPlatformShare,
   taxInclusive: l.taxInclusive,
   reservationLineId: l.reservationLineId,
   commissionRateBps: l.commissionRateBps,
+  commissionRateReason: l.commissionRateReason === 'exclusive' ? 'exclusive' : 'standard',
+  exclusiveSeller: l.exclusiveSeller,
   taxRateBps: l.taxRateBps,
   taxAmount: l.taxAmount,
   taxCategoryCode: l.taxCategoryCode,
@@ -298,6 +312,8 @@ export class PrismaOrderRepository implements OrderRepository {
         sellerId: s.sellerId,
         subtotalAmount: s.subtotal,
         shippingAmount: s.shipping,
+        discountAmount: s.discount,
+        shippingDiscountAmount: s.shippingDiscount,
         shippingTaxRateBps: s.shippingTaxRateBps,
         shippingTaxAmount: s.shippingTax,
         shippingTaxInclusive: s.shippingTaxInclusive,
@@ -328,9 +344,14 @@ export class PrismaOrderRepository implements OrderRepository {
         quantity: l.quantity,
         unitAmount: l.unitPrice.amount,
         lineAmount: l.lineAmount,
+        discountAmount: l.discountAmount,
+        discountSellerShare: l.discountSellerShare,
+        discountPlatformShare: l.discountPlatformShare,
         taxInclusive: l.taxInclusive,
         reservationLineId: l.reservationLineId,
         commissionRateBps: l.commissionRateBps,
+        commissionRateReason: l.commissionRateReason,
+        exclusiveSeller: l.exclusiveSeller,
         taxRateBps: l.taxRateBps,
         taxAmount: l.taxAmount,
         taxCategoryCode: l.taxCategoryCode,
@@ -354,6 +375,30 @@ export class PrismaOrderRepository implements OrderRepository {
     return row === null ? null : toOrder(row);
   }
 
+  async hasPaidOrder(market: MarketContext, accountId: Id<'Account'>) {
+    const row = await this.prisma.tx(market).orderingOrder.findFirst({
+      where: { marketId: market.marketId, accountId, status: 'confirmed' },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
+  async findExpiredUnpaid(market: MarketContext, before: Temporal.Instant, limit: number) {
+    // Few orders wait for payment at a time: the (market, status, created_at) index narrows them.
+    const rows = await this.prisma.tx(market).orderingOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        status: 'pending-payment',
+        paymentState: 'none',
+        paymentExpiresAt: { lt: new Date(before.epochMilliseconds) },
+      },
+      select: { id: true },
+      orderBy: [{ paymentExpiresAt: 'asc' }, { id: 'asc' }],
+      take: limit,
+    });
+    return rows.map((row) => row.id as Id<'Order'>);
+  }
+
   async findPending(market: MarketContext, accountId: Id<'Account'>) {
     const rows = await this.prisma.tx(market).orderingOrder.findMany({
       where: { marketId: market.marketId, accountId, status: 'pending-payment' },
@@ -362,6 +407,74 @@ export class PrismaOrderRepository implements OrderRepository {
       take: 20,
     });
     return rows.map(toOrder);
+  }
+
+  async sellerTotalsOf(market: MarketContext, accountId: Id<'Account'>) {
+    const tx = this.prisma.tx(market);
+    // The account's confirmed orders (index market, account, created_at), then their seller orders
+    // and the succeeded refunds of those through the (market, order, seller) key.
+    const orders = await tx.orderingOrder.findMany({
+      where: { marketId: market.marketId, accountId, status: 'confirmed' },
+      select: { id: true, confirmedAt: true, currency: true },
+    });
+    if (orders.length === 0) return [];
+    const orderIds = orders.map((order) => order.id);
+    const [sellerOrders, refunds] = await Promise.all([
+      tx.orderingSellerOrder.findMany({
+        where: { marketId: market.marketId, orderId: { in: orderIds } },
+        select: { sellerId: true, orderId: true, totalAmount: true },
+      }),
+      tx.orderingRefund.groupBy({
+        by: ['sellerId'],
+        where: {
+          marketId: market.marketId,
+          state: 'succeeded',
+          sellerOrder: { orderId: { in: orderIds } },
+        },
+        _sum: { grossAmount: true },
+      }),
+    ]);
+    const orderOf = new Map(orders.map((order) => [order.id, order]));
+    const refunded = new Map(refunds.map((row) => [row.sellerId, row._sum.grossAmount ?? 0n]));
+    const bySeller = new Map<
+      string,
+      { count: number; first: Date; last: Date; gross: bigint; currency: string }
+    >();
+    for (const row of sellerOrders) {
+      const order = orderOf.get(row.orderId);
+      if (order === undefined || order.confirmedAt === null) continue;
+      const at = order.confirmedAt;
+      const seen = bySeller.get(row.sellerId);
+      if (seen === undefined) {
+        bySeller.set(row.sellerId, {
+          count: 1,
+          first: at,
+          last: at,
+          gross: row.totalAmount,
+          currency: order.currency,
+        });
+        continue;
+      }
+      seen.count += 1;
+      seen.gross += row.totalAmount;
+      if (at < seen.first) seen.first = at;
+      if (at >= seen.last) {
+        seen.last = at;
+        seen.currency = order.currency;
+      }
+    }
+    const instant = (value: Date) => Temporal.Instant.fromEpochMilliseconds(value.getTime());
+    return [...bySeller.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([sellerId, totals]) => ({
+        sellerId: sellerId as Id<'Seller'>,
+        orderCount: totals.count,
+        firstConfirmedAt: instant(totals.first),
+        lastConfirmedAt: instant(totals.last),
+        grossMinor: totals.gross,
+        refundedMinor: refunded.get(sellerId) ?? 0n,
+        currency: totals.currency,
+      }));
   }
 
   async totalsOf(market: MarketContext, accountId: Id<'Account'>) {
@@ -471,7 +584,9 @@ export class PrismaOrderRepository implements OrderRepository {
 
   async listAll(market: MarketContext, filter: OrderFilter, page: OrderPage) {
     const rows = await this.prisma.tx(market).orderingOrder.findMany({
-      where: { ...filterWhere(market, filter), ...afterCursor(page) },
+      // Each clause is its own `AND` entry: both use a top-level `OR` (reference, cursor), and a spread
+      // would let the cursor's replace the filter's.
+      where: { marketId: market.marketId, AND: [filterWhere(market, filter), afterCursor(page)] },
       include: INCLUDE,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: page.limit,
@@ -552,7 +667,11 @@ export class PrismaOrderRepository implements OrderRepository {
     page: SellerOrderPage,
   ) {
     const rows = await this.prisma.tx(market).orderingSellerOrder.findMany({
-      where: { ...sellerWhere(market, sellerId, filter), ...sellerCursor(page) },
+      // Each clause is its own `AND` entry: both use a top-level `OR` (reference, cursor).
+      where: {
+        marketId: market.marketId,
+        AND: [sellerWhere(market, sellerId, filter), sellerCursor(page)],
+      },
       include: SELLER_INCLUDE,
       orderBy: [{ order: { confirmedAt: 'desc' } }, { id: 'desc' }],
       take: page.limit,
@@ -848,8 +967,12 @@ const sellerWhere = (market: MarketContext, sellerId: Id<'Seller'>, filter: Sell
   marketId: market.marketId,
   sellerId,
   ...(filter.fulfilment === null ? {} : { fulfilment: filter.fulfilment }),
+  ...(filter.reference === undefined || filter.reference === null
+    ? {}
+    : { OR: [{ id: filter.reference }, { orderId: filter.reference }] }),
   order: {
     status: 'confirmed',
+    ...(filter.accountId == null ? {} : { accountId: filter.accountId }),
     ...(filter.from === null && filter.to === null
       ? {}
       : {

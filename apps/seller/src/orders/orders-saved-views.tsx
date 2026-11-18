@@ -18,8 +18,7 @@ import {
   type SavedFilter,
   type SavedFiltersAnswer,
 } from './orders-saved.ts';
-import type { Days, SortId } from './orders-query.ts';
-import type { FulfilmentFilter } from './types.ts';
+import type { Query } from './orders-query.ts';
 
 const TOAST = { id: 'orders-saved-filter' };
 
@@ -71,9 +70,8 @@ function useLabels(limits: SavedFiltersAnswer['limits']): SavedViewLabels {
 export function OrdersSavedViews({
   dialog,
   onClose,
-  filter,
-  days,
-  sort,
+  query,
+  zone,
   summary,
   saved,
   csrfToken,
@@ -82,9 +80,9 @@ export function OrdersSavedViews({
 }: {
   readonly dialog: 'save' | 'manage' | null;
   readonly onClose: () => void;
-  readonly filter: FulfilmentFilter;
-  readonly days: Days;
-  readonly sort: SortId;
+  readonly query: Query;
+  /** The zone the saved days are read in. */
+  readonly zone: string;
   /** What the filter holds, in words. */
   readonly summary: string;
   readonly saved: SavedFiltersAnswer;
@@ -111,7 +109,7 @@ export function OrdersSavedViews({
           const result = await callApi<SavedFilter>(
             'POST',
             'ordering/seller/saved-filters',
-            { listKey: LIST_KEY, name, visibility, payload: payloadOf(filter, days, sort) },
+            { listKey: LIST_KEY, name, visibility, payload: payloadOf(query, zone, new Date()) },
             csrfToken,
           );
           if (!result.ok) return problemOf(result.failure);

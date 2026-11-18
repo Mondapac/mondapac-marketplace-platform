@@ -305,6 +305,7 @@ export class SignInWithProvider extends UseCase<
       address: input.client.address,
       sessionId,
       correlationId: context.correlationId,
+      device: input.client.device ?? null,
     };
     await this.deps.records.add(context.market, record);
     await recordSignInSecurityEvent(this.deps.securityEvents, context, record);

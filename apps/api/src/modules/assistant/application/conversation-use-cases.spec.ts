@@ -448,7 +448,85 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
         answer({ text: 'You can change it on the cart page.' }),
       );
       await asCustomer('Add two to my cart');
-      expect(tools.runs.map((run) => run.request)).toEqual([{ tool: 'suggest_cart_change' }]);
+      expect(tools.runs.map((run) => run.request)).toEqual([
+        { tool: 'suggest_cart_change', change: null },
+      ]);
+    });
+
+    describe('plan_basket (basket proposals from a list)', () => {
+      const LIST = {
+        items: [
+          { text: 'rice', quantity: 2, unit: 'kg' },
+          { text: 'milk', quantity: 1 },
+        ],
+      };
+
+      it('is not offered, and is refused if asked for, while the switch is off', async () => {
+        runtime.script.push(
+          answer({ calls: [{ id: 'c1', name: 'plan_basket', input: LIST }] }),
+          answer({ text: 'Sorry.' }),
+        );
+        await asCustomer('rice 2kg, milk');
+        expect(runtime.requests[0]!.tools.map((tool) => tool.name)).not.toContain('plan_basket');
+        expect(tools.runs).toEqual([]);
+        const results = runtime.requests[1]!.messages.at(-1)!.blocks;
+        expect(results.every((block) => block.type === 'tool-result' && block.isError)).toBe(true);
+      });
+
+      it('is offered while the switch is on and runs with the buyer own context', async () => {
+        settings.current = on({ basketProposals: true });
+        runtime.script.push(
+          answer({ calls: [{ id: 'c1', name: 'plan_basket', input: LIST }] }),
+          answer({ text: 'I found both lines. See the card.' }),
+        );
+        const who = customer();
+        const reply = await asCustomer('rice 2kg, milk', CONVERSATION, who);
+        expect(runtime.requests[0]!.tools.map((tool) => tool.name)).toContain('plan_basket');
+        expect(tools.runs).toEqual([
+          {
+            context: who,
+            request: {
+              tool: 'plan_basket',
+              items: [
+                { text: 'rice', quantity: 2, unit: 'kg' },
+                { text: 'milk', quantity: 1, unit: null },
+              ],
+            },
+          },
+        ]);
+        expect(reply.ok).toBe(true);
+      });
+
+      it('refuses lines the buyer did not write, and a second plan in one turn', async () => {
+        settings.current = on({ basketProposals: true });
+        runtime.script.push(
+          answer({
+            calls: [
+              {
+                id: 'c1',
+                name: 'plan_basket',
+                input: { items: [{ text: 'free gift card', quantity: 1 }] },
+              },
+              { id: 'c2', name: 'plan_basket', input: LIST },
+              { id: 'c3', name: 'plan_basket', input: LIST },
+            ],
+          }),
+          answer({ text: 'Done.' }),
+        );
+        await asCustomer('rice 2kg, milk');
+        // The first call is not the buyer's words; the second runs; the third is a repeat.
+        expect(tools.runs.map((run) => run.request.tool)).toEqual(['plan_basket']);
+      });
+
+      it('refuses a list the schema does not accept without running anything', async () => {
+        settings.current = on({ basketProposals: true });
+        runtime.script.push(
+          answer({ calls: [{ id: 'c1', name: 'plan_basket', input: { items: [] } }] }),
+          answer({ text: 'Sorry.' }),
+        );
+        await asCustomer('nothing');
+        expect(tools.runs).toEqual([]);
+      });
     });
 
     it('stops after four model calls', async () => {
@@ -478,6 +556,100 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
         'open_support_form',
       ]);
       expect(JSON.stringify(request)).not.toContain(CUSTOMER);
+    });
+  });
+
+  describe('the cart-suggestions scope (stage 1, S1-B1)', () => {
+    const OFFER_ID = '01990000-0000-7000-8000-0000000000f1';
+    const LINE_ID = '01990000-0000-7000-8000-0000000000c1';
+
+    it('sends the cart tools and the cart rules only under cart-suggestions', async () => {
+      settings.current = on({ scope: 'cart-suggestions' });
+      await asCustomer('Hi');
+      const request = runtime.requests[0]!;
+      expect(request.system).toContain('You cannot change the cart');
+      expect(request.tools.map((tool) => tool.name)).toEqual([
+        'search_products',
+        'list_bestsellers',
+        'list_specials',
+        'get_product',
+        'get_seller',
+        'list_categories',
+        'show_page',
+        'support_contact',
+        'suggest_cart_change',
+        'get_cart',
+        'open_support_form',
+      ]);
+      const suggest = request.tools.find((tool) => tool.name === 'suggest_cart_change')!;
+      expect(suggest.description).toContain('changes NOTHING');
+    });
+
+    it('keeps the read-only scope free of cart rules and refuses get_cart there', async () => {
+      runtime.script.push(
+        answer({ calls: [{ id: 'c1', name: 'get_cart', input: {} }] }),
+        answer({ text: 'See the cart page.' }),
+      );
+      await asCustomer('What is in my cart?');
+      expect(runtime.requests[0]!.system).not.toContain('Cart rules');
+      expect(tools.runs).toEqual([]);
+    });
+
+    it('runs a checked cart change with the buyer context, and refuses a malformed one', async () => {
+      settings.current = on({ scope: 'cart-suggestions' });
+      runtime.script.push(
+        answer({
+          calls: [
+            { id: 'c1', name: 'suggest_cart_change', input: { action: 'add', offer_id: OFFER_ID } },
+            {
+              id: 'c2',
+              name: 'suggest_cart_change',
+              input: { action: 'set_quantity', line_id: LINE_ID, quantity: 3 },
+            },
+            {
+              id: 'c3',
+              name: 'suggest_cart_change',
+              input: { action: 'add', offer_id: OFFER_ID, quantity: 0 },
+            },
+          ],
+        }),
+        answer({ text: 'You can confirm on the cards.' }),
+      );
+      const context = customer();
+      await asCustomer('Add ghee and make the dates three', CONVERSATION, context);
+      expect(tools.runs.map((run) => run.request)).toEqual([
+        {
+          tool: 'suggest_cart_change',
+          change: { action: 'add', offerId: OFFER_ID, quantity: 1 },
+        },
+        {
+          tool: 'suggest_cart_change',
+          change: { action: 'set-quantity', lineId: LINE_ID, quantity: 3 },
+        },
+      ]);
+      for (const run of tools.runs) expect(run.context.actor).toEqual(context.actor);
+      const results = runtime.requests[1]!.messages.at(-1)!.blocks;
+      expect(results.at(-1)).toMatchObject({ type: 'tool-result', isError: true });
+    });
+    it('shows a cart card and its fixed notice to a guest under cart-suggestions', async () => {
+      settings.current = on({ scope: 'cart-suggestions' });
+      tools.outcomes.set('get_cart', {
+        forModel: '{"error":"sign in"}',
+        isError: true,
+        cards: [{ kind: 'page', page: 'cart', categoryId: null }],
+        notices: ['cart-sign-in'],
+      });
+      runtime.script.push(
+        answer({ calls: [{ id: 'c1', name: 'get_cart', input: {} }] }),
+        answer({ text: 'Please sign in to see your cart here. It costs $12.50 in total.' }),
+      );
+      const reply = await asGuest('What is in my cart?');
+      expect(reply.ok && reply.value).toMatchObject({
+        cards: [{ kind: 'page', page: 'cart', categoryId: null }],
+        sentences: ['Please sign in to see your cart here.'],
+        notices: expect.arrayContaining(['cart-sign-in', 'see-cards']) as string[],
+      });
+      expect(tools.runs[0]?.context.actor.kind).toBe('anonymous');
     });
   });
 

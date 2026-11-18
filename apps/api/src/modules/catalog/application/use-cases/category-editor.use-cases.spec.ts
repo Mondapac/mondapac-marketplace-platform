@@ -26,7 +26,7 @@ import { loadMarketConfigs } from '../../../../platform/market-config/market-con
 import { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import { CATALOG_CATEGORY_TREE_EDIT } from '../../contracts/permissions';
+import { CATALOG_ATTRIBUTE_EDIT, CATALOG_CATEGORY_TREE_EDIT } from '../../contracts/permissions';
 import type { EditableCategory } from '../../domain/category-edit';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import type { CategoryWriteDependencies } from '../categories/category-editor';
@@ -40,6 +40,9 @@ import { CategoryEditDetails } from './category-edit-details.use-case';
 import { CategoryHide } from './category-hide.use-case';
 import { CategoryReorder } from './category-reorder.use-case';
 import { CategoryShow } from './category-show.use-case';
+import { CategoryDetailsReverter, CategoryLinksReverter } from '../catalogue-reverters';
+import { categoryDetailsValues } from '../catalogue-review';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 
 // The tree editor's use cases in memory (categories package C3a), on both Market fixtures: the
 // key, the admin population and the acting-as refusal; the closed input; the tree-version guard;
@@ -93,6 +96,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
   let matched: ClaimTextToMatch[];
   let unitOpen: boolean;
   let claimInsideUnit: boolean;
+  let review: RecordingReview;
 
   const check: AuthorisationCheck = {
     check: (_context, declaration) =>
@@ -192,7 +196,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
     };
     return {
       create: new CategoryCreate(gate, deps),
-      edit: new CategoryEditDetails(gate, deps),
+      edit: new CategoryEditDetails(gate, { ...deps, review }),
       reorder: new CategoryReorder(gate, deps),
       hide: new CategoryHide(gate, deps),
       show: new CategoryShow(gate, deps),
@@ -238,6 +242,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
     matched = [];
     unitOpen = false;
     claimInsideUnit = false;
+    review = new RecordingReview();
   });
 
   describe('access', () => {
@@ -636,6 +641,7 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
             revisionNo: 2,
             treeVersion: 1,
           },
+          request: null,
         }),
       );
       expect(store.rows.get(cat(1))).toMatchObject({
@@ -709,6 +715,392 @@ describe.each(['AU', 'ZZ'] as const)('category editor use cases in market %s', (
         await build().edit.execute(context(), { categoryId: cat(9), version: 1, texts: text('X') }),
       ).toEqual(err({ code: 'category.not-found' }));
       expect(store.revisions).toEqual([]);
+    });
+
+    describe('review (area catalogue)', () => {
+      const note = 'Renamed to match the new aisle signs.';
+
+      it('opens a review of the edit in the same unit, with the values before and after', async () => {
+        review.review('catalogue', 'medium');
+        store.put(stored(1, null));
+        const answer = await edit(1, text('Pantry', { keywords: ['dry'] }), { note });
+        expect(answer.ok).toBe(true);
+        if (!answer.ok) return;
+        expect(answer.value.request).toMatchObject({ number: 1 });
+        expect(review.opened).toHaveLength(1);
+        expect(review.opened[0]).toMatchObject({
+          area: 'catalogue',
+          subjectKind: 'catalog.category-details',
+          subjectRef: cat(1),
+          note,
+          before: { names: { [english]: 'Category 1' }, keywords: { [english]: [] } },
+          after: { names: { [english]: 'Pantry' }, keywords: { [english]: ['dry'] } },
+        });
+      });
+
+      it('needs a note where the area is reviewed, and keeps nothing without one', async () => {
+        review.review('catalogue');
+        store.put(stored(1, null));
+        const answer = await edit(1, text('Pantry'));
+        expect(answer).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] }),
+        );
+        expect(store.rows.get(cat(1))!.texts[0]!.name).toBe('Category 1');
+        expect(store.revisions).toEqual([]);
+        expect(audits).toEqual([]);
+        expect(events).toEqual([]);
+        expect(review.opened).toEqual([]);
+      });
+
+      it('needs no note where the area is off, and answers no request', async () => {
+        store.put(stored(1, null));
+        const answer = await edit(1, text('Pantry'));
+        expect(answer.ok && answer.value.request).toBeNull();
+        expect(store.revisions).toHaveLength(1);
+      });
+
+      it('rolls the edit back when the review cannot be opened', async () => {
+        review.review('catalogue');
+        review.failNext = true;
+        store.put(stored(1, null));
+        expect(await edit(1, text('Pantry'), { note })).toEqual(err({ code: 'access.denied' }));
+        expect(store.rows.get(cat(1))!.texts[0]!.name).toBe('Category 1');
+        expect(store.revisions).toEqual([]);
+      });
+
+      it('opens no review for a save that changes nothing', async () => {
+        review.review('catalogue');
+        store.put(
+          stored(1, null, {
+            texts: [{ locale: english, name: 'Pantry', shortDescription: null, keywords: [] }],
+          }),
+        );
+        const answer = await edit(1, text('Pantry'), { note });
+        expect(answer.ok && answer.value.request).toBeNull();
+        expect(review.opened).toEqual([]);
+      });
+    });
+
+    describe('values too large for a request', () => {
+      const MANY = Array.from({ length: 12 }, (_, i) => `x${String.fromCharCode(97 + i)}-XX`);
+      const wide = Object.assign(Object.create(policy) as ConfigCatalogMarketPolicy, {
+        locales: () => ({ default: MANY[0]!, supported: MANY }),
+      });
+      const fat = (suffix: string) =>
+        Object.fromEntries(
+          MANY.map((locale) => [
+            locale,
+            {
+              name: `${'n'.repeat(100)}${suffix}`,
+              shortDescription: 's'.repeat(300),
+              keywords: Array.from({ length: 20 }, (_, i) => `${'k'.repeat(30)}${i}`),
+            },
+          ]),
+        );
+      const editWide = () => {
+        const gate = createUseCaseGate(markets, check);
+        return new CategoryEditDetails(gate, {
+          unitOfWork,
+          store,
+          categories: tree as unknown as PlatformCategoryRepository,
+          policy: wide,
+          matcher,
+          claimLocales,
+          audit,
+          outbox,
+          clock,
+          ids,
+          contentFilter: new ContentFilter(markets),
+          review,
+        });
+      };
+      const seed = () =>
+        store.put(
+          stored(1, null, {
+            texts: MANY.map((locale) => ({
+              locale,
+              name: 'Old',
+              shortDescription: null,
+              keywords: [],
+            })),
+          }),
+        );
+
+      it('refuses a reviewed edit on texts and rolls it back', async () => {
+        review.review('catalogue');
+        covered = ok(MANY);
+        seed();
+        const answer = await editWide().execute(context(), {
+          categoryId: cat(1),
+          version: 1,
+          texts: fat('a'),
+          note: 'Fill every language',
+        });
+        expect(answer).toEqual(
+          err({
+            code: 'validation.failed',
+            fields: [{ path: 'texts', code: 'too-large-for-review' }],
+          }),
+        );
+        expect(store.rows.get(cat(1))!.texts[0]!.name).toBe('Old');
+        expect(store.revisions).toEqual([]);
+        expect(review.opened).toEqual([]);
+      });
+
+      it('saves where the area is not reviewed, answering no request', async () => {
+        covered = ok(MANY);
+        seed();
+        const answer = await editWide().execute(context(), {
+          categoryId: cat(1),
+          version: 1,
+          texts: fat('a'),
+        });
+        expect(answer.ok && answer.value.request).toBeNull();
+        expect(store.rows.get(cat(1))!.texts[0]!.name).toContain('n');
+        expect(review.opened).toEqual([]);
+      });
+    });
+
+    describe('links revert check (System requests)', () => {
+      const linksReverter = (allowed: boolean) =>
+        new CategoryLinksReverter({
+          store,
+          categories: tree as unknown as PlatformCategoryRepository,
+          linkStore: undefined as never,
+          attributeAdminReader: undefined as never,
+          attributeStore: undefined as never,
+          relaxations: undefined as never,
+          unitOfWork,
+          policy,
+          matcher,
+          claimLocales,
+          contentFilter: new ContentFilter(markets),
+          authorisation: {
+            check: (_c, declaration) =>
+              Promise.resolve(
+                allowed &&
+                  declaration.rule.kind === 'permissions' &&
+                  declaration.rule.allOf.includes(CATALOG_ATTRIBUTE_EDIT.key)
+                  ? { allowed: true }
+                  : { allowed: false, denial: { code: 'access.denied' } },
+              ),
+          },
+          audit,
+          outbox,
+          clock,
+          ids,
+        });
+
+      it('lets a decider with the attribute edit key through', async () => {
+        expect(await linksReverter(true).check(context())).toBe('ok');
+      });
+
+      it('refuses a decider without the key, writing nothing', async () => {
+        store.put(stored(1, null));
+        expect(await linksReverter(false).check(context())).toBe('not-permitted');
+        expect(store.revisions).toEqual([]);
+        expect(audits).toEqual([]);
+      });
+
+      it('refuses an acting-as session, writing nothing', async () => {
+        store.put(stored(1, null));
+        expect(await linksReverter(true).check(actingAs())).toBe('not-permitted');
+        expect(store.revisions).toEqual([]);
+        expect(audits).toEqual([]);
+      });
+    });
+
+    describe('revert (System requests)', () => {
+      const REQUEST = '01990000-0000-7000-8000-000000005e01' as Id<'SystemRequest'>;
+      const reverter = () =>
+        new CategoryDetailsReverter({
+          store,
+          categories: tree as unknown as PlatformCategoryRepository,
+          linkStore: undefined as never,
+          attributeAdminReader: undefined as never,
+          attributeStore: undefined as never,
+          relaxations: undefined as never,
+          unitOfWork,
+          policy,
+          matcher,
+          claimLocales,
+          contentFilter: new ContentFilter(markets),
+          authorisation: check,
+          audit: { record: (_c, entry) => (audits.push(entry), Promise.resolve()) },
+          outbox: {
+            append: (_c: CallContext, batch: readonly PendingEvent[]) => {
+              events.push(...batch);
+              return Promise.resolve();
+            },
+          },
+          clock,
+          ids,
+        });
+      const seed = () => {
+        store.put(stored(1, null));
+        const before = categoryDetailsValues(
+          store.rows.get(cat(1))!.texts,
+          store.rows.get(cat(1))!.seo,
+          true,
+        );
+        return before;
+      };
+      const revert = (before: unknown, after: unknown) =>
+        reverter().revert(context(), {
+          requestId: REQUEST,
+          subjectRef: cat(1),
+          before: before as never,
+          after: after as never,
+        });
+
+      it('writes the details before back as a new revision and audits it as a revert', async () => {
+        const before = seed();
+        const edited = await edit(1, text('Pantry', { shortDescription: 'Dry goods' }), {
+          showInMenu: false,
+        });
+        expect(edited.ok).toBe(true);
+        const row = store.rows.get(cat(1))!;
+        const after = categoryDetailsValues(row.texts, row.seo, row.showInMenu);
+        audits.length = 0;
+        events.length = 0;
+        expect(await revert(before, after)).toBe('reverted');
+        const back = store.rows.get(cat(1))!;
+        expect(back.texts).toEqual([
+          { locale: english, name: 'Category 1', shortDescription: null, keywords: [] },
+        ]);
+        expect(back.showInMenu).toBe(true);
+        expect(back.revisionNo).toBe(3);
+        expect(audits.map((a) => a.action)).toEqual(['catalog.platform-category.details-reverted']);
+        expect(audits[0]).toMatchObject({ after: { requestId: REQUEST, revisionNo: 3 } });
+        expect(events.map((e) => e.type)).toEqual(['catalog.platform-category-changed.v1']);
+        expect(review.opened).toEqual([]);
+      });
+
+      describe('check (before the unit)', () => {
+        const edited = async () => {
+          const before = seed();
+          await edit(1, text('Pantry'));
+          const row = store.rows.get(cat(1))!;
+          const after = categoryDetailsValues(row.texts, row.seo, row.showInMenu);
+          return {
+            requestId: REQUEST,
+            subjectRef: cat(1),
+            before: before as never,
+            after: after as never,
+          };
+        };
+
+        it('lets a revert through that passes every check', async () => {
+          expect(await reverter().check(context(), await edited())).toBe('ok');
+        });
+
+        it('refuses, writing nothing, a before value that holds a claim word added since', async () => {
+          const request = await edited();
+          claimWords = /Category 1/;
+          const revisions = store.revisions.length;
+          expect(await reverter().check(context(), request)).toBe('not-permitted');
+          expect(await reverter().revert(context(), request)).toBe('reverted'); // the unit alone writes
+          expect(store.revisions.length).toBe(revisions + 1);
+        });
+
+        it('refuses when the matcher or the vocabulary cannot answer (fail closed)', async () => {
+          const request = await edited();
+          matcherDown = true;
+          expect(await reverter().check(context(), request)).toBe('not-permitted');
+          matcherDown = false;
+          covered = err({ code: 'claim-text.check-unavailable' });
+          expect(await reverter().check(context(), request)).toBe('not-permitted');
+          covered = ok([]);
+          expect(await reverter().check(context(), request)).toBe('not-permitted');
+        });
+
+        it('refuses a before value with a term of the Market content filter', async () => {
+          const request = await edited();
+          const bad = code === 'AU' ? 'shit' : 'zzbad';
+          const withBad = {
+            ...(request.before as Record<string, unknown>),
+            names: { [english]: bad },
+          };
+          expect(await reverter().check(context(), { ...request, before: withBad })).toBe(
+            'not-permitted',
+          );
+        });
+
+        it('refuses a before value in a locale the Market no longer supports', async () => {
+          const request = await edited();
+          const before = request.before as {
+            names: Record<string, string>;
+            shortDescriptions: Record<string, string | null>;
+            keywords: Record<string, string[]>;
+          };
+          const retired = {
+            ...before,
+            names: { ...before.names, 'xx-XX': 'Old' },
+            shortDescriptions: { ...before.shortDescriptions, 'xx-XX': null },
+            keywords: { ...before.keywords, 'xx-XX': [] },
+          };
+          expect(await reverter().check(context(), { ...request, before: retired })).toBe(
+            'not-permitted',
+          );
+        });
+
+        it('refuses a decider who lacks the key of the category edit', async () => {
+          const request = await edited();
+          allow = false;
+          expect(await reverter().check(context(), request)).toBe('not-permitted');
+        });
+
+        it('runs outside any unit', async () => {
+          const request = await edited();
+          claimInsideUnit = false;
+          await reverter().check(context(), request);
+          expect(claimInsideUnit).toBe(false);
+        });
+      });
+
+      it('answers changed-since when the category was edited again, and writes nothing', async () => {
+        const before = seed();
+        await edit(1, text('Pantry'));
+        const row = store.rows.get(cat(1))!;
+        const after = categoryDetailsValues(row.texts, row.seo, row.showInMenu);
+        await build().edit.execute(context(), {
+          categoryId: cat(1),
+          version: 2,
+          texts: text('Larder'),
+        });
+        const revisions = store.revisions.length;
+        expect(await revert(before, after)).toBe('changed-since');
+        expect(store.revisions).toHaveLength(revisions);
+        expect(store.rows.get(cat(1))!.texts[0]!.name).toBe('Larder');
+      });
+
+      it('answers gone for a category that does not exist and for values that are not details', async () => {
+        const before = seed();
+        const row = store.rows.get(cat(1))!;
+        const after = categoryDetailsValues(row.texts, row.seo, row.showInMenu);
+        store.rows.delete(cat(1));
+        expect(await revert(before, after)).toBe('gone');
+        store.put(stored(1, null));
+        expect(await revert({ rateBps: 5 }, after)).toBe('gone');
+      });
+
+      it('answers changed-since when a sibling took the restored name', async () => {
+        const before = seed();
+        await edit(1, text('Pantry'));
+        const row = store.rows.get(cat(1))!;
+        const after = categoryDetailsValues(row.texts, row.seo, row.showInMenu);
+        store.put(
+          stored(2, null, {
+            texts: [{ locale: english, name: 'Category 1', shortDescription: null, keywords: [] }],
+          }),
+        );
+        const revisions = store.revisions.length;
+        const auditCount = audits.length;
+        expect(await revert(before, after)).toBe('changed-since');
+        expect(store.rows.get(cat(1))!.texts[0]!.name).toBe('Pantry');
+        expect(store.revisions).toHaveLength(revisions);
+        expect(audits).toHaveLength(auditCount);
+      });
     });
   });
 

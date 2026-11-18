@@ -213,6 +213,10 @@ export interface ProductOptions {
   readonly productTypes: readonly string[];
   readonly conditions: readonly string[];
   readonly locales: { readonly default: string; readonly supported: readonly string[] };
+  /** The Market's tax category codes, as `form.taxCategoryCodes` of a product read. */
+  readonly taxCategoryCodes: readonly string[];
+  /** The categories a product may be filed under, as `form.categories` of a product read. */
+  readonly categories: readonly FormCategory[];
   readonly sellerCanCreateProduct: boolean;
 }
 

@@ -9,7 +9,7 @@ import {
   Icon,
   LoadError,
   Menu,
-  SkeletonRows,
+  DetailSkeleton,
   type MenuItem,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -89,6 +89,7 @@ export function CertificationsSection({
   onReload,
 }: CertificationsSectionProps) {
   const t = useTranslations('catalog.productForm.certs');
+  const tr = useTranslations('route');
   const locale = useLocale();
   const canView = permissionKeys.includes(CERT_VIEW_PERMISSION);
   const canEdit = permissionKeys.includes(CERT_EDIT_PERMISSION);
@@ -273,7 +274,13 @@ export function CertificationsSection({
             );
           })}
           {phase.kind === 'loading' ? (
-            <SkeletonRows label={t('loading')} rows={2} />
+            <DetailSkeleton
+              label={t('loading')}
+              slowLabel={tr('slow')}
+              rows={2}
+              title={false}
+              framed={false}
+            />
           ) : phase.kind === 'failed' ? (
             <LoadError
               message={t('load-failed')}

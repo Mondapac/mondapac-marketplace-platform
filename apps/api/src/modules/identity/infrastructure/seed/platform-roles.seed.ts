@@ -228,7 +228,10 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // Version 35 adds `ordering.ship-to-retention.view`, likewise unprotected (how long a delivered
     // order's sealed address is kept, owner decision 2026-11-15); the protected
     // `ordering.ship-to-retention.manage` is not a viewer key.
-    seedVersion: 35,
+    // Version 36 adds `shipping.carrier-delivery.view`, likewise unprotected (the carrier progress
+    // column of the admin Shipments list, 2026-11-16); Viewer is the only default role that holds
+    // `ordering.order.view`, and a custom role that holds it does not get the new key (R10).
+    seedVersion: 36,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -265,6 +268,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'settings.ai.view',
       'ordering.refund-limits.view',
       'ordering.ship-to-retention.view',
+      'shipping.carrier-delivery.view',
     ],
   },
   {
