@@ -195,8 +195,8 @@ describe.each([
   };
 
   it('lists only stores that may sell now, by name, with the allow-listed fields', async () => {
-    addStore('zeta-foods', 'Zeta Foods', '2025-03-01T00:00:00Z', { minimum: null });
-    addStore('alpha-market', 'alpha market', '2026-01-10T00:00:00Z', {
+    const zeta = addStore('zeta-foods', 'Zeta Foods', '2025-03-01T00:00:00Z', { minimum: null });
+    const alpha = addStore('alpha-market', 'alpha market', '2026-01-10T00:00:00Z', {
       minimum: { amount: 3000n, currency },
     });
     addStore('gone-store', 'Gone Store', '2026-01-10T00:00:00Z', { state: 'suspended' });
@@ -206,6 +206,7 @@ describe.each([
     expect(answer).toEqual({
       items: [
         {
+          sellerId: alpha,
           slug: 'alpha-market',
           name: 'alpha market',
           serviceAreaCode: 'area-1',
@@ -214,6 +215,7 @@ describe.each([
           logo: null,
         },
         {
+          sellerId: zeta,
           slug: 'zeta-foods',
           name: 'Zeta Foods',
           serviceAreaCode: 'area-1',
@@ -322,10 +324,13 @@ describe.each([
   });
 
   it('reads one store by its exact slug', async () => {
-    addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', {
+      minimum: null,
+    });
 
     expect(await read.execute(anonymous(), { slug: 'alpha-market' })).toEqual(
       ok({
+        sellerId,
         slug: 'alpha-market',
         name: 'Alpha',
         serviceAreaCode: 'area-1',
@@ -336,6 +341,39 @@ describe.each([
         banner: null,
       }),
     );
+  });
+
+  it('answers the seller id of the store, the one the follow routes take, and no personal field', async () => {
+    const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    const other = addStore('beta-market', 'Beta', '2026-01-11T00:00:00Z');
+
+    const answer = await read.execute(anonymous(), { slug: 'alpha-market' });
+
+    expect(answer).toMatchObject({ ok: true, value: { sellerId } });
+    expect(answer).not.toMatchObject({ value: { sellerId: other } });
+    expect(Object.keys((answer as { value: object }).value).sort()).toEqual(
+      [
+        'about',
+        'banner',
+        'logo',
+        'minimumOrder',
+        'name',
+        'sellerId',
+        'serviceAreaCode',
+        'sellingSince',
+        'slug',
+      ].sort(),
+    );
+  });
+
+  it('never answers the seller id of a store that may not sell now', async () => {
+    const sellerId = addStore('held-back', 'Held', '2026-01-10T00:00:00Z', { state: 'suspended' });
+
+    const answer = await read.execute(anonymous(), { slug: 'held-back' });
+
+    expect(
+      JSON.stringify(answer, (_k, v: unknown) => (typeof v === 'bigint' ? `${v}` : v)),
+    ).not.toContain(sellerId);
   });
 
   it.each([
