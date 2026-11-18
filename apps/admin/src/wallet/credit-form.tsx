@@ -10,8 +10,8 @@ import {
   LinkButton,
   LoadError,
   Select,
-  SkeletonRows,
   TextAreaField,
+  FormSkeleton,
   type BadgeTone,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -67,6 +67,7 @@ export function CreditForm({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('wallet');
+  const tr = useTranslations('route');
   const locale = useLocale();
   const guarded = useGuardedCall();
   const [summary, setSummary] = useState<CustomerWallet | null>(null);
@@ -151,7 +152,9 @@ export function CreditForm({
       </Banner>
     );
   }
-  if (summary === null) return <SkeletonRows label={t('loading')} rows={4} />;
+  if (summary === null) {
+    return <FormSkeleton label={t('loading')} slowLabel={tr('slow')} sections={[{ fields: 3 }]} />;
+  }
 
   if (decimalsOf(summary.currency) === null) {
     return <Banner tone="critical">{t('error.currency-unsupported')}</Banner>;

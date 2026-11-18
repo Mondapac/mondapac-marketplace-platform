@@ -214,6 +214,13 @@ export class MemoryAccountDeletionRequests implements AccountDeletionRequestRepo
     return Promise.resolve(row ?? null);
   }
 
+  completedAt(market: MarketContext, accountId: Id<'Account'>) {
+    const row = [...this.rows.values()].find(
+      (r) => r.market === market.marketId && r.accountId === accountId && r.status === 'completed',
+    );
+    return Promise.resolve(row?.closedAt ?? null);
+  }
+
   cancel(
     market: MarketContext,
     id: Id<'AccountDeletionRequest'>,

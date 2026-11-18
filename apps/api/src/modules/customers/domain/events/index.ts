@@ -75,6 +75,22 @@ export const AccountDeletionCancelledByAdminEvent = defineEvent({
   payload: {},
 });
 
+/**
+ * A customer's attribution to a seller was recorded, rejected or restored (customers management
+ * phase 4a). The aggregate is the attribution, keyed by the customer's account; its version counts
+ * the changes. Ids and the status only. Consumers: the seller's customers read model (the
+ * exclusive flag).
+ */
+export const SellerAttributionChangedEvent = defineEvent({
+  type: 'customers.seller-attribution-changed.v1',
+  aggregateType: 'seller-attribution',
+  payload: {
+    accountId: eventField.id(),
+    sellerId: eventField.id(),
+    status: eventField.enumOf(['active', 'rejected'] as const),
+  },
+});
+
 export const CUSTOMERS_EVENTS: readonly EventDefinition[] = [
   AccountDeletionSettingsChangedEvent,
   AccountDeletionRequestedEvent,
@@ -82,4 +98,5 @@ export const CUSTOMERS_EVENTS: readonly EventDefinition[] = [
   AccountDeletionCompletedEvent,
   AccountDeletionRequestedByAdminEvent,
   AccountDeletionCancelledByAdminEvent,
+  SellerAttributionChangedEvent,
 ];

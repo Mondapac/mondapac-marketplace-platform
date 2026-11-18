@@ -18,6 +18,7 @@ import {
   MemoryRegistry,
 } from '../../../../../test/support/certification-registry-fakes';
 import { RecordingAudit } from '../../../../../test/support/certification-review-fakes';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../../test/support/test-config';
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
@@ -129,6 +130,7 @@ describe.each(['AU', 'ZZ'] as const)('claim basis policy in market %s', (code) =
       outbox,
       clock,
       ids,
+      review: new RecordingReview(),
       supportedLocales: (m) => markets.get(m.marketId).supportedLocales,
     };
     const typeId = ids.next<'CertificationType'>();
@@ -746,6 +748,8 @@ describe.each(['AU', 'ZZ'] as const)('claim basis policy in market %s', (code) =
         published: null,
         pendingRevision: null,
         history: [],
+        // Area certification is not reviewed in this rig (see claim-policy-review.spec.ts).
+        review: { reviewed: false, risk: 'low' },
       });
       await published(r, r.admin());
       const otherCode = code === 'AU' ? 'ZZ' : 'AU';

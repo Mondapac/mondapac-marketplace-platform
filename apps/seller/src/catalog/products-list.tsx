@@ -5,19 +5,14 @@ import {
   BottomSheet,
   Button,
   EmptyState,
-  FilterChip,
   Icon,
   IconButton,
   LinkButton,
-  ListPagination,
-  ListLoadingStatus,
-  ListRefreshing,
-  ListViewsBar,
-  LoadError,
   listSkeletonRowCount,
   useListLoading,
   Popover,
-  SearchField,
+  SuperList,
+  type MenuItem,
   browserStorage,
   prefsKey,
   readIds,
@@ -70,10 +65,13 @@ import {
   type Filters,
   type ListPagingMode,
   type OptionalColumn,
+  type ProductRow,
   type ProductsPage,
   type Query,
   type View,
 } from './products-list-types.ts';
+
+const noActions = () => [];
 
 type Failure = 'denied' | 'too-broad' | 'unavailable';
 
@@ -378,240 +376,231 @@ export function ProductsList({
   );
   const filterTotal = filterCount(query.filters);
 
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold">{t('title')}</h1>
-          <p className="min-h-5 text-sm text-fg-muted">
-            {storeTotal === null ? '' : t('subtitle', { count: storeTotal })}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ProductsExport
-            selection={{
-              ids: [...selection.selected],
-              allMatching: selection.allMatching,
-              // Rows kept after a failed refresh belong to another list than the address: no
-              // "select all matching" over them.
-              total: failure === null ? (answer?.total ?? 0) : 0,
-            }}
-            query={query}
-            columns={columns}
-            total={answer === null || failure !== null ? null : answer.total}
-            timeZone={timeZone}
-            onSelectAll={selection.selectAllMatching}
-            onClear={selection.clear}
-          />
-          {canRunImport(permissionKeys) ? (
-            <LinkButton variant="secondary" href="/products/import" className="gap-2">
-              <Icon name="file" />
-              {t('import')}
-            </LinkButton>
-          ) : null}
-          {/* An empty store carries Add product in its empty state, so it is shown once. */}
-          {canEdit && !noProducts ? <LinkButton href="/products/new">{t('add')}</LinkButton> : null}
-        </div>
-      </div>
-      {canEdit ? null : (
-        <Banner tone="info" title={t('view-only.title')}>
-          <p>{t('view-only.body')}</p>
-        </Banner>
-      )}
-      <ListViewsBar
-        label={t('tabs')}
-        activeId={activeSaved?.id ?? query.view}
-        onSelect={(id) => {
-          if (saved?.items.some((item) => item.id === id)) openSaved(id);
-          else if (activeSaved !== undefined) {
-            // A saved filter belongs to its own tab: a built-in tab opens as it is, without the
-            // saved filter's search, filters or sort. The search box follows the address.
-            go({ ...DEFAULT_QUERY, view: id as View, pageSize: query.pageSize });
-          } else go({ view: id as View });
-        }}
-        items={[
-          ...VIEWS.map((view) => ({
-            id: view,
-            label: `${t(`tab.${view}`)}${counts === null ? '' : ` (${number(countOf(counts, view))})`}`,
-          })),
-          ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
-        ]}
-        manage={
-          saved === null
-            ? null
-            : { label: t('saved.manage-link'), onClick: () => setDialog('manage') }
-        }
+  const toolbar = desktop ? (
+    <fieldset disabled={skeleton} className="flex min-w-0 items-center gap-2">
+      <Popover label={t('filter.button')} icon="sliders" count={filterTotal} width="lg">
+        {filterPanel}
+      </Popover>
+      <Popover label={t('sort.button')} icon="arrow-down" width="sm">
+        {() => sortPanel}
+      </Popover>
+      <Popover label={t('columns.button')} icon="columns" width="md">
+        {(close) => <ProductsColumnsPanel columns={columns} onSave={saveColumns} close={close} />}
+      </Popover>
+    </fieldset>
+  ) : (
+    <fieldset disabled={skeleton} className="flex min-w-0 items-center gap-2">
+      <IconButton
+        icon="sliders"
+        label={filterTotal > 0 ? `${t('filter.button')} (${filterTotal})` : t('filter.button')}
+        aria-haspopup="dialog"
+        onClick={() => setSheet('filter')}
       />
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <SearchField
-          label={t('search.label')}
-          placeholder={t('search.placeholder')}
-          value={draft}
-          maxLength={SEARCH_MAX}
-          className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') go({ q: draft.trim() });
-          }}
-        />
-        {/* The real toolbar shows while the first page loads, but cannot act on rows yet. */}
-        {desktop ? (
-          <fieldset disabled={skeleton} className="flex min-w-0 items-center gap-2">
-            <Popover label={t('filter.button')} icon="sliders" count={filterTotal} width="lg">
-              {filterPanel}
-            </Popover>
-            <Popover label={t('sort.button')} icon="arrow-down" width="sm">
-              {() => sortPanel}
-            </Popover>
-            <Popover label={t('columns.button')} icon="columns" width="md">
-              {(close) => (
-                <ProductsColumnsPanel columns={columns} onSave={saveColumns} close={close} />
-              )}
-            </Popover>
-          </fieldset>
-        ) : (
-          <fieldset disabled={skeleton} className="flex min-w-0 items-center gap-2">
-            <IconButton
-              icon="sliders"
-              label={
-                filterTotal > 0 ? `${t('filter.button')} (${filterTotal})` : t('filter.button')
+      <IconButton
+        icon="arrow-down"
+        label={t('sort.button')}
+        aria-haspopup="dialog"
+        onClick={() => setSheet('sort')}
+      />
+    </fieldset>
+  );
+
+  // Open and Edit go to the product; the server says which of them this seller may run.
+  const rowActions = (row: ProductRow): readonly MenuItem[] => {
+    const allowed = new Set(row.actions ?? []);
+    const items: MenuItem[] = [];
+    if (allowed.has('open'))
+      items.push({
+        id: 'open',
+        label: t('row.menu.open'),
+        onSelect: () => router.push(`/products/${row.productId}`),
+      });
+    if (allowed.has('edit'))
+      items.push({
+        id: 'edit',
+        label: t('row.menu.edit'),
+        onSelect: () => router.push(`/products/${row.productId}`),
+      });
+    return items;
+  };
+
+  return (
+    <>
+      <SuperList
+        heading={{
+          title: t('title'),
+          subtitle: storeTotal === null ? '' : t('subtitle', { count: storeTotal }),
+          actions: (
+            <>
+              <ProductsExport
+                selection={{
+                  ids: [...selection.selected],
+                  allMatching: selection.allMatching,
+                  // Rows kept after a failed refresh belong to another list than the address: no
+                  // "select all matching" over them.
+                  total: failure === null ? (answer?.total ?? 0) : 0,
+                }}
+                query={query}
+                columns={columns}
+                total={answer === null || failure !== null ? null : answer.total}
+                timeZone={timeZone}
+                onSelectAll={selection.selectAllMatching}
+                onClear={selection.clear}
+              />
+              {canRunImport(permissionKeys) ? (
+                <LinkButton variant="secondary" href="/products/import" className="gap-2">
+                  <Icon name="file" />
+                  {t('import')}
+                </LinkButton>
+              ) : null}
+              {/* An empty store carries Add product in its empty state, so it is shown once. */}
+              {canEdit && !noProducts ? (
+                <LinkButton href="/products/new">{t('add')}</LinkButton>
+              ) : null}
+            </>
+          ),
+        }}
+        notice={
+          canEdit ? null : (
+            <Banner tone="info" title={t('view-only.title')}>
+              <p>{t('view-only.body')}</p>
+            </Banner>
+          )
+        }
+        views={{
+          label: t('tabs'),
+          activeId: activeSaved?.id ?? query.view,
+          onSelect: (id) => {
+            if (saved?.items.some((item) => item.id === id)) openSaved(id);
+            else if (activeSaved !== undefined) {
+              // A saved filter belongs to its own tab: a built-in tab opens as it is, without the
+              // saved filter's search, filters or sort. The search box follows the address.
+              go({ ...DEFAULT_QUERY, view: id as View, pageSize: query.pageSize });
+            } else go({ view: id as View });
+          },
+          items: [
+            ...VIEWS.map((view) => ({
+              id: view,
+              label: `${t(`tab.${view}`)}${counts === null ? '' : ` (${number(countOf(counts, view))})`}`,
+            })),
+            ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
+          ],
+          manage:
+            saved === null
+              ? null
+              : { label: t('saved.manage-link'), onClick: () => setDialog('manage') },
+        }}
+        search={{
+          label: t('search.label'),
+          placeholder: t('search.placeholder'),
+          value: draft,
+          maxLength: SEARCH_MAX,
+          onChange: setDraft,
+          onSubmit: (value) => go({ q: value }),
+        }}
+        toolbar={toolbar}
+        sortedLine={t('sorted', { field: sortName, order: sortOrder })}
+        chips={
+          filtered || canSave
+            ? {
+                chips: chips.map((chip) => ({
+                  key: chip.field,
+                  label: chip.label,
+                  removeLabel: t('chip-remove', { filter: chip.label }),
+                  onRemove: () => go({ filters: withoutFilter(chip.field) }),
+                })),
+                ...(filtered ? { clearAll: { label: t('clear-all'), onClick: clearAll } } : {}),
+                ...(canSave
+                  ? { save: { label: t('saved.save-link'), onClick: () => setDialog('save') } }
+                  : {}),
+                status:
+                  !filtered || answer === null || failure !== null
+                    ? ''
+                    : t('match', { count: answer.total }),
               }
-              aria-haspopup="dialog"
-              onClick={() => setSheet('filter')}
-            />
-            <IconButton
-              icon="arrow-down"
-              label={t('sort.button')}
-              aria-haspopup="dialog"
-              onClick={() => setSheet('sort')}
-            />
-          </fieldset>
-        )}
-        <p className="text-sm text-fg-muted sm:ms-auto">
-          {t('sorted', { field: sortName, order: sortOrder })}
-        </p>
-      </div>
-      {filtered || canSave ? (
-        <div className="flex flex-wrap items-center gap-2">
-          {chips.map((chip) => (
-            <FilterChip
-              key={chip.field}
-              label={chip.label}
-              removeLabel={t('chip-remove', { filter: chip.label })}
-              onRemove={() => go({ filters: withoutFilter(chip.field) })}
-            />
-          ))}
-          {filtered ? (
-            <Button variant="link" className="min-h-(--mp-size-control-sm)" onClick={clearAll}>
-              {t('clear-all')}
-            </Button>
-          ) : null}
-          {canSave ? (
-            <Button
-              variant="link"
-              className="min-h-(--mp-size-control-sm)"
-              onClick={() => setDialog('save')}
-            >
-              <Icon name="star" />
-              {t('saved.save-link')}
-            </Button>
-          ) : null}
-          <p role="status" className="text-sm font-medium text-fg-secondary sm:ms-auto">
-            {!filtered || answer === null || failure !== null
-              ? ''
-              : t('match', { count: answer.total })}
-          </p>
-        </div>
-      ) : null}
-      {/* A refresh that fails keeps the rows on screen, with the banner above them. */}
-      {failure === null || firstLoadError ? null : (
-        <Banner tone="critical" title={failure === 'unavailable' ? t('error.title') : undefined}>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span>{t(`error.${failure}`)}</span>
-            {failure === 'unavailable' ? (
-              <Button variant="secondary" onClick={() => void load(apiQuery)}>
-                {tl('retry')}
-              </Button>
-            ) : null}
-          </div>
-        </Banner>
-      )}
-      {firstLoadError ? (
-        <LoadError
-          // In the list's own column: no page padding of its own.
-          className=""
-          title={t('error.title')}
-          message={t('error.unavailable')}
-          retryLabel={tl('retry')}
-          onRetry={() => void load(apiQuery)}
-        />
-      ) : null}
-      {skeleton || (answer !== null && !firstLoadError) ? (
-        <ListRefreshing refreshing={status.refreshing} busy={loading}>
+            : null
+        }
+        failure={
+          failure === null
+            ? null
+            : {
+                ...(failure === 'unavailable' ? { title: t('error.title') } : {}),
+                message: t(`error.${failure}`),
+                ...(failure === 'unavailable'
+                  ? { retry: { label: tl('retry'), onClick: () => void load(apiQuery) } }
+                  : {}),
+              }
+        }
+        firstLoadError={firstLoadError}
+        loading={loading}
+        status={status}
+        loadingLabel={t('loading')}
+        slowLabel={tl('slow')}
+        ready={answer !== null}
+        table={
           <ProductsTable
             rows={answer?.items ?? []}
             columns={columns}
             timeZone={timeZone}
             empty={empty}
             skeletonRows={skeleton ? listSkeletonRowCount(query.pageSize) : undefined}
-            selection={{
-              selected: selection.selected,
-              allMatching: selection.allMatching,
-              full: selection.full,
-              onToggle: selection.toggleRow,
-              onTogglePage: selection.togglePage,
-            }}
+            // Rows kept after a failed refresh belong to another list than the address.
+            actions={failure === null ? rowActions : noActions}
+            selection={selection}
           />
-        </ListRefreshing>
-      ) : null}
-      {loading && answer === null && !firstLoadError ? (
-        <ListLoadingStatus label={t('loading')} slow={status.slow} slowLabel={tl('slow')} />
-      ) : null}
-      {answer !== null && !skeleton && answer.total > 0 ? (
-        <ListPagination
-          mode={paging}
-          page={answer.page}
-          pageSize={answer.pageSize}
-          pageSizes={PAGE_SIZES}
-          total={answer.total}
-          maxRows={MAX_LIST_ROWS}
-          range={t('range', {
-            from: number(start + 1),
-            to: number(start + answer.items.length),
-            total: number(answer.total),
-          })}
-          labels={{
-            rowsPerPage: t('paging.rows-per-page'),
-            previous: t('paging.previous'),
-            next: t('paging.next'),
-            pages: t('paging.pages'),
-            page: (page) => t('paging.page', { page }),
-            narrowTitle: t('paging.narrow'),
-            narrowBody: t('paging.narrow-help'),
-          }}
-          disabled={loading}
-          onPage={(page) => go({ page })}
-          onPageSize={(pageSize) => go({ pageSize })}
-        />
-      ) : null}
-      <SaveFilterDialog
-        open={dialog === 'save'}
-        onClose={() => setDialog(null)}
-        query={query}
-        summary={summary}
-        canShare={canShare}
-        limits={limits}
-        csrfToken={csrfToken}
-        onSaved={() => void loadSaved()}
-      />
-      <ManageFiltersDialog
-        open={dialog === 'manage'}
-        onClose={() => setDialog(null)}
-        filters={saved?.items ?? []}
-        canShare={canShare}
-        limits={limits}
-        csrfToken={csrfToken}
-        onChanged={() => void loadSaved()}
+        }
+        pagination={
+          answer !== null && answer.total > 0
+            ? {
+                mode: paging,
+                page: answer.page,
+                pageSize: answer.pageSize,
+                pageSizes: PAGE_SIZES,
+                total: answer.total,
+                maxRows: MAX_LIST_ROWS,
+                range: t('range', {
+                  from: number(start + 1),
+                  to: number(start + answer.items.length),
+                  total: number(answer.total),
+                }),
+                labels: {
+                  rowsPerPage: t('paging.rows-per-page'),
+                  previous: t('paging.previous'),
+                  next: t('paging.next'),
+                  pages: t('paging.pages'),
+                  page: (page) => t('paging.page', { page }),
+                  narrowTitle: t('paging.narrow'),
+                  narrowBody: t('paging.narrow-help'),
+                },
+                disabled: loading,
+                onPage: (page) => go({ page }),
+                onPageSize: (pageSize) => go({ pageSize }),
+              }
+            : null
+        }
+        dialogs={
+          <>
+            <SaveFilterDialog
+              open={dialog === 'save'}
+              onClose={() => setDialog(null)}
+              query={query}
+              summary={summary}
+              canShare={canShare}
+              limits={limits}
+              csrfToken={csrfToken}
+              onSaved={() => void loadSaved()}
+            />
+            <ManageFiltersDialog
+              open={dialog === 'manage'}
+              onClose={() => setDialog(null)}
+              filters={saved?.items ?? []}
+              canShare={canShare}
+              limits={limits}
+              csrfToken={csrfToken}
+              onChanged={() => void loadSaved()}
+            />
+          </>
+        }
       />
       <BottomSheet
         open={!desktop && sheet === 'filter'}
@@ -630,6 +619,6 @@ export function ProductsList({
       >
         {sortPanel}
       </BottomSheet>
-    </div>
+    </>
   );
 }

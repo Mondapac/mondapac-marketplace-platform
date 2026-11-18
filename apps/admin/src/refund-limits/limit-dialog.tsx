@@ -1,9 +1,10 @@
 'use client';
 
-import { Banner, Button, Dialog, TextField } from '@mondapac/ui';
+import { Banner, SettingsDrawer, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { useDrawerLabels } from '../settings/drawer-labels.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { MoneyField } from '../wallet/money-field.tsx';
 import { exampleAmount } from '../wallet/money.ts';
@@ -51,6 +52,9 @@ export function LimitDialog({
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
+  // What the form held when it opened: closing with anything else asks first.
+  const [start, setStart] = useState({ count: '', amount: '' });
+  const labels = useDrawerLabels(t('save'));
   const alertRef = useRef<HTMLDivElement>(null);
   const [failures, setFailures] = useState(0);
 
@@ -62,9 +66,10 @@ export function LimitDialog({
   // Each opening starts from the cap in force; a re-read after a stale save keeps what was typed.
   useEffect(() => {
     if (!open) return;
-    const start = formOf(current, currency);
-    setCount(start.count);
-    setAmount(start.amount);
+    const begin = formOf(current, currency);
+    setStart(begin);
+    setCount(begin.count);
+    setAmount(begin.amount);
     setErrors({});
     setProblem(null);
     // Only on opening: `current` changes again after a stale save and must not reset the form.
@@ -105,49 +110,43 @@ export function LimitDialog({
   }
 
   return (
-    <Dialog
+    <SettingsDrawer
       open={open}
       title={title}
+      description={intro}
       onClose={onClose}
-      actions={
-        <>
-          <Button variant="secondary" className="min-h-12" onClick={onClose} disabled={pending}>
-            {t('cancel')}
-          </Button>
-          <Button className="min-h-12" onClick={() => void save()} loading={pending}>
-            {t('save')}
-          </Button>
-        </>
-      }
-    >
-      <div className="flex flex-col gap-4">
-        <p className="text-sm">{intro}</p>
-        {problem === null ? null : (
+      onSubmit={() => void save()}
+      pending={pending}
+      dirty={count !== start.count || amount !== start.amount}
+      labels={labels}
+      notice={
+        problem === null ? undefined : (
           <div ref={alertRef} tabIndex={-1} className="outline-none">
             <Banner tone="critical">{t(`error.${problem}`)}</Banner>
           </div>
-        )}
-        <TextField
-          name="maxCount"
-          label={t('field.count')}
-          help={t('field.count-help', { max: MAX_COUNT })}
-          inputMode="numeric"
-          autoComplete="off"
-          dir="ltr"
-          value={count}
-          error={errors.count === undefined ? undefined : t('error.count', { max: MAX_COUNT })}
-          onChange={(event) => setCount(event.target.value)}
-        />
-        <MoneyField
-          name="maxAmount"
-          label={t('field.amount', { currency })}
-          help={t('field.amount-help', { example: exampleAmount(currency) })}
-          value={amount}
-          error={errors.amount === undefined ? undefined : t(`error.${errors.amount}`)}
-          onChange={(event) => setAmount(event.target.value)}
-        />
-      </div>
-    </Dialog>
+        )
+      }
+    >
+      <TextField
+        name="maxCount"
+        label={t('field.count')}
+        help={t('field.count-help', { max: MAX_COUNT })}
+        inputMode="numeric"
+        autoComplete="off"
+        dir="ltr"
+        value={count}
+        error={errors.count === undefined ? undefined : t('error.count', { max: MAX_COUNT })}
+        onChange={(event) => setCount(event.target.value)}
+      />
+      <MoneyField
+        name="maxAmount"
+        label={t('field.amount', { currency })}
+        help={t('field.amount-help', { example: exampleAmount(currency) })}
+        value={amount}
+        error={errors.amount === undefined ? undefined : t(`error.${errors.amount}`)}
+        onChange={(event) => setAmount(event.target.value)}
+      />
+    </SettingsDrawer>
   );
 }
 

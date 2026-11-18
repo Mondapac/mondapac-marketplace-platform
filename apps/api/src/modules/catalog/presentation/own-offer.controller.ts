@@ -27,6 +27,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -53,7 +54,15 @@ import { OwnOfferEdit } from '../application/use-cases/own-offer-edit.use-case';
 import { OwnOfferCreateOnPlatformProduct } from '../application/use-cases/own-offer-create-on-platform-product.use-case';
 import { OwnOfferReadSellUnits } from '../application/use-cases/own-offer-read-sell-units.use-case';
 import { OwnOfferRead } from '../application/use-cases/own-offer-read.use-case';
+import {
+  OWN_OFFER_EXPORT_COLUMNS,
+  OWN_OFFER_EXPORT_MAX_IDS,
+  OWN_OFFER_EXPORT_MAX_ROWS,
+  OwnOffersExport,
+} from '../application/use-cases/own-offers-export.use-case';
 import { OwnOffersList } from '../application/use-cases/own-offers-list.use-case';
+import { EXPORT_FORMATS } from '../../../platform/list-export';
+import { writeChunks } from './write-chunks';
 import { closedBody, optionalClosedBody, pageQuery, refusalWith } from './http-answers';
 import { OwnOfferAddTag } from '../application/use-cases/own-offer-add-tag.use-case';
 import { OwnOfferRemoveTag } from '../application/use-cases/own-offer-remove-tag.use-case';
@@ -91,6 +100,7 @@ export const OWN_OFFER_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'validation.failed': 400,
   'product.not-found': 404,
   'offer.not-found': 404,
+  'batch.too-large': 413,
   'offer.not-editable': 409,
   'offer.not-submittable': 409,
   'offer.product-not-published': 409,
@@ -121,6 +131,27 @@ export const OWN_OFFER_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'conflict.retry': 409,
 });
 
+const WHOLE_NUMBER = /^\d{1,6}$/;
+
+/**
+ * The query of the Offer list as the use case reads it: `limit` (keyset mode), `page` and
+ * `pageSize` become numbers and `listed` a boolean; a value that is not of that shape becomes one
+ * the use case refuses (-1 or the text itself), so the answer is a `validation.failed`.
+ */
+function offerListQuery(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = pageQuery(query);
+  for (const key of ['page', 'pageSize']) {
+    const value = out[key];
+    if (value !== undefined) {
+      out[key] = typeof value === 'string' && WHOLE_NUMBER.test(value) ? Number(value) : -1;
+    }
+  }
+  const listed = out['listed'];
+  if (listed === 'true') out['listed'] = true;
+  else if (listed === 'false') out['listed'] = false;
+  return out;
+}
+
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 
 /**
@@ -147,6 +178,7 @@ export class OwnOfferController {
     private readonly submitOffer: OwnOfferSubmit,
     private readonly deleteOffer: OwnOfferDelete,
     private readonly listOffers: OwnOffersList,
+    private readonly exportOffers: OwnOffersExport,
     private readonly readOffer: OwnOfferRead,
     private readonly readSellUnits: OwnOfferReadSellUnits,
     private readonly addOfferTag: OwnOfferAddTag,
@@ -170,6 +202,53 @@ export class OwnOfferController {
     description: 'The last Offer id of the previous page.',
   })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 50, default 25.' })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description:
+      'List mode (any of view, q, status, listed, sort, direction, page, pageSize, paging selects ' +
+      'it; send `page=1` for the first page): one numbered page with row `actions`. `afterId` and ' +
+      '`limit` are then refused. Rows stop at 10,000 in both paging modes: a page whose first ' +
+      'row is past it is refused (validation.failed, page).',
+  })
+  @ApiQuery({ name: 'pageSize', required: false, enum: ['25', '50', '100'] })
+  @ApiQuery({
+    name: 'view',
+    required: false,
+    enum: ['all', 'drafts', 'in-review', 'changes-needed', 'live'],
+  })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description:
+      'Contained text, up to 100 characters, no control characters, trimmed (empty means no ' +
+      'search), case-insensitive: the seller SKU, the product code, or the product published ' +
+      'name in the Market default locale. Only the seller own Offers are searched.',
+  })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['draft', 'pending-first-publish', 'changes-needed', 'published'],
+  })
+  @ApiQuery({ name: 'listed', required: false, enum: ['true', 'false'], description: 'On sale.' })
+  @ApiQuery({
+    name: 'sort',
+    required: false,
+    enum: ['created', 'sku', 'status'],
+    description:
+      'Default `created` (newest first); `sku` defaults to A to Z. Ties break on the Offer id ' +
+      'in the same direction.',
+  })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({
+    name: 'paging',
+    required: false,
+    enum: ['pages', 'prev-next'],
+    description:
+      'The panel sends the Market List paging setting here (the API does not read it): `pages` ' +
+      'answers the total, `prev-next` reads one extra row and answers no total. `hasNext` is ' +
+      'answered in both modes. Default `pages`.',
+  })
   @ApiOkResponse({ type: OwnOfferList })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({
@@ -183,11 +262,121 @@ export class OwnOfferController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<OwnOfferList> {
-    const result = await this.listOffers.execute(context, pageQuery(query));
+    const result = await this.listOffers.execute(context, offerListQuery(query));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as OwnOfferList)
       : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
     return this.settleRead('catalog.own-offers-list', context, outcome);
+  }
+
+  // Declared before `:offerId`, so "export" is not read as an Offer id.
+  @Get('export')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Export the seller’s Offers of the list as a file',
+    description:
+      'Needs catalog.own-product.view. Only the calling seller’s own Offers of the Market. ' +
+      'The selector is the list’s: view, q, status, listed, sort, direction (page, pageSize, ' +
+      'paging, afterId and limit are refused). `offerIds` is the comma-separated rows the ' +
+      `seller selected (at most ${OWN_OFFER_EXPORT_MAX_IDS}): exactly those Offers leave, in the ` +
+      'order of `sort`; an id that is not a listed Offer of the seller is offer.not-found. ' +
+      `Without it the selector picks the Offers, at most ${OWN_OFFER_EXPORT_MAX_ROWS} (more is ` +
+      '413 batch.too-large with details.max and details.total). `format` is csv (default) or ' +
+      'xlsx, with the same columns and header row. `columns` is the comma-separated keys in the ' +
+      'order shown; sku, product and status are always there, first; absent: code, listed ' +
+      'follow. The header row is in English. The file streams as an attachment, built by the ' +
+      'shared export. CSV: a text cell that starts with = + - @ is written with a leading ' +
+      'quote. XLSX: every cell is a string value, never a formula.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({
+    name: 'columns',
+    required: false,
+    description: `Any of: ${OWN_OFFER_EXPORT_COLUMNS.join(', ')}.`,
+  })
+  @ApiQuery({
+    name: 'offerIds',
+    required: false,
+    description: 'Comma-separated Offer ids of the selected rows.',
+  })
+  @ApiQuery({
+    name: 'view',
+    required: false,
+    enum: ['all', 'drafts', 'in-review', 'changes-needed', 'live'],
+  })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: ['draft', 'pending-first-publish', 'changes-needed', 'published'],
+  })
+  @ApiQuery({ name: 'listed', required: false, enum: ['true', 'false'] })
+  @ApiQuery({ name: 'sort', required: false, enum: ['created', 'sku', 'status'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiOkResponse({
+    description:
+      'text/csv; charset=utf-8 (offers-<date>.csv) or ' +
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (offers-<date>.xlsx), as an attachment',
+  })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
+  @ApiPayloadTooLargeResponse({ type: ApiErrorBody, description: 'batch.too-large' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async download(
+    @Call() context: CallContext,
+    @Res() response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<void> {
+    // `page`, `pageSize` and `paging` stay as sent (text): the use case refuses them as unknown.
+    const input: Record<string, unknown> = { ...query };
+    if (input['listed'] === 'true') input['listed'] = true;
+    else if (input['listed'] === 'false') input['listed'] = false;
+    const result = await this.exportOffers.execute(context, input);
+    if (!result.ok) {
+      const error = refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+      this.#logger.log({
+        msg: 'catalog.own-offers-export',
+        outcome: (error.getResponse() as { code: string }).code,
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      // Backpressure, and a stop as soon as the client disconnects.
+      await writeChunks(response, chunks);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logger.warn({
+        msg: 'catalog.own-offers-export',
+        code: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+      return;
+    }
+    this.#logger.log({
+      msg: 'catalog.own-offers-export',
+      outcome: 'ok',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
   }
 
   @Get(':offerId')

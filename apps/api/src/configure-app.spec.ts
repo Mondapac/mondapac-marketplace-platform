@@ -1,4 +1,5 @@
 import {
+  isBlogMediaUploadRequest,
   isCategoryImageUploadRequest,
   isCategoryImportUploadRequest,
   isSlideImageUploadRequest,
@@ -112,6 +113,36 @@ describe('isSlideImageUploadRequest', () => {
     ],
   ])('keeps the small body for %s', (_name, method, url, headers) => {
     expect(isSlideImageUploadRequest(method, url, headers)).toBe(false);
+  });
+});
+
+describe('isBlogMediaUploadRequest', () => {
+  const ADMIN_OK = { cookie: '__Host-session-admin-ZZ=abc123_-XYZ', 'x-csrf-token': 'token' };
+
+  it('takes the large body of a POST of a blog picture with an admin session and CSRF header', () => {
+    expect(isBlogMediaUploadRequest('POST', '/blog/admin/media', ADMIN_OK)).toBe(true);
+    expect(isBlogMediaUploadRequest('POST', '/blog/admin/media/?x=1', ADMIN_OK)).toBe(true);
+  });
+
+  it.each([
+    ['a GET', 'GET', '/blog/admin/media', ADMIN_OK],
+    [
+      'a rendition path',
+      'POST',
+      '/blog/admin/media/0193b2c4-1111-7222-8333-444455556666/large',
+      ADMIN_OK,
+    ],
+    ['the posts', 'POST', '/blog/admin/posts', ADMIN_OK],
+    ['no headers', 'POST', '/blog/admin/media', undefined],
+    ['no CSRF header', 'POST', '/blog/admin/media', { cookie: ADMIN_OK.cookie }],
+    [
+      'a seller cookie',
+      'POST',
+      '/blog/admin/media',
+      { cookie: '__Host-session-seller-AU=abc', 'x-csrf-token': 't' },
+    ],
+  ])('keeps the small body for %s', (_name, method, url, headers) => {
+    expect(isBlogMediaUploadRequest(method, url, headers)).toBe(false);
   });
 });
 

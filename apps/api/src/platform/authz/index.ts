@@ -43,6 +43,7 @@ export {
   type PermissionScope,
 } from './permission';
 export { frozenKeySet } from './frozen-key-set';
+export { isPlatformAdminActor } from './platform-admin';
 export {
   PermissionRegistry,
   registerPermissions,

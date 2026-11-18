@@ -15,6 +15,7 @@ interface SetFleetSelectionInput {
   readonly expectedVersion: unknown;
   readonly active: unknown;
   readonly reliability: unknown;
+  readonly note?: unknown;
 }
 
 /**

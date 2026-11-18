@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { panelHostFor } from '../../../../src/server/bff.ts';
 import { panelConfig } from '../../../../src/server/config.ts';
+import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 import { ProductsList } from '../../../../src/catalog/products-list.tsx';
 import { VIEW_PERMISSION } from '../../../../src/catalog/products-types.ts';
@@ -23,6 +24,9 @@ export default async function ProductsPage() {
   const title = t('catalog.products.title');
   const allowed = gate.session.permissionKeys.includes(VIEW_PERMISSION);
   const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
+  // List paging (settings): page numbers only when the Market says so; Previous and next otherwise.
+  const mode = await serverGet<{ readonly listPaging: string }>('settings/admin/list-paging');
+  const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
   return (
     <AdminShell session={gate.session} activeId="products" title={title}>
       {/* The topbar already names the page; the tabs come first, as in the design. */}
@@ -35,6 +39,7 @@ export default async function ProductsPage() {
           timeZone={displayZone(gate.session.timezone)}
           permissionKeys={gate.session.permissionKeys}
           csrfToken={gate.session.csrfToken}
+          paging={paging}
         />
       ) : (
         <>

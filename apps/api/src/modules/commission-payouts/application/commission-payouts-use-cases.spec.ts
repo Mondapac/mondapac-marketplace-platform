@@ -20,13 +20,15 @@ import { commissionBase, commissionOn, parseRateBps } from '../domain/commission
 import { reversedAmount } from '../domain/reversal';
 import { netBySellerOrder, type LedgerEntry, type LedgerKind } from '../domain/ledger';
 import { payoutStores } from '../../../../test/support/commission-payouts-fakes';
+import { FakeSellerNames } from '../../../../test/support/commission-payouts-dispute-fakes';
+import { sellerPageDepsOf } from '../../../../test/support/commission-payouts-seller-page-fakes';
 import type { AllowingStepUp } from '../../../../test/support/commission-payouts-fakes';
 import { COMMISSION_PAYOUTS_RATE_EDIT } from '../contracts/permissions';
 import { ConfigPayoutTermsPolicy } from '../infrastructure/config-payout-terms-policy';
 import { ConfigCommissionPolicy } from '../infrastructure/config-commission-policy';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
 import { COMMISSION_RATE_SUBJECT_KIND } from './money-review';
-import { CommissionRateReverter } from './money-reverters';
+import { CommissionRateReverter, PayoutTermsReverter } from './money-reverters';
 import type { LedgerPage, LedgerRepository } from './ports/ledger.repository';
 import type { SellerRateRecord, SellerRateRepository } from './ports/seller-rate.repository';
 import { ClearCommissionRate } from './use-cases/clear-commission-rate.use-case';
@@ -409,6 +411,23 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         after: { rateBps: after } as Record<string, null>,
       });
 
+    it('labels each seller by its store name for the queue, and none when unknown or unreadable', async () => {
+      const names = new FakeSellerNames();
+      names.names.set(SELLER_A, 'Halal Corner');
+      const refs = [SELLER_A, SELLER_B, 'not-a-seller'];
+      for (const labelled of [
+        new CommissionRateReverter(deps, names),
+        new PayoutTermsReverter(deps, names),
+      ]) {
+        expect([...(await labelled.describe(admin, refs))]).toEqual([[SELLER_A, 'Halal Corner']]);
+      }
+      names.unavailable = true;
+      expect([...(await new CommissionRateReverter(deps, names).describe(admin, refs))]).toEqual(
+        [],
+      );
+      expect([...(await reverter().describe(admin, refs))]).toEqual([]);
+    });
+
     it('opens nothing and needs no note where the Market does not review money', async () => {
       expect(await setRate(SELLER_A, 1000)).toMatchObject({ ok: true, value: { request: null } });
       expect(review.opened).toHaveLength(0);
@@ -679,10 +698,11 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       ]);
       const other = await new ViewOwnLedger(gate, deps).execute(sellerB, {});
       expect(other).toMatchObject({ ok: true, value: { sellerId: SELLER_B, entries: [] } });
-      const byAdmin = await new ViewSellerLedger(gate, deps).execute(admin, { sellerId: SELLER_A });
+      const page = sellerPageDepsOf(deps, { ledger: () => ledger.rows });
+      const byAdmin = await new ViewSellerLedger(gate, page).execute(admin, { sellerId: SELLER_A });
       expect(byAdmin.ok && byAdmin.value.totals).toEqual(own.ok && own.value.totals);
       expect(
-        await new ViewSellerLedger(gate, deps).execute(sellerB, { sellerId: SELLER_A }),
+        await new ViewSellerLedger(gate, page).execute(sellerB, { sellerId: SELLER_A }),
       ).toEqual(err({ code: 'access.denied' }));
       expect(await new ViewOwnLedger(gate, deps).execute(customer, {})).toMatchObject({
         ok: false,

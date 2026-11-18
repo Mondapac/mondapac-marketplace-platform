@@ -28,7 +28,7 @@ describe('settings map', () => {
           'money',
           ['/settings/wallet', '/settings/tax', '/settings/refund-limits', '/settings/promotions'],
         ],
-        ['people', ['/settings/admins', '/settings/roles']],
+        ['people', ['/settings/admins', '/settings/roles', '/settings/review-policy']],
       ],
     );
   });
@@ -61,7 +61,8 @@ describe('settings map', () => {
     expect(keys('promotions')).toEqual(['promotions.settings.view']);
     expect(keys('admins')).toEqual(['identity.admin-account.view']);
     expect(keys('roles')).toEqual(['identity.platform-role.view']);
-    expect(settingsViewKeys).toHaveLength(15);
+    expect(keys('review-policy')).toEqual(['system-requests.policy.view']);
+    expect(settingsViewKeys).toHaveLength(16);
   });
 
   it('finds a link with its group, and nothing for an unknown id', () => {
@@ -90,7 +91,7 @@ describe('visibleSettings', () => {
       ],
       ['delivery', ['delivery', 'fleets']],
       ['money', ['wallet', 'tax', 'refund-limits', 'promotions']],
-      ['people', ['admins', 'roles']],
+      ['people', ['admins', 'roles', 'review-policy']],
     ]);
   });
 

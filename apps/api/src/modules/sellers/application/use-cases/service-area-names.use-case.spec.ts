@@ -24,6 +24,7 @@ import type {
   EditedNamesByArea,
   ServiceAreaNamesRepository,
 } from '../ports/service-area-names.repository';
+import { ServiceAreaEditProbe } from './service-area-edit-probe.use-case';
 import { ServiceAreaNamesEdit } from './service-area-names-edit.use-case';
 import { ServiceAreaNamesList } from './service-area-names-list.use-case';
 
@@ -70,7 +71,7 @@ class Store implements ServiceAreaNamesRepository {
   }
 }
 
-function setUp() {
+function setUp(configured: readonly ConfiguredArea[] = [AREA]) {
   const clock = new FixedClock(Temporal.Instant.from('2026-11-04T10:00:00Z'));
   const ids = new SequenceIdGenerator(clock);
   const store = new Store();
@@ -82,17 +83,24 @@ function setUp() {
     },
   };
   let held = true;
+  let viewOnly = false;
+  let probes = 0;
   const authorisation: AuthorisationCheck = {
-    check: () =>
-      Promise.resolve(
-        held ? { allowed: true } : { allowed: false, denial: { code: 'access.denied' } },
-      ),
+    check: (_context, declaration) => {
+      if (declaration.name === 'sellers.service-area-edit-probe') probes += 1;
+      const keys: readonly string[] =
+        declaration.rule.kind === 'permissions' ? declaration.rule.allOf : [];
+      const allowed = held && !(viewOnly && keys.includes('sellers.service-area.edit'));
+      return Promise.resolve(
+        allowed ? { allowed: true } : { allowed: false, denial: { code: 'access.denied' } },
+      );
+    },
   };
   const areas: OnboardingAreas = {
     openCodes: () => [],
     nameOf: () => null,
-    all: () => [{ code: AREA.code, name: 'Harbour City' }],
-    configured: () => [AREA],
+    all: () => configured.map((area) => ({ code: area.code, name: area.names['en'] ?? '' })),
+    configured: () => [...configured],
   };
   let forgotten = 0;
   const areaNames: AreaNameSource = {
@@ -113,7 +121,13 @@ function setUp() {
     audits,
     forgotten: () => forgotten,
     withhold: () => void (held = false),
-    list: new ServiceAreaNamesList(gate, { onboardingAreas: areas, areaNames }),
+    viewOnly: () => void (viewOnly = true),
+    probes: () => probes,
+    list: new ServiceAreaNamesList(gate, {
+      onboardingAreas: areas,
+      areaNames,
+      editProbe: new ServiceAreaEditProbe(gate),
+    }),
     edit: new ServiceAreaNamesEdit(gate, {
       unitOfWork,
       areaNameStore: store,
@@ -227,6 +241,32 @@ describe.each([['AU'], ['ZZ']])('service area names in %s', (code) => {
     const denied = await t.edit.execute(context, { areaCode: AREA.code, names: { en: 'X' } });
     expect(!denied.ok && denied.error.code).toBe('access.denied');
     expect(t.store.rows.size).toBe(0);
+  });
+
+  it('names the Edit names action only for a holder of the edit key', async () => {
+    const t = setUp();
+    const context = adminOf(t, code);
+    const holder = await t.list.execute(context, undefined);
+    expect(holder.ok && holder.value.areas.map((area) => area.actions)).toEqual([['edit-names']]);
+    const edited = await t.edit.execute(context, { areaCode: AREA.code, names: { en: 'New' } });
+    expect(edited.ok && edited.value.area.actions).toEqual(['edit-names']);
+    t.viewOnly();
+    const viewer = await t.list.execute(context, undefined);
+    expect(viewer.ok && viewer.value.areas.map((area) => area.actions)).toEqual([[]]);
+  });
+
+  it('asks the probe once per page, and not at all when the Market has no areas', async () => {
+    const two = setUp([AREA, { ...AREA, code: 'river-town', names: { en: 'River Town' } }]);
+    const listed = await two.list.execute(adminOf(two, code), undefined);
+    expect(listed.ok && listed.value.areas.map((area) => area.actions)).toEqual([
+      ['edit-names'],
+      ['edit-names'],
+    ]);
+    expect(two.probes()).toBe(1);
+    const none = setUp([]);
+    const empty = await none.list.execute(adminOf(none, code), undefined);
+    expect(empty.ok && empty.value.areas).toEqual([]);
+    expect(none.probes()).toBe(0);
   });
 
   it('keeps edits of one Market out of the other', async () => {

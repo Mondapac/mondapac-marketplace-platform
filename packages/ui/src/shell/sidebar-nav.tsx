@@ -4,12 +4,15 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Icon, type IconName } from '../icon/icon.tsx';
 import { PinnedSection } from '../palette/panel-tools.tsx';
 import { NAV_OPEN_COOKIE, navOpenGroups } from './nav.ts';
+import { NavBadgePill, sumBadges, useNavBadges } from './nav-badges.tsx';
 
 export interface SidebarLink {
   readonly id: string;
   readonly href: string;
   readonly icon: IconName;
   readonly label: string;
+  /** Where a count beside the label comes from (`NavItem.badgeSource`); see `NavBadgeProvider`. */
+  readonly badgeSource?: string;
 }
 
 /** A sidebar entry with its text already resolved: a plain link, or a group that folds links. */
@@ -71,6 +74,7 @@ export function SidebarNav({
       : [...openGroups, activeGroup],
   );
   const baseId = useId();
+  const badges = useNavBadges();
   const nav = useRef<HTMLElement>(null);
   // True after a press on a rail icon already opened its group, so the click that follows does not
   // toggle it back.
@@ -157,6 +161,13 @@ export function SidebarNav({
             );
           }
           const isOpen = open.includes(entry.id);
+          // A closed group shows what its links hold, so a count is not hidden inside it.
+          const sum = isOpen
+            ? null
+            : sumBadges(
+                entry.items.map((item) => item.badgeSource),
+                badges,
+              );
           const listId = `${baseId}-${entry.id}`;
           return (
             <div key={entry.id} className="flex flex-col gap-1">
@@ -185,6 +196,12 @@ export function SidebarNav({
               >
                 <Icon name={entry.icon} className="text-icon" />
                 <span className={`min-w-0 flex-1 break-words ${RAIL_HIDDEN}`}>{entry.label}</span>
+                {sum === null ? null : (
+                  <>
+                    <NavBadgePill count={sum.count} tone={sum.tone} />
+                    <span className="sr-only">{`, ${sum.label}`}</span>
+                  </>
+                )}
                 <Icon
                   name="chevron-down"
                   className={`text-icon transition-transform motion-reduce:transition-none group-data-[rail=true]/rail:hidden ${isOpen ? '' : '-rotate-90 rtl:rotate-90'}`}
@@ -228,6 +245,8 @@ function NavLink({
   readonly active: boolean;
   readonly stop: 'link' | 'link-in-group';
 }) {
+  const badge = useNavBadges()[link.badgeSource ?? ''];
+  const shown = badge !== undefined && badge.count > 0 ? badge : null;
   return (
     <a
       href={link.href}
@@ -241,6 +260,12 @@ function NavLink({
     >
       <Icon name={link.icon} className={active ? undefined : 'text-icon'} />
       <span className={`min-w-0 break-words md:truncate ${RAIL_HIDDEN}`}>{link.label}</span>
+      {shown === null ? null : (
+        <>
+          <NavBadgePill count={shown.count} tone={shown.tone} />
+          <span className="sr-only">{`, ${shown.label}`}</span>
+        </>
+      )}
     </a>
   );
 }

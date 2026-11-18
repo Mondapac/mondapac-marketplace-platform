@@ -11,6 +11,7 @@ import { ApprovePayout } from '../src/modules/commission-payouts/application/use
 import { ListOwnPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/list-own-payout-holds.use-case';
 import { ListOwnPayouts } from '../src/modules/commission-payouts/application/use-cases/list-own-payouts.use-case';
 import { ListPayouts } from '../src/modules/commission-payouts/application/use-cases/list-payouts.use-case';
+import { ExportPayouts } from '../src/modules/commission-payouts/application/use-cases/export-payouts.use-case';
 import { ViewNextPayout } from '../src/modules/commission-payouts/application/use-cases/view-next-payout.use-case';
 import { ViewPayout } from '../src/modules/commission-payouts/application/use-cases/view-payout.use-case';
 import { PlacePayoutHold } from '../src/modules/commission-payouts/application/use-cases/place-payout-hold.use-case';
@@ -32,6 +33,8 @@ import {
 import { ViewCommissionRate } from '../src/modules/commission-payouts/application/use-cases/view-commission-rate.use-case';
 import { ViewOwnLedger } from '../src/modules/commission-payouts/application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from '../src/modules/commission-payouts/application/use-cases/view-seller-ledger.use-case';
+import { ExportSellerLedger } from '../src/modules/commission-payouts/application/use-cases/export-seller-ledger.use-case';
+import { ExportSellerPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/export-seller-payout-holds.use-case';
 import { COMMISSION_PAYOUTS_STATUS } from '../src/modules/commission-payouts/presentation/http-answers';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
@@ -91,9 +94,13 @@ const ledger = (currency: string) => ({
       sourceId: null,
       occurredAt: START,
       recordedAt: START,
+      actions: ['open-order'],
     },
   ],
   nextCursor: null,
+  total: null,
+  page: null,
+  pageSize: 10,
 });
 
 it('maps every refusal code of the commission-payouts routes to its exact status', () => {
@@ -107,6 +114,7 @@ it('maps every refusal code of the commission-payouts routes to its exact status
     'commission-payouts.version-conflict': 409,
     'commission-payouts.seller-order-not-found': 404,
     'commission-payouts.hold-not-found': 404,
+    'commission-payouts.ledger-entry-not-found': 404,
     'commission-payouts.hold-already-released': 409,
     'commission-payouts.dispute-not-found': 404,
     'commission-payouts.dispute.not-decidable': 409,
@@ -116,6 +124,8 @@ it('maps every refusal code of the commission-payouts routes to its exact status
     'commission-payouts.payout-not-found': 404,
     'commission-payouts.payout.not-awaiting-approval': 409,
     'commission-payouts.payout.amount-changed': 409,
+    'commission-payouts.search-unavailable': 503,
+    'batch.too-large': 413,
     'second-factor.required': 403,
     'second-factor.enrolment-required': 403,
   });
@@ -242,6 +252,12 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           .useValue(stub('release-hold'))
           .overrideProvider(ListPayouts)
           .useValue(stub('list-payouts'))
+          .overrideProvider(ExportPayouts)
+          .useValue(stub('export-payouts'))
+          .overrideProvider(ExportSellerLedger)
+          .useValue(stub('export-seller-ledger'))
+          .overrideProvider(ExportSellerPayoutHolds)
+          .useValue(stub('export-seller-holds'))
           .overrideProvider(ViewPayout)
           .useValue(stub('view-payout'))
           .overrideProvider(ApprovePayout)
@@ -507,6 +523,13 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     const byAdmin = await call('get', 'admin', `${LEDGER}?limit=10&cursor=abc`, admin());
     expect(byAdmin.status).toBe(200);
     expect(byAdmin.headers['cache-control']).toBe('no-store');
+    expect(byAdmin.body).toMatchObject({
+      entries: [{ amount: '150', actions: ['open-order'] }],
+      total: null,
+      page: null,
+      pageSize: 10,
+      nextCursor: null,
+    });
     const own = await call('get', 'seller', OWN, seller());
     expect(own.status).toBe(200);
     expect(own.body).toEqual({
@@ -544,6 +567,57 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     expect(calls).toEqual([
       { name: 'seller-ledger', input: { sellerId: SELLER, cursor: 'abc', limit: 10 } },
       { name: 'own-ledger', input: { cursor: undefined, limit: undefined } },
+    ]);
+  });
+
+  it('passes the seller page list queries through and streams their exports', async () => {
+    await boot();
+    const session = admin();
+    const HOLD_LIST = `/commission-payouts/admin/sellers/${SELLER}/payout-holds`;
+    next = ok(ledger(currency));
+    await call('get', 'admin', `${LEDGER}?side=debit&q=x&page=2&pageSize=25&sort=amount`, session);
+    next = ok({
+      holds: [],
+      counts: { active: 0, released: 0 },
+      total: 0,
+      page: 1,
+      pageSize: 100,
+      nextCursor: null,
+    });
+    await call('get', 'admin', `${HOLD_LIST}?status=active&scope=order`, session);
+    const chunks = ['\uFEFFRecorded\r\n', 'row\r\n'];
+    next = ok({
+      filename: 'seller-ledger-2026-11-02.csv',
+      contentType: 'text/csv; charset=utf-8',
+      chunks,
+    });
+    const file = await call('get', 'admin', `${LEDGER}/export?kind=sale&format=csv`, session);
+    expect(file.status).toBe(200);
+    expect(file.headers['content-disposition']).toBe(
+      'attachment; filename="seller-ledger-2026-11-02.csv"',
+    );
+    expect(file.headers['cache-control']).toBe('no-store');
+    expect(file.headers['x-content-type-options']).toBe('nosniff');
+    expect(file.text).toContain('row');
+    next = err({ code: 'batch.too-large', max: 10000, total: 10001 });
+    const big = await call('get', 'admin', `${HOLD_LIST}/export`, session);
+    expect(big.status).toBe(413);
+    expect(big.body).toEqual({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10000, total: 10001 },
+    });
+    next = err({ code: 'commission-payouts.ledger-entry-not-found' });
+    expect((await call('get', 'admin', `${LEDGER}/export?ids=x`, session)).status).toBe(404);
+    expect(calls).toEqual([
+      {
+        name: 'seller-ledger',
+        input: { side: 'debit', q: 'x', page: 2, pageSize: 25, sort: 'amount', sellerId: SELLER },
+      },
+      { name: 'list-holds', input: { status: 'active', scope: 'order', sellerId: SELLER } },
+      { name: 'export-seller-ledger', input: { kind: 'sale', format: 'csv', sellerId: SELLER } },
+      { name: 'export-seller-holds', input: { sellerId: SELLER } },
+      { name: 'export-seller-ledger', input: { ids: 'x', sellerId: SELLER } },
     ]);
   });
 
@@ -685,11 +759,23 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       const session = admin();
       proveAll();
 
-      next = ok([hold]);
+      next = ok({
+        holds: [{ ...hold, actions: ['release'] }],
+        counts: { active: 1, released: 0 },
+        total: 1,
+        page: 1,
+        pageSize: 100,
+        nextCursor: null,
+      });
       const listed = await call('get', 'admin', HOLDS, session);
       expect(listed.status).toBe(200);
       expect(listed.body).toEqual({
-        holds: [{ ...hold, placedAt: START.toString() }],
+        holds: [{ ...hold, placedAt: START.toString(), actions: ['release'] }],
+        counts: { active: 1, released: 0 },
+        total: 1,
+        page: 1,
+        pageSize: 100,
+        nextCursor: null,
       });
       next = ok(hold);
       const placed = await call('post', 'admin', HOLDS, session, {
@@ -859,7 +945,24 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     it('lists and reads payouts for an admin, with money as strings and no-store', async () => {
       await boot();
       const session = admin();
-      next = ok({ payouts: [row], nextCursor: 'c1' });
+      const counts = {
+        all: 4,
+        'awaiting-approval': 1,
+        sending: 1,
+        paid: 1,
+        failed: 1,
+        'not-sent': 0,
+      };
+      const listPage = {
+        counts,
+        total: null,
+        page: null,
+        pageSize: 5,
+        nextCursor: 'c1',
+        searchCapped: false,
+      };
+      const listRow = { ...row, activeHoldId: null, actions: ['open', 'approve'] };
+      next = ok({ payouts: [listRow], ...listPage });
       const listed = await call(
         'get',
         'admin',
@@ -868,7 +971,10 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       );
       expect(listed.status).toBe(200);
       expect(listed.headers['cache-control']).toBe('no-store');
-      expect(listed.body).toEqual({ payouts: [rowBody], nextCursor: 'c1' });
+      expect(listed.body).toEqual({
+        payouts: [{ ...rowBody, activeHoldId: null, actions: ['open', 'approve'] }],
+        ...listPage,
+      });
 
       next = ok({
         ...row,
@@ -895,8 +1001,77 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         limits: { perTransfer: { amountMinor: '500000', currency } },
       });
       expect(calls.map((c) => c.name)).toEqual(['list-payouts', 'view-payout']);
-      expect(calls[0]!.input).toMatchObject({ status: 'awaiting-approval', cursor: 'abc' });
+      expect(calls[0]!.input).toEqual({ status: 'awaiting-approval', cursor: 'abc', limit: 5 });
       expect(calls[1]!.input).toEqual({ payoutId: PAYOUT });
+    });
+
+    it('passes the super list query through, with page numbers as numbers and a bad number refused', async () => {
+      await boot();
+      const session = admin();
+      next = ok({
+        payouts: [],
+        counts: { all: 0, 'awaiting-approval': 0, sending: 0, paid: 0, failed: 0, 'not-sent': 0 },
+        total: 0,
+        page: 2,
+        pageSize: 10,
+        nextCursor: null,
+        searchCapped: false,
+      });
+      const listed = await call(
+        'get',
+        'admin',
+        `${PAYOUTS}?view=sending&search=spice&sort=amount&direction=asc&page=2&pageSize=10&minAmount=100`,
+        session,
+      );
+      expect(listed.status).toBe(200);
+      expect(listed.body).toMatchObject({ total: 0, page: 2, pageSize: 10 });
+      await call('get', 'admin', `${PAYOUTS}?page=two`, session);
+      expect(calls.map((c) => c.input)).toEqual([
+        {
+          view: 'sending',
+          search: 'spice',
+          sort: 'amount',
+          direction: 'asc',
+          page: 2,
+          pageSize: 10,
+          minAmount: '100',
+        },
+        { page: -1 },
+      ]);
+    });
+
+    it('streams the export as an attachment and refuses an export over the cap with its total', async () => {
+      await boot();
+      const session = admin();
+      // The controller reads the chunks with for await, which takes a plain list as well.
+      const chunks = ['\uFEFFPayout ID\r\n', `${PAYOUT}\r\n`];
+      next = ok({
+        filename: 'payouts-2026-11-02.csv',
+        contentType: 'text/csv; charset=utf-8',
+        chunks,
+      });
+      const file = await call('get', 'admin', `${PAYOUTS}/export?view=paid&columns=gross`, session);
+      expect(file.status).toBe(200);
+      expect(file.headers['content-disposition']).toBe(
+        'attachment; filename="payouts-2026-11-02.csv"',
+      );
+      expect(file.headers['cache-control']).toBe('no-store');
+      expect(file.headers['x-content-type-options']).toBe('nosniff');
+      expect(file.text).toContain(PAYOUT);
+      expect(calls).toEqual([
+        { name: 'export-payouts', input: { view: 'paid', columns: 'gross' } },
+      ]);
+
+      next = err({ code: 'batch.too-large', max: 10000, total: 12000 });
+      const big = await call('get', 'admin', `${PAYOUTS}/export`, session);
+      expect(big.status).toBe(413);
+      expect(big.body).toEqual({
+        statusCode: 413,
+        code: 'batch.too-large',
+        details: { max: 10000, total: 12000 },
+      });
+      next = err({ code: 'commission-payouts.search-unavailable' });
+      expect((await call('get', 'admin', `${PAYOUTS}?search=spice`, session)).status).toBe(503);
     });
 
     it('approves with the echoed amount, answers 200 and passes the id and amount through', async () => {

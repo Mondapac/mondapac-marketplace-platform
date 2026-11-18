@@ -395,3 +395,25 @@ export function buildTaxOverrideContent(
   if (published.taxCategoryCode === taxCategoryCode) return err({ code: 'tax-category.unchanged' });
   return ok({ ...published, taxCategoryCode });
 }
+
+/**
+ * The content of a category override (categories package C5a, decision 8): the published
+ * revision's content with category `from` replaced by `to`. It takes the published content as its
+ * only source, as the tax override does. `to` must already be a valid product category (the caller
+ * checked level and status). If `to` is already on the revision it is inserted once (`from` is
+ * dropped); if `from` was the primary (first), `to` becomes the primary. The list never grows, so
+ * the limit of three holds.
+ */
+export function buildCategoryOverrideContent(
+  published: RevisionContent,
+  from: string,
+  to: string,
+): Result<RevisionContent, { readonly code: 'category.unchanged' }> {
+  const ids = published.categoryIds;
+  if (from === to || !ids.includes(from)) return err({ code: 'category.unchanged' });
+  const wasPrimary = ids[0] === from;
+  const replaced = ids.map((id) => (id === from ? to : id));
+  let categoryIds = replaced.filter((id, index) => replaced.indexOf(id) === index);
+  if (wasPrimary) categoryIds = [to, ...categoryIds.filter((id) => id !== to)];
+  return ok({ ...published, categoryIds });
+}

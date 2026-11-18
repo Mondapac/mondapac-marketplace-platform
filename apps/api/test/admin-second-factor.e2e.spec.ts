@@ -36,6 +36,7 @@ import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { traceCredentialOrder } from './support/credential-order';
 import { IdentityFakes } from './support/identity-fakes';
+import { wrongTotpCode } from './support/wrong-totp-code';
 import { createTestApp, type LogLine } from './support/test-app';
 import {
   IDENTITY_MARKET_POLICY,
@@ -157,6 +158,10 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
   /** The code the authenticator app shows now. */
   const codeFor = (secret: string, at: Temporal.Instant = clock.now()) =>
     hotp(decodeBase32Secret(secret)!, Math.floor(at.epochMilliseconds / 1000 / TOTP.periodSeconds));
+
+  /** A code that none of the steps the server accepts now would take (never a chance match). */
+  const wrongCodeFor = (secret: string): string =>
+    wrongTotpCode((at) => codeFor(secret, at), clock.now());
 
   const eventsOf = (type: string) => fakes.events.filter((event) => event.type === type);
   const adminAccount = () =>
@@ -379,7 +384,10 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
         .get(CompleteAdminSignIn)
         .execute(anonymousOf(code), { challengeToken, code: sameStep, client: CLIENT });
       expect(replayed).toEqual({ ok: false, error: { code: 'second-factor.invalid' } });
-      const wrong = await post('second-factor', code, { challengeToken, code: '000000' });
+      const wrong = await post('second-factor', code, {
+        challengeToken,
+        code: wrongCodeFor(secret),
+      });
       expect(wrong.status).toBe(400);
       expect(wrong.body).toMatchObject({ code: 'second-factor.invalid' });
       expect(fakes.sessions.size).toBe(0);
@@ -428,14 +436,16 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
 
     it('locks the factor at the Market limit of wrong codes and mails a notice (HF2)', async () => {
       await boot();
-      await acceptedAdmin(code);
+      const { secret } = await acceptedAdmin(code);
       const limit = fixture.secondFactorThrottle.limit;
       let last: unknown;
       for (let attempt = 0; attempt < limit; attempt += 1) {
         const challengeToken = await challenge(code);
-        last = await app
-          .get(CompleteAdminSignIn)
-          .execute(anonymousOf(code), { challengeToken, code: '000000', client: CLIENT });
+        last = await app.get(CompleteAdminSignIn).execute(anonymousOf(code), {
+          challengeToken,
+          code: wrongCodeFor(secret),
+          client: CLIENT,
+        });
       }
       // The attempt that reaches the limit is answered as a lock (HF2).
       expect(last).toMatchObject({ ok: false, error: { code: 'second-factor.locked' } });
@@ -574,7 +584,7 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
       await expect(
         app.get(ConfirmSecondFactorEnrolment).execute(anonymousOf(code), {
           challengeToken: started.value.challengeToken,
-          code: '000000',
+          code: wrongCodeFor(started.value.secret),
           client: CLIENT,
         }),
       ).resolves.toEqual({ ok: false, error: { code: 'second-factor.invalid' } });
@@ -814,9 +824,9 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
         .execute(anonymousOf(code), { challengeToken, code: appCode, client: CLIENT });
 
     /** Wrong codes until the counter reaches the Market limit, which locks the factor (HF2). */
-    async function lockFactor() {
+    async function lockFactor(secret: string) {
       while (secondFactorAttempts() < fixture.secondFactorThrottle.limit) {
-        await complete(await challenge(code), '000000');
+        await complete(await challenge(code), wrongCodeFor(secret));
       }
       expect(fakes.factors.get(adminAccount().id)?.lockedAt).not.toBeNull();
     }
@@ -868,7 +878,7 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
       const { secret } = await acceptedAdmin(code);
       const { limit, blockMinutes } = fixture.secondFactorThrottle;
       for (let attempt = 0; attempt < limit - 1; attempt += 1) {
-        await expect(complete(await challenge(code), '000000')).resolves.toEqual({
+        await expect(complete(await challenge(code), wrongCodeFor(secret))).resolves.toEqual({
           ok: false,
           error: { code: 'second-factor.invalid' },
         });
@@ -877,7 +887,7 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
       expect(secondFactorAttempts()).toBe(limit - 1);
 
       // The attempt that reaches the limit locks.
-      await expect(complete(await challenge(code), '000000')).resolves.toMatchObject({
+      await expect(complete(await challenge(code), wrongCodeFor(secret))).resolves.toMatchObject({
         ok: false,
         error: { code: 'second-factor.locked', retryAfterSeconds: blockMinutes * 60 },
       });
@@ -1156,7 +1166,7 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
       // One wrong code stays counted through both.
       clock.advance(STEP);
       await expect(
-        app.get(RegenerateRecoveryCodes).execute(context, { code: '000000' }),
+        app.get(RegenerateRecoveryCodes).execute(context, { code: wrongCodeFor(secret) }),
       ).resolves.toEqual({ ok: false, error: { code: 'second-factor.invalid' } });
       expect(secondFactorAttempts()).toBe(1);
 
@@ -1223,8 +1233,8 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
 
     it('a locked factor stays locked after a password reset (I-4)', async () => {
       await boot();
-      await acceptedAdmin(code);
-      await lockFactor();
+      const { secret } = await acceptedAdmin(code);
+      await lockFactor(secret);
       const attempts = secondFactorAttempts();
 
       const token = await resetLink();
@@ -1259,7 +1269,7 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
         });
 
       clock.advance(STEP);
-      await expect(change('000000')).resolves.toMatchObject({
+      await expect(change(wrongCodeFor(secret))).resolves.toMatchObject({
         ok: false,
         error: { code: 'second-factor.invalid' },
       });
@@ -1272,7 +1282,7 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
           .execute(anonymousOf(code), { email: EMAIL, password: PASSWORD, client: CLIENT }),
       ).resolves.toMatchObject({ ok: true, value: { code: 'second-factor-required' } });
 
-      await lockFactor();
+      await lockFactor(secret);
       clock.advance(STEP);
       await expect(change(codeFor(secret))).resolves.toMatchObject({
         ok: false,
@@ -1287,10 +1297,10 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
 
       clock.advance(STEP);
       await expect(
-        app.get(StartSecondFactorReplacement).execute(context, { code: '000000' }),
+        app.get(StartSecondFactorReplacement).execute(context, { code: wrongCodeFor(secret) }),
       ).resolves.toEqual({ ok: false, error: { code: 'second-factor.invalid' } });
       await expect(
-        app.get(RegenerateRecoveryCodes).execute(context, { code: '000000' }),
+        app.get(RegenerateRecoveryCodes).execute(context, { code: wrongCodeFor(secret) }),
       ).resolves.toEqual({ ok: false, error: { code: 'second-factor.invalid' } });
       const started = await app
         .get(StartSecondFactorReplacement)
@@ -1349,7 +1359,7 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
       clock.advance(STEP);
       let spy = failClosingRead();
       await expect(
-        app.get(RegenerateRecoveryCodes).execute(context, { code: '000000' }),
+        app.get(RegenerateRecoveryCodes).execute(context, { code: wrongCodeFor(secret) }),
       ).rejects.toThrow('unit failed');
       spy.mockRestore();
       expect(secondFactorAttempts()).toBe(1);
@@ -1443,7 +1453,7 @@ describe('admin second factor and invitations over HTTP (integration, slice 7b)'
       const wrong = await post(
         'second-factor/replacement',
         code,
-        { code: '000000' },
+        { code: wrongCodeFor(secret) },
         { cookie, 'x-csrf-token': csrfTokenFor(done.value.token) },
       );
       expect(wrong.status).toBe(400);

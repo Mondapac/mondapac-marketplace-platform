@@ -3,6 +3,7 @@
 
 import {
   FILTER_FIELDS,
+  PAGE_SIZE,
   type Direction,
   type Query,
   type Scope,
@@ -78,5 +79,6 @@ export function queryOf(payload: SavedPayload): Query {
     sort: payload.sort,
     direction: payload.direction,
     page: 1,
+    pageSize: PAGE_SIZE,
   };
 }

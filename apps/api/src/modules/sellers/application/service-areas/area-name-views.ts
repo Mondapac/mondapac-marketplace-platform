@@ -18,6 +18,13 @@ export interface ServiceAreaNamesRow {
   readonly names: Readonly<Record<string, AreaLanguageName>>;
 }
 
+/** A row's Actions menu: Edit names… for a holder of `sellers.service-area.edit`. */
+export type ServiceAreaRowAction = 'edit-names';
+
+export interface ServiceAreaNamesListRow extends ServiceAreaNamesRow {
+  readonly actions: readonly ServiceAreaRowAction[];
+}
+
 export function rowOfArea(
   area: ConfiguredArea,
   edited: EditedNamesByArea,

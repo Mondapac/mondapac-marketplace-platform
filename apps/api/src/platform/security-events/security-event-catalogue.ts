@@ -299,6 +299,22 @@ export const CarrierWebhookSignatureFailed = defineSecurityEvent({
   payload: { carrier: eventField.enumOf(['mondapac-drive', 'uber-direct', 'zoom2u'] as const) },
 });
 
+/**
+ * An admin reached the Market's alert count of reveals of customers' personal data (a sign-in's
+ * address, a delivery address) within one hour on the customer page (security review of #969,
+ * L3): recorded on every admitted reveal from `customers.adminActionLimits.piiRevealAlertAt` on,
+ * so one failed write loses no alert (the rule keeps one live alert per admin). The target is the
+ * admin's account; the window's count only, never a customer or what was revealed (that stays in
+ * the audit log).
+ */
+export const AdminBulkPiiReveal = defineSecurityEvent({
+  type: 'customers.pii-reveal.bulk',
+  severity: 's2',
+  targetType: 'account',
+  ip: false,
+  payload: { reveals: eventField.integer() },
+});
+
 /** Every recorded type, by type. */
 export const RECORDED_SECURITY_EVENTS: ReadonlyMap<string, SecurityEventDefinition> = new Map(
   (
@@ -318,6 +334,7 @@ export const RECORDED_SECURITY_EVENTS: ReadonlyMap<string, SecurityEventDefiniti
       DisputeOrderMismatch,
       PayoutAlert,
       CarrierWebhookSignatureFailed,
+      AdminBulkPiiReveal,
     ] as readonly SecurityEventDefinition[]
   ).map((definition) => [definition.type, definition]),
 );
@@ -328,8 +345,8 @@ export const RECORDED_SECURITY_EVENTS: ReadonlyMap<string, SecurityEventDefiniti
 /**
  * The audited actions that also make a security event, with its severity (plan sections 2 and
  * 4): admin roles and permissions, account status and second factors, the Market switches
- * (wallet, tax strategy, assistant), payout accounts and schedules, commission rates, refunds,
- * the support contact, and a relaxing policy row on a retired platform category. The event's
+ * (wallet, tax strategy, assistant), the assistant's internal preview token, payout accounts and
+ * schedules, commission rates, refunds, the support contact, and a relaxing policy row on a retired platform category. The event's
  * type is the action; its target is the audit row's; its payload is `{ auditLogId }`.
  */
 export const AUDITED_SECURITY_ACTIONS: ReadonlyMap<string, SecuritySeverity> = new Map<
@@ -358,6 +375,7 @@ export const AUDITED_SECURITY_ACTIONS: ReadonlyMap<string, SecuritySeverity> = n
   ['tax.strategy.activate', 's2'],
   ['tax.strategy.deactivate', 's2'],
   ['assistant.settings.changed', 's3'],
+  ['assistant.preview-token.issued', 's3'],
   ['payments.payout-change.recorded', 's2'],
   ['payments.payout-schedule.paused', 's2'],
   ['payments.payout-schedule.resumed', 's2'],
