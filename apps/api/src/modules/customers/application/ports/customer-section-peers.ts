@@ -23,7 +23,7 @@ type Window = { readonly offset: number; readonly limit: number };
 type Page<R> = { readonly rows: readonly R[]; readonly total: number | null };
 
 // The shapes below mirror the owners' facade contracts (cart, notifications, engagement, legal,
-// assistant). They are declared here, not imported: those modules reach `ordering`, which
+// assistant, reviews). They are declared here, not imported: those modules reach `ordering`, which
 // imports `customers`, so even a type import would close a module cycle. The real facades
 // satisfy them structurally when `CustomersSectionsModule` binds them, which the compiler checks.
 
@@ -160,6 +160,99 @@ export interface ConversationsSectionPeer {
   ): OwnerResult<{ readonly rows: readonly SectionConversationDates[]; readonly total: number }>;
 }
 
+/** The review statuses reviews keeps (mirrored; a contract test pins them to reviews' list). */
+export const SECTION_REVIEW_STATUSES = [
+  'published',
+  'held',
+  'hidden',
+  'removed',
+  'deleted-by-author',
+] as const;
+
+/** The seller rating statuses reviews keeps (mirrored and pinned as above). */
+export const SECTION_SELLER_RATING_STATUSES = ['published', 'hidden', 'removed'] as const;
+
+/** Whose report it is from the customer's side: made by them, or about one of their reviews. */
+export const SECTION_REPORT_ROLES = ['by', 'about'] as const;
+
+/** One review the customer wrote, with its status and moderation state; never its text. */
+export interface SectionReview {
+  readonly reviewId: string;
+  readonly productId: string;
+  readonly offerId: string;
+  readonly sellerId: string;
+  readonly rating: number;
+  readonly anonymous: boolean;
+  readonly status: string;
+  readonly createdAt: string;
+  readonly editedAt: string | null;
+  readonly publishedAt: string | null;
+  readonly helpfulCount: number;
+  readonly openReports: number;
+  readonly lastModeration: {
+    readonly action: string;
+    readonly reasonCode: string;
+    readonly byModerator: boolean;
+    readonly at: string;
+  } | null;
+}
+
+export interface SectionSellerRating {
+  readonly ratingId: string;
+  readonly sellerId: string;
+  readonly sellerOrderId: string | null;
+  readonly satisfaction: number;
+  readonly asDescribed: boolean;
+  readonly arrivedOk: boolean;
+  readonly reasonCode: string | null;
+  readonly status: string;
+  readonly createdAt: string;
+}
+
+export interface SectionHelpfulVote {
+  readonly reviewId: string;
+  readonly productId: string;
+  readonly votedAt: string;
+}
+
+export interface SectionReviewReport {
+  readonly reportId: string;
+  readonly reviewId: string;
+  readonly role: (typeof SECTION_REPORT_ROLES)[number];
+  readonly reasonCode: string;
+  readonly status: string;
+  readonly createdAt: string;
+}
+
+/**
+ * reviews: one customer's reviews, ratings, votes and reports (admin key, platform admin only),
+ * and the author of one review for the timeline subscriber (the system actor only).
+ */
+export interface ReviewsSectionPeer {
+  adminCustomerReviews(
+    context: CallContext,
+    request: AccountPageRequest & { readonly statuses: readonly string[] | null },
+  ): OwnerResult<Page<SectionReview>>;
+  adminCustomerSellerRatings(
+    context: CallContext,
+    request: AccountPageRequest & { readonly statuses: readonly string[] | null },
+  ): OwnerResult<Page<SectionSellerRating>>;
+  adminCustomerHelpfulVotes(
+    context: CallContext,
+    request: AccountPageRequest,
+  ): OwnerResult<Page<SectionHelpfulVote>>;
+  adminCustomerReviewReports(
+    context: CallContext,
+    request: AccountPageRequest & {
+      readonly roles: readonly (typeof SECTION_REPORT_ROLES)[number][] | null;
+    },
+  ): OwnerResult<Page<SectionReviewReport>>;
+  reviewAuthorOf(
+    context: CallContext,
+    reviewId: string,
+  ): OwnerResult<{ readonly accountId: Id<'Account'> | null }>;
+}
+
 export interface CustomerSectionPeers {
   readonly identity: IdentitySectionPeer;
   readonly cart: CartSectionPeer;
@@ -167,6 +260,7 @@ export interface CustomerSectionPeers {
   readonly behaviour: BehaviourSectionPeer;
   readonly consent: ConsentSectionPeer;
   readonly conversations: ConversationsSectionPeer;
+  readonly reviews: ReviewsSectionPeer;
 }
 
 export const CUSTOMER_SECTION_PEERS = Symbol('CUSTOMER_SECTION_PEERS');

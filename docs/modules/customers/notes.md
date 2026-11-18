@@ -372,6 +372,36 @@ admin deletes a buyer's account for them, from a support ticket.
   more is a scan of the Market until `pg_trgm` is approved. The two sort indexes on the stats
   table are not used by the left join and can be dropped later.
 
+## Customers management, phase 1 frontend: F1 list and F2 customer page (15 Nov 2026)
+
+- **Customers list** (`apps/admin/src/customers/customers-list.tsx`, `/customers`) replaces the exact-email lookup. It is a
+  super list on `SuperList`/`SuperTable`: the seven tabs with counts, saved filters (`customers/admin/saved-filters`),
+  search (email start or name, 2 to 80 characters; shorter is not sent), filters, sort, columns (this browser),
+  selection with "select all matching", the Bulk action menu (Export, with the `customers.customers.export` two-step code)
+  and the row Actions menu (open, copy email, copy account id, disable or enable). The nav item and the dashboard's
+  "Find a customer" now need `customers.customers.view` (was `identity.customer-account.view`).
+- **Customer page** (`/customers/:accountId`, `?tab=overview|orders|money`): header (status, verified, joined; Issue
+  wallet credit; More: disable or enable, delete through the 5c dialog), Overview figures and profile, Orders (the admin
+  Orders list scoped with `accountId`, no Customer column, no saved filters), Money (Spent, Refunded, wallet balance;
+  refunds, wallet journal and promotion credits, each under its own key). `tab-opened` is called once per tab per visit
+  before the tab's data is read.
+- **Known gaps (phase 2 backend):** order-number search; refunds read capped at 100 with no paging or sort (the page
+  pages the 100 in the browser); payments per order, chargebacks and code usage per customer; the
+  "deleted customer" view (erasure removes the directory row, so the page says not found). The spent filter is typed in
+  the currency the rows carry (the panel has no Market currency setting); with no ordering customer on the page it is
+  hidden.
+- **Review round 1 (PR #925):** the Overview read now carries `deletionRequest` (the open request: id, pending or
+  executing, requested and scheduled instants), so the page shows the banner with the date and Cancel and offers no
+  second request. The panel relay allows the new routes (list, export with a 48 KB body cap for 1000 ids, saved
+  filters, the overview, `tab-opened`, refunds, wallet journal, promotion credits) and lets `accountId` (a UUID) cross
+  on `ordering/admin/orders`. More than 1000 ticked rows are refused instead of exporting the whole filter. The
+  customer's Orders tab keeps its own column choice; an order opened from it (or from Money) has Back to the customer.
+  The page tabs use the ARIA tabs pattern (`Tabs` with `panelId`).
+- **Still open:** the day filters (joined, last order) are evaluated as UTC days on the API while the list shows days in
+  the admin's zone (ADR-0005; phase 2 backend). A shared saved filter may hold an email prefix as its search; every
+  admin who sees it already holds `customers.customers.view`. The `tab-opened` audit is written because the page calls
+  it first; a direct read of the owning module's route is audited by that module only.
+
 ## Customers management, phase 2, PR 2a: groups, notes, the activity timeline and the name edit (15 Nov 2026)
 
 - **Manual groups.** `customers.customer_groups` and `customer_group_members` (migration
@@ -615,6 +645,75 @@ Not built in part 2 (remaining):
 - **Sent emails.** notifications keeps no per-account log of sent emails, so there is nothing
   to show; not built (in-app notices go to sellers and admins only).
 - **Promotion usages (e)** remain as above.
+
+
+## Phase 2b, part 3 (reviews) (16 Nov 2026)
+
+The last sections of the customer page and the review events on the timeline (handoff item k).
+
+- **reviews' facade read by account.** `CustomerReviewsFacade` (`CUSTOMER_REVIEWS_FACADE`), four
+  reads behind the new plain platform key `reviews.customer-review.view` (not a seller key, not
+  seeded to Viewer), checked again in reviews for a platform admin who is not seller-scoped and not
+  acting as anyone. Read only and text-free: never a review's title or body, never a reporter's
+  account, never the author of a review the customer voted for. They answer whether reviews are on
+  or off in the Market (they are the history). Their own small dependency set
+  (`CustomerReviewsReader`, `PrismaCustomerReviewsReader`), not the big review repository.
+- **Four super lists, each with `/export`.** Under `customers/admin/customers/:accountId/`:
+  `POST reviews` (filter `status`; each row: ids, rating, anonymous, status, created/edited/published,
+  helpful votes, open reports and the latest moderation line: action, reason code, whether a
+  moderator did it, when; no moderation action here), `POST seller-ratings` (filter `status`),
+  `POST helpful-votes` (no filters) and `POST review-reports` (filter `role`: `by` the customer
+  made it, `about` it reports one of their reviews; a NULL reporter counts as someone else). Each
+  needs `customers.customers.view` and `reviews.customer-review.view`; each export also the
+  protected `customers.customers.export` with its step-up, audited as
+  `customers.customer-section.exported` (the sections `reviews`, `seller-ratings`,
+  `helpful-votes`, `review-reports` are back in `CUSTOMER_SECTIONS` and the catalogue snapshot).
+  customers mirrors reviews' status lists (it cannot import reviews: reviews reaches ordering,
+  which imports customers); the admin-facade-permission contract pins them.
+- **Index.** `20261117050300_reviews_reports_reporter_idx`:
+  `review_reports(market_id, reporter_account_id, created_at DESC)`, plain `CREATE INDEX` with
+  `lock_timeout` (no deployed environment; not partial, so not in the partial-index list; no grant,
+  so no change to the expected privileges), reversible. The reports about a customer's reviews and
+  the other three lists use existing indexes (`product_reviews`, `seller_ratings` and
+  `helpful_votes` by (market, account, created); the reports' (market, review, reporter) key).
+  The reports `about` the customer take two queries in the same read-only unit: the account's
+  review ids in the Market, then `review_id IN (...)` (Mojtaba, B1: a relation filter inside the
+  `OR` planned a hashed SubPlan with no `market_id`, a scan of every Market's reviews). Page and
+  count use the same filter.
+- **Reviews on the timeline.** New kinds `review-published`, `review-held`, `review-hidden`,
+  `review-restored` in the new category `reviews`. Subscriptions `customers.timeline-review-*` on
+  reviews' four events, registered by `CustomersSectionsModule` (it imports reviews). reviews'
+  events still carry no account: `RecordCustomerTimeline` asks `reviewAuthorOf` (new use case
+  `reviews.review-author-of`, rule `system`, so no person and no seller reaches it), then writes
+  once per delivery (`runOnce`, the customers inbox) and once per event. A review that is gone or
+  whose author was deleted writes nothing; reviews unavailable is refused and retried. No reference
+  on the entry (the timeline CHECK allows order, refund, group and note only).
+- **Review kinds need the reviews key (Hassan, L1).** The timeline read, its export and so the
+  Overview's last five show `review-published`, `review-held`, `review-hidden` and
+  `review-restored` only to a caller who also holds `reviews.customer-review.view`, asked through
+  the probe use case `customers.customer-review-events-check` (the gate decides). Without the key
+  the kinds leave the query itself (not the page afterwards), so the page and its total agree; a
+  filter on the `reviews` category or on review kinds only answers an empty list, not an error. A
+  probe the gate cannot answer is `access.unavailable`.
+- **Author removals.** reviews publishes no event when an author deletes their own review (there
+  is no removal event; `ReviewHidden` follows only a moderator's hide or remove of a published
+  review), so an author's removal does not appear on the timeline: the earlier `review-published`
+  entry stays and nothing follows it.
+- **Tests.** Unit on both Market fixtures (reviews' reads and refusals; the four sections through
+  the shared section spec; the timeline from review events and subscriptions), HTTP
+  (`customers-reviews-admin.e2e.spec.ts`: also a seller session, answered 403, and an acting-as
+  session, answered 401 `session.invalid` as on every admin route, on all eight routes; both view
+  keys without the export key refused on every export), PostgreSQL
+  (`reviews-customer-reads.db-spec.ts`, including both roles on both Markets).
+
+Not built in part 3:
+
+- **Consent on the timeline.** legal publishes no event (it has no outbox, and its flow says no
+  consent value reaches an event). Needs a decision: a legal outbox and an event such as
+  `legal.marketing-consent-changed.v1` (account and channel, no value), which customers would copy
+  as `consent-changed`. The consent history section (part 2) shows every change meanwhile.
+- `review-published` also follows an edit that passed the checks and a release from a hold, as
+  reviews' event does; the timeline cannot tell a first submission from those.
 
 - **Identity section** (logins over 90 days as a super list, sessions, sign out everywhere,
   send a password reset): the largest piece, an auth path (security review). `sign_in_records`

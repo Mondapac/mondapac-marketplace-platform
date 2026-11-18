@@ -294,11 +294,14 @@ describe.each(['AU', 'ZZ'] as const)(
         refundedMinor: 0n,
         groups: [],
       };
-      expect(overviewView(row).pendingEmailChange).toBeNull();
-      expect(overviewView(row, { email: NEW_EMAIL, requestedAt: NOW }).pendingEmailChange).toEqual({
-        email: NEW_EMAIL,
-        requestedAt: '2026-11-16T10:00:00.123Z',
-      });
+      const read = { row, deletion: null };
+      expect(overviewView(read).pendingEmailChange).toBeNull();
+      expect(overviewView(read, { email: NEW_EMAIL, requestedAt: NOW }).pendingEmailChange).toEqual(
+        {
+          email: NEW_EMAIL,
+          requestedAt: '2026-11-16T10:00:00.123Z',
+        },
+      );
     });
 
     describe('a requested deletion cancels the pending change (Hassan R6, L2)', () => {
