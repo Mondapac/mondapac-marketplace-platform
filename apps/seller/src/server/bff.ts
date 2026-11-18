@@ -96,6 +96,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set(['sellers/store-profile/logo', 'sellers/store-profile/banner']),
   POST: new Set([
+    // The packing slips of a selection of orders (up to 50 ids in the body; a read).
+    'ordering/seller/orders/documents',
     // A description draft from the "Write with AI" modal (catalog, AIS-03): the form's title,
     // category label, details, keywords and note in; plain text out. Nothing is stored.
     'catalog/own/description-writer/drafts',
