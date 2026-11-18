@@ -57,6 +57,20 @@ describe('guardDraft', () => {
     expect(sentenceVerdict('A 3 kg bag.', 'Pack 2.5 kg')).toBe('other');
   });
 
+  it('uses the shared claim words: spellings, symbols and unreadable scripts are refused', () => {
+    for (const text of [
+      'H4l4l grains.',
+      'Ηalal grains.',
+      'It is h.a.l.a.l rice.',
+      'It is plant based.',
+      'Great taste 美味.',
+    ]) {
+      expect(sentenceVerdict(text, facts)).toBe('certification');
+    }
+    expect(sentenceVerdict('Long, firm grains with a nutty aroma.', facts)).toBeNull();
+    expect(sentenceVerdict('Café style sauce.', facts)).toBeNull();
+  });
+
   it('removes invisible and bidi characters', () => {
     const text = draftText(guardDraft('Firm​ grains‮ for pilaf.', facts).sentences);
     expect(text).toBe('Firm grains for pilaf.');
