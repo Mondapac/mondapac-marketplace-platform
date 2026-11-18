@@ -204,6 +204,7 @@ import { PublicStoreController } from './presentation/public-store.controller';
 import { PublishedStoreList } from './application/use-cases/published-store-list.use-case';
 import { PublishedStoreRead } from './application/use-cases/published-store-read.use-case';
 import { PublishedStoreSellerId } from './application/use-cases/published-store-seller-id.use-case';
+import { PublishedStoreCards } from './application/use-cases/published-store-cards.use-case';
 import { PublishedStoreSlugs } from './application/use-cases/published-store-slugs.use-case';
 import { PUBLISHED_STORE_REPOSITORY } from './application/ports/published-store.repository';
 import { OBJECT_STORE } from '../../platform/storage/object-store';
@@ -503,6 +504,7 @@ const REVIEW_DECISION_PORTS = {
     }),
     useCaseProvider(PublishedStoreSellerId, PUBLISHED_STORE_PORTS),
     useCaseProvider(PublishedStoreSlugs, PUBLISHED_STORE_PORTS),
+    useCaseProvider(PublishedStoreCards, PUBLISHED_STORE_PORTS),
     useCaseProvider(OwnZoneRead, { unitOfWork: true, revisions: true }),
     useCaseProvider(StoreSettingsRead, {
       unitOfWork: true,
@@ -987,6 +989,7 @@ const REVIEW_DECISION_PORTS = {
         ReviewerBusinessDetailsRead,
         PublishedStoreSellerId,
         PublishedStoreSlugs,
+        PublishedStoreCards,
         PublishedStoreRead,
         CarrierPickupRead,
         PickupPostcodes,
@@ -1017,6 +1020,7 @@ const REVIEW_DECISION_PORTS = {
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
         publishedStoreSellerId: PublishedStoreSellerId,
         publishedStoreSlugs: PublishedStoreSlugs,
+        publishedStoreCards: PublishedStoreCards,
         publishedStoreRead: PublishedStoreRead,
         carrierPickup: CarrierPickupRead,
         pickupPostcodes: PickupPostcodes,
@@ -1047,6 +1051,7 @@ const REVIEW_DECISION_PORTS = {
           reviewerBusinessDetails,
           publishedStoreSellerId,
           publishedStoreSlugs,
+          publishedStoreCards,
           publishedStoreRead,
           carrierPickup,
           pickupPostcodes,

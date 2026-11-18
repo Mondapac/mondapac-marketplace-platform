@@ -32,6 +32,8 @@ import {
   type Persistence,
 } from './persistence-support';
 import { ownerTestDatabaseUrl } from './test-database';
+import { NO_PROPOSAL, NO_REVIEW } from '../../src/modules/catalog/application/catalogue-review';
+import { applied } from '../support/system-request-fakes';
 
 // The Move products store on PostgreSQL, for both Market fixtures (categories package C5a): one
 // open job per source category (partial unique), the claim and the lease, the product scan after
@@ -736,9 +738,11 @@ describe.each(TEST_MARKETS)('catalog Move products store in market %s (database)
         audit: audit,
         clock,
         ids,
+        review: NO_REVIEW,
+        proposer: NO_PROPOSAL,
       }).execute(admin, { categoryId: source, targetId: target, reason: REASON });
       expect(started).toMatchObject({ ok: true, value: { products: 2 } });
-      const jobId = started.ok ? started.value.jobId : ('' as Id<'CategoryMoveJob'>);
+      const jobId = started.ok ? applied(started.value).jobId : ('' as Id<'CategoryMoveJob'>);
 
       const ran = await runner().execute(testCallContext(market, 'system', 'move-job'), {
         budgetMs: 60_000,

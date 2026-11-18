@@ -274,10 +274,24 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       const optionsBody = options.body as {
         productTypes: string[];
         taxCategoryCodes: string[];
+        taxCategories: { code: string; labelKey: string }[];
         categories: { categoryId: string }[];
       };
       expect(optionsBody.productTypes).toContain('simple');
       expect(optionsBody.taxCategoryCodes.length).toBeGreaterThan(0);
+      expect(optionsBody.taxCategories.map((c) => c.code)).toEqual(optionsBody.taxCategoryCodes);
+      expect(optionsBody.taxCategories).toEqual(
+        code === 'ZZ'
+          ? [
+              { code: 'zz_standard', labelKey: 'catalog.tax.zz-standard' },
+              { code: 'zz_reduced', labelKey: 'catalog.tax.zz-reduced' },
+              { code: 'zz_zero', labelKey: 'catalog.tax.zz-zero' },
+            ]
+          : [
+              { code: 'taxable', labelKey: 'catalog.tax.taxable' },
+              { code: 'gst_free', labelKey: 'catalog.tax.gst-free' },
+            ],
+      );
       expect(optionsBody.categories).toEqual([
         { categoryId: PRODUCT, parentId: null, names: { en: 'Pantry' } },
       ]);
@@ -294,7 +308,10 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
         published: null,
         pausedAt: null,
         offers: { sellerCount: 0, offerCount: 0 },
-        form: { categories: [{ names: { en: 'Pantry' } }] },
+        form: {
+          categories: [{ names: { en: 'Pantry' } }],
+          taxCategories: optionsBody.taxCategories,
+        },
       });
 
       // Offers of every seller are counted, and an admin pause shows as its instant.

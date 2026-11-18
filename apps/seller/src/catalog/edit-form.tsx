@@ -633,6 +633,7 @@ export function EditForm({
             <ClassificationSection
               categories={form.categories}
               taxCategoryCodes={form.taxCategoryCodes}
+              taxCategories={form.taxCategories}
               categoryIds={categoryIds}
               taxCategoryCode={taxCategoryCode}
               defaultLocale={defaultLocale}

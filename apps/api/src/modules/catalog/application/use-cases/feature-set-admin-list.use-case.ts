@@ -6,6 +6,8 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_ATTRIBUTE_VIEW } from '../../contracts/permissions';
 import { FEATURE_SET_LOAD_MAX } from '../attributes/attribute-admin-views';
 import { closedInput, type ValidationFailure } from '../brands/brand-views';
+import type { SystemRequestRecorder } from '../../../system-requests';
+import { catalogueReview, type CatalogueReview } from '../catalogue-review';
 import type { AttributeAdminReader } from '../ports/attribute-admin.reader';
 
 export type FeatureSetAdminListInput = Record<string, never>;
@@ -28,6 +30,11 @@ export interface FeatureSetAdminListOutput {
   readonly items: readonly FeatureSetListItem[];
   /** True when the Market has more feature sets than the list carries. */
   readonly truncated: boolean;
+  /**
+   * Whether a create, move or reorder is reviewed and a discard, merge or archive waits for
+   * approval in the Market (Admin Inbox › System requests, area catalogue): the page asks for a note.
+   */
+  readonly review: CatalogueReview;
 }
 
 export type FeatureSetAdminListFailure =
@@ -36,6 +43,8 @@ export type FeatureSetAdminListFailure =
 export interface FeatureSetAdminListDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly attributeAdminReader: AttributeAdminReader;
+  /** Reads the review policy of area catalogue, so the page asks for a note where it is reviewed. */
+  readonly review: Pick<SystemRequestRecorder, 'areaPolicy'>;
 }
 
 /**
@@ -102,7 +111,9 @@ export class FeatureSetAdminList extends UseCase<
     );
     if (!read.ok) return err({ code: 'access.unavailable' });
     const { sets, counts, truncated } = read.value;
+    const review = await catalogueReview(this.deps.review, context);
     return ok({
+      review,
       items: sets.map((set) => ({
         id: set.id,
         code: set.code,

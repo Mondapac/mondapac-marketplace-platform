@@ -14,6 +14,7 @@ import {
   Res,
 } from '@nestjs/common';
 import {
+  ApiAcceptedResponse,
   ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
@@ -63,6 +64,7 @@ import {
   AttributeEditRequest,
   AttributeEditWrapBody,
   AttributeVersionRequest,
+  AttributeVersionNoteRequest,
   AttributeWriteWrapBody,
   FeatureSetCreateRequest,
   FeatureSetEditRequest,
@@ -75,6 +77,8 @@ import {
   CategoryLinksSetWrapBody,
 } from './attribute-admin.dto';
 import { closedBody, numericQuery, pageQuery, refusalWith, type Refusal } from './http-answers';
+import { answered } from './http-answers';
+import { CatalogueProposalBody } from './category-admin.dto';
 import { ApiErrorBody } from './platform-product.dto';
 
 /**
@@ -187,7 +191,7 @@ const CONTENT_KEYS = [
   'internalNote',
   'position',
 ] as const;
-const CREATE_OPTIONAL = ['code', 'localizable', ...CONTENT_KEYS] as const;
+const CREATE_OPTIONAL = ['code', 'localizable', 'note', ...CONTENT_KEYS] as const;
 
 /**
  * The attributes and feature sets (attribute families) of the request's Market over HTTP: the
@@ -231,7 +235,9 @@ export class AttributeAdminController {
     description:
       `${EDITS} Sellers and buyers see nothing until it is published. The default-locale name ` +
       'is required; every name, help text and value label passes the claim-word check, and a ' +
-      'language the check cannot read is refused.',
+      'language the check cannot read is refused. It is reviewed after in Admin Inbox › System ' +
+      'requests (area catalogue): where the Market reviews it, `note` is required and `request` ' +
+      'names the review; a rejected create discards the draft (a published one stays).',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: AttributeCreateRequest })
@@ -374,11 +380,14 @@ export class AttributeAdminController {
     summary: 'Discard a draft attribute',
     description:
       `${EDITS} Only a draft that was never published. It is archived, never deleted: its ` +
-      'code stays taken and its history readable.',
+      'code stays taken and its history readable. Where the Market reviews area catalogue ' +
+      "(Admin Inbox › System requests) it waits for a second admin's approval: `note` is " +
+      'required and the answer is 202 `{request: {id, number}}` with nothing changed.',
   })
   @ApiParam(ATTRIBUTE_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: AttributeVersionRequest })
+  @ApiBody({ type: AttributeVersionNoteRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiOkResponse({ type: AttributeWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -397,13 +406,18 @@ export class AttributeAdminController {
     @Param('attributeId') attributeId: string,
     @Body() body: unknown,
   ): Promise<AttributeWriteWrapBody> {
-    return this.statusChange('catalog.attribute-definition-discard', this.discardAttribute, {
-      context,
-      request,
-      response,
-      attributeId,
-      body,
-    });
+    return this.statusChange(
+      'catalog.attribute-definition-discard',
+      this.discardAttribute,
+      {
+        context,
+        request,
+        response,
+        attributeId,
+        body,
+      },
+      ['note'],
+    );
   }
 
   private async statusChange(
@@ -416,15 +430,16 @@ export class AttributeAdminController {
       readonly attributeId: string;
       readonly body: unknown;
     },
+    optional: readonly string[] = [],
   ): Promise<AttributeWriteWrapBody> {
     const { context, request, response, attributeId, body } = call;
-    const input = closedBody(request, body, ['version']);
+    const input = closedBody(request, body, ['version'], optional);
     let outcome: AttributeWriteWrapBody | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await useCase.execute(context, { ...input, attributeId });
       outcome = result.ok
-        ? (JSON.parse(JSON.stringify(result.value)) as AttributeWriteWrapBody)
+        ? answered<AttributeWriteWrapBody>(response, result.value)
         : refusal(result.error, response, context);
     }
     return this.settle(msg, context, outcome);
@@ -556,10 +571,15 @@ export class AttributeAdminController {
     description:
       `${EDITS} Names per language, the groups in order (the Core group first) and in each ` +
       'group the attributes in order with a level (required, recommended or optional). Every ' +
-      'attribute must be active. Every name passes the claim-word check.',
+      'attribute must be active. Every name passes the claim-word check. A feature set cannot be ' +
+      'deleted, so where the Market reviews area catalogue (Admin Inbox › System requests) the ' +
+      "create waits for a second admin's approval: `note` (1 to 500 characters) is required, " +
+      'the content must fit a request (at most 100 attributes; else 400 too-large-for-review), ' +
+      'and the answer is 202 `{request: {id, number}}` with nothing created.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: FeatureSetCreateRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiCreatedResponse({ type: FeatureSetWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -577,13 +597,13 @@ export class AttributeAdminController {
     @Res({ passthrough: true }) response: Response,
     @Body() body: unknown,
   ): Promise<FeatureSetWriteWrapBody> {
-    const input = closedBody(request, body, ['names', 'groups'], ['code']);
+    const input = closedBody(request, body, ['names', 'groups'], ['code', 'note']);
     let outcome: FeatureSetWriteWrapBody | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.createFeatureSet.execute(context, input);
       outcome = result.ok
-        ? (JSON.parse(JSON.stringify(result.value)) as FeatureSetWriteWrapBody)
+        ? answered<FeatureSetWriteWrapBody>(response, result.value)
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.feature-set-create', context, outcome);
