@@ -23,6 +23,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Seller accounts list (super list 22) and the same rows as a file (CSV or XLSX).
     'payments/admin/connected-accounts',
     'payments/admin/connected-accounts/export',
+    // The security centre's alerts as a super list (security; query: `view`, `severity`, `rule`,
+    // `keyType`, `keyValue`, `minEvents`, `from`, `to`, `sort`, `direction`, `paging`, `page`,
+    // `pageSize`) and its export as a file (the chosen ids or the list's own query).
+    'security/admin/alerts/list',
+    'security/admin/alerts/export',
     // The Market's orders (ordering), read-only: the list; one order is read by the page server.
     'ordering/admin/orders',
     // The export of the order list as a CSV file (ordering): the list's own filter.
@@ -826,6 +831,36 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'paging',
     'cursor',
   ],
+  'security/admin/alerts/list': [
+    'view',
+    'severity',
+    'rule',
+    'keyType',
+    'keyValue',
+    'minEvents',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'paging',
+    'page',
+    'pageSize',
+  ],
+  'security/admin/alerts/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'severity',
+    'rule',
+    'keyType',
+    'keyValue',
+    'minEvents',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   'payments/admin/connected-accounts/export': [
     'format',
     'columns',
@@ -1415,6 +1450,40 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     // The API's own cursor: epoch milliseconds of the creation, a dot and the seller id.
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
   },
+  'security/admin/alerts/list': {
+    view: /^(all|open|acknowledged|critical|resolved)$/,
+    severity: /^(s[1-4])(,s[1-4]){0,3}$/,
+    rule: /^[a-z][a-z0-9-]{0,59}$/,
+    keyType: /^(account|ip|market|event)$/,
+    // An account id, an address, the Market code or an event id, exact (the API validates it again).
+    keyValue: /^[\s\S]{1,64}$/,
+    minEvents: /^[1-9][0-9]{0,8}$/,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(severity|opened|events|last-event)$/,
+    direction: /^(asc|desc)$/,
+    paging: /^(pages|prev-next)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'security/admin/alerts/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(alert-id|rule|first-event|last-event|acknowledged|resolved|resolution)(,(alert-id|rule|first-event|last-event|acknowledged|resolved|resolution)){0,6}$/,
+    // At most 200 alert ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(all|open|acknowledged|critical|resolved)$/,
+    severity: /^(s[1-4])(,s[1-4]){0,3}$/,
+    rule: /^[a-z][a-z0-9-]{0,59}$/,
+    keyType: /^(account|ip|market|event)$/,
+    // An account id, an address, the Market code or an event id, exact (the API validates it again).
+    keyValue: /^[\s\S]{1,64}$/,
+    minEvents: /^[1-9][0-9]{0,8}$/,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(severity|opened|events|last-event)$/,
+    direction: /^(asc|desc)$/,
+  },
   'payments/admin/connected-accounts/export': {
     ...ACCOUNT_LIST_SHAPES,
     format: /^(csv|xlsx)$/,
@@ -1876,6 +1945,7 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
   'payments/admin/connected-accounts/export:ids': 7400,
+  'security/admin/alerts/export:ids': 7400,
   'catalog/admin/attributes:search': 120,
 };
 
@@ -1905,6 +1975,7 @@ function badScope(method: string, target: string, requestUrl: string): boolean {
  */
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
+  'security/admin/alerts/export',
 ]);
 
 /** The first known key of a strict target whose value cannot cross, or null. */
