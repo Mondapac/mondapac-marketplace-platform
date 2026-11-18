@@ -475,6 +475,7 @@ export function OrdersList({
               }
               return params.toString();
             }}
+            columns={shownColumns}
             nameSearch={routeSearch(query.q).kind === 'search'}
             empty={answer !== null && shown.length === 0}
           />

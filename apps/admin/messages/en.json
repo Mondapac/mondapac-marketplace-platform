@@ -5385,15 +5385,6 @@
       "amount": "Amount",
       "tax-included": "Tax incl."
     },
-    "export": {
-      "button": "Export CSV",
-      "busy": "Preparing the file…",
-      "done": "The file of the orders on this list was downloaded.",
-      "too-large": "{matching} orders match, and one file holds at most {max}. Narrow the filters and export again.",
-      "too-large-plain": "Too many orders match for one file. Narrow the filters and export again.",
-      "invalid": "These filters cannot be exported. Change them and try again.",
-      "unavailable": "The file could not be created. Try again."
-    },
     "range": "{from} to {to} of {total}",
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
     "sort": {
@@ -5497,9 +5488,8 @@
       "button": "Bulk action",
       "selected": "{count, plural, one {# order selected} other {# orders selected}}",
       "all-open": "All matching orders selected",
-      "export": "Export all matching as CSV",
-      "export-help": "Exports every order the tab and filters match, not only the ticked ones.",
-      "export-name-search": "A customer or store search cannot be exported. Clear it to export."
+      "export-help": "Select orders to export them as CSV or XLSX.",
+      "export-name-search": "A customer or store search cannot be exported as “all matching”. Clear it, or tick the orders."
     },
     "row-actions": {
       "header": "Actions",
