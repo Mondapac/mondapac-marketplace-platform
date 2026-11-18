@@ -1220,7 +1220,7 @@
         },
         "search": {
           "label": "Search offers",
-          "placeholder": "Search by SKU, product code or name"
+          "placeholder": "Search SKU, code or name"
         },
         "filter": {
           "button": "Filter",
