@@ -1346,6 +1346,10 @@
             "not-found": "Some of the selected offers are no longer in your store. Reload the list and try again.",
             "invalid": "That export can’t be done. Reload the page and try again."
           }
+        },
+        "saved": {
+          "manage-link": "Manage filters",
+          "save-link": "Save filter…"
         }
       }
     },
