@@ -14,6 +14,7 @@ export {
   BlogPostSubmitted,
 } from '../domain/events';
 export {
+  BLOG_MEDIA_EDIT,
   BLOG_PERMISSIONS,
   BLOG_POST_EDIT,
   BLOG_POST_PAUSE,

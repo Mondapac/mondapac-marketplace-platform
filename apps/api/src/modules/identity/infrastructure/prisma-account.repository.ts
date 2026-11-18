@@ -4,6 +4,7 @@ import type { Id, MarketContext, Population, Result } from '@mondapac/shared-ker
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { SubjectKeyService } from '../../../platform/subject-keys/subject-key-service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
+import { AccountEmailTakenError } from '../application/ports/account.repository';
 import type {
   AccountAddRefused,
   AccountRepository,
@@ -62,6 +63,9 @@ const SELECTED = {
   locale: true,
   storefrontPalette: true,
   storefrontTextSize: true,
+  pendingEmail: true,
+  pendingEmailNormalized: true,
+  pendingEmailRequestedAt: true,
   status: true,
   emailVerifiedAt: true,
   existingAccountNoticeAt: true,
@@ -83,6 +87,9 @@ interface SelectedRow {
   readonly locale: string | null;
   readonly storefrontPalette: string | null;
   readonly storefrontTextSize: string | null;
+  readonly pendingEmail: string | null;
+  readonly pendingEmailNormalized: string | null;
+  readonly pendingEmailRequestedAt: Date | null;
   readonly status: string;
   readonly emailVerifiedAt: Date | null;
   readonly existingAccountNoticeAt: Date | null;
@@ -294,6 +301,11 @@ export class PrismaAccountRepository implements AccountRepository {
       timezone: row.timezone,
       locale: row.locale,
       appearance: appearanceOf(row),
+      pendingEmail:
+        row.pendingEmail === null || row.pendingEmailNormalized === null
+          ? null
+          : { typed: row.pendingEmail, normalized: row.pendingEmailNormalized },
+      pendingEmailRequestedAt: toOptionalInstant(row.pendingEmailRequestedAt),
       status: row.status,
       emailVerifiedAt: toOptionalInstant(row.emailVerifiedAt),
       existingAccountNoticeAt: toOptionalInstant(row.existingAccountNoticeAt),
@@ -359,24 +371,41 @@ export class PrismaAccountRepository implements AccountRepository {
     if (expected === null) throw new Error('save: the account was never stored; use add');
     if (state.version === expected) return;
     const transaction = this.prisma.tx(market);
-    const { count } = await transaction.identityAccount.updateMany({
-      where: { marketId: market.marketId, id: state.id, version: expected },
-      data: {
-        displayName: state.displayName,
-        timezone: state.timezone ?? null,
-        locale: state.locale ?? null,
-        storefrontPalette: state.appearance?.palette ?? null,
-        storefrontTextSize: state.appearance?.textSize ?? null,
-        // Slice 8b: disable and enable. Written under the version guard, in the caller's
-        // serializable unit (HF8: every writer of accounts.status).
-        status: state.status,
-        emailVerifiedAt: state.emailVerifiedAt === null ? null : toDate(state.emailVerifiedAt),
-        signedUpAt: toDate(state.signedUpAt),
-        existingAccountNoticeAt:
-          state.existingAccountNoticeAt === null ? null : toDate(state.existingAccountNoticeAt),
-        version: state.version,
-      },
-    });
+    const pending = state.pendingEmail ?? null;
+    const pendingAt = state.pendingEmailRequestedAt ?? null;
+    let count: number;
+    try {
+      ({ count } = await transaction.identityAccount.updateMany({
+        where: { marketId: market.marketId, id: state.id, version: expected },
+        data: {
+          // The sign-in address changes only through a confirmed email change (customers admin
+          // email change); the unique key decides a clash, which rolls the caller's unit back.
+          email: state.email.typed,
+          emailNormalized: state.email.normalized,
+          pendingEmail: pending?.typed ?? null,
+          pendingEmailNormalized: pending?.normalized ?? null,
+          pendingEmailRequestedAt: pendingAt === null ? null : toDate(pendingAt),
+          displayName: state.displayName,
+          timezone: state.timezone ?? null,
+          locale: state.locale ?? null,
+          storefrontPalette: state.appearance?.palette ?? null,
+          storefrontTextSize: state.appearance?.textSize ?? null,
+          // Slice 8b: disable and enable. Written under the version guard, in the caller's
+          // serializable unit (HF8: every writer of accounts.status).
+          status: state.status,
+          emailVerifiedAt: state.emailVerifiedAt === null ? null : toDate(state.emailVerifiedAt),
+          signedUpAt: toDate(state.signedUpAt),
+          existingAccountNoticeAt:
+            state.existingAccountNoticeAt === null ? null : toDate(state.existingAccountNoticeAt),
+          version: state.version,
+        },
+      }));
+    } catch (error) {
+      if (this.prisma.violatedConstraint(error) === EMAIL_TAKEN) {
+        throw new AccountEmailTakenError(state.id);
+      }
+      throw error;
+    }
     if (count !== 1) throw new StaleAggregateError('account', state.id);
     // A change of the credential goes through its root, whose version rose above (data 3.3);
     // the row is rewritten only when the credential changed (Mojtaba N-b).

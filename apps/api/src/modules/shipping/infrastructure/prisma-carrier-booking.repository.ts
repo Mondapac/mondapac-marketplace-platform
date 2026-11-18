@@ -3,6 +3,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { CarrierBookingRepository } from '../application/ports/carrier-booking.repository';
 import type { CarrierBooking, CarrierProgress } from '../domain/carrier-booking';
+import type { CarrierProgressRecord } from '../domain/carrier-progress';
 import type { FleetCode } from '../domain/fleet';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
@@ -56,6 +57,35 @@ export class PrismaCarrierBookingRepository implements CarrierBookingRepository 
       .tx(market)
       .shippingCarrierBooking.findFirst({ where: { marketId: market.marketId, sellerOrderId } });
     return row === null ? null : toBooking(row);
+  }
+
+  async progressOfSellerOrders(
+    market: MarketContext,
+    sellerOrderIds: readonly Id<'SellerOrder'>[],
+  ): Promise<CarrierProgressRecord[]> {
+    if (sellerOrderIds.length === 0) return [];
+    // ONE read on the unique (market_id, seller_order_id) index; only these six columns (never
+    // the carrier reference or the tracking link).
+    const rows = await this.prisma.tx(market).shippingCarrierBooking.findMany({
+      where: { marketId: market.marketId, sellerOrderId: { in: [...sellerOrderIds] } },
+      select: {
+        sellerOrderId: true,
+        fleet: true,
+        progress: true,
+        carrierStatus: true,
+        updatedAt: true,
+        podRecordedAt: true,
+      },
+    });
+    return rows.map((row) => ({
+      sellerOrderId: row.sellerOrderId as Id<'SellerOrder'>,
+      // The CHECKs hold both to their closed lists.
+      fleet: row.fleet as FleetCode,
+      progress: row.progress as CarrierProgress,
+      carrierStatus: row.carrierStatus,
+      updatedAt: toInstant(row.updatedAt),
+      podRecordedAt: row.podRecordedAt === null ? null : toInstant(row.podRecordedAt),
+    }));
   }
 
   async findByCarrierReference(market: MarketContext, fleet: FleetCode, carrierReference: string) {

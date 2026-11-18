@@ -37,6 +37,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'reviews/seller',
     'payments/seller/payout-account',
     'ordering/seller/orders',
+    // The Offer list (list mode: tabs, search, filters, sort and page; the API validates every value).
+    'catalog/seller/offers',
+    // The Offers export (file): the list's selector, the format, the columns and the selected ids.
+    'catalog/seller/offers/export',
+    // The export of the order list as a CSV file (ordering): the list's own filter.
+    'ordering/seller/orders/export',
     // The saved views of the order list (ordering; query: `listKey`).
     'ordering/seller/saved-filters',
     'commission-payouts/seller/ledger',
@@ -61,6 +67,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // direction, page, pageSize). The keyset parameters (`afterId`, `limit`) are read by the
     // panel's server pages only and do not cross.
     'catalog/seller/products',
+    // The category choices of the product form (catalog, categories C5a): levels 3 and 4, no hidden node.
+    'catalog/seller/products/category-picker',
     // The Products list as a file (CSV or XLSX): the list's selector plus format, columns and the
     // selected product ids; the answer is an attachment.
     'catalog/seller/products/export',
@@ -91,6 +99,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set(['sellers/store-profile/logo', 'sellers/store-profile/banner']),
   POST: new Set([
+    // The packing slips of a selection of orders (up to 50 ids in the body; a read).
+    'ordering/seller/orders/documents',
     // A description draft from the "Write with AI" modal (catalog, AIS-03): the form's title,
     // category label, details, keywords and note in; plain text out. Nothing is stored.
     'catalog/own/description-writer/drafts',
@@ -236,9 +246,17 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     pageSize: null,
     sort: null,
     direction: null,
+    paging: /^(pages|prev-next)$/,
+    q: null,
     status: null,
     from: null,
     to: null,
+  },
+  'ordering/seller/orders/export': {
+    format: /^csv$/,
+    status: /^(to-ship|shipped|delivered)$/,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
   },
   'ordering/seller/saved-filters': { listKey: /^seller\.ordering\.orders$/ },
   'commission-payouts/seller/ledger': { limit: null, cursor: null },
@@ -261,6 +279,32 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   'identity/seller/team': { after: UUID },
   'catalog/seller/topics': { search: null, afterId: UUID, limit: /^[0-9]{1,3}$/ },
+  'catalog/seller/offers': {
+    view: /^(all|drafts|in-review|changes-needed|live)$/,
+    q: null,
+    status: /^(draft|pending-first-publish|changes-needed|published)$/,
+    listed: /^(true|false)$/,
+    sort: /^(created|sku|status)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[0-9]{1,5}$/,
+    pageSize: /^(25|50|100)$/,
+    paging: /^(pages|prev-next)$/,
+    afterId: UUID,
+    limit: /^[0-9]{1,2}$/,
+  },
+  'catalog/seller/offers/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(sku|product|status|code|listed|created|type)(,(sku|product|status|code|listed|created|type)){0,6}$/,
+    offerIds:
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
+    view: /^(all|drafts|in-review|changes-needed|live)$/,
+    q: null,
+    status: /^(draft|pending-first-publish|changes-needed|published)$/,
+    listed: /^(true|false)$/,
+    sort: /^(created|sku|status)$/,
+    direction: /^(asc|desc)$/,
+  },
   'catalog/seller/products': {
     view: /^(all|drafts|live|inactive|in-review)$/,
     // Free text up to the API's 100 characters (it refuses control characters itself).
@@ -306,6 +350,7 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/seller/products/export:productIds': 3700,
   // 200 ids of 36 characters and 199 commas.
   'commission-payouts/seller/payouts/export:ids': 7400,
+  'catalog/seller/offers/export:offerIds': 3700,
 };
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */

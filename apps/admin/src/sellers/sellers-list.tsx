@@ -7,9 +7,12 @@ import {
   EmptyState,
   FieldAction,
   Select,
-  SkeletonRows,
   Tabs,
   TextField,
+  ListLoadingStatus,
+  ListRefreshing,
+  TableSkeleton,
+  useListLoading,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
@@ -92,6 +95,7 @@ export function SellersList({
   const [stateCounts, setStateCounts] = useState<SellerListStateCounts | null>(null);
   const [healthDown, setHealthDown] = useState(false);
   const [loading, setLoading] = useState(true);
+  const loadingState = useListLoading(loading, rows.length > 0);
   const [failure, setFailure] = useState<Failure | null>(null);
   const latest = useRef(0);
 
@@ -238,23 +242,42 @@ export function SellersList({
           </Button>
         </div>
       ) : null}
-      {loading && rows.length === 0 ? <SkeletonRows label={t('loading')} /> : null}
-      {rows.length > 0 || (!loading && failure === null) ? (
-        <SellersTable
-          rows={rows}
-          canReview={canReview}
-          healthUnavailable={healthDown}
-          showOwner={stateCounts !== null}
-          empty={
-            <EmptyState
-              size="compact"
-              icon={search === '' || stateTab ? 'store' : 'search'}
-              title={t(search === '' || stateTab ? `empty.${tab}` : 'empty.search')}
-            />
-          }
+      {loading && rows.length === 0 ? (
+        <TableSkeleton
+          label={t('loading')}
+          slowLabel={tl('slow')}
+          rows={PAGE_SIZE}
+          columns={[
+            { header: t('col.store'), kind: 'title' },
+            ...(stateCounts !== null ? [{ header: t('col.owner'), kind: 'text' as const }] : []),
+            { header: t('col.status'), kind: 'status' },
+            { header: t('col.health'), kind: 'text' },
+            { header: t('col.area'), kind: 'text' },
+            { header: t('col.submitted'), kind: 'date' },
+            { header: t('col.changed'), kind: 'date' },
+          ]}
         />
       ) : null}
-      {loading && rows.length > 0 ? <SkeletonRows label={t('loading')} rows={1} /> : null}
+      {rows.length > 0 || (!loading && failure === null) ? (
+        <ListRefreshing refreshing={loadingState.refreshing} busy={loading}>
+          <SellersTable
+            rows={rows}
+            canReview={canReview}
+            healthUnavailable={healthDown}
+            showOwner={stateCounts !== null}
+            empty={
+              <EmptyState
+                size="compact"
+                icon={search === '' || stateTab ? 'store' : 'search'}
+                title={t(search === '' || stateTab ? `empty.${tab}` : 'empty.search')}
+              />
+            }
+          />
+        </ListRefreshing>
+      ) : null}
+      {loading && rows.length > 0 ? (
+        <ListLoadingStatus label={t('loading')} slow={false} slowLabel={tl('slow')} />
+      ) : null}
       {next !== null && !loading ? (
         <div>
           <Button variant="secondary" onClick={() => void load(next)}>

@@ -34,6 +34,7 @@ const DEFAULTS: AssistantSettings = {
   dailySpendCapUsdCents: 1_000,
   monthlySpendCapUsdCents: 20_000,
   supportHandoff: 'email-link',
+  basketProposals: false,
   welcomeText: null,
 };
 const UNAVAILABLE = { scope: ['cart-suggestions'], supportHandoff: ['in-panel-form'] } as const;

@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import type { EventDelivery } from '../../../../platform/events/event-delivery';
 import type { MailTransport } from '../../../../platform/mail/mail-transport';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -31,7 +31,13 @@ export type LinkMailSkipped =
   | 'account.disabled'
   | 'account.verified'
   | 'account.unverified'
-  | 'account.population';
+  | 'account.population'
+  /** confirm-email-change: the account has no pending address any more (cancelled, confirmed). */
+  | 'account.no-pending-email'
+  /** confirm-email-change: the pending address is another request's than the link's. */
+  | 'account.pending-email-changed'
+  /** confirm-email-change: the pending address lapsed before the mail went out (Sajad 5). */
+  | 'account.pending-email-lapsed';
 
 export type SendLinkMailOutput =
   | { readonly code: 'link-mail.sent'; readonly issued: boolean }
@@ -61,7 +67,11 @@ const MAIL_OF: Partial<
     LinkPurpose,
     {
       template:
-        'confirm-email' | 'reset-password' | 'enrol-second-factor' | 'confirm-second-factor-reset';
+        | 'confirm-email'
+        | 'reset-password'
+        | 'enrol-second-factor'
+        | 'confirm-second-factor-reset'
+        | 'confirm-email-change';
       page: LinkPage;
     }
   >
@@ -74,7 +84,22 @@ const MAIL_OF: Partial<
     template: 'confirm-second-factor-reset',
     page: 'confirm-second-factor-reset',
   },
+  // Customers admin email change: to the PENDING address, on the storefront's page.
+  'confirm-email-change': { template: 'confirm-email-change', page: 'confirm-email-change' },
 };
+
+/**
+ * Where a link's mail goes (Mohammad 6, Hassan R3): the account's sign-in address, except for the
+ * confirmation of an email change, which goes only to the pending address of the request the link
+ * was requested with, never to the current one and never to a fallback. `skipReason` has made
+ * sure that address exists and belongs to that request.
+ */
+function recipientOf(account: Account, purpose: LinkPurpose): string {
+  if (purpose !== 'confirm-email-change') return account.state.email.typed;
+  const pending = account.state.pendingEmail ?? null;
+  if (pending === null) throw new Error('send-link-mail: no pending address to send to');
+  return pending.typed;
+}
 
 /**
  * Identity's own mail handler for a requested link (identity design 3.7, 6.6, 9; PN2; slice 3).
@@ -138,7 +163,7 @@ export class SendLinkMail extends UseCase<
     );
     if (!loaded.ok) throw new Error('send-link-mail: the read unit failed');
     const { link, account } = loaded.value;
-    const skipped = this.skipReason(link, account, input);
+    const skipped = this.skipReason(market, link, account, input);
     if (skipped !== null) {
       const marked = await unitOfWork.runOnce(market, input.delivery, () =>
         Promise.resolve(ok(undefined)),
@@ -177,7 +202,7 @@ export class SendLinkMail extends UseCase<
     } as IdentityMail);
     const sender = policy.mailSender(market);
     await this.deps.transport.send({
-      to: account!.state.email.typed,
+      to: recipientOf(account!, input.purpose),
       from: sender,
       subject: composed.subject,
       text: composed.text,
@@ -203,6 +228,7 @@ export class SendLinkMail extends UseCase<
   }
 
   private skipReason(
+    market: MarketContext,
     link: OneTimeLink | null,
     account: Account | null,
     input: SendLinkMailInput,
@@ -222,6 +248,27 @@ export class SendLinkMail extends UseCase<
     // Slice 12: E15 goes to a seller-side account only.
     if (input.purpose === 'confirm-second-factor-reset' && account.state.population !== 'seller') {
       return 'account.population';
+    }
+    if (input.purpose === 'confirm-email-change') {
+      if (account.state.population !== 'customer') return 'account.population';
+      if (!account.isEmailVerified) return 'account.unverified';
+      const pendingAt = account.state.pendingEmailRequestedAt ?? null;
+      if ((account.state.pendingEmail ?? null) === null || pendingAt === null) {
+        return 'account.no-pending-email';
+      }
+      // R2, R3: bound to the request the link was requested with (the same instant, one unit).
+      if (pendingAt.epochMilliseconds !== link.state.requestedAt.epochMilliseconds) {
+        return 'account.pending-email-changed';
+      }
+      // One boundary with the confirmation and the purge: a mail that goes out after the pending
+      // address lapsed would carry a link that can only be refused.
+      const lifetime = this.deps.policy.linkLifetimeMinutes(market, 'confirm-email-change');
+      if (
+        lifetime === null ||
+        account.pendingEmailChange(this.deps.clock.now(), lifetime) === null
+      ) {
+        return 'account.pending-email-lapsed';
+      }
     }
     // 3.7: no reset link for an unverified account (it signs up again, 3.2).
     if (input.purpose === 'reset-password' && !account.isEmailVerified) {

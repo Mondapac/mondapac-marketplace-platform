@@ -41,6 +41,8 @@ import type {
   SellersValidationFailed,
 } from '../contracts/sellers.facade';
 import type { SellerSummary } from '../domain/seller-summary';
+import type { PublishedStore } from '../domain/published-store';
+import type { PublishedStoreRead } from '../application/use-cases/published-store-read.use-case';
 
 /** The use cases behind the facade, a pair per method. */
 export interface SellersFacadeUseCases {
@@ -64,6 +66,7 @@ export interface SellersFacadeUseCases {
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
   readonly publishedStoreSellerId: PublishedStoreSellerId;
   readonly publishedStoreSlugs: PublishedStoreSlugs;
+  readonly publishedStoreRead: PublishedStoreRead;
   readonly carrierPickup: CarrierPickupRead;
   readonly pickupPostcodes: PickupPostcodes;
   readonly operatingZones: OperatingZones;
@@ -198,6 +201,18 @@ export class SellersFacadeImplementation implements SellersFacade {
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, AccessDenied | SellersUnavailable>> {
     return this.useCases.publishedStoreSlugs.execute(context, { sellerIds });
+  }
+
+  publishedStore(
+    context: CallContext,
+    slug: string,
+  ): Promise<
+    Result<
+      PublishedStore,
+      AccessDenied | SellersUnavailable | { readonly code: 'sellers.store-not-found' }
+    >
+  > {
+    return this.useCases.publishedStoreRead.execute(context, { slug });
   }
 
   reviewerBusinessDetails(
