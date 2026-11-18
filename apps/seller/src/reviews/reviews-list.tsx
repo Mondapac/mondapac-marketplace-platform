@@ -135,7 +135,7 @@ export function ReviewsList({
   const loadSaved = useCallback(async (): Promise<readonly SavedFilter[] | null> => {
     const result = await callApi<SavedFiltersAnswer>(
       'GET',
-      `catalog/seller/saved-filters?listKey=${LIST_KEY}`,
+      `lists/seller/saved-filters?listKey=${LIST_KEY}`,
     );
     if (!result.ok || !Array.isArray(result.body?.items)) return null;
     setSaved(result.body);
@@ -239,7 +239,11 @@ export function ReviewsList({
 
   const number = (value: number) => numberFormat(locale, {}).format(value);
   const refresh = useCallback(() => void load(queryNow.current), [load]);
-  const rowActions = useReviewRowActions(csrfToken, refresh);
+  const rowActions = useReviewRowActions(csrfToken, () => {
+    // A reply or report changes what the tab holds: ticked rows may be gone from it.
+    selection.clear();
+    refresh();
+  });
 
   const saveColumns = (next: readonly ReviewColumn[]) => {
     setColumns(next);
@@ -276,10 +280,7 @@ export function ReviewsList({
       : [
           {
             key: 'minRating',
-            label: ts('chip', {
-              field: ts('filter.min-rating'),
-              value: ts('filter.stars', { count: Number(query.filters.minRating) }),
-            }),
+            label: ts('chip-min', { count: Number(query.filters.minRating) }),
             onRemove: () => change({ filters: withoutFilter('minRating') }),
           },
         ]),
@@ -288,10 +289,7 @@ export function ReviewsList({
       : [
           {
             key: 'maxRating',
-            label: ts('chip', {
-              field: ts('filter.max-rating'),
-              value: ts('filter.stars', { count: Number(query.filters.maxRating) }),
-            }),
+            label: ts('chip-max', { count: Number(query.filters.maxRating) }),
             onRemove: () => change({ filters: withoutFilter('maxRating') }),
           },
         ]),
@@ -397,7 +395,7 @@ export function ReviewsList({
         {skeleton ? (
           <SkeletonRows label={ts('loading')} rows={listSkeletonRowCount(pageSize)} />
         ) : null}
-        {!skeleton && shown.length === 0 ? empty : null}
+        {!skeleton && failure === null && shown.length === 0 ? empty : null}
       </div>
     </div>
   );

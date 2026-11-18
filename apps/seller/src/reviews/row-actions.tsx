@@ -1,6 +1,14 @@
 'use client';
 
-import { Banner, Button, Dialog, Select, TextAreaField, toast, type MenuItem } from '@mondapac/ui';
+import {
+  Button,
+  ConfirmAction,
+  Dialog,
+  Select,
+  TextAreaField,
+  toast,
+  type MenuItem,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type ReactNode } from 'react';
@@ -140,46 +148,42 @@ export function useReviewRowActions(
     return out;
   };
 
-  const step = pending?.step ?? 'reply';
-  const writing = step === 'reply' || step === 'edit';
+  const writing = pending?.step === 'reply' || pending?.step === 'edit';
+  const name =
+    pending === null
+      ? ''
+      : (pending.row.title ?? t('list.untitled', { rating: pending.row.rating }));
   const dialogs = (
-    <Dialog
-      open={pending !== null}
-      size="form"
-      title={t(
-        step === 'report' ? 'report.title' : step === 'edit' ? 'reply.edit-label' : 'reply.label',
-      )}
-      onClose={() => {
-        if (!running) setPending(null);
-      }}
-      actions={
-        <>
-          <Button variant="secondary" onClick={() => setPending(null)} disabled={running}>
-            {t('cancel')}
-          </Button>
-          <Button
-            variant="primary"
-            loading={running}
-            disabled={writing && text.trim() === ''}
-            onClick={() => {
-              if (pending !== null) void run(pending);
-            }}
-          >
-            {t(
-              step === 'report'
-                ? 'report.send'
-                : step === 'edit'
-                  ? 'reply.save-edit'
-                  : 'reply.save',
-            )}
-          </Button>
-        </>
-      }
-    >
-      {pending === null ? null : writing ? (
+    <>
+      <Dialog
+        open={pending !== null && writing}
+        size="form"
+        title={t(pending?.step === 'edit' ? 'reply.dialog-edit' : 'reply.dialog-new')}
+        onClose={() => {
+          if (!running) setPending(null);
+        }}
+        actions={
+          <>
+            <Button variant="secondary" onClick={() => setPending(null)} disabled={running}>
+              {t('cancel')}
+            </Button>
+            <Button
+              variant="primary"
+              loading={running}
+              disabled={text.trim() === ''}
+              onClick={() => {
+                if (pending !== null) void run(pending);
+              }}
+            >
+              {t(pending?.step === 'edit' ? 'reply.save-edit' : 'reply.save')}
+            </Button>
+          </>
+        }
+      >
         <div className="flex flex-col gap-3">
+          <p className="text-sm text-fg-muted">{t('reply.about', { name })}</p>
           <TextAreaField
-            label={t(step === 'edit' ? 'reply.edit-label' : 'reply.label')}
+            label={t(pending?.step === 'edit' ? 'reply.edit-label' : 'reply.label')}
             help={t('reply.help')}
             value={text}
             onChange={(event) => setText(event.target.value)}
@@ -187,20 +191,37 @@ export function useReviewRowActions(
             error={problem === null ? undefined : t(`error.${problem}`)}
           />
         </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          <p className="text-sm text-fg-muted">{t('report.intro')}</p>
-          <Select
-            label={t('report.reason-label')}
-            value={reason}
-            disabled={running}
-            onChange={(event) => setReason(event.target.value as ReportReason)}
-            options={REPORT_REASONS.map((id) => ({ value: id, label: t(`report.reason.${id}`) }))}
-          />
-          {problem === null ? null : <Banner tone="critical">{t(`error.${problem}`)}</Banner>}
-        </div>
-      )}
-    </Dialog>
+      </Dialog>
+      <ConfirmAction
+        open={pending !== null && !writing}
+        level={2}
+        title={t('report.title', { name })}
+        body={
+          <div className="flex flex-col gap-3">
+            <p>{t('report.intro')}</p>
+            <Select
+              label={t('report.reason-label')}
+              value={reason}
+              disabled={running}
+              onChange={(event) => setReason(event.target.value as ReportReason)}
+              options={REPORT_REASONS.map((id) => ({
+                value: id,
+                label: t(`report.reason.${id}`),
+              }))}
+            />
+          </div>
+        }
+        rowName={name}
+        confirmLabel={t('report.send')}
+        cancelLabel={t('cancel')}
+        pending={running}
+        error={problem === null ? null : t(`error.${problem}`)}
+        onConfirm={() => {
+          if (pending !== null) void run(pending);
+        }}
+        onCancel={() => setPending(null)}
+      />
+    </>
   );
   return { items, dialogs, reported };
 }

@@ -14,6 +14,8 @@ export const MAX_PAGED_ROWS = 10_000;
 /** The reviews that can be ticked one by one: what one export takes. */
 export const SELECTION_MAX = 200;
 export const SEARCH_MAX = 100;
+/** The stars at or below which the Low stars tab lists a review (the API's cap). */
+export const LOW_RATING_MAX = 2;
 
 export const SORT_FIELDS = ['published', 'rating'] as const;
 export type SortField = (typeof SORT_FIELDS)[number];
@@ -90,10 +92,17 @@ export function selectorParams(query: Query, now: number = Date.now()): URLSearc
   params.set('view', query.tab);
   const text = query.q.trim();
   if (text !== '') params.set('q', text);
-  const { reply, minRating, maxRating, within } = query.filters;
+  const { reply, within } = query.filters;
   if (reply !== undefined) params.set('reply', reply);
-  if (minRating !== undefined) params.set('minRating', minRating);
-  if (maxRating !== undefined) params.set('maxRating', maxRating);
+  // The API refuses a lower bound above the upper one, and the Low stars tab caps the upper one
+  // at 2: both bounds are brought inside that range, so a filter never ends in a refusal.
+  const cap = query.tab === 'low' ? LOW_RATING_MAX : 5;
+  const high = Math.min(Number(query.filters.maxRating ?? cap), cap);
+  const low = Math.min(Number(query.filters.minRating ?? 1), high);
+  if (query.filters.minRating !== undefined) params.set('minRating', String(low));
+  if (query.filters.maxRating !== undefined || query.tab === 'low') {
+    params.set('maxRating', String(high));
+  }
   if (within !== undefined) {
     params.set('from', new Date(now - Number(within) * DAY_MS).toISOString());
   }

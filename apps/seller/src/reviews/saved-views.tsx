@@ -13,6 +13,7 @@ import { useMemo } from 'react';
 import { callApi } from '../api/client.ts';
 import {
   LIST_KEY,
+  SAVED_LIMITS,
   payloadOf,
   problemOf,
   type SavedFilter,
@@ -23,7 +24,7 @@ import type { Query } from './query.ts';
 const TOAST = { id: 'reviews-saved-filter' };
 
 /** Every word of the saved-view dialogs, from the page's messages. */
-function useLabels(limits: SavedFiltersAnswer['limits']): SavedViewLabels {
+function useLabels(limits: typeof SAVED_LIMITS): SavedViewLabels {
   const t = useTranslations('catalog.products.saved');
   return useMemo(
     () => ({
@@ -90,7 +91,7 @@ export function ReviewsSavedViews({
   readonly onChanged: () => void;
 }) {
   const t = useTranslations('catalog.products.saved');
-  const labels = useLabels(saved.limits);
+  const labels = useLabels(SAVED_LIMITS);
   const views: readonly SavedViewItem[] = saved.items;
 
   return (
@@ -105,7 +106,7 @@ export function ReviewsSavedViews({
         onSave={async (name, visibility: SavedViewVisibility) => {
           const result = await callApi<SavedFilter>(
             'POST',
-            'catalog/seller/saved-filters',
+            'lists/seller/saved-filters',
             { listKey: LIST_KEY, name, visibility, payload: payloadOf(query) },
             csrfToken,
           );
@@ -125,8 +126,8 @@ export function ReviewsSavedViews({
         onRename={async (id, name, visibility) => {
           const result = await callApi<SavedFilter>(
             'PUT',
-            `catalog/seller/saved-filters/${id}`,
-            { name, visibility },
+            `lists/seller/saved-filters/${id}`,
+            { listKey: LIST_KEY, name, visibility },
             csrfToken,
           );
           if (!result.ok) return problemOf(result.failure);
@@ -138,7 +139,7 @@ export function ReviewsSavedViews({
           const name = saved.items.find((item) => item.id === id)?.name ?? '';
           const result = await callApi<{ id: string }>(
             'DELETE',
-            `catalog/seller/saved-filters/${id}`,
+            `lists/seller/saved-filters/${id}?listKey=${LIST_KEY}`,
             undefined,
             csrfToken,
           );

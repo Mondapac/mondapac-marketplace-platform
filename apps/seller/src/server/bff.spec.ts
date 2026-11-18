@@ -1340,6 +1340,43 @@ describe('relay allowlist for the seller reviews', () => {
     );
   });
 
+  it('relays the saved filters of the Reviews list on the generic routes, for its list key only', async () => {
+    const key = 'seller.reviews.list';
+    const read = upstreamOk();
+    await relay(
+      config,
+      send('GET', `lists/seller/saved-filters?listKey=${key}&x=1`),
+      ['lists', 'seller', 'saved-filters'],
+      read,
+    );
+    expect(read.mock.calls[0]?.[0]).toBe(
+      `http://api.test/lists/seller/saved-filters?listKey=${key}`,
+    );
+    const other = upstreamOk();
+    await relay(
+      config,
+      send('GET', 'lists/seller/saved-filters?listKey=admin.catalog.products'),
+      ['lists', 'seller', 'saved-filters'],
+      other,
+    );
+    expect(other.mock.calls[0]?.[0]).toBe('http://api.test/lists/seller/saved-filters');
+    const removed = upstreamOk();
+    await relay(
+      config,
+      send('DELETE', `lists/seller/saved-filters/${ID}?listKey=${key}&x=1`),
+      ['lists', 'seller', 'saved-filters', ID],
+      removed,
+    );
+    expect(removed.mock.calls[0]?.[0]).toBe(
+      `http://api.test/lists/seller/saved-filters/${ID}?listKey=${key}`,
+    );
+    const status = async (method: string, path: string) =>
+      (await relay(config, send(method, path), path.split('/'), upstreamOk())).status;
+    expect(await status('POST', 'lists/seller/saved-filters')).toBe(200);
+    expect(await status('PUT', `lists/seller/saved-filters/${ID}`)).toBe(200);
+    expect(await status('PUT', 'lists/seller/saved-filters/order')).toBe(404);
+  });
+
   it('relays reply (POST and PATCH) and report (POST) by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     const ok = [

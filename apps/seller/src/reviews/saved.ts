@@ -1,4 +1,4 @@
-// The saved filters of the seller Reviews list (`catalog/seller/saved-filters`): the document a
+// The saved filters of the seller Reviews list (the generic routes of `lists`, `lists/seller/saved-filters`): the document a
 // saved filter keeps, and the two conversions between it and the page's own query.
 
 import type { SavedViewProblem, SavedViewVisibility } from '@mondapac/ui';
@@ -16,7 +16,7 @@ import {
 } from './query.ts';
 
 /** The list the seller Reviews page's saved filters belong to. */
-export const LIST_KEY = 'seller.reviews';
+export const LIST_KEY = 'seller.reviews.list';
 
 /** The flat document of a saved filter: the list's own selector, with a version. */
 export interface SavedPayload {
@@ -46,8 +46,10 @@ export interface SavedFilter {
 export interface SavedFiltersAnswer {
   readonly items: readonly SavedFilter[];
   readonly canShare: boolean;
-  readonly limits: { readonly perOwner: number; readonly shared: number };
 }
+
+/** The caps of the shared store (50 filters per member and list, 20 shared with everyone). */
+export const SAVED_LIMITS = { perOwner: 50, shared: 20 } as const;
 
 /** The document that saves what the page shows now (the page and its size are not saved). */
 export function payloadOf(query: Query): SavedPayload {

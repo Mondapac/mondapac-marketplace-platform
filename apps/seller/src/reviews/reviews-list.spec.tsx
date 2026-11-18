@@ -14,7 +14,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 import { callApi } from '../api/client.ts';
 import { exportFailure, exportQuery } from './bulk.tsx';
 import { reviewProblemOf } from './errors.ts';
-import { DEFAULT_QUERY } from './query.ts';
+import { DEFAULT_QUERY, selectorParams } from './query.ts';
 import { ReviewsList } from './reviews-list.tsx';
 import type { ReviewListPage, SellerReply, SellerReviewRow } from './types.ts';
 
@@ -24,7 +24,7 @@ import type { ReviewListPage, SellerReply, SellerReviewRow } from './types.ts';
 
 const call = vi.mocked(callApi);
 const LIST_PATH = 'reviews/seller/list?';
-const SAVED_PATH = 'catalog/seller/saved-filters';
+const SAVED_PATH = 'lists/seller/saved-filters';
 const ID1 = '0190a000-0000-7000-8000-0000000000a1';
 const ID2 = '0190a000-0000-7000-8000-0000000000a2';
 const FUTURE = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString();
@@ -245,6 +245,8 @@ describe('row actions', () => {
     openMenu(/Actions for Not great/);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Report…' }));
     const dialog = screen.getByRole('dialog');
+    // A level 2 confirmation: it names the review, and Cancel has the focus.
+    expect(within(dialog).getByText('Report "Not great"?')).toBeTruthy();
     fireEvent.change(within(dialog).getByRole('combobox'), { target: { value: 'extortion' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Send report' }));
     await waitFor(() =>
@@ -262,6 +264,21 @@ describe('row actions', () => {
 });
 
 describe('selection and export', () => {
+  it('drops the ticked rows after a reply, so the count never holds rows that left the tab', async () => {
+    mount();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Not great' }));
+    expect(screen.getByText('1 review selected')).toBeTruthy();
+    call.mockClear();
+    call.mockImplementation(((method: string) =>
+      Promise.resolve(method === 'GET' ? ok(pageOf([row()])) : ok(row()))));
+    openMenu(/Actions for Not great/);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reply…' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Thanks' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Post reply' }));
+    await waitFor(() => expect(screen.queryByText('1 review selected')).toBeNull());
+  });
+
   it('exports the ticked reviews by id', () => {
     mount(pageOf([row(), row({ id: ID2, title: 'Second' })]));
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Not great' }));
@@ -281,10 +298,26 @@ describe('selection and export', () => {
     expect(Object.fromEntries(new URLSearchParams(query))).toEqual({
       view: 'low',
       q: 'late',
+      maxRating: '2',
       sort: 'published',
       direction: 'desc',
       format: 'xlsx',
     });
+  });
+
+  it('keeps the star bounds inside what the API accepts', () => {
+    const asked = (query: Partial<typeof DEFAULT_QUERY>) =>
+      Object.fromEntries(selectorParams({ ...DEFAULT_QUERY, ...query }));
+    expect(asked({ filters: { minRating: '4', maxRating: '2' } })).toMatchObject({
+      minRating: '2',
+      maxRating: '2',
+    });
+    expect(asked({ tab: 'low', filters: { minRating: '3' } })).toMatchObject({
+      minRating: '2',
+      maxRating: '2',
+    });
+    expect(asked({ tab: 'low', filters: { maxRating: '5' } })).toMatchObject({ maxRating: '2' });
+    expect(asked({ filters: { minRating: '3' } })['maxRating']).toBeUndefined();
   });
 
   it('names the refusals of the export', () => {
@@ -299,7 +332,7 @@ describe('selection and export', () => {
 describe('saved filters', () => {
   const saved = (over: Record<string, unknown> = {}) => ({
     id: 'sf-1',
-    listKey: 'seller.reviews',
+    listKey: 'seller.reviews.list',
     name: 'Unanswered low stars',
     visibility: 'me',
     payload: { v: 1, view: 'unanswered', maxRating: '2', sort: 'rating', direction: 'asc' },
@@ -333,6 +366,31 @@ describe('saved filters', () => {
       expect(paramsOf(lastUrl())).toMatchObject({ view: 'all', sort: 'published' }),
     );
     expect(paramsOf(lastUrl()).maxRating).toBeUndefined();
+  });
+
+  it('saves the current view on the generic routes with the closed document', async () => {
+    serve(() => pageOf([row()]), ok({ ...answer, items: [] }));
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Unanswered (5)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Waiting' } });
+    call.mockClear();
+    serve(() => pageOf([row()]), ok(answer));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save filter' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        'lists/seller/saved-filters',
+        {
+          listKey: 'seller.reviews.list',
+          name: 'Waiting',
+          visibility: 'me',
+          payload: { v: 1, view: 'unanswered', sort: 'published', direction: 'desc' },
+        },
+        'csrf',
+      ),
+    );
   });
 
   it('shows the view tabs only when the saved filters cannot load', () => {

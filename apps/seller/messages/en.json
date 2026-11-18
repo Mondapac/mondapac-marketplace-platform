@@ -3535,7 +3535,10 @@
       "saved-edit": "Reply updated",
       "edited": "edited",
       "editable-until": "you can edit it until {date}",
-      "locked": "it can no longer be edited"
+      "locked": "it can no longer be edited",
+      "dialog-new": "Reply to this review",
+      "dialog-edit": "Edit your reply",
+      "about": "Your reply goes under the review \"{name}\" and everyone who reads it will see it."
     },
     "report": {
       "action": "Report",
@@ -3551,7 +3554,7 @@
       "send": "Send report",
       "sent": "Report sent",
       "sent-badge": "Reported",
-      "title": "Report this review"
+      "title": "Report \"{name}\"?"
     },
     "error": {
       "already-replied": "This review already has a reply. Reload the page.",
@@ -3574,9 +3577,9 @@
         "answered": "Answered",
         "low": "Low stars"
       },
-      "loading": "Loading reviews...",
+      "loading": "Loading reviews",
       "error": {
-        "unavailable": "We couldn't load your reviews. Try again.",
+        "unavailable": "We couldn’t load your reviews. Try again.",
         "refused": "This search can't be run. Change the text or the filters, or clear them."
       },
       "chip": "{field} is {value}",
@@ -3633,8 +3636,8 @@
           "none": "Not answered",
           "published": "Answered"
         },
-        "min-rating": "Stars at least",
-        "max-rating": "Stars at most",
+        "min-rating": "Minimum stars",
+        "max-rating": "Maximum stars",
         "stars": "{count, plural, one {# star} other {# stars}}",
         "within": "Published",
         "within-value": "In the last {days} days"
@@ -3683,7 +3686,6 @@
       },
       "select": {
         "page": "Select all reviews on this page",
-        "page-short": "Select page",
         "row": "Select {name}"
       },
       "paging": {
@@ -3696,7 +3698,6 @@
         "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other rows."
       },
       "row-actions": {
-        "header": "Actions",
         "for": "Actions for {name}",
         "product": "View product",
         "order": "View order",
@@ -3704,13 +3705,13 @@
         "edit-reply": "Edit reply…",
         "report": "Report…"
       },
-      "export-button": "Export",
+      "export-button": "Export…",
       "bulk": {
         "button": "Bulk action",
         "selected": "{count, plural, one {# review selected} other {# reviews selected}}",
         "all-open": "All matching reviews selected",
         "none-selected": "Select reviews to use a bulk action.",
-        "export": "Export",
+        "export": "Export…",
         "export-help": "Download the selected reviews as CSV or XLSX."
       },
       "export": {
@@ -3737,9 +3738,13 @@
         }
       },
       "saved": {
-        "manage-link": "Manage filters",
+        "manage-link": "Manage filters…",
         "save-link": "Save filter…"
-      }
+      },
+      "chip-min": "At least {count, plural, one {# star} other {# stars}}",
+      "chip-max": "At most {count, plural, one {# star} other {# stars}}",
+      "link-product": "View product of {name}",
+      "link-order": "View order of {name}"
     }
   },
   "notifications": {

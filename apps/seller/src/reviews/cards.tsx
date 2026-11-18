@@ -13,11 +13,7 @@ function Stars({ rating }: { readonly rating: number }) {
   return (
     <span className="inline-flex items-center gap-1" role="img" aria-label={t('stars', { rating })}>
       {[1, 2, 3, 4, 5].map((n) => (
-        <Icon
-          key={n}
-          name="star"
-          className={n <= rating ? 'text-attention-fg' : 'text-icon opacity-40'}
-        />
+        <Icon key={n} name="star" className={n <= rating ? 'text-attention-fg' : 'text-fg-muted'} />
       ))}
     </span>
   );
@@ -73,7 +69,7 @@ export function ReviewCards({
   const onPage = rows.filter(ticked).length;
   const all = rows.length > 0 && onPage === rows.length;
 
-  const detail = (column: ReviewColumn, review: SellerReviewRow): ReactNode => {
+  const detail = (column: ReviewColumn, review: SellerReviewRow, name: string): ReactNode => {
     switch (column) {
       case 'published':
         return review.publishedAt === null ? null : (
@@ -85,8 +81,9 @@ export function ReviewCards({
         return (
           <a
             key={column}
-            className="text-sm text-link underline"
+            className="inline-flex min-h-8 items-center text-sm text-link underline"
             href={`/products/${review.productId}`}
+            aria-label={t('list.link-product', { name })}
           >
             {t('product-link')}
           </a>
@@ -109,15 +106,17 @@ export function ReviewCards({
   return (
     <div className="flex flex-col gap-3">
       {rows.length === 0 ? null : (
-        <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-line bg-muted px-4 py-3 text-sm text-fg-muted">
+        <div className="flex items-center gap-3 rounded-lg border border-line bg-muted px-4 py-3 text-sm text-fg-muted">
           <SelectBox
             label={selectPageLabel}
             checked={all}
             indeterminate={onPage > 0 && !all}
             onChange={(event) => selection.togglePage(event.target.checked)}
           />
-          <span className="ps-1">{selectPageLabel}</span>
-        </label>
+          <span className="ps-1" aria-hidden="true">
+            {selectPageLabel}
+          </span>
+        </div>
       )}
       <ul className="flex flex-col gap-3">
         {rows.map((review) => {
@@ -139,7 +138,7 @@ export function ReviewCards({
                   </span>
                   <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1">
                     <Stars rating={review.rating} />
-                    {columns.map((column) => detail(column, review))}
+                    {columns.map((column) => detail(column, review, name))}
                     {reported.has(review.id) ? (
                       <Badge tone="info">{t('report.sent-badge')}</Badge>
                     ) : null}
