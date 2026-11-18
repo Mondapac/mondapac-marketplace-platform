@@ -1,10 +1,5 @@
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 
-/**
- * Which sellers have a store the public can see now (approved, a held store address, may sell),
- * as `sellers` answers it, with that address. Ids and slugs only. A fault is an error, never an
- * empty answer: the follow is refused rather than made on a guess.
- */
 /** A store's current logo as a ref to the public image route (`GET sellers/stores/:slug/images/:id/:size`). */
 export interface StoreLogoRef {
   readonly id: string;
@@ -19,6 +14,11 @@ export interface PublishedStoreCard {
   readonly logo: StoreLogoRef | null;
 }
 
+/**
+ * Which sellers have a store the public can see now (approved, a held store address, may sell),
+ * as `sellers` answers it, with that address. Ids and slugs only. A fault is an error, never an
+ * empty answer: the follow is refused rather than made on a guess.
+ */
 export interface PublishedStores {
   slugsOf(
     context: CallContext,

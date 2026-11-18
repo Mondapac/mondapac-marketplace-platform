@@ -664,6 +664,16 @@ describe.each([
       expect(result.ok && result.value.has(other)).toBe(false);
     });
 
+    it('answers at most the first 100 requested ids', async () => {
+      const first = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const beyond = addStore('beta-market', 'Beta', '2026-01-10T00:00:00Z');
+      const filler = Array.from({ length: 99 }, () => ids.next<'Seller'>());
+
+      const result = await cards.execute(anonymous(), { sellerIds: [first, ...filler, beyond] });
+
+      expect(result.ok && [...result.value.keys()]).toEqual([first]);
+    });
+
     it('answers sellers.unavailable when the store read or the logo read fails, never a partial answer', async () => {
       const a = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
       failStores = true;
