@@ -241,6 +241,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX dispute_decisions_first_key ON commission_payouts.dispute_decisions USING btree (market_id, dispute_id, seller_order_id) WHERE (supersedes IS NULL)',
   'commission_payouts.dispute_decisions_reversal_key':
     'CREATE UNIQUE INDEX dispute_decisions_reversal_key ON commission_payouts.dispute_decisions USING btree (market_id, supersedes) WHERE (supersedes IS NOT NULL)',
+  // Customers 4b follow-up: the seller's savings by month read only the rows with a saving.
+  'commission_payouts.ledger_entries_market_id_seller_id_occurred_at_saving_idx':
+    'CREATE INDEX ledger_entries_market_id_seller_id_occurred_at_saving_idx ON commission_payouts.ledger_entries USING btree (market_id, seller_id, occurred_at) WHERE (saved_amount IS NOT NULL)',
   'commission_payouts.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON commission_payouts.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'commission_payouts.payout_holds_active_seller_idx':

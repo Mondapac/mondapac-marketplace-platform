@@ -1,3 +1,4 @@
+import type { DisputeDecision } from '../../src/modules/commission-payouts/domain/dispute';
 import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
 import type { ConsumedStepUp, StepUpProofConsumer } from '../../src/platform/authz';
@@ -278,6 +279,14 @@ export class MemoryHolds implements PayoutHoldRepository {
 }
 
 /** The package 6b dependencies on in-memory stores and the given Market policy. */
+/** The lost-chargeback decisions the payout anchor reads (the dispute store's own fake is fuller). */
+export class MemoryDisputeDecisions {
+  readonly decisions: DisputeDecision[] = [];
+  decisionsForSeller(_market: MarketContext, sellerId: Id<'Seller'>) {
+    return Promise.resolve(this.decisions.filter((d) => d.sellerId === sellerId));
+  }
+}
+
 export function payoutStores(policy: PayoutTermsPolicy) {
   const termsOverrides = new MemoryTermsOverrides();
   return {
@@ -285,6 +294,7 @@ export function payoutStores(policy: PayoutTermsPolicy) {
     terms: new PayoutTermsResolver(policy, termsOverrides),
     anchors: new MemoryAnchors(),
     holds: new MemoryHolds(),
+    disputes: new MemoryDisputeDecisions(),
     cursors: new MemoryCursors(),
     outbox: new RecordingCpOutbox(),
     stepUp: new AllowingStepUp(),

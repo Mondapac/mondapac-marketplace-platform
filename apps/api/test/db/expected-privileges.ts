@@ -908,6 +908,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'wallet_journal_id',
       ],
     },
+    // Customers phase 4c-2: a refund's clawback is settled once (status, what was taken, the
+    // wallet journal, when) and never removed.
+    'promotions.credit_clawbacks': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['clawed_minor', 'settled_at', 'status', 'wallet_journal_id'],
+    },
     'promotions.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.co_funding_opt_ins': {
       table: ['INSERT', 'SELECT'],
