@@ -30,6 +30,8 @@ const OWNER = [
   'payments.payout-account.manage',
   'identity.team-member.view',
   'identity.team-member.invite',
+  'customers.seller-invite-link.manage',
+  'promotions.promotion.manage',
 ];
 
 describe('SettingsHub', () => {
@@ -38,12 +40,15 @@ describe('SettingsHub', () => {
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Store',
       'Team',
+      'Customers',
     ]);
     expect(screen.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')])).toEqual(
       [
         ['Store profile', '/settings/store-profile'],
         ['Stock locations', '/settings/stock-locations'],
         ['Members', '/settings/team'],
+        ['Invite customers', '/settings/invite-customers'],
+        ['Exclusive perks', '/settings/exclusive-perks'],
       ],
     );
     expect(screen.queryByText('View only')).toBeNull();
