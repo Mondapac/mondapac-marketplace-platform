@@ -1,12 +1,14 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type { AdminBalanceOf } from '../application/use-cases/admin-balance-of.use-case';
 import type { BalanceOf } from '../application/use-cases/balance-of.use-case';
+import type { ClawBackCredit } from '../application/use-cases/claw-back-credit.use-case';
 import type { CaptureHold } from '../application/use-cases/capture-hold.use-case';
 import type { GrantCredit } from '../application/use-cases/grant-credit.use-case';
 import type { OwnBalanceOf } from '../application/use-cases/own-balance-of.use-case';
 import type { PlaceHold } from '../application/use-cases/place-hold.use-case';
 import type { ReleaseHold } from '../application/use-cases/release-hold.use-case';
 import type {
+  ClawBackCreditRequest,
   GrantCreditRequest,
   PlaceHoldRequest,
   SettleHoldRequest,
@@ -23,7 +25,12 @@ export class WalletFacadeImplementation implements WalletFacade {
     private readonly balance: BalanceOf,
     private readonly ownBalance: OwnBalanceOf,
     private readonly adminBalance: AdminBalanceOf,
+    private readonly clawBack: ClawBackCredit,
   ) {}
+
+  clawBackCredit(context: CallContext, request: ClawBackCreditRequest) {
+    return this.clawBack.execute(context, request);
+  }
 
   grantCredit(context: CallContext, request: GrantCreditRequest) {
     return this.grant.execute(context, request);

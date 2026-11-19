@@ -142,3 +142,9 @@ order the ledger holds, for promotions' waiting cashback, with whether an active
 it (`PayoutHoldRepository.hasActiveCovering`) and whether a chargeback took its money. Migration
 `20261117100000_ledger_seller_cashback` widens the kind, source and line
 CHECKs; `down.sql` refuses while such rows exist.
+`commission-payouts.record-seller-cashback-return` (system, customers phase 4c-2) records a
+`refund-cashback-seller` credit when a refund claws a seller-funded cashback back from the
+customer: it needs that credit's `cashback-seller` row for the same seller and order, and all
+returns together never exceed it. The anchor's `disputeLost` also counts any dispute decision on the
+seller order (Hassan L-6), so a chargeback the platform bore still cancels the cashback. Migration
+`20261117150001_ledger_seller_cashback_return`; `down.sql` refuses while such rows exist.
