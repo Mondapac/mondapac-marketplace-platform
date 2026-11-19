@@ -1876,7 +1876,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'certification/admin/issuer-requests/export': {
     format: /^(csv|xlsx)$/,
-    columns: /^(request-id|seller-id|documents)(,(request-id|seller-id|documents)){0,2}$/,
+    // Empty is valid: no optional column shown, so the file has its fixed columns only.
+    columns: /^$|^(request-id|seller-id|documents)(,(request-id|seller-id|documents)){0,2}$/,
     ids: UUID_LIST_200,
     view: /^all$/,
     type: /^[a-z0-9][a-z0-9_-]{0,63}$/,

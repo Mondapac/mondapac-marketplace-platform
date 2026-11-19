@@ -4528,6 +4528,12 @@ describe('relay of the security alert super list', () => {
     const ids = Array.from({ length: 200 }, () => ID).join(',');
     const { url } = await get(`certification/admin/issuer-requests/export?format=csv&ids=${ids}`);
     expect(url).toContain(`ids=${encodeURIComponent(ids)}`);
+    // No optional column shown: the empty list goes through (the file has its fixed columns).
+    const none = await get(
+      `certification/admin/issuer-requests/export?format=csv&columns=&ids=${ID}`,
+    );
+    expect(none.response.status).not.toBe(400);
+    expect(none.url).toContain('columns=');
   });
 
   it('keeps the single-alert route apart from the list and the export', async () => {
