@@ -295,7 +295,7 @@ async function reserveCashback(
   live: readonly PromotionRecord[],
   facts: DeliveredSellerOrderFacts,
   exclusiveSellerId: Id<'Seller'> | null,
-  releasedAt: Temporal.Instant,
+  waitUntil: Temporal.Instant | null,
 ): Promise<Result<CreditRecord | null, CreditFlowFailure>> {
   const now = deps.clock.now();
   const goods = facts.goodsPaid.amount;
@@ -396,11 +396,9 @@ async function reserveCashback(
     idempotencyKey: creditKey('CASHBACK', facts.sellerOrderId),
     createdAt: now,
     settledAt: chosen.mode === 'RECORD' ? now : null,
-    // Real money waits for the payout release, unless it has come already.
-    grantAfter:
-      chosen.mode === 'REAL' && releasedAt.epochMilliseconds > now.epochMilliseconds
-        ? releasedAt
-        : null,
+    // Real money waits for the payout release (and while a hold covers the seller order), unless
+    // that has passed already.
+    grantAfter: chosen.mode === 'REAL' ? waitUntil : null,
   };
   if ((await deps.credits.insert(context.market, record)) === 'duplicate') {
     return ok(await deps.credits.findBySource(context.market, 'CASHBACK', facts.sellerOrderId));
@@ -479,6 +477,17 @@ export async function cashbackOnDelivery(
     return tryAgain();
   }
   if (anchor.value.sellerId !== facts.value.sellerId) return noted();
+  // A chargeback already took the seller order's money: no cashback (Hassan M-2).
+  if (anchor.value.disputeLost) return noted();
+  // The credit waits for the release, and while a payout hold covers the seller order; the grant
+  // job looks at it again then.
+  const deliveredAt = deps.clock.now();
+  const waitUntil =
+    anchor.value.eligibleAt.epochMilliseconds > deliveredAt.epochMilliseconds
+      ? anchor.value.eligibleAt
+      : anchor.value.onHold
+        ? deliveredAt
+        : null;
   // A seller's own cashback needs the customer to be its exclusive customer when the order was
   // placed (customers phase 4c); asked once, only when such a cashback is live. Unknown is retried.
   let exclusiveSellerId: Id<'Seller'> | null = null;
@@ -490,15 +499,7 @@ export async function cashbackOnDelivery(
     exclusiveSellerId = exclusive.value;
   }
   const reserved = await deps.unitOfWork.run(market, () =>
-    reserveCashback(
-      deps,
-      context,
-      settings,
-      live.value,
-      facts.value,
-      exclusiveSellerId,
-      anchor.value.eligibleAt,
-    ),
+    reserveCashback(deps, context, settings, live.value, facts.value, exclusiveSellerId, waitUntil),
   );
   if (!reserved.ok) return reserved;
   if (reserved.value === null) return noted();
@@ -795,12 +796,21 @@ export async function qualifyReferralOnDelivery(
 export const GRANT_DUE_BATCH = 100;
 /** How long a cashback may stay PENDING with no wait before the job finishes it. */
 export const STALLED_AFTER_MINUTES = 60;
+/**
+ * How long a waiting credit is put back when it cannot be finished now: facts that cannot be read
+ * (an hour), or a payout hold on the seller order (six hours; a dispute takes weeks). A credit put
+ * back is not due, so it never keeps newer credits out of a run (Hassan L-4).
+ */
+export const RETRY_AFTER_MINUTES = 60;
+export const HELD_RECHECK_HOURS = 6;
 
 export interface GrantDueReport {
   readonly issued: number;
   readonly failed: number;
-  /** Credits whose facts could not be read now; the next run tries them again. */
+  /** Credits whose facts could not be read now; put back for a later run. */
   readonly retried: number;
+  /** Credits a payout hold covers; put back for a later run. */
+  readonly held: number;
 }
 
 /** Settles credits in their own unit (no event: the grant job is not an event handler). */
@@ -829,7 +839,7 @@ async function grantOneDue(
   deps: PromotionsDependencies,
   context: CallContext,
   credit: CreditRecord,
-): Promise<'issued' | 'failed' | 'retry'> {
+): Promise<'issued' | 'failed' | 'retry' | 'held'> {
   const { market } = context;
   const settle = async (settlements: Awaited<ReturnType<typeof grantPending>> & object) =>
     (await settleOnly(deps, context, settlements))
@@ -847,18 +857,38 @@ async function grantOneDue(
 
   const fail = (failureCode: string) =>
     settle([{ id: credit.id, result: { status: 'FAILED' as const, failureCode } }]);
+  // Put back: the credit is not due again until then, so it never blocks the queue.
+  const putBack = async (until: Temporal.Instant, outcome: 'retry' | 'held') => {
+    await deps.unitOfWork
+      .run(market, async () => ok(await deps.credits.postpone(market, credit.id, until)))
+      .catch(() => null);
+    logger.warn({
+      msg: outcome === 'held' ? 'promotions.credit.grant-held' : 'promotions.credit.grant-retry',
+      creditId: credit.id,
+      marketId: market.marketId,
+      correlationId: context.correlationId,
+    });
+    return outcome;
+  };
+  const now = deps.clock.now();
+  const retry = () => putBack(now.add({ minutes: RETRY_AFTER_MINUTES }), 'retry');
   if (credit.orderId === null) return fail('not-a-cashback');
-  const facts = await deps.orderFacts.read(context, {
-    orderId: credit.orderId,
-    sellerOrderId: credit.sourceId as Id<'SellerOrder'>,
-  });
-  if (!facts.known) return 'retry';
+  const sellerOrderId = credit.sourceId as Id<'SellerOrder'>;
+  // The seller's money first: a chargeback that took it cancels the credit, a hold on it (a
+  // dispute, a suspension) keeps the credit waiting (Hassan M-2).
+  const anchor = await deps.payoutAnchors.anchorOf(context, sellerOrderId);
+  if (!anchor.known) return retry();
+  if (anchor.value.disputeLost) return fail('order-disputed');
+  if (anchor.value.onHold) return putBack(now.add({ hours: HELD_RECHECK_HOURS }), 'held');
+  const facts = await deps.orderFacts.read(context, { orderId: credit.orderId, sellerOrderId });
+  if (!facts.known) return retry();
+  if (anchor.value.sellerId !== facts.value.sellerId) return fail('not-anchored');
   const read = await deps.unitOfWork.run(
     market,
     async () => ok(await deps.promotions.find(market, credit.promotionId)),
     { readOnly: true },
   );
-  if (!read.ok || read.value === null) return 'retry';
+  if (!read.ok || read.value === null) return retry();
   const promotion = read.value;
   if (promotion.funding === 'SELLER') {
     if (!facts.value.exclusiveSeller || promotion.ownerSellerId !== facts.value.sellerId) {
@@ -867,14 +897,14 @@ async function grantOneDue(
     const exclusive = await deps.exclusiveCustomers
       .exclusiveSellerOf(context, facts.value.customerAccountId, facts.value.placedAt)
       .catch(() => ({ known: false }) as const);
-    if (!exclusive.known) return 'retry';
+    if (!exclusive.known) return retry();
     if (exclusive.value !== promotion.ownerSellerId) return fail('not-exclusive');
   }
   // What the goods kept now earn, at the promotion's percent (within the Market's limit); never
   // more than was reserved (the cap and the budget were applied then).
   const limits = deps.policy.settings(market)?.rules.cashback ?? null;
   let amount = credit.amountMinor;
-  if (facts.value.goodsPaid.currency !== credit.currency) return 'retry';
+  if (facts.value.goodsPaid.currency !== credit.currency) return fail('currency-changed');
   if (promotion.reward.kind === 'PERCENT') {
     const bps =
       limits === null ? promotion.reward.bps : Math.min(promotion.reward.bps, limits.maxBps);
@@ -918,11 +948,13 @@ export async function grantDueCredits(
   let issued = 0;
   let failed = 0;
   let retried = 0;
+  let held = 0;
   for (const credit of due.value) {
     try {
       const outcome = await grantOneDue(deps, context, credit);
       if (outcome === 'issued') issued += 1;
       else if (outcome === 'failed') failed += 1;
+      else if (outcome === 'held') held += 1;
       else retried += 1;
     } catch (error) {
       retried += 1;
@@ -935,5 +967,5 @@ export async function grantDueCredits(
       });
     }
   }
-  return ok({ issued, failed, retried });
+  return ok({ issued, failed, retried, held });
 }

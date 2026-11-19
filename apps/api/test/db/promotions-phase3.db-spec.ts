@@ -1182,10 +1182,33 @@ describe.each(TEST_MARKETS)('promotions phase 3 types in market %s (database)', 
           ),
         ),
       ).toBe(RESTRICT);
+      // Put back (a hold, facts unknown): the wait only grows, the amount stays (Hassan M-2, L-4).
+      const later = now.add({ hours: 24 * 14 + 6 });
+      expect(await inUnit(() => credits.postpone(market, credit.id, later))).toEqual(ok(true));
+      expect(await inUnit(() => credits.postpone(market, credit.id, now))).toEqual(ok(false));
+      expect(await due(now.add({ hours: 24 * 14 }))).toEqual(ok([]));
+      expect(await due(later)).toEqual(ok([400n]));
+      for (const change of [
+        `grant_after = grant_after - interval '1 hour'`,
+        `grant_after = grant_after + interval '1 hour', amount_minor = 300`,
+        `grant_after = grant_after + interval '1 hour', failure_code = 'x'`,
+      ]) {
+        expect(
+          await state(
+            sql.query(`UPDATE promotions.credit_issuances SET ${change} WHERE id = $1`, [
+              credit.id,
+            ]),
+          ),
+        ).toBe(RESTRICT);
+      }
       // Fixed once, never higher; then it is no longer waiting, and may be granted.
       expect(await inUnit(() => credits.fixAmount(market, credit.id, 401n))).toEqual(ok(false));
       expect(await inUnit(() => credits.fixAmount(market, credit.id, 250n))).toEqual(ok(true));
       expect(await inUnit(() => credits.fixAmount(market, credit.id, 100n))).toEqual(ok(false));
+      // No longer waiting: it cannot be put back either.
+      expect(
+        await inUnit(() => credits.postpone(market, credit.id, later.add({ hours: 1 }))),
+      ).toEqual(ok(false));
       // No longer waiting: found again only once it has stalled for an hour.
       expect(await due(now.add({ minutes: 30 }))).toEqual(ok([]));
       expect(await due(now.add({ minutes: 61 }))).toEqual(ok([250n]));
