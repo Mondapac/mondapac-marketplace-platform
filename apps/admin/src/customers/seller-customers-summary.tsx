@@ -185,7 +185,10 @@ export function SellerCustomersSummaryCard({
         </div>
       ) : (
         <div>
-          <ul className="mb-2 flex gap-4 text-sm text-fg-secondary" aria-label={t('trend.legend')}>
+          <ul
+            className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-secondary"
+            aria-label={t('trend.legend')}
+          >
             <li className="flex items-center gap-2">
               <span aria-hidden="true" className="inline-block size-3 rounded-sm bg-accent" />
               {t('trend.new-buyers')}
