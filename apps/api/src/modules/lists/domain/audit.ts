@@ -19,6 +19,7 @@ export const LISTS_AUDIT_LIST_KEYS = [
   'admin.ordering.shipments',
   'admin.ordering.refunds',
   'admin.ordering.documents',
+  'admin.system-requests.requests',
   'admin.certification.issuer-requests',
   'admin.certification.review-queue',
   'admin.sellers.health-queue',

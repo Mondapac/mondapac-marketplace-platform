@@ -5058,6 +5058,10 @@
         "reason": "reason: {reason}"
       },
       "topic-archived": "{name} (archived)"
+    },
+    "tax": {
+      "taxable": "Taxable",
+      "gst-free": "GST-free"
     }
   },
   "orders": {
@@ -5922,7 +5926,10 @@
         "delete": "Delete account…",
         "edit": "Edit…",
         "password-reset": "Send password reset…",
-        "sign-out": "Sign out everywhere…"
+        "sign-out": "Sign out everywhere…",
+        "edit-email": "Edit email…",
+        "change-pending-email": "Change pending email…",
+        "email-pending": "Pending new email"
       },
       "overview": {
         "figures": "Customer figures",
@@ -6389,7 +6396,7 @@
         "unavailable": "The name could not be saved. Try again."
       },
       "email": "Email",
-      "email-help": "The email is changed through its own verified flow, not here.",
+      "email-help": "Use Edit email… in the More menu to change the email.",
       "counter": "{count, number} of {max, number}"
     },
     "notes": {
@@ -6963,6 +6970,45 @@
           "status": "Status",
           "created": "Reported"
         }
+      }
+    },
+    "email": {
+      "title": "Edit email",
+      "current": "Current email",
+      "pending": "Pending new email",
+      "new": "New email",
+      "note": "We email a confirmation link to the new address and a notice to the current one. The current address keeps working until the customer confirms.",
+      "replaces": "Sending again replaces the pending request.",
+      "send": "Send confirmation",
+      "cancel": "Cancel",
+      "step-up": "You will be asked for a two-step code next.",
+      "sent": "Confirmation sent to {email}.",
+      "error": {
+        "required": "Enter the new email.",
+        "invalid": "Enter a valid email address.",
+        "same": "This is already the current email.",
+        "taken": "This email is already used by another account.",
+        "not-eligible": "A disabled or unverified account cannot change its email. Enable or verify it first.",
+        "deletion-pending": "This customer has a deletion request pending. Cancel it first.",
+        "not-found": "This customer no longer exists.",
+        "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+        "denied": "You don’t have access to change emails.",
+        "unavailable": "The confirmation could not be sent. Try again."
+      },
+      "banner": {
+        "text": "Waiting for {email} to confirm. The current address stays until then. Requested {date}.",
+        "cancel": "Cancel email change…"
+      },
+      "cancel-change": {
+        "title": "Cancel the email change?",
+        "body": "{email} will not be used and its confirmation link stops working. The current address stays.",
+        "confirm": "Cancel email change",
+        "keep": "Keep it",
+        "done": "Email change cancelled.",
+        "gone": "There is no pending email change any more.",
+        "failed": "The email change could not be cancelled. Try again.",
+        "denied": "You don’t have access to cancel email changes.",
+        "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}."
       }
     }
   },
@@ -11229,28 +11275,49 @@
       }
     },
     "list": {
-      "label": "Variants",
-      "filters": "Filter variants",
-      "search": "Search",
-      "search-placeholder": "Product, code, GTIN or SKU",
-      "type": "Variant type",
-      "type-all": "All variant types",
-      "issues": "Issues",
-      "issue-count": "{issue} · {count}",
-      "issue": {
+      "title": "Variants",
+      "intro": "Every variant of the live products in this Market, with what needs fixing. Stock is not shown here yet.",
+      "tabs": "Variant views",
+      "tab": {
+        "all": "All variants",
         "no-seller-selling": "No seller selling",
         "missing-gtin": "Missing GTIN",
         "duplicate-gtin": "Duplicate GTIN",
         "no-image": "No image",
         "missing-language": "Missing language"
       },
-      "stock-note": "Stock is not shown here yet.",
-      "loading": "Loading variants",
-      "load-error": "The variants could not be loaded.",
-      "more-error": "More variants could not be loaded.",
-      "empty": "No variants yet",
-      "empty-filtered": "No variants match",
-      "clear": "Clear filters",
+      "search": {
+        "label": "Search variants",
+        "placeholder": "Product, code, GTIN or SKU"
+      },
+      "filter": {
+        "title": "Filter variants",
+        "name": {
+          "typeCode": "Variant type"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "newest": "Date added",
+          "code": "Variant code",
+          "gtin": "GTIN"
+        },
+        "newest": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "az": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "low": {
+          "first": "Lowest first",
+          "second": "Highest first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
       "col": {
         "variant": "Product · variant",
         "code": "Code",
@@ -11258,13 +11325,60 @@
         "sellers": "Sellers",
         "issues": "Issues"
       },
+      "chip-search": "Search: {text}",
       "no-label": "No label",
       "paused": "Paused",
-      "shown": "{count, plural, one {# variant shown} other {# variants shown}}",
-      "more": "Show more",
+      "loading": "Loading variants",
+      "match": "{count, plural, one {# variant matches} other {# variants match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} variants match. Add a search or a filter to see the rest.",
+      "no-access": "You do not have access to the variants.",
+      "error": {
+        "unavailable": "The variants could not be loaded.",
+        "refused": "The search or filter cannot be used. Change it and try again."
+      },
+      "empty": {
+        "title": "No variants yet",
+        "no-match": "No variants match",
+        "no-match-help": "Change the search or the filters, or clear them."
+      },
+      "select": {
+        "page": "Select all variants on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# variant selected} other {# variants selected}}",
+        "all": "{count, plural, one {The # matching variant is selected} other {All # matching variants are selected}}",
+        "all-open": "All matching variants are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "open-product": "Open product",
+        "copy-code": "Copy variant code",
+        "copied": "Copied",
+        "copy-failed": "Couldn't copy. Select the text and copy it."
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# variant selected} other {# variants selected}}",
+        "all-open": "All matching variants selected",
+        "export": "Export…"
+      },
       "export": {
-        "csv": "Export CSV",
-        "xlsx": "Export XLSX",
+        "title": "Export variants",
+        "body": "The file holds every variant the current view, search and filters match.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "confirm": "Export",
+        "cancel": "Cancel",
         "pending": "Preparing the file",
         "done": "File downloaded",
         "too-large": "More than {max} variants match. Narrow the filter and export again.",
@@ -11777,8 +11891,7 @@
       }
     },
     "export": {
-      "button": "Export",
-      "hint": "Export comes with saved filters"
+      "button": "Export"
     }
   },
   "security-centre": {

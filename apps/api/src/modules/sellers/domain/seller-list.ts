@@ -165,6 +165,19 @@ function parseSearch(value: unknown, problems: ListFieldProblem[]): ListSearch |
 }
 
 /**
+ * The search of a request on its own (the super list's `q`, list 15): the same rules as `search`
+ * of {@link parseListRequest}; `problem` names the reason without echoing the value.
+ */
+export function parseListSearch(value: unknown): {
+  readonly search: ListSearch | null;
+  readonly problem: string | null;
+} {
+  const problems: ListFieldProblem[] = [];
+  const search = parseSearch(value, problems);
+  return { search, problem: problems[0]?.code ?? null };
+}
+
+/**
  * Checks the shape of a list request: JSON object, a closed set of names, types, bounds, the
  * filter that belongs to each tab and the cursor of the tab. A problem is a path and a code; a
  * value is never echoed (design 8.3). The meaning of the values (does a seller match) is the

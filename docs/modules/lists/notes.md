@@ -55,6 +55,14 @@ are the Sales lists' relative presets; search text, the seller link and paging a
   (Awaiting review only), `outsideArea: true` (Incomplete only), `areaCode` (not on a state tab);
   sort `queue|name`, and a state tab takes only `queue`, `desc` (as the list route).
 
+## System requests queue (system-requests)
+
+`system-requests` registers `admin.system-requests.requests`, guarded by the queue's own view key
+(`system-requests.request.view`) and a share key of its own (`system-requests.saved-filter.share`,
+protected like every key of that module); no migration. The payload is closed: `v: 1`, `view`,
+`filters` (`area`, `risk`, `status` as lists of words; `from` and `to` as calendar days; `overdue:
+true`), `sort`, `direction`. Search text and the deep-link subject are never saved.
+
 ## B0-2 column preferences
 
 - `lists.column_preferences` keeps the columns a user chose per list (one row per account and list,

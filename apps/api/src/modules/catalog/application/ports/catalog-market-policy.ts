@@ -1,6 +1,12 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { SensitiveChangesPolicy } from '../../domain/product-revision-policy';
 
+/** A tax category of the Market: its code and the message key the panels show it by. */
+export interface TaxCategoryOption {
+  readonly code: string;
+  readonly labelKey: string;
+}
+
 export const CATALOG_MARKET_POLICY = Symbol('CATALOG_MARKET_POLICY');
 
 /**
@@ -13,6 +19,8 @@ export const CATALOG_MARKET_POLICY = Symbol('CATALOG_MARKET_POLICY');
 export interface CatalogMarketPolicy {
   /** The tax category codes a product may carry, in the order configured. */
   taxCategoryCodes(market: MarketContext): readonly string[];
+  /** The tax categories with the label key each is shown by (`catalog.taxCategories`). */
+  taxCategories(market: MarketContext): readonly TaxCategoryOption[];
   /** Which changes to a published product go to review (4.3). */
   sensitiveChanges(market: MarketContext): SensitiveChangesPolicy;
   /** The Market's default locale and the locales content may be written in. */
