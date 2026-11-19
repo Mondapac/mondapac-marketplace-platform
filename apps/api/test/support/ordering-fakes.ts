@@ -1129,6 +1129,10 @@ export class FakeCommission implements CommissionPayoutsFacade {
   recordSellerCashback(): Promise<never> {
     return Promise.reject(new Error('not used'));
   }
+  /** Ordering never records a cashback return (promotions does). */
+  recordSellerCashbackReturn(): Promise<never> {
+    return Promise.reject(new Error('not used'));
+  }
   /** Ordering never asks for a payout anchor (promotions does). */
   sellerOrderPayoutAnchor(): Promise<never> {
     return Promise.reject(new Error('not used'));

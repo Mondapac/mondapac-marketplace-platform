@@ -26,6 +26,7 @@ import {
 import { reversedAmount } from '../domain/reversal';
 import { netBySellerOrder, type LedgerEntry, type LedgerKind } from '../domain/ledger';
 import { payoutStores } from '../../../../test/support/commission-payouts-fakes';
+import type { MemoryDisputeDecisions } from '../../../../test/support/commission-payouts-fakes';
 import { FakeSellerNames } from '../../../../test/support/commission-payouts-dispute-fakes';
 import { sellerPageDepsOf } from '../../../../test/support/commission-payouts-seller-page-fakes';
 import type { AllowingStepUp } from '../../../../test/support/commission-payouts-fakes';
@@ -41,6 +42,7 @@ import { ClearCommissionRate } from './use-cases/clear-commission-rate.use-case'
 import { CommissionRates } from './use-cases/commission-rates.use-case';
 import { OwnCommissionOn } from './use-cases/own-commission-on.use-case';
 import { RecordRefund } from './use-cases/record-refund.use-case';
+import { RecordSellerCashbackReturn } from './use-cases/record-seller-cashback-return.use-case';
 import { RecordSellerCashback } from './use-cases/record-seller-cashback.use-case';
 import { SellerOrderPayoutAnchorQuery } from './use-cases/seller-order-payout-anchor.use-case';
 import { RecordSellerOrderPaid } from './use-cases/record-seller-order-paid.use-case';
@@ -952,6 +954,121 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       }
       expect(ledger.rows.some((r) => r.kind === 'cashback-seller')).toBe(false);
     });
+  });
+
+  describe("a seller's cashback returned after a refund (customers phase 4c-2)", () => {
+    const CREDIT = id<'PromotionCredit'>(0xc4);
+    const CLAWBACK_1 = id<'CreditClawback'>(0xcb1);
+    const CLAWBACK_2 = id<'CreditClawback'>(0xcb2);
+    const returned = (over: Record<string, unknown> = {}) => ({
+      clawbackId: CLAWBACK_1,
+      creditId: CREDIT,
+      orderId: ORDER,
+      sellerOrderId: SELLER_ORDER,
+      sellerId: SELLER_A,
+      amount: 30n,
+      currency,
+      returnedAt: T0.add({ hours: 400 }),
+      ...over,
+    });
+    const recordReturn = (input: unknown, context: CallContext = system) =>
+      new RecordSellerCashbackReturn(gate, deps).execute(context, input as never);
+    const withCashback = async () => {
+      await record();
+      await new RecordSellerCashback(gate, deps).execute(system, {
+        creditId: CREDIT,
+        orderId: ORDER,
+        sellerOrderId: SELLER_ORDER,
+        sellerId: SELLER_A,
+        amount: 70n,
+        currency,
+        creditedAt: T0.add({ hours: 50 }),
+      });
+    };
+
+    it('credits the seller once per clawback and nets it off the cashback total', async () => {
+      await withCashback();
+      expect(await recordReturn(returned())).toEqual(ok('recorded'));
+      expect(await recordReturn(returned())).toEqual(ok('already-recorded'));
+      const rows = ledger.rows.filter((r) => r.kind === 'refund-cashback-seller');
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        sourceId: CLAWBACK_1,
+        orderLineId: null,
+        amount: money(30n, currency),
+      });
+      const view = await new ViewOwnLedger(gate, deps).execute(sellerA, {});
+      expect(view).toMatchObject({ ok: true, value: { totals: { sellerCashback: 40n } } });
+      expect(
+        view.ok && view.value.entries.find((e) => e.kind === 'refund-cashback-seller')?.direction,
+      ).toBe('credit');
+    });
+
+    it('never returns more than the cashback, in all, nor one of another seller, order or credit', async () => {
+      await withCashback();
+      expect(await recordReturn(returned({ amount: 50n }))).toEqual(ok('recorded'));
+      expect(await recordReturn(returned({ clawbackId: CLAWBACK_2, amount: 21n }))).toEqual(
+        err({ code: 'commission-payouts.ledger-inconsistent' }),
+      );
+      expect(await recordReturn(returned({ clawbackId: CLAWBACK_2, amount: 20n }))).toEqual(
+        ok('recorded'),
+      );
+      const inconsistent = err({ code: 'commission-payouts.ledger-inconsistent' });
+      const third = id<'CreditClawback'>(0xcb3);
+      expect(await recordReturn(returned({ clawbackId: third, amount: 1n }))).toEqual(inconsistent);
+      expect(
+        await recordReturn(returned({ clawbackId: third, sellerId: SELLER_B, amount: 1n })),
+      ).toEqual(inconsistent);
+      expect(
+        await recordReturn(returned({ clawbackId: third, creditId: id<'PromotionCredit'>(0xee) })),
+      ).toEqual(inconsistent);
+    });
+
+    it('refuses malformed facts and any caller but the system', async () => {
+      await withCashback();
+      expect(await recordReturn(returned({ clawbackId: 'x' }))).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(await recordReturn(returned({ amount: 0n }))).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      for (const context of [admin, sellerA, customer]) {
+        expect(await recordReturn(returned(), context)).toMatchObject({ ok: false });
+      }
+      expect(ledger.rows.some((r) => r.kind === 'refund-cashback-seller')).toBe(false);
+    });
+  });
+
+  it('says a seller order is lost when the platform bore a lost chargeback on it (Hassan L-6)', async () => {
+    await record();
+    await deps.anchors.insertIfAbsent(market, {
+      sellerOrderId: SELLER_ORDER,
+      orderId: ORDER,
+      sellerId: SELLER_A,
+      deliveredAt: T0,
+      source: 'seller-click',
+      holdDaysApplied: 14,
+      eligibleAt: T0.add({ hours: 24 * 14 }),
+      recordedAt: T0,
+    });
+    const anchorOf = () =>
+      new SellerOrderPayoutAnchorQuery(gate, deps).execute(system, SELLER_ORDER);
+    expect(await anchorOf()).toMatchObject({ ok: true, value: { disputeLost: false } });
+    (deps.disputes as MemoryDisputeDecisions).decisions.push({
+      id: id<'DisputeDecision'>(0xdd1),
+      disputeId: id<'Dispute'>(0xdd2),
+      sellerOrderId: SELLER_ORDER,
+      sellerId: SELLER_A,
+      bearer: 'platform',
+      amount: null,
+      reasonCode: 'platform-goodwill' as never,
+      decidedBy: id<'Account'>(0xad),
+      decidedAt: T0,
+      supersedes: null,
+    });
+    expect(await anchorOf()).toMatchObject({ ok: true, value: { disputeLost: true } });
   });
 
   describe("a seller order's payout release, for promotions (customers phase 4c)", () => {
