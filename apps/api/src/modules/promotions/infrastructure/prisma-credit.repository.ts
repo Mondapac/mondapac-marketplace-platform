@@ -157,6 +157,24 @@ export class PrismaCreditRepository implements CreditRepository {
     return updated.count === 1;
   }
 
+  async postpone(
+    market: MarketContext,
+    id: Id<'PromotionCredit'>,
+    until: Temporal.Instant,
+  ): Promise<boolean> {
+    const at = new Date(until.epochMilliseconds);
+    const updated = await this.prisma.tx(market).promotionsCreditIssuance.updateMany({
+      where: {
+        marketId: market.marketId,
+        id,
+        status: 'PENDING',
+        grantAfter: { not: null, lt: at },
+      },
+      data: { grantAfter: at },
+    });
+    return updated.count === 1;
+  }
+
   async reservedTotal(market: MarketContext, promotionId: Id<'Promotion'>): Promise<bigint> {
     const sum = await this.prisma.tx(market).promotionsCreditIssuance.aggregate({
       where: { marketId: market.marketId, promotionId, status: { in: ['PENDING', 'GRANTED'] } },
@@ -215,6 +233,27 @@ export class PrismaCreditRepository implements CreditRepository {
                 { createdAt: toDate(after.createdAt), id: { lt: after.id } },
               ],
             }),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+    return rows.map(toRecord);
+  }
+
+  async listWaitingCashback(
+    market: MarketContext,
+    recipient: Id<'Account'>,
+    limit: number,
+    orderId?: Id<'Order'>,
+  ): Promise<readonly CreditRecord[]> {
+    // credit_issuances_recipient_newest_idx: a customer's credits are few.
+    const rows = await this.prisma.tx(market).promotionsCreditIssuance.findMany({
+      where: {
+        marketId: market.marketId,
+        recipientAccountId: recipient,
+        kind: 'CASHBACK',
+        status: 'PENDING',
+        ...(orderId === undefined ? {} : { orderId }),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit,

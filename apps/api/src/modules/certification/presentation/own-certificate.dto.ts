@@ -183,6 +183,31 @@ export class ReviewQueueRowView {
   @ApiProperty() submittedAt!: string;
 }
 
+export class ReviewQueueListRowView extends ReviewQueueRowView {
+  @ApiProperty({
+    enum: ['open', 'decide'],
+    isArray: true,
+    description: 'The row actions the caller may run (Open always; Decide… with the approve key).',
+  })
+  actions!: string[];
+}
+
+export class ReviewQueueListView {
+  @ApiProperty({ type: [ReviewQueueListRowView] }) items!: ReviewQueueListRowView[];
+  @ApiProperty({ nullable: true, type: Number, description: 'Null with `paging=prev-next`.' })
+  total!: number | null;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+  @ApiProperty({ description: 'The waiting submissions per view, whatever the filter.' })
+  counts!: { all: number; initial: number; resubmission: number; renewal: number };
+  @ApiProperty({
+    description: 'True when more are waiting than the 500 read; the newest are not listed.',
+  })
+  truncated!: boolean;
+}
+
 export class ReviewQueueView {
   @ApiProperty({ type: [ReviewQueueRowView] }) items!: ReviewQueueRowView[];
   @ApiProperty({ nullable: true, type: String }) nextAfterId!: string | null;
