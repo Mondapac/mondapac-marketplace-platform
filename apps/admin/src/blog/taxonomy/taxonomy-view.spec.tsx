@@ -135,6 +135,24 @@ describe('admin blog taxonomy', () => {
     expect(writes()[0]!.slice(0, 2)).toEqual(['DELETE', `blog/admin/taxonomy/categories/${id(1)}`]);
   });
 
+  it('drops a refusal with the dialog: Cancel leaves no error on the page', async () => {
+    serve();
+    show();
+    await pick('Recipes', 'Delete…');
+    call.mockImplementation((...args: unknown[]) =>
+      args[0] === 'GET'
+        ? Promise.resolve(ok(taxonomy) as never)
+        : Promise.resolve(failed(409, 'blog.category-in-use') as never),
+    );
+    fireEvent.change(screen.getByLabelText('Type the name to confirm'), {
+      target: { value: 'Recipes' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(await screen.findByText(/A post uses this/u)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByText(/A post uses this/u)).toBeNull());
+  });
+
   it('adds a tag, with the address left to the server', async () => {
     serve();
     show();
@@ -215,6 +233,11 @@ describe('admin blog taxonomy', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(screen.queryByText('Delete Recipes?')).toBeNull());
     expect(writes()).toHaveLength(0);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Actions for Recipes' }),
+      ),
+    );
   });
 
   it('moves focus into the form and gives it back to the button on Cancel', async () => {

@@ -42,14 +42,6 @@ interface DeleteTarget {
 
 const API_CATEGORIES = `${API_BLOG_TAXONOMY}/categories`;
 const API_TAGS = `${API_BLOG_TAXONOMY}/tags`;
-/** The row's Actions button, so focus can go back to it when the form closes. */
-function triggerOf(label: string): HTMLElement | null {
-  return (
-    [...document.querySelectorAll<HTMLElement>('button')].find(
-      (button) => button.getAttribute('aria-label') === label,
-    ) ?? null
-  );
-}
 const TAG_SLUG_OK = (slug: string): boolean =>
   slug.length >= 2 && slug.length <= 40 && SLUG_PATTERN.test(slug);
 
@@ -110,6 +102,8 @@ export function TaxonomyView({
   const opener = useRef<HTMLElement | null>(null);
   const categoriesHeading = useRef<HTMLHeadingElement>(null);
   const tagsHeading = useRef<HTMLHeadingElement>(null);
+  // Each category's Actions menu host, so focus can go back to its button when the form closes.
+  const menuHosts = useRef(new Map<string, HTMLElement>());
 
   useEffect(() => {
     if (editing !== null) formHeading.current?.focus();
@@ -239,7 +233,10 @@ export function TaxonomyView({
     if (ok) {
       setConfirming(null);
       toast.success(t(target.done));
-      (target.heading === 'tags' ? tagsHeading : categoriesHeading).current?.focus();
+      // The dialog is still modal until React commits, so focus the heading on the next frame.
+      requestAnimationFrame(() =>
+        (target.heading === 'tags' ? tagsHeading : categoriesHeading).current?.focus(),
+      );
     }
   }
 
@@ -307,36 +304,43 @@ export function TaxonomyView({
                   </span>
                 </div>
                 {canEdit ? (
-                  <Menu
-                    label={t('actions-for', { name: nameOf(category) })}
-                    items={[
-                      {
-                        id: 'edit',
-                        label: t('edit'),
-                        disabled: busy || locales === null || editing !== null,
-                        onSelect: () =>
-                          startEdit(
-                            category,
-                            triggerOf(t('actions-for', { name: nameOf(category) })),
-                          ),
-                      },
-                      {
-                        id: 'delete',
-                        label: t('delete'),
-                        tone: 'critical',
-                        disabled: busy,
-                        onSelect: () => {
-                          setError(null);
-                          setConfirming({
-                            label: nameOf(category),
-                            path: `${API_CATEGORIES}/${category.id}`,
-                            done: 'category-deleted',
-                            heading: 'categories',
-                          });
+                  <span
+                    ref={(element) => {
+                      if (element === null) menuHosts.current.delete(category.id);
+                      else menuHosts.current.set(category.id, element);
+                    }}
+                  >
+                    <Menu
+                      label={t('actions-for', { name: nameOf(category) })}
+                      items={[
+                        {
+                          id: 'edit',
+                          label: t('edit'),
+                          disabled: busy || locales === null || editing !== null,
+                          onSelect: () =>
+                            startEdit(
+                              category,
+                              menuHosts.current.get(category.id)?.querySelector('button') ?? null,
+                            ),
                         },
-                      },
-                    ]}
-                  />
+                        {
+                          id: 'delete',
+                          label: t('delete'),
+                          tone: 'critical',
+                          disabled: busy,
+                          onSelect: () => {
+                            setError(null);
+                            setConfirming({
+                              label: nameOf(category),
+                              path: `${API_CATEGORIES}/${category.id}`,
+                              done: 'category-deleted',
+                              heading: 'categories',
+                            });
+                          },
+                        },
+                      ]}
+                    />
+                  </span>
                 ) : null}
               </li>
             ))}
@@ -503,7 +507,10 @@ export function TaxonomyView({
         onConfirm={() => {
           if (confirming !== null) void remove(confirming);
         }}
-        onCancel={() => setConfirming(null)}
+        onCancel={() => {
+          setConfirming(null);
+          setError(null);
+        }}
       />
     </div>
   );
