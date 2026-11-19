@@ -2783,9 +2783,9 @@ describe('relay of the wallet and step-up routes', () => {
       'wallet/admin/credit-requests/export?format=pdf&columns=fingerprint&ids=x',
       readHeaders,
     );
-    expect(badFile.upstream.mock.calls[0]?.[0]).toBe(
-      'http://api.test/wallet/admin/credit-requests/export',
-    );
+    // A strict export (Hassan S1): a malformed value refuses the file instead of widening it.
+    expect(badFile.response.status).toBe(400);
+    expect(badFile.upstream).not.toHaveBeenCalled();
   });
 
   it('passes no query on the customer summary or the settings', async () => {
@@ -4487,6 +4487,53 @@ describe('relay of the security alert super list', () => {
     const { url } = await get(`security/admin/alerts/export?format=csv&ids=${ids}`);
     expect(url).toContain(`ids=${encodeURIComponent(ids)}`);
     const bad = await get('security/admin/alerts/export?format=csv&view=other');
+    expect(bad.response.status).toBe(400);
+    expect(bad.url).toBeUndefined();
+  });
+});
+
+describe('relay of the phase 4 money and account exports (strict queries)', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const get = async (path: string) => {
+    const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    const response = await relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin }),
+      path.split('?')[0]!.split('/'),
+      upstream,
+    );
+    return { response, url: upstream.mock.calls[0]?.[0] as string | undefined };
+  };
+
+  it.each([
+    'commission-payouts/admin/payouts/export',
+    'commission-payouts/admin/disputes/export',
+    'wallet/admin/credit-requests/export',
+    'customers/admin/deletion-requests/export',
+  ])(
+    '%s relays 200 ids whole and refuses a malformed value instead of widening the file',
+    async (target) => {
+      const ids = Array.from({ length: 200 }, () => ID).join(',');
+      const { url } = await get(`${target}?format=csv&ids=${ids}`);
+      expect(url).toContain(`ids=${encodeURIComponent(ids)}`);
+
+      const tooMany = Array.from({ length: 201 }, () => ID).join(',');
+      for (const query of [
+        'format=csv&ids=x',
+        `format=csv&ids=${tooMany}`,
+        'format=csv&status=bogus',
+        'format=pdf',
+      ]) {
+        const bad = await get(`${target}?${query}`);
+        expect([query, bad.response.status]).toEqual([query, 400]);
+        expect(await bad.response.json()).toMatchObject({ code: 'validation.failed' });
+        expect(bad.url).toBeUndefined();
+      }
+    },
+  );
+
+  it('refuses a Credit requests export by an unknown requester instead of dropping the filter', async () => {
+    const bad = await get('wallet/admin/credit-requests/export?format=csv&requestedBy=ME');
     expect(bad.response.status).toBe(400);
     expect(bad.url).toBeUndefined();
   });

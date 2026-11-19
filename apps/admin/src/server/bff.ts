@@ -2205,6 +2205,11 @@ function badScope(method: string, target: string, requestUrl: string): boolean {
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
   'security/admin/alerts/export',
+  // Super list phase 4 exports (Hassan S1): a bad `ids` or filter refuses, never widens the file.
+  'commission-payouts/admin/payouts/export',
+  'commission-payouts/admin/disputes/export',
+  'wallet/admin/credit-requests/export',
+  'customers/admin/deletion-requests/export',
 ]);
 
 /** The first known key of a strict target whose value cannot cross, or null. */
