@@ -32,6 +32,7 @@ describe.each(TEST_MARKETS)('public store reads over HTTP in market %s', (code) 
     },
   });
   const STORE = {
+    sellerId: '0198a2c4-7d1e-7b3a-9c55-2f6e8a1b4d90',
     slug: 'kedron-halal',
     name: 'Kedron Halal Meats',
     serviceAreaCode: 'greater-brisbane',

@@ -128,6 +128,7 @@ describe.each(FIXTURES)('SaveWorkingCopy in market $code', ({ code, maxVariants 
     };
     const marketPolicy: CatalogMarketPolicy = {
       taxCategoryCodes: () => [],
+      taxCategories: () => [],
       locales: () => ({ default: 'en', supported: ['en'] }),
       sensitiveChanges: () => {
         throw new Error('not used');
