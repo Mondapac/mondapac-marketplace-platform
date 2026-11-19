@@ -9,6 +9,7 @@ import { ConsentBar } from '../consent/consent-bar.tsx';
 import type { Consent } from '../consent/consent.ts';
 import { DeliverModal } from '../delivery/deliver-modal.tsx';
 import type { DeliverTo } from '../delivery/deliver-to.ts';
+import { InviteJoiner } from '../invite/invite-ui.tsx';
 import { OfflineBanner } from '../errors/offline-banner.tsx';
 import type {
   CartSource,
@@ -89,6 +90,7 @@ export function StoreShell({
             <Rail />
             <main className="main" id="main">
               <OfflineBanner />
+              <InviteJoiner />
               {children}
             </main>
           </div>

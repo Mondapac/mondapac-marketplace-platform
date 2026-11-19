@@ -5482,15 +5482,6 @@
       "amount": "Amount",
       "tax-included": "Tax incl."
     },
-    "export": {
-      "button": "Export CSV",
-      "busy": "Preparing the file…",
-      "done": "The file of the orders on this list was downloaded.",
-      "too-large": "{matching} orders match, and one file holds at most {max}. Narrow the filters and export again.",
-      "too-large-plain": "Too many orders match for one file. Narrow the filters and export again.",
-      "invalid": "These filters cannot be exported. Change them and try again.",
-      "unavailable": "The file could not be created. Try again."
-    },
     "range": "{from} to {to} of {total}",
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
     "sort": {
@@ -5594,9 +5585,9 @@
       "button": "Bulk action",
       "selected": "{count, plural, one {# order selected} other {# orders selected}}",
       "all-open": "All matching orders selected",
-      "export": "Export all matching as CSV",
-      "export-help": "Exports every order the tab and filters match, not only the ticked ones.",
-      "export-name-search": "A customer or store search cannot be exported. Clear it to export."
+      "export-help": "CSV or XLSX, with the columns shown",
+      "export-name-search": "Export can’t cover a search. Clear it, or tick the orders you want.",
+      "none-selected": "Tick the orders you want to export."
     },
     "row-actions": {
       "header": "Actions",
@@ -11076,7 +11067,7 @@
       "rate-invalid": "Enter a rate from 0 to 50 with up to 2 decimals.",
       "default-rate": "Default rate (%)",
       "default-rate-help": "Used for a line in none of the categories below.",
-      "category-rate": "Rate for {code} (%)",
+      "category-rate": "Rate for {category} (%)",
       "no-categories": "No tax categories are defined, so every line uses the default rate.",
       "cancel": "Cancel",
       "save": "Save strategy",
@@ -11245,36 +11236,14 @@
       "waiting": "Waiting for you"
     },
     "requests": {
-      "title": "Size requests from sellers",
-      "list-label": "Size requests",
-      "loading": "Loading size requests",
-      "load-failed": "The size requests could not be loaded.",
-      "denied-title": "No access",
-      "denied-body": "You cannot answer size requests.",
-      "empty": "Nothing is waiting for you.",
-      "empty-body": "Sizes that sellers ask for on a platform product will show here.",
-      "open": "Waiting",
-      "asked": "Requested on product {product} by {seller}.",
       "no-product-code": "without a code",
       "unnamed-seller": "a seller",
       "already-exists": "The product already has this variant. Map the request to it.",
-      "has-sizes": "The product has: {sizes}.",
-      "approve": "Approve",
-      "map": "Map to existing",
-      "decline": "Decline",
       "cancel": "Cancel",
-      "approve-for": "Approve {asked}",
-      "map-for": "Map to existing: {asked}",
-      "decline-for": "Decline {asked}",
-      "approve-note": "Approving adds the variant to the product's draft. It still goes through the normal review before any seller can sell it.",
-      "approve-confirm": "Approve request",
-      "map-none": "This product has no variants to map to.",
       "map-to": "Existing variant",
       "map-choose": "Choose a variant",
-      "map-confirm": "Map to this variant",
       "reason": "Reason for the seller",
       "reason-help": "The seller reads this in an email.",
-      "decline-confirm": "Decline request",
       "decided": {
         "approved": "Variant added to the draft. The seller will get an email.",
         "mapped": "Mapped to an existing variant. The seller will get an email.",
@@ -11294,6 +11263,98 @@
         "unavailable": "The service is not reachable. Try again.",
         "unknown": "The decision could not be saved.",
         "reload-failed": "The list could not be refreshed and may be out of date. Reload the page."
+      },
+      "actions": {
+        "approve": "Approve…",
+        "map": "Map to existing…",
+        "decline": "Decline…"
+      },
+      "already-exists-short": "The product already has this size. Map the request to it.",
+      "dialog": {
+        "approve": {
+          "title": "Approve size request",
+          "confirm": "Approve request",
+          "body": "Approve {asked}? The variant is added to the product's draft and still goes through the normal review before any seller can sell it. The seller gets an email."
+        },
+        "map": {
+          "title": "Map to an existing variant",
+          "confirm": "Map to this variant",
+          "body": "Map {asked} to a variant the product already has? The seller gets an email."
+        },
+        "decline": {
+          "title": "Decline size request",
+          "confirm": "Decline request",
+          "body": "Decline {asked}? The seller reads your reason in an email."
+        }
+      },
+      "list": {
+        "title": "Size requests from sellers",
+        "intro": "Sizes that sellers asked for on a platform product. Approve, map or decline each one from its Actions menu.",
+        "tabs": "Size request views",
+        "tab": {
+          "open": "Waiting for you"
+        },
+        "search": {
+          "label": "Search size requests",
+          "placeholder": "Product code"
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "created": "Date requested"
+          },
+          "created": {
+            "first": "Oldest first",
+            "second": "Newest first"
+          }
+        },
+        "sorted": "Sorted by {field}, {order}",
+        "col": {
+          "request": "Requested size",
+          "product": "Product",
+          "seller": "Seller",
+          "requested": "Requested",
+          "existing": "Product has"
+        },
+        "chip-search": "Product code: {text}",
+        "loading": "Loading size requests",
+        "match": "{count, plural, one {# request matches} other {# requests match}}",
+        "range": "{from}–{to} of {total}",
+        "too-many": "More than {limit} requests match. Add a search to see the rest.",
+        "no-access": "You cannot answer size requests.",
+        "error": {
+          "unavailable": "The size requests could not be loaded.",
+          "refused": "The search cannot be used. Change it and try again."
+        },
+        "empty": {
+          "title": "Nothing is waiting for you.",
+          "body": "Sizes that sellers ask for on a platform product will show here.",
+          "no-match": "No requests match",
+          "no-match-help": "Change the search or clear it."
+        },
+        "select": {
+          "page": "Select all requests on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+          "all": "{count, plural, one {The # matching request is selected} other {All # matching requests are selected}}",
+          "all-open": "All matching requests are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "actions": {
+          "header": "Actions",
+          "for": "Actions for {name}"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+          "all-open": "All matching requests selected"
+        }
       }
     },
     "view-only": {
@@ -11600,7 +11661,9 @@
     "decision": {
       "approved": "Approved",
       "rejected": "Rejected",
-      "withdrawn": "Withdrawn"
+      "withdrawn": "Withdrawn",
+      "approval-rejected": "Declined",
+      "approval-withdrawn": "Withdrawn, not applied"
     },
     "overdue": "Overdue",
     "superseded": "Superseded",
@@ -11695,6 +11758,8 @@
       "copy-link": "Copy link",
       "approve": "Approve",
       "reject": "Reject and revert",
+      "approval-reject": "Reject",
+      "approval-withdraw": "Withdraw my request",
       "withdraw": "Withdraw my change"
     },
     "row-actions": "Actions for {number}",
@@ -11759,7 +11824,7 @@
         "title": "{count, plural, one {Approve # request?} other {Approve # requests?}}",
         "title-matching": "Approve all matching requests?",
         "body": "The changes stay live. You approve them as they are now; the author's values are not edited.",
-        "body-matching": "Every low-risk request that matches this list and that you may review is approved as it is now, up to 100 at a time. Medium and high risk requests stay open for a one-by-one review.",
+        "body-matching": "Every low-risk request that matches this list and that you may review is approved as it is now, up to 100 at a time. Medium and high risk requests stay open for a one-by-one review. Actions that wait for approval are left out.",
         "action": "{count, plural, one {Approve # request} other {Approve # requests}}",
         "matching": "Approve matching requests"
       },
@@ -11777,13 +11842,15 @@
         "own": "You made this change, so another admin must review it.",
         "not-reviewer": "You do not hold the review permission for this area.",
         "not-found": "No longer available.",
-        "other": "Could not be approved ({code})."
+        "other": "Could not be approved ({code}).",
+        "one-by-one": "Waits for approval: approve it on its own page."
       },
       "error": {
         "network": "Could not reach the server. Nothing more was changed.",
         "unavailable": "The requests could not be approved. Try again."
       },
-      "none": "No matching low-risk requests could be approved."
+      "none": "No matching low-risk requests could be approved.",
+      "not-allowed-approval": "Actions that wait for approval are applied on their own approval."
     },
     "decide": {
       "cancel": "Cancel",
@@ -11814,7 +11881,30 @@
       "toast": {
         "approve": "{number} approved. The change stays live.",
         "reject": "{number} rejected. The previous value is back in place.",
-        "withdraw": "Your change was withdrawn. The previous value is back in place."
+        "withdraw": "Your change was withdrawn. The previous value is back in place.",
+        "approval-approve": "{number} approved. The action was applied.",
+        "approval-reject": "{number} rejected. Nothing was changed.",
+        "approval-withdraw": "Your request was withdrawn. Nothing was changed."
+      },
+      "approval": {
+        "approve": {
+          "title": "Approve {number} and apply the action?",
+          "body": "The action is applied now, as described on this request. This cannot be undone. If the subject has changed since the request was made, nothing is applied and the request stays open.",
+          "high-risk": "High risk: you will be asked for your two-step code.",
+          "confirm": "Approve and apply"
+        },
+        "reject": {
+          "title": "Reject {number}?",
+          "body": "Nothing will change. The action is not applied and the request is closed as declined.",
+          "reason": "Reason (shown to the author)",
+          "confirm": "Reject"
+        },
+        "withdraw": {
+          "title": "Withdraw your request?",
+          "body": "Nothing will change. The action is not applied and the request is closed as withdrawn.",
+          "reason": "Reason",
+          "confirm": "Withdraw request"
+        }
       }
     },
     "refusal": {
@@ -11835,24 +11925,33 @@
       "open-newer": "Open the newer request",
       "open-profile": "Open your profile",
       "retry": "Try again",
-      "reload": "Reload the page"
+      "reload": "Reload the page",
+      "approval-changed-since": "The subject changed after this was requested, so the action was not applied and nothing was changed. The request stays open. Reject it, or ask the author to withdraw it.",
+      "approval-subject-gone": "The subject no longer exists, so the action was not applied and nothing was changed. The request stays open. Reject it to close it.",
+      "approval-not-permitted": "You are not allowed to make this change, so the action was not applied and nothing was changed. The request stays open. Ask an admin with that permission."
     },
     "detail": {
       "not-found": "This request does not exist or you cannot see it.",
       "subject": "Subject",
       "reason": "Reason",
-      "note": "Why this change was made"
+      "note": "Why this change was made",
+      "note-approval": "Why this action was requested"
     },
     "banner": {
       "live": "This change is already live. Approve to keep it, or reject to put the previous value back.",
       "superseded": "A later request changed this again, so this one can no longer be reverted. You can still approve it.",
       "see-later": "See the later request (SR-{number})",
-      "own": "You made this change. Another admin has to approve it. You can withdraw it."
+      "own": "You made this change. Another admin has to approve it. You can withdraw it.",
+      "approval": "Nothing has changed yet. This action is applied only when another admin approves it. Reject it and nothing changes.",
+      "own-approval": "You asked for this action. Another admin has to approve it before it is applied. You can withdraw it and nothing will change."
     },
     "outcome": {
       "approved": "Approved. The change stayed live.",
       "rejected": "Rejected. The previous value was put back.",
-      "withdrawn": "Withdrawn. The previous value was put back."
+      "withdrawn": "Withdrawn. The previous value was put back.",
+      "approval-approved": "Approved. The action was applied.",
+      "approval-rejected": "Declined. Nothing was changed.",
+      "approval-withdrawn": "Withdrawn. Nothing was changed."
     },
     "more-actions": "More actions",
     "diff": {
@@ -11882,7 +11981,8 @@
         "approved": "approved",
         "rejected": "rejected and reverted",
         "withdrawn": "withdrew and reverted",
-        "unknown": "updated"
+        "unknown": "updated",
+        "proposed": "asked for the action"
       },
       "label": "Add a comment",
       "counter": "{count} / {max}",
@@ -11985,6 +12085,21 @@
     },
     "export": {
       "button": "Export"
+    },
+    "waits-for-approval": "Waits for approval",
+    "requested": {
+      "title": "Requested action",
+      "title-history": "Requested action (record)",
+      "current-title": "What the subject holds now",
+      "hidden": "The details of this request are visible to admins who may review it.",
+      "unknown-action": "Action not named",
+      "merge-into": "Merge into {name}",
+      "none": "Nothing to show.",
+      "action": {
+        "delete": "Delete",
+        "merge": "Merge",
+        "import": "Import"
+      }
     }
   },
   "security-centre": {

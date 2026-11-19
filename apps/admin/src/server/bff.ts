@@ -104,6 +104,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // export as a file (the chosen ids or the list's own query).
     'sellers/admin/health-queue/list',
     'sellers/admin/health-queue/export',
+    // The open issuer requests as a super list (certification; query: `view`, `type`, `q`,
+    // `sellerId`, `from`, `to`, `sort`, `direction`, `paging`, `page`, `pageSize`) and its export
+    // as a file (the chosen ids or the list's own query). One request is read by its page server.
+    'certification/admin/issuer-requests/list',
+    'certification/admin/issuer-requests/export',
     // The certificate review queue as a super list (certification; query: `view`, `kind`, `type`,
     // `q`, `sellerId`, `from`, `to`, `sort`, `direction`, `paging`, `page`, `pageSize`) and its
     // export as a file (the chosen ids or the list's own query). One certificate is read by its
@@ -169,8 +174,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'promotions/admin/free-shipping',
     // The editable Market settings (settings; List paging), read again after a conflict.
     'settings/admin/market-settings',
-    // The blog posts of the Market (blog; query: `status`, `kind`, `owner`, `page`), read only.
+    // The Blog posts super list of the Market (blog; query: `view`, `status`, the filters, `q`,
+    // `sort`, `direction`, `page`, `pageSize`, or `cursor` and `limit`), read only, and its export
+    // as a file.
     'blog/admin/posts',
+    'blog/admin/posts/export',
     // The blog categories and tags the editor offers (blog), read only.
     'blog/admin/taxonomy',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
@@ -1077,7 +1085,40 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
-  'blog/admin/posts': ['status', 'kind', 'owner', 'page'],
+  // The view, search, filters and page mode of the Blog posts super list.
+  'blog/admin/posts': [
+    'view',
+    'status',
+    'kind',
+    'owner',
+    'sellerId',
+    'featured',
+    'q',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'cursor',
+    'limit',
+  ],
+  'blog/admin/posts/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'status',
+    'kind',
+    'owner',
+    'sellerId',
+    'featured',
+    'q',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   'wallet/admin/credit-requests': [
     'view',
     'status',
@@ -1241,6 +1282,33 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
+  // The view, filters, sort and page mode of the issuer-request super list (the API validates).
+  'certification/admin/issuer-requests/list': [
+    'view',
+    'type',
+    'q',
+    'sellerId',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'paging',
+    'page',
+    'pageSize',
+  ],
+  'certification/admin/issuer-requests/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'type',
+    'q',
+    'sellerId',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
   'catalog/admin/products': [
     'view',
@@ -1344,7 +1412,15 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
-  'catalog/admin/variant-requests': ['limit'],
+  'catalog/admin/variant-requests': [
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/variants': [
     'q',
     'typeCode',
@@ -1887,6 +1963,33 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^(score|name|day)$/,
     direction: /^(asc|desc)$/,
   },
+  'certification/admin/issuer-requests/list': {
+    view: /^all$/,
+    type: /^[a-z0-9][a-z0-9_-]{0,63}$/,
+    // A request id, exact.
+    q: UUID,
+    sellerId: UUID,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
+    sort: /^(submitted|type)$/,
+    direction: /^(asc|desc)$/,
+    paging: /^(pages|prev-next)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'certification/admin/issuer-requests/export': {
+    format: /^(csv|xlsx)$/,
+    columns: /^(request-id|seller-id|documents)(,(request-id|seller-id|documents)){0,2}$/,
+    ids: UUID_LIST_200,
+    view: /^all$/,
+    type: /^[a-z0-9][a-z0-9_-]{0,63}$/,
+    q: UUID,
+    sellerId: UUID,
+    from: ISO_INSTANT,
+    to: ISO_INSTANT,
+    sort: /^(submitted|type)$/,
+    direction: /^(asc|desc)$/,
+  },
   'catalog/admin/products': {
     view: /^(active|all|inactive)$/,
     scope: /^(PLATFORM|SELLER)$/,
@@ -1926,7 +2029,14 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
   },
-  'catalog/admin/variant-requests': { limit: /^([1-9][0-9]?|100)$/ },
+  'catalog/admin/variant-requests': {
+    limit: /^([1-9][0-9]?|100)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^created$/,
+    direction: /^(asc|desc)$/,
+  },
   'catalog/admin/category-tree/export': {
     format: /^(csv|xlsx)$/,
     status: /^(active|hidden|merged|archived)(,(active|hidden|merged|archived)){0,3}$/,
@@ -2118,11 +2228,48 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     position: /^[a-z]+(?:\.[a-z-]+)+$/,
   },
   'blog/admin/posts': {
+    view: /^(draft|in_review|changes_requested|approved|scheduled|published|unpublished|archived|all)$/,
     status:
       /^(draft|in_review|changes_requested|approved|scheduled|published|unpublished|archived)$/,
     kind: /^(product|brand|event|news)$/,
     owner: /^(platform|seller)$/,
-    page: /^[0-9]{1,4}$/,
+    sellerId: UUID,
+    featured: /^(true|false)$/,
+    // Part of a title or slug: no control character, at most 100 characters (the API checks
+    // again; a zero-width non-joiner of Persian text is kept).
+    q: /^[^\p{Cc}]{1,100}$/u,
+    // ISO instants on the last change, `to` excluded.
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(created|updated|published|scheduled)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    limit: /^[0-9]{1,3}$/,
+    // The API's own cursor: epoch milliseconds of the creation, a dot and the post id.
+    cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'blog/admin/posts/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(slug|seller-id|stage|featured|scheduled|published|created)(,(slug|seller-id|stage|featured|scheduled|published|created)){0,6}$/,
+    // At most 200 post ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(draft|in_review|changes_requested|approved|scheduled|published|unpublished|archived|all)$/,
+    status:
+      /^(draft|in_review|changes_requested|approved|scheduled|published|unpublished|archived)$/,
+    kind: /^(product|brand|event|news)$/,
+    owner: /^(platform|seller)$/,
+    sellerId: UUID,
+    featured: /^(true|false)$/,
+    // Part of a title or slug: no control character, at most 100 characters (the API checks
+    // again; a zero-width non-joiner of Persian text is kept).
+    q: /^[^\p{Cc}]{1,100}$/u,
+    // ISO instants on the last change, `to` excluded.
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(created|updated|published|scheduled)$/,
+    direction: /^(asc|desc)$/,
   },
   'storefront/admin/slides/order': {
     position: /^[a-z]+(?:\.[a-z-]+)+$/,
@@ -2224,12 +2371,14 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'ordering/admin/refunds/export:ids': 7400,
   'ordering/admin/shipments/export:ids': 7400,
   'commission-payouts/admin/payouts/export:ids': 7400,
+  'blog/admin/posts/export:ids': 7400,
   'customers/admin/deletion-requests/export:ids': 7400,
   'wallet/admin/credit-requests/export:ids': 7400,
   'commission-payouts/admin/disputes/export:ids': 7400,
   'system-requests/admin/requests/export:ids': 3700,
   'pricing/admin/price-holds/export:ids': 7400,
   'sellers/admin/health-queue/export:ids': 7400,
+  'certification/admin/issuer-requests/export:ids': 7400,
   'certification/admin/seller-certificates/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,

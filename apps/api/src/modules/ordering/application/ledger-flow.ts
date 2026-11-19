@@ -43,6 +43,7 @@ function paidFacts(record: SellerOrderRecord) {
       lineAmount: ledgerLineAmount(line),
       taxInclusive: line.taxInclusive,
       commissionRateBps: line.commissionRateBps!,
+      commissionStandardRateBps: line.commissionStandardRateBps ?? null,
     })),
   };
 }
