@@ -5058,6 +5058,10 @@
         "reason": "reason: {reason}"
       },
       "topic-archived": "{name} (archived)"
+    },
+    "tax": {
+      "taxable": "Taxable",
+      "gst-free": "GST-free"
     }
   },
   "orders": {
