@@ -229,9 +229,14 @@ describe('EditForm', () => {
         },
       }),
     );
-    expect(
-      screen.getByRole<HTMLButtonElement>('button', { name: 'Submit for review' }).disabled,
-    ).toBe(true);
+    const submitButton = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Submit for review',
+    });
+    expect(submitButton.disabled).toBe(false);
+    expect(submitButton.getAttribute('aria-disabled')).toBe('true');
+    const callsBefore = call.mock.calls.length;
+    fireEvent.click(submitButton);
+    expect(call.mock.calls.length).toBe(callsBefore);
     expect(
       screen.getByText('To submit: choose a category and choose the tax category.'),
     ).toBeTruthy();

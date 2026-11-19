@@ -80,6 +80,7 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
       policy,
       attributeEditProbe: { execute: () => Promise.resolve({ ok: editKey }) },
       attributeRestructureProbe: { execute: () => Promise.resolve({ ok: restructureKey }) },
+      review: new RecordingReview(),
     });
   const get = () =>
     new AttributeAdminGet(gate(), {
@@ -88,7 +89,12 @@ describe.each(['AU', 'ZZ'] as const)('admin attribute reads in market %s', (code
       policy,
       review: new RecordingReview(),
     });
-  const sets = () => new FeatureSetAdminList(gate(), { unitOfWork, attributeAdminReader: reader });
+  const sets = () =>
+    new FeatureSetAdminList(gate(), {
+      unitOfWork,
+      attributeAdminReader: reader,
+      review: new RecordingReview(),
+    });
   const set = () =>
     new FeatureSetAdminGet(gate(), { unitOfWork, attributeAdminReader: reader, policy });
 

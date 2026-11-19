@@ -13,6 +13,7 @@ export type PrefsKind =
   | 'single-key'
   | 'products-columns'
   | 'orders-columns'
+  | 'offers-columns'
   | 'customers-columns'
   | 'customer-orders-columns'
   | 'shipments-columns'
@@ -30,8 +31,8 @@ export type PrefsKind =
   | 'customer-consent-history-columns'
   // Customers phase 2b, part C (Shopping and Reviews).
   | 'customer-section-columns'
-  // Phase 3 (Certificates > Issuer requests).
-  | 'issuer-requests-columns';
+  // The column choice of any other super list, named after the list (`variants.list-columns`).
+  | `${string}-columns`;
 
 /** The storage key of one list of one account in one Market of one panel. */
 export function prefsKey(
