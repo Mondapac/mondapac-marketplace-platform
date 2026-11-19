@@ -31,7 +31,7 @@ const product = (description: string): ProductView => ({
   createdAt: '2026-10-01T00:00:00Z',
   pendingSubmittedAt: null,
   form: {
-    taxCategoryCodes: [],
+    taxCategories: [],
     units: [],
     fields: [
       {

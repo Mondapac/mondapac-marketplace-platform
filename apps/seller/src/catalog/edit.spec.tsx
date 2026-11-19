@@ -39,7 +39,7 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   lastChangedAt: '2026-10-01T00:00:00Z',
   createdAt: '2026-10-01T00:00:00Z',
   pendingSubmittedAt: null,
-  form: { taxCategoryCodes: [], units: [], fields: [], categories: [] },
+  form: { taxCategories: [], units: [], fields: [], categories: [] },
   workingCopy: {
     content: {
       texts: { 'en-AU': { name: 'Olive oil' }, ar: { name: 'زيت' } },
@@ -222,7 +222,7 @@ describe('EditForm', () => {
     mount(
       product({
         form: {
-          taxCategoryCodes: ['gst'],
+          taxCategories: [{ code: 'gst', labelKey: 'catalog.tax.gst' }],
           units: [],
           fields: [],
           categories: [{ categoryId: 'c1', parentId: null, names: { 'en-AU': 'Pantry' } }],
