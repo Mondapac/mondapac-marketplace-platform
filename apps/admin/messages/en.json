@@ -607,8 +607,6 @@
         "body": "Custom roles you create will appear here."
       },
       "action": {
-        "view": "View",
-        "edit": "Edit",
         "duplicate": "Duplicate",
         "view-role": "View role",
         "edit-role": "Edit role",
