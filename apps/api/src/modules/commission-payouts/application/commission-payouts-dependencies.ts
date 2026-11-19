@@ -6,6 +6,7 @@ import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { PayoutTermsResolver } from './payout-terms-resolver';
 import type { CommissionPolicy } from './ports/commission-policy';
+import type { DisputeRepository } from './ports/dispute.repository';
 import type { EligibilityAnchorRepository } from './ports/eligibility-anchor.repository';
 import type { PayoutCursorRepository } from './ports/payout-cursor.repository';
 import type { PayoutHoldRepository } from './ports/payout-hold.repository';
@@ -26,6 +27,8 @@ export interface CommissionPayoutsDependencies {
   readonly terms: PayoutTermsResolver;
   readonly anchors: EligibilityAnchorRepository;
   readonly holds: PayoutHoldRepository;
+  /** The lost-chargeback decisions of a seller, for the payout anchor (Hassan L-6). */
+  readonly disputes: Pick<DisputeRepository, 'decisionsForSeller'>;
   readonly sellers: SellerDirectory;
   /** The payout schedule cursors: created with a seller's first anchor, reset by a terms change. */
   readonly cursors: PayoutCursorRepository;

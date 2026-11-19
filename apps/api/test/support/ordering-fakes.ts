@@ -1116,6 +1116,7 @@ export class FakeCommission implements CommissionPayoutsFacade {
               sellerId,
               {
                 rateBps: lowered ?? own ?? this.marketRateBps,
+                standardRateBps: own ?? this.marketRateBps,
                 source: own === undefined ? ('market' as const) : ('seller' as const),
                 reason: lowered === undefined ? ('standard' as const) : ('exclusive' as const),
               },
@@ -1127,6 +1128,10 @@ export class FakeCommission implements CommissionPayoutsFacade {
   }
   /** Ordering never records a seller's cashback (promotions does). */
   recordSellerCashback(): Promise<never> {
+    return Promise.reject(new Error('not used'));
+  }
+  /** Ordering never records a cashback return (promotions does). */
+  recordSellerCashbackReturn(): Promise<never> {
     return Promise.reject(new Error('not used'));
   }
   /** Ordering never asks for a payout anchor (promotions does). */

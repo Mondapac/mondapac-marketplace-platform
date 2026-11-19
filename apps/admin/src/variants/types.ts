@@ -148,11 +148,8 @@ export interface RequestItem {
   }[];
   /** The product already has it: map, do not approve. */
   readonly alreadyExists: boolean;
-}
-
-export interface RequestList {
-  readonly items: readonly RequestItem[];
-  readonly locales: { readonly default: string; readonly supported: readonly string[] };
+  /** The row actions the caller may run: `approve`, `map`, `decline`. */
+  readonly actions: readonly string[];
 }
 
 export interface RequestDecided {
