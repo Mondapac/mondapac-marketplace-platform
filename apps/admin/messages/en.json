@@ -8431,24 +8431,8 @@
     "zone-note": "Dates are shown in {zone}.",
     "footnote": "An inquiry does not move money. Only that order's seller share is held while a dispute is open.",
     "loading": "Loading disputes",
-    "more": "Show more",
     "error": {
       "unavailable": "The disputes could not be loaded. Try again."
-    },
-    "empty": {
-      "needs-response": "No disputes need a response",
-      "decision-needed": "No disputes need a decision",
-      "under-review": "No disputes are under review",
-      "won": "No disputes won yet",
-      "closed": "No closed disputes"
-    },
-    "col": {
-      "case": "Case",
-      "sellers": "Sellers",
-      "reason": "Reason",
-      "money": "Money",
-      "evidence": "Evidence due",
-      "amount": "Amount"
     },
     "case-ref": "Order {id}",
     "sellers-none": "-",
@@ -8567,6 +8551,139 @@
         "not-decidable": "This case cannot be decided now. The page shows the latest.",
         "not-found": "This case or seller order no longer exists.",
         "unknown": "The decision could not be saved. Try again."
+      }
+    },
+    "list": {
+      "zone-note": "Dates are shown in {zone}.",
+      "view": {
+        "all": "All",
+        "needs-response": "Needs response",
+        "decision-needed": "Decision needed",
+        "under-review": "Under review",
+        "won": "Won",
+        "closed": "Closed"
+      },
+      "col": {
+        "case": "Case",
+        "stage": "Stage",
+        "sellers": "Sellers",
+        "amount": "Amount",
+        "opened": "Opened",
+        "money": "Money",
+        "reason": "Reason",
+        "evidence-due": "Evidence due",
+        "stripe-status": "Stripe status",
+        "updated": "Last updated",
+        "seller-ids": "Seller IDs",
+        "actions": "Actions"
+      },
+      "row-name": "case {id} of {sellers}",
+      "search": {
+        "label": "Search",
+        "placeholder": "Store name, dispute ID or order ID",
+        "help": "A store name (2 characters or more), or a full dispute or order ID.",
+        "too-short": "Type at least {min} characters, or a full dispute or order ID."
+      },
+      "chip-id": "Dispute or order ID is {text}",
+      "chip-store": "Store contains \"{text}\"",
+      "chip-seller": "Seller is {name}",
+      "search-capped": "The search matched too many stores, so not every case of them is listed. Type more of the store name.",
+      "filter": {
+        "title": "Filter disputes",
+        "name": {
+          "status": "Stripe status",
+          "money": "Money",
+          "evidenceDue": "Evidence due",
+          "opened": "Opened"
+        },
+        "status": {
+          "warning_needs_response": "Inquiry: needs response",
+          "warning_under_review": "Inquiry: under review",
+          "warning_closed": "Inquiry: closed",
+          "needs_response": "Needs response",
+          "under_review": "Under review",
+          "won": "Won",
+          "lost": "Lost",
+          "prevented": "Prevented"
+        },
+        "money": {
+          "withdrawn": "Taken by bank",
+          "inquiry": "Inquiry only",
+          "reinstated": "Returned to us",
+          "none": "Not moved"
+        },
+        "due": {
+          "overdue": "Overdue",
+          "next-24-hours": "Within 24 hours",
+          "next-3-days": "Within 3 days",
+          "next-7-days": "Within 7 days"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "opened": "Opened",
+          "amount": "Amount",
+          "evidence-due": "Evidence due",
+          "updated": "Last updated"
+        },
+        "opened": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "amount": {
+          "first": "Largest first",
+          "second": "Smallest first"
+        },
+        "evidence-due": {
+          "first": "Latest deadline first",
+          "second": "Nearest deadline first"
+        },
+        "updated": {
+          "first": "Most recent first",
+          "second": "Least recent first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# case matches} other {# cases match}}",
+      "range": "{from}–{to} of {total} cases",
+      "error": {
+        "unavailable": "The disputes could not be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "all": "No disputes yet",
+        "needs-response": "No disputes need a response",
+        "decision-needed": "No disputes need a decision",
+        "under-review": "No disputes are under review",
+        "won": "No disputes won yet",
+        "closed": "No closed disputes",
+        "no-match": "No disputes match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all cases on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# case selected} other {# cases selected}}",
+        "all": "{count, plural, one {The # matching case is selected} other {All # matching cases are selected}}",
+        "all-open": "All matching cases are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# case selected} other {# cases selected}}",
+        "all-open": "All matching cases selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "open": "Open",
+        "decide": "Decide on the case's page"
       }
     }
   },
