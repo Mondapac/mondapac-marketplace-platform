@@ -610,6 +610,9 @@
         "view": "View",
         "edit": "Edit",
         "duplicate": "Duplicate",
+        "view-role": "View role",
+        "edit-role": "Edit role",
+        "duplicate-role": "Duplicate role",
         "create": "New role"
       },
       "back": "Back to roles",
