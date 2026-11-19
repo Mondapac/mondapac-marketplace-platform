@@ -63,9 +63,13 @@ class LedgerTotalsBody {
   @ApiProperty({ description: 'Minor units; credited back after a dispute.' })
   disputeReinstated!: string;
   @ApiProperty({
+    description: 'Minor units; cashback the seller funded for its exclusive customers.',
+  })
+  sellerCashback!: string;
+  @ApiProperty({
     description:
       'Minor units, may be negative: sales + shipping − commission − refunded sales − refunded ' +
-      'shipping + refunded commission − dispute debits + dispute reinstated.',
+      'shipping + refunded commission − dispute debits + dispute reinstated − seller cashback.',
   })
   balance!: string;
 }
@@ -141,6 +145,7 @@ export const ledgerBody = (view: LedgerView): LedgerBody => ({
     refundedCommission: view.totals.refundedCommission.toString(),
     disputeDebits: view.totals.disputeDebits.toString(),
     disputeReinstated: view.totals.disputeReinstated.toString(),
+    sellerCashback: view.totals.sellerCashback.toString(),
     balance: view.totals.balance.toString(),
   },
   entries: view.entries.map((entry) => ({

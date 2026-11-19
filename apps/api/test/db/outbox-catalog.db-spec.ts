@@ -41,6 +41,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON reviews.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'system_requests.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON system_requests.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  'system_requests.requests_one_open_proposal_key':
+    "CREATE UNIQUE INDEX requests_one_open_proposal_key ON system_requests.requests USING btree (market_id, subject_kind, subject_ref) WHERE ((mode = 'approval'::text) AND (status = 'open'::text))",
   'blog.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON blog.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'blog.post_versions_market_id_category_id_idx':
@@ -374,6 +376,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX special_price_records_market_id_submitted_at_id_pending_idx ON pricing.special_price_records USING btree (market_id, submitted_at, id) WHERE (status = 'pending-review'::text)",
   'pricing.special_price_records_market_id_series_id_pending_key':
     "CREATE UNIQUE INDEX special_price_records_market_id_series_id_pending_key ON pricing.special_price_records USING btree (market_id, series_id) WHERE (status = 'pending-review'::text)",
+  // Customers phase 4c: the cashback the grant job pays after its seller order's payout release.
+  'promotions.credit_issuances_pending_cashback_idx':
+    "CREATE INDEX credit_issuances_pending_cashback_idx ON promotions.credit_issuances USING btree (market_id, created_at, id) WHERE ((status = 'PENDING'::text) AND (kind = 'CASHBACK'::text))",
   // SOC package 2 (docs/design/data/security.md 2): one live alert per rule and key.
   'security.alerts_market_id_rule_key_type_key_value_live_key':
     "CREATE UNIQUE INDEX alerts_market_id_rule_key_type_key_value_live_key ON security.alerts USING btree (market_id, rule, key_type, key_value) WHERE ((state)::text <> 'resolved'::text)",
@@ -464,6 +469,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX product_reviews_public_list_idx ON reviews.product_reviews USING btree (market_id, product_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
   'reviews.product_reviews_public_list_rating_idx':
     "CREATE INDEX product_reviews_public_list_rating_idx ON reviews.product_reviews USING btree (market_id, product_id, rating, published_at DESC, id DESC) WHERE (status = 'published'::text)",
+  // The shop's Reviews list (super list 32) reads its published reviews by Market and seller.
+  'reviews.product_reviews_seller_published_idx':
+    "CREATE INDEX product_reviews_seller_published_idx ON reviews.product_reviews USING btree (market_id, seller_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
   // Promotions: the real and the RECORDED credits each have a partial unique key over kind and
   // source, and over the idempotency key (the plain lookup index by source is not partial).
   'promotions.credit_issuances_real_idempotency_key':

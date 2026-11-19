@@ -98,9 +98,17 @@ export interface TopicPage {
   readonly maxPerProduct: number;
 }
 
+/** A tax category of the Market with the message key it is shown by (from its Market file). */
+export interface TaxCategory {
+  readonly code: string;
+  readonly labelKey: string;
+}
+
 /** What the product form is drawn from: `GET catalog/seller/products/:id` -> `form`. */
 export interface ProductForm {
   readonly taxCategoryCodes: readonly string[];
+  /** The categories with their label keys; when absent the code is shown as words. */
+  readonly taxCategories?: readonly TaxCategory[] | undefined;
   /** The Market's units; a measure field names the ones it offers by code. */
   readonly units: readonly FormUnit[];
   readonly fields: readonly FormField[];
@@ -187,6 +195,35 @@ export interface OfferView {
   }[];
 }
 
+/** The row actions the list names (`actions` of a list row); Prices and Stock are added by the panel. */
+export const OFFER_ROW_ACTIONS = ['open', 'edit', 'submit', 'delete'] as const;
+
+/** One row of the Offer list: the Offer and what the caller may run on it. */
+export interface OfferListRow extends OfferView {
+  readonly actions: readonly string[];
+}
+
+/** The seller's Offers per status for the same search and on-sale filter, and all together. */
+export interface OfferListCounts {
+  readonly draft: number;
+  readonly pendingFirstPublish: number;
+  readonly changesNeeded: number;
+  readonly published: number;
+  readonly all: number;
+}
+
+/** `GET catalog/seller/offers` in list mode. */
+export interface OfferListPage {
+  readonly items: readonly OfferListRow[];
+  /** `pages` mode only; null in `prev-next`. */
+  readonly total: number | null;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly paging: 'pages' | 'prev-next';
+  readonly hasNext: boolean;
+  readonly counts: OfferListCounts;
+}
+
 /** One sell unit (variant) of an offer: `GET catalog/seller/offers/:id/sell-units` -> `units`. */
 export interface SellUnitView {
   readonly variantId: string;
@@ -215,6 +252,8 @@ export interface ProductOptions {
   readonly locales: { readonly default: string; readonly supported: readonly string[] };
   /** The Market's tax category codes, as `form.taxCategoryCodes` of a product read. */
   readonly taxCategoryCodes: readonly string[];
+  /** The categories with their label keys; when absent the code is shown as words. */
+  readonly taxCategories?: readonly TaxCategory[] | undefined;
   /** The categories a product may be filed under, as `form.categories` of a product read. */
   readonly categories: readonly FormCategory[];
   readonly sellerCanCreateProduct: boolean;

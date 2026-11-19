@@ -41,6 +41,14 @@ closed (`v: 1`; date filters are relative presets, never dates; search text is n
 - `admin.ordering.documents` (the Invoices page): tab `order-confirmation|credit-note`; filter
   `issued`; sort `issued|amount`.
 
+## System requests queue (system-requests)
+
+`system-requests` registers `admin.system-requests.requests`, guarded by the queue's own view key
+(`system-requests.request.view`) and a share key of its own (`system-requests.saved-filter.share`,
+protected like every key of that module); no migration. The payload is closed: `v: 1`, `view`,
+`filters` (`area`, `risk`, `status` as lists of words; `from` and `to` as calendar days; `overdue:
+true`), `sort`, `direction`. Search text and the deep-link subject are never saved.
+
 ## B0-2 column preferences
 
 - `lists.column_preferences` keeps the columns a user chose per list (one row per account and list,

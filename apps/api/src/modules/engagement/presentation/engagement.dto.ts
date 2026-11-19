@@ -152,6 +152,13 @@ export const storeFollowBody = (state: FollowState): StoreFollowBody => ({
   followedAt: state.followedAt?.toString() ?? null,
 });
 
+export class MyStoreLogoBody {
+  @ApiProperty({ description: 'Names the image in the public image route.' })
+  id!: string;
+  @ApiProperty({ description: 'Pixels of the `large` size.' }) width!: number;
+  @ApiProperty({ description: 'Pixels of the `large` size.' }) height!: number;
+}
+
 export class MyStoreBody {
   @ApiProperty({ format: 'uuid' })
   sellerId!: string;
@@ -161,6 +168,20 @@ export class MyStoreBody {
     description: 'The store address now; null when the store is no longer public.',
   })
   slug!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The public store name now; null when the store is no longer public.',
+  })
+  name!: string | null;
+  @ApiProperty({
+    type: MyStoreLogoBody,
+    nullable: true,
+    description:
+      'The current logo, or null when there is none or the store is no longer public. Read it at ' +
+      '`GET sellers/stores/:slug/images/:id/:size` (size small or large).',
+  })
+  logo!: MyStoreLogoBody | null;
   @ApiProperty({ format: 'date-time' })
   followedAt!: string;
 }
@@ -178,6 +199,11 @@ export const myStoresBody = (page: MyStoresPage): MyStoresBody => ({
   items: page.items.map((item) => ({
     sellerId: item.sellerId,
     slug: item.slug,
+    name: item.name,
+    logo:
+      item.logo === null
+        ? null
+        : { id: item.logo.id, width: item.logo.width, height: item.logo.height },
     followedAt: item.followedAt.toString(),
   })),
   total: page.total,

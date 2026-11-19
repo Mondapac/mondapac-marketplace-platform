@@ -80,6 +80,13 @@ export class CategoryTreeRowBody extends CategoryRowBody {
 
 export class CategoryTreeBody {
   @ApiProperty({ description: 'The version of the Market tree.' }) treeVersion!: number;
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description:
+      'Whether a create, move or reorder is reviewed after and a discard, merge or archive waits ' +
+      'for approval in this Market (Admin Inbox › System requests): the dialogs then ask for a note.',
+  })
+  review!: CatalogueReviewBody;
   @ApiProperty() defaultLocale!: string;
   @ApiProperty({ type: [String] }) supportedLocales!: string[];
   @ApiProperty({ type: [String], description: 'Locales every category needs a name in.' })
@@ -236,6 +243,7 @@ export class CategoryCreateRequest {
   @ApiProperty({ required: false, type: CategorySeoRequest }) seo?: CategorySeoRequest;
   @ApiProperty({ required: false }) showInMenu?: boolean;
   @ApiProperty({ description: 'The tree version the page read.' }) treeVersion!: number;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class CategoryEditDetailsRequest {
@@ -265,6 +273,11 @@ export class CategoryTreeVersionRequest {
 
 export class CategoryReorderRequest extends CategoryTreeVersionRequest {
   @ApiProperty({ enum: ['up', 'down'] }) direction!: string;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
+}
+
+export class CategoryDiscardRequest extends CategoryTreeVersionRequest {
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class CategoryChangeSlugRequest extends CategoryTreeVersionRequest {
@@ -279,6 +292,11 @@ const REASON = {
 
 export class CategoryArchiveRequest extends CategoryTreeVersionRequest {
   @ApiProperty(REASON) reason!: string;
+  @ApiProperty({
+    required: false,
+    description: `${NOTE_DESCRIPTION} The reason note when left out.`,
+  })
+  note?: string;
 }
 
 export class CategoryMoveRequest extends CategoryArchiveRequest {
@@ -307,11 +325,27 @@ export class CategoryWriteBody {
 
 export class CategoryWriteWrapBody {
   @ApiProperty({ type: CategoryWriteBody }) category!: CategoryWriteBody;
+  @ApiProperty({
+    type: CatalogueRequestRef,
+    nullable: true,
+    required: false,
+    description: REQUEST_DESCRIPTION,
+  })
+  request?: CatalogueRequestRef | null;
+}
+
+/**
+ * The answer (202) of an action that waits for a second admin's approval (Admin Inbox › System
+ * requests): the proposal it filed; nothing was changed.
+ */
+export class CatalogueProposalBody {
+  @ApiProperty({ type: CatalogueRequestRef, description: 'The proposal, shown as SR-<number>.' })
+  request!: CatalogueRequestRef;
 }
 
 export class CategoryEditDetailsWrapBody extends CategoryWriteWrapBody {
   @ApiProperty({ type: CatalogueRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
-  request!: CatalogueRequestRef | null;
+  override request: CatalogueRequestRef | null = null;
 }
 
 export class CategoryImageSetRequest {
@@ -347,6 +381,11 @@ export class CategoryMoveProductsRequest {
   })
   targetId!: string;
   @ApiProperty(REASON) reason!: string;
+  @ApiProperty({
+    required: false,
+    description: `${NOTE_DESCRIPTION} The reason note when left out.`,
+  })
+  note?: string;
 }
 
 export class CategoryMoveProductsStartedBody {
