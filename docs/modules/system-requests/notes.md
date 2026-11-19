@@ -145,8 +145,9 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
     and feature-set edits (a slug change and an image carry redirect and storage effects a revert
     cannot undo cleanly). Imports run unreviewed.
 
-- **shipping** (area delivery, medium risk by default, on by default): only changes that can be
-  put back are reviewed; creating, deleting, merging, moving and importing are not.
+- **shipping** (area delivery, medium risk by default, on by default): changes that can be put
+  back are reviewed after; creating a fleet-selection model waits for approval (below); deleting,
+  merging, moving and importing are not reviewed.
   - `shipping.delivery-settings` (subject `delivery-settings`): the save of the Market's delivery
     settings (`PUT /shipping/admin/delivery-settings`). Values: the saved set without its version
     (`enabled` per method, `sameDayCutoffMinutes`, `scheduledDaysAhead`, `scheduledWindowMinutes`,
@@ -169,6 +170,23 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
     `changed-since`.
   - Every write takes `note` in the body (closed key list) and answers `request: {id, number} |
     null`; the page reads carry `review: {reviewed, risk}` so the panel asks for a note.
+  - Wait for approval (applier, owner decision of 18 Nov 2026, "mixed"):
+    `shipping.fleet-selection-model-create` (key `shipping.fleet-selection.manage`, the create
+    route's key): a model has no delete, so its create cannot be undone by a reviewer.
+    `POST /shipping/admin/fleet-selection/models` takes `note`; where the Market reviews delivery
+    it checks the input and that no model of the Market has the name (any case), then files the
+    proposal and answers HTTP 202 `{request: {id, number}}` with nothing written in shipping; 409
+    `system-requests.already-pending` (`details.pendingNumber`) while a proposal of the same name
+    waits. Subject = the name as the Market compares it (NFC, trimmed, lower case), spelled
+    `name:<a-z0-9- kept, any other character as _<hex code point>.>`, or `name-sha256:<hex>` when
+    that is over 128 characters (a long name in another script). `before` = `{exists: false}`,
+    `after` = `{action: 'create', name, rule}`. The applier's `check` asks the authorisation port
+    that the approver holds the key (outside the unit) and that the values still validate (fail
+    closed: `not-permitted`); `apply` creates the model as the approver through the route's
+    in-unit function, audits `shipping.fleet-model.created` with `requestId` (null for a create
+    done at once), and answers `changed-since` when a model took the name meanwhile and `gone`
+    for values that are not a proposed model of the subject. The fleets page asks for the note
+    and shows "Send for approval" on the create form from the page's `review`.
 - Every money opening passes risk `high`, whatever the area's policy says, so the reviewer's
   step-up is spent before a revert writes.
 - **certification** (area certification, the area's risk): kind `certification.type-revision`
@@ -307,9 +325,9 @@ a merge or an import cannot be undone cleanly, so it waits for another admin's a
 - Migration `20261118100000_system_requests_approval_mode`: `requests.mode` (no update grant), the
   CHECK and partial unique index above, activity kind `proposed`. Its `down.sql` refuses to run
   while any proposal exists.
-- Which actions use it, per module, and their panel pages: catalog (see "Hooked areas"); the
-  other modules are follow-up PRs (plan in the project files,
-  `handoffs/system-requests/deferred-hooks-plan.md`).
+- Which actions use it, per module, and their panel pages: catalog and shipping (the create of
+  a fleet-selection model on the delivery fleets page; see "Hooked areas"); the other modules are
+  follow-up PRs (plan in the project files, `handoffs/system-requests/deferred-hooks-plan.md`).
 
 ## Supersession and locks
 
