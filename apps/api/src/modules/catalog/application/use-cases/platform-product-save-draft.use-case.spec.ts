@@ -136,6 +136,7 @@ describe.each(FIXTURES)('platform-product.save-draft in market $code', ({ code, 
     };
     const policy: CatalogMarketPolicy = {
       taxCategoryCodes: () => [],
+      taxCategories: () => [],
       locales: () => ({ default: locales.default, supported: [...locales.supported] }),
       sensitiveChanges: () => {
         throw new Error('not used');

@@ -29,6 +29,7 @@ export interface RequestFilter {
   readonly dueBy?: Temporal.Instant;
   readonly subjectKind?: string;
   readonly subjectRef?: string;
+  readonly modes?: readonly SystemRequest['mode'][];
   /** Exactly this SR number. */
   readonly number?: number;
   /** A part of the note, the subject kind or the subject key, case-insensitive. */
@@ -55,6 +56,7 @@ export interface NewRequest {
   readonly area: ReviewArea;
   readonly subjectKind: string;
   readonly subjectRef: string;
+  readonly mode: SystemRequest['mode'];
   readonly risk: Risk;
   readonly before: SystemRequest['before'];
   readonly after: SystemRequest['after'];
@@ -79,9 +81,10 @@ export interface DecisionWrite {
 export interface RequestRepository {
   /**
    * Opens a request: takes the Market's next SR number (the counter row's lock orders two
-   * openings), inserts the request and its `applied` activity, and marks the subject's earlier
-   * requests that are not yet superseded as superseded by it. Returns the number and the ids it
-   * superseded.
+   * openings), inserts the request and its first activity (`applied`, or `proposed` in approval
+   * mode), and, in review mode only, marks the subject's earlier review-mode requests that are not
+   * yet superseded as superseded by it (a proposal changes nothing, so it supersedes nothing and
+   * is never superseded). Returns the number and the ids it superseded.
    */
   open(
     market: MarketContext,
@@ -89,6 +92,16 @@ export interface RequestRepository {
     activityId: Id<'SystemRequestActivity'>,
   ): Promise<{ readonly number: number; readonly superseded: readonly Id<'SystemRequest'>[] }>;
   find(market: MarketContext, id: Id<'SystemRequest'>): Promise<SystemRequest | null>;
+  /**
+   * The subject's open approval-mode request (at most one, by a unique index), if any. Takes the
+   * Market's counter row lock first (as `open` does), so two proposals of one subject in
+   * concurrent units are looked up one after the other and the later one sees the earlier.
+   */
+  findPendingProposal(
+    market: MarketContext,
+    subjectKind: string,
+    subjectRef: string,
+  ): Promise<SystemRequest | null>;
   /** As `find`, with the row locked for the rest of the unit. */
   findForUpdate(market: MarketContext, id: Id<'SystemRequest'>): Promise<SystemRequest | null>;
   /** Several by id, in no order; ids of another Market are absent. */

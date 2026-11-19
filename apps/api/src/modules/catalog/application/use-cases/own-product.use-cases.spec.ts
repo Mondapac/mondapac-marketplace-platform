@@ -266,6 +266,7 @@ describe.each(FIXTURES)(
       };
       const policy: CatalogMarketPolicy = {
         taxCategoryCodes: () => [tax],
+        taxCategories: () => [tax].map((code) => ({ code, labelKey: `catalog.tax.${code}` })),
         locales: () => ({ default: locales.default, supported: [...locales.supported] }),
         sensitiveChanges: () => ({
           platformCategories: true,

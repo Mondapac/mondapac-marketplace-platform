@@ -60,6 +60,7 @@ const detail: AssistantProductDetail = {
 };
 
 const store: PublishedStore = {
+  sellerId: SELLER,
   slug: 'fresh-farm',
   name: 'Fresh Farm',
   serviceAreaCode: 'BNE',
