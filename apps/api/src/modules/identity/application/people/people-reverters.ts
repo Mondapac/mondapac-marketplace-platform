@@ -2,15 +2,17 @@ import { Logger } from '@nestjs/common';
 import { ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
-import type { SealedPermissionCatalogue } from '../../../../platform/authz';
+import type { AuthorisationCheck, SealedPermissionCatalogue } from '../../../../platform/authz';
 import {
   impactItem,
+  MAX_IMPACT_COUNT,
   type ChangeImpact,
   type RevertOutcome,
   type RevertRequest,
   type SystemChangeReverter,
 } from '../../../../platform/change-review/change-review';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
+import { ADMIN_ACCOUNT_VIEW } from '../../contracts/permissions';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
   AccountRoleRevertedAudit,
@@ -93,7 +95,21 @@ export interface PeopleLabelReads {
       input: ListPlatformRolesInput,
     ): Promise<Result<PlatformRoleCatalogue, { readonly code: string }>>;
   };
+  /**
+   * The authorisation port: the impact count also needs the viewer to hold
+   * `identity.admin-account.view` (who holds a role is team data; Hassan L1 on PR #1146).
+   */
+  readonly authorisation: AuthorisationCheck;
 }
+
+/** Whether System requests stopped waiting for the impact (its signal aborted). */
+const stopped = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;
+
+/** What `impact` may count with: the right to see the team as well as the roles. */
+const ROLE_HOLDERS_ACCESS = {
+  name: 'identity.role-holder-impact',
+  rule: { kind: 'permissions', allOf: [ADMIN_ACCOUNT_VIEW.key] },
+} as const;
 
 const labelLogger = new Logger('IdentityPeopleLabels');
 
@@ -179,17 +195,23 @@ export async function roleHolderImpact(
   labels: PeopleLabelReads,
   context: CallContext,
   subjectRef: string,
+  signal?: AbortSignal,
 ): Promise<ChangeImpact | null> {
   try {
     if (adminOf(context) === null) return null;
     const roleId = idOf<'Role'>(subjectRef);
     if (roleId === null) return null;
+    // The team key first, through the authorisation port, outside any unit (fail closed).
+    if (!(await labels.authorisation.check(context, ROLE_HOLDERS_ACCESS)).allowed) return null;
+    if (stopped(signal)) return null;
     const roles = await labels.platformRoles.execute(context, {});
     if (!roles.ok || !roles.value.items.some((role) => role.roleId === roleId)) return null;
+    if (stopped(signal)) return null;
     const { market } = context;
     const read = await deps.unitOfWork.run(
       market,
-      async () => ok((await deps.assignments.activeHoldersOf(market, roleId)).length),
+      async () =>
+        ok(await deps.assignments.countActiveHolders(market, roleId, MAX_IMPACT_COUNT + 1)),
       { readOnly: true },
     );
     return read.ok ? { items: [impactItem('admins', read.value)] } : null;
@@ -443,8 +465,12 @@ export class PlatformRoleReverter implements SystemChangeReverter {
   }
 
   /** The admins who hold the role (their keys change with it). */
-  impact(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null> {
-    return roleHolderImpact(this.deps, this.labels, context, request.subjectRef);
+  impact(
+    context: CallContext,
+    request: RevertRequest,
+    signal?: AbortSignal,
+  ): Promise<ChangeImpact | null> {
+    return roleHolderImpact(this.deps, this.labels, context, request.subjectRef, signal);
   }
 }
 

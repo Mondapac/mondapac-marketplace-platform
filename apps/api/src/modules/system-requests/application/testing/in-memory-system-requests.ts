@@ -478,8 +478,16 @@ export class FakeSubjects implements SystemChangeReverter {
   /** `fail`: the read throws; `hang`: it never settles. */
   impactMode: 'answer' | 'fail' | 'hang' = 'answer';
 
-  impact(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null> {
+  /** The signal of each impact asked, to see it abort when System requests stops waiting. */
+  readonly impactSignals: (AbortSignal | undefined)[] = [];
+
+  impact(
+    context: CallContext,
+    request: RevertRequest,
+    signal?: AbortSignal,
+  ): Promise<ChangeImpact | null> {
     this.impactAsked.push({ marketId: context.market.marketId, request });
+    this.impactSignals.push(signal);
     if (this.impactMode === 'fail') return Promise.reject(new Error('count down'));
     if (this.impactMode === 'hang') return new Promise(() => undefined);
     const answer = this.impacts.get(`${context.market.marketId}:${request.subjectRef}`);

@@ -278,6 +278,23 @@ describe.each(['AU', 'ZZ'] as const)('catalogue request impact in market %s', (c
       expect(writeUnits).toBe(0);
     });
 
+    it('starts no read once System requests stopped waiting (the abort signal)', async () => {
+      const stopped = new AbortController();
+      stopped.abort();
+      expect(await applier().impact(admin(), request(cat(1)), stopped.signal)).toBeNull();
+      expect(
+        await new ProductsMoveApplier(deps()).impact(admin(), request(cat(2)), stopped.signal),
+      ).toBeNull();
+      expect(
+        await new AttributeActionApplier(deps(), ['archive']).impact(
+          admin(),
+          request(ATTRIBUTE),
+          stopped.signal,
+        ),
+      ).toBeNull();
+      expect(readOnlyUnits + writeUnits).toBe(0);
+    });
+
     it('is the same hook for a discard', async () => {
       const discard = new CategoryActionApplier(deps(), ['discard']);
       expect((await discard.impact(admin(), request(cat(6))))?.items[0]).toEqual({

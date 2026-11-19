@@ -281,8 +281,12 @@ export class CategoryActionApplier implements SystemChangeApplier {
   }
 
   /** The products, Offers and categories under the category (the request's detail page). */
-  impact(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null> {
-    return categoryRequestImpact(this.deps, context, request.subjectRef);
+  impact(
+    context: CallContext,
+    request: RevertRequest,
+    signal?: AbortSignal,
+  ): Promise<ChangeImpact | null> {
+    return categoryRequestImpact(this.deps, context, request.subjectRef, signal);
   }
 
   async apply(context: CallContext, request: RevertRequest): Promise<ApplyOutcome> {
@@ -341,8 +345,12 @@ export class ProductsMoveApplier implements SystemChangeApplier {
   }
 
   /** The published products the move would take (the request's detail page). */
-  impact(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null> {
-    return productsMoveRequestImpact(this.deps, context, request.subjectRef);
+  impact(
+    context: CallContext,
+    request: RevertRequest,
+    signal?: AbortSignal,
+  ): Promise<ChangeImpact | null> {
+    return productsMoveRequestImpact(this.deps, context, request.subjectRef, signal);
   }
 
   async apply(context: CallContext, request: RevertRequest): Promise<ApplyOutcome> {
@@ -408,8 +416,12 @@ export class AttributeActionApplier implements SystemChangeApplier {
   }
 
   /** What the attribute reaches, as its impact dialog shows (the request's detail page). */
-  impact(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null> {
-    return attributeRequestImpact(this.deps, context, request.subjectRef);
+  impact(
+    context: CallContext,
+    request: RevertRequest,
+    signal?: AbortSignal,
+  ): Promise<ChangeImpact | null> {
+    return attributeRequestImpact(this.deps, context, request.subjectRef, signal);
   }
 
   async apply(context: CallContext, request: RevertRequest): Promise<ApplyOutcome> {

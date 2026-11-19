@@ -223,9 +223,14 @@ export interface SystemChangeReverter {
 
   /**
    * Optional: how many records the change touches (see {@link ChangeImpact}), shown on the
-   * request's detail page so a reviewer can judge its weight before deciding.
+   * request's detail page so a reviewer can judge its weight before deciding. `signal` aborts
+   * when System requests stops waiting ({@link IMPACT_TIMEOUT_MS}): check it before each read.
    */
-  impact?(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null>;
+  impact?(
+    context: CallContext,
+    request: RevertRequest,
+    signal?: AbortSignal,
+  ): Promise<ChangeImpact | null>;
 }
 
 /**
@@ -239,8 +244,6 @@ export const CHANGE_IMPACT_LABELS = [
   'drafts',
   /** Offers (not deleted). */
   'offers',
-  /** Listed Offers. */
-  'listed-offers',
   /** Offers with an active certification tag (a category change re-checks them). */
   'offers-with-active-tag',
   /** Categories under the subject category. */
@@ -277,7 +280,8 @@ export interface ChangeImpactItem {
  * unchanged, so the Market is the request's own. Called outside any unit (the hook opens its own
  * read-only unit or calls a use case or facade) and must open no write unit. It must count only
  * what the viewer may see in the owning module (check the viewer's read permission and fail
- * closed with null). System requests waits at most {@link IMPACT_TIMEOUT_MS}; a throw, a timeout,
+ * closed with null). System requests keeps an answer 30 s per request, state and viewer, and
+ * waits at most {@link IMPACT_TIMEOUT_MS}, then aborts the hook's signal; a throw, a timeout,
  * a null or a malformed answer shows no impact and never fails the page. Advisory only: no
  * decision reads it.
  */
@@ -346,7 +350,11 @@ export interface SystemChangeApplier {
     subjectRefs: readonly string[],
   ): Promise<ReadonlyMap<string, string>>;
   /** As {@link SystemChangeReverter.impact}: what the action would touch if approved. */
-  impact?(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null>;
+  impact?(
+    context: CallContext,
+    request: RevertRequest,
+    signal?: AbortSignal,
+  ): Promise<ChangeImpact | null>;
 }
 
 /** The most subject refs one {@link SystemChangeReverter.describe} call is asked for. */

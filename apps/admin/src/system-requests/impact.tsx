@@ -24,7 +24,7 @@ export function RequestImpactCard({
   return (
     <Card title={t('title')}>
       <p className="text-sm text-fg-secondary">{t('hint')}</p>
-      <ul className="flex flex-col gap-1" aria-label={t('title')}>
+      <ul className="flex flex-col gap-1">
         {items.map((item) => {
           const text = t(`item.${item.label as ImpactLabel}`, { count: item.count });
           return (

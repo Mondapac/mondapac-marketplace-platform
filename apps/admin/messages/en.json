@@ -12564,7 +12564,6 @@
         "products": "{count, plural, one {# product} other {# products}}",
         "drafts": "{count, plural, one {# product draft} other {# product drafts}}",
         "offers": "{count, plural, one {# offer} other {# offers}}",
-        "listed-offers": "{count, plural, one {# listed offer} other {# listed offers}}",
         "offers-with-active-tag": "{count, plural, one {# offer with an active certification} other {# offers with an active certification}}",
         "subcategories": "{count, plural, one {# subcategory} other {# subcategories}}",
         "categories": "{count, plural, one {# category} other {# categories}}",

@@ -16,6 +16,7 @@ import {
   StepUpActionRegistry,
   type StepUpCheck,
   USE_CASE_GATE,
+  type AuthorisationCheck,
   type UseCaseGate,
 } from '../../platform/authz';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
@@ -451,17 +452,23 @@ function peopleReverter(
   return [
     {
       provide: token,
-      inject: [ChangeActorLabels, ListPlatformRoles, ...names.map((name) => PORT[name])],
+      inject: [
+        ChangeActorLabels,
+        ListPlatformRoles,
+        AUTHORISATION_CHECK,
+        ...names.map((name) => PORT[name]),
+      ],
       useFactory: (
         adminNames: ChangeActorLabels,
         platformRoles: ListPlatformRoles,
+        authorisation: AuthorisationCheck,
         ...values: unknown[]
       ) =>
         new type(
           Object.fromEntries(
             names.map((name, index) => [name, values[index]]),
           ) as unknown as PeopleReverterDependencies,
-          { adminNames, platformRoles },
+          { adminNames, platformRoles, authorisation },
         ),
     },
     registerSystemChangeReverter('identity', subjectKind, PEOPLE_REVIEW_AREA, token),
@@ -494,17 +501,23 @@ function peopleCreationHook(
   return [
     {
       provide: token,
-      inject: [ChangeActorLabels, ListPlatformRoles, ...names.map((name) => PORT[name])],
+      inject: [
+        ChangeActorLabels,
+        ListPlatformRoles,
+        AUTHORISATION_CHECK,
+        ...names.map((name) => PORT[name]),
+      ],
       useFactory: (
         adminNames: ChangeActorLabels,
         platformRoles: ListPlatformRoles,
+        authorisation: AuthorisationCheck,
         ...values: unknown[]
       ) =>
         new type(
           Object.fromEntries(
             names.map((name, index) => [name, values[index]]),
           ) as unknown as PeopleCreationDependencies,
-          { adminNames, platformRoles },
+          { adminNames, platformRoles, authorisation },
         ),
     },
     mode === 'review'

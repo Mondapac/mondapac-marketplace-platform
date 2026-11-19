@@ -52,6 +52,7 @@ import {
   type Viewer,
 } from '../domain/request';
 import type { ActivityRecord } from './ports/request.repository';
+import type { ImpactCacheKey } from './impact-cache';
 import { REVIEW_KEYS } from './review-keys';
 import type { SystemRequestsDependencies } from './system-requests-dependencies';
 
@@ -699,11 +700,22 @@ function cleanImpact(answer: unknown): ChangeImpact | null {
   return shown.length === 0 ? null : { items: shown };
 }
 
-/** Settles with `fallback` once `ms` have passed, unless `work` settles first. */
-async function within<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+/**
+ * Settles with `fallback` once `ms` have passed, unless `work` settles first; `onTimeout` runs
+ * then (it aborts the hook's signal).
+ */
+async function within<T>(
+  work: Promise<T>,
+  ms: number,
+  fallback: T,
+  onTimeout: () => void,
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<T>((resolve) => {
-    timer = setTimeout(() => resolve(fallback), ms);
+    timer = setTimeout(() => {
+      onTimeout();
+      resolve(fallback);
+    }, ms);
     timer.unref?.();
   });
   try {
@@ -731,17 +743,30 @@ export async function impactOf(
   if (view.status !== 'open' || view.before === null || view.after === null) return null;
   const hooks = deps.reverters.find(view.subjectKind)?.hooks;
   if (typeof hooks?.impact !== 'function') return null;
+  const viewerId = signedInAdmin(context);
+  if (viewerId === null) return null;
+  const key: ImpactCacheKey = {
+    marketId: context.market.marketId,
+    requestId: view.id,
+    status: view.status,
+    supersededBy: view.supersededBy,
+    viewerId,
+  };
+  const kept = deps.impactCache.get(key, deps.clock.now());
+  if (kept !== undefined) return kept;
   const request: RevertRequest = {
     requestId: view.id,
     subjectRef: view.subjectRef,
     before: view.before,
     after: view.after,
   };
+  const abort = new AbortController();
   try {
     const answer = await within<unknown>(
-      Promise.resolve().then(() => hooks.impact!(context, request)),
+      Promise.resolve().then(() => hooks.impact!(context, request, abort.signal)),
       timeoutMs,
       TIMED_OUT,
+      () => abort.abort(),
     );
     if (answer === TIMED_OUT) {
       logger.warn({
@@ -753,7 +778,10 @@ export async function impactOf(
       });
       return null;
     }
-    return cleanImpact(answer);
+    const impact = cleanImpact(answer);
+    // Only an answer given in time is kept: a timeout or a failure asks again next time.
+    deps.impactCache.set(key, impact, deps.clock.now());
+    return impact;
   } catch (error) {
     // The kind and the kind of failure only: never a ref or a value.
     logger.warn({

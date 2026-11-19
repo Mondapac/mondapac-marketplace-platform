@@ -75,12 +75,15 @@ export function categoryRequestImpact(
   deps: ImpactDependencies,
   context: CallContext,
   subjectRef: string,
+  signal?: AbortSignal,
 ): Promise<ChangeImpact | null> {
   return orNone(context, 'category', async () => {
     if (categoryEditorOf(context) === null) return null;
     const id = categoryIdOf(subjectRef);
     if (!id.ok) return null;
     if (!(await mayRead(deps, context, CategoryImpact.access))) return null;
+    // System requests stopped waiting: start no read.
+    if (signal?.aborted === true) return null;
     const { market } = context;
     const read = await deps.unitOfWork.run(
       market,
@@ -117,12 +120,15 @@ export function productsMoveRequestImpact(
   deps: ImpactDependencies,
   context: CallContext,
   subjectRef: string,
+  signal?: AbortSignal,
 ): Promise<ChangeImpact | null> {
   return orNone(context, 'category-products', async () => {
     if (categoryEditorOf(context) === null) return null;
     const id = categoryIdOf(subjectRef);
     if (!id.ok) return null;
     if (!(await mayRead(deps, context, CategoryImpact.access))) return null;
+    // System requests stopped waiting: start no read.
+    if (signal?.aborted === true) return null;
     const { market } = context;
     const read = await deps.unitOfWork.run(
       market,
@@ -150,12 +156,15 @@ export function attributeRequestImpact(
   deps: ImpactDependencies,
   context: CallContext,
   subjectRef: string,
+  signal?: AbortSignal,
 ): Promise<ChangeImpact | null> {
   return orNone(context, 'attribute', async () => {
     if (attributeEditorOf(context) === null) return null;
     const id = attributeIdOf(subjectRef);
     if (id === null) return null;
     if (!(await mayRead(deps, context, AttributeImpactGet.access))) return null;
+    // System requests stopped waiting: start no read.
+    if (signal?.aborted === true) return null;
     const { market } = context;
     const read = await deps.unitOfWork.run(
       market,

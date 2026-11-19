@@ -391,7 +391,11 @@ export class PlatformRoleDeletionApplier implements SystemChangeApplier {
   }
 
   /** The admins who hold the role (a held role is not deleted: the approval answers so). */
-  impact(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null> {
-    return roleHolderImpact(this.deps, this.labels, context, request.subjectRef);
+  impact(
+    context: CallContext,
+    request: RevertRequest,
+    signal?: AbortSignal,
+  ): Promise<ChangeImpact | null> {
+    return roleHolderImpact(this.deps, this.labels, context, request.subjectRef, signal);
   }
 }

@@ -65,7 +65,7 @@ and the attribute links of a category (`PUT catalog/admin/categories/:id/attribu
   answer `impact` (`application/catalogue-impact.ts`) with the counts of the admin impact dialogs,
   behind the same read keys (`catalog.category-tree.view`, `catalog.attribute.restructure`), in a
   read-only unit of the request's Market; the category product facts read is bounded at 2 s
-  ("at least" after). See "Impact counts" in the system-requests notes.
+  ("at least" after). Once System requests' abort signal fired, no read starts. See "Impact counts" in the system-requests notes.
 
 ## Add product is the edit form in add mode (seller #991, admin #994)
 

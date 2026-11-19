@@ -124,8 +124,12 @@ hooked since 18 Nov, see the next section).
   system-requests implements and re-exports from its contracts.
 - **Impact count** (19 Nov 2026): the reverter of `identity.platform-role` and the applier of
   `identity.platform-role-deletion` answer `impact` with the admins holding the role who can sign
-  in (`activeHoldersOf`, a read-only unit), only when the viewer's own `ListPlatformRoles` lists
-  the role; a count, never who. The people reverters' dependencies gained `unitOfWork` for it.
+  in (`RoleAssignmentRepository.countActiveHolders`, a count stopped at 10,001, in a read-only
+  unit), only when the viewer holds `identity.admin-account.view` (checked through the
+  authorisation port before any unit) and the viewer's own `ListPlatformRoles` lists the role; a
+  count, never who. It returns null without reading once System requests' abort signal fired.
+  The people reverters' dependencies gained `unitOfWork`, and `PeopleLabelReads` the
+  `authorisation` port, for it.
 
 ## Creations and the role delete in System requests (2026-11-18)
 

@@ -130,7 +130,6 @@ export const IMPACT_LABELS = [
   'products',
   'drafts',
   'offers',
-  'listed-offers',
   'offers-with-active-tag',
   'subcategories',
   'categories',

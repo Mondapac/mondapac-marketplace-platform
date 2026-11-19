@@ -41,6 +41,7 @@ import { EXPORT_TOTAL_CAP, type SystemRequestsExportDependencies } from './expor
 import { listRequests } from './list-flow';
 import { changeAreaPolicy, DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './policy-flow';
 import { approveRequest, commentOnRequest, impactOf, withdrawRequest } from './request-flow';
+import { IMPACT_CACHE_TTL_MS, ImpactCache } from './impact-cache';
 import { ReverterRegistry, ReverterRegistryError } from './reverter-registry';
 import { SystemRequestRecorderImplementation } from './system-request-recorder';
 import type { SystemRequestsDependencies } from './system-requests-dependencies';
@@ -201,6 +202,7 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       adminNames: names,
       ids: new SequenceIdGenerator(clock),
       clock,
+      impactCache: new ImpactCache(),
     };
     for (const [area, kind] of Object.entries(KIND_OF)) {
       registry.facade.register('settings', kind, area as keyof typeof KIND_OF, subjects);
@@ -1772,6 +1774,9 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       if (!detail.ok) throw new Error('view failed');
       return detail.value.impact;
     };
+    /** Past the cache's lifetime, so the next view asks the module again. */
+    const pastCache = () =>
+      clock.advance(Temporal.Duration.from({ milliseconds: IMPACT_CACHE_TTL_MS }));
 
     it("shows the owning module's counts on an open request to its author and its reviewers", async () => {
       const items = [
@@ -1839,6 +1844,8 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
           { label: 'products', count: 25_000, atLeast: false },
           { label: 'offers', count: MAX_IMPACT_COUNT - 1, atLeast: false },
           { label: 'admins', count: MAX_IMPACT_COUNT, atLeast: false },
+          { label: 'sellers', count: MAX_IMPACT_COUNT + 1, atLeast: false },
+          { label: 'categories', count: MAX_IMPACT_COUNT + 1, atLeast: true },
           { label: 'products', count: 1, atLeast: false }, // a second products line
           { label: 'secrets', count: 1, atLeast: false },
           { label: 'sellers', count: -1, atLeast: false },
@@ -1855,6 +1862,8 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
           { label: 'products', count: MAX_IMPACT_COUNT, atLeast: true },
           { label: 'offers', count: MAX_IMPACT_COUNT - 1, atLeast: false },
           { label: 'admins', count: MAX_IMPACT_COUNT, atLeast: true },
+          { label: 'sellers', count: MAX_IMPACT_COUNT, atLeast: true },
+          { label: 'categories', count: MAX_IMPACT_COUNT, atLeast: true },
           { label: 'feature-sets', count: 0, atLeast: false },
         ],
       });
@@ -1870,9 +1879,11 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
         { items: 'many' },
         'products: 3',
       ]) {
+        pastCache();
         subjects.impacts.set(key, answer);
         expect(await impactOfView(CHECKER, opened.id)).toBeNull();
       }
+      pastCache();
       subjects.impactMode = 'fail';
       // The page still answers, with everything else.
       expect(await view(CHECKER, opened.id)).toMatchObject({
@@ -1889,9 +1900,76 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       const detail = await view(CHECKER, opened.id);
       if (!detail.ok) throw new Error('view failed');
       expect(detail.value.impact).not.toBeNull();
+      pastCache();
       subjects.impactMode = 'hang';
-      // The view's own wait, shortened here: the hook never settles.
+      // The view's own wait, shortened here: the hook never settles, and its signal aborts.
       expect(await impactOf(deps, admin(CHECKER), detail.value, 20)).toBeNull();
+      const signal = subjects.impactSignals.at(-1);
+      expect(signal?.aborted).toBe(true);
+      // A timeout is not kept: the next view asks again.
+      subjects.impactMode = 'answer';
+      expect(await impactOfView(CHECKER, opened.id)).not.toBeNull();
+      expect(subjects.impactSignals.at(-1)?.aborted).toBe(false);
+    });
+
+    it('keeps an answer for 30 s per request, state and viewer, then asks again', async () => {
+      const key = `${market.marketId}:list-paging`;
+      subjects.impacts.set(key, { items: [{ label: 'products', count: 5, atLeast: false }] });
+      const opened = await change(MAKER, 'list-paging', { v: 1 }, { v: 2 });
+      expect(await impactOfView(CHECKER, opened.id)).toEqual({
+        items: [{ label: 'products', count: 5, atLeast: false }],
+      });
+      subjects.impacts.set(key, { items: [{ label: 'products', count: 6, atLeast: false }] });
+      // Reopened within the lifetime: the kept answer, the module is not asked.
+      clock.advance(Temporal.Duration.from({ milliseconds: IMPACT_CACHE_TTL_MS - 1 }));
+      expect(await impactOfView(CHECKER, opened.id)).toEqual({
+        items: [{ label: 'products', count: 5, atLeast: false }],
+      });
+      expect(subjects.impactAsked).toHaveLength(1);
+      // Another viewer is asked for on their own (each module checks the viewer's keys).
+      expect(await impactOfView(MAKER, opened.id)).toEqual({
+        items: [{ label: 'products', count: 6, atLeast: false }],
+      });
+      expect(subjects.impactAsked).toHaveLength(2);
+      // Expired: asked again.
+      clock.advance(Temporal.Duration.from({ milliseconds: 1 }));
+      expect(await impactOfView(CHECKER, opened.id)).toEqual({
+        items: [{ label: 'products', count: 6, atLeast: false }],
+      });
+      expect(subjects.impactAsked).toHaveLength(3);
+      // A null answer is kept too; a failure is not.
+      subjects.impacts.delete(key);
+      pastCache();
+      expect(await impactOfView(CHECKER, opened.id)).toBeNull();
+      expect(await impactOfView(CHECKER, opened.id)).toBeNull();
+      expect(subjects.impactAsked).toHaveLength(4);
+      pastCache();
+      subjects.impactMode = 'fail';
+      expect(await impactOfView(CHECKER, opened.id)).toBeNull();
+      expect(await impactOfView(CHECKER, opened.id)).toBeNull();
+      expect(subjects.impactAsked).toHaveLength(6);
+    });
+
+    it('bounds the cache, dropping the oldest answer first', () => {
+      const cache = new ImpactCache(IMPACT_CACHE_TTL_MS, 2);
+      const now = clock.now();
+      const keyOf = (requestId: string) => ({
+        marketId: market.marketId,
+        requestId,
+        status: 'open',
+        supersededBy: null,
+        viewerId: CHECKER,
+      });
+      const impact = { items: [{ label: 'products' as const, count: 1, atLeast: false }] };
+      cache.set(keyOf('a'), impact, now);
+      cache.set(keyOf('b'), impact, now);
+      cache.set(keyOf('c'), impact, now);
+      expect(cache.size).toBe(2);
+      expect(cache.get(keyOf('a'), now)).toBeUndefined();
+      expect(cache.get(keyOf('c'), now)).toEqual(impact);
+      // Another Market or a decided state is another entry.
+      expect(cache.get({ ...keyOf('c'), marketId: other.marketId }, now)).toBeUndefined();
+      expect(cache.get({ ...keyOf('c'), status: 'approved' }, now)).toBeUndefined();
     });
 
     it('waits for the page at most its bound, then shows the request without counts', async () => {

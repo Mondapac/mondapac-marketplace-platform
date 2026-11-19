@@ -395,13 +395,14 @@ Owner request of 19 Nov 2026: a reviewer sees how many records a change touches 
 ("1,240 products", "at least 10,000 offers"). No schema change: the counts are read when the detail
 is opened, never stored and never in the list or the export.
 
-- **Port**: optional `impact(context, request)` on `SystemChangeReverter` and `SystemChangeApplier`
-  (platform/change-review), next to `check` and `describe`. `request` is the request's id, subject
-  and values; `context` is the viewing admin's, unchanged, so the Market is the request's own (the
-  detail found it in that Market). Answer `{items: [{label, count, atLeast}]}` or null.
+- **Port**: optional `impact(context, request, signal)` on `SystemChangeReverter` and
+  `SystemChangeApplier` (platform/change-review), next to `check` and `describe`. `request` is the
+  request's id, subject and values; `context` is the viewing admin's, unchanged, so the Market is
+  the request's own (the detail found it in that Market). Answer `{items: [{label, count,
+  atLeast}]}` or null.
 - **Labels** (closed list `CHANGE_IMPACT_LABELS`): `products` (published), `drafts`, `offers`,
-  `listed-offers`, `offers-with-active-tag`, `subcategories`, `categories`, `filters`,
-  `feature-sets`, `variant-products`, `admins`, `sellers`. The panel words each one; a label it
+  `offers-with-active-tag`, `subcategories`, `categories`, `filters`, `feature-sets`,
+  `variant-products`, `admins`, `sellers`. The panel words each one; a label it
   does not know is not shown.
 - **When**: `GET requests/:id` only, for an open request whose values the caller sees (its author
   or a reviewer of its area): counts never go further than the values do. A decided request, a
@@ -414,6 +415,16 @@ is opened, never stored and never in the list or the export.
   (known label, once each, a whole count from 0, a boolean `atLeast`), at most 8, and a count of
   `MAX_IMPACT_COUNT` (10,000) or more is shown as "at least 10,000". Advisory only: no decision
   reads it; the applier and the reverter check everything again.
+- **Abort** (Hassan L2 on PR #1146): the hook gets an `AbortSignal` that aborts when the 3 s wait
+  ends. A hook checks it before each read it would start (catalog and identity check it after
+  their permission check, before the read unit), so a slow count stops early instead of running
+  on after the page has answered.
+- **Cache** (Hassan L2, Sajad 1 on PR #1146): an in-process `ImpactCache` keeps each answer
+  (null included) for 30 s, keyed by Market, request id, request status and the request that
+  superseded it, and the viewing admin (each module counts behind the viewer's own keys, so the
+  answer is per viewer). At most 500 answers, the oldest dropped first; time from the injected
+  Clock. A timeout or a failure is not kept, so the next open asks again. Each API instance has its
+  own cache: reopening a request within 30 s can show counts up to 30 s old.
 - **Implemented by**:
   - catalog (`application/catalogue-impact.ts`): category discard, merge and archive (the
     subtree's published products, their Offers, the Offers with an active certification tag, the
@@ -424,8 +435,9 @@ is opened, never stored and never in the list or the export.
     counts: products, drafts, feature sets, categories, filters, and live variants for a variant
     option), behind `catalog.attribute.restructure`.
   - identity: `identity.platform-role` (an edit) and `identity.platform-role-deletion`: the admins
-    holding the role who can sign in (`activeHoldersOf`), only when the viewer's
-    `ListPlatformRoles` read lists the role (key `identity.platform-role.view`).
+    holding the role who can sign in (`countActiveHolders`, stopped at 10,001), only when the
+    viewer holds `identity.admin-account.view` (authorisation port, outside any unit; Hassan L1)
+    and the viewer's `ListPlatformRoles` read lists the role (key `identity.platform-role.view`).
   - commission-payouts: `commission-payouts.commission-rate` and `.payout-terms`: one seller (the
     subject; no read).
   - Not yet: settings, wallet, shipping, certification and the review policy (no cheap count that
