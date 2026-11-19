@@ -125,6 +125,8 @@ describe.each(FIXTURES)('tag suggestion use cases in market $code', ({ code, loc
     countOpen: () => Promise.resolve(0),
     listOfProduct: () => Promise.resolve([]),
     listOfSeller: () => Promise.resolve([]),
+    pageOfSeller: () => Promise.resolve([]),
+    countOfSeller: () => Promise.resolve(0),
     dueNotices: () => Promise.resolve([]),
   };
   const products = {

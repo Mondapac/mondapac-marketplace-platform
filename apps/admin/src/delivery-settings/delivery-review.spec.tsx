@@ -102,7 +102,7 @@ describe('the Market delivery rules where a change is reviewed', () => {
     );
     save();
     pressInDialog('Confirm and save');
-    await expectToast('Sent for review as SR-7', 'info');
+    await expectToast('Sent for review (SR-7)', 'info');
     expect(call.mock.calls[0]?.[2]).toMatchObject({ note: 'New cut-off', expectedVersion: 0 });
     expect(screen.getByLabelText<HTMLTextAreaElement>('Note for reviewers').value).toBe('');
   });
@@ -150,7 +150,7 @@ describe('the seller delivery methods where a change is reviewed', () => {
     );
     press();
     pressInDialog('Confirm and save');
-    await expectToast('Sent for review as SR-8', 'info');
+    await expectToast('Sent for review (SR-8)', 'info');
     expect(call.mock.calls[0]?.[2]).toEqual({
       supported: ['pickup', 'same_day', 'scheduled'],
       note: 'Too few riders',

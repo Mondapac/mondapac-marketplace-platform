@@ -22,16 +22,15 @@ export function readable(code: string): string {
 
 /**
  * The tax category select options: each category is named by the message its `labelKey` points
- * at (the Market configuration decides the key); a category without a key, or a key without a
- * message, falls back to its code shown as words.
+ * at (the Market configuration decides the key); a key without a message falls back to the code
+ * shown as words.
  */
 export function useTaxCategoryOptions(
-  codes: readonly string[],
-  categories: readonly TaxCategory[] | undefined,
+  categories: readonly TaxCategory[],
 ): { value: string; label: string }[] {
   const t = useTranslations();
-  return codes.map((code) => {
-    const key = categories?.find((category) => category.code === code)?.labelKey;
-    return { value: code, label: key !== undefined && t.has(key) ? t(key) : readable(code) };
-  });
+  return categories.map(({ code, labelKey }) => ({
+    value: code,
+    label: t.has(labelKey) ? t(labelKey) : readable(code),
+  }));
 }

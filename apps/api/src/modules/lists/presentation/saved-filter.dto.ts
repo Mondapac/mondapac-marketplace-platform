@@ -24,7 +24,11 @@ export class SavedFilterCreateRequest {
   @ApiProperty({
     type: 'object',
     additionalProperties: true,
-    description: 'The closed document of the list: its tab, search, filters, sort and columns.',
+    description:
+      'The closed document of the list: its tab, search, filters, sort and columns. The ' +
+      'certification and sellers lists (admin.certification.issuer-requests, ' +
+      'admin.certification.review-queue, admin.sellers.list, admin.sellers.health-queue) use ' +
+      '{ v: 1, view, filters?, sort?, direction?: asc | desc }; an unknown key or word is a 400.',
   })
   payload!: Record<string, unknown>;
 }

@@ -46,7 +46,12 @@ export function StrategyDialog({
   const errors = useTranslations('tax.error');
   const kinds = useTranslations('tax.kind');
   const categoryLabels = new Map(
-    useTaxCategoryOptions(categoryCodes, categories).map((option) => [option.value, option.label]),
+    useTaxCategoryOptions(
+      // A code with no labelled entry (or an older API without labels) is shown as words.
+      categoryCodes.map(
+        (code) => categories?.find((category) => category.code === code) ?? { code, labelKey: '' },
+      ),
+    ).map((option) => [option.value, option.label]),
   );
   const [name, setName] = useState(strategy?.name ?? '');
   const [kind, setKind] = useState<StrategyKind>(strategy?.kind ?? 'flat-rate');
