@@ -1052,7 +1052,9 @@ describe('relay of the brands list', () => {
     const upstream = upstreamOk();
     await relay(
       config,
-      get('?status=draft&originCountry=NZ&q=Halal%20Co&sort=name&direction=asc&page=2&pageSize=50&paging=pages&x=1'),
+      get(
+        '?status=draft&originCountry=NZ&q=Halal%20Co&sort=name&direction=asc&page=2&pageSize=50&paging=pages&x=1',
+      ),
       path,
       upstream,
     );
