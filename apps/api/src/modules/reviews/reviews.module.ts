@@ -56,6 +56,8 @@ import {
   SELLER_REVIEW_ROW_KEYS,
   type SellerReviewListDependencies,
 } from './application/seller-review-list-flow';
+import { REVIEWS_LISTS } from './application/saved-filter-list';
+import { ListsModule, registerLists } from '../lists';
 import { ListSellerReviews } from './application/use-cases/list-seller-reviews.use-case';
 import { ReplyToReview } from './application/use-cases/reply-to-review.use-case';
 import { ReportReview } from './application/use-cases/report-review.use-case';
@@ -195,7 +197,7 @@ function sellerListUseCaseProvider<U>(type: SellerListUseCaseClass<U>): FactoryP
  * code, behind the admin's two-step proof. The seller's side (package 4) lists the shop's reviews, writes and edits one public reply and reports a review.
  */
 @Module({
-  imports: [OrderingModule, CatalogModule, IdentityModule],
+  imports: [OrderingModule, CatalogModule, IdentityModule, ListsModule],
   controllers: [
     BuyerReviewsController,
     PublicReviewsController,
@@ -210,6 +212,7 @@ function sellerListUseCaseProvider<U>(type: SellerListUseCaseClass<U>): FactoryP
     registerAuditActions('reviews', REVIEWS_AUDIT_ACTIONS),
     registerPermissions('reviews', REVIEWS_PERMISSIONS),
     registerStepUpActions('reviews', REVIEWS_STEP_UP_ACTIONS),
+    registerLists('reviews', REVIEWS_LISTS),
     ...reviewsProviders,
     ...[
       SubmitProductReview,
