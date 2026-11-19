@@ -896,9 +896,17 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'status',
       ],
     },
+    // Customers phase 4c: a waiting cashback's amount is lowered and its wait ended or put back.
     'promotions.credit_issuances': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['failure_code', 'settled_at', 'status', 'wallet_journal_id'],
+      columnUpdate: [
+        'amount_minor',
+        'failure_code',
+        'grant_after',
+        'settled_at',
+        'status',
+        'wallet_journal_id',
+      ],
     },
     'promotions.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.co_funding_opt_ins': {

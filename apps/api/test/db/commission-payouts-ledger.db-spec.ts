@@ -388,6 +388,45 @@ describe.each(TEST_MARKETS)('commission-payouts stores in market %s (database)',
     );
     expect(await insert('refund-shipping', { amount: 5, rate: 1500, base: 40 })).toBe(CHECK);
     expect(await insert('refund-something', { line: true, amount: 5 })).toBe(CHECK);
+    // A seller's cashback (customers phase 4c): per seller order, names its credit, never zero.
+    expect(await insert('cashback-seller', { amount: 5 })).toBe('allowed');
+    expect(await insert('cashback-seller', { source: false, amount: 5 })).toBe(CHECK);
+    expect(await insert('cashback-seller', { line: true, amount: 5 })).toBe(CHECK);
+    expect(await insert('cashback-seller', { amount: 0 })).toBe(CHECK);
+    expect(await insert('cashback-seller', { amount: 5, rate: 1500, base: 40 })).toBe(CHECK);
+  });
+
+  it("appends a seller's cashback once per credit and sums it as a debit", async () => {
+    const sellerId = ids.next<'Seller'>();
+    const paid = factOf(sellerId);
+    const creditId = ids.next<'PromotionCredit'>();
+    const cashback: LedgerEntry = {
+      ...paid[0]!,
+      id: ids.next<'LedgerEntry'>(),
+      kind: 'cashback-seller',
+      orderLineId: null,
+      amount: money(70n, currency),
+      sourceId: creditId,
+    };
+    await value(market, () => ledger.append(market, paid));
+    expect(await value(market, () => ledger.append(market, [cashback]))).toBe(1);
+    // The same credit again, under a new row id, writes nothing.
+    expect(
+      await value(market, () =>
+        ledger.append(market, [{ ...cashback, id: ids.next<'LedgerEntry'>() }]),
+      ),
+    ).toBe(0);
+    const sums = await value(market, () => ledger.sums(market, sellerId));
+    expect(Object.fromEntries(sums.map((s) => [s.kind, s.amount]))).toMatchObject({
+      'cashback-seller': 70n,
+    });
+    const listed = await value(market, () =>
+      ledger.list(market, sellerId, { limit: 10, after: null }),
+    );
+    expect(listed.find((row) => row.kind === 'cashback-seller')).toMatchObject({
+      sourceId: creditId,
+      amount: money(70n, currency),
+    });
   });
 
   it('keeps the new rows insert-only too', async () => {

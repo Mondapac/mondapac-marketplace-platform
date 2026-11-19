@@ -1,5 +1,9 @@
 import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { panelHostFor } from '../../../../src/server/bff.ts';
+import { panelConfig } from '../../../../src/server/config.ts';
+import { serverGet } from '../../../../src/server/server-fetch.ts';
+import { headers } from 'next/headers';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
 import {
@@ -48,6 +52,10 @@ export default async function VariantsPage({
       : 'types';
   const rawId = one(query.id);
   const selectedId = rawId !== undefined && UUID.test(rawId) ? rawId : null;
+  // List paging (settings): page numbers only when the Market says so; unreadable means Previous and next.
+  const mode = await serverGet<{ readonly listPaging: string }>('settings/admin/list-paging');
+  const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
   const title = t('variants.title');
   const { permissionKeys, csrfToken } = gate.session;
   return (
@@ -64,6 +72,9 @@ export default async function VariantsPage({
           csrfToken={csrfToken}
           initialTab={tab}
           initialId={selectedId}
+          paging={paging}
+          accountId={gate.session.accountId}
+          marketId={marketId}
         />
       ) : (
         <>
