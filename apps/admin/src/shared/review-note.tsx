@@ -78,6 +78,22 @@ export function useSentForReview(): (body: unknown) => boolean {
   };
 }
 
+/**
+ * The words for a refusal because another proposal of the same subject already waits for
+ * approval (409 `system-requests.already-pending`), naming it ("SR-n"); null for any other
+ * failure.
+ */
+export function useAlreadyPending(): (failure: ApiFailure) => string | null {
+  const t = useTranslations('review-note');
+  return (failure) => {
+    if (failure.code !== 'system-requests.already-pending') return null;
+    const pending = failure.details?.pendingNumber;
+    return typeof pending === 'number'
+      ? t('already-pending', { number: requestLabel({ id: '', number: pending }) })
+      : t('already-pending-unnumbered');
+  };
+}
+
 /** The label of an action that only files a request for approval: "Send for approval". */
 export function useApprovalAction(): (label: string, approval: boolean) => string {
   const t = useTranslations('review-note');

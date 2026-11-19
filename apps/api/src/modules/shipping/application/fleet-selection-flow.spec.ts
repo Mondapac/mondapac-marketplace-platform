@@ -13,7 +13,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
-import { RecordingReview } from '../../../../test/support/system-request-fakes';
+import { RecordingProposer, RecordingReview } from '../../../../test/support/system-request-fakes';
 import {
   ListRegistry,
   MemorySelection,
@@ -36,7 +36,7 @@ import {
 import { SHIPPING_AUDIT_ACTIONS } from '../domain/audit';
 import { ConfigCarrierPolicy } from '../infrastructure/config-carrier-policy';
 import type { ChangeValues } from '../../system-requests';
-import type { ShippingDependencies } from './shipping-dependencies';
+import type { FleetModelCreateDependencies } from './shipping-dependencies';
 import { FleetSelectionModelReverter, FleetSelectionReverter } from './shipping-reverters';
 import { CreateFleetSelectionModel } from './use-cases/create-fleet-selection-model.use-case';
 import { SetFleetSelection } from './use-cases/set-fleet-selection.use-case';
@@ -110,7 +110,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
   let review: RecordingReview;
   let actors: FakeChangeActors;
   let clock: FixedClock;
-  let deps: ShippingDependencies;
+  let deps: FleetModelCreateDependencies;
   let drive: ScriptedFleet;
 
   beforeEach(() => {
@@ -154,6 +154,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       uberWebhookSignature: undefined as never,
       securityEvents: undefined as never,
       trail: changeTrailOf(unitOfWork, audit, actors),
+      proposer: new RecordingProposer(review),
     };
   });
 
@@ -183,6 +184,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
   const created = async (name: string, rule: unknown = { kind: 'cheapest' }) => {
     const result = await create(name, rule);
     if (!result.ok) throw new Error(`create failed: ${JSON.stringify(result.error)}`);
+    if (!('id' in result.value)) throw new Error('create was proposed');
     return result.value;
   };
 
@@ -209,6 +211,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
           weightEta: null,
           weightReliability: null,
           order: [],
+          requestId: null,
         },
       ],
       [
@@ -222,6 +225,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
           weightEta: 70,
           weightReliability: 10,
           order: [],
+          requestId: null,
         },
       ],
       [
@@ -235,6 +239,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
           weightEta: null,
           weightReliability: null,
           order: ['mondapac-drive'],
+          requestId: null,
         },
       ],
     ]);
@@ -464,7 +469,7 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       ),
       { name: 'Foreign', rule: { kind: 'cheapest' } },
     );
-    if (!foreign.ok) throw new Error('create failed');
+    if (!foreign.ok || !('id' in foreign.value)) throw new Error('create failed');
     for (const modelId of [id<'FleetSelectionModel'>(0x999), foreign.value.id]) {
       expect(await save(0, { ...NONE, same_day: modelId }, { zoom2u: 70 })).toEqual(
         err({ code: 'shipping.fleet-model-not-found' }),
@@ -788,10 +793,19 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       expect(review.opened).toHaveLength(0);
     });
 
-    it('does not review the creation of a model', async () => {
+    it('does not review the creation of a model after: it waits for approval instead', async () => {
       review.review('delivery');
-      expect((await create('Brand new', { kind: 'cheapest' })).ok).toBe(true);
+      const proposed = await new CreateFleetSelectionModel(gate, deps).execute(admin, {
+        name: 'Brand new',
+        rule: { kind: 'cheapest' },
+        note: 'A new rule',
+      });
+      // Only the proposal: nothing else is answered.
+      expect(proposed.ok && Object.keys(proposed.value)).toEqual(['request']);
+      expect(proposed.ok && proposed.value).toMatchObject({ request: { number: 901 } });
       expect(review.opened).toHaveLength(0);
+      expect(selection.models.size).toBe(0);
+      expect(audit.entries).toHaveLength(0);
     });
   });
 });
