@@ -1267,6 +1267,7 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       new ListOwnPayouts(gate, {
         unitOfWork: deps.unitOfWork,
         payouts: new MemoryAdminPayoutList(payouts, stores.holds),
+        access,
         sheetWriter: new ExceljsSheetWriter(),
         clock,
       }).execute(context, input);
@@ -1291,6 +1292,7 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       const exported = await new ExportOwnPayouts(withoutKeys, {
         unitOfWork: deps.unitOfWork,
         payouts: reader,
+        access,
         sheetWriter: new ExceljsSheetWriter(),
         clock,
       }).execute(sellerCtx, {});

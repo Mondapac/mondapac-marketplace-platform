@@ -972,7 +972,7 @@ describe('relay of the seller payout routes', () => {
 
   it('forwards the history limit and a cursor in the API shape, and nothing else', async () => {
     const upstream = upstreamOk();
-    const cursor = `1790000000000.${ID}`;
+    const cursor = `slot.1790000000000.${ID}`;
     await relay(
       config,
       new Request(
@@ -996,6 +996,34 @@ describe('relay of the seller payout routes', () => {
       bad,
     );
     expect(bad.mock.calls[0]?.[0]).toBe('http://api.test/commission-payouts/seller/payouts');
+    // An older cursor without its sort is out of shape; a created cursor goes with its sort.
+    const old = upstreamOk();
+    await relay(
+      config,
+      new Request(
+        `http://seller.localhost:3001/api/commission-payouts/seller/payouts?limit=20&cursor=1790000000000.${ID}`,
+        { method: 'GET', headers: { host: 'seller.localhost:3001' } },
+      ),
+      ['commission-payouts', 'seller', 'payouts'],
+      old,
+    );
+    expect(old.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/seller/payouts?limit=20',
+    );
+    const created = upstreamOk();
+    const createdCursor = `created.1790000000000.${ID}`;
+    await relay(
+      config,
+      new Request(
+        `http://seller.localhost:3001/api/commission-payouts/seller/payouts?limit=20&sort=created&cursor=${createdCursor}`,
+        { method: 'GET', headers: { host: 'seller.localhost:3001' } },
+      ),
+      ['commission-payouts', 'seller', 'payouts'],
+      created,
+    );
+    expect(created.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/seller/payouts?limit=20&cursor=${encodeURIComponent(createdCursor)}&sort=created`,
+    );
   });
 
   it('forwards the earnings list filters, sort and page, and the export keys, in their shapes only', async () => {
@@ -1028,9 +1056,16 @@ describe('relay of the seller payout routes', () => {
     );
     const file = ['commission-payouts', 'seller', 'payouts', 'export'];
     expect(
-      await send(file, `format=xlsx&columns=gross,slot&ids=${ID},${ID}&status=failed&page=3`),
+      await send(
+        file,
+        `format=xlsx&columns=gross,created,updated&ids=${ID},${ID}&status=failed&sort=slot&page=3`,
+      ),
     ).toBe(
-      `http://api.test/commission-payouts/seller/payouts/export?format=xlsx&columns=${encodeURIComponent('gross,slot')}&ids=${encodeURIComponent(`${ID},${ID}`)}&status=failed`,
+      `http://api.test/commission-payouts/seller/payouts/export?format=xlsx&columns=${encodeURIComponent('gross,created,updated')}&ids=${encodeURIComponent(`${ID},${ID}`)}&status=failed&sort=slot`,
+    );
+    // The old `slot` column is gone: the payout day is the base "Payout on" column.
+    expect(await send(file, 'columns=gross,slot')).toBe(
+      'http://api.test/commission-payouts/seller/payouts/export',
     );
     const many = Array.from({ length: 201 }, () => ID).join(',');
     expect(await send(file, `ids=${many}&columns=fee`)).toBe(

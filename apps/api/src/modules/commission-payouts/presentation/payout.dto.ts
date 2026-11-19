@@ -265,7 +265,11 @@ class OwnPayoutBody {
   @ApiProperty({ type: MoneyBody, description: 'Kept against what the seller owed.' })
   netted!: MoneyBody;
   @ApiProperty({ type: MoneyBody }) transfer!: MoneyBody;
-  @ApiProperty({ format: 'date-time' }) slotAt!: string;
+  @ApiProperty({
+    format: 'date-time',
+    description: 'The payout day ("Payout on"): the list sorts and filters on it.',
+  })
+  slotAt!: string;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ format: 'date-time' }) updatedAt!: string;
   @ApiProperty({ enum: BLOCK_REASONS, nullable: true, type: String }) reason!: string | null;
@@ -339,7 +343,13 @@ export class OwnPayoutListBody {
   total!: number | null;
   @ApiProperty({ nullable: true, type: Number }) page!: number | null;
   @ApiProperty() pageSize!: number;
-  @ApiProperty({ nullable: true, type: String }) nextCursor!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'Previous/Next only; names its sort (slot or created).',
+    example: 'slot.1793998800000.01990000-0000-7000-8000-000000001001',
+  })
+  nextCursor!: string | null;
 }
 
 export const ownPayoutListBody = (view: OwnPayoutListPage): OwnPayoutListBody => ({

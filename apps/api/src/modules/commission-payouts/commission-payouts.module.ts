@@ -281,14 +281,22 @@ type OwnPayoutListUseCaseClass<U> = new (gate: UseCaseGate, deps: OwnPayoutListD
 function ownPayoutListUseCaseProvider<U>(type: OwnPayoutListUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
-    inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_PAYOUT_LIST_READER, SHEET_WRITER, CLOCK],
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      ADMIN_PAYOUT_LIST_READER,
+      SELLER_PAYOUT_ACCESS,
+      SHEET_WRITER,
+      CLOCK,
+    ],
     useFactory: (
       gate: UseCaseGate,
       unitOfWork: OwnPayoutListDependencies['unitOfWork'],
       payouts: OwnPayoutListDependencies['payouts'],
+      access: OwnPayoutListDependencies['access'],
       sheetWriter: OwnPayoutListDependencies['sheetWriter'],
       clock: OwnPayoutListDependencies['clock'],
-    ) => new type(gate, { unitOfWork, payouts, sheetWriter, clock }),
+    ) => new type(gate, { unitOfWork, payouts, access, sheetWriter, clock }),
   };
 }
 
