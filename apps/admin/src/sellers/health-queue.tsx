@@ -394,7 +394,10 @@ export function HealthQueue({
       <SelectionBar
         active={selection.selected.size > 0 || selection.allMatching}
         allMatching={selection.allMatching}
-        canSelectAll={wholePageTicked && moreThanPage && failure === null}
+        // A cut queue cannot be exported whole (413), so "Select all matching" is not offered.
+        canSelectAll={
+          wholePageTicked && moreThanPage && failure === null && answer?.truncated !== true
+        }
         labels={{
           selected: t('selection.selected', { count: selection.selected.size }),
           all: total === null ? t('selection.all-open') : t('selection.all', { count: total }),

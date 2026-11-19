@@ -486,27 +486,13 @@ describe('Needs a look list: selection and Export', () => {
     expect(screen.queryByRole('button', { name: /Select all .*matching/ })).toBeNull();
   });
 
-  it('says when the file would miss sellers because the queue was cut', async () => {
+  it('does not offer Select all matching when the queue was cut', async () => {
     serve(() => pageOf([row(1)], { total: 200, truncated: true }));
     mount();
     await screen.findByText('Store 1');
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all sellers on this page' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Select all 200 matching' }));
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ code: 'batch.too-large', details: { max: 200 } }), {
-            status: 413,
-            headers: { 'content-type': 'application/json' },
-          }),
-        ),
-      ),
-    );
-    confirm(await openExport());
-    expect(
-      await screen.findByText('Too many rows to export. Narrow the filter or select fewer rows.'),
-    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Select all .*matching/ })).toBeNull();
+    expect(screen.getByText(/Only the 200 sellers with the worst scores/)).toBeTruthy();
   });
 });
 
