@@ -5666,7 +5666,7 @@
   "payments": {
     "accounts": {
       "title": "Seller accounts",
-      "intro": "The Stripe payout accounts of the sellers, newest first. Read-only.",
+      "intro": "The Stripe payout accounts of the sellers. Read-only.",
       "no-access": "You don't have access to connected accounts.",
       "no-access-title": "You don't have access to this page",
       "not-found": "We couldn't find a connected account for this seller.",
@@ -5691,16 +5691,13 @@
         "requirements": "Details due",
         "cooling-off": "Waiting period until",
         "paused": "Payouts paused",
-        "last-read": "Last checked",
-        "cooling-off-utc": "Waiting until (UTC)",
-        "last-read-utc": "Last checked (UTC)"
+        "last-read": "Last checked"
       },
       "unnamed": "Unnamed seller",
       "yes": "Yes",
       "no": "No",
       "past-due": "Past due",
       "loading": "Loading connected accounts...",
-      "more": "Show more",
       "empty": {
         "all": "No connected accounts yet. They appear here when a seller starts connecting a payout account.",
         "status": "No connected accounts with this status."
@@ -5727,6 +5724,107 @@
         "past-due": "Stripe is waiting for details that were due already. Payouts may stop until the seller adds them.",
         "back": "Back to connected accounts",
         "past-due-title": "Requirements past due"
+      },
+      "list": {
+        "zone-note": "Times are shown in {zone}.",
+        "col": {
+          "seller": "Seller",
+          "status": "Status",
+          "ready": "Ready",
+          "requirements": "Details due",
+          "cooling-off": "Waiting period until",
+          "paused": "Payouts paused",
+          "last-read": "Last checked",
+          "seller-id": "Seller ID",
+          "actions": "Actions"
+        },
+        "none": "None",
+        "never": "Never",
+        "search": {
+          "label": "Search",
+          "placeholder": "Store name or seller ID",
+          "help": "A store name (2 characters or more), or a full seller ID.",
+          "too-short": "Type at least {min} characters, or a full seller ID."
+        },
+        "chip-id": "Seller ID is {text}",
+        "chip-store": "Store contains \"{text}\"",
+        "search-capped": "The search matched too many stores, so not every account of them is listed. Type more of the store name.",
+        "filter": {
+          "title": "Filter seller accounts",
+          "name": {
+            "ready": "Ready",
+            "requirements": "Details due",
+            "waiting": "Waiting",
+            "created": "Created"
+          },
+          "ready": {
+            "yes": "Ready",
+            "no": "Not ready"
+          },
+          "requirements": {
+            "past-due": "Past due",
+            "due": "Due",
+            "none": "None"
+          },
+          "waiting": {
+            "cooling-off": "In the waiting period",
+            "paused": "Payouts paused"
+          }
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "created": "Created",
+            "last-read": "Last checked",
+            "requirements": "Details due"
+          },
+          "created": {
+            "first": "Newest first",
+            "second": "Oldest first"
+          },
+          "last-read": {
+            "first": "Most recent first",
+            "second": "Least recent first"
+          },
+          "requirements": {
+            "first": "Most first",
+            "second": "Fewest first"
+          }
+        },
+        "sorted": "Sorted by {field}: {order}",
+        "match": "{count, plural, one {# account matches} other {# accounts match}}",
+        "range": "{from}–{to} of {total} accounts",
+        "error": {
+          "unavailable": "The seller accounts could not be loaded.",
+          "refused": "This search can't be run. Change the text or the filters, or clear them."
+        },
+        "empty": {
+          "no-match": "No seller accounts match",
+          "no-match-help": "Try other filters or clear them."
+        },
+        "select": {
+          "page": "Select all accounts on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# account selected} other {# accounts selected}}",
+          "all": "{count, plural, one {The # matching account is selected} other {All # matching accounts are selected}}",
+          "all-open": "All matching accounts are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# account selected} other {# accounts selected}}",
+          "all-open": "All matching accounts selected"
+        },
+        "actions": {
+          "for": "Actions for {name}",
+          "open": "Open"
+        }
       }
     }
   },
