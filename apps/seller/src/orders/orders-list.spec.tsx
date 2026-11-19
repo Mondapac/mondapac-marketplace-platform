@@ -304,6 +304,15 @@ describe('seller orders selection, row actions and bulk', () => {
     open.mockRestore();
   });
 
+  it('stops ticking at 50 orders, the most one set of packing slips takes', () => {
+    const many = Array.from({ length: 60 }, (_, index) =>
+      row({ sellerOrderId: `0190a000-0000-7000-8000-${String(index).padStart(12, '0')}` }),
+    );
+    mount(pageOf(many, { pageSize: 100 }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all orders on this page' }));
+    expect(screen.getByText('50 orders selected')).toBeTruthy();
+  });
+
   it('puts every row action in the Actions menu, exactly as the API names them', async () => {
     mount(
       pageOf([
