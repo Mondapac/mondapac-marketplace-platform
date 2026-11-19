@@ -10,6 +10,7 @@
     },
     "after": {
       "relaxationRequestId": "optional(id)",
+      "requestId": "optional(id)",
       "requestedByAccountId": "optional(id)",
       "status": "enumOf(archived)"
     }
@@ -38,6 +39,7 @@
       "status": "enumOf(draft)"
     },
     "after": {
+      "requestId": "optional(id)",
       "status": "enumOf(archived)"
     }
   },
@@ -53,6 +55,7 @@
     "after": {
       "mappedValueCount": "integer",
       "mergedIntoId": "id",
+      "requestId": "optional(id)",
       "status": "enumOf(archived)"
     }
   },
@@ -139,6 +142,7 @@
       "material": "boolean",
       "mergedValueCount": "integer",
       "optionCount": "integer",
+      "requestId": "optional(id)",
       "revisionNo": "integer",
       "status": "enumOf(draft|active|archived)"
     }
@@ -178,6 +182,7 @@
       "groupCount": "integer",
       "optionalCount": "integer",
       "recommendedCount": "integer",
+      "requestId": "optional(id)",
       "requiredCount": "integer",
       "revisionNo": "integer"
     }
@@ -2427,7 +2432,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -2439,7 +2444,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -2453,7 +2458,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -3983,6 +3988,7 @@
     "after": {
       "activitiesUnlinked": "integer",
       "reasonGiven": "boolean",
+      "requestId": "optional(id)",
       "status": "enumOf(active|hidden|archived)",
       "tagsMarked": "integer"
     }
@@ -4068,6 +4074,7 @@
       "status": "enumOf(active|hidden|archived)"
     },
     "after": {
+      "requestId": "optional(id)",
       "status": "enumOf(active|hidden|archived)"
     }
   },
@@ -4081,6 +4088,7 @@
     },
     "after": {
       "cascaded": "integer",
+      "requestId": "optional(id)",
       "status": "enumOf(active|hidden|archived)"
     }
   },
@@ -4121,6 +4129,7 @@
       "childrenMoved": "integer",
       "mergedIntoId": "id",
       "reasonGiven": "boolean",
+      "requestId": "optional(id)",
       "tagsMarked": "integer"
     }
   },
@@ -4137,6 +4146,7 @@
       "level": "integer",
       "parentId": "optional(id)",
       "reasonGiven": "boolean",
+      "requestId": "optional(id)",
       "subtreeSize": "integer",
       "tagsMarked": "integer"
     }
@@ -4152,6 +4162,7 @@
     "after": {
       "jobId": "id",
       "reasonGiven": "boolean",
+      "requestId": "optional(id)",
       "targetCategoryId": "id"
     }
   },
@@ -4180,7 +4191,8 @@
       "position": "integer"
     },
     "after": {
-      "position": "integer"
+      "position": "integer",
+      "requestId": "optional(id)"
     }
   },
   {

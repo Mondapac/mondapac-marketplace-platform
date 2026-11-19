@@ -3,6 +3,8 @@ import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
+import { SYSTEM_ACTION_PROPOSER, SYSTEM_REQUEST_RECORDER } from '../src/modules/system-requests';
+import { RecordingProposer, RecordingReview } from './support/system-request-fakes';
 import { ATTRIBUTE_ADMIN_READER } from '../src/modules/catalog/application/ports/attribute-admin.reader';
 import { FEATURE_SET_STORE } from '../src/modules/catalog/application/ports/feature-set.store';
 import { ATTRIBUTE_RELAXATION_STORE } from '../src/modules/catalog/application/ports/attribute-relaxation.store';
@@ -60,6 +62,8 @@ describe('feature-set editor over HTTP (integration)', () => {
   let app: NestExpressApplication;
   const store = new MemoryFeatureSetStore();
   const reader = new MemoryAttributeAdminReader();
+  let reviews = new RecordingReview();
+  let proposer = new RecordingProposer(reviews);
   let covered: readonly string[] | null = null;
   const http = () => request(app.getHttpServer());
 
@@ -72,6 +76,10 @@ describe('feature-set editor over HTTP (integration)', () => {
           .override(builder)
           .overrideProvider(CLOCK)
           .useValue(new FixedClock(START))
+          .overrideProvider(SYSTEM_REQUEST_RECORDER)
+          .useValue(reviews)
+          .overrideProvider(SYSTEM_ACTION_PROPOSER)
+          .useValue(proposer)
           .overrideProvider(FEATURE_SET_STORE)
           .useValue(store)
           .overrideProvider(ATTRIBUTE_ADMIN_READER)
@@ -213,6 +221,8 @@ describe('feature-set editor over HTTP (integration)', () => {
   const SETS = '/catalog/admin/feature-sets';
 
   beforeEach(() => {
+    reviews = new RecordingReview();
+    proposer = new RecordingProposer(reviews);
     fakes.reset();
     store.reset();
     reader.reset();
@@ -307,6 +317,45 @@ describe('feature-set editor over HTTP (integration)', () => {
         .set(editor)
         .send({ ...body(), version: 1 })
         .expect(404);
+    }, 30_000);
+
+    it('answers 202 with the proposal of a create that waits for approval, and 409 for a second', async () => {
+      await boot();
+      await seeded(code);
+      const editor = adminSession(code, EDITOR, 8);
+      reviews.review('catalogue', 'medium');
+      const missing = await http().post(SETS).set(editor).send(body()).expect(400);
+      expect(missing.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'note', code: 'required' }] },
+      });
+      const proposed = await http()
+        .post(SETS)
+        .set(editor)
+        .send(body({ note: 'Pantry needs its own set' }))
+        .expect(202);
+      expect(proposed.body).toEqual({
+        request: { id: <unknown>expect.any(String), number: 901 },
+      });
+      // Nothing is created until another admin approves it.
+      expect(store.rows.size).toBe(0);
+      expect(proposer.proposed[0]).toMatchObject({
+        area: 'catalogue',
+        subjectKind: 'catalog.feature-set-create',
+        subjectRef: 'pantry-goods',
+        after: { action: 'create' },
+        note: 'Pantry needs its own set',
+      });
+      const again = await http()
+        .post(SETS)
+        .set(editor)
+        .send(body({ note: 'Again' }))
+        .expect(409);
+      expect(again.body).toMatchObject({
+        code: 'system-requests.already-pending',
+        details: { pendingNumber: 901 },
+      });
+      expect(store.rows.size).toBe(0);
     }, 30_000);
 
     it('refuses a missing Core group, an unknown or draft attribute and too many variant attributes', async () => {

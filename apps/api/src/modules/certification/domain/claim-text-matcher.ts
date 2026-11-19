@@ -41,6 +41,12 @@ export interface PreparedVocabulary {
     readonly typeCode: CertificationTypeCode;
     readonly phrases: readonly (readonly string[])[];
     readonly compacts: readonly string[];
+    /**
+     * The compact forms with every run of one repeated character folded to a single one
+     * (`collapseRuns`), for the stretch pass; a term that folds to fewer than
+     * `MIN_COLLAPSED_LENGTH` characters is left out, as it would match almost any text.
+     */
+    readonly collapsed: readonly string[];
   }[];
 }
 
@@ -154,8 +160,11 @@ function skeletonRound(s: string, visualDigits: boolean): string {
   return curated;
 }
 
-/** Not a letter or number (or a modifier letter): punctuation, spaces and symbols between letters. */
-const SEPARATOR_CHAR = /^(?:[^\p{L}\p{N}]|\p{Lm})$/u;
+/**
+ * Neither a letter of a script nor a reason to stop looking for Latin context: a separator or a
+ * number. «ha1ا1al» is halal: the digits beside the alef are skipped, as separators are.
+ */
+const NEUTRAL_CHAR = /^(?:[^\p{L}]|\p{Lm})$/u;
 
 /**
  * An Arabic-script letter with an ASCII-letter look-alike that has no Arabic letter directly
@@ -175,25 +184,37 @@ export function latinContextFold(s: string): string {
   let last = '';
   for (let i = 0; i < chars.length; i++) {
     before[i] = last;
-    if (!SEPARATOR_CHAR.test(chars[i]!)) last = chars[i]!;
+    if (!NEUTRAL_CHAR.test(chars[i]!)) last = chars[i]!;
   }
   last = '';
   for (let i = chars.length - 1; i >= 0; i--) {
     after[i] = last;
-    if (!SEPARATOR_CHAR.test(chars[i]!)) last = chars[i]!;
+    if (!NEUTRAL_CHAR.test(chars[i]!)) last = chars[i]!;
+  }
+  // A run of the same character is one unit: «haااal» (a stretched alef) is read like «haاal».
+  // Each position knows the first and last of its run; the neighbours are those outside it.
+  const runStart: number[] = new Array<number>(chars.length);
+  const runEnd: number[] = new Array<number>(chars.length);
+  for (let i = 0; i < chars.length; i++) {
+    runStart[i] = i > 0 && chars[i - 1] === chars[i] ? runStart[i - 1]! : i;
+  }
+  for (let i = chars.length - 1; i >= 0; i--) {
+    runEnd[i] = i < chars.length - 1 && chars[i + 1] === chars[i] ? runEnd[i + 1]! : i;
   }
   return chars
     .map((ch, i) => {
       if (!ARABIC_SCRIPT.test(ch)) return ch;
-      if (ARABIC_LETTER.test(chars[i - 1] ?? '') || ARABIC_LETTER.test(chars[i + 1] ?? ''))
+      const first = runStart[i]!;
+      const last = runEnd[i]!;
+      if (ARABIC_LETTER.test(chars[first - 1] ?? '') || ARABIC_LETTER.test(chars[last + 1] ?? ''))
         return ch;
-      // Latin context: the directly adjacent character (main's rule, which also counts Latin
-      // modifier letters such as U+1D2F) or the nearest non-separator (Hassan #380 re-review).
+      // Latin context: the character directly beside the run (main's rule, which also counts
+      // Latin modifier letters such as U+1D2F) or the nearest non-separator (Hassan #380 re-review).
       const latinContext =
-        LATIN_LETTER.test(chars[i - 1] ?? '') ||
-        LATIN_LETTER.test(chars[i + 1] ?? '') ||
-        LATIN_LETTER.test(before[i]!) ||
-        LATIN_LETTER.test(after[i]!);
+        LATIN_LETTER.test(chars[first - 1] ?? '') ||
+        LATIN_LETTER.test(chars[last + 1] ?? '') ||
+        LATIN_LETTER.test(before[first]!) ||
+        LATIN_LETTER.test(after[last]!);
       if (!latinContext) return ch;
       const prototype = UTS39_CONFUSABLES.get(ch)?.toLowerCase();
       return prototype !== undefined && /^[a-z]+$/.test(prototype) ? prototype : ch;
@@ -241,11 +262,31 @@ export function compactForm(normalised: string): string {
   return mapChars(normalised, LEET_MAP).replace(SEPARATOR, '');
 }
 
+/**
+ * A run of the same character folded to one: «haaalal» and «hhaallaall» read as «halal». Applied
+ * to the compact form of both the text and the terms, so a stretched word is found whatever the
+ * letter that was stretched, and in any script the skeleton maps to the same letters (a Cyrillic
+ * «ааа» is `aaa` by then). Linear in the length; no backtracking.
+ */
+export function collapseRuns(compact: string): string {
+  let out = '';
+  let last = '';
+  for (const ch of compact) {
+    if (ch !== last) out += ch;
+    last = ch;
+  }
+  return out;
+}
+
+/** A term shorter than this once its runs are folded is not used in the stretch pass. */
+const MIN_COLLAPSED_LENGTH = 3;
+
 export function prepareVocabulary(vocabulary: readonly ClaimVocabularyEntry[]): PreparedVocabulary {
   return {
     entries: vocabulary.map((entry) => {
       const phrases: string[][] = [];
       const compacts: string[] = [];
+      const collapsed: string[] = [];
       for (const term of entry.terms) {
         const normalised = normaliseClaimText(term);
         const tokens = tokenise(normalised);
@@ -256,8 +297,10 @@ export function prepareVocabulary(vocabulary: readonly ClaimVocabularyEntry[]): 
         }
         phrases.push(tokens);
         compacts.push(compact);
+        const folded = collapseRuns(compact);
+        if ([...folded].length >= MIN_COLLAPSED_LENGTH) collapsed.push(folded);
       }
-      return { typeCode: entry.typeCode, phrases, compacts };
+      return { typeCode: entry.typeCode, phrases, compacts, collapsed };
     }),
   };
 }
@@ -360,6 +403,7 @@ export function matchClaimTerms(
     const readings = [normaliseClaimText(text), normaliseClaimText(text, true)].map((n) => ({
       tokens: tokenise(n),
       compact: compactForm(n),
+      collapsed: collapseRuns(compactForm(n)),
     }));
     const matches: ClaimTermMatch[] = [];
     let table: readonly PieceCount[] | null | undefined; // built lazily, once for this text
@@ -383,7 +427,11 @@ export function matchClaimTerms(
       }
       if (
         found === null &&
-        readings.some(({ compact }) => entry.compacts.some((c) => compact.includes(c)))
+        readings.some(
+          ({ compact, collapsed }) =>
+            entry.compacts.some((c) => compact.includes(c)) ||
+            entry.collapsed.some((c) => collapsed.includes(c)),
+        )
       ) {
         found = { typeCode: entry.typeCode, pass: 'compact', span: null };
       }

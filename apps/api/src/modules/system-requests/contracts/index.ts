@@ -14,18 +14,25 @@ export {
 export { SystemRequestOverdue } from '../domain/events';
 export { isChangeValues, type ChangeValue, type ChangeValues } from '../domain/request';
 export {
+  SYSTEM_ACTION_PROPOSER,
   SYSTEM_REQUEST_RECORDER,
   type AppliedChange,
+  type ProposedChange,
+  type ProposeFailure,
   type RecordedRequest,
   type RecordFailure,
+  type SystemActionProposer,
   type SystemRequestRecorder,
 } from './recorder';
 export {
   MAX_DESCRIBE_REFS,
+  registerSystemChangeApplier,
   registerSystemChangeReverter,
   SYSTEM_CHANGE_REVERTERS,
+  type ApplyOutcome,
   type RevertOutcome,
   type RevertRequest,
+  type SystemChangeApplier,
   type SystemChangeReverter,
   type SystemChangeReverters,
 } from './reverters';

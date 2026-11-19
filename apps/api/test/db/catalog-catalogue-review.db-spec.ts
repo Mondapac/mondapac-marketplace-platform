@@ -209,7 +209,9 @@ describe.each(TEST_MARKETS)('catalogue reviews in market %s (database)', (code) 
       ids,
       review,
     };
-    create = new AttributeDefinitionCreate(gate, attributeDeps);
+    // A create is reviewed too (catalog-catalogue-structure.db-spec.ts); here it only sets up the
+    // edits under test, so it opens no request of its own.
+    create = new AttributeDefinitionCreate(gate, { ...attributeDeps, review: NO_REVIEW });
     publish = new AttributeDefinitionPublish(gate, attributeDeps);
     editAttribute = new AttributeDefinitionEdit(gate, attributeDeps);
     setLinks = new CategoryAttributeLinksSet(gate, {
