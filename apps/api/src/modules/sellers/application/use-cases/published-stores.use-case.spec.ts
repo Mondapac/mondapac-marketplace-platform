@@ -385,6 +385,7 @@ describe.each([
         'name',
         'sellerId',
         'serviceAreaCode',
+        'serviceAreaName',
         'sellingSince',
         'slug',
       ].sort(),
