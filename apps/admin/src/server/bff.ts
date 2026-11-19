@@ -2210,17 +2210,29 @@ const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'commission-payouts/admin/disputes/export',
   'wallet/admin/credit-requests/export',
   'customers/admin/deletion-requests/export',
+  'commission-payouts/admin/sellers/:id/ledger/export',
+  'commission-payouts/admin/sellers/:id/payout-holds/export',
 ]);
 
 /** The first known key of a strict target whose value cannot cross, or null. */
 function strictQueryRefusal(method: string, target: string, requestUrl: string): string | null {
-  if (method !== 'GET' || !STRICT_QUERY_TARGETS.has(target)) return null;
-  const shapes = QUERY_SHAPES[target] ?? {};
+  if (method !== 'GET') return null;
+  // A seller-page export carries the seller id in the path; match it by its `:id` template too.
+  const template = target
+    .split('/')
+    .map((part) => (UUID.test(part) ? ':id' : part))
+    .join('/');
+  if (!STRICT_QUERY_TARGETS.has(target) && !STRICT_QUERY_TARGETS.has(template)) return null;
+  const keys = QUERY_KEYS[target] ?? QUERY_KEYS_WITH_ID[template] ?? [];
+  const shapes = QUERY_SHAPES[target] ?? QUERY_SHAPES[template] ?? {};
   const source = new URL(requestUrl).searchParams;
-  for (const key of QUERY_KEYS[target] ?? []) {
+  for (const key of keys) {
     const value = source.get(key);
     if (value === null) continue;
-    const max = QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX;
+    const max =
+      QUERY_VALUE_MAX_FOR[`${target}:${key}`] ??
+      QUERY_VALUE_MAX_FOR[`${template}:${key}`] ??
+      QUERY_VALUE_MAX;
     if (value.length > max || shapes[key]?.test(value) === false) return key;
   }
   return null;

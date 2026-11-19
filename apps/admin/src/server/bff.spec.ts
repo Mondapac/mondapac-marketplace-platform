@@ -4532,6 +4532,31 @@ describe('relay of the phase 4 money and account exports (strict queries)', () =
     },
   );
 
+  it.each([
+    'commission-payouts/admin/sellers/:id/ledger/export',
+    'commission-payouts/admin/sellers/:id/payout-holds/export',
+  ])('%s (a seller page export) is strict by its template', async (template) => {
+    const SELLER = '0190a000-0000-7000-8000-0000000000b2';
+    const target = template.replace(':id', SELLER);
+    const ids = Array.from({ length: 200 }, () => ID).join(',');
+    const sort = template.includes('ledger') ? 'occurred' : 'placed';
+    const { url } = await get(`${target}?format=csv&ids=${ids}&sort=${sort}`);
+    expect(url).toContain(`/${SELLER}/`);
+    expect(url).toContain(`ids=${encodeURIComponent(ids)}`);
+
+    const tooMany = Array.from({ length: 201 }, () => ID).join(',');
+    for (const query of [
+      'format=csv&ids=x',
+      `format=csv&ids=${tooMany}`,
+      'format=csv&sort=bogus',
+      'format=pdf',
+    ]) {
+      const bad = await get(`${target}?${query}`);
+      expect([query, bad.response.status]).toEqual([query, 400]);
+      expect(bad.url).toBeUndefined();
+    }
+  });
+
   it('refuses a Credit requests export by an unknown requester instead of dropping the filter', async () => {
     const bad = await get('wallet/admin/credit-requests/export?format=csv&requestedBy=ME');
     expect(bad.response.status).toBe(400);
