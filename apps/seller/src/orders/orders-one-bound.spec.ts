@@ -8,6 +8,11 @@ import {
 } from './orders-query.ts';
 import { payloadOf, queryOf } from './orders-saved.ts';
 
+const words = {
+  range: (from: string, to: string) => `${from} to ${to}`,
+  from: (day: string) => `from ${day}`,
+  until: (day: string) => `until ${day}`,
+};
 const NOW = new Date('2026-10-15T03:00:00.000Z');
 const context = (zone = 'Australia/Brisbane') => ({ paging: 'pages' as const, zone, now: NOW });
 const paramsOf = (text: string) => Object.fromEntries(new URLSearchParams(text));
@@ -42,10 +47,12 @@ describe('a saved range with one date bound', () => {
   });
 
   it('words the chip as "from" or "until"', () => {
-    expect(daysLabel({ from: '2026-10-01' })).toBe('from 2026-10-01');
-    expect(daysLabel({ to: '2026-10-31' })).toBe('until 2026-10-31');
-    expect(daysLabel({ from: '2026-10-01', to: '2026-10-31' })).toBe('2026-10-01 to 2026-10-31');
-    expect(daysLabel({ from: '2026-10-01', to: '2026-10-01' })).toBe('2026-10-01');
+    expect(daysLabel({ from: '2026-10-01' }, words)).toBe('from 2026-10-01');
+    expect(daysLabel({ to: '2026-10-31' }, words)).toBe('until 2026-10-31');
+    expect(daysLabel({ from: '2026-10-01', to: '2026-10-31' }, words)).toBe(
+      '2026-10-01 to 2026-10-31',
+    );
+    expect(daysLabel({ from: '2026-10-01', to: '2026-10-01' }, words)).toBe('2026-10-01');
   });
 
   it('counts as one active filter', () => {
