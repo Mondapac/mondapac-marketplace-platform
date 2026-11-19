@@ -54,9 +54,10 @@ export function DisputesTable({
   const optional = (column: OptionalColumn, row: DisputeListRow): ReactNode => {
     switch (column) {
       case 'money':
-        return <MoneyStateBadge state={row.moneyState} />;
+        // Nothing moved: a dash, as on the phone card.
+        return row.moneyState === 'none' ? '-' : <MoneyStateBadge state={row.moneyState} />;
       case 'reason':
-        return reasonText(row.reason);
+        return <span className="block min-w-40 whitespace-normal">{reasonText(row.reason)}</span>;
       case 'evidence-due':
         return <EvidenceDueText iso={row.evidenceDueBy} zone={zone} now={now} />;
       case 'stripe-status':

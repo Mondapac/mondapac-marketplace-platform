@@ -8439,8 +8439,8 @@
     "unnamed": "Seller {id}",
     "money": {
       "withdrawn": "Taken by bank",
-      "inquiry": "Inquiry only",
-      "reinstated": "Returned to us"
+      "inquiry": "Inquiry, no money taken",
+      "reinstated": "Returned by bank"
     },
     "evidence": {
       "none": "-",
@@ -8564,7 +8564,7 @@
         "closed": "Closed"
       },
       "col": {
-        "case": "Case",
+        "case": "Order",
         "stage": "Stage",
         "sellers": "Sellers",
         "amount": "Amount",
@@ -8604,12 +8604,12 @@
           "under_review": "Under review",
           "won": "Won",
           "lost": "Lost",
-          "prevented": "Prevented"
+          "prevented": "Prevented before a dispute"
         },
         "money": {
           "withdrawn": "Taken by bank",
-          "inquiry": "Inquiry only",
-          "reinstated": "Returned to us",
+          "inquiry": "Inquiry, no money taken",
+          "reinstated": "Returned by bank",
           "none": "Not moved"
         },
         "due": {
@@ -8637,8 +8637,8 @@
           "second": "Smallest first"
         },
         "evidence-due": {
-          "first": "Latest deadline first",
-          "second": "Nearest deadline first"
+          "first": "Nearest deadline first",
+          "second": "Latest deadline first"
         },
         "updated": {
           "first": "Most recent first",
@@ -8682,8 +8682,8 @@
       },
       "actions": {
         "for": "Actions for {name}",
-        "open": "Open",
-        "decide": "Decide on the case's page"
+        "open": "Open case",
+        "decide": "Record a decision"
       }
     }
   },

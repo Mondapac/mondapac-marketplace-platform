@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { Toaster } from '@mondapac/ui';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -116,6 +117,7 @@ function mount(
         initialView={options.view ?? 'all'}
         sellerId={options.sellerId ?? null}
       />
+      <Toaster labels={{ region: messages.toast.region, close: messages.toast.close }} />
     </NextIntlClientProvider>,
   );
 }
@@ -151,7 +153,6 @@ describe('Disputes list: page numbers', () => {
     expect(within(table).getByText('Needs response')).toBeTruthy();
     expect(within(table).getByText(STORE)).toBeTruthy();
     expect(within(table).getByText('$125.00')).toBeTruthy();
-    expect(within(table).getByText('Taken by bank')).toBeTruthy();
     expect(screen.getByText('1–1 of 143 cases')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Decision needed (1)' }));
     await waitFor(() => expect(lastParams()['view']).toBe('decision-needed'));
@@ -171,8 +172,8 @@ describe('Disputes list: page numbers', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Open', "Decide on the case's page"]);
-    fireEvent.click(within(menu).getByRole('menuitem', { name: "Decide on the case's page" }));
+    ).toEqual(['Open case', 'Record a decision']);
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Record a decision' }));
     expect(push).toHaveBeenCalledWith(`/disputes/${DISPUTE}`);
   });
 
@@ -217,7 +218,9 @@ describe('Disputes list: page numbers', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(lastParams()['money']).toBe('reinstated'));
     expect(screen.getByText('7 cases match')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove filter Money is Returned to us' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove filter Money is Returned by bank' }),
+    );
     await waitFor(() => expect(lastParams()['money']).toBeUndefined());
   });
 
@@ -484,7 +487,185 @@ describe('Disputes list: queries and export', () => {
     expect(Object.fromEntries(url.searchParams)).toEqual({
       ids: DISPUTE,
       format: 'csv',
-      columns: 'money,reason,evidence-due',
+      columns: 'evidence-due,reason',
     });
+  });
+});
+
+describe('Disputes list: review follow-ups', () => {
+  const tick = async () => {
+    fireEvent.click(await screen.findByRole('checkbox', { name: `Select ${NAME}` }));
+    expect(screen.getByText('1 case selected')).toBeTruthy();
+  };
+  const cleared = () => waitFor(() => expect(screen.queryByText('1 case selected')).toBeNull());
+
+  it('drops the ticked rows when the search, sort, filter or seller changes', async () => {
+    serve(() => pageOf([row()]));
+    mount({ sellerId: SELLER });
+    await caseLink();
+    await tick();
+    const box = screen.getByRole('searchbox', { name: 'Search' });
+    fireEvent.change(box, { target: { value: 'cedar' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await cleared();
+    await tick();
+    fireEvent.click(screen.getByRole('button', { name: /^Sort/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'Amount' }));
+    await cleared();
+    await tick();
+    fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    fireEvent.change(within(panel).getByLabelText('Field'), { target: { value: 'status' } });
+    fireEvent.change(within(panel).getByLabelText('Value'), { target: { value: 'lost' } });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(lastParams()['status']).toBe('lost'));
+    await cleared();
+    await tick();
+    fireEvent.click(screen.getByRole('button', { name: `Remove filter Seller is ${STORE}` }));
+    await waitFor(() => expect(lastParams()['sellerId']).toBeUndefined());
+    await cleared();
+  });
+
+  it('keeps the ticked rows when the same id is typed again in other letter case', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await caseLink();
+    const box = screen.getByRole('searchbox', { name: 'Search' });
+    fireEvent.change(box, { target: { value: ORDER.toUpperCase() } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(lastParams()['q']).toBe(ORDER));
+    await tick();
+    fireEvent.change(box, { target: { value: ORDER } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(listUrls().length).toBeGreaterThanOrEqual(2));
+    expect(screen.getByText('1 case selected')).toBeTruthy();
+  });
+
+  it('selects all matching cases, exports them by the selector, and drops them for another view', async () => {
+    const fetched: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        fetched.push(url);
+        return Promise.resolve(
+          new Response('case\n1\n', { headers: { 'content-type': 'text/csv' } }),
+        );
+      }),
+    );
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} }),
+    );
+    serve(() => pageOf([row()], { total: 30 }));
+    mount();
+    await caseLink();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all cases on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all 30 matching' }));
+    expect(screen.getByText('All 30 matching cases are selected')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(
+      within(await screen.findByRole('menu', { name: 'Bulk action' })).getByRole('menuitem', {
+        name: /^Export/,
+      }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByLabelText(/XLSX/));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(fetched).toHaveLength(1));
+    const params = Object.fromEntries(new URL(fetched[0]!, 'http://x').searchParams);
+    expect(params['ids']).toBeUndefined();
+    expect(params).toMatchObject({ sort: 'opened', direction: 'desc', format: 'xlsx' });
+    fireEvent.click(screen.getByRole('button', { name: 'Won (12)' }));
+    await waitFor(() =>
+      expect(screen.queryByText('All 30 matching cases are selected')).toBeNull(),
+    );
+  });
+
+  async function exportWith(response: Response) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(response)),
+    );
+    serve(() => pageOf([row()]));
+    mount();
+    await caseLink();
+    fireEvent.click(screen.getByRole('checkbox', { name: `Select ${NAME}` }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(
+      within(await screen.findByRole('menu', { name: 'Bulk action' })).getByRole('menuitem', {
+        name: /^Export/,
+      }),
+    );
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Export' }),
+    );
+  }
+  const json = (status: number, body: object) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  it('says when the file would be too large', async () => {
+    await exportWith(json(413, { code: 'batch.too-large', details: { max: 10000, total: 12000 } }));
+    expect(await screen.findByText(/Too many rows to export/)).toBeTruthy();
+  });
+
+  it('says when the store search is too broad to export', async () => {
+    await exportWith(
+      json(400, {
+        code: 'validation.failed',
+        details: { fields: [{ path: 'search', code: 'too-broad' }] },
+      }),
+    );
+    expect(await screen.findByText(/too broad to export/)).toBeTruthy();
+  });
+
+  it('shows the chosen columns and keeps the choice for this viewer in storage', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await caseLink();
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Money' }));
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Reason' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    const headers = screen.getAllByRole('columnheader').map((th) => th.textContent);
+    expect(headers).toEqual([
+      '',
+      'Order',
+      'Stage',
+      'Sellers',
+      'Amount',
+      'Opened',
+      'Evidence due',
+      'Money',
+      'Actions',
+    ]);
+    expect(within(screen.getByRole('table')).getByText('Taken by bank')).toBeTruthy();
+    expect(JSON.parse(window.localStorage.getItem('mp:admin:AU:acc-1:disputes-columns')!)).toEqual([
+      'evidence-due',
+      'money',
+    ]);
+    // A case whose money did not move shows a dash, as the phone card does.
+    cleanup();
+    serve(() => pageOf([row({ moneyState: 'none' })]));
+    mount();
+    await caseLink();
+    const cells = screen.getAllByRole('row')[1]!;
+    expect(within(cells).getAllByText('-').length).toBeGreaterThan(0);
+  });
+
+  it('lists the nearest deadline first in the order of the evidence sort', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await caseLink();
+    fireEvent.click(screen.getByRole('button', { name: /^Sort/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'Evidence due' }));
+    await waitFor(() => expect(lastParams()['direction']).toBe('asc'));
+    const nearest = screen.getByRole('radio', { name: 'Nearest deadline first' });
+    expect((nearest as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: 'Latest deadline first' }));
+    await waitFor(() => expect(lastParams()['direction']).toBe('desc'));
   });
 });

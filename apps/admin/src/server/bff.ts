@@ -2529,6 +2529,7 @@ const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
   'security/admin/alerts/export',
   'reviews/admin/moderation/export',
+  'commission-payouts/admin/disputes/export',
 ]);
 
 /** The first known key of a strict target whose value cannot cross, or null. */

@@ -15,7 +15,8 @@ export const OPTIONAL_COLUMNS = [
 ] as const;
 export type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number];
 
-export const DEFAULT_COLUMNS: readonly OptionalColumn[] = ['money', 'reason', 'evidence-due'];
+// The deadline first: it is what an admin acts on. Money stays one click away (fits 1280 px).
+export const DEFAULT_COLUMNS: readonly OptionalColumn[] = ['evidence-due', 'reason'];
 
 /** The columns always shown, in their order (the case is the card's title). */
 export const FIXED_COLUMNS = ['case', 'stage', 'sellers', 'amount', 'opened'] as const;
