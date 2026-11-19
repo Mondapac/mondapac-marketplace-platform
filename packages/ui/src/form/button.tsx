@@ -31,6 +31,13 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   readonly loading?: boolean;
   /** The label while loading ("Saving…", "Exporting…"); without it the label stays. */
   readonly loadingLabel?: string;
+  /**
+   * Unavailable for now, but still reachable: the button stays focusable (`aria-disabled="true"`, not
+   * the `disabled` attribute), looks disabled, and a click or submit does nothing. Use it when the
+   * reason is shown beside the button (tie it with `aria-describedby`) so keyboard and screen reader
+   * users can reach the button and hear why. Prefer `disabled` when no reason is shown.
+   */
+  readonly softDisabled?: boolean;
   /** Fills the width of its container (auth forms). */
   readonly block?: boolean;
   /** The button element, for a caller that moves focus to it. */
@@ -52,12 +59,23 @@ const VARIANT: Record<ButtonVariant, string> = {
   link: 'text-link underline-offset-2 hover:underline disabled:text-fg-muted disabled:cursor-not-allowed',
 };
 
+/** The disabled look for `softDisabled` (no hover effect), the same tokens as `disabled:` above. */
+const SOFT_VARIANT: Record<ButtonVariant, string> = {
+  primary: 'bg-muted text-fg-muted cursor-not-allowed',
+  secondary: 'border border-line-control bg-surface text-fg-muted cursor-not-allowed',
+  destructive: 'border border-line-control bg-surface text-fg-muted cursor-not-allowed',
+  'destructive-solid': 'bg-muted text-fg-muted cursor-not-allowed',
+  quiet: 'text-fg-muted cursor-not-allowed',
+  link: 'text-fg-muted cursor-not-allowed',
+};
+
 export function Button({
   variant = 'primary',
   size = 'default',
   loading = false,
   loadingLabel,
   block = false,
+  softDisabled = false,
   className,
   disabled,
   children,
@@ -100,20 +118,20 @@ export function Button({
       style={held ? { ...style, width: restWidth.current ?? undefined } : style}
       // Loading keeps the button focusable (aria-disabled, not disabled) so focus is not lost.
       disabled={disabled}
-      aria-disabled={loading || undefined}
+      aria-disabled={loading || softDisabled || undefined}
       aria-busy={loading || undefined}
       className={[
         'inline-flex items-center justify-center rounded-md font-medium',
         loading ? 'gap-2' : 'gap-1.5',
         sizeClass,
         block ? 'w-full' : '',
-        VARIANT[variant],
+        softDisabled && !disabled ? SOFT_VARIANT[variant] : VARIANT[variant],
         className ?? '',
       ]
         .filter(Boolean)
         .join(' ')}
       onClick={(event) => {
-        if (loading) {
+        if (loading || softDisabled) {
           event.preventDefault();
           return;
         }

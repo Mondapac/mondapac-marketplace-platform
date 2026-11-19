@@ -23,6 +23,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -31,6 +32,7 @@ import {
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
 import { RequiresStepUp } from '../../../platform/authz';
+import { EXPORT_FORMATS, writeChunks } from '../../../platform/list-export';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -38,10 +40,18 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { AdminCancelAccountDeletion } from '../application/use-cases/admin-cancel-account-deletion.use-case';
+import { AdminExportAccountDeletions } from '../application/use-cases/admin-export-account-deletions.use-case';
 import {
   AdminListAccountDeletions,
-  type PendingDeletionRequestPage,
+  type AdminDeletionListPage,
 } from '../application/use-cases/admin-list-account-deletions.use-case';
+import {
+  DELETION_CANCEL_REASONS,
+  DELETION_EXPORT_COLUMNS,
+  DELETION_LIST_VIEWS,
+  DELETION_REQUESTERS,
+  DELETION_SORT_KEYS,
+} from '../domain/admin-deletion-list';
 import {
   AdminRequestAccountDeletion,
   type AdminDeletionRequestMade,
@@ -69,17 +79,63 @@ const madeBody = (made: AdminDeletionRequestMade) => ({
   waitingPeriodDays: made.waitingPeriodDays,
 });
 
-const pageBody = (page: PendingDeletionRequestPage) => ({
+const instant = (value: { toString(): string } | null) =>
+  value === null ? null : value.toString();
+
+const pageBody = (page: AdminDeletionListPage) => ({
   entries: page.entries.map((entry) => ({
-    requestId: entry.requestId,
+    requestId: entry.id,
     accountId: entry.accountId,
     requestedAt: entry.requestedAt.toString(),
     scheduledFor: entry.scheduledFor.toString(),
     status: entry.status,
     requestedBy: entry.requestedBy,
+    cancelledAt: instant(entry.cancelledAt),
+    cancelReason: entry.cancelReason,
+    completedAt: instant(entry.completedAt),
+    actions: [...entry.actions],
   })),
+  counts: { ...page.counts },
+  total: page.total,
+  page: page.page,
+  pageSize: page.pageSize,
   nextCursor: page.nextCursor,
 });
+
+const ISO = 'An ISO instant (UTC or with an offset).';
+
+/** `page`, `pageSize` and `limit` become numbers (or -1, which the use case refuses). */
+function numbersOf(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...query };
+  for (const key of ['page', 'pageSize', 'limit']) {
+    if (out[key] !== undefined) out[key] = parseLimit(out[key]);
+  }
+  return out;
+}
+
+/** The selector keys of the list, shared by the list and the export (OpenAPI only). */
+const SELECTOR_QUERIES = [
+  {
+    name: 'view',
+    required: false,
+    enum: DELETION_LIST_VIEWS,
+    description: 'pending (default), executing, cancelled, completed or all.',
+  },
+  {
+    name: 'status',
+    required: false,
+    enum: ['pending'],
+    description: "The older list's name of the pending view; never with `view`.",
+  },
+  { name: 'requestedBy', required: false, enum: DELETION_REQUESTERS },
+  { name: 'cancelReason', required: false, enum: DELETION_CANCEL_REASONS },
+  { name: 'q', required: false, description: 'A request id or a buyer account id, exact.' },
+  { name: 'from', required: false, description: `Requested at or after. ${ISO}` },
+  { name: 'to', required: false, description: `Requested before. ${ISO}` },
+  { name: 'scheduledBefore', required: false, description: `Deletes before. ${ISO}` },
+  { name: 'sort', required: false, enum: DELETION_SORT_KEYS },
+  { name: 'direction', required: false, enum: ['asc', 'desc'] },
+] as const;
 
 /**
  * An admin deletes a buyer's account for them and sees the pending requests (customers package
@@ -98,6 +154,7 @@ export class AdminAccountDeletionRequestsController {
     private readonly request: AdminRequestAccountDeletion,
     private readonly cancel: AdminCancelAccountDeletion,
     private readonly list: AdminListAccountDeletions,
+    private readonly exportRequests: AdminExportAccountDeletions,
   ) {}
 
   @Post('buyers/:accountId/deletion-requests')
@@ -159,13 +216,32 @@ export class AdminAccountDeletionRequestsController {
 
   @Get('deletion-requests')
   @ApiOperation({
-    summary: 'Pending buyer deletion requests of the Market (admin)',
+    summary: 'Buyer deletion requests of the Market (admin)',
     description:
-      'Needs customers.account-deletion-requests.view. Earliest scheduled date first. Ids, dates ' +
-      'and who asked (customer or admin): no name, email or ticket text. status: pending (the ' +
-      'default and the only value).',
+      'Needs customers.account-deletion-requests.view. The Account deletion requests super ' +
+      'list: a view (pending by default, executing, cancelled, completed or all), filters and ' +
+      'sort, with the count of every view for the Market whatever the filter. Ids, dates and who ' +
+      'asked (customer or admin): no name, email, ticket or reason. Page numbers (`page`, ' +
+      '`pageSize`, 25 by default) answer the total; `cursor` or `limit` asks for Previous/Next, ' +
+      'earliest scheduled first only (the older list: 20 rows by default). Each row carries its ' +
+      '`actions`. Refused in an acting-as session.',
   })
-  @ApiQuery({ name: 'status', required: false, enum: ['pending'] })
+  @ApiQuery(SELECTOR_QUERIES[0])
+  @ApiQuery(SELECTOR_QUERIES[1])
+  @ApiQuery(SELECTOR_QUERIES[2])
+  @ApiQuery(SELECTOR_QUERIES[3])
+  @ApiQuery(SELECTOR_QUERIES[4])
+  @ApiQuery(SELECTOR_QUERIES[5])
+  @ApiQuery(SELECTOR_QUERIES[6])
+  @ApiQuery(SELECTOR_QUERIES[7])
+  @ApiQuery(SELECTOR_QUERIES[8])
+  @ApiQuery(SELECTOR_QUERIES[9])
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'From 1; page x pageSize at most 10,000.',
+  })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 100; default 25.' })
   @ApiQuery({ name: 'cursor', required: false, description: 'The `nextCursor` of the last page.' })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 100; default 20.' })
   @ApiOkResponse({ type: PendingAccountDeletionRequestPageBody })
@@ -174,16 +250,83 @@ export class AdminAccountDeletionRequestsController {
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
   async pending(
     @Call() context: CallContext,
-    @Query('status') status: unknown,
-    @Query('cursor') cursor: unknown,
-    @Query('limit') limit: unknown,
+    @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.list.execute(context, { status, cursor, limit: parseLimit(limit) });
+    const result = await this.list.execute(context, numbersOf(query));
     this.log('customers.admin-list-account-deletions-route', context, result);
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return pageBody(result.value);
+  }
+
+  // Before `deletion-requests/:requestId`, so `export` is never read as a request id.
+  @Get('deletion-requests/export')
+  @ApiOperation({
+    summary: 'Export the buyer deletion requests of the list as a file (admin)',
+    description:
+      'Needs customers.account-deletion-requests.view. `format` is csv (default) or xlsx. ' +
+      `\`columns\` is the comma-separated optional columns in the order shown (${DELETION_EXPORT_COLUMNS.join(', ')}); ` +
+      'request id, account id, status, requested by, requested and deletes on are always there. ' +
+      'No name, email, ticket or reason is written. The requests are `ids` (comma-separated, at ' +
+      'most 200; an id that is not a request of the Market refuses the whole file as not found) ' +
+      'or the selector keys of the list, at most 10,000 (more: batch.too-large with the total). ' +
+      'Refused in an acting-as session.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({ name: 'columns', required: false })
+  @ApiQuery({ name: 'ids', required: false })
+  @ApiQuery(SELECTOR_QUERIES[0])
+  @ApiQuery(SELECTOR_QUERIES[1])
+  @ApiQuery(SELECTOR_QUERIES[2])
+  @ApiQuery(SELECTOR_QUERIES[3])
+  @ApiQuery(SELECTOR_QUERIES[4])
+  @ApiQuery(SELECTOR_QUERIES[5])
+  @ApiQuery(SELECTOR_QUERIES[6])
+  @ApiQuery(SELECTOR_QUERIES[7])
+  @ApiQuery(SELECTOR_QUERIES[8])
+  @ApiQuery(SELECTOR_QUERIES[9])
+  @ApiOkResponse({
+    description: 'deletion-requests-<date>.csv or deletion-requests-<date>.xlsx, as an attachment',
+  })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'customers.account-deletion-request-not-found' })
+  @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large (details.max, total)' })
+  async download(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportRequests.execute(context, { ...query });
+    this.log('customers.admin-export-account-deletions-route', context, result);
+    if (!result.ok) {
+      const error = refusal(result.error, context, this.#logger);
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      await writeChunks(response, chunks);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logger.warn({
+        msg: 'customers.admin-export-account-deletions',
+        code: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+    }
   }
 
   @Delete('deletion-requests/:requestId')
