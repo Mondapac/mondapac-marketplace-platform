@@ -8714,8 +8714,9 @@
         "unknown": "The payout could not be approved. Try again."
       },
       "type-to-confirm": "Type {id} to confirm",
-      "step-up-note": "Approving moves money: you will be asked for your two-step code next.",
-      "title-named": "Approve payout {id} for {store}?"
+      "step-up-note": "Approving sends money to the seller. Next, you will be asked for your two-step code.",
+      "title-named": "Approve payout {id} for {store}?",
+      "title-blocked": "Payout {id} for {store}"
     },
     "seller": {
       "terms": {

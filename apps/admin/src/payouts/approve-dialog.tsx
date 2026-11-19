@@ -163,7 +163,10 @@ export function ApproveDialog({
       title={
         detail === null
           ? t('title')
-          : t('title-named', { id: reference, store: detail.storeName ?? t('unnamed') })
+          : t(canApprove ? 'title-named' : 'title-blocked', {
+              id: reference,
+              store: detail.storeName ?? t('unnamed'),
+            })
       }
       initialFocus={cancel}
       onClose={() => {
