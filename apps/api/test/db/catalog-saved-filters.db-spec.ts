@@ -15,6 +15,7 @@ import { CATALOG_AUDIT_ACTIONS } from '../../src/modules/catalog/domain/audit';
 import { MAX_SAVED_FILTERS_PER_OWNER } from '../../src/modules/catalog/domain/saved-filter';
 import { ConfigCatalogMarketPolicy } from '../../src/modules/catalog/infrastructure/config-catalog-market-policy';
 import { PrismaAdminProductsReader } from '../../src/modules/catalog/infrastructure/prisma-admin-products.reader';
+import { PrismaSavedFilterStore } from '../../src/modules/lists/infrastructure/prisma-saved-filter-store';
 import { PrismaSavedFilterRepository } from '../../src/modules/catalog/infrastructure/prisma-saved-filter.repository';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
@@ -110,7 +111,7 @@ describe.each(TEST_MARKETS)('catalog saved filters in market %s (database)', (co
       { now: () => Temporal.Now.instant() },
       NO_PERMISSION_KEYS,
     ) as AuditWriter;
-    const savedFilters = new PrismaSavedFilterRepository(db.service);
+    const savedFilters = new PrismaSavedFilterRepository(new PrismaSavedFilterStore(db.service));
     const shareCheck = new SavedFilterShareCheck(gate);
     const base = { unitOfWork: db.unitOfWork, savedFilters, shareCheck };
     create = new SavedFilterCreate(gate, { ...base, audit, clock, ids });
@@ -156,7 +157,7 @@ describe.each(TEST_MARKETS)('catalog saved filters in market %s (database)', (co
   const rowsOf = async (target: MarketContext, ownerAccountId: string) =>
     (
       await owner.query<{ id: string; name: string; visibility: string; position: number }>(
-        `SELECT id, name, visibility, position FROM catalog.saved_filters
+        `SELECT id, name, visibility, position FROM lists.saved_filters
           WHERE market_id = $1 AND owner_account_id = $2 ORDER BY position`,
         [target.marketId, ownerAccountId],
       )
@@ -282,7 +283,7 @@ describe.each(TEST_MARKETS)('catalog saved filters in market %s (database)', (co
     const a = admin([VIEW]);
     for (let n = 1; n <= MAX_SAVED_FILTERS_PER_OWNER; n++) {
       await owner.query(
-        `INSERT INTO catalog.saved_filters
+        `INSERT INTO lists.saved_filters
            (id, market_id, tenant_id, owner_account_id, visibility, list_key, name, payload, position, created_at, updated_at)
          VALUES ($1, $2, $3, $4, 'me', $5, $6, $7, $8, $9, $9)`,
         [
@@ -310,6 +311,42 @@ describe.each(TEST_MARKETS)('catalog saved filters in market %s (database)', (co
     expect((await rowsOf(market, a.accountId)).at(-1)).toMatchObject({
       name: 'Fits now',
       position: MAX_SAVED_FILTERS_PER_OWNER + 1,
+    });
+  });
+
+  it('never finds or deletes another module’s filter by id: a filter of a list the module does not own is not found', async () => {
+    const store = new PrismaSavedFilterStore(db.service);
+    const foreign = uuid7() as Id<'SavedFilter'>;
+    const now = Temporal.Now.instant();
+    await db.unitOfWork.run(market, async () => {
+      await store.add(market, {
+        id: foreign,
+        listKey: 'admin.ordering.orders',
+        ownerAccountId: account(),
+        sellerId: null,
+        visibility: 'everyone',
+        name: unique('Foreign'),
+        payload: PAYLOAD,
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return { ok: true as const, value: undefined };
+    });
+    const catalogOnly = new PrismaSavedFilterRepository(store);
+
+    const result = await db.unitOfWork.run(market, async () => ({
+      ok: true as const,
+      value: {
+        found: await catalogOnly.find(market, foreign),
+        removed: await catalogOnly.remove(market, foreign),
+        stillThere: await store.find(market, null, ['admin.ordering.orders'], foreign),
+      },
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { found: null, removed: false, stillThere: { id: foreign } },
     });
   });
 
@@ -357,7 +394,7 @@ describe.each(TEST_MARKETS)('catalog saved filters in market %s (database)', (co
       };
       const columns = Object.keys(row);
       return client.query(
-        `INSERT INTO catalog.saved_filters (${columns.join(', ')})
+        `INSERT INTO lists.saved_filters (${columns.join(', ')})
          VALUES (${columns.map((_c, i) => `$${i + 1}`).join(', ')})`,
         Object.values(row),
       );
@@ -400,36 +437,27 @@ describe.each(TEST_MARKETS)('catalog saved filters in market %s (database)', (co
 
       await expect(
         app.query(
-          `UPDATE catalog.saved_filters SET name = 'Grant renamed', visibility = 'everyone', updated_at = now() WHERE id = $1`,
+          `UPDATE lists.saved_filters SET name = 'Grant renamed', visibility = 'everyone', updated_at = now() WHERE id = $1`,
           [rowId],
         ),
       ).resolves.toMatchObject({ rowCount: 1 });
-      for (const column of [
-        'owner_account_id',
-        'list_key',
-        'payload',
-        'position',
-        'market_id',
-        'created_at',
-      ]) {
+      for (const column of ['owner_account_id', 'list_key', 'payload', 'market_id', 'created_at']) {
         const value =
           column === 'owner_account_id'
             ? `'${account()}'`
             : column === 'payload'
               ? `'{}'::jsonb`
-              : column === 'position'
-                ? '2'
-                : column === 'market_id'
-                  ? `'ZZ'`
-                  : column === 'created_at'
-                    ? 'now()'
-                    : `'admin.catalog.other'`;
+              : column === 'market_id'
+                ? `'ZZ'`
+                : column === 'created_at'
+                  ? 'now()'
+                  : `'admin.catalog.other'`;
         await expect(
-          app.query(`UPDATE catalog.saved_filters SET ${column} = ${value} WHERE id = $1`, [rowId]),
+          app.query(`UPDATE lists.saved_filters SET ${column} = ${value} WHERE id = $1`, [rowId]),
         ).rejects.toMatchObject({ code: DENIED });
       }
       await expect(
-        app.query(`DELETE FROM catalog.saved_filters WHERE id = $1`, [rowId]),
+        app.query(`DELETE FROM lists.saved_filters WHERE id = $1`, [rowId]),
       ).resolves.toMatchObject({ rowCount: 1 });
     });
   });

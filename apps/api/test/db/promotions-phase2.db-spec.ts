@@ -31,6 +31,8 @@ import { MarketRegistry } from '../../src/platform/market-config/market-registry
 import {
   FakeFlashSales,
   FakePriceHistory,
+  FakeSellerCatalogue,
+  FakeSellerCommission,
   FakeSellerActivity,
   FakeStepUp,
   phase3Fakes,
@@ -108,6 +110,8 @@ describe.each(TEST_MARKETS)('promotions phase 2 types in market %s (database)', 
       flashSales: new FakeFlashSales(),
       sellerActivity: new FakeSellerActivity(),
       priceHistory: new FakePriceHistory(),
+      sellerCommission: new FakeSellerCommission(),
+      sellerCatalogue: new FakeSellerCatalogue(),
       ...phase3Fakes(),
       credits: new PrismaCreditRepository(db.service),
       referrals: new PrismaReferralRepository(db.service),
@@ -500,12 +504,27 @@ describe.each(TEST_MARKETS)('promotions phase 2 types in market %s (database)', 
         ).toBe(CHECK);
         expect(
           await attempt(
-            insert(p, HASH(base * 10 + 4), { used_at: new Date('2026-10-25T09:00:00Z') }),
+            insert(p, HASH(base * 10 + 4), {
+              used_at: new Date('2026-10-25T09:00:00Z'),
+              redeemed_order_id: ids.next<'Order'>(),
+            }),
+          ),
+        ).toBe(CHECK);
+        // A used code names the order that redeemed it (package T2), and only a used one does.
+        expect(
+          await attempt(
+            insert(p, HASH(base * 10 + 9), { used_at: new Date('2026-10-25T11:00:00Z') }),
           ),
         ).toBe(CHECK);
         expect(
+          await attempt(insert(p, HASH(base * 10 + 9), { redeemed_order_id: ids.next<'Order'>() })),
+        ).toBe(CHECK);
+        expect(
           await attempt(
-            insert(p, HASH(base * 10 + 5), { used_at: new Date('2026-10-25T11:00:00Z') }),
+            insert(p, HASH(base * 10 + 5), {
+              used_at: new Date('2026-10-25T11:00:00Z'),
+              redeemed_order_id: ids.next<'Order'>(),
+            }),
           ),
         ).toBe('allowed');
         expect(await attempt(insert(ids.next<'Promotion'>(), HASH(base * 10 + 6)))).toBe(
@@ -519,11 +538,20 @@ describe.each(TEST_MARKETS)('promotions phase 2 types in market %s (database)', 
         expect(
           await state(
             sql.query(
-              `UPDATE promotions.promotion_batch_codes SET used_at = now() WHERE code_hash = $1`,
+              `UPDATE promotions.promotion_batch_codes SET promotion_id = promotion_id WHERE code_hash = $1`,
               [h],
             ),
           ),
         ).toBe(NO_PRIVILEGE);
+        // The application may claim a code (package T2), but only with the order that redeems it.
+        expect(
+          await state(
+            sql.query(
+              `UPDATE promotions.promotion_batch_codes SET used_at = now() WHERE code_hash = $1`,
+              [h],
+            ),
+          ),
+        ).toBe(CHECK);
         expect(
           await state(
             sql.query(`DELETE FROM promotions.promotion_batch_codes WHERE code_hash = $1`, [h]),
@@ -534,12 +562,11 @@ describe.each(TEST_MARKETS)('promotions phase 2 types in market %s (database)', 
             owner.query(`DELETE FROM promotions.promotion_batch_codes WHERE code_hash = $1`, [h]),
           ),
         ).toBe(RESTRICT);
-        // The owner may mark a code used (the redemption of package T2 will do it).
         expect(
           await state(
-            owner.query(
-              `UPDATE promotions.promotion_batch_codes SET used_at = $2 WHERE code_hash = $1`,
-              [h, new Date('2026-10-25T12:00:00Z')],
+            sql.query(
+              `UPDATE promotions.promotion_batch_codes SET used_at = $2, redeemed_order_id = $3 WHERE code_hash = $1`,
+              [h, new Date('2026-10-25T12:00:00Z'), ids.next<'Order'>()],
             ),
           ),
         ).toBe('allowed');
@@ -680,8 +707,8 @@ describe.each(TEST_MARKETS)('promotions phase 2 types in market %s (database)', 
       // The owner marks the code used (the redemption of package T2 does this).
       const hash = new CryptoBatchCodeCrypto(TEST_CODE_PEPPER).hash(first);
       await owner.query(
-        `UPDATE promotions.promotion_batch_codes SET used_at = $2 WHERE market_id = $3 AND code_hash = $1`,
-        [hash, clock.now().add({ minutes: 1 }).toString(), mk],
+        `UPDATE promotions.promotion_batch_codes SET used_at = $2, redeemed_order_id = $4 WHERE market_id = $3 AND code_hash = $1`,
+        [hash, clock.now().add({ minutes: 1 }).toString(), mk, ids.next<'Order'>()],
       );
       const used = await make(QuoteDiscounts).execute(system, request(first));
       expect(used.ok && used.value.code).toBe('NOT_APPLIED');

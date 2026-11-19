@@ -18,7 +18,11 @@ export class FacadePublishedVariants implements PublishedVariants {
       for (const [offerId, offer] of units.value) {
         published.set(
           offerId,
-          new Set(offer.sellUnits.filter((u) => u.state === 'published').map((u) => u.variantId)),
+          new Set(
+            offer.sellUnits
+              .filter((u) => u.state === 'published' && u.selling)
+              .map((u) => u.variantId),
+          ),
         );
       }
       return published;

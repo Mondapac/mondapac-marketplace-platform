@@ -13,6 +13,9 @@ export const SENSITIVE_REASONS = [
   'primary-image',
   'image-added-or-replaced',
   'variant-removed',
+  'gtin-changed',
+  'axis-added',
+  'topics-changed',
   'never-published',
   'approval-required',
 ] as const;
@@ -27,6 +30,10 @@ export interface SensitiveChangesPolicy {
   /** Kept for the Market config shape (7.1); ignored by `classify`, as images always go to review (H1). */
   readonly anyImage: boolean;
   readonly variantRemoved: boolean;
+  /** A GTIN set, changed or cleared on a variant that was already published (variants V4). */
+  readonly gtinChanged: boolean;
+  /** A second variant axis added to a published product (variants V9b). */
+  readonly axisAdded: boolean;
 }
 
 /** What the policy reads of a revision's content. Ids and the text of names only. */
@@ -34,10 +41,16 @@ export interface RevisionSummary {
   /** Product name per locale. */
   readonly names: Readonly<Record<string, string>>;
   readonly categoryIds: readonly string[];
+  /** Topic ids in the order entered (product tags T2). */
+  readonly topicIds: readonly string[];
   readonly taxCategoryCode: string;
   /** Image ids in position order; position 1 is the primary image. Empty until slice 13. */
   readonly imageIds: readonly string[];
   readonly variantIds: readonly string[];
+  /** Variant id to its 14-digit GTIN, or null (V4). */
+  readonly variantGtins: Readonly<Record<string, string | null>>;
+  /** The option attribute codes the variants vary on (V9b); empty for a Simple product. */
+  readonly variantAxes: readonly string[];
 }
 
 export interface Classification {
@@ -74,6 +87,8 @@ export function classify(
     // Every first revision carries its images, so it goes to review even with approval off (H1).
     const reasons: SensitiveReason[] = ['never-published'];
     if (candidate.imageIds.length > 0) reasons.push('image-added-or-replaced');
+    // Topics of a first revision are reviewed with it, and force review like an image does.
+    if (candidate.topicIds.length > 0) reasons.push('topics-changed');
     return { sensitive: true, reasons };
   }
   const reasons: SensitiveReason[] = [];
@@ -95,6 +110,30 @@ export function classify(
   ) {
     reasons.push('variant-removed');
   }
+  // Only a variant that is in both revisions can change its GTIN; a new variant is not a change,
+  // so adding a variant with or without a GTIN stays minor unless it adds an image (V4, t13).
+  if (
+    policy.gtinChanged &&
+    candidate.variantIds.some(
+      (id) =>
+        Object.hasOwn(published.variantGtins, id) &&
+        (published.variantGtins[id] ?? null) !== (candidate.variantGtins[id] ?? null),
+    )
+  ) {
+    reasons.push('gtin-changed');
+  }
+  // A second axis rewrites the option values and labels of every variant. A Simple product made
+  // Configurable (published axes none) is not this change (M-9).
+  if (
+    policy.axisAdded &&
+    published.variantAxes.length > 0 &&
+    candidate.variantAxes.some((code) => !published.variantAxes.includes(code))
+  ) {
+    reasons.push('axis-added');
+  }
+  // Any difference between the two topic sets is a tag change and is always reviewed: not a Market
+  // flag (decision 3 of the tags design). The order is not a tag change, so a reorder alone is minor.
+  if (!sameSet(published.topicIds, candidate.topicIds)) reasons.push('topics-changed');
   return { sensitive: reasons.length > 0, reasons };
 }
 
@@ -128,7 +167,7 @@ export type RevisionOutcome =
 /**
  * Published at once or pending (design 4.2 rows 1 and 4, 4.3). An admin's PLATFORM revision and
  * a tax override publish at once. For a seller: a revision that adds or replaces an image is
- * always reviewed (H1); with approval off everything else publishes at once; with approval on a
+ * always reviewed (H1), and so is a topic change; with approval off everything else publishes at once; with approval on a
  * never-published product and a sensitive change wait, and so does any change while a sensitive
  * revision is pending (the next submit supersedes it and stays pending, AC 26). A revision that
  * waits for no field reason carries `approval-required`.
@@ -143,9 +182,12 @@ export function decideOutcome(input: OutcomeInput): RevisionOutcome {
       reasons: classification.reasons,
     };
   }
-  const imageChange = classification.reasons.includes('image-added-or-replaced');
+  // A photo change and a topic change are reviewed whatever the Market says (H1, tags decision 3).
+  const alwaysReviewed =
+    classification.reasons.includes('image-added-or-replaced') ||
+    classification.reasons.includes('topics-changed');
   const published =
-    !imageChange &&
+    !alwaysReviewed &&
     (!input.approvalRequired || (!classification.sensitive && !input.sensitiveRevisionPending));
   if (published) {
     return {

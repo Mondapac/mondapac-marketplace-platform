@@ -418,6 +418,21 @@ describe('value suggestions over HTTP (integration)', () => {
         .expect(401);
     });
 
+    it('takes the legacy limit over HTTP as an alias of pageSize, and refuses a bad one', async () => {
+      await boot();
+      await seeded(code);
+      waiting();
+      const listed = await http()
+        .get(`${QUEUE}?limit=5`)
+        .set(adminSession(code, MODERATOR, 1))
+        .expect(200);
+      expect(listed.body).toMatchObject({ pageSize: 5, page: 1 });
+      await http()
+        .get(`${QUEUE}?limit=abc`)
+        .set(adminSession(code, MODERATOR, 1))
+        .expect(400);
+    });
+
     it('approves: the value is added, then the same suggestion is 409', async () => {
       await boot();
       await seeded(code);
@@ -460,6 +475,54 @@ describe('value suggestions over HTTP (integration)', () => {
         .expect(422);
       expect(refused.body).toMatchObject({ code: 'attribute.claim-word' });
       expect(suggestions.rows.get(suggestionId)!.state.status).toBe('open');
+    });
+
+    it('decides several at once: approves with the seller text, skips a stale row, rejects with a reason', async () => {
+      await boot();
+      await seeded(code);
+      const first = waiting();
+      const moderator = adminSession(code, MODERATOR, 1);
+      const bulk = `${QUEUE}/bulk-decide`;
+      const approved = await http()
+        .post(bulk)
+        .set(moderator)
+        .send({
+          action: 'approve',
+          items: [
+            { id: first, version: 1 },
+            { id: id<'AttributeValueSuggestion'>(0xcdfe), version: 1 },
+          ],
+        })
+        .expect(200);
+      expect(approved.body).toMatchObject({
+        action: 'approve',
+        counts: { done: 1, skipped: 1, failed: 0 },
+      });
+      expect(suggestions.rows.get(first)!.state.status).toBe('approved');
+      const second = waiting('Jumbo');
+      const rejected = await http()
+        .post(bulk)
+        .set(moderator)
+        .send({
+          action: 'reject',
+          reason: 'Not a size we sell.',
+          items: [
+            { id: second, version: 9 },
+            { id: second, version: 1 },
+          ],
+        })
+        .expect(400);
+      expect(rejected.body).toMatchObject({ code: 'validation.failed' });
+      const done = await http()
+        .post(bulk)
+        .set(moderator)
+        .send({
+          action: 'reject',
+          reason: 'Not a size we sell.',
+          items: [{ id: second, version: 1 }],
+        })
+        .expect(200);
+      expect(done.body).toMatchObject({ counts: { done: 1, skipped: 0, failed: 0 } });
     });
 
     it('maps to an existing value and rejects with a reason', async () => {
@@ -559,6 +622,64 @@ describe('value suggestions over HTTP (integration)', () => {
       const rejected = await http().get(`${OWN}?status=rejected`).set(owner).expect(200);
       expect((rejected.body as typeof body).items.map((item) => item.id)).toEqual([second]);
       expect((rejected.body as typeof body).openCount).toBe(2);
+    });
+
+    it('reads the seller list as a super list: search, sort, page numbers, prev-next and conflicts', async () => {
+      await boot();
+      await sellerSeeded(code);
+      suggestionMarket = code as AccountState['marketId'];
+      const first = stored(1, SELLER);
+      const second = stored(2, SELLER, 'reject');
+      const third = stored(3, SELLER);
+      stored(4, OTHER_SELLER);
+      const owner = sellerSession(code, OWNER, 1);
+      type Body = {
+        items: { id: string; label: string }[];
+        total: number | null;
+        page: number;
+        pageSize: number;
+        paging: string;
+        hasNext: boolean;
+        nextAfterId: string | null;
+        openCount: number;
+      };
+      const read = async (query: string, status = 200) =>
+        (await http().get(`${OWN}${query}`).set(owner).expect(status)).body as Body;
+
+      const one = await read('?page=1&pageSize=2');
+      expect(one).toMatchObject({ page: 1, pageSize: 2, paging: 'pages', total: 3, hasNext: true });
+      expect(one.items.map((i) => i.id)).toEqual([third, second]);
+      expect(one.nextAfterId).toBe(second);
+      const two = await read('?page=2&pageSize=2');
+      expect(two.items.map((i) => i.id)).toEqual([first]);
+      expect(two).toMatchObject({ hasNext: false, nextAfterId: null });
+      expect((await read('?page=9&pageSize=2')).items).toEqual([]);
+
+      const asc = await read('?sort=label&direction=asc');
+      expect(asc.items.map((i) => i.label)).toEqual(['Value 1', 'Value 2', 'Value 3']);
+      const byStatus = await read('?sort=status&direction=asc');
+      expect(byStatus.items.map((i) => i.id)).toEqual([third, first, second]);
+      const found = await read('?q=value%202');
+      expect(found.items.map((i) => i.id)).toEqual([second]);
+      expect(found.nextAfterId).toBeNull();
+      expect((await read('?q=%25')).total).toBe(0);
+      expect((await read('?status=open&q=value')).total).toBe(2);
+
+      const noTotal = await read('?paging=prev-next&pageSize=2');
+      expect(noTotal).toMatchObject({ total: null, paging: 'prev-next', hasNext: true });
+      expect(noTotal.items).toHaveLength(2);
+      expect((await read('')).openCount).toBe(2);
+
+      const cursor = await read('?limit=2');
+      expect(cursor).toMatchObject({ page: 1, paging: 'prev-next', total: null, hasNext: true });
+      await read('?limit=2&q=value', 400);
+      await read('?limit=2&page=2', 400);
+      await read(`?afterId=${third}&sort=label`, 400);
+      await read('?sort=price', 400);
+      await read('?page=101', 400);
+      await read('?pageSize=51', 400);
+      await read('?q=a%00b', 400);
+      await read('?q=x&search=y', 400);
     });
 
     it('refuses a bad query with 400 and a member without the view key with 403', async () => {

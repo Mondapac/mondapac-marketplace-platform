@@ -37,6 +37,8 @@ export const LINK_PURPOSES = [
   'reset-password',
   'enrol-second-factor',
   'confirm-second-factor-reset',
+  /** An admin's change of a customer's sign-in email, confirmed from the new mailbox. */
+  'confirm-email-change',
 ] as const;
 
 /**
@@ -63,6 +65,36 @@ export const OneTimeLinkRequested = defineEvent({
  */
 export const AccountEmailVerified = defineEvent({
   type: 'identity.account-email-verified.v1',
+  aggregateType: 'account',
+  payload: {
+    accountId: eventField.id(),
+    population: eventField.enumOf(POPULATIONS),
+  },
+});
+
+/**
+ * An admin asked to change a customer's sign-in email (customers admin email change). The account
+ * keeps its address; the new one waits as the pending address until the customer confirms it with
+ * the link mailed there and the password. Drives the warning to the current address. Ids and the
+ * population only: no address ever reaches an event (Hassan R11).
+ */
+export const AccountEmailChangeRequested = defineEvent({
+  type: 'identity.account-email-change-requested.v1',
+  aggregateType: 'account',
+  payload: {
+    accountId: eventField.id(),
+    population: eventField.enumOf(POPULATIONS),
+  },
+});
+
+/**
+ * The customer confirmed the change: the pending address became the sign-in email (verified now),
+ * every session of the account ended and its other links stopped working, in the same unit.
+ * Consumers: the notice to the previous address (identity) and the customers read model. Ids and
+ * the population only.
+ */
+export const AccountEmailChanged = defineEvent({
+  type: 'identity.account-email-changed.v1',
   aggregateType: 'account',
   payload: {
     accountId: eventField.id(),
@@ -382,6 +414,8 @@ export const IDENTITY_EVENTS: readonly EventDefinition[] = [
   SignUpRepeated,
   OneTimeLinkRequested,
   AccountEmailVerified,
+  AccountEmailChangeRequested,
+  AccountEmailChanged,
   SellerRegistered,
   AccountPasswordChanged,
   AccountDisplayNameChanged,

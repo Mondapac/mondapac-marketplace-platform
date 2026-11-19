@@ -44,8 +44,11 @@ const facts = (
     now,
     currencyCode: 'AUD',
     healthTerms: ['cures', 'detox'],
+    isBlocked: (text) => /\bbadword\b/i.test(text),
     products: new Map(),
     claims: { hitPaths: new Set() },
+    // The pictures of the library: the cover and the image of the tests below.
+    media: new Set([ID(50), ID(7)]),
     ...rest,
   };
 };
@@ -55,6 +58,24 @@ const codes = (findings: readonly { code: string }[]) => findings.map((f) => f.c
 describe('automatic checks', () => {
   it('passes a complete news post with nothing to say', () => {
     expect(runChecks(facts({}))).toEqual([]);
+  });
+
+  it('blocks a post whose title, cover alt or image alt text holds a blocked term, by path', () => {
+    const result = runChecks(
+      facts({
+        input: {
+          title: 'A Badword title',
+          coverAlt: 'badword cover',
+          body: [
+            { type: 'paragraph', text: 'Clean text' },
+            { type: 'image', imageId: ID(7), alt: 'a badword photo' },
+          ],
+        },
+      }),
+    );
+    const blocked = result.filter((f) => f.code === 'blocked-term');
+    expect(blocked.map((f) => f.path)).toEqual(['title', 'coverAlt', 'body[1]']);
+    expect(blocked.every((f) => f.severity === 'error')).toBe(true);
   });
 
   it('blocks a post with no cover, cover alt, category or body', () => {
@@ -82,6 +103,34 @@ describe('automatic checks', () => {
     expect(blocking(found)).toEqual([
       { severity: 'error', code: 'image-alt-missing', path: 'body[1]' },
     ]);
+  });
+
+  it('blocks a cover or an image that is not in the media library, by path', () => {
+    const found = runChecks(
+      facts({
+        input: {
+          coverImageId: ID(51),
+          body: [
+            { type: 'paragraph', text: 'x' },
+            { type: 'image', imageId: ID(7), alt: 'known' },
+            { type: 'image', imageId: ID(8), alt: 'unknown' },
+          ],
+        },
+      }),
+    );
+    expect(blocking(found)).toEqual([
+      { severity: 'error', code: 'image-not-found', path: 'coverImageId' },
+      { severity: 'error', code: 'image-not-found', path: 'body[2].imageId' },
+    ]);
+  });
+
+  it('fails closed when the media library cannot be read, and asks nothing of a post with no picture', () => {
+    expect(blocking(runChecks(facts({ media: null })))).toEqual([
+      { severity: 'error', code: 'images-unverifiable', path: null },
+    ]);
+    // No cover and no image: the library is not needed (the cover check speaks for itself).
+    const bare = runChecks(facts({ media: null, input: { coverImageId: null } }));
+    expect(codes(blocking(bare))).toEqual(['cover-missing']);
   });
 
   it('asks a product post for a product on sale and a brand post for a brand', () => {

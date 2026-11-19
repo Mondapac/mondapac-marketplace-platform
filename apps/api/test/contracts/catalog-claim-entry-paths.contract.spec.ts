@@ -32,7 +32,8 @@ const CLAIM_INPUT_WRITES =
 /** The domain's tag writes from fresh decisions. */
 const TAG_WRITES = /\.(addTags|settleTags|setPendingPublishTags|settlePublish)\(/;
 /** A claim-bearing file settles its tags on decisions, or (M1) marks them for the fan-out. */
-const SETTLES = /\.(settleTags|settlePublish)\(|\bclaims\.settle\(|markProductForReevaluation\(/;
+const SETTLES =
+  /\.(settleTags|settlePublish)\(|\bclaims\.settle\(|markProductFor(Reevaluation|CategoryChange)\(/;
 
 /**
  * Files that change a claim input but are known not to ask yet, each with the slice that brings
@@ -92,10 +93,16 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
     ]);
     const text = (file: string) => marking.find((f) => f.file === file)!.text;
     expect(text('tags/publish-fan-out.ts')).toMatch(/requestForPublish\(/);
+    // A category move, merge or archive (C4a) marks and reopens the revision's request.
+    expect(text('tags/publish-fan-out.ts')).toMatch(/requestForCategoryChange\(/);
     // The certification-event and reconciliation re-ask (design 5.5, 5.6) marks, then asks and
     // settles the same Offers itself.
     expect(text('tags/reask-offers.ts')).toMatch(/askClaimsMany\(/);
     expect(text('tags/reask-offers.ts')).toMatch(/\.settleTags\(/);
+    // Every category move, merge and archive (C4a) marks the products under the changed rows.
+    expect(files.find((f) => f.file === 'categories/category-restructure.ts')!.text).toMatch(
+      /markProductForCategoryChange\(/,
+    );
     // Every PLATFORM publish (the submit service is the only publish of PLATFORM content).
     expect(files.find((f) => f.file === 'revisions/submit-product.service.ts')!.text).toMatch(
       /markProductForReevaluation\(/,

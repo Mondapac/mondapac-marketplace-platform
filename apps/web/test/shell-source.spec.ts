@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   MAX_TREE_ROWS,
   categoryOf,
+  depthOf,
   findInTree,
   slugsOf,
   topCategories,
+  trailOf,
   treeOf,
 } from '../src/storefront/category-tree.ts';
 import { MAX_SLOT_ENTRIES, navigationOf } from '../src/storefront/navigation.ts';
@@ -87,6 +89,57 @@ describe('category tree', () => {
     expect(findInTree(rows, 'lamb')?.node.id).toBe(LAMB);
     expect(findInTree(rows, 'meat', 'bakery')).toBeUndefined();
     expect(findInTree(rows, 'nope')).toBeUndefined();
+  });
+});
+
+describe('category tree menu flags and page facts (categories C6)', () => {
+  const CHOPS = '0b5e1c3a-0000-4000-8000-000000000020';
+  const OFF = '0b5e1c3a-0000-4000-8000-000000000021';
+  const flagged = treeOf({
+    categories: [
+      { id: MEAT, parentId: null, slug: 'meat', name: 'Meat', inMenu: true },
+      {
+        id: LAMB,
+        parentId: MEAT,
+        slug: 'lamb',
+        name: 'Lamb',
+        inMenu: true,
+        hasLiveProducts: true,
+        shortDescription: 'Fresh lamb',
+        seo: { title: 'Lamb cuts', description: 42, noindex: true },
+      },
+      { id: CHOPS, parentId: LAMB, slug: 'chops', name: 'Chops', inMenu: true },
+      { id: OFF, parentId: MEAT, slug: 'off', name: 'Off', inMenu: false },
+      { id: BAKERY, parentId: null, slug: 'bakery', name: 'Bakery', inMenu: false },
+    ],
+  })!;
+
+  it('keeps the fields of the right type only', () => {
+    const lamb = flagged.find((r) => r.slug === 'lamb');
+    expect(lamb).toMatchObject({
+      inMenu: true,
+      hasLiveProducts: true,
+      shortDescription: 'Fresh lamb',
+      seo: { title: 'Lamb cuts', noindex: true },
+    });
+    expect(lamb?.seo).not.toHaveProperty('description');
+    // An older answer without the flag counts as shown.
+    expect(treeOf(TREE)!.every((r) => r.inMenu)).toBe(true);
+  });
+
+  it('offers only shown categories in menus, but finds every one by slug', () => {
+    expect(topCategories(flagged)).toEqual([
+      { code: 'meat', name: 'Meat', shortName: 'Meat', children: [{ code: 'lamb', name: 'Lamb' }] },
+    ]);
+    expect(findInTree(flagged, 'off')?.node.id).toBe(OFF);
+    expect(findInTree(flagged, 'bakery')?.node.id).toBe(BAKERY);
+  });
+
+  it('gives the trail of ancestors and the depth', () => {
+    const chops = flagged.find((r) => r.slug === 'chops')!;
+    expect(trailOf(flagged, chops).map((r) => r.slug)).toEqual(['meat', 'lamb']);
+    expect(depthOf(flagged, chops)).toBe(2);
+    expect(trailOf(flagged, flagged[0]!)).toEqual([]);
   });
 });
 

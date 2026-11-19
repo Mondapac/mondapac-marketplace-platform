@@ -4,6 +4,8 @@ import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
+import { CATEGORY_TREE_READER } from '../src/modules/catalog/application/ports/category-tree.reader';
+import { ProductFamilyResolver } from '../src/modules/catalog/application/attributes/product-family-resolver';
 import { ATTRIBUTE_REPOSITORY } from '../src/modules/catalog/application/ports/attribute.repository';
 import { CATALOG_MARKET_POLICY } from '../src/modules/catalog/application/ports/catalog-market-policy';
 import type { CatalogMarketPolicy } from '../src/modules/catalog/application/ports/catalog-market-policy';
@@ -137,6 +139,30 @@ describe('claim-text control behind the platform product routes (integration, sl
                 wanted.map((c) => ({ kind: c.limit.kind, count: 1, windowStartedAt: now })),
               ),
             purgeStartedBefore: () => Promise.resolve(0),
+          })
+          .overrideProvider(CATEGORY_TREE_READER)
+          .useValue({
+            // department > group > category `c1` (level 3): the product's category rules pass.
+            nodes: () =>
+              Promise.resolve(
+                [
+                  ['d', null],
+                  ['g', 'd'],
+                  ['c1', 'g'],
+                ].map(([id, parentId], position) => ({
+                  id,
+                  parentId,
+                  status: 'active',
+                  mergedIntoId: null,
+                  slug: id,
+                  position,
+                  names: [],
+                })),
+              ),
+          })
+          .overrideProvider(ProductFamilyResolver)
+          .useValue({
+            resolve: () => Promise.resolve({ ok: true, familyCode: 'default' }),
           })
           .overrideProvider(ATTRIBUTE_REPOSITORY)
           .useValue({
@@ -331,6 +357,32 @@ describe('claim-text control behind the platform product routes (integration, sl
       expect(bad.status).toBe(400);
       expect(bad.body).toEqual({ statusCode: 400, code: 'working-copy.invalid-content' });
       expect(copies.size).toBe(0);
+    });
+
+    it('drops a variant label a client still sends and stores the draft without it (V2)', async () => {
+      await boot();
+      const session = await seeded(code);
+      const product = newProduct(code);
+      const policy = app.get<CatalogMarketPolicy>(CATALOG_MARKET_POLICY);
+      const variantId = product.state.variants[0]!.id;
+      const locale = policy.locales(marketOf(code)).default;
+
+      const saved = await send(
+        'put',
+        code,
+        '/draft',
+        {
+          content: contentOf(policy, 'Dates', {
+            variants: [{ variantId, optionValues: {}, labels: { [locale]: 'Typed by a seller' } }],
+          }),
+          variantIds: [variantId],
+        },
+        session,
+      );
+      expect(saved.status).toBe(200);
+      expect(JSON.stringify([...copies.values()])).not.toContain('Typed by a seller');
+      const stored = copies.get(PRODUCT)?.content as { variants?: Record<string, unknown>[] };
+      expect(stored.variants?.[0]).toEqual({ variantId, optionValues: {} });
     });
 
     it('refuses a submit whose frozen content now holds a claim, storing no revision', async () => {

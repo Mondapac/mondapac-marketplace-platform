@@ -1,5 +1,12 @@
 [
   {
+    "type": "assistant.spend-cap-reached.v1",
+    "aggregateType": "assistant-spend-day",
+    "fields": {
+      "cap": "enumOf(daily|monthly)"
+    }
+  },
+  {
     "type": "blog.post-approved.v1",
     "aggregateType": "blog-post",
     "fields": {
@@ -88,6 +95,29 @@
     }
   },
   {
+    "type": "catalog.culture-approvals-invalidated.v1",
+    "aggregateType": "culture",
+    "fields": {
+      "cultureId": "id"
+    }
+  },
+  {
+    "type": "catalog.culture-category-mark-changed.v1",
+    "aggregateType": "culture-category-mark",
+    "fields": {
+      "cultureId": "id",
+      "categoryId": "id"
+    }
+  },
+  {
+    "type": "catalog.culture-status-changed.v1",
+    "aggregateType": "culture",
+    "fields": {
+      "cultureId": "id",
+      "status": "enumOf(draft|active|inactive)"
+    }
+  },
+  {
     "type": "catalog.image-taken-down.v1",
     "aggregateType": "product-image",
     "fields": {
@@ -153,6 +183,15 @@
     }
   },
   {
+    "type": "catalog.offer-sell-unit-changed.v1",
+    "aggregateType": "offer-sell-unit",
+    "fields": {
+      "offerId": "id",
+      "selling": "boolean",
+      "variantId": "id"
+    }
+  },
+  {
     "type": "catalog.offer-tag-added.v1",
     "aggregateType": "offer",
     "fields": {
@@ -205,6 +244,57 @@
     }
   },
   {
+    "type": "catalog.category-proposed.v1",
+    "aggregateType": "category-proposal",
+    "fields": {
+      "proposalId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.category-proposal-approved.v1",
+    "aggregateType": "category-proposal",
+    "fields": {
+      "proposalId": "id",
+      "sellerId": "id",
+      "sellerCategoryId": "id"
+    }
+  },
+  {
+    "type": "catalog.category-proposal-rejected.v1",
+    "aggregateType": "category-proposal",
+    "fields": {
+      "proposalId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.category-proposal-cancelled.v1",
+    "aggregateType": "category-proposal",
+    "fields": {
+      "proposalId": "id",
+      "sellerId": "id",
+      "reasonCode": "enumOf(seller-cancelled|permission-revoked)"
+    }
+  },
+  {
+    "type": "catalog.seller-category-promoted.v1",
+    "aggregateType": "seller-category",
+    "fields": {
+      "sellerCategoryId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "catalog.seller-category-merged.v1",
+    "aggregateType": "seller-category",
+    "fields": {
+      "sellerCategoryId": "id",
+      "sellerId": "id",
+      "categoryId": "id"
+    }
+  },
+  {
     "type": "catalog.platform-import-finished.v1",
     "aggregateType": "platform-import",
     "fields": {
@@ -212,6 +302,15 @@
       "outcome": "enumOf(completed|stopped)",
       "added": "integer",
       "failed": "integer"
+    }
+  },
+  {
+    "type": "catalog.product-family-changed.v1",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "revisionId": "id",
+      "scope": "enumOf(platform|seller)"
     }
   },
   {
@@ -225,13 +324,24 @@
     }
   },
   {
+    "type": "catalog.product-revision-changes-requested.v2",
+    "aggregateType": "product",
+    "fields": {
+      "productId": "id",
+      "revisionId": "id",
+      "reasonCode": "enumOf(content-unclear|description-claim|sku-or-condition|handling-unclear|photos|category|tax-category|duplicate|other)",
+      "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
     "type": "catalog.product-revision-published.v1",
     "aggregateType": "product",
     "fields": {
       "productId": "id",
       "revisionId": "id",
       "previousRevisionId": "optional(id)",
-      "scope": "enumOf(platform|seller)"
+      "scope": "enumOf(platform|seller)",
+      "typeCode": "enumOf(simple|configurable)"
     }
   },
   {
@@ -241,6 +351,18 @@
       "productId": "id",
       "revisionId": "id",
       "scope": "enumOf(platform|seller)"
+    }
+  },
+  {
+    "type": "catalog.product-type-changed.v1",
+    "aggregateType": "product",
+    "fields": {
+      "fromTypeCode": "enumOf(simple)",
+      "productId": "id",
+      "publishedRevisionId": "optional(id)",
+      "scope": "enumOf(platform|seller)",
+      "toTypeCode": "enumOf(configurable)",
+      "variantId": "id"
     }
   },
   {
@@ -560,6 +682,31 @@
     "fields": {}
   },
   {
+    "type": "customers.seller-attribution-changed.v1",
+    "aggregateType": "seller-attribution",
+    "fields": {
+      "accountId": "id",
+      "sellerId": "id",
+      "status": "enumOf(active|rejected)"
+    }
+  },
+  {
+    "type": "engagement.store-followed.v1",
+    "aggregateType": "store-follow",
+    "fields": {
+      "accountId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "engagement.store-unfollowed.v1",
+    "aggregateType": "store-follow",
+    "fields": {
+      "accountId": "id",
+      "sellerId": "id"
+    }
+  },
+  {
     "type": "identity.account-disabled.v1",
     "aggregateType": "account",
     "fields": {
@@ -569,6 +716,22 @@
   },
   {
     "type": "identity.account-display-name-changed.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id",
+      "population": "enumOf(customer|seller|admin)"
+    }
+  },
+  {
+    "type": "identity.account-email-change-requested.v1",
+    "aggregateType": "account",
+    "fields": {
+      "accountId": "id",
+      "population": "enumOf(customer|seller|admin)"
+    }
+  },
+  {
+    "type": "identity.account-email-changed.v1",
     "aggregateType": "account",
     "fields": {
       "accountId": "id",
@@ -658,7 +821,7 @@
     "fields": {
       "linkId": "id",
       "accountId": "id",
-      "purpose": "enumOf(verify-email|reset-password|enrol-second-factor|confirm-second-factor-reset)"
+      "purpose": "enumOf(verify-email|reset-password|enrol-second-factor|confirm-second-factor-reset|confirm-email-change)"
     }
   },
   {
@@ -790,12 +953,27 @@
     }
   },
   {
+    "type": "legal.marketing-consent-changed.v1",
+    "aggregateType": "marketing-consent-change",
+    "fields": {
+      "accountId": "id",
+      "channel": "enumOf(email)"
+    }
+  },
+  {
     "type": "ordering.order-paid.v1",
     "aggregateType": "order",
     "fields": {
       "orderId": "id",
       "sellerOrderIds": "listOf(id)",
       "sellerIds": "listOf(id)"
+    }
+  },
+  {
+    "type": "ordering.order-cancelled.v1",
+    "aggregateType": "order",
+    "fields": {
+      "orderId": "id"
     }
   },
   {
@@ -833,6 +1011,14 @@
       "orderId": "id",
       "sellerOrderId": "id",
       "refundId": "id"
+    }
+  },
+  {
+    "type": "ordering.seller-refund-limit-reached.v1",
+    "aggregateType": "seller-refund-guard",
+    "fields": {
+      "sellerId": "id",
+      "limit": "enumOf(count|amount|unset)"
     }
   },
   {
@@ -960,6 +1146,15 @@
     }
   },
   {
+    "type": "sellers.seller-culture-status-changed.v1",
+    "aggregateType": "seller-culture",
+    "fields": {
+      "sellerId": "id",
+      "cultureId": "id",
+      "status": "enumOf(requested|approved|rejected)"
+    }
+  },
+  {
     "type": "sellers.seller-file-created.v1",
     "aggregateType": "seller-file",
     "fields": {
@@ -991,6 +1186,20 @@
     }
   },
   {
+    "type": "sellers.category-proposals-granted.v1",
+    "aggregateType": "seller-admin-settings",
+    "fields": {
+      "sellerId": "id"
+    }
+  },
+  {
+    "type": "sellers.category-proposals-revoked.v1",
+    "aggregateType": "seller-admin-settings",
+    "fields": {
+      "sellerId": "id"
+    }
+  },
+  {
     "type": "shipping.carrier-delivery-progressed.v1",
     "aggregateType": "carrier-booking",
     "fields": {
@@ -1013,6 +1222,60 @@
     "aggregateType": "platform-category",
     "fields": {
       "categoryId": "id"
+    }
+  },
+  {
+    "type": "catalog.platform-category-moved.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id",
+      "checkedIds": "listOf(id)"
+    }
+  },
+  {
+    "type": "catalog.platform-category-merged.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id",
+      "checkedIds": "listOf(id)",
+      "mergedIntoId": "id"
+    }
+  },
+  {
+    "type": "catalog.platform-category-archived.v1",
+    "aggregateType": "platform-category",
+    "fields": {
+      "categoryId": "id",
+      "checkedIds": "listOf(id)"
+    }
+  },
+  {
+    "type": "catalog.seller-import-finished.v1",
+    "aggregateType": "import-job",
+    "fields": {
+      "importId": "id",
+      "sellerId": "id",
+      "outcome": "enumOf(completed|stopped)",
+      "created": "integer",
+      "updated": "integer",
+      "failed": "integer"
+    }
+  },
+  {
+    "type": "storefront.seo-indexing-changed.v1",
+    "aggregateType": "seo-settings",
+    "fields": {
+      "version": "integer"
+    }
+  },
+  {
+    "type": "system-requests.request-overdue.v1",
+    "aggregateType": "request-reminder",
+    "fields": {
+      "requestId": "id",
+      "number": "integer",
+      "area": "enumOf(people|money|delivery|catalogue|certification|marketplace|content|review-policy)",
+      "ageDays": "integer"
     }
   }
 ]

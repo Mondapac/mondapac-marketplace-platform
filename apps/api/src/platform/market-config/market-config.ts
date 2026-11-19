@@ -1,6 +1,12 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { parseMarketId, POPULATIONS } from '@mondapac/shared-kernel';
+import {
+  MEASURE_BASE_UNITS,
+  MEASURE_UNITS,
+  measureUnit,
+  parseMarketId,
+  POPULATIONS,
+} from '@mondapac/shared-kernel';
 import type { MarketId, Population } from '@mondapac/shared-kernel';
 import { z } from 'zod';
 
@@ -117,6 +123,8 @@ const requestLimitsSchema = z.strictObject({
   anonymousIdentityPerMinute: perMinute,
   /** Routes marked `@RateLimit('public-media')`: the anonymous buyer photo route. */
   publicMediaPerMinute: perMinute,
+  /** Routes marked `@RateLimit('public-search')`: the storefront product and store search. */
+  publicSearchPerMinute: perMinute,
   /** Every other market-scoped route. */
   defaultPerMinute: perMinute,
 });
@@ -225,6 +233,12 @@ const linkTargetsSchema = z
       'verify-email': pageUrl,
       'sign-in': pageUrl,
       'reset-password': pageUrl,
+      /**
+       * The storefront page that confirms a sign-in email an admin changed (customers admin
+       * email change): it posts the token from the fragment with the password. Without it, or
+       * without the lifetime below, no such change can be asked for (`access.unavailable`).
+       */
+      'confirm-email-change': pageUrl.optional(),
     }),
     /**
      * The seller panel's pages (slice 5); absent for a Market without seller sign-up.
@@ -275,6 +289,20 @@ const linkTargetsSchema = z
     // Every seller page is on the origin of the seller sign-in page (Hassan L1, PR #212), as the
     // admin pages are on the review queue's: a seller token is only ever mailed to our own seller
     // panel, never to another host a config change might name.
+    // The same for the email change's confirmation page: on the storefront's own origin.
+    const customerSignIn = hostOf(targets.customer['sign-in']);
+    const confirmChange = targets.customer['confirm-email-change'];
+    if (
+      confirmChange !== undefined &&
+      customerSignIn !== null &&
+      hostOf(confirmChange)?.origin !== customerSignIn.origin
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'a customer page must have the origin of the customer sign-in page',
+        path: ['customer', 'confirm-email-change'],
+      });
+    }
     if (targets.seller !== undefined) {
       const signIn = hostOf(targets.seller['sign-in']);
       for (const [page, url] of Object.entries(targets.seller)) {
@@ -412,6 +440,9 @@ const identitySchema = z
         // Slice 12: the Seller Owner's confirmation of a reset an admin started, at most 24
         // hours (identity design 3.7, HF15).
         'confirm-second-factor-reset': z.number().int().min(1).max(1440).optional(),
+        // Customers admin email change: the confirmation link to the new address, at most 24
+        // hours (Hassan's answer 3); the pending address lapses with it.
+        'confirm-email-change': z.number().int().min(1).max(1440).optional(),
       }),
       targets: linkTargetsSchema,
     }),
@@ -1181,6 +1212,10 @@ const catalogSchema = z
       primaryImage: z.boolean(),
       anyImage: z.literal(true),
       variantRemoved: z.boolean(),
+      /** A GTIN set, changed or cleared on an already published variant (variants V4). */
+      gtinChanged: z.boolean(),
+      /** A second variant axis added to a published product (variants V9b). */
+      axisAdded: z.boolean(),
     }),
     /**
      * The most non-retired variants one product may hold (catalog design 2.1; AU 100). Bounded
@@ -1196,11 +1231,57 @@ const catalogSchema = z
      */
     maxCategoryDepth: z.number().int().min(3).max(4),
     /**
+     * The most certification tags one move, merge or archive of platform categories may mark
+     * `rechecking` in its unit (catalog design 4.6, Q-K4; categories C4a; AU 50,000, about 8 s in
+     * Mojtaba's estimate). Above it the change is refused with `category.impact-too-large` and the
+     * admin moves the subcategories in parts. Required, no default.
+     */
+    maxCategoryChangeTags: z.number().int().min(1).max(200_000),
+    /**
+     * The most data rows one category tree import file may hold (categories C7a; AU 2,000). Never
+     * above the platform import ceiling of 5,000 rows. Required, no default.
+     */
+    maxCategoryImportRows: z.number().int().min(1).max(5000),
+    /**
+     * The largest category tree import file in bytes (categories C7a; AU 5 MiB). Never above the
+     * platform import ceiling of 10 MiB. Required, no default.
+     */
+    maxCategoryImportBytes: z
+      .number()
+      .int()
+      .min(1024)
+      .max(10 * 1024 * 1024),
+    /**
+     * The most category proposals one seller may have waiting (categories C9a; CAT-54; AU 5).
+     * Exact: proposals of one seller run one after the other under the seller's shelf lock.
+     * Optional: a Market without it uses the catalog default of 5.
+     */
+    maxPendingCategoryProposals: z.number().int().min(1).max(50).optional(),
+    /**
      * The most variant (option) attributes one product may vary on (attributes plan A2; AU 2). A
      * configurable product whose feature set marks more option attributes is refused by the
      * product type's variant check. Required: a Market never defaults it.
      */
     maxVariantAttributes: z.number().int().min(1).max(5),
+    /**
+     * The units a number-with-unit attribute may offer in this Market (attributes A3, plan
+     * decision ت۱): a code the platform knows (shared-kernel MEASURE_UNITS) and its label per
+     * locale. Not editable by an administrator. Required: a Market never defaults it. The base
+     * units (g, ml, mm, count) are the stored form, so the Market must offer each of them.
+     */
+    units: z
+      .array(
+        z.strictObject({
+          code: z.string().refine((code) => measureUnit(code) !== undefined, {
+            message: 'not a unit the platform knows',
+          }),
+          labels: z
+            .record(locale, z.string().min(1).max(20))
+            .refine((labels) => Object.keys(labels).length > 0, { message: 'a label is required' }),
+        }),
+      )
+      .min(1)
+      .max(MEASURE_UNITS.length),
     /**
      * Whether a new product revision waits for review (true) or publishes at once when the
      * change is minor (false) (catalog design 4.2 row 1). The interim home of the ADR-0026
@@ -1251,6 +1332,19 @@ const catalogSchema = z
         path: ['conditions'],
         message: 'a condition code must not repeat',
       });
+    }
+    const unitCodes = catalog.units.map((unit) => unit.code);
+    if (new Set(unitCodes).size !== unitCodes.length) {
+      context.addIssue({ code: 'custom', path: ['units'], message: 'a unit must not repeat' });
+    }
+    for (const base of Object.values(MEASURE_BASE_UNITS)) {
+      if (!unitCodes.includes(base)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['units'],
+          message: `the base unit ${base} must be offered`,
+        });
+      }
     }
     const seen = new Set<string>();
     catalog.taxCategories.forEach((category, index) => {
@@ -1662,12 +1756,24 @@ const marketSchema = z
      * this section the Market has no commission rate and checkout fails closed.
      * `payoutTerms` (package 6b): the Market's payout terms; every field is required, there is no
      * core default, and a Market without them has no payout terms (fail closed).
+     * `exclusiveCustomer` (customers phase 4b): the lower commission on a seller's lines bought by
+     * its exclusive customer (one who joined through its invite link): the rate in force is cut by
+     * `reductionBps` of itself (AU 5000 = half), never below `floorBps` (AU 300 = 3 %) and never
+     * above the rate in force, for `months` after the customer joined (AU 12). Without it there is
+     * no lower commission.
      */
     commissionPayouts: z
       .strictObject({
         defaultRateBps: z.number().int().min(0).max(3000),
         provisionalTaxRateBps: z.number().int().min(0).max(5000),
         payoutTerms: payoutTermsSchema.optional(),
+        exclusiveCustomer: z
+          .strictObject({
+            reductionBps: z.number().int().min(1).max(10000),
+            floorBps: z.number().int().min(0).max(3000),
+            months: z.number().int().min(1).max(60),
+          })
+          .optional(),
       })
       .optional(),
     /**
@@ -1748,6 +1854,18 @@ const marketSchema = z
       })
       .optional(),
     /**
+     * The content filter (owner decision, 6 Nov 2026), owned by the platform. `blockedTerms`: words
+     * and phrases (any language of the Market, matched as whole words, case-insensitive, Persian
+     * and Arabic letter variants unified) that a description or the alt text of an image may not
+     * hold. A field that holds one is refused with a validation error naming the field. Without
+     * this section nothing is refused. Reviews keep `reviews.autoChecks`.
+     */
+    contentFilter: z
+      .strictObject({
+        blockedTerms: z.array(z.string().trim().min(2).max(64)).max(2000),
+      })
+      .optional(),
+    /**
      * Blog settings (blog package 1), owned by `blog`. `sellerPostsPerMonth`: the posts a seller may
      * submit for the first time in one calendar month, counted in the Market `timezone` (AU 4).
      * `pageSize`: posts per public page (AU 12). `defaultAuthorDisplay`: the byline of a platform
@@ -1798,7 +1916,8 @@ const marketSchema = z
      * `codeLength` and `alphabet` (upper-case letters and digits, each once; at least 60 bits) of
      * a referral code. `cashback` (absent means the Market has no cashback): `maxBps` the most of
      * the goods paid that a promotion may credit and `maxCapMinor` the most one order may be
-     * credited. The credits themselves (amounts, caps, budgets) are promotion data.
+     * credited; `sellerMinBps` (absent means none) the least a seller's own cashback for its
+     * exclusive customers may credit (customers phase 4c). The credits themselves (amounts, caps, budgets) are promotion data.
      * Whether promotions are on is not config: an admin sets it at runtime
      * (`promotions.market_settings`), off by default.
      */
@@ -1860,7 +1979,12 @@ const marketSchema = z
           .strictObject({
             maxBps: z.number().int().min(1).max(10000),
             maxCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+            sellerMinBps: z.number().int().min(1).max(10000).optional(),
           })
+          .refine(
+            (value) => value.sellerMinBps === undefined || value.sellerMinBps <= value.maxBps,
+            'sellerMinBps must not exceed maxBps',
+          )
           .optional(),
         firstOrder: z
           .strictObject({
@@ -1920,6 +2044,12 @@ const marketSchema = z
          */
         unsubscribePage: pageUrl.optional(),
         /**
+         * The seller panel's Products page filtered to "Missing details": the link of the "Email
+         * sellers" mail of the attributes report (package A4-4). Without it the Market sends no
+         * such mail.
+         */
+        sellerMissingDetailsPage: pageUrl.optional(),
+        /**
          * The API's one-click unsubscribe route of this Market
          * (`.../notifications/unsubscribe/<MARKET>`), sent in the `List-Unsubscribe` header
          * (RFC 8058) as `<url>?token=<token>`. Without it or `unsubscribePage` the Market sends no
@@ -1977,10 +2107,25 @@ const marketSchema = z
      * the most addresses one customer keeps (AU 20). `address`: the ISO 3166 country every
      * address is in, the postcode pattern and the closed region list (empty for a Market whose
      * addresses carry no region). Without this section the address book is unavailable.
+     * `adminActionLimits` (security review of #969, L2/L3): per admin account and fixed hour, the
+     * most "send password reset" actions and the most reveals of a customer's personal data (a
+     * sign-in's address and a delivery address share one count), and the reveal count at which a
+     * security alert is raised once (at most the reveal limit). Without this section those admin
+     * actions are refused (fail closed).
      */
     customers: z
       .strictObject({
         addressBookLimit: z.number().int().min(1).max(50),
+        adminActionLimits: z
+          .strictObject({
+            passwordResetsPerHour: z.number().int().min(1).max(1000),
+            piiRevealsPerHour: z.number().int().min(1).max(1000),
+            piiRevealAlertAt: z.number().int().min(1).max(1000),
+          })
+          .refine((limits) => limits.piiRevealAlertAt <= limits.piiRevealsPerHour, {
+            message: 'piiRevealAlertAt must not exceed piiRevealsPerHour',
+            path: ['piiRevealAlertAt'],
+          }),
         address: z
           .strictObject({
             countryCode: z.string().regex(/^[A-Z]{2}$/),
@@ -1991,6 +2136,18 @@ const marketSchema = z
             message: 'regions must be unique',
             path: ['regions'],
           }),
+        /**
+         * Sellers' invite links (customers management phase 4a). `signUpWindowDays`: how long after
+         * sign-up an account may still join a store through its link (AU 7). `burstPerDay`: the
+         * attributions to one seller (any of its links) in 24 hours from which a new one is flagged for the admin
+         * (AU 50). Without it the invite links are unavailable.
+         */
+        invitations: z
+          .strictObject({
+            signUpWindowDays: z.number().int().min(1).max(30),
+            burstPerDay: z.number().int().min(1).max(100_000),
+          })
+          .optional(),
       })
       .optional(),
     allowedOrigins: allowedOriginsSchema,

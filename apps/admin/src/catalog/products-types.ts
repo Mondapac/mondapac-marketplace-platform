@@ -43,8 +43,17 @@ export interface ProductRow {
   readonly typeCode: string;
   readonly status: Status;
   readonly offerCount: number;
+  /** The tags of the shown version, in order, named in the Market default language. */
+  readonly topics?: readonly {
+    readonly id: string;
+    readonly status: 'active' | 'archived';
+    readonly name: string | null;
+    readonly slug: string;
+  }[];
   readonly updatedAt: string;
   readonly createdAt: string;
+  /** The row actions this admin may run: `open`, `edit`, `pause`, `resume`, `delete` (server-computed). */
+  readonly actions?: readonly string[];
 }
 
 export interface ViewCounts {
@@ -55,11 +64,22 @@ export interface ViewCounts {
 
 export interface ProductsPage {
   readonly items: readonly ProductRow[];
-  readonly total: number;
+  /** Over all pages; null when the Market's List paging is Previous and next. */
+  readonly total: number | null;
   readonly page: number;
   readonly pageSize: number;
-  readonly counts: ViewCounts;
+  /** The Market's "List paging" setting; Previous and next when the answer does not say. */
+  readonly paging?: ListPagingMode;
+  readonly hasNext?: boolean;
+  /** Per tab; null in Previous and next mode. */
+  readonly counts: ViewCounts | null;
 }
+
+export type ListPagingMode = 'pages' | 'prev-next';
+
+export const PAGE_SIZES = [25, 50, 100] as const;
+/** The rows past which the API refuses a page. */
+export const MAX_LIST_ROWS = 10_000;
 
 /** The categories of GET catalog/categories (public tree, depth first). */
 export interface CategoryTree {
@@ -86,6 +106,7 @@ export interface Query {
   readonly sort: Sort;
   readonly direction: Direction;
   readonly page: number;
+  readonly pageSize: number;
 }
 
 export const DEFAULT_QUERY: Query = {
@@ -95,6 +116,7 @@ export const DEFAULT_QUERY: Query = {
   sort: 'updated',
   direction: 'desc',
   page: 1,
+  pageSize: PAGE_SIZE,
 };
 
 /** The natural first direction of a sort: names read A to Z, dates newest first. */
@@ -110,7 +132,7 @@ export function queryString(query: Query): string {
     sort: query.sort,
     direction: query.direction,
     page: String(query.page),
-    pageSize: String(PAGE_SIZE),
+    pageSize: String(query.pageSize),
   });
   if (query.q.trim() !== '') params.set('q', query.q.trim());
   for (const field of FILTER_FIELDS) {
@@ -141,6 +163,7 @@ export const OPTIONAL_COLUMNS = [
   'scope',
   'seller',
   'created',
+  'tags',
 ] as const;
 export type OptionalColumn = (typeof OPTIONAL_COLUMNS)[number];
 

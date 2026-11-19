@@ -1,13 +1,6 @@
 import { createHash } from 'node:crypto';
-import { err, ok } from '@mondapac/shared-kernel';
-import type {
-  CallContext,
-  Id,
-  MarketContext,
-  Money,
-  Result,
-  Temporal,
-} from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, Money, Result } from '@mondapac/shared-kernel';
 import type { ConsumedStepUp, StepUpProofConsumer, StepUpRefusal } from '../../src/platform/authz';
 import type { BatchCodeCrypto } from '../../src/modules/promotions/application/ports/batch-code-crypto';
 import type {
@@ -25,6 +18,8 @@ import type {
   CustomerOrderHistory,
   Known,
   StoreFollows,
+  CustomerGroupMembership,
+  ExclusiveCustomers,
 } from '../../src/modules/promotions/application/ports/customer-facts';
 import type {
   DeliveredOrderFacts,
@@ -44,6 +39,7 @@ import type {
   ReferralRecord,
   ReferralRejectReason,
   ReferralStatus,
+  ClawbackRecord,
 } from '../../src/modules/promotions/domain/credit';
 import type { FlashSales } from '../../src/modules/promotions/application/ports/flash-sales';
 import type {
@@ -55,11 +51,16 @@ import type {
   OptInRepository,
 } from '../../src/modules/promotions/application/ports/opt-in.repository';
 import type { PriceHistory } from '../../src/modules/promotions/application/ports/price-history';
+import type { SellerCatalogue } from '../../src/modules/promotions/application/ports/seller-catalogue';
+import type { SellerCommission } from '../../src/modules/promotions/application/ports/seller-commission';
 import { LockContendedError } from '../../src/modules/promotions/application/ports/promotion.repository';
 import type {
+  CriterionCounts,
   LiveScope,
   PromotionFilter,
   PromotionRepository,
+  PromotionSearch,
+  StatusCriterion,
   UsageRecord,
 } from '../../src/modules/promotions/application/ports/promotion.repository';
 import type { FirstOrderSettings } from '../../src/modules/promotions/application/ports/promotions-policy';
@@ -67,12 +68,25 @@ import type {
   ReviewEntry,
   ReviewQueueRepository,
 } from '../../src/modules/promotions/application/ports/review-queue.repository';
+import type { PayoutAnchors } from '../../src/modules/promotions/application/ports/payout-anchors';
+import type { SellerCashbackLedger } from '../../src/modules/promotions/application/ports/seller-cashback-ledger';
 import type { SellerActivity } from '../../src/modules/promotions/application/ports/seller-activity';
 import type {
   FirstOrderSettingsRepository,
   ShippingThresholdRecord,
   ShippingThresholdRepository,
 } from '../../src/modules/promotions/application/ports/settings.repository';
+import { displayStatusOf } from '../../src/modules/promotions/domain/display-status';
+import {
+  RedemptionTakenError,
+  type RedemptionRepository,
+  type UsageCursor,
+  type UsageDelta,
+} from '../../src/modules/promotions/application/ports/redemption.repository';
+import type {
+  RedemptionRecord,
+  ReleaseReason,
+} from '../../src/modules/promotions/domain/redemption';
 import type { PromotionRecord } from '../../src/modules/promotions/domain/promotion';
 
 // The promotions tables in memory, with the rules the tables enforce: a Market-unique code, one
@@ -131,6 +145,85 @@ export class MemoryPromotions implements PromotionRepository {
         .slice(0, filter.limit),
     );
   }
+  private matches(
+    search: PromotionSearch,
+    now: Temporal.Instant,
+    criterion: StatusCriterion | null,
+  ) {
+    return (r: PromotionRecord) => {
+      const text = search.text?.toLowerCase() ?? null;
+      if (
+        text !== null &&
+        !r.name.toLowerCase().includes(text) &&
+        !(r.code ?? '').startsWith(text.toUpperCase())
+      ) {
+        return false;
+      }
+      if (search.types.length > 0 && !search.types.includes(r.type)) return false;
+      if (search.owner === 'PLATFORM' && r.ownerSellerId !== null) return false;
+      if (search.owner === 'SELLER' && r.ownerSellerId === null) return false;
+      if (search.funding !== null && r.funding !== search.funding) return false;
+      if (criterion === null) return true;
+      if (criterion === 'NEEDS_REVIEW') return search.reviewPromotionIds.includes(r.id);
+      const shown = displayStatusOf(
+        {
+          type: r.type,
+          status: r.status,
+          startsAt: r.startsAt,
+          endsAt: r.endsAt,
+          budgetMinor: r.budgetMinor,
+          spentMinor: this.usage.get(r.id)?.spentMinor ?? 0n,
+        },
+        now,
+      );
+      return (
+        shown === criterion ||
+        (search.hideBudget && criterion === 'ACTIVE' && shown === 'BUDGET_USED_UP')
+      );
+    };
+  }
+  search(_market: MarketContext, search: PromotionSearch, now: Temporal.Instant) {
+    const key = (r: PromotionRecord): number | string =>
+      search.sort === 'STARTS'
+        ? r.startsAt.epochMilliseconds
+        : search.sort === 'ENDS'
+          ? (r.endsAt?.epochMilliseconds ?? Number.MAX_SAFE_INTEGER)
+          : search.sort === 'NAME'
+            ? r.name
+            : search.sort === 'USES'
+              ? (this.usage.get(r.id)?.usesCount ?? 0)
+              : r.createdAt.epochMilliseconds;
+    const sign = search.descending ? -1 : 1;
+    const all = [...this.records.values()]
+      .filter(this.matches(search, now, search.criterion))
+      .sort((a, b) => {
+        const x = key(a);
+        const y = key(b);
+        return (x < y ? -1 : x > y ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0) * sign;
+      });
+    return Promise.resolve({
+      records: all.slice(search.offset, search.offset + search.limit),
+      total: all.length,
+    });
+  }
+  countByCriterion(_market: MarketContext, search: PromotionSearch, now: Temporal.Instant) {
+    const counts = new Map<StatusCriterion | 'ALL', number>();
+    const all = [...this.records.values()];
+    counts.set('ALL', all.filter(this.matches(search, now, null)).length);
+    for (const criterion of [
+      'ACTIVE',
+      'SCHEDULED',
+      'PAUSED',
+      'NEEDS_REVIEW',
+      'ENDED',
+      'PENDING_APPROVAL',
+      'REJECTED',
+      'BUDGET_USED_UP',
+    ] as const) {
+      counts.set(criterion, all.filter(this.matches(search, now, criterion)).length);
+    }
+    return Promise.resolve(counts as CriterionCounts);
+  }
   listLive(_market: MarketContext, now: Temporal.Instant, scope: LiveScope) {
     this.lastScope = scope;
     return Promise.resolve(
@@ -142,6 +235,30 @@ export class MemoryPromotions implements PromotionRepository {
           (r.ownerSellerId === null || scope.sellerIds.includes(r.ownerSellerId)) &&
           (r.productIds.length === 0 || r.productIds.some((p) => scope.productIds.includes(p))),
       ),
+    );
+  }
+  listOpenCampaigns(
+    _market: MarketContext,
+    now: Temporal.Instant,
+    sellerId: Id<'Seller'>,
+    promotionId?: Id<'Promotion'>,
+  ) {
+    return Promise.resolve(
+      [...this.records.values()]
+        .filter(
+          (r) =>
+            (promotionId === undefined || r.id === promotionId) &&
+            r.type === 'CO_FUNDED_CAMPAIGN' &&
+            r.funding === 'CO_FUNDED' &&
+            r.status === 'ACTIVE' &&
+            (r.endsAt === null || r.endsAt.epochMilliseconds > now.epochMilliseconds) &&
+            (r.sellerIds.length === 0 || r.sellerIds.includes(sellerId)),
+        )
+        .sort(
+          (a, b) =>
+            a.startsAt.epochMilliseconds - b.startsAt.epochMilliseconds ||
+            (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+        ),
     );
   }
   listLiveOfTypes(
@@ -169,6 +286,17 @@ export class MemoryPromotions implements PromotionRepository {
           r.code !== null && wanted.has(r.code) ? [r.code] : [],
         ),
       ) as ReadonlySet<string>,
+    );
+  }
+  countGroupSegmentUses(_market: MarketContext, groupId: string, now: Temporal.Instant) {
+    return Promise.resolve(
+      [...this.records.values()].filter(
+        (r) =>
+          r.segmentKind === 'MANUAL_GROUP' &&
+          r.segmentGroupId === groupId &&
+          (r.status === 'ACTIVE' || r.status === 'PENDING_APPROVAL' || r.status === 'PAUSED') &&
+          (r.endsAt === null || r.endsAt.epochMilliseconds > now.epochMilliseconds),
+      ).length,
     );
   }
   countCounting(_market: MarketContext, sellerId: Id<'Seller'>, now: Temporal.Instant) {
@@ -229,6 +357,13 @@ export class MemoryOptIns implements OptInRepository {
     }
     return Promise.resolve(sellers.sort() as readonly Id<'Seller'>[]);
   }
+  listOf(_market: MarketContext, promotionId: Id<'Promotion'>) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter((row) => row.promotionId === promotionId)
+        .sort((a, b) => a.optedInAt.epochMilliseconds - b.optedInAt.epochMilliseconds),
+    );
+  }
   liveSellers(_market: MarketContext, promotionIds: readonly Id<'Promotion'>[]) {
     const map = new Map<Id<'Promotion'>, Id<'Seller'>[]>();
     for (const row of this.rows.values()) {
@@ -263,6 +398,10 @@ export class MemoryReviewQueue implements ReviewQueueRepository {
         .sort((a, b) => a.openedAt.epochMilliseconds - b.openedAt.epochMilliseconds)
         .slice(0, limit),
     );
+  }
+  openSummary() {
+    const open = [...this.entries.values()].filter((e) => e.status === 'OPEN');
+    return Promise.resolve({ count: open.length, promotionIds: open.map((e) => e.promotionId) });
   }
   decide(
     _market: MarketContext,
@@ -338,6 +477,38 @@ export class FakePriceHistory implements PriceHistory {
   days: number | null = null;
   daysSoldAtPrice() {
     return Promise.resolve(this.days);
+  }
+}
+
+export class FakeSellerCommission implements SellerCommission {
+  /** Null = unreadable. */
+  rate: number | null = 1500;
+  /** The provisional tax taken out of a tax-inclusive amount, basis points. */
+  taxBps = 1000;
+  readonly asked: { amount: bigint; taxInclusive: boolean }[] = [];
+  commissionOn(_context: CallContext, amount: bigint, taxInclusive: boolean) {
+    this.asked.push({ amount, taxInclusive });
+    if (this.rate === null) return Promise.resolve(null);
+    const half = (n: bigint, d: bigint) => (n * 2n + d) / (d * 2n);
+    const base = taxInclusive ? half(amount * 10000n, 10000n + BigInt(this.taxBps)) : amount;
+    return Promise.resolve({
+      rateBps: this.rate,
+      commissionBase: base,
+      commission: half(base * BigInt(this.rate), 10000n),
+    });
+  }
+}
+
+/** A seller's catalogue: the products it sells and the sell units it owns. */
+export class FakeSellerCatalogue implements SellerCatalogue {
+  /** Null = unknown. */
+  sells: ReadonlySet<Id<'Product'>> | null = new Set();
+  owns = true;
+  sellsProducts() {
+    return Promise.resolve(this.sells);
+  }
+  ownsSellUnit() {
+    return Promise.resolve(this.owns);
   }
 }
 
@@ -447,6 +618,227 @@ export class FakeBatchCodeCrypto implements BatchCodeCrypto {
   }
 }
 
+/**
+ * The redemptions of orders (package T2), in memory. Linked to a {@link MemoryPromotions} (its usage
+ * rows) and a {@link MemoryBatchCodes} when a test gives them; otherwise the counters and codes are
+ * not kept. Locks are no-ops (one test runs one call at a time).
+ */
+export class MemoryRedemptions implements RedemptionRepository {
+  readonly rows: RedemptionRecord[] = [];
+  /** Promotion names by id, for {@link forCustomer} (a test sets them). */
+  readonly names = new Map<string, string>();
+  forCustomer(
+    _market: MarketContext,
+    customerAccountId: Id<'Account'>,
+    limit: number,
+    after: UsageCursor | null,
+  ) {
+    const newestFirst = (a: RedemptionRecord, b: RedemptionRecord) =>
+      Temporal.Instant.compare(b.reservedAt, a.reservedAt) ||
+      (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+    const rows = this.rows
+      .filter((row) => row.kind !== 'ORDER' && row.customerAccountId === customerAccountId)
+      .filter(
+        (row) =>
+          after === null ||
+          Temporal.Instant.compare(row.reservedAt, after.reservedAt) < 0 ||
+          (Temporal.Instant.compare(row.reservedAt, after.reservedAt) === 0 && row.id < after.id),
+      )
+      .sort(newestFirst)
+      .slice(0, limit);
+    return Promise.resolve(
+      rows.map((record) => ({
+        record,
+        promotionName:
+          record.promotionId === null ? null : (this.names.get(record.promotionId) ?? null),
+      })),
+    );
+  }
+  readonly claims = new Map<string, string>();
+  /** The rows of the discounts, without the orders' head rows. */
+  get discounts(): RedemptionRecord[] {
+    return this.rows.filter((row) => row.kind !== 'ORDER');
+  }
+  marketLocked = 0;
+  constructor(
+    private readonly promotions?: MemoryPromotions,
+    private readonly codes?: MemoryBatchCodes,
+  ) {}
+  forOrder(_market: MarketContext, orderId: Id<'Order'>) {
+    return Promise.resolve(this.rows.filter((row) => row.orderId === orderId));
+  }
+  insertMany(_market: MarketContext, records: readonly RedemptionRecord[]) {
+    for (const record of records) {
+      if (
+        this.rows.some(
+          (row) => row.orderId === record.orderId && row.promotionKey === record.promotionKey,
+        )
+      ) {
+        throw new RedemptionTakenError();
+      }
+    }
+    this.rows.push(...records);
+    return Promise.resolve();
+  }
+  markReleased(
+    market: MarketContext,
+    orderId: Id<'Order'>,
+    id: string,
+    reason: ReleaseReason,
+    at: Temporal.Instant,
+  ) {
+    if (this.rows.some((row) => row.orderId === orderId && row.promotionKey === 'order')) {
+      return Promise.resolve();
+    }
+    this.rows.push({
+      id,
+      orderId,
+      promotionKey: 'order',
+      promotionId: null,
+      kind: 'ORDER',
+      customerAccountId: null,
+      codeHash: null,
+      currency: null,
+      amount: 0n,
+      sellerShare: 0n,
+      platformShare: 0n,
+      units: null,
+      budgetMonth: null,
+      status: 'RELEASED',
+      releaseReason: reason,
+      reservedAt: at,
+      confirmedAt: null,
+      releasedAt: at,
+    });
+    return Promise.resolve();
+  }
+  customerFirstOrders(_market: MarketContext, customerAccountId: Id<'Account'>) {
+    return Promise.resolve(
+      this.live().filter(
+        (row) => row.kind === 'FIRST_ORDER' && row.customerAccountId === customerAccountId,
+      ).length,
+    );
+  }
+  confirm(_market: MarketContext, orderId: Id<'Order'>, at: Temporal.Instant) {
+    let moved = 0;
+    this.rows.forEach((row, index) => {
+      if (row.orderId === orderId && row.status === 'RESERVED') {
+        this.rows[index] = { ...row, status: 'CONFIRMED', confirmedAt: at };
+        moved += 1;
+      }
+    });
+    return Promise.resolve(moved);
+  }
+  release(
+    _market: MarketContext,
+    orderId: Id<'Order'>,
+    reason: ReleaseReason,
+    at: Temporal.Instant,
+    includeConfirmed: boolean,
+  ) {
+    const released: RedemptionRecord[] = [];
+    this.rows.forEach((row, index) => {
+      const holds = row.status === 'RESERVED' || (includeConfirmed && row.status === 'CONFIRMED');
+      if (row.orderId === orderId && holds) {
+        released.push(row);
+        this.rows[index] = { ...row, status: 'RELEASED', releaseReason: reason, releasedAt: at };
+      }
+    });
+    return Promise.resolve(released);
+  }
+  lockUsage() {
+    return Promise.resolve();
+  }
+  lockMarket() {
+    this.marketLocked += 1;
+    return Promise.resolve(true);
+  }
+  addUsage(_market: MarketContext, deltas: readonly UsageDelta[]) {
+    if (this.promotions === undefined) return Promise.resolve();
+    for (const delta of deltas) {
+      const usage = this.promotions.usage.get(delta.promotionId);
+      if (usage === undefined) throw new Error('promotions.usage row missing');
+      const next = {
+        usesCount: usage.usesCount + delta.uses,
+        spentMinor: usage.spentMinor + delta.spent,
+        sellerShareMinor: usage.sellerShareMinor + delta.sellerShare,
+        platformShareMinor: usage.platformShareMinor + delta.platformShare,
+      };
+      if (next.usesCount < 0 || next.spentMinor < 0n) throw new Error('usage below zero');
+      this.promotions.usage.set(delta.promotionId, next);
+    }
+    return Promise.resolve();
+  }
+  private live() {
+    return this.rows.filter((row) => row.status !== 'RELEASED');
+  }
+  customerUses(
+    _market: MarketContext,
+    customerAccountId: Id<'Account'>,
+    promotionIds: readonly Id<'Promotion'>[],
+  ) {
+    const uses = new Map<Id<'Promotion'>, number>();
+    for (const row of this.live()) {
+      if (row.customerAccountId !== customerAccountId || row.promotionId === null) continue;
+      const id = row.promotionId as Id<'Promotion'>;
+      if (!promotionIds.includes(id)) continue;
+      uses.set(id, (uses.get(id) ?? 0) + 1);
+    }
+    return Promise.resolve(uses as ReadonlyMap<Id<'Promotion'>, number>);
+  }
+  unitsSold(_market: MarketContext, promotionIds: readonly Id<'Promotion'>[]) {
+    const sold = new Map<Id<'Promotion'>, number>(promotionIds.map((id) => [id, 0]));
+    for (const row of this.live()) {
+      const id = row.promotionId as Id<'Promotion'> | null;
+      if (id !== null && sold.has(id) && row.units !== null)
+        sold.set(id, sold.get(id)! + row.units);
+    }
+    return Promise.resolve(sold as ReadonlyMap<Id<'Promotion'>, number>);
+  }
+  firstOrderSpent(_market: MarketContext, budgetMonth: string) {
+    return Promise.resolve(
+      this.live()
+        .filter((row) => row.kind === 'FIRST_ORDER' && row.budgetMonth === budgetMonth)
+        .reduce((sum, row) => sum + row.amount, 0n),
+    );
+  }
+  claimCode(_market: MarketContext, codeHash: string, orderId: Id<'Order'>, at: Temporal.Instant) {
+    const holder = this.claims.get(codeHash);
+    if (holder !== undefined) return Promise.resolve(holder === orderId);
+    this.claims.set(codeHash, orderId);
+    if (this.codes?.rows.has(codeHash)) this.codes.markUsed(codeHash, at);
+    return Promise.resolve(true);
+  }
+  unclaimCode(_market: MarketContext, codeHash: string, orderId: Id<'Order'>) {
+    if (this.claims.get(codeHash) === orderId) {
+      this.claims.delete(codeHash);
+      const row = this.codes?.rows.get(codeHash);
+      if (row !== undefined) this.codes!.rows.set(codeHash, { ...row, usedAt: null });
+    }
+    return Promise.resolve();
+  }
+  staleReservations(
+    _market: MarketContext,
+    before: Temporal.Instant,
+    limit: number,
+    after: Id<'Order'> | null,
+  ) {
+    const ids = [
+      ...new Set(
+        this.rows
+          .filter(
+            (row) =>
+              row.status === 'RESERVED' && Temporal.Instant.compare(row.reservedAt, before) < 0,
+          )
+          .map((row) => row.orderId as Id<'Order'>),
+      ),
+    ]
+      .filter((id) => after === null || id > after)
+      .sort();
+    return Promise.resolve(ids.slice(0, limit));
+  }
+}
+
 /** The units-sold counter of flash sales: unknown (null) until a test says otherwise. */
 export class FakeFlashSales implements FlashSales {
   sold: Map<Id<'Promotion'>, number> | null = null;
@@ -481,6 +873,40 @@ export class FakeCustomerOrderHistory implements CustomerOrderHistory {
 }
 
 /** Which sellers a customer follows: unknown until a test says otherwise. */
+/** Manual customer groups as the quote reads them: unknown unless a test puts the customer in. */
+/** Whose exclusive customer each account is; `broken` answers unknown, `throws` rejects. */
+export class FakeExclusiveCustomers implements ExclusiveCustomers {
+  readonly sellers = new Map<string, Id<'Seller'>>();
+  broken = false;
+  throws = false;
+  reads = 0;
+  exclusiveSellerOf(_context: CallContext, accountId: Id<'Account'>) {
+    this.reads += 1;
+    if (this.throws) return Promise.reject(new Error('customers unreachable'));
+    if (this.broken) return Promise.resolve({ known: false } as Known<Id<'Seller'> | null>);
+    return Promise.resolve({
+      known: true,
+      value: this.sellers.get(accountId) ?? null,
+    } as Known<Id<'Seller'> | null>);
+  }
+}
+
+export class FakeGroupMembership implements CustomerGroupMembership {
+  readonly members = new Map<string, Set<Id<'Account'>>>();
+  broken = false;
+  throws = false;
+  reads = 0;
+  isMember(_context: CallContext, groupId: string, accountId: Id<'Account'>) {
+    this.reads += 1;
+    if (this.throws) return Promise.reject(new Error('customers unreachable'));
+    if (this.broken) return Promise.resolve({ known: false } as Known<boolean>);
+    return Promise.resolve({
+      known: true,
+      value: this.members.get(groupId)?.has(accountId) ?? false,
+    } as Known<boolean>);
+  }
+}
+
 export class FakeStoreFollows implements StoreFollows {
   readonly follows = new Map<Id<'Account'>, Id<'Seller'>[]>();
   broken = false;
@@ -508,8 +934,16 @@ export class FakeStoreFollows implements StoreFollows {
 export class FakeOrderFacts implements DeliveredOrderFacts {
   readonly orders = new Map<string, DeliveredSellerOrderFacts>();
   reads = 0;
-  add(facts: DeliveredSellerOrderFacts): void {
-    this.orders.set(facts.sellerOrderId, facts);
+  /** `goodsKeptSettled` defaults to `goodsPaid` (every refund so far succeeded). */
+  add(
+    facts: Omit<DeliveredSellerOrderFacts, 'goodsKeptSettled'> & {
+      readonly goodsKeptSettled?: DeliveredSellerOrderFacts['goodsKeptSettled'];
+    },
+  ): void {
+    this.orders.set(facts.sellerOrderId, {
+      ...facts,
+      goodsKeptSettled: facts.goodsKeptSettled ?? facts.goodsPaid,
+    });
   }
   read(_context: CallContext, request: { readonly sellerOrderId: Id<'SellerOrder'> }) {
     this.reads += 1;
@@ -517,6 +951,64 @@ export class FakeOrderFacts implements DeliveredOrderFacts {
     const answer: Known<DeliveredSellerOrderFacts> =
       facts === undefined ? { known: false } : { known: true, value: facts };
     return Promise.resolve(answer);
+  }
+}
+
+/** The payout release of each seller order; by default every seller order is released already. */
+export class FakePayoutAnchors implements PayoutAnchors {
+  readonly anchors = new Map<string, { sellerId: Id<'Seller'>; eligibleAt: Temporal.Instant }>();
+  /** Seller orders a payout hold covers now, and those a chargeback took. */
+  readonly held = new Set<string>();
+  readonly disputesLost = new Set<string>();
+  /** The release of a seller order with no anchor of its own (null: unknown, so a retry). */
+  fallback: Temporal.Instant | null = Temporal.Instant.from('2000-01-01T00:00:00Z');
+  broken = false;
+  reads = 0;
+  anchorOf(_context: CallContext, sellerOrderId: Id<'SellerOrder'>) {
+    this.reads += 1;
+    const own = this.anchors.get(sellerOrderId);
+    const seller = this.sellerOf(sellerOrderId);
+    const value =
+      own ??
+      (this.fallback === null || seller === undefined
+        ? null
+        : { sellerId: seller, eligibleAt: this.fallback });
+    if (this.broken || value === null) return Promise.resolve({ known: false } as const);
+    return Promise.resolve({
+      known: true as const,
+      value: {
+        ...value,
+        onHold: this.held.has(sellerOrderId),
+        disputeLost: this.disputesLost.has(sellerOrderId),
+      },
+    });
+  }
+  /** Who sells a seller order with no anchor of its own (the order facts' seller, by default). */
+  sellerOf: (sellerOrderId: Id<'SellerOrder'>) => Id<'Seller'> | undefined = () => undefined;
+}
+
+/** The seller ledger: one entry per credit, as the real one answers a repeat as already recorded. */
+export class FakeSellerCashbackLedger implements SellerCashbackLedger {
+  readonly entries: Parameters<SellerCashbackLedger['record']>[1][] = [];
+  /** Refuse every call while set (the ledger down or refusing). */
+  fails = false;
+  calls = 0;
+  record(_context: CallContext, cashback: Parameters<SellerCashbackLedger['record']>[1]) {
+    this.calls += 1;
+    if (this.fails) return Promise.resolve(false);
+    if (!this.entries.some((e) => e.creditId === cashback.creditId)) this.entries.push(cashback);
+    return Promise.resolve(true);
+  }
+  readonly returns: Parameters<SellerCashbackLedger['recordReturn']>[1][] = [];
+  recordReturn(
+    _context: CallContext,
+    returned: Parameters<SellerCashbackLedger['recordReturn']>[1],
+  ) {
+    this.calls += 1;
+    if (this.fails) return Promise.resolve(false);
+    if (!this.returns.some((e) => e.clawbackId === returned.clawbackId))
+      this.returns.push(returned);
+    return Promise.resolve(true);
   }
 }
 
@@ -571,6 +1063,53 @@ export class FakeWalletCredit implements WalletCredit {
     }
     return Promise.resolve({ ok: true, value: { journalId: journal } } as const);
   }
+  /** What the customer spent of each grant (by its journal): not taken back. */
+  readonly spent = new Map<string, bigint>();
+  readonly clawbacks = new Map<
+    string,
+    { readonly grantJournalId: string; readonly asked: bigint; readonly taken: bigint }
+  >();
+  clawBack(
+    _context: CallContext,
+    request: Parameters<WalletCredit['clawBack']>[1],
+  ): ReturnType<WalletCredit['clawBack']> {
+    this.calls += 1;
+    const scripted = this.failWhen?.(request) ?? null;
+    if (scripted !== null) return Promise.resolve(err(scripted));
+    if (this.failure !== null) {
+      const failure = this.failure;
+      if (!this.always) this.failure = null;
+      return Promise.resolve(err(failure));
+    }
+    const answer = (taken: bigint, n: number) =>
+      Promise.resolve(
+        ok({
+          journalId:
+            taken === 0n
+              ? null
+              : `01990000-0000-7000-8000-${(0xb00000 + n).toString(16).padStart(12, '0')}`,
+          clawedBack: taken,
+        }),
+      );
+    const seen = this.clawbacks.get(request.idempotencyKey);
+    if (seen !== undefined)
+      return answer(seen.taken, [...this.clawbacks.keys()].indexOf(request.idempotencyKey) + 1);
+    const key = [...this.journals.entries()].find(([, j]) => j === request.grantJournalId)?.[0];
+    const grant = this.grants.find((g) => g.idempotencyKey === key);
+    if (grant === undefined)
+      return Promise.resolve(err({ retry: false, code: 'wallet.not-found' }));
+    const before = [...this.clawbacks.values()]
+      .filter((c) => c.grantJournalId === request.grantJournalId)
+      .reduce((sum, c) => sum + c.taken, 0n);
+    const left = grant.amount.amount - (this.spent.get(request.grantJournalId) ?? 0n) - before;
+    const taken = left <= 0n ? 0n : left < request.amount.amount ? left : request.amount.amount;
+    this.clawbacks.set(request.idempotencyKey, {
+      grantJournalId: request.grantJournalId,
+      asked: request.amount.amount,
+      taken,
+    });
+    return answer(taken, this.clawbacks.size);
+  }
 }
 
 /**
@@ -579,6 +1118,44 @@ export class FakeWalletCredit implements WalletCredit {
  */
 export class MemoryCredits implements CreditRepository {
   readonly rows = new Map<Id<'PromotionCredit'>, CreditRecord>();
+  readonly clawbacks: ClawbackRecord[] = [];
+  listClawbacks(_market: MarketContext, creditId: Id<'PromotionCredit'>) {
+    return Promise.resolve(
+      this.clawbacks.filter((c) => c.creditId === creditId).sort((a, b) => a.seq - b.seq),
+    );
+  }
+  insertClawback(_market: MarketContext, record: ClawbackRecord) {
+    const clash = this.clawbacks.some(
+      (c) =>
+        c.creditId === record.creditId && (c.refundId === record.refundId || c.seq === record.seq),
+    );
+    if (clash) return Promise.resolve('duplicate' as const);
+    this.clawbacks.push({
+      ...record,
+      status: 'PENDING',
+      clawedMinor: null,
+      walletJournalId: null,
+      settledAt: null,
+    });
+    return Promise.resolve('inserted' as const);
+  }
+  settleClawback(
+    _market: MarketContext,
+    id: Id<'CreditClawback'>,
+    result: { readonly clawedMinor: bigint; readonly walletJournalId: string | null },
+    at: Temporal.Instant,
+  ) {
+    const index = this.clawbacks.findIndex((c) => c.id === id && c.status === 'PENDING');
+    if (index < 0) return Promise.resolve(false);
+    this.clawbacks[index] = {
+      ...this.clawbacks[index]!,
+      status: 'DONE',
+      clawedMinor: result.clawedMinor,
+      walletJournalId: result.walletJournalId,
+      settledAt: at,
+    };
+    return Promise.resolve(true);
+  }
   insert(_market: MarketContext, record: CreditRecord) {
     const recorded = record.status === 'RECORDED';
     const clash = [...this.rows.values()].some(
@@ -612,6 +1189,57 @@ export class MemoryCredits implements CreditRepository {
       failureCode: result.status === 'FAILED' ? result.failureCode : null,
       settledAt: at,
     });
+    return Promise.resolve(true);
+  }
+  listDue(
+    _market: MarketContext,
+    now: Temporal.Instant,
+    stalledBefore: Temporal.Instant,
+    limit: number,
+  ) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (r) =>
+            r.status === 'PENDING' &&
+            r.kind === 'CASHBACK' &&
+            (r.grantAfter === null
+              ? r.createdAt.epochMilliseconds <= stalledBefore.epochMilliseconds
+              : r.grantAfter.epochMilliseconds <= now.epochMilliseconds),
+        )
+        .sort(
+          (a, b) =>
+            a.createdAt.epochMilliseconds - b.createdAt.epochMilliseconds ||
+            (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+        )
+        .slice(0, limit),
+    );
+  }
+  fixAmount(_market: MarketContext, id: Id<'PromotionCredit'>, amountMinor: bigint) {
+    const row = this.rows.get(id);
+    if (
+      row === undefined ||
+      row.status !== 'PENDING' ||
+      row.grantAfter === null ||
+      amountMinor > row.amountMinor ||
+      amountMinor < 1n
+    ) {
+      return Promise.resolve(false);
+    }
+    this.rows.set(id, { ...row, amountMinor, grantAfter: null });
+    return Promise.resolve(true);
+  }
+  postpone(_market: MarketContext, id: Id<'PromotionCredit'>, until: Temporal.Instant) {
+    const row = this.rows.get(id);
+    if (
+      row === undefined ||
+      row.status !== 'PENDING' ||
+      row.grantAfter === null ||
+      row.grantAfter.epochMilliseconds >= until.epochMilliseconds
+    ) {
+      return Promise.resolve(false);
+    }
+    this.rows.set(id, { ...row, grantAfter: until });
     return Promise.resolve(true);
   }
   reservedTotal(_market: MarketContext, promotionId: Id<'Promotion'>) {
@@ -658,6 +1286,53 @@ export class MemoryCredits implements CreditRepository {
     return Promise.resolve(
       [...this.rows.values()]
         .filter((r) => r.promotionId === promotionId)
+        .sort(newestFirst)
+        .filter(
+          (r) =>
+            after === undefined ||
+            r.createdAt.epochMilliseconds < after.createdAt.epochMilliseconds ||
+            (r.createdAt.epochMilliseconds === after.createdAt.epochMilliseconds &&
+              r.id < after.id),
+        )
+        .slice(0, limit),
+    );
+  }
+  listWaitingCashback(
+    _market: MarketContext,
+    recipient: Id<'Account'>,
+    limit: number,
+    orderId?: Id<'Order'>,
+  ) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (r) =>
+            r.recipientAccountId === recipient &&
+            r.kind === 'CASHBACK' &&
+            r.status === 'PENDING' &&
+            (orderId === undefined || r.orderId === orderId),
+        )
+        .sort(
+          (a, b) =>
+            b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds ||
+            (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+        )
+        .slice(0, limit),
+    );
+  }
+
+  listForRecipient(
+    _market: MarketContext,
+    recipient: Id<'Account'>,
+    limit: number,
+    after?: CreditCursor,
+  ) {
+    const newestFirst = (a: CreditRecord, b: CreditRecord) =>
+      b.createdAt.epochMilliseconds - a.createdAt.epochMilliseconds ||
+      (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter((r) => r.recipientAccountId === recipient)
         .sort(newestFirst)
         .filter(
           (r) =>
@@ -770,14 +1445,32 @@ export class MemoryReferrals implements ReferralRepository {
 }
 
 /** The phase 3 dependencies, fresh: spread into a deps object. */
+/** An audit reader with no rows and an identity that names nobody: the default of a spec that does not read the activity. */
+const NO_ACTIVITY = {
+  auditTrail: {
+    history: () => Promise.resolve(ok([])),
+    historyOf: () => Promise.resolve(ok([])),
+  },
+  actors: { labelsOf: () => Promise.resolve(new Map()) },
+};
+
 export function phase3Fakes() {
+  const orderFacts = new FakeOrderFacts();
+  const payoutAnchors = new FakePayoutAnchors();
+  payoutAnchors.sellerOf = (sellerOrderId) => orderFacts.orders.get(sellerOrderId)?.sellerId;
   return {
+    ...NO_ACTIVITY,
     orderHistory: new FakeCustomerOrderHistory(),
     storeFollows: new FakeStoreFollows(),
-    orderFacts: new FakeOrderFacts(),
+    groupMembership: new FakeGroupMembership(),
+    exclusiveCustomers: new FakeExclusiveCustomers(),
+    orderFacts,
+    payoutAnchors,
     referralSignals: new FakeReferralSignals(),
     walletCredit: new FakeWalletCredit(),
+    sellerCashbackLedger: new FakeSellerCashbackLedger(),
     credits: new MemoryCredits(),
     referrals: new MemoryReferrals(),
+    redemptions: new MemoryRedemptions(),
   };
 }

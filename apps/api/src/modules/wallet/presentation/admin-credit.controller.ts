@@ -21,6 +21,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -30,6 +31,7 @@ import { parseMinorUnits } from '@mondapac/shared-kernel';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
 import { RequiresStepUp } from '../../../platform/authz';
+import { EXPORT_FORMATS, writeChunks } from '../../../platform/list-export';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -37,9 +39,11 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { ApproveAdminCredit } from '../application/use-cases/approve-admin-credit.use-case';
+import { ExportAdminCreditRequests } from '../application/use-cases/export-admin-credit-requests.use-case';
 import { IssueAdminCredit } from '../application/use-cases/issue-admin-credit.use-case';
 import { ListAdminCreditRequests } from '../application/use-cases/list-admin-credit-requests.use-case';
 import { RejectAdminCredit } from '../application/use-cases/reject-admin-credit.use-case';
+import { ViewCustomerHistory } from '../application/use-cases/view-customer-history.use-case';
 import { ViewCustomerWallet } from '../application/use-cases/view-customer-wallet.use-case';
 import {
   AdminCreditBody,
@@ -51,6 +55,17 @@ import {
   IssueCreditRequest,
   RejectCreditRequest,
 } from './admin-credit.dto';
+import {
+  ADMIN_CREDIT_REASONS,
+  ADMIN_CREDIT_STATUSES,
+  APPROVAL_REASONS,
+} from '../domain/admin-credit';
+import {
+  CREDIT_EXPORT_COLUMNS,
+  CREDIT_LIST_VIEWS,
+  CREDIT_SORT_KEYS,
+} from '../domain/admin-credit-list';
+import { HistoryBody, historyBody } from './wallet.dto';
 import { closedBody, parseLimit, refusal } from './http-answers';
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -59,6 +74,45 @@ const REQUEST_PARAM = { name: 'requestId', format: 'uuid', description: 'The cre
 const STEP_UP_REFUSALS = (action: string) =>
   `access.denied, request.csrf, second-factor.required (details.actionKey: ${action}) or ` +
   'second-factor.enrolment-required';
+
+const ISO = 'An ISO instant (UTC or with an offset).';
+
+/** `page`, `pageSize` and `limit` become numbers (or -1, which the use case refuses). */
+function numbersOf(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...query };
+  for (const key of ['page', 'pageSize', 'limit']) {
+    if (out[key] !== undefined) out[key] = parseLimit(out[key]);
+  }
+  return out;
+}
+
+/** The selector keys of the list, shared by the list and the export (OpenAPI only). */
+const SELECTOR_QUERIES = [
+  {
+    name: 'view',
+    required: false,
+    enum: CREDIT_LIST_VIEWS,
+    description: 'pending (default), decided, granted or all.',
+  },
+  {
+    name: 'status',
+    required: false,
+    enum: ADMIN_CREDIT_STATUSES,
+    description:
+      'One status inside the view. Without `view`, pending, decided or granted is read as the ' +
+      'view (the older queue).',
+  },
+  { name: 'reason', required: false, enum: ADMIN_CREDIT_REASONS },
+  { name: 'approvalReason', required: false, enum: APPROVAL_REASONS },
+  { name: 'q', required: false, description: 'A request id or a customer account id, exact.' },
+  { name: 'requestedBy', required: false, description: 'An admin account id, or `me`.' },
+  { name: 'from', required: false, description: `Requested at or after. ${ISO}` },
+  { name: 'to', required: false, description: `Requested before. ${ISO}` },
+  { name: 'minAmount', required: false, description: 'Amount, minor units.' },
+  { name: 'maxAmount', required: false, description: 'Amount, minor units.' },
+  { name: 'sort', required: false, enum: CREDIT_SORT_KEYS },
+  { name: 'direction', required: false, enum: ['asc', 'desc'] },
+] as const;
 
 function logRoute(logger: Logger, msg: string, context: CallContext, outcome: string): void {
   logger.log({
@@ -86,7 +140,9 @@ export class AdminWalletCreditController {
     private readonly approve: ApproveAdminCredit,
     private readonly reject: RejectAdminCredit,
     private readonly list: ListAdminCreditRequests,
+    private readonly exportRequests: ExportAdminCreditRequests,
     private readonly customer: ViewCustomerWallet,
+    private readonly customerHistory: ViewCustomerHistory,
   ) {}
 
   @Post('credits')
@@ -159,10 +215,32 @@ export class AdminWalletCreditController {
 
   @Get('credit-requests')
   @ApiOperation({
-    summary: 'Admin credit requests of the Market, newest first (admin)',
-    description: 'Needs wallet.credit.view. status: pending (default), decided or granted.',
+    summary: 'The admin credit requests of the Market (admin)',
+    description:
+      'Needs wallet.credit.view. The Credit requests super list: a view (pending, decided, ' +
+      'granted or all), filters and sort, with the count of every view for the Market whatever ' +
+      'the filter. Page numbers (`page`, `pageSize`, 25 by default) answer the total; `cursor` ' +
+      'or `limit` asks for Previous/Next, newest first only (the older queue: 20 rows by ' +
+      'default). Each row carries its `actions`. Refused in an acting-as session.',
   })
-  @ApiQuery({ name: 'status', required: false, enum: ['pending', 'decided', 'granted'] })
+  @ApiQuery(SELECTOR_QUERIES[0])
+  @ApiQuery(SELECTOR_QUERIES[1])
+  @ApiQuery(SELECTOR_QUERIES[2])
+  @ApiQuery(SELECTOR_QUERIES[3])
+  @ApiQuery(SELECTOR_QUERIES[4])
+  @ApiQuery(SELECTOR_QUERIES[5])
+  @ApiQuery(SELECTOR_QUERIES[6])
+  @ApiQuery(SELECTOR_QUERIES[7])
+  @ApiQuery(SELECTOR_QUERIES[8])
+  @ApiQuery(SELECTOR_QUERIES[9])
+  @ApiQuery(SELECTOR_QUERIES[10])
+  @ApiQuery(SELECTOR_QUERIES[11])
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'From 1; page x pageSize at most 10,000.',
+  })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 100; default 25.' })
   @ApiQuery({ name: 'cursor', required: false, description: 'The `nextCursor` of the last page.' })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 100; default 20.' })
   @ApiOkResponse({ type: CreditListBody })
@@ -171,13 +249,11 @@ export class AdminWalletCreditController {
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
   async requests(
     @Call() context: CallContext,
-    @Query('status') status: unknown,
-    @Query('cursor') cursor: unknown,
-    @Query('limit') limit: unknown,
+    @Query() query: Record<string, unknown>,
     @Res({ passthrough: true }) response: Response,
   ) {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.list.execute(context, { status, cursor, limit: parseLimit(limit) });
+    const result = await this.list.execute(context, numbersOf(query));
     logRoute(
       this.#logger,
       'wallet.list-admin-credit-requests-route',
@@ -186,6 +262,83 @@ export class AdminWalletCreditController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return creditListBody(result.value);
+  }
+
+  // Before any `credit-requests/:requestId` route, so `export` is never read as a request id.
+  @Get('credit-requests/export')
+  @ApiOperation({
+    summary: 'Export the admin credit requests of the list as a file (admin)',
+    description:
+      'Needs wallet.credit.view. `format` is csv (default) or xlsx. `columns` is the ' +
+      `comma-separated optional columns in the order shown (${CREDIT_EXPORT_COLUMNS.join(', ')}); ` +
+      'request id, customer id, amount, currency, reason, status, requested by and requested ' +
+      'are always there; amounts are decimals of the currency. The requests are `ids` ' +
+      '(comma-separated, at most 200; an id that is not a request of the Market refuses the ' +
+      'whole file as not found) or the selector keys of the list, at most 10,000 (more: ' +
+      'batch.too-large with the total). CSV: a text cell that starts with = + - @ gets a ' +
+      'leading quote. XLSX: every cell is a string value. Refused in an acting-as session.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({ name: 'columns', required: false })
+  @ApiQuery({ name: 'ids', required: false })
+  @ApiQuery(SELECTOR_QUERIES[0])
+  @ApiQuery(SELECTOR_QUERIES[1])
+  @ApiQuery(SELECTOR_QUERIES[2])
+  @ApiQuery(SELECTOR_QUERIES[3])
+  @ApiQuery(SELECTOR_QUERIES[4])
+  @ApiQuery(SELECTOR_QUERIES[5])
+  @ApiQuery(SELECTOR_QUERIES[6])
+  @ApiQuery(SELECTOR_QUERIES[7])
+  @ApiQuery(SELECTOR_QUERIES[8])
+  @ApiQuery(SELECTOR_QUERIES[9])
+  @ApiQuery(SELECTOR_QUERIES[10])
+  @ApiQuery(SELECTOR_QUERIES[11])
+  @ApiOkResponse({
+    description: 'credit-requests-<date>.csv or credit-requests-<date>.xlsx, as an attachment',
+  })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'wallet.credit-request-not-found' })
+  @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large (details.max, total)' })
+  async download(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportRequests.execute(context, { ...query });
+    logRoute(
+      this.#logger,
+      'wallet.export-admin-credit-requests-route',
+      context,
+      result.ok ? 'export' : result.error.code,
+    );
+    if (!result.ok) {
+      const error = refusal(result.error, context, this.#logger);
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      await writeChunks(response, chunks);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logger.warn({
+        msg: 'wallet.export-admin-credit-requests',
+        code: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+    }
   }
 
   @Post('credit-requests/:requestId/approve')
@@ -314,5 +467,44 @@ export class AdminWalletCreditController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return customerWalletBody(result.value);
+  }
+
+  @Get('customers/:customerAccountId/history')
+  @ApiOperation({
+    summary: "A customer's wallet journal, newest first (admin)",
+    description:
+      'Needs wallet.credit.view. Amounts are signed minor units (credit positive, spend negative). ' +
+      'An unknown customer is wallet.customer-not-found; a customer with no wallet has no entries.',
+  })
+  @ApiParam({ name: 'customerAccountId', format: 'uuid' })
+  @ApiQuery({ name: 'cursor', required: false, description: 'The `nextCursor` of the last page.' })
+  @ApiQuery({ name: 'limit', required: false, description: '1 to 100; default 20.' })
+  @ApiOkResponse({ type: HistoryBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'wallet.disabled or wallet.customer-not-found' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'wallet.unavailable' })
+  async customerHistoryOf(
+    @Call() context: CallContext,
+    @Param('customerAccountId') customerAccountId: string,
+    @Query('cursor') cursor: unknown,
+    @Query('limit') limit: unknown,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.customerHistory.execute(context, {
+      customerAccountId,
+      cursor,
+      limit: parseLimit(limit),
+    });
+    logRoute(
+      this.#logger,
+      'wallet.view-customer-history-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return historyBody(result.value);
   }
 }

@@ -65,3 +65,104 @@ seller is not approved; the use case answers only a platform admin that is not a
 read-only unit reading the status only (`AccountRepository.customerStatus`: no credential, so a
 customer without a password is answered, and no address); a failed read is `access.unavailable`, so the caller fails closed. Not exposed
 over HTTP.
+
+## Invitation acceptance lock (2026-11-07)
+
+The closing unit of `AcceptSellerInvitation` (Seller Owner and Staff) first takes the invitation's
+advisory lock `identity.lock-invitation` (lock class 1706, one lock per Market, tenant and
+invitation), then runs at SERIALIZABLE as before (C11). Two acceptances of one invitation used to
+read it pending side by side and sometimes ran out of retry attempts with 40001 under the parallel
+database run (PR #769); now the second waits for the first's commit and refuses
+(`invitation.rejected`). Its snapshot may still predate that commit (the lock is taken inside the
+snapshot), so it can still read the invitation pending; its insert of the address then ends that
+attempt (40001 under SERIALIZABLE) and the retry reads the invitation accepted: at most two
+attempts, never a second account. Two different invitations of one seller stay covered by
+SERIALIZABLE (HF5 (a)), not by this lock.
+
+## People changes in Admin Inbox › System requests (2026-11-15)
+
+Area `people` (on by default, high risk). Revertible changes only; creating, deleting, inviting
+and revoking were out (owner decision of 15 Nov 2026; creating, inviting and the role delete are
+hooked since 18 Nov, see the next section).
+
+- **Hooked writes.** `EditPlatformRole` (kind `identity.platform-role`, subject = role id, values
+  `{name, permissionKeys}`), `AssignAdminRole` (`identity.admin-roles`, subject = admin account id,
+  values `{roleIds}`, one id in Phase 2) and `EnableAdminAccount` (`identity.admin-status`, values
+  `{status}`) open their review in their own serializable unit after the write, always at risk
+  `high`, with the body's optional `note`. Where people is reviewed, a missing note is
+  `validation.failed` on `note` and the unit keeps nothing. The seller role editor is not hooked.
+- **A disable opens nothing.** It is a stop (like a wallet freeze): it never waits for a note and
+  its `request` is always null.
+- **Reverts never widen access** (Hassan's rule of #912 and #913). A role edit reverts only when the
+  keys before are a subset of the keys now (removing keys or renaming); an admin's role reverts
+  only to a role whose effective keys are a subset of the current role's, and never to the
+  Platform Administrator role from another; an enabling reverts (the admin is disabled again,
+  every session revoked and every open challenge voided through the same write as a disable,
+  under the credential lock), and restoring `active` never runs. Each refusal is `not-permitted`
+  (403 `system-requests.revert-not-permitted`, the request stays open).
+- **Last holder.** A narrowing revert keeps `LastHolderPolicy`: it never leaves the Market without
+  an active, verified Platform Administrator (that role confers every key, the role-management and
+  review keys included); a revert that would is `not-permitted`. Editing a custom role cannot touch
+  the system role.
+- **Sessions.** A role revert keeps sessions (permissions are read on every request, R4); a status
+  revert revokes them, as a disable does.
+- **The decider.** The revert runs with the reviewer's (or withdrawing author's) context in
+  system-requests' decision unit, after its step-up is spent. The decider's own role-editing keys
+  are not asked for: the area's review key is the authority.
+- **No decision about oneself** (Hassan M1). Each reverter answers `isInterested`: the admin is the
+  subject of an `identity.admin-roles` or `identity.admin-status` request, or holds the role of an
+  `identity.platform-role` request now (read in the decision unit). System requests then refuses
+  approve and reject with `system-requests.own-subject`; withdraw by the author is unaffected.
+- **Retired keys.** A key in a role edit's value before that the catalogue no longer declares is
+  dropped before the subset check (it confers nothing), so the revert still runs.
+- **Audit.** `identity.role.reverted` (removed keys, renamed, `requestId`),
+  `identity.account-role.reverted` and `identity.account-status.reverted`, each with `requestId`.
+- **Panel hints.** `GET identity/admin/team` and `GET identity/admin/roles` carry
+  `review: {reviewed, risk}` (read outside any unit).
+- **Wiring.** identity imports no module (ADR-0018 decision 4), so it reaches the recorder and the
+  reverter registry through the port `platform/change-review/change-review.ts`, which
+  system-requests implements and re-exports from its contracts.
+
+## Creations and the role delete in System requests (2026-11-18)
+
+Owner decision of 18 Nov 2026 ("mixed"): a create goes live at once and is reviewed after; a
+delete waits for another admin's approval. Area `people`, always high risk.
+
+- **Create a custom platform role** (`CreatePlatformRole`, kind `identity.platform-role-creation`,
+  subject = role id, values `{exists: false}` before and `{exists: true, name, permissionKeys}`
+  after): the review opens in the creation's serializable unit with the body's `note`; a missing
+  note keeps nothing. A reject or withdraw deletes the role only while it confers exactly the keys
+  it was created with (a rename alone does not matter) and nobody holds it: held is
+  `not-permitted`, other keys `changed-since`, already deleted `gone`. Audited
+  `identity.role.creation-reverted` (removed keys, `requestId`), event `role-deleted.v1`.
+- **Invite an admin** (`InviteAdmin`, kind `identity.admin-invitation`, subject = invitation id,
+  values `{exists: false}` / `{exists: true, roleId}`; never the address): the review opens in the
+  invitation's unit (the mail counters roll back with a refused note). A reject or withdraw, under
+  the acceptance's invitation lock: still pending (expired or not) it is revoked
+  (`identity.invitation.reverted`, `requestId`); accepted, the account it created is disabled,
+  every session revoked and every challenge voided, as the enabling's revert does
+  (`identity.account-status.reverted`), never the last Platform Administrator who can sign in;
+  revoked meanwhile or an account no longer active is `changed-since`; purged (only a pending one
+  past its expiry, or a revoked one) is `gone`. The purge keeps accepted admin invitations (Hassan
+  M1 on PR #1058): the row is the only link from the request to the account it created, it holds
+  ids only (the address is cleared at acceptance), and there is one per admin ever invited.
+  Accepted seller-side invitations are still purged 30 days after acceptance. The invitee (the account that accepted it, or the account of the invited
+  address) may not decide it (`isInterested`).
+- **Delete a custom platform role** (`DeletePlatformRole`, kind `identity.platform-role-deletion`,
+  approval mode): every check of the delete runs first (reach, version, grant, `role.in-use`),
+  then the unit files the proposal with `{name, permissionKeys, version}` and the `note` and writes
+  nothing else: `role.delete-requested` with `request`, HTTP 202. One waits per role (409
+  `system-requests.already-pending`, `details.pendingNumber`). The applier is registered with
+  `identity.platform-role.delete` (system-requests checks the approver holds it); its `check`
+  (read-only unit) and its `apply` (in the approval's serializable unit) re-read the approver
+  (active, verified, the key, can edit the role, R1 and R11), and `apply` deletes only a role still
+  at the asked name, keys and version (`changed-since`) and held by nobody (`not-permitted`),
+  audited `identity.role.deletion-approved` as the approver with `requestId`.
+- **Where people is off** the three routes behave as before (`request: null`, the delete at once).
+- **Not reviewed:** revoking an invitation (it only narrows access), re-sending one, the first-admin
+  routine (system actor), the seller role editor.
+- **Labels.** A created or deleted role shows its name (to an admin who may list roles); an
+  invitation shows the display name of the admin who accepted it, a pending one shows none.
+- **Panel.** The role editor asks for a note on create and in the delete dialog where people is
+  reviewed, and on 202 says "Sent for approval (SR-n)" and keeps the role; the invite dialog asks
+  for a note (from the team list's `review`) and announces the request.

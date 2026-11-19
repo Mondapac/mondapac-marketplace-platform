@@ -1,6 +1,12 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { SensitiveChangesPolicy } from '../../domain/product-revision-policy';
 
+/** A tax category of the Market: its code and the message key the panels show it by. */
+export interface TaxCategoryOption {
+  readonly code: string;
+  readonly labelKey: string;
+}
+
 export const CATALOG_MARKET_POLICY = Symbol('CATALOG_MARKET_POLICY');
 
 /**
@@ -13,6 +19,8 @@ export const CATALOG_MARKET_POLICY = Symbol('CATALOG_MARKET_POLICY');
 export interface CatalogMarketPolicy {
   /** The tax category codes a product may carry, in the order configured. */
   taxCategoryCodes(market: MarketContext): readonly string[];
+  /** The tax categories with the label key each is shown by (`catalog.taxCategories`). */
+  taxCategories(market: MarketContext): readonly TaxCategoryOption[];
   /** Which changes to a published product go to review (4.3). */
   sensitiveChanges(market: MarketContext): SensitiveChangesPolicy;
   /** The Market's default locale and the locales content may be written in. */
@@ -24,8 +32,21 @@ export interface CatalogMarketPolicy {
   maxVariantsPerProduct(market: MarketContext): number;
   /** The deepest level of the platform category tree (categories C2; AU 4, ZZ 3). */
   maxCategoryDepth(market: MarketContext): number;
+  /** The most tags one move, merge or archive may mark `rechecking` (C4a; AU 50,000). */
+  maxCategoryChangeTags(market: MarketContext): number;
+  /** The most data rows one category tree import file may hold (C7a; AU 2,000). */
+  maxCategoryImportRows(market: MarketContext): number;
+  /** The largest category tree import file in bytes (C7a; AU 5 MiB). */
+  maxCategoryImportBytes(market: MarketContext): number;
   /** The most option attributes one product may vary on (attributes A2; AU 2). */
   maxVariantAttributes(market: MarketContext): number;
+  /** The units a number-with-unit attribute may offer in this Market, with labels (attributes A3). */
+  units(market: MarketContext): readonly {
+    readonly code: string;
+    /** mass, volume, length or count: from the platform's unit table, not the Market file. */
+    readonly dimension: string;
+    readonly labels: { readonly [locale: string]: string };
+  }[];
   /** The product types this Market offers (3.1 rule 4). */
   productTypes(market: MarketContext): readonly string[];
   /** The attribute family a new product starts in (4.1). */

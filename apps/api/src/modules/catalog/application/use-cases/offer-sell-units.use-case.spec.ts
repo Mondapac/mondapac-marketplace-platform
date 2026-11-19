@@ -95,7 +95,12 @@ describe.each(TEST_MARKETS)('offerSellUnits in market %s', (code) => {
             status: 'published' as const,
             listed: true,
             sellUnits: [
-              { variantId: offerId(92) as unknown as Id<'Variant'>, state: 'published' as const },
+              {
+                variantId: offerId(92) as unknown as Id<'Variant'>,
+                state: 'published' as const,
+                selling: true,
+                variantSku: null,
+              },
             ],
           },
         ],

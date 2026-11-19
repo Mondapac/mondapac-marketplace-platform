@@ -11,7 +11,9 @@ import { SellerConfirmPickup } from '../src/modules/ordering/application/use-cas
 import { SellerDeliverOrder } from '../src/modules/ordering/application/use-cases/seller-deliver-order.use-case';
 import { SellerListOrders } from '../src/modules/ordering/application/use-cases/seller-list-orders.use-case';
 import { SellerMarkOrderReady } from '../src/modules/ordering/application/use-cases/seller-mark-order-ready.use-case';
+import { SellerMarkUnavailable } from '../src/modules/ordering/application/use-cases/seller-mark-unavailable.use-case';
 import { SellerViewOrderDocument } from '../src/modules/ordering/application/use-cases/seller-view-order-document.use-case';
+import { SellerViewOrderDocuments } from '../src/modules/ordering/application/use-cases/seller-view-order-documents.use-case';
 import { SellerViewOrder } from '../src/modules/ordering/application/use-cases/seller-view-order.use-case';
 import { sellerOrderDocument } from '../src/modules/ordering/domain/order-document';
 import type { SellerOrderDetailView } from '../src/modules/ordering/domain/order-views';
@@ -21,7 +23,6 @@ import { csrfTokenFor } from '../src/platform/call-context/csrf';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
-import { TEST_DELIVERY_ADDRESS } from './support/ordering-fakes';
 import { createTestApp } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -46,12 +47,15 @@ const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
 const detail = (currency: string, patch: object = {}) => ({
+  actions: ['open'],
   sellerOrderId: SELLER_ORDER,
   orderId: ORDER,
   paidAt: START,
   sellerId: SELLER,
   subtotal: money(3000n, currency),
   shipping: money(500n, currency),
+  discount: money(0n, currency),
+  shippingDiscount: money(0n, currency),
   shippingTax: money(45n, currency),
   tax: money(273n, currency),
   total: money(3500n, currency),
@@ -65,6 +69,7 @@ const detail = (currency: string, patch: object = {}) => ({
   readyAt: null,
   deliveryAttention: null,
   pickup: null,
+  refunds: [],
   lines: [
     {
       lineId: id<'OrderLine'>(0xc030),
@@ -73,17 +78,20 @@ const detail = (currency: string, patch: object = {}) => ({
       quantity: 2,
       unitPrice: money(1500n, currency),
       lineAmount: money(3000n, currency),
+      discount: money(0n, currency),
       taxInclusive: true,
       taxRateBps: 1000,
       taxCategoryCode: 'taxable',
       tax: money(273n, currency),
     },
   ],
-  // The customer wrote to this seller and to another one of the order.
-  shipTo: {
-    ...TEST_DELIVERY_ADDRESS,
-    sellerNotes: { [SELLER]: 'Ring twice', [id<'Seller'>(0xb021)]: 'For the other shop' },
+  // The shop knows the customer by code and first name; anything more a view might carry (a
+  // last name here) never reaches the body, which is built field by field.
+  customer: { code: 'K7QM-2XTR', firstName: 'Sara', lastName: 'Khan' } as {
+    code: string;
+    firstName: string;
   },
+  buyerNote: 'Ring twice',
   ...patch,
 });
 
@@ -94,6 +102,7 @@ it('maps every refusal code of the shipping and seller order routes to its exact
     'shipping.fleet-model-not-found': 404,
     'shipping.fleet-model-name-taken': 409,
     'shipping.fleet-model-conflict': 409,
+    'system-requests.already-pending': 409,
     'shipping.fleet-selection-conflict': 409,
     'shipping.delivery-settings-conflict': 409,
     'shipping.unavailable': 503,
@@ -133,12 +142,16 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
           .useValue(stub('view'))
           .overrideProvider(SellerViewOrderDocument)
           .useValue(stub('document'))
+          .overrideProvider(SellerViewOrderDocuments)
+          .useValue(stub('documents'))
           .overrideProvider(SellerMarkOrderReady)
           .useValue(stub('ready'))
           .overrideProvider(SellerConfirmPickup)
           .useValue(stub('confirm-pickup'))
           .overrideProvider(SellerDeliverOrder)
-          .useValue(stub('deliver')),
+          .useValue(stub('deliver'))
+          .overrideProvider(SellerMarkUnavailable)
+          .useValue(stub('unavailable')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'ship-seed-0001'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -270,17 +283,73 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
       expect(calls).toEqual([{ name: 'list', input: { cursor: 'abc', limit: 10 } }]);
     });
 
+    it('passes the page-mode query and answers the total, page and page size', async () => {
+      await boot();
+      next = ok({
+        sellerOrders: [detail(currency)],
+        nextCursor: null,
+        paging: { mode: 'pages', total: 41, page: 2, pageSize: 20, hasNext: true },
+      });
+
+      const res = await call(
+        'get',
+        'seller',
+        `${ORDERS}?page=2&pageSize=20&sort=total&direction=asc&from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z`,
+        seller(),
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ nextCursor: null, total: 41, page: 2, pageSize: 20 });
+      expect(calls).toEqual([
+        {
+          name: 'list',
+          input: {
+            page: 2,
+            pageSize: 20,
+            sort: 'total',
+            direction: 'asc',
+            from: '2026-01-01T00:00:00Z',
+            to: '2026-02-01T00:00:00Z',
+          },
+        },
+      ]);
+    });
+
+    it('passes a malformed page number on as one the use case refuses, answering 400', async () => {
+      await boot();
+      next = err({
+        code: 'validation.failed',
+        fields: [{ path: 'page', code: 'range' }],
+      });
+
+      const res = await call('get', 'seller', `${ORDERS}?page=abc&pageSize=1e3`, seller());
+
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'page', code: 'range' }] },
+      });
+      expect(calls).toEqual([{ name: 'list', input: { page: -1, pageSize: -1 } }]);
+    });
+
     it('reads one order and maps not found, a bad id and a denial', async () => {
       await boot();
       const session = seller();
 
       const one = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}`, session);
       expect(one.status).toBe(200);
-      // One order's page tells the seller where to send it; the list does not.
-      expect(one.body).toMatchObject({ shipTo: TEST_DELIVERY_ADDRESS, buyerNote: 'Ring twice' });
-      // The seller reads its own note only, and the notes are no part of the address.
-      expect(JSON.stringify(one.body)).not.toContain('For the other shop');
-      expect((one.body as { shipTo: object }).shipTo).not.toHaveProperty('sellerNotes');
+      // One order's page names the customer by code and first name only (2026-11-17), never
+      // the delivery address.
+      expect(one.body).toMatchObject({
+        customer: { code: 'K7QM-2XTR', firstName: 'Sara' },
+        buyerNote: 'Ring twice',
+      });
+      expect(one.body).not.toHaveProperty('shipTo');
+      expect((one.body as { customer: object }).customer).toEqual({
+        code: 'K7QM-2XTR',
+        firstName: 'Sara',
+      });
+      expect(JSON.stringify(one.body)).not.toContain('Khan');
       expect(calls[0]).toEqual({ name: 'view', input: { sellerOrderId: SELLER_ORDER } });
 
       next = err({ code: 'ordering.seller-order-not-found' });
@@ -294,6 +363,29 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
       expect((await call('get', 'seller', `${ORDERS}/nope`, session)).status).toBe(400);
       next = err({ code: 'access.denied' });
       expect((await call('get', 'seller', ORDERS, session)).status).toBe(403);
+    });
+
+    it('answers the packing slips of a selection and refuses a body with other keys', async () => {
+      await boot();
+      const session = seller();
+      next = ok({ documents: [], unavailable: [SELLER_ORDER] });
+      const bulk = await call('post', 'seller', `${ORDERS}/documents`, session, {
+        sellerOrderIds: [SELLER_ORDER],
+      });
+      expect(bulk.status).toBe(200);
+      expect(bulk.headers['cache-control']).toBe('no-store');
+      expect(bulk.body).toEqual({ documents: [], unavailable: [SELLER_ORDER] });
+      expect(calls[0]).toEqual({ name: 'documents', input: { sellerOrderIds: [SELLER_ORDER] } });
+      const extra = await call('post', 'seller', `${ORDERS}/documents`, session, {
+        sellerOrderIds: [SELLER_ORDER],
+        more: 1,
+      });
+      expect(extra.status).toBe(400);
+      next = err({ code: 'validation.failed', fields: [{ path: 'sellerOrderIds', code: 'size' }] });
+      expect(
+        (await call('post', 'seller', `${ORDERS}/documents`, session, { sellerOrderIds: [] }))
+          .status,
+      ).toBe(400);
     });
 
     it('answers the document of one order without the address, and maps its refusals', async () => {
@@ -322,6 +414,7 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
                 quantity: 2,
                 unitPrice: { amount: '1500', currency },
                 lineAmount: { amount: '3000', currency },
+                discount: { amount: '0', currency },
                 taxInclusive: true,
                 taxRateBps: 1000,
                 tax: { amount: '273', currency },
@@ -329,6 +422,8 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
             ],
             subtotal: { amount: '3000', currency },
             shipping: { amount: '500', currency },
+            discount: { amount: '0', currency },
+            shippingDiscount: { amount: '0', currency },
             shippingTax: { amount: '45', currency },
             tax: { amount: '273', currency },
             total: { amount: '3500', currency },
@@ -526,6 +621,139 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
       const conflict = await call('post', 'seller', path, session, {});
       expect(conflict.status).toBe(409);
       expect(conflict.body).toEqual({ statusCode: 409, code: 'ordering.fulfilment-conflict' });
+    });
+
+    it('lists the refunds of the order, the units the shop marked unavailable included', async () => {
+      await boot();
+      next = ok(
+        detail(currency, {
+          refunds: [
+            {
+              refundId: id<'Refund'>(0xd001),
+              requestedBy: 'seller',
+              state: 'succeeded',
+              reason: 'item-unavailable',
+              amount: money(1500n, currency),
+              shipping: null,
+              lines: [{ orderLineId: id<'OrderLine'>(0xc030), quantity: 1 }],
+              requestedAt: START,
+              settledAt: START.add({ seconds: 2 }),
+            },
+          ],
+        }),
+      );
+
+      const res = await call('get', 'seller', `${ORDERS}/${SELLER_ORDER}`, seller());
+
+      expect((res.body as { refunds: unknown }).refunds).toEqual([
+        {
+          refundId: id<'Refund'>(0xd001),
+          requestedBy: 'seller',
+          state: 'succeeded',
+          reason: 'item-unavailable',
+          amount: { amount: '1500', currency },
+          shipping: null,
+          lines: [{ orderLineId: id<'OrderLine'>(0xc030), quantity: 1 }],
+          requestedAt: START.toString(),
+          settledAt: START.add({ seconds: 2 }).toString(),
+        },
+      ]);
+    });
+
+    it('marks units unavailable from a body of lines alone and answers the refund', async () => {
+      await boot();
+      const session = seller();
+      const path = `${ORDERS}/${SELLER_ORDER}/unavailable`;
+      const lines = [{ orderLineId: id<'OrderLine'>(0xc030), quantity: 1 }];
+      next = ok({
+        refundId: id<'Refund'>(0xd002),
+        orderId: ORDER,
+        sellerOrderId: SELLER_ORDER,
+        state: 'succeeded',
+        reason: 'item-unavailable',
+        lossBearer: 'seller',
+        lossReasonCode: null,
+        amount: money(1500n, currency),
+        tax: money(136n, currency),
+        shipping: null,
+        lines: [
+          {
+            orderLineId: id<'OrderLine'>(0xc030),
+            quantity: 1,
+            amount: money(1500n, currency),
+            tax: money(136n, currency),
+            taxRateBps: 1000,
+            taxInclusive: true,
+          },
+        ],
+        requestedAt: START,
+        settledAt: START,
+        creditNoteId: id<'CreditNote'>(0xd003),
+      });
+
+      const done = await call('post', 'seller', path, session, { lines, expectedRefunds: 0 });
+
+      expect(done.status).toBe(200);
+      expect(done.headers['cache-control']).toBe('no-store');
+      expect(done.body).toMatchObject({
+        refundId: id<'Refund'>(0xd002),
+        state: 'succeeded',
+        reason: 'item-unavailable',
+        lossBearer: 'seller',
+        amount: { amount: '1500', currency },
+      });
+      expect(calls).toEqual([
+        { name: 'unavailable', input: { sellerOrderId: SELLER_ORDER, lines, expectedRefunds: 0 } },
+      ]);
+
+      // No CSRF, an amount or a reason of the seller's own, and not JSON: nothing is called.
+      expect(
+        (await call('post', 'seller', path, { cookie: session.cookie }, { lines })).status,
+      ).toBe(403);
+      for (const extra of [{ amount: '1500' }, { reason: 'other' }, { shippingAmount: '500' }]) {
+        const refused = await call('post', 'seller', path, session, { lines, ...extra });
+        expect(refused.status).toBe(400);
+        expect(refused.body).toMatchObject({ code: 'validation.failed' });
+      }
+      const text = await http()
+        .post(path)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...session })
+        .set('content-type', 'text/plain')
+        .send('x');
+      expect(text.status).toBe(415);
+      expect(calls).toHaveLength(1);
+    });
+
+    it('maps the unavailable refusals', async () => {
+      await boot();
+      const session = seller();
+      const path = `${ORDERS}/${SELLER_ORDER}/unavailable`;
+      const lines = [{ orderLineId: id<'OrderLine'>(0xc030), quantity: 1 }];
+      for (const [code, status] of [
+        ['ordering.seller-order-not-found', 404],
+        ['access.denied', 403],
+        ['ordering.fulfilment-conflict', 409],
+        ['ordering.refund-disabled', 409],
+        ['ordering.refund-in-progress', 409],
+        ['conflict.retry', 409],
+        ['ordering.refund-rejected', 422],
+        ['ordering.refund-tax-unknown', 422],
+        ['ordering.refund-tax-unavailable', 503],
+      ] as const) {
+        next = err({ code });
+        const res = await call('post', 'seller', path, session, { lines });
+        expect([code, res.status]).toEqual([code, status]);
+      }
+      next = err({
+        code: 'ordering.refund-exceeds',
+        fields: [{ path: 'lines.0.quantity', code: 'exceeds' }],
+      });
+      const exceeds = await call('post', 'seller', path, session, { lines });
+      expect(exceeds.status).toBe(422);
+      expect(exceeds.body).toMatchObject({
+        code: 'ordering.refund-exceeds',
+        details: { fields: [{ path: 'lines.0.quantity', code: 'exceeds' }] },
+      });
     });
 
     it('marks a shipped order delivered from an empty body only', async () => {

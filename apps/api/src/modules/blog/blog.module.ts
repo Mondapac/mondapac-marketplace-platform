@@ -18,9 +18,12 @@ import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
+import { OBJECT_STORE } from '../../platform/storage/object-store';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import type { BlogDependencies } from './application/blog-dependencies';
+import { BLOG_IMAGE_PROCESSOR } from './application/ports/blog-image-processor';
 import { BLOG_LINKS } from './application/ports/blog-links';
+import { BLOG_MEDIA_STORE } from './application/ports/blog-media.store';
 import { BLOG_POLICY } from './application/ports/blog-policy';
 import { BLOG_REPOSITORY } from './application/ports/blog.repository';
 import { ApproveBlogPost } from './application/use-cases/approve-post.use-case';
@@ -32,7 +35,16 @@ import { CreateBlogTag } from './application/use-cases/create-tag.use-case';
 import { DeleteBlogCategory } from './application/use-cases/delete-category.use-case';
 import { DeleteBlogTag } from './application/use-cases/delete-tag.use-case';
 import { FeatureBlogPost } from './application/use-cases/feature-post.use-case';
+import { ListBlogMedia } from './application/use-cases/list-media.use-case';
 import { ListBlogPosts } from './application/use-cases/list-posts.use-case';
+import { ExportBlogPosts } from './application/use-cases/export-posts.use-case';
+import { BlogPostEditProbe } from './application/use-cases/post-edit-probe.use-case';
+import { BlogPostPauseProbe } from './application/use-cases/post-pause-probe.use-case';
+import { BlogPostPublishProbe } from './application/use-cases/post-publish-probe.use-case';
+import { BlogPostReviewProbe } from './application/use-cases/post-review-probe.use-case';
+import { POST_ROW_KEYS, type AdminPostListDependencies } from './application/admin-post-list-flow';
+import { ADMIN_POST_LIST_READER } from './application/ports/admin-post-list.reader';
+import { SHEET_WRITER } from '../../platform/list-export';
 import { ListBlogTaxonomy } from './application/use-cases/list-taxonomy.use-case';
 import { PauseBlogPost } from './application/use-cases/pause-post.use-case';
 import { PauseSellerBlogPosts } from './application/use-cases/pause-seller-posts.use-case';
@@ -57,6 +69,8 @@ import { SubmitBlogPost } from './application/use-cases/submit-post.use-case';
 import { UnscheduleBlogPost } from './application/use-cases/unschedule-post.use-case';
 import { UpdateBlogCategory } from './application/use-cases/update-category.use-case';
 import { UpdateBlogPostDraft } from './application/use-cases/update-draft.use-case';
+import { UploadBlogMedia } from './application/use-cases/upload-media.use-case';
+import { ViewBlogMediaFile } from './application/use-cases/view-media-file.use-case';
 import { ViewBlogPost } from './application/use-cases/view-post.use-case';
 import { ViewPublicBlogTaxonomy } from './application/use-cases/view-public-taxonomy.use-case';
 import { ViewPublishedBlogPost } from './application/use-cases/view-published-post.use-case';
@@ -68,6 +82,7 @@ import { BLOG_AUDIT_ACTIONS } from './domain/audit';
 import { BLOG_EVENTS } from './domain/events';
 import { blogProviders } from './infrastructure/blog-providers';
 import { AdminBlogController } from './presentation/admin-blog.controller';
+import { AdminBlogMediaController } from './presentation/admin-blog-media.controller';
 import { AdminBlogTaxonomyController } from './presentation/admin-blog-taxonomy.controller';
 import { publishDueJob } from './presentation/jobs/publish-due.job';
 import { PublicBlogController } from './presentation/public-blog.controller';
@@ -86,6 +101,9 @@ const PORTS: readonly [keyof BlogDependencies, InjectionToken][] = [
   ['stepUp', STEP_UP_CONSUMER],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
+  ['media', BLOG_MEDIA_STORE],
+  ['imageProcessor', BLOG_IMAGE_PROCESSOR],
+  ['objectStore', OBJECT_STORE],
 ];
 
 /** Every blog use case shares one dependency object, built from the same ports. */
@@ -103,6 +121,37 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   };
 }
 
+type PostListUseCaseClass<U> = new (gate: UseCaseGate, deps: AdminPostListDependencies) => U;
+const PROBES = [BlogPostEditProbe, BlogPostReviewProbe, BlogPostPublishProbe, BlogPostPauseProbe];
+
+/** The admin Blog posts list and its export: the reader, one probe per row key, the writer. */
+function postListUseCaseProvider<U>(type: PostListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_POST_LIST_READER, ...PROBES, SHEET_WRITER, CLOCK],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AdminPostListDependencies['unitOfWork'],
+      list: AdminPostListDependencies['list'],
+      edit: BlogPostEditProbe,
+      review: BlogPostReviewProbe,
+      publish: BlogPostPublishProbe,
+      pause: BlogPostPauseProbe,
+      sheetWriter: AdminPostListDependencies['sheetWriter'],
+      clock: AdminPostListDependencies['clock'],
+    ) => {
+      const [editKey, reviewKey, publishKey, pauseKey] = POST_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        list,
+        probes: { [editKey]: edit, [reviewKey]: review, [publishKey]: publish, [pauseKey]: pause },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
 /**
  * Blog: posts of four kinds (product, brand, event, news) for the buyer site, written by the
  * platform's editors and, where an admin has switched a seller's blog access on, by sellers (four
@@ -110,13 +159,15 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Every change is a version; a version is checked automatically, reviewed by a person other than
  * its author and made live by a person who holds the protected publish key (now, or at a scheduled
  * time by the worker). A published post can be paused at once; an old address redirects, and an
- * address taken off the site answers 410. Buyers read the live version with no session.
+ * address taken off the site answers 410. Buyers read the live version with no session. A post's
+ * cover and image blocks name pictures of the blog's own media library, uploaded by admins.
  */
 @Module({
   imports: [CatalogModule, CertificationModule, SellersModule],
   controllers: [
     AdminBlogController,
     AdminBlogTaxonomyController,
+    AdminBlogMediaController,
     SellerBlogController,
     PublicBlogController,
   ],
@@ -138,7 +189,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       DeleteBlogCategory,
       DeleteBlogTag,
       FeatureBlogPost,
-      ListBlogPosts,
       ListBlogTaxonomy,
       PauseBlogPost,
       PrepareBlogPostCopy,
@@ -168,7 +218,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewUpcomingBlogEvents,
       PublishDueBlogPosts,
       PauseSellerBlogPosts,
+      UploadBlogMedia,
+      ListBlogMedia,
+      ViewBlogMediaFile,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    ...[ListBlogPosts, ExportBlogPosts].map((type) =>
+      postListUseCaseProvider(type as PostListUseCaseClass<unknown>),
+    ),
+    ...PROBES.map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new type(gate),
+    })),
     registerJobsFrom('blog', [PublishDueBlogPosts], (publishDue: PublishDueBlogPosts) => [
       publishDueJob(publishDue),
     ]),

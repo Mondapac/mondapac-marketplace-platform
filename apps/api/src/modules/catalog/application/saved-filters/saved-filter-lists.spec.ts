@@ -4,6 +4,7 @@ import { SavedFilterCreate } from '../use-cases/saved-filter-create.use-case';
 import { SavedFilterDelete } from '../use-cases/saved-filter-delete.use-case';
 import { SavedFilterUpdate } from '../use-cases/saved-filter-update.use-case';
 import { SavedFiltersList } from '../use-cases/saved-filters-list.use-case';
+import { SELLER_SAVED_FILTER_LIST_KEYS } from './seller-saved-filter-lists';
 import {
   SAVED_FILTER_LISTS,
   SAVED_FILTER_LIST_KEYS,
@@ -32,8 +33,9 @@ describe('the lists that keep saved filters', () => {
   });
 
   it('every list key is a code the audit vocabulary and the table’s CHECK accept', () => {
-    expect([...SAVED_FILTER_LIST_KEYS].sort()).toEqual([...SAVED_FILTER_AUDIT_LISTS].sort());
-    for (const key of SAVED_FILTER_LIST_KEYS) {
+    const all = [...SAVED_FILTER_LIST_KEYS, ...SELLER_SAVED_FILTER_LIST_KEYS];
+    expect([...all].sort()).toEqual([...SAVED_FILTER_AUDIT_LISTS].sort());
+    for (const key of all) {
       expect(key).toMatch(/^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/);
       expect(key.length).toBeLessThanOrEqual(64);
     }

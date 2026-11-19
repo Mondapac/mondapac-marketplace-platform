@@ -69,7 +69,7 @@ export class PrismaFleetSelectionRepository implements FleetSelectionRepository 
   }
 
   /** A name another model of the Market has, in any case (a unique index backs the check). */
-  private async nameTaken(market: MarketContext, name: string, except: string | null) {
+  async nameTaken(market: MarketContext, name: string, except: string | null = null) {
     const other = await this.prisma.tx(market).shippingFleetSelectionModel.findFirst({
       where: {
         marketId: market.marketId,

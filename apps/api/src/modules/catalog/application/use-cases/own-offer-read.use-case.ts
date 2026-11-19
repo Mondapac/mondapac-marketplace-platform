@@ -70,7 +70,8 @@ export class OwnOfferRead extends UseCase<OwnOfferReadInput, OwnOfferView, OwnOf
         const { sellerId: owner, status, productId } = offer.state;
         if (owner !== sellerId || status === 'deleted') return ok(null);
         const [label] = await this.deps.ownReader.productLabels(market, [productId], locale);
-        return ok(offerViewOf(offer, label, { withTags: true }));
+        const sellUnits = await this.deps.ownReader.sellUnitsOf(market, offer.state.id);
+        return ok({ ...offerViewOf(offer, label, { withTags: true }), sellUnits });
       },
       { readOnly: true },
     );

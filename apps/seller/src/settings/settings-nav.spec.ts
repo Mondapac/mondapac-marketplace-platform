@@ -12,8 +12,8 @@ describe('seller settings map', () => {
     expect(settingsGroups.map((group) => [group.id, group.links.map((link) => link.href)])).toEqual(
       [
         ['store', ['/settings/store-profile', '/settings/stock-locations']],
-        ['money', ['/settings/payout-account']],
         ['team', ['/settings/team']],
+        ['customers', ['/settings/invite-customers', '/settings/exclusive-perks']],
       ],
     );
   });
@@ -45,14 +45,20 @@ describe('seller settings map', () => {
     expect(manage('store-profile')).toEqual(['sellers.store-profile.edit']);
     expect(view('stock-locations')).toEqual(['inventory.stock.view']);
     expect(manage('stock-locations')).toEqual(['inventory.source.edit']);
-    expect(view('payout-account')).toEqual(['payments.payout-account.view']);
-    expect(manage('payout-account')).toEqual(['payments.payout-account.manage']);
+    // Payout account is under Accounting in the main menu now, not a settings page.
+    expect(settingsLink('payout-account')).toBeUndefined();
     expect(view('team')).toEqual(['identity.team-member.view']);
     expect(manage('team')).toEqual([
       'identity.team-member.invite',
       'identity.team-member.assign-role',
     ]);
-    expect(settingsViewKeys).toHaveLength(4);
+    expect(view('invite-customers')).toEqual(['customers.seller-invite-link.manage']);
+    expect(view('exclusive-perks')).toEqual([
+      'promotions.promotion.view',
+      'promotions.promotion.manage',
+      'commission-payouts.earnings.view',
+    ]);
+    expect(settingsViewKeys).toHaveLength(7);
   });
 
   it('finds a link with its group, and nothing for an unknown id', () => {
@@ -76,7 +82,6 @@ describe('visibleSettings', () => {
       ]),
     ).toEqual([
       ['store', ['store-profile', 'stock-locations']],
-      ['money', ['payout-account']],
       ['team', ['team']],
     ]);
   });

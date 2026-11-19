@@ -1,3 +1,4 @@
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import { createHash } from 'node:crypto';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AttributeField, Id, MarketContext, Result } from '@mondapac/shared-kernel';
@@ -22,6 +23,7 @@ import type {
   ImportRowRecord,
   StopReason,
 } from '../../domain/platform-import/platform-import-job';
+import { checkProductCategories } from '../../domain/product-category-rules';
 import { configurableProductType } from '../../domain/product-types/configurable';
 import { csvParser } from '../../domain/platform-import/import-file';
 import { simpleProductType } from '../../domain/product-types/simple';
@@ -207,6 +209,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
         status: 'active',
         mergedIntoId: null,
         slug: 'meat',
+        position: 0,
         names: [{ locale, name: 'Meat' }],
       },
     ];
@@ -222,6 +225,12 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
           fields: [field('brand', true)],
         }),
     } as unknown as AttributeRepository;
+    const familyResolver = {
+      open: () =>
+        Promise.resolve({
+          resolve: () => Promise.resolve({ ok: true, familyCode: 'default' }),
+        }),
+    } as unknown as ProductFamilyResolver;
     const handlers = { simple: simpleProductType, configurable: configurableProductType };
 
     const calls: string[] = [];
@@ -277,6 +286,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
     } as unknown as JobCallContexts;
     const useCase = new PlatformImportRun(gate, {
       unitOfWork,
+      familyResolver,
       importJobs,
       importFiles,
       importParsers: [csvParser],
@@ -295,6 +305,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
     return {
       useCase,
       job,
+      nodes,
       rows,
       events,
       calls,
@@ -348,6 +359,56 @@ describe.each(['AU', 'ZZ'] as const)('platform-import.run in market %s', (code) 
       'taxCategoryCode',
       'texts',
     ]);
+  });
+
+  it('fails each row whose category is a department or a group: the submit refuses it (C5a)', async () => {
+    // The file's "Meat" is a root (level 1). The submit applies the product category rules as
+    // FreezeRevision does at every submit; the run fails the row and goes on, publishing nothing.
+    const ref: { current?: ReturnType<typeof rig> } = {};
+    const r = rig({
+      submit: (call) => {
+        const saved = ref.current!.saves[call - 1] as { content: { categoryIds: string[] } };
+        expect(saved.content.categoryIds).toEqual([idOf<'Category'>(1)]);
+        const issues = checkProductCategories(
+          ref.current!.nodes,
+          saved.content.categoryIds,
+          policy.maxCategoryDepth(market),
+        );
+        return issues.length > 0
+          ? ({ ok: false, error: { code: 'revision.not-ready', issues } } as never)
+          : { ok: true, value: { published: true } };
+      },
+    });
+    ref.current = r;
+    const result = await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    expect(result).toMatchObject({ ok: true, value: { outcome: 'finished', added: 0, failed: 2 } });
+    expect(r.rows.map((row) => [row.runState, row.runCode])).toEqual([
+      ['failed', 'revision.not-ready'],
+      ['failed', 'revision.not-ready'],
+      ['skipped', null],
+    ]);
+  });
+
+  it('reads an attr[<code>] column of the file again at run time and saves its value', async () => {
+    const r = rig({
+      fileBytes: Buffer.from(
+        [
+          'Title,Main category,Product type,attr[brand]',
+          'Lamb,Meat,simple,Farms',
+          'Beef,Meat,simple,Ranch',
+          'Pork,Nowhere,simple,Farms',
+        ].join('\n'),
+      ),
+    });
+    await r.useCase.execute(r.systemContext, { budgetMs: 60_000 });
+    const brands = r.saves.map(
+      (save) =>
+        (save as { content: { attributeValues: Record<string, unknown> } }).content.attributeValues[
+          'brand'
+        ],
+    );
+    expect(brands).toEqual(['Farms', 'Ranch']);
+    expect(r.rows.map((row) => row.runState)).toEqual(['added', 'added', 'skipped']);
   });
 
   it('fails only the row whose text the claim control refused', async () => {

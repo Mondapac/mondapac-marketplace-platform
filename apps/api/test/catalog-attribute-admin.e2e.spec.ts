@@ -1,4 +1,6 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { SYSTEM_REQUEST_RECORDER } from '../src/modules/system-requests';
+import { RecordingReview } from './support/system-request-fakes';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -48,6 +50,7 @@ const tokens = new RandomSessionTokens();
 
 describe('admin attribute reads over HTTP (integration)', () => {
   let app: NestExpressApplication;
+  let reviews = new RecordingReview();
   const reader = new MemoryAttributeAdminReader();
   const http = () => request(app.getHttpServer());
 
@@ -60,6 +63,8 @@ describe('admin attribute reads over HTTP (integration)', () => {
           .override(builder)
           .overrideProvider(CLOCK)
           .useValue(new FixedClock(START))
+          .overrideProvider(SYSTEM_REQUEST_RECORDER)
+          .useValue(reviews)
           .overrideProvider(ATTRIBUTE_ADMIN_READER)
           .useValue(reader),
     }));
@@ -160,6 +165,7 @@ describe('admin attribute reads over HTTP (integration)', () => {
   const FEATURE_SETS = '/catalog/admin/feature-sets';
 
   beforeEach(() => {
+    reviews = new RecordingReview();
     fakes.reset();
     reader.reset();
   });
@@ -210,11 +216,13 @@ describe('admin attribute reads over HTTP (integration)', () => {
       'attribute-definition.option-removed': 409,
       'attribute-definition.variant-locked': 409,
       'attribute-definition.material-relaxation-required': 409,
+      'attribute-definition.measure-locked': 409,
       'attribute.claim-word': 422,
       'attribute.locale-uncheckable': 422,
       'attribute-definition.name-required': 422,
       'attribute-definition.text-invalid': 422,
       'attribute-definition.bounds-invalid': 422,
+      'attribute-definition.measure-invalid': 422,
       'attribute-definition.options-required': 422,
       'attribute-definition.options-not-allowed': 422,
       'attribute-definition.option-invalid': 422,
@@ -228,6 +236,7 @@ describe('admin attribute reads over HTTP (integration)', () => {
       'attribute-definition.default-label-required': 422,
       'attribute-definition.active-option-required': 422,
       'access.unavailable': 503,
+      'missing-details-email.unconfigured': 503,
       'claim-text.check-unavailable': 503,
     });
   });
@@ -313,9 +322,22 @@ describe('admin attribute reads over HTTP (integration)', () => {
           },
         ],
         truncated: false,
+        // Whether a new feature set waits for approval (Admin Inbox > System requests).
+        review: { reviewed: false, risk: 'low' },
       });
       const set = await http().get(`${FEATURE_SETS}/${FAMILY}`).set(session).expect(200);
       expect(set.body).toMatchObject({ code: 'default', groups: [{ groupCode: 'general' }] });
+    });
+
+    it('says on the attribute read whether a save is reviewed in the Market', async () => {
+      await boot();
+      await seeded(code);
+      const session = adminSession(code, MODERATOR, 3);
+      const off = await http().get(`${ATTRIBUTES}/${PACK}`).set(session).expect(200);
+      expect(off.body).toMatchObject({ review: { reviewed: false, risk: 'low' } });
+      reviews.review('catalogue', 'medium');
+      const on = await http().get(`${ATTRIBUTES}/${PACK}`).set(session).expect(200);
+      expect(on.body).toMatchObject({ review: { reviewed: true, risk: 'medium' } });
     });
 
     it('filters and pages the list from the query string', async () => {

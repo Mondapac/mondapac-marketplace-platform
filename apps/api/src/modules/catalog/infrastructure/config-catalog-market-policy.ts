@@ -1,11 +1,14 @@
+import { measureUnit } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { MarketConfig } from '../../../platform/market-config/market-config';
 import type { MarketRegistry } from '../../../platform/market-config/market-registry';
 import {
   CatalogNotConfiguredError,
   type CatalogMarketPolicy,
+  type TaxCategoryOption,
 } from '../application/ports/catalog-market-policy';
 import type { SensitiveChangesPolicy } from '../domain/product-revision-policy';
+import { DEFAULT_MAX_PENDING_PROPOSALS } from '../domain/seller-category';
 
 type CatalogSection = NonNullable<MarketConfig['catalog']>;
 
@@ -15,6 +18,10 @@ export class ConfigCatalogMarketPolicy implements CatalogMarketPolicy {
 
   taxCategoryCodes(market: MarketContext): readonly string[] {
     return this.section(market).taxCategories.map((category) => category.code);
+  }
+
+  taxCategories(market: MarketContext): readonly TaxCategoryOption[] {
+    return this.section(market).taxCategories.map(({ code, labelKey }) => ({ code, labelKey }));
   }
 
   sensitiveChanges(market: MarketContext): SensitiveChangesPolicy {
@@ -41,8 +48,33 @@ export class ConfigCatalogMarketPolicy implements CatalogMarketPolicy {
     return this.section(market).maxCategoryDepth;
   }
 
+  maxCategoryChangeTags(market: MarketContext): number {
+    return this.section(market).maxCategoryChangeTags;
+  }
+
+  maxCategoryImportRows(market: MarketContext): number {
+    return this.section(market).maxCategoryImportRows;
+  }
+
+  maxCategoryImportBytes(market: MarketContext): number {
+    return this.section(market).maxCategoryImportBytes;
+  }
+
+  /** The pending cap of category proposals per seller (CAT-54; AU 5, default 5). */
+  maxPendingCategoryProposals(market: MarketContext): number {
+    return this.section(market).maxPendingCategoryProposals ?? DEFAULT_MAX_PENDING_PROPOSALS;
+  }
+
   maxVariantAttributes(market: MarketContext): number {
     return this.section(market).maxVariantAttributes;
+  }
+
+  units(market: MarketContext): ReturnType<CatalogMarketPolicy['units']> {
+    return this.section(market).units.map((unit) => ({
+      code: unit.code,
+      dimension: measureUnit(unit.code)?.dimension ?? 'count',
+      labels: { ...unit.labels },
+    }));
   }
 
   productTypes(market: MarketContext): readonly string[] {

@@ -24,3 +24,10 @@ export function replaceControlCharacters(value: string): string {
   }
   return out;
 }
+
+const UNPAIRED_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+/** True when the text holds a surrogate half PostgreSQL's jsonb refuses. */
+export function hasUnpairedSurrogate(value: string): boolean {
+  return UNPAIRED_SURROGATE.test(value);
+}

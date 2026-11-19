@@ -63,53 +63,64 @@ export class SellerHealthQueueRead extends UseCase<
     super(gate);
   }
 
-  protected async handle(
+  protected handle(
     context: CallContext,
   ): Promise<Result<SellerHealthQueue, SellerHealthQueueFailure>> {
-    const { market } = context;
-    const today = this.deps.clock.now().toZonedDateTimeISO('UTC').toPlainDate();
-    // The newest local date on Earth is at most one day ahead of UTC.
-    const last = today.add({ days: 1 });
-    const first = today.subtract({ days: SELLER_LIST_HEALTH_DAYS - 1 });
-    try {
-      return await this.deps.unitOfWork.run<SellerHealthQueue, SellerHealthQueueFailure>(
-        market,
-        async () => {
-          const found = await this.deps.healthStore.unhealthy(market, first, last);
-          if (found.sellers.length === 0) return ok({ items: [], truncated: false });
-          const files = await this.deps.list.all(market, {
-            kind: null,
-            outsideArea: false,
-            openAreaCodes: [],
-            areaCode: null,
-            onlyIds: found.sellers.map((seller) => seller.sellerId),
-            after: null,
-            take: found.sellers.length,
-          });
-          const byId = new Map(files.map((file) => [file.sellerId, file]));
-          const items = found.sellers.flatMap((seller): SellerHealthQueueItem[] => {
-            const file = byId.get(seller.sellerId);
-            // A snapshot of a seller with no file in this Market cannot exist (foreign key).
-            if (file === undefined || seller.score === null || seller.lowestMetric === null) {
-              return [];
-            }
-            return [
-              {
-                sellerId: seller.sellerId,
-                storeName: file.storeName,
-                slug: file.heldSlug ?? file.draftSlug,
-                day: seller.day.toString(),
-                score: seller.score,
-                lowestMetric: seller.lowestMetric,
-              },
-            ];
-          });
-          return ok({ items, truncated: found.truncated });
-        },
-        { readOnly: true },
-      );
-    } catch {
-      return err({ code: 'sellers.unavailable' });
-    }
+    return readHealthQueue(this.deps, context);
+  }
+}
+
+/**
+ * The queue read: the unhealthy sellers of the latest three days with their files. The use case
+ * and the super list (list 16) both call it.
+ */
+export async function readHealthQueue(
+  deps: SellerHealthQueueDependencies,
+  context: CallContext,
+): Promise<Result<SellerHealthQueue, SellerHealthQueueFailure>> {
+  const { market } = context;
+  const today = deps.clock.now().toZonedDateTimeISO('UTC').toPlainDate();
+  // The newest local date on Earth is at most one day ahead of UTC.
+  const last = today.add({ days: 1 });
+  const first = today.subtract({ days: SELLER_LIST_HEALTH_DAYS - 1 });
+  try {
+    return await deps.unitOfWork.run<SellerHealthQueue, SellerHealthQueueFailure>(
+      market,
+      async () => {
+        const found = await deps.healthStore.unhealthy(market, first, last);
+        if (found.sellers.length === 0) return ok({ items: [], truncated: false });
+        const files = await deps.list.all(market, {
+          kind: null,
+          outsideArea: false,
+          openAreaCodes: [],
+          areaCode: null,
+          onlyIds: found.sellers.map((seller) => seller.sellerId),
+          after: null,
+          take: found.sellers.length,
+        });
+        const byId = new Map(files.map((file) => [file.sellerId, file]));
+        const items = found.sellers.flatMap((seller): SellerHealthQueueItem[] => {
+          const file = byId.get(seller.sellerId);
+          // A snapshot of a seller with no file in this Market cannot exist (foreign key).
+          if (file === undefined || seller.score === null || seller.lowestMetric === null) {
+            return [];
+          }
+          return [
+            {
+              sellerId: seller.sellerId,
+              storeName: file.storeName,
+              slug: file.heldSlug ?? file.draftSlug,
+              day: seller.day.toString(),
+              score: seller.score,
+              lowestMetric: seller.lowestMetric,
+            },
+          ];
+        });
+        return ok({ items, truncated: found.truncated });
+      },
+      { readOnly: true },
+    );
+  } catch {
+    return err({ code: 'sellers.unavailable' });
   }
 }

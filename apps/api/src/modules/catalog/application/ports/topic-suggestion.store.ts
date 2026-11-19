@@ -1,0 +1,102 @@
+import type { OwnSuggestionsFilter, OwnSuggestionsPage } from './own-suggestion-page';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { TopicSuggestion, SuggestionStatus } from '../../domain/topic-suggestion';
+
+/**
+ * The store of sellers' tag suggestions (product tags package T5).
+ * Every method runs in the open unit of the use case, through the Market-scoped client. Rows are
+ * never deleted: a decision is one conditional update out of `open`, and a notice move is one
+ * conditional update out of `pending`.
+ */
+/** The filter of the admin list of open tag suggestions. */
+export interface OpenTopicSuggestionsFilter {
+  /** A fragment of the seller's text; null: all. */
+  readonly text: string | null;
+}
+
+export interface OpenTopicSuggestionsPage extends OpenTopicSuggestionsFilter {
+  readonly direction: 'asc' | 'desc';
+  readonly offset: number;
+  readonly limit: number;
+}
+
+export interface TopicSuggestionStore {
+  findById(market: MarketContext, id: Id<'TopicSuggestion'>): Promise<TopicSuggestion | null>;
+
+  /**
+   * Inserts a new open suggestion. Answers `suggestion.already-open` when the seller already
+   * has an open suggestion with the same text key (the open partial unique), and nothing is written.
+   */
+  add(
+    market: MarketContext,
+    suggestion: TopicSuggestion,
+  ): Promise<'suggestion.already-open' | null>;
+
+  /**
+   * Writes a decision built by the domain (version one above the stored one), only from `open` at
+   * the version before. Throws `StaleAggregateError` when another decision won.
+   */
+  saveDecision(market: MarketContext, suggestion: TopicSuggestion): Promise<void>;
+
+  /**
+   * Writes a notice move built by the domain, only from `pending` at the version before. Throws
+   * `StaleAggregateError` when the notice moved meanwhile.
+   */
+  saveNotice(market: MarketContext, suggestion: TopicSuggestion): Promise<void>;
+
+  /** How many suggestions of this seller are open. */
+  openCountOfSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<number>;
+
+  /** One page of the open suggestions by time (the caller asks for one extra row to see a next page). */
+  pageOpen(
+    market: MarketContext,
+    page: OpenTopicSuggestionsPage,
+  ): Promise<readonly TopicSuggestion[]>;
+
+  /** How many open suggestions match the same filter (the total of the list). */
+  countOpen(market: MarketContext, filter: OpenTopicSuggestionsFilter): Promise<number>;
+
+  /** One product's suggestions in every status, newest first, at most `limit`. */
+  listOfProduct(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    limit: number,
+  ): Promise<readonly TopicSuggestion[]>;
+
+  /** One numbered page of one seller's suggestions (status and label search, sorted). */
+  pageOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: OwnSuggestionsPage<SuggestionStatus>,
+  ): Promise<readonly TopicSuggestion[]>;
+
+  /** How many of one seller's suggestions match the same filter (the total of the list). */
+  countOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnSuggestionsFilter<SuggestionStatus>,
+  ): Promise<number>;
+
+  /**
+   * One seller's suggestions, newest first (by id, a UUID v7), keyset-paged: rows after
+   * `afterId` only, at most `limit`, optionally of one status.
+   */
+  listOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: {
+      readonly status: SuggestionStatus | null;
+      readonly afterId: Id<'TopicSuggestion'> | null;
+      readonly limit: number;
+    },
+  ): Promise<readonly TopicSuggestion[]>;
+
+  /** Decided suggestions whose notice is pending and due at `now`, oldest first, at most `limit`. */
+  dueNotices(
+    market: MarketContext,
+    now: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly TopicSuggestion[]>;
+}
+
+export const TOPIC_SUGGESTION_STORE = Symbol('TOPIC_SUGGESTION_STORE');

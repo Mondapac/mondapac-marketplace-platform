@@ -22,6 +22,7 @@ import {
 } from '../domain/slides';
 import { POSITION_KEYS } from '../domain/slide-positions';
 import { adminOf } from './page-flow';
+import { libraryImageOf } from './slide-images/slide-image';
 import type { SlideRecord, SlideStamp, SlideVersionRecord } from './ports/slide.repository';
 import type { StorefrontDependencies } from './storefront-dependencies';
 
@@ -264,6 +265,21 @@ export async function insertDraftVersion(
   return { ok: true, version: { ...version, approvedBy: null, approvedAt: null } };
 }
 
+/**
+ * A library image the content names must exist in this Market (a ready-made key of the buyer app
+ * is never a UUID and is not checked here). Runs inside the unit of work.
+ */
+async function libraryImageProblems(
+  deps: StorefrontDependencies,
+  context: CallContext,
+  content: SlideContent,
+): Promise<Problems> {
+  const imageId = content.image === null ? null : libraryImageOf(content.image.ref);
+  if (imageId === null) return [];
+  const found = await deps.slideImages.existing(context.market, [imageId]);
+  return found.has(imageId) ? [] : [{ path: 'content.image.ref', code: 'not-found' }];
+}
+
 /** An editor creates a slide; its first version is the draft. */
 export async function createSlide(
   deps: StorefrontDependencies,
@@ -277,6 +293,8 @@ export async function createSlide(
   const input = parsed.value;
   const stamp: SlideStamp = { at: deps.clock.now(), by: admin.accountId };
   return deps.unitOfWork.run<SlideDetailView, SlideFailure>(context.market, async () => {
+    const missing = await libraryImageProblems(deps, context, input.content);
+    if (missing.length > 0) return err({ code: 'validation.failed', fields: missing });
     const slide: SlideRecord = {
       id: deps.ids.next<'StorefrontSlide'>(),
       kind: input.kind,
@@ -370,6 +388,8 @@ export async function updateSlideDraft(
     if (!locked.ok) return err(locked.error);
     const parsed = parseDraft(locked.slide.kind, input.body);
     if (!parsed.ok) return err({ code: 'validation.failed', fields: parsed.problems });
+    const missing = await libraryImageProblems(deps, context, parsed.value.content);
+    if (missing.length > 0) return err({ code: 'validation.failed', fields: missing });
     const inserted = await insertDraftVersion(
       deps,
       context,

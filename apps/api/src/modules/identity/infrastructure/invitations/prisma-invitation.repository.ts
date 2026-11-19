@@ -82,6 +82,10 @@ interface SelectedRow {
 export class PrismaInvitationRepository implements InvitationRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  async lockForAcceptance(market: MarketContext, id: Id<'Invitation'>): Promise<void> {
+    await this.prisma.namedQuery(market, 'identity.lock-invitation', { invitationId: id });
+  }
+
   async findById(market: MarketContext, id: Id<'Invitation'>): Promise<Invitation | null> {
     const row = await this.prisma.tx(market).identityInvitation.findFirst({
       where: { marketId: market.marketId, id },
@@ -288,7 +292,16 @@ export class PrismaInvitationRepository implements InvitationRepository {
         marketId: market.marketId,
         OR: [
           { state: 'pending', expiresAt: { lt: toDate(now) } },
-          { state: { in: ['accepted', 'revoked'] }, decidedAt: { lt: toDate(decidedBefore) } },
+          { state: 'revoked', decidedAt: { lt: toDate(decidedBefore) } },
+          // An accepted admin invitation is kept (Hassan M1 on PR #1058): it is the only link from
+          // an invitation's System request to the account it created, so a reject can still
+          // disable that admin. It holds ids only (the address went with the acceptance), and
+          // there is one per admin ever invited.
+          {
+            state: 'accepted',
+            kind: { not: 'admin' },
+            decidedAt: { lt: toDate(decidedBefore) },
+          },
           ...undispatched,
         ],
       },

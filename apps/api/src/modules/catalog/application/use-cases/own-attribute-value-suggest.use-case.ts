@@ -17,6 +17,8 @@ import { sellerOf } from '../own-reads/own-reads.shared';
 import type { AttributeDefinitionStore } from '../ports/attribute-definition.store';
 import type { AttributeRepository } from '../ports/attribute.repository';
 import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
+import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
+import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
 
@@ -60,6 +62,9 @@ export interface OwnAttributeValueSuggestDependencies {
   readonly audit: AuditWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  /** With the working copy: the fields offered are those of the primary category's feature set. */
+  readonly workingCopies?: WorkingCopyRepository;
+  readonly familyResolver?: ProductFamilyResolver;
 }
 
 /** A seller may suggest on a product that is still theirs to work on. */
@@ -74,9 +79,9 @@ const sameLabel = (a: string, b: string): boolean =>
  * `catalog.own-product.edit`, the seller population and a seller who may sell. The request names
  * the product, the field code and the text; the seller, Market and status come from stored state.
  * A product of another seller, a PLATFORM product and an unknown id answer a byte-identical
- * `product.not-found`. Only a published, select-like field that is neither `material` nor a
- * variant option takes a suggestion (`attribute.not-suggestable`). One open suggestion per
- * product and field, at most {@link MAX_OPEN_SUGGESTIONS_PER_SELLER} open per seller, and not a
+ * `product.not-found`. Only a published, select-like field that is not `material` takes a
+ * suggestion (`attribute.not-suggestable`); a variant option (colour, size) does, so a seller can
+ * ask for the option a variant needs (john, 5 Nov 2026). One open suggestion per product and field, at most {@link MAX_OPEN_SUGGESTIONS_PER_SELLER} open per seller, and not a
  * text the list already has. The text is the seller's own in the Market's default locale; it
  * reaches no buyer and no model, and an admin decides it. The product keeps the field empty
  * meanwhile (the submit says why when the field is required). One audit row, with ids only.
@@ -158,14 +163,24 @@ export class OwnAttributeValueSuggest extends UseCase<
       if (!SUGGESTING_STATUSES.has(product.state.status)) {
         return err({ code: 'product.not-editable' } as const);
       }
-      const schema = await attributes.loadSchema(market, product.state.familyCode);
+      // The fields offered are those of the feature set the draft's primary category holds now.
+      let familyCode = product.state.familyCode;
+      if (this.deps.familyResolver !== undefined && this.deps.workingCopies !== undefined) {
+        const copy = await this.deps.workingCopies.find(market, product.state.id);
+        const raw = copy?.content['categoryIds'];
+        const resolved = await this.deps.familyResolver.resolve(
+          market,
+          Array.isArray(raw) && typeof raw[0] === 'string' ? raw[0] : null,
+        );
+        if (resolved.ok) familyCode = resolved.familyCode;
+      }
+      const schema = await attributes.loadSchema(market, familyCode);
       if (schema === null) return err({ code: 'attribute.not-suggestable' } as const);
       const field = schema.fields.find((candidate) => candidate.code === attributeCode);
       if (
         field === undefined ||
         (field.dataType !== 'select' && field.dataType !== 'multi-select') ||
-        field.material ||
-        field.isVariantOption
+        field.material
       ) {
         return err({ code: 'attribute.not-suggestable' } as const);
       }

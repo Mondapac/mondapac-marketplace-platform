@@ -324,7 +324,7 @@ describe('role editor', () => {
     mount({ initialName: '' });
     fireEvent.click(screen.getByRole('button', { name: 'Create role' }));
     const summary = screen.getByRole('alert');
-    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(summary.textContent).toContain('1 setting needs fixing');
     fireEvent.click(within(summary).getByRole('link', { name: 'Role name' }));
     expect(document.activeElement).toBe(screen.getByLabelText('Role name'));
     expect(call).not.toHaveBeenCalled();

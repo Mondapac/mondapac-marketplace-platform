@@ -9,6 +9,8 @@ import {
   NAV_OPEN_COOKIE,
   SIDEBAR_COOKIE,
   Sidebar,
+  buildSettingsMenuGroups,
+  type SettingsMenu,
   type Crumb,
   THEME_COOKIE,
   navOpenGroups,
@@ -24,9 +26,11 @@ import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
 import { sellerNav, sellerNavItems } from '../nav.ts';
 import { sellerGoShortcuts, sellerPaletteEntries } from '../palette.ts';
+import { settingEntries, visibleSettings } from '../settings/settings-nav.ts';
 import { SellerNotifications } from '../notifications/seller-notifications.tsx';
 import { showsNoticeBell } from '../notifications/types.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
+import { PanelNavigationProgress } from '../shared/navigation-progress.tsx';
 import { panelHostFor } from './bff.ts';
 import { panelConfig } from './config.ts';
 import type { SellerSession } from './session.ts';
@@ -41,6 +45,8 @@ export async function SellerShell({
   activeId,
   title,
   trail,
+  pinInPage = false,
+  settingsLinkId,
   children,
 }: {
   readonly session: SellerSession;
@@ -48,9 +54,31 @@ export async function SellerShell({
   readonly title: string;
   /** The breadcrumb above the page when it is not the one the active menu item gives. */
   readonly trail?: readonly Crumb[];
+  /**
+   * The page draws the pin star beside its own title (settings pages), so the top bar has none.
+   */
+  readonly pinInPage?: boolean;
+  /** Id of the settings page being shown (the sidebar is the Settings menu under /settings). */
+  readonly settingsLinkId?: string;
   readonly children: ReactNode;
 }) {
   const t = await getTranslations();
+  const settings: SettingsMenu | undefined =
+    activeId === 's_settings'
+      ? {
+          groups: buildSettingsMenuGroups(
+            visibleSettings(session.permissionKeys),
+            settingEntries,
+            (key) => t(key),
+          ),
+          ...(settingsLinkId === undefined ? {} : { activeId: settingsLinkId }),
+          backHref: '/',
+          backLabel: t('settings.menu.back'),
+          searchLabel: t('settings.menu.search'),
+          emptyLabel: t('settings.menu.empty'),
+          navLabel: t('settings.menu.label'),
+        }
+      : undefined;
   const jar = await cookies();
   const collapsed = sidebarCollapsed(jar.get(SIDEBAR_COOKIE)?.value);
   const openGroups = navOpenGroups(jar.get(NAV_OPEN_COOKIE)?.value);
@@ -81,6 +109,7 @@ export async function SellerShell({
       goShortcuts={sellerGoShortcuts(entries, (key) => t(key))}
       labels={panelToolsLabels((key) => t.raw(key) as string)}
     >
+      <PanelNavigationProgress />
       <AppShell
         bottomTabs={bottomTabs}
         moreActive={bottomTabs?.every((tab) => !tab.active)}
@@ -102,8 +131,7 @@ export async function SellerShell({
             activeId={activeId}
             label={(key) => t(key)}
             openGroups={openGroups}
-            expandAll={t('nav.expandAll')}
-            collapseAll={t('nav.collapseAll')}
+            settings={settings}
           />
         }
         topbar={
@@ -112,7 +140,7 @@ export async function SellerShell({
             trail={trail ?? navTrail(items, activeId, title, (key) => t(key), sellerNav.groups)}
             trailLabel={t('nav.breadcrumb')}
             phoneTitle={<PageTitle fallback={title} />}
-            titleAction={<PinButton />}
+            titleAction={pinInPage ? undefined : <PinButton />}
             actions={
               <>
                 <ShortcutsButton />

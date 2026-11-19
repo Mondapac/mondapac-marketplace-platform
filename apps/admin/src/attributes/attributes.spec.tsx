@@ -11,6 +11,7 @@ import { callApi, type ApiResult } from '../api/client.ts';
 import { AttributesView } from './attributes-view.tsx';
 import { changeLineOf } from './history.ts';
 import type {
+  MarketUnit,
   AttributeDetail,
   AttributePage,
   AttributeRow,
@@ -29,6 +30,20 @@ const MARKETS: readonly { readonly name: string; readonly locales: MarketLocales
   { name: 'AU', locales: { default: 'en-AU', supported: ['en-AU'] } },
   { name: 'ZZ', locales: { default: 'ja-JP', supported: ['ja-JP', 'fa-IR'] } },
 ];
+
+const unitsOf = (locales: MarketLocales): MarketUnit[] =>
+  [
+    ['g', 'mass', 'g'],
+    ['kg', 'mass', 'kg'],
+    ['ml', 'volume', 'ml'],
+    ['l', 'volume', 'L'],
+    ['mm', 'length', 'mm'],
+    ['count', 'count', 'each'],
+  ].map(([code, dimension, label]) => ({
+    code: code!,
+    dimension: dimension!,
+    labels: { [locales.default]: label! },
+  }));
 
 const row = (
   locales: MarketLocales,
@@ -59,6 +74,7 @@ const page = (
   total: items.length,
   totalAll: items.length,
   locales,
+  units: unitsOf(locales),
   featureSets: [{ id: id(50), code: 'grocery-sauces' }],
   truncated: false,
   ...over,
@@ -129,6 +145,7 @@ const detail = (
   ],
   historyTruncated: false,
   locales,
+  units: unitsOf(locales),
   ...over,
 });
 const featureSet = (n: number, over: Partial<FeatureSetRow> = {}): FeatureSetRow => ({
@@ -355,6 +372,25 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(await screen.findByRole('button', { name: /Attribute 2/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Attribute 1/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+  });
+
+  it('keeps the rows it has read when the search pause ends with the same text', async () => {
+    // The search box acts after 300 ms. With nothing typed that must not reload the list from
+    // page 1 (a slow runner reached it between "Show more" and its answer, and lost page 2).
+    serve({
+      [`GET catalog/admin/attributes?limit=50&afterId=${id(1)}`]: ok(
+        page(locales, [row(locales, 2)], { totalAll: 2 }),
+      ),
+      'GET catalog/admin/attributes?': ok(
+        page(locales, [row(locales, 1)], { nextAfterId: id(1), totalAll: 2 }),
+      ),
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    expect(await screen.findByRole('button', { name: /Attribute 2/ })).toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(screen.getByRole('button', { name: /Attribute 2/ })).toBeTruthy();
+    expect(calls('catalog/admin/attributes?limit=50')).toHaveLength(2);
   });
 
   it('shows a retry on a failed list', async () => {
@@ -634,6 +670,88 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(window.location.search).toBe(`?id=${id(9)}`);
   });
 
+  it('adds a measure with its unit settings, and sends bounds in base units', async () => {
+    const created = detail(locales, 9, {
+      status: 'draft',
+      dataType: 'measure',
+      code: 'net-weight',
+      names: { [locales.default]: 'Net weight' },
+      options: [],
+      bounds: {
+        min: 1,
+        measure: { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 2 },
+      },
+    });
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+      'POST catalog/admin/attributes': {
+        ok: true,
+        status: 201,
+        body: {
+          attribute: { id: id(9), code: 'net-weight', status: 'draft', version: 1, revisionNo: 1 },
+        },
+      },
+      [`GET catalog/admin/attributes/${id(9)}`]: ok(created),
+    });
+    mount({ canEdit: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add attribute' }));
+    const dialog = await screen.findByRole('dialog', { name: /^Add attribute/ });
+    fireEvent.click(within(dialog).getByRole('radio', { name: /Number with unit/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }));
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Name in/ }), {
+      target: { value: 'Net weight' },
+    });
+    // Starts with every mass unit on and the base unit first; the Market's units only.
+    expect(within(dialog).getByRole('checkbox', { name: 'kg' })).toHaveProperty('checked', true);
+    expect(within(dialog).queryByRole('checkbox', { name: 'ml' })).toBeNull();
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Decimal places/ }), {
+      target: { value: '2' },
+    });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: /^Lowest value \(in g\)/ }), {
+      target: { value: '1' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add as draft' }));
+    await screen.findByRole('region', { name: 'Attribute details' });
+    expect(writes('POST')[0]?.body).toMatchObject({
+      dataType: 'measure',
+      bounds: {
+        min: 1,
+        measure: { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 2 },
+      },
+      options: [],
+    });
+  });
+
+  it('refuses a measure with no unit before sending, and shows the settings of a saved one', async () => {
+    const measure = detail(locales, 1, {
+      dataType: 'measure',
+      options: [],
+      bounds: {
+        max: 5000,
+        measure: { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 2 },
+      },
+    });
+    serve({
+      'GET catalog/admin/attributes?': ok(
+        page(locales, [row(locales, 1, { dataType: 'measure' })]),
+      ),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(measure),
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    await within(panel).findByText('Kind of quantity');
+    expect(within(panel).getByText('g, kg')).toBeTruthy();
+    expect(within(panel).getByText('5000 g')).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Edit' }));
+    const form = within(panel).getByRole('form', { name: 'Edit attribute' });
+    // Published: the kind of quantity is fixed and the units in use stay on.
+    expect(within(form).getByRole('combobox', { name: /^Kind of quantity/ })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(within(form).getByRole('checkbox', { name: 'kg' })).toHaveProperty('disabled', true);
+  });
+
   it('asks for a code when the name has no Latin letters, and shows a claim word on its field', async () => {
     serve({
       'GET catalog/admin/attributes?': ok(page(locales, [])),
@@ -743,6 +861,65 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     );
     await expectToast('Attribute saved.');
     expect(writes('PUT')[1]?.body).toMatchObject({ version: 3 });
+  });
+
+  describe('review note', () => {
+    const open = async (over: Partial<AttributeDetail>) => {
+      serve({
+        'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+        [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1, over)),
+        [`PUT catalog/admin/attributes/${id(1)}`]: () =>
+          ok({
+            attribute: { id: id(1), code: 'attr-1', status: 'active', version: 2, revisionNo: 3 },
+            request: { id: 'r1', number: 31 },
+          }),
+      });
+      mount({ canEdit: true, initialId: id(1) });
+      const panel = await screen.findByRole('region', { name: 'Attribute details' });
+      await within(panel).findByRole('heading', { name: 'Attribute 1' });
+      fireEvent.click(within(panel).getByRole('button', { name: 'Edit' }));
+      return within(panel).getByRole('form', { name: 'Edit attribute' });
+    };
+
+    it('shows no note field and sends none when the save is not reviewed', async () => {
+      const form = await open({ review: { reviewed: false, risk: 'low' } });
+      expect(within(form).queryByLabelText('Note for reviewers')).toBeNull();
+      fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      await expectToast('Attribute saved.');
+      expect('note' in (writes('PUT')[0]?.body as object)).toBe(false);
+    });
+
+    it('requires a trimmed note when reviewed, and says the change was sent for review', async () => {
+      const form = await open({ review: { reviewed: true, risk: 'medium' } });
+      fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      expect(writes('PUT')).toHaveLength(0);
+      fireEvent.change(within(form).getByLabelText('Note for reviewers'), {
+        target: { value: '  Made it clearer  ' },
+      });
+      fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      await expectToast('Sent for review (SR-31)', 'info');
+      expect(writes('PUT')[0]?.body).toMatchObject({ note: 'Made it clearer' });
+    });
+
+    it('shows a 400 on note on the note field', async () => {
+      const form = await open({ review: { reviewed: true, risk: 'medium' } });
+      serve({
+        [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1)),
+        [`PUT catalog/admin/attributes/${id(1)}`]: {
+          ok: false,
+          failure: {
+            status: 400,
+            code: 'validation.failed',
+            details: { fields: [{ path: 'note', code: 'required' }] },
+          },
+        },
+      });
+      fireEvent.change(within(form).getByLabelText('Note for reviewers'), {
+        target: { value: 'Why' },
+      });
+      fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      expect(await within(form).findByText(/The note was refused/)).toBeTruthy();
+    });
   });
 
   it('points a refused value label at its row, and keeps a saved value from being removed', async () => {
@@ -960,9 +1137,52 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const panel = await screen.findByRole('region', { name: 'Attribute details' });
     fireEvent.click(await within(panel).findByRole('button', { name: 'Discard draft' }));
     const dialog = await screen.findByRole('dialog', { name: 'Discard Attribute 1?' });
+    // Unreviewed: the discard's own, final wording.
+    expect(within(dialog).getByText(/can never be published/)).toBeTruthy();
+    expect(within(dialog).queryByText(/Nothing changes until/)).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Send for approval' })).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
     await expectToast('Draft discarded.');
     expect(writes('POST')[0]?.path).toBe(`catalog/admin/attributes/${id(1)}/discard`);
+  });
+
+  it('asks for a note before a discard waits for approval, and keeps the draft (system requests)', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1, { status: 'draft' })])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(
+        detail(locales, 1, { status: 'draft', review: { reviewed: true, risk: 'low' } }),
+      ),
+      [`POST catalog/admin/attributes/${id(1)}/discard`]: {
+        ok: true,
+        status: 202,
+        body: { request: { id: 'r3', number: 52 } },
+      },
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Discard draft' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Discard Attribute 1?' });
+    // It only files a request: the wording says so, and promises nothing final.
+    expect(
+      within(dialog).getByText(
+        'Nothing changes until another admin approves it in Admin Inbox > System requests.',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByText(/If another admin approves, the draft is archived/),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText(/can never be published/)).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Discard draft' })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
+    expect(await within(dialog).findByText(/Write a note for the reviewers/)).toBeTruthy();
+    expect(writes('POST')).toHaveLength(0);
+    fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+      target: { value: 'Made by mistake' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
+    await expectToast('Sent for approval (SR-52)', 'info');
+    expect(writes('POST')[0]?.body).toEqual({ version: 1, note: 'Made by mistake' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   const relaxation = (n: number, mine: boolean): OpenRelaxation => ({
@@ -1237,6 +1457,7 @@ describe('history change lines', () => {
     expect(line('material')).toEqual({ key: 'material' });
     expect(line('isVariantOption')).toEqual({ key: 'variant' });
     expect(line('bounds.maxLength')).toEqual({ key: 'bound', bound: 'maxLength' });
+    expect(line('measure.defaultUnit')).toEqual({ key: 'measure', setting: 'defaultUnit' });
     expect(line('option.extra.hot.added')).toEqual({ key: 'option-added', code: 'extra.hot' });
     expect(line('option.hot.label.ja-JP')).toEqual({
       key: 'option-label',

@@ -1,6 +1,24 @@
-import type { CallContext, Id, Population, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Population, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { StepUpFailure } from './step-up';
+import type {
+  AdminPasswordResetFailure,
+  CustomerSecurityFailure,
+  CustomerSessionsView,
+  CustomerSignInsPage,
+  CustomerSignInsRequest,
+} from './customer-security';
+
+export type {
+  AdminPasswordResetFailure,
+  CustomerSecurityFailure,
+  CustomerSessionFact,
+  CustomerSessionsView,
+  CustomerSignInFact,
+  CustomerSignInsPage,
+  CustomerSignInsRequest,
+} from './customer-security';
+export { CUSTOMER_SIGN_IN_RESULTS, type CustomerSignInResult } from './customer-security';
 
 /**
  * Who the calling actor is (identity design 8.1 `describeActor`): ids and codes only, never a
@@ -16,6 +34,12 @@ export interface ActorDescription {
   readonly permissionKeys: readonly string[];
   readonly sellerAccessState: string | null;
   readonly secondFactorActive: boolean;
+  /**
+   * The holder's own IANA time zone (panel preferences), or null when none was chosen. A day a
+   * panel writes is read in it, the Market's zone being the fallback (ADR-0005). Optional for
+   * callers built before it existed.
+   */
+  readonly timezone?: string | null;
 }
 
 /** Why {@link IdentityFacade.confirmSecondFactor} refused. Codes and field paths only. */
@@ -62,6 +86,19 @@ export interface CustomerAccountSummary {
   readonly displayName: string | null;
   /** The sign-in address, as typed. */
   readonly email: string;
+}
+
+/**
+ * One customer account as the `customers` read model copies it ({@link IdentityFacade.customerDirectoryRecords}).
+ * PERSONAL DATA: no module logs it or puts it in an event, an audit row or an error body.
+ */
+export interface CustomerDirectoryRecord {
+  readonly accountId: Id<'Account'>;
+  readonly email: string;
+  readonly displayName: string | null;
+  readonly status: 'active' | 'disabled';
+  readonly emailVerifiedAt: Temporal.Instant | null;
+  readonly signedUpAt: Temporal.Instant;
 }
 
 /**
@@ -113,6 +150,41 @@ export interface IdentityValidationFailed {
   readonly code: 'validation.failed';
   readonly fields: readonly { readonly path: string; readonly code: string }[];
 }
+
+/**
+ * A customer's pending change of the sign-in email ({@link IdentityFacade.customerPendingEmailOf}).
+ * PERSONAL DATA for the admin who asked: the full new address. No module logs it or puts it in an
+ * event, an audit row, a cache, an outbox or an error body.
+ */
+export interface CustomerPendingEmailChange {
+  readonly email: string;
+  readonly requestedAt: Temporal.Instant;
+}
+
+/** Why {@link IdentityFacade.requestCustomerEmailChangeForAdmin} refused. */
+export type CustomerEmailChangeFailure =
+  | AccessDenied
+  | { readonly code: 'access.unavailable' }
+  /** No customer account with this id in the Market (or another population's). */
+  | { readonly code: 'account.unknown' }
+  /** A disabled or unverified account keeps its address. */
+  | { readonly code: 'account.not-eligible' }
+  /** Another customer account of the Market signs in with the address. */
+  | { readonly code: 'account.email-taken' }
+  | IdentityValidationFailed
+  | { readonly code: 'request.throttled'; readonly retryAfterSeconds: number }
+  | { readonly code: 'second-factor.required'; readonly actionKey: string }
+  | { readonly code: 'second-factor.enrolment-required'; readonly actionKey: string };
+
+/** Why {@link IdentityFacade.cancelCustomerEmailChangeForAdmin} refused. */
+export type CustomerEmailChangeCancelFailure =
+  | AccessDenied
+  | { readonly code: 'access.unavailable' }
+  | { readonly code: 'account.unknown' }
+  /** No change is pending for the account. */
+  | { readonly code: 'email-change.none' }
+  | { readonly code: 'second-factor.required'; readonly actionKey: string }
+  | { readonly code: 'second-factor.enrolment-required'; readonly actionKey: string };
 
 /** Why {@link IdentityFacade.endOtherCustomerSessions} refused. */
 export type EndOtherCustomerSessionsFailure = AccessDenied | { readonly code: 'session.invalid' };
@@ -222,6 +294,24 @@ export interface IdentityFacade {
   ): Promise<Result<readonly CustomerAccountSummary[], AccessDenied | IdentityValidationFailed>>;
 
   /**
+   * The customer accounts whose display name contains `term` (2 to 80 characters after
+   * trimming; case insensitive), at most 200, for an admin list that filters by customer name.
+   * Rule `permissions [identity.customer-account.view]`, checked by the gate and again in the
+   * read; the system actor, a seller, a customer and an acting-as session are refused. `capped`
+   * is true when more than 200 matched, so the caller can ask for a longer term. The term is
+   * personal data: never logged. Not exposed over HTTP.
+   */
+  searchCustomerAccounts(
+    context: CallContext,
+    term: string,
+  ): Promise<
+    Result<
+      { readonly accountIds: readonly Id<'Account'>[]; readonly capped: boolean },
+      AccessDenied | IdentityValidationFailed
+    >
+  >;
+
+  /**
    * The short name ("Maryam R.") of each requested customer account, for the seller's own order
    * notices. Rule `permissions [identity.customer-short-name.view]`, seller scope, denied while
    * the seller is not approved; checked by the gate and again in the read. The system actor, an
@@ -295,6 +385,166 @@ export interface IdentityFacade {
     accountId: Id<'Account'>,
     requestId: Id<'AccountDeletionRequest'>,
   ): Promise<Result<{ readonly revokedSessions: number }, AccessDenied>>;
+
+  /**
+   * An admin changes a customer account's display name from the customer page (customers
+   * management phase 2). Rule `permissions [customers.customers.edit]`; only a platform admin that
+   * is not acting as a seller, any other caller `access.denied`. `account.unknown` for an id that
+   * is no customer of the Market, `account.not-eligible` for a disabled or unverified account,
+   * `validation.failed` for a name the holder could not set either. Records the display-name
+   * event and an audit row (never the name). Not exposed over HTTP.
+   */
+  renameCustomerForAdmin(
+    context: CallContext,
+    input: { readonly accountId: Id<'Account'>; readonly displayName: string },
+  ): Promise<
+    Result<
+      { readonly changed: boolean },
+      | AccessDenied
+      | { readonly code: 'access.unavailable' }
+      | { readonly code: 'account.unknown' }
+      | { readonly code: 'account.not-eligible' }
+      | {
+          readonly code: 'validation.failed';
+          readonly fields: readonly { readonly path: string; readonly code: string }[];
+        }
+    >
+  >;
+
+  /**
+   * An admin asks to change a customer's sign-in email (customers admin email change). Rule
+   * `permissions [customers.customer-email.change]` (protected), checked again in identity's unit;
+   * a platform admin that is not acting as a seller only. In one unit: the address parsed, a
+   * customer account of the Market that is active and verified, the address not held by another
+   * customer account, the mail counters, the admin's fresh step-up proof of
+   * `customers.customer-email.change` spent, the pending address stored and the confirmation link
+   * requested (mailed to the new address; a warning goes to the current one). The current address
+   * again answers `{ changed: false }` and spends nothing. `origin` is the admin's client (the
+   * `mail.origin` key). Not exposed over HTTP.
+   */
+  requestCustomerEmailChangeForAdmin(
+    context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly email: string;
+      readonly origin: string;
+    },
+  ): Promise<
+    Result<
+      { readonly changed: boolean; readonly requestedAt: Temporal.Instant | null },
+      CustomerEmailChangeFailure
+    >
+  >;
+
+  /**
+   * An admin cancels a customer's pending email change: the same rule, a fresh step-up proof
+   * spent, the pending address cleared and the mailed link void. Not exposed over HTTP.
+   */
+  cancelCustomerEmailChangeForAdmin(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly code: 'email-change.cancelled' }, CustomerEmailChangeCancelFailure>>;
+
+  /**
+   * The pending email change of a customer account, for the admin customer page, or null (none,
+   * lapsed, unknown, another Market's). Rule `permissions [customers.customers.view]`; a platform
+   * admin that is not acting as a seller only. PERSONAL DATA. Not exposed over HTTP.
+   */
+  customerPendingEmailOf(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<CustomerPendingEmailChange | null, CustomerAccountOfFailure>>;
+
+  /**
+   * Cancels a customer's pending sign-in email change because the account's deletion was
+   * requested (customers admin email change; Hassan R6, L2): the pending address cleared and its
+   * mailed link voided. Rule `system` (customers' subscriber on its deletion-requested events).
+   * `cancelled: false` when none was pending. Repeat-safe.
+   */
+  cancelCustomerEmailChangeForDeletion(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly cancelled: boolean }, CustomerAccountOfFailure>>;
+
+  /**
+   * One page of a customer's sign-ins of the last 90 days (time, outcome, result, device; never the
+   * address), for the customer page (customers management phase 2b). Rule `permissions
+   * [identity.customer-sign-in.view]`, a platform admin not acting as anyone. Not over HTTP.
+   */
+  adminCustomerSignIns(
+    context: CallContext,
+    request: CustomerSignInsRequest,
+  ): Promise<Result<CustomerSignInsPage, CustomerSecurityFailure | AccessDenied>>;
+
+  /**
+   * The full client address of one of a customer's sign-ins of the last 90 days. Rule
+   * `permissions [identity.customer-sign-in.view, identity.customer-sign-in.reveal]` (protected).
+   * Audited before it is answered. `account.unknown` for a record that is not that customer's.
+   * PERSONAL DATA. Not over HTTP.
+   */
+  adminRevealCustomerSignIn(
+    context: CallContext,
+    input: { readonly accountId: Id<'Account'>; readonly signInId: Id<'SignInRecord'> },
+  ): Promise<
+    Result<
+      { readonly address: string; readonly occurredAt: string },
+      CustomerSecurityFailure | AccessDenied
+    >
+  >;
+
+  /** A customer's live sessions (device and times), at most 50. Rule as `adminCustomerSignIns`. */
+  adminCustomerSessions(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<CustomerSessionsView, CustomerSecurityFailure | AccessDenied>>;
+
+  /**
+   * "Sign out everywhere": every session of the customer account ends. Rule `permissions
+   * [identity.customer-session.end]`, a platform admin not acting as anyone. Audited.
+   */
+  adminSignOutCustomer(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly revokedSessions: number }, CustomerSecurityFailure | AccessDenied>>;
+
+  /**
+   * Sends the customer the password reset mail ("Forgot password?" for them). Rule `permissions
+   * [identity.customer-password-reset.send]`, a platform admin not acting as anyone. Audited.
+   */
+  adminSendCustomerPasswordReset(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly sent: true }, AdminPasswordResetFailure | AccessDenied>>;
+
+  /**
+   * The directory fields of customer accounts by id, for the `customers` read model. Rule `system`;
+   * at most 100 ids; an unknown id, another Market's and a non-customer account are absent. PERSONAL
+   * DATA. Not exposed over HTTP.
+   */
+  customerDirectoryRecords(
+    context: CallContext,
+    accountIds: readonly Id<'Account'>[],
+  ): Promise<
+    Result<
+      readonly CustomerDirectoryRecord[],
+      AccessDenied | { readonly code: 'validation.failed' }
+    >
+  >;
+
+  /**
+   * A keyset page (ascending by id, 1 to 200) of the Market's customer accounts after `after`
+   * (null: from the start), for the one-off backfill of the `customers` read model. Rule `system`.
+   * PERSONAL DATA. Not exposed over HTTP.
+   */
+  customerDirectoryPage(
+    context: CallContext,
+    request: { readonly after: Id<'Account'> | null; readonly limit: number },
+  ): Promise<
+    Result<
+      readonly CustomerDirectoryRecord[],
+      AccessDenied | { readonly code: 'validation.failed' }
+    >
+  >;
 
   /**
    * Whether a customer account is still there (false once erased). Rule `system`; a boolean and

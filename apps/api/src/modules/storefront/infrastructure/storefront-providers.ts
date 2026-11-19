@@ -14,7 +14,22 @@ import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { SLIDE_TARGETS, type SlideTargets } from '../application/ports/slide-targets';
 import { FacadeLinkTargets } from './facade-link-targets';
 import { FacadeSlideTargets } from './facade-slide-targets';
+import { APP_CONFIG } from '../../../platform/config/config.module';
+import type { AppConfig } from '../../../platform/config/app-config';
+import { SEO_ENVIRONMENT, type SeoEnvironment } from '../application/ports/seo-environment';
+import {
+  SEO_SETTINGS_REPOSITORY,
+  type SeoSettingsRepository,
+} from '../application/ports/seo-settings.repository';
 import { PrismaPageRepository } from './prisma-page.repository';
+import { PrismaSeoSettingsRepository } from './prisma-seo-settings.repository';
+import {
+  SLIDE_IMAGE_PROCESSOR,
+  type SlideImageProcessor,
+} from '../application/ports/slide-image-processor';
+import { SLIDE_IMAGE_STORE, type SlideImageStore } from '../application/ports/slide-image.store';
+import { PrismaSlideImageStore } from './prisma-slide-image.store';
+import { SharpSlideImageProcessor } from './sharp-slide-image-processor';
 import { PrismaSlideRepository } from './prisma-slide.repository';
 
 /** Binds the ports of the storefront. Only this layer may reach `PrismaService`. */
@@ -28,6 +43,29 @@ export const storefrontProviders: readonly FactoryProvider[] = [
     provide: SLIDE_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SlideRepository => new PrismaSlideRepository(prisma),
+  },
+  {
+    provide: SEO_SETTINGS_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SeoSettingsRepository =>
+      new PrismaSeoSettingsRepository(prisma),
+  },
+  {
+    provide: SEO_ENVIRONMENT,
+    inject: [APP_CONFIG],
+    useFactory: (config: AppConfig): SeoEnvironment => ({
+      ceiling: () => config.storefrontIndexing.ceiling,
+      sampleDataLock: () => config.storefrontIndexing.sampleData,
+    }),
+  },
+  {
+    provide: SLIDE_IMAGE_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SlideImageStore => new PrismaSlideImageStore(prisma),
+  },
+  {
+    provide: SLIDE_IMAGE_PROCESSOR,
+    useFactory: (): SlideImageProcessor => new SharpSlideImageProcessor(),
   },
   {
     provide: SLIDE_TARGETS,

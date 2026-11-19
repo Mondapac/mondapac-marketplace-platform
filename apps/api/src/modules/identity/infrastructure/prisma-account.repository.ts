@@ -1,11 +1,14 @@
+import { escapeLikeTerm } from '../../../platform/text/like-escape';
 import { err, ok, parseMarketId, POPULATIONS, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, Population, Result } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { SubjectKeyService } from '../../../platform/subject-keys/subject-key-service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
+import { AccountEmailTakenError } from '../application/ports/account.repository';
 import type {
   AccountAddRefused,
   AccountRepository,
+  CustomerDirectoryRow,
   CustomerSummaryRow,
 } from '../application/ports/account.repository';
 import { Account, type AccountState } from '../domain/account';
@@ -60,6 +63,9 @@ const SELECTED = {
   locale: true,
   storefrontPalette: true,
   storefrontTextSize: true,
+  pendingEmail: true,
+  pendingEmailNormalized: true,
+  pendingEmailRequestedAt: true,
   status: true,
   emailVerifiedAt: true,
   existingAccountNoticeAt: true,
@@ -81,6 +87,9 @@ interface SelectedRow {
   readonly locale: string | null;
   readonly storefrontPalette: string | null;
   readonly storefrontTextSize: string | null;
+  readonly pendingEmail: string | null;
+  readonly pendingEmailNormalized: string | null;
+  readonly pendingEmailRequestedAt: Date | null;
   readonly status: string;
   readonly emailVerifiedAt: Date | null;
   readonly existingAccountNoticeAt: Date | null;
@@ -97,6 +106,36 @@ interface SelectedRow {
  * table, never nested (C10). A known constraint violation becomes a domain error; nothing of
  * the driver error is logged or returned (I15).
  */
+const DIRECTORY_SELECT = {
+  id: true,
+  email: true,
+  displayName: true,
+  status: true,
+  emailVerifiedAt: true,
+  signedUpAt: true,
+} as const;
+
+function toDirectoryRow(row: {
+  id: string;
+  email: string;
+  displayName: string | null;
+  status: string;
+  emailVerifiedAt: Date | null;
+  signedUpAt: Date;
+}): CustomerDirectoryRow {
+  return {
+    id: row.id as Id<'Account'>,
+    email: row.email,
+    displayName: row.displayName,
+    status: row.status === 'disabled' ? 'disabled' : 'active',
+    emailVerifiedAt:
+      row.emailVerifiedAt === null
+        ? null
+        : Temporal.Instant.fromEpochMilliseconds(row.emailVerifiedAt.getTime()),
+    signedUpAt: Temporal.Instant.fromEpochMilliseconds(row.signedUpAt.getTime()),
+  };
+}
+
 export class PrismaAccountRepository implements AccountRepository {
   constructor(
     private readonly prisma: PrismaService,
@@ -160,6 +199,47 @@ export class PrismaAccountRepository implements AccountRepository {
     }));
   }
 
+  async customerDirectoryRows(market: MarketContext, ids: readonly Id<'Account'>[]) {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.tx(market).identityAccount.findMany({
+      where: { marketId: market.marketId, population: 'customer', id: { in: [...ids] } },
+      select: DIRECTORY_SELECT,
+    });
+    return rows.map(toDirectoryRow);
+  }
+
+  async customerDirectoryPage(market: MarketContext, after: Id<'Account'> | null, limit: number) {
+    const rows = await this.prisma.tx(market).identityAccount.findMany({
+      where: {
+        marketId: market.marketId,
+        population: 'customer',
+        ...(after === null ? {} : { id: { gt: after } }),
+      },
+      orderBy: { id: 'asc' },
+      take: limit,
+      select: DIRECTORY_SELECT,
+    });
+    return rows.map(toDirectoryRow);
+  }
+
+  async searchCustomerIdsByName(
+    market: MarketContext,
+    term: string,
+    limit: number,
+  ): Promise<readonly Id<'Account'>[]> {
+    const rows = await this.prisma.tx(market).identityAccount.findMany({
+      where: {
+        marketId: market.marketId,
+        population: 'customer',
+        displayName: { contains: escapeLikeTerm(term), mode: 'insensitive' },
+      },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+      take: limit,
+    });
+    return rows.map((row) => row.id as Id<'Account'>);
+  }
+
   async customerSharesAddressWithSellerMember(
     market: MarketContext,
     customerId: Id<'Account'>,
@@ -221,6 +301,11 @@ export class PrismaAccountRepository implements AccountRepository {
       timezone: row.timezone,
       locale: row.locale,
       appearance: appearanceOf(row),
+      pendingEmail:
+        row.pendingEmail === null || row.pendingEmailNormalized === null
+          ? null
+          : { typed: row.pendingEmail, normalized: row.pendingEmailNormalized },
+      pendingEmailRequestedAt: toOptionalInstant(row.pendingEmailRequestedAt),
       status: row.status,
       emailVerifiedAt: toOptionalInstant(row.emailVerifiedAt),
       existingAccountNoticeAt: toOptionalInstant(row.existingAccountNoticeAt),
@@ -286,24 +371,41 @@ export class PrismaAccountRepository implements AccountRepository {
     if (expected === null) throw new Error('save: the account was never stored; use add');
     if (state.version === expected) return;
     const transaction = this.prisma.tx(market);
-    const { count } = await transaction.identityAccount.updateMany({
-      where: { marketId: market.marketId, id: state.id, version: expected },
-      data: {
-        displayName: state.displayName,
-        timezone: state.timezone ?? null,
-        locale: state.locale ?? null,
-        storefrontPalette: state.appearance?.palette ?? null,
-        storefrontTextSize: state.appearance?.textSize ?? null,
-        // Slice 8b: disable and enable. Written under the version guard, in the caller's
-        // serializable unit (HF8: every writer of accounts.status).
-        status: state.status,
-        emailVerifiedAt: state.emailVerifiedAt === null ? null : toDate(state.emailVerifiedAt),
-        signedUpAt: toDate(state.signedUpAt),
-        existingAccountNoticeAt:
-          state.existingAccountNoticeAt === null ? null : toDate(state.existingAccountNoticeAt),
-        version: state.version,
-      },
-    });
+    const pending = state.pendingEmail ?? null;
+    const pendingAt = state.pendingEmailRequestedAt ?? null;
+    let count: number;
+    try {
+      ({ count } = await transaction.identityAccount.updateMany({
+        where: { marketId: market.marketId, id: state.id, version: expected },
+        data: {
+          // The sign-in address changes only through a confirmed email change (customers admin
+          // email change); the unique key decides a clash, which rolls the caller's unit back.
+          email: state.email.typed,
+          emailNormalized: state.email.normalized,
+          pendingEmail: pending?.typed ?? null,
+          pendingEmailNormalized: pending?.normalized ?? null,
+          pendingEmailRequestedAt: pendingAt === null ? null : toDate(pendingAt),
+          displayName: state.displayName,
+          timezone: state.timezone ?? null,
+          locale: state.locale ?? null,
+          storefrontPalette: state.appearance?.palette ?? null,
+          storefrontTextSize: state.appearance?.textSize ?? null,
+          // Slice 8b: disable and enable. Written under the version guard, in the caller's
+          // serializable unit (HF8: every writer of accounts.status).
+          status: state.status,
+          emailVerifiedAt: state.emailVerifiedAt === null ? null : toDate(state.emailVerifiedAt),
+          signedUpAt: toDate(state.signedUpAt),
+          existingAccountNoticeAt:
+            state.existingAccountNoticeAt === null ? null : toDate(state.existingAccountNoticeAt),
+          version: state.version,
+        },
+      }));
+    } catch (error) {
+      if (this.prisma.violatedConstraint(error) === EMAIL_TAKEN) {
+        throw new AccountEmailTakenError(state.id);
+      }
+      throw error;
+    }
     if (count !== 1) throw new StaleAggregateError('account', state.id);
     // A change of the credential goes through its root, whose version rose above (data 3.3);
     // the row is rewritten only when the credential changed (Mojtaba N-b).

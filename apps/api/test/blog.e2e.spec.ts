@@ -5,11 +5,15 @@ import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared
 import request from 'supertest';
 import { ApproveBlogPost } from '../src/modules/blog/application/use-cases/approve-post.use-case';
 import { CreateBlogPost } from '../src/modules/blog/application/use-cases/create-post.use-case';
+import { ListBlogMedia } from '../src/modules/blog/application/use-cases/list-media.use-case';
 import { ListBlogPosts } from '../src/modules/blog/application/use-cases/list-posts.use-case';
+import { ExportBlogPosts } from '../src/modules/blog/application/use-cases/export-posts.use-case';
 import { PauseBlogPost } from '../src/modules/blog/application/use-cases/pause-post.use-case';
 import { PrepareBlogPostCopy } from '../src/modules/blog/application/use-cases/prepare-post-copy.use-case';
 import { ScheduleBlogPost } from '../src/modules/blog/application/use-cases/schedule-post.use-case';
 import { CreateOwnBlogPost } from '../src/modules/blog/application/use-cases/seller-create-post.use-case';
+import { UploadBlogMedia } from '../src/modules/blog/application/use-cases/upload-media.use-case';
+import { ViewBlogMediaFile } from '../src/modules/blog/application/use-cases/view-media-file.use-case';
 import { ViewPublishedBlogPost } from '../src/modules/blog/application/use-cases/view-published-post.use-case';
 import { ListPublishedBlogPosts } from '../src/modules/blog/application/use-cases/view-published-posts.use-case';
 import { ViewUpcomingBlogEvents } from '../src/modules/blog/application/use-cases/view-upcoming-events.use-case';
@@ -45,6 +49,7 @@ const tokens = new RandomSessionTokens();
 it('maps every refusal code of the blog routes to its exact status', () => {
   expect(BLOG_STATUS).toEqual({
     'validation.failed': 400,
+    'batch.too-large': 413,
     'blog.post-not-found': 404,
     'blog.not-found': 404,
     'blog.category-not-found': 404,
@@ -67,6 +72,12 @@ it('maps every refusal code of the blog routes to its exact status', () => {
     'conflict.stale': 409,
     'blog.checks-failed': 422,
     'blog.unavailable': 503,
+    'blog.media-not-found': 404,
+    'file.too-large': 413,
+    'file.unsupported-type': 415,
+    'file.too-many-pixels': 422,
+    'file.too-small': 422,
+    'file.unreadable': 422,
   });
 });
 
@@ -95,6 +106,8 @@ describe.each(TEST_MARKETS)('blog routes over HTTP in market %s', (code) => {
           .useValue(clock)
           .overrideProvider(ListBlogPosts)
           .useValue(stub('list'))
+          .overrideProvider(ExportBlogPosts)
+          .useValue(stub('export'))
           .overrideProvider(CreateBlogPost)
           .useValue(stub('create'))
           .overrideProvider(ApproveBlogPost)
@@ -112,7 +125,13 @@ describe.each(TEST_MARKETS)('blog routes over HTTP in market %s', (code) => {
           .overrideProvider(ViewPublishedBlogPost)
           .useValue(stub('published-post'))
           .overrideProvider(ViewUpcomingBlogEvents)
-          .useValue(stub('upcoming')),
+          .useValue(stub('upcoming'))
+          .overrideProvider(UploadBlogMedia)
+          .useValue(stub('media-upload'))
+          .overrideProvider(ListBlogMedia)
+          .useValue(stub('media-list'))
+          .overrideProvider(ViewBlogMediaFile)
+          .useValue(stub('media-file')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'blog-seed-0001'), {});
     fakes.seedAccount({
@@ -224,6 +243,55 @@ describe.each(TEST_MARKETS)('blog routes over HTTP in market %s', (code) => {
     ]);
   });
 
+  it('passes the list query to the list, and streams the export from its own route before `:post`', async () => {
+    await boot();
+    const session = adminSession();
+    next = ok({
+      items: [],
+      counts: {},
+      total: 0,
+      page: 1,
+      pageSize: 25,
+      hasMore: false,
+      nextCursor: null,
+    });
+    const listed = await call('get', '/blog/admin/posts?view=draft&q=eid&page=2', session);
+    expect(listed.status).toBe(200);
+    expect(listed.headers['cache-control']).toBe('no-store');
+    next = ok({
+      filename: 'blog-posts-2026-11-16.csv',
+      contentType: 'text/csv; charset=utf-8',
+      chunks: (async function* () {
+        await Promise.resolve();
+        yield 'Post ID,Title\r\n';
+        yield `${POST_ID},Eid gifts\r\n`;
+      })(),
+    });
+    const file = await call('get', '/blog/admin/posts/export?format=csv&view=all', session);
+    expect(file.status).toBe(200);
+    expect(file.headers['content-type']).toContain('text/csv');
+    expect(file.headers['content-disposition']).toBe(
+      'attachment; filename="blog-posts-2026-11-16.csv"',
+    );
+    expect(file.headers['cache-control']).toBe('no-store');
+    expect(file.headers['x-content-type-options']).toBe('nosniff');
+    expect(file.text).toContain('Eid gifts');
+    next = { ok: false, error: { code: 'batch.too-large', max: 10_000, total: 12_000 } };
+    const big = await call('get', '/blog/admin/posts/export', session);
+    expect(big.status).toBe(413);
+    expect(big.headers['cache-control']).toBe('no-store');
+    expect(big.body).toEqual({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10_000, total: 12_000 },
+    });
+    expect(calls).toEqual([
+      { name: 'list', input: { query: { view: 'draft', q: 'eid', page: '2' } } },
+      { name: 'export', input: { query: { format: 'csv', view: 'all' } } },
+      { name: 'export', input: { query: {} } },
+    ]);
+  });
+
   it('refuses an admin route with no session, a write without CSRF, a stray field and a non-JSON body', async () => {
     await boot();
     const session = adminSession();
@@ -292,6 +360,94 @@ describe.each(TEST_MARKETS)('blog routes over HTTP in market %s', (code) => {
     expect((await approve()).status).toBe(503);
     next = err({ code: 'something.new' });
     expect((await approve()).status).toBe(500);
+  });
+
+  it('takes a picture upload as a large JSON body for an admin session with CSRF, and answers the library and a rendition', async () => {
+    await boot();
+    const session = adminSession();
+    const MEDIA = id<'BlogMedia'>(0xd001);
+    const view = { id: MEDIA, width: 1600, height: 900, createdAt: START, uploadedBy: ADMIN };
+    // About 3 MB of base64: far past the 64 KiB of the ordinary JSON routes.
+    const data = Buffer.alloc(2 * 1024 * 1024, 7).toString('base64');
+    next = ok(view);
+    const made = await call('post', '/blog/admin/media', session, { data });
+    expect(made.status).toBe(201);
+    expect(made.headers['cache-control']).toBe('no-store');
+    expect(made.body).toEqual({ ...view, createdAt: START.toString() });
+
+    next = ok({ items: [view], page: 1, pageSize: 40, hasMore: false });
+    const list = await call('get', '/blog/admin/media?page=1', session);
+    expect(list.status).toBe(200);
+    expect(list.headers['cache-control']).toBe('no-store');
+    expect(list.body).toEqual({
+      items: [{ ...view, createdAt: START.toString() }],
+      page: 1,
+      pageSize: 40,
+      hasMore: false,
+    });
+
+    next = ok({ bytes: Buffer.from([0xff, 0xd8, 0xff, 0x00]), contentType: 'image/jpeg' });
+    const file = await call('get', `/blog/admin/media/${MEDIA}/thumb`, session);
+    expect(file.status).toBe(200);
+    expect(file.headers['content-type']).toBe('image/jpeg');
+    expect(file.headers['cache-control']).toBe('private, no-store');
+    expect(file.headers['x-content-type-options']).toBe('nosniff');
+    expect(file.headers['content-security-policy']).toBe('sandbox');
+
+    expect(calls).toEqual([
+      { name: 'media-upload', input: { body: { data } } },
+      { name: 'media-list', input: { query: { page: '1' } } },
+      { name: 'media-file', input: { media: MEDIA, size: 'thumb' } },
+    ]);
+  });
+
+  it('refuses a picture upload without CSRF, with a stray field or not as JSON, and maps its refusals', async () => {
+    await boot();
+    const session = adminSession();
+    const data = Buffer.from('picture').toString('base64');
+    // Without the CSRF header the large body is not read: the small parser refuses it first.
+    const big = Buffer.alloc(200 * 1024, 7).toString('base64');
+    expect(
+      (await call('post', '/blog/admin/media', { cookie: session.cookie }, { data: big })).status,
+    ).toBe(413);
+    expect(
+      (await call('post', '/blog/admin/media', { cookie: session.cookie }, { data })).status,
+    ).toBe(403);
+    const extra = await call('post', '/blog/admin/media', session, { data, alt: 'x' });
+    expect(extra.status).toBe(400);
+    expect(extra.body).toMatchObject({
+      details: { fields: [{ path: 'alt', code: 'unknown-field' }] },
+    });
+    const text = await http()
+      .post('/blog/admin/media')
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session })
+      .set('content-type', 'text/plain')
+      .send('x');
+    expect(text.status).toBe(415);
+    expect(calls).toEqual([]);
+
+    const upload = () => call('post', '/blog/admin/media', session, { data });
+    for (const [code, status] of [
+      ['file.too-large', 413],
+      ['file.unsupported-type', 415],
+      ['file.too-small', 422],
+      ['file.too-many-pixels', 422],
+      ['file.unreadable', 422],
+      ['validation.failed', 400],
+    ] as const) {
+      next = err({ code });
+      expect((await upload()).status).toBe(status);
+    }
+    next = err({ code: 'blog.unavailable', retryAfterSeconds: 2 });
+    const busy = await upload();
+    expect(busy.status).toBe(503);
+    expect(busy.headers['retry-after']).toBe('2');
+    expect(busy.body).toEqual({ statusCode: 503, code: 'blog.unavailable' });
+
+    next = err({ code: 'blog.media-not-found' });
+    const missing = await call('get', `/blog/admin/media/${POST_ID}/large`, session);
+    expect(missing.status).toBe(404);
+    expect(missing.body).toEqual({ statusCode: 404, code: 'blog.media-not-found' });
   });
 
   it('answers the live posts to a buyer with no session, and 410 and 404 for an address that is gone or unknown', async () => {

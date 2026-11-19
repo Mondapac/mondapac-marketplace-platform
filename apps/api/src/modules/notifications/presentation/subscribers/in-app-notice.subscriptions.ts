@@ -10,7 +10,9 @@ import {
   OfferTagSuspended,
   PlatformImportFinished,
   ProductImageTakenDown,
+  SellerImportFinished,
   ProductRevisionChangesRequested,
+  ProductRevisionChangesRequestedV2,
   ProductRevisionPublished,
   ProductRevisionSubmitted,
 } from '../../../catalog';
@@ -26,12 +28,15 @@ import {
 } from '../../../certification';
 import { SellerAccessApproved, SellerAccessReinstated } from '../../../identity';
 import { LowStockReached } from '../../../inventory';
-import { OrderPaid } from '../../../ordering';
+import { OrderPaid, SellerRefundLimitReached } from '../../../ordering';
+import { AssistantSpendCapReached } from '../../../assistant/contracts/admin-notice.contract';
 import { PriceHoldDecided, PriceHoldOpened } from '../../../pricing';
 import { DeliveryFallbackOverCap } from '../../../shipping';
 import { BusinessFileSubmitted } from '../../../sellers';
 import {
   ADMIN_DELIVERY_FALLBACK_OVER_CAP,
+  ADMIN_SELLER_REFUND_LIMIT_REACHED,
+  ADMIN_ASSISTANT_SPEND_CAP_REACHED,
   ADMIN_PLATFORM_IMPORT_FINISHED,
   ADMIN_PRICE_HOLD_OPENED,
   ADMIN_PRODUCT_REVISION_SUBMITTED,
@@ -49,6 +54,7 @@ import {
   SELLER_OFFER_TAG_CHANGED,
   SELLER_PRICE_HOLD_DECIDED,
   SELLER_PRODUCT_CHANGES_REQUESTED,
+  SELLER_IMPORT_FINISHED,
   SELLER_PRODUCT_PUBLISHED,
 } from '../../domain/in-app-notice';
 import type {
@@ -75,6 +81,10 @@ export const ADMIN_PRICE_HOLD_NOTICE_SUBSCRIBER = 'notifications.admin-price-hol
 export const ADMIN_DELIVERY_FALLBACK_NOTICE_SUBSCRIBER =
   'notifications.admin-delivery-fallback-notice';
 export const ADMIN_PLATFORM_IMPORT_NOTICE_SUBSCRIBER = 'notifications.admin-platform-import-notice';
+export const ADMIN_SELLER_REFUND_LIMIT_NOTICE_SUBSCRIBER =
+  'notifications.admin-seller-refund-limit-notice';
+export const ADMIN_ASSISTANT_SPEND_CAP_NOTICE_SUBSCRIBER =
+  'notifications.admin-assistant-spend-cap-notice';
 
 /** The seller notice subscribers (package 4), one per event; each is an inbox handler. */
 export const SELLER_NOTICE_SUBSCRIBERS = {
@@ -90,6 +100,7 @@ export const SELLER_NOTICE_SUBSCRIBERS = {
   offerChangesRequested: 'notifications.seller-offer-changes-notice',
   productPublished: 'notifications.seller-product-published-notice',
   productChangesRequested: 'notifications.seller-product-changes-notice',
+  productChangesRequestedV2: 'notifications.seller-product-changes-v2-notice',
   tagSuspended: 'notifications.seller-tag-suspended-notice',
   tagRemoved: 'notifications.seller-tag-removed-notice',
   tagRestored: 'notifications.seller-tag-restored-notice',
@@ -97,6 +108,7 @@ export const SELLER_NOTICE_SUBSCRIBERS = {
   priceHoldDecided: 'notifications.seller-price-hold-notice',
   accessApproved: 'notifications.seller-access-approved-notice',
   accessReinstated: 'notifications.seller-access-reinstated-notice',
+  importFinished: 'notifications.seller-import-finished-notice',
 } as const;
 
 /**
@@ -123,6 +135,8 @@ export function inAppNoticeSubscriptions(
   const priceHold = review(ADMIN_PRICE_HOLD_NOTICE_SUBSCRIBER);
   const deliveryFallback = review(ADMIN_DELIVERY_FALLBACK_NOTICE_SUBSCRIBER);
   const platformImport = review(ADMIN_PLATFORM_IMPORT_NOTICE_SUBSCRIBER);
+  const refundLimit = review(ADMIN_SELLER_REFUND_LIMIT_NOTICE_SUBSCRIBER);
+  const spendCap = review(ADMIN_ASSISTANT_SPEND_CAP_NOTICE_SUBSCRIBER);
   const seller =
     (name: string) =>
     async (item: SellerNoticeItem, delivery: EventDelivery, context: CallContext) => {
@@ -162,6 +176,27 @@ export function inAppNoticeSubscriptions(
               offerId: event.payload.offerId,
               variantId: event.payload.variantId,
               onlyLeft: event.payload.onlyLeft,
+            },
+          },
+          delivery,
+          context,
+        ),
+    }),
+    subscription({
+      name: names.importFinished,
+      event: SellerImportFinished,
+      handle: (event, delivery, context) =>
+        seller(names.importFinished)(
+          {
+            kind: SELLER_IMPORT_FINISHED,
+            owner: bySeller(event.payload.sellerId),
+            params: {
+              importId: event.payload.importId,
+              sellerId: event.payload.sellerId,
+              outcome: event.payload.outcome,
+              created: event.payload.created,
+              updated: event.payload.updated,
+              failed: event.payload.failed,
             },
           },
           delivery,
@@ -298,26 +333,35 @@ export function inAppNoticeSubscriptions(
         );
       },
     }),
-    subscription({
-      name: names.productChangesRequested,
-      event: ProductRevisionChangesRequested,
-      handle: async (event, delivery, context) => {
-        if (event.payload.scope !== 'seller') return;
-        await seller(names.productChangesRequested)(
-          {
-            kind: SELLER_PRODUCT_CHANGES_REQUESTED,
-            owner: byProduct(event.payload.productId),
-            params: {
-              productId: event.payload.productId,
-              revisionId: event.payload.revisionId,
-              reason: event.payload.reasonCode,
+    // v1 (the Offer reasons) stays subscribed for an event still in an outbox; v2 carries the
+    // product reasons (D2). Both make the same notice.
+    ...(
+      [
+        [names.productChangesRequested, ProductRevisionChangesRequested],
+        [names.productChangesRequestedV2, ProductRevisionChangesRequestedV2],
+      ] as const
+    ).map(([name, event]) =>
+      subscription({
+        name,
+        event,
+        handle: async (received, delivery, context) => {
+          if (received.payload.scope !== 'seller') return;
+          await seller(name)(
+            {
+              kind: SELLER_PRODUCT_CHANGES_REQUESTED,
+              owner: byProduct(received.payload.productId),
+              params: {
+                productId: received.payload.productId,
+                revisionId: received.payload.revisionId,
+                reason: received.payload.reasonCode,
+              },
             },
-          },
-          delivery,
-          context,
-        );
-      },
-    }),
+            delivery,
+            context,
+          );
+        },
+      }),
+    ),
     subscription({
       name: names.tagSuspended,
       event: OfferTagSuspended,
@@ -478,6 +522,30 @@ export function inAppNoticeSubscriptions(
             kind: ADMIN_DELIVERY_FALLBACK_OVER_CAP,
             sellerOrderId: event.payload.sellerOrderId,
             sellerId: event.payload.sellerId,
+          },
+          delivery,
+          context,
+        ),
+    }),
+    subscription({
+      name: ADMIN_ASSISTANT_SPEND_CAP_NOTICE_SUBSCRIBER,
+      event: AssistantSpendCapReached,
+      handle: (event, delivery, context) =>
+        spendCap(
+          { kind: ADMIN_ASSISTANT_SPEND_CAP_REACHED, cap: event.payload.cap },
+          delivery,
+          context,
+        ),
+    }),
+    subscription({
+      name: ADMIN_SELLER_REFUND_LIMIT_NOTICE_SUBSCRIBER,
+      event: SellerRefundLimitReached,
+      handle: (event, delivery, context) =>
+        refundLimit(
+          {
+            kind: ADMIN_SELLER_REFUND_LIMIT_REACHED,
+            sellerId: event.payload.sellerId,
+            limit: event.payload.limit,
           },
           delivery,
           context,

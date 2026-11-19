@@ -1,148 +1,58 @@
-import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
-import type { Prisma } from '../../../generated/prisma/client';
-import type { PrismaService } from '../../../platform/persistence/prisma.service';
+import type { SavedFilterStore } from '../../lists';
 import type {
   SavedFilterRepository,
   SavedFilterWrite,
 } from '../application/ports/saved-filter.repository';
-import {
-  MAX_SAVED_FILTERS_PER_OWNER,
-  MAX_SHARED_SAVED_FILTERS,
-  type SavedFilter,
-  type SavedFilterVisibility,
-} from '../domain/saved-filter';
-
-const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
-const toInstant = (date: Date): Temporal.Instant =>
-  Temporal.Instant.fromEpochMilliseconds(date.getTime());
-
-/** The two case-insensitive name uniques of the migration (data design 3.28). */
-const UNIQUE_OWNER_NAME = 'saved_filters_owner_name_key';
-const UNIQUE_SHARED_NAME = 'saved_filters_shared_name_key';
-
-type Row = Prisma.CatalogSavedFilterGetPayload<object>;
-
-const filterOf = (row: Row): SavedFilter => ({
-  id: row.id as Id<'SavedFilter'>,
-  listKey: row.listKey,
-  ownerAccountId: row.ownerAccountId as Id<'Account'>,
-  visibility: row.visibility as SavedFilterVisibility,
-  name: row.name,
-  payload: row.payload,
-  position: row.position,
-  createdAt: toInstant(row.createdAt),
-  updatedAt: toInstant(row.updatedAt),
-});
+import { SAVED_FILTER_LIST_KEYS } from '../application/saved-filters/saved-filter-lists';
+import type { SavedFilter } from '../domain/saved-filter';
 
 /**
- * {@link SavedFilterRepository} on `catalog.saved_filters`. Every statement goes through
- * `PrismaService.tx(market)` with `marketId` in `where`, so another Market's rows are never read
- * or changed.
+ * {@link SavedFilterRepository} for the admin lists, on the shared store of the `lists` module
+ * (super list phase 0). `sellerId: null` is in every call, so a seller's filter is never read or
+ * changed through an admin route (the seller store is its own repository). The name keeps the
+ * old file's: the store behind it moved, the port did not.
  */
 export class PrismaSavedFilterRepository implements SavedFilterRepository {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly store: SavedFilterStore,
+    /** The lists this module owns for admins: the only filters reachable by id. */
+    private readonly listKeys: readonly string[] = SAVED_FILTER_LIST_KEYS,
+  ) {}
 
-  async visibleTo(
+  visibleTo(
     market: MarketContext,
     listKey: string,
     accountId: Id<'Account'>,
   ): Promise<readonly SavedFilter[]> {
-    const rows = await this.prisma.tx(market).catalogSavedFilter.findMany({
-      where: {
-        marketId: market.marketId,
-        listKey,
-        OR: [{ ownerAccountId: accountId }, { visibility: 'everyone' }],
-      },
-      orderBy: [{ position: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
-      // Both caps bound the rows; the extra room covers a cap lowered after rows were written.
-      take: 2 * (MAX_SAVED_FILTERS_PER_OWNER + MAX_SHARED_SAVED_FILTERS),
-    });
-    return rows.map(filterOf);
+    return this.store.visibleTo(market, null, listKey, accountId);
   }
 
-  async find(market: MarketContext, id: Id<'SavedFilter'>): Promise<SavedFilter | null> {
-    const row = await this.prisma.tx(market).catalogSavedFilter.findFirst({
-      where: { marketId: market.marketId, id },
-    });
-    return row === null ? null : filterOf(row);
+  find(market: MarketContext, id: Id<'SavedFilter'>): Promise<SavedFilter | null> {
+    return this.store.find(market, null, this.listKeys, id);
   }
 
   countOwnedBy(market: MarketContext, listKey: string, accountId: Id<'Account'>): Promise<number> {
-    return this.prisma.tx(market).catalogSavedFilter.count({
-      where: { marketId: market.marketId, listKey, ownerAccountId: accountId },
-    });
+    return this.store.countOwnedBy(market, null, listKey, accountId);
   }
 
   countShared(market: MarketContext, listKey: string): Promise<number> {
-    return this.prisma.tx(market).catalogSavedFilter.count({
-      where: { marketId: market.marketId, listKey, visibility: 'everyone' },
-    });
+    return this.store.countShared(market, null, listKey);
   }
 
-  async nextPosition(
-    market: MarketContext,
-    listKey: string,
-    accountId: Id<'Account'>,
-  ): Promise<number> {
-    const last = await this.prisma.tx(market).catalogSavedFilter.aggregate({
-      where: { marketId: market.marketId, listKey, ownerAccountId: accountId },
-      _max: { position: true },
-    });
-    return (last._max.position ?? 0) + 1;
+  nextPosition(market: MarketContext, listKey: string, accountId: Id<'Account'>): Promise<number> {
+    return this.store.nextPosition(market, null, listKey, accountId);
   }
 
-  async add(market: MarketContext, filter: SavedFilter): Promise<SavedFilterWrite> {
-    try {
-      await this.prisma.tx(market).catalogSavedFilter.create({
-        data: {
-          id: filter.id,
-          marketId: market.marketId,
-          tenantId: market.tenantId,
-          ownerAccountId: filter.ownerAccountId,
-          visibility: filter.visibility,
-          listKey: filter.listKey,
-          name: filter.name,
-          payload: filter.payload as Prisma.InputJsonValue,
-          position: filter.position,
-          createdAt: toDate(filter.createdAt),
-          updatedAt: toDate(filter.updatedAt),
-        },
-        select: { id: true },
-      });
-    } catch (error) {
-      if (this.#nameTaken(error)) return 'name-taken';
-      throw error;
-    }
-    return 'ok';
+  add(market: MarketContext, filter: SavedFilter): Promise<SavedFilterWrite> {
+    return this.store.add(market, { ...filter, sellerId: null });
   }
 
-  async change(market: MarketContext, filter: SavedFilter): Promise<SavedFilterWrite | 'gone'> {
-    try {
-      const changed = await this.prisma.tx(market).catalogSavedFilter.updateMany({
-        where: { marketId: market.marketId, id: filter.id },
-        data: {
-          name: filter.name,
-          visibility: filter.visibility,
-          updatedAt: toDate(filter.updatedAt),
-        },
-      });
-      return changed.count === 0 ? 'gone' : 'ok';
-    } catch (error) {
-      if (this.#nameTaken(error)) return 'name-taken';
-      throw error;
-    }
+  change(market: MarketContext, filter: SavedFilter): Promise<SavedFilterWrite | 'gone'> {
+    return this.store.change(market, { ...filter, sellerId: null });
   }
 
-  async remove(market: MarketContext, id: Id<'SavedFilter'>): Promise<boolean> {
-    const removed = await this.prisma.tx(market).catalogSavedFilter.deleteMany({
-      where: { marketId: market.marketId, id },
-    });
-    return removed.count > 0;
-  }
-
-  #nameTaken(error: unknown): boolean {
-    const unique = this.prisma.violatedConstraint(error);
-    return unique === UNIQUE_OWNER_NAME || unique === UNIQUE_SHARED_NAME;
+  remove(market: MarketContext, id: Id<'SavedFilter'>): Promise<boolean> {
+    return this.store.remove(market, null, this.listKeys, id);
   }
 }

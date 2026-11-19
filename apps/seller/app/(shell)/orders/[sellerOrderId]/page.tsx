@@ -5,7 +5,9 @@ import { OrderDetail } from '../../../../src/orders/order-detail.tsx';
 import {
   ORDER_CONFIRM_PICKUP_PERMISSION,
   ORDER_DELIVER_PERMISSION,
+  ORDER_NOTE_PERMISSION,
   ORDER_READY_PERMISSION,
+  ORDER_UNAVAILABLE_PERMISSION,
 } from '../../../../src/orders/types.ts';
 import { isUuid } from '../../../../src/server/catalog-page.ts';
 import { loadOrderDetailPage } from '../../../../src/server/orders-page.ts';
@@ -29,11 +31,14 @@ export default async function OrderPage({
   const page = await loadOrderDetailPage(sellerOrderId);
   if (page.kind === 'unavailable') {
     return (
-      <LoadError
-        title={title}
-        message={t('orders.error.unavailable')}
-        retryLabel={t('load.retry')}
-      />
+      <div className="p-6">
+        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <LoadError
+          message={t('orders.error.unavailable')}
+          retryLabel={t('load.retry')}
+          className="w-full"
+        />
+      </div>
     );
   }
   if (page.kind === 'no-access') {
@@ -68,6 +73,11 @@ export default async function OrderPage({
       <OrderDetail
         initial={page.order}
         dispute={page.dispute}
+        showExtras
+        notes={page.notes}
+        activity={page.activity}
+        canMarkUnavailable={permissionKeys.includes(ORDER_UNAVAILABLE_PERMISSION)}
+        canNote={permissionKeys.includes(ORDER_NOTE_PERMISSION)}
         csrfToken={csrfToken}
         canMarkReady={permissionKeys.includes(ORDER_READY_PERMISSION)}
         canDeliver={permissionKeys.includes(ORDER_DELIVER_PERMISSION)}

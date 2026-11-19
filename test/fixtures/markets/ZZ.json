@@ -19,6 +19,7 @@
   "commissionPayouts": {
     "defaultRateBps": 1200,
     "provisionalTaxRateBps": 1500,
+    "exclusiveCustomer": { "reductionBps": 2500, "floorBps": 500, "months": 6 },
     "payoutTerms": {
       "weekdays": ["THU", "FRI"],
       "localTime": "14:30",
@@ -62,6 +63,7 @@
       "repeatedWordShareBps": 7500
     }
   },
+  "contentFilter": { "blockedTerms": ["zzbad", "zz bad phrase"] },
   "promotions": {
     "lineDiscountCapBps": 6000,
     "sellerMaxDiscountBps": 5000,
@@ -86,7 +88,7 @@
       "codeLength": 12,
       "alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     },
-    "cashback": { "maxBps": 500, "maxCapMinor": 3000 }
+    "cashback": { "maxBps": 500, "maxCapMinor": 3000, "sellerMinBps": 50 }
   },
   "tax": {
     "defaultRateBps": 1500,
@@ -105,6 +107,7 @@
   "requestLimits": {
     "anonymousIdentityPerMinute": 10,
     "publicMediaPerMinute": 600,
+    "publicSearchPerMinute": 90,
     "defaultPerMinute": 200
   },
   "notifications": {
@@ -118,11 +121,17 @@
   },
   "customers": {
     "addressBookLimit": 5,
+    "adminActionLimits": {
+      "passwordResetsPerHour": 5,
+      "piiRevealsPerHour": 10,
+      "piiRevealAlertAt": 6
+    },
     "address": {
       "countryCode": "JP",
       "postcodePattern": "^[0-9]{7}$",
       "regions": ["ZA", "ZB"]
-    }
+    },
+    "invitations": { "signUpWindowDays": 3, "burstPerDay": 2 }
   },
   "allowedOrigins": {
     "admin": ["https://admin.zz.test"],
@@ -190,13 +199,15 @@
         "verify-email": 720,
         "reset-password": 60,
         "enrol-second-factor": 45,
-        "confirm-second-factor-reset": 720
+        "confirm-second-factor-reset": 720,
+        "confirm-email-change": 720
       },
       "targets": {
         "customer": {
           "verify-email": "https://storefront.zz.test/konto/bestaetigen?ref=mail",
           "sign-in": "https://storefront.zz.test/konto/anmelden",
-          "reset-password": "https://storefront.zz.test/konto/passwort?ref=mail"
+          "reset-password": "https://storefront.zz.test/konto/passwort?ref=mail",
+          "confirm-email-change": "https://storefront.zz.test/konto/neue-adresse"
         },
         "seller": {
           "verify-email": "https://seller.zz.test/konto/bestaetigen?ref=mail",
@@ -337,11 +348,27 @@
       "name": true,
       "primaryImage": false,
       "anyImage": true,
-      "variantRemoved": false
+      "variantRemoved": false,
+      "gtinChanged": false,
+      "axisAdded": false
     },
     "maxVariantsPerProduct": 3,
     "maxCategoryDepth": 3,
+    "maxCategoryChangeTags": 20000,
+    "maxCategoryImportRows": 500,
+    "maxCategoryImportBytes": 1048576,
+    "maxPendingCategoryProposals": 3,
     "maxVariantAttributes": 3,
+    "units": [
+      { "code": "g", "labels": { "ja-JP": "g" } },
+      { "code": "kg", "labels": { "ja-JP": "kg" } },
+      { "code": "ml", "labels": { "ja-JP": "ml" } },
+      { "code": "l", "labels": { "ja-JP": "L" } },
+      { "code": "mm", "labels": { "ja-JP": "mm" } },
+      { "code": "cm", "labels": { "ja-JP": "cm" } },
+      { "code": "m", "labels": { "ja-JP": "m" } },
+      { "code": "count", "labels": { "ja-JP": "each" } }
+    ],
     "approvalRequired": false,
     "productTypes": ["simple"],
     "defaultFamily": "default",

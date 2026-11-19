@@ -12,6 +12,8 @@ import {
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
+import { ReviewNoteField, trimmedNote, useSentForReview } from '../shared/review-note.tsx';
+import { MeasureSettings } from './measure-settings.tsx';
 import {
   CODE_PATTERN,
   NAME_MAX,
@@ -20,6 +22,7 @@ import {
   contentOf,
   emptyForm,
   fieldKey,
+  measureDefaults,
   sentCodes,
   suggestCode,
   valuesFromLines,
@@ -34,6 +37,7 @@ import {
   type AttributeWrite,
   type DataType,
   type MarketLocales,
+  type MarketUnit,
 } from './types.ts';
 import { useAttributeCall } from './use-attribute-call.ts';
 
@@ -45,11 +49,17 @@ import { useAttributeCall } from './use-attribute-call.ts';
  */
 export function AddAttributeDialog({
   locales,
+  units,
   csrfToken,
+  reviewed = false,
   onClose,
   onCreated,
 }: {
+  /** Where a new attribute is reviewed (Admin Inbox > System requests): the form asks for a note. */
+  readonly reviewed?: boolean;
   readonly locales: MarketLocales;
+  /** The Market's units, for a number-with-unit attribute. */
+  readonly units: readonly MarketUnit[];
   readonly csrfToken: string;
   readonly onClose: () => void;
   readonly onCreated: (id: string) => void;
@@ -64,7 +74,14 @@ export function AddAttributeDialog({
   const [values, setValues] = useState('');
   const [variant, setVariant] = useState(false);
   const [material, setMaterial] = useState(false);
+  const [measureForm, setMeasureForm] = useState(() => ({
+    ...emptyForm(),
+    ...measureDefaults(units, 'mass'),
+  }));
   const [errors, setErrors] = useState<FieldErrors>({});
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
   const call = useAttributeCall(csrfToken);
   const formRef = useRef<HTMLFormElement>(null);
   useFocusFirstInvalid(formRef, errors);
@@ -85,7 +102,7 @@ export function AddAttributeDialog({
     event.preventDefault();
     const rows = choice ? valuesFromLines(values, locale) : [];
     const form = {
-      ...emptyForm(),
+      ...measureForm,
       names: { [locale]: name },
       values: rows,
       isVariantOption: variant,
@@ -96,8 +113,10 @@ export function AddAttributeDialog({
     if (typed !== '' && !CODE_PATTERN.test(typed)) found['code'] = 'format';
     if (typed === '' && suggested === '') found['code'] = 'required';
     if (rows.length > OPTIONS_MAX) found['options'] = 'too-many';
+    const sentNote = reviewed ? trimmedNote(note) : null;
+    setNoteError(reviewed && sentNote === null ? 'required' : null);
     setErrors(found);
-    if (Object.keys(found).length > 0) return;
+    if (Object.keys(found).length > 0 || (reviewed && sentNote === null)) return;
     const answer = await call.run<AttributeWrite>(
       'POST',
       API_ATTRIBUTES,
@@ -105,13 +124,20 @@ export function AddAttributeDialog({
         dataType,
         ...(typed === '' ? {} : { code: typed }),
         ...contentOf(form, dataType, locale),
+        ...(sentNote === null ? {} : { note: sentNote }),
       },
       sentCodes(rows, locale),
     );
     if (!answer.ok) {
-      if (answer.problem !== null) setErrors(answer.problem.fields);
+      if (answer.problem !== null) {
+        // The note has its own field: its refusal is shown there, not among the content fields.
+        const { note: refusedNote, ...contentFields } = answer.problem.fields;
+        if (refusedNote !== undefined) setNoteError('rejected');
+        setErrors(contentFields);
+      }
       return;
     }
+    sentForReview(answer.body);
     onCreated(answer.body.attribute.id);
   }
 
@@ -222,6 +248,17 @@ export function AddAttributeDialog({
               onChange={(event) => setValues(event.target.value)}
             />
           ) : null}
+          {dataType === 'measure' ? (
+            <MeasureSettings
+              form={measureForm}
+              units={units}
+              defaultLocale={locale}
+              savedUnits={[]}
+              locked={false}
+              errors={errors}
+              onChange={(next) => setMeasureForm((current) => ({ ...current, ...next }))}
+            />
+          ) : null}
           {dataType === 'select' ? (
             <CheckboxRow
               label={te('settings.variant')}
@@ -236,6 +273,17 @@ export function AddAttributeDialog({
             checked={material}
             onChange={(event) => setMaterial(event.target.checked)}
           />
+          {reviewed ? (
+            <ReviewNoteField
+              value={note}
+              onChange={(next) => {
+                setNote(next);
+                setNoteError(null);
+              }}
+              error={noteError ?? undefined}
+              disabled={call.pending}
+            />
+          ) : null}
         </form>
       )}
     </Dialog>

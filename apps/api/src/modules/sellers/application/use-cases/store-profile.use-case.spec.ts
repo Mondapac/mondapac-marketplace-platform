@@ -22,6 +22,7 @@ import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
+import { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { HmacRateCounterKeys } from '../../infrastructure/hmac-rate-counter-keys';
@@ -149,6 +150,7 @@ function setUp() {
       counters,
       counterKeys,
       claimCheck,
+      contentFilter: new ContentFilter(markets),
       ids,
       clock,
     }),
@@ -159,6 +161,7 @@ function setUp() {
       counters,
       counterKeys,
       claimCheck,
+      contentFilter: new ContentFilter(markets),
       imageProcessor,
       objectStore,
       ids,
@@ -527,6 +530,27 @@ describe.each(MARKETS)('sellers store profile in $code (design 3.7)', (fixture) 
         });
       },
     );
+
+    it("refuses a text with a term of the Market's content filter, as about.<locale> blocked-term", async () => {
+      const t = setUp();
+      const { context } = ownerOf(t, code);
+      const bad = code === 'AU' ? 'shit' : 'zzbad';
+
+      const result = await t.saveAbout.execute(context, {
+        expectedVersion: 0,
+        about: { [locale]: `We bake ${bad} bread` },
+      });
+
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: `about.${locale}`, code: 'blocked-term' }],
+        },
+      });
+      expect(JSON.stringify(result)).not.toMatch(/shit|zzbad/i);
+      expect(t.storeContent.revisions.size).toBe(0);
+    });
 
     it('refuses a text that claims a certification, as about.<locale> claim-term', async () => {
       const t = setUp();

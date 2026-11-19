@@ -1,5 +1,6 @@
 import { Banner, Card } from '@mondapac/ui';
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server';
+import { ShelfPicker, type ShelfChoice } from '../categories/shelf-picker.tsx';
 import { FieldList } from './field-list.tsx';
 import { formatInstant, known, OFFER_STATUSES, readable } from './format.ts';
 import { OfferActions } from './offer-actions.tsx';
@@ -22,12 +23,15 @@ export async function OfferDetail({
   canViewStock = false,
   canViewPrices = false,
   csrfToken = '',
+  shelves = [],
 }: {
   readonly offer: OfferView;
   readonly canEdit?: boolean;
   readonly canViewStock?: boolean;
   readonly canViewPrices?: boolean;
   readonly csrfToken?: string;
+  /** The seller's active shelves (categories C9b); the picker shows only when there are some. */
+  readonly shelves?: readonly ShelfChoice[];
 }) {
   const t = await getTranslations();
   const marketLocale = await getLocale();
@@ -96,6 +100,14 @@ export async function OfferDetail({
           ]}
         />
       </Card>
+      {canEdit && shelves.length > 0 ? (
+        <ShelfPicker
+          offerId={offer.offerId}
+          version={offer.version}
+          shelves={shelves}
+          csrfToken={csrfToken}
+        />
+      ) : null}
       {offer.offSaleCauses.length > 0 ? (
         <Card title={t('catalog.offer.off-sale')}>
           <ul className="list-disc ps-5">

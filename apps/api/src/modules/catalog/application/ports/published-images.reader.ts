@@ -1,6 +1,6 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PublishedImageRef } from '../../contracts/catalog.facade';
-import type { RenditionSize } from './product-image.repository';
+import type { RenditionFormat, RenditionSize } from './product-image.repository';
 
 /**
  * The reads behind the buyer-facing photos (catalog design 10, simplified path): PUBLISHED state
@@ -20,12 +20,13 @@ export interface PublishedImagesReader {
     perProduct: number,
   ): Promise<ReadonlyMap<Id<'Product'>, readonly PublishedImageRef[]>>;
 
-  /** The object key of one rendition of a public photo, or null when it is not public. */
+  /** The object key of one size and format of a public photo, or null when it is not public. */
   renditionKey(
     market: MarketContext,
     productId: Id<'Product'>,
     imageId: Id<'ProductImage'>,
     size: RenditionSize,
+    format: RenditionFormat,
   ): Promise<string | null>;
 }
 

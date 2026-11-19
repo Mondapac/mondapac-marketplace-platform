@@ -6,7 +6,9 @@ import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_PRODUCT_APPROVE } from '../../contracts/permissions';
-import { OFFER_CHANGE_REASONS, type OfferChangeReason } from '../../domain/events';
+import { PRODUCT_CHANGE_REASONS, type ProductChangeReason } from '../../domain/events';
+import type { AttributeRepository } from '../ports/attribute.repository';
+import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ProductRepository } from '../ports/product.repository';
 import type { ProductRevisionRepository } from '../ports/product-revision.repository';
 import {
@@ -23,7 +25,7 @@ export interface ProductRevisionRequestChangesInput {
   readonly revisionId: string;
   /** The product version the reviewer saw. */
   readonly version: number;
-  /** One of {@link OFFER_CHANGE_REASONS}, the Market's list of review reasons. */
+  /** One of {@link PRODUCT_CHANGE_REASONS}, the product review reasons (D2). */
   readonly reasonCode: string;
 }
 
@@ -38,6 +40,8 @@ export interface ProductRevisionRequestChangesDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly products: ProductRepository;
   readonly revisions: ProductRevisionRepository;
+  readonly attributes: AttributeRepository;
+  readonly policy: CatalogMarketPolicy;
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
 }
@@ -46,10 +50,10 @@ export interface ProductRevisionRequestChangesDependencies {
  * `product-revision.request-changes` (catalog design 4.2 row 5, 8.2): a reviewer sends the pending
  * revision of a seller's product back with a reason code. Rule: the key `catalog.product.approve`
  * and the admin population. The request names the product, the pending revision and the product
- * version the reviewer saw, and one reason of the closed Market list (the one Offers use); free text
- * is not accepted yet. In one unit the product is read again at the same version, the pending
+ * version the reviewer saw, and one reason of the closed product list (`PRODUCT_CHANGE_REASONS`, D2);
+ * free text is not accepted yet. In one unit the product is read again at the same version, the pending
  * pointer clears (the revision is terminal; the working copy stays for the next submit), the
- * decision row with the reason code is stored and `catalog.product-revision-changes-requested.v1`
+ * decision row with the reason code is stored and `catalog.product-revision-changes-requested.v2`
  * (ids and the code) goes to the outbox. The seller reads the outcome on their product.
  */
 export class ProductRevisionRequestChanges extends UseCase<
@@ -99,7 +103,7 @@ export class ProductRevisionRequestChanges extends UseCase<
     const reason = raw['reasonCode'];
     if (
       typeof reason !== 'string' ||
-      !(OFFER_CHANGE_REASONS as readonly string[]).includes(reason)
+      !(PRODUCT_CHANGE_REASONS as readonly string[]).includes(reason)
     ) {
       return err({ code: 'validation.failed', fields: [{ path: 'reasonCode', code: 'unknown' }] });
     }
@@ -116,9 +120,26 @@ export class ProductRevisionRequestChanges extends UseCase<
           if (!loaded.ok) return err(loaded.error);
           const { product, requiredChecks } = loaded.value;
           const now = deps.clock.now();
+          // The family follows the accepted state only: back to the published revision's, or the
+          // Market default for a product that was never published (decision ت۷).
+          const publishedId = product.state.publishedRevisionId;
+          let revertFamilyCode = deps.policy.defaultFamily(market);
+          if (publishedId !== null) {
+            const published = await deps.revisions.find(market, product.state.id, publishedId);
+            const code =
+              published === null
+                ? null
+                : await deps.attributes.familyCodeOfRevision(
+                    market,
+                    published.content.schemaRef.familyRevisionId,
+                  );
+            if (code === null) return err({ code: 'conflict.stale' });
+            revertFamilyCode = code;
+          }
           const asked = product.requestRevisionChanges({
             revisionId,
-            reasonCode: reason as OfferChangeReason,
+            reasonCode: reason as ProductChangeReason,
+            revertFamilyCode,
             now,
           });
           if (!asked.ok) return err(asked.error as ProductReviewRefusal);

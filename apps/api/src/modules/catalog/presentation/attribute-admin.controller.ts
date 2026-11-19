@@ -14,6 +14,7 @@ import {
   Res,
 } from '@nestjs/common';
 import {
+  ApiAcceptedResponse,
   ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
@@ -40,6 +41,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { MissingDetailsEmailSellers } from '../application/use-cases/missing-details-email-sellers.use-case';
 import { ProductsMissingDetailsList } from '../application/use-cases/products-missing-details-list.use-case';
 import { CategoryAttributeLinksGet } from '../application/use-cases/category-attribute-links-get.use-case';
 import { CategoryAttributeLinksSet } from '../application/use-cases/category-attribute-links-set.use-case';
@@ -60,17 +62,23 @@ import {
   FeatureSetListBody,
   AttributeCreateRequest,
   AttributeEditRequest,
+  AttributeEditWrapBody,
   AttributeVersionRequest,
+  AttributeVersionNoteRequest,
   AttributeWriteWrapBody,
   FeatureSetCreateRequest,
   FeatureSetEditRequest,
   FeatureSetWriteWrapBody,
   CategoryLinksBody,
   MissingDetailsListBody,
+  MissingDetailsEmailBody,
+  MissingDetailsEmailRequest,
   CategoryLinksSetRequest,
   CategoryLinksSetWrapBody,
 } from './attribute-admin.dto';
-import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
+import { closedBody, numericQuery, pageQuery, refusalWith, type Refusal } from './http-answers';
+import { answered } from './http-answers';
+import { CatalogueProposalBody } from './category-admin.dto';
 import { ApiErrorBody } from './platform-product.dto';
 
 /**
@@ -122,11 +130,13 @@ export const ATTRIBUTE_ADMIN_STATUS: Readonly<Record<string, number>> = Object.f
   'attribute-definition.option-removed': 409,
   'attribute-definition.variant-locked': 409,
   'attribute-definition.material-relaxation-required': 409,
+  'attribute-definition.measure-locked': 409,
   'attribute.claim-word': 422,
   'attribute.locale-uncheckable': 422,
   'attribute-definition.name-required': 422,
   'attribute-definition.text-invalid': 422,
   'attribute-definition.bounds-invalid': 422,
+  'attribute-definition.measure-invalid': 422,
   'attribute-definition.options-required': 422,
   'attribute-definition.options-not-allowed': 422,
   'attribute-definition.option-invalid': 422,
@@ -140,6 +150,7 @@ export const ATTRIBUTE_ADMIN_STATUS: Readonly<Record<string, number>> = Object.f
   'attribute-definition.default-label-required': 422,
   'attribute-definition.active-option-required': 422,
   'access.unavailable': 503,
+  'missing-details-email.unconfigured': 503,
   'claim-text.check-unavailable': 503,
 });
 
@@ -180,7 +191,7 @@ const CONTENT_KEYS = [
   'internalNote',
   'position',
 ] as const;
-const CREATE_OPTIONAL = ['code', 'localizable', ...CONTENT_KEYS] as const;
+const CREATE_OPTIONAL = ['code', 'localizable', 'note', ...CONTENT_KEYS] as const;
 
 /**
  * The attributes and feature sets (attribute families) of the request's Market over HTTP: the
@@ -213,6 +224,7 @@ export class AttributeAdminController {
     private readonly getCategoryLinks: CategoryAttributeLinksGet,
     private readonly setCategoryLinks: CategoryAttributeLinksSet,
     private readonly listMissingDetails: ProductsMissingDetailsList,
+    private readonly emailMissingDetails: MissingDetailsEmailSellers,
   ) {}
 
   @Post('attributes')
@@ -223,7 +235,9 @@ export class AttributeAdminController {
     description:
       `${EDITS} Sellers and buyers see nothing until it is published. The default-locale name ` +
       'is required; every name, help text and value label passes the claim-word check, and a ' +
-      'language the check cannot read is refused.',
+      'language the check cannot read is refused. It is reviewed after in Admin Inbox › System ' +
+      'requests (area catalogue): where the Market reviews it, `note` is required and `request` ' +
+      'names the review; a rejected create discards the draft (a published one stays).',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: AttributeCreateRequest })
@@ -265,12 +279,16 @@ export class AttributeAdminController {
       `${EDITS} The whole content and the version the admin saw (a later one is ` +
       'attribute.stale: reload). Saved as the next revision. Values are added, renamed, ' +
       'reordered or deactivated, never removed. Once published, the variant flag is fixed and ' +
-      'clearing material needs the two-person request.',
+      'clearing material needs the two-person request. It goes live at once and is reviewed after ' +
+      'in Admin Inbox › System requests (area catalogue, on by default): where the Market ' +
+      'reviews it, `note` (1 to 500 characters) is required (400 on note otherwise) and ' +
+      '`request` names the review the save opened. A rejected edit is restored; a value the edit ' +
+      'added stays in the list, switched off.',
   })
   @ApiParam(ATTRIBUTE_PARAM)
   @ApiHeader(CSRF)
   @ApiBody({ type: AttributeEditRequest })
-  @ApiOkResponse({ type: AttributeWriteWrapBody })
+  @ApiOkResponse({ type: AttributeEditWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
@@ -293,14 +311,14 @@ export class AttributeAdminController {
     @Res({ passthrough: true }) response: Response,
     @Param('attributeId') attributeId: string,
     @Body() body: unknown,
-  ): Promise<AttributeWriteWrapBody> {
-    const input = closedBody(request, body, ['version', 'names'], CONTENT_KEYS);
-    let outcome: AttributeWriteWrapBody | HttpException;
+  ): Promise<AttributeEditWrapBody> {
+    const input = closedBody(request, body, ['version', 'names'], [...CONTENT_KEYS, 'note']);
+    let outcome: AttributeEditWrapBody | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.editAttribute.execute(context, { ...input, attributeId });
       outcome = result.ok
-        ? (JSON.parse(JSON.stringify(result.value)) as AttributeWriteWrapBody)
+        ? (JSON.parse(JSON.stringify(result.value)) as AttributeEditWrapBody)
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.attribute-definition-edit', context, outcome);
@@ -362,11 +380,14 @@ export class AttributeAdminController {
     summary: 'Discard a draft attribute',
     description:
       `${EDITS} Only a draft that was never published. It is archived, never deleted: its ` +
-      'code stays taken and its history readable.',
+      'code stays taken and its history readable. Where the Market reviews area catalogue ' +
+      "(Admin Inbox › System requests) it waits for a second admin's approval: `note` is " +
+      'required and the answer is 202 `{request: {id, number}}` with nothing changed.',
   })
   @ApiParam(ATTRIBUTE_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: AttributeVersionRequest })
+  @ApiBody({ type: AttributeVersionNoteRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiOkResponse({ type: AttributeWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -385,13 +406,18 @@ export class AttributeAdminController {
     @Param('attributeId') attributeId: string,
     @Body() body: unknown,
   ): Promise<AttributeWriteWrapBody> {
-    return this.statusChange('catalog.attribute-definition-discard', this.discardAttribute, {
-      context,
-      request,
-      response,
-      attributeId,
-      body,
-    });
+    return this.statusChange(
+      'catalog.attribute-definition-discard',
+      this.discardAttribute,
+      {
+        context,
+        request,
+        response,
+        attributeId,
+        body,
+      },
+      ['note'],
+    );
   }
 
   private async statusChange(
@@ -404,15 +430,16 @@ export class AttributeAdminController {
       readonly attributeId: string;
       readonly body: unknown;
     },
+    optional: readonly string[] = [],
   ): Promise<AttributeWriteWrapBody> {
     const { context, request, response, attributeId, body } = call;
-    const input = closedBody(request, body, ['version']);
+    const input = closedBody(request, body, ['version'], optional);
     let outcome: AttributeWriteWrapBody | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await useCase.execute(context, { ...input, attributeId });
       outcome = result.ok
-        ? (JSON.parse(JSON.stringify(result.value)) as AttributeWriteWrapBody)
+        ? answered<AttributeWriteWrapBody>(response, result.value)
         : refusal(result.error, response, context);
     }
     return this.settle(msg, context, outcome);
@@ -424,18 +451,25 @@ export class AttributeAdminController {
   @ApiOperation({
     summary: 'List attributes',
     description:
-      `${NEEDS} By code, keyset-paged: send \`nextAfterId\` of the previous page as ` +
-      '`afterId`. `search` matches the code or a name in any locale; `type`, `status`, ' +
-      '`usedIn` (a feature set id) and `missing` (a Market locale) filter. `limit` is 1 to 50 ' +
-      '(default 25).',
+      `${NEEDS} By code by default, each row with its \`actions\`. \`sort\` is code, name, type ` +
+      'or status with `direction`; paged by `page` and `pageSize` (1 to 100, default 25) in the ' +
+      'mode `paging` names (pages or prev-next). `search` matches the code or a name in any ' +
+      'locale; `type`, `status`, `usedIn` (a feature set id) and `missing` (a Market locale) ' +
+      'filter. The older keyset read (`afterId` from `nextAfterId`, `limit` 1 to 50) still works ' +
+      'and cannot be mixed with the page keys.',
   })
   @ApiQuery({ name: 'search', required: false })
   @ApiQuery({ name: 'type', required: false, enum: ATTRIBUTE_DATA_TYPES })
   @ApiQuery({ name: 'status', required: false, enum: ['draft', 'active', 'archived'] })
   @ApiQuery({ name: 'usedIn', required: false, description: 'A feature set id.' })
   @ApiQuery({ name: 'missing', required: false, description: 'A locale of the Market.' })
-  @ApiQuery({ name: 'afterId', required: false })
-  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'sort', required: false, enum: ['code', 'name', 'type', 'status'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'pageSize', required: false })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
+  @ApiQuery({ name: 'afterId', required: false, deprecated: true })
+  @ApiQuery({ name: 'limit', required: false, deprecated: true })
   @ApiOkResponse({ type: AttributeListBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -446,7 +480,7 @@ export class AttributeAdminController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<AttributeListBody> {
-    const result = await this.listAttributes.execute(context, pageQuery(query));
+    const result = await this.listAttributes.execute(context, numericQuery(pageQuery(query)));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as AttributeListBody)
       : refusal(result.error, response, context);
@@ -537,10 +571,15 @@ export class AttributeAdminController {
     description:
       `${EDITS} Names per language, the groups in order (the Core group first) and in each ` +
       'group the attributes in order with a level (required, recommended or optional). Every ' +
-      'attribute must be active. Every name passes the claim-word check.',
+      'attribute must be active. Every name passes the claim-word check. A feature set cannot be ' +
+      'deleted, so where the Market reviews area catalogue (Admin Inbox › System requests) the ' +
+      "create waits for a second admin's approval: `note` (1 to 500 characters) is required, " +
+      'the content must fit a request (at most 100 attributes; else 400 too-large-for-review), ' +
+      'and the answer is 202 `{request: {id, number}}` with nothing created.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: FeatureSetCreateRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiCreatedResponse({ type: FeatureSetWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -558,13 +597,13 @@ export class AttributeAdminController {
     @Res({ passthrough: true }) response: Response,
     @Body() body: unknown,
   ): Promise<FeatureSetWriteWrapBody> {
-    const input = closedBody(request, body, ['names', 'groups'], ['code']);
+    const input = closedBody(request, body, ['names', 'groups'], ['code', 'note']);
     let outcome: FeatureSetWriteWrapBody | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.createFeatureSet.execute(context, input);
       outcome = result.ok
-        ? (JSON.parse(JSON.stringify(result.value)) as FeatureSetWriteWrapBody)
+        ? answered<FeatureSetWriteWrapBody>(response, result.value)
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.feature-set-create', context, outcome);
@@ -627,7 +666,7 @@ export class AttributeAdminController {
     summary: 'Products missing required details',
     description:
       `${NEEDS} Published products whose values leave a required attribute of their feature set ` +
-      'empty (the feature set gained it after approval). They stay on sale; the seller is ' +
+      'empty (the feature set gained it after approval, or its category now holds another one). They stay on sale; the seller is ' +
       'refused at the next submit until the field is filled. Keyset-paged by product id: one ' +
       'call reads at most 2000 products, so follow `nextAfterId` until it is null. `limit` is 1 ' +
       'to 100 (default 50).',
@@ -635,7 +674,11 @@ export class AttributeAdminController {
   @ApiQuery({ name: 'sellerId', required: false })
   @ApiQuery({ name: 'familyCode', required: false, description: 'A feature set code.' })
   @ApiQuery({ name: 'afterId', required: false })
-  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+  })
   @ApiOkResponse({ type: MissingDetailsListBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -651,6 +694,48 @@ export class AttributeAdminController {
       ? (JSON.parse(JSON.stringify(result.value)) as MissingDetailsListBody)
       : refusal(result.error, response, context);
     return this.settle('catalog.products-missing-details-list', context, outcome);
+  }
+
+  @Post('reports/products-missing-details/email-sellers')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Email sellers about missing details',
+    description:
+      `${EDITS} Asks the sellers of the picked products to fill in the required details. The ` +
+      'products are judged again on the server: only a published seller product that still ' +
+      "lacks a detail counts. One English mail goes to each seller, listing only that seller's " +
+      'picked products, at most once in 7 days per seller and product; the mail is sent within ' +
+      'a minute by a job. `dryRun: true` only reports who would be emailed. Recorded in the ' +
+      'audit log, ids and counts only.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: MissingDetailsEmailRequest })
+  @ApiOkResponse({ type: MissingDetailsEmailBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'access.unavailable or missing-details-email.unconfigured',
+  })
+  async emailSellers(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<MissingDetailsEmailBody> {
+    const input = closedBody(request, body, ['productIds'], ['dryRun']);
+    let outcome: MissingDetailsEmailBody | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.emailMissingDetails.execute(context, input);
+      outcome = result.ok
+        ? (JSON.parse(JSON.stringify(result.value)) as MissingDetailsEmailBody)
+        : refusal(result.error, response, context);
+    }
+    return this.settle('catalog.missing-details-email-sellers', context, outcome);
   }
 
   @Get('categories/:categoryId/attribute-links')
@@ -688,7 +773,10 @@ export class AttributeAdminController {
     description:
       `${EDITS} The feature set the category holds (null: it takes its parent's) and the ` +
       'filterable attributes in order. Send the version read before (omit it for the first ' +
-      'save); a later one is category-links.stale. Children inherit what is set here.',
+      'save); a later one is category-links.stale. Children inherit what is set here. It goes ' +
+      'live at once and is reviewed after in Admin Inbox › System requests (area catalogue, on by ' +
+      'default): where the Market reviews it, `note` (1 to 500 characters) is required (400 on ' +
+      'note otherwise) and `request` names the review the save opened. A rejected change is restored.',
   })
   @ApiParam({ name: 'categoryId', description: 'The category. A UUID v7.' })
   @ApiHeader(CSRF)
@@ -717,14 +805,17 @@ export class AttributeAdminController {
     @Param('categoryId') categoryId: string,
     @Body() body: unknown,
   ): Promise<CategoryLinksSetWrapBody> {
-    const input = closedBody(request, body, ['featureSetId', 'filters'], ['version']);
+    const input = closedBody(request, body, ['featureSetId', 'filters'], ['version', 'note']);
     let outcome: CategoryLinksSetWrapBody | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.setCategoryLinks.execute(context, { ...input, categoryId });
       outcome = result.ok
         ? {
-            links: JSON.parse(JSON.stringify(result.value)) as CategoryLinksSetWrapBody['links'],
+            links: JSON.parse(
+              JSON.stringify({ ...result.value, request: undefined }),
+            ) as CategoryLinksSetWrapBody['links'],
+            request: result.value.request,
           }
         : refusal(result.error, response, context);
     }

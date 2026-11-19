@@ -1,1 +1,17 @@
 @import '@mondapac/ui/styles.css';
+
+/* A printable page (the order confirmation) prints alone: the shell's sidebar, top bar and
+   buttons stay on screen only. */
+@media print {
+  body:has(.print-only-document) * {
+    visibility: hidden;
+  }
+  body:has(.print-only-document) .print-only-document,
+  body:has(.print-only-document) .print-only-document * {
+    visibility: visible;
+  }
+  .print-only-document {
+    position: absolute;
+    inset: 0;
+  }
+}

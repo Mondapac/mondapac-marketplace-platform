@@ -41,6 +41,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     commission_payouts: ['USAGE'],
     wallet: ['USAGE'],
     reviews: ['USAGE'],
+    lists: ['USAGE'],
     settings: ['USAGE'],
     promotions: ['USAGE'],
     customers: ['USAGE'],
@@ -55,6 +56,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     shipping: ['USAGE'],
     notifications: ['USAGE'],
     search: ['USAGE'],
+    security: ['USAGE'],
+    system_requests: ['USAGE'],
   },
   tables: {
     // docs/design/data/identity.md section 7: DELETE only for the unverified purge and erasure
@@ -125,6 +128,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'identity.access_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Social sign-in: a provider identity is written once; it goes with its account (cascade).
     'identity.external_identities': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Customers admin email change (Hassan M1): one notice per confirmed change, written once and
+    // deleted once by its handler; never updated.
+    'identity.email_change_notices': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'platform.audit_log': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/platform.md 11.6 (identity slice 6a): append-only like the audit log;
     // INSERT moves to a worker-only group before the hardening trigger (11.6, PA 13).
@@ -317,6 +323,21 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'sellers.seller_business_activity_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Multi-culture package 2 (ADR-0047 decision 3): a membership is never deleted; a request, a
+    // decision and a new request after a rejection update only these columns.
+    'sellers.seller_cultures': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by',
+        'reason',
+        'requested_at',
+        'requested_by',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
     'sellers.seller_admin_settings': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.seller_tax_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'sellers.store_profiles': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
@@ -349,6 +370,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'sellers.seller_health_snapshots': {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
+    },
+    // Seller health requests: inserted, then finished once (status and finished_at); finished
+    // rows are deleted by the retention purge (30 days).
+    'sellers.seller_health_requests': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['finished_at', 'status'],
     },
     'sellers.rate_counters': { table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     // docs/design/data/sellers.md section 8 (slice 4a): the latest register result per file and
@@ -458,11 +485,24 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['count', 'window_started_at'],
     },
+    // The shared store of saved filters of every super list (super list phase 0): the same rules,
+    // one table. The old catalog and ordering tables were dropped by 20261118150000.
+    'lists.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'position', 'updated_at', 'visibility'],
+    },
+    // The column choice of a user per list (super list B0-2): a personal preference the
+    // application writes and deletes; only the columns and the update time change.
+    'lists.column_preferences': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['columns', 'updated_at'],
+    },
     // Saved for later: saved again moves the item to the top; removed, moved to the cart or
     // purged a year after it was last saved.
     'cart.saved_items': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: ['saved_at'] },
     // Ordering (Phase 5 package 1): no row is ever deleted. Seller orders and lines are written
-    // once; an order's state, payment state, Stripe ids, times and version change.
+    // once; an order's state, payment state, Stripe ids, times and version change. Ship-to
+    // retention (owner decision 2026-11-15): the daily purge clears the sealed ship-to (to null).
     'ordering.orders': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
@@ -470,6 +510,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'cancelled_at',
         'confirmed_at',
         'payment_state',
+        'ship_to_ciphertext',
         'status',
         'stripe_payment_intent_id',
         'stripe_session_id',
@@ -488,8 +529,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'inventory_recorded_at',
         'ledger_attempts',
         'ledger_state',
+        'paid_at',
         'ready_at',
         'refunded_amount',
+        'refunded_in_full',
         'shipped_at',
         'tracking_ref',
       ],
@@ -765,6 +808,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_at'],
     },
     'blog.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Blog media upload: the picture library is insert-only.
+    'blog.media': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'blog.media_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Promotions (package T1): a promotion changes only the columns named and is never deleted;
     // usage is insert-only; the target list and the zone thresholds may be deleted; the rest
     // change only the columns named (triggers refuse DELETE and TRUNCATE where it is not granted).
@@ -794,6 +840,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'reward_bps',
         'reward_kind',
         'segment_kind',
+        'segment_group_id',
         'segment_min_days',
         'special_campaign',
         'starts_at',
@@ -803,15 +850,33 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'promotions.promotion_targets': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
-    'promotions.promotion_usage': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
-    // Phase 2: tiers and bundle items are replaced as a set; generated codes are insert-only here
-    // (package T2 grants the update of used_at).
+    // Package T2: the counters move with each redemption and its release.
+    'promotions.promotion_usage': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'platform_share_minor',
+        'seller_share_minor',
+        'spent_minor',
+        'updated_at',
+        'uses_count',
+      ],
+    },
+    // Phase 2: tiers and bundle items are replaced as a set. Generated codes are inserted; package
+    // T2 claims and gives back a code (used_at with the redeeming order).
     'promotions.promotion_tiers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.promotion_bundle_items': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [],
     },
-    'promotions.promotion_batch_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'promotions.promotion_batch_codes': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['redeemed_order_id', 'used_at'],
+    },
+    // Package T2: a redemption is inserted and then only changes state; it is never deleted.
+    'promotions.redemptions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['confirmed_at', 'release_reason', 'released_at', 'status'],
+    },
     // Phase 3: a referral code is insert-only; a referral and a credit change state only and are
     // never deleted; the inbox of the delivery-credit handlers is appended to.
     'promotions.referral_codes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
@@ -825,9 +890,23 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'status',
       ],
     },
+    // Customers phase 4c: a waiting cashback's amount is lowered and its wait ended or put back.
     'promotions.credit_issuances': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['failure_code', 'settled_at', 'status', 'wallet_journal_id'],
+      columnUpdate: [
+        'amount_minor',
+        'failure_code',
+        'grant_after',
+        'settled_at',
+        'status',
+        'wallet_journal_id',
+      ],
+    },
+    // Customers phase 4c-2: a refund's clawback is settled once (status, what was taken, the
+    // wallet journal, when) and never removed.
+    'promotions.credit_clawbacks': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['clawed_minor', 'settled_at', 'status', 'wallet_journal_id'],
     },
     'promotions.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.co_funding_opt_ins': {
@@ -922,6 +1001,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['sort_order'],
     },
+    // File storage pilot F9: a slide image and its renditions are inserted once and never changed.
+    'storefront.slide_images': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // SEO settings (S1): insert-only versions, and the module's outbox.
+    'storefront.seo_settings': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'storefront.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    'storefront.slide_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'storefront.slide_saved_orders': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'storefront.slide_position_locks': {
       table: ['INSERT', 'SELECT'],
@@ -958,7 +1043,45 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'status',
       ],
     },
+    // Customers phase 1 (package B1): the read models are written, replaced and removed (account
+    // erasure) by the application; no column is restricted.
+    'customers.saved_filters': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['name', 'updated_at', 'visibility'],
+    },
+    'customers.customer_directory': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'customers.customer_stats': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     'customers.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    // The inbox of the read model subscribers: appended to only (DELETE with the prune job).
+    'customers.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Phase 2a: groups are never deleted (a promotion may name one); members are added and
+    // removed; notes and timeline rows are written once and go only with the customer's erasure.
+    'customers.customer_groups': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['archived_at', 'description', 'name', 'updated_at', 'version'],
+    },
+    'customers.customer_group_members': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'customers.customer_notes': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'customers.customer_timeline': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Customers phase 3: the per-seller customers are replaced by the sync and removed when the
+    // relation ends (the erasure cascades from the directory row); no column is restricted.
+    'customers.seller_customers': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    // Customers phase 4a: a seller's invite link is only revoked; an attribution is decided (status,
+    // reason, who, when, version) and never removed by the API.
+    'customers.seller_invite_links': { table: ['INSERT', 'SELECT'], columnUpdate: ['revoked_at'] },
+    'customers.seller_attributions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['decided_at', 'decided_by_account_id', 'reject_reason', 'status', 'version'],
+    },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
     'legal.marketing_consents': {
@@ -966,9 +1089,15 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['changed_at', 'granted', 'source'],
     },
     'legal.marketing_consent_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Customers phase 2b, part 4: legal's outbox (consent changed), as every module's outbox.
+    'legal.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Engagement (personalization 1a): behaviour events are inserted and deleted (retention purge,
     // switch off, account deletion), never changed; the switch changes and goes with the account.
     'engagement.behaviour_events': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Customers phase 3: a store follow is inserted and deleted (unfollow, erasure), never changed;
+    // engagement's outbox carries the follow events.
+    'engagement.store_follows': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'engagement.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'engagement.personalization_settings': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['changed_at', 'enabled'],
@@ -1072,6 +1201,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'assistant.messages': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'assistant.spend_days': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    'assistant.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Notifications (support contact): a change is a new version row; none is updated or deleted.
     'notifications.support_contacts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // In-app notifications package 1: a notice is written once and deleted by retention (90 days,
@@ -1088,6 +1218,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [
         'category_ids',
+        'culture_codes',
         'facet_codes',
         'indexed_at',
         'locale',
@@ -1102,6 +1233,12 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Search attribute filters (A7): the measure values of a document, replaced with it; the
     // reindex progress row of a Market, written by the reindex job and never deleted.
     'search.offer_document_numbers': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Search 1a: the public stores that have indexed Offers, upserted with the Offers' sync.
+    'search.store_documents': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['indexed_at', 'name', 'slug', 'text_search_config'],
+    },
+    'search.offer_variant_documents': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'search.reindex_state': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
@@ -1141,6 +1278,36 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'ordering.offer_pairs': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.refund_lines': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'ordering.credit_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Order detail decision 3: admin internal notes, sealed under the customer; written once, never
+    // changed or removed.
+    'ordering.admin_order_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Order detail decision 3: a seller's own notes on its seller order, sealed under the customer;
+    // written once, never changed or removed.
+    'ordering.seller_order_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Seller refund caps (owner decision 2026-11-11; ordering.md 3.12c): an admin sets, edits and
+    // removes a cap (the id, Market and seller never change); the guard row per seller is
+    // inserted once, then moves only its check time and alert bookkeeping. No guard is deleted.
+    'ordering.seller_refund_limits': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'currency',
+        'max_amount',
+        'max_count',
+        'updated_at',
+        'updated_by_account_id',
+        'version',
+      ],
+    },
+    'ordering.seller_refund_guards': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['alerts', 'checked_at', 'last_alerted_at'],
+    },
+    // Ship-to retention (owner decision 2026-11-15): one row per Market, inserted once and then
+    // edited (never its id or Market); never deleted.
+    'ordering.ship_to_retention_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['enabled', 'months', 'updated_at', 'updated_by_account_id', 'version'],
+    },
     // Payments (Phase 5 package 2): a verified Stripe event is inserted once; the worker counts
     // its attempts and marks it done. No row is deleted.
     // Payments (Phase 5 package 3): one connected account row per seller and Market; the state
@@ -1209,7 +1376,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     // docs/design/data/catalog.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; no DELETE on products or variants, ever (Q-K2: a discard is a
-    // status and a retired variant). The identity columns of a product and a variant never change.
+    // status and a retired variant). The identity columns of a product and a variant never change;
+    // `type_code` and `variant_model` change only together, simple to configurable (Add sizes).
     'catalog.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     'catalog.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.products': {
@@ -1217,6 +1385,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [
         'brand_id',
         'discarded_at',
+        'family_code',
         'last_changed_at',
         'matched_into_product_id',
         'owner_seller_id',
@@ -1230,6 +1399,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'retired_at',
         'scope',
         'status',
+        'type_code',
+        'variant_model',
         'version',
         'withdrawn_at',
       ],
@@ -1241,6 +1412,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
         'approved_by',
+        'archive_reason',
         'header_image_id',
         'logo_alt',
         'logo_image_id',
@@ -1274,6 +1446,35 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: [],
     },
+    // Multi-culture package 1: a culture's code, creator and creation time never change and it is
+    // never deleted (made inactive); names are deleted and re-inserted as a set; a mark row is upserted or deleted.
+    'catalog.cultures': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'badge_colour',
+        'display_order',
+        'is_default',
+        'required_certification_type',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
+    'catalog.culture_names': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [],
+    },
+    'catalog.culture_categories': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['certification_mark', 'updated_at', 'updated_by', 'visible'],
+    },
+    // Product tags package T1: a topic's slug and creator never change and a topic is archived,
+    // never deleted; its terms are replaced as a set, so they may be deleted, never updated.
+    'catalog.topics': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['intro', 'status', 'topic_group', 'updated_at', 'version'],
+    },
+    'catalog.topic_terms': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_variants': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['published_at', 'retired_at', 'state'],
@@ -1305,18 +1506,73 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Categories package C2: per-locale content and the slug history are insert-only.
     'catalog.platform_category_revision_texts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.platform_category_slug_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Categories package C3c: one image per category; a replace deletes the old row (its renditions
+    // go by cascade) and inserts the new one, so neither table is ever updated.
+    'catalog.category_images': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.category_image_renditions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Categories package C5a (Move products): the job moves through its states by column; its
+    // source, target, reason and author are written once. An item is written once and only its
+    // outcome and seller-notice tries change. No DELETE: the jobs are the audit trail of a bulk
+    // publish.
+    'catalog.category_product_move_jobs': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'cursor_product_id',
+        'failed_count',
+        'finished_at',
+        'lease_expires_at',
+        'lease_holder',
+        'moved_count',
+        'scan_outcome',
+        'skipped_count',
+        'started_at',
+        'state',
+        'total_count',
+        'version',
+      ],
+    },
+    'catalog.category_product_move_items': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'notice_attempts',
+        'notice_failed_at',
+        'notice_next_attempt_at',
+        'revision_id',
+        'seller_notified_at',
+        'state',
+      ],
+    },
     // docs/design/data/catalog.md section 7 (slice 3): definitions and families are never deleted;
     // code, type and the localizable flag stay on the root, fixed by the column grant; the
     // material and variant-option flags live in insert-only revisions.
     'catalog.attribute_definitions': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['published_revision_id', 'status', 'version'],
+      // `merged_into_id` is set once, with the archive of a merged attribute (attributes A8);
+      // `data_type` moves only on the listed conversions, with a new revision (attributes A8).
+      columnUpdate: ['data_type', 'merged_into_id', 'published_revision_id', 'status', 'version'],
     },
+    // Attributes A8: where a merged attribute's values go (insert-only).
+    'catalog.attribute_merge_options': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.attribute_definition_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Attributes A2: the status moves once, in these columns only (data design 3.21).
     'catalog.attribute_relaxation_requests': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['cancel_reason', 'closed_at', 'confirmed_by_account_id', 'status', 'version'],
+    },
+    // Product tags T5: same shape as the value suggestions: a decision and a notice move only.
+    'catalog.topic_suggestions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'notice_attempts',
+        'notice_next_attempt_at',
+        'notice_state',
+        'reject_reason',
+        'status',
+        'topic_id',
+        'version',
+      ],
     },
     // Attributes A5: a decision and a notice move are the only updates, in these columns (data
     // design 3.30); a suggestion is never deleted.
@@ -1349,6 +1605,29 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['published_revision_id', 'version'],
     },
     'catalog.category_attribute_link_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Variants V6: the variant type settings root moves its current revision and version; the
+    // revisions are insert-only.
+    // Variants V7: a decision and a notice move are the only updates, in these columns; a request
+    // is never deleted.
+    'catalog.variant_requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decline_reason',
+        'notice_attempts',
+        'notice_next_attempt_at',
+        'notice_state',
+        'resolved_variant_id',
+        'status',
+        'version',
+      ],
+    },
+    'catalog.variant_type_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['current_revision_id', 'version'],
+    },
+    'catalog.variant_type_setting_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md section 7 (slice 4): the working copy and the counters are
     // mutable and deleted from; the five revision tables are insert-only (CA3).
     'catalog.product_working_copies': {
@@ -1358,6 +1637,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.product_revisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_texts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_categories': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.product_revision_topics': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_variants': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'catalog.product_revision_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Photos (slice 13): a photo is inserted, read and deleted while no revision uses it; its
@@ -1395,12 +1675,31 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'off_sale_type_not_allowed',
         'product_id',
         'seller_sku',
+        'shelf_category_id',
         'status',
         'submitted_at',
         'version',
       ],
     },
     'catalog.offer_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Categories C9a (data design 3.22): only the decision moves on a proposal; only the status,
+    // the merge target and the version on a shelf; a shelf's names are written once with it.
+    'catalog.category_proposals': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'created_seller_category_id',
+        'decided_at',
+        'decided_by_account_id',
+        'reason_code',
+        'status',
+        'version',
+      ],
+    },
+    'catalog.seller_categories': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['merged_into_id', 'status', 'version'],
+    },
+    'catalog.seller_category_names': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md 3.15, 3.16 (slice 8): a tag's type, Offer, seller and creation
     // never change; its status, claim copy and removal do. The history is insert-only.
     'catalog.offer_tags': {
@@ -1431,10 +1730,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     },
     'catalog.offer_tag_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/catalog.md 3.18 (slice 11): the fan-out queue moves its state, cursor and
-    // counts; what it names never changes. No DELETE until the purge of 10.3.
+    // counts; what it names never changes. No DELETE until the purge of 10.3. `created_at` since
+    // categories C4a: a category change reopens a request with a later one.
     'catalog.tag_reevaluation_requests': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['counts', 'cursor_offer_id', 'settled_at', 'state'],
+      columnUpdate: ['counts', 'created_at', 'cursor_offer_id', 'settled_at', 'state'],
     },
     // docs/design/data/catalog.md 3.27 (certification slice 15, request C-6): a warning to an Offer
     // owner moves its state, outcome, attempts and next try; what it names never changes. No
@@ -1443,11 +1743,27 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['attempts', 'next_attempt_at', 'outcome', 'settled_at', 'state'],
     },
-    // docs/design/data/catalog.md 3.28: a saved view of an admin list; a filter is a preference, so
-    // the application deletes it; only the name and who can use it change.
-    'catalog.saved_filters': {
-      table: ['DELETE', 'INSERT', 'SELECT'],
-      columnUpdate: ['name', 'updated_at', 'visibility'],
+    // docs/design/data/catalog.md 2.4 (variants V5): the per-sell-unit SKU and selling switch move
+    // by column; the owner, Offer and variant never change. No DELETE: a row is never deleted.
+    'catalog.offer_sell_units': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['selling', 'updated_at', 'variant_sku', 'version'],
+    },
+    // docs/design/data/catalog.md 3.32: "Email sellers". A pair is claimed again by replacing its
+    // content; the keys and the tenant never change, and rows are never deleted.
+    'catalog.missing_details_emails': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'attempts',
+        'missing_labels',
+        'outcome',
+        'product_name',
+        'requested_at',
+        'requested_by',
+        'seller_name',
+        'settled_at',
+        'state',
+      ],
     },
     // docs/design/data/catalog.md 3.29: the admin product import. A job moves through its states by
     // column and a row records its result as the run goes; DELETE belongs to the purge (old jobs,
@@ -1473,6 +1789,38 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'catalog.platform_import_rows': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['product_code', 'product_id', 'run_code', 'run_state'],
+    },
+    // docs/design/data/catalog.md 3.31: the seller import. Same shape as the admin import's tables;
+    // a photo row is reserved, then its image id is set once (DELETE: a failed upload's reservation
+    // and the purge, with its job).
+    'catalog.seller_import_jobs': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: [
+        'created_rows',
+        'ended_at',
+        'failed_rows',
+        'file_deleted_at',
+        'finished_at',
+        'last_turn_at',
+        'lease_until',
+        'not_before',
+        'skip_errors',
+        'started_at',
+        'state',
+        'stop_reason',
+        'to_import',
+        'unchanged_rows',
+        'updated_rows',
+        'version',
+      ],
+    },
+    'catalog.seller_import_rows': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['offer_id', 'product_code', 'product_id', 'run_code', 'run_state'],
+    },
+    'catalog.seller_import_photos': {
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['image_id'],
     },
     // docs/design/data/pricing.md section 7 (slice 1): the outbox is immutable to the application
     // but for the relay's mark; the inbox gets DELETE with the prune job. A series' Offer, seller
@@ -1534,6 +1882,63 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'pricing.write_refusal_actor_throttles': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['recorded_count', 'suppressed_count', 'window_started_at'],
+    },
+    // SOC package 2 (docs/design/data/security.md 2): an alert changes only its state columns
+    // and never after it is resolved; deliveries and digest runs are insert-only; the evaluator
+    // run of a Market records its finish. No DELETE anywhere (triggers refuse it too).
+    'security.alerts': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'acknowledged_at',
+        'acknowledged_by',
+        'event_count',
+        'last_event_at',
+        'next_notify_at',
+        'notify_step',
+        'resolution',
+        'resolution_note',
+        'resolved_at',
+        'resolved_by',
+        'state',
+        'version',
+      ],
+    },
+    'security.alert_deliveries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'security.digest_runs': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'security.evaluator_runs': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['finished_at', 'opened'],
+    },
+    // System requests (Admin Inbox): a request changes only its decision, supersession and comment
+    // count (triggers keep a decision and a supersession final); activity is append-only; no
+    // DELETE anywhere (triggers refuse it too).
+    'system_requests.requests': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'comment_count',
+        'decided_at',
+        'decided_by_account_id',
+        'decision',
+        'decision_reason',
+        'last_reminded_at',
+        'status',
+        'superseded_by_request_id',
+      ],
+    },
+    // The reminder event the in-app notice follows (as every module's outbox).
+    'system_requests.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
+    'system_requests.request_activity': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'system_requests.request_counters': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['last_number'],
+    },
+    'system_requests.policy_areas': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['default_risk', 'enabled', 'updated_at', 'updated_by_account_id', 'version'],
+    },
+    'system_requests.policy_settings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['review_due_days', 'updated_at', 'updated_by_account_id', 'version'],
     },
     'public._prisma_migrations': { table: [], columnUpdate: [] },
   },

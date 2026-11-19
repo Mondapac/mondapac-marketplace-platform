@@ -15,6 +15,14 @@ import {
 } from '../application/ports/block-count.repository';
 import { SERVED_PLACEMENTS, type ServedPlacements } from '../application/ports/served-placements';
 import { STOREFRONT_FACADE, type StorefrontFacade } from '../../storefront';
+import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
+import { PUBLISHED_STORES, type PublishedStores } from '../application/ports/published-stores';
+import {
+  STORE_FOLLOW_REPOSITORY,
+  type StoreFollowRepository,
+} from '../application/ports/store-follow.repository';
+import { FacadePublishedStores } from './facade-published-stores';
+import { PrismaStoreFollowRepository } from './prisma-store-follow.repository';
 import { CryptoEngagementGuestTokens } from './crypto-guest-tokens';
 import { FacadeServedPlacements } from './facade-served-placements';
 import { PrismaBlockCountRepository } from './prisma-block-count.repository';
@@ -46,6 +54,17 @@ export const engagementProviders: readonly FactoryProvider[] = [
     inject: [STOREFRONT_FACADE],
     useFactory: (storefront: StorefrontFacade): ServedPlacements =>
       new FacadeServedPlacements(storefront),
+  },
+  {
+    provide: STORE_FOLLOW_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): StoreFollowRepository =>
+      new PrismaStoreFollowRepository(prisma),
+  },
+  {
+    provide: PUBLISHED_STORES,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): PublishedStores => new FacadePublishedStores(sellers),
   },
   {
     provide: ENGAGEMENT_GUEST_TOKENS,

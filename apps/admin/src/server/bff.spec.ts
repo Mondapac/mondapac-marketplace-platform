@@ -525,6 +525,46 @@ describe('signed client address (ADR-0037)', () => {
   });
 });
 
+describe('relay of the Sellers super list (list 15)', () => {
+  it.each(['sellers/admin/sellers/list', 'sellers/admin/sellers/export'])(
+    'relays %s as a same-origin POST with its body, and nothing else',
+    async (path) => {
+      const fetchImpl = upstreamOk();
+      const body = JSON.stringify({ view: 'awaiting-review', q: 'al', page: 2, pageSize: 50 });
+      const relayed = await relay(config, post(path, sameOrigin, body), path.split('/'), fetchImpl);
+      expect(relayed.status).toBe(200);
+      expect(fetchImpl.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+      expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
+
+      const refused = upstreamOk();
+      const get = new Request(`http://admin.localhost:3002/api/${path}?view=all`, {
+        method: 'GET',
+        headers: sameOrigin,
+      });
+      expect((await relay(config, get, path.split('/'), refused)).status).toBe(404);
+      const crossSite = post(path, { ...sameOrigin, 'sec-fetch-site': 'cross-site' });
+      expect((await relay(config, crossSite, path.split('/'), refused)).status).toBe(403);
+      const near = `${path}/x`;
+      expect((await relay(config, post(near), near.split('/'), refused)).status).toBe(404);
+      expect(refused).not.toHaveBeenCalled();
+    },
+  );
+
+  it('carries an export of 200 ticked ids under the body cap', async () => {
+    const fetchImpl = upstreamOk();
+    const ids = Array.from(
+      { length: 200 },
+      (_, i) => `01990000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+    ).join(',');
+    const path = 'sellers/admin/sellers/export';
+    const body = JSON.stringify({ format: 'xlsx', columns: 'seller-id', ids });
+    expect(
+      (await relay(config, post(path, sameOrigin, body), path.split('/'), fetchImpl)).status,
+    ).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('relay allowlist for seller decisions', () => {
   const ID = '0190a000-0000-7000-8000-0000000000a1';
   const call = (method: string, path: string) =>
@@ -552,6 +592,28 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${path}/extra`)).status).toBe(404);
   });
 
+  it('forwards the note of a reviewed role edit, role change and enabling unchanged', async () => {
+    const body = '{"note":"Covers nights"}';
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ['PUT', `identity/admin/roles/${ID}`],
+      ['POST', `identity/admin/accounts/${ID}/role`],
+      ['POST', `identity/admin/accounts/${ID}/enable`],
+    ];
+    for (const [method, path] of cases) {
+      const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+      const request = new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        body,
+      });
+      expect((await relay(config, request, path.split('/'), fetchImpl)).status).toBe(200);
+      const sent = fetchImpl.mock.calls[0]?.[1]?.body;
+      const text =
+        sent instanceof ArrayBuffer ? new TextDecoder().decode(sent) : JSON.stringify(sent);
+      expect(text).toContain('Covers nights');
+    }
+  });
+
   it('relays the category editor on its exact paths and methods only (categories C3)', async () => {
     const id = ID;
     const base = 'catalog/admin/categories';
@@ -565,8 +627,46 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('DELETE', `${base}/${id}`)).status).toBe(404);
     expect((await call('POST', `${base}/${id}`)).status).toBe(404);
     expect((await call('PATCH', `${base}/not-a-uuid`)).status).toBe(404);
-    expect((await call('POST', `${base}/${id}/merge`)).status).toBe(404);
-    expect((await call('POST', `${base}/${id}/archive`)).status).toBe(404);
+    expect((await call('POST', `${base}/${id}/restore`)).status).toBe(404);
+  });
+
+  it('relays move, merge and archive on their exact paths and methods only (categories C4a)', async () => {
+    const id = ID;
+    const base = 'catalog/admin/categories';
+    for (const action of ['move', 'merge', 'archive']) {
+      expect((await call('POST', `${base}/${id}/${action}`)).status).toBe(200);
+      expect((await call('PUT', `${base}/${id}/${action}`)).status).toBe(404);
+      expect((await call('PATCH', `${base}/${id}/${action}`)).status).toBe(404);
+      expect((await call('DELETE', `${base}/${id}/${action}`)).status).toBe(404);
+      expect((await call('POST', `${base}/not-a-uuid/${action}`)).status).toBe(404);
+      expect((await call('POST', `${base}/${id}/${action}/extra`)).status).toBe(404);
+    }
+  });
+
+  it('relays Move products as a POST and its progress as a GET on the exact path only (categories C5a)', async () => {
+    const path = `catalog/admin/categories/${ID}/move-products`;
+    const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, path.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('POST', path)).status).toBe(200);
+    expect((await call('PUT', path)).status).toBe(404);
+    expect((await call('DELETE', path)).status).toBe(404);
+    expect((await call('POST', `${path}/extra`)).status).toBe(404);
+    expect((await call('POST', 'catalog/admin/categories/not-a-uuid/move-products')).status).toBe(
+      404,
+    );
+  });
+
+  it('relays the platform product category picker as a GET on its exact path only (categories C5a)', async () => {
+    const path = 'catalog/admin/platform-products/category-picker';
+    const read = new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin });
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    expect((await relay(config, read, path.split('/'), fetchImpl)).status).toBe(200);
+    expect((await call('POST', path)).status).toBe(404);
+    const extra = new Request(`http://admin.localhost:3002/api/${path}/extra`, {
+      headers: sameOrigin,
+    });
+    expect((await relay(config, extra, [...path.split('/'), 'extra'], fetchImpl)).status).toBe(404);
   });
 
   it('relays the assistant settings read and write on their exact path only', async () => {
@@ -694,19 +794,71 @@ describe('relay allowlist for seller decisions', () => {
     expect((await send('DELETE', ledger)).status).toBe(404);
   });
 
-  it('forwards only limit and cursor of the ledger query', async () => {
-    const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
-    const path = `commission-payouts/admin/sellers/${ID}/ledger`;
-    await relay(
-      config,
-      new Request(`http://admin.localhost:3002/api/${path}?limit=20&cursor=c1&x=1`, {
-        method: 'GET',
-        headers: { host: 'admin.localhost:3002' },
-      }),
-      path.split('/'),
-      upstream,
+  it('relays the recalculate request of one seller, by POST only', async () => {
+    const send = (method: string, path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, {
+          method,
+          headers: method === 'GET' ? { host: 'admin.localhost:3002' } : sameOrigin,
+          ...(method === 'POST' ? { body: '{}' } : {}),
+        }),
+        path.split('/'),
+        vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 202 }))),
+      );
+    const recalculate = `sellers/admin/${ID}/health/recalculate`;
+    expect((await send('POST', recalculate)).status).toBe(202);
+    expect((await send('GET', recalculate)).status).toBe(404);
+    expect((await send('POST', 'sellers/admin/nope/health/recalculate')).status).toBe(404);
+  });
+
+  it('forwards the seller page lists and their exports only in the shapes the API takes', async () => {
+    const send = async (path: string) => {
+      const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+      const [route] = path.split('?');
+      const response = await relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, {
+          method: 'GET',
+          headers: { host: 'admin.localhost:3002' },
+        }),
+        route!.split('/'),
+        upstream,
+      );
+      return { status: response.status, url: upstream.mock.calls[0]?.[0] };
+    };
+    const ledger = `commission-payouts/admin/sellers/${ID}/ledger`;
+    const holds = `commission-payouts/admin/sellers/${ID}/payout-holds`;
+    const cursor = `1762041600000.${ID}`;
+    expect((await send(`${ledger}?limit=20&cursor=${cursor}&x=1`)).url).toBe(
+      `http://api.test/${ledger}?limit=20&cursor=${encodeURIComponent(cursor)}`,
     );
-    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}?limit=20&cursor=c1`);
+    expect(
+      (await send(`${ledger}?cursor=c1&kind=tip&side=debit&q=${ID}&sort=amount&page=2`)).url,
+    ).toBe(`http://api.test/${ledger}?side=debit&q=${ID}&sort=amount&page=2`);
+    expect((await send(`${ledger}?kind=cashback-seller&side=debit`)).url).toBe(
+      `http://api.test/${ledger}?kind=cashback-seller&side=debit`,
+    );
+    const ids = Array.from({ length: 200 }, () => ID).join(',');
+    const file = await send(`${ledger}/export?format=xlsx&columns=rate,entry-id&ids=${ids}`);
+    expect(file.status).toBe(200);
+    expect(file.url).toBe(
+      `http://api.test/${ledger}/export?format=xlsx&columns=rate%2Centry-id&ids=${encodeURIComponent(ids)}`,
+    );
+    expect(
+      (
+        await send(
+          `${holds}?status=active&scope=order&reason=dispute&origin=system&sort=active-first&page=1&pageSize=100&x=1`,
+        )
+      ).url,
+    ).toBe(
+      `http://api.test/${holds}?status=active&reason=dispute&origin=system&scope=order&sort=active-first&page=1&pageSize=100`,
+    );
+    expect((await send(`${holds}?status=lost&pageSize=500`)).url).toBe(`http://api.test/${holds}`);
+    expect((await send(`${holds}/export?columns=hold-id&sellerOrderId=${ID}`)).url).toBe(
+      `http://api.test/${holds}/export?columns=hold-id&sellerOrderId=${ID}`,
+    );
+    expect((await send(`commission-payouts/admin/sellers/nope/ledger/export`)).status).toBe(404);
   });
 
   it('relays approve, reject and the manual check for a seller UUID only', async () => {
@@ -720,6 +872,87 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('POST', `sellers/admin/${ID}/review/suspend`)).status).toBe(404);
   });
 
+  it('relays the category-proposals switch as PUT for a seller UUID only (C9-0)', async () => {
+    expect((await call('PUT', `sellers/admin/${ID}/category-proposals`)).status).toBe(200);
+    expect((await call('PUT', 'sellers/admin/nope/category-proposals')).status).toBe(404);
+    expect((await call('POST', `sellers/admin/${ID}/category-proposals`)).status).toBe(404);
+    expect((await call('DELETE', `sellers/admin/${ID}/category-proposals`)).status).toBe(404);
+  });
+
+  it('relays the Write with AI routes and the AI settings on their exact methods only (AIS-03)', async () => {
+    const read = (path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin }),
+        path.split('/'),
+        vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
+      );
+    const writer = 'catalog/admin/description-writer';
+    expect((await read(writer)).status).toBe(200);
+    expect((await read(`${writer}/model-setup`)).status).toBe(200);
+    expect((await call('POST', `${writer}/drafts`)).status).toBe(200);
+    expect((await call('PUT', `${writer}/drafts`)).status).toBe(404);
+    expect((await call('PUT', `${writer}/model-setup`)).status).toBe(404);
+    expect((await call('POST', `${writer}/model-setup`)).status).toBe(404);
+    expect((await read('settings/admin/ai')).status).toBe(200);
+    expect((await call('PUT', 'settings/admin/ai')).status).toBe(200);
+    expect((await call('POST', 'settings/admin/ai')).status).toBe(404);
+    expect((await call('DELETE', 'settings/admin/ai')).status).toBe(404);
+    expect((await call('PUT', `sellers/admin/${ID}/ai-access`)).status).toBe(200);
+    expect((await call('PUT', 'sellers/admin/nope/ai-access')).status).toBe(404);
+    expect((await call('POST', `sellers/admin/${ID}/ai-access`)).status).toBe(404);
+    expect((await read(`sellers/admin/${ID}/ai-access`)).status).toBe(404);
+    expect((await call('PUT', `sellers/admin/${ID}/blog-access`)).status).toBe(200);
+    expect((await call('PUT', 'sellers/admin/nope/blog-access')).status).toBe(404);
+    expect((await call('POST', `sellers/admin/${ID}/blog-access`)).status).toBe(404);
+    expect((await read(`sellers/admin/${ID}/blog-access`)).status).toBe(404);
+  });
+
+  it('relays the ship-to retention on GET and PUT only, with no query', async () => {
+    const path = 'ordering/admin/ship-to-retention';
+    const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 })));
+    const send = (method: string, target: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${target}`, { method, headers: sameOrigin }),
+        target.split('?')[0]!.split('/'),
+        fetcher,
+      );
+    expect((await send('GET', path)).status).toBe(200);
+    expect((await send('PUT', path)).status).toBe(200);
+    expect((await send('GET', `${path}?x=1`)).status).toBe(200);
+    expect(fetcher.mock.calls[2]?.[0] as string).toMatch(/ship-to-retention$/);
+    expect((await send('DELETE', path)).status).toBe(404);
+    expect((await send('POST', path)).status).toBe(404);
+  });
+
+  it('relays the refund caps on their exact methods, with only the seller id and version in a query', async () => {
+    const caps = 'ordering/admin/refund-limits';
+    const fetcher = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 })));
+    const send = (method: string, path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, {
+          method,
+          headers: sameOrigin,
+        }),
+        path.split('?')[0]!.split('/'),
+        fetcher,
+      );
+    expect((await send('GET', caps)).status).toBe(200);
+    expect((await send('GET', `${caps}?sellerId=${ID}&other=1`)).status).toBe(200);
+    expect(fetcher.mock.calls[1]?.[0] as string).toMatch(/refund-limits\?sellerId=[0-9a-f-]{36}$/);
+    expect((await send('PUT', caps)).status).toBe(200);
+    expect((await send('PUT', `${caps}/sellers/${ID}`)).status).toBe(200);
+    expect((await send('DELETE', `${caps}/sellers/${ID}?expectedVersion=3&x=1`)).status).toBe(200);
+    expect(fetcher.mock.calls.at(-1)?.[0] as string).toMatch(
+      /sellers\/[0-9a-f-]{36}\?expectedVersion=3$/,
+    );
+    expect((await send('PUT', `${caps}/sellers/nope`)).status).toBe(404);
+    expect((await send('DELETE', caps)).status).toBe(404);
+    expect((await send('POST', caps)).status).toBe(404);
+  });
+
   it('relays approve and reject of a held price for a UUID only, and no other method', async () => {
     expect((await call('POST', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(200);
     expect((await call('POST', `pricing/admin/price-holds/${ID}/reject`)).status).toBe(200);
@@ -727,6 +960,60 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `pricing/admin/price-holds/${ID}/approve`)).status).toBe(404);
     expect((await call('POST', `pricing/admin/price-holds/${ID}/delete`)).status).toBe(404);
   });
+  it('relays add-sizes as a POST and its impact read as a GET, each on its own method only', async () => {
+    const base = `catalog/admin/platform-products/${ID}`;
+    const read = (path: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin }),
+        path.split('/'),
+        vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}', { status: 200 }))),
+      );
+    expect((await call('POST', `${base}/add-sizes`)).status).toBe(200);
+    expect((await read(`${base}/add-sizes`)).status).toBe(404);
+    expect((await call('PUT', `${base}/add-sizes`)).status).toBe(404);
+    expect((await read(`${base}/add-sizes-impact`)).status).toBe(200);
+    expect((await call('POST', `${base}/add-sizes-impact`)).status).toBe(404);
+    expect((await call('DELETE', `${base}/add-sizes-impact`)).status).toBe(404);
+    expect((await call('POST', 'catalog/admin/platform-products/nope/add-sizes')).status).toBe(404);
+    expect((await read('catalog/admin/platform-products/nope/add-sizes-impact')).status).toBe(404);
+  });
+
+  it('relays the product version decisions and the photo takedown by UUID, POST only', async () => {
+    const id = '0190a000-0000-7000-8000-0000000000c1';
+    const request = (method: string, path: string) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      });
+    for (const path of [
+      `catalog/admin/products/${id}/revisions/${id}/approve`,
+      `catalog/admin/products/${id}/revisions/${id}/request-changes`,
+      `catalog/admin/products/${id}/images/${id}/take-down`,
+    ]) {
+      expect(
+        (await relay(config, request('POST', path), path.split('/'), upstreamOk())).status,
+        path,
+      ).toBe(200);
+    }
+    for (const [method, path] of [
+      ['PUT', `catalog/admin/products/${id}/revisions/${id}/approve`],
+      ['POST', `catalog/admin/products/nope/revisions/${id}/approve`],
+      ['POST', `catalog/admin/products/${id}/revisions/nope/request-changes`],
+      ['POST', `catalog/admin/products/${id}/revisions/${id}/delete`],
+      ['DELETE', `catalog/admin/products/${id}/images/${id}/take-down`],
+      ['POST', `catalog/admin/products/${id}/images/${id}`],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      expect(
+        (await relay(config, request(method, path), path.split('/'), fetchImpl)).status,
+        `${method} ${path}`,
+      ).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+
   it('relays the offer decisions by UUID, POST only', async () => {
     const id = '0190a000-0000-7000-8000-0000000000c1';
     const request = (method: string, path: string) =>
@@ -757,25 +1044,56 @@ describe('relay allowlist for seller decisions', () => {
 });
 
 describe('relay of the connected accounts list', () => {
-  const get = (query: string) =>
-    new Request(`http://admin.localhost:3002/api/payments/admin/connected-accounts${query}`, {
-      method: 'GET',
-      headers: { host: 'admin.localhost:3002' },
-    });
+  const get = (query: string, suffix = '') =>
+    new Request(
+      `http://admin.localhost:3002/api/payments/admin/connected-accounts${suffix}${query}`,
+      { method: 'GET', headers: { host: 'admin.localhost:3002' } },
+    );
   const path = ['payments', 'admin', 'connected-accounts'];
+  const ID = '01990000-0000-7000-8000-000000000051';
 
-  it('forwards only the status and cursor keys of the query', async () => {
+  it('forwards the list keys in their shapes, and drops the rest', async () => {
     const upstream = upstreamOk();
     const response = await relay(
       config,
-      get('?status=pending&cursor=abc&limit=500&x=1'),
+      get(
+        `?status=pending&ready=no&requirements=past-due&waiting=paused&q=Halal%20Corner&from=2026-11-01T00:00:00Z&sort=last-read&direction=asc&page=2&pageSize=50&paging=pages&limit=500&x=1`,
+      ),
       path,
       upstream,
     );
     expect(response.status).toBe(200);
     expect(upstream.mock.calls[0]?.[0]).toBe(
-      'http://api.test/payments/admin/connected-accounts?status=pending&cursor=abc',
+      'http://api.test/payments/admin/connected-accounts?status=pending&ready=no&requirements=past-due&waiting=paused&q=Halal+Corner&from=2026-11-01T00%3A00%3A00Z&sort=last-read&direction=asc&page=2&pageSize=50&paging=pages',
     );
+    const cursor = `1790000000000.${ID}`;
+    const older = upstreamOk();
+    await relay(config, get(`?status=enabled&cursor=${cursor}&sort=name`), path, older);
+    expect(older.mock.calls[0]?.[0]).toBe(
+      `http://api.test/payments/admin/connected-accounts?status=enabled&cursor=${encodeURIComponent(cursor)}`,
+    );
+  });
+
+  it('forwards the export keys, and refuses an export value out of shape instead of widening the file', async () => {
+    const exportPath = [...path, 'export'];
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      get(`?format=xlsx&columns=paused,seller-id&ids=${ID}&status=enabled&page=2`, '/export'),
+      exportPath,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/payments/admin/connected-accounts/export?format=xlsx&columns=${encodeURIComponent('paused,seller-id')}&ids=${ID}&status=enabled`,
+    );
+    const many = Array.from({ length: 201 }, () => ID).join(',');
+    for (const query of ['?status=open', '?ids=x', `?ids=${many}`, '?columns=stripe']) {
+      const refused = upstreamOk();
+      const response = await relay(config, get(query, '/export'), exportPath, refused);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ code: 'validation.failed' });
+      expect(refused).not.toHaveBeenCalled();
+    }
   });
 
   it('forwards no query when none is given, and refuses other paths and methods', async () => {
@@ -785,6 +1103,414 @@ describe('relay of the connected accounts list', () => {
     const other = ['payments', 'admin', 'connected-accounts', 'x'];
     expect((await relay(config, get(''), other, upstream)).status).toBe(404);
     expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+  });
+});
+
+describe('relay of the customers list and customer page', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const get = (target: string) =>
+    new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const pathOf = (target: string) => target.split('?')[0]!.split('/');
+
+  it("forwards one customer's orders (accountId, a UUID only)", async () => {
+    const upstream = upstreamOk();
+    const target = `ordering/admin/orders?accountId=${ID}&page=1`;
+    await relay(config, get(target), pathOf(target), upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/ordering/admin/orders?accountId=${ID}&page=1`,
+    );
+    // A malformed scope is refused, never dropped (that would list the whole Market's orders).
+    const bad = 'ordering/admin/orders?accountId=someone&page=1';
+    const refused = await relay(config, get(bad), pathOf(bad), upstream);
+    expect(refused.status).toBe(400);
+    expect(upstream).toHaveBeenCalledOnce();
+  });
+
+  it('relays the Money tab reads that the client builds from a variable path', async () => {
+    for (const target of [
+      `ordering/admin/customers/${ID}/refunds`,
+      `promotions/admin/customers/${ID}/credits`,
+      `wallet/admin/customers/${ID}/history`,
+    ]) {
+      const upstream = upstreamOk();
+      const response = await relay(config, get(target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    }
+  });
+
+  it('forwards the wallet journal and promotion credit paging, and nothing else', async () => {
+    const upstream = upstreamOk();
+    const wallet = `wallet/admin/customers/${ID}/history?limit=20&cursor=abc.1&x=1`;
+    await relay(config, get(wallet), pathOf(wallet), upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/customers/${ID}/history?cursor=abc.1&limit=20`,
+    );
+    const credits = `promotions/admin/customers/${ID}/credits?limit=100&cursor=a%20b`;
+    await relay(config, get(credits), pathOf(credits), upstream);
+    expect(upstream.mock.calls[1]?.[0]).toBe(
+      `http://api.test/promotions/admin/customers/${ID}/credits?limit=100`,
+    );
+  });
+
+  it('takes an export naming 1000 ticked ids, and still caps a larger body', async () => {
+    const upstream = upstreamOk();
+    const ids = Array.from({ length: 1000 }, () => ID);
+    const body = JSON.stringify({ format: 'csv', columns: ['name'], ids });
+    expect(body.length).toBeGreaterThan(16 * 1024);
+    const path = ['customers', 'admin', 'export'];
+    const ok = await relay(config, post(path.join('/'), sameOrigin, body), path, upstream);
+    expect(ok.status).toBe(200);
+    const big = await relay(
+      config,
+      post(path.join('/'), sameOrigin, 'x'.repeat(48 * 1024 + 1)),
+      path,
+      upstream,
+    );
+    expect(big.status).toBe(413);
+    // The larger cap is the export's only.
+    const list = ['customers', 'admin', 'list'];
+    const other = await relay(config, post(list.join('/'), sameOrigin, body), list, upstream);
+    expect(other.status).toBe(413);
+  });
+
+  describe('customers phase 2b, part A: payments, disputes, refunds and promotion usages', () => {
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it.each([
+      ['POST', `payments/admin/customers/${ID}/payments`],
+      ['POST', `payments/admin/customers/${ID}/payments/export`],
+      ['POST', `payments/admin/customers/${ID}/disputes`],
+      ['POST', `payments/admin/customers/${ID}/disputes/export`],
+      ['POST', `ordering/admin/customers/${ID}/refunds`],
+      ['POST', `ordering/admin/customers/${ID}/refunds/export`],
+      ['GET', `promotions/admin/customers/${ID}/usages?limit=50&cursor=abc.1`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['GET', `payments/admin/customers/${ID}/payments`],
+      ['GET', `payments/admin/customers/${ID}/disputes`],
+      ['PUT', `payments/admin/customers/${ID}/payments`],
+      ['POST', `payments/admin/customers/${ID}/payments/purge`],
+      ['POST', `promotions/admin/customers/${ID}/usages`],
+      ['DELETE', `ordering/admin/customers/${ID}/refunds`],
+      ['POST', `payments/admin/customers/not-a-uuid/payments`],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('forwards only the usages paging keys', async () => {
+      const upstream = upstreamOk();
+      const target = `promotions/admin/customers/${ID}/usages?limit=50&cursor=abc.1&status=x`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/promotions/admin/customers/${ID}/usages?limit=50&cursor=abc.1`,
+      );
+    });
+  });
+
+  describe('customers phase 2b part C: shopping and reviews', () => {
+    const SECTIONS = [
+      'saved-items',
+      'cart-reminders',
+      'cart-additions',
+      'assistant-conversations',
+      'reviews',
+      'seller-ratings',
+      'helpful-votes',
+      'review-reports',
+    ];
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it.each([
+      ...SECTIONS.flatMap((name) => [
+        ['POST', `customers/admin/customers/${ID}/${name}`],
+        ['POST', `customers/admin/customers/${ID}/${name}/export`],
+      ]),
+      ['GET', `customers/admin/customers/${ID}/cart`],
+      ['GET', `customers/admin/customers/${ID}/behaviour`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ...SECTIONS.flatMap((name) => [
+        ['GET', `customers/admin/customers/${ID}/${name}`],
+        ['PUT', `customers/admin/customers/${ID}/${name}`],
+        ['GET', `customers/admin/customers/${ID}/${name}/export`],
+      ]),
+      ['POST', `customers/admin/customers/${ID}/cart`],
+      ['DELETE', `customers/admin/customers/${ID}/behaviour`],
+      ['POST', `customers/admin/customers/${ID}/reviews/purge`],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('takes a list body under the 16 KB cap and refuses a larger one', async () => {
+      const upstream = upstreamOk();
+      const target = `customers/admin/customers/${ID}/reviews`;
+      const big = JSON.stringify({ filters: { status: ['x'.repeat(17 * 1024)] } });
+      expect(
+        (await relay(config, send('POST', target, big), pathOf(target), upstream)).status,
+      ).toBe(413);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('forwards no query string of the cart read', async () => {
+      const upstream = upstreamOk();
+      const target = `customers/admin/customers/${ID}/cart?x=1`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/customers/admin/customers/${ID}/cart`,
+      );
+    });
+  });
+
+  describe('customers phases 3 and 4a: seller customers and attributions', () => {
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+    const A = 'customers/admin/seller-attributions';
+    const S = `customers/admin/sellers/${ID}/customers`;
+
+    it.each([
+      ['GET', `${S}/summary`],
+      ['POST', `${S}/list`],
+      ['POST', `${A}/list`],
+      ['POST', `${A}/list/ids`],
+      ['POST', `${A}/decide`],
+      ['POST', `${A}/export`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['POST', `${S}/summary`],
+      ['GET', `${S}/list`],
+      ['PUT', `${S}/list`],
+      ['GET', `${A}/list`],
+      ['GET', `${A}/export`],
+      ['DELETE', `${A}/decide`],
+      ['POST', `${A}/other`],
+      ['POST', 'customers/admin/sellers/not-an-id/customers/list'],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('forwards no query string of the summary read', async () => {
+      const upstream = upstreamOk();
+      const target = `${S}/summary?x=1`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${S}/summary`);
+    });
+
+    it('takes a 1000-id export body and a list body under 16 KB, and refuses a larger list body', async () => {
+      const upstream = upstreamOk();
+      const ids = JSON.stringify({ ids: Array.from({ length: 1000 }, () => ID) });
+      expect(
+        (await relay(config, send('POST', `${A}/export`, ids), pathOf(`${A}/export`), upstream))
+          .status,
+      ).toBe(200);
+      const big = JSON.stringify({ q: 'x'.repeat(17 * 1024) });
+      expect(
+        (await relay(config, send('POST', `${A}/list`, big), pathOf(`${A}/list`), upstream)).status,
+      ).toBe(413);
+    });
+  });
+
+  describe('customers phase 2b, part B: account and security', () => {
+    const A = '0190a000-0000-7000-8000-0000000000c1';
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+    const base = `customers/admin/customers/${ID}`;
+
+    it.each([
+      ['GET', `${base}/sessions`],
+      ['GET', `${base}/addresses`],
+      ['GET', `${base}/consent`],
+      ['GET', `${base}/behaviour`],
+      ['POST', `${base}/sign-ins`],
+      ['POST', `${base}/sign-ins/${A}/reveal`],
+      ['POST', `${base}/sessions/end`],
+      ['POST', `${base}/password-reset`],
+      ['POST', `${base}/addresses/${A}/reveal`],
+      ['POST', `${base}/consent-history`],
+      ['POST', `${base}/consent-history/export`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['POST', `${base}/sign-ins/export`],
+      ['GET', `${base}/sign-ins`],
+      ['POST', `${base}/sign-ins/not-a-uuid/reveal`],
+      ['GET', `${base}/sessions/end`],
+      ['PUT', `${base}/addresses/${A}/reveal`],
+      ['DELETE', `${base}/sessions`],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('drops query keys on the reads', async () => {
+      const upstream = upstreamOk();
+      const target = `${base}/sessions?limit=5`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${base}/sessions`);
+    });
+  });
+
+  describe('customers phase 2a: groups, notes, activity and the name edit', () => {
+    const G = '0190a000-0000-7000-8000-0000000000b1';
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it.each([
+      ['GET', 'customers/admin/groups'],
+      ['POST', 'customers/admin/groups'],
+      ['GET', `customers/admin/groups/${G}`],
+      ['PUT', `customers/admin/groups/${G}`],
+      ['POST', `customers/admin/groups/${G}/members/add`],
+      ['POST', `customers/admin/groups/${G}/members/remove`],
+      ['GET', `customers/admin/customers/${ID}/notes`],
+      ['POST', `customers/admin/customers/${ID}/notes`],
+      ['POST', `customers/admin/customers/${ID}/activity`],
+      ['POST', `customers/admin/customers/${ID}/activity/export`],
+      ['PUT', `customers/admin/customers/${ID}/display-name`],
+      ['PUT', `customers/admin/customers/${ID}/email`],
+      ['DELETE', `customers/admin/customers/${ID}/email-change`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['DELETE', `customers/admin/groups/${G}`],
+      ['PUT', `customers/admin/groups/not-a-uuid`],
+      ['POST', `customers/admin/groups/${G}/members/purge`],
+      ['GET', `customers/admin/customers/${ID}/activity`],
+      ['DELETE', `customers/admin/customers/${ID}/notes`],
+      ['POST', `customers/admin/customers/${ID}/email`],
+      ['GET', `customers/admin/customers/${ID}/email`],
+      ['PATCH', `customers/admin/customers/${ID}/email`],
+      ['PUT', `customers/admin/customers/${ID}/email-change`],
+      ['POST', `customers/admin/customers/${ID}/email-change`],
+      ['DELETE', `customers/admin/customers/${ID}/email`],
+      ['PUT', 'customers/admin/customers/not-a-uuid/email'],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('caps the email change body at 1 KB, and only on that path', async () => {
+      const upstream = upstreamOk();
+      const email = `customers/admin/customers/${ID}/email`;
+      const small = JSON.stringify({ email: 'new@example.com' });
+      expect((await relay(config, send('PUT', email, small), pathOf(email), upstream)).status).toBe(
+        200,
+      );
+      const big = JSON.stringify({ email: `${'a'.repeat(1100)}@example.com` });
+      expect((await relay(config, send('PUT', email, big), pathOf(email), upstream)).status).toBe(
+        413,
+      );
+      // Another PUT of the same customer keeps the usual 16 KB cap.
+      const name = `customers/admin/customers/${ID}/display-name`;
+      const longer = JSON.stringify({ displayName: 'a'.repeat(1100) });
+      expect((await relay(config, send('PUT', name, longer), pathOf(name), upstream)).status).toBe(
+        200,
+      );
+    });
+
+    it('forwards only the notes paging keys', async () => {
+      const upstream = upstreamOk();
+      const target = `customers/admin/customers/${ID}/notes?limit=20&cursor=abc.1&author=x`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/customers/admin/customers/${ID}/notes?limit=20&cursor=abc.1`,
+      );
+    });
+
+    it('takes 1000 ticked ids for a members change, and nowhere else on the group', async () => {
+      const ids = Array.from({ length: 1000 }, () => ID);
+      const body = JSON.stringify({ ids });
+      expect(body.length).toBeGreaterThan(16 * 1024);
+      const add = `customers/admin/groups/${G}/members/add`;
+      const upstream = upstreamOk();
+      expect((await relay(config, send('POST', add, body), pathOf(add), upstream)).status).toBe(
+        200,
+      );
+      const rename = `customers/admin/groups/${G}`;
+      expect(
+        (await relay(config, send('PUT', rename, body), pathOf(rename), upstream)).status,
+      ).toBe(413);
+    });
   });
 });
 
@@ -810,11 +1536,320 @@ describe('relay of the orders list', () => {
     );
   });
 
+  it('forwards the page mode and the filters', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'page=2&pageSize=25&sort=total&direction=desc&paymentState=paid&from=2026-10-01T00%3A00%3A00.000Z';
+    await relay(config, get(`?${q}&x=1`), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/admin/orders?${q}`);
+  });
+
+  it('forwards the search, the reference, the customer account and the paging mode', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'status=confirmed&q=0190a000-0000-7000-8000-000000000001&search=rice&accountId=0190a000-0000-7000-8000-000000000002&page=1&paging=prev-next';
+    await relay(config, get(`?${q}&x=1`), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/ordering/admin/orders?${q}`);
+  });
+
   it('refuses other paths and methods', async () => {
     const upstream = upstreamOk();
     const other = ['ordering', 'admin', 'orders', '0190a000-0000-7000-8000-000000000001'];
     expect((await relay(config, get(''), other, upstream)).status).toBe(404);
     expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay of the shipments list', () => {
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/shipments${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['ordering', 'admin', 'shipments'];
+  const SELLER = '0190a000-0000-7000-8000-0000000000b1';
+  const CURSOR = '1763300000000.0190a000-0000-7000-8000-0000000000aa';
+  const urlOf = (upstream: ReturnType<typeof upstreamOk>) => {
+    const target = upstream.mock.calls[0]?.[0];
+    return typeof target === 'string' ? target : '';
+  };
+  const sent = async (query: string) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(200);
+    return new URL(urlOf(upstream)).searchParams;
+  };
+
+  it('forwards the page mode, the tab, the filters and the dates', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'page=2&pageSize=25&sort=paid&direction=desc&stage=shipped&deliveryMethod=same_day' +
+      '&attention=no-carrier&search=Cedar+Lane&paidFrom=2026-11-16T14%3A00%3A00.000Z' +
+      '&paidTo=2026-11-17T14%3A00%3A00.000Z&shippedFrom=2026-11-16T14%3A00%3A00%2B10%3A00' +
+      `&shippedTo=2026-11-17T14%3A00%3A00.000Z&sellerId=${SELLER}`;
+    await relay(config, get(`?${q}&x=1&fleet=swift`), path, upstream);
+    const url = new URL(urlOf(upstream));
+    expect(url.origin + url.pathname).toBe('http://api.test/ordering/admin/shipments');
+    // The relay writes the keys in its own order; the values are what the panel asked for.
+    expect(Object.fromEntries(url.searchParams)).toEqual(
+      Object.fromEntries(new URLSearchParams(q)),
+    );
+  });
+
+  it('forwards the Previous and next mode: limit, cursor, and an exact q', async () => {
+    const params = await sent(`?limit=25&cursor=${CURSOR}&q=SC+4471+99`);
+    expect(Object.fromEntries(params)).toEqual({ limit: '25', cursor: CURSOR, q: 'SC 4471 99' });
+  });
+
+  it('drops a key the panel does not use, such as fleet, and every unknown key', async () => {
+    const params = await sent('?stage=ready&fleet=swift&minAmount=1&x=1');
+    expect(Object.fromEntries(params)).toEqual({ stage: 'ready' });
+  });
+
+  it('drops a value of the wrong shape and keeps the rest', async () => {
+    const params = await sent(
+      '?stage=cancelled&sort=name&direction=up&deliveryMethod=drone&attention=all' +
+        '&sellerId=nope&page=0x&pageSize=1000&limit=-1&cursor=abc&paidFrom=yesterday' +
+        '&shippedTo=2026-11-16&q=ok',
+    );
+    expect(Object.fromEntries(params)).toEqual({ q: 'ok' });
+  });
+
+  it('accepts each stage, sort, method and problem the API names', async () => {
+    for (const stage of ['to-prepare', 'ready', 'shipped', 'delivered', 'refunded']) {
+      expect((await sent(`?stage=${stage}`)).get('stage')).toBe(stage);
+    }
+    for (const sort of ['paid', 'shipped', 'delivered', 'total']) {
+      expect((await sent(`?sort=${sort}`)).get('sort')).toBe(sort);
+    }
+    for (const method of ['pickup', 'instant', 'same_day', 'scheduled']) {
+      expect((await sent(`?deliveryMethod=${method}`)).get('deliveryMethod')).toBe(method);
+    }
+    for (const attention of ['any', 'no-carrier', 'carrier-unknown', 'cancel-unknown']) {
+      expect((await sent(`?attention=${attention}`)).get('attention')).toBe(attention);
+    }
+  });
+
+  it('keeps free text up to 80 characters for q and search, and drops more', async () => {
+    const eighty = 'x'.repeat(80);
+    expect((await sent(`?q=${eighty}`)).get('q')).toBe(eighty);
+    expect((await sent(`?search=${eighty}`)).get('search')).toBe(eighty);
+    expect((await sent(`?q=${eighty}y`)).has('q')).toBe(false);
+    expect((await sent(`?search=${eighty}y`)).has('search')).toBe(false);
+    expect((await sent('?q=')).has('q')).toBe(false);
+  });
+
+  it('refuses other paths and methods', async () => {
+    const upstream = upstreamOk();
+    const other = ['ordering', 'admin', 'shipments', '0190a000-0000-7000-8000-000000000001'];
+    expect((await relay(config, get(''), other, upstream)).status).toBe(404);
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const request = new Request('http://admin.localhost:3002/api/ordering/admin/shipments', {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      });
+      expect((await relay(config, request, path, upstream)).status).toBe(404);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay of the refunds list', () => {
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/refunds${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['ordering', 'admin', 'refunds'];
+  const SELLER = '0190a000-0000-7000-8000-0000000000b1';
+  const CURSOR = '1763300000000.0190a000-0000-7000-8000-0000000000aa';
+  const urlOf = (upstream: ReturnType<typeof upstreamOk>) => {
+    const target = upstream.mock.calls[0]?.[0];
+    return typeof target === 'string' ? target : '';
+  };
+  const sent = async (query: string) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(200);
+    return new URL(urlOf(upstream)).searchParams;
+  };
+
+  it('forwards the page mode, the tab, the filters and the dates', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'page=2&pageSize=25&sort=amount&direction=desc&state=succeeded&reason=damaged' +
+      '&actor=seller&lossBearer=platform&ledger=waiting&search=Cedar+Lane' +
+      '&from=2026-11-16T14%3A00%3A00.000Z&to=2026-11-17T14%3A00%3A00%2B10%3A00' +
+      `&sellerId=${SELLER}`;
+    await relay(config, get(`?${q}&x=1&minAmount=1&maxAmount=9`), path, upstream);
+    const url = new URL(urlOf(upstream));
+    expect(url.origin + url.pathname).toBe('http://api.test/ordering/admin/refunds');
+    expect(Object.fromEntries(url.searchParams)).toEqual(
+      Object.fromEntries(new URLSearchParams(q)),
+    );
+  });
+
+  it('forwards the Previous and next mode: limit, cursor, and an exact Stripe id as q', async () => {
+    const params = await sent(`?limit=25&cursor=${CURSOR}&q=re_3Pabc123`);
+    expect(Object.fromEntries(params)).toEqual({ limit: '25', cursor: CURSOR, q: 're_3Pabc123' });
+  });
+
+  it('drops the amount filters the panel has no input for, and every unknown key', async () => {
+    const params = await sent('?state=pending&minAmount=100&maxAmount=900&stage=ready&x=1');
+    expect(Object.fromEntries(params)).toEqual({ state: 'pending' });
+  });
+
+  it('drops a value of the wrong shape and keeps the rest', async () => {
+    const params = await sent(
+      '?state=done&sort=name&direction=up&reason=broken&actor=buyer&lossBearer=carrier' +
+        '&ledger=late&sellerId=nope&page=0x&pageSize=1000&limit=-1&cursor=abc&from=yesterday' +
+        '&to=2026-11-16&q=ok',
+    );
+    expect(Object.fromEntries(params)).toEqual({ q: 'ok' });
+  });
+
+  it('accepts each state, sort, reason, actor, loss bearer and ledger the API names', async () => {
+    for (const state of ['pending', 'succeeded', 'failed']) {
+      expect((await sent(`?state=${state}`)).get('state')).toBe(state);
+    }
+    for (const sort of ['requested', 'settled', 'amount']) {
+      expect((await sent(`?sort=${sort}`)).get('sort')).toBe(sort);
+    }
+    for (const reason of [
+      'not-received',
+      'damaged',
+      'wrong-item',
+      'not-as-described',
+      'seller-cancelled',
+      'item-unavailable',
+      'other',
+    ]) {
+      expect((await sent(`?reason=${reason}`)).get('reason')).toBe(reason);
+    }
+    for (const actor of ['admin', 'seller']) {
+      expect((await sent(`?actor=${actor}`)).get('actor')).toBe(actor);
+    }
+    for (const bearer of ['seller', 'platform']) {
+      expect((await sent(`?lossBearer=${bearer}`)).get('lossBearer')).toBe(bearer);
+    }
+    for (const ledger of ['waiting', 'recorded']) {
+      expect((await sent(`?ledger=${ledger}`)).get('ledger')).toBe(ledger);
+    }
+  });
+
+  it('keeps free text up to 80 characters for q and search, and drops more', async () => {
+    const eighty = 'x'.repeat(80);
+    expect((await sent(`?q=${eighty}`)).get('q')).toBe(eighty);
+    expect((await sent(`?search=${eighty}`)).get('search')).toBe(eighty);
+    expect((await sent(`?q=${eighty}y`)).has('q')).toBe(false);
+    expect((await sent(`?search=${eighty}y`)).has('search')).toBe(false);
+    expect((await sent('?q=')).has('q')).toBe(false);
+  });
+
+  it('refuses other paths and methods', async () => {
+    const upstream = upstreamOk();
+    const other = ['ordering', 'admin', 'refunds', '0190a000-0000-7000-8000-000000000001'];
+    expect((await relay(config, get(''), other, upstream)).status).toBe(404);
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const request = new Request('http://admin.localhost:3002/api/ordering/admin/refunds', {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      });
+      expect((await relay(config, request, path, upstream)).status).toBe(404);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay of the invoices list (documents)', () => {
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/documents${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['ordering', 'admin', 'documents'];
+  const SELLER = '0190a000-0000-7000-8000-0000000000b1';
+  const CURSOR = '1763300000000.0190a000-0000-7000-8000-0000000000aa';
+  const urlOf = (upstream: ReturnType<typeof upstreamOk>) => {
+    const target = upstream.mock.calls[0]?.[0];
+    return typeof target === 'string' ? target : '';
+  };
+  const sent = async (query: string) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(200);
+    return new URL(urlOf(upstream)).searchParams;
+  };
+
+  it('forwards the page mode, the kind, the search, the seller and the dates', async () => {
+    const upstream = upstreamOk();
+    const q =
+      'kind=credit-note&page=2&pageSize=25&sort=amount&direction=asc&search=Cedar+Lane' +
+      '&from=2026-11-16T14%3A00%3A00.000Z&to=2026-11-17T14%3A00%3A00%2B10%3A00' +
+      `&sellerId=${SELLER}`;
+    await relay(config, get(`?${q}&x=1`), path, upstream);
+    const url = new URL(urlOf(upstream));
+    expect(url.origin + url.pathname).toBe('http://api.test/ordering/admin/documents');
+    expect(Object.fromEntries(url.searchParams)).toEqual(
+      Object.fromEntries(new URLSearchParams(q)),
+    );
+  });
+
+  it('forwards the Previous and next mode: limit, cursor, and an exact q', async () => {
+    const params = await sent(`?kind=order-confirmation&limit=25&cursor=${CURSOR}&q=${SELLER}`);
+    expect(Object.fromEntries(params)).toEqual({
+      kind: 'order-confirmation',
+      limit: '25',
+      cursor: CURSOR,
+      q: SELLER,
+    });
+  });
+
+  it('drops the amount filters and every unknown key', async () => {
+    const params = await sent('?kind=credit-note&minAmount=1&maxAmount=9&fleet=x&x=1');
+    expect(Object.fromEntries(params)).toEqual({ kind: 'credit-note' });
+  });
+
+  it('drops a value of the wrong shape and keeps the rest', async () => {
+    const params = await sent(
+      '?kind=tax-invoice&sort=name&direction=up&sellerId=nope&page=0x&pageSize=1000' +
+        '&limit=-1&cursor=abc&from=yesterday&to=2026-11-16&q=ok',
+    );
+    expect(Object.fromEntries(params)).toEqual({ q: 'ok' });
+  });
+
+  it('accepts each kind and sort the API names', async () => {
+    for (const kind of ['order-confirmation', 'credit-note']) {
+      expect((await sent(`?kind=${kind}`)).get('kind')).toBe(kind);
+    }
+    for (const sort of ['issued', 'amount']) {
+      expect((await sent(`?sort=${sort}`)).get('sort')).toBe(sort);
+    }
+  });
+
+  it('keeps free text up to 80 characters for q and search, and drops more', async () => {
+    const eighty = 'x'.repeat(80);
+    expect((await sent(`?q=${eighty}`)).get('q')).toBe(eighty);
+    expect((await sent(`?search=${eighty}`)).get('search')).toBe(eighty);
+    expect((await sent(`?q=${eighty}y`)).has('q')).toBe(false);
+    expect((await sent(`?search=${eighty}y`)).has('search')).toBe(false);
+  });
+
+  it('refuses other paths and methods', async () => {
+    const upstream = upstreamOk();
+    const other = ['ordering', 'admin', 'documents', '0190a000-0000-7000-8000-000000000001'];
+    expect((await relay(config, get(''), other, upstream)).status).toBe(404);
+    for (const method of ['POST', 'PUT', 'DELETE']) {
+      const request = new Request('http://admin.localhost:3002/api/ordering/admin/documents', {
+        method,
+        headers: sameOrigin,
+        body: '{}',
+      });
+      expect((await relay(config, request, path, upstream)).status).toBe(404);
+    }
     expect(upstream).not.toHaveBeenCalled();
   });
 });
@@ -913,6 +1948,146 @@ describe('relay of the admin notice routes', () => {
   });
 });
 
+describe('relay of the blog editor', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const put = (path: string, body: string) =>
+    new Request(`http://admin.localhost:3002/api/${path}`, {
+      method: 'PUT',
+      headers: { ...sameOrigin, 'content-type': 'application/json' },
+      body,
+    });
+
+  it('takes a draft of up to 60 KB, more than the usual 16 KB, and refuses more', async () => {
+    const path = `blog/admin/posts/${id}/draft`;
+    const upstream = upstreamOk();
+    const ok = JSON.stringify({ content: { pad: 'x'.repeat(40 * 1024) } });
+    expect((await relay(config, put(path, ok), path.split('/'), upstream)).status).toBe(200);
+    const big = JSON.stringify({ content: { pad: 'x'.repeat(61 * 1024) } });
+    expect((await relay(config, put(path, big), path.split('/'), upstream)).status).toBe(413);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the usual 16 KB cap on the submit and create routes', async () => {
+    const upstream = upstreamOk();
+    const big = JSON.stringify({ pad: 'x'.repeat(17 * 1024) });
+    for (const path of ['blog/admin/posts', `blog/admin/posts/${id}/submit`]) {
+      const request = new Request(`http://admin.localhost:3002/api/${path}`, {
+        method: 'POST',
+        headers: { ...sameOrigin, 'content-type': 'application/json' },
+        body: big,
+      });
+      expect((await relay(config, request, path.split('/'), upstream)).status).toBe(413);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay of the blog posts list', () => {
+  const request = (path: string) =>
+    new Request(`http://admin.localhost:3002/api/${path}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const list = ['blog', 'admin', 'posts'];
+
+  it('passes the status, kind, owner and page of the query and nothing else', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      request('blog/admin/posts?status=in_review&kind=event&owner=seller&page=2&sellerId=x&x=1'),
+      list,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/blog/admin/posts?status=in_review&kind=event&owner=seller&page=2',
+    );
+  });
+
+  it('drops a value of another shape', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('blog/admin/posts?status=live%27--&kind=../x&owner=all&page=0x1'),
+      list,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/blog/admin/posts');
+  });
+
+  it('passes the Blog posts super list query and its export only in the shapes the API takes', async () => {
+    const seller = '0190a000-0000-7000-8000-0000000000aa';
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request(
+        `blog/admin/posts?view=published&owner=seller&sellerId=${seller}&featured=true&q=eid%20sweets&from=2026-11-01T00:00:00Z&sort=published&direction=asc&page=2&pageSize=50&body=x`,
+      ),
+      list,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/blog/admin/posts?view=published&owner=seller&sellerId=${seller}&featured=true&q=eid+sweets&from=2026-11-01T00%3A00%3A00Z&sort=published&direction=asc&page=2&pageSize=50`,
+    );
+    const dropped = upstreamOk();
+    await relay(
+      config,
+      request(
+        `blog/admin/posts?view=live&featured=yes&q=${'a'.repeat(101)}&sort=title&pageSize=500&cursor=nope`,
+      ),
+      list,
+      dropped,
+    );
+    expect(dropped.mock.calls[0]?.[0]).toBe('http://api.test/blog/admin/posts');
+    // A ZWNJ (a format character, common in Persian) is forwarded; a control character is not.
+    const zwnj = upstreamOk();
+    await relay(
+      config,
+      request(`blog/admin/posts?q=${encodeURIComponent('می\u200Cخواهم')}`),
+      list,
+      zwnj,
+    );
+    expect(zwnj.mock.calls[0]?.[0]).toBe(
+      `http://api.test/blog/admin/posts?q=${encodeURIComponent('می\u200Cخواهم')}`,
+    );
+    const control = upstreamOk();
+    await relay(config, request('blog/admin/posts?q=eid%07'), list, control);
+    expect(control.mock.calls[0]?.[0]).toBe('http://api.test/blog/admin/posts');
+    const zwnjExport = upstreamOk();
+    await relay(
+      config,
+      request(`blog/admin/posts/export?format=csv&q=${encodeURIComponent('می\u200Cخواهم')}`),
+      [...list, 'export'],
+      zwnjExport,
+    );
+    expect(zwnjExport.mock.calls[0]?.[0]).toBe(
+      `http://api.test/blog/admin/posts/export?format=csv&q=${encodeURIComponent('می\u200Cخواهم')}`,
+    );
+    const controlExport = upstreamOk();
+    await relay(
+      config,
+      request('blog/admin/posts/export?format=csv&q=eid%07'),
+      [...list, 'export'],
+      controlExport,
+    );
+    expect(controlExport.mock.calls[0]?.[0]).toBe(
+      'http://api.test/blog/admin/posts/export?format=csv',
+    );
+    const file = upstreamOk();
+    await relay(
+      config,
+      request(
+        `blog/admin/posts/export?format=xlsx&columns=slug,published&ids=${seller}&view=all&page=2`,
+      ),
+      [...list, 'export'],
+      file,
+    );
+    expect(file.mock.calls[0]?.[0]).toBe(
+      `http://api.test/blog/admin/posts/export?format=xlsx&columns=slug%2Cpublished&ids=${seller}&view=all`,
+    );
+  });
+});
+
 describe('relay of the storefront slides', () => {
   const id = '0190a000-0000-7000-8000-000000000001';
   const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
@@ -960,6 +2135,106 @@ describe('relay of the storefront slides', () => {
       const ok = upstreamOk();
       expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
     }
+  });
+
+  it('reads the page list and the template catalogue, and creates a page with a POST', async () => {
+    for (const [method, path] of [
+      ['GET', 'storefront/admin/pages'],
+      ['GET', 'storefront/admin/catalogue'],
+      ['POST', 'storefront/admin/pages'],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+    }
+  });
+
+  it('changes one page by its id or system key: settings, modules, order, restore, publish, archive', async () => {
+    const slot = 'storefront/admin/pages';
+    for (const [method, path] of [
+      ['PUT', `${slot}/${id}`],
+      ['PUT', `${slot}/home`],
+      ['POST', `${slot}/${id}/slots/main/modules`],
+      ['POST', `${slot}/offers/slots/top/modules`],
+      ['PUT', `${slot}/${id}/slots/no-results/modules/${id}`],
+      ['DELETE', `${slot}/${id}/slots/main/modules/${id}`],
+      ['PUT', `${slot}/${id}/slots/main/order`],
+      ['POST', `${slot}/${id}/restore`],
+      ['POST', `${slot}/${id}/publish`],
+      ['POST', `${slot}/${id}/archive`],
+      ['POST', `${slot}/home/publish`],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+      expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+    }
+  });
+
+  it('changes the navigation: the draft, a restore and the approval, nothing else', async () => {
+    const base = 'storefront/admin/navigation';
+    for (const [method, path, status] of [
+      ['PUT', `${base}/draft`, 200],
+      ['POST', `${base}/restore`, 200],
+      ['POST', `${base}/approve`, 200],
+      ['GET', `${base}/draft`, 404],
+      ['POST', `${base}/draft`, 404],
+      ['PUT', `${base}/approve`, 404],
+      ['DELETE', base, 404],
+      ['PUT', base, 404],
+      ['POST', `${base}/approve/extra`, 404],
+    ] as const) {
+      const upstream = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), upstream)).status).toBe(
+        status,
+      );
+      expect(upstream.mock.calls.length).toBe(status === 200 ? 1 : 0);
+    }
+  });
+
+  it('keeps every other page shape closed', async () => {
+    const base = 'storefront/admin/pages';
+    for (const [method, path] of [
+      // One page is read by the page server, and a page is never deleted or replaced as a list.
+      ['GET', `${base}/${id}`],
+      ['DELETE', `${base}/${id}`],
+      ['PUT', base],
+      ['POST', 'storefront/admin/catalogue'],
+      // The navigation has its own routes; a word that is no system page is no page.
+      ['PUT', `${base}/navigation`],
+      ['PUT', `${base}/Home`],
+      ['PUT', `${base}/nope`],
+      ['PUT', `${base}/${id}/extra`],
+      // A slot is a plain key and a module is a UUID.
+      ['POST', `${base}/${id}/slots/Main/modules`],
+      ['POST', `${base}/${id}/slots/main%2F..%2Fmodules/modules`],
+      ['POST', `${base}/${id}/slots/${'a'.repeat(33)}/modules`],
+      ['PUT', `${base}/${id}/slots/main/modules/not-an-id`],
+      ['DELETE', `${base}/${id}/slots/main/modules/home`],
+      ['PUT', `${base}/${id}/slots/main/modules`],
+      ['POST', `${base}/${id}/slots/main/order`],
+      ['DELETE', `${base}/${id}/slots/main/order`],
+      // Restore, publish and archive are POST only, on one page, and take no further segment.
+      ['PUT', `${base}/${id}/publish`],
+      ['GET', `${base}/${id}/archive`],
+      ['DELETE', `${base}/${id}/restore`],
+      ['POST', `${base}/navigation/publish`],
+      ['POST', `${base}/${id}/publish/extra`],
+      ['POST', `${base}/${id}/slots/main/publish`],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(404);
+      expect(ok).not.toHaveBeenCalled();
+    }
+  });
+
+  it('passes no query to the page list', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'storefront/admin/pages?status=draft', { host: 'admin.localhost:3002' }),
+      ['storefront', 'admin', 'pages'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/storefront/admin/pages');
   });
 
   it('saves the order of a position with a PUT on the fixed order path, not as a slide id', async () => {
@@ -1131,7 +2406,15 @@ describe('relay of the wallet and step-up routes', () => {
   it.each([
     ['GET', 'wallet/admin/settings'],
     ['PUT', 'wallet/admin/settings'],
+    ['GET', 'promotions/admin/settings'],
+    ['PUT', 'promotions/admin/settings'],
+    ['GET', 'promotions/admin/first-order'],
+    ['PUT', 'promotions/admin/first-order'],
+    ['GET', 'promotions/admin/free-shipping'],
+    ['PUT', 'promotions/admin/free-shipping/logan'],
+    ['PUT', 'promotions/admin/free-shipping/Gold_Coast-2'],
     ['GET', 'wallet/admin/credit-requests'],
+    ['GET', 'wallet/admin/credit-requests/export'],
     ['POST', 'wallet/admin/credits'],
     ['POST', 'identity/admin/step-up/verify'],
     ['GET', `wallet/admin/customers/${id}`],
@@ -1142,6 +2425,29 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', 'customers/admin/deletion-requests'],
     ['POST', `customers/admin/buyers/${id}/deletion-requests`],
     ['DELETE', `customers/admin/deletion-requests/${id}`],
+    ['GET', 'blog/admin/posts'],
+    ['POST', 'blog/admin/posts'],
+    ['GET', `blog/admin/posts/${id}`],
+    ['GET', `blog/admin/posts/${id}/checks`],
+    ['PUT', `blog/admin/posts/${id}/draft`],
+    ['PUT', `blog/admin/posts/${id}/event-status`],
+    ['POST', `blog/admin/posts/${id}/submit`],
+    ['POST', `blog/admin/posts/${id}/approve`],
+    ['POST', `blog/admin/posts/${id}/request-changes`],
+    ['POST', `blog/admin/posts/${id}/publish`],
+    ['POST', `blog/admin/posts/${id}/pause`],
+    ['POST', `blog/admin/posts/${id}/resume`],
+    ['POST', `blog/admin/posts/${id}/archive`],
+    ['PUT', `blog/admin/posts/${id}/schedule`],
+    ['DELETE', `blog/admin/posts/${id}/schedule`],
+    ['PUT', `blog/admin/posts/${id}/slug`],
+    ['PUT', `blog/admin/posts/${id}/featured`],
+    ['GET', 'blog/admin/taxonomy'],
+    ['POST', 'blog/admin/taxonomy/categories'],
+    ['PUT', `blog/admin/taxonomy/categories/${id}`],
+    ['DELETE', `blog/admin/taxonomy/categories/${id}`],
+    ['POST', 'blog/admin/taxonomy/tags'],
+    ['DELETE', `blog/admin/taxonomy/tags/${id}`],
     ['GET', 'catalog/admin/brands'],
     ['GET', 'catalog/admin/brands/merge-queue'],
     ['POST', 'catalog/admin/brands'],
@@ -1153,10 +2459,17 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', 'catalog/admin/categories'],
     ['GET', `catalog/admin/categories/${id}`],
     ['GET', `catalog/admin/categories/${id}/impact`],
+    ['GET', `catalog/admin/categories/${id}/move-products`],
+    ['POST', `catalog/admin/categories/${id}/move-products`],
+    ['GET', 'catalog/admin/platform-products/category-picker'],
     ['GET', 'catalog/admin/business-activities'],
     ['GET', `catalog/admin/business-activities/${id}`],
     ['POST', 'catalog/admin/business-activities'],
     ['PUT', `catalog/admin/business-activities/${id}`],
+    ['GET', 'catalog/admin/topics'],
+    ['GET', `catalog/admin/topics/${id}`],
+    ['POST', 'catalog/admin/topics'],
+    ['PUT', `catalog/admin/topics/${id}`],
     ['GET', 'catalog/admin/attributes'],
     ['GET', `catalog/admin/attributes/${id}`],
     ['POST', 'catalog/admin/attributes'],
@@ -1167,12 +2480,39 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', `catalog/admin/attribute-suggestions/${id}/approve`],
     ['POST', `catalog/admin/attribute-suggestions/${id}/map`],
     ['POST', `catalog/admin/attribute-suggestions/${id}/reject`],
+    ['GET', 'catalog/admin/variant-requests'],
+    ['POST', `catalog/admin/variant-requests/${id}/approve`],
+    ['POST', `catalog/admin/variant-requests/${id}/map`],
+    ['POST', `catalog/admin/variant-requests/${id}/decline`],
+    ['GET', 'catalog/admin/category-proposals'],
+    ['POST', `catalog/admin/category-proposals/${id}/approve`],
+    ['POST', `catalog/admin/category-proposals/${id}/reject`],
+    ['GET', `catalog/admin/sellers/${id}/shelves`],
+    ['POST', `catalog/admin/shelves/${id}/promote`],
+    ['POST', `catalog/admin/shelves/${id}/merge`],
+    ['GET', 'catalog/admin/topic-suggestions'],
+    ['POST', `catalog/admin/topic-suggestions/${id}/approve`],
+    ['POST', `catalog/admin/topic-suggestions/${id}/map`],
+    ['POST', `catalog/admin/topic-suggestions/${id}/reject`],
     ['GET', 'catalog/admin/attribute-relaxations'],
+    ['GET', 'catalog/admin/attribute-archive-requests'],
+    ['GET', 'catalog/admin/reports/products-missing-details'],
+    ['POST', 'catalog/admin/reports/products-missing-details/email-sellers'],
     ['POST', `catalog/admin/attributes/${id}/relaxation-requests`],
     ['POST', `catalog/admin/attribute-relaxations/${id}/confirm`],
     ['POST', `catalog/admin/attribute-relaxations/${id}/cancel`],
+    ['GET', `catalog/admin/attributes/${id}/impact`],
+    ['POST', `catalog/admin/attributes/${id}/merge-values`],
+    ['POST', `catalog/admin/attributes/${id}/merge`],
+    ['POST', `catalog/admin/attributes/${id}/convert`],
+    ['POST', `catalog/admin/attributes/${id}/archive`],
+    ['POST', `catalog/admin/attributes/${id}/archive-requests`],
+    ['POST', `catalog/admin/attribute-archive-requests/${id}/confirm`],
     ['GET', 'catalog/admin/feature-sets'],
     ['GET', `catalog/admin/feature-sets/${id}`],
+    ['PUT', `catalog/admin/feature-sets/${id}`],
+    ['GET', `catalog/admin/categories/${id}/attribute-links`],
+    ['PUT', `catalog/admin/categories/${id}/attribute-links`],
   ])('relays %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1186,6 +2526,15 @@ describe('relay of the wallet and step-up routes', () => {
   it.each([
     ['DELETE', 'wallet/admin/settings'],
     ['POST', 'wallet/admin/settings'],
+    ['POST', 'promotions/admin/settings'],
+    ['DELETE', 'promotions/admin/first-order'],
+    ['GET', 'promotions/admin/free-shipping/logan'],
+    ['PUT', 'promotions/admin/free-shipping'],
+    ['PUT', 'promotions/admin/free-shipping/a.b'],
+    ['PUT', 'promotions/admin/free-shipping/logan/extra'],
+    ['PUT', `promotions/admin/free-shipping/${'z'.repeat(65)}`],
+    ['GET', 'promotions/admin/promotions'],
+    ['PUT', 'promotions/admin/preview-quote'],
     ['PUT', 'wallet/admin/credits'],
     ['GET', 'wallet/admin/credits'],
     ['GET', 'identity/admin/step-up/verify'],
@@ -1220,10 +2569,26 @@ describe('relay of the wallet and step-up routes', () => {
     ['PUT', 'catalog/admin/business-activities/not-a-uuid'],
     ['POST', `catalog/admin/business-activities/${id}`],
     ['GET', 'catalog/admin/business-activities/not-a-uuid'],
+    ['DELETE', `catalog/admin/topics/${id}`],
+    ['PUT', 'catalog/admin/topics'],
+    ['POST', `catalog/admin/topics/${id}`],
+    ['GET', 'catalog/admin/topics/not-a-uuid'],
     ['PUT', 'catalog/admin/attributes'],
+    ['POST', 'catalog/admin/category-proposals'],
+    ['POST', `catalog/admin/category-proposals/${id}`],
+    ['PUT', `catalog/admin/category-proposals/${id}/approve`],
+    ['GET', `catalog/admin/category-proposals/${id}/approve`],
+    ['DELETE', `catalog/admin/shelves/${id}/promote`],
+    ['POST', `catalog/admin/shelves/${id}`],
+    ['GET', `catalog/admin/shelves/${id}/merge`],
+    ['POST', 'catalog/admin/shelves/not-a-uuid/promote'],
+    ['POST', `catalog/admin/sellers/${id}/shelves`],
+    ['GET', 'catalog/admin/sellers/not-a-uuid/shelves'],
     ['POST', 'catalog/admin/attribute-suggestions'],
     ['POST', `catalog/admin/attribute-suggestions/${id}`],
     ['PUT', `catalog/admin/attribute-suggestions/${id}/approve`],
+    ['POST', 'catalog/admin/topic-suggestions'],
+    ['PUT', `catalog/admin/topic-suggestions/${id}/approve`],
     ['PUT', 'catalog/admin/attributes/not-a-uuid'],
     ['POST', `catalog/admin/attributes/${id}`],
     ['DELETE', `catalog/admin/attributes/${id}`],
@@ -1232,14 +2597,26 @@ describe('relay of the wallet and step-up routes', () => {
     ['POST', 'catalog/admin/attribute-relaxations/not-a-uuid/cancel'],
     ['POST', 'catalog/admin/attributes/not-a-uuid/relaxation-requests'],
     ['POST', 'catalog/admin/attribute-relaxations/not-a-uuid/confirm'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/merge-values'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/merge'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/convert'],
+    ['POST', 'catalog/admin/attributes/not-a-uuid/archive'],
+    ['POST', 'catalog/admin/attribute-archive-requests/not-a-uuid/confirm'],
+    ['GET', `catalog/admin/attribute-archive-requests/${id}/confirm`],
+    ['POST', `catalog/admin/attributes/${id}/impact`],
     ['GET', `catalog/admin/attributes/${id}/relaxation-requests`],
     ['POST', `catalog/admin/attribute-relaxations/${id}`],
     ['POST', 'catalog/admin/attributes/not-a-uuid/publish'],
-    ['POST', `catalog/admin/attributes/${id}/archive`],
+    ['GET', `catalog/admin/attributes/${id}/archive`],
     ['GET', `catalog/admin/attributes/${id}/publish`],
     ['GET', 'catalog/admin/attributes/not-a-uuid'],
     ['POST', 'catalog/admin/feature-sets'],
     ['GET', 'catalog/admin/feature-sets/not-a-uuid'],
+    ['PUT', 'catalog/admin/feature-sets/not-a-uuid'],
+    ['PUT', 'catalog/admin/feature-sets'],
+    ['DELETE', `catalog/admin/feature-sets/${id}`],
+    ['POST', `catalog/admin/categories/${id}/attribute-links`],
+    ['PUT', 'catalog/admin/categories/not-a-uuid/attribute-links'],
   ])('does not relay %s %s', async (method, path) => {
     const { response, upstream } = await run(
       method,
@@ -1269,6 +2646,43 @@ describe('relay of the wallet and step-up routes', () => {
     );
   });
 
+  it('passes the Account deletion requests super list query and its export only in the shapes the API takes', async () => {
+    const listed = await run(
+      'GET',
+      `customers/admin/deletion-requests?view=cancelled&requestedBy=admin&cancelReason=sign-in&q=${id}&from=2026-11-01T00:00:00Z&scheduledBefore=2026-12-01T00:00:00Z&sort=cancelled&direction=asc&page=2&pageSize=25&ticket=x`,
+      readHeaders,
+    );
+    expect(listed.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/customers/admin/deletion-requests?view=cancelled&requestedBy=admin&cancelReason=sign-in&q=${id}&from=2026-11-01T00%3A00%3A00Z&scheduledBefore=2026-12-01T00%3A00%3A00Z&sort=cancelled&direction=asc&page=2&pageSize=25`,
+    );
+    const dropped = await run(
+      'GET',
+      'customers/admin/deletion-requests?view=open&requestedBy=seller&q=someone@example.com&sort=account&pageSize=500&from=2026-11-01',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/customers/admin/deletion-requests',
+    );
+    const file = await run(
+      'GET',
+      `customers/admin/deletion-requests/export?format=xlsx&columns=cancelled,completed&ids=${id}&view=all&page=2&reason=x`,
+      readHeaders,
+    );
+    expect(file.response.status).toBe(200);
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/customers/admin/deletion-requests/export?format=xlsx&columns=cancelled%2Ccompleted&ids=${id}&view=all`,
+    );
+    const many = Array.from({ length: 200 }, () => id).join(',');
+    const chosen = await run(
+      'GET',
+      `customers/admin/deletion-requests/export?ids=${many}`,
+      readHeaders,
+    );
+    expect(chosen.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/customers/admin/deletion-requests/export?ids=${many.replaceAll(',', '%2C')}`,
+    );
+  });
+
   it('passes only status, search, afterId and limit of the brand list, each in its shape', async () => {
     const { upstream } = await run(
       'GET',
@@ -1284,6 +2698,25 @@ describe('relay of the wallet and step-up routes', () => {
       readHeaders,
     );
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/brands');
+  });
+
+  it('passes only afterId and limit of the category proposal queue, each in its shape', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/category-proposals?afterId=${id}&limit=25&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/category-proposals?afterId=${id}&limit=25`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/category-proposals?afterId=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/category-proposals',
+    );
   });
 
   it('passes only status, search, afterId and limit of the business activity list', async () => {
@@ -1305,6 +2738,23 @@ describe('relay of the wallet and step-up routes', () => {
     );
   });
 
+  it('passes only status, group, search, afterId and limit of the tag list', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/topics?status=archived&group=cuisine&search=bbq&afterId=${id}&limit=25&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/topics?status=archived&group=cuisine&search=bbq&afterId=${id}&limit=25`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/topics?status=inactive&group=season&afterId=nope&limit=abc',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/topics');
+  });
+
   it('passes only the action of the category impact read, in its shape, and no query on the tree', async () => {
     const { upstream } = await run(
       'GET',
@@ -1324,6 +2774,65 @@ describe('relay of the wallet and step-up routes', () => {
     );
     const tree = await run('GET', 'catalog/admin/categories?q=x&limit=3', readHeaders);
     expect(tree.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/categories');
+  });
+
+  it('passes only featureSetId of the category tree, and only as an id', async () => {
+    const good = await run(
+      'GET',
+      `catalog/admin/categories?featureSetId=${id}&q=x&limit=3`,
+      readHeaders,
+    );
+    expect(good.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories?featureSetId=${id}`,
+    );
+    for (const bad of ['nope', '', `${id}x`, "'; drop"]) {
+      const { upstream } = await run(
+        'GET',
+        `catalog/admin/categories?featureSetId=${encodeURIComponent(bad)}`,
+        readHeaders,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/categories');
+    }
+  });
+
+  it('drops a target that is not exactly top or an id: TOP, Top and an empty one (categories C4b)', async () => {
+    for (const bad of ['TOP', 'Top', '']) {
+      const { upstream } = await run(
+        'GET',
+        `catalog/admin/categories/${id}/impact?action=move&targetId=${bad}`,
+        readHeaders,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/catalog/admin/categories/${id}/impact?action=move`,
+      );
+    }
+  });
+
+  it('passes the target of the category impact read only as an id or top (categories C4b)', async () => {
+    const withId = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=move&targetId=${id}&x=1`,
+      readHeaders,
+    );
+    expect(withId.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact?action=move&targetId=${id}`,
+    );
+    const top = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=move&targetId=top`,
+      readHeaders,
+    );
+    expect(top.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact?action=move&targetId=top`,
+    );
+    const bad = await run(
+      'GET',
+      `catalog/admin/categories/${id}/impact?action=merge&targetId=../x`,
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/categories/${id}/impact?action=merge`,
+    );
   });
 
   it('passes only the known, well-formed filters of the attribute list', async () => {
@@ -1365,7 +2874,7 @@ describe('relay of the wallet and step-up routes', () => {
     expect(response.status).toBe(403);
   });
 
-  it('passes only the status, cursor and limit of the requests list, in their shapes', async () => {
+  it("passes the older queue's status, cursor and limit of the requests list, in their shapes", async () => {
     const cursor = `1790000000000.${id}`;
     const { upstream } = await run(
       'GET',
@@ -1381,6 +2890,41 @@ describe('relay of the wallet and step-up routes', () => {
       readHeaders,
     );
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/wallet/admin/credit-requests');
+  });
+
+  it('passes the Credit requests super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `wallet/admin/credit-requests?view=all&status=expired&reason=promotion&approvalReason=daily-cap&q=${id}&requestedBy=me&from=2026-11-01T00:00:00Z&minAmount=100&sort=expires&direction=asc&page=2&pageSize=50&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/credit-requests?view=all&status=expired&reason=promotion&approvalReason=daily-cap&q=${id}&requestedBy=me&from=2026-11-01T00%3A00%3A00Z&minAmount=100&sort=expires&direction=asc&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'wallet/admin/credit-requests?view=mine&reason=gift&requestedBy=you&q=abc&sort=customer&pageSize=101&maxAmount=-1',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/wallet/admin/credit-requests',
+    );
+    const file = await run(
+      'GET',
+      `wallet/admin/credit-requests/export?format=xlsx&columns=note,journal&ids=${id}&view=decided&page=2&cursor=1.x`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/wallet/admin/credit-requests/export?format=xlsx&columns=note%2Cjournal&ids=${id}&view=decided`,
+    );
+    const badFile = await run(
+      'GET',
+      'wallet/admin/credit-requests/export?format=pdf&columns=fingerprint&ids=x',
+      readHeaders,
+    );
+    expect(badFile.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/wallet/admin/credit-requests/export',
+    );
   });
 
   it('passes no query on the customer summary or the settings', async () => {
@@ -1412,6 +2956,142 @@ describe('relay of the wallet and step-up routes', () => {
         'http://api.test/commission-payouts/admin/disputes?filter=closed',
       );
     }
+  });
+
+  it('passes the Disputes super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `commission-payouts/admin/disputes?view=won&money=withdrawn&status=lost&q=${id}&search=alpha&sort=evidence-due&direction=asc&page=2&pageSize=50&dueBefore=2026-11-02T00:00:00Z&minAmount=100&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/disputes?view=won&status=lost&money=withdrawn&q=${id}&search=alpha&dueBefore=2026-11-02T00%3A00%3A00Z&minAmount=100&sort=evidence-due&direction=asc&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'commission-payouts/admin/disputes?view=open&money=gone&sort=name&q=abc&minAmount=-1',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/admin/disputes',
+    );
+    const file = await run(
+      'GET',
+      `commission-payouts/admin/disputes/export?format=xlsx&columns=reason,seller-ids&ids=${id}&view=closed&page=2&cursor=1.x`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/disputes/export?format=xlsx&columns=reason%2Cseller-ids&ids=${id}&view=closed`,
+    );
+  });
+
+  it('passes the held-price super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `pricing/admin/price-holds/list?view=up&kind=regular&q=${id}&sellerId=${id}&sort=amount&direction=desc&paging=prev-next&page=2&pageSize=50&from=2026-11-02T00:00:00Z&minAmount=100&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/pricing/admin/price-holds/list?view=up&kind=regular&q=${id}&sellerId=${id}&from=2026-11-02T00%3A00%3A00Z&minAmount=100&sort=amount&direction=desc&paging=prev-next&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'pricing/admin/price-holds/list?view=open&change=sideways&sort=name&q=abc&minAmount=-1&paging=all',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/pricing/admin/price-holds/list',
+    );
+    const file = await run(
+      'GET',
+      `pricing/admin/price-holds/export?format=xlsx&columns=record-id,window&ids=${id}&view=down&page=2&paging=pages`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/pricing/admin/price-holds/export?format=xlsx&columns=record-id%2Cwindow&ids=${id}&view=down`,
+    );
+    expect((await run('POST', 'pricing/admin/price-holds/list')).response.status).toBe(404);
+  });
+
+  it('passes the certificate queue super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `certification/admin/seller-certificates/list?view=renewal&kind=initial&type=halal&q=${id}&sellerId=${id}&sort=queue&direction=desc&paging=pages&page=2&pageSize=50&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/certification/admin/seller-certificates/list?view=renewal&kind=initial&type=halal&q=${id}&sellerId=${id}&sort=queue&direction=desc&paging=pages&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'certification/admin/seller-certificates/list?view=done&type=Bad%20Code&sort=name&pageSize=500',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/certification/admin/seller-certificates/list',
+    );
+    const file = await run(
+      'GET',
+      `certification/admin/seller-certificates/export?format=xlsx&columns=certificate-id,seller-id&ids=${id}&page=2`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/certification/admin/seller-certificates/export?format=xlsx&columns=certificate-id%2Cseller-id&ids=${id}`,
+    );
+  });
+
+  it('passes the "Needs a look" super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `sellers/admin/health-queue/list?view=reports&metric=late-ready&q=al&sellerId=${id}&minScore=5&maxScore=100&sort=name&direction=desc&paging=pages&page=2&pageSize=50&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/sellers/admin/health-queue/list?view=reports&metric=late-ready&q=al&sellerId=${id}&minScore=5&maxScore=100&sort=name&direction=desc&paging=pages&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'sellers/admin/health-queue/list?view=speed&metric=speed&q=a&minScore=101&sort=orders&pageSize=500',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/sellers/admin/health-queue/list',
+    );
+    const file = await run(
+      'GET',
+      `sellers/admin/health-queue/export?format=xlsx&columns=seller-id,day&ids=${id}&page=2`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/sellers/admin/health-queue/export?format=xlsx&columns=seller-id%2Cday&ids=${id}`,
+    );
+  });
+
+  it('passes the issuer-request super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `certification/admin/issuer-requests/list?view=all&type=halal&q=${id}&sellerId=${id}&sort=type&direction=desc&paging=prev-next&page=2&pageSize=50&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/certification/admin/issuer-requests/list?view=all&type=halal&q=${id}&sellerId=${id}&sort=type&direction=desc&paging=prev-next&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'certification/admin/issuer-requests/list?view=open&type=Bad%20Code&q=abc&pageSize=500',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/certification/admin/issuer-requests/list',
+    );
+    const file = await run(
+      'GET',
+      `certification/admin/issuer-requests/export?format=xlsx&columns=request-id,documents&ids=${id}&page=2`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/certification/admin/issuer-requests/export?format=xlsx&columns=request-id%2Cdocuments&ids=${id}`,
+    );
   });
 
   it.each([
@@ -1451,7 +3131,7 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe(
       'http://api.test/commission-payouts/admin/payouts',
     );
-    // Only the states a tab shows cross; the API's other states are not relayed.
+    // Every state of the list's Status filter crosses, the ones the All view shows too.
     for (const state of ['pending', 'voided', 'settled-by-netting']) {
       const other = await run(
         'GET',
@@ -1459,9 +3139,45 @@ describe('relay of the wallet and step-up routes', () => {
         readHeaders,
       );
       expect(other.upstream.mock.calls[0]?.[0]).toBe(
-        'http://api.test/commission-payouts/admin/payouts',
+        `http://api.test/commission-payouts/admin/payouts?status=${state}`,
       );
     }
+    const exported = await run(
+      'GET',
+      'commission-payouts/admin/payouts/export?status=voided',
+      readHeaders,
+    );
+    expect(exported.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/admin/payouts/export?status=voided',
+    );
+  });
+
+  it('passes the Payouts super list query and its export only in the shapes the API takes', async () => {
+    const listed = await run(
+      'GET',
+      `commission-payouts/admin/payouts?view=sending&search=spice&sellerId=${id}&approvalMode=MANUAL&from=2026-11-01T00:00:00Z&minAmount=100&sort=amount&direction=asc&page=2&pageSize=25&x=1`,
+      readHeaders,
+    );
+    expect(listed.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts?view=sending&search=spice&sellerId=${id}&approvalMode=MANUAL&from=2026-11-01T00%3A00%3A00Z&minAmount=100&sort=amount&direction=asc&page=2&pageSize=25`,
+    );
+    const dropped = await run(
+      'GET',
+      'commission-payouts/admin/payouts?view=archived&q=nope&approvalMode=auto&minAmount=-1&sort=store&pageSize=500',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/commission-payouts/admin/payouts',
+    );
+    const file = await run(
+      'GET',
+      `commission-payouts/admin/payouts/export?format=xlsx&columns=gross,outcome&ids=${id}&view=paid&page=2`,
+      readHeaders,
+    );
+    expect(file.response.status).toBe(200);
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts/export?format=xlsx&columns=gross%2Coutcome&ids=${id}&view=paid`,
+    );
   });
 
   it('passes the version and reason of removing payout terms, and nothing else', async () => {
@@ -1479,6 +3195,50 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe(
       `http://api.test/commission-payouts/admin/sellers/${id}/payout-terms`,
     );
+  });
+
+  it('passes the note for reviewers of the two DELETEs that carry one, and only up to 500 characters', async () => {
+    const note = encodeURIComponent('Back to default & done\nnext line');
+    // The relay re-encodes the query, a space as "+", which the API reads as a space.
+    const sent = 'Back+to+default+%26+done%0Anext+line';
+    const rate = await run(
+      'DELETE',
+      `commission-payouts/admin/sellers/${id}/commission-rate?note=${note}&x=1`,
+    );
+    expect(rate.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/sellers/${id}/commission-rate?note=${sent}`,
+    );
+    const terms = await run(
+      'DELETE',
+      `commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3&reasonCode=policy&note=${note}`,
+    );
+    expect(terms.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/sellers/${id}/payout-terms?expectedVersion=3&reasonCode=policy&note=${sent}`,
+    );
+    const long = await run(
+      'DELETE',
+      `commission-payouts/admin/sellers/${id}/commission-rate?note=${'a'.repeat(501)}`,
+    );
+    expect(long.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/sellers/${id}/commission-rate`,
+    );
+  });
+
+  it('relays the body of a write with a note unchanged', async () => {
+    const body = JSON.stringify({ rateBps: 1200, note: 'Fee review' });
+    const path = `commission-payouts/admin/sellers/${id}/commission-rate`;
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method: 'PUT',
+        headers: sameOrigin,
+        body,
+      }),
+      path.split('/'),
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[1]?.body).toBe(body);
   });
 
   it('does not relay a payout write the panel has no screen for', async () => {
@@ -1550,6 +3310,47 @@ describe('relay of the product list', () => {
     expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/admin/products');
   });
 
+  describe('the order export', () => {
+    const exportPath = ['ordering', 'admin', 'orders', 'export'];
+
+    it('relays the list filter and drops paging, sort and a value of the wrong shape', async () => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        get(
+          `ordering/admin/orders/export?format=csv&status=confirmed&paymentState=captured&fulfilment=shipped&sellerId=${id}&from=2026-10-01T00:00:00.000Z&to=2026-11-01T00:00:00.000Z&page=2&pageSize=50&sort=total&limit=5&cursor=c1`,
+        ),
+        exportPath,
+        upstream,
+      );
+      await relay(
+        config,
+        get('ordering/admin/orders/export?format=pdf&status=shipped&paymentState=free&from=today'),
+        exportPath,
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/ordering/admin/orders/export?format=csv&status=confirmed&paymentState=captured&fulfilment=shipped&sellerId=${id}&from=2026-10-01T00%3A00%3A00.000Z&to=2026-11-01T00%3A00%3A00.000Z`,
+      );
+      expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/ordering/admin/orders/export');
+    });
+
+    it('does not relay the export as a write', async () => {
+      const upstream = upstreamOk();
+      expect(
+        (
+          await relay(
+            config,
+            post('ordering/admin/orders/export', sameOrigin, '{}'),
+            exportPath,
+            upstream,
+          )
+        ).status,
+      ).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+  });
+
   describe('the bulk action and the export', () => {
     const exportPath = ['catalog', 'admin', 'products', 'export'];
     const second = '0190a000-0000-7000-8000-000000000002';
@@ -1609,6 +3410,30 @@ describe('relay of the product list', () => {
       );
       expect(upstream.mock.calls[0]?.[0]).toBe(
         `http://api.test/catalog/admin/products/export?format=csv&columns=code%2Coffers&ids=${id}%2C${second}&view=all&q=lamb`,
+      );
+    });
+
+    it('relays the Tags column, and all eight columns at once', async () => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        get('catalog/admin/products/export?columns=code,tags'),
+        exportPath,
+        upstream,
+      );
+      await relay(
+        config,
+        get(
+          'catalog/admin/products/export?columns=code,offers,updated,type,scope,seller,created,tags',
+        ),
+        exportPath,
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        'http://api.test/catalog/admin/products/export?columns=code%2Ctags',
+      );
+      expect(upstream.mock.calls[1]?.[0]).toBe(
+        'http://api.test/catalog/admin/products/export?columns=code%2Coffers%2Cupdated%2Ctype%2Cscope%2Cseller%2Ccreated%2Ctags',
       );
     });
 
@@ -1690,6 +3515,211 @@ describe('relay of the product list', () => {
     });
   });
 
+  describe('the platform product form', () => {
+    const request = (method: string, path: string) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        ...(method === 'GET' ? {} : { body: '{}' }),
+      });
+
+    it('relays the options, one product, the create, the draft save and the submit', async () => {
+      for (const [method, path] of [
+        ['GET', 'catalog/admin/platform-products/options'],
+        ['GET', `catalog/admin/platform-products/${id}`],
+        ['POST', 'catalog/admin/platform-products'],
+        ['PUT', `catalog/admin/platform-products/${id}/draft`],
+        ['POST', `catalog/admin/platform-products/${id}/submit`],
+        ['POST', `catalog/admin/platform-products/${id}/discard`],
+        ['GET', `catalog/admin/platform-products/${id}/images`],
+        ['POST', `catalog/admin/platform-products/${id}/images`],
+        ['DELETE', `catalog/admin/platform-products/${id}/images/${id}`],
+      ] as const) {
+        const ok = upstreamOk();
+        expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+        expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+      }
+    });
+
+    it('refuses other methods, other shapes of id and other paths', async () => {
+      for (const [method, path] of [
+        ['GET', 'catalog/admin/platform-products'],
+        ['PUT', 'catalog/admin/platform-products'],
+        ['PUT', 'catalog/admin/platform-products/options'],
+        ['GET', 'catalog/admin/platform-products/not-a-uuid'],
+        ['GET', `catalog/admin/platform-products/${id}/draft`],
+        ['GET', `catalog/admin/platform-products/${id}/submit`],
+        ['POST', `catalog/admin/platform-products/${id}`],
+        ['DELETE', `catalog/admin/platform-products/${id}`],
+        ['PUT', `catalog/admin/platform-products/${id}/submit`],
+        ['GET', `catalog/admin/platform-products/${id}/discard`],
+        ['PUT', `catalog/admin/platform-products/${id}/discard`],
+        ['POST', `catalog/admin/platform-products/${id}/retire`],
+        ['PUT', `catalog/admin/platform-products/${id}/images`],
+        ['DELETE', `catalog/admin/platform-products/${id}/images`],
+        ['GET', `catalog/admin/platform-products/${id}/images/${id}`],
+        ['POST', `catalog/admin/platform-products/${id}/images/${id}`],
+        ['DELETE', `catalog/admin/platform-products/${id}/images/not-a-uuid`],
+        ['GET', `catalog/admin/products/${id}/images/${id}/original`],
+      ] as const) {
+        const fetchImpl = upstreamOk();
+        const response = await relay(config, request(method, path), path.split('/'), fetchImpl);
+        expect(response.status, `${method} ${path}`).toBe(404);
+        expect(fetchImpl).not.toHaveBeenCalled();
+      }
+    });
+  });
+
+  describe('the certificates card of the product form', () => {
+    const base = 'certification/admin/product-certificates';
+    const request = (
+      method: string,
+      path: string,
+      body = '{}',
+      headers: Record<string, string> = { ...sameOrigin, cookie: '__Host-session-admin-AU=abc' },
+    ) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers,
+        ...(method === 'GET' ? {} : { body }),
+      });
+
+    it('relays exactly the routes the card uses, with a UUID where an id stands', async () => {
+      for (const [method, path] of [
+        ['GET', `${base}/for-product/${id}`],
+        ['GET', `${base}/options`],
+        ['GET', `${base}/${id}`],
+        ['GET', `${base}/${id}/history`],
+        ['POST', base],
+        ['PUT', `${base}/${id}/draft`],
+        ['POST', `${base}/${id}/documents`],
+        ['POST', `${base}/${id}/submit`],
+      ] as const) {
+        const upstream = upstreamOk();
+        const response = await relay(config, request(method, path), path.split('/'), upstream);
+        expect(response.status, `${method} ${path}`).toBe(200);
+        expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+      }
+    });
+
+    it('refuses the reviewer routes, other methods, a malformed id and any other shape', async () => {
+      for (const [method, path] of [
+        ['GET', base],
+        ['GET', `${base}/not-a-uuid`],
+        ['GET', `${base}/for-product/not-a-uuid`],
+        ['GET', `${base}/for-product`],
+        ['GET', `${base}/${id}/review`],
+        ['GET', `${base}/${id}/draft`],
+        ['GET', `${base}/${id}/documents`],
+        ['PUT', base],
+        ['PUT', `${base}/options`],
+        ['POST', `${base}/options`],
+        ['POST', `${base}/${id}`],
+        ['POST', `${base}/${id}/approve`],
+        ['POST', `${base}/${id}/reject`],
+        ['POST', `${base}/${id}/suspend`],
+        ['POST', `${base}/${id}/revoke`],
+        ['POST', `${base}/${id}/reinstate`],
+        ['POST', `${base}/${id}/checks`],
+        ['POST', `${base}/${id}/draft`],
+        ['PUT', `${base}/${id}/submit`],
+        ['DELETE', `${base}/${id}/documents/${id}`],
+        ['DELETE', `${base}/${id}`],
+      ] as const) {
+        const upstream = upstreamOk();
+        const response = await relay(config, request(method, path), path.split('/'), upstream);
+        expect(response.status, `${method} ${path}`).toBe(404);
+        expect(upstream).not.toHaveBeenCalled();
+      }
+    });
+
+    it('lets only the document route carry a file of up to 10 MiB as base64 and keeps the rest at 16 KB', async () => {
+      const upstream = upstreamOk();
+      const documents = `${base}/${id}/documents`;
+      const large = JSON.stringify({ version: 2, data: 'A'.repeat(13 * 1024 * 1024) });
+      expect(
+        (await relay(config, request('POST', documents, large), documents.split('/'), upstream))
+          .status,
+      ).toBe(200);
+      const tooLarge = JSON.stringify({ version: 2, data: 'A'.repeat(15 * 1024 * 1024) });
+      expect(
+        (await relay(config, request('POST', documents, tooLarge), documents.split('/'), upstream))
+          .status,
+      ).toBe(413);
+      for (const path of [`${base}/${id}/submit`, base]) {
+        expect(
+          (await relay(config, request('POST', path, large), path.split('/'), upstream)).status,
+        ).toBe(413);
+      }
+      const draft = `${base}/${id}/draft`;
+      expect(
+        (await relay(config, request('PUT', draft, large), draft.split('/'), upstream)).status,
+      ).toBe(413);
+      expect(upstream).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a document upload without a session cookie before reading its body', async () => {
+      const upstream = upstreamOk();
+      const documents = `${base}/${id}/documents`;
+      const large = JSON.stringify({ version: 2, data: 'A'.repeat(13 * 1024 * 1024) });
+      for (const cookie of [undefined, 'theme=dark', '__Host-session-seller-AU=abc']) {
+        const headers: Record<string, string> = {
+          ...sameOrigin,
+          ...(cookie === undefined ? {} : { cookie }),
+        };
+        const response = await relay(
+          config,
+          request('POST', documents, large, headers),
+          documents.split('/'),
+          upstream,
+        );
+        expect(response.status, String(cookie)).toBe(401);
+        expect(((await response.json()) as { code: string }).code).toBe('session.invalid');
+      }
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('refuses an unsafe call that is not same-origin', async () => {
+      const upstream = upstreamOk();
+      const submit = `${base}/${id}/submit`;
+      expect(
+        (
+          await relay(
+            config,
+            request('POST', submit, '{}', { host: 'admin.localhost:3002' }),
+            submit.split('/'),
+            upstream,
+          )
+        ).status,
+      ).toBe(403);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+  });
+
+  it('lets a platform product photo carry up to 5.8 MB and keeps the draft save at 16 KB', async () => {
+    const send = (method: string, path: string, body: string) =>
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method,
+        headers: sameOrigin,
+        body,
+      });
+    const images = `catalog/admin/platform-products/${id}/images`;
+    const large = JSON.stringify({ data: 'A'.repeat(5 * 1024 * 1024) });
+    const tooLarge = JSON.stringify({ data: 'A'.repeat(6 * 1024 * 1024) });
+    const upstream = upstreamOk();
+    expect(
+      (await relay(config, send('POST', images, large), images.split('/'), upstream)).status,
+    ).toBe(200);
+    expect(
+      (await relay(config, send('POST', images, tooLarge), images.split('/'), upstream)).status,
+    ).toBe(413);
+    const draft = `catalog/admin/platform-products/${id}/draft`;
+    expect(
+      (await relay(config, send('PUT', draft, large), draft.split('/'), upstream)).status,
+    ).toBe(413);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
   describe('the saved filters of the product list', () => {
     const base = ['catalog', 'admin', 'saved-filters'];
     const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
@@ -1756,10 +3786,15 @@ describe('relay of the product list', () => {
     });
   });
 
-  it('refuses a write, another photo size, a take-down and a product that is not a UUID', async () => {
+  it('relays the large photo of a version review, GET only', async () => {
+    const large = ['catalog', 'admin', 'products', id, 'images', id, 'large'];
+    expect((await relay(config, get(large.join('/')), large, upstreamOk())).status).toBe(200);
+  });
+
+  it('refuses a write, another photo size, a take-down read and a product that is not a UUID', async () => {
     const upstream = upstreamOk();
     expect((await relay(config, post('catalog/admin/products'), path, upstream)).status).toBe(404);
-    for (const tail of ['large', 'medium', 'take-down']) {
+    for (const tail of ['medium', 'original', 'take-down']) {
       const other = ['catalog', 'admin', 'products', id, 'images', id, tail];
       expect((await relay(config, get(other.join('/')), other, upstream)).status).toBe(404);
     }
@@ -1853,5 +3888,888 @@ describe('relay of the product import', () => {
       (await relay(config, post(start.join('/'), sameOrigin, large), start, upstream)).status,
     ).toBe(413);
     expect(upstream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('relay of the category tree import and export (categories C7a)', () => {
+  const base = ['catalog', 'admin', 'category-tree'];
+  const dryRun = [...base, 'import', 'dry-run'];
+  const apply = [...base, 'import', 'apply'];
+  const exportPath = [...base, 'export'];
+  const get = (target: string) =>
+    new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+
+  it('relays the dry run and the apply as same-origin POSTs, and the export as a GET, on their exact paths only', async () => {
+    const upstream = upstreamOk();
+    for (const path of [dryRun, apply]) {
+      expect((await relay(config, post(path.join('/')), path, upstream)).status).toBe(200);
+      expect((await relay(config, get(path.join('/')), path, upstream)).status).toBe(404);
+      expect(
+        (
+          await relay(
+            config,
+            post(path.join('/'), { host: 'admin.localhost:3002' }),
+            path,
+            upstream,
+          )
+        ).status,
+      ).toBe(403);
+      const extra = [...path, 'x'];
+      expect((await relay(config, post(extra.join('/')), extra, upstream)).status).toBe(404);
+    }
+    expect((await relay(config, get(exportPath.join('/')), exportPath, upstream)).status).toBe(200);
+    expect((await relay(config, post(exportPath.join('/')), exportPath, upstream)).status).toBe(
+      404,
+    );
+    const other = [...base, 'import'];
+    expect((await relay(config, post(other.join('/')), other, upstream)).status).toBe(404);
+    expect(upstream).toHaveBeenCalledTimes(3);
+  });
+
+  it('lets only the two import routes carry a large body', async () => {
+    const upstream = upstreamOk();
+    const large = JSON.stringify({ data: 'x'.repeat(2 * 1024 * 1024) });
+    for (const path of [dryRun, apply]) {
+      expect(
+        (await relay(config, post(path.join('/'), sameOrigin, large), path, upstream)).status,
+      ).toBe(200);
+    }
+    const tooLarge = JSON.stringify({ data: 'x'.repeat(15 * 1024 * 1024) });
+    expect(
+      (await relay(config, post(dryRun.join('/'), sameOrigin, tooLarge), dryRun, upstream)).status,
+    ).toBe(413);
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
+
+  it('relays the export query that has the right shape only', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      get(`${exportPath.join('/')}?format=xlsx&status=active,hidden&q=rice&extra=1&format2=x`),
+      exportPath,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/category-tree/export?format=xlsx&status=active%2Chidden&q=rice',
+    );
+    await relay(
+      config,
+      get(`${exportPath.join('/')}?format=pdf&status=gone`),
+      exportPath,
+      upstream,
+    );
+    expect(upstream.mock.calls[1]?.[0]).toBe('http://api.test/catalog/admin/category-tree/export');
+  });
+});
+
+describe('relay of the category image (categories C3c)', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const imageId = '0190a000-0000-7000-8000-000000000002';
+  const base = ['catalog', 'admin', 'categories', id];
+  const put = (target: string, body = '{}') =>
+    new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'PUT',
+      headers: sameOrigin,
+      body,
+    });
+  const get = (target: string) =>
+    new Request(`http://admin.localhost:3002/api/${target}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+
+  it('relays the upload as a same-origin PUT and the removal as a same-origin POST', async () => {
+    const upstream = upstreamOk();
+    const image = [...base, 'image'];
+    expect((await relay(config, put(image.join('/')), image, upstream)).status).toBe(200);
+    const remove = [...base, 'image', 'remove'];
+    expect((await relay(config, post(remove.join('/')), remove, upstream)).status).toBe(200);
+    expect(
+      (
+        await relay(
+          config,
+          post(remove.join('/'), { host: 'admin.localhost:3002' }),
+          remove,
+          upstream,
+        )
+      ).status,
+    ).toBe(403);
+    // Not a POST of the image path, not a PUT of the removal, not a malformed id.
+    expect((await relay(config, post(image.join('/')), image, upstream)).status).toBe(404);
+    expect((await relay(config, put(remove.join('/')), remove, upstream)).status).toBe(404);
+    const bad = ['catalog', 'admin', 'categories', 'nope', 'image'];
+    expect((await relay(config, put(bad.join('/')), bad, upstream)).status).toBe(404);
+    expect(upstream).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets the upload carry a picture of up to 5.8 MB and keeps the removal at 16 KB', async () => {
+    const upstream = upstreamOk();
+    const image = [...base, 'image'];
+    const large = JSON.stringify({ version: 1, data: 'A'.repeat(5 * 1024 * 1024) });
+    expect((await relay(config, put(image.join('/'), large), image, upstream)).status).toBe(200);
+    const tooLarge = JSON.stringify({ version: 1, data: 'A'.repeat(6 * 1024 * 1024) });
+    expect((await relay(config, put(image.join('/'), tooLarge), image, upstream)).status).toBe(413);
+    const remove = [...base, 'image', 'remove'];
+    expect(
+      (await relay(config, post(remove.join('/'), sameOrigin, large), remove, upstream)).status,
+    ).toBe(413);
+    const details = ['catalog', 'admin', 'categories', id];
+    const patch = new Request(`http://admin.localhost:3002/api/${details.join('/')}`, {
+      method: 'PATCH',
+      headers: sameOrigin,
+      body: large,
+    });
+    expect((await relay(config, patch, details, upstream)).status).toBe(413);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('relays the medium rendition of the current image, GET only, no other size', async () => {
+    const upstream = upstreamOk();
+    const medium = [...base, 'images', imageId, 'medium'];
+    expect((await relay(config, get(medium.join('/')), medium, upstream)).status).toBe(200);
+    for (const size of ['large', 'thumb', 'raw']) {
+      const other = [...base, 'images', imageId, size];
+      expect((await relay(config, get(other.join('/')), other, upstream)).status).toBe(404);
+    }
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('relay of the saved views of the Sales lists', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+    new Request(`http://admin.localhost:3002/api/${path}`, {
+      method,
+      headers,
+      ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
+    });
+
+  it.each(['shipments', 'refunds', 'documents'])(
+    'relays the saved views of admin.ordering.%s with the list key only',
+    async (name) => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        request('GET', `lists/admin/saved-filters?listKey=admin.ordering.${name}&extra=1`),
+        ['lists', 'admin', 'saved-filters'],
+        upstream,
+      );
+      expect(upstream.mock.calls[0]?.[0]).toBe(
+        `http://api.test/lists/admin/saved-filters?listKey=admin.ordering.${name}`,
+      );
+    },
+  );
+
+  it('relays the saved views of the System requests queue, and its key on delete', async () => {
+    const listed = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'lists/admin/saved-filters?listKey=admin.system-requests.requests&x=1'),
+      ['lists', 'admin', 'saved-filters'],
+      listed,
+    );
+    expect(listed.mock.calls[0]?.[0]).toBe(
+      'http://api.test/lists/admin/saved-filters?listKey=admin.system-requests.requests',
+    );
+    const removed = upstreamOk();
+    await relay(
+      config,
+      request('DELETE', `lists/admin/saved-filters/${id}?listKey=admin.system-requests.requests`),
+      ['lists', 'admin', 'saved-filters', id],
+      removed,
+    );
+    expect(removed.mock.calls[0]?.[0]).toBe(
+      `http://api.test/lists/admin/saved-filters/${id}?listKey=admin.system-requests.requests`,
+    );
+  });
+
+  it.each([
+    'admin.certification.issuer-requests',
+    'admin.certification.review-queue',
+    'admin.sellers.health-queue',
+    'admin.sellers.list',
+  ])('relays the saved views of %s, and keeps its key on delete', async (listKey) => {
+    const listed = upstreamOk();
+    await relay(
+      config,
+      request('GET', `lists/admin/saved-filters?listKey=${listKey}&extra=1`),
+      ['lists', 'admin', 'saved-filters'],
+      listed,
+    );
+    expect(listed.mock.calls[0]?.[0]).toBe(
+      `http://api.test/lists/admin/saved-filters?listKey=${listKey}`,
+    );
+    const removed = upstreamOk();
+    await relay(
+      config,
+      request('DELETE', `lists/admin/saved-filters/${id}?listKey=${listKey}`),
+      ['lists', 'admin', 'saved-filters', id],
+      removed,
+    );
+    expect(removed.mock.calls[0]?.[0]).toBe(
+      `http://api.test/lists/admin/saved-filters/${id}?listKey=${listKey}`,
+    );
+  });
+
+  it.each([
+    'admin.certification.issuers',
+    'admin.sellers.lists',
+    'admin.sellers.health-queue.x',
+    'seller.sellers.list',
+  ])('drops the list key %s, which is no list on the generic route', async (listKey) => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', `lists/admin/saved-filters?listKey=${listKey}`),
+      ['lists', 'admin', 'saved-filters'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/lists/admin/saved-filters');
+  });
+
+  it('drops a list key that is not a Sales list', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'lists/admin/saved-filters?listKey=admin.catalog.products'),
+      ['lists', 'admin', 'saved-filters'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe('http://api.test/lists/admin/saved-filters');
+  });
+
+  it('relays create, reorder, rename and delete (the list key stays on delete)', async () => {
+    for (const [method, path, expected] of [
+      ['POST', 'lists/admin/saved-filters', 'lists/admin/saved-filters'],
+      ['PUT', 'lists/admin/saved-filters/order', 'lists/admin/saved-filters/order'],
+      ['PUT', `lists/admin/saved-filters/${id}`, `lists/admin/saved-filters/${id}`],
+      [
+        'DELETE',
+        `lists/admin/saved-filters/${id}?listKey=admin.ordering.refunds&x=1`,
+        `lists/admin/saved-filters/${id}?listKey=admin.ordering.refunds`,
+      ],
+    ] as const) {
+      const ok = upstreamOk();
+      const target = path.split('?')[0]!;
+      expect((await relay(config, request(method, path), target.split('/'), ok)).status).toBe(200);
+      expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${expected}`);
+    }
+  });
+
+  it('refuses a write from another origin', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      request('POST', 'lists/admin/saved-filters', {
+        ...sameOrigin,
+        origin: 'http://evil.test',
+        'sec-fetch-site': 'cross-site',
+      }),
+      ['lists', 'admin', 'saved-filters'],
+      upstream,
+    );
+    expect(response.status).toBe(403);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('refuses other methods and ids on the saved views', async () => {
+    for (const [method, path] of [
+      ['PUT', 'lists/admin/saved-filters'],
+      ['DELETE', 'lists/admin/saved-filters'],
+      ['PUT', 'lists/admin/saved-filters/not-a-uuid'],
+      ['POST', `lists/admin/saved-filters/${id}`],
+      ['GET', `lists/admin/saved-filters/${id}`],
+      ['POST', 'lists/admin/saved-filters/order'],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      const response = await relay(config, request(method, path), path.split('/'), fetchImpl);
+      expect(response.status, `${method} ${path}`).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe('relay of the order list views', () => {
+  const id = '0190a000-0000-7000-8000-000000000001';
+  const request = (method: string, path: string, headers: Record<string, string> = sameOrigin) =>
+    new Request(`http://admin.localhost:3002/api/${path}`, {
+      method,
+      headers,
+      ...(method === 'GET' || method === 'DELETE' ? {} : { body: '{}' }),
+    });
+
+  it('relays the saved views with the admin list key only', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      request('GET', 'ordering/admin/saved-filters?listKey=admin.ordering.orders&extra=1'),
+      ['ordering', 'admin', 'saved-filters'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/ordering/admin/saved-filters?listKey=admin.ordering.orders',
+    );
+    for (const [method, path] of [
+      ['POST', 'ordering/admin/saved-filters'],
+      ['PUT', `ordering/admin/saved-filters/${id}`],
+      ['DELETE', `ordering/admin/saved-filters/${id}`],
+    ] as const) {
+      const ok = upstreamOk();
+      expect((await relay(config, request(method, path), path.split('/'), ok)).status).toBe(200);
+      expect(ok.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+    }
+  });
+
+  it('refuses other methods and ids on the saved views', async () => {
+    for (const [method, path, headers] of [
+      ['PUT', 'ordering/admin/saved-filters', sameOrigin],
+      ['DELETE', 'ordering/admin/saved-filters', sameOrigin],
+      ['PUT', 'ordering/admin/saved-filters/not-a-uuid', sameOrigin],
+      ['POST', `ordering/admin/saved-filters/${id}`, sameOrigin],
+      ['GET', `ordering/admin/saved-filters/${id}`, sameOrigin],
+    ] as const) {
+      const fetchImpl = upstreamOk();
+      const response = await relay(
+        config,
+        request(method, path, headers),
+        path.split('/'),
+        fetchImpl,
+      );
+      expect(response.status, `${method} ${path}`).toBe(404);
+      expect(fetchImpl).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe('relay of the System requests export', () => {
+  const path = ['system-requests', 'admin', 'requests', 'export'];
+  const base = 'http://api.test/system-requests/admin/requests/export';
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/system-requests/admin/requests/export${query}`, {
+      method: 'GET',
+      headers: sameOrigin,
+    });
+  const ids = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, i) => `0190a000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+    ).join(',');
+
+  it('relays the list filter, its sort, the format, the columns, the ids and the zone, and drops paging', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get(
+        '?view=all-open&q=SR-12&area=money,people&risk=high&status=open&requestedBy=0190a000-0000-7000-8000-0000000000b1&appliedFrom=2026-11-01T00:00:00.000Z&appliedTo=2026-11-08T00:00:00.000Z&overdue=true&subjectKind=settings.market-setting&subjectRef=list-paging&sort=due&direction=asc&format=xlsx&columns=subject,comments&ids=' +
+          ids(2) +
+          '&zone=Australia/Brisbane&page=2&pageSize=25&cursor=abc&extra=1',
+      ),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    const url = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(url.origin + url.pathname).toBe(base);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      format: 'xlsx',
+      columns: 'subject,comments',
+      ids: ids(2),
+      zone: 'Australia/Brisbane',
+      view: 'all-open',
+      q: 'SR-12',
+      area: 'money,people',
+      risk: 'high',
+      status: 'open',
+      requestedBy: '0190a000-0000-7000-8000-0000000000b1',
+      appliedFrom: '2026-11-01T00:00:00.000Z',
+      appliedTo: '2026-11-08T00:00:00.000Z',
+      overdue: 'true',
+      subjectKind: 'settings.market-setting',
+      subjectRef: 'list-paging',
+      sort: 'due',
+      direction: 'asc',
+    });
+  });
+
+  it('passes 100 ids and an empty column list', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get(`?ids=${ids(100)}&columns=`), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `${base}?columns=&ids=${encodeURIComponent(ids(100))}`,
+    );
+  });
+
+  it.each([
+    ['101 ids', `?ids=${ids(101)}`],
+    ['an empty ids', '?ids='],
+    ['an id that is not a UUID', '?ids=not-an-id'],
+    ['a column that is not allowed', '?columns=subject,before'],
+    ['a format that is not allowed', '?format=xls'],
+    ['a zone that is a path', '?zone=../etc'],
+    // A malformed filter is refused rather than dropped: dropping it would widen the file.
+    ['a view that is not one', '?view=everything'],
+    ['a risk that is not one', '?risk=urgent'],
+    ['an author that is not an id', '?requestedBy=me'],
+    ['a repeated area', '?area=money&area=people'],
+    ['an applied day without a time', '?appliedFrom=2026-11-01'],
+  ])('answers 400 and calls nothing for %s', async (_name, query) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay of the shipments export', () => {
+  const path = ['ordering', 'admin', 'shipments', 'export'];
+  const base = 'http://api.test/ordering/admin/shipments/export';
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/shipments/export${query}`, {
+      method: 'GET',
+      headers: sameOrigin,
+    });
+  const ids = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, i) => `0190a000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+    ).join(',');
+
+  it('relays the list filter, the format, the columns, the ids and the zone, and drops paging and sort', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get(
+        '?stage=shipped&attention=any&deliveryMethod=same_day&q=SC%204471&sellerId=0190a000-0000-7000-8000-0000000000b1&paidFrom=2026-11-01T00:00:00.000Z&paidTo=2026-11-08T00:00:00.000Z&shippedFrom=2026-11-02T00:00:00.000Z&shippedTo=2026-11-03T00:00:00.000Z&format=xlsx&columns=store,customer,sellerOrderId,shipping&ids=' +
+          ids(2) +
+          '&zone=Australia/Brisbane&page=2&pageSize=25&sort=total&direction=asc&limit=25&cursor=1763300000000.0190a000-0000-7000-8000-0000000000a1&extra=1',
+      ),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    const url = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(url.origin + url.pathname).toBe(base);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      stage: 'shipped',
+      attention: 'any',
+      deliveryMethod: 'same_day',
+      q: 'SC 4471',
+      sellerId: '0190a000-0000-7000-8000-0000000000b1',
+      paidFrom: '2026-11-01T00:00:00.000Z',
+      paidTo: '2026-11-08T00:00:00.000Z',
+      shippedFrom: '2026-11-02T00:00:00.000Z',
+      shippedTo: '2026-11-03T00:00:00.000Z',
+      format: 'xlsx',
+      columns: 'store,customer,sellerOrderId,shipping',
+      ids: ids(2),
+      zone: 'Australia/Brisbane',
+    });
+  });
+
+  it('passes all 14 export column ids, in the order the list shows them', async () => {
+    const upstream = upstreamOk();
+    const all =
+      'store,customer,paid,delivery,carrier,carrierProgress,total,ready,shipped,delivered,fleet,shipping,refunded,sellerOrderId';
+    const response = await relay(config, get(`?columns=${all}`), path, upstream);
+    expect(response.status).toBe(200);
+    expect(new URL(upstream.mock.calls[0]?.[0] as string).searchParams.get('columns')).toBe(all);
+  });
+
+  it('passes 200 ids and an empty column list', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get(`?ids=${ids(200)}&columns=`), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `${base}?columns=&ids=${encodeURIComponent(ids(200))}`,
+    );
+  });
+
+  it.each([
+    ['201 ids', `?ids=${ids(201)}`],
+    ['an empty ids', '?ids='],
+    ['an id that is not a UUID', '?ids=not-an-id'],
+    ['a repeated ids', `?ids=${ids(1)}&ids=${ids(2)}`],
+    ['a column that is not allowed', '?columns=store,secret'],
+    ['a repeated column', `?columns=${Array(16).fill('store').join(',')}`],
+    ['a format that is not allowed', '?format=xls'],
+    ['an upper case format', '?format=CSV'],
+    ['a zone that is a path', '?zone=../etc'],
+    ['an empty zone', '?zone='],
+    ['an oversized zone', `?zone=${'A'.repeat(600)}`],
+  ])('answers 400 and calls nothing for %s', async (_name, query) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('relays a file byte for byte with its type and attachment name', async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00, 0x80, 0x7f]);
+    const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(bytes, {
+          status: 200,
+          headers: {
+            'content-type': type,
+            'content-disposition': 'attachment; filename="shipments-2026-11-16.xlsx"',
+          },
+        }),
+      ),
+    );
+    const response = await relay(config, get('?format=xlsx'), path, upstream);
+    expect(response.headers.get('content-type')).toBe(type);
+    expect(response.headers.get('content-disposition')).toBe(
+      'attachment; filename="shipments-2026-11-16.xlsx"',
+    );
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
+
+  it('relays the too-large refusal with its details', async () => {
+    const body = JSON.stringify({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10000, total: 12000 },
+    });
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(body, { status: 413, headers: { 'content-type': 'application/json' } }),
+      ),
+    );
+    const response = await relay(config, get('?format=csv'), path, upstream);
+    expect(response.status).toBe(413);
+    expect(await response.text()).toBe(body);
+  });
+
+  it('does not relay the export as a write', async () => {
+    const upstream = upstreamOk();
+    expect(
+      (await relay(config, post('ordering/admin/shipments/export'), path, upstream)).status,
+    ).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay of the refunds export', () => {
+  const path = ['ordering', 'admin', 'refunds', 'export'];
+  const base = 'http://api.test/ordering/admin/refunds/export';
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/refunds/export${query}`, {
+      method: 'GET',
+      headers: sameOrigin,
+    });
+  const ids = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, i) => `0190a000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+    ).join(',');
+
+  it('relays the list filter, the format, the columns, the ids and the zone, and drops paging and sort', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get(
+        '?state=succeeded&reason=damaged&actor=seller&lossBearer=platform&ledger=waiting&search=Ada&sellerId=0190a000-0000-7000-8000-0000000000b1&from=2026-11-01T00:00:00.000Z&to=2026-11-08T00:00:00.000Z&format=xlsx&columns=amount,store,lossBearer,creditNote&ids=' +
+          ids(2) +
+          '&zone=Australia/Brisbane&page=2&pageSize=25&sort=total&direction=asc&limit=25&cursor=1763300000000.0190a000-0000-7000-8000-0000000000a1&extra=1',
+      ),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    const url = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(url.origin + url.pathname).toBe(base);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      state: 'succeeded',
+      reason: 'damaged',
+      actor: 'seller',
+      lossBearer: 'platform',
+      ledger: 'waiting',
+      search: 'Ada',
+      sellerId: '0190a000-0000-7000-8000-0000000000b1',
+      from: '2026-11-01T00:00:00.000Z',
+      to: '2026-11-08T00:00:00.000Z',
+      format: 'xlsx',
+      columns: 'amount,store,lossBearer,creditNote',
+      ids: ids(2),
+      zone: 'Australia/Brisbane',
+    });
+  });
+
+  it('passes 200 ids and an empty column list', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get(`?ids=${ids(200)}&columns=`), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `${base}?columns=&ids=${encodeURIComponent(ids(200))}`,
+    );
+  });
+
+  it.each([
+    ['201 ids', `?ids=${ids(201)}`],
+    ['an empty ids', '?ids='],
+    ['an id that is not a UUID', '?ids=not-an-id'],
+    ['a repeated ids', `?ids=${ids(1)}&ids=${ids(2)}`],
+    ['a column that is not allowed', '?columns=store,secret'],
+    ['a repeated column', `?columns=${Array(16).fill('store').join(',')}`],
+    ['a format that is not allowed', '?format=xls'],
+    ['an upper case format', '?format=CSV'],
+    ['a zone that is a path', '?zone=../etc'],
+    ['an empty zone', '?zone='],
+    ['an oversized zone', `?zone=${'A'.repeat(600)}`],
+  ])('answers 400 and calls nothing for %s', async (_name, query) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('relays a file byte for byte with its type and attachment name', async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00, 0x80, 0x7f]);
+    const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(bytes, {
+          status: 200,
+          headers: {
+            'content-type': type,
+            'content-disposition': 'attachment; filename="refunds-2026-11-16.xlsx"',
+          },
+        }),
+      ),
+    );
+    const response = await relay(config, get('?format=xlsx'), path, upstream);
+    expect(response.headers.get('content-type')).toBe(type);
+    expect(response.headers.get('content-disposition')).toBe(
+      'attachment; filename="refunds-2026-11-16.xlsx"',
+    );
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
+
+  it('relays the too-large refusal with its details', async () => {
+    const body = JSON.stringify({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10000, total: 12000 },
+    });
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(body, { status: 413, headers: { 'content-type': 'application/json' } }),
+      ),
+    );
+    const response = await relay(config, get('?format=csv'), path, upstream);
+    expect(response.status).toBe(413);
+    expect(await response.text()).toBe(body);
+  });
+
+  it('does not relay the export as a write', async () => {
+    const upstream = upstreamOk();
+    expect(
+      (await relay(config, post('ordering/admin/refunds/export'), path, upstream)).status,
+    ).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay of the invoices export', () => {
+  const path = ['ordering', 'admin', 'documents', 'export'];
+  const base = 'http://api.test/ordering/admin/documents/export';
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/ordering/admin/documents/export${query}`, {
+      method: 'GET',
+      headers: sameOrigin,
+    });
+  const ids = (n: number) =>
+    Array.from(
+      { length: n },
+      (_, i) => `0190a000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+    ).join(',');
+
+  it('relays the list filter, the format, the columns, the ids and the zone, and drops paging and sort', async () => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      get(
+        '?kind=credit-note&q=Ada&sellerId=0190a000-0000-7000-8000-0000000000b1&from=2026-11-01T00:00:00.000Z&to=2026-11-08T00:00:00.000Z&format=xlsx&columns=documentId,store,total,reason&ids=' +
+          ids(2) +
+          '&zone=Australia/Brisbane&page=2&pageSize=25&sort=total&direction=asc&limit=25&cursor=1763300000000.0190a000-0000-7000-8000-0000000000a1&extra=1',
+      ),
+      path,
+      upstream,
+    );
+    expect(response.status).toBe(200);
+    const url = new URL(upstream.mock.calls[0]?.[0] as string);
+    expect(url.origin + url.pathname).toBe(base);
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      kind: 'credit-note',
+      q: 'Ada',
+      sellerId: '0190a000-0000-7000-8000-0000000000b1',
+      from: '2026-11-01T00:00:00.000Z',
+      to: '2026-11-08T00:00:00.000Z',
+      format: 'xlsx',
+      columns: 'documentId,store,total,reason',
+      ids: ids(2),
+      zone: 'Australia/Brisbane',
+    });
+  });
+
+  it('passes 200 ids and an empty column list', async () => {
+    const upstream = upstreamOk();
+    await relay(config, get(`?ids=${ids(200)}&columns=`), path, upstream);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `${base}?columns=&ids=${encodeURIComponent(ids(200))}`,
+    );
+  });
+
+  it.each([
+    ['201 ids', `?ids=${ids(201)}`],
+    ['an empty ids', '?ids='],
+    ['an id that is not a UUID', '?ids=not-an-id'],
+    ['a repeated ids', `?ids=${ids(1)}&ids=${ids(2)}`],
+    ['a column that is not allowed', '?columns=store,secret'],
+    ['a repeated column', `?columns=${Array(16).fill('store').join(',')}`],
+    ['a kind that is not allowed', '?kind=invoice'],
+    ['an empty kind', '?kind='],
+    ['a format that is not allowed', '?format=xls'],
+    ['an upper case format', '?format=CSV'],
+    ['a zone that is a path', '?zone=../etc'],
+    ['an empty zone', '?zone='],
+    ['an oversized zone', `?zone=${'A'.repeat(600)}`],
+  ])('answers 400 and calls nothing for %s', async (_name, query) => {
+    const upstream = upstreamOk();
+    const response = await relay(config, get(query), path, upstream);
+    expect(response.status).toBe(400);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('relays a file byte for byte with its type and attachment name', async () => {
+    const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xff, 0x00, 0x80, 0x7f]);
+    const type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(bytes, {
+          status: 200,
+          headers: {
+            'content-type': type,
+            'content-disposition': 'attachment; filename="credit-notes-2026-11-16.xlsx"',
+          },
+        }),
+      ),
+    );
+    const response = await relay(config, get('?format=xlsx'), path, upstream);
+    expect(response.headers.get('content-type')).toBe(type);
+    expect(response.headers.get('content-disposition')).toBe(
+      'attachment; filename="credit-notes-2026-11-16.xlsx"',
+    );
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
+
+  it('relays the too-large refusal with its details', async () => {
+    const body = JSON.stringify({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10000, total: 12000 },
+    });
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(body, { status: 413, headers: { 'content-type': 'application/json' } }),
+      ),
+    );
+    const response = await relay(config, get('?format=csv'), path, upstream);
+    expect(response.status).toBe(413);
+    expect(await response.text()).toBe(body);
+  });
+
+  it('does not relay the export as a write', async () => {
+    const upstream = upstreamOk();
+    expect(
+      (await relay(config, post('ordering/admin/documents/export'), path, upstream)).status,
+    ).toBe(404);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+});
+
+describe('relay of the security alert super list', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const get = async (path: string) => {
+    const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    const response = await relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin }),
+      path.split('?')[0]!.split('/'),
+      upstream,
+    );
+    return { response, url: upstream.mock.calls[0]?.[0] as string | undefined };
+  };
+
+  it('passes the list keys of its own and drops the rest', async () => {
+    const { url } = await get(
+      'security/admin/alerts/list?view=critical&severity=s1,s2&rule=sign-in-failures-ip&keyType=ip&keyValue=203.0.113.7&minEvents=5&sort=events&direction=asc&paging=prev-next&page=2&pageSize=50&x=1',
+    );
+    expect(url).toBe(
+      'http://api.test/security/admin/alerts/list?view=critical&severity=s1%2Cs2&rule=sign-in-failures-ip&keyType=ip&keyValue=203.0.113.7&minEvents=5&sort=events&direction=asc&paging=prev-next&page=2&pageSize=50',
+    );
+    const bad = await get('security/admin/alerts/list?view=other&minEvents=0&pageSize=500');
+    expect(bad.url).toBe('http://api.test/security/admin/alerts/list');
+  });
+
+  it('keeps the single-alert route apart from the list and the export', async () => {
+    const one = await get(`security/admin/alerts/${ID}`);
+    expect(one.response.status).toBe(404);
+  });
+
+  it('relays 200 selected ids whole and refuses a malformed filter instead of widening the file', async () => {
+    const ids = Array.from({ length: 200 }, () => ID).join(',');
+    const { url } = await get(`security/admin/alerts/export?format=csv&ids=${ids}`);
+    expect(url).toContain(`ids=${encodeURIComponent(ids)}`);
+    const bad = await get('security/admin/alerts/export?format=csv&view=other');
+    expect(bad.response.status).toBe(400);
+    expect(bad.url).toBeUndefined();
+  });
+});
+
+describe('relay of the review moderation super list', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const get = async (path: string) => {
+    const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    const response = await relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/${path}`, { headers: sameOrigin }),
+      path.split('?')[0]!.split('/'),
+      upstream,
+    );
+    return { response, url: upstream.mock.calls[0]?.[0] as string | undefined };
+  };
+
+  it('passes the list keys of its own and drops the rest', async () => {
+    const { url } = await get(
+      `reviews/admin/moderation/list?view=reported&minRating=2&sellerId=${ID}&reportReason=abusive&sort=rating&direction=asc&paging=prev-next&page=2&pageSize=50&x=1`,
+    );
+    expect(url).toBe(
+      `http://api.test/reviews/admin/moderation/list?view=reported&minRating=2&sellerId=${ID}&reportReason=abusive&sort=rating&direction=asc&paging=prev-next&page=2&pageSize=50`,
+    );
+    const bad = await get('reviews/admin/moderation/list?view=other&minRating=9&pageSize=500');
+    expect(bad.url).toBe('http://api.test/reviews/admin/moderation/list');
+  });
+
+  it('passes the export keys and keeps the single-review route apart', async () => {
+    const { url } = await get(
+      `reviews/admin/moderation/export?format=xlsx&columns=review-id,signals&ids=${ID}&view=held&x=1`,
+    );
+    expect(url).toBe(
+      `http://api.test/reviews/admin/moderation/export?format=xlsx&columns=review-id%2Csignals&ids=${ID}&view=held`,
+    );
+    const one = await get(`reviews/admin/moderation/${ID}`);
+    expect(one.url).toBe(`http://api.test/reviews/admin/moderation/${ID}`);
+  });
+
+  it('relays 200 selected ids whole and refuses a malformed filter instead of widening the file', async () => {
+    const ids = Array.from({ length: 200 }, () => ID).join(',');
+    const { url } = await get(`reviews/admin/moderation/export?format=csv&ids=${ids}`);
+    expect(url).toContain(`ids=${encodeURIComponent(ids)}`);
+    const bad = await get(`reviews/admin/moderation/export?format=csv&view=other`);
+    expect(bad.response.status).toBe(400);
+    expect(bad.url).toBeUndefined();
   });
 });

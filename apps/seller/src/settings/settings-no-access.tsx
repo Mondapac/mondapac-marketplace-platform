@@ -10,11 +10,14 @@ export function SettingsNoAccess({
   permissionKeys,
   title,
   body,
+  pageTitle,
   labels,
 }: {
   readonly permissionKeys: readonly string[];
   readonly title: string;
   readonly body: string;
+  /** The settings page's name: the block then sits under that page's h1, as a card. */
+  readonly pageTitle?: string;
   readonly labels: { readonly settings: string; readonly home: string };
 }) {
   const hub = visibleSettings(permissionKeys).length > 0;
@@ -22,6 +25,7 @@ export function SettingsNoAccess({
     <NoAccess
       title={title}
       body={body}
+      pageTitle={pageTitle}
       backHref={hub ? '/settings' : '/'}
       backLabel={hub ? labels.settings : labels.home}
     />

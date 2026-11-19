@@ -98,6 +98,12 @@ describe.each(['AU', 'ZZ'])('certification facade reads, Market %s', (marketCode
     certificationTypesSystem: new CertificationTypesSystem(gate, reader),
     sellerCertificateOverview: undefined as never,
     certifiedCategories: undefined as never,
+    assertCategoriesRetirable: undefined as never,
+    assertCategoriesRetirableSystem: undefined as never,
+    platformCategoriesRetired: undefined as never,
+    sellerValidCertificateTypes: undefined as never,
+    sellerValidCertificateTypesSystem: undefined as never,
+    sellersOfIssuerSystem: undefined as never,
   });
   const own = marketCode === 'AU' ? 'halal' : 'зед чисто';
   const other = marketCode === 'AU' ? 'зед чисто' : 'halal';

@@ -12,7 +12,9 @@ import {
   type SpecificationDefinition,
   type SpecificationOption,
 } from '../domain/published-specifications';
+import { variantCodeOf } from '../domain/product';
 import { asTexts, pick } from './prisma-offer-listings.reader';
+import { readAxisValues } from './variant-axis-values';
 
 /**
  * {@link PublishedProductReader}: the product by `(market_id, id)` with status `published`, then
@@ -24,7 +26,14 @@ import { asTexts, pick } from './prisma-offer-listings.reader';
  * every one scoped by `market_id`; no image or tag is read.
  */
 export class PrismaPublishedProductReader implements PublishedProductReader {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    /** The Market's measure units with labels (attributes A3), from its catalog settings. */
+    private readonly units: (market: MarketContext) => ReadonlyArray<{
+      readonly code: string;
+      readonly labels: Readonly<Record<string, string>>;
+    }>,
+  ) {}
 
   async read(
     market: MarketContext,
@@ -35,7 +44,7 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
     const product = await tx.catalogProduct.findFirst({
       // A paused product is not shown (catalog design 4.1a).
       where: { marketId: market.marketId, id: productId, status: 'published', pausedAt: null },
-      select: { publishedRevisionId: true, brandId: true },
+      select: { publishedRevisionId: true, brandId: true, productCode: true },
     });
     if (product === null || product.publishedRevisionId === null) return null;
     const revisionId = product.publishedRevisionId;
@@ -59,9 +68,20 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
     const revisionVariants = await tx.catalogProductRevisionVariant.findMany({
       where: { marketId: market.marketId, revisionId },
       orderBy: [{ position: 'asc' }],
-      select: { variantId: true, position: true, labels: true },
+      select: {
+        variantId: true,
+        position: true,
+        labels: true,
+        optionValues: true,
+        gtin: true,
+        imageIds: true,
+        shippingWeightGrams: true,
+        shippingLengthMm: true,
+        shippingWidthMm: true,
+        shippingHeightMm: true,
+      },
     });
-    const published = new Set(
+    const published = new Map(
       revisionVariants.length === 0
         ? []
         : (
@@ -72,9 +92,9 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
                 id: { in: revisionVariants.map((row) => row.variantId) },
                 state: 'published',
               },
-              select: { id: true },
+              select: { id: true, variantNo: true },
             })
-          ).map((row) => row.id),
+          ).map((row) => [row.id, row.variantNo] as const),
     );
     // The brand is shown only while it is active; a draft or archived one is no brand here.
     const brand =
@@ -84,7 +104,19 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
             where: { id: product.brandId, status: 'active' },
             select: { slug: true, name: true },
           });
-    const specifications = await this.specifications(tx, market.marketId, revisionId, locales);
+    const specifications = await this.specifications(tx, market, revisionId, locales);
+    const rowsShown = revisionVariants.filter((row) => published.has(row.variantId));
+    const axisLists = await readAxisValues(
+      tx,
+      market.marketId,
+      rowsShown.map((row) => row.optionValues),
+      locales,
+    );
+    const shown = rowsShown.map((row, index) => ({
+      row,
+      variantNo: published.get(row.variantId)!,
+      axes: axisLists[index]!,
+    }));
     return {
       productId,
       publishedRevisionId: revisionId as Id<'ProductRevision'>,
@@ -92,16 +124,25 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
       shortDescription: text.shortDescription,
       description: text.description,
       categoryIds: categories.map((row) => row.categoryId as Id<'Category'>),
-      variants: revisionVariants
-        .filter((row) => published.has(row.variantId))
-        .map((row) => {
-          const labels = asTexts(row.labels);
-          return {
-            variantId: row.variantId as Id<'Variant'>,
-            position: row.position,
-            label: labels === null ? null : pick(labels, locales),
-          };
-        }),
+      variants: shown.map(({ row, variantNo, axes }) => {
+        const labels = asTexts(row.labels);
+        return {
+          variantId: row.variantId as Id<'Variant'>,
+          position: row.position,
+          label: labels === null ? null : pick(labels, locales),
+          variantNo,
+          variantCode: variantCodeOf(product.productCode, variantNo),
+          axes,
+          gtin: row.gtin,
+          imageIds: row.imageIds as Id<'ProductImage'>[],
+          shipping: {
+            weightGrams: row.shippingWeightGrams,
+            lengthMm: row.shippingLengthMm,
+            widthMm: row.shippingWidthMm,
+            heightMm: row.shippingHeightMm,
+          },
+        };
+      }),
       brand,
       specifications,
     };
@@ -109,10 +150,11 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
 
   private async specifications(
     tx: MarketTransaction,
-    marketId: string,
+    market: MarketContext,
     revisionId: string,
     locales: { readonly requested: string; readonly fallback: string },
   ) {
+    const { marketId } = market;
     const revision = await tx.catalogProductRevision.findFirst({
       where: { marketId, id: revisionId },
       select: { familyRevisionId: true, attributeValues: true },
@@ -128,23 +170,51 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
     const groups = family.groups as unknown as FamilyGroup[];
     const codes = [...new Set(groups.flatMap((group) => group.attributes.map((a) => a.code)))];
     if (codes.length === 0) return [];
-    const definitionRows = await tx.catalogAttributeDefinition.findMany({
+    const select = {
+      id: true,
+      code: true,
+      dataType: true,
+      localizable: true,
+      status: true,
+      publishedRevisionId: true,
+      mergedIntoId: true,
+    } as const;
+    const listed = await tx.catalogAttributeDefinition.findMany({
       where: { marketId, code: { in: codes } },
-      select: {
-        code: true,
-        dataType: true,
-        localizable: true,
-        status: true,
-        publishedRevisionId: true,
-      },
+      select,
     });
+    // A merged attribute reads as its target (attributes A8), which the family need not list.
+    const have = new Set(listed.map((row) => row.id));
+    const targetIds = [
+      ...new Set(
+        listed.flatMap((row) =>
+          row.mergedIntoId === null || have.has(row.mergedIntoId) ? [] : [row.mergedIntoId],
+        ),
+      ),
+    ];
+    const targets =
+      targetIds.length === 0
+        ? []
+        : await tx.catalogAttributeDefinition.findMany({
+            where: { marketId, id: { in: targetIds } },
+            select,
+          });
+    const definitionRows = [...listed, ...targets];
+    const mergeRows = await tx.catalogAttributeMergeOption.findMany({
+      where: {
+        marketId,
+        sourceId: { in: listed.flatMap((row) => (row.mergedIntoId === null ? [] : [row.id])) },
+      },
+      select: { sourceId: true, sourceCode: true, targetCode: true },
+    });
+    const codeOfId = new Map(definitionRows.map((row) => [row.id, row.code] as const));
     const revisionIds = definitionRows.flatMap((row) =>
       row.publishedRevisionId === null ? [] : [row.publishedRevisionId],
     );
     if (revisionIds.length === 0) return [];
     const revisions = await tx.catalogAttributeDefinitionRevision.findMany({
       where: { marketId, id: { in: revisionIds } },
-      select: { id: true, showOnProductPage: true, names: true },
+      select: { id: true, showOnProductPage: true, names: true, bounds: true },
     });
     const optionRows = await tx.catalogAttributeDefinitionRevisionOption.findMany({
       where: { marketId, revisionId: { in: revisionIds } },
@@ -162,13 +232,26 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
           mergedInto: option.mergedInto,
         });
       }
+      const targetCode = row.mergedIntoId === null ? undefined : codeOfId.get(row.mergedIntoId);
       definitions.set(row.code, {
+        mergedInto:
+          targetCode === undefined
+            ? null
+            : {
+                code: targetCode,
+                options: new Map(
+                  mergeRows
+                    .filter((merge) => merge.sourceId === row.id)
+                    .map((merge) => [merge.sourceCode, merge.targetCode] as const),
+                ),
+              },
         dataType: row.dataType as AttributeDataType,
         localizable: row.localizable,
         status: row.status as SpecificationDefinition['status'],
         showOnProductPage: published.showOnProductPage,
         names: asTexts(published.names) ?? {},
         options,
+        ...measureDecimalsOf(row.dataType, published.bounds),
       });
     }
     return buildPublishedSpecifications({
@@ -176,6 +259,18 @@ export class PrismaPublishedProductReader implements PublishedProductReader {
       values: values,
       definitions,
       locales,
+      unitLabels: new Map(this.units(market).map((unit) => [unit.code, unit.labels] as const)),
     });
   }
+}
+
+/** A measure's decimal places from its published revision's `bounds.measure`; nothing otherwise. */
+function measureDecimalsOf(dataType: string, bounds: unknown): { measureDecimals?: number } {
+  if (dataType !== 'measure' || typeof bounds !== 'object' || bounds === null) return {};
+  const settings = (bounds as Record<string, unknown>)['measure'];
+  if (typeof settings !== 'object' || settings === null) return {};
+  const decimals = (settings as Record<string, unknown>)['decimals'];
+  return typeof decimals === 'number' && Number.isInteger(decimals)
+    ? { measureDecimals: decimals }
+    : {};
 }

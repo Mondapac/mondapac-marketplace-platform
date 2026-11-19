@@ -1,10 +1,12 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
+import { holdsBlockedTerm } from '../../../platform/content-filter/content-filter';
 import { BlogPostApproved, BlogPostChangesRequested, BlogPostSubmitted } from '../domain/audit';
 import { blocking, readableTexts, runChecks } from '../domain/checks';
 import type { Finding, ProductFact } from '../domain/checks';
 import { linksOf } from '../domain/content';
 import type { PostContent } from '../domain/content';
+import { mediaIdsOf } from '../domain/media';
 import {
   BlogPostApproved as ApprovedEvent,
   BlogPostChangesRequested as ChangesRequestedEvent,
@@ -78,6 +80,7 @@ export async function findingsOf(
     }
   }
   if (claims !== null) claims = { hitPaths };
+  const media = await knownMedia(deps, context, content);
 
   return runChecks({
     kind: post.kind,
@@ -87,9 +90,31 @@ export async function findingsOf(
     now: deps.clock.now(),
     currencyCode: policy.currencyCode,
     healthTerms: policy.healthTerms,
+    isBlocked: (text) => holdsBlockedTerm(text, policy.blockedTerms),
     products,
     claims,
+    media,
   });
+}
+
+/** The pictures the content names that are in the Market's library; null when it cannot be read. */
+async function knownMedia(
+  deps: BlogDependencies,
+  context: CallContext,
+  content: PostContent,
+): Promise<ReadonlySet<string> | null> {
+  const ids = mediaIdsOf(content);
+  if (ids.length === 0) return new Set();
+  try {
+    const read = await deps.unitOfWork.run(
+      context.market,
+      async () => ok(await deps.media.existing(context.market, ids)),
+      { readOnly: true },
+    );
+    return read.ok ? read.value : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Who may reach the post: an admin the platform posts and, to review, all; a seller its own. */

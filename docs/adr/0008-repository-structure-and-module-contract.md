@@ -13,6 +13,9 @@ core/vertical split and the market/time rules visible and machine-checked.
 1. **pnpm workspace monorepo**
    *(Amended by ADR-0034: the layout also holds `apps/seller`, `apps/admin` and `packages/ui` for
    the two panels; each panel's server is its own BFF, and `apps/web` stays the storefront's.)*
+   *(Amended by ADR-0043, 2026-11-04: `apps/web` is the one buyer site of a Market and hosts
+   every vertical as a section, each under its own route segment and BFF module; it is no
+   longer only the first vertical's storefront.)*
    *(Amended by ADR-0020: `packages/shared-kernel/` also holds `ActorContext` (ADR-0018
    decision 6), `CorrelationId` and `CallContext`.)*
    ```
@@ -78,6 +81,8 @@ core/vertical split and the market/time rules visible and machine-checked.
    region-matrix CI workflow (ADR-0003 decision 8)
    *(Amended by ADR-0015: the per-model access rule and the items without a consumer yet
    are deferred, each with a trigger.)*
+   *(Amended by ADR-0043, 2026-11-04: the literal check also covers the shared shell code of
+   `apps/web` and flags a section name there; see ADR-0043 decision 4.)*
    - `modules/X` may import `modules/Y` only through `modules/Y/index.ts`.
    - `domain/` may not import `application/`, `infrastructure/`, `presentation/`,
      `@nestjs/*` or `@prisma/*`; no `new Date()` in `domain/` (use Clock).

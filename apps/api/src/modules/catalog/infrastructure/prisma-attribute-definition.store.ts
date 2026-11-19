@@ -1,3 +1,4 @@
+import { boundsJson } from './attribute-bounds-json';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { AttributeDataType, Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
@@ -9,6 +10,7 @@ import {
 import {
   AttributeDefinition,
   type AttributeBounds,
+  type AttributeMergeOption,
   type AttributeDefinitionState,
   type AttributeDefinitionStatus,
   type LocalizedText,
@@ -144,6 +146,25 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
     if (count !== 1) throw new StaleAggregateError('attribute-definition', state.id);
   }
 
+  async saveConversion(
+    market: MarketContext,
+    definition: AttributeDefinition,
+    authorAccountId: Id<'Account'>,
+  ): Promise<void> {
+    const state = definition.state;
+    this.#sameMarket(market, state);
+    await this.#insertRevision(market, state, authorAccountId, null);
+    const { count } = await this.prisma.tx(market).catalogAttributeDefinition.updateMany({
+      where: { marketId: market.marketId, id: state.id, version: state.version - 1 },
+      data: {
+        publishedRevisionId: state.revisionId,
+        version: state.version,
+        dataType: state.dataType,
+      },
+    });
+    if (count !== 1) throw new StaleAggregateError('attribute-definition', state.id);
+  }
+
   async lockAtVersion(
     market: MarketContext,
     id: Id<'AttributeDefinition'>,
@@ -168,6 +189,40 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
     if (count !== 1) throw new StaleAggregateError('attribute-definition', state.id);
   }
 
+  async hasMergedSources(market: MarketContext, id: Id<'AttributeDefinition'>): Promise<boolean> {
+    const count = await this.prisma.tx(market).catalogAttributeDefinition.count({
+      where: { marketId: market.marketId, mergedIntoId: id },
+    });
+    return count > 0;
+  }
+
+  async saveMerge(
+    market: MarketContext,
+    source: AttributeDefinition,
+    target: Id<'AttributeDefinition'>,
+    options: readonly AttributeMergeOption[],
+  ): Promise<void> {
+    const state = source.state;
+    this.#sameMarket(market, state);
+    const tx = this.prisma.tx(market);
+    const { count } = await tx.catalogAttributeDefinition.updateMany({
+      where: { marketId: market.marketId, id: state.id, version: state.version - 1 },
+      data: { status: state.status, version: state.version, mergedIntoId: target },
+    });
+    if (count !== 1) throw new StaleAggregateError('attribute-definition', state.id);
+    if (options.length > 0) {
+      await tx.catalogAttributeMergeOption.createMany({
+        data: options.map((option) => ({
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          sourceId: state.id,
+          sourceCode: option.sourceCode,
+          targetCode: option.targetCode,
+        })),
+      });
+    }
+  }
+
   async #insertRevision(
     market: MarketContext,
     state: AttributeDefinitionState,
@@ -187,7 +242,7 @@ export class PrismaAttributeDefinitionStore implements AttributeDefinitionStore 
           revisionNo: state.revisionNo,
           material: state.material,
           isVariantOption: state.isVariantOption,
-          bounds: { ...state.bounds },
+          bounds: boundsJson(state.bounds),
           names: { ...state.names },
           helpText: { ...state.display.helpText },
           showOnProductPage: state.display.showOnProductPage,

@@ -97,3 +97,15 @@ projection. The reorder writes in a fixed number of statements while it holds th
 placement whose sort order really changes, one `DELETE ... slide_id IN (...)` and one `INSERT` of all
 saved orders. `down.sql` revokes the two grants and drops the table; the sort orders already written
 to `slide_placements` stay.
+
+## 6. Slide image library (F9, 6 Nov 2026)
+
+Migration `20261106220000_storefront_slide_images`. `slide_images` holds one row per uploaded image
+(`id`, `uploader_account_id`, `has_mobile`, the largest desktop pixel size, the uploaded byte size for
+abuse review, `created_at`); `slide_image_renditions` one row per stored size, primary key
+`(market_id, image_id, size_code)`, with `object_key`, `sha256` (32 bytes), `byte_size` and pixel size.
+Both are insert-only for the application role (grants SELECT, INSERT). CHECKs: the Market and tenant
+formats, positive pixel and byte counts, `size_code IN ('desktop','desktop-small','mobile','mobile-small')`
+and `object_key = 'slide-images/' || image_id || '/' || size_code`, so a key is never taken from a
+request. `object_key` is unique per Market. The foreign key to `slide_images` is on `(market_id, image_id)`.
+`down.sql` drops both tables; the files in the object store are not removed by it.

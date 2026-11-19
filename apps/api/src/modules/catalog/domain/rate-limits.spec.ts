@@ -1,5 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import {
+  ADD_SIZES_LIMITS,
   CLAIM_TEXT_CHECK_LIMITS,
   DRAFT_SAVE_LIMITS,
   RATE_COUNTER_KINDS,
@@ -19,9 +20,28 @@ describe('catalog rate limits', () => {
     ]);
   });
 
+  it('holds the Add sizes limit of design 8.4: 20 an hour per account', () => {
+    expect(ADD_SIZES_LIMITS).toEqual([
+      { kind: 'add-sizes.account.hour', limit: 20, windowMinutes: 60 },
+    ]);
+    const at = (count: number): RateReservation[] => [
+      { kind: 'add-sizes.account.hour', count, windowStartedAt: T0 },
+    ];
+    expect(rateVerdict(ADD_SIZES_LIMITS, at(20), T0)).toEqual({ allowed: true });
+    expect(rateVerdict(ADD_SIZES_LIMITS, at(21), T0.add({ minutes: 10 }))).toEqual({
+      allowed: false,
+      retryAfterSeconds: 3000,
+    });
+  });
+
   it('names only kinds the table accepts, in the order a unit takes them', () => {
     expect([...RATE_COUNTER_KINDS]).toEqual([...RATE_COUNTER_KINDS].sort());
-    for (const limit of [...DRAFT_SAVE_LIMITS, ...SUBMIT_LIMITS, ...CLAIM_TEXT_CHECK_LIMITS]) {
+    for (const limit of [
+      ...DRAFT_SAVE_LIMITS,
+      ...SUBMIT_LIMITS,
+      ...CLAIM_TEXT_CHECK_LIMITS,
+      ...ADD_SIZES_LIMITS,
+    ]) {
       expect(RATE_COUNTER_KINDS).toContain(limit.kind);
     }
   });

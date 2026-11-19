@@ -3,7 +3,13 @@ import { registerAuditActions } from '../../platform/audit/audit-action-catalogu
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  AUTHORISATION_CHECK,
+  registerPermissions,
+  USE_CASE_GATE,
+  type AccessDeclaration,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -12,6 +18,27 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { SECURITY_EVENTS } from '../../platform/security-events/security-events';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { SellersModule } from '../sellers';
+import {
+  registerSystemChangeApplier,
+  registerSystemChangeReverter,
+  SYSTEM_ACTION_PROPOSER,
+  SYSTEM_REQUEST_RECORDER,
+} from '../system-requests';
+import { FleetModelCreateApplier } from './application/shipping-appliers';
+import {
+  DELIVERY_REVIEW_AREA,
+  DELIVERY_SETTINGS_SUBJECT_KIND,
+  FLEET_MODEL_CREATE_SUBJECT_KIND,
+  FLEET_MODEL_SUBJECT_KIND,
+  FLEET_SELECTION_SUBJECT_KIND,
+  SELLER_METHODS_SUBJECT_KIND,
+} from './application/shipping-review';
+import {
+  DeliverySettingsReverter,
+  FleetSelectionModelReverter,
+  FleetSelectionReverter,
+  SellerDeliveryMethodsReverter,
+} from './application/shipping-reverters';
 import { CARRIER_BOOKING_REPOSITORY } from './application/ports/carrier-booking.repository';
 import { FLEET_REGISTRY } from './application/ports/fleet-registry';
 import { DELIVERY_SETTINGS_REPOSITORY } from './application/ports/delivery-settings.repository';
@@ -24,7 +51,11 @@ import { UBER_WEBHOOK_SIGNATURE } from './application/ports/fleet-webhook-signat
 import { PICKUP_DIRECTORY } from './application/ports/pickup-directory';
 import { SELLER_DIRECTORY } from './application/ports/seller-directory';
 import { SHIPPING_POLICY } from './application/ports/shipping-policy';
-import type { ShippingDependencies } from './application/shipping-dependencies';
+import type {
+  FleetModelCreateDependencies,
+  ShippingApplierDependencies,
+  ShippingDependencies,
+} from './application/shipping-dependencies';
 import { DeliveryAvailability } from './application/use-cases/delivery-availability.use-case';
 import { DeliveryChoice } from './application/use-cases/delivery-choice.use-case';
 import { ChargeDelivery } from './application/use-cases/charge-delivery.use-case';
@@ -45,6 +76,7 @@ import { ViewFleetSelection } from './application/use-cases/view-fleet-selection
 import { BookCarrierDelivery } from './application/use-cases/book-carrier-delivery.use-case';
 import { CancelCarrierDelivery } from './application/use-cases/cancel-carrier-delivery.use-case';
 import { CarrierTrackingLinks } from './application/use-cases/carrier-tracking-links.use-case';
+import { CarrierProgressOf } from './application/use-cases/carrier-progress-of.use-case';
 import { CarrierShipmentQuery } from './application/use-cases/carrier-shipment.use-case';
 import { DeliveryArea } from './application/use-cases/delivery-area.use-case';
 import { PickupAvailability } from './application/use-cases/pickup-availability.use-case';
@@ -70,6 +102,7 @@ const PORTS: readonly [keyof ShippingDependencies, InjectionToken][] = [
   ['policy', SHIPPING_POLICY],
   ['sellers', SELLER_DIRECTORY],
   ['audit', AUDIT_WRITER],
+  ['review', SYSTEM_REQUEST_RECORDER],
   ['trail', CHANGE_TRAIL],
   ['clock', CLOCK],
   ['ids', ID_GENERATOR],
@@ -86,6 +119,38 @@ const PORTS: readonly [keyof ShippingDependencies, InjectionToken][] = [
   ['uberWebhookSignature', UBER_WEBHOOK_SIGNATURE],
   ['securityEvents', SECURITY_EVENTS],
 ];
+
+const dependenciesOf = (values: readonly unknown[]): ShippingDependencies =>
+  Object.fromEntries(
+    PORTS.map(([name], index) => [name, values[index]]),
+  ) as unknown as ShippingDependencies;
+
+/** The reverters of area delivery (Admin Inbox › System requests), registered below. */
+const REVERTERS = [
+  [DELIVERY_SETTINGS_SUBJECT_KIND, DeliverySettingsReverter],
+  [SELLER_METHODS_SUBJECT_KIND, SellerDeliveryMethodsReverter],
+  [FLEET_SELECTION_SUBJECT_KIND, FleetSelectionReverter],
+  [FLEET_MODEL_SUBJECT_KIND, FleetSelectionModelReverter],
+] as const;
+
+/**
+ * Every key the action's own route declares (its use case's `allOf`), so the approver needs what
+ * the author needed: derived from the declaration, it cannot drift from it.
+ */
+function routeKeys(access: AccessDeclaration): readonly string[] {
+  if (access.rule.kind !== 'permissions' || access.rule.allOf.length === 0) {
+    throw new Error(`shipping: ${access.name} declares no permission keys`);
+  }
+  return access.rule.allOf;
+}
+
+/** The token of the applier of a new fleet-selection model (approval mode). */
+const FLEET_MODEL_CREATE_APPLIER = Symbol(`SHIPPING_APPLIER:${FLEET_MODEL_CREATE_SUBJECT_KIND}`);
+
+/** The keys each approval kind of area delivery is registered with (read by the wiring spec). */
+export const SHIPPING_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[]> = new Map([
+  [FLEET_MODEL_CREATE_SUBJECT_KIND, routeKeys(CreateFleetSelectionModel.access)],
+]);
 
 /** Every shipping use case shares one dependency object, built from the same ports. */
 function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
@@ -136,6 +201,43 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerEvents('shipping', SHIPPING_EVENTS),
     PersistenceModule.outboxWriterFor('shipping'),
     ...shippingProviders,
+    ...REVERTERS.flatMap(([kind, Reverter]) => {
+      const token = Symbol(`SHIPPING_REVERTER:${kind}`);
+      return [
+        {
+          provide: token,
+          inject: PORTS.map(([, port]) => port),
+          useFactory: (...values: unknown[]) => new Reverter(dependenciesOf(values)),
+        },
+        registerSystemChangeReverter('shipping', kind, DELIVERY_REVIEW_AREA, token),
+      ];
+    }),
+    // The create of a model waits for approval where the Market reviews area delivery.
+    {
+      provide: FLEET_MODEL_CREATE_APPLIER,
+      inject: [...PORTS.map(([, port]) => port), AUTHORISATION_CHECK],
+      useFactory: (...values: unknown[]) =>
+        new FleetModelCreateApplier({
+          ...dependenciesOf(values),
+          authorisation: values[PORTS.length],
+        } as ShippingApplierDependencies),
+    },
+    registerSystemChangeApplier(
+      'shipping',
+      FLEET_MODEL_CREATE_SUBJECT_KIND,
+      DELIVERY_REVIEW_AREA,
+      SHIPPING_APPLIER_PERMISSIONS.get(FLEET_MODEL_CREATE_SUBJECT_KIND) ?? [],
+      FLEET_MODEL_CREATE_APPLIER,
+    ),
+    {
+      provide: CreateFleetSelectionModel,
+      inject: [USE_CASE_GATE, ...PORTS.map(([, token]) => token), SYSTEM_ACTION_PROPOSER],
+      useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+        new CreateFleetSelectionModel(gate, {
+          ...dependenciesOf(values),
+          proposer: values[PORTS.length],
+        } as FleetModelCreateDependencies),
+    },
     registerJobsFrom('shipping', [PollFleetStatus], (poll: PollFleetStatus) => [
       pollFleetStatusJob(poll),
     ]),
@@ -145,6 +247,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       BookCarrierDelivery,
       CarrierShipmentQuery,
       CarrierTrackingLinks,
+      CarrierProgressOf,
       CancelCarrierDelivery,
       ReceiveCarrierWebhook,
       ReceiveUberWebhook,
@@ -152,7 +255,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewFleetSelection,
       ViewFleetSelectionHistory,
       ViewDeliverySettingsHistory,
-      CreateFleetSelectionModel,
       UpdateFleetSelectionModel,
       SetFleetSelection,
       ViewDeliverySettings,
@@ -175,6 +277,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         CarrierShipmentQuery,
         CancelCarrierDelivery,
         CarrierTrackingLinks,
+        CarrierProgressOf,
         DeliveryAvailability,
         DeliveryChoice,
         PriceDelivery,
@@ -189,6 +292,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         shipment: CarrierShipmentQuery,
         cancel: CancelCarrierDelivery,
         trackingLinks: CarrierTrackingLinks,
+        progress: CarrierProgressOf,
         availability: DeliveryAvailability,
         choice: DeliveryChoice,
         price: PriceDelivery,
@@ -203,6 +307,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           shipment,
           cancel,
           trackingLinks,
+          progress,
           availability,
           choice,
           price,

@@ -2,11 +2,9 @@ import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import type { SystemRequestRecorder } from '../../../system-requests';
 import { CATALOG_CATEGORY_TREE_EDIT } from '../../contracts/permissions';
-import { PlatformCategoryReorderedAudit } from '../../domain/audit';
-import { planReorder } from '../../domain/category-edit';
 import {
-  announceChanged,
   categoryIdOf,
   closedInput,
   editorAccountOf,
@@ -17,12 +15,31 @@ import {
   type CategoryWriteFailure,
   type CategoryWriteView,
 } from '../categories/category-editor';
+import { reorderInUnit } from '../categories/category-write-core';
+import { reorderValues } from '../catalogue-actions';
+import {
+  CATEGORY_REORDER_SUBJECT_KIND,
+  catalogueReview,
+  openCatalogueReview,
+  requestRef,
+  type CatalogueRequestRef,
+} from '../catalogue-review';
 
 export interface CategoryReorderInput {
   readonly [key: string]: unknown;
 }
 
-const KEYS = ['categoryId', 'direction', 'treeVersion'] as const;
+const KEYS = ['categoryId', 'direction', 'treeVersion', 'note'] as const;
+
+export interface CategoryReorderDependencies extends CategoryWriteDependencies {
+  /** Opens the review of the reorder in Admin Inbox › System requests (area catalogue). */
+  readonly review: SystemRequestRecorder;
+}
+
+export interface CategoryReorderOutput {
+  readonly category: CategoryWriteView;
+  readonly request: CatalogueRequestRef;
+}
 
 /**
  * `platform-category.reorder` (categories package C3a; Move up and Move down): an admin swaps a
@@ -31,10 +48,14 @@ const KEYS = ['categoryId', 'direction', 'treeVersion'] as const;
  * that showed the old order must reload. Each of the two categories gets a `reordered` revision.
  * `category.reorder-edge` when there is no sibling in that direction. Rule: the key
  * `catalog.category-tree.edit`.
+ *
+ * It goes live at once and is reviewed after (area catalogue, owner decision of 18 Nov 2026):
+ * where the Market reviews the area the request needs a `note`, and a rejected or withdrawn
+ * reorder is swapped back while both categories still hold the places it gave them.
  */
 export class CategoryReorder extends UseCase<
   CategoryReorderInput,
-  { readonly category: CategoryWriteView },
+  CategoryReorderOutput,
   CategoryWriteFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -46,7 +67,7 @@ export class CategoryReorder extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: CategoryWriteDependencies,
+    private readonly deps: CategoryReorderDependencies,
   ) {
     super(gate);
   }
@@ -54,7 +75,7 @@ export class CategoryReorder extends UseCase<
   protected async handle(
     context: CallContext,
     input: CategoryReorderInput,
-  ): Promise<Result<{ readonly category: CategoryWriteView }, CategoryWriteFailure>> {
+  ): Promise<Result<CategoryReorderOutput, CategoryWriteFailure>> {
     const result = await this.#run(context, input);
     this.#logger.log({
       msg: 'catalog.category-reorder',
@@ -68,7 +89,7 @@ export class CategoryReorder extends UseCase<
   async #run(
     context: CallContext,
     input: CategoryReorderInput,
-  ): Promise<Result<{ readonly category: CategoryWriteView }, CategoryWriteFailure>> {
+  ): Promise<Result<CategoryReorderOutput, CategoryWriteFailure>> {
     const accountId = editorAccountOf(context);
     if (accountId === null) return err({ code: 'access.denied' });
     const body = closedInput(input, KEYS);
@@ -78,53 +99,41 @@ export class CategoryReorder extends UseCase<
     const treeVersion = versionOf(body.value['treeVersion'], 'treeVersion');
     if (!treeVersion.ok) return treeVersion;
     const { market } = context;
-    const { store, ids, clock } = this.deps;
     const direction = body.value['direction'];
     if (direction !== 'up' && direction !== 'down') return invalid('direction', 'unknown');
+    // Its own read-only unit, before this one (units do not nest).
+    const policy = await catalogueReview(this.deps.review, context);
     return runStructural(this.deps, market, treeVersion.value, async (nodes, nextTreeVersion) => {
-      const target = nodes.find((node) => node.id === id.value);
-      if (target === undefined) return err({ code: 'category.not-found' } as const);
-      const neighbour = planReorder(nodes, target, direction);
-      if (!neighbour.ok) return neighbour;
-      const at = clock.now();
-      await store.swapPositions(market, target, neighbour.value);
-      const version = await store.apply(market, {
-        category: target,
-        revisionId: ids.next<'CategoryRevision'>(),
-        kind: 'reordered',
-        texts: target.texts,
-        patch: {},
-        authorAccountId: accountId,
-        now: at,
-      });
-      const other = await store.apply(market, {
-        category: neighbour.value,
-        revisionId: ids.next<'CategoryRevision'>(),
-        kind: 'reordered',
-        texts: neighbour.value.texts,
-        patch: {},
-        authorAccountId: accountId,
-        now: at,
-      });
-      await this.deps.audit.record(
+      const done = await reorderInUnit(
+        this.deps,
         context,
-        PlatformCategoryReorderedAudit.entry(target.id, {
-          before: { position: target.position },
-          after: { position: neighbour.value.position },
-        }),
+        accountId,
+        nodes,
+        id.value,
+        direction,
+        nextTreeVersion,
+        null,
       );
-      await announceChanged(this.deps, context, target.id, version);
-      await announceChanged(this.deps, context, neighbour.value.id, other);
-      return ok({
-        category: {
-          id: target.id,
-          slug: target.slug,
-          status: target.status,
-          version,
-          revisionNo: target.revisionNo + 1,
-          treeVersion: nextTreeVersion,
-        },
+      if (!done.ok) return done;
+      const { target, neighbour } = done.value;
+      const review = await openCatalogueReview(this.deps.review, context, policy, {
+        subjectKind: CATEGORY_REORDER_SUBJECT_KIND,
+        subjectRef: target.id,
+        before: reorderValues({
+          position: target.position,
+          neighbourId: neighbour.id,
+          neighbourPosition: neighbour.position,
+        }),
+        after: reorderValues({
+          position: neighbour.position,
+          neighbourId: neighbour.id,
+          neighbourPosition: target.position,
+        }),
+        note: body.value['note'],
+        tooLargePath: 'direction',
       });
+      if (!review.ok) return err(review.error);
+      return ok({ category: done.value.category, request: requestRef(review.value) });
     });
   }
 }

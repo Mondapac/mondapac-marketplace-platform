@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/config.module';
+import { ContentFilter } from '../content-filter/content-filter';
 import { loadMarketConfigs } from './market-config';
 import { MarketRegistry } from './market-registry';
 import { loadServiceAreas } from './service-area-config';
@@ -17,12 +18,17 @@ import { ServiceAreaDirectory } from './service-area-directory';
         new MarketRegistry(loadMarketConfigs(config.marketConfigDirs, config.hostedMarkets)),
     },
     {
+      provide: ContentFilter,
+      inject: [MarketRegistry],
+      useFactory: (markets: MarketRegistry) => new ContentFilter(markets),
+    },
+    {
       provide: ServiceAreaDirectory,
       inject: [APP_CONFIG],
       useFactory: (config: AppConfig) =>
         loadServiceAreas(config.serviceAreaConfigDirs, config.hostedMarkets),
     },
   ],
-  exports: [MarketRegistry, ServiceAreaDirectory],
+  exports: [MarketRegistry, ServiceAreaDirectory, ContentFilter],
 })
 export class MarketConfigModule {}

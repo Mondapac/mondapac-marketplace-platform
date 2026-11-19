@@ -1,4 +1,6 @@
 import { navSections, splitNavPlacement, type NavGroup, type NavItem } from './nav.ts';
+import type { SettingsMenu } from './settings-menu.ts';
+import { SettingsSidebarNav } from './settings-sidebar-nav.tsx';
 import { SidebarNav, type SidebarEntry } from './sidebar-nav.tsx';
 
 export interface SidebarProps {
@@ -11,9 +13,8 @@ export interface SidebarProps {
   readonly label: (key: string) => string;
   /** Ids of the open groups from the `NAV_OPEN_COOKIE` cookie; the group of the active page opens too. */
   readonly openGroups?: readonly string[];
-  /** Labels of the open-all / close-all button (shown with two or more groups). */
-  readonly expandAll?: string;
-  readonly collapseAll?: string;
+  /** Inside /settings: the sidebar becomes the Settings menu (back link, search, settings groups). */
+  readonly settings?: SettingsMenu;
 }
 
 // Inside the shell's column the sidebar can be an icon rail (`data-rail` on the `rail` group):
@@ -27,14 +28,14 @@ export function Sidebar({
   activeId,
   label,
   openGroups,
-  expandAll,
-  collapseAll,
+  settings,
 }: SidebarProps) {
   const link = (item: NavItem) => ({
     id: item.id,
     href: item.href,
     icon: item.icon,
     label: label(item.labelKey),
+    ...(item.badgeSource === undefined ? {} : { badgeSource: item.badgeSource }),
   });
   // Resolved here, on the server: the client tree gets plain text, not the label function.
   const { menu, footer } = splitNavPlacement(items);
@@ -60,15 +61,17 @@ export function Sidebar({
         </span>
         <span className={`min-w-0 truncate ${RAIL_HIDDEN}`}>{panelName}</span>
       </div>
-      <SidebarNav
-        panelName={panelName}
-        entries={entries}
-        footer={footer.map(link)}
-        activeId={activeId}
-        openGroups={openGroups}
-        expandAll={expandAll}
-        collapseAll={collapseAll}
-      />
+      {settings === undefined ? (
+        <SidebarNav
+          panelName={panelName}
+          entries={entries}
+          footer={footer.map(link)}
+          activeId={activeId}
+          openGroups={openGroups}
+        />
+      ) : (
+        <SettingsSidebarNav menu={settings} />
+      )}
     </div>
   );
 }

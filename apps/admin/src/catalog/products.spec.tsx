@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+}));
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
@@ -101,6 +104,7 @@ function mount(
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <ProductsList
+        paging="pages"
         accountId="acc-1"
         marketId={market.id}
         marketName={market.name}
@@ -154,6 +158,19 @@ describe('admin product list', () => {
     }
   });
 
+  it('shows Add product only with the platform-product edit key, linking to the create page', async () => {
+    serve(() => page([row()]));
+    const first = mount([...ALL_KEYS, 'catalog.platform-product.edit']);
+    await screen.findByText('Lamb cutlets 500 g');
+    expect(screen.getByRole('link', { name: 'Add product' }).getAttribute('href')).toBe(
+      '/catalog/products/new',
+    );
+    first.unmount();
+    mount();
+    await screen.findByText('Lamb cutlets 500 g');
+    expect(screen.queryByRole('link', { name: 'Add product' })).toBeNull();
+  });
+
   it('shows the Import button only with the platform-import key, linking to the import page', async () => {
     serve(() => page([row()]));
     const first = mount([...ALL_KEYS, 'catalog.platform-import.run']);
@@ -180,7 +197,7 @@ describe('admin product list', () => {
     await screen.findByText('Lamb cutlets 500 g');
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent);
     // The first header is the select-all box: it has no text.
-    expect(headers).toEqual(['', 'Product', 'Category', 'Status']);
+    expect(headers).toEqual(['', 'Product', 'Category', 'Status', 'Actions']);
     const body = screen.getAllByRole('row')[1]!;
     expect(within(body).getByText('AU-000184')).toBeTruthy();
     expect(within(body).getByText('Meat')).toBeTruthy();
@@ -294,7 +311,15 @@ describe('admin product list', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
 
     const headers = screen.getAllByRole('columnheader').map((th) => th.textContent);
-    expect(headers).toEqual(['', 'Product', 'Category', 'Status', 'Last changed', 'Offers']);
+    expect(headers).toEqual([
+      '',
+      'Product',
+      'Category',
+      'Status',
+      'Last changed',
+      'Offers',
+      'Actions',
+    ]);
     expect(JSON.parse(window.localStorage.getItem('mp:admin:AU:acc-1:products-columns')!)).toEqual([
       'updated',
       'offers',
@@ -302,6 +327,42 @@ describe('admin product list', () => {
     const body = screen.getAllByRole('row')[1]!;
     expect(within(body).getByText('6')).toBeTruthy();
     expect(within(body).getByText('29 Oct 2026')).toBeTruthy();
+  });
+
+  it('offers an optional Tags column, hidden by default: two names, then "+N" with words for a reader', async () => {
+    const topic = (n: number, name: string | null, status: 'active' | 'archived' = 'active') => ({
+      id: `0190a000-0000-7000-8000-0000000004${String(n).padStart(2, '0')}`,
+      slug: `tag-${n}`,
+      status,
+      name,
+    });
+    serve(() =>
+      page([
+        row({ topics: [topic(1, 'Eid'), topic(2, 'Ramadan', 'archived'), topic(3, 'Picnic')] }),
+        row({
+          productId: '0190a000-0000-7000-8000-000000000002',
+          name: 'Dates',
+          topics: [topic(4, null)],
+        }),
+        row({ productId: '0190a000-0000-7000-8000-000000000003', name: 'Rice', topics: [] }),
+      ]),
+    );
+    mount();
+    await screen.findByText('Lamb cutlets 500 g');
+    expect(screen.queryByRole('columnheader', { name: 'Tags' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Tags' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    expect(screen.getByRole('columnheader', { name: 'Tags' })).toBeTruthy();
+    const rows = screen.getAllByRole('row').slice(1);
+    const first = within(rows[0]!);
+    expect(first.getByText(/Eid, Ramadan \(archived\)/)).toBeTruthy();
+    expect(first.getByText('+1')).toBeTruthy();
+    expect(first.getByText('and 1 more')).toBeTruthy();
+    // A tag without a name shows its slug; a product without tags shows a dash.
+    expect(within(rows[1]!).getByText('tag-4')).toBeTruthy();
+    expect(within(rows[2]!).getByText('—')).toBeTruthy();
   });
 
   it('restores a saved choice on load, drops unknown ids, and resets to the default', async () => {
@@ -320,6 +381,7 @@ describe('admin product list', () => {
         'Status',
         'Seller',
         'Scope',
+        'Actions',
       ]),
     );
     expect(within(screen.getAllByRole('row')[1]!).getByText('Cedar Lane Halal Meats')).toBeTruthy();
@@ -328,7 +390,7 @@ describe('admin product list', () => {
       within(await screen.findByRole('dialog')).getByRole('button', { name: 'Reset to default' }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(screen.getAllByRole('columnheader')).toHaveLength(4);
+    expect(screen.getAllByRole('columnheader')).toHaveLength(5);
   });
 
   it('still works when storage is missing or refuses', async () => {
@@ -369,7 +431,7 @@ describe('admin product list', () => {
     );
     mount();
     await screen.findByText('Unnamed product');
-    await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(6));
+    await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(7));
     expect(screen.getByText('No category')).toBeTruthy();
     expect(screen.getByText('Unnamed seller')).toBeTruthy();
     expect(screen.getAllByText('Platform').length).toBeGreaterThan(0);
@@ -402,6 +464,99 @@ describe('admin product list', () => {
     expect(screen.getByText('Loading products').closest('[role="status"]')).toBeTruthy();
     expect(screen.getByRole('navigation', { name: 'Product views' })).toBeTruthy();
     expect(screen.getByRole('searchbox', { name: 'Search products' })).toBeTruthy();
+  });
+
+  it('draws skeleton rows in the shape of the columns after 200 ms, the toolbar disabled', () => {
+    vi.useFakeTimers();
+    try {
+      call.mockImplementation((_m, path) =>
+        path === 'catalog/categories'
+          ? Promise.resolve({ ok: true, status: 200, body: tree } as never)
+          : new Promise(() => undefined),
+      );
+      mount();
+      // Nothing for a fast answer: no skeleton before 200 ms.
+      expect(screen.queryAllByTestId('skeleton-row')).toHaveLength(0);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      const rows = screen.getAllByTestId('skeleton-row');
+      // 25 rows a page, at most 10 placeholders.
+      expect(rows).toHaveLength(10);
+      // Box, product (photo and title), category, status: the default columns.
+      expect(
+        [...rows[0]!.querySelectorAll('[data-skeleton]')].map((node) =>
+          node.getAttribute('data-skeleton'),
+        ),
+      ).toEqual(['select', 'thumb', 'text', 'status', 'text']);
+      // The real header stays, its select-all box disabled; the toolbar cannot act yet.
+      expect(screen.getByRole('columnheader', { name: 'Category' })).toBeTruthy();
+      expect(
+        screen.getByRole<HTMLInputElement>('checkbox', {
+          name: 'Select all products on this page',
+        }).disabled,
+      ).toBe(true);
+      expect(screen.getByRole('button', { name: 'Filter' }).closest('fieldset')?.disabled).toBe(
+        true,
+      );
+      expect(screen.getByRole('searchbox', { name: 'Search products' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('says "Still loading…" at 10 s, gives up at 30 s, and loads again on Try again', async () => {
+    vi.useFakeTimers();
+    try {
+      call.mockImplementation((_m, path) =>
+        path === 'catalog/categories'
+          ? Promise.resolve({ ok: true, status: 200, body: tree } as never)
+          : new Promise(() => undefined),
+      );
+      mount();
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+      expect(screen.getByText('Still loading…').getAttribute('role')).toBe('status');
+      act(() => {
+        vi.advanceTimersByTime(20_000);
+      });
+      expect(screen.getByText('Products could not be loaded. Try again.')).toBeTruthy();
+      expect(screen.queryAllByTestId('skeleton-row')).toHaveLength(0);
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+    // Try again starts anew; the answer that never came is not waited for.
+    serve(() => page([row()]));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByText('Lamb cutlets 500 g')).toBeTruthy();
+    expect(screen.queryByText('Products could not be loaded. Try again.')).toBeNull();
+  });
+
+  it('keeps the rows on screen with the banner above them when a refresh fails', async () => {
+    let fail = false;
+    serve(() => (fail ? 'fail' : page([row()])));
+    mount();
+    expect(await screen.findByText('Lamb cutlets 500 g')).toBeTruthy();
+    fail = true;
+    fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+    expect(await screen.findByText('Products could not be loaded. Try again.')).toBeTruthy();
+    expect(screen.getByText('Lamb cutlets 500 g')).toBeTruthy();
+  });
+
+  it('offers no "select all matching" over rows kept after a failed refresh', async () => {
+    let fail = false;
+    serve(() => (fail ? 'fail' : page([row()], { total: 500 })));
+    mount();
+    expect(await screen.findByText('Lamb cutlets 500 g')).toBeTruthy();
+    fail = true;
+    fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+    expect(await screen.findByText('Products could not be loaded. Try again.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all products on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    const menu = await screen.findByRole('menu');
+    expect(within(menu).queryByText(/500/)).toBeNull();
   });
 
   it('shows the error banner with Try again, and the list after a retry', async () => {
@@ -557,7 +712,7 @@ describe('admin product bulk action', () => {
     ).toEqual([
       'Activate',
       'Deactivate',
-      'ExportCSV or XLSX, with the columns shown',
+      'Export…CSV or XLSX, with the columns shown',
       'Delete…',
       'Select all 26 products in this filter',
       'Clear selection',
@@ -844,7 +999,7 @@ describe('admin product bulk action', () => {
   it('exports the ticked rows with the columns shown, as a CSV download', async () => {
     window.localStorage.setItem(
       'mp:admin:AU:acc-1:products-columns',
-      JSON.stringify(['offers', 'updated']),
+      JSON.stringify(['offers', 'updated', 'tags']),
     );
     serveBulk(() => answer({ done: 0, skipped: 0, failed: 0 }));
     const fetched: string[] = [];
@@ -864,7 +1019,7 @@ describe('admin product bulk action', () => {
     try {
       mount();
       await screen.findByText('Beef mince');
-      await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(6));
+      await waitFor(() => expect(screen.getAllByRole('columnheader')).toHaveLength(8));
       fireEvent.click(rowBox('Lamb cutlets 500 g'));
       fireEvent.click(rowBox('Beef mince'));
 
@@ -879,11 +1034,11 @@ describe('admin product bulk action', () => {
 
       expect(await screen.findByText('2 products exported.')).toBeTruthy();
       expect(fetched).toEqual([
-        `/api/catalog/admin/products/export?format=csv&columns=offers%2Cupdated&ids=${ID}%2C${ID2}`,
+        `/api/catalog/admin/products/export?format=csv&columns=offers%2Cupdated%2Ctags&ids=${ID}%2C${ID2}`,
       ]);
       expect(create).toHaveBeenCalledTimes(1);
       expect(click).toHaveBeenCalledTimes(1);
-      expect(revoke).toHaveBeenCalledWith('blob:csv');
+      await waitFor(() => expect(revoke).toHaveBeenCalledWith('blob:csv'), { timeout: 6000 });
       // An export changes nothing: no POST and the selection stays.
       expect(posted).toEqual([]);
       expect((rowBox('Beef mince') as HTMLInputElement).checked).toBe(true);
@@ -992,7 +1147,7 @@ describe('admin product bulk action', () => {
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
     ).toEqual([
-      'ExportCSV or XLSX, with the columns shown',
+      'Export…CSV or XLSX, with the columns shown',
       'Select all 26 products in this filter',
       'Clear selection',
     ]);
@@ -1036,10 +1191,34 @@ describe('admin product bulk action', () => {
 });
 
 describe('product list helpers', () => {
+  // Nothing stays mounted past its test: work React schedules for a tree left standing runs
+  // after the environment is torn down (`window is not defined`).
+  afterEach(() => {
+    cleanup();
+  });
+
   it('builds the query string with only what is set, trimmed', () => {
     expect(queryString({ ...DEFAULT_QUERY, q: '  lamb ', filters: { scope: 'PLATFORM' } })).toBe(
       'view=active&sort=updated&direction=desc&page=1&pageSize=25&q=lamb&scope=PLATFORM',
     );
+  });
+
+  it('offers the row Actions the server allows, and asks for the code before Delete', async () => {
+    serve(() => page([row({ actions: ['open', 'pause', 'delete'] })]));
+    mount();
+    await screen.findByText('Lamb cutlets 500 g');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Lamb cutlets 500 g' }));
+    const names = screen.getAllByRole('menuitem').map((item) => item.textContent);
+    expect(names).toEqual(['Open', 'Deactivate…', 'Delete…']);
+  });
+
+  it('pages without a total: an open range, no tab counts, Next only while another page follows', async () => {
+    serve(() => page([row()], { total: null, counts: null, hasNext: true }));
+    mount();
+    await screen.findByText('Lamb cutlets 500 g');
+    expect(screen.getByText('1–1 products')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Active' })).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Next' }).disabled).toBe(false);
   });
 
   it('cleans a saved column list', () => {

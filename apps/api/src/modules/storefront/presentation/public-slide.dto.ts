@@ -1,14 +1,24 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { PublishedSlides } from '../application/use-cases/view-published-slides.use-case';
 
 // The body of the public slider read. Every text is plain text for the buyer app to render as
-// text; the image is a key of the buyer app's ready-made set (until the media upload exists) and
+// text; the image is a key of the buyer app's ready-made set or an uploaded library image (size paths) and
 // the link a site path, never a URL.
 
 export class PublishedSlideImageBody {
   @ApiProperty({ description: 'A key of the ready-made image set; never a URL.' }) key!: string;
   @ApiProperty({ description: 'Empty only when the image is decorative.' }) alt!: string;
   @ApiProperty() decorative!: boolean;
+  @ApiPropertyOptional({
+    description: 'Uploaded image only: a site path (never a URL) of the wide picture.',
+  })
+  desktopUrl?: string;
+  @ApiPropertyOptional({ description: 'Uploaded image only: the small wide picture.' })
+  desktopSmallUrl?: string;
+  @ApiPropertyOptional({ description: 'Uploaded image with a mobile picture only.' })
+  mobileUrl?: string;
+  @ApiPropertyOptional({ description: 'Uploaded image with a mobile picture only.' })
+  mobileSmallUrl?: string;
 }
 
 export class PublishedSlideBody {

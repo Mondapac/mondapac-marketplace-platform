@@ -85,7 +85,10 @@ function exported(
     | 'TEST_SELLERS_LIST_DATABASE_URL'
     | 'TEST_SELLERS_LIST_OWNER_DATABASE_URL'
     | 'TEST_ORDERING_ORDERS_DATABASE_URL'
-    | 'TEST_ORDERING_ORDERS_OWNER_DATABASE_URL',
+    | 'TEST_ORDERING_ORDERS_OWNER_DATABASE_URL'
+    | 'TEST_SEARCH_DOCUMENTS_DATABASE_URL'
+    | 'TEST_SEARCH_FILTERS_DATABASE_URL'
+    | 'TEST_SEARCH_RATINGS_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -414,4 +417,28 @@ export function orderingOrdersTestDatabaseUrl(): string {
 
 export function orderingOrdersOwnerTestDatabaseUrl(): string {
   return exported('TEST_ORDERING_ORDERS_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that search-offer-documents.db-spec.ts runs on (global-setup.ts): it empties whole search tables, so no other file's
+ * search documents live there.
+ */
+export function searchDocumentsTestDatabaseUrl(): string {
+  return exported('TEST_SEARCH_DOCUMENTS_DATABASE_URL');
+}
+
+/**
+ * The copy that search-attribute-filters.db-spec.ts runs on (global-setup.ts): it empties whole search tables, so no other file's
+ * search documents live there.
+ */
+export function searchFiltersTestDatabaseUrl(): string {
+  return exported('TEST_SEARCH_FILTERS_DATABASE_URL');
+}
+
+/**
+ * The copy that search-product-ratings.db-spec.ts runs on (global-setup.ts): it empties whole search tables, so no other file's
+ * search documents live there.
+ */
+export function searchRatingsTestDatabaseUrl(): string {
+  return exported('TEST_SEARCH_RATINGS_DATABASE_URL');
 }

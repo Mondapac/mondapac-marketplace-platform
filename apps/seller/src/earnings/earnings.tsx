@@ -31,6 +31,7 @@ const TONE: Record<LedgerKind, BadgeTone> = {
   'refund-commission': 'info',
   'dispute-debit': 'critical',
   'dispute-reinstate': 'success',
+  'cashback-seller': 'attention',
 };
 type Totals = Ledger['totals'];
 
@@ -59,6 +60,15 @@ function totalItems(
     ...(totals.disputeDebits === '0' && totals.disputeReinstated === '0'
       ? []
       : [{ id: 'disputes', label: t('totals.disputes'), value: money(disputes.toString()) }]),
+    ...(totals.sellerCashback === '0'
+      ? []
+      : [
+          {
+            id: 'seller-cashback',
+            label: t('totals.seller-cashback'),
+            value: money(totals.sellerCashback),
+          },
+        ]),
     {
       id: 'balance',
       label: t('totals.balance'),

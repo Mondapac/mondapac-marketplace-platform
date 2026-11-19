@@ -4,6 +4,10 @@ import type { Id } from '@mondapac/shared-kernel';
 import { testAuthenticatedActor, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { AdminProductsList } from '../../src/modules/catalog/application/use-cases/admin-products-list.use-case';
+import { ProductPauseProbe } from '../../src/modules/catalog/application/use-cases/product-pause-probe.use-case';
+import { ProductDeleteProbe } from '../../src/modules/catalog/application/use-cases/product-delete-probe.use-case';
+import { PlatformProductRetireProbe } from '../../src/modules/catalog/application/use-cases/platform-product-retire-probe.use-case';
+import { PlatformProductEditProbe } from '../../src/modules/catalog/application/use-cases/platform-product-edit-probe.use-case';
 import type { AdminProductsListInput } from '../../src/modules/catalog/application/use-cases/admin-products-list.use-case';
 import { Offer } from '../../src/modules/catalog/domain/offer';
 import { Product } from '../../src/modules/catalog/domain/product';
@@ -59,15 +63,17 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
       next: <K extends string>() => uuid7() as Id<K>,
     });
     storeNames = new Map();
-    list = new AdminProductsList(
-      createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) }),
-      {
-        unitOfWork: db.unitOfWork,
-        adminProductsReader: new PrismaAdminProductsReader(db.service),
-        policy,
-        sellerNames: { storeNames: () => Promise.resolve(storeNames) },
-      },
-    );
+    const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
+    list = new AdminProductsList(gate, {
+      unitOfWork: db.unitOfWork,
+      adminProductsReader: new PrismaAdminProductsReader(db.service),
+      policy,
+      sellerNames: { storeNames: () => Promise.resolve(storeNames) },
+      pauseProbe: new ProductPauseProbe(gate),
+      deleteProbe: new ProductDeleteProbe(gate),
+      retireProbe: new PlatformProductRetireProbe(gate),
+      platformEditProbe: new PlatformProductEditProbe(gate),
+    });
   });
   afterAll(async () => {
     await owner.end();
@@ -187,6 +193,44 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
     return { id, name: names[locale] ?? '' };
   }
 
+  interface TopicSeed {
+    readonly id: string;
+    readonly slug: string;
+    readonly name: string | null;
+  }
+  /** A topic of `target` with a name in that Market's default locale (none when `name` is null). */
+  async function topic(
+    target: typeof market,
+    name: string | null,
+    status: 'active' | 'archived' = 'active',
+  ): Promise<TopicSeed> {
+    const id = uuid7();
+    const slug = `t-${uuid7().slice(-12)}`;
+    await insert('topics', {
+      id,
+      ...base(target),
+      slug,
+      topic_group: 'use',
+      status,
+      created_by: uuid7(),
+      created_at: T0.toString(),
+      updated_at: T0.toString(),
+      version: 1,
+    });
+    if (name !== null) {
+      await insert('topic_terms', {
+        ...base(target),
+        topic_id: id,
+        locale: policy.locales(target).default,
+        kind: 'name',
+        term: name,
+        term_key: `${name.toLowerCase()}-${slug}`,
+        position: 0,
+      });
+    }
+    return { id, slug, name };
+  }
+
   interface Made {
     readonly productId: Id<'Product'>;
     readonly productCode: string;
@@ -200,6 +244,8 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
     readonly name?: string | null;
     readonly code?: string;
     readonly categories?: readonly Category[];
+    /** The topics of the revision, in the order entered. */
+    readonly topics?: readonly TopicSeed[];
     /** Never published: the revision is only pending. */
     readonly pendingOnly?: boolean;
     /** A published product the admin paused (catalog design 4.1a). */
@@ -236,6 +282,7 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
       product_id: productId,
       revision_no: 1,
       revision_kind: 'submission',
+      type_code: 'simple',
       base_revision_id: null,
       reverted_from_revision_id: null,
       family_revision_id: await family(target),
@@ -268,6 +315,14 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
         revision_id: revisionId,
         category_id: entry.id,
         position: index + 1,
+      });
+    }
+    for (const [index, entry] of (options.topics ?? []).entries()) {
+      await insert('product_revision_topics', {
+        ...base(target),
+        revision_id: revisionId,
+        topic_id: entry.id,
+        position: index,
       });
     }
     const extra: Record<string, string> = {
@@ -715,6 +770,30 @@ describe.each(TEST_MARKETS)('catalog admin products list in market %s (database)
       primaryImageId: null,
       offerCount: 0,
     });
+  });
+
+  it('shows the topics of the shown revision in the order entered, named in the Market locale', async () => {
+    const mine = seller();
+    const second = await topic(market, 'Ramadan');
+    const first = await topic(market, 'Barbecue');
+    const unnamed = await topic(market, null, 'archived');
+    const tagged = await make({ sellerId: mine, topics: [second, first, unnamed] });
+    const plain = await make({ sellerId: mine, name: 'Plain' });
+    // A topic of the other Market on a product there never reaches this Market's answer.
+    const foreign = await topic(other, 'Canary');
+    await make({ target: other, sellerId: mine, topics: [foreign] });
+
+    const answer = await ask({ sellerId: mine, view: 'all' });
+
+    const row = answer.items.find((i) => i.productId === tagged.productId)!;
+    expect(row.topics).toEqual([
+      { id: second.id, slug: second.slug, status: 'active', name: 'Ramadan' },
+      { id: first.id, slug: first.slug, status: 'active', name: 'Barbecue' },
+      // An archived topic stays on the revision and says so.
+      { id: unnamed.id, slug: unnamed.slug, status: 'archived', name: null },
+    ]);
+    expect(answer.items.find((i) => i.productId === plain.productId)!.topics).toEqual([]);
+    expect(JSON.stringify(answer)).not.toContain('Canary');
   });
 
   it('shows a never-published product with the name, category and photo of its pending revision', async () => {

@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
@@ -130,6 +132,8 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
       );
     expect(await insert({ code: 'Upper' })).toBe('23514');
     expect(await insert({ dataType: 'blob' })).toBe('23514');
+    // 'measure' (number with a unit) is a data type since attributes A3.
+    expect(await insert({ dataType: 'measure' })).toBeNull();
     // 'draft' is a status since attributes A2; any other word is still refused.
     expect(await insert({ status: 'pending' })).toBe('23514');
     expect(await insert({ status: 'draft' })).toBeNull();
@@ -260,18 +264,27 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
     ).toBe('23503');
   });
 
-  it('has no DELETE on the attribute tables and no UPDATE of code, type or flags', async () => {
+  it('has no DELETE on the attribute tables, no UPDATE of code or flags, and a guarded type', async () => {
     const id = await insertDefinition();
     expect(
       await sqlState(sql, 'DELETE FROM catalog.attribute_definitions WHERE id = $1', [id]),
     ).toBe('42501');
-    for (const column of ["code = 'renamed'", "data_type = 'integer'", 'localizable = true']) {
+    for (const column of ["code = 'renamed'", 'localizable = true']) {
       expect(
         await sqlState(sql, `UPDATE catalog.attribute_definitions SET ${column} WHERE id = $1`, [
           id,
         ]),
       ).toBe('42501');
     }
+    // The type has a column grant since attributes A8 (convert type), but the guard trigger
+    // refuses every change that is not one of the two listed conversions with a new revision.
+    expect(
+      await sqlState(
+        sql,
+        "UPDATE catalog.attribute_definitions SET data_type = 'integer' WHERE id = $1",
+        [id],
+      ),
+    ).toBe('23001');
     expect(await sqlState(sql, 'DELETE FROM catalog.attribute_families')).toBe('42501');
     expect(
       await sqlState(sql, "UPDATE catalog.attribute_families SET code = 'renamed' WHERE false"),
@@ -419,5 +432,109 @@ describe.each(TEST_MARKETS)('catalog attributes in market %s (database integrati
     } finally {
       await persistence.close();
     }
+  });
+
+  it("keeps a measure's unit settings and bounds in the revision and puts them on its schema field (attributes A3)", async () => {
+    const definitionId = await insertDefinition({
+      code: `net-${randomUUID().slice(0, 8)}`,
+      data_type: 'measure',
+    });
+    const revisionId = uuid7();
+    const settings = { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 2 };
+    await sql.query(
+      `INSERT INTO catalog.attribute_definition_revisions
+        (id, market_id, tenant_id, definition_id, revision_no, material, is_variant_option, bounds, names, author_kind, created_at)
+       VALUES ($1, $2, $3, $4, 1, false, false, $5, '{"xx":"Net weight"}', 'seed', $6)`,
+      [
+        revisionId,
+        market.marketId,
+        market.tenantId,
+        definitionId,
+        JSON.stringify({ min: 1, max: 5000, measure: settings }),
+        T0,
+      ],
+    );
+    await sql.query(
+      `UPDATE catalog.attribute_definitions SET published_revision_id = $3 WHERE market_id = $1 AND id = $2`,
+      [market.marketId, definitionId, revisionId],
+    );
+    const definition = await sql.query<{ code: string }>(
+      `SELECT code FROM catalog.attribute_definitions WHERE market_id = $1 AND id = $2`,
+      [market.marketId, definitionId],
+    );
+    const familyId = uuid7();
+    const familyRevisionId = uuid7();
+    const familyCode = `fam-${randomUUID().slice(0, 8)}`;
+    await sql.query(
+      `INSERT INTO catalog.attribute_families (id, market_id, tenant_id, code, status, created_by_kind, version, created_at)
+       VALUES ($1, $2, $3, $4, 'active', 'seed', 1, $5)`,
+      [familyId, market.marketId, market.tenantId, familyCode, T0],
+    );
+    await sql.query(
+      `INSERT INTO catalog.attribute_family_revisions (id, market_id, tenant_id, family_id, revision_no, groups, author_kind, created_at)
+       VALUES ($1, $2, $3, $4, 1, $5, 'seed', $6)`,
+      [
+        familyRevisionId,
+        market.marketId,
+        market.tenantId,
+        familyId,
+        JSON.stringify([
+          {
+            groupCode: 'core',
+            attributes: [
+              { code: definition.rows[0]!.code, required: true, isVariantOption: false },
+            ],
+          },
+        ]),
+        T0,
+      ],
+    );
+    await sql.query(
+      `UPDATE catalog.attribute_families SET published_revision_id = $3 WHERE market_id = $1 AND id = $2`,
+      [market.marketId, familyId, familyRevisionId],
+    );
+
+    const persistence = createPersistence({ databaseUrl: catalogAttributesTestDatabaseUrl() });
+    try {
+      const attributes = new PrismaAttributeRepository(persistence.service);
+      const schema = await persistence.unitOfWork
+        .run(market, async () => ({
+          ok: true as const,
+          value: await attributes.loadSchema(market, familyCode),
+        }))
+        .then((result) => (result.ok ? result.value : null));
+      expect(schema?.fields).toHaveLength(1);
+      expect(schema?.fields[0]).toMatchObject({
+        dataType: 'measure',
+        required: true,
+        bounds: { min: 1, max: 5000 },
+        measure: settings,
+      });
+    } finally {
+      await persistence.close();
+    }
+  });
+
+  it('refuses to roll the measure migration back while a measure definition exists, and changes nothing (attributes A3)', async () => {
+    await insertDefinition({ code: `net-${randomUUID().slice(0, 8)}`, data_type: 'measure' });
+    const down = readFileSync(
+      join(
+        __dirname,
+        '../../../../prisma/migrations/20261103150000_catalog_attribute_measure/down.sql',
+      ),
+      'utf8',
+    );
+    try {
+      // The ALTER restores the earlier CHECK, which a measure row violates; the statement fails
+      // as a whole, so the widened CHECK stays and the row stays valid.
+      expect(await sqlState(owner, down)).toBe('23514');
+    } finally {
+      await owner.query('RESET lock_timeout; RESET statement_timeout');
+    }
+    const kept = await sql.query<{ n: string }>(
+      `SELECT count(*) AS n FROM catalog.attribute_definitions WHERE market_id = $1 AND data_type = 'measure'`,
+      [market.marketId],
+    );
+    expect(Number(kept.rows[0]!.n)).toBeGreaterThan(0);
   });
 });

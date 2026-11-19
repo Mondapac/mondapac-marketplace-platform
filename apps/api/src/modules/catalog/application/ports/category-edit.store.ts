@@ -4,7 +4,15 @@ import type { CategoryStatus } from '../../domain/platform-category';
 
 /** What changed on a category, for the revision's `change_kind` (C2 vocabulary). */
 export type CategoryChangeKind =
-  'details-changed' | 'reordered' | 'hidden' | 'shown' | 'slug-changed' | 'discarded';
+  | 'details-changed'
+  | 'reordered'
+  | 'hidden'
+  | 'shown'
+  | 'slug-changed'
+  | 'discarded'
+  | 'moved'
+  | 'merged'
+  | 'archived';
 
 /** The root-row fields one change may set; a field left out keeps its value. */
 export interface CategoryPatch {
@@ -15,6 +23,10 @@ export interface CategoryPatch {
   readonly imageId?: string | null;
   readonly seo?: CategorySeo;
   readonly slug?: string;
+  /** A move (C4a): the new parent, recorded on the revision too. */
+  readonly parentId?: Id<'Category'> | null;
+  /** A merge (C4a): the category this one now resolves to; set with status `merged`. */
+  readonly mergedIntoId?: Id<'Category'>;
 }
 
 /** A new category: created hidden, last among its siblings (plan decision 5). */
@@ -40,6 +52,14 @@ export interface CategoryChange {
   readonly patch: CategoryPatch;
   readonly authorAccountId: Id<'Account'>;
   readonly now: Temporal.Instant;
+  /** The admin's reason note of a move, merge or archive (10 to 500 characters), else absent. */
+  readonly reason?: string;
+  /**
+   * How many outbox events the unit writes for this category (default 1). The version rises by
+   * that many, one version per event (catalog data design Q-K3), so the outbox's unique
+   * `(market_id, aggregate_id, aggregate_version)` holds; the revision number still rises by one.
+   */
+  readonly events?: number;
 }
 
 /**
@@ -65,6 +85,16 @@ export interface CategoryEditStore {
     now: Temporal.Instant,
   ): Promise<boolean>;
 
+  /**
+   * The slugs among `slugs` that `slugUnavailable` would refuse, in two queries for any number of
+   * slugs (the import's read-only preview; the write still checks each slug under its lock).
+   */
+  unavailableSlugs(
+    market: MarketContext,
+    slugs: readonly string[],
+    now: Temporal.Instant,
+  ): Promise<ReadonlySet<string>>;
+
   /** Whether the category was ever shown (a `shown` revision exists), and how many product revisions name it. */
   discardFacts(
     market: MarketContext,
@@ -76,7 +106,8 @@ export interface CategoryEditStore {
 
   /**
    * Writes the revision and the root change. Throws `StaleAggregateError` when the category's
-   * version is no longer the one in `change.category`. Returns the new version.
+   * version is no longer the one in `change.category`. Returns the new version: the old one plus
+   * `change.events` (default 1).
    */
   apply(market: MarketContext, change: CategoryChange): Promise<number>;
 
@@ -94,5 +125,61 @@ export interface CategoryEditStore {
    */
   swapPositions(market: MarketContext, a: EditableCategory, b: EditableCategory): Promise<void>;
 }
+
+/**
+ * The product facts of a move, merge or archive (categories package C4a), read inside the use
+ * case's unit. "Published product" means a product in status `published` and the categories of its
+ * published revision: what the claim path reads.
+ */
+export interface CategoryRestructureStore {
+  /** Per id, the published products whose published revision names it (ids with none left out). */
+  directProducts(
+    market: MarketContext,
+    categoryIds: readonly Id<'Category'>[],
+  ): Promise<ReadonlyMap<string, number>>;
+
+  /**
+   * The published products whose published revision names one of `categoryIds`, in product id
+   * order, at most `limit`: per product, the other platform categories (any status) the revision
+   * names. An archive reads it for the products it would leave with no live category (catalog
+   * design AC 4) and for the ancestors they leave (Hassan M1, #712).
+   */
+  otherCategoriesOf(
+    market: MarketContext,
+    categoryIds: readonly Id<'Category'>[],
+    limit: number,
+  ): Promise<readonly (readonly Id<'Category'>[])[]>;
+
+  /**
+   * The published products whose published revision names one of the ids, in id order, at most
+   * `limit`; and the `active` certification tags of their Offers (not deleted), which a change
+   * marks `rechecking` (M1).
+   */
+  productsUnder(
+    market: MarketContext,
+    categoryIds: readonly Id<'Category'>[],
+    limit: number,
+  ): Promise<{
+    readonly products: readonly {
+      readonly productId: Id<'Product'>;
+      readonly revisionId: Id<'ProductRevision'>;
+    }[];
+    readonly activeTags: number;
+  }>;
+
+  /**
+   * Business activities (sellers' shop types): a merge links every activity of `from` to `to`
+   * (insert ignoring a link that exists) and removes the links of `from`; an archive (`to` null)
+   * removes them. Answers the number of activities that named `from`.
+   */
+  relinkActivities(
+    market: MarketContext,
+    from: Id<'Category'>,
+    to: Id<'Category'> | null,
+    now: Temporal.Instant,
+  ): Promise<number>;
+}
+
+export const CATEGORY_RESTRUCTURE_STORE = Symbol('CATEGORY_RESTRUCTURE_STORE');
 
 export const CATEGORY_EDIT_STORE = Symbol('CATEGORY_EDIT_STORE');

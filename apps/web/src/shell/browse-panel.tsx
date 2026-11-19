@@ -7,6 +7,7 @@ import { CategoryArt } from '../icons/category-icon.tsx';
 import { Icon } from '../icons/icon.tsx';
 import type { Category } from '../storefront/types.ts';
 import { useStore } from './store-context.tsx';
+import { categoryHref } from '../storefront/links.ts';
 
 /** "Browse products": a 360px panel that slides over the page, two levels deep. */
 export function BrowsePanel({ categories }: { readonly categories: readonly Category[] }) {
@@ -71,7 +72,7 @@ export function BrowsePanel({ categories }: { readonly categories: readonly Cate
               {closeButton}
             </div>
             <div className="pb">
-              <Link className="prow sub all" href={`/c/${category.code}`} onClick={close}>
+              <Link className="prow sub all" href={categoryHref(category.code)} onClick={close}>
                 {t('see-all', { name: category.name.toLowerCase() })}
                 <span className="rt">
                   <Icon name="chevr" />
@@ -81,7 +82,7 @@ export function BrowsePanel({ categories }: { readonly categories: readonly Cate
                 <Link
                   key={child.code}
                   className="prow sub"
-                  href={`/c/${category.code}/${child.code}`}
+                  href={categoryHref(child.code)}
                   onClick={close}
                 >
                   {child.name}

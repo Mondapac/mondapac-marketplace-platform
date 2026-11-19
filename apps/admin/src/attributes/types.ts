@@ -3,15 +3,20 @@
 
 export const VIEW_PERMISSION = 'catalog.attribute.view';
 export const EDIT_PERMISSION = 'catalog.attribute.edit';
+export const RESTRUCTURE_PERMISSION = 'catalog.attribute.restructure';
 export const BRANDS_READ_PERMISSION = 'catalog.brand.read';
 export const ATTRIBUTES_PATH = '/catalog/attributes';
 export const BRANDS_PATH = '/catalog/brands';
 export const API_ATTRIBUTES = 'catalog/admin/attributes';
 export const API_FEATURE_SETS = 'catalog/admin/feature-sets';
+export const API_MISSING_DETAILS = 'catalog/admin/reports/products-missing-details';
+export const API_MISSING_DETAILS_EMAIL = `${API_MISSING_DETAILS}/email-sellers`;
 export const PAGE_SIZE = 50;
 
 /** What a write answers (attributes A2): enough to read the attribute again. */
 export interface AttributeWrite {
+  /** The review a save opened (Admin Inbox > System requests); absent or null when none. */
+  readonly request?: { readonly id: string; readonly number: number } | null;
   readonly attribute: {
     readonly id: string;
     readonly code: string;
@@ -33,6 +38,7 @@ export const DATA_TYPES = [
   'date',
   'select',
   'multi-select',
+  'measure',
 ] as const;
 export type DataType = (typeof DATA_TYPES)[number];
 
@@ -45,6 +51,21 @@ export interface MarketLocales {
   readonly default: string;
   /** The default first. */
   readonly supported: readonly string[];
+}
+
+/** A unit the Market offers (`catalog.units`), with its label per locale (attributes A3). */
+export interface MarketUnit {
+  readonly code: string;
+  readonly dimension: string;
+  readonly labels: Localized;
+}
+
+/** What an administrator chose for a number-with-unit attribute (attributes A3). */
+export interface MeasureConfig {
+  readonly dimension: string;
+  readonly units: readonly string[];
+  readonly defaultUnit: string;
+  readonly decimals: number;
 }
 
 export interface AttributeSummary {
@@ -71,8 +92,11 @@ export interface AttributePage {
   readonly total: number;
   readonly totalAll: number;
   readonly locales: MarketLocales;
+  readonly units: readonly MarketUnit[];
   readonly featureSets: readonly { readonly id: string; readonly code: string }[];
   readonly truncated: boolean;
+  /** Whether a new attribute is reviewed (and a discard, merge or archive waits for approval). */
+  readonly review?: { readonly reviewed: boolean; readonly risk: string };
 }
 
 export interface AttributeOption {
@@ -81,6 +105,8 @@ export interface AttributeOption {
   readonly active: boolean;
   readonly position: number;
   readonly productCount: number;
+  /** The value this one was merged into (attributes A8). */
+  readonly mergedInto?: string | null;
 }
 
 export interface FeatureSetUse {
@@ -117,10 +143,20 @@ export interface AttributeDisplay {
 }
 
 export interface AttributeDetail extends AttributeSummary {
+  /** Whether a save is reviewed here (Admin Inbox > System requests): the form then asks for a note. */
+  readonly review?: { readonly reviewed: boolean; readonly risk: string };
   readonly createdByKind: 'seed' | 'admin';
   readonly createdAt: string;
   readonly version: number;
-  readonly bounds: { readonly maxLength?: number; readonly min?: number; readonly max?: number };
+  /** The attribute this one was merged into (attributes A8); set only on an archived one. */
+  readonly mergedInto?: { readonly id: string; readonly code: string } | null;
+  /** For a measure, `min` and `max` are in the dimension's base unit. */
+  readonly bounds: {
+    readonly maxLength?: number;
+    readonly min?: number;
+    readonly max?: number;
+    readonly measure?: MeasureConfig;
+  };
   readonly display: AttributeDisplay;
   readonly options: readonly AttributeOption[];
   readonly productCount: number;
@@ -128,6 +164,7 @@ export interface AttributeDetail extends AttributeSummary {
   readonly history: readonly HistoryEntry[];
   readonly historyTruncated: boolean;
   readonly locales: MarketLocales;
+  readonly units: readonly MarketUnit[];
 }
 
 export interface FeatureSetRow {
@@ -143,11 +180,16 @@ export interface FeatureSetRow {
 export interface FeatureSetList {
   readonly items: readonly FeatureSetRow[];
   readonly truncated: boolean;
+  /** Whether a new feature set waits for another admin's approval (Admin Inbox > System requests). */
+  readonly review?: { readonly reviewed: boolean; readonly risk: string };
 }
+
+export type RequirementLevel = 'required' | 'recommended' | 'optional';
 
 export interface FeatureSetAttribute {
   readonly code: string;
   readonly required: boolean;
+  readonly level?: RequirementLevel;
   readonly isVariantOption: boolean;
   readonly attributeId: string | null;
   readonly names: Localized | null;
@@ -161,9 +203,13 @@ export interface FeatureSetDetail {
   readonly code: string;
   readonly status: string;
   readonly revisionNo: number;
+  /** The version the editor names when it saves. */
+  readonly version?: number;
+  readonly names?: Localized;
   readonly createdAt: string;
   readonly groups: readonly {
     readonly groupCode: string;
+    readonly names?: Localized;
     readonly attributes: readonly FeatureSetAttribute[];
   }[];
   readonly productCount: number;
@@ -171,7 +217,7 @@ export interface FeatureSetDetail {
 }
 
 /** The page's tabs; Brands is a link to its own page. */
-export const TABS = ['attributes', 'feature-sets', 'brands', 'waiting'] as const;
+export const TABS = ['attributes', 'feature-sets', 'brands', 'waiting', 'missing-details'] as const;
 export type Tab = (typeof TABS)[number];
 
 /** The sub-tabs of one attribute (plan 16). */
@@ -249,6 +295,40 @@ export interface OpenRelaxationList {
   readonly requests: readonly OpenRelaxation[];
 }
 
+/** A count the server may have cut short: `atLeast` means the real number is this or more. */
+export interface ImpactCount {
+  readonly count: number;
+  readonly atLeast: boolean;
+}
+
+/** What a merge or an archive reaches (attributes A8; `GET .../attributes/:id/impact`). */
+export interface ImpactAnswer {
+  readonly attribute: {
+    readonly id: string;
+    readonly code: string;
+    readonly status: AttributeStatus;
+    readonly version: number;
+    readonly material: boolean;
+    readonly isVariantOption: boolean;
+    readonly dataType: string;
+  };
+  readonly impact: {
+    readonly publishedProducts: ImpactCount;
+    readonly drafts: ImpactCount;
+    readonly featureSetCount: number;
+    readonly featureSets: readonly {
+      readonly id: string;
+      readonly code: string;
+      readonly names: Localized;
+    }[];
+    readonly categories: ImpactCount;
+    readonly filters: ImpactCount;
+    readonly liveVariantProducts: ImpactCount;
+  };
+}
+
+export const API_ARCHIVE_REQUESTS = 'catalog/admin/attribute-archive-requests';
+
 // Value suggestions (attributes A5): a seller asked for a value a select field does not offer.
 // The label is the seller's own text: rendered as plain text only.
 export const DECIDE_PERMISSION = 'catalog.attribute-suggestion.decide';
@@ -284,4 +364,45 @@ export interface SuggestionDecided {
     readonly version: number;
     readonly optionCode: string | null;
   };
+}
+
+/** One row of the report "Products missing required details" (A4; apps/api attribute-admin.dto.ts). */
+export interface MissingDetailsItem {
+  readonly productId: string;
+  readonly productCode: string;
+  readonly name: string | null;
+  readonly sellerId: string | null;
+  readonly featureSetCode: string;
+  /** Codes of the required attributes with no value. */
+  readonly missing: readonly string[];
+  /** When an "Email sellers" mail about it last went to its seller; null when never, or while a newer request waits. */
+  readonly lastEmailedAt: string | null;
+}
+
+export interface MissingDetailsPage {
+  readonly items: readonly MissingDetailsItem[];
+  /** The `afterId` of the next call; null when the whole Market has been read. */
+  readonly nextAfterId: string | null;
+  readonly scanned: number;
+  readonly unreadableFeatureSets: readonly string[];
+}
+
+/** What "Email sellers" answers (apps/api attribute-admin.dto.ts MissingDetailsEmailBody). */
+export interface EmailSellersAnswer {
+  readonly dryRun: boolean;
+  readonly throttleDays: number;
+  readonly sellers: readonly {
+    readonly sellerId: string;
+    readonly sellerName: string | null;
+    readonly products: readonly {
+      readonly productId: string;
+      readonly productCode: string;
+      readonly name: string | null;
+      /** English names of the missing details. */
+      readonly missing: readonly string[];
+      readonly status: 'will-send' | 'queued' | 'recently-emailed';
+      readonly lastRequestedAt: string | null;
+    }[];
+  }[];
+  readonly ignored: readonly { readonly productId: string; readonly reason: string }[];
 }

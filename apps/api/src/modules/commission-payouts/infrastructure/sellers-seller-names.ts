@@ -1,9 +1,13 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type { SellersFacade } from '../../sellers';
 import type { SellerNames } from '../application/ports/seller-names';
+import type { StoreNameSearch } from '../application/ports/store-name-search';
 
-/** {@link SellerNames} on the sellers facade: the public store name of the approved revision. */
-export class SellersSellerNames implements SellerNames {
+/**
+ * {@link SellerNames} and {@link StoreNameSearch} on the sellers facade: the public store name of
+ * the approved revision, and the sellers whose name matches a list's search.
+ */
+export class SellersSellerNames implements SellerNames, StoreNameSearch {
   constructor(private readonly sellers: SellersFacade) {}
 
   async storeNames(context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
@@ -14,5 +18,12 @@ export class SellersSellerNames implements SellerNames {
       for (const summary of result.value) names.set(summary.sellerId, summary.storeName);
     }
     return names;
+  }
+
+  async storesMatching(context: CallContext, term: string) {
+    const answer = await this.sellers.searchStoreNames(context, term);
+    // The term is never part of the error.
+    if (!answer.ok) throw new Error(`sellers.searchStoreNames: ${answer.error.code}`);
+    return answer.value;
   }
 }

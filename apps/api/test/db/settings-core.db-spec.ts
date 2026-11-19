@@ -1,10 +1,35 @@
-import { Temporal } from '@mondapac/shared-kernel';
+import { devNull } from 'node:os';
+import type { INestApplicationContext } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import pino from 'pino';
+import { ok, Temporal } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   testAuthenticatedActor,
   testCallContext,
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
+import { AppModule } from '../../src/app.module';
+import { SettingsModule } from '../../src/modules/settings';
+import {
+  MARKET_SETTING_REPOSITORY,
+  type MarketSettingRepository,
+} from '../../src/modules/settings/application/ports/market-setting.repository';
+import { SettingsReverter } from '../../src/modules/settings/application/settings-reverter';
+import {
+  SYSTEM_REQUEST_RECORDER,
+  SystemRequestsModule,
+  type SystemRequestRecorder,
+} from '../../src/modules/system-requests';
+import {
+  POLICY_REPOSITORY,
+  type PolicyRepository,
+} from '../../src/modules/system-requests/application/ports/policy.repository';
+import {
+  REQUEST_REPOSITORY,
+  type RequestRepository,
+} from '../../src/modules/system-requests/application/ports/request.repository';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { ChangeListPagingSetting } from '../../src/modules/settings/application/use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from '../../src/modules/settings/application/use-cases/read-list-paging.use-case';
 import { ViewListPagingSetting } from '../../src/modules/settings/application/use-cases/view-list-paging-setting.use-case';
@@ -14,7 +39,13 @@ import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
-import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
+import { RecordingReview } from '../support/system-request-fakes';
+import {
+  testAppConfig,
+  TEST_MARKET_CONFIG_DIRS,
+  TEST_MARKET_IDS,
+  TEST_MARKETS,
+} from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
@@ -72,6 +103,8 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
       settings: new PrismaMarketSettingRepository(db.service),
       audit: { record: () => Promise.resolve() },
       clock,
+      // Area marketplace is not reviewed here; system-requests-core covers the real recorder.
+      review: new RecordingReview(),
     };
   });
   afterAll(async () => {
@@ -235,6 +268,111 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
         [market.marketId],
       );
       expect(history.rows.map((row: { version: number }) => row.version)).toEqual([1, 2]);
+    });
+  });
+
+  // The hook on the real System requests recorder (area marketplace switched on for this Market,
+  // and off again after): a change opens its request in the same unit, a change without a note
+  // leaves nothing behind, and the registered reverter restores the value before, as a reject or
+  // a withdrawal does. Here rather than in system-requests' spec: only this file writes the rows.
+  describe('review in System requests', () => {
+    let app: INestApplicationContext;
+    let hook: SettingsDependencies;
+    let requests: RequestRepository;
+    let policy: PolicyRepository;
+
+    const inUnit = async <T>(work: () => Promise<T>): Promise<T> => {
+      const result = await hook.unitOfWork.run(market, async () => ok(await work()));
+      if (!result.ok) throw new Error('unit failed');
+      return result.value;
+    };
+    const switchArea = async (enabled: boolean) => {
+      const current = await inUnit(() => policy.area(market, 'marketplace'));
+      const stamp = {
+        version: (current?.version ?? 0) + 1,
+        at: clock.now(),
+        by: ids.next<'Account'>(),
+      };
+      expect(
+        await inUnit(() => policy.setArea(market, 'marketplace', { enabled, risk: 'low' }, stamp)),
+      ).toBe(true);
+    };
+    const paging = async () => {
+      const rows = await sql.query<{ value: string; version: number }>(
+        `SELECT value, version FROM settings.market_settings WHERE market_id = $1 AND code = 'list-paging'`,
+        [market.marketId],
+      );
+      return rows.rows[0] ?? null;
+    };
+
+    beforeAll(async () => {
+      const moduleRef = await Test.createTestingModule({
+        imports: [
+          AppModule.register({
+            config: testAppConfig({ DATABASE_URL: testDatabaseUrl() }),
+            logDestination: pino.destination(devNull),
+          }),
+        ],
+      }).compile();
+      app = await moduleRef.init();
+      const reviews = app.select(SystemRequestsModule);
+      hook = {
+        unitOfWork: app.get<UnitOfWork>(UNIT_OF_WORK),
+        settings: app
+          .select(SettingsModule)
+          .get<MarketSettingRepository>(MARKET_SETTING_REPOSITORY, { strict: true }),
+        audit: { record: () => Promise.resolve() },
+        clock,
+        review: reviews.get<SystemRequestRecorder>(SYSTEM_REQUEST_RECORDER, { strict: true }),
+      };
+      requests = reviews.get<RequestRepository>(REQUEST_REPOSITORY, { strict: true });
+      policy = reviews.get<PolicyRepository>(POLICY_REPOSITORY, { strict: true });
+      await switchArea(true);
+    });
+    afterAll(async () => {
+      await switchArea(false);
+      await app.close();
+    });
+
+    it('opens the request in the unit of the change, keeps nothing without a note, and reverts', async () => {
+      const author = admin('settings-db-hook-author');
+      const change = (note?: string) =>
+        new ChangeListPagingSetting(gate, hook).execute(author, {
+          code: 'list-paging',
+          value: 'prev-next',
+          expectedVersion: 0,
+          note,
+        });
+      const refused = await change();
+      expect(!refused.ok && refused.error.code).toBe('validation.failed');
+      expect(await paging()).toBeNull();
+
+      const saved = await change('Phones show fewer rows');
+      if (!saved.ok || saved.value.request === null) throw new Error('no request opened');
+      expect(saved.value.review).toEqual({ reviewed: true, risk: 'low' });
+      expect(await paging()).toEqual({ value: 'prev-next', version: 1 });
+      const id = saved.value.request.id;
+      expect(await inUnit(() => requests.find(market, id))).toMatchObject({
+        status: 'open',
+        area: 'marketplace',
+        subjectKind: 'settings.market-setting',
+        subjectRef: 'list-paging',
+        before: { value: 'pages' },
+        after: { value: 'prev-next' },
+        note: 'Phones show fewer rows',
+      });
+
+      const reverter = new SettingsReverter(hook);
+      const request = {
+        requestId: id,
+        subjectRef: 'list-paging',
+        before: { value: 'pages' },
+        after: { value: 'prev-next' },
+      };
+      const reviewer = admin('settings-db-hook-reviewer');
+      expect(await inUnit(() => reverter.revert(reviewer, request))).toBe('reverted');
+      expect(await paging()).toEqual({ value: 'pages', version: 2 });
+      expect(await inUnit(() => reverter.revert(reviewer, request))).toBe('changed-since');
     });
   });
 });

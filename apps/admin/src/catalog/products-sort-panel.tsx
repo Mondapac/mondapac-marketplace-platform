@@ -1,12 +1,13 @@
 'use client';
 
-import { RadioGroup } from '@mondapac/ui';
+import { ListSortPanel } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { SORTS, defaultDirection, type Direction, type Sort } from './products-types.ts';
 
 /**
  * The sort menu (Figma "Sort menu"): one field and the direction, applied as they are chosen. A
- * new field starts in its natural direction (names A to Z, dates newest first).
+ * new field starts in its natural direction (names A to Z, dates newest first). The menu itself is
+ * the shared list menu of `@mondapac/ui`; this gives it the admin's words.
  */
 export function ProductsSortPanel({
   sort,
@@ -18,31 +19,19 @@ export function ProductsSortPanel({
   readonly onChange: (sort: Sort, direction: Direction) => void;
 }) {
   const t = useTranslations('catalog.products.sort');
-  const kind = sort === 'name' ? 'name' : 'date';
   return (
-    <div className="flex flex-col gap-4">
-      <RadioGroup
-        legend={t('by')}
-        name="products-sort"
-        value={sort}
-        options={SORTS.map((value) => ({ value, label: t(`field.${value}`) }))}
-        onChange={(value) => onChange(value as Sort, defaultDirection(value as Sort))}
-      />
-      <div className="border-t border-line-row pt-3">
-        <RadioGroup
-          legend={t('order')}
-          name="products-sort-direction"
-          value={direction}
-          options={[
-            { value: defaultDirection(sort), label: t(`${kind}.first`) },
-            {
-              value: defaultDirection(sort) === 'asc' ? 'desc' : 'asc',
-              label: t(`${kind}.second`),
-            },
-          ]}
-          onChange={(value) => onChange(sort, value as Direction)}
-        />
-      </div>
-    </div>
+    <ListSortPanel
+      sort={sort}
+      direction={direction}
+      fields={SORTS.map((value) => ({ id: value, label: t(`field.${value}`) }))}
+      defaultDirection={(value) => defaultDirection(value as Sort)}
+      orderLabels={(value) => {
+        const kind = value === 'name' ? 'name' : 'date';
+        return [t(`${kind}.first`), t(`${kind}.second`)];
+      }}
+      labels={{ by: t('by'), order: t('order') }}
+      name="products-sort"
+      onChange={(value, next) => onChange(value as Sort, next)}
+    />
   );
 }

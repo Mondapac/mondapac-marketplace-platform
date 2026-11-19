@@ -78,19 +78,31 @@ describe('sellers without an owner', () => {
 describe('settings navigation', () => {
   const shell = read('src/server/settings-shell.tsx');
 
-  it('shows the sub-navigation column from 1180px and the back link only below it', () => {
-    expect(shell).toContain('min-[1180px]:grid-cols-[12.5rem_minmax(0,1fr)]');
-    expect(shell).toMatch(/hidden[^"]*min-\[1180px\]:block/);
-    expect(shell).toMatch(/min-\[1180px\]:hidden[^]*<BackLink href="\/settings"/);
+  it('lets the page draw the pin star beside its title, so the top bar has none', () => {
+    expect(shell).toContain('pinInPage');
+    expect(read('src/server/admin-shell.tsx')).toContain('pinInPage ? undefined : <PinButton />');
   });
 
-  it('lets the content column shrink, so a wide table never widens the page', () => {
-    expect(shell).toContain('min-w-0');
+  it('gives every settings page its pin beside the title: no plain h1 under Settings', () => {
+    const pages = sourceFiles(join(__dirname, '..', 'app/(shell)/settings'));
+    expect(pages.length).toBeGreaterThan(0);
+    for (const page of pages) expect(readFileSync(page, 'utf8'), page).not.toContain('<h1');
   });
 
-  it('keeps every hub and sub-navigation link tall enough to touch', () => {
+  it('draws one pin on a wallet page outside Settings: the page title has it, the top bar not', () => {
+    const wallet = read('src/wallet/wallet-page.tsx');
+    expect(wallet).toContain('<SettingsTitle>');
+    expect(wallet).toMatch(/<AdminShell[^>]*pinInPage/);
+  });
+
+  it('has no second column: the back link shows only below the sidebar breakpoint', () => {
+    expect(shell).not.toContain('min-[1180px]');
+    expect(shell).not.toContain('SettingsSubNav');
+    expect(shell).toMatch(/md:hidden[^]*<BackLink href="\/settings"/);
+  });
+
+  it('keeps every hub link tall enough to touch', () => {
     expect(read('../../packages/ui/src/settings/settings-hub.tsx')).toContain('min-h-12');
-    expect(read('src/settings/settings-sub-nav.tsx')).toContain('min-h-10');
   });
 
   it('puts the hub cards on one column on phones and two from 640px, never three', () => {

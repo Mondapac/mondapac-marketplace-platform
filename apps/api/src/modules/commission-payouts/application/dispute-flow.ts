@@ -12,7 +12,6 @@ import { DisputeDecided, PayoutHoldPlaced, PayoutHoldReleased } from '../domain/
 import {
   DECISION_BEARERS,
   DECISION_REASON_CODES,
-  DISPUTE_BUCKETS,
   bucketOf,
   decisionRule,
   decisionsBySellerOrder,
@@ -64,8 +63,6 @@ export type DisputeFailure =
 
 export type DisputeEventFailure =
   { readonly code: 'validation.failed' } | { readonly code: 'commission-payouts.try-again' };
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const idOf = <K extends string>(value: unknown): Id<K> | null => {
   const parsed = typeof value === 'string' ? parseId<K>(value) : null;
@@ -361,119 +358,6 @@ export interface DisputeRowView {
   readonly evidenceDueBy: Temporal.Instant | null;
   readonly amount: MoneyView;
   readonly openedAt: Temporal.Instant;
-}
-
-export interface DisputeListView {
-  readonly counts: Readonly<Record<DisputeBucket, number>>;
-  readonly disputes: readonly DisputeRowView[];
-  readonly nextCursor: string | null;
-}
-
-export const DISPUTE_PAGE_DEFAULT = 50;
-export const DISPUTE_PAGE_MAX = 100;
-
-const encodeCursor = (c: Pick<DisputeCase, 'openedAt' | 'disputeId'>) =>
-  `${c.openedAt.epochMilliseconds}.${c.disputeId}`;
-
-function decodeCursor(value: string) {
-  const match = /^([0-9]{1,15})\.([0-9a-f-]{36})$/.exec(value);
-  if (match === null || !UUID.test(match[2]!)) return undefined;
-  const disputeId = idOf<'Dispute'>(match[2]);
-  if (disputeId === null) return undefined;
-  return { openedAt: Temporal.Instant.fromEpochMilliseconds(Number(match[1])), disputeId };
-}
-
-/** An admin lists the cases of the Market, with the count of each bucket. */
-export async function listDisputes(
-  deps: DisputeDependencies,
-  context: CallContext,
-  input: { readonly filter?: unknown; readonly cursor?: unknown; readonly limit?: unknown },
-): Promise<Result<DisputeListView, DisputeFailure>> {
-  if (adminOf(context) === null) return err({ code: 'access.denied' });
-  const fields: { path: string; code: string }[] = [];
-  let bucket: DisputeBucket | null = null;
-  if (input?.filter !== undefined) {
-    if ((DISPUTE_BUCKETS as readonly unknown[]).includes(input.filter)) {
-      bucket = input.filter as DisputeBucket;
-    } else {
-      fields.push({ path: 'filter', code: 'format' });
-    }
-  }
-  let after: ReturnType<typeof decodeCursor> = undefined;
-  if (input?.cursor !== undefined) {
-    after = typeof input.cursor === 'string' ? decodeCursor(input.cursor) : undefined;
-    if (after === undefined) fields.push({ path: 'cursor', code: 'format' });
-  }
-  let limit = DISPUTE_PAGE_DEFAULT;
-  if (input?.limit !== undefined) {
-    if (
-      typeof input.limit === 'number' &&
-      Number.isInteger(input.limit) &&
-      input.limit >= 1 &&
-      input.limit <= DISPUTE_PAGE_MAX
-    ) {
-      limit = input.limit;
-    } else {
-      fields.push({ path: 'limit', code: 'range' });
-    }
-  }
-  if (fields.length > 0) return err({ code: 'validation.failed', fields });
-
-  const loaded = await deps.unitOfWork.run<
-    {
-      readonly rows: readonly DisputeCase[];
-      readonly counts: ReadonlyMap<DisputeBucket, number>;
-      readonly sellerOrders: readonly SellerOrderRef[];
-    },
-    DisputeFailure
-  >(
-    context.market,
-    async () => {
-      const rows = await deps.disputes.list(context.market, {
-        bucket,
-        limit: limit + 1,
-        after: input?.cursor === undefined || after === undefined ? null : after,
-      });
-      const counts = await deps.disputes.counts(context.market);
-      const sellerOrders = await deps.disputes.sellerOrdersOfOrders(
-        context.market,
-        rows.slice(0, limit).map((row) => row.orderId),
-      );
-      return ok({ rows, counts, sellerOrders });
-    },
-    { readOnly: true },
-  );
-  if (!loaded.ok) return loaded;
-  const page = loaded.value.rows.slice(0, limit);
-  const sellerIds = [...new Set(loaded.value.sellerOrders.map((s) => s.sellerId))];
-  const names = await namesOf(deps, context, sellerIds);
-  const sellersOf = (orderId: Id<'Order'>) => {
-    const ids = [
-      ...new Set(
-        loaded.value.sellerOrders.filter((s) => s.orderId === orderId).map((s) => s.sellerId),
-      ),
-    ];
-    return ids.map((sellerId) => ({ sellerId, storeName: names.get(sellerId) ?? null }));
-  };
-  const last = page[page.length - 1];
-  return ok({
-    counts: Object.fromEntries(
-      DISPUTE_BUCKETS.map((b) => [b, loaded.value.counts.get(b) ?? 0]),
-    ) as Record<DisputeBucket, number>,
-    disputes: page.map((c) => ({
-      disputeId: c.disputeId,
-      orderId: c.orderId,
-      sellers: sellersOf(c.orderId),
-      reason: c.reason,
-      moneyState: moneyStateOf(c),
-      status: c.status,
-      bucket: c.bucket,
-      evidenceDueBy: c.evidenceDueBy,
-      amount: moneyView(c.amount),
-      openedAt: c.openedAt,
-    })),
-    nextCursor: loaded.value.rows.length > limit && last !== undefined ? encodeCursor(last) : null,
-  });
 }
 
 async function namesOf(

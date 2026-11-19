@@ -118,6 +118,30 @@ export interface TagReevaluationRequestRepository {
   ): Promise<void>;
 
   /**
+   * In a category move, merge or archive unit (categories C4a; rule M1): the request of the
+   * revision the product publishes now (the product row is read and locked in the unit, before its
+   * Offers, so a publish that committed meanwhile is kept and none commits after; `productRevisionId`
+   * is the one the change read; nothing when no longer published) is
+   * made pending again from its first Offer, so the job asks
+   * every kept tag against the new tree. The publish already wrote that revision's one request
+   * (the database refuses a second), so it is reopened: state `pending`, no cursor, no counts and a
+   * new `createdAt` strictly after the stored one; a run already under way on it then neither
+   * moves its cursor nor closes it ({@link progress} and {@link close} match `requestedAt`). With
+   * no request for the revision yet, one is written; the product's pending request of another
+   * revision is superseded, as by a publish. Throws `StaleAggregateError` when the row changed
+   * between its read and its update, or a concurrent publish holds the pending request.
+   */
+  requestForCategoryChange(
+    market: MarketContext,
+    request: {
+      readonly id: Id<'TagReevaluationRequest'>;
+      readonly productId: Id<'Product'>;
+      readonly productRevisionId: Id<'ProductRevision'>;
+      readonly now: Temporal.Instant;
+    },
+  ): Promise<void>;
+
+  /**
    * In a handler unit (`runOnce`): the pending `certification-event` request of a consumed event
    * (design 5.5). One request per event: a second write of the same event id is a no-op (the
    * inbox already makes the handler run once; the unique on `source_event_id` backs it).
@@ -170,19 +194,28 @@ export interface TagReevaluationRequestRepository {
    * Stores the counts and moves the cursor, only while the request is pending and never back (a
    * late overlapping run never moves it back). An equal cursor, or none while the stored one is
    * none, stores the counts only, so a run that stopped before settling an Offer still records
-   * what it saw (Mojtaba F4). False when nothing changed.
+   * what it saw (Mojtaba F4). Only while its `createdAt` is still `requestedAt`, the one the run
+   * read (a category change reopens a request with a new one). False when nothing changed.
    */
   progress(
     market: MarketContext,
     id: Id<'TagReevaluationRequest'>,
-    update: { readonly cursorOfferId: Id<'Offer'> | null; readonly counts: ReevaluationCounts },
+    update: {
+      readonly cursorOfferId: Id<'Offer'> | null;
+      readonly counts: ReevaluationCounts;
+      readonly requestedAt: Temporal.Instant;
+    },
   ): Promise<boolean>;
 
-  /** Ends a pending request as `settled` or `superseded`; false when it was not pending. */
+  /**
+   * Ends a pending request as `settled` or `superseded`, only while its `createdAt` is still
+   * `requestedAt`; false when it was not pending or was reopened since.
+   */
   close(
     market: MarketContext,
     id: Id<'TagReevaluationRequest'>,
     end: {
+      readonly requestedAt: Temporal.Instant;
       readonly state: 'settled' | 'superseded';
       readonly counts: ReevaluationCounts;
       readonly now: Temporal.Instant;

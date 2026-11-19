@@ -45,6 +45,8 @@ import { ProductCertificateReject } from '../application/use-cases/product-certi
 import { ProductCertificateReviewRead } from '../application/use-cases/product-certificate-review-read.use-case';
 import { ProductCertificateSaveDraft } from '../application/use-cases/product-certificate-save-draft.use-case';
 import { ProductCertificateSubmit } from '../application/use-cases/product-certificate-submit.use-case';
+import { ProductCertificateFormOptions } from '../application/use-cases/product-certificate-form-options.use-case';
+import { ProductCertificatesForProduct } from '../application/use-cases/product-certificates-for-product.use-case';
 import { ProductCertificatesList } from '../application/use-cases/product-certificates-list.use-case';
 import { ProductCertificateHistoryRead } from '../application/use-cases/product-certificate-history-read.use-case';
 import { ProductCertificateReinstate } from '../application/use-cases/product-certificate-reinstate.use-case';
@@ -59,6 +61,8 @@ import {
   ProductCertificateCreateRequest,
   ProductCertificateDraftRequest,
   ProductCertificateListView,
+  ProductCertificateOptionsView,
+  ProductCertificatesForProductView,
   ProductCertificateReviewView,
   ProductCertificateView,
   ProductCheckRecordedView,
@@ -193,6 +197,8 @@ export class AdminProductCertificateController {
     private readonly uploadDocument: ProductCertificateUploadDocument,
     private readonly removeDocument: ProductCertificateRemoveDocument,
     private readonly recordCheck: ProductCertificateRecordCheck,
+    private readonly forProduct: ProductCertificatesForProduct,
+    private readonly formOptions: ProductCertificateFormOptions,
   ) {}
 
   @Get()
@@ -232,6 +238,70 @@ export class AdminProductCertificateController {
       'certification.product-certificates-list',
       context,
       outcome as unknown as ProductCertificateListView,
+    );
+  }
+
+  // The two fixed routes below come before `:certificateId`, so a word is never read as an id.
+  @Get('for-product/:productId')
+  @Header('Cache-Control', 'private, no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'The manufacturer certificates that name a product',
+    description:
+      'Needs certification.product-certificate.view. Every certificate of the Market whose ' +
+      'draft, pending or approved coverage names the product; newest first, at most 100. Issuer, ' +
+      'expiry and the coverage of this product come from the approved revision, else the pending ' +
+      'one, else the draft. Never the number and never a document.',
+  })
+  @ApiOkResponse({ type: ProductCertificatesForProductView })
+  @ApiBadRequestResponse(BAD_REQUEST)
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: CertificationErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse(UNAVAILABLE)
+  async getForProduct(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('productId') productId: string,
+  ): Promise<ProductCertificatesForProductView> {
+    const outcome = this.#http.answer(
+      await this.forProduct.execute(context, { productId }),
+      response,
+      context,
+    );
+    return this.#http.settle(
+      'certification.product-certificates-for-product',
+      context,
+      outcome as unknown as ProductCertificatesForProductView,
+    );
+  }
+
+  @Get('options')
+  @Header('Cache-Control', 'private, no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'The types and issuers of the manufacturer certificate form',
+    description:
+      'Needs certification.product-certificate.edit (protected). The active third-party ' +
+      'document types with their form settings, each with its active issuers. Self-declaration ' +
+      'types are left out.',
+  })
+  @ApiOkResponse({ type: ProductCertificateOptionsView })
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: CertificationErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse(UNAVAILABLE)
+  async getOptions(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<ProductCertificateOptionsView> {
+    const outcome = this.#http.answer(
+      await this.formOptions.execute(context, {}),
+      response,
+      context,
+    );
+    return this.#http.settle(
+      'certification.product-certificate-form-options',
+      context,
+      outcome as unknown as ProductCertificateOptionsView,
     );
   }
 

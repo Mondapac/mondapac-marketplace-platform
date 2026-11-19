@@ -163,7 +163,7 @@ describe('StoreProfile About card', () => {
     fireEvent.change(box(), { target: { value: '  Family bakery, since 1990.  ' } });
     fireEvent.click(save());
 
-    await expectToast('Saved. Buyers can see it now.');
+    await expectToast('Store profile saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledWith(
       'PUT',
       'sellers/store-profile',
@@ -186,7 +186,7 @@ describe('StoreProfile About card', () => {
     fireEvent.click(saving);
     finish(done(view({ version: 3, about: { 'en-AU': 'New text' } })));
 
-    await expectToast('Saved. Buyers can see it now.');
+    await expectToast('Store profile saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledTimes(1);
   });
 
@@ -202,7 +202,7 @@ describe('StoreProfile About card', () => {
     );
     // The error summary at the top links to the box.
     const summary = screen.getByRole('group', { name: /needs? fixing/ });
-    expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+    expect(summary.textContent).toContain('1 setting needs fixing');
     expect(summary.textContent).toContain(': Use at most 10 characters.');
     fireEvent.click(within(summary).getByRole('link', { name: /About your store/ }));
     expect(document.activeElement).toBe(box());
@@ -345,7 +345,14 @@ describe('StoreProfile pictures', () => {
   const pick = async (name: string, data = 'QUJD') => {
     prepare.mockResolvedValueOnce({ kind: 'ready', data });
     fireEvent.change(chooseIn(name), { target: { files: [file()] } });
-    await waitFor(() => expect(within(row(name)).getByRole('img')).toBeTruthy());
+    // Wait for this pick's preview, not just any <img>: on a second pick the earlier
+    // preview is already in the row, so waiting for an <img> would return before the
+    // new file is staged.
+    await waitFor(() =>
+      expect(within(row(name)).getByRole('img').getAttribute('src')).toBe(
+        `data:image/jpeg;base64,${data}`,
+      ),
+    );
   };
 
   it('has a Pictures section with a Logo and a Banner row, and the spec help text', () => {
@@ -398,7 +405,7 @@ describe('StoreProfile pictures', () => {
     );
     fireEvent.click(save());
 
-    await expectToast('Saved. Buyers can see it now.');
+    await expectToast('Store profile saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledTimes(1);
     expect(call).toHaveBeenCalledWith(
       'PUT',
@@ -418,7 +425,7 @@ describe('StoreProfile pictures', () => {
     await pick('Logo');
     call.mockResolvedValueOnce(done(view({ version: 3, logo: SAVED })));
     fireEvent.click(save());
-    await expectToast('Saved. Buyers can see it now.');
+    await expectToast('Store profile saved. Buyers can see it now.');
     expect(call).toHaveBeenCalledWith(
       'PUT',
       'sellers/store-profile',
@@ -477,7 +484,7 @@ describe('StoreProfile pictures', () => {
     expect(chooseIn('Logo').disabled).toBe(true);
     expect(chooseIn('Banner').disabled).toBe(true);
     finish(done(view({ version: 3, logo: SAVED })));
-    await expectToast('Saved. Buyers can see it now.');
+    await expectToast('Store profile saved. Buyers can see it now.');
   });
 
   it('says so, and stages nothing, when the browser cannot take the file', async () => {
@@ -516,16 +523,16 @@ describe('StoreProfile pictures', () => {
       fireEvent.click(save());
 
       await within(row(name)).findByText(message);
-      expect(screen.getByRole('alert').textContent).toContain(
-        '1 setting needs fixing before you can save',
-      );
+      expect(screen.getByRole('alert').textContent).toContain('1 setting needs fixing');
       expect(save().disabled).toBe(true);
       // The other row is untouched.
       expect(within(row(name === 'Logo' ? 'Banner' : 'Logo')).queryByText(message)).toBeNull();
 
+      // The row already shows the first pick's image, so `pick` returns before the new file has
+      // been read; the notice and the Save lock clear only when the new file is staged.
       await pick(name, 'REVG');
-      expect(within(row(name)).queryByText(message)).toBeNull();
-      expect(save().disabled).toBe(false);
+      await waitFor(() => expect(within(row(name)).queryByText(message)).toBeNull());
+      await waitFor(() => expect(save().disabled).toBe(false));
     },
   );
 
@@ -552,7 +559,12 @@ describe('StoreProfile without the edit permission', () => {
   it('shows the view-only banner and the content, with no way to change it', () => {
     mount(view({ logo: { id: IMAGE, width: 512, height: 512 }, banner: null }), false);
 
-    expect(screen.getByText(/You can see the store profile but not change it/)).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'You can see the store profile but not change it. The store owner can give you access.',
+      ),
+    ).toBeTruthy();
     expect(box().disabled).toBe(true);
     expect(box().value).toBe('Family bakery.');
     expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();

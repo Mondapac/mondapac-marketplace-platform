@@ -457,6 +457,18 @@ describe.each(TEST_MARKETS)(
         expect(s.units.at(-1)).toMatchObject({ isolation: 'serializable' });
       });
 
+      it('takes the invitation lock in the closing unit only (identity.lock-invitation)', async () => {
+        const s = setUp();
+        await seeded(s);
+        const { invitationId, token } = await issuedAndMailed(s);
+
+        await expect(accept(s, token)).resolves.toMatchObject({ ok: true });
+        expect(s.fakes.invitationLocks).toEqual([invitationId]);
+        await expect(accept(s, token)).resolves.toEqual(REJECTED);
+        // A used token is refused in the reservation unit, before any lock.
+        expect(s.fakes.invitationLocks).toEqual([invitationId]);
+      });
+
       it('refuses the token of an admin invitation at the seller route', async () => {
         const s = setUp();
         await seeded(s);

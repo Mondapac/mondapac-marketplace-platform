@@ -50,6 +50,7 @@ const OTHER_PRODUCT = '01990000-0000-7000-8000-0000000000b2' as Id<'Product'>;
 const DEFINITION = '01990000-0000-7000-8000-0000000000c1' as Id<'AttributeDefinition'>;
 const MATERIAL = '01990000-0000-7000-8000-0000000000c2' as Id<'AttributeDefinition'>;
 const BRAND_TEXT = '01990000-0000-7000-8000-0000000000c3' as Id<'AttributeDefinition'>;
+const SIZE = '01990000-0000-7000-8000-0000000000c4' as Id<'AttributeDefinition'>;
 
 describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %s', (code) => {
   const market: MarketContext = testMarketContext(code, 'default');
@@ -188,7 +189,9 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
             ? MATERIAL
             : codeOf === 'brand-text'
               ? BRAND_TEXT
-              : null,
+              : codeOf === 'size-option'
+                ? SIZE
+                : null,
       ),
   };
   const eligibility = { isEligible: () => Promise.resolve(eligible) };
@@ -273,6 +276,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
     address = 'seller@example.test';
     definitions.rows.set(DEFINITION, definition(DEFINITION, 'pack-size'));
     definitions.rows.set(MATERIAL, definition(MATERIAL, 'origin-material', { material: true }));
+    definitions.rows.set(SIZE, definition(SIZE, 'size-option', { isVariantOption: true }));
     suggestions.codes.set(DEFINITION, 'pack-size');
   });
 
@@ -317,6 +321,21 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
       expect((await suggest('Cubed', 'cuts')).ok).toBe(true);
     });
 
+    it('takes a suggestion on a variant option, and an approval adds the option to it', async () => {
+      const answer = await suggest('Extra large', 'size-option');
+      if (!answer.ok) throw new Error(answer.error.code);
+      expect(answer.value).toMatchObject({ attributeCode: 'size-option', status: 'open' });
+      const approved = await build().approve.execute(context('admin'), {
+        suggestionId: answer.value.id,
+        version: 1,
+        labels: { [english]: 'Extra large' },
+      });
+      expect(approved).toMatchObject({ ok: true, value: { suggestion: { status: 'approved' } } });
+      const stored = definitions.rows.get(SIZE)!.state;
+      expect(stored.isVariantOption).toBe(true);
+      expect(stored.options.map((o) => o.code)).toEqual(['small', 'large', 'extra-large']);
+    });
+
     it('answers the same product.not-found for another seller’s product and an unknown one', async () => {
       const other = await suggest('X', 'pack-size', OTHER_PRODUCT);
       const unknown = await suggest('X', 'pack-size', '01990000-0000-7000-8000-0000000000ff');
@@ -324,8 +343,8 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
       expect(unknown).toEqual(other);
     });
 
-    it('refuses a field that is material, a variant option, not a select or not in the schema', async () => {
-      for (const attributeCode of ['origin-material', 'size-option', 'brand-text', 'nothing']) {
+    it('refuses a field that is material, not a select or not in the schema', async () => {
+      for (const attributeCode of ['origin-material', 'brand-text', 'nothing']) {
         expect(await suggest('X', attributeCode)).toEqual(
           err({ code: 'attribute.not-suggestable' }),
         );
@@ -390,6 +409,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
         id: first.id,
         label: 'Extra large',
         productCode: 'P-1',
+        actions: ['approve', 'map', 'reject'],
         attribute: {
           code: 'pack-size',
           options: [
@@ -407,6 +427,68 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
       expect(await build().list.execute(context('admin'), { extra: 1 } as never)).toMatchObject({
         error: { code: 'validation.failed' },
       });
+    });
+  });
+
+  describe('attribute-suggestion.list paging', () => {
+    it('pages with a total, or Previous and Next without one, and searches the text', async () => {
+      const first = await opened();
+      const pages = await build().list.execute(context('admin'), { pageSize: 1 });
+      expect(pages).toMatchObject({
+        ok: true,
+        value: { total: 1, page: 1, pageSize: 1, paging: 'pages', hasNext: false },
+      });
+      expect(await build().list.execute(context('admin'), { page: 2 })).toMatchObject({
+        ok: true,
+        value: { items: [], total: 1 },
+      });
+      expect(
+        await build().list.execute(context('admin'), { paging: 'prev-next', sort: 'created' }),
+      ).toMatchObject({ ok: true, value: { total: null, hasNext: false } });
+      const found = await build().list.execute(context('admin'), { q: ' EXTRA ' });
+      if (!found.ok) throw new Error(found.error.code);
+      expect(found.value.items.map((item) => item.id)).toEqual([first.id]);
+      expect(await build().list.execute(context('admin'), { q: 'zzz' })).toMatchObject({
+        ok: true,
+        value: { items: [], total: 0 },
+      });
+    });
+
+    it('takes limit as an alias of pageSize, with null and empty as absent, and sorts descending', async () => {
+      await opened();
+      const aliased = await build().list.execute(context('admin'), { limit: 5 });
+      expect(aliased).toMatchObject({ ok: true, value: { pageSize: 5 } });
+      const absent = await build().list.execute(context('admin'), { limit: null, pageSize: 7 });
+      expect(absent).toMatchObject({ ok: true, value: { pageSize: 7 } });
+      const empty = await build().list.execute(context('admin'), { limit: '', pageSize: 7 });
+      expect(empty).toMatchObject({ ok: true, value: { pageSize: 7 } });
+      expect(
+        await build().list.execute(context('admin'), { direction: 'desc', paging: 'prev-next' }),
+      ).toMatchObject({ ok: true, value: { total: null, hasNext: false } });
+      expect(
+        await build().list.execute(context('admin'), { paging: 'prev-next', page: 5 }),
+      ).toMatchObject({ ok: true, value: { items: [], hasNext: false } });
+    });
+
+    it.each<[Record<string, unknown>, string]>([
+      [{ limit: 0 }, 'limit'],
+      [{ limit: 5, pageSize: 5 }, 'limit'],
+      [{ q: 5 }, 'q'],
+      [{ q: 'x'.repeat(101) }, 'q'],
+      [{ sort: 'price' }, 'sort'],
+      [{ direction: 'up' }, 'direction'],
+      [{ paging: 'infinite' }, 'paging'],
+      [{ page: 0 }, 'page'],
+      [{ pageSize: 101 }, 'pageSize'],
+    ])('refuses the query %j', async (input, field) => {
+      const answer = await build().list.execute(context('admin'), input);
+      expect(answer.ok).toBe(false);
+      expect(JSON.stringify(answer)).toContain(field);
+    });
+
+    it('names the conflict code when limit and pageSize are both sent', async () => {
+      const answer = await build().list.execute(context('admin'), { limit: 5, pageSize: 5 });
+      expect(JSON.stringify(answer)).toContain('conflict');
     });
   });
 

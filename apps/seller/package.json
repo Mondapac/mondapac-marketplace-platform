@@ -13,8 +13,9 @@
   },
   "dependencies": {
     "@mondapac/panel-server": "workspace:*",
+    "@mondapac/platform-import": "workspace:*",
     "@mondapac/ui": "workspace:*",
-    "next": "16.4.2",
+    "next": "16.4.6",
     "next-intl": "4.14.9",
     "qrcode-generator": "2.0.4",
     "react": "19.3.0",

@@ -11,6 +11,17 @@ export interface OrderingPolicy {
   returnUrls(market: MarketContext, orderId: string): ReturnUrls | null;
   /** How long the hosted payment page stays open, in milliseconds (Stripe's minimum is 30 min). */
   sessionTtlMs(): number;
+  /**
+   * The delivery zone of a postcode for promotions (free shipping and zone audiences, package
+   * T2): the code of the Market's ServiceArea that holds it; null when none does.
+   */
+  deliveryZone(market: MarketContext, postcode: string): string | null;
+  /**
+   * The provisional tax rate the seller ledger takes out of a tax-inclusive line before commission
+   * (Market config `commissionPayouts`), so checkout tells promotions the order's commission as
+   * the ledger will post it; null when the Market has no commission settings (no order then).
+   */
+  provisionalTaxBps(market: MarketContext): number | null;
   /** The most lines one order takes (the cart's own limit). */
   maxLines(): number;
   /**
@@ -18,6 +29,8 @@ export interface OrderingPolicy {
    * `tax.refundCredit.enabled`, off unless set to true (tax step 3).
    */
   refundsEnabled(market: MarketContext): boolean;
+  /** The Market's currency (ISO 4217): a refund cap is set in it. */
+  currency(market: MarketContext): string;
   /**
    * Whether the order document is a numbered tax invoice: `tax.invoice.enabled`, off unless set
    * to true (tax step 4). Off, it is an order confirmation without a number.

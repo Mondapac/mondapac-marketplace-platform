@@ -2,7 +2,7 @@
 // The grouped sidebar of both panels: independent open and close, the cookie, the active group,
 // keyboard movement and the icon rail.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { Sidebar, visibleNavItems, type NavConfig } from '@mondapac/ui';
+import { navSections, Sidebar, visibleNavItems, type NavConfig } from '@mondapac/ui';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { sellerNav, sellerNavItems } from '../src/nav.ts';
 
@@ -34,8 +34,6 @@ function sidebar(props: { activeId?: string; openGroups?: readonly string[] } = 
         activeId={props.activeId ?? 'home'}
         label={(key) => key}
         openGroups={props.openGroups}
-        expandAll="Expand all"
-        collapseAll="Collapse all"
       />
     </div>
   );
@@ -97,28 +95,17 @@ describe('grouped sidebar', () => {
     expect(decodeURIComponent(document.cookie)).toContain('mp-nav-open=a,b');
   });
 
-  it('opens or closes every group from one button', () => {
+  it('has no button that opens or closes every group', () => {
     render(sidebar());
-    fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
-    expect(expanded('nav.group.a')).toBe('true');
-    expect(expanded('nav.group.b')).toBe('true');
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
-    expect(expanded('nav.group.a')).toBe('false');
-    expect(expanded('nav.group.b')).toBe('false');
+    expect(screen.queryByRole('button', { name: /expand all|collapse all/i })).toBeNull();
   });
 
   it('moves focus with the arrow keys, Home and End across headers and open links', () => {
     render(sidebar({ openGroups: ['a'] }));
-    const order = ['Collapse all', 'nav.home', 'nav.group.a', 'nav.a1', 'nav.a2', 'nav.group.b'];
     const el = (name: string) =>
-      screen.getAllByRole(
-        name.startsWith('nav.group') || name.endsWith('all') ? 'button' : 'link',
-        {
-          name,
-        },
-      )[0] as HTMLElement;
-    // The button for an all-open state is "Expand all" here: not every group is open.
-    order[0] = 'Expand all';
+      screen.getAllByRole(name.startsWith('nav.group') ? 'button' : 'link', {
+        name,
+      })[0] as HTMLElement;
     el('nav.home').focus();
     fireEvent.keyDown(el('nav.home'), { key: 'ArrowDown' });
     expect(document.activeElement).toBe(el('nav.group.a'));
@@ -129,7 +116,7 @@ describe('grouped sidebar', () => {
     fireEvent.keyDown(el('nav.group.a'), { key: 'End' });
     expect(document.activeElement).toBe(el('nav.group.b'));
     fireEvent.keyDown(el('nav.group.b'), { key: 'Home' });
-    expect(document.activeElement).toBe(el('Expand all'));
+    expect(document.activeElement).toBe(el('nav.home'));
   });
 
   it('skips the links of a closed group when moving', () => {
@@ -185,8 +172,22 @@ describe('grouped sidebar', () => {
 });
 
 describe('seller menu structure', () => {
-  const ALL = sellerNav.items.flatMap((item) => item.anyOf ?? []);
-  const WORK = ['s_home', 's_orders', 's_products', 's_offers', 's_reviews', 's_earnings'];
+  const ALL = [...sellerNav.items.flatMap((item) => item.anyOf ?? []), 'catalog.own-product.edit'];
+  const WORK = [
+    's_home',
+    's_performance',
+    's_categories',
+    's_suggestions',
+    's_tag_suggestions',
+    's_orders',
+    's_products',
+    's_offers',
+    's_import',
+    's_customers',
+    's_reviews',
+    's_earnings',
+    's_payout',
+  ];
 
   it('shows daily work in the menu and Settings in the footer, and only setup before approval', () => {
     const ids = (state: 'approved' | 'pending') =>
@@ -196,13 +197,49 @@ describe('seller menu structure', () => {
     expect(sellerNavItems('pending', ALL).some((item) => item.placement === 'footer')).toBe(false);
   });
 
+  it('shows Import only with both the import key and the product edit key', () => {
+    const ids = (keys: string[]) => sellerNavItems('approved', keys).map((item) => item.id);
+    expect(ids(['catalog.own-import.run', 'catalog.own-product.edit'])).toContain('s_import');
+    expect(ids(['catalog.own-import.run'])).not.toContain('s_import');
+    expect(ids(['catalog.own-product.edit'])).not.toContain('s_import');
+    expect(ids(['catalog.own-product.view'])).not.toContain('s_import');
+  });
+
   it('moves the set-once pages out of the menu, and personal Security out of the sidebar', () => {
     const all = sellerNav.items.map((item) => item.id);
-    for (const gone of ['s_stock', 's_store_profile', 's_payout', 's_team', 's_delivery']) {
+    for (const gone of ['s_stock', 's_store_profile', 's_team', 's_delivery']) {
       expect(all, gone).not.toContain(gone);
     }
     expect(sellerNav.items.some((item) => item.href === '/account/security')).toBe(false);
-    expect(sellerNav.groups?.map((group) => group.id)).toEqual(['orders', 'catalogue', 'money']);
+    expect(sellerNav.groups?.map((group) => group.id)).toEqual([
+      'requests',
+      'sales',
+      'catalogue',
+      'customers',
+      'accounting',
+    ]);
+  });
+
+  it('groups the items like the admin menu: Requests, Sales, Catalogue, Customers, Accounting', () => {
+    const everyKey = new Set(ALL);
+    const sections = navSections(sellerNav.groups, visibleNavItems(sellerNav, everyKey));
+    expect(
+      sections.map((section) =>
+        section.kind === 'group'
+          ? [section.group.id, section.items.map((item) => item.id)]
+          : section.item.id,
+      ),
+    ).toEqual([
+      's_home',
+      's_performance',
+      ['requests', ['s_categories', 's_suggestions', 's_tag_suggestions']],
+      's_orders',
+      ['catalogue', ['s_products', 's_offers', 's_import']],
+      ['customers', ['s_customers', 's_reviews']],
+      ['accounting', ['s_earnings', 's_payout']],
+      's_settings',
+      's_setup',
+    ]);
   });
 
   it('pins one Settings item to the footer for any settings view key', () => {
@@ -214,11 +251,13 @@ describe('seller menu structure', () => {
     for (const key of [
       'sellers.store-profile.view',
       'inventory.stock.view',
-      'payments.payout-account.view',
       'identity.team-member.view',
     ]) {
       expect(ids([key]), key).toContain('s_settings');
     }
+    // Payout account is its own menu item under Accounting (menu design v2), not a settings page.
+    expect(ids(['payments.payout-account.view'])).toContain('s_payout');
+    expect(ids(['payments.payout-account.view'])).not.toContain('s_settings');
   });
 
   it('hides Settings without a view key; manage keys and work keys alone do not show it', () => {

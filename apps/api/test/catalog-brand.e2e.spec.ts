@@ -251,12 +251,29 @@ describe('brand routes over HTTP (integration)', () => {
     expect(document.paths[`${ADMIN}/{brandId}/approve`]).toHaveProperty('post');
     expect(document.paths[`${ADMIN}/{brandId}/merge`]).toHaveProperty('post');
     expect(document.paths[`${ADMIN}/merge-queue`]).toHaveProperty('get');
+    expect(document.paths[`${ADMIN}/export`]).toHaveProperty('get');
+    for (const status of ['200', '400', '403', '404', '413']) {
+      expect(document.paths[`${ADMIN}/export`]?.get?.responses).toHaveProperty(status);
+    }
     expect(document.paths[`${ADMIN}/merge-queue/dismiss`]).toHaveProperty('post');
     expect(document.paths['/catalog/seller/brands']).toHaveProperty('post');
     expect(document.paths['/catalog/brands']).toHaveProperty('get');
     expect(document.paths['/catalog/brands/{slug}']).toHaveProperty('get');
     const create = document.paths[ADMIN]?.post?.responses;
     for (const status of ['201', '400', '403', '409']) expect(create).toHaveProperty(status);
+    const schemas = (
+      document as unknown as {
+        components: {
+          schemas: Record<string, { properties: Record<string, unknown>; required?: string[] }>;
+        };
+      }
+    ).components.schemas;
+    expect(schemas['BrandArchiveRequest']!.properties['reason']).toMatchObject({
+      type: 'string',
+      maxLength: 500,
+      nullable: true,
+    });
+    expect(schemas['BrandArchiveRequest']!.required).toEqual(['version']);
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
@@ -320,6 +337,73 @@ describe('brand routes over HTTP (integration)', () => {
       });
     });
 
+    describe('admin routes: the export', () => {
+      it('exports the filtered list or the selected ids under the read key', async () => {
+        await boot();
+        await seeded(code);
+        const moderator = adminSession(code, MODERATOR, 11);
+        const denied = await http().get(`${ADMIN}/export`).set(moderator).expect(403);
+        expect(denied.body).toMatchObject({ code: 'access.denied' });
+
+        const viewer = adminSession(code, VIEWER, 12);
+        const csv = await http()
+          .get(`${ADMIN}/export?status=active&sort=name&direction=asc&columns=id`)
+          .set(viewer)
+          .expect(200);
+        expect(csv.headers['content-type']).toContain('text/csv');
+        expect(csv.headers['content-disposition']).toBe(
+          'attachment; filename="brands-2026-10-28.csv"',
+        );
+        expect(csv.headers['cache-control']).toContain('no-store');
+        expect(csv.headers['x-content-type-options']).toBe('nosniff');
+        const lines = csv.text
+          .replace(/^\uFEFF/, '')
+          .trimEnd()
+          .split('\r\n');
+        expect(lines[0]).toBe('Brand,Slug,Status,Origin country,Last changed,Brand id');
+        expect(lines.slice(1).map((line) => line.split(',')[0])).toEqual([
+          'Acme Tea',
+          'Fuji Foods',
+        ]);
+
+        const picked = await http()
+          .get(`${ADMIN}/export?ids=${ARCHIVED},${DRAFT}`)
+          .set(viewer)
+          .expect(200);
+        expect(
+          picked.text
+            .replace(/^\uFEFF/, '')
+            .trimEnd()
+            .split('\r\n')
+            .slice(1)
+            .map((line) => line.split(',')[0]),
+        ).toEqual(['Old Brand', 'Draft Brand']);
+
+        const FORMULA = id<'Brand'>(0xc820);
+        brands.seed(brandState(FORMULA, '=1+1 Foods'));
+        const formula = await http().get(`${ADMIN}/export?ids=${FORMULA}`).set(viewer).expect(200);
+        expect(
+          formula.text
+            .replace(/^\uFEFF/, '')
+            .split('\r\n')[1]
+            ?.split(',')[0],
+        ).toBe("'=1+1 Foods");
+
+        const xlsx = await http().get(`${ADMIN}/export?format=xlsx&q=acme`).set(viewer).expect(200);
+        expect(xlsx.headers['content-type']).toContain('spreadsheetml');
+
+        const missing = await http()
+          .get(`${ADMIN}/export?ids=${BRAND_A},${MISSING}`)
+          .set(viewer)
+          .expect(404);
+        expect(missing.body).toMatchObject({ code: 'brand.not-found' });
+        const control = await http().get(`${ADMIN}/export?q=a%07b`).set(viewer).expect(400);
+        expect(control.body).toMatchObject({ code: 'validation.failed' });
+        await http().get(`${ADMIN}/export?page=2`).set(viewer).expect(400);
+        await http().get(`${ADMIN}/export?format=pdf`).set(viewer).expect(400);
+      });
+    });
+
     describe('admin routes: the write flow', () => {
       it('lists with a filter and a search, and reads one with its aliases and count', async () => {
         await boot();
@@ -339,6 +423,50 @@ describe('brand routes over HTTP (integration)', () => {
         expect(one.body).toMatchObject({ aliases: ['Acme Co'], productCount: 3 });
         await http().get(`${ADMIN}/${MISSING}`).set(editor).expect(404);
         await http().get(`${ADMIN}?status=bogus`).set(editor).expect(400);
+        // The numbered read over HTTP: page numbers arrive as text and become numbers; each row
+        // names its actions; the cursor read and the page keys do not mix.
+        const paged = await http()
+          .get(`${ADMIN}?page=1&pageSize=1&sort=name&direction=desc&q=acme`)
+          .set(editor)
+          .expect(200);
+        expect(paged.body).toMatchObject({ page: 1, pageSize: 1, paging: 'pages', total: 1 });
+        const row = (paged.body as { items: { actions: string[] }[] }).items[0]!;
+        expect(row.actions).toContain('edit');
+        await http().get(`${ADMIN}?paging=prev-next&pageSize=1`).set(editor).expect(200);
+        await http().get(`${ADMIN}?page=abc`).set(editor).expect(400);
+        await http().get(`${ADMIN}?limit=1&page=2`).set(editor).expect(400);
+        const legacy = await http().get(`${ADMIN}?limit=1`).set(editor).expect(200);
+        expect(legacy.body).toMatchObject({ pageSize: 1, total: null });
+        // The cursor walk of the current panel: each `nextAfterId` is fed back as `afterId`, and the
+        // walk meets the same rows, in the same order, as the numbered read.
+        type Body = { items: { id: string }[]; nextAfterId: string | null; hasNext: boolean };
+        const walked: string[] = [];
+        let after: string | null = null;
+        for (let step = 0; step < 20; step += 1) {
+          const url: string =
+            after === null ? `${ADMIN}?limit=1` : `${ADMIN}?limit=1&afterId=${after}`;
+          const body = (await http().get(url).set(editor).expect(200)).body as Body;
+          walked.push(...body.items.map((b) => b.id));
+          after = body.nextAfterId;
+          if (after === null) break;
+        }
+        const all = (await http().get(`${ADMIN}?pageSize=100`).set(editor).expect(200))
+          .body as Body;
+        expect(walked).toEqual(all.items.map((b) => b.id));
+        // On the default order a page read names the cursor of its next page; on another order it
+        // does not; past the end the page is empty with the total still shown.
+        const first = (await http().get(`${ADMIN}?pageSize=1`).set(editor).expect(200))
+          .body as Body;
+        expect(first.nextAfterId).toBe(first.items[0]!.id);
+        const byStatus = (
+          await http().get(`${ADMIN}?pageSize=1&sort=status`).set(editor).expect(200)
+        ).body as Body;
+        expect(byStatus.nextAfterId).toBeNull();
+        const past = (await http().get(`${ADMIN}?page=100`).set(editor).expect(200)).body as Body;
+        expect(past).toMatchObject({ items: [], hasNext: false, nextAfterId: null });
+        await http().get(`${ADMIN}?pageSize=101`).set(editor).expect(400);
+        await http().get(`${ADMIN}?page=101`).set(editor).expect(400);
+        await http().get(`${ADMIN}?afterId=${BRAND_A}&direction=desc`).set(editor).expect(400);
       });
 
       it('creates an active brand, refuses a look-alike and a taken slug, edits and archives it', async () => {
@@ -397,6 +525,48 @@ describe('brand routes over HTTP (integration)', () => {
           .set(editor)
           .send({ version: 3 })
           .expect(409);
+      });
+
+      it('turns a proposal down with an optional reason and refuses a bad one', async () => {
+        await boot();
+        await seeded(code);
+        const editor = adminSession(code, EDITOR, 11);
+        for (const [reason, problem] of [
+          ['x'.repeat(501), 'too-long'],
+          ['Bad\u0000reason', 'chars'],
+          ['Line one\r\nLine two', 'chars'],
+          [7, 'type'],
+        ] as const) {
+          const refused = await http()
+            .post(`${ADMIN}/${DRAFT}/archive`)
+            .set(editor)
+            .send({ version: 1, reason })
+            .expect(400);
+          expect(refused.body).toMatchObject({
+            code: 'validation.failed',
+            details: { fields: [{ path: 'reason', code: problem }] },
+          });
+        }
+        expect(brands.brands.get(DRAFT)).toMatchObject({ status: 'draft', archiveReason: null });
+
+        const archived = await http()
+          .post(`${ADMIN}/${DRAFT}/archive`)
+          .set(editor)
+          .send({ version: 1, reason: ' Already listed as Acme Tea. ' })
+          .expect(200);
+        expect(archived.body).toMatchObject({ brand: { status: 'archived', version: 2 } });
+        expect(brands.brands.get(DRAFT)).toMatchObject({
+          status: 'archived',
+          archiveReason: 'Already listed as Acme Tea.',
+        });
+
+        const blank = await http()
+          .post(`${ADMIN}/${BRAND_B}/archive`)
+          .set(editor)
+          .send({ version: 1, reason: '' })
+          .expect(200);
+        expect(blank.body).toMatchObject({ brand: { status: 'archived' } });
+        expect(brands.brands.get(BRAND_B)).toMatchObject({ archiveReason: null });
       });
 
       it('approves a proposal once, making it active', async () => {

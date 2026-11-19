@@ -1,4 +1,16 @@
 import type { Provider } from '@nestjs/common';
+import {
+  CATEGORY_PROPOSAL_CAPABILITY,
+  CATEGORY_PROPOSAL_POLICY,
+  type CategoryProposalCapability,
+  type CategoryProposalPolicy,
+} from '../application/ports/category-proposal-capability';
+import {
+  SELLER_CATEGORY_STORE,
+  type SellerCategoryStore,
+} from '../application/ports/seller-category.store';
+import { PrismaSellerCategoryStore } from './prisma-seller-category.store';
+import { SellersCategoryProposalCapability } from './sellers-category-proposal-capability';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -35,6 +47,17 @@ import {
   type WorkingCopyRepository,
 } from '../application/ports/working-copy.repository';
 import { CLAIM_TEXT_MATCHER, type ClaimTextMatcher } from '../application/ports/claim-text-matcher';
+import { cultureMembersProvider } from './sellers-culture-members';
+import {
+  SELLER_CERTIFICATE_TYPES,
+  SELLER_MEMBER_CULTURES,
+  type SellerCertificateTypes,
+  type SellerMemberCultures,
+} from '../application/ports/culture-visibility-sources';
+import {
+  CertificationSellerCertificateTypes,
+  SellersMemberCultures,
+} from './culture-visibility-sources';
 import { CLAIM_TERM_LOCALES, type ClaimTermLocales } from '../application/ports/claim-term-locales';
 import {
   ATTRIBUTE_DEFINITION_STORE,
@@ -42,6 +65,11 @@ import {
 } from '../application/ports/attribute-definition.store';
 import { FEATURE_SET_STORE, type FeatureSetStore } from '../application/ports/feature-set.store';
 import { CertificationClaimTermLocales } from './certification-claim-term-locales';
+import { CertificationCategoryRetirement } from './certification-category-retirement';
+import {
+  CATEGORY_RETIREMENT_CHECK,
+  type CategoryRetirementCheck,
+} from '../application/ports/category-retirement-check';
 import { PrismaAttributeDefinitionStore } from './prisma-attribute-definition.store';
 import { PrismaFeatureSetStore } from './prisma-feature-set.store';
 import {
@@ -51,10 +79,20 @@ import {
 import { PrismaCategoryAttributeLinkStore } from './prisma-category-attribute-link.store';
 import { PrismaAttributeRelaxationStore } from './prisma-attribute-relaxation.store';
 import { PrismaAttributeValueSuggestionStore } from './prisma-attribute-value-suggestion.store';
+import { PrismaTopicSuggestionStore } from './prisma-topic-suggestion.store';
+import {
+  TOPIC_SUGGESTION_STORE,
+  type TopicSuggestionStore,
+} from '../application/ports/topic-suggestion.store';
 import {
   ATTRIBUTE_VALUE_SUGGESTION_STORE,
   type AttributeValueSuggestionStore,
 } from '../application/ports/attribute-value-suggestion.store';
+import {
+  VARIANT_REQUEST_STORE,
+  type VariantRequestStore,
+} from '../application/ports/variant-request.store';
+import { PrismaVariantRequestStore } from './prisma-variant-request.store';
 import {
   ATTRIBUTE_RELAXATION_STORE,
   type AttributeRelaxationStore,
@@ -83,7 +121,9 @@ import {
 } from '../application/ports/allowed-product-types.reader';
 import {
   SELLER_ELIGIBILITY_READER,
+  SELLER_ELIGIBILITY_STATUS_READER,
   type SellerEligibilityReader,
+  type SellerEligibilityStatusReader,
 } from '../application/ports/seller-eligibility.reader';
 import {
   SELLER_NAMES_READER,
@@ -96,7 +136,19 @@ import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.rea
 import { PrismaOfferRepository } from './prisma-offer.repository';
 import { PrismaOwnCatalogReader } from './prisma-own-catalog.reader';
 import { PrismaAdminProductsReader } from './prisma-admin-products.reader';
+import { PrismaAdminVariantsReader } from './prisma-admin-variants.reader';
+import { PrismaCustomVariantLabelsReader } from './prisma-custom-variant-labels.reader';
+import {
+  CUSTOM_VARIANT_LABELS_READER,
+  type CustomVariantLabelsReader,
+} from '../application/ports/custom-variant-labels.reader';
+import { SAVED_FILTER_STORE, type SavedFilterStore } from '../../lists';
 import { PrismaSavedFilterRepository } from './prisma-saved-filter.repository';
+import { PrismaSellerSavedFilterRepository } from './prisma-seller-saved-filter.repository';
+import {
+  SELLER_SAVED_FILTER_REPOSITORY,
+  type SellerSavedFilterRepository,
+} from '../application/ports/seller-saved-filter.repository';
 import {
   SAVED_FILTER_REPOSITORY,
   type SavedFilterRepository,
@@ -105,6 +157,10 @@ import {
   ADMIN_PRODUCTS_READER,
   type AdminProductsReader,
 } from '../application/ports/admin-products.reader';
+import {
+  ADMIN_VARIANTS_READER,
+  type AdminVariantsReader,
+} from '../application/ports/admin-variants.reader';
 import {
   PRODUCT_IMAGE_REPOSITORY,
   type ProductImageRepository,
@@ -117,8 +173,8 @@ import {
   IMPORT_FILE_PARSERS,
   type ImportFileParsers,
 } from '../application/ports/import-file-parsers';
-import { SHEET_WRITER, type SheetWriter } from '../application/ports/sheet-writer';
-import { ExceljsSheetWriter } from './xlsx/exceljs-sheet-writer';
+import { SHEET_WRITER, type SheetWriter } from '../../../platform/list-export/sheet-writer';
+import { ExceljsSheetWriter } from '../../../platform/list-export/exceljs-sheet-writer';
 import { xlsxParser } from './xlsx/isolated-xlsx-parser';
 import { OWN_CATALOG_READER, type OwnCatalogReader } from '../application/ports/own-catalog.reader';
 import { PrismaOfferSearchFactsReader } from './prisma-offer-search-facts.reader';
@@ -156,9 +212,24 @@ import {
   type CategoryTreeReader,
 } from '../application/ports/category-tree.reader';
 import { PrismaCategoryTreeReader } from './prisma-category-tree.reader';
+import {
+  PUBLIC_CATEGORY_READER,
+  type PublicCategoryReader,
+} from '../application/ports/public-category.reader';
+import { PrismaPublicCategoryReader } from './prisma-public-category.reader';
+import {
+  PRODUCT_SELL_UNIT_FACTS_READER,
+  type ProductSellUnitFactsReader,
+} from '../application/ports/product-sell-unit-facts.reader';
+import { PrismaProductSellUnitFactsReader } from './prisma-product-sell-unit-facts.reader';
 import { PrismaSellUnitLabelsReader } from './prisma-sell-unit-labels.reader';
 import { PrismaOfferNamesReader } from './prisma-offer-names.reader';
 import { PrismaOfferSellUnitsReader } from './prisma-offer-sell-units.reader';
+import { PrismaOfferSellUnitRepository } from './prisma-offer-sell-unit.repository';
+import {
+  OFFER_SELL_UNIT_REPOSITORY,
+  type OfferSellUnitRepository,
+} from '../application/ports/offer-sell-unit.repository';
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
 import type { IdGenerator } from '@mondapac/shared-kernel';
 import { CertificationClaimTextMatcher } from './certification-claim-text-matcher';
@@ -170,15 +241,32 @@ import { PrismaProductRevisionRepository } from './prisma-product-revision.repos
 import { OBJECT_STORE, type ObjectStore } from '../../../platform/storage/object-store';
 import { PrismaWorkingCopyRepository } from './prisma-working-copy.repository';
 import { PrismaPlatformImportRepository } from './prisma-platform-import.repository';
+import { PrismaSellerImportRepository } from './prisma-seller-import.repository';
+import { PrismaSellerImportFactsReader } from './prisma-seller-import-facts.reader';
+import {
+  SELLER_IMPORT_REPOSITORY,
+  type SellerImportRepository,
+} from '../application/ports/seller-import.repository';
+import {
+  SELLER_IMPORT_FACTS_READER,
+  type SellerImportFactsReader,
+} from '../application/ports/seller-import-facts.reader';
 import { ObjectImportFileStore } from './object-import-file-store';
 import { IMPORT_FILE_STORE, type ImportFileStore } from '../application/ports/import-file-store';
 import {
   PLATFORM_IMPORT_REPOSITORY,
   type PlatformImportRepository,
 } from '../application/ports/platform-import.repository';
+import {
+  CATEGORY_PRODUCT_MOVE_STORE,
+  type CategoryProductMoveStore,
+} from '../application/ports/category-product-move.store';
+import { PrismaCategoryProductMoveStore } from './prisma-category-product-move.store';
 import { CheckedInAttributeSeed } from './seed/checked-in-attribute-seed';
 import { PrismaAttributeRepository } from './prisma-attribute.repository';
 import { CheckedInCategorySeed } from './seed/checked-in-category-seed';
+import { CULTURE_SEED, type CultureSeed } from '../application/ports/culture-seed';
+import { CheckedInCultureSeed } from './seed/checked-in-culture-seed';
 import { PrismaPlatformCategoryRepository } from './prisma-platform-category.repository';
 import { PrismaProductRepository } from './prisma-product.repository';
 import {
@@ -191,6 +279,11 @@ import {
   type OfferOwnerNoticeRepository,
 } from '../application/ports/offer-owner-notice.repository';
 import { PrismaOfferOwnerNotices } from './prisma-offer-owner-notices';
+import {
+  MISSING_DETAILS_EMAIL_STORE,
+  type MissingDetailsEmailStore,
+} from '../application/ports/missing-details-email.store';
+import { PrismaMissingDetailsEmailStore } from './prisma-missing-details-email.store';
 import {
   TAG_SELECTION_READER,
   type TagSelectionReader,
@@ -207,6 +300,11 @@ import {
 } from '../application/ports/published-product.reader';
 import { PrismaPublishedProductReader } from './prisma-published-product.reader';
 import {
+  VARIANT_GTIN_REGISTRY,
+  type VariantGtinRegistry,
+} from '../application/ports/variant-gtin.registry';
+import { PrismaVariantGtinRegistry } from './prisma-variant-gtin.registry';
+import {
   PUBLISHED_IMAGES_READER,
   type PublishedImagesReader,
 } from '../application/ports/published-images.reader';
@@ -218,6 +316,11 @@ import {
   type AttributeAdminReader,
 } from '../application/ports/attribute-admin.reader';
 import { PrismaAttributeAdminReader } from './prisma-attribute-admin.reader';
+import {
+  ATTRIBUTE_IMPACT_READER,
+  type AttributeImpactReader,
+} from '../application/ports/attribute-impact.reader';
+import { PrismaAttributeImpactReader } from './prisma-attribute-impact.reader';
 import {
   PRODUCT_DETAILS_GAP_READER,
   type ProductDetailsGapReader,
@@ -232,15 +335,33 @@ import {
   BUSINESS_ACTIVITY_READER,
   type BusinessActivityReader,
 } from '../application/ports/business-activity.reader';
+import {
+  CULTURE_REPOSITORY,
+  type CultureRepository,
+} from '../application/ports/culture.repository';
+import { CULTURE_READER, type CultureReader } from '../application/ports/culture.reader';
+import { PrismaCultureRepository } from './prisma-culture.repository';
+import { PrismaCultureReader } from './prisma-culture.reader';
 import { PrismaBusinessActivityRepository } from './prisma-business-activity.repository';
 import { PrismaBusinessActivityReader } from './prisma-business-activity.reader';
+import { TOPIC_REPOSITORY, type TopicRepository } from '../application/ports/topic.repository';
+import { TOPIC_READER, type TopicReader } from '../application/ports/topic.reader';
+import { PrismaTopicRepository } from './prisma-topic.repository';
+import { PrismaTopicReader } from './prisma-topic.reader';
 import { PrismaBrandRepository } from './prisma-brand.repository';
 import { PrismaBrandReader } from './prisma-brand.reader';
 import { PrismaAdminCategoryReader } from './prisma-admin-category.reader';
 import { PrismaCategoryEditStore } from './prisma-category-edit.store';
+import { PrismaCategoryImageStore } from './prisma-category-image.store';
+import {
+  CATEGORY_IMAGE_STORE,
+  type CategoryImageStore,
+} from '../application/ports/category-image.store';
 import {
   CATEGORY_EDIT_STORE,
+  CATEGORY_RESTRUCTURE_STORE,
   type CategoryEditStore,
+  type CategoryRestructureStore,
 } from '../application/ports/category-edit.store';
 import {
   ADMIN_CATEGORY_READER,
@@ -254,13 +375,62 @@ const CATALOG_SECRET = Symbol('CATALOG_SECRET');
  * Binds the ports of slices 1 to 3. They live in `infrastructure/` because only this layer may reach
  * `PrismaService` (dependency-cruiser `persistence-internals-are-private`).
  */
+import {
+  VARIANT_ADMIN_READER,
+  type VariantAdminReader,
+} from '../application/ports/variant-admin.reader';
+import {
+  VARIANT_TYPE_SETTINGS_STORE,
+  type VariantTypeSettingsStore,
+} from '../application/ports/variant-type-settings.store';
+import { PrismaVariantAdminReader } from './prisma-variant-admin.reader';
+import { PrismaVariantTypeSettingsStore } from './prisma-variant-type-settings.store';
+
+import { ModelGateway } from '../../../platform/ai/model-gateway';
+import { SETTINGS_FACADE, type SettingsFacade } from '../../settings';
+import {
+  DESCRIPTION_WRITER_MODEL,
+  DESCRIPTION_WRITER_SWITCHES,
+  MARKET_DAY_CALENDAR,
+  type DescriptionWriterModel,
+  type DescriptionWriterSwitches,
+  type MarketDayCalendar,
+} from '../application/ports/description-writer';
+import { FacadeDescriptionWriterSwitches } from './description-writer-switches';
+import { GatewayDescriptionWriterModel } from './gateway-description-writer-model';
+import { RegistryMarketDayCalendar } from './registry-market-day-calendar';
+
 export const catalogProviders: readonly Provider[] = [
+  {
+    provide: DESCRIPTION_WRITER_MODEL,
+    inject: [ModelGateway],
+    useFactory: (gateway: ModelGateway): DescriptionWriterModel =>
+      new GatewayDescriptionWriterModel(gateway),
+  },
+  {
+    provide: DESCRIPTION_WRITER_SWITCHES,
+    inject: [SETTINGS_FACADE, SELLERS_FACADE],
+    useFactory: (settings: SettingsFacade, sellers: SellersFacade): DescriptionWriterSwitches =>
+      new FacadeDescriptionWriterSwitches(settings, sellers),
+  },
+  {
+    provide: MARKET_DAY_CALENDAR,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): MarketDayCalendar =>
+      new RegistryMarketDayCalendar(markets),
+  },
   // ADR-0031 decision 3: the binding of `certification.matchClaimTerms` (the placeholder is gone).
   {
     provide: CLAIM_TEXT_MATCHER,
     inject: [CERTIFICATION_FACADE],
     useFactory: (certification: CertificationFacade): ClaimTextMatcher =>
       new CertificationClaimTextMatcher(certification),
+  },
+  {
+    provide: CATEGORY_RETIREMENT_CHECK,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): CategoryRetirementCheck =>
+      new CertificationCategoryRetirement(certification),
   },
   {
     provide: CLAIM_TERM_LOCALES,
@@ -298,6 +468,18 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaAttributeValueSuggestionStore(prisma),
   },
   {
+    provide: VARIANT_REQUEST_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantRequestStore =>
+      new PrismaVariantRequestStore(prisma),
+  },
+  {
+    provide: TOPIC_SUGGESTION_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TopicSuggestionStore =>
+      new PrismaTopicSuggestionStore(prisma),
+  },
+  {
     provide: CATALOG_MARKET_POLICY,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): CatalogMarketPolicy =>
@@ -326,6 +508,17 @@ export const catalogProviders: readonly Provider[] = [
     useFactory: (prisma: PrismaService): CategoryEditStore => new PrismaCategoryEditStore(prisma),
   },
   {
+    provide: CATEGORY_IMAGE_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryImageStore => new PrismaCategoryImageStore(prisma),
+  },
+  {
+    // The same store class: the restructure facts read the same tables in the same unit.
+    provide: CATEGORY_RESTRUCTURE_STORE,
+    inject: [CATEGORY_EDIT_STORE],
+    useFactory: (store: PrismaCategoryEditStore): CategoryRestructureStore => store,
+  },
+  {
     provide: BRAND_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BrandReader => new PrismaBrandReader(prisma),
@@ -335,6 +528,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeAdminReader =>
       new PrismaAttributeAdminReader(prisma),
+  },
+  {
+    provide: ATTRIBUTE_IMPACT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AttributeImpactReader =>
+      new PrismaAttributeImpactReader(prisma),
   },
   {
     provide: PRODUCT_DETAILS_GAP_READER,
@@ -355,6 +554,26 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaBusinessActivityReader(prisma),
   },
   {
+    provide: TOPIC_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TopicRepository => new PrismaTopicRepository(prisma),
+  },
+  {
+    provide: TOPIC_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): TopicReader => new PrismaTopicReader(prisma),
+  },
+  {
+    provide: CULTURE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CultureRepository => new PrismaCultureRepository(prisma),
+  },
+  {
+    provide: CULTURE_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CultureReader => new PrismaCultureReader(prisma),
+  },
+  {
     provide: BRAND_ASSIGNER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): BrandAssigner => new PrismaBrandAssigner(prisma),
@@ -366,6 +585,12 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaOfferRepository(prisma, ids),
   },
   {
+    provide: OFFER_SELL_UNIT_REPOSITORY,
+    inject: [PrismaService, ID_GENERATOR],
+    useFactory: (prisma: PrismaService, ids: IdGenerator): OfferSellUnitRepository =>
+      new PrismaOfferSellUnitRepository(prisma, ids),
+  },
+  {
     provide: OFFER_LISTINGS_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferListingsReader =>
@@ -373,9 +598,15 @@ export const catalogProviders: readonly Provider[] = [
   },
   {
     provide: PUBLISHED_PRODUCT_READER,
+    inject: [PrismaService, CATALOG_MARKET_POLICY],
+    useFactory: (prisma: PrismaService, policy: CatalogMarketPolicy): PublishedProductReader =>
+      new PrismaPublishedProductReader(prisma, (market) => policy.units(market)),
+  },
+  {
+    provide: VARIANT_GTIN_REGISTRY,
     inject: [PrismaService],
-    useFactory: (prisma: PrismaService): PublishedProductReader =>
-      new PrismaPublishedProductReader(prisma),
+    useFactory: (prisma: PrismaService): VariantGtinRegistry =>
+      new PrismaVariantGtinRegistry(prisma),
   },
   {
     provide: PUBLISHED_IMAGES_READER,
@@ -396,6 +627,13 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferOwnerNoticeRepository =>
       new PrismaOfferOwnerNotices(prisma),
+  },
+  // The "Email sellers" requests of the Missing details report (attributes package A4-4).
+  {
+    provide: MISSING_DETAILS_EMAIL_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): MissingDetailsEmailStore =>
+      new PrismaMissingDetailsEmailStore(prisma),
   },
   // The tag selections of the certification-event re-ask and the reconciliation (design 5.5, 5.6).
   {
@@ -430,15 +668,53 @@ export const catalogProviders: readonly Provider[] = [
       new PrismaAdminProductsReader(prisma),
   },
   {
-    provide: SAVED_FILTER_REPOSITORY,
+    provide: ADMIN_VARIANTS_READER,
     inject: [PrismaService],
-    useFactory: (prisma: PrismaService): SavedFilterRepository =>
-      new PrismaSavedFilterRepository(prisma),
+    useFactory: (prisma: PrismaService): AdminVariantsReader =>
+      new PrismaAdminVariantsReader(prisma),
+  },
+  {
+    provide: CUSTOM_VARIANT_LABELS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CustomVariantLabelsReader =>
+      new PrismaCustomVariantLabelsReader(prisma),
+  },
+  {
+    provide: SAVED_FILTER_REPOSITORY,
+    inject: [SAVED_FILTER_STORE],
+    useFactory: (store: SavedFilterStore): SavedFilterRepository =>
+      new PrismaSavedFilterRepository(store),
+  },
+  {
+    provide: SELLER_SAVED_FILTER_REPOSITORY,
+    inject: [SAVED_FILTER_STORE],
+    useFactory: (store: SavedFilterStore): SellerSavedFilterRepository =>
+      new PrismaSellerSavedFilterRepository(store),
+  },
+  cultureMembersProvider,
+  // The sources of the culture visibility rule (multi-culture package 3a).
+  {
+    provide: SELLER_MEMBER_CULTURES,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerMemberCultures =>
+      new SellersMemberCultures(sellers),
+  },
+  {
+    provide: SELLER_CERTIFICATE_TYPES,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): SellerCertificateTypes =>
+      new CertificationSellerCertificateTypes(certification),
   },
   {
     provide: SELLER_ELIGIBILITY_READER,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): SellerEligibilityReader =>
+      new SellersSellerEligibilityReader(sellers),
+  },
+  {
+    provide: SELLER_ELIGIBILITY_STATUS_READER,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): SellerEligibilityStatusReader =>
       new SellersSellerEligibilityReader(sellers),
   },
   {
@@ -488,6 +764,18 @@ export const catalogProviders: readonly Provider[] = [
     useFactory: (prisma: PrismaService): CategoryTreeReader => new PrismaCategoryTreeReader(prisma),
   },
   {
+    provide: PUBLIC_CATEGORY_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PublicCategoryReader =>
+      new PrismaPublicCategoryReader(prisma),
+  },
+  {
+    provide: PRODUCT_SELL_UNIT_FACTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ProductSellUnitFactsReader =>
+      new PrismaProductSellUnitFactsReader(prisma),
+  },
+  {
     provide: SELL_UNIT_LABELS_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellUnitLabelsReader =>
@@ -521,6 +809,10 @@ export const catalogProviders: readonly Provider[] = [
     useFactory: (): CategorySeed => new CheckedInCategorySeed(),
   },
   {
+    provide: CULTURE_SEED,
+    useFactory: (): CultureSeed => new CheckedInCultureSeed(),
+  },
+  {
     provide: ATTRIBUTE_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AttributeRepository =>
@@ -531,10 +823,28 @@ export const catalogProviders: readonly Provider[] = [
     useFactory: (): AttributeSeed => new CheckedInAttributeSeed(),
   },
   {
+    provide: CATEGORY_PRODUCT_MOVE_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CategoryProductMoveStore =>
+      new PrismaCategoryProductMoveStore(prisma),
+  },
+  {
     provide: PLATFORM_IMPORT_REPOSITORY,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): PlatformImportRepository =>
       new PrismaPlatformImportRepository(prisma),
+  },
+  {
+    provide: SELLER_IMPORT_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerImportRepository =>
+      new PrismaSellerImportRepository(prisma),
+  },
+  {
+    provide: SELLER_IMPORT_FACTS_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerImportFactsReader =>
+      new PrismaSellerImportFactsReader(prisma),
   },
   {
     provide: IMPORT_FILE_STORE,
@@ -588,5 +898,36 @@ export const catalogProviders: readonly Provider[] = [
     provide: RATE_COUNTER_KEYS,
     inject: [CATALOG_SECRET],
     useFactory: (secret: Uint8Array): RateCounterKeys => new HmacRateCounterKeys(secret),
+  },
+  {
+    provide: VARIANT_ADMIN_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantAdminReader => new PrismaVariantAdminReader(prisma),
+  },
+  {
+    provide: VARIANT_TYPE_SETTINGS_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): VariantTypeSettingsStore =>
+      new PrismaVariantTypeSettingsStore(prisma),
+  },
+  {
+    provide: SELLER_CATEGORY_STORE,
+    inject: [PrismaService, ID_GENERATOR],
+    useFactory: (prisma: PrismaService, ids: IdGenerator): SellerCategoryStore =>
+      new PrismaSellerCategoryStore(prisma, ids),
+  },
+  {
+    provide: CATEGORY_PROPOSAL_CAPABILITY,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): CategoryProposalCapability =>
+      new SellersCategoryProposalCapability(sellers),
+  },
+  {
+    provide: CATEGORY_PROPOSAL_POLICY,
+    inject: [MarketRegistry],
+    useFactory: (markets: MarketRegistry): CategoryProposalPolicy => {
+      const policy = new ConfigCatalogMarketPolicy(markets);
+      return { maxPending: (market) => policy.maxPendingCategoryProposals(market) };
+    },
   },
 ];

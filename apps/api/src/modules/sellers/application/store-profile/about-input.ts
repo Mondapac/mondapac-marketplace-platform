@@ -1,5 +1,6 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import type { CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
+import type { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { parseAboutText } from '../../domain/store-about';
 import type { StoreTextClaimCheck } from '../ports/store-text-claim-check';
 import type { StoreProfileWriteFailure } from './store-profile';
@@ -51,4 +52,17 @@ export async function claimFieldsOf(
       flags.value[index] === true ? [{ path: `about.${entry.locale}`, code: 'claim-term' }] : [],
     ),
   );
+}
+
+/** The locales whose text holds a term of the Market's content filter: `about.<locale>`, `blocked-term`. */
+export function blockedFieldsOf(
+  filter: ContentFilter,
+  market: MarketContext,
+  texts: ReadonlyMap<string, string>,
+): { path: string; code: string }[] {
+  const found = filter.problems(
+    market,
+    Object.fromEntries([...texts].map(([locale, text]) => [`about.${locale}`, text])),
+  );
+  return found.map(({ path, code }) => ({ path, code }));
 }

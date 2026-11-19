@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
+import { err, ok } from '@mondapac/shared-kernel';
+import type { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import type { ConsumedStepUp, StepUpRefusal } from '../../../platform/authz';
 import { WALLET_CREDIT_APPROVE_STEP_UP, WALLET_CREDIT_ISSUE_STEP_UP } from '../contracts/step-up';
@@ -26,6 +27,7 @@ import {
 } from '../domain/audit';
 import { refusalFor, type WalletStatus } from '../domain/wallet-status';
 import type { AdminCreditRecord } from './ports/admin-credit.repository';
+import { historyOf, type HistoryInput, type HistoryView } from './customer-flow';
 import { isActingAs } from './settings-flow';
 import type { AdminCreditDependencies } from './wallet-dependencies';
 import {
@@ -110,7 +112,7 @@ const invalid = (fields: readonly Problem[]): AdminCreditFailure => ({
   fields,
 });
 
-const viewOf = (row: AdminCreditRecord): AdminCreditView => ({
+export const viewOf = (row: AdminCreditRecord): AdminCreditView => ({
   id: row.id,
   customerAccountId: row.customerAccountId,
   amount: row.amountMinor,
@@ -618,79 +620,6 @@ export async function expireAdminCredits(
 
 // ---- reads --------------------------------------------------------------------------------------
 
-export const CREDIT_PAGE_SIZE = 20;
-export const MAX_CREDIT_PAGE_SIZE = 100;
-
-/** Which requests a list shows: waiting for a decision, decided, or granted at once. */
-export const CREDIT_LIST_FILTERS = ['pending', 'decided', 'granted'] as const;
-export type CreditListFilter = (typeof CREDIT_LIST_FILTERS)[number];
-
-const FILTER_STATUSES: Readonly<Record<CreditListFilter, readonly AdminCreditStatus[]>> = {
-  pending: ['pending'],
-  decided: ['approved', 'rejected', 'expired'],
-  granted: ['granted'],
-};
-
-export interface CreditListView {
-  readonly entries: readonly AdminCreditView[];
-  readonly nextCursor: string | null;
-}
-
-const encodeCursor = (at: Temporal.Instant, id: string): string => `${at.epochMilliseconds}.${id}`;
-
-function decodeCursor(value: unknown) {
-  const match = typeof value === 'string' ? /^([0-9]{1,15})\.([0-9a-f-]{36})$/.exec(value) : null;
-  const id = match === null ? null : parseId<'WalletCreditRequest'>(match[2]!);
-  if (match === null || id === null || !id.ok) return undefined;
-  return { requestedAt: Temporal.Instant.fromEpochMilliseconds(Number(match[1])), id: id.value };
-}
-
-/** `ListAdminCreditRequests`: newest first, by filter (default pending). */
-export async function listAdminCredits(
-  deps: AdminCreditDependencies,
-  context: CallContext,
-  input: { readonly status?: unknown; readonly cursor?: unknown; readonly limit?: unknown },
-): Promise<Result<CreditListView, AdminCreditFailure>> {
-  if (signedInAdmin(context) === null) return err({ code: 'access.denied' });
-  const problems: Problem[] = [];
-  const filter = input?.status ?? 'pending';
-  if (!(CREDIT_LIST_FILTERS as readonly unknown[]).includes(filter)) {
-    problems.push({ path: 'status', code: 'value' });
-  }
-  let limit = CREDIT_PAGE_SIZE;
-  if (input?.limit !== undefined) {
-    const value = input.limit;
-    if (
-      typeof value === 'number' &&
-      Number.isSafeInteger(value) &&
-      value >= 1 &&
-      value <= MAX_CREDIT_PAGE_SIZE
-    ) {
-      limit = value;
-    } else problems.push({ path: 'limit', code: 'range' });
-  }
-  const after = input?.cursor === undefined ? null : decodeCursor(input.cursor);
-  if (after === undefined) problems.push({ path: 'cursor', code: 'format' });
-  if (problems.length > 0 || after === undefined) return err(invalid(problems));
-  const statuses = FILTER_STATUSES[filter as CreditListFilter];
-  return deps.unitOfWork.run<CreditListView, AdminCreditFailure>(
-    context.market,
-    async () => {
-      const rows = await deps.credits.list(context.market, { statuses, limit: limit + 1, after });
-      const entries = rows.slice(0, limit);
-      const last = entries[entries.length - 1];
-      return ok({
-        entries: entries.map(viewOf),
-        nextCursor:
-          rows.length > limit && last !== undefined
-            ? encodeCursor(last.requestedAt, last.id)
-            : null,
-      });
-    },
-    { readOnly: true },
-  );
-}
-
 export interface CustomerWalletSummary {
   readonly customerAccountId: Id<'Account'>;
   readonly currency: string;
@@ -756,4 +685,22 @@ export async function viewCustomerWallet(
     },
     { readOnly: true },
   );
+}
+
+/**
+ * `wallet.view-customer-history`: the wallet journal of one customer, newest first, for the
+ * admin customer page. Same guards as the balance read: a signed-in admin (not acting as
+ * someone), an active customer of this Market, and the Market's wallet switch not off.
+ */
+export async function viewCustomerHistory(
+  deps: AdminCreditDependencies,
+  context: CallContext,
+  input: HistoryInput & { readonly customerAccountId: unknown },
+): Promise<Result<HistoryView, AdminCreditFailure>> {
+  if (signedInAdmin(context) === null) return err({ code: 'access.denied' });
+  const customer = idOf<'Account'>(input?.customerAccountId);
+  if (customer === null) return err(invalid([{ path: 'customerAccountId', code: 'format' }]));
+  const unknownCustomer = await customerCheck(deps, context, customer);
+  if (unknownCustomer !== null) return err(unknownCustomer);
+  return historyOf(deps, context, customer, { limit: input.limit, cursor: input.cursor });
 }

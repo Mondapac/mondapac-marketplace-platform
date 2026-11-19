@@ -1303,6 +1303,15 @@ describe.each(TEST_MARKETS)('sellers business file revisions in market %s', (cod
         expect(seen).not.toContain(foreign);
       }
       await expect(inUnit(code, () => roster.page(market, null, 0))).rejects.toThrow(RangeError);
+
+      // `one` answers the same entry for an approved seller, and null for a pending, foreign or unknown one.
+      expect(await inUnit(code, () => roster.one(market, approvedA))).toEqual({
+        sellerId: approvedA,
+        zone: fixture.operatingZone,
+      });
+      expect(await inUnit(code, () => roster.one(market, pending))).toBeNull();
+      expect(await inUnit(code, () => roster.one(market, foreign))).toBeNull();
+      expect(await inUnit(code, () => roster.one(market, randomUUID() as Id<'Seller'>))).toBeNull();
     });
 
     it('holds a slug once, reports who has it, and releases only a never-public held one', async () => {

@@ -2,6 +2,7 @@
 
 import {
   Banner,
+  SettingsViewOnlyBanner,
   LinkButton,
   SaveBar,
   SettingCheckbox,
@@ -183,9 +184,9 @@ export function AccountDeletionSettingsPanel({
 
   const banners = [
     canManage ? null : (
-      <Banner key="read-only" tone="info">
-        {t(`${P}.settings.read-only`)}
-      </Banner>
+      <SettingsViewOnlyBanner key="read-only" title={t('settings.view-only.title')}>
+        {t('settings.view-only.body')}
+      </SettingsViewOnlyBanner>
     ),
     form.theirs === null ? null : (
       <SettingsConflictView key="conflict" conflictId={form.conflictId} changes={form.changes} />
@@ -219,9 +220,10 @@ export function AccountDeletionSettingsPanel({
       banner={banner}
       onSubmit={canManage ? review : undefined}
       dirty={dirty}
+      dirtyCount={count}
       leave={{
         title: t('settings.leave.title'),
-        message: t('settings.leave.message'),
+        message: (info) => t('settings.leave.message', { count: info.count, page: info.page }),
         stay: t('settings.leave.stay'),
         leave: t('settings.leave.leave'),
       }}

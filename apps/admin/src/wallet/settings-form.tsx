@@ -3,6 +3,7 @@
 import {
   Badge,
   Banner,
+  SettingsViewOnlyBanner,
   Button,
   DataList,
   Dialog,
@@ -12,15 +13,22 @@ import {
   SettingsConflictBanner,
   SettingsPage,
   SettingsSection,
-  SkeletonRows,
+  SettingsSkeleton,
   toast,
   type BadgeTone,
+  useDelayedLoading,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { useChangeHistory, useWinnerTitle } from '../settings/last-changed.tsx';
 import { formatInstant } from '../shared/format.ts';
+import {
+  isNoteFailure,
+  ReviewNoteField,
+  trimmedNote,
+  useSentForReview,
+} from '../shared/review-note.tsx';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { walletProblemOf } from './errors.ts';
 import { wordFor } from './labels.ts';
@@ -62,15 +70,25 @@ export function SettingsForm({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [reasonError, setReasonError] = useState(false);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
   const [conflict, setConflict] = useState(false);
   const busy = useRef(false);
   // Before the loading and error returns below: a hook is called on every render.
   const changeHistory = useChangeHistory(settings?.lastChanged, 'wallet/admin/settings/history');
   const winnerTitle = useWinnerTitle();
+  // Shown after 200 ms, held at least 400 ms; at 30 s the load counts as failed.
+  const loading = useDelayedLoading(settings === null && !loadFailed);
 
+  // Each read gets a number; an answer to an older read (one abandoned at the 30 s stall, or
+  // replaced by Try again) is dropped, so it never overwrites what the newer read showed.
+  const attempt = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++attempt.current;
     setLoadFailed(false);
     const result = await callApi<WalletSettings>('GET', 'wallet/admin/settings');
+    if (mine !== attempt.current) return;
     if (result.ok) {
       // A state the panel does not know is not shown as a guess.
       if (WALLET_STATES.includes(result.body.status) && Number.isInteger(result.body.version)) {
@@ -83,6 +101,12 @@ export function SettingsForm({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!loading.stalled) return;
+    attempt.current += 1;
+    setLoadFailed(true);
+  }, [loading.stalled]);
 
   const title = t('settings.title');
   const intro = t('settings.intro');
@@ -98,10 +122,21 @@ export function SettingsForm({
       </SettingsPage>
     );
   }
-  if (settings === null) {
+  if (settings === null || loading.visible) {
     return (
       <SettingsPage title={title} description={intro}>
-        <SkeletonRows label={t('loading')} rows={3} />
+        <SettingsSkeleton
+          label={root('route.loading-page', { page: title })}
+          header={false}
+          sections={[
+            { fields: 2 },
+            { fields: WALLET_STATES.length },
+            { fields: 2, description: true },
+          ]}
+          visible={loading.visible}
+          slow={loading.slow}
+          slowLabel={root('route.slow')}
+        />
       </SettingsPage>
     );
   }
@@ -112,10 +147,20 @@ export function SettingsForm({
   const needsReason = REASON_STATES.includes(chosen);
   const unchanged = chosen === current;
   const incomplete = needsReason && reason === '';
+  // Area money is reviewed: every change needs a note, except a stop (paused, frozen), which
+  // opens no review.
+  const needsNote = chosen !== 'paused' && chosen !== 'frozen';
   const reasonLabel = (code: string | null) => (code === null ? null : wordFor(t, 'reason', code));
 
   async function send() {
     if (busy.current) return;
+    const sent = needsNote ? trimmedNote(note) : null;
+    if (needsNote && sent === null) {
+      setConfirming(false);
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     busy.current = true;
     setPending(true);
     // The confirm closes; the code dialog opens on its own (no stack of two dialogs).
@@ -127,9 +172,12 @@ export function SettingsForm({
     const result = await guarded<WalletSettings>(
       'PUT',
       'wallet/admin/settings',
-      needsReason
-        ? { status: chosen, reasonCode: reason, expectedVersion: loadedVersion }
-        : { status: chosen, expectedVersion: loadedVersion },
+      {
+        status: chosen,
+        ...(needsReason ? { reasonCode: reason } : {}),
+        expectedVersion: loadedVersion,
+        ...(sent === null ? {} : { note: sent }),
+      },
       csrfToken,
     );
     busy.current = false;
@@ -139,12 +187,14 @@ export function SettingsForm({
       setSettings(result.body);
       setState('');
       setReason('');
+      setNote('');
       const kind = before === chosen ? 'already' : 'changed';
       const text = t(`settings.notice.${kind}`, {
         state: t(`state.${result.body.status}`).toLowerCase(),
       });
       if (kind === 'changed') toast.success(text);
       else toast.info(text);
+      sentForReview(result.body);
       return;
     }
     if (isStepUpCancelled(result)) return;
@@ -158,6 +208,10 @@ export function SettingsForm({
       await load();
       return;
     }
+    if (isNoteFailure(result.failure)) {
+      setNoteError('rejected');
+      return;
+    }
     const key = walletProblemOf(result.failure, 'settings');
     if (key === 'validation-settings') setReasonError(true);
     else setProblem(key);
@@ -165,6 +219,10 @@ export function SettingsForm({
 
   function review() {
     setProblem(null);
+    if (needsNote && trimmedNote(note) === null) {
+      setNoteError('required');
+      return;
+    }
     if (chosen === 'active') void send();
     else setConfirming(true);
   }
@@ -186,9 +244,9 @@ export function SettingsForm({
       />
     ) : null,
     canManage ? null : (
-      <Banner key="view-only" tone="info">
-        {t('settings.view-only')}
-      </Banner>
+      <SettingsViewOnlyBanner key="view-only" title={root('settings.view-only.title')}>
+        {root('settings.view-only.body')}
+      </SettingsViewOnlyBanner>
     ),
     problem === null ? null : (
       <Banner key="problem" tone="critical">
@@ -264,6 +322,7 @@ export function SettingsForm({
               setState(event.target.value as WalletState);
               setReason('');
               setReasonError(false);
+              setNoteError(null);
             }}
           />
         </SettingRow>
@@ -284,6 +343,18 @@ export function SettingsForm({
               }}
             />
           </SettingRow>
+        ) : null}
+        {canManage && needsNote ? (
+          <div className="px-5 py-4">
+            <ReviewNoteField
+              value={note}
+              onChange={(next) => {
+                setNote(next);
+                setNoteError(null);
+              }}
+              error={noteError ?? undefined}
+            />
+          </div>
         ) : null}
         {canManage ? (
           <div className="flex flex-col gap-2 px-5 py-4">

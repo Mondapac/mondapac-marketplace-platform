@@ -13,6 +13,12 @@ import {
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import {
+  ApprovalNotice,
+  ReviewNoteField,
+  trimmedNote,
+  useApprovalAction,
+} from '../shared/review-note.tsx';
+import {
   checkForm,
   moved,
   sharePercent,
@@ -43,6 +49,9 @@ export function ModelFormCard({
   pending,
   problem,
   activeNote,
+  reviewed,
+  approval,
+  noteRejected,
   onSubmit,
   onCancel,
 }: {
@@ -50,17 +59,29 @@ export function ModelFormCard({
   readonly initial: ModelForm;
   readonly fleets: readonly FleetRow[];
   readonly pending: boolean;
-  /** The message key under `fleets.error` of the last refused save, or null. */
+  /** The words of the last refused save, or null. */
   readonly problem: string | null;
   /** Names the methods this model is active for (an edit goes live at once), or null. */
   readonly activeNote: string | null;
-  readonly onSubmit: (body: { name: string; rule: Rule }) => void;
+  /** The change is reviewed in this Market: the form asks for a note. */
+  readonly reviewed: boolean;
+  /**
+   * The save waits for another admin's approval (a create where delivery is reviewed: a model
+   * has no delete): the form says so and its button reads "Send for approval".
+   */
+  readonly approval: boolean;
+  /** The API refused the note of the last save. */
+  readonly noteRejected: boolean;
+  readonly onSubmit: (body: { name: string; rule: Rule }, note: string | null) => void;
   readonly onCancel: () => void;
 }) {
   const t = useTranslations();
+  const actionLabel = useApprovalAction();
   const [form, setForm] = useState(initial);
   const [invalid, setInvalid] = useState<readonly FormField[]>([]);
   const [announce, setAnnounce] = useState('');
+  const [note, setNote] = useState('');
+  const [noteMissing, setNoteMissing] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const pendingFocus = useRef<{ fleet: FleetCode; arrow: Arrow } | null>(null);
@@ -111,7 +132,13 @@ export function ModelFormCard({
       return;
     }
     setInvalid([]);
-    onSubmit({ name: checked.name, rule: checked.rule });
+    const sent = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sent === null) {
+      setNoteMissing(true);
+      field('note')?.focus();
+      return;
+    }
+    onSubmit({ name: checked.name, rule: checked.rule }, sent);
   }
 
   function move(fleet: FleetCode, index: number, by: -1 | 1) {
@@ -288,15 +315,33 @@ export function ModelFormCard({
               ) : null}
             </fieldset>
           ) : null}
+          {approval ? (
+            <div className="px-5 pt-4">
+              <ApprovalNotice />
+            </div>
+          ) : null}
+          {reviewed ? (
+            <div className="px-5 pt-4">
+              <ReviewNoteField
+                approval={approval}
+                value={note}
+                onChange={(next) => {
+                  setNote(next);
+                  setNoteMissing(false);
+                }}
+                error={noteMissing ? 'required' : noteRejected ? 'rejected' : undefined}
+              />
+            </div>
+          ) : null}
           {problem === null ? null : (
             <p role="alert" className="px-5 pt-4 text-sm text-critical-fg">
-              {t(`${P}.error.${problem}`)}
+              {problem}
             </p>
           )}
           {/* An editor of one list entry: it keeps its own Save and Cancel, not the page's bar. */}
           <div className="flex flex-wrap gap-3 px-5 py-4">
             <Button type="submit" loading={pending}>
-              {t(`${P}.model.save`)}
+              {actionLabel(t(`${P}.model.save`), approval)}
             </Button>
             <Button variant="secondary" onClick={onCancel}>
               {t(`${P}.model.cancel`)}

@@ -21,7 +21,10 @@ import {
   type AttributeSummaryView,
   type FeatureSetUse,
   type MarketLocales,
+  type MarketUnit,
 } from '../attributes/attribute-admin-views';
+import { catalogueReview, type CatalogueReview } from '../catalogue-review';
+import type { SystemRequestRecorder } from '../../../system-requests';
 import type { AttributeAdminReader } from '../ports/attribute-admin.reader';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 
@@ -34,6 +37,8 @@ export interface AttributeOptionView {
   readonly labels: LocalizedText;
   readonly active: boolean;
   readonly position: number;
+  /** The value this one was merged into (attributes A8), or null. */
+  readonly mergedInto: string | null;
   /** Products of the Market whose published revision holds this option. */
   readonly productCount: number;
 }
@@ -52,6 +57,8 @@ export interface AttributeAdminGetOutput extends AttributeSummaryView {
   readonly createdByKind: string;
   readonly createdAt: string;
   readonly version: number;
+  /** The attribute this one was merged into, or null (attributes A8). */
+  readonly mergedInto: { readonly id: string; readonly code: string } | null;
   readonly bounds: AttributeBounds;
   /** Help text, page and search settings, the internal note (admin only) and the order. */
   readonly display: AttributeDisplaySettings;
@@ -63,6 +70,13 @@ export interface AttributeAdminGetOutput extends AttributeSummaryView {
   /** True when older revisions exist than the history shows. */
   readonly historyTruncated: boolean;
   readonly locales: MarketLocales;
+  /** The units the Market offers for a number-with-unit attribute (attributes A3). */
+  readonly units: readonly MarketUnit[];
+  /**
+   * Whether an edit is reviewed in the Market (Admin Inbox › System requests, area catalogue) and
+   * at which risk: the edit form asks for a note on save only when it is.
+   */
+  readonly review: CatalogueReview;
 }
 
 export type AttributeAdminGetFailure =
@@ -74,6 +88,8 @@ export interface AttributeAdminGetDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly attributeAdminReader: AttributeAdminReader;
   readonly policy: CatalogMarketPolicy;
+  /** Reads the review policy of area catalogue for the page. */
+  readonly review: Pick<SystemRequestRecorder, 'areaPolicy'>;
 }
 
 /**
@@ -128,6 +144,8 @@ export class AttributeAdminGet extends UseCase<
     const { market } = context;
     const locales = marketLocalesOf(this.deps.policy.locales(market));
     const reader = this.deps.attributeAdminReader;
+    // Its own read-only unit, before this one (units do not nest).
+    const review = await catalogueReview(this.deps.review, context);
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
@@ -159,9 +177,11 @@ export class AttributeAdminGet extends UseCase<
     const shown = revisions.slice(0, ATTRIBUTE_HISTORY_MAX);
     return ok({
       ...summaryOf(definition, locales),
+      review,
       createdByKind: definition.createdByKind,
       createdAt: definition.createdAt.toString(),
       version: definition.version,
+      mergedInto: definition.mergedInto ?? null,
       bounds: { ...definition.revision.bounds },
       display: {
         ...definition.revision.display,
@@ -174,6 +194,7 @@ export class AttributeAdminGet extends UseCase<
           labels: { ...option.labels },
           active: option.active,
           position: option.position,
+          mergedInto: option.mergedInto ?? null,
           productCount: optionCounts.get(option.code) ?? 0,
         })),
       productCount: counts.get(definition.code) ?? 0,
@@ -190,6 +211,7 @@ export class AttributeAdminGet extends UseCase<
       }),
       historyTruncated: revisions.length > ATTRIBUTE_HISTORY_MAX,
       locales,
+      units: this.deps.policy.units(market).map((unit) => ({ ...unit })),
     });
   }
 }

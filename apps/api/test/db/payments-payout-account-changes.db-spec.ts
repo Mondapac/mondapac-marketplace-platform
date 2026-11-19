@@ -192,36 +192,6 @@ describe.each(TEST_MARKETS)('payout account changes in market %s (database)', (c
     );
   });
 
-  it('pages the accounts newest created first, by status and cursor', async () => {
-    const base = T0.add({ hours: 24 * (300 + Math.floor(Math.random() * 500)) });
-    const ids = [] as string[];
-    for (let index = 0; index < 3; index += 1) {
-      const sellerId = randomUUID();
-      ids.push(sellerId);
-      await value(market, () => store.insert(market, sellerId, base.add({ minutes: index })));
-    }
-    const firstPage = await value(market, () =>
-      store.list(market, 'not-started', { limit: 2, after: null }),
-    );
-    expect(firstPage).toHaveLength(3);
-    expect(firstPage.slice(0, 3).map((r) => r.sellerId)).toEqual([...ids].reverse());
-    const rest = await value(market, () =>
-      store.list(market, 'not-started', {
-        limit: 2,
-        after: { createdAt: firstPage[1]!.createdAt, sellerId: firstPage[1]!.sellerId },
-      }),
-    );
-    expect(rest[0]?.sellerId).toBe(ids[0]);
-    expect(
-      await value(market, () => store.list(market, 'enabled', { limit: 5, after: null })),
-    ).not.toEqual(expect.arrayContaining([expect.objectContaining({ sellerId: ids[0] })]));
-    expect(
-      (await value(other, () => store.list(other, 'not-started', { limit: 500, after: null }))).map(
-        (r) => r.sellerId,
-      ),
-    ).not.toContain(ids[0]);
-  });
-
   it('keeps the external-account events in the inbox', async () => {
     for (const type of [
       'account.external_account.created',

@@ -13,6 +13,7 @@ import { unavailableClaimTextMatcher } from '../../../../../test/support/unavail
 import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
+import { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
@@ -74,7 +75,33 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       return Promise.resolve(null);
     },
   };
+  let editKey = true;
+  const matching = (filter: { status: string | null; search: string | null }) =>
+    [...rows.values()]
+      .filter((r) => filter.status === null || r.status === filter.status)
+      .filter(
+        (r) =>
+          filter.search === null ||
+          r.code.includes(filter.search.toLowerCase()) ||
+          r.names.some((n) => n.name.toLowerCase().includes(filter.search!.toLowerCase())),
+      );
   const activityReader: BusinessActivityReader = {
+    page: (_m, query) => {
+      const sign = query.direction === 'asc' ? 1 : -1;
+      const keyOf = (r: BusinessActivityState): string =>
+        query.sort === 'code'
+          ? r.code
+          : query.sort === 'status'
+            ? r.status
+            : query.sort === 'created'
+              ? r.createdAt.toString()
+              : r.updatedAt.toString();
+      const sorted = matching(query).sort(
+        (a, b) => sign * (keyOf(a).localeCompare(keyOf(b)) || a.id.localeCompare(b.id)),
+      );
+      return Promise.resolve(sorted.slice(query.offset, query.offset + query.limit));
+    },
+    count: (_m, filter) => Promise.resolve(matching(filter).length),
     activeIds: (_m, ids) =>
       Promise.resolve(new Set(ids.filter((id) => rows.get(id)?.status === 'active'))),
     list: (_m, query: BusinessActivityListQuery) =>
@@ -98,6 +125,7 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
     id: cat(n),
     parentId: parent,
     status,
+    position: 0,
     mergedIntoId: null,
     slug: `c${n}`,
     names: status === 'active' ? [{ locale: main, name: `Category ${n}` }] : [],
@@ -125,6 +153,7 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       matcher,
       clock,
       ids,
+      contentFilter: new ContentFilter(markets),
     }),
     edit: new BusinessActivityEdit(gate, {
       unitOfWork,
@@ -133,9 +162,15 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       policy,
       matcher,
       clock,
+      contentFilter: new ContentFilter(markets),
     }),
     get: new BusinessActivityGet(gate, { unitOfWork, activities }),
-    list: new BusinessActivityList(gate, { unitOfWork, activityReader, policy }),
+    list: new BusinessActivityList(gate, {
+      unitOfWork,
+      activityReader,
+      policy,
+      activityEditProbe: { execute: () => Promise.resolve({ ok: editKey }) },
+    }),
   });
 
   const contextOf = (population: 'admin' | 'seller'): CallContext =>
@@ -252,6 +287,27 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       },
     });
     expect(down).toEqual({ ok: false, error: { code: 'access.unavailable' } });
+    expect(rows.size).toBe(0);
+  });
+
+  it("refuses a name or description with a term of the Market's content filter", async () => {
+    const bad = code === 'AU' ? 'shit' : 'zzbad';
+
+    const result = await build().create.execute(admin, {
+      names: { [main]: `${bad} shop` },
+      description: `so ${bad}`,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'validation.failed',
+        fields: [
+          { path: `names.${main}`, code: 'blocked-term' },
+          { path: 'description', code: 'blocked-term' },
+        ],
+      },
+    });
     expect(rows.size).toBe(0);
   });
 
@@ -388,9 +444,28 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       value: {
         items: [],
         nextAfterId: null,
+        total: 0,
+        page: 1,
+        pageSize: 25,
+        paging: 'pages',
+        hasNext: false,
         locales: { default: main, supported: [...locales.supported] },
       },
     });
+    expect(all.ok && all.value.items[0]?.actions).toEqual(['edit', 'deactivate']);
+    editKey = false;
+    const noEdit = await list.execute(admin, { paging: 'prev-next' });
+    expect(noEdit).toMatchObject({ ok: true, value: { total: null, hasNext: false } });
+    expect(noEdit.ok && noEdit.value.items[0]?.actions).toEqual([]);
+    editKey = true;
+    expect(
+      await list.execute(admin, { q: 'groc', sort: 'status', direction: 'desc' }),
+    ).toMatchObject({ ok: true, value: { total: 1 } });
+    expect(await list.execute(admin, { limit: 5, page: 2 })).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'page', code: 'conflict' }] },
+    });
+    expect(await list.execute(admin, { q: 'a', search: 'b' })).toMatchObject({ ok: false });
     expect(await list.execute(admin, { limit: 0 })).toEqual({
       ok: false,
       error: { code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] },

@@ -31,7 +31,7 @@ export const PUBLIC_IMAGE_MAX_AGE_SECONDS = 300;
  * Market is in the path (`:market`, checked like `x-market-id`; an `<img>` cannot send a header). In its own per-origin rate-limit class (`public-media`, Market `requestLimits.publicMediaPerMinute`), so a page of photos cannot trip the default limit. Serves a
  * rendition only for a product that is published in the Market, for a photo that is in its
  * current published revision and is not taken down; every other case, whatever the reason, is the
- * same `404 image.not-found`. The bytes are JPEG written by the server; the type is set by the
+ * same `404 image.not-found`. The bytes are JPEG, WebP or AVIF written by the server; the type is set by the
  * server and the answer is sandboxed, never sniffed, and never carries a cookie.
  */
 @ApiTags('catalog')
@@ -48,9 +48,9 @@ export class PublicProductImageController {
   @ApiOperation({
     summary: 'A product photo (public)',
     description:
-      'No session needed; the Market is in the path because a browser image request cannot send `x-market-id`. `size` is thumb, medium or large. Served only for a published ' +
+      'No session needed; the Market is in the path because a browser image request cannot send `x-market-id`. `size` is thumb, medium or large for the JPEG, or with `.webp` or `.avif` after it (for example `large.webp`) for that format; a photo made before those formats existed has no WebP or AVIF until the reprocess command has run, and the answer for it is 404 image.not-found. Served only for a published ' +
       "product's current photo that is not taken down; any other case is 404 image.not-found. " +
-      'The answer is an image/jpeg written by the server, with `nosniff`, a sandboxing CSP, ' +
+      'The answer is an image (JPEG, WebP or AVIF by the name) written by the server, with `nosniff`, a sandboxing CSP, ' +
       '`Cross-Origin-Resource-Policy: cross-origin` and `Cache-Control: public, max-age=300, s-maxage=300` ' +
       '(no `immutable`: a takedown must take effect quickly). No cookie is ever set. The ' +
       'query string is ignored.',
@@ -58,8 +58,11 @@ export class PublicProductImageController {
   @ApiParam({ name: 'market', description: 'The Market id: two capital letters' })
   @ApiParam({ name: 'productId', format: 'uuid' })
   @ApiParam({ name: 'imageId', format: 'uuid' })
-  @ApiParam({ name: 'size', enum: ['thumb', 'medium', 'large'] })
-  @ApiOkResponse({ description: 'image/jpeg bytes' })
+  @ApiParam({
+    name: 'size',
+    enum: ['thumb', 'medium', 'large'].flatMap((s) => [s, `${s}.webp`, `${s}.avif`]),
+  })
+  @ApiOkResponse({ description: 'image/jpeg, image/webp or image/avif bytes' })
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'image.not-found' })
   @ApiTooManyRequestsResponse({ type: ApiErrorBody, description: 'request.throttled' })
   @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'image.unavailable' })

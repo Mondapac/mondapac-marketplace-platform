@@ -1,3 +1,4 @@
+import type { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
@@ -44,6 +45,8 @@ export type BusinessActivityEditFailure =
   | ValidationFailure;
 
 export interface BusinessActivityEditDependencies {
+  /** The Market's content filter: public text with a blocked term is refused. */
+  readonly contentFilter: ContentFilter;
   readonly unitOfWork: UnitOfWork;
   readonly activities: BusinessActivityRepository;
   readonly treeReader: CategoryTreeReader;
@@ -115,10 +118,14 @@ export class BusinessActivityEdit extends UseCase<
     if (!version.ok) return version;
     const { market } = context;
     const locales = this.deps.policy.locales(market);
-    const content = parseActivityContent(body.value, {
-      required: locales.default,
-      supported: locales.supported,
-    });
+    const content = parseActivityContent(
+      body.value,
+      {
+        required: locales.default,
+        supported: locales.supported,
+      },
+      (text) => this.deps.contentFilter.isBlocked(market, text),
+    );
     if (!content.ok) return invalidFields(content.error);
     let status = null;
     if (body.value['status'] !== undefined) {

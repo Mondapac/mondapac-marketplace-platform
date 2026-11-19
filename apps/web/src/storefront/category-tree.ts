@@ -1,6 +1,7 @@
 import 'server-only';
 import { cache } from 'react';
 import { apiGet, type ApiRead } from './api.ts';
+import { CATEGORY_SLUG } from './links.ts';
 import { isObject, textOf } from './home-source.ts';
 import type { Category } from './types.ts';
 
@@ -15,7 +16,25 @@ export interface TreeRow {
   readonly parentId: string | null;
   readonly slug: string;
   readonly name: string;
+  /**
+   * Shown in menus and the sitemap (categories C6a: its Show in menu switch is on, it has live
+   * products and its parent is in the menu). An answer without the field counts as shown.
+   */
+  readonly inMenu: boolean;
+  /** A listed product is on it or below it; undefined when the answer does not say. */
+  readonly hasLiveProducts?: boolean;
+  /** Products with a listed Offer on it or below it (a guide, not a search total). */
+  readonly liveProductCount?: number;
+  readonly shortDescription?: string;
+  /** English only; absent fields are not set by the admin. */
+  readonly seo?: {
+    readonly title?: string;
+    readonly description?: string;
+    readonly noindex: boolean;
+  };
 }
+
+export { CATEGORY_SLUG };
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -37,21 +56,94 @@ export function treeOf(body: unknown): TreeRow[] | null {
     if (!isObject(row) || typeof row.id !== 'string' || !UUID.test(row.id)) continue;
     const slug = textOf(row.slug, 120);
     const name = textOf(row.name, 120);
-    if (slug === undefined || name === undefined || !/^[a-z0-9-]+$/u.test(slug)) continue;
+    if (slug === undefined || name === undefined || !CATEGORY_SLUG.test(slug)) continue;
     if (row.parentId !== null && (typeof row.parentId !== 'string' || !UUID.test(row.parentId)))
       continue;
     if (seen.has(row.id)) continue;
     seen.add(row.id);
-    rows.push({ id: row.id, parentId: row.parentId, slug, name });
+    rows.push({ id: row.id, parentId: row.parentId, slug, name, ...detailsOf(row) });
   }
   return rows;
+}
+
+/** The C6a fields of a row: each one is kept only when it has the right type. */
+function detailsOf(
+  row: Record<string, unknown>,
+): Omit<TreeRow, 'id' | 'parentId' | 'slug' | 'name'> {
+  const shortDescription = textOf(row.shortDescription, 300);
+  const seo = isObject(row.seo) ? row.seo : undefined;
+  const title = seo === undefined ? undefined : textOf(seo.title, 60);
+  const description = seo === undefined ? undefined : textOf(seo.description, 160);
+  return {
+    inMenu: row.inMenu !== false,
+    ...(typeof row.hasLiveProducts === 'boolean' ? { hasLiveProducts: row.hasLiveProducts } : {}),
+    ...(Number.isSafeInteger(row.liveProductCount) && (row.liveProductCount as number) >= 0
+      ? { liveProductCount: row.liveProductCount as number }
+      : {}),
+    ...(shortDescription === undefined ? {} : { shortDescription }),
+    ...(seo === undefined
+      ? {}
+      : {
+          seo: {
+            ...(title === undefined ? {} : { title }),
+            ...(description === undefined ? {} : { description }),
+            noindex: seo.noindex === true,
+          },
+        }),
+  };
+}
+
+/** The rows a menu may show (decision 11: an empty or switched-off category is not offered). */
+export const menuRows = (rows: readonly TreeRow[]): TreeRow[] => rows.filter((r) => r.inMenu);
+
+/** The ancestors of a node, top level first; stops at a missing parent or a loop. */
+export function trailOf(rows: readonly TreeRow[], node: TreeRow): TreeRow[] {
+  const byId = new Map(rows.map((r) => [r.id, r] as const));
+  const trail: TreeRow[] = [];
+  const seen = new Set([node.id]);
+  let parent = node.parentId === null ? undefined : byId.get(node.parentId);
+  while (parent !== undefined && !seen.has(parent.id)) {
+    seen.add(parent.id);
+    trail.unshift(parent);
+    parent = parent.parentId === null ? undefined : byId.get(parent.parentId);
+  }
+  return trail;
+}
+
+/** How deep a node is: 0 at the top level. */
+export const depthOf = (rows: readonly TreeRow[], node: TreeRow): number =>
+  trailOf(rows, node).length;
+
+/**
+ * The product counts the filter chips show (categories C6): each menu child's count, and the
+ * products on the node itself (its count less every child's, the "Other {name}" chip). Undefined
+ * when the answer does not count the node or one of its children.
+ */
+export function countsOf(
+  rows: readonly TreeRow[],
+  node: TreeRow,
+): { readonly children: Readonly<Record<string, number>>; readonly direct: number } | undefined {
+  const all = rows.filter((r) => r.parentId === node.id);
+  if (node.liveProductCount === undefined || all.some((r) => r.liveProductCount === undefined)) {
+    return undefined;
+  }
+  const below = all.reduce((sum, r) => sum + (r.liveProductCount ?? 0), 0);
+  return {
+    children: Object.fromEntries(
+      all.filter((r) => r.inMenu).map((r) => [r.slug, r.liveProductCount ?? 0]),
+    ),
+    direct: Math.max(0, node.liveProductCount - below),
+  };
 }
 
 /** The slug of each category id, for the card's illustration. */
 export const slugsOf = (rows: readonly TreeRow[]): ReadonlyMap<string, string> =>
   new Map(rows.map((r) => [r.id, r.slug]));
 
-/** A node as the site's category: its direct children are the subcategories. */
+/**
+ * A node as the site's category: its direct children in the menu are the subcategories (a child
+ * that is empty or switched out of the menu is not offered as a link).
+ */
 export function categoryOf(rows: readonly TreeRow[], node: TreeRow, label?: string): Category {
   const name = label ?? node.name;
   return {
@@ -59,14 +151,14 @@ export function categoryOf(rows: readonly TreeRow[], node: TreeRow, label?: stri
     name,
     shortName: name,
     children: rows
-      .filter((r) => r.parentId === node.id)
+      .filter((r) => r.parentId === node.id && r.inMenu)
       .map((r) => ({ code: r.slug, name: r.name })),
   };
 }
 
-/** The top level of the tree, in the API's order (depth first, so by position). */
+/** The top level of the menu, in the API's order (depth first, so by the admin's position). */
 export const topCategories = (rows: readonly TreeRow[]): Category[] =>
-  rows.filter((r) => r.parentId === null).map((r) => categoryOf(rows, r));
+  rows.filter((r) => r.parentId === null && r.inMenu).map((r) => categoryOf(rows, r));
 
 /**
  * The category `/c/<slug>` names, and with `sub` its child of that slug. A slug names the top

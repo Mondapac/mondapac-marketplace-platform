@@ -24,16 +24,25 @@ export const ROLE_EDITOR_STATUS: Readonly<Record<string, number>> = Object.freez
   'role.in-use': 409,
   'role.name-taken': 409,
   'role.limit': 409,
+  'system-requests.already-pending': 409,
   'access.unavailable': 503,
 });
 
-export type RoleRefusal = { readonly code: string; readonly fields?: readonly unknown[] };
+export type RoleRefusal = {
+  readonly code: string;
+  readonly fields?: readonly unknown[];
+  /** `system-requests.already-pending`: the number of the request that already waits (SR-n). */
+  readonly pendingNumber?: number;
+};
 
 export function roleRefusal(error: RoleRefusal): HttpException {
   const status =
     ROLE_EDITOR_STATUS[error.code] ??
     ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS] ??
     500;
+  if (error.pendingNumber !== undefined) {
+    return fail(status, error.code, { pendingNumber: error.pendingNumber });
+  }
   return error.fields === undefined
     ? fail(status, error.code)
     : fail(status, error.code, { fields: error.fields });
@@ -129,7 +138,7 @@ export function roleVersionBody(request: Request, body: unknown): number | HttpE
 }
 
 /** The catalogue as JSON: exactly the declared fields, in a fixed order. */
-export function catalogueView(catalogue: PlatformRoleCatalogue): RoleCatalogueView {
+export function catalogueView(catalogue: Omit<PlatformRoleCatalogue, 'review'>): RoleCatalogueView {
   return {
     items: catalogue.items.map((role) => ({
       roleId: role.roleId,

@@ -18,6 +18,9 @@ export interface ProductRepository {
   /** The product in this Market, or null: another Market's id is not found (AC 1). */
   findById(market: MarketContext, id: Id<'Product'>): Promise<Product | null>;
 
+  /** The products of this Market among the ids, in one statement; unknown ids are absent. */
+  findManyByIds(market: MarketContext, ids: readonly Id<'Product'>[]): Promise<readonly Product[]>;
+
   /**
    * Writes a changed product and its variants under the version it was read at. Throws
    * `StaleAggregateError` when the row changed since (P 10).

@@ -10,12 +10,15 @@ export type {
 } from '../domain/claim-types';
 export {
   CERTIFICATION_FACADE,
+  type CategoryReferencedByPolicy,
   type CertificationFacade,
   type CertificationTypeView,
   type CertificationUnavailable,
   type CertificationValidationFailed,
   type ClaimTextInput,
+  type RetiredCategoriesFlagged,
   type SellerCertificateOverviewRow,
+  type SellerValidCertificateTypesRow,
 } from './certification.facade';
 export {
   CERTIFICATION_OWN_CERTIFICATE_VIEW,
@@ -46,6 +49,12 @@ export {
   SellerCertificationChangesRequested,
   SellerCertificationDeclined,
   SellerCertificationExpiryWarningDue,
+  // Multi-culture package 3a (ADR-0048 security review M3): a derecognised issuer ends every
+  // certificate naming it, so sellers demotes certified memberships and search re-indexes; a
+  // deactivated type re-indexes too.
+  ISSUER_DEACTIVATION_FORMS,
+  IssuerDeactivated,
+  CertificationTypeDeactivated,
 } from '../domain/events';
 // The port `catalog` implements for certification (design 8.2, request C-3).
 export {

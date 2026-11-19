@@ -42,7 +42,7 @@ export type AttributeRelaxationListOpenFailure =
 
 /**
  * `attribute-relaxations.list-open` (catalog design 8.2, PA7 "Waiting for you"; attributes A2
- * part 3): the Market's open relaxation requests still in time, oldest first, with the attribute's
+ * part 3): the Market's open requests to turn off Material that are still in time (archive requests have their own list), oldest first, with the attribute's
  * code, names and version and what the reader may do: confirm another admin's request, cancel
  * their own (`relaxation.same-admin` and `relaxation.not-requester` otherwise). The requester is
  * shown by account id and as `mine` or not: the admin name lookup is a later identity read. Rule: the key
@@ -60,10 +60,7 @@ export class AttributeRelaxationListOpen extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: Pick<
-      AttributeRelaxationDependencies,
-      'unitOfWork' | 'attributeStore' | 'relaxations' | 'clock'
-    >,
+    private readonly deps: OpenRequestListDependencies,
   ) {
     super(gate);
   }
@@ -78,47 +75,70 @@ export class AttributeRelaxationListOpen extends UseCase<
     if (accountId === null) return err({ code: 'access.denied' });
     const body = closedInput(input, []);
     if (!body.ok) return body;
-    const { market } = context;
-    const { deps } = this;
-    const requests = await deps.unitOfWork.run<OpenRelaxationView[], never>(
-      market,
-      async () => {
-        const open = await deps.relaxations.listOpen(market, deps.clock.now(), LIST_MAX);
-        const views: OpenRelaxationView[] = [];
-        for (const request of open) {
-          const state = request.state;
-          const definition = await deps.attributeStore.findById(market, state.definitionId);
-          if (definition === null) continue;
-          const mine = state.requestedByAccountId === accountId;
-          views.push({
-            id: state.id,
-            version: state.version,
-            kind: state.kind,
-            attribute: {
-              id: definition.state.id,
-              code: definition.state.code,
-              names: definition.state.names,
-              version: definition.state.version,
-            },
-            mine,
-            requestedByAccountId: state.requestedByAccountId,
-            requestedAt: state.requestedAt.toString(),
-            expiresAt: state.expiresAt.toString(),
-            allowedActions: {
-              confirm: mine
-                ? { allowed: false, reason: 'relaxation.same-admin' }
-                : { allowed: true },
-              cancel: mine
-                ? { allowed: true }
-                : { allowed: false, reason: 'relaxation.not-requester' },
-            },
-          });
-        }
-        return ok(views);
-      },
-      { readOnly: true },
+    const requests = await openRequestViews(
+      this.deps,
+      context,
+      accountId,
+      (kind) => kind !== 'archive',
     );
     if (!requests.ok) return requests;
     return ok({ requests: requests.value });
   }
+}
+
+/** The dependencies the open-request lists read. */
+export type OpenRequestListDependencies = Pick<
+  AttributeRelaxationDependencies,
+  'unitOfWork' | 'attributeStore' | 'relaxations' | 'clock'
+>;
+
+/**
+ * The open requests whose kind `include` accepts, oldest first, in one read-only unit. Both lists
+ * use it: the clear-material list (key `catalog.attribute.edit`) and the archive list (key
+ * `catalog.attribute.restructure`), so each key reads only the requests it can decide.
+ */
+export async function openRequestViews(
+  deps: OpenRequestListDependencies,
+  context: CallContext,
+  accountId: string,
+  include: (kind: string) => boolean,
+) {
+  const { market } = context;
+  return deps.unitOfWork.run<OpenRelaxationView[], never>(
+    market,
+    async () => {
+      const open = await deps.relaxations.listOpen(market, deps.clock.now(), LIST_MAX);
+      const views: OpenRelaxationView[] = [];
+      for (const request of open) {
+        const state = request.state;
+        if (!include(state.kind)) continue;
+        const definition = await deps.attributeStore.findById(market, state.definitionId);
+        if (definition === null) continue;
+        const mine = state.requestedByAccountId === accountId;
+        views.push({
+          id: state.id,
+          version: state.version,
+          kind: state.kind,
+          attribute: {
+            id: definition.state.id,
+            code: definition.state.code,
+            names: definition.state.names,
+            version: definition.state.version,
+          },
+          mine,
+          requestedByAccountId: state.requestedByAccountId,
+          requestedAt: state.requestedAt.toString(),
+          expiresAt: state.expiresAt.toString(),
+          allowedActions: {
+            confirm: mine ? { allowed: false, reason: 'relaxation.same-admin' } : { allowed: true },
+            cancel: mine
+              ? { allowed: true }
+              : { allowed: false, reason: 'relaxation.not-requester' },
+          },
+        });
+      }
+      return ok(views);
+    },
+    { readOnly: true },
+  );
 }

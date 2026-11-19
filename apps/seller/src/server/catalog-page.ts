@@ -12,6 +12,25 @@ export type CatalogPage<T> =
   | { readonly kind: 'unavailable' };
 
 /**
+ * The session of a seller catalog page, before any read: sellers who are not approved go to the
+ * account setup, and a session without the permission gets the no-access state.
+ */
+export async function catalogGate(
+  permission: string = VIEW_PERMISSION,
+): Promise<
+  | { readonly kind: 'ok'; readonly session: SellerSession }
+  | { readonly kind: 'no-access'; readonly session: SellerSession }
+  | { readonly kind: 'unavailable' }
+> {
+  const gate = await requireSession();
+  if (gate.kind === 'unavailable') return { kind: 'unavailable' };
+  const { session } = gate;
+  if (session.sellerAccessState !== 'approved') redirect(SETUP_ROOT);
+  if (!session.permissionKeys.includes(permission)) return { kind: 'no-access', session };
+  return { kind: 'ok', session };
+}
+
+/**
  * The session and one catalog read for a seller catalog page: sellers who are not approved go to
  * the account setup, and a session without the view permission gets the no-access state. The API
  * enforces the same rules; the checks here only spare it a refused call.
@@ -20,11 +39,9 @@ export async function loadCatalogPage<T>(
   path: string,
   permission: string = VIEW_PERMISSION,
 ): Promise<CatalogPage<T>> {
-  const gate = await requireSession();
-  if (gate.kind === 'unavailable') return { kind: 'unavailable' };
+  const gate = await catalogGate(permission);
+  if (gate.kind !== 'ok') return gate;
   const { session } = gate;
-  if (session.sellerAccessState !== 'approved') redirect(SETUP_ROOT);
-  if (!session.permissionKeys.includes(permission)) return { kind: 'no-access', session };
   const result = await serverGet<T>(path);
   if (result.kind === 'signed-out') redirect('/session-ended');
   if (result.kind === 'ok') return { kind: 'ok', session, body: result.body };

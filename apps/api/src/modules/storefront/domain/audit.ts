@@ -1,5 +1,6 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import { MODULE_KEYS } from './modules';
+import { SEO_SETTING_CODES } from './seo-settings';
 import { POSITION_KEYS, SLIDE_SCOPES } from './slide-positions';
 import { MAX_REORDER_SLIDES, SLIDE_KINDS } from './slides';
 import { LINKED_TYPES, TEMPLATES } from './templates';
@@ -151,6 +152,17 @@ export const StorefrontSlideArchived = defineAuditAction({
   after: { wasApproved: auditField.boolean() },
 });
 
+/** The audit target type of a slide library image. */
+export const STOREFRONT_SLIDE_IMAGE_TARGET = 'storefront.slide-image';
+
+/** An editor uploaded a slide image; `hasMobile` says a separate mobile picture came with it. */
+export const StorefrontSlideImageUploaded = defineAuditAction({
+  action: 'storefront.slide-image.upload',
+  targetType: STOREFRONT_SLIDE_IMAGE_TARGET,
+  actors: ['authenticated'],
+  after: { hasMobile: auditField.boolean() },
+});
+
 /** The audit target type of the order of the live slides at one position (and scope). */
 export const STOREFRONT_SLIDE_ORDER_TARGET = 'storefront.slide-order';
 
@@ -175,7 +187,38 @@ export const StorefrontSlideReordered = defineAuditAction({
   after: ORDER_SNAPSHOT,
 });
 
+/** The audit target type of the SEO settings. */
+export const SEO_SETTINGS_TARGET = 'storefront.seo-settings';
+
+const SEO_SNAPSHOT = {
+  version: auditField.integer(),
+  indexing: auditField.enumOf(['off', 'on'] as const),
+};
+
+/**
+ * An admin changed the Market's SEO settings, or restored an older version. The row names the
+ * versions, the indexing switch and the NAMES of the fields that changed (never a value: the
+ * values are in the insert-only `storefront.seo_settings` history, which is part of the audit
+ * evidence and is never granted UPDATE or DELETE). A change of a manage field also names the
+ * admin step-up proof it spent.
+ */
+export const StorefrontSeoSettingsChanged = defineAuditAction({
+  action: 'storefront.seo-settings.changed',
+  targetType: SEO_SETTINGS_TARGET,
+  targetId: auditField.enumOf(['seo-settings'] as const),
+  actors: ['authenticated'],
+  before: SEO_SNAPSHOT,
+  after: {
+    ...SEO_SNAPSHOT,
+    changed: auditField.listOf(auditField.enumOf(SEO_SETTING_CODES), SEO_SETTING_CODES.length),
+    restoredFrom: auditField.optional(auditField.integer()),
+    stepUpSessionId: auditField.optional(auditField.id()),
+    stepUpVerifiedAt: auditField.optional(auditField.instant()),
+  },
+});
+
 export const STOREFRONT_AUDIT_ACTIONS = [
+  StorefrontSeoSettingsChanged,
   StorefrontPageCreated,
   StorefrontPageUpdated,
   StorefrontDraftChanged,
@@ -189,4 +232,5 @@ export const STOREFRONT_AUDIT_ACTIONS = [
   StorefrontSlideResumed,
   StorefrontSlideArchived,
   StorefrontSlideReordered,
+  StorefrontSlideImageUploaded,
 ] as const;

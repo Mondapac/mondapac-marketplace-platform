@@ -1,10 +1,12 @@
 'use client';
 
-import { Badge, Banner, EmptyState, LoadError, SkeletonRows, Tabs } from '@mondapac/ui';
+import { Badge, Banner, EmptyState, LoadError, Tabs, DetailSkeleton } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { AttributeLinksTab } from './attribute-links-tab.tsx';
 import { When } from '../shared/when.tsx';
+import { CategoryImageSection } from './category-image.tsx';
 import { CategoryToolbar } from './category-toolbar.tsx';
 import { directionOf, indexOf } from './tree-model.ts';
 import {
@@ -42,6 +44,7 @@ export function CategoryDetails({
   id,
   tree,
   canEdit = false,
+  canRestructure = false,
   csrfToken = '',
   onChanged,
   onCreated,
@@ -50,6 +53,8 @@ export function CategoryDetails({
   /** The tree the page shows: with it (and the permission) the category can be changed here. */
   readonly tree?: TreeBody | null;
   readonly canEdit?: boolean;
+  /** `catalog.category-tree.restructure`: shows Move, Merge and Archive. */
+  readonly canRestructure?: boolean;
   readonly csrfToken?: string;
   /** A change was saved: the owner reads the tree again and remounts this view. */
   readonly onChanged?: (note?: string, focusId?: string) => void;
@@ -85,7 +90,9 @@ export function CategoryDetails({
     void fetchDetail();
   }, [fetchDetail]);
 
-  if (load === 'loading') return <SkeletonRows label={t('details.loading')} rows={4} />;
+  if (load === 'loading') {
+    return <DetailSkeleton label={t('details.loading')} slowLabel={tl('slow')} rows={4} />;
+  }
   if (load === 'missing') return <EmptyState icon="layout" title={t('details.missing')} />;
   if (load === 'failed' || body === null) {
     return (
@@ -117,6 +124,7 @@ export function CategoryDetails({
           body={body}
           tree={tree}
           canEdit={canEdit && onChanged !== undefined && onCreated !== undefined}
+          canRestructure={canRestructure && onChanged !== undefined}
           csrfToken={csrfToken}
           title={title}
           onChanged={onChanged ?? noop}
@@ -129,7 +137,21 @@ export function CategoryDetails({
         activeId={tab}
         onSelect={(value) => setTab(value as DetailTab)}
       />
-      {tab === 'details' ? <DetailsTab body={body} /> : null}
+      {tab === 'details' ? (
+        <DetailsTab
+          body={body}
+          canEdit={canEdit && onChanged !== undefined}
+          csrfToken={csrfToken}
+          onChanged={onChanged ?? noop}
+        />
+      ) : null}
+      {tab === 'attribute-links' ? (
+        <AttributeLinksTab
+          categoryId={id}
+          canEdit={canEdit && onChanged !== undefined}
+          csrfToken={csrfToken}
+        />
+      ) : null}
       {tab === 'products' ? <ProductsTab body={body} /> : null}
       {tab === 'history' ? <HistoryTab body={body} /> : null}
     </div>
@@ -140,6 +162,7 @@ function ToolbarFor({
   body,
   tree,
   canEdit,
+  canRestructure,
   csrfToken,
   title,
   onChanged,
@@ -148,6 +171,7 @@ function ToolbarFor({
   readonly body: DetailBody;
   readonly tree: TreeBody;
   readonly canEdit: boolean;
+  readonly canRestructure: boolean;
   readonly csrfToken: string;
   readonly title: string;
   readonly onChanged: (note?: string, focusId?: string) => void;
@@ -171,6 +195,9 @@ function ToolbarFor({
     <CategoryToolbar
       body={body}
       canEdit={canEdit}
+      canRestructure={canRestructure}
+      rows={tree.categories}
+      defaultLocale={tree.defaultLocale}
       csrfToken={csrfToken}
       supportedLocales={tree.supportedLocales}
       firstSibling={siblings[0]?.id === category.id}
@@ -195,7 +222,17 @@ function Row({ term, children }: { readonly term: string; readonly children: Rea
   );
 }
 
-function DetailsTab({ body }: { readonly body: DetailBody }) {
+function DetailsTab({
+  body,
+  canEdit,
+  csrfToken,
+  onChanged,
+}: {
+  readonly body: DetailBody;
+  readonly canEdit: boolean;
+  readonly csrfToken: string;
+  readonly onChanged: (note?: string, focusId?: string) => void;
+}) {
   const t = useTranslations('categories');
   const { category } = body;
   const count = useCount(body.complete);
@@ -240,6 +277,12 @@ function DetailsTab({ body }: { readonly body: DetailBody }) {
         <Row term={t('details.offers')}>{count(category.counts.offers)}</Row>
         <Row term={t('details.version')}>{category.version}</Row>
       </dl>
+      <CategoryImageSection
+        body={body}
+        canEdit={canEdit}
+        csrfToken={csrfToken}
+        onChanged={(note) => onChanged(note, category.id)}
+      />
     </div>
   );
 }
@@ -274,7 +317,17 @@ function ProductsTab({ body }: { readonly body: DetailBody }) {
   }, [fetchImpact]);
 
   const count = useCount(impact?.complete ?? true);
-  if (load === 'loading') return <SkeletonRows label={t('details.loading')} rows={3} />;
+  if (load === 'loading') {
+    return (
+      <DetailSkeleton
+        label={t('details.loading')}
+        slowLabel={tl('slow')}
+        rows={6}
+        title={false}
+        framed={false}
+      />
+    );
+  }
   if (load === 'failed' || impact === null) {
     return (
       <LoadError

@@ -1,6 +1,7 @@
 'use client';
 
 import type { FormEvent, ReactNode } from 'react';
+import { SettingsTitle } from './settings-title.tsx';
 import { useUnsavedChangesGuard, type LeaveLabels } from './unsaved-changes-guard.tsx';
 
 export interface SettingsPageProps {
@@ -21,7 +22,7 @@ export interface SettingsPageProps {
     /** An ISO instant: the text becomes a `<time>` for assistive technology. */
     readonly dateTime?: string;
   };
-  /** Buttons at the end of the header (pin, help). */
+  /** Buttons at the end of the header (help). The pin star sits beside the title, not here. */
   readonly actions?: ReactNode;
   /** A read-only, conflict or error-summary `Banner` above the sections. */
   readonly banner?: ReactNode;
@@ -31,6 +32,8 @@ export interface SettingsPageProps {
   readonly saveBar?: ReactNode;
   /** True while a field differs from the saved value: leaving the page asks first. */
   readonly dirty?: boolean;
+  /** How many changes are unsaved: the leave message says it ("You have 2 unsaved changes on ..."). */
+  readonly dirtyCount?: number;
   readonly leave?: LeaveLabels;
   /** Dialogs and drawers of the page (the history drawer), outside the form. */
   readonly overlay?: ReactNode;
@@ -52,6 +55,7 @@ export function SettingsPage({
   onSubmit,
   saveBar,
   dirty = false,
+  dirtyCount = 0,
   leave,
   overlay,
   children,
@@ -59,6 +63,7 @@ export function SettingsPage({
   const guard = useUnsavedChangesGuard(
     dirty && leave !== undefined,
     leave ?? { title: '', message: '', stay: '', leave: '' },
+    { count: dirtyCount, page: title },
   );
   const body = (
     <>
@@ -70,7 +75,7 @@ export function SettingsPage({
     <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold text-fg">{title}</h1>
+          <SettingsTitle>{title}</SettingsTitle>
           {description ? (
             <p className="mt-1 max-w-prose text-sm text-fg-muted">{description}</p>
           ) : null}

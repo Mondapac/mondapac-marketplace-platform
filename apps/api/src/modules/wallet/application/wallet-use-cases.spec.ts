@@ -3,6 +3,7 @@ import {
   FakeChangeActors,
   InMemoryAuditTrail,
 } from '../../../../test/support/change-trail-fakes';
+import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -31,6 +32,7 @@ import { BalanceOf } from './use-cases/balance-of.use-case';
 import { OwnBalanceOf } from './use-cases/own-balance-of.use-case';
 import { CaptureHold } from './use-cases/capture-hold.use-case';
 import { ExpireWalletCredit } from './use-cases/expire-wallet-credit.use-case';
+import { ClawBackCredit } from './use-cases/claw-back-credit.use-case';
 import { GrantCredit } from './use-cases/grant-credit.use-case';
 import { PlaceHold } from './use-cases/place-hold.use-case';
 import { ReleaseHold } from './use-cases/release-hold.use-case';
@@ -40,6 +42,8 @@ import { ViewMyWallet } from './use-cases/view-my-wallet.use-case';
 import { ViewWalletSettingsHistory } from './use-cases/view-wallet-settings-history.use-case';
 import { ViewWalletSettings } from './use-cases/view-wallet-settings.use-case';
 import type { WalletDependencies } from './wallet-dependencies';
+import { WALLET_STATUS_SUBJECT_KIND } from './wallet-review';
+import { WalletStatusReverter } from './wallet-reverter';
 
 // The wallet ledger core in memory on both Market fixtures (AU: AUD, cap 500.00, promo 12 months;
 // ZZ: JPY, cap 30000, promo 6 months): the switch (off by default; off, active, paused, frozen),
@@ -53,6 +57,7 @@ const id = <T extends string>(n: number): Id<T> => {
   if (!parsed.ok) throw new Error('bad id');
   return parsed.value as Id<T>;
 };
+const REQUEST = id<'SystemRequest'>(0x5e01);
 const CUSTOMER = id<'Account'>(0xc1);
 const OTHER_CUSTOMER = id<'Account'>(0xc2);
 const ADMIN = id<'Account'>(0xad);
@@ -85,6 +90,7 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
   let audit: RecordingAudit;
   let actors: FakeChangeActors;
   let deps: WalletDependencies;
+  let review = new RecordingReview();
   let seq = 0;
   // identity's spend of the admin step-up proof (issue #491): a proof unless a test says otherwise.
   let stepUpAnswer: Awaited<ReturnType<WalletDependencies['stepUp']['consume']>>;
@@ -129,11 +135,13 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
     audit = new RecordingAudit(clock);
     actors = new FakeChangeActors();
     const unitOfWork = new FakeUnitOfWork();
+    review = new RecordingReview();
     deps = {
       unitOfWork,
       wallet,
       settings: setting,
       policy: new ConfigWalletPolicy(markets),
+      review,
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,
@@ -486,6 +494,156 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
 
   // ---- grants -----------------------------------------------------------------------------
 
+  describe('review of the switch in System requests (area money)', () => {
+    const revert = (
+      before: Record<string, unknown>,
+      after: Record<string, unknown>,
+      context = adminCtx(),
+    ) =>
+      new WalletStatusReverter(deps).revert(context, {
+        requestId: REQUEST,
+        subjectRef: 'wallet-settings',
+        before: before as Record<string, null>,
+        after: after as Record<string, null>,
+      });
+
+    it('labels the switch for the queue, and nothing else', async () => {
+      const labels = await new WalletStatusReverter(deps).describe(adminCtx(), [
+        'wallet-settings',
+        'other',
+      ]);
+      expect([...labels]).toEqual([['wallet-settings', 'Wallet status']]);
+    });
+
+    it('opens nothing where the Market does not review money', async () => {
+      expect(await turn('active')).toMatchObject({ ok: true, value: { request: null } });
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('opens a review with the state before and after and the note, and refuses a switch without a note', async () => {
+      review.review('money', 'high');
+      expect(await turn('active')).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'note' }] },
+      });
+      // (The fake unit does not roll back, so the refused save is still stored: start from it.)
+      setting.record = null;
+      const opened = await new SetWalletStatus(gate, deps).execute(adminCtx(), {
+        status: 'active',
+        expectedVersion: 0,
+        note: 'Launch',
+      });
+      expect(opened).toMatchObject({ ok: true, value: { request: { number: 1 } } });
+      expect(review.opened).toEqual([
+        {
+          area: 'money',
+          subjectKind: WALLET_STATUS_SUBJECT_KIND,
+          subjectRef: 'wallet-settings',
+          before: { status: 'off', reason: null },
+          after: { status: 'active', reason: null },
+          note: 'Launch',
+          risk: 'high',
+        },
+      ]);
+    });
+
+    it('restores the state before while the switch still holds the state after, audited as a revert', async () => {
+      await open('active');
+      await turn('off');
+      audit.entries.length = 0;
+      expect(
+        await revert({ status: 'active', reason: null }, { status: 'off', reason: null }),
+      ).toBe('reverted');
+      expect(setting.record).toMatchObject({ status: 'active', reason: null, version: 3 });
+      expect(audit.entries.map((e) => [e.action, e.before, e.after])).toEqual([
+        [
+          'wallet.market-status.reverted',
+          { status: 'off', reason: null },
+          { status: 'active', reason: null, requestId: REQUEST },
+        ],
+      ]);
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('opens no review for a pause or a freeze, and never lifts one through a decision', async () => {
+      review.review('money', 'low');
+      const stop = (status: string, expectedVersion: number) =>
+        new SetWalletStatus(gate, deps).execute(adminCtx(), {
+          status,
+          reasonCode: 'security-incident',
+          expectedVersion,
+          note: 'Incident',
+        });
+      expect(await stop('paused', 0)).toMatchObject({ ok: true, value: { request: null } });
+      expect(await stop('frozen', 1)).toMatchObject({ ok: true, value: { request: null } });
+      expect(review.opened).toHaveLength(0);
+      expect(
+        await revert(
+          { status: 'active', reason: null },
+          { status: 'frozen', reason: 'security-incident' },
+        ),
+      ).toBe('not-permitted');
+      expect(setting.record).toMatchObject({ status: 'frozen', version: 2 });
+      // A switch back to active is reviewed, at high risk whatever the policy says.
+      await new SetWalletStatus(gate, deps).execute(adminCtx(), {
+        status: 'active',
+        expectedVersion: 2,
+        note: 'Incident over',
+      });
+      expect(review.opened.map((o) => [o.before, o.after, o.risk])).toEqual([
+        [
+          { status: 'frozen', reason: 'security-incident' },
+          { status: 'active', reason: null },
+          'high',
+        ],
+      ]);
+    });
+
+    it('answers changed-since when the switch moved on or off is no longer possible, and gone for a bad state', async () => {
+      await open('active');
+      expect(
+        await revert({ status: 'off', reason: null }, { status: 'paused', reason: 'maintenance' }),
+      ).toBe('changed-since');
+      expect(
+        await revert({ status: 'sideways', reason: null }, { status: 'active', reason: null }),
+      ).toBe('gone');
+      expect(
+        await revert({ status: 'paused', reason: null }, { status: 'active', reason: null }),
+      ).toBe('gone');
+      await grant(500n);
+      // Off with journals: the wallet has moved on.
+      expect(
+        await revert({ status: 'off', reason: null }, { status: 'active', reason: null }),
+      ).toBe('changed-since');
+      expect(setting.record).toMatchObject({ status: 'active', version: 1 });
+    });
+
+    it('turns the wallet back off while it has no journals, and a repeat switch opens nothing', async () => {
+      await open('active');
+      expect(
+        await revert({ status: 'off', reason: null }, { status: 'active', reason: null }),
+      ).toBe('reverted');
+      expect(setting.record).toMatchObject({ status: 'off', reason: null, version: 2 });
+      review.review('money', 'high');
+      const repeat = await new SetWalletStatus(gate, deps).execute(adminCtx(), {
+        status: 'off',
+        expectedVersion: 2,
+        note: 'Same state',
+      });
+      expect(repeat).toMatchObject({ ok: true, value: { status: 'off', request: null } });
+      expect(review.opened).toHaveLength(0);
+    });
+
+    it('throws for anyone but a signed-in admin acting as themselves', async () => {
+      await open('active');
+      for (const context of [customerCtx()]) {
+        await expect(
+          revert({ status: 'off', reason: null }, { status: 'active', reason: null }, context),
+        ).rejects.toThrow();
+      }
+    });
+  });
+
   describe('grants', () => {
     beforeEach(open);
 
@@ -689,6 +847,124 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       }
       const inLots = [...wallet.lots.values()].reduce((sum, l) => sum + l.remaining, 0n);
       expect((await balance()).available.amount).toBe(inLots);
+    });
+  });
+
+  describe('clawback of a promo grant (customers phase 4c-2)', () => {
+    beforeEach(open);
+
+    const clawBack = (
+      grantJournalId: unknown,
+      minor: bigint,
+      idempotencyKey = key('claw'),
+      customerAccountId: unknown = CUSTOMER,
+      context = system,
+    ) =>
+      new ClawBackCredit(gate, deps).execute(context, {
+        customerAccountId: customerAccountId as Id<'Account'>,
+        grantJournalId: grantJournalId as Id<'WalletJournal'>,
+        amount: amount(minor),
+        reasonCode: 'cashback-refund',
+        orderId: ORDER_1,
+        idempotencyKey,
+      });
+    const journalOf = async (minor: bigint, source: 'promo' | 'refund' = 'promo') => {
+      const granted = await grant(minor, source);
+      if (!granted.ok) throw new Error(granted.error.code);
+      return granted.value.journalId;
+    };
+
+    it('takes back up to the amount from the grant’s lot, to promo expense, in one balanced journal', async () => {
+      const journal = await journalOf(1000n);
+      await grant(500n, 'refund');
+      const taken = await clawBack(journal, 300n);
+      expect(taken).toMatchObject({
+        ok: true,
+        value: { clawedBack: amount(300n), balance: { available: amount(1200n) } },
+      });
+      expect(taken.ok && taken.value.journalId).not.toBeNull();
+      const last = wallet.journals.at(-1)!;
+      expect(last).toMatchObject({ kind: 'clawback', reasonCode: 'cashback-refund' });
+      expect(last.lotId).not.toBeNull();
+      expect(last.postings.reduce((sum, p) => sum + p.amountMinor, 0n)).toBe(0n);
+      expect(lotsOf()).toEqual([
+        ['promo', 700n],
+        ['refund', 500n],
+      ]);
+      const inLots = [...wallet.lots.values()].reduce((sum, l) => sum + l.remaining, 0n);
+      expect((await balance()).available.amount).toBe(inLots);
+    });
+
+    it('leaves what the customer spent or holds, and answers zero with no journal when nothing is left', async () => {
+      const journal = await journalOf(1000n);
+      await hold(600n);
+      await settle('capture');
+      expect(await clawBack(journal, 900n)).toMatchObject({
+        ok: true,
+        value: { clawedBack: amount(400n), balance: { available: amount(0n) } },
+      });
+      const journals = wallet.journals.length;
+      expect(await clawBack(journal, 100n)).toEqual(
+        ok({
+          journalId: null,
+          clawedBack: amount(0n),
+          balance: { available: amount(0n), held: amount(0n) },
+        }),
+      );
+      expect(wallet.journals).toHaveLength(journals);
+    });
+
+    it('answers a repeat with the first result and refuses a reused key for another request', async () => {
+      const journal = await journalOf(1000n);
+      const first = await clawBack(journal, 300n, 'claw-key-1');
+      expect(await clawBack(journal, 300n, 'claw-key-1')).toEqual(first);
+      expect((await balance()).available).toEqual(amount(700n));
+      expect(await clawBack(journal, 200n, 'claw-key-1')).toEqual(
+        err({ code: 'idempotency.key-reused' }),
+      );
+    });
+
+    it('takes only from a promo grant of this very customer', async () => {
+      const refund = await journalOf(500n, 'refund');
+      expect(await clawBack(refund, 100n)).toEqual(err({ code: 'wallet.not-found' }));
+      const other = await grant(500n, 'promo', key('grant'), OTHER_CUSTOMER);
+      if (!other.ok) throw new Error('grant');
+      expect(await clawBack(other.value.journalId, 100n)).toEqual(
+        err({ code: 'wallet.not-found' }),
+      );
+      expect(await clawBack(id<'WalletJournal'>(0x999), 100n)).toEqual(
+        err({ code: 'wallet.not-found' }),
+      );
+    });
+
+    it('works while the wallet is paused or frozen, and on a frozen customer wallet', async () => {
+      const journal = await journalOf(1000n);
+      await turn('paused', 'maintenance');
+      expect((await clawBack(journal, 100n)).ok).toBe(true);
+      await turn('frozen', 'maintenance');
+      expect((await clawBack(journal, 100n)).ok).toBe(true);
+      const account = [...wallet.accounts.values()].find((a) => a.kind === 'credit_liability')!;
+      wallet.accounts.set(account.id, { ...account, status: 'frozen' });
+      expect((await clawBack(journal, 100n)).ok).toBe(true);
+      expect((await balance()).available).toEqual(amount(700n));
+    });
+
+    it('validates the request and is for the system only', async () => {
+      const journal = await journalOf(1000n);
+      expect(await clawBack('nope', 100n)).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(await clawBack(journal, 0n)).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(await clawBack(journal, 100n, 'sys:internal-key')).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect((await clawBack(journal, 100n, key('claw'), CUSTOMER, customerCtx())).ok).toBe(false);
+      expect((await balance()).available).toEqual(amount(1000n));
     });
   });
 
@@ -990,6 +1266,7 @@ describe.each([['AU'], ['ZZ']] as const)('wallet ledger core in market %s', (cod
       new BalanceOf(gate, deps),
       new OwnBalanceOf(gate, deps),
       new AdminBalanceOf(gate, deps),
+      new ClawBackCredit(gate, deps),
     );
     const granted = await facade.grantCredit(system, {
       customerAccountId: CUSTOMER,

@@ -46,7 +46,7 @@ export function buildAttributeSchema(
       const options = definition.options
         .filter((option) => option.active)
         .sort((a, b) => a.position - b.position)
-        .map((option) => ({ code: option.code }));
+        .map((option) => ({ code: option.code, labels: option.labels }));
       fields.push({
         code: definition.code,
         dataType: definition.dataType,
@@ -63,6 +63,9 @@ export function buildAttributeSchema(
           ...(definition.bounds.max === undefined ? {} : { max: definition.bounds.max }),
           ...(options.length > 0 ? { options } : {}),
         },
+        ...(definition.dataType === 'measure' && definition.bounds.measure !== undefined
+          ? { measure: definition.bounds.measure }
+          : {}),
       });
     }
   }

@@ -7,6 +7,12 @@
 
 export type PhotoSize = 'thumb' | 'medium' | 'large';
 
+/** The formats the API also serves after the JPEG (the route's `size` takes `large.webp`). */
+export type PhotoFormat = 'webp' | 'avif';
+
+/** The route's `size` segment: a size alone is the JPEG, with a format after a dot is that format. */
+export type PhotoVariant = PhotoSize | `${PhotoSize}.${PhotoFormat}`;
+
 /** The most photos one product page shows (the API sends at most this many). */
 export const MAX_PHOTOS = 8;
 
@@ -16,7 +22,11 @@ const LOCAL_ORIGIN = /^(localhost|127\.0\.0\.1|[a-z0-9-]+\.localhost)$/u;
 const MAX_SIDE = 20_000;
 
 /** Builds the browser URL of one photo of a product. */
-export type PhotoUrl = (productId: string, imageId: string, size: PhotoSize) => string | undefined;
+export type PhotoUrl = (
+  productId: string,
+  imageId: string,
+  size: PhotoVariant,
+) => string | undefined;
 
 /**
  * Parses `STOREFRONT_IMAGE_ORIGIN`: `scheme://host[:port]` with no path, https (http only on
@@ -55,25 +65,123 @@ export function photoUrlBuilder(origin: string | null, marketId: string | null):
       : undefined;
 }
 
-/** One photo reference checked field by field: its id, or undefined when it is not one. */
-export function imageIdOf(value: unknown): string | undefined {
+/** A checked photo reference: the id and the pixel size of its largest rendition. */
+export interface PhotoRef {
+  readonly imageId: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** One photo reference checked field by field, or undefined when it is not one. */
+export function imageRefOf(value: unknown): PhotoRef | undefined {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
   const { imageId, width, height, alt } = value as Record<string, unknown>;
   if (typeof imageId !== 'string' || !UUID.test(imageId.toLowerCase())) return undefined;
-  const side = (n: unknown): boolean =>
+  const side = (n: unknown): n is number =>
     typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= MAX_SIDE;
   if (!side(width) || !side(height) || typeof alt !== 'string') return undefined;
-  return imageId.toLowerCase();
+  return { imageId: imageId.toLowerCase(), width, height };
+}
+
+/** One photo reference checked field by field: its id, or undefined when it is not one. */
+export function imageIdOf(value: unknown): string | undefined {
+  return imageRefOf(value)?.imageId;
+}
+
+/** The references of an `images` list: valid ones only, no repeats, at most {@link MAX_PHOTOS}. */
+export function imageRefsOf(value: unknown): PhotoRef[] {
+  if (!Array.isArray(value)) return [];
+  const refs: PhotoRef[] = [];
+  for (const entry of value as unknown[]) {
+    const ref = imageRefOf(entry);
+    if (ref !== undefined && !refs.some((r) => r.imageId === ref.imageId)) refs.push(ref);
+    if (refs.length === MAX_PHOTOS) break;
+  }
+  return refs;
 }
 
 /** The photo ids of an `images` list: valid references only, no repeats, at most {@link MAX_PHOTOS}. */
 export function imageIdsOf(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const ids: string[] = [];
-  for (const entry of value as unknown[]) {
-    const id = imageIdOf(entry);
-    if (id !== undefined && !ids.includes(id)) ids.push(id);
-    if (ids.length === MAX_PHOTOS) break;
-  }
-  return ids;
+  return imageRefsOf(value).map((ref) => ref.imageId);
+}
+
+/**
+ * The longest side each rendition fits (the API's image processor, `sharp-image-processor.ts`).
+ * A rendition never enlarges the original, and the API's `width` and `height` are those of the
+ * largest rendition, so every size here is that size scaled to fit its limit.
+ */
+export const RENDITION_SIDE: Readonly<Record<PhotoSize, number>> = {
+  thumb: 240,
+  medium: 800,
+  large: 1600,
+};
+
+/** The pixel size of one rendition of a photo whose largest rendition is `width` by `height`. */
+export function renditionSize(
+  ref: Pick<PhotoRef, 'width' | 'height'>,
+  size: PhotoSize,
+): { readonly width: number; readonly height: number } {
+  const scale = Math.min(1, RENDITION_SIDE[size] / Math.max(ref.width, ref.height));
+  return {
+    width: Math.max(1, Math.round(ref.width * scale)),
+    height: Math.max(1, Math.round(ref.height * scale)),
+  };
+}
+
+/** What an `<img>` needs to reserve its space and pick a rendition. */
+export interface PhotoSet {
+  /** The URL of the largest rendition: what the image sitemap and the JSON-LD `image` list. */
+  readonly largest: string;
+  /** `srcset` over the renditions, with their real widths. */
+  readonly srcSet: string;
+  /** Width and height of the rendition `src` points to, so the box keeps the photo's ratio. */
+  readonly width: number;
+  readonly height: number;
+  /**
+   * The same renditions in the newer formats, best first (AVIF, then WebP), for `<source>` in a
+   * `<picture>`; the JPEG `srcSet` stays the fallback on the `<img>`.
+   */
+  readonly sources: readonly PhotoSource[];
+}
+
+/** One `<source>` of a `<picture>`: the MIME type and the `srcset` of that format. */
+export interface PhotoSource {
+  readonly type: 'image/avif' | 'image/webp';
+  readonly srcSet: string;
+}
+
+const SOURCE_TYPES: readonly (readonly [PhotoFormat, PhotoSource['type']])[] = [
+  ['avif', 'image/avif'],
+  ['webp', 'image/webp'],
+];
+
+/**
+ * The `srcset` of one photo over thumb, medium and large, each with its real pixel width. A photo
+ * smaller than a limit gets the same pixels for several sizes: only one entry is kept per width.
+ * `width` and `height` are those of the `src` rendition. Undefined when the builder refuses an id.
+ */
+export function photoSetOf(
+  build: PhotoUrl,
+  productId: string,
+  ref: PhotoRef,
+  src: PhotoSize,
+): PhotoSet | undefined {
+  const sizes = ['thumb', 'medium', 'large'] as const;
+  const srcSetOf = (suffix: '' | `.${PhotoFormat}`): string | undefined => {
+    const byWidth = new Map<number, string>();
+    for (const size of sizes) {
+      const url = build(productId, ref.imageId, `${size}${suffix}`);
+      if (url === undefined) return undefined;
+      byWidth.set(renditionSize(ref, size).width, url);
+    }
+    return [...byWidth].map(([width, url]) => `${url} ${width}w`).join(', ');
+  };
+  const srcSet = srcSetOf('');
+  const largest = build(productId, ref.imageId, 'large');
+  if (srcSet === undefined || largest === undefined) return undefined;
+  const sources = SOURCE_TYPES.flatMap(([format, type]) => {
+    const formatSet = srcSetOf(`.${format}`);
+    return formatSet === undefined ? [] : [{ type, srcSet: formatSet }];
+  });
+  return { largest, srcSet, sources, ...renditionSize(ref, src) };
 }

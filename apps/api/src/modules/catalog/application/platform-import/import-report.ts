@@ -1,5 +1,6 @@
 import { csvLine, CSV_BOM } from '../products/products-csv';
-import { IMPORT_COLUMNS, type ImportColumnKey } from '../../domain/platform-import/columns';
+import { IMPORT_COLUMNS } from '../../domain/platform-import/columns';
+import type { IssueColumn } from '../../domain/platform-import/row-check';
 import type { ImportJob, ImportRowRecord } from '../../domain/platform-import/platform-import-job';
 import type { RowIssue } from '../../domain/platform-import/row-check';
 
@@ -9,22 +10,19 @@ import type { RowIssue } from '../../domain/platform-import/row-check';
 // or carriage return, so a spreadsheet never runs a value from the uploaded file as a formula
 // (design 14, AC 41; the values are the admin's own file, but a file is passed around).
 
-const HEADER_OF = new Map<ImportColumnKey | 'row', string>([
+const HEADER_OF = new Map<string, string>([
   ...IMPORT_COLUMNS.map((column) => [column.key, column.header] as const),
   ['row', 'Row'],
 ]);
 
 /** The column's header as the template shows it. */
-export function headerOf(column: ImportColumnKey | 'row'): string {
-  return HEADER_OF.get(column) ?? 'Row';
+export function headerOf(column: IssueColumn): string {
+  // An attribute column is its own header, `attr[<code>]` (the code is a plain kebab-case word).
+  return HEADER_OF.get(column) ?? (column.startsWith('attr[') ? column : 'Row');
 }
 
 /** The reason of a row's issue or failed run, in words (the page has its own copy for the same codes). */
-export function problemText(
-  code: string,
-  column: ImportColumnKey | 'row',
-  otherRow?: number,
-): string {
+export function problemText(code: string, column: IssueColumn, otherRow?: number): string {
   const header = headerOf(column);
   switch (code) {
     case 'required':
@@ -61,6 +59,18 @@ export function problemText(
       return 'Contains a character that can’t be stored';
     case 'attribute.required':
       return `${header} is required for this catalog`;
+    case 'attribute.option-unknown':
+      return `${header}: no such option (use its code or its English label)`;
+    case 'attribute.option-duplicate':
+      return `${header}: an option is listed twice`;
+    case 'attribute.unit-unknown':
+      return `${header}: this unit is not offered`;
+    case 'attribute.precision':
+      return `${header}: too many decimal places`;
+    case 'family.unavailable':
+      return 'The attributes of this category cannot be read: try again later';
+    case 'attribute.unknown':
+    case 'attribute.locale-unknown':
     case 'attribute.too-long':
     case 'attribute.type':
     case 'attribute.out-of-range':
@@ -69,6 +79,8 @@ export function problemText(
     // Run reasons.
     case 'claim-text.found':
       return 'The text mentions a certification. Certification belongs to a seller’s offer, not to the product';
+    case 'text.blocked-term':
+      return 'The text holds a word the platform does not allow';
     case 'claim-text.check-unavailable':
       return 'The certification-wording check was unavailable';
     case 'revision.not-ready':

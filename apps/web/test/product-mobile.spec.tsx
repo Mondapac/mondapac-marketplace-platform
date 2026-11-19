@@ -61,7 +61,10 @@ describe('gallery on a phone', () => {
       within(row)
         .getAllByRole('img')
         .map((img) => img.getAttribute('alt')),
-    ).toEqual([1, 2, 3, 4].map((n) => `Free-range chicken, whole, photo ${n} of 4`));
+    ).toEqual([
+      'Free-range chicken, whole',
+      ...[2, 3, 4].map((n) => `Free-range chicken, whole, photo ${n}`),
+    ]);
   });
 
   it('keeps the row out of the tab order on a wider screen', async () => {

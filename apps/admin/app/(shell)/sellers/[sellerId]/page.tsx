@@ -9,8 +9,31 @@ import {
   DECIDE_PERMISSION,
   OWNER_RESET_PERMISSION,
   REVIEW_PERMISSION,
+  SETTINGS_EDIT_PERMISSION,
   type ReviewRead,
 } from '../../../../src/sellers/review-types.ts';
+import { SellerHealthCard } from '../../../../src/sellers/health-card.tsx';
+import {
+  HEALTH_RECALCULATE_PERMISSION,
+  SELLER_VIEW_PERMISSION,
+  healthPath,
+  type SellerHealthRead,
+} from '../../../../src/sellers/health-types.ts';
+import {
+  AiAccessCard,
+  aiAccessOf,
+  aiAccessPath,
+  type AiAccessRead,
+} from '../../../../src/sellers/ai-access-card.tsx';
+import {
+  BLOG_ACCESS_PERMISSION,
+  BlogAccessCard,
+  blogAccessOf,
+  blogAccessPath,
+  type BlogAccessRead,
+} from '../../../../src/sellers/blog-access-card.tsx';
+import { CategoryProposalsCard } from '../../../../src/sellers/category-proposals-card.tsx';
+import { DECIDE_PERMISSION as PROPOSAL_DECIDE_PERMISSION } from '../../../../src/categories/proposals/types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';
 import { BackToSellers, ReviewView } from '../../../../src/sellers/review-view.tsx';
 import { CommissionRateCard } from '../../../../src/commission/rate-card.tsx';
@@ -32,6 +55,22 @@ import {
   type PayoutHold,
   type PayoutTerms,
 } from '../../../../src/payouts/seller-types.ts';
+import { SellerActivitiesCard } from '../../../../src/sellers/seller-activities-card.tsx';
+import {
+  ACTIVITIES_MANAGE_PERMISSION,
+  ACTIVITIES_VIEW_PERMISSION,
+  CATALOG_ACTIVITY_READ_PERMISSION,
+  sellerActivitiesPath,
+  type ActivityOption,
+  type SellerActivities,
+} from '../../../../src/sellers/activities-types.ts';
+import { RefundLimitCard } from '../../../../src/refund-limits/seller-card.tsx';
+import {
+  REFUND_LIMITS_MANAGE_PERMISSION,
+  REFUND_LIMITS_VIEW_PERMISSION,
+  sellerReadPath,
+  type RefundLimits,
+} from '../../../../src/refund-limits/types.ts';
 import { displayZone } from '../../../../src/shared/format.ts';
 import { SellerMethodsCard } from '../../../../src/delivery-settings/seller-methods-card.tsx';
 import {
@@ -46,6 +85,38 @@ async function loadMethods(sellerId: string, canView: boolean): Promise<SellerMe
   const read = await serverGet<SellerMethods>(sellerMethodsPath(sellerId));
   if (read.kind === 'signed-out') redirect('/session-ended');
   return read.kind === 'ok' ? read.body : null;
+}
+
+/** The caps on the seller's refunds, or null when the role cannot see them or they cannot be read. */
+async function loadRefundLimits(sellerId: string, canView: boolean): Promise<RefundLimits | null> {
+  if (!canView) return null;
+  const read = await serverGet<RefundLimits>(sellerReadPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? read.body : null;
+}
+
+/** The seller's stored health, or null when the role cannot see it or it cannot be read. */
+async function loadHealth(sellerId: string, canView: boolean): Promise<SellerHealthRead | null> {
+  if (!canView) return null;
+  const read = await serverGet<SellerHealthRead>(healthPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? read.body : null;
+}
+
+/** The seller's AI switch, or null when it cannot be read (the card then shows no switch). */
+async function loadAiAccess(sellerId: string, canView: boolean): Promise<AiAccessRead | null> {
+  if (!canView) return null;
+  const read = await serverGet<unknown>(aiAccessPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? aiAccessOf(read.body) : null;
+}
+
+/** The seller's blog switch, or null when it cannot be read (the card then shows no switch). */
+async function loadBlogAccess(sellerId: string, canView: boolean): Promise<BlogAccessRead | null> {
+  if (!canView) return null;
+  const read = await serverGet<unknown>(blogAccessPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  return read.kind === 'ok' ? blogAccessOf(read.body) : null;
 }
 
 /** The seller's payout terms, or null when the role cannot see them or they cannot be read. */
@@ -66,6 +137,33 @@ async function loadHolds(sellerId: string, canView: boolean): Promise<PayoutHold
   );
   if (read.kind === 'signed-out') redirect('/session-ended');
   return read.kind === 'ok' ? read.body.holds : null;
+}
+
+/** The activities the seller carries, or null when the role cannot see them or they cannot be read. */
+async function loadActivities(
+  sellerId: string,
+  permissionKeys: readonly string[],
+): Promise<{ readonly seller: SellerActivities; readonly options: ActivityOption[] } | null> {
+  if (!permissionKeys.includes(ACTIVITIES_VIEW_PERMISSION)) return null;
+  const read = await serverGet<SellerActivities>(sellerActivitiesPath(sellerId));
+  if (read.kind === 'signed-out') redirect('/session-ended');
+  if (read.kind !== 'ok') return null;
+  // The names come from the catalog list; a role without its key still sees the set, unnamed.
+  let options: ActivityOption[] = [];
+  if (permissionKeys.includes(CATALOG_ACTIVITY_READ_PERMISSION)) {
+    const list = await serverGet<{
+      items: { id: string; status: string; names: Record<string, string>; code: string }[];
+      locales: { default: string };
+    }>('catalog/admin/business-activities?limit=100');
+    if (list.kind === 'ok') {
+      options = list.body.items.map((a) => ({
+        id: a.id,
+        name: a.names[list.body.locales.default] ?? a.code,
+        active: a.status === 'active',
+      }));
+    }
+  }
+  return { seller: read.body, options };
 }
 
 type CommissionRead =
@@ -149,15 +247,98 @@ export default async function SellerReviewPage({
       canCheck: permissionKeys.includes(CHECK_PERMISSION),
       csrfToken,
     };
-    const [commission, methods, terms, holds] = await Promise.all([
+    const [
+      commission,
+      methods,
+      terms,
+      holds,
+      health,
+      activities,
+      aiAccess,
+      blogAccess,
+      refundLimits,
+    ] = await Promise.all([
       loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
       loadMethods(sellerId, permissionKeys.includes(DELIVERY_VIEW_PERMISSION)),
       loadTerms(sellerId, permissionKeys.includes(TERMS_VIEW_PERMISSION)),
       loadHolds(sellerId, permissionKeys.includes(HOLD_VIEW_PERMISSION)),
+      loadHealth(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+      loadActivities(sellerId, permissionKeys),
+      loadAiAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+      loadBlogAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+      loadRefundLimits(sellerId, permissionKeys.includes(REFUND_LIMITS_VIEW_PERMISSION)),
     ]);
     return shell(
       <div className="flex flex-col gap-6">
         <ReviewView review={result.body} decide={decide} />
+        {permissionKeys.includes('customers.customers.view') ? (
+          // The seller's Customers tab (customers management phase 3): its own page.
+          <nav aria-label={t('customers.seller-tab.nav')}>
+            <a
+              href={`/sellers/${sellerId}/customers`}
+              className="font-medium text-link underline focus-visible:outline-2 focus-visible:outline-focus"
+            >
+              {t('customers.seller-tab.link')}
+            </a>
+          </nav>
+        ) : null}
+        {health === null ? null : (
+          <SellerHealthCard
+            sellerId={sellerId}
+            initial={health}
+            canRecalculate={permissionKeys.includes(HEALTH_RECALCULATE_PERMISSION)}
+            csrfToken={csrfToken}
+          />
+        )}
+        {permissionKeys.includes(SETTINGS_EDIT_PERMISSION) ? (
+          <CategoryProposalsCard
+            sellerId={sellerId}
+            csrfToken={csrfToken}
+            canSeeQueue={permissionKeys.includes(PROPOSAL_DECIDE_PERMISSION)}
+          />
+        ) : null}
+        {permissionKeys.includes(SETTINGS_EDIT_PERMISSION) ? (
+          <AiAccessCard
+            sellerId={sellerId}
+            csrfToken={csrfToken}
+            initial={aiAccess}
+            canView={permissionKeys.includes(SELLER_VIEW_PERMISSION)}
+          />
+        ) : null}
+        {permissionKeys.includes(BLOG_ACCESS_PERMISSION) ||
+        permissionKeys.includes(SELLER_VIEW_PERMISSION) ? (
+          <BlogAccessCard
+            sellerId={sellerId}
+            csrfToken={csrfToken}
+            initial={blogAccess}
+            canView={permissionKeys.includes(SELLER_VIEW_PERMISSION)}
+            canEdit={permissionKeys.includes(BLOG_ACCESS_PERMISSION)}
+          />
+        ) : null}
+        {refundLimits === null ? null : (
+          <RefundLimitCard
+            sellerId={sellerId}
+            initial={refundLimits}
+            canManage={permissionKeys.includes(REFUND_LIMITS_MANAGE_PERMISSION)}
+            csrfToken={csrfToken}
+            zone={displayZone(gate.session.timezone)}
+          />
+        )}
+        {activities === null ? null : (
+          <SellerActivitiesCard
+            sellerId={sellerId}
+            initial={activities.seller}
+            activities={activities.options}
+            canEdit={
+              permissionKeys.includes(ACTIVITIES_MANAGE_PERMISSION) && activities.options.length > 0
+            }
+            editNote={
+              permissionKeys.includes(ACTIVITIES_MANAGE_PERMISSION) &&
+              activities.options.length === 0
+            }
+            csrfToken={csrfToken}
+          />
+        )}
         {commission.kind === 'hidden' && methods === null ? null : (
           <div className="grid gap-6 lg:grid-cols-2">
             {methods === null ? null : (

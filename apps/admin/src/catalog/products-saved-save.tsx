@@ -1,22 +1,18 @@
 'use client';
 
-import { Banner, Button, Dialog, RadioGroup, TextField, toast } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
-import { callApi, type ApiFailure } from '../api/client.ts';
 import {
-  LIST_KEY,
-  NAME_MAX,
-  payloadOf,
-  type SavedFilter,
-  type Visibility,
-} from './products-saved-types.ts';
+  SaveFilterDialog as SaveDialog,
+  toast,
+  type SavedFilterProblem,
+  type SaveFilterLabels,
+} from '@mondapac/ui';
+import { useTranslations } from 'next-intl';
+import { callApi, type ApiFailure } from '../api/client.ts';
+import { LIST_KEY, payloadOf, type SavedFilter } from './products-saved-types.ts';
 import type { Query } from './products-types.ts';
 
-type Problem = 'name-taken' | 'name-empty' | 'limit' | 'shared-limit' | 'denied' | 'unavailable';
-
 /** What a refused save says, in the key of the message (one per cause). */
-export function problemOf(failure: ApiFailure): Problem {
+export function problemOf(failure: ApiFailure): SavedFilterProblem {
   if (failure.code === 'saved-filter.name-taken') return 'name-taken';
   if (failure.code === 'saved-filter.limit-reached') return 'limit';
   if (failure.code === 'saved-filter.shared-limit-reached') return 'shared-limit';
@@ -29,11 +25,38 @@ export function problemOf(failure: ApiFailure): Problem {
   return 'unavailable';
 }
 
+/** The words of the saved-filter dialogs, from the page's messages. */
+export function useSavedFilterFieldLabels(limits: {
+  readonly perOwner: number;
+  readonly shared: number;
+}) {
+  const t = useTranslations('catalog.products.saved');
+  return {
+    name: t('save.name'),
+    who: t('save.who'),
+    me: t('visibility.me'),
+    everyone: t('visibility.everyone'),
+    everyoneHelp: t('save.everyone-help'),
+    ownOnly: t('save.own-only'),
+    cancel: t('cancel'),
+    errors: {
+      'name-taken': t('error.name-taken'),
+      'name-empty': t('error.name-empty'),
+      limit: t('error.limit', { max: limits.perOwner }),
+      'shared-limit': t('error.shared-limit', { max: limits.shared }),
+      denied: t('error.denied'),
+      'acting-as': t('error.denied'),
+      'not-found': t('error.unavailable'),
+      unavailable: t('error.unavailable'),
+    },
+  } as const;
+}
+
 /**
  * The Save filter dialog (Figma "Save filter"): a name and who can use the filter, over a one-line
  * summary of what is saved. An admin whose role holds `catalog.saved-filter.share` chooses Only me
- * or Everyone; any other admin sees that the filter is saved for them only. Enter saves; a name
- * that is empty, repeated or too long is said under the field, any other refusal in a banner.
+ * or Everyone; any other admin sees that the filter is saved for them only. The dialog itself is
+ * the shared one; this wraps it with the admin saved-filter route and its words.
  */
 export function SaveFilterDialog({
   open,
@@ -56,114 +79,29 @@ export function SaveFilterDialog({
   readonly onSaved: (filter: SavedFilter) => void;
 }) {
   const t = useTranslations('catalog.products.saved');
-  const [name, setName] = useState('');
-  const [visibility, setVisibility] = useState<Visibility>('me');
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<Problem | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setName('');
-    setVisibility('me');
-    setBusy(false);
-    setProblem(null);
-  }, [open]);
-
-  async function save() {
-    if (busy) return;
-    if (name.trim() === '') {
-      setProblem('name-empty');
-      return;
-    }
-    setBusy(true);
-    setProblem(null);
-    const result = await callApi<SavedFilter>(
-      'POST',
-      'catalog/admin/saved-filters',
-      {
-        listKey: LIST_KEY,
-        name: name.trim(),
-        visibility: canShare ? visibility : 'me',
-        payload: payloadOf(query),
-      },
-      csrfToken,
-    );
-    setBusy(false);
-    if (!result.ok) {
-      setProblem(problemOf(result.failure));
-      return;
-    }
-    toast.success(t('toast.saved', { name: result.body.name }), { id: 'products-saved-filter' });
-    onSaved(result.body);
-    onClose();
-  }
-
-  const nameProblem = problem === 'name-taken' || problem === 'name-empty' ? problem : null;
-  const banner = problem !== null && nameProblem === null ? problem : null;
-
+  const fields = useSavedFilterFieldLabels(limits);
+  const labels: SaveFilterLabels = { ...fields, title: t('save.title'), submit: t('save.submit') };
   return (
-    <Dialog
+    <SaveDialog
       open={open}
-      title={t('save.title')}
       onClose={onClose}
-      actions={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('cancel')}
-          </Button>
-          <Button type="submit" form="products-save-filter" loading={busy}>
-            {t('save.submit')}
-          </Button>
-        </>
-      }
-    >
-      <form
-        id="products-save-filter"
-        className="flex flex-col gap-4"
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault();
-          void save();
-        }}
-      >
-        <p className="text-sm text-fg-secondary [overflow-wrap:anywhere]">{summary}</p>
-        {banner === null ? null : (
-          <Banner tone="critical">
-            {t(`error.${banner}`, {
-              max: banner === 'shared-limit' ? limits.shared : limits.perOwner,
-            })}
-          </Banner>
-        )}
-        <TextField
-          label={t('save.name')}
-          value={name}
-          maxLength={NAME_MAX}
-          autoComplete="off"
-          error={nameProblem === null ? undefined : t(`error.${nameProblem}`)}
-          onChange={(event) => {
-            setName(event.target.value);
-            if (nameProblem !== null) setProblem(null);
-          }}
-        />
-        {canShare ? (
-          <RadioGroup
-            legend={t('save.who')}
-            name="products-saved-visibility"
-            value={visibility}
-            disabled={busy}
-            options={[
-              { value: 'me', label: t('visibility.me') },
-              { value: 'everyone', label: t('visibility.everyone'), help: t('save.everyone-help') },
-            ]}
-            onChange={(value) => setVisibility(value as Visibility)}
-          />
-        ) : (
-          <div className="flex flex-col gap-1.5">
-            <p className="text-sm font-medium text-fg">{t('save.who')}</p>
-            <p className="text-sm text-fg-muted">{t('save.own-only')}</p>
-          </div>
-        )}
-      </form>
-    </Dialog>
+      summary={summary}
+      canShare={canShare}
+      labels={labels}
+      onSubmit={async ({ name, visibility }) => {
+        const result = await callApi<SavedFilter>(
+          'POST',
+          'catalog/admin/saved-filters',
+          { listKey: LIST_KEY, name, visibility, payload: payloadOf(query) },
+          csrfToken,
+        );
+        if (!result.ok) return problemOf(result.failure);
+        toast.success(t('toast.saved', { name: result.body.name }), {
+          id: 'products-saved-filter',
+        });
+        onSaved(result.body);
+        return null;
+      }}
+    />
   );
 }

@@ -8,15 +8,22 @@ import { CreatePromotion } from '../src/modules/promotions/application/use-cases
 import { DecidePromotionReview } from '../src/modules/promotions/application/use-cases/decide-promotion-review.use-case';
 import { EditOwnPromotion } from '../src/modules/promotions/application/use-cases/edit-own-promotion.use-case';
 import { EditPromotion } from '../src/modules/promotions/application/use-cases/edit-promotion.use-case';
+import { ListSellerCampaigns } from '../src/modules/promotions/application/use-cases/list-seller-campaigns.use-case';
+import { PreviewSellerPayout } from '../src/modules/promotions/application/use-cases/preview-seller-payout.use-case';
 import { ListFreeShippingThresholds } from '../src/modules/promotions/application/use-cases/list-free-shipping-thresholds.use-case';
 import { ListOwnPromotions } from '../src/modules/promotions/application/use-cases/list-own-promotions.use-case';
+import { CountPromotionReviews } from '../src/modules/promotions/application/use-cases/count-promotion-reviews.use-case';
+import { ViewCampaignMembers } from '../src/modules/promotions/application/use-cases/view-campaign-members.use-case';
+import { ViewPromotionActivity } from '../src/modules/promotions/application/use-cases/view-promotion-activity.use-case';
 import { ListPromotionReviews } from '../src/modules/promotions/application/use-cases/list-promotion-reviews.use-case';
 import { ListPromotionsFull } from '../src/modules/promotions/application/use-cases/list-promotions-full.use-case';
 import { ListPromotions } from '../src/modules/promotions/application/use-cases/list-promotions.use-case';
 import { PauseOwnPromotion } from '../src/modules/promotions/application/use-cases/pause-own-promotion.use-case';
 import { ApplyReferralCode } from '../src/modules/promotions/application/use-cases/apply-referral-code.use-case';
 import { ListPromotionCredits } from '../src/modules/promotions/application/use-cases/list-promotion-credits.use-case';
+import { ListCustomerPromotionUsages } from '../src/modules/promotions/application/use-cases/list-customer-promotion-usages.use-case';
 import { ViewMyReferral } from '../src/modules/promotions/application/use-cases/view-my-referral.use-case';
+import { ViewMyUpcomingCashback } from '../src/modules/promotions/application/use-cases/view-my-upcoming-cashback.use-case';
 import { GenerateBatchCodes } from '../src/modules/promotions/application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from '../src/modules/promotions/application/use-cases/view-batch-code-summary.use-case';
 import { PausePromotion } from '../src/modules/promotions/application/use-cases/pause-promotion.use-case';
@@ -111,6 +118,9 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     ['generate-codes', GenerateBatchCodes],
     ['code-summary', ViewBatchCodeSummary],
     ['list-reviews', ListPromotionReviews],
+    ['count-reviews', CountPromotionReviews],
+    ['campaign-members', ViewCampaignMembers],
+    ['activity', ViewPromotionActivity],
     ['decide-review', DecidePromotionReview],
     ['view-first-order', ViewFirstOrderSettings],
     ['set-first-order', SetFirstOrderSettings],
@@ -123,8 +133,12 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     ['resume-own', ResumeOwnPromotion],
     ['list-own', ListOwnPromotions],
     ['opt-in', SetCoFundingOptIn],
+    ['list-campaigns', ListSellerCampaigns],
+    ['preview-payout', PreviewSellerPayout],
     ['credits', ListPromotionCredits],
+    ['customer-usages', ListCustomerPromotionUsages],
     ['my-referral', ViewMyReferral],
+    ['upcoming-cashback', ViewMyUpcomingCashback],
     ['apply-referral', ApplyReferralCode],
   ] as const;
 
@@ -347,14 +361,32 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     expect(actors.slice(3)).toEqual(['admin', 'seller']);
   });
 
+  const COUNTS = {
+    ALL: 1,
+    ACTIVE: 1,
+    SCHEDULED: 0,
+    PAUSED: 0,
+    NEEDS_REVIEW: 0,
+    ENDED: 0,
+    PENDING_APPROVAL: 0,
+    REJECTED: 0,
+    BUDGET_USED_UP: 0,
+  };
+
   it('lists promotions for a Viewer with usage only and for a manager with the cost, checking the query', async () => {
     await boot();
     const session = admin();
-    next = ok([{ ...PROMOTION_VIEW, usesCount: 3 }]);
+    next = ok({
+      items: [{ ...PROMOTION_VIEW, usesCount: 3, displayStatus: 'ACTIVE' }],
+      total: 41,
+      page: 2,
+      limit: 5,
+      counts: COUNTS,
+    });
     const usage = await call(
       'admin',
       'get',
-      '/promotions/admin/promotions?status=ACTIVE&limit=5',
+      '/promotions/admin/promotions?q=cart&type=CART_CODE,FREE_SHIPPING&owner=SELLER&funding=PLATFORM&view=ACTIVE&sort=NAME&order=asc&page=2&limit=5',
       session,
     );
     expect(usage.status).toBe(200);
@@ -363,23 +395,126 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
       id: PROMOTION,
       usesCount: 3,
       name: 'Platform cart',
+      displayStatus: 'ACTIVE',
     });
+    expect(usage.body).toMatchObject({ total: 41, page: 2, limit: 5, counts: { ALL: 1 } });
     expect(itemsOf(usage)[0]).not.toHaveProperty('budgetMinor');
-    expect(calls.at(-1)).toEqual({ name: 'list-usage', input: { status: 'ACTIVE', limit: 5 } });
+    expect(calls.at(-1)).toEqual({
+      name: 'list-usage',
+      input: {
+        text: 'cart',
+        type: 'CART_CODE,FREE_SHIPPING',
+        owner: 'SELLER',
+        funding: 'PLATFORM',
+        status: undefined,
+        view: 'ACTIVE',
+        sort: 'NAME',
+        order: 'asc',
+        page: '2',
+        limit: '5',
+      },
+    });
 
-    next = ok([PROMOTION_VIEW]);
+    next = ok({
+      items: [{ ...PROMOTION_VIEW, displayStatus: 'BUDGET_USED_UP' }],
+      total: 1,
+      page: 1,
+      limit: 25,
+      counts: COUNTS,
+    });
     const full = await call('admin', 'get', '/promotions/admin/promotions/costs', session);
     expect(full.status).toBe(200);
     expect(itemsOf(full)[0]).toMatchObject({
       budgetMinor: '100000',
       usage: { spentMinor: '900', platformShareMinor: '900' },
       reward: { kind: 'PERCENT', bps: 500, amountMinor: null },
+      displayStatus: 'BUDGET_USED_UP',
     });
-    const stray = await call('admin', 'get', '/promotions/admin/promotions?sort=asc', session);
+    const stray = await call('admin', 'get', '/promotions/admin/promotions?color=red', session);
     expect(stray.status).toBe(400);
     expect(stray.body).toMatchObject({
-      details: { fields: [{ path: 'sort', code: 'unknown-field' }] },
+      details: { fields: [{ path: 'color', code: 'unknown-field' }] },
     });
+  });
+
+  it('reads the activity, the sellers of a campaign and the open review count of the queue', async () => {
+    await boot();
+    const session = admin();
+    next = ok({
+      items: [
+        {
+          id: id<'Promotion'>(0xe201),
+          at: START,
+          kind: 'budget-changed',
+          byDisplayName: 'Dana',
+          byKind: 'member',
+          changes: [
+            {
+              field: 'budget',
+              before: { amount: '100000', currency: 'AUD' },
+              after: { amount: '150000', currency: 'AUD' },
+            },
+          ],
+        },
+      ],
+      next: null,
+    });
+    const activity = await call(
+      'admin',
+      'get',
+      `/promotions/admin/promotions/${PROMOTION}/activity?limit=10`,
+      session,
+    );
+    expect(activity.status).toBe(200);
+    expect(activity.headers['cache-control']).toBe('no-store');
+    expect(itemsOf(activity)[0]).toMatchObject({
+      kind: 'budget-changed',
+      byDisplayName: 'Dana',
+      changes: [{ field: 'budget', after: { amount: '150000' } }],
+    });
+    expect(calls.at(-1)).toEqual({
+      name: 'activity',
+      input: { promotionId: PROMOTION, after: undefined, limit: '10' },
+    });
+    expect(
+      (
+        await call(
+          'admin',
+          'get',
+          `/promotions/admin/promotions/${PROMOTION}/activity?sort=x`,
+          session,
+        )
+      ).status,
+    ).toBe(400);
+
+    next = ok({
+      promotionId: PROMOTION,
+      platformSplitBps: 4000,
+      liveCount: 1,
+      members: [{ promotionId: PROMOTION, sellerId: SELLER, optedInAt: START, withdrawnAt: null }],
+    });
+    const members = await call(
+      'admin',
+      'get',
+      `/promotions/admin/promotions/${PROMOTION}/sellers`,
+      session,
+    );
+    expect(members.status).toBe(200);
+    expect(members.body).toMatchObject({
+      platformSplitBps: 4000,
+      liveCount: 1,
+      members: [{ sellerId: SELLER, withdrawnAt: null }],
+    });
+    next = err({ code: 'promotions.invalid-state' });
+    expect(
+      (await call('admin', 'get', `/promotions/admin/promotions/${PROMOTION}/sellers`, session))
+        .status,
+    ).toBe(409);
+
+    next = ok({ open: 4 });
+    const count = await call('admin', 'get', '/promotions/admin/reviews/count', session);
+    expect(count.status).toBe(200);
+    expect(count.body).toEqual({ open: 4 });
   });
 
   it('creates, edits, pauses, resumes and sets the budget of a promotion, passing the id and the body', async () => {
@@ -747,6 +882,51 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
   describe('phase 3: referral and credits', () => {
     const CREDIT = id<'PromotionCredit'>(0xc001);
 
+    it('reads the customer’s own upcoming cashback, never cached, display only', async () => {
+      await boot();
+      const ORDER = id<'Order'>(0x0a01);
+      next = ok({
+        cashback: [
+          {
+            orderId: ORDER,
+            amountMinor: 400n,
+            currency: 'AUD',
+            creditOn: START.add({ hours: 24 }),
+          },
+          { orderId: ORDER, amountMinor: 5n, currency: 'AUD', creditOn: null },
+        ],
+      });
+      const response = await http()
+        .get(`/promotions/cashback/upcoming?orderId=${ORDER}`)
+        .set({ 'x-market-id': code, ...customer() });
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({
+        cashback: [
+          {
+            orderId: ORDER,
+            amountMinor: '400',
+            currency: 'AUD',
+            creditOn: START.add({ hours: 24 }).toString(),
+          },
+          { orderId: ORDER, amountMinor: '5', currency: 'AUD', creditOn: null },
+        ],
+      });
+      expect(calls.at(-1)).toEqual({ name: 'upcoming-cashback', input: { orderId: ORDER } });
+      await http()
+        .get('/promotions/cashback/upcoming')
+        .set({ 'x-market-id': code, ...customer() });
+      expect(calls.at(-1)).toEqual({ name: 'upcoming-cashback', input: {} });
+      next = err({ code: 'validation.failed', fields: [{ path: 'orderId', code: 'value' }] });
+      expect(
+        (
+          await http()
+            .get('/promotions/cashback/upcoming?orderId=x')
+            .set({ 'x-market-id': code, ...customer() })
+        ).status,
+      ).toBe(400);
+    });
+
     it('reads the customer’s own referral code, never cached, with amounts as digit strings', async () => {
       await boot();
       next = ok({
@@ -854,6 +1034,67 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
       const stray = await call('admin', 'get', `${URL}?offset=1`, admin());
       expect(stray.status).toBe(400);
     });
+
+    it('lists the promotions a customer used for an admin, closed query, no code hash', async () => {
+      await boot();
+      const URL = `/promotions/admin/customers/${CUSTOMER}/usages`;
+      next = ok({
+        nextCursor: 'abc_DEF-2',
+        items: [
+          {
+            promotionName: 'Spring sale',
+            record: {
+              id: 'r1',
+              orderId: 'o1',
+              promotionKey: PROMOTION,
+              promotionId: PROMOTION,
+              kind: 'PROMOTION',
+              customerAccountId: CUSTOMER,
+              codeHash: 'secret-hash',
+              currency: 'AUD',
+              amount: 450n,
+              sellerShare: 0n,
+              platformShare: 450n,
+              units: null,
+              budgetMonth: null,
+              status: 'CONFIRMED',
+              releaseReason: null,
+              reservedAt: START,
+              confirmedAt: START,
+              releasedAt: null,
+            },
+          },
+        ],
+      });
+      const response = await call('admin', 'get', `${URL}?limit=5&cursor=abc_DEF-2`, admin());
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(itemsOf(response)[0]).toEqual({
+        id: 'r1',
+        orderId: 'o1',
+        kind: 'PROMOTION',
+        promotionId: PROMOTION,
+        promotionName: 'Spring sale',
+        amountMinor: '450',
+        currency: 'AUD',
+        usedCode: true,
+        status: 'CONFIRMED',
+        releaseReason: null,
+        usedAt: START.toString(),
+        confirmedAt: START.toString(),
+        releasedAt: null,
+      });
+      expect(JSON.stringify(response.body)).not.toContain('secret-hash');
+      expect(response.body).toMatchObject({ nextCursor: 'abc_DEF-2' });
+      expect(calls.at(-1)).toEqual({
+        name: 'customer-usages',
+        input: { customerAccountId: CUSTOMER, limit: 5, cursor: 'abc_DEF-2' },
+      });
+      const stray = await call('admin', 'get', `${URL}?offset=1`, admin());
+      expect(stray.status).toBe(400);
+      next = err({ code: 'access.denied' });
+      expect((await call('admin', 'get', URL, admin())).status).toBe(403);
+    });
   });
 
   it('lets a seller list, create, edit, pause, resume and opt in, and takes no seller id from the request', async () => {
@@ -911,6 +1152,130 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     expect(forged.status).toBe(400);
     expect(forged.body).toMatchObject({
       details: { fields: [{ path: 'ownerSellerId', code: 'unknown-field' }] },
+    });
+  });
+
+  describe('seller campaigns and payout preview', () => {
+    const CAMPAIGN = {
+      id: PROMOTION,
+      name: 'Spring',
+      startsAt: START,
+      endsAt: null,
+      started: false,
+      testMode: false,
+      reward: { kind: 'PERCENT', bps: 1000 },
+      platformShareBps: 5000,
+      sellerPaysBps: 500,
+      platformPaysBps: 500,
+      minSpendMinor: null,
+      currency: 'AUD',
+      optedIn: false,
+      optedInAt: null,
+      eligible: { scope: 'LISTED', count: 2 },
+    };
+    const PREVIEW = {
+      currency: 'AUD',
+      price: 10000n,
+      discount: 1000n,
+      sellerFunded: 500n,
+      platformFunded: 500n,
+      shopperPays: 9000n,
+      commissionRateBps: 1000,
+      commissionBase: 8636n,
+      commission: 864n,
+      sellerGets: 8636n,
+      wasPrice: null,
+    };
+
+    it('splits the campaigns into joined and available, with digit-string amounts and no-store', async () => {
+      await boot();
+      next = ok([CAMPAIGN, { ...CAMPAIGN, optedIn: true, optedInAt: START, minSpendMinor: 5000n }]);
+      const listed = await call('seller', 'get', '/promotions/seller/campaigns', seller());
+      expect(listed.status).toBe(200);
+      expect(listed.headers['cache-control']).toContain('no-store');
+      const body = listed.body as { joined: object[]; available: object[] };
+      expect(body.available).toHaveLength(1);
+      expect(body.joined).toHaveLength(1);
+      expect(body.joined[0]).toMatchObject({ optedIn: true, minSpendMinor: '5000' });
+      expect(body.available[0]).toMatchObject({
+        id: PROMOTION,
+        sellerPaysBps: 500,
+        eligible: { scope: 'LISTED', count: 2 },
+      });
+      expect(body.available[0]).not.toHaveProperty('budgetMinor');
+      expect(calls.map((c) => c.name)).toEqual(['list-campaigns']);
+    });
+
+    it('refuses an unknown query key and a non-seller session on the campaigns route', async () => {
+      await boot();
+      next = ok([]);
+      const stray = await call('seller', 'get', '/promotions/seller/campaigns?x=1', seller());
+      expect(stray.status).toBe(400);
+      await call('seller', 'get', '/promotions/seller/campaigns', admin());
+      expect(actors).toEqual(['anonymous']);
+    });
+
+    it('answers the payout preview with digit strings and turns discountBps into a number', async () => {
+      await boot();
+      next = ok(PREVIEW);
+      const answer = await call(
+        'seller',
+        'get',
+        '/promotions/seller/payout-preview?priceMinor=10000&discountBps=1000',
+        seller(),
+      );
+      expect(answer.status).toBe(200);
+      expect(answer.headers['cache-control']).toContain('no-store');
+      expect(answer.body).toEqual({
+        currency: 'AUD',
+        priceMinor: '10000',
+        discountMinor: '1000',
+        sellerFundedMinor: '500',
+        platformFundedMinor: '500',
+        shopperPaysMinor: '9000',
+        commissionRateBps: 1000,
+        commissionBaseMinor: '8636',
+        commissionMinor: '864',
+        sellerGetsMinor: '8636',
+        wasPrice: null,
+      });
+      expect(calls[0]).toEqual({
+        name: 'preview-payout',
+        input: { priceMinor: '10000', discountBps: 1000 },
+      });
+    });
+
+    it('refuses unknown keys and a non-seller session on the preview route, and hands a repeated key on as an array', async () => {
+      await boot();
+      next = ok(PREVIEW);
+      const path = '/promotions/seller/payout-preview';
+      expect((await call('seller', 'get', `${path}?priceMinor=1&x=1`, seller())).status).toBe(400);
+      expect(calls).toEqual([]);
+      // A repeated key is not text: the use case refuses it (its own spec), the route does not coerce it.
+      await call('seller', 'get', `${path}?priceMinor=1&priceMinor=2`, seller());
+      expect(calls[0]?.input).toEqual({ priceMinor: ['1', '2'] });
+      await call('seller', 'get', `${path}?priceMinor=1`, customer());
+      expect(actors).toEqual(['seller', 'anonymous']);
+    });
+
+    it('maps the refusals of both routes to their statuses', async () => {
+      await boot();
+      const session = seller();
+      for (const [refusal, status] of [
+        ['promotions.disabled', 404],
+        ['promotions.not-found', 404],
+        ['promotions.unavailable', 503],
+        ['access.denied', 403],
+      ] as const) {
+        next = err({ code: refusal });
+        expect((await call('seller', 'get', '/promotions/seller/campaigns', session)).status).toBe(
+          status,
+        );
+        expect(
+          (await call('seller', 'get', '/promotions/seller/payout-preview?priceMinor=1', session))
+            .status,
+        ).toBe(status);
+      }
     });
   });
 

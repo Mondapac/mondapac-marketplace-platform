@@ -9,8 +9,10 @@ import { ClearSellerPayoutTerms } from '../src/modules/commission-payouts/applic
 import { ListSellerPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/list-seller-payout-holds.use-case';
 import { ApprovePayout } from '../src/modules/commission-payouts/application/use-cases/approve-payout.use-case';
 import { ListOwnPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/list-own-payout-holds.use-case';
+import { ExportOwnPayouts } from '../src/modules/commission-payouts/application/use-cases/export-own-payouts.use-case';
 import { ListOwnPayouts } from '../src/modules/commission-payouts/application/use-cases/list-own-payouts.use-case';
 import { ListPayouts } from '../src/modules/commission-payouts/application/use-cases/list-payouts.use-case';
+import { ExportPayouts } from '../src/modules/commission-payouts/application/use-cases/export-payouts.use-case';
 import { ViewNextPayout } from '../src/modules/commission-payouts/application/use-cases/view-next-payout.use-case';
 import { ViewPayout } from '../src/modules/commission-payouts/application/use-cases/view-payout.use-case';
 import { PlacePayoutHold } from '../src/modules/commission-payouts/application/use-cases/place-payout-hold.use-case';
@@ -30,8 +32,11 @@ import {
   COMMISSION_PAYOUTS_PAYOUT_VIEW,
 } from '../src/modules/commission-payouts/contracts/permissions';
 import { ViewCommissionRate } from '../src/modules/commission-payouts/application/use-cases/view-commission-rate.use-case';
+import { ViewOwnExclusiveCommission } from '../src/modules/commission-payouts/application/use-cases/view-own-exclusive-commission.use-case';
 import { ViewOwnLedger } from '../src/modules/commission-payouts/application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from '../src/modules/commission-payouts/application/use-cases/view-seller-ledger.use-case';
+import { ExportSellerLedger } from '../src/modules/commission-payouts/application/use-cases/export-seller-ledger.use-case';
+import { ExportSellerPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/export-seller-payout-holds.use-case';
 import { COMMISSION_PAYOUTS_STATUS } from '../src/modules/commission-payouts/presentation/http-answers';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
@@ -75,6 +80,7 @@ const ledger = (currency: string) => ({
     refundedCommission: 45n,
     disputeDebits: 0n,
     disputeReinstated: 0n,
+    sellerCashback: 0n,
     balance: 1434n,
   },
   entries: [
@@ -91,9 +97,13 @@ const ledger = (currency: string) => ({
       sourceId: null,
       occurredAt: START,
       recordedAt: START,
+      actions: ['open-order'],
     },
   ],
   nextCursor: null,
+  total: null,
+  page: null,
+  pageSize: 10,
 });
 
 it('maps every refusal code of the commission-payouts routes to its exact status', () => {
@@ -107,6 +117,7 @@ it('maps every refusal code of the commission-payouts routes to its exact status
     'commission-payouts.version-conflict': 409,
     'commission-payouts.seller-order-not-found': 404,
     'commission-payouts.hold-not-found': 404,
+    'commission-payouts.ledger-entry-not-found': 404,
     'commission-payouts.hold-already-released': 409,
     'commission-payouts.dispute-not-found': 404,
     'commission-payouts.dispute.not-decidable': 409,
@@ -116,6 +127,8 @@ it('maps every refusal code of the commission-payouts routes to its exact status
     'commission-payouts.payout-not-found': 404,
     'commission-payouts.payout.not-awaiting-approval': 409,
     'commission-payouts.payout.amount-changed': 409,
+    'commission-payouts.search-unavailable': 503,
+    'batch.too-large': 413,
     'second-factor.required': 403,
     'second-factor.enrolment-required': 403,
   });
@@ -228,6 +241,8 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           .useValue(stub('seller-ledger'))
           .overrideProvider(ViewOwnLedger)
           .useValue(stub('own-ledger'))
+          .overrideProvider(ViewOwnExclusiveCommission)
+          .useValue(stub('own-exclusive-commission'))
           .overrideProvider(ViewSellerPayoutTerms)
           .useValue(stub('view-terms'))
           .overrideProvider(SetSellerPayoutTerms)
@@ -242,6 +257,12 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           .useValue(stub('release-hold'))
           .overrideProvider(ListPayouts)
           .useValue(stub('list-payouts'))
+          .overrideProvider(ExportPayouts)
+          .useValue(stub('export-payouts'))
+          .overrideProvider(ExportSellerLedger)
+          .useValue(stub('export-seller-ledger'))
+          .overrideProvider(ExportSellerPayoutHolds)
+          .useValue(stub('export-seller-holds'))
           .overrideProvider(ViewPayout)
           .useValue(stub('view-payout'))
           .overrideProvider(ApprovePayout)
@@ -250,6 +271,8 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           .useValue(stub('next-payout'))
           .overrideProvider(ListOwnPayouts)
           .useValue(stub('own-payouts'))
+          .overrideProvider(ExportOwnPayouts)
+          .useValue(stub('export-own-payouts'))
           .overrideProvider(ListOwnPayoutHolds)
           .useValue(stub('own-payout-holds')),
     }));
@@ -376,9 +399,16 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
   const LEDGER = `/commission-payouts/admin/sellers/${SELLER}/ledger`;
   const OWN = '/commission-payouts/seller/ledger';
   const PAYOUT = id<'Payout'>(0xc900);
+  const REQUEST = id<'SystemRequest'>(0x5e07);
   const PAYOUTS = '/commission-payouts/admin/payouts';
   const APPROVE = `${PAYOUTS}/${PAYOUT}/approve`;
-  const rate = { sellerId: SELLER, rateBps: 1200, source: 'seller', marketRateBps: 1500 };
+  const rate = {
+    sellerId: SELLER,
+    rateBps: 1200,
+    source: 'seller',
+    marketRateBps: 1500,
+    request: null,
+  };
 
   const money = (amountMinor: bigint) => ({ amountMinor, currency });
   const row = {
@@ -423,16 +453,26 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     const read = await call('get', 'admin', RATE, session);
     expect(read.status).toBe(200);
     expect(read.headers['cache-control']).toBe('no-store');
-    expect(read.body).toEqual(rate);
-    const set = await call('put', 'admin', RATE, session, { rateBps: 1200 });
+    // The read shows the rate only; a change also names the System requests review it opened.
+    const shown = {
+      sellerId: rate.sellerId,
+      rateBps: rate.rateBps,
+      source: rate.source,
+      marketRateBps: rate.marketRateBps,
+    };
+    expect(read.body).toEqual(shown);
+    next = ok({ ...rate, request: { id: REQUEST, number: 7 } });
+    const set = await call('put', 'admin', RATE, session, { rateBps: 1200, note: 'Promo month' });
     expect(set.status).toBe(200);
-    expect(set.body).toEqual(rate);
-    const cleared = await call('delete', 'admin', RATE, session);
+    expect(set.body).toEqual({ ...shown, request: { id: REQUEST, number: 7 } });
+    next = ok(rate);
+    const cleared = await call('delete', 'admin', `${RATE}?note=Back%20to%20market`, session);
     expect(cleared.status).toBe(200);
+    expect(cleared.body).toEqual(rate);
     expect(calls).toEqual([
       { name: 'view-rate', input: { sellerId: SELLER } },
-      { name: 'set-rate', input: { sellerId: SELLER, rateBps: 1200 } },
-      { name: 'clear-rate', input: { sellerId: SELLER } },
+      { name: 'set-rate', input: { sellerId: SELLER, rateBps: 1200, note: 'Promo month' } },
+      { name: 'clear-rate', input: { sellerId: SELLER, note: 'Back to market' } },
     ]);
   });
 
@@ -490,6 +530,13 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     const byAdmin = await call('get', 'admin', `${LEDGER}?limit=10&cursor=abc`, admin());
     expect(byAdmin.status).toBe(200);
     expect(byAdmin.headers['cache-control']).toBe('no-store');
+    expect(byAdmin.body).toMatchObject({
+      entries: [{ amount: '150', actions: ['open-order'] }],
+      total: null,
+      page: null,
+      pageSize: 10,
+      nextCursor: null,
+    });
     const own = await call('get', 'seller', OWN, seller());
     expect(own.status).toBe(200);
     expect(own.body).toEqual({
@@ -504,6 +551,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         refundedCommission: '45',
         disputeDebits: '0',
         disputeReinstated: '0',
+        sellerCashback: '0',
         balance: '1434',
       },
       entries: [
@@ -527,6 +575,121 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     expect(calls).toEqual([
       { name: 'seller-ledger', input: { sellerId: SELLER, cursor: 'abc', limit: 10 } },
       { name: 'own-ledger', input: { cursor: undefined, limit: undefined } },
+    ]);
+  });
+
+  it('serves the seller its exclusive-customer commission and savings, with money as strings', async () => {
+    await boot();
+    const months = Array.from({ length: 12 }, (_, index) => ({
+      month: `2026-${String(index + 1).padStart(2, '0')}`,
+      saved: index === 11 ? [{ amount: 75n, currency }] : [],
+    }));
+    next = ok({
+      rule: { standardRateBps: 1500, exclusiveRateBps: 750, months: 12 },
+      zone: 'Australia/Brisbane',
+      months,
+    });
+    const own = await call(
+      'get',
+      'seller',
+      '/commission-payouts/seller/exclusive-commission',
+      seller(),
+    );
+    expect(own.status).toBe(200);
+    expect(own.headers['cache-control']).toBe('no-store');
+    expect(own.body).toEqual({
+      rule: { standardRateBps: 1500, exclusiveRateBps: 750, months: 12 },
+      zone: 'Australia/Brisbane',
+      months: months.map((m) => ({
+        month: m.month,
+        saved: m.saved.map((s) => ({ amount: s.amount.toString(), currency })),
+      })),
+      thisMonth: [{ amount: '75', currency }],
+    });
+    expect(calls).toEqual([{ name: 'own-exclusive-commission', input: {} }]);
+
+    next = ok({ rule: null, zone: 'Australia/Brisbane', months: [] });
+    const none = await call(
+      'get',
+      'seller',
+      '/commission-payouts/seller/exclusive-commission',
+      seller(),
+    );
+    expect(none.body).toEqual({
+      rule: null,
+      zone: 'Australia/Brisbane',
+      months: [],
+      thisMonth: [],
+    });
+
+    next = err({ code: 'commission-payouts.rate-unavailable' });
+    const down = await call(
+      'get',
+      'seller',
+      '/commission-payouts/seller/exclusive-commission',
+      seller(),
+    );
+    expect(down.status).toBe(503);
+    // An admin session on the seller route is not signed in there.
+    next = err({ code: 'access.denied' });
+    const byAdmin = await call(
+      'get',
+      'seller',
+      '/commission-payouts/seller/exclusive-commission',
+      admin(),
+    );
+    expect(byAdmin.status).toBe(403);
+    expect(actors.at(-1)).toBe('anonymous');
+  });
+
+  it('passes the seller page list queries through and streams their exports', async () => {
+    await boot();
+    const session = admin();
+    const HOLD_LIST = `/commission-payouts/admin/sellers/${SELLER}/payout-holds`;
+    next = ok(ledger(currency));
+    await call('get', 'admin', `${LEDGER}?side=debit&q=x&page=2&pageSize=25&sort=amount`, session);
+    next = ok({
+      holds: [],
+      counts: { active: 0, released: 0 },
+      total: 0,
+      page: 1,
+      pageSize: 100,
+      nextCursor: null,
+    });
+    await call('get', 'admin', `${HOLD_LIST}?status=active&scope=order`, session);
+    const chunks = ['\uFEFFRecorded\r\n', 'row\r\n'];
+    next = ok({
+      filename: 'seller-ledger-2026-11-02.csv',
+      contentType: 'text/csv; charset=utf-8',
+      chunks,
+    });
+    const file = await call('get', 'admin', `${LEDGER}/export?kind=sale&format=csv`, session);
+    expect(file.status).toBe(200);
+    expect(file.headers['content-disposition']).toBe(
+      'attachment; filename="seller-ledger-2026-11-02.csv"',
+    );
+    expect(file.headers['cache-control']).toBe('no-store');
+    expect(file.headers['x-content-type-options']).toBe('nosniff');
+    expect(file.text).toContain('row');
+    next = err({ code: 'batch.too-large', max: 10000, total: 10001 });
+    const big = await call('get', 'admin', `${HOLD_LIST}/export`, session);
+    expect(big.status).toBe(413);
+    expect(big.body).toEqual({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10000, total: 10001 },
+    });
+    next = err({ code: 'commission-payouts.ledger-entry-not-found' });
+    expect((await call('get', 'admin', `${LEDGER}/export?ids=x`, session)).status).toBe(404);
+    expect(calls).toEqual([
+      {
+        name: 'seller-ledger',
+        input: { side: 'debit', q: 'x', page: 2, pageSize: 25, sort: 'amount', sellerId: SELLER },
+      },
+      { name: 'list-holds', input: { status: 'active', scope: 'order', sellerId: SELLER } },
+      { name: 'export-seller-ledger', input: { kind: 'sale', format: 'csv', sellerId: SELLER } },
+      { name: 'export-seller-holds', input: { sellerId: SELLER } },
+      { name: 'export-seller-ledger', input: { ids: 'x', sellerId: SELLER } },
     ]);
   });
 
@@ -556,6 +719,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         approvalMode: null,
       },
       version: 2,
+      request: null,
     };
     const hold = {
       holdId: HOLD,
@@ -584,16 +748,25 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         effective: { minimumMinor: '5000', holdDaysCarrier: 9 },
         override: { holdDaysCarrier: 9, minimumMinor: null },
       });
+      next = ok({ ...terms, request: { id: REQUEST, number: 8 } });
       const set = await call('put', 'admin', TERMS, session, {
         holdDaysCarrier: 9,
         expectedVersion: 1,
         reasonCode: 'correction',
+        note: 'Seller asked',
       });
       expect(set.status).toBe(200);
-      expect(
-        (await call('delete', 'admin', `${TERMS}?expectedVersion=2&reasonCode=policy`, session))
-          .status,
-      ).toBe(200);
+      expect(set.body).toMatchObject({ version: 2, request: { id: REQUEST, number: 8 } });
+      next = ok({ ...terms, request: { id: REQUEST, number: 9 } });
+      const removed = await call(
+        'delete',
+        'admin',
+        `${TERMS}?expectedVersion=2&reasonCode=policy&note=Back%20to%20market`,
+        session,
+      );
+      expect(removed.status).toBe(200);
+      expect(removed.body).toMatchObject({ request: { id: REQUEST, number: 9 } });
+      next = ok(terms);
       expect((await call('delete', 'admin', TERMS, session)).status).toBe(200);
       expect(calls).toEqual([
         { name: 'view-terms', input: { sellerId: SELLER } },
@@ -604,11 +777,17 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
             terms: { holdDaysCarrier: 9 },
             expectedVersion: 1,
             reasonCode: 'correction',
+            note: 'Seller asked',
           },
         },
         {
           name: 'clear-terms',
-          input: { sellerId: SELLER, expectedVersion: 2, reasonCode: 'policy' },
+          input: {
+            sellerId: SELLER,
+            expectedVersion: 2,
+            reasonCode: 'policy',
+            note: 'Back to market',
+          },
         },
         // A missing version reaches the use case as an invalid one, which it refuses.
         {
@@ -652,11 +831,23 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       const session = admin();
       proveAll();
 
-      next = ok([hold]);
+      next = ok({
+        holds: [{ ...hold, actions: ['release'] }],
+        counts: { active: 1, released: 0 },
+        total: 1,
+        page: 1,
+        pageSize: 100,
+        nextCursor: null,
+      });
       const listed = await call('get', 'admin', HOLDS, session);
       expect(listed.status).toBe(200);
       expect(listed.body).toEqual({
-        holds: [{ ...hold, placedAt: START.toString() }],
+        holds: [{ ...hold, placedAt: START.toString(), actions: ['release'] }],
+        counts: { active: 1, released: 0 },
+        total: 1,
+        page: 1,
+        pageSize: 100,
+        nextCursor: null,
       });
       next = ok(hold);
       const placed = await call('post', 'admin', HOLDS, session, {
@@ -826,7 +1017,24 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
     it('lists and reads payouts for an admin, with money as strings and no-store', async () => {
       await boot();
       const session = admin();
-      next = ok({ payouts: [row], nextCursor: 'c1' });
+      const counts = {
+        all: 4,
+        'awaiting-approval': 1,
+        sending: 1,
+        paid: 1,
+        failed: 1,
+        'not-sent': 0,
+      };
+      const listPage = {
+        counts,
+        total: null,
+        page: null,
+        pageSize: 5,
+        nextCursor: 'c1',
+        searchCapped: false,
+      };
+      const listRow = { ...row, activeHoldId: null, actions: ['open', 'approve'] };
+      next = ok({ payouts: [listRow], ...listPage });
       const listed = await call(
         'get',
         'admin',
@@ -835,7 +1043,10 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       );
       expect(listed.status).toBe(200);
       expect(listed.headers['cache-control']).toBe('no-store');
-      expect(listed.body).toEqual({ payouts: [rowBody], nextCursor: 'c1' });
+      expect(listed.body).toEqual({
+        payouts: [{ ...rowBody, activeHoldId: null, actions: ['open', 'approve'] }],
+        ...listPage,
+      });
 
       next = ok({
         ...row,
@@ -862,8 +1073,77 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         limits: { perTransfer: { amountMinor: '500000', currency } },
       });
       expect(calls.map((c) => c.name)).toEqual(['list-payouts', 'view-payout']);
-      expect(calls[0]!.input).toMatchObject({ status: 'awaiting-approval', cursor: 'abc' });
+      expect(calls[0]!.input).toEqual({ status: 'awaiting-approval', cursor: 'abc', limit: 5 });
       expect(calls[1]!.input).toEqual({ payoutId: PAYOUT });
+    });
+
+    it('passes the super list query through, with page numbers as numbers and a bad number refused', async () => {
+      await boot();
+      const session = admin();
+      next = ok({
+        payouts: [],
+        counts: { all: 0, 'awaiting-approval': 0, sending: 0, paid: 0, failed: 0, 'not-sent': 0 },
+        total: 0,
+        page: 2,
+        pageSize: 10,
+        nextCursor: null,
+        searchCapped: false,
+      });
+      const listed = await call(
+        'get',
+        'admin',
+        `${PAYOUTS}?view=sending&search=spice&sort=amount&direction=asc&page=2&pageSize=10&minAmount=100`,
+        session,
+      );
+      expect(listed.status).toBe(200);
+      expect(listed.body).toMatchObject({ total: 0, page: 2, pageSize: 10 });
+      await call('get', 'admin', `${PAYOUTS}?page=two`, session);
+      expect(calls.map((c) => c.input)).toEqual([
+        {
+          view: 'sending',
+          search: 'spice',
+          sort: 'amount',
+          direction: 'asc',
+          page: 2,
+          pageSize: 10,
+          minAmount: '100',
+        },
+        { page: -1 },
+      ]);
+    });
+
+    it('streams the export as an attachment and refuses an export over the cap with its total', async () => {
+      await boot();
+      const session = admin();
+      // The controller reads the chunks with for await, which takes a plain list as well.
+      const chunks = ['\uFEFFPayout ID\r\n', `${PAYOUT}\r\n`];
+      next = ok({
+        filename: 'payouts-2026-11-02.csv',
+        contentType: 'text/csv; charset=utf-8',
+        chunks,
+      });
+      const file = await call('get', 'admin', `${PAYOUTS}/export?view=paid&columns=gross`, session);
+      expect(file.status).toBe(200);
+      expect(file.headers['content-disposition']).toBe(
+        'attachment; filename="payouts-2026-11-02.csv"',
+      );
+      expect(file.headers['cache-control']).toBe('no-store');
+      expect(file.headers['x-content-type-options']).toBe('nosniff');
+      expect(file.text).toContain(PAYOUT);
+      expect(calls).toEqual([
+        { name: 'export-payouts', input: { view: 'paid', columns: 'gross' } },
+      ]);
+
+      next = err({ code: 'batch.too-large', max: 10000, total: 12000 });
+      const big = await call('get', 'admin', `${PAYOUTS}/export`, session);
+      expect(big.status).toBe(413);
+      expect(big.body).toEqual({
+        statusCode: 413,
+        code: 'batch.too-large',
+        details: { max: 10000, total: 12000 },
+      });
+      next = err({ code: 'commission-payouts.search-unavailable' });
+      expect((await call('get', 'admin', `${PAYOUTS}?search=spice`, session)).status).toBe(503);
     });
 
     it('approves with the echoed amount, answers 200 and passes the id and amount through', async () => {
@@ -986,8 +1266,22 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
             createdAt: START,
             updatedAt: START,
             reason: 'cooling-off',
+            actions: ['open'],
           },
         ],
+        counts: {
+          all: 1,
+          scheduled: 0,
+          'awaiting-approval': 0,
+          'on-its-way': 0,
+          paid: 0,
+          'not-sent': 1,
+          failed: 0,
+          settled: 0,
+        },
+        total: null,
+        page: null,
+        pageSize: 5,
         nextCursor: null,
       });
       const history = await call(
@@ -998,10 +1292,17 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       );
       expect(history.status).toBe(200);
       expect(history.body).toMatchObject({
-        payouts: [{ payoutId: PAYOUT, status: 'not-sent', reason: 'cooling-off' }],
+        payouts: [
+          { payoutId: PAYOUT, status: 'not-sent', reason: 'cooling-off', actions: ['open'] },
+        ],
+        counts: { all: 1, 'not-sent': 1 },
+        total: null,
+        page: null,
+        pageSize: 5,
         nextCursor: null,
       });
       expect(Object.keys((history.body as { payouts: object[] }).payouts[0]!).sort()).toEqual([
+        'actions',
         'createdAt',
         'gross',
         'netted',
@@ -1033,7 +1334,61 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           },
         ],
       });
-      expect(calls.map((c) => c.name)).toEqual(['next-payout', 'own-payouts', 'own-payout-holds']);
+      // Page numbers arrive as numbers; the filters as text for the use case to check.
+      await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts?page=2&pageSize=25&status=paid&sort=amount',
+        session,
+      );
+      expect(calls.map((c) => c.name)).toEqual([
+        'next-payout',
+        'own-payouts',
+        'own-payout-holds',
+        'own-payouts',
+      ]);
+      expect(calls[1]!.input).toEqual({ limit: 5 });
+      expect(calls[3]!.input).toEqual({ page: 2, pageSize: 25, status: 'paid', sort: 'amount' });
+    });
+
+    it('sends the seller its payouts file, and maps a refusal', async () => {
+      await boot();
+      const session = seller();
+      const chunks = ['\uFEFFCreated\r\n', 'row\r\n'];
+      next = ok({
+        filename: 'payouts-2026-11-02.csv',
+        contentType: 'text/csv; charset=utf-8',
+        chunks,
+      });
+      const file = await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts/export?status=paid&format=csv',
+        session,
+      );
+      expect(file.status).toBe(200);
+      expect(file.headers['content-disposition']).toBe(
+        'attachment; filename="payouts-2026-11-02.csv"',
+      );
+      expect(file.headers['cache-control']).toBe('no-store');
+      expect(file.text).toContain('row');
+      next = err({ code: 'commission-payouts.payout-not-found' });
+      const missing = await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts/export?ids=x',
+        session,
+      );
+      expect(missing.status).toBe(404);
+      next = err({ code: 'batch.too-large', max: 10000, total: 10001 });
+      expect(
+        (await call('get', 'seller', '/commission-payouts/seller/payouts/export', session)).status,
+      ).toBe(413);
+      expect(calls).toEqual([
+        { name: 'export-own-payouts', input: { status: 'paid', format: 'csv' } },
+        { name: 'export-own-payouts', input: { ids: 'x' } },
+        { name: 'export-own-payouts', input: {} },
+      ]);
     });
 
     it('treats an admin session on the seller payout routes as not signed in', async () => {

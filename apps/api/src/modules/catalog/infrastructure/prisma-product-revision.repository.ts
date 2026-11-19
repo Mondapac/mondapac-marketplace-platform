@@ -6,6 +6,8 @@ import type {
   ChangeRequestView,
   ProductRevisionRepository,
   ReviewDecision,
+  RevisionClaimShape,
+  RevisionHistoryEntry,
 } from '../application/ports/product-revision.repository';
 import type { SensitiveReason } from '../domain/product-revision-policy';
 import type { RevisionContent } from '../domain/revision-content';
@@ -59,6 +61,7 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         ...base,
         productId: revision.productId,
         revisionNo: revision.revisionNo,
+        typeCode: revision.typeCode,
         revisionKind: revision.kind,
         baseRevisionId: revision.baseRevisionId,
         revertedFromRevisionId: revision.revertedFromRevisionId,
@@ -97,18 +100,17 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         isPrimary: index === 0,
       })),
     });
-    await tx.catalogProductRevisionVariant.createMany({
-      data: content.variants.map((variant) => ({
-        ...base,
-        revisionId: revision.id,
-        productId: revision.productId,
-        variantId: variant.variantId,
-        position: variant.position,
-        optionKey: variant.optionKey,
-        optionValues: variant.optionValues,
-        labels: variant.labels,
-      })),
-    });
+    if (content.topicIds.length > 0) {
+      await tx.catalogProductRevisionTopic.createMany({
+        data: content.topicIds.map((topicId, index) => ({
+          ...base,
+          revisionId: revision.id,
+          topicId,
+          position: index,
+        })),
+      });
+    }
+    // The images first: a variant's picks are checked against them by the database.
     if (content.imageIds.length > 0) {
       await tx.catalogProductRevisionImage.createMany({
         data: content.imageIds.map((imageId, index) => ({
@@ -120,6 +122,52 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         })),
       });
     }
+    await tx.catalogProductRevisionVariant.createMany({
+      data: content.variants.map((variant) => ({
+        ...base,
+        revisionId: revision.id,
+        productId: revision.productId,
+        variantId: variant.variantId,
+        position: variant.position,
+        optionKey: variant.optionKey,
+        optionValues: variant.optionValues,
+        labels: variant.labels,
+        gtin: variant.gtin,
+        shippingWeightGrams: variant.shippingWeightGrams,
+        shippingLengthMm: variant.shippingLengthMm,
+        shippingWidthMm: variant.shippingWidthMm,
+        shippingHeightMm: variant.shippingHeightMm,
+        imageIds: [...variant.imageIds],
+      })),
+    });
+  }
+
+  async claimShapes(
+    market: MarketContext,
+    refs: readonly {
+      readonly productId: Id<'Product'>;
+      readonly revisionId: Id<'ProductRevision'>;
+    }[],
+  ): Promise<readonly RevisionClaimShape[]> {
+    if (refs.length === 0) return [];
+    const wanted = new Map(refs.map((ref) => [ref.revisionId as string, ref.productId as string]));
+    const rows = await this.prisma.tx(market).catalogProductRevision.findMany({
+      where: { marketId: market.marketId, id: { in: [...wanted.keys()] } },
+      select: {
+        id: true,
+        productId: true,
+        categories: { select: { categoryId: true }, orderBy: { position: 'asc' } },
+        variants: { select: { variantId: true }, orderBy: { position: 'asc' } },
+      },
+    });
+    return rows
+      .filter((row) => wanted.get(row.id) === row.productId)
+      .map((row) => ({
+        productId: row.productId as Id<'Product'>,
+        revisionId: row.id as Id<'ProductRevision'>,
+        categoryIds: row.categories.map((category) => category.categoryId),
+        variantIds: row.variants.map((variant) => variant.variantId),
+      }));
   }
 
   async find(
@@ -132,6 +180,7 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
       include: {
         texts: { orderBy: { locale: 'asc' } },
         categories: { orderBy: { position: 'asc' } },
+        topics: { orderBy: { position: 'asc' } },
         variants: { orderBy: { position: 'asc' } },
         images: { orderBy: { position: 'asc' } },
       },
@@ -149,6 +198,7 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         ]),
       ),
       categoryIds: row.categories.map((category) => category.categoryId),
+      topicIds: row.topics.map((topic) => topic.topicId),
       taxCategoryCode: row.taxCategoryCode,
       attributeValues: row.attributeValues as Record<string, unknown>,
       variants: row.variants.map((variant) => ({
@@ -157,6 +207,12 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
         optionKey: variant.optionKey,
         optionValues: variant.optionValues as Record<string, string>,
         labels: variant.labels as Record<string, string>,
+        gtin: variant.gtin,
+        shippingWeightGrams: variant.shippingWeightGrams,
+        shippingLengthMm: variant.shippingLengthMm,
+        shippingWidthMm: variant.shippingWidthMm,
+        shippingHeightMm: variant.shippingHeightMm,
+        imageIds: [...variant.imageIds],
       })),
       imageIds: row.images.map((image) => image.imageId),
       schemaRef: {
@@ -169,6 +225,7 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
       id: row.id as Id<'ProductRevision'>,
       productId: row.productId as Id<'Product'>,
       revisionNo: row.revisionNo,
+      typeCode: row.typeCode,
       kind: row.revisionKind as RevisionKind,
       baseRevisionId: row.baseRevisionId as Id<'ProductRevision'> | null,
       revertedFromRevisionId: row.revertedFromRevisionId as Id<'ProductRevision'> | null,
@@ -226,5 +283,53 @@ export class PrismaProductRevisionRepository implements ProductRevisionRepositor
       reasonCode: row.decision.reasonCode,
       decidedAt: toInstant(row.decision.decidedAt),
     };
+  }
+
+  async history(
+    market: MarketContext,
+    productId: Id<'Product'>,
+    limit: number,
+  ): Promise<readonly RevisionHistoryEntry[]> {
+    // Served by the unique (market_id, product_id, revision_no).
+    const rows = await this.prisma.tx(market).catalogProductRevision.findMany({
+      where: { marketId: market.marketId, productId },
+      orderBy: { revisionNo: 'desc' },
+      take: Math.min(Math.max(limit, 1), 100),
+      select: {
+        id: true,
+        revisionNo: true,
+        revisionKind: true,
+        authorKind: true,
+        submittedAt: true,
+        decision: {
+          select: {
+            outcome: true,
+            publishKind: true,
+            supersededCause: true,
+            reasonCode: true,
+            decidedByKind: true,
+            decidedAt: true,
+          },
+        },
+      },
+    });
+    return rows.map((row) => ({
+      revisionId: row.id as Id<'ProductRevision'>,
+      revisionNo: row.revisionNo,
+      kind: row.revisionKind as RevisionKind,
+      authorKind: row.authorKind as 'seller' | 'admin',
+      submittedAt: toInstant(row.submittedAt),
+      decision:
+        row.decision === null
+          ? null
+          : {
+              outcome: row.decision.outcome as 'published' | 'changes-requested' | 'superseded',
+              publishKind: row.decision.publishKind,
+              supersededCause: row.decision.supersededCause,
+              reasonCode: row.decision.reasonCode,
+              decidedByKind: row.decision.decidedByKind as 'admin' | 'seller' | 'system',
+              decidedAt: toInstant(row.decision.decidedAt),
+            },
+    }));
   }
 }

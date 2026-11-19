@@ -1,4 +1,12 @@
 import type { ApiFailure } from '../api/client.ts';
+import { categoryIssuesOf, isCategoryIssue, type CategoryIssues } from './category-issues.ts';
+
+/** What the freeze refused about one tag of the product, or about the whole list (`index` null). */
+export interface TopicIssue {
+  /** The place of the tag in the draft's `topicIds`; null for the whole list. */
+  readonly index: number | null;
+  readonly code: 'unknown' | 'archived' | 'duplicate' | 'too-many';
+}
 
 export interface EditProblem {
   /** Full message key. */
@@ -6,6 +14,10 @@ export interface EditProblem {
   readonly values?: Record<string, string | number>;
   /** `path: code` lines of the draft or text the API refused, shown as plain text. */
   readonly details: readonly string[];
+  /** The refusals about the product's tags, told by the field and the banner in words. */
+  readonly topicIssues?: readonly TopicIssue[];
+  /** The refusals about the product's categories, told by the category field. */
+  readonly categoryIssues?: CategoryIssues;
   /** The screen is stale: the seller should read the product again. */
   readonly reload: boolean;
 }
@@ -30,12 +42,42 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'access.denied': 'denied',
 };
 
+const TOPIC_CODES: ReadonlySet<string> = new Set(['unknown', 'archived', 'duplicate', 'too-many']);
+
+/** The issues at `topicIds` and `topicIds.<n>` as tag problems; other paths are not tag problems. */
+export function topicIssuesOf(
+  issues: readonly { readonly path: string; readonly code: string }[],
+): TopicIssue[] {
+  const found: TopicIssue[] = [];
+  for (const { path, code } of issues) {
+    if (!TOPIC_CODES.has(code)) continue;
+    const at = /^topicIds(?:\.(\d{1,3}))?$/.exec(path);
+    if (at === null) continue;
+    if (at[1] === undefined) {
+      if (code === 'too-many') found.push({ index: null, code });
+    } else if (code !== 'too-many') {
+      found.push({ index: Number(at[1]), code: code as TopicIssue['code'] });
+    }
+  }
+  return found;
+}
+
 const RELOAD = new Set(['stale', 'not-editable', 'not-found', 'no-draft']);
 
 export function editProblemOf(failure: ApiFailure): EditProblem {
-  const lines = [...(failure.details?.fields ?? []), ...(failure.details?.issues ?? [])].map(
-    (item) => `${item.path}: ${item.code}`,
-  );
+  const topicIssues = topicIssuesOf(failure.details?.issues ?? []);
+  // A tag refusal is told in words (by the tag field and the banner), not as a raw line.
+  const lines = [
+    ...(failure.details?.fields ?? []),
+    ...(failure.details?.issues ?? []).filter(
+      (item) =>
+        !(item.path.startsWith('topicIds') && topicIssuesOf([item]).length > 0) &&
+        !isCategoryIssue(item),
+    ),
+  ].map((item) => `${item.path}: ${item.code}`);
+  const categoryIssues = categoryIssuesOf(failure.details?.issues ?? []);
+  const hasCategoryIssues =
+    categoryIssues.list !== undefined || Object.keys(categoryIssues.items).length > 0;
   const pending = (failure.details?.issues ?? []).some(
     (item) => item.code === 'attribute.suggestion-pending',
   );
@@ -61,6 +103,8 @@ export function editProblemOf(failure: ApiFailure): EditProblem {
     key: `catalog.edit.error.${name}`,
     ...(Object.keys(values).length > 0 ? { values } : {}),
     details: lines,
+    ...(topicIssues.length > 0 ? { topicIssues } : {}),
+    ...(hasCategoryIssues ? { categoryIssues } : {}),
     reload: RELOAD.has(name),
   };
 }

@@ -1,6 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
 import type { AdminCreditView } from '../application/use-cases/issue-admin-credit.use-case';
-import type { CreditListView } from '../application/use-cases/list-admin-credit-requests.use-case';
+import type {
+  AdminCreditListPage,
+  AdminCreditRow,
+} from '../application/use-cases/list-admin-credit-requests.use-case';
 import type { CustomerWalletSummary } from '../application/use-cases/view-customer-wallet.use-case';
 import {
   ADMIN_CREDIT_REASONS,
@@ -9,6 +12,7 @@ import {
   APPROVAL_REASONS,
   MAX_NOTE_LENGTH,
 } from '../domain/admin-credit';
+import { CREDIT_ROW_ACTIONS } from '../domain/admin-credit-list';
 import { WALLET_STATUSES } from '../domain/wallet-status';
 
 // Bodies of the admin credit routes (package 2a). Amounts are minor-unit strings; ids and codes.
@@ -53,10 +57,47 @@ export class AdminCreditBody {
   @ApiProperty({ format: 'uuid', nullable: true, type: String }) journalId!: string | null;
 }
 
+export class CreditRowBody extends AdminCreditBody {
+  @ApiProperty({
+    enum: [...CREDIT_ROW_ACTIONS],
+    isArray: true,
+    description:
+      'The row Actions menu: open always; approve and reject on a pending request of another ' +
+      'admin that has not expired, for a caller with wallet.credit.approve.',
+  })
+  actions!: string[];
+}
+
+class CreditCountsBody {
+  @ApiProperty() pending!: number;
+  @ApiProperty() decided!: number;
+  @ApiProperty() granted!: number;
+  @ApiProperty() all!: number;
+}
+
 export class CreditListBody {
-  @ApiProperty({ type: [AdminCreditBody], description: 'Newest first.' })
-  entries!: AdminCreditBody[];
-  @ApiProperty({ nullable: true, type: String }) nextCursor!: string | null;
+  @ApiProperty({ type: [CreditRowBody], description: "In the list's sort (newest first)." })
+  entries!: CreditRowBody[];
+  @ApiProperty({
+    type: CreditCountsBody,
+    description: 'The number of requests per view for the Market, whatever the filter.',
+  })
+  counts!: CreditCountsBody;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Page numbers: the requests that match. Previous/Next: null.',
+  })
+  total!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Page numbers: the page; else null.' })
+  page!: number | null;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'Previous/Next: the cursor of the next page, or null on the last one.',
+  })
+  nextCursor!: string | null;
 }
 
 export class CustomerWalletBody {
@@ -100,9 +141,18 @@ export const adminCreditBody = (view: AdminCreditView): AdminCreditBody => ({
   journalId: view.journalId,
 });
 
-export const creditListBody = (view: CreditListView): CreditListBody => ({
-  entries: view.entries.map(adminCreditBody),
-  nextCursor: view.nextCursor,
+const creditRowBody = (row: AdminCreditRow): CreditRowBody => ({
+  ...adminCreditBody(row),
+  actions: [...row.actions],
+});
+
+export const creditListBody = (page: AdminCreditListPage): CreditListBody => ({
+  entries: page.entries.map(creditRowBody),
+  counts: { ...page.counts },
+  total: page.total,
+  page: page.page,
+  pageSize: page.pageSize,
+  nextCursor: page.nextCursor,
 });
 
 export const customerWalletBody = (view: CustomerWalletSummary): CustomerWalletBody => ({

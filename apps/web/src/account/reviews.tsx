@@ -9,6 +9,7 @@ import { SellerRatingForm } from '../reviews/seller-rating-form.tsx';
 import { Stars } from '../reviews/stars.tsx';
 import { useReviews, useWaitingCount } from '../reviews/use-reviews.ts';
 import { AccountEmpty, AccountFrame, useDay } from './account-area.tsx';
+import { productHref } from '../storefront/links.ts';
 import { useAccount } from './account-state.tsx';
 
 /** "N things wait for your review" with a link, on Orders; nothing while reviews are off. */
@@ -188,6 +189,7 @@ export function AccountReviews() {
                 <OwnReviewRow
                   review={review}
                   name={productOf(review.offerId)}
+                  knownName={names.products.get(review.offerId.toLowerCase())}
                   editing={open === `r-${review.id}`}
                   onEdit={() => setOpen(open === `r-${review.id}` ? null : `r-${review.id}`)}
                   onChanged={(kind) => done(kind)}
@@ -204,12 +206,15 @@ export function AccountReviews() {
 function OwnReviewRow({
   review,
   name,
+  knownName,
   editing,
   onEdit,
   onChanged,
 }: {
   readonly review: OwnReview;
   readonly name: string;
+  /** The product's real name, when the account holds it; not the "a product" stand-in. */
+  readonly knownName?: string | undefined;
   readonly editing: boolean;
   readonly onEdit: () => void;
   readonly onChanged: (kind: 'saved' | 'deleted') => void;
@@ -221,7 +226,7 @@ function OwnReviewRow({
     <div className="rv-own">
       <div className="rv-todo-row">
         <span>
-          <Link href={`/p/${review.productId}`}>
+          <Link href={productHref(review.productId, knownName)}>
             <b>{name}</b>
           </Link>
           <Stars value={review.rating} label={t('rating-label', { stars: review.rating })} />

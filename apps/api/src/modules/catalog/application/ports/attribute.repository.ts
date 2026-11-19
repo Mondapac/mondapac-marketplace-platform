@@ -23,6 +23,13 @@ export interface AttributeRepository {
   familyIdByCode(market: MarketContext, code: string): Promise<Id<'AttributeFamily'> | null>;
 
   /**
+   * The code of the family a family revision belongs to, or null when there is no such revision.
+   * A product revision names the family revision it was frozen under (CAT-10: the family follows
+   * the primary category, so the revision, not the product row, tells which one).
+   */
+  familyCodeOfRevision(market: MarketContext, familyRevisionId: string): Promise<string | null>;
+
+  /**
    * The attribute schema of the family with this code, built from the family's published
    * revision and the published revision of each definition it names (catalog design 3.3 rule 1),
    * or null when the family is unknown, archived, or names a definition that is missing or

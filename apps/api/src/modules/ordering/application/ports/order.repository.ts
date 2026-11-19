@@ -4,6 +4,7 @@ import type {
   OrderLine,
   OrderState,
   OrderStatus,
+  PaymentState,
   SellerOrder,
 } from '../../domain/order';
 import type { OrderStatusCounts, SellerOrderCounts } from '../../domain/order-views';
@@ -20,11 +21,48 @@ export interface OrderFilter {
   readonly status: OrderStatus | null;
   /** An order id or a seller order id, matched exactly. */
   readonly reference: string | null;
+  readonly paymentState: PaymentState | null;
+  /** Keeps orders that have a seller order of this seller (and this fulfilment, when set). */
+  readonly sellerId: Id<'Seller'> | null;
+  readonly fulfilment: Fulfilment | null;
+  /** Keeps the orders one customer placed (the customer page's Orders tab); absent keeps all. */
+  readonly accountId?: Id<'Account'> | null;
+  /** Placed at or after `from` and before `to`. */
+  readonly from: Temporal.Instant | null;
+  readonly to: Temporal.Instant | null;
+  /**
+   * The free-text search, already resolved by the owning modules: keeps orders placed by one of
+   * these accounts or holding a part of one of these sellers. Empty lists keep no order. Null
+   * keeps every order.
+   */
+  readonly parties: {
+    readonly accountIds: readonly Id<'Account'>[];
+    readonly sellerIds: readonly Id<'Seller'>[];
+  } | null;
+}
+
+/** The sort of an offset page; ties break on the order id in the same direction. */
+export interface OrderSort {
+  readonly key: 'created' | 'total';
+  readonly direction: 'asc' | 'desc';
 }
 
 /** The seller list's filter; null keeps every paid seller order. */
 export interface SellerOrderFilter {
   readonly fulfilment: Fulfilment | null;
+  /** A seller order id or its order id, matched exactly (the reference in the order emails). */
+  readonly reference?: string | null;
+  /** Only the seller orders of this customer (the seller's customer page); absent or null: every customer. */
+  readonly accountId?: Id<'Account'> | null;
+  /** Paid at or after `from` and before `to`; null keeps every payment time. */
+  readonly from: Temporal.Instant | null;
+  readonly to: Temporal.Instant | null;
+}
+
+/** The sort of a seller's offset page; ties break on the seller order id in the same direction. */
+export interface SellerOrderSort {
+  readonly key: 'paid' | 'total';
+  readonly direction: 'asc' | 'desc';
 }
 
 /** A seller's page of paid seller orders, newest payment first. */
@@ -69,7 +107,56 @@ export interface SellerHealthRows {
  * The store of orders, seller orders and order lines (ordering.orders and its children). Every
  * method runs in the open unit of the use case, through the Market-scoped client.
  */
+/** What an account's confirmed orders and succeeded refunds add up to (customers read model). */
+export interface AccountOrderTotals {
+  readonly orderCount: number;
+  readonly firstConfirmedAt: Temporal.Instant | null;
+  readonly lastConfirmedAt: Temporal.Instant | null;
+  /** Sum of the confirmed orders' totals, minor units; null when there is none. */
+  readonly spentMinor: bigint | null;
+  /** The currency of the account's latest confirmed order; null when there is none. */
+  readonly currency: string | null;
+  readonly refundCount: number;
+  readonly refundedMinor: bigint;
+}
+
+/** What an account's confirmed orders add up to with one seller (the seller's customers read model). */
+export interface AccountSellerTotals {
+  readonly sellerId: Id<'Seller'>;
+  readonly orderCount: number;
+  readonly firstConfirmedAt: Temporal.Instant;
+  readonly lastConfirmedAt: Temporal.Instant;
+  /** Sum of the seller orders' totals, minor units of `currency`. */
+  readonly grossMinor: bigint;
+  /** Sum of the refunds of those seller orders that succeeded. */
+  readonly refundedMinor: bigint;
+  /** The currency of the latest of those orders. */
+  readonly currency: string;
+}
+
 export interface OrderRepository {
+  /**
+   * One row per seller the account has a confirmed order with: how many seller orders, the first
+   * and last payment, the gross and the refunds that succeeded. Read in one unit.
+   */
+  sellerTotalsOf(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+  ): Promise<readonly AccountSellerTotals[]>;
+
+  /** The totals of one account's confirmed orders and succeeded refunds, read in one unit. */
+  totalsOf(market: MarketContext, accountId: Id<'Account'>): Promise<AccountOrderTotals>;
+
+  /**
+   * The ids of accounts with at least one confirmed order, ascending, after `after`, at most
+   * `limit` (a keyset walk for the customers reconcile).
+   */
+  accountsWithConfirmedOrders(
+    market: MarketContext,
+    after: Id<'Account'> | null,
+    limit: number,
+  ): Promise<readonly Id<'Account'>[]>;
+
   /** Inserts the order with its seller orders and lines. */
   insert(market: MarketContext, order: OrderState): Promise<void>;
 
@@ -82,8 +169,24 @@ export interface OrderRepository {
     accountId: Id<'Account'>,
   ): Promise<OrderState | null>;
 
+  /**
+   * Whether the account has a paid order in the Market (status confirmed): checkout's answer to
+   * "is this the customer's first order" for promotions (package T2). Ordering's own history only.
+   */
+  hasPaidOrder(market: MarketContext, accountId: Id<'Account'>): Promise<boolean>;
+
   /** The account's orders still waiting for payment (to supersede on a new checkout). */
   findPending(market: MarketContext, accountId: Id<'Account'>): Promise<readonly OrderState[]>;
+
+  /**
+   * Orders of the Market still waiting for payment with no money moved whose payment page
+   * expired before `before`, oldest expiry first: the safety sweep cancels them (package T2).
+   */
+  findExpiredUnpaid(
+    market: MarketContext,
+    before: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly Id<'Order'>[]>;
 
   /**
    * What is still open for the account, for a decision that must not strand a customer (account
@@ -112,6 +215,18 @@ export interface OrderRepository {
     page: OrderPage,
   ): Promise<readonly OrderState[]>;
 
+  /** One offset page of the orders that match `filter`, in `sort` order. */
+  pageAll(
+    market: MarketContext,
+    filter: OrderFilter,
+    sort: OrderSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly OrderState[]>;
+
+  /** How many orders match `filter` (the total behind page numbers). */
+  countMatching(market: MarketContext, filter: OrderFilter): Promise<number>;
+
   /** The Market's orders per status (one grouped count). */
   countAll(market: MarketContext): Promise<OrderStatusCounts>;
 
@@ -128,6 +243,23 @@ export interface OrderRepository {
     filter: SellerOrderFilter,
     page: SellerOrderPage,
   ): Promise<readonly SellerOrderRecord[]>;
+
+  /** One offset page of the seller's paid seller orders that match `filter`, in `sort` order. */
+  pageForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+    sort: SellerOrderSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly SellerOrderRecord[]>;
+
+  /** How many of the seller's paid seller orders match `filter` (the total behind page numbers). */
+  countMatchingForSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerOrderFilter,
+  ): Promise<number>;
 
   /** The seller's paid seller orders per fulfilment step (one grouped count). */
   countForSeller(market: MarketContext, sellerId: Id<'Seller'>): Promise<SellerOrderCounts>;

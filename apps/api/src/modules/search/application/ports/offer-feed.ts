@@ -1,5 +1,16 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 
+/** One published variant of a sellable Offer's product (variants V8), in position order. */
+export interface FeedVariant {
+  readonly variantId: Id<'Variant'>;
+  readonly position: number;
+  readonly label: string | null;
+  /** 14 digits, or null. */
+  readonly gtin: string | null;
+  /** The axis values as `attribute=<option code>`. */
+  readonly facets: readonly string[];
+}
+
 export interface FeedFacts {
   readonly sellerId: Id<'Seller'>;
   readonly productId: Id<'Product'>;
@@ -13,6 +24,8 @@ export interface FeedFacts {
     readonly facets: readonly string[];
     readonly numbers: Readonly<Record<string, number>>;
   };
+  /** Empty when the Offer is not sellable. */
+  readonly variants: readonly FeedVariant[];
 }
 
 /**

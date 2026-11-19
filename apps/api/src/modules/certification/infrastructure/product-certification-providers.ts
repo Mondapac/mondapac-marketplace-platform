@@ -14,6 +14,10 @@ import {
 } from '../../../platform/subject-keys/subject-key-service';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import {
+  CERTIFICATE_TYPE_CATALOG,
+  type CertificateTypeCatalog,
+} from '../application/ports/certificate-type-catalog';
+import {
   CATALOG_REFERENCES,
   type CatalogReferences,
 } from '../application/ports/catalog-references';
@@ -47,6 +51,8 @@ import { ProductCertificateReject } from '../application/use-cases/product-certi
 import { ProductCertificateReviewRead } from '../application/use-cases/product-certificate-review-read.use-case';
 import { ProductCertificateSaveDraft } from '../application/use-cases/product-certificate-save-draft.use-case';
 import { ProductCertificateSubmit } from '../application/use-cases/product-certificate-submit.use-case';
+import { ProductCertificateFormOptions } from '../application/use-cases/product-certificate-form-options.use-case';
+import { ProductCertificatesForProduct } from '../application/use-cases/product-certificates-for-product.use-case';
 import { ProductCertificatesList } from '../application/use-cases/product-certificates-list.use-case';
 import { ProductCertificateHistoryRead } from '../application/use-cases/product-certificate-history-read.use-case';
 import { ProductCertificateReinstate } from '../application/use-cases/product-certificate-reinstate.use-case';
@@ -99,6 +105,19 @@ function marketZoneOf(markets: MarketRegistry): (market: MarketContext) => TimeZ
     try {
       const zone = markets.get(market.marketId).timezone;
       return isUsableZone(zone) ? zone : null;
+    } catch {
+      return null;
+    }
+  };
+}
+
+/** The Market's published locales when the Market is hosted here, else null (fail closed). */
+function marketLocalesOf(
+  markets: MarketRegistry,
+): (market: MarketContext) => readonly string[] | null {
+  return (market) => {
+    try {
+      return markets.get(market.marketId).supportedLocales;
     } catch {
       return null;
     }
@@ -244,6 +263,29 @@ export const productCertificationProviders: readonly Provider[] = [
         ids,
         marketZone: marketZoneOf(markets),
       }),
+  },
+  {
+    // The product page's lookup: the certificates that name one product (read-only).
+    provide: ProductCertificatesForProduct,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, PRODUCT_CERTIFICATION_REPOSITORY, MarketRegistry],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: UnitOfWork,
+      products: ProductCertificationRepository,
+      markets: MarketRegistry,
+    ) =>
+      new ProductCertificatesForProduct(gate, {
+        unitOfWork,
+        products,
+        marketLocales: marketLocalesOf(markets),
+      }),
+  },
+  {
+    // The manufacturer certificate form's types and issuers (read-only).
+    provide: ProductCertificateFormOptions,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, CERTIFICATE_TYPE_CATALOG],
+    useFactory: (gate: UseCaseGate, unitOfWork: UnitOfWork, types: CertificateTypeCatalog) =>
+      new ProductCertificateFormOptions(gate, { unitOfWork, types }),
   },
   ...productCertificationUseCases.map((type): FactoryProvider => ({
     provide: type,

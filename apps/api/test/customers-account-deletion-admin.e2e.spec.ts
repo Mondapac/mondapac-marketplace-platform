@@ -7,6 +7,8 @@ import { ACCOUNT_DELETION_PEERS } from '../src/modules/customers/application/por
 import type { AccountDeletionPeers } from '../src/modules/customers/application/ports/account-deletion-peers';
 import { ACCOUNT_DELETION_REQUEST_REPOSITORY } from '../src/modules/customers/application/ports/account-deletion-request.repository';
 import { ACCOUNT_DELETION_SETTINGS_REPOSITORY } from '../src/modules/customers/application/ports/account-deletion-settings.repository';
+import { ADMIN_DELETION_LIST_READER } from '../src/modules/customers/application/ports/admin-deletion-list.reader';
+import { MemoryAdminDeletionList } from '../src/modules/customers/application/testing/in-memory-deletion-list';
 import {
   MemoryAccountDeletionRequests,
   MemoryAccountDeletionSettings,
@@ -121,6 +123,8 @@ describe.each(TEST_MARKETS)('admin deletion routes over HTTP in market %s', (cod
           .useValue(requests)
           .overrideProvider(ACCOUNT_DELETION_SETTINGS_REPOSITORY)
           .useValue(settings)
+          .overrideProvider(ADMIN_DELETION_LIST_READER)
+          .useValue(new MemoryAdminDeletionList(requests))
           .overrideProvider(ACCOUNT_DELETION_PEERS)
           .useValue(peers()),
     }));
@@ -300,7 +304,14 @@ describe.each(TEST_MARKETS)('admin deletion routes over HTTP in market %s', (cod
     const list = await http().get(REQUESTS).set(viewer);
     expect(list.status).toBe(200);
     expect(list.headers['cache-control']).toBe('no-store');
-    expect(list.body).toEqual({ entries: [], nextCursor: null });
+    expect(list.body).toEqual({
+      entries: [],
+      counts: { pending: 0, executing: 0, cancelled: 0, completed: 0, all: 0 },
+      total: 0,
+      page: 1,
+      pageSize: 25,
+      nextCursor: null,
+    });
     const post = await http().post(buyerPath(BUYER)).set(viewer).send(BODY);
     expect(post.status).toBe(403);
     expect(post.body).toMatchObject({ code: 'access.denied' });
@@ -365,8 +376,16 @@ describe.each(TEST_MARKETS)('admin deletion routes over HTTP in market %s', (cod
           scheduledFor: START.add({ hours: 30 * 24 }).toString(),
           status: 'pending',
           requestedBy: 'admin',
+          cancelledAt: null,
+          cancelReason: null,
+          completedAt: null,
+          actions: ['cancel'],
         },
       ],
+      counts: { pending: 1, executing: 0, cancelled: 0, completed: 0, all: 1 },
+      total: 1,
+      page: 1,
+      pageSize: 25,
       nextCursor: null,
     });
     expect(JSON.stringify(list.body)).not.toContain('SUP-1042');
@@ -428,8 +447,58 @@ describe.each(TEST_MARKETS)('admin deletion routes over HTTP in market %s', (cod
     const del = await http().delete(`${REQUESTS}/${requestId}`).set(foreign).send({ reason: 'x' });
     expect(del.status).toBe(404);
     const list = await http().get(REQUESTS).set(foreign);
-    expect(list.body).toEqual({ entries: [], nextCursor: null });
+    expect(list.body).toEqual({
+      entries: [],
+      counts: { pending: 0, executing: 0, cancelled: 0, completed: 0, all: 0 },
+      total: 0,
+      page: 1,
+      pageSize: 25,
+      nextCursor: null,
+    });
+    const exported = await http().get(`${REQUESTS}/export`).query({ ids: requestId }).set(foreign);
+    expect(exported.status).toBe(404);
+    expect(exported.body).toMatchObject({ code: 'customers.account-deletion-request-not-found' });
     expect([...requests.rows.values()].map((r) => r.status)).toEqual(['pending']);
+  });
+
+  it('reads the list by view, page numbers or Previous/Next, and exports it, to a viewer too', async () => {
+    await boot();
+    const admin = sessionOf('admin', 14, DELETER);
+    prove(14);
+    const made = await http().post(buyerPath(BUYER)).set(admin).send(BODY);
+    const requestId = (made.body as { requestId: string }).requestId;
+    const viewer = sessionOf('admin', 15, VIEWER);
+
+    const all = await http()
+      .get(REQUESTS)
+      .query({ view: 'all', sort: 'requested', direction: 'desc', page: '1', pageSize: '10' })
+      .set(viewer);
+    expect(all.status).toBe(200);
+    expect(all.body).toMatchObject({ total: 1, page: 1, pageSize: 10, nextCursor: null });
+    // A viewer without the delete key is offered no Cancel.
+    expect((all.body as { entries: { actions: string[] }[] }).entries[0]!.actions).toEqual([]);
+    const prevNext = await http().get(REQUESTS).query({ limit: '1' }).set(viewer);
+    expect(prevNext.body).toMatchObject({ total: null, page: null, pageSize: 1 });
+
+    for (const query of [{ view: 'open' }, { limit: '1', page: '2' }, { page: 'x' }]) {
+      const bad = await http().get(REQUESTS).query(query).set(viewer);
+      expect(bad.status).toBe(400);
+      expect(bad.body).toMatchObject({ code: 'validation.failed' });
+    }
+
+    const csv = await http().get(`${REQUESTS}/export`).query({ format: 'csv' }).set(viewer);
+    expect(csv.status).toBe(200);
+    expect(csv.headers['cache-control']).toBe('no-store');
+    expect(csv.headers['content-type']).toContain('text/csv');
+    expect(csv.headers['content-disposition']).toContain('deletion-requests-');
+    expect(csv.text).toContain(requestId);
+    expect(csv.text).not.toContain('SUP-1042');
+    const chosen = await http().get(`${REQUESTS}/export`).query({ ids: requestId }).set(viewer);
+    expect(chosen.status).toBe(200);
+    const stray = await http().get(`${REQUESTS}/export`).query({ ticket: 'x' }).set(viewer);
+    expect(stray.status).toBe(400);
+    const none = sessionOf('admin', 16, NO_ROLE);
+    expect((await http().get(`${REQUESTS}/export`).set(none)).status).toBe(403);
   });
 
   it('answers 409 with the typed blockers and spends no proof', async () => {

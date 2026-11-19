@@ -48,7 +48,12 @@ describe.each(['AU', 'ZZ'])('CatalogOfferSellUnits in market %s', (code) => {
     productId: ids.next<'Product'>(),
     status,
     listed: false,
-    sellUnits: variants.map((variantId) => ({ variantId, state: 'proposed' as const })),
+    sellUnits: variants.map((variantId) => ({
+      variantId,
+      state: 'proposed' as const,
+      selling: true,
+      variantSku: null,
+    })),
   });
 
   it('maps each requested Offer, with its sell units as the priceable Variants', async () => {

@@ -7,6 +7,7 @@ import {
   type SealedPermissionCatalogue,
   type UseCaseGate,
 } from '../../../../platform/authz';
+import type { SystemRequestRecorder } from '../../../../platform/change-review/change-review';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
   ADMIN_ACCOUNT_DISABLE,
@@ -27,6 +28,7 @@ import {
   statusChangeVerdict,
 } from '../accounts/admin-verdicts';
 import type { EffectiveKeyResolver } from '../access/effective-keys';
+import { peopleReview, type PeopleReview } from '../people/people-review';
 import type { AccountRepository } from '../ports/account.repository';
 import type { AdminAccountReader, AdminAccountSummary } from '../ports/admin-account-reader';
 import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
@@ -113,6 +115,11 @@ export interface AdminTeamPage {
   readonly items: readonly AdminTeamRow[];
   /** The `after` of the next page, or null when this page was the last. */
   readonly next: string | null;
+  /**
+   * Whether a role change or an enabling is reviewed in Admin Inbox › System requests (area
+   * people): the page asks for a note when it is. A disable is never reviewed.
+   */
+  readonly review: PeopleReview;
 }
 
 export type ListAdminTeamFailure =
@@ -134,6 +141,7 @@ export interface ListAdminTeamDependencies {
   readonly permissions: Pick<SealedPermissionCatalogue, 'get'>;
   readonly factors: SecondFactorRepository;
   readonly policy: IdentityMarketPolicy;
+  readonly review: SystemRequestRecorder;
   readonly clock: Clock;
 }
 
@@ -219,6 +227,8 @@ export class ListAdminTeam extends UseCase<
     const self: GrantSubject = { accountId: actor.accountId, population: 'admin', sellerId: null };
     // Read before the unit, as the re-send command does: null answers `access.unavailable`.
     const lifetime = this.deps.policy.invitationLifetimeMinutes(market, 'admin');
+    // Its own read-only unit, before this one (units do not nest).
+    const review = await peopleReview(this.deps.review, context);
     return this.deps.unitOfWork.run(
       market,
       async (): Promise<Result<AdminTeamPage, ListAdminTeamFailure>> => {
@@ -271,7 +281,7 @@ export class ListAdminTeam extends UseCase<
           reading.targets,
         ).build(page, pageAccounts);
         const more = merged.length > limit;
-        return ok({ items: rows, next: more ? page[page.length - 1]!.id : null });
+        return ok({ items: rows, next: more ? page[page.length - 1]!.id : null, review });
       },
       { readOnly: true },
     );

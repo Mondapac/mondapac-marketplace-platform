@@ -6,9 +6,9 @@ import {
   EmptyState,
   LoadError,
   SearchSelect,
-  SkeletonRows,
   TextField,
   toast,
+  DetailSkeleton,
   type SearchSelectOption,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
@@ -50,12 +50,14 @@ export function AttributesTab({
   selectedId,
   onSelect,
   canEdit = false,
+  canRestructure = false,
   csrfToken = '',
   onOpenWaiting,
 }: {
   readonly selectedId: string | null;
   readonly onSelect: (id: string | null) => void;
   readonly canEdit?: boolean;
+  readonly canRestructure?: boolean;
   readonly csrfToken?: string;
   /** Opens the Waiting for you tab (a request is already open there). */
   readonly onOpenWaiting?: () => void;
@@ -74,7 +76,11 @@ export function AttributesTab({
   // The search acts after a short pause.
   useEffect(() => {
     const timer = setTimeout(
-      () => setFilters((current) => ({ ...current, search: typed.trim() })),
+      () =>
+        setFilters((current) =>
+          // Same text: keep the same object, or the list reloads from page 1 for nothing.
+          current.search === typed.trim() ? current : { ...current, search: typed.trim() },
+        ),
       300,
     );
     return () => clearTimeout(timer);
@@ -209,7 +215,13 @@ export function AttributesTab({
         </div>
         {load === 'loading' ? (
           <div className="p-4">
-            <SkeletonRows label={t('loading')} rows={5} />
+            <DetailSkeleton
+              label={t('loading')}
+              slowLabel={tl('slow')}
+              rows={5}
+              title={false}
+              framed={false}
+            />
           </div>
         ) : null}
         {load === 'failed' ? (
@@ -278,13 +290,16 @@ export function AttributesTab({
         attributeId={selectedId}
         onClose={() => onSelect(null)}
         canEdit={canEdit}
+        canRestructure={canRestructure}
         csrfToken={csrfToken}
         onChanged={() => void fetchRows()}
         onOpenWaiting={onOpenWaiting}
       />
       {adding && locales !== null ? (
         <AddAttributeDialog
+          reviewed={page?.review?.reviewed === true}
           locales={locales}
+          units={page?.units ?? []}
           csrfToken={csrfToken}
           onClose={() => setAdding(false)}
           onCreated={(id) => {

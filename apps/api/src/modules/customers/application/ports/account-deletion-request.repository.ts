@@ -1,12 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { AccountDeletionRequest } from '../../domain/account-deletion-request';
 
-/** Where the next page of pending requests starts: after this date and id. */
-export interface PendingCursor {
-  readonly scheduledFor: Temporal.Instant;
-  readonly id: Id<'AccountDeletionRequest'>;
-}
-
 /**
  * The deletion requests (`customers.account_deletion_requests`). Every method runs inside the
  * caller's unit of work and is scoped by the Market. At most one open (pending or executing)
@@ -23,6 +17,12 @@ export interface AccountDeletionRequestRepository {
     market: MarketContext,
     accountId: Id<'Account'>,
   ): Promise<AccountDeletionRequest | null>;
+
+  /**
+   * When the account's deletion completed (the erasure ran), or null when it never did. The
+   * customer page answers a tombstone with it instead of not-found (phase 2, PR 2b).
+   */
+  completedAt(market: MarketContext, accountId: Id<'Account'>): Promise<Temporal.Instant | null>;
 
   /** Closes a pending request as cancelled; false when it was not pending (claimed, closed or gone). */
   cancel(
@@ -48,15 +48,6 @@ export interface AccountDeletionRequestRepository {
     adminAccountId: Id<'Account'>,
     at: Temporal.Instant,
   ): Promise<boolean>;
-
-  /**
-   * The Market's pending requests, oldest date first (the due index), after `after` (keyset on
-   * `scheduledFor` then id), at most `limit`. Ids, dates and who asked: nothing personal.
-   */
-  listPending(
-    market: MarketContext,
-    page: { readonly after: PendingCursor | null; readonly limit: number },
-  ): Promise<readonly AccountDeletionRequest[]>;
 
   /**
    * The job's claim, before any irreversible step: a pending request whose date has come becomes

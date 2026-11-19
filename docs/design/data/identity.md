@@ -354,6 +354,7 @@ column added by that mini-review, not now.
 | `origin` | `inet` | no | **Personal, plain**: the client address. The only place in the database that stores one |
 | `session_id` | `uuid` | yes | Plain id; set on success |
 | `correlation_id` | `text` | no | CHECK as on `audit_log` |
+| `device` | `varchar(32)` | yes | Coarse device of the request, `<browser>.<system>` from fixed lists (as on `sessions.device`); CHECK `device IS NULL OR device ~ '^[a-z]+\.[a-z]+$'`. **Never the raw User-Agent.** NULL when the request sent none and on every record written before migration `20261117050200_identity_sign_in_record_device` (customers phase 2b: the customer page's logins list) |
 
 - Append-only for the application by privilege: `INSERT`, `SELECT` and `DELETE`, no `UPDATE`
   (section 7; H6). No trigger and no hash chain: unlike `audit_log` it has a retention, and the
@@ -361,8 +362,9 @@ column added by that mini-review, not now.
 - **Retention: 90 days, with the full address** (H3). `identity.purge-expired` deletes `WHERE
   market_id = $1 AND occurred_at < $now − 90 days`, one day of `occurred_at` per statement, on the
   index `(market_id, occurred_at)`. Safe to run twice and concurrently.
-- Not added: `(market_id, account_id, occurred_at)`. No screen reads the records in Phase 2 (D
-  5.3); it arrives with that screen or with erasure, whichever is first.
+- Index `(market_id, account_id, occurred_at)` (migration
+  `20261016210000_identity_sign_in_records_account_index`): one account's records, newest first.
+  It serves the customer page's logins list (customers phase 2b) and erasure.
 - Volume: attacker-driven but bounded by the throttles; section 9.
 
 ### 3.7 `identity.one_time_links` (slice 3; D 3.7, 6.6)
@@ -649,7 +651,7 @@ holds it). Only verified customer accounts get a row.
 | A second-factor secret or a recovery code in clear | Ciphertext under the subject key; keyed hashes (`SubjectKeyService.hmac`, H2) |
 | An unwrapped data key, or the wrapping key | `subject_keys.wrapped_key` only (PF 4 row 1) |
 | The email typed at a failed sign-in for an unknown address | A keyed hash in `sign_in_throttles`; `sign_in_records.account_id` is NULL |
-| A client address anywhere but `sign_in_records.origin` (full address, 90 days: H3) | Keyed hashes in throttle keys (the IPv4 address or the IPv6 /64, HF3). No address on sessions, links, invitations or audit rows; no user agent and no device label anywhere |
+| A client address anywhere but `sign_in_records.origin` (full address, 90 days: H3) | Keyed hashes in throttle keys (the IPv4 address or the IPv6 /64, HF3). No address on sessions, links, invitations or audit rows. No raw User-Agent anywhere; the only device data is the coarse `<browser>.<system>` label on `sessions.device` and `sign_in_records.device` (fixed lists, pattern CHECK) |
 | The throttle secret | Stack configuration: 32 random bytes, required at boot, never logged (H4) |
 | Roles, permission keys or seller state on a session | Read on every request (R4) |
 | The reject or suspend reason in clear, or outside `access_decisions` | Ciphertext; the decision id in audit rows and events |
@@ -883,7 +885,7 @@ measured; at these row counts every table is far below the point where partition
 | `sign_in_records` | 10³ to 10⁴ a day, so at most about 10⁶ at 90 days | Daily-slice deletes. Revisit at 5 × 10⁷ rows: monthly range partitions on `occurred_at`, dropped whole |
 | `sign_in_throttles` | One row per key and window: hundreds normally; under attack one per address or IPv6 /64 tried, for 48 hours | Hourly purge; an index `(market_id, window_started_at)` once it passes 10⁶ rows |
 | `sign_in_challenges` | Hundreds, short-lived | Hourly purge |
-| `one_time_links`, `invitations` | At most four per account; open invitations | Hourly purge of consumed, expired and decided rows, and of never-dispatched invitations older than their kind's lifetime |
+| `one_time_links`, `invitations` | At most four per account; open invitations | Hourly purge of consumed, expired and decided rows (except accepted `admin` invitations, kept for the people review), and of never-dispatched invitations older than their kind's lifetime |
 | `outbox` | A few events per account plus admin actions: 10⁵ to 10⁶ a year | Kept (P 6.5); pruning or partitioning is decided at 10⁶ rows |
 | `event_delivery`, `inbox` | The mail-causing events times their subscribers | The platform prune job, before the first deployed environment (P 7) |
 | `subject_keys` | Accounts plus sellers plus one tombstone per purged sign-up | None in Phase 2 (A7; revisited before the first deployed environment); sign-up is rate-limited per origin |
@@ -891,7 +893,7 @@ measured; at these row counts every table is far below the point where partition
 
 | Job (PN4) | Per hosted Market, each statement with `market_id` at the top level |
 |---|---|
-| `identity.purge-expired`, hourly, slice 2 | Sessions past absolute expiry plus 30 days; throttle rows whose window started more than 48 hours ago and that are not blocked; sign-in records past 90 days. From slice 3: links consumed or expired for a day. From slice 7: expired challenges; pending invitations past `expires_at`; decided invitations older than 30 days. From slice 7b, which passes the per-kind lifetimes from Market config: pending invitations never dispatched (`token_hash IS NULL`) whose `created_at` is older than the lifetime of their kind (7 days, `admin` 72 hours; Ali 2026-10-08) |
+| `identity.purge-expired`, hourly, slice 2 | Sessions past absolute expiry plus 30 days; throttle rows whose window started more than 48 hours ago and that are not blocked; sign-in records past 90 days. From slice 3: links consumed or expired for a day. From slice 7: expired challenges; pending invitations past `expires_at`; decided invitations older than 30 days, except accepted `admin` invitations, which are kept (ids only, the address cleared at acceptance; the people review of an invitation reaches the admin it created through them, Hassan M1 on PR #1058, 2026-11-18). From slice 7b, which passes the per-kind lifetimes from Market config: pending invitations never dispatched (`token_hash IS NULL`) whose `created_at` is older than the lifetime of their kind (7 days, `admin` 72 hours; Ali 2026-10-08) |
 | `identity.purge-unverified-accounts`, daily, slice 3 | Accounts of the partial index of 3.3 whose latest sign-up is older than 7 days: destroy the key, delete the account, one `serializable` unit per account (C11); from slice 5 also its assignment, membership and the `seller_access` whose `registered_at` is NULL |
 
 Both delete only what is already invalid and are safe to run twice and at once. Autovacuum

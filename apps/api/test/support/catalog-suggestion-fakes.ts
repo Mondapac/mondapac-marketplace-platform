@@ -4,6 +4,11 @@ import type {
   AttributeValueSuggestion,
   SuggestionStatus,
 } from '../../src/modules/catalog/domain/attribute-value-suggestion';
+import type { TopicSuggestionStore } from '../../src/modules/catalog/application/ports/topic-suggestion.store';
+import type {
+  SuggestionStatus as TopicSuggestionStatus,
+  TopicSuggestion,
+} from '../../src/modules/catalog/domain/topic-suggestion';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 
 /**
@@ -86,13 +91,32 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
     );
   }
 
-  listOpen(market: MarketContext, limit: number) {
-    return Promise.resolve(
-      [...this.rows.values()]
-        .filter((row) => row.state.marketId === market.marketId && row.state.status === 'open')
-        .sort((a, b) => a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds)
-        .slice(0, limit),
+  #open(market: MarketContext, text: string | null) {
+    return [...this.rows.values()].filter(
+      (row) =>
+        row.state.marketId === market.marketId &&
+        row.state.status === 'open' &&
+        (text === null || row.state.label.toLowerCase().includes(text.toLowerCase())),
     );
+  }
+
+  pageOpen(
+    market: MarketContext,
+    page: { text: string | null; direction: 'asc' | 'desc'; offset: number; limit: number },
+  ) {
+    const sign = page.direction === 'asc' ? 1 : -1;
+    return Promise.resolve(
+      this.#open(market, page.text)
+        .sort(
+          (a, b) =>
+            sign * (a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds),
+        )
+        .slice(page.offset, page.offset + page.limit),
+    );
+  }
+
+  countOpen(market: MarketContext, filter: { text: string | null }) {
+    return Promise.resolve(this.#open(market, filter.text).length);
   }
 
   listOfProduct(market: MarketContext, productId: Id<'Product'>, limit: number) {
@@ -104,6 +128,66 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
         .sort((a, b) => b.state.createdAt.epochMilliseconds - a.state.createdAt.epochMilliseconds)
         .slice(0, limit),
     );
+  }
+
+  #own(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: { status: SuggestionStatus | null; text: string | null },
+  ) {
+    return [...this.rows.values()].filter(
+      ({ state }) =>
+        state.marketId === market.marketId &&
+        state.sellerId === sellerId &&
+        (filter.status === null || state.status === filter.status) &&
+        (filter.text === null || state.label.toLowerCase().includes(filter.text.toLowerCase())),
+    );
+  }
+
+  pageOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: {
+      status: SuggestionStatus | null;
+      text: string | null;
+      sort: 'created' | 'status' | 'label';
+      direction: 'asc' | 'desc';
+      offset: number;
+      limit: number;
+    },
+  ) {
+    const sign = page.direction === 'asc' ? 1 : -1;
+    const created = (
+      a: { state: { createdAt: { epochMilliseconds: number }; id: string } },
+      b: typeof a,
+    ) =>
+      a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds ||
+      (a.state.id < b.state.id ? -1 : 1);
+    return Promise.resolve(
+      this.#own(market, sellerId, page)
+        .sort((a, b) => {
+          if (page.sort === 'status') {
+            return a.state.status === b.state.status
+              ? -created(a, b)
+              : sign * (a.state.status < b.state.status ? -1 : 1);
+          }
+          if (page.sort === 'label') {
+            return a.state.label === b.state.label
+              ? sign * (a.state.id < b.state.id ? -1 : 1)
+              : sign * (a.state.label < b.state.label ? -1 : 1);
+          }
+          return sign * created(a, b);
+        })
+        .slice(page.offset, page.offset + page.limit),
+    );
+  }
+
+  countOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: { status: SuggestionStatus | null; text: string | null },
+  ) {
+    return Promise.resolve(this.#own(market, sellerId, filter).length);
   }
 
   listOfSeller(
@@ -153,6 +237,200 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
             row.state.noticeState === 'pending' &&
             row.state.noticeNextAttemptAt !== null &&
             row.state.noticeNextAttemptAt.epochMilliseconds <= now.epochMilliseconds,
+        )
+        .slice(0, limit),
+    );
+  }
+}
+
+/**
+ * Tag suggestions in memory (product tags package T5), with the SQL store's rules: one open
+ * suggestion per seller and text key, a decision only out of `open` at the version before, a
+ * notice move only out of `pending`. The SQL store is proved in
+ * test/db/catalog-topic-suggestions.db-spec.ts.
+ */
+export class MemoryTopicSuggestionStore implements TopicSuggestionStore {
+  readonly rows = new Map<string, TopicSuggestion>();
+
+  reset(): void {
+    this.rows.clear();
+  }
+
+  findById(market: MarketContext, id: Id<'TopicSuggestion'>) {
+    const row = this.rows.get(id);
+    return Promise.resolve(row?.state.marketId === market.marketId ? row : null);
+  }
+
+  add(market: MarketContext, suggestion: TopicSuggestion) {
+    const clash = [...this.rows.values()].some(
+      ({ state }) =>
+        state.marketId === market.marketId &&
+        state.status === 'open' &&
+        state.sellerId === suggestion.state.sellerId &&
+        state.labelKey === suggestion.state.labelKey,
+    );
+    if (clash) return Promise.resolve('suggestion.already-open' as const);
+    this.rows.set(suggestion.state.id, suggestion);
+    return Promise.resolve(null);
+  }
+
+  saveDecision(_market: MarketContext, suggestion: TopicSuggestion) {
+    const stored = this.rows.get(suggestion.state.id);
+    if (
+      stored === undefined ||
+      stored.state.status !== 'open' ||
+      stored.state.version !== suggestion.state.version - 1
+    ) {
+      return Promise.reject(new StaleAggregateError('topic-suggestion', suggestion.state.id));
+    }
+    this.rows.set(suggestion.state.id, suggestion);
+    return Promise.resolve();
+  }
+
+  saveNotice(_market: MarketContext, suggestion: TopicSuggestion) {
+    this.rows.set(suggestion.state.id, suggestion);
+    return Promise.resolve();
+  }
+
+  openCountOfSeller(market: MarketContext, sellerId: Id<'Seller'>) {
+    return Promise.resolve(
+      [...this.rows.values()].filter(
+        ({ state }) =>
+          state.marketId === market.marketId &&
+          state.sellerId === sellerId &&
+          state.status === 'open',
+      ).length,
+    );
+  }
+
+  #open(market: MarketContext, text: string | null) {
+    return [...this.rows.values()].filter(
+      ({ state }) =>
+        state.marketId === market.marketId &&
+        state.status === 'open' &&
+        (text === null || state.label.toLowerCase().includes(text.toLowerCase())),
+    );
+  }
+
+  pageOpen(
+    market: MarketContext,
+    page: { text: string | null; direction: 'asc' | 'desc'; offset: number; limit: number },
+  ) {
+    const sign = page.direction === 'asc' ? 1 : -1;
+    return Promise.resolve(
+      this.#open(market, page.text)
+        .sort(
+          (a, b) =>
+            sign * (a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds),
+        )
+        .slice(page.offset, page.offset + page.limit),
+    );
+  }
+
+  countOpen(market: MarketContext, filter: { text: string | null }) {
+    return Promise.resolve(this.#open(market, filter.text).length);
+  }
+
+  listOfProduct(market: MarketContext, productId: Id<'Product'>, limit: number) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(({ state }) => state.marketId === market.marketId && state.productId === productId)
+        .slice(0, limit),
+    );
+  }
+
+  #own(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: { status: TopicSuggestionStatus | null; text: string | null },
+  ) {
+    return [...this.rows.values()].filter(
+      ({ state }) =>
+        state.marketId === market.marketId &&
+        state.sellerId === sellerId &&
+        (filter.status === null || state.status === filter.status) &&
+        (filter.text === null || state.label.toLowerCase().includes(filter.text.toLowerCase())),
+    );
+  }
+
+  pageOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: {
+      status: TopicSuggestionStatus | null;
+      text: string | null;
+      sort: 'created' | 'status' | 'label';
+      direction: 'asc' | 'desc';
+      offset: number;
+      limit: number;
+    },
+  ) {
+    const sign = page.direction === 'asc' ? 1 : -1;
+    const created = (
+      a: { state: { createdAt: { epochMilliseconds: number }; id: string } },
+      b: typeof a,
+    ) =>
+      a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds ||
+      (a.state.id < b.state.id ? -1 : 1);
+    return Promise.resolve(
+      this.#own(market, sellerId, page)
+        .sort((a, b) => {
+          if (page.sort === 'status') {
+            return a.state.status === b.state.status
+              ? -created(a, b)
+              : sign * (a.state.status < b.state.status ? -1 : 1);
+          }
+          if (page.sort === 'label') {
+            return a.state.label === b.state.label
+              ? sign * (a.state.id < b.state.id ? -1 : 1)
+              : sign * (a.state.label < b.state.label ? -1 : 1);
+          }
+          return sign * created(a, b);
+        })
+        .slice(page.offset, page.offset + page.limit),
+    );
+  }
+
+  countOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: { status: TopicSuggestionStatus | null; text: string | null },
+  ) {
+    return Promise.resolve(this.#own(market, sellerId, filter).length);
+  }
+
+  listOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: {
+      readonly status: TopicSuggestionStatus | null;
+      readonly afterId: Id<'TopicSuggestion'> | null;
+      readonly limit: number;
+    },
+  ) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          ({ state }) =>
+            state.marketId === market.marketId &&
+            state.sellerId === sellerId &&
+            (page.status === null || state.status === page.status) &&
+            (page.afterId === null || state.id < page.afterId),
+        )
+        .sort((a, b) => (a.state.id < b.state.id ? 1 : -1))
+        .slice(0, page.limit),
+    );
+  }
+
+  dueNotices(market: MarketContext, now: Temporal.Instant, limit: number) {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          ({ state }) =>
+            state.marketId === market.marketId &&
+            state.noticeState === 'pending' &&
+            state.noticeNextAttemptAt !== null &&
+            state.noticeNextAttemptAt.epochMilliseconds <= now.epochMilliseconds,
         )
         .slice(0, limit),
     );

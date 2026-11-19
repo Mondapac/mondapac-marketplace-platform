@@ -42,7 +42,16 @@ import { ApplyTransferChange } from './use-cases/apply-transfer-change.use-case'
 import { ApprovePayout } from './use-cases/approve-payout.use-case';
 import { ListOwnPayoutHolds } from './use-cases/list-own-payout-holds.use-case';
 import { ListOwnPayouts } from './use-cases/list-own-payouts.use-case';
+import { ExportOwnPayouts } from './use-cases/export-own-payouts.use-case';
+import { COMMISSION_PAYOUTS_EARNINGS_VIEW } from '../contracts/permissions';
 import { ListPayouts } from './use-cases/list-payouts.use-case';
+import { PAYOUT_ROW_KEYS, type AdminPayoutListDependencies } from './admin-payout-list-flow';
+import { ExceljsSheetWriter } from '../../../platform/list-export';
+import {
+  FakeStoreSearch,
+  MemoryAdminPayoutList,
+  ScriptedProbe,
+} from '../../../../test/support/commission-payouts-list-fakes';
 import { ReconcileInstructions } from './use-cases/reconcile-instructions.use-case';
 import { RunPayouts } from './use-cases/run-payouts.use-case';
 import { ViewNextPayout } from './use-cases/view-next-payout.use-case';
@@ -1128,8 +1137,19 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
   // --- what admins see ----------------------------------------------------------------------------
 
   describe('the admin views', () => {
-    const list = (input: Record<string, unknown>, context: CallContext = admin) =>
-      new ListPayouts(gate, deps).execute(context, input);
+    const list = (input: Record<string, unknown>, context: CallContext = admin) => {
+      const held = new ScriptedProbe(true);
+      const listDeps: AdminPayoutListDependencies = {
+        unitOfWork: deps.unitOfWork,
+        payouts: new MemoryAdminPayoutList(payouts, stores.holds),
+        sellerNames: names,
+        storeSearch: new FakeStoreSearch(names.names),
+        probes: Object.fromEntries(PAYOUT_ROW_KEYS.map((k) => [k, held])),
+        sheetWriter: new ExceljsSheetWriter(),
+        clock,
+      };
+      return new ListPayouts(gate, listDeps).execute(context, input);
+    };
     const view = (payoutId: unknown, context: CallContext = admin) =>
       new ViewPayout(gate, deps).execute(context, { payoutId });
 
@@ -1244,9 +1264,39 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
     const next = (context: CallContext = sellerCtx) =>
       new ViewNextPayout(gate, deps).execute(context, undefined);
     const history = (input: Record<string, unknown> = {}, context: CallContext = sellerCtx) =>
-      new ListOwnPayouts(gate, deps).execute(context, input);
+      new ListOwnPayouts(gate, {
+        unitOfWork: deps.unitOfWork,
+        payouts: new MemoryAdminPayoutList(payouts, stores.holds),
+        sheetWriter: new ExceljsSheetWriter(),
+        clock,
+      }).execute(context, input);
     const held = (context: CallContext = sellerCtx) =>
       new ListOwnPayoutHolds(gate, deps).execute(context, undefined);
+
+    it('needs earnings.view for the payouts file, and the gate refuses a team member without it', async () => {
+      expect(ExportOwnPayouts.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: [COMMISSION_PAYOUTS_EARNINGS_VIEW.key],
+      });
+      // A check that holds no key: the export is refused before anything is read.
+      const withoutKeys = createUseCaseGate(markets, {
+        check: (_context, declaration) =>
+          Promise.resolve(
+            declaration.rule.kind === 'permissions'
+              ? { allowed: false, denial: { code: 'access.denied' } }
+              : { allowed: true },
+          ),
+      });
+      const reader = new MemoryAdminPayoutList(payouts, stores.holds);
+      const exported = await new ExportOwnPayouts(withoutKeys, {
+        unitOfWork: deps.unitOfWork,
+        payouts: reader,
+        sheetWriter: new ExceljsSheetWriter(),
+        clock,
+      }).execute(sellerCtx, {});
+      expect(exported).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(reader.reads).toBe(0);
+    });
 
     it('estimates the next payout with its slot and amount before the slot', async () => {
       await addSeller();
@@ -1298,6 +1348,7 @@ describe.each([['AU'], ['ZZ']] as const)('payouts in market %s', (code) => {
       expect(own.payouts.map((row) => row.status).sort()).toEqual(['not-sent', 'paid']);
       expect(own.payouts.find((row) => row.status === 'not-sent')!.reason).toBe('cooling-off');
       expect(json(own)).not.toContain(SELLER_B);
+      expect(own.counts).toMatchObject({ all: 2, paid: 1, 'not-sent': 1 });
 
       const otherSeller = must(await history({}, sellerBCtx));
       expect(otherSeller.payouts).toHaveLength(1);

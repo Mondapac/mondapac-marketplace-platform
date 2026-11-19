@@ -14,6 +14,7 @@ import {
   CONTENT_KEYS,
   editorAccountOf,
   invalid,
+  marketUnitsRefusal,
   parseEditorContent,
   refuseClaimContent,
   writeViewOf,
@@ -29,6 +30,15 @@ import {
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import type { ClaimTextMatcher } from '../ports/claim-text-matcher';
+import type { SystemRequestRecorder } from '../../../system-requests';
+import { attributeCreatedValues, NOTHING_BEFORE } from '../catalogue-actions';
+import {
+  ATTRIBUTE_CREATE_SUBJECT_KIND,
+  catalogueReview,
+  openCatalogueReview,
+  requestRef,
+  type CatalogueRequestRef,
+} from '../catalogue-review';
 
 export interface AttributeDefinitionCreateInput {
   readonly [key: string]: unknown;
@@ -48,7 +58,20 @@ export interface AttributeDefinitionWriteDependencies {
   readonly ids: IdGenerator;
 }
 
-const CREATE_KEYS = ['code', 'dataType', 'localizable', ...CONTENT_KEYS] as const;
+const CREATE_KEYS = ['code', 'dataType', 'localizable', 'note', ...CONTENT_KEYS] as const;
+
+export interface AttributeDefinitionCreateDependencies extends AttributeDefinitionWriteDependencies {
+  /**
+   * Opens the review of the new draft in Admin Inbox › System requests (area catalogue); the file
+   * import passes one that reviews nothing (imports are not reviewed).
+   */
+  readonly review: SystemRequestRecorder;
+}
+
+export interface AttributeDefinitionCreateOutput {
+  readonly attribute: AttributeWriteView;
+  readonly request: CatalogueRequestRef;
+}
 const MAX_CODE_PROBES = 50;
 
 /**
@@ -59,10 +82,15 @@ const MAX_CODE_PROBES = 50;
  * every locale, passes the claim-text check, and a locale the check cannot read is refused (fail
  * closed). The code is the one given (which must be free) or derived from the default-locale name;
  * the code, data type and localizable flag never change afterwards. One audit row.
+ *
+ * It goes live at once (as a draft) and is reviewed after (area catalogue, owner decision of 18 Nov
+ * 2026): where the Market reviews the area the request needs a `note`; a rejected or withdrawn
+ * create discards the definition while it is still a draft (a published one is `not-permitted`:
+ * see catalogue-structure-reverters.ts).
  */
 export class AttributeDefinitionCreate extends UseCase<
   AttributeDefinitionCreateInput,
-  { readonly attribute: AttributeWriteView },
+  AttributeDefinitionCreateOutput,
   AttributeDefinitionCreateFailure
 > {
   static override readonly access: AccessDeclaration = {
@@ -74,7 +102,7 @@ export class AttributeDefinitionCreate extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: AttributeDefinitionWriteDependencies,
+    private readonly deps: AttributeDefinitionCreateDependencies,
   ) {
     super(gate);
   }
@@ -82,7 +110,7 @@ export class AttributeDefinitionCreate extends UseCase<
   protected async handle(
     context: CallContext,
     input: AttributeDefinitionCreateInput,
-  ): Promise<Result<{ readonly attribute: AttributeWriteView }, AttributeDefinitionCreateFailure>> {
+  ): Promise<Result<AttributeDefinitionCreateOutput, AttributeDefinitionCreateFailure>> {
     const result = await this.#create(context, input);
     this.#logger.log({
       msg: 'catalog.attribute-definition-create',
@@ -96,7 +124,7 @@ export class AttributeDefinitionCreate extends UseCase<
   async #create(
     context: CallContext,
     input: AttributeDefinitionCreateInput,
-  ): Promise<Result<{ readonly attribute: AttributeWriteView }, AttributeDefinitionCreateFailure>> {
+  ): Promise<Result<AttributeDefinitionCreateOutput, AttributeDefinitionCreateFailure>> {
     const accountId = editorAccountOf(context);
     if (accountId === null) return err({ code: 'access.denied' });
     const body = closedInput(input, CREATE_KEYS);
@@ -149,12 +177,18 @@ export class AttributeDefinitionCreate extends UseCase<
       now,
     });
     if (!draft.ok) return err(domainFailureOf(draft.error));
+    const notOffered = marketUnitsRefusal(content.value.bounds, this.deps.policy.units(market));
+    if (notOffered !== null) {
+      return err({ code: 'attribute-definition.measure-invalid', fields: [notOffered] });
+    }
     const claim = await refuseClaimContent(this.deps, context, content.value);
     if (claim !== null) return err(claim);
 
+    // Its own read-only unit, before this one (units do not nest).
+    const policy = await catalogueReview(this.deps.review, context);
     try {
       return await this.deps.unitOfWork.run<
-        { readonly attribute: AttributeWriteView },
+        AttributeDefinitionCreateOutput,
         AttributeDefinitionCreateFailure
       >(market, async () => {
         const { attributeStore } = this.deps;
@@ -183,7 +217,17 @@ export class AttributeDefinitionCreate extends UseCase<
             after: auditShapeOf(built.value),
           }),
         );
-        return ok({ attribute: writeViewOf(built.value) });
+        // The draft is live; its review opens in the same unit (a refusal rolls it back).
+        const review = await openCatalogueReview(this.deps.review, context, policy, {
+          subjectKind: ATTRIBUTE_CREATE_SUBJECT_KIND,
+          subjectRef: built.value.state.id,
+          before: NOTHING_BEFORE,
+          after: attributeCreatedValues(built.value),
+          note: body.value['note'],
+          tooLargePath: 'code',
+        });
+        if (!review.ok) return err(review.error);
+        return ok({ attribute: writeViewOf(built.value), request: requestRef(review.value) });
       });
     } catch (error) {
       if (error instanceof AttributeCodeTakenError) return err({ code: 'attribute.code-taken' });

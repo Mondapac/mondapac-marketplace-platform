@@ -1,4 +1,5 @@
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
+import { RecordingReview } from '../support/system-request-fakes';
 import { WALLET_AUDIT_ACTIONS } from '../../src/modules/wallet/domain/audit';
 import { dbChangeTrail } from './change-trail-support';
 import { err, money, ok, Temporal } from '@mondapac/shared-kernel';
@@ -18,10 +19,12 @@ import type { WalletDependencies } from '../../src/modules/wallet/application/wa
 import { BalanceOf } from '../../src/modules/wallet/application/use-cases/balance-of.use-case';
 import { CaptureHold } from '../../src/modules/wallet/application/use-cases/capture-hold.use-case';
 import { ExpireWalletCredit } from '../../src/modules/wallet/application/use-cases/expire-wallet-credit.use-case';
+import { ClawBackCredit } from '../../src/modules/wallet/application/use-cases/claw-back-credit.use-case';
 import { GrantCredit } from '../../src/modules/wallet/application/use-cases/grant-credit.use-case';
 import { PlaceHold } from '../../src/modules/wallet/application/use-cases/place-hold.use-case';
 import { ReleaseHold } from '../../src/modules/wallet/application/use-cases/release-hold.use-case';
 import { SetWalletStatus } from '../../src/modules/wallet/application/use-cases/set-wallet-status.use-case';
+import { WalletStatusReverter } from '../../src/modules/wallet/application/wallet-reverter';
 import { ViewMyHistory } from '../../src/modules/wallet/application/use-cases/view-my-history.use-case';
 import { ViewMyWallet } from '../../src/modules/wallet/application/use-cases/view-my-wallet.use-case';
 import { ConfigWalletPolicy } from '../../src/modules/wallet/infrastructure/config-wallet-policy';
@@ -92,6 +95,7 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
   let owner: Client;
   let audit: RecordingAudit;
   let deps: WalletDependencies;
+  let review = new RecordingReview();
   let n = 0;
 
   beforeAll(async () => {
@@ -105,11 +109,13 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
     const catalogue = new AuditActionCatalogue();
     catalogue.register('wallet', WALLET_AUDIT_ACTIONS);
     catalogue.seal();
+    review = new RecordingReview();
     deps = {
       unitOfWork: db.unitOfWork,
       wallet: new PrismaWalletRepository(db.service, ids),
       settings: new PrismaMarketSettingRepository(db.service),
       policy: new ConfigWalletPolicy(markets),
+      review,
       audit,
       ids,
       clock,
@@ -1308,6 +1314,45 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       ).toBe('allowed');
     });
 
+    it('takes back credit from a promo lot of its wallet with a clawback journal, and refuses any other (customers 4c-2)', async () => {
+      const w = await twoLots(bk, '2099-01-01T00:00:00Z');
+      const clawbackOf = (lotId: string, walletMinor: bigint, lotAfter: bigint): Statement[] => {
+        const id = ids.next<'WalletJournal'>();
+        return [
+          journal(bk, id, 'clawback', w.wallet, null, null, lotId),
+          posting(bk, id, w.wallet, walletMinor),
+          posting(bk, id, w.origin, -walletMinor),
+          setLot(lotId, lotAfter),
+          setBalance(w.wallet, 200n + walletMinor, 0n),
+        ];
+      };
+      // From the refund lot, onto the wallet, or without lowering the lot by as much.
+      expect(await code_(commit(clawbackOf(w.refund, -10n, 90n)))).toBe(CHECK);
+      expect(await code_(commit(clawbackOf(w.promo, 10n, 110n)))).toBe(RESTRICT);
+      expect(await code_(commit(clawbackOf(w.promo, -10n, 95n)))).toBe(CHECK);
+      // A clawback with no lot, or an expiry-only column on another kind, is refused by the CHECK.
+      const bare = ids.next<'WalletJournal'>();
+      expect(
+        await code_(
+          commit([
+            journal(bk, bare, 'clawback', w.wallet),
+            posting(bk, bare, w.wallet, -10n),
+            posting(bk, bare, w.origin, 10n),
+          ]),
+        ),
+      ).toBe(CHECK);
+      expect(await lotsOf(w)).toEqual([
+        { source: 'promo', r: '100' },
+        { source: 'refund', r: '100' },
+      ]);
+      // The real one, from a promo lot that has not expired, commits.
+      expect(await code_(commit(clawbackOf(w.promo, -30n, 70n)))).toBe('allowed');
+      expect(await lotsOf(w)).toEqual([
+        { source: 'promo', r: '70' },
+        { source: 'refund', r: '100' },
+      ]);
+    });
+
     it('refuses a hold lot that names a lot of another wallet (S2)', async () => {
       const w1 = await twoLots(bk, '2099-01-01T00:00:00Z');
       const w2 = await twoLots(bk, '2099-01-01T00:00:00Z');
@@ -1821,6 +1866,25 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
       ).toBe(RESTRICT);
     });
 
+    it('lets a clawback through while active, paused and frozen, and not while off (customers 4c-2)', async () => {
+      for (const status of ['active', 'paused', 'frozen'] as const) {
+        const m = await fenceMarket(status === 'active' ? 'A' : status === 'paused' ? 'Q' : 'R');
+        if (status !== 'active') await commit([statusUpdate(m.market_id, status)]);
+        const id = ids.next<'WalletJournal'>();
+        expect(
+          await code_(
+            commit([
+              journal(m.market_id, id, 'clawback', m.w, null, null, m.lot),
+              posting(m.market_id, id, m.w, -1n),
+              posting(m.market_id, id, m.a, 1n),
+              setLot(m.lot, 0n),
+              setBalance(m.w, 0n, 0n),
+            ]),
+          ),
+        ).toBe('allowed');
+      }
+    });
+
     it('never goes back to off with history, whichever of the two transactions comes first', async () => {
       // The first journal is in flight when the Market is turned off: the switch waits, then sees it.
       const m1 = await fenceMarket('G', false);
@@ -1918,6 +1982,47 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
           .toString()
           .replace('Z', '.000Z'),
       );
+    });
+
+    it('claws back what is left of a promo grant, in every state but off, and answers a repeat the same (customers 4c-2)', async () => {
+      await turn('active');
+      const customer = ids.next<'Account'>();
+      const granted = await grant(customer, 500n, 'promo');
+      if (!granted.ok) throw new Error(granted.error.code);
+      const order = ids.next<'Order'>();
+      expect((await hold(customer, order, 350n)).ok).toBe(true);
+      expect((await settle('capture', customer, order)).ok).toBe(true);
+      const clawBack = (minor: bigint, idempotencyKey = key('claw')) =>
+        new ClawBackCredit(gate, deps).execute(system, {
+          customerAccountId: customer,
+          grantJournalId: granted.value.journalId,
+          amount: amount(minor),
+          reasonCode: 'cashback-refund',
+          idempotencyKey,
+        });
+      const first = await clawBack(100n, 'claw-key-db-1');
+      expect(first).toMatchObject({ ok: true, value: { clawedBack: amount(100n) } });
+      expect(await clawBack(100n, 'claw-key-db-1')).toEqual(first);
+      expect(await balanceOf(customer)).toEqual([50n, 0n]);
+      expect((await turn('frozen', 'maintenance')).ok).toBe(true);
+      // Only 50 is left: the 350 spent stays spent.
+      expect(await clawBack(400n)).toMatchObject({ ok: true, value: { clawedBack: amount(50n) } });
+      expect(await clawBack(10n)).toMatchObject({
+        ok: true,
+        value: { journalId: null, clawedBack: amount(0n) },
+      });
+      expect(await balanceOf(customer)).toEqual([0n, 0n]);
+      const journals = await rows(
+        `SELECT j.kind, j.lot_id IS NOT NULL AS has_lot FROM wallet.journals j
+           JOIN wallet.accounts a ON a.id = j.wallet_account_id
+          WHERE a.customer_account_id = $1 AND j.kind = 'clawback'`,
+        [customer],
+      );
+      expect(journals).toEqual([
+        { kind: 'clawback', has_lot: true },
+        { kind: 'clawback', has_lot: true },
+      ]);
+      expect((await turn('active')).ok).toBe(true);
     });
 
     it('captures a hold once and keeps every journal balanced with the cache equal to the lots', async () => {
@@ -2069,6 +2174,48 @@ describe.each(TEST_MARKETS)('wallet ledger in market %s (database)', (code) => {
   });
 
   // ---- the books agree after every step ------------------------------------------------------
+
+  describe('revert from System requests', () => {
+    it('restores the switch on the real store under its lock, once, and never lifts a pause', async () => {
+      expect((await turn('active')).ok).toBe(true);
+      const inUnit = <T>(work: () => Promise<T>) =>
+        db.unitOfWork
+          .run(market, async () => ok(await work()))
+          .then((r) => {
+            if (!r.ok) throw new Error('unit failed');
+            return r.value;
+          });
+      const request = {
+        requestId: ids.next<'SystemRequest'>(),
+        subjectRef: 'wallet-settings',
+        before: { status: 'paused', reason: 'maintenance' },
+        after: { status: 'active', reason: null },
+      };
+      const version = await switchVersion();
+      const reverter = new WalletStatusReverter(deps);
+      expect(await inUnit(() => reverter.revert(adminCtx, request))).toBe('reverted');
+      expect(await switchVersion()).toBe(version + 1);
+      expect(
+        (
+          await sql.query(
+            'SELECT status, reason_code FROM wallet.market_settings WHERE market_id = $1',
+            [market.marketId],
+          )
+        ).rows[0],
+      ).toEqual({ status: 'paused', reason_code: 'maintenance' });
+      // The same request again: the switch no longer holds the state after.
+      expect(await inUnit(() => reverter.revert(adminCtx, request))).toBe('changed-since');
+      // Lifting the pause through a decision is refused; nothing is written.
+      const lift = {
+        ...request,
+        before: { status: 'active', reason: null },
+        after: { status: 'paused', reason: 'maintenance' },
+      };
+      expect(await inUnit(() => reverter.revert(adminCtx, lift))).toBe('not-permitted');
+      expect(await switchVersion()).toBe(version + 1);
+      expect((await turn('active')).ok).toBe(true);
+    });
+  });
 
   describe('ledger invariants', () => {
     const sweep = () => new ExpireWalletCredit(gate, deps).execute(system, {});

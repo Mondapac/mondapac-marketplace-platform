@@ -19,19 +19,23 @@ function hasListedProducts(shop: SellerShop): boolean {
   return shop.storeProducts?.kind === 'ok' && shop.storeProducts.items.length > 0;
 }
 
-/** The seller of the path, or a store not taking orders; an unknown one is a 404. */
+/**
+ * The seller of the path, or a store not taking orders; undefined for an unknown one. It does not
+ * throw: a 404 thrown from `generateMetadata` ends in a body built in the browser, so the head
+ * returns no tags for an unknown store and the page itself answers `notFound()`.
+ */
 async function resolve(params: Props['params'], searchParams: Props['searchParams']) {
   const [{ slug }, query] = await Promise.all([params, searchParams]);
   const page = storePageOf(query['page']);
   const shop = await loadSeller(slug, page);
   if (shop) return { shop } as const;
   const closed = await loadClosedStore(slug);
-  if (!closed) notFound();
-  return { closed } as const;
+  return closed ? ({ closed } as const) : undefined;
 }
 
 export async function generateMetadata({ params, searchParams }: Props) {
   const [found, { slug }] = await Promise.all([resolve(params, searchParams), params]);
+  if (found === undefined) return {};
   const path = `/s/${encodeURIComponent(slug)}`;
   if (found.shop) {
     const { shop } = found;
@@ -61,6 +65,7 @@ export async function generateMetadata({ params, searchParams }: Props) {
 
 export default async function SellerRoute({ params, searchParams }: Props) {
   const found = await resolve(params, searchParams);
+  if (found === undefined) notFound();
   if (!found.shop)
     return <ClosedStoreView store={found.closed} ratingsShown={SELLER_RATINGS_SHOWN} />;
   return <SellerPage shop={found.shop} ratingsShown={SELLER_RATINGS_SHOWN} />;

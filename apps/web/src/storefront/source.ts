@@ -1,8 +1,9 @@
 import 'server-only';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { apiGet, apiGetBytes, type ApiRead } from './api.ts';
 import { sessionGet } from './session.ts';
+import { sessionCookieNames } from './session-relay.ts';
 import { isProductId, productDetailOf, type ProductDetailBody } from './product-detail.ts';
 import {
   publicStoreOf,
@@ -11,10 +12,13 @@ import {
   shopOf,
   type PublicStore,
 } from './real-sellers.ts';
-import type { AssistantSetup } from '../assistant/assistant.ts';
+import { validChatUrl, validSupportEmail, type AssistantBase } from '../assistant/assistant.ts';
 import { liveCartOf, type LiveCart } from '../cart/live-cart.ts';
 import { categoriesOf, loadHome, type HomeContent } from './home-source.ts';
 import { photoUrls } from './photo-source.ts';
+import { sampleSuggestions } from './sample-suggest.ts';
+import { suggestOf } from './suggest-source.ts';
+import type { SuggestAnswer } from '../search/suggest-types.ts';
 import { loadSlides as readSlides, type SlideScope } from './slides-source.ts';
 import { loadShellContent } from './shell-source.ts';
 import { storeProductsOf, storeProductsPath } from './store-products.ts';
@@ -34,6 +38,8 @@ import { SAMPLE_ACCOUNT } from './sample-account.ts';
 import { SAMPLE_CART_SOURCE, SAMPLE_CHECKOUT } from './sample-cart.ts';
 import { sampleDeliveryOptions } from './sample-delivery-options.ts';
 import { SAMPLE_DELIVERY_LOCATOR } from './sample-delivery.ts';
+import { lookupIsLive, placesDeps } from '../delivery/places-server.ts';
+import { mapConfig } from '../delivery/map-config.ts';
 import { sampleProduct } from './sample-product.ts';
 import { sampleSeller } from './sample-seller.ts';
 import { SAMPLE_SELLER_SIGN_UP } from './sample-seller-sign-up.ts';
@@ -42,6 +48,7 @@ import { sellerSignInUrls } from './seller-sign-in.ts';
 import { callSellerSignUp, type SellerSignUpCall } from './seller-sign-up-api.ts';
 import { sampleSellers } from './sample-sellers.ts';
 import { sampleClosedStore, sampleUnavailableProduct } from './sample-unavailable.ts';
+import { keepProductAnswer, keepStoreAnswer } from './page-read-cache.ts';
 import { accountOrderOf, accountOrdersOf, isOrderId, shipToLine } from '../account/live-orders.ts';
 import type {
   AccountOrder,
@@ -67,6 +74,7 @@ import type {
   StorefrontContent,
   StoreProducts,
   UnavailableProduct,
+  UpcomingCashback,
 } from './types.ts';
 
 /**
@@ -114,8 +122,10 @@ export async function loadSlides(position: string, scope?: SlideScope): Promise<
 export async function loadProduct(id: string): Promise<ProductDetail | undefined> {
   // Only the sample has paths that are not product ids; with the API on they are no product.
   if (!isProductId(id)) return storefrontApiConfig() === null ? sampleProduct(id) : undefined;
+  // Shared with the proxy's existence check through the page-read cache: one API read per view.
   const read = await apiGet<ProductDetailBody>(
     `search/product-detail/${encodeURIComponent(id.toLowerCase())}`,
+    { share: keepProductAnswer },
   );
   if (read.kind === 'off') return sampleProduct(id);
   if (read.kind === 'failed') {
@@ -258,11 +268,15 @@ function samplePayment(request: PayRequest): PayAnswer {
 }
 
 /**
- * The Deliver to modal's service area and, until the map and address-lookup provider is chosen,
- * the sample places of its stubbed lookup (handoffs/deliver-to-modal.md).
+ * The Deliver to modal's service area and map extent (sample until the map provider PR), and
+ * whether its address lookup is live: Mapbox is configured for this host's Market
+ * (MAPBOX_SEARCH_TOKEN, MAPBOX_COUNTRIES). Otherwise the stubbed lookup on sample places.
  */
 export async function loadDeliveryLocator(): Promise<DeliveryLocatorSource> {
-  return Promise.resolve(SAMPLE_DELIVERY_LOCATOR);
+  const live = lookupIsLive(placesDeps(), await headers());
+  const map = live ? mapConfig() : null;
+  if (!live) return SAMPLE_DELIVERY_LOCATOR;
+  return map ? { ...SAMPLE_DELIVERY_LOCATOR, live, map } : { ...SAMPLE_DELIVERY_LOCATOR, live };
 }
 
 /** The display name of a ServiceArea code ("greater-brisbane"); the code itself when unnamed. */
@@ -280,6 +294,21 @@ class SellerReadFailed extends Error {
 
 const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
+const INVITE_TOKEN = /^[A-Za-z0-9_-]{8,200}$/;
+
+/**
+ * The store address an invite link leads to (`GET customers/store-invitations/:token`, anonymous),
+ * or undefined for an unknown, revoked or expired link, a store not public now, a malformed token,
+ * an outage and the sample (no API). Never cached: the token is a credential.
+ */
+export async function loadInvitedStoreSlug(token: string): Promise<string | undefined> {
+  if (!INVITE_TOKEN.test(token)) return undefined;
+  const answer = await apiGet<unknown>(`customers/store-invitations/${encodeURIComponent(token)}`);
+  if (answer.kind !== 'ok') return undefined;
+  const slug = (answer.body as { slug?: unknown } | null)?.slug;
+  return typeof slug === 'string' && slug.length <= 50 && STORE_SLUG.test(slug) ? slug : undefined;
+}
+
 /**
  * The seller page's read: profile, terms, certificates and products, or undefined when there is
  * no such seller. With the API configured, `GET sellers/stores/:slug` gives name, area, year and
@@ -291,7 +320,10 @@ const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 export async function loadSeller(slug: string, page = 1): Promise<SellerShop | undefined> {
   // No sample or real store has any other slug; nothing else reaches the API path.
   if (slug.length > 50 || !STORE_SLUG.test(slug)) return undefined;
-  const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`);
+  // Shared with the proxy's existence check through the page-read cache: one API read per view.
+  const answer = await apiGet<unknown>(`sellers/stores/${encodeURIComponent(slug)}`, {
+    share: keepStoreAnswer,
+  });
   if (answer.kind === 'off') return sampleSeller(slug);
   if (answer.kind === 'failed') {
     // Only the store module's own answer means "no such store"; a bare 404 is a missing route.
@@ -469,6 +501,34 @@ export async function loadAccountOrder(id: string): Promise<AccountOrder | null 
   return read.kind === 'ok' ? accountOrderOf(read.body, labels, shipToLine(read.body)) : null;
 }
 
+/**
+ * The order's cashback that waits for the seller's payout release (customers phase 4c), for the
+ * line "cashback X will be credited on date Y". Display only; an empty list on sample data, for
+ * a page key that is not an order id, and when the read fails (the line is simply not shown).
+ */
+export async function loadUpcomingCashback(id: string): Promise<readonly UpcomingCashback[]> {
+  if (!storefrontIsLive() || !isOrderId(id)) return [];
+  const read = await sessionGet<{
+    cashback: { amountMinor: string; currency: string; creditOn: string | null }[];
+  }>(`promotions/cashback/upcoming?orderId=${id.toLowerCase()}`);
+  if (read.kind !== 'ok' || !Array.isArray(read.body?.cashback)) return [];
+  return read.body.cashback.flatMap((c) => {
+    const amount = Number(c.amountMinor);
+    return /^\d+$/u.test(c.amountMinor) && Number.isSafeInteger(amount) && amount > 0
+      ? [
+          {
+            amount: { amount, currency: c.currency },
+            // The day of the instant, as the order pages show their dates.
+            creditOn:
+              typeof c.creditOn === 'string' && /^\d{4}-\d{2}-\d{2}T/u.test(c.creditOn)
+                ? c.creditOn.slice(0, 10)
+                : null,
+          },
+        ]
+      : [];
+  });
+}
+
 async function orderLabels() {
   const t = await getTranslations('account.order');
   return { unnamedItem: t('unnamed-item'), unnamedSeller: t('unnamed-seller') };
@@ -565,14 +625,41 @@ export async function loadClosedStore(slug: string): Promise<ClosedStore | undef
   return Promise.resolve(sampleClosedStore(slug));
 }
 
+/** The buyer relay's route to the assistant (app/api/[...path]): same-origin, so no CORS. */
+export const ASSISTANT_CHAT_URL = '/api/assistant';
+
 /**
- * Whether the buyer assistant shows, and what the widget needs: null while it is off. Always null
- * for now: the assistant ships switched off in every Market, and the storefront does not call the
- * API yet. Once it does, this asks `GET /assistant/storefront` and adds the conversation route,
- * the Market's support address and retention, and the session's CSRF token.
+ * What the server render knows about the buyer assistant: where the browser reaches it (the buyer
+ * relay), the Market's support address and, for a signed-in customer, the session's CSRF token.
+ * Whether the assistant is on for this visitor needs the visitor id, which only the browser has,
+ * so the widget asks `GET /assistant/storefront` itself and shows nothing until it says on (see
+ * assistant-gate.tsx). Null (off) with the API off, an unlisted host, or a support address or
+ * route that is not a plain, valid one; never throws. The layout stays dynamic.
  */
-export async function loadAssistant(): Promise<AssistantSetup | null> {
-  return Promise.resolve(null);
+export async function loadAssistant(): Promise<AssistantBase | null> {
+  try {
+    const config = storefrontApiConfig();
+    if (config === null) return null;
+    const incoming = await headers();
+    const host = storefrontHostFor(config, incoming.get('host'));
+    if (host === undefined) return null;
+    const chatUrl = validChatUrl(ASSISTANT_CHAT_URL);
+    // The Market's support address is the footer's: the storefront has no other Market config for it.
+    const supportEmail = validSupportEmail((await getTranslations('footer'))('email'));
+    if (chatUrl === null || supportEmail === null) return null;
+    // Only a browser that holds a session cookie has a customer to read.
+    const jar = await cookies();
+    let csrfToken: string | null = null;
+    if (jar.has(sessionCookieNames(host.marketId).session)) {
+      const session = await sessionGet<{ csrfToken?: unknown }>('identity/customer/session');
+      if (session.kind === 'ok' && typeof session.body.csrfToken === 'string') {
+        csrfToken = session.body.csrfToken;
+      }
+    }
+    return { chatUrl, supportEmail, csrfToken };
+  } catch {
+    return null;
+  }
 }
 
 /** A store picture (logo or banner) as the buyer site's image route serves it. */
@@ -646,4 +733,25 @@ export async function loadBuyerSession(): Promise<BuyerSession> {
     csrfToken: session.body.csrfToken,
     cartLines,
   };
+}
+
+/** The header suggestions' read: the answer, or why there is none. */
+export type SuggestRead =
+  | { readonly kind: 'ok'; readonly answer: SuggestAnswer }
+  /** The API refused (429, 503) or answered nothing usable; the panel says so and Enter still searches. */
+  | { readonly kind: 'failed'; readonly status?: number };
+
+/**
+ * Suggestions for what the buyer has typed (`GET search/suggest?q=`, at least 2 characters; the
+ * caller has trimmed and cut the text). With the API off, the sample catalog answers in the same
+ * shape. The text is sent encoded and is never logged (./api.ts logs the route only).
+ */
+export async function loadSuggestions(q: string): Promise<SuggestRead> {
+  const read = await apiGet<unknown>(`search/suggest?q=${encodeURIComponent(q)}`);
+  if (read.kind === 'off') return { kind: 'ok', answer: await sampleSuggestions(q) };
+  if (read.kind !== 'ok') {
+    return read.status === undefined ? { kind: 'failed' } : { kind: 'failed', status: read.status };
+  }
+  const answer = suggestOf(read.body, await photoUrls());
+  return answer === undefined ? { kind: 'failed' } : { kind: 'ok', answer };
 }

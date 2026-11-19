@@ -98,6 +98,7 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
     };
     const policy: CatalogMarketPolicy = {
       taxCategoryCodes: () => [],
+      taxCategories: () => [],
       locales: () => {
         if (options.policyThrows === true) throw new Error('policy down');
         return { default: locales.default, supported: [...locales.supported] };
@@ -107,7 +108,11 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
       },
       maxVariantsPerProduct: () => 1,
       maxVariantAttributes: () => 2,
+      units: () => [],
       maxCategoryDepth: () => 4,
+      maxCategoryChangeTags: () => 50_000,
+      maxCategoryImportRows: () => 2000,
+      maxCategoryImportBytes: () => 5 * 1024 * 1024,
       productTypes: () => ['simple', 'configurable'],
       defaultFamily: () => 'default',
       conditions: () => ['new'],

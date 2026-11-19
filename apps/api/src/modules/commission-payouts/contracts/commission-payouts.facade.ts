@@ -12,16 +12,53 @@ export type CommissionPayoutsFailure =
    * The Market has no usable payout terms (none configured, or a stored value outside the hold
    * bounds): nothing is anchored and the caller tries again later.
    */
-  | { readonly code: 'commission-payouts.terms-unavailable' };
+  | { readonly code: 'commission-payouts.terms-unavailable' }
+  /**
+   * The seller order is not in the ledger, or has no eligibility anchor yet (its delivery is not
+   * recorded): the caller tries again later.
+   */
+  | { readonly code: 'commission-payouts.not-anchored' };
 
-/** The rate in force for a seller now: its own rate if an admin set one, else the Market's. */
+/**
+ * Why a line carries its rate: `standard` (the rate in force) or `exclusive` (the lower rate for
+ * the seller's exclusive customer, customers phase 4b).
+ */
+export type CommissionRateReason = 'standard' | 'exclusive';
+
+/**
+ * The rate in force for a seller now: its own rate if an admin set one, else the Market's; for the
+ * seller whose exclusive customer the buyer is, the Market's lower rate on top (`reason`).
+ */
 export interface CommissionRate {
   readonly rateBps: number;
+  /**
+   * The rate in force before the exclusive-customer lowering: equal to `rateBps` when `reason` is
+   * `standard`. Checkout freezes it on a lowered line, so the ledger can show the seller's saving.
+   */
+  readonly standardRateBps: number;
   readonly source: 'seller' | 'market';
+  readonly reason: CommissionRateReason;
+}
+
+/** The buyer's exclusive seller, as checkout read it from customers (customers phase 4b). */
+export interface ExclusiveBuyer {
+  readonly sellerId: Id<'Seller'>;
+  /** When the buyer joined the seller (its attribution). */
+  readonly since: Temporal.Instant;
 }
 
 /** The rate of every requested seller (each requested seller is present). */
 export type CommissionRateMap = ReadonlyMap<Id<'Seller'>, CommissionRate>;
+
+/** What the signed-in seller's commission would be on an amount (see `ownCommissionOn`). */
+export interface OwnCommissionPreview {
+  readonly rateBps: number;
+  readonly source: 'seller' | 'market';
+  /** The amount the rate is applied to: the amount, less provisional tax when it includes tax. */
+  readonly commissionBase: bigint;
+  /** `commissionBase × rate`, rounded the way the ledger rounds. */
+  readonly commission: bigint;
+}
 
 /** One paid line of a seller order, with the rate ordering froze on it at placement. */
 export interface PaidLine {
@@ -30,6 +67,11 @@ export interface PaidLine {
   readonly lineAmount: bigint;
   readonly taxInclusive: boolean;
   readonly commissionRateBps: number;
+  /**
+   * A line whose rate was lowered for the buyer's exclusive seller: the rate it would have carried
+   * (never below `commissionRateBps`). Absent or null on every other line.
+   */
+  readonly commissionStandardRateBps?: number | null;
 }
 
 /** The facts of one paid seller order, as ordering stored them. */
@@ -42,6 +84,62 @@ export interface PaidSellerOrder {
   readonly shipping: bigint;
   readonly paidAt: Temporal.Instant;
   readonly lines: readonly PaidLine[];
+}
+
+/**
+ * A seller's cashback, credited to its exclusive customer's wallet on delivery (customers phase
+ * 4c): the seller pays it from the payout of the same seller order.
+ */
+export interface SellerCashback {
+  /** The promotions credit (the ledger row's source: one row per credit). */
+  readonly creditId: Id<'PromotionCredit'>;
+  readonly orderId: Id<'Order'>;
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly amount: bigint;
+  readonly currency: string;
+  /** When the customer's wallet was credited. */
+  readonly creditedAt: Temporal.Instant;
+}
+
+/**
+ * What a refund took back of a seller's cashback from the customer's wallet (customers phase
+ * 4c-2): returned to the seller on the payout of the same seller order.
+ */
+export interface SellerCashbackReturn {
+  /** The promotions clawback (the ledger row's source: one row per clawback). */
+  readonly clawbackId: Id<'CreditClawback'>;
+  /** The cashback credit it takes back from (its `cashback-seller` row must exist). */
+  readonly creditId: Id<'PromotionCredit'>;
+  readonly orderId: Id<'Order'>;
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly amount: bigint;
+  readonly currency: string;
+  /** When the customer's wallet gave it back. */
+  readonly returnedAt: Temporal.Instant;
+}
+
+/**
+ * When a delivered seller order's money is released to the seller (its eligibility anchor), for
+ * promotions' cashback (customers phase 4c): the credit waits for it, so a refund or a dispute
+ * inside the hold can still lower or cancel it. Answered only for a seller order the ledger holds.
+ */
+export interface SellerOrderPayoutAnchor {
+  readonly orderId: Id<'Order'>;
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly eligibleAt: Temporal.Instant;
+  /**
+   * An active payout hold covers the seller order now (on the seller order, such as a dispute's,
+   * or on the whole seller): the seller's money is frozen, so a cashback waits too (Hassan M-2).
+   */
+  readonly onHold: boolean;
+  /**
+   * A chargeback was lost on the seller order: a dispute decision names it (whoever bears the
+   * loss), or its dispute debits exceed what was reinstated.
+   */
+  readonly disputeLost: boolean;
 }
 
 /** Who bears the loss of a refund (ordering's closed list). */
@@ -124,7 +222,20 @@ export interface CommissionPayoutsFacade {
   commissionRates(
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
+    exclusive?: ExclusiveBuyer | null,
   ): Promise<Result<CommissionRateMap, CommissionPayoutsFailure>>;
+
+  /**
+   * The commission the signed-in seller would pay on `amount` (minor units of the Market
+   * currency, 0 up to 10^12): its own rate or the Market's, the provisional tax taken out of a
+   * tax-inclusive amount, and the ledger's rounding, so a screen shows the number the ledger will
+   * post. The seller comes from the session only (an approved seller, never an acting-as session);
+   * nobody else's rate can be asked. Read only. Used by `promotions`' payout preview.
+   */
+  ownCommissionOn(
+    context: CallContext,
+    request: { readonly amount: bigint; readonly taxInclusive: boolean },
+  ): Promise<Result<OwnCommissionPreview, CommissionPayoutsFailure>>;
 
   /**
    * Writes the ledger rows of a paid seller order (system actor only). Idempotent: a seller order
@@ -134,6 +245,40 @@ export interface CommissionPayoutsFacade {
     context: CallContext,
     paid: PaidSellerOrder,
   ): Promise<Result<'recorded' | 'already-recorded', CommissionPayoutsFailure>>;
+
+  /**
+   * Debits a seller's cashback from the seller order's payout (system actor only; promotions'
+   * delivery handler). Idempotent per credit: a credit already in the ledger writes nothing and
+   * answers `already-recorded`. The seller order must already be in the ledger, and be the
+   * seller's (otherwise `commission-payouts.ledger-inconsistent`, nothing written; the caller
+   * retries).
+   */
+  recordSellerCashback(
+    context: CallContext,
+    cashback: SellerCashback,
+  ): Promise<Result<'recorded' | 'already-recorded', CommissionPayoutsFailure>>;
+
+  /**
+   * Credits back to the seller what a refund took back of its cashback (system actor only;
+   * promotions' refund handler, phase 4c-2). Idempotent per clawback: `already-recorded`. The
+   * cashback's own row must exist for that seller order, seller and order, and what is returned in
+   * all is at most the cashback (otherwise `commission-payouts.ledger-inconsistent`, nothing
+   * written).
+   */
+  recordSellerCashbackReturn(
+    context: CallContext,
+    returned: SellerCashbackReturn,
+  ): Promise<Result<'recorded' | 'already-recorded', CommissionPayoutsFailure>>;
+
+  /**
+   * The eligibility anchor of a seller order the ledger holds (system actor only; customers phase
+   * 4c). `commission-payouts.not-anchored` when the ledger has no such seller order or its
+   * delivery is not anchored yet.
+   */
+  sellerOrderPayoutAnchor(
+    context: CallContext,
+    sellerOrderId: Id<'SellerOrder'>,
+  ): Promise<Result<SellerOrderPayoutAnchor, CommissionPayoutsFailure>>;
 
   /**
    * Writes the ledger reversal rows of a succeeded refund (system actor only), in one unit. When

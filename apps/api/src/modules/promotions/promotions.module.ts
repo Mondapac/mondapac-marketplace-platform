@@ -1,6 +1,14 @@
-import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import {
+  Inject,
+  Module,
+  type FactoryProvider,
+  type InjectionToken,
+  type OnModuleInit,
+} from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
+import { AUDIT_TRAIL_READER } from '../../platform/audit/audit-trail-reader';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { CHANGE_ACTOR_SOURCE } from '../../platform/audit/change-trail';
 import {
   registerPermissions,
   registerStepUpActions,
@@ -11,15 +19,31 @@ import {
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
+import { CatalogModule } from '../catalog';
+import { CommissionPayoutsModule } from '../commission-payouts';
+import { changeActorSourceOf, IDENTITY_FACADE, IdentityModule } from '../identity';
 import { PricingModule } from '../pricing';
 import { SellersModule } from '../sellers';
 import { WalletModule } from '../wallet';
-import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
 import { CREDIT_REPOSITORY, REFERRAL_REPOSITORY } from './application/ports/credit.repository';
-import { CUSTOMER_ORDER_HISTORY, STORE_FOLLOWS } from './application/ports/customer-facts';
+import {
+  CUSTOMER_GROUP_USAGE_REGISTRY,
+  CustomersModule,
+  type CustomerGroupUsageRegistry,
+} from '../customers';
+import { EngagementModule } from '../engagement';
+import { CountGroupSegmentUses } from './application/use-cases/count-group-segment-uses.use-case';
+import {
+  CUSTOMER_GROUP_MEMBERSHIP,
+  EXCLUSIVE_CUSTOMERS,
+  CUSTOMER_ORDER_HISTORY,
+  STORE_FOLLOWS,
+} from './application/ports/customer-facts';
 import { DELIVERED_ORDER_FACTS } from './application/ports/order-facts';
+import { SELLER_CASHBACK_LEDGER } from './application/ports/seller-cashback-ledger';
+import { PAYOUT_ANCHORS } from './application/ports/payout-anchors';
 import { REFERRAL_SIGNALS } from './application/ports/referral-signals';
 import { WALLET_CREDIT } from './application/ports/wallet-credit';
 import { BATCH_CODE_REPOSITORY } from './application/ports/batch-code.repository';
@@ -29,8 +53,11 @@ import { OPT_IN_REPOSITORY } from './application/ports/opt-in.repository';
 import { PRICE_HISTORY } from './application/ports/price-history';
 import { PROMOTION_REPOSITORY } from './application/ports/promotion.repository';
 import { PROMOTIONS_POLICY } from './application/ports/promotions-policy';
+import { REDEMPTION_REPOSITORY } from './application/ports/redemption.repository';
 import { REVIEW_QUEUE_REPOSITORY } from './application/ports/review-queue.repository';
 import { SELLER_ACTIVITY } from './application/ports/seller-activity';
+import { SELLER_CATALOGUE } from './application/ports/seller-catalogue';
+import { SELLER_COMMISSION } from './application/ports/seller-commission';
 import {
   FIRST_ORDER_SETTINGS_REPOSITORY,
   SHIPPING_THRESHOLD_REPOSITORY,
@@ -38,9 +65,17 @@ import {
 import type { PromotionsDependencies } from './application/promotions-dependencies';
 import { ApplyReferralCode } from './application/use-cases/apply-referral-code.use-case';
 import { CashbackOnDelivery } from './application/use-cases/cashback-on-delivery.use-case';
+import { ClawBackOnRefund } from './application/use-cases/claw-back-on-refund.use-case';
+import { GrantDueCredits } from './application/use-cases/grant-due-credits.use-case';
+import { grantDueCreditsJob } from './presentation/jobs/grant-due-credits.job';
+import { registerJobsFrom } from '../../platform/scheduler/job-registry';
+import { ListCustomerPromotionCredits } from './application/use-cases/list-customer-promotion-credits.use-case';
+import { ListCustomerPromotionUsages } from './application/use-cases/list-customer-promotion-usages.use-case';
 import { ListPromotionCredits } from './application/use-cases/list-promotion-credits.use-case';
 import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
 import { ViewMyReferral } from './application/use-cases/view-my-referral.use-case';
+import { ViewMyUpcomingCashback } from './application/use-cases/view-my-upcoming-cashback.use-case';
+import { ViewStoreFollowGift } from './application/use-cases/view-store-follow-gift.use-case';
 import { GenerateBatchCodes } from './application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from './application/use-cases/view-batch-code-summary.use-case';
 import { CheckWasPrice } from './application/use-cases/check-was-price.use-case';
@@ -51,6 +86,9 @@ import { EditOwnPromotion } from './application/use-cases/edit-own-promotion.use
 import { EditPromotion } from './application/use-cases/edit-promotion.use-case';
 import { ListFreeShippingThresholds } from './application/use-cases/list-free-shipping-thresholds.use-case';
 import { ListOwnPromotions } from './application/use-cases/list-own-promotions.use-case';
+import { CountPromotionReviews } from './application/use-cases/count-promotion-reviews.use-case';
+import { ViewCampaignMembers } from './application/use-cases/view-campaign-members.use-case';
+import { ViewPromotionActivity } from './application/use-cases/view-promotion-activity.use-case';
 import { ListPromotionReviews } from './application/use-cases/list-promotion-reviews.use-case';
 import { ListPromotionsFull } from './application/use-cases/list-promotions-full.use-case';
 import { ListPromotions } from './application/use-cases/list-promotions.use-case';
@@ -58,8 +96,17 @@ import { PauseOwnPromotion } from './application/use-cases/pause-own-promotion.u
 import { PausePromotion } from './application/use-cases/pause-promotion.use-case';
 import { PreviewQuote } from './application/use-cases/preview-quote.use-case';
 import { QuoteDiscounts } from './application/use-cases/quote-discounts.use-case';
+import { RedeemDiscounts } from './application/use-cases/redeem-discounts.use-case';
+import { QuoteOwnDiscounts } from './application/use-cases/quote-own-discounts.use-case';
+import { RedeemOwnDiscounts } from './application/use-cases/redeem-own-discounts.use-case';
+import { ListStaleRedemptions } from './application/use-cases/list-stale-redemptions.use-case';
+import { SettleRedemptions } from './application/use-cases/settle-redemptions.use-case';
+import { ConfirmRedemptions } from './application/use-cases/confirm-redemptions.use-case';
+import { ReleaseCancelledRedemptions } from './application/use-cases/release-cancelled-redemptions.use-case';
 import { ResumeOwnPromotion } from './application/use-cases/resume-own-promotion.use-case';
 import { ResumePromotion } from './application/use-cases/resume-promotion.use-case';
+import { ListSellerCampaigns } from './application/use-cases/list-seller-campaigns.use-case';
+import { PreviewSellerPayout } from './application/use-cases/preview-seller-payout.use-case';
 import { SetCoFundingOptIn } from './application/use-cases/set-co-funding-opt-in.use-case';
 import { SetFirstOrderSettings } from './application/use-cases/set-first-order-settings.use-case';
 import { SetFreeShippingThreshold } from './application/use-cases/set-free-shipping-threshold.use-case';
@@ -78,9 +125,10 @@ import { promotionsProviders } from './infrastructure/promotions-providers';
 import {
   AdminPromotionsController,
   CustomerReferralController,
+  CustomerCashbackController,
+  StoreFollowGiftController,
   SellerPromotionsController,
 } from './presentation/promotions.controller';
-import { deliveryCreditSubscriptions } from './presentation/subscribers/delivery-credit.subscriptions';
 import { PromotionsFacadeImplementation } from './presentation/promotions.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: PromotionsDependencies) => U;
@@ -97,17 +145,26 @@ const PORTS: readonly [keyof PromotionsDependencies, InjectionToken][] = [
   ['batchCodes', BATCH_CODE_REPOSITORY],
   ['codeCrypto', BATCH_CODE_CRYPTO],
   ['flashSales', FLASH_SALES],
+  ['redemptions', REDEMPTION_REPOSITORY],
   ['sellerActivity', SELLER_ACTIVITY],
   ['priceHistory', PRICE_HISTORY],
+  ['sellerCommission', SELLER_COMMISSION],
+  ['sellerCatalogue', SELLER_CATALOGUE],
   ['orderHistory', CUSTOMER_ORDER_HISTORY],
   ['storeFollows', STORE_FOLLOWS],
+  ['groupMembership', CUSTOMER_GROUP_MEMBERSHIP],
+  ['exclusiveCustomers', EXCLUSIVE_CUSTOMERS],
   ['orderFacts', DELIVERED_ORDER_FACTS],
+  ['sellerCashbackLedger', SELLER_CASHBACK_LEDGER],
+  ['payoutAnchors', PAYOUT_ANCHORS],
   ['referralSignals', REFERRAL_SIGNALS],
   ['walletCredit', WALLET_CREDIT],
   ['credits', CREDIT_REPOSITORY],
   ['referrals', REFERRAL_REPOSITORY],
   ['stepUp', STEP_UP_CONSUMER],
   ['audit', AUDIT_WRITER],
+  ['auditTrail', AUDIT_TRAIL_READER],
+  ['actors', CHANGE_ACTOR_SOURCE],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
@@ -131,14 +188,35 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Promotions (package T1): the discount domain and the pure calculation, the admin and seller
  * use cases, the review queue and the per-Market switch (off by default), in the `promotions`
  * schema. Other modules reach it through `PROMOTIONS_FACADE` only. The seller's age and the
- * was-price history are read through the sellers and pricing facades. Checkout integration, budget
- * reservation, the ledger and refunds come in later packages.
+ * was-price history are read through the sellers and pricing facades. Package T2: checkout
+ * redeems an order's discounts through the facade; payment confirms and cancellation releases them.
  */
 @Module({
-  imports: [PricingModule, SellersModule, WalletModule],
-  controllers: [AdminPromotionsController, SellerPromotionsController, CustomerReferralController],
+  imports: [
+    CatalogModule,
+    CommissionPayoutsModule,
+    CustomersModule,
+    EngagementModule,
+    IdentityModule,
+    PricingModule,
+    SellersModule,
+    WalletModule,
+  ],
+  controllers: [
+    AdminPromotionsController,
+    SellerPromotionsController,
+    CustomerReferralController,
+    CustomerCashbackController,
+    StoreFollowGiftController,
+  ],
   providers: [
     PersistenceModule.auditWriterFor('promotions'),
+    PersistenceModule.auditTrailReaderFor('promotions'),
+    {
+      provide: CHANGE_ACTOR_SOURCE,
+      inject: [IDENTITY_FACADE],
+      useFactory: changeActorSourceOf,
+    },
     registerAuditActions('promotions', PROMOTIONS_AUDIT_ACTIONS),
     registerPermissions('promotions', PROMOTIONS_PERMISSIONS),
     registerStepUpActions('promotions', PROMOTIONS_STEP_UP_ACTIONS),
@@ -157,6 +235,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       GenerateBatchCodes,
       ViewBatchCodeSummary,
       ListPromotionReviews,
+      CountPromotionReviews,
+      ViewCampaignMembers,
+      ViewPromotionActivity,
       DecidePromotionReview,
       ViewFirstOrderSettings,
       SetFirstOrderSettings,
@@ -169,28 +250,93 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ResumeOwnPromotion,
       ListOwnPromotions,
       SetCoFundingOptIn,
+      ListSellerCampaigns,
+      PreviewSellerPayout,
       QuoteDiscounts,
+      RedeemDiscounts,
+      QuoteOwnDiscounts,
+      RedeemOwnDiscounts,
+      ListStaleRedemptions,
+      SettleRedemptions,
+      ConfirmRedemptions,
+      ReleaseCancelledRedemptions,
       CheckWasPrice,
       ListPromotionCredits,
+      ListCustomerPromotionCredits,
+      ListCustomerPromotionUsages,
       ApplyReferralCode,
       ViewMyReferral,
+      ViewMyUpcomingCashback,
+      ViewStoreFollowGift,
       CashbackOnDelivery,
       QualifyReferralOnDelivery,
+      GrantDueCredits,
+      ClawBackOnRefund,
+      CountGroupSegmentUses,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
-    // Phase 3: cashback and the refer-a-friend reward, after `ordering.seller-order-delivered.v1`.
-    registerSubscriptionsFrom(
-      'promotions',
-      [CashbackOnDelivery, QualifyReferralOnDelivery],
-      (cashback: CashbackOnDelivery, referral: QualifyReferralOnDelivery) =>
-        deliveryCreditSubscriptions(cashback, referral),
-    ),
+    // Customers phase 4c: the cashback that waited for its seller order's payout release.
+    registerJobsFrom('promotions', [GrantDueCredits], (grantDue: GrantDueCredits) => [
+      grantDueCreditsJob(grantDue),
+    ]),
     {
       provide: PROMOTIONS_FACADE,
-      inject: [QuoteDiscounts, CheckWasPrice],
-      useFactory: (quote: QuoteDiscounts, wasPrice: CheckWasPrice) =>
-        new PromotionsFacadeImplementation(quote, wasPrice),
+      inject: [
+        QuoteDiscounts,
+        RedeemDiscounts,
+        CheckWasPrice,
+        QuoteOwnDiscounts,
+        RedeemOwnDiscounts,
+        ListStaleRedemptions,
+        SettleRedemptions,
+      ],
+      useFactory: (
+        quote: QuoteDiscounts,
+        redeem: RedeemDiscounts,
+        wasPrice: CheckWasPrice,
+        quoteOwn: QuoteOwnDiscounts,
+        redeemOwn: RedeemOwnDiscounts,
+        listStale: ListStaleRedemptions,
+        settle: SettleRedemptions,
+      ) =>
+        new PromotionsFacadeImplementation(
+          quote,
+          redeem,
+          wasPrice,
+          quoteOwn,
+          redeemOwn,
+          listStale,
+          settle,
+        ),
     },
   ],
-  exports: [PROMOTIONS_FACADE],
+  // The event handlers are exported for `PromotionsOrderEventsModule`, which subscribes them to
+  // ordering's events (ordering imports promotions, so this module cannot).
+  exports: [
+    PROMOTIONS_FACADE,
+    DELIVERED_ORDER_FACTS,
+    CashbackOnDelivery,
+    QualifyReferralOnDelivery,
+    ClawBackOnRefund,
+    ConfirmRedemptions,
+    ReleaseCancelledRedemptions,
+  ],
 })
-export class PromotionsModule {}
+export class PromotionsModule implements OnModuleInit {
+  constructor(
+    @Inject(CUSTOMER_GROUP_USAGE_REGISTRY) private readonly groupUsage: CustomerGroupUsageRegistry,
+    private readonly countGroupUses: CountGroupSegmentUses,
+  ) {}
+
+  /**
+   * Tells customers which promotions still name a manual customer group (phase 2b): registered in
+   * the registry customers owns, so customers never imports promotions.
+   */
+  onModuleInit(): void {
+    this.groupUsage.register({
+      liveUsesOf: async (context, groupId) => {
+        const counted = await this.countGroupUses.execute(context, { groupId });
+        return counted.ok ? { ok: true, value: counted.value.uses } : counted;
+      },
+    });
+  }
+}

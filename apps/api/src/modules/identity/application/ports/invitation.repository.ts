@@ -28,6 +28,13 @@ export type PendingStaffInvitation = PendingAdminInvitation;
  * its SHA-256. The invited address is personal data: it is never logged here.
  */
 export interface InvitationRepository {
+  /**
+   * Takes this invitation's lock (`identity.lock-invitation`) until the unit ends, so two
+   * acceptances of one invitation run one after the other (Hassan M2). The first statement of
+   * the acceptance's closing unit, before the invitation is read.
+   */
+  lockForAcceptance(market: MarketContext, id: Id<'Invitation'>): Promise<void>;
+
   findById(market: MarketContext, id: Id<'Invitation'>): Promise<Invitation | null>;
 
   /** The invitation whose stored hash is this one, in this Market, or null. */
@@ -105,7 +112,8 @@ export interface InvitationRepository {
 
   /**
    * The hourly purge (data design 9): pending invitations whose expiry is before `now`, decided
-   * ones whose decision is before `decidedBefore`, and (Ali 2026-10-08) pending invitations never
+   * ones whose decision is before `decidedBefore` (never an accepted admin invitation: the people
+   * review of an invitation reaches the account it created through it, Hassan M1 on PR #1058), and (Ali 2026-10-08) pending invitations never
    * dispatched (no token) created before the cut-off given for their kind, which is `now` minus
    * that kind's lifetime. A kind with no cut-off is left alone. Answers how many were deleted.
    */

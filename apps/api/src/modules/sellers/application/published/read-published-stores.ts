@@ -126,6 +126,7 @@ export async function publishedStoresOf(
         ? null
         : deps.areas.areaFor(market, store.operatingPostcode)?.code) ?? store.serviceAreaCode;
     const base: PublishedStore = {
+      sellerId: store.sellerId,
       slug: store.slug,
       name: store.name,
       serviceAreaCode: areaCode,

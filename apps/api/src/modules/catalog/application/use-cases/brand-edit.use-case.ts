@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
+import type { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
@@ -52,6 +53,8 @@ export type BrandEditFailure =
   | ValidationFailure;
 
 export interface BrandEditDependencies {
+  /** The Market's content filter: public text with a blocked term is refused. */
+  readonly contentFilter: ContentFilter;
   readonly unitOfWork: UnitOfWork;
   readonly brands: BrandRepository;
   readonly clock: Clock;
@@ -121,7 +124,9 @@ export class BrandEdit extends UseCase<
     if (!id.ok) return err({ code: 'brand.not-found' });
     const version = versionOf(body.value['version']);
     if (!version.ok) return version;
-    const content = parseBrandContent(body.value);
+    const content = parseBrandContent(body.value, (text) =>
+      this.deps.contentFilter.isBlocked(context.market, text),
+    );
     if (!content.ok) return invalidFields(content.error);
     const slug = body.value['slug'];
     if (slug !== undefined && slug !== null && !isBrandSlug(slug)) return invalid('slug', 'format');

@@ -1,4 +1,10 @@
-import { changedTexts, draftTextsOf, restoreRefused, valueAt } from './draft-texts';
+import {
+  changedTexts,
+  draftTextsOf,
+  restoreRefused,
+  valueAt,
+  withoutVariantLabels,
+} from './draft-texts';
 
 // The closed draft shape and the per-field restore of catalog design 6.1, 6.2. Locales come from
 // the Market, so both fixtures' locale sets are exercised.
@@ -9,8 +15,48 @@ const FIXTURES = [
 
 describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLocale }) => {
   const [first, second] = supported;
+  // The walk of a frozen revision, which carries the built variant labels; a seller's draft does not.
   const read = (content: Record<string, unknown>) =>
-    draftTextsOf(content, supported, defaultLocale);
+    draftTextsOf(content, supported, defaultLocale, 'revision');
+
+  it('drops a variant label a client still sends, keeping everything else (V2 transition)', () => {
+    const content = {
+      texts: { [first]: { name: 'N' } },
+      variants: [
+        { variantId: 'v1', optionValues: { size: 'l' }, labels: { [first]: 'Large' } },
+        { variantId: 'v2', optionValues: { size: 's' } },
+      ],
+    };
+    const stripped = withoutVariantLabels(content);
+    expect(stripped).toEqual({
+      texts: content.texts,
+      variants: [
+        { variantId: 'v1', optionValues: { size: 'l' } },
+        { variantId: 'v2', optionValues: { size: 's' } },
+      ],
+    });
+    // The input is untouched, and a draft without variants passes through.
+    expect(content.variants[0]).toHaveProperty('labels');
+    expect(withoutVariantLabels({ texts: {} })).toEqual({ texts: {} });
+    expect(draftTextsOf(stripped, supported, defaultLocale).ok).toBe(true);
+  });
+
+  it('still refuses a variant label if one reaches the draft walk (defence in depth)', () => {
+    const variants = [
+      { variantId: 'v1', optionValues: { size: 'l' }, labels: { [first]: 'Large' } },
+    ];
+    expect(draftTextsOf({ variants }, supported, defaultLocale)).toEqual({
+      ok: false,
+      error: { code: 'working-copy.invalid-content' },
+    });
+    expect(
+      draftTextsOf(
+        { variants: [{ variantId: 'v1', optionValues: { size: 'l' } }] },
+        supported,
+        defaultLocale,
+      ).ok,
+    ).toBe(true);
+  });
 
   it('finds every text field of a full draft with its place', () => {
     const content = {
@@ -27,6 +73,8 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
         weight: 3,
         organic: true,
         note: null,
+        // A measure is a number with a unit: it holds no text for the claim check.
+        pack: { value: '500', unit: 'g' },
       },
       variants: [{ variantId: 'v1', optionValues: { size: 'l' }, labels: { [first]: 'Large' } }],
       imageIds: [],
@@ -73,6 +121,24 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
     expect(valueAt({ attributeValues: {} }, ['attributeValues', 'toString'])).toBeUndefined();
   });
 
+  it('accepts variantAxes as a list of codes and refuses anything else (V3)', () => {
+    expect(draftTextsOf({ variantAxes: ['size', 'colour'] }, supported, defaultLocale).ok).toBe(
+      true,
+    );
+    for (const bad of ['size', [1], ['bad code'], { size: true }]) {
+      expect(draftTextsOf({ variantAxes: bad }, supported, defaultLocale).ok).toBe(false);
+    }
+  });
+
+  it('accepts topicIds as a list of ids, absent as none, and refuses anything else (T2)', () => {
+    const id = '0197a1b2-0000-7000-8000-000000000001';
+    expect(draftTextsOf({ topicIds: [id] }, supported, defaultLocale).ok).toBe(true);
+    expect(draftTextsOf({}, supported, defaultLocale).ok).toBe(true);
+    for (const bad of [id, [1], ['bad id'], { 0: id }, null]) {
+      expect(draftTextsOf({ topicIds: bad }, supported, defaultLocale).ok).toBe(false);
+    }
+  });
+
   it('accepts an empty draft', () => {
     expect(read({})).toEqual({ ok: true, value: [] });
   });
@@ -85,6 +151,18 @@ describe.each(FIXTURES)('draft texts in market $code', ({ supported, defaultLoca
     ['texts that are not an object', { texts: 'halal' }],
     ['a bad attribute code', { attributeValues: { 'bad code!': 'x' } }],
     ['an object attribute value with a bad locale', { attributeValues: { a: { fr: 'x' } } }],
+    [
+      'a measure-shaped object with free text',
+      { attributeValues: { a: { value: 'halal', unit: 'g' } } },
+    ],
+    [
+      'a measure with a unit nobody knows',
+      { attributeValues: { a: { value: '1', unit: 'halal' } } },
+    ],
+    [
+      'a measure with a third member',
+      { attributeValues: { a: { value: '1', unit: 'g', x: 'y' } } },
+    ],
     ['a nested attribute value', { attributeValues: { a: { en: { x: 'y' } } } }],
     ['an array of non-strings', { attributeValues: { a: [1, 2] } }],
     ['a variant with an unknown key', { variants: [{ variantId: 'v1', note: 'halal' }] }],

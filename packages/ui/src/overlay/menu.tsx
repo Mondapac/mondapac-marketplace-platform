@@ -11,6 +11,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { portalHostOf } from './portal-host.ts';
 import { Icon, type IconName } from '../icon/icon.tsx';
 
 /** Gap between the menu and its trigger, and the least space kept to the viewport edge. */
@@ -40,10 +41,15 @@ export interface MenuProps {
   readonly title?: string;
   /** `narrow` suits a few short labels, such as a choose-one menu. */
   readonly width?: 'default' | 'narrow';
+  /**
+   * Which edge of the trigger the menu lines up with: `end` (the default) suits a trigger at the
+   * end of a row; `start` suits one at the start of a block, such as under a photo tile.
+   */
+  readonly align?: 'end' | 'start';
 }
 
 /** A button that opens a menu of actions (WAI-ARIA menu button: arrows, Home, End, Escape). */
-export function Menu({ label, items, icon, title, width = 'default' }: MenuProps) {
+export function Menu({ label, items, icon, title, width = 'default', align = 'end' }: MenuProps) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -51,14 +57,16 @@ export function Menu({ label, items, icon, title, width = 'default' }: MenuProps
   const [place, setPlace] = useState<CSSProperties | null>(null);
 
   // The list is drawn in a portal with fixed coordinates, so a table box with overflow never
-  // clips it. It lines up with the trigger's end edge and opens upwards when there is no room.
+  // clips it. It lines up with the trigger's end (or start) edge and opens upwards when there is
+  // no room.
   const position = useCallback(() => {
     const button = trigger.current;
     const node = list.current;
     if (button === null || node === null) return;
     const anchor = button.getBoundingClientRect();
     const width = Math.min(node.offsetWidth, window.innerWidth - 2 * EDGE);
-    const left = getComputedStyle(button).direction === 'rtl' ? anchor.left : anchor.right - width;
+    const rtl = getComputedStyle(button).direction === 'rtl';
+    const left = rtl === (align === 'end') ? anchor.left : anchor.right - width;
     const below = window.innerHeight - anchor.bottom - GAP - EDGE;
     const above = anchor.top - GAP - EDGE;
     const openUp = node.scrollHeight > below && above > below;
@@ -69,7 +77,7 @@ export function Menu({ label, items, icon, title, width = 'default' }: MenuProps
         ? { bottom: window.innerHeight - anchor.top + GAP }
         : { top: anchor.bottom + GAP }),
     });
-  }, []);
+  }, [align]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -213,7 +221,7 @@ export function Menu({ label, items, icon, title, width = 'default' }: MenuProps
                 </button>
               ))}
             </div>,
-            document.body,
+            portalHostOf(trigger.current),
           )
         : null}
     </div>

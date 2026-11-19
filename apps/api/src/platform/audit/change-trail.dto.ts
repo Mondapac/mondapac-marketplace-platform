@@ -32,6 +32,11 @@ export class ChangeHistoryItemDto extends LastChangedDto {
       'Names of the fields that changed, never their values. Empty when the change does not say.',
   })
   fields!: string[];
+  @ApiProperty({
+    required: false,
+    description: 'The settings version the change made, on pages whose versions can be restored.',
+  })
+  version?: number;
 }
 
 export class ChangeHistoryDto {
