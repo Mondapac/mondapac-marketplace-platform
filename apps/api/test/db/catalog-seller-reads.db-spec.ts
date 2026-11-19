@@ -90,6 +90,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
 
   const policy: CatalogMarketPolicy = {
     taxCategoryCodes: () => ['t1'],
+    taxCategories: () => ['t1'].map((code) => ({ code, labelKey: `catalog.tax.${code}` })),
     locales: () => ({ default: 'en', supported: ['en'] }),
     sensitiveChanges: () => ({
       platformCategories: true,

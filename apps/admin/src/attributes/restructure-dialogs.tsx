@@ -4,6 +4,13 @@ import { Banner, Button, Dialog, LoadError, Select, SkeletonRows, TextField } fr
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
+import {
+  ApprovalNotice,
+  ReviewNoteField,
+  trimmedNote,
+  useApprovalAction,
+  useSentForApproval,
+} from '../shared/review-note.tsx';
 import { loadActiveAttributes } from './load-active-attributes.ts';
 import { useAttributeCall } from './use-attribute-call.ts';
 import {
@@ -15,6 +22,49 @@ import {
   type ImpactAnswer,
   type ImpactCount,
 } from './types.ts';
+
+/**
+ * The note an action that waits for another admin's approval asks for, where the Market reviews
+ * area catalogue (Admin Inbox > System requests); nothing when `active` is false.
+ */
+function useApprovalNote(active: boolean) {
+  const [note, setNote] = useState('');
+  const [error, setError] = useState<'required' | 'rejected' | null>(null);
+  const sentForApproval = useSentForApproval();
+  const actionLabel = useApprovalAction();
+  return {
+    /** What to add to the body; null when the note is missing (the field then says so). */
+    body(): Readonly<Record<string, string>> | null {
+      if (!active) return {};
+      const sent = trimmedNote(note);
+      setError(sent === null ? 'required' : null);
+      return sent === null ? null : { note: sent };
+    },
+    /** A refusal of the note is shown on its own field. */
+    refused(fields: Readonly<Record<string, string>> | undefined): void {
+      if (fields?.['note'] !== undefined) setError('rejected');
+    },
+    /** Whether the answer is a proposal ("Sent for approval (SR-n)"): nothing changed yet. */
+    sent: sentForApproval,
+    /** Whether the action only files a request for approval. */
+    active,
+    /** The action's label: "Send for approval" when it only files a request. */
+    action: (label: string): string => actionLabel(label, active),
+    /** Says that nothing changes until another admin approves it. */
+    notice: active ? <ApprovalNotice /> : null,
+    field: active ? (
+      <ReviewNoteField
+        approval
+        value={note}
+        onChange={(next) => {
+          setNote(next);
+          setError(null);
+        }}
+        error={error ?? undefined}
+      />
+    ) : null,
+  };
+}
 
 /**
  * Confirmation level 3 (an irreversible change): the admin types the attribute's code. Returns
@@ -183,14 +233,19 @@ export function MergeValuesDialog({
   };
   const choices = usable.map((option) => ({ value: option.code, label: label(option.code) }));
   const ready = load.state === 'ready' && source !== '' && target !== '' && source !== target;
+  const approval = useApprovalNote(detail.review?.reviewed === true);
 
   async function merge(version: number) {
+    const note = approval.body();
+    if (note === null) return;
     const answer = await call.run<AttributeWrite>(
       'POST',
       `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}/merge-values`,
-      { version, source, target },
+      { version, source, target, ...note },
     );
-    if (answer.ok) onDone();
+    if (!answer.ok) approval.refused(answer.problem?.fields);
+    else if (approval.sent(answer.body)) onClose();
+    else onDone();
   }
 
   const problem = call.problem;
@@ -214,7 +269,7 @@ export function MergeValuesDialog({
                 if (load.state === 'ready') void merge(load.answer.attribute.version);
               }}
             >
-              {t('merge-confirm')}
+              {approval.action(t('merge-confirm'))}
             </Button>
           )}
         </>
@@ -222,7 +277,8 @@ export function MergeValuesDialog({
     >
       <div className="flex flex-col gap-3">
         {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
-        <p>{t('merge-body')}</p>
+        <p>{t(approval.active ? 'merge-approval-body' : 'merge-body')}</p>
+        {approval.notice}
         <Select
           label={t('merge-source')}
           placeholder={t('choose')}
@@ -240,6 +296,7 @@ export function MergeValuesDialog({
         <ImpactBody load={load} retry={retry}>
           {(answer) => <ImpactList answer={answer} />}
         </ImpactBody>
+        {approval.field}
       </div>
     </Dialog>
   );
@@ -382,10 +439,18 @@ export function ArchiveDialog({
           ? 'live-variants'
           : null;
 
+  // A material archive has its own two-person request; any other waits for approval where the
+  // Market reviews area catalogue.
+  const approval = useApprovalNote(!material && detail.review?.reviewed === true);
+
   async function send(version: number) {
+    const note = approval.body();
+    if (note === null) return;
     const path = `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}/${material ? 'archive-requests' : 'archive'}`;
-    const answer = await call.run('POST', path, { version });
-    if (answer.ok) (material ? onRequested : onDone)();
+    const answer = await call.run('POST', path, { version, ...note });
+    if (!answer.ok) approval.refused(answer.problem?.fields);
+    else if (approval.sent(answer.body)) onClose();
+    else (material ? onRequested : onDone)();
   }
 
   const problem = call.problem;
@@ -408,19 +473,19 @@ export function ArchiveDialog({
             <Button onClick={onReload}>{te('reload')}</Button>
           ) : (
             <Button
-              variant={material ? 'primary' : 'destructive-solid'}
+              variant={material || approval.active ? 'primary' : 'destructive-solid'}
               loading={call.pending}
               disabled={
                 call.pending ||
                 load.state !== 'ready' ||
                 block !== null ||
-                (!material && !typed.matches)
+                (!material && !approval.active && !typed.matches)
               }
               onClick={() => {
                 if (load.state === 'ready') void send(load.answer.attribute.version);
               }}
             >
-              {t(material ? 'archive-request-send' : 'archive-confirm')}
+              {material ? t('archive-request-send') : approval.action(t('archive-confirm'))}
             </Button>
           )}
         </>
@@ -429,7 +494,16 @@ export function ArchiveDialog({
       <div className="flex flex-col gap-3">
         {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
         {block === null ? null : <Banner tone="attention">{t(`blocked.${block}`)}</Banner>}
-        <p>{t(material ? 'archive-request-body' : 'archive-body')}</p>
+        <p>
+          {t(
+            material
+              ? 'archive-request-body'
+              : approval.active
+                ? 'archive-approval-body'
+                : 'archive-body',
+          )}
+        </p>
+        {approval.notice}
         <ImpactBody load={load} retry={retry}>
           {(answer) => (
             <>
@@ -444,7 +518,8 @@ export function ArchiveDialog({
             </>
           )}
         </ImpactBody>
-        {material ? null : typed.field}
+        {material || approval.active ? null : typed.field}
+        {approval.field}
       </div>
     </Dialog>
   );
@@ -559,14 +634,25 @@ export function MergeAttributesDialog({
       : [];
   const mapped = !choice || detail.options.every((option) => mapping[option.code] !== undefined);
   const ready = load.state === 'ready' && target.state === 'ready' && mapped;
+  const approval = useApprovalNote(detail.review?.reviewed === true);
 
   async function merge(version: number, targetVersion: number) {
+    const note = approval.body();
+    if (note === null) return;
     const answer = await call.run<AttributeWrite>(
       'POST',
       `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}/merge`,
-      { version, target: targetId, targetVersion, ...(choice ? { options: mapping } : {}) },
+      {
+        version,
+        target: targetId,
+        targetVersion,
+        ...(choice ? { options: mapping } : {}),
+        ...note,
+      },
     );
-    if (answer.ok) onDone();
+    if (!answer.ok) approval.refused(answer.problem?.fields);
+    else if (approval.sent(answer.body)) onClose();
+    else onDone();
   }
 
   const typed = useTypedCode(detail.code);
@@ -587,14 +673,14 @@ export function MergeAttributesDialog({
             <Button
               variant="destructive-solid"
               loading={call.pending}
-              disabled={call.pending || !ready || !typed.matches}
+              disabled={call.pending || !ready || (!approval.active && !typed.matches)}
               onClick={() => {
                 if (load.state === 'ready' && target.state === 'ready') {
                   void merge(load.answer.attribute.version, target.detail.version);
                 }
               }}
             >
-              {t('merge-attributes-confirm')}
+              {approval.action(t('merge-attributes-confirm'))}
             </Button>
           )}
         </>
@@ -602,7 +688,12 @@ export function MergeAttributesDialog({
     >
       <div className="flex flex-col gap-3">
         {problem === null ? null : <Banner tone="critical">{te(`error.${problem.key}`)}</Banner>}
-        <p>{t('merge-attributes-body', { name })}</p>
+        <p>
+          {t(approval.active ? 'merge-attributes-approval-body' : 'merge-attributes-body', {
+            name,
+          })}
+        </p>
+        {approval.notice}
         {candidates.state === 'loading' ? (
           <SkeletonRows rows={1} label={t('merge-attributes-loading')} />
         ) : null}
@@ -673,7 +764,8 @@ export function MergeAttributesDialog({
         <ImpactBody load={load} retry={retry}>
           {(answer) => <ImpactList answer={answer} />}
         </ImpactBody>
-        {typed.field}
+        {approval.active ? null : typed.field}
+        {approval.field}
       </div>
     </Dialog>
   );

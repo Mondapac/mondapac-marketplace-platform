@@ -12,6 +12,7 @@ import {
   type UseCaseGate,
 } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
+import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../platform/list-export';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
@@ -47,6 +48,14 @@ import { ListMyReviews } from './application/use-cases/list-my-reviews.use-case'
 import { ListProductRatingTotals } from './application/use-cases/list-product-rating-totals.use-case';
 import { ListProductReviews } from './application/use-cases/list-product-reviews.use-case';
 import { EditReviewReply } from './application/use-cases/edit-review-reply.use-case';
+import { ExportSellerReviews } from './application/use-cases/export-seller-reviews.use-case';
+import { QuerySellerReviews } from './application/use-cases/query-seller-reviews.use-case';
+import { SellerReviewReplyProbe } from './application/use-cases/seller-review-reply-probe.use-case';
+import { SellerReviewReportProbe } from './application/use-cases/seller-review-report-probe.use-case';
+import {
+  SELLER_REVIEW_ROW_KEYS,
+  type SellerReviewListDependencies,
+} from './application/seller-review-list-flow';
 import { ListSellerReviews } from './application/use-cases/list-seller-reviews.use-case';
 import { ReplyToReview } from './application/use-cases/reply-to-review.use-case';
 import { ReportReview } from './application/use-cases/report-review.use-case';
@@ -136,6 +145,48 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   };
 }
 
+type SellerListUseCaseClass<U> = new (gate: UseCaseGate, deps: SellerReviewListDependencies) => U;
+
+/** The shop's review list and its export (super list 32) share one dependency object. */
+function sellerListUseCaseProvider<U>(type: SellerListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      REVIEW_REPOSITORY,
+      MARKET_SETTING_REPOSITORY,
+      REVIEWS_POLICY,
+      SellerReviewReplyProbe,
+      SellerReviewReportProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: SellerReviewListDependencies['unitOfWork'],
+      reviews: SellerReviewListDependencies['reviews'],
+      settings: SellerReviewListDependencies['settings'],
+      policy: SellerReviewListDependencies['policy'],
+      reply: SellerReviewReplyProbe,
+      report: SellerReviewReportProbe,
+      sheetWriter: SellerReviewListDependencies['sheetWriter'],
+      clock: SellerReviewListDependencies['clock'],
+    ) => {
+      const [replyKey, reportKey] = SELLER_REVIEW_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        reviews,
+        settings,
+        policy,
+        probes: { [replyKey]: reply, [reportKey]: report },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
 /**
  * Reviews (buyer reviews and ratings, package 1): product reviews, seller ratings, the automatic
  * checks, the insert-only moderation log and rebuilt rating summaries, in the `reviews` schema.
@@ -187,6 +238,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       EditReviewReply,
       ReportReview,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
+    {
+      provide: SellerReviewReplyProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new SellerReviewReplyProbe(gate),
+    },
+    {
+      provide: SellerReviewReportProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new SellerReviewReportProbe(gate),
+    },
+    sellerListUseCaseProvider(QuerySellerReviews),
+    sellerListUseCaseProvider(ExportSellerReviews),
     // Customers management phase 2b, part 3: the admin's reads of one customer's reviews.
     ...[
       AdminCustomerReviews,
