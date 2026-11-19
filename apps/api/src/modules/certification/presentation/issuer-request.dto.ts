@@ -49,6 +49,31 @@ export class IssuerQueueView {
   @ApiProperty() total!: number;
 }
 
+class IssuerRequestListRowView extends IssuerQueueRowView {
+  @ApiProperty({
+    enum: ['open', 'answer'],
+    isArray: true,
+    description: 'The row actions the caller may run (Open always; Answer… with the edit key).',
+  })
+  actions!: string[];
+}
+
+export class IssuerRequestListView {
+  @ApiProperty({ type: [IssuerRequestListRowView] }) items!: IssuerRequestListRowView[];
+  @ApiProperty({ nullable: true, type: Number, description: 'Null with `paging=prev-next`.' })
+  total!: number | null;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+  @ApiProperty({ description: 'Every open request of the Market (up to the read cap).' })
+  counts!: { all: number };
+  @ApiProperty({
+    description: 'True when more requests are open than the 500 read; the newest are not listed.',
+  })
+  truncated!: boolean;
+}
+
 class IssuerRequestAnswerView {
   @ApiProperty({ nullable: true, type: String, format: 'uuid' }) issuerId!: string | null;
   @ApiProperty({ nullable: true, type: String }) reasonCode!: string | null;
