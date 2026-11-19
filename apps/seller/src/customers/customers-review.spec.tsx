@@ -307,7 +307,18 @@ describe('exclusive discount in a second Market', () => {
   });
   const edit = async (promotion: OwnPromotion, locale: string) => {
     servePerks(call, { discount: [ok({ items: [promotion] })], writes: [ok({})] });
-    render(wrap(<ExclusivePerks canManage csrfToken="c" timeZone="Australia/Brisbane" />, locale));
+    render(
+      wrap(
+        <ExclusivePerks
+          canManage
+          csrfToken="c"
+          timeZone="Australia/Brisbane"
+          showPromotions
+          showCommission
+        />,
+        locale,
+      ),
+    );
     fireEvent.click(await screen.findByRole('button', { name: 'Edit…' }));
   };
 

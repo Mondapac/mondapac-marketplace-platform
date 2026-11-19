@@ -19,7 +19,7 @@ import { callApi } from '../api/client.ts';
 import { formatInstant } from '../catalog/format.ts';
 import { formatMinor, inputOf, minorOf } from '../price/money.ts';
 import { instantOfZoned, resolveZone } from '../price/zone-time.ts';
-import { CommissionCard } from './exclusive-commission.tsx';
+import { CommissionCard, EARNINGS_VIEW_PERMISSION } from './exclusive-commission.tsx';
 import { CashbackCard } from './exclusive-cashback.tsx';
 import {
   PROMOTIONS_BASE_PATH,
@@ -232,20 +232,33 @@ type Load =
  * shown as given. The cashback card is in exclusive-cashback.tsx (same patterns, type CASHBACK); each
  * card hides alone on a 403. The commission card (read only) is in exclusive-commission.tsx.
  */
+/** Which perks cards a seller may see, from the permission keys of the session. */
+export function perkAccessOf(permissionKeys: readonly string[]): {
+  readonly showPromotions: boolean;
+  readonly showCommission: boolean;
+} {
+  return {
+    showPromotions: [PROMOTION_VIEW_PERMISSION, PROMOTION_MANAGE_PERMISSION].some((key) =>
+      permissionKeys.includes(key),
+    ),
+    showCommission: permissionKeys.includes(EARNINGS_VIEW_PERMISSION),
+  };
+}
+
 export function ExclusivePerks({
   canManage,
   csrfToken,
   timeZone,
-  showPromotions = true,
-  showCommission = true,
+  showPromotions,
+  showCommission,
 }: {
   readonly canManage: boolean;
   readonly csrfToken: string;
   readonly timeZone: string | null;
   /** The seller may see promotions (view or manage); false draws no discount or cashback card. */
-  readonly showPromotions?: boolean;
+  readonly showPromotions: boolean;
   /** The seller holds `commission-payouts.earnings.view`; false draws no commission card. */
-  readonly showCommission?: boolean;
+  readonly showCommission: boolean;
 }) {
   const t = useTranslations('customers.perks');
   const tl = useTranslations('load');
@@ -309,7 +322,9 @@ export function ExclusivePerks({
     setProblem(problemOf(result.failure));
   }
 
-  if (state.kind === 'hidden' && cashbackHidden && commissionHidden) return null;
+  if (state.kind === 'hidden' && cashbackHidden && commissionHidden) {
+    return <p className="text-fg-muted">{t('nothing')}</p>;
+  }
   const now = new Date();
   const status = promotion === null ? null : displayStatus(promotion, now);
   const adminPaused = promotion?.status === 'PAUSED' && promotion.pausedBy === 'ADMIN';

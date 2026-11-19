@@ -18,7 +18,7 @@ import {
   percentOf,
   type ExclusiveCommission,
 } from './exclusive-commission.tsx';
-import { ExclusivePerks } from './exclusive-perks.tsx';
+import { ExclusivePerks, perkAccessOf } from './exclusive-perks.tsx';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode, locale: string) => (
@@ -39,6 +39,7 @@ const mount = (locale = 'en-AU') =>
         csrfToken="csrf"
         timeZone="Australia/Brisbane"
         showPromotions={false}
+        showCommission
       />,
       locale,
     ),
@@ -92,7 +93,12 @@ describe('special commission card', () => {
     const given = screen.getByText(/\(refunds\)/);
     expect(given.textContent).toContain('3.00');
     expect(screen.getByText(/Australia\/Brisbane/)).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'AUD' })).toBeTruthy();
+    const rows = Array.from(screen.getByRole('region', { name: 'AUD' }).querySelectorAll('li'));
+    expect(rows).toHaveLength(12);
+    const expected = body().months.map((m) => monthLabel(m.month, 'en-AU'));
+    expect(rows.map((row) => row.querySelector('span')?.textContent)).toEqual(expected);
+    expect(expected[0]).toContain('2025');
+    expect(expected[11]).toContain('Nov');
     expect(call.mock.calls[0]).toEqual(['GET', 'commission-payouts/seller/exclusive-commission']);
   });
 
@@ -102,7 +108,10 @@ describe('special commission card', () => {
         ok(
           body({
             zone: 'Asia/Tokyo',
-            months: months({ '2026-11': [{ amount: '4500', currency: 'JPY' }] }),
+            months: months({
+              '2026-10': [{ amount: '-500', currency: 'JPY' }],
+              '2026-11': [{ amount: '4500', currency: 'JPY' }],
+            }),
             thisMonth: [{ amount: '4500', currency: 'JPY' }],
           }),
         ),
@@ -111,6 +120,7 @@ describe('special commission card', () => {
     mount('ja-JP');
     expect((await screen.findAllByText(/4,500/)).length).toBe(2);
     expect(screen.getByRole('region', { name: 'JPY' })).toBeTruthy();
+    expect(screen.getByText(/500.*\(refunds\)/).textContent).not.toContain('.');
     expect(screen.getByText(/Asia\/Tokyo/)).toBeTruthy();
   });
 
@@ -125,13 +135,13 @@ describe('special commission card', () => {
     servePerks(call, { commission: [ok(body({ rule: null }))] });
     const { container } = mount();
     await waitFor(() => expect(call).toHaveBeenCalled());
-    await waitFor(() => expect(container.textContent).toBe(''));
+    await waitFor(() => expect(container.textContent).toBe('Nothing to show here in your Market.'));
   });
 
   it('hides on a 403 and is not asked without the earnings key', async () => {
     servePerks(call, { commission: [fail(403, 'access.denied')] });
     const { container } = mount();
-    await waitFor(() => expect(container.textContent).toBe(''));
+    await waitFor(() => expect(container.textContent).toBe('Nothing to show here in your Market.'));
     cleanup();
     call.mockReset();
     servePerks(call, {});
@@ -148,6 +158,24 @@ describe('special commission card', () => {
       ),
     );
     expect(call).not.toHaveBeenCalled();
+  });
+
+  it('reads the cards a seller may see from the permission keys', () => {
+    expect(perkAccessOf(['promotions.promotion.view'])).toEqual({
+      showPromotions: true,
+      showCommission: false,
+    });
+    expect(
+      perkAccessOf(['promotions.promotion.manage', 'commission-payouts.earnings.view']),
+    ).toEqual({
+      showPromotions: true,
+      showCommission: true,
+    });
+    expect(perkAccessOf(['commission-payouts.earnings.view'])).toEqual({
+      showPromotions: false,
+      showCommission: true,
+    });
+    expect(perkAccessOf([])).toEqual({ showPromotions: false, showCommission: false });
   });
 
   it('shows a failure with Retry, and a 429 with the wait in minutes', async () => {
@@ -173,7 +201,16 @@ describe('special commission card', () => {
       commission: [ok(body())],
     });
     render(
-      wrap(<ExclusivePerks canManage csrfToken="csrf" timeZone="Australia/Brisbane" />, 'en-AU'),
+      wrap(
+        <ExclusivePerks
+          canManage
+          csrfToken="csrf"
+          timeZone="Australia/Brisbane"
+          showPromotions
+          showCommission
+        />,
+        'en-AU',
+      ),
     );
     expect(await screen.findByText('Savings this month')).toBeTruthy();
     expect(screen.queryByText('Discount for exclusive customers')).toBeNull();

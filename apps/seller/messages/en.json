@@ -4598,7 +4598,8 @@
           "unavailable": "Commission could not be loaded. Try again in a moment.",
           "unknown": "Something went wrong. Try again."
         }
-      }
+      },
+      "nothing": "Nothing to show here in your Market."
     },
     "not-approved": {
       "title": "Your shop is not approved yet",

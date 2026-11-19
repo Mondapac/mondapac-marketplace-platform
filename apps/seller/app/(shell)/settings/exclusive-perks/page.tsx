@@ -1,6 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import {
   ExclusivePerks,
+  perkAccessOf,
   PROMOTION_MANAGE_PERMISSION,
   PROMOTION_VIEW_PERMISSION,
 } from '../../../../src/customers/exclusive-perks.tsx';
@@ -23,10 +24,7 @@ export default function ExclusivePerksPage() {
         canManage={session.permissionKeys.includes(PROMOTION_MANAGE_PERMISSION)}
         csrfToken={session.csrfToken}
         timeZone={session.timezone}
-        showPromotions={[PROMOTION_VIEW_PERMISSION, PROMOTION_MANAGE_PERMISSION].some((key) =>
-          session.permissionKeys.includes(key),
-        )}
-        showCommission={session.permissionKeys.includes(EARNINGS_VIEW_PERMISSION)}
+        {...perkAccessOf(session.permissionKeys)}
       />
     ),
   });

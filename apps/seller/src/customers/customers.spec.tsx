@@ -403,7 +403,15 @@ describe('ExclusivePerks', () => {
   });
   const mount = (canManage = true) =>
     render(
-      wrap(<ExclusivePerks canManage={canManage} csrfToken="csrf" timeZone="Australia/Brisbane" />),
+      wrap(
+        <ExclusivePerks
+          canManage={canManage}
+          csrfToken="csrf"
+          timeZone="Australia/Brisbane"
+          showPromotions
+          showCommission
+        />,
+      ),
     );
 
   it('picks the exclusive promotion among the customer-group ones', () => {
@@ -497,7 +505,7 @@ describe('ExclusivePerks', () => {
       cashback: [fail(403, 'access.denied')],
     });
     const { container } = mount();
-    await waitFor(() => expect(container.textContent).toBe(''));
+    await waitFor(() => expect(container.textContent).toBe('Nothing to show here in your Market.'));
   });
 });
 

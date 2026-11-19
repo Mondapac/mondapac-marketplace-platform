@@ -54,7 +54,13 @@ const discount = (currency: string): OwnPromotion => ({
 const mount = (canManage = true, locale = 'en-AU') =>
   render(
     wrap(
-      <ExclusivePerks canManage={canManage} csrfToken="csrf" timeZone="Australia/Brisbane" />,
+      <ExclusivePerks
+        canManage={canManage}
+        csrfToken="csrf"
+        timeZone="Australia/Brisbane"
+        showPromotions
+        showCommission
+      />,
       locale,
     ),
   );
@@ -368,7 +374,7 @@ describe('cashback card', () => {
       cashback: [fail(403, 'access.denied')],
     });
     const { container } = mount();
-    await waitFor(() => expect(container.textContent).toBe(''));
+    await waitFor(() => expect(container.textContent).toBe('Nothing to show here in your Market.'));
   });
 
   it('shows the discount alone when only the discount is refused', async () => {
