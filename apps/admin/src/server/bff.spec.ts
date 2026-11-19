@@ -4499,9 +4499,20 @@ describe('relay of the security alert super list', () => {
       'q=nope',
       'type=Not%20A%20Code',
       'view=other',
+      'kind=other',
+      'sellerId=',
+      'from=2026-13',
+      'to=x',
+      'sort=x',
+      'direction=up',
     ]) {
       const bad = await get(`certification/admin/seller-certificates/export?format=csv&${query}`);
       expect([query.slice(0, 20), bad.response.status]).toEqual([query.slice(0, 20), 400]);
+      expect(bad.url).toBeUndefined();
+    }
+    for (const query of ['format=pdf', 'format=csv&columns=secret']) {
+      const bad = await get(`certification/admin/seller-certificates/export?${query}`);
+      expect([query, bad.response.status]).toEqual([query, 400]);
       expect(bad.url).toBeUndefined();
     }
     const ids = Array.from({ length: 200 }, () => ID).join(',');

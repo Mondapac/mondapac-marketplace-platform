@@ -216,7 +216,7 @@ describe('Certificate queue: page numbers', () => {
 });
 
 describe('Certificate queue: second fixture ZZ', () => {
-  it('follows the Market paging mode and the list zone, and keeps its own column key', async () => {
+  it('follows the Market paging mode and the list zone', async () => {
     serve(() => noTotal([row()], true));
     mount({ marketId: 'ZZ', zone: 'Pacific/Auckland', paging: 'prev-next' });
     await screen.findByText(STORE);
@@ -670,7 +670,7 @@ describe('Certificate queue: selection and Export', () => {
   });
 
   it('does not offer "Select all matching" when more than 500 are waiting: ticked rows still export by id', async () => {
-    serve(() => pageOf([row()], { total: 500, truncated: true }));
+    serve(() => pageOf([row()], { total: 501, truncated: true }));
     mount();
     await screen.findAllByText(STORE);
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all submissions on this page' }));
@@ -683,7 +683,7 @@ describe('Certificate queue: selection and Export', () => {
     expect(sent().params['view']).toBeUndefined();
   });
 
-  it('still says so when the API refuses a selector export of a cut list (413 batch.too-large)', async () => {
+  it('says so when the API refuses an export with 413 batch.too-large', async () => {
     serve(() => pageOf([row()], { total: 500 }));
     mount();
     await screen.findAllByText(STORE);
