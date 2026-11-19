@@ -357,6 +357,7 @@ export function brandState(
     proposedBySellerId: null,
     approvedBy: null,
     mergedIntoId: null,
+    archiveReason: null,
     createdAt: at,
     updatedAt: at,
     version: 1,

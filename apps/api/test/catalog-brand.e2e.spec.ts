@@ -261,6 +261,19 @@ describe('brand routes over HTTP (integration)', () => {
     expect(document.paths['/catalog/brands/{slug}']).toHaveProperty('get');
     const create = document.paths[ADMIN]?.post?.responses;
     for (const status of ['201', '400', '403', '409']) expect(create).toHaveProperty(status);
+    const schemas = (
+      document as unknown as {
+        components: {
+          schemas: Record<string, { properties: Record<string, unknown>; required?: string[] }>;
+        };
+      }
+    ).components.schemas;
+    expect(schemas['BrandArchiveRequest']!.properties['reason']).toMatchObject({
+      type: 'string',
+      maxLength: 500,
+      nullable: true,
+    });
+    expect(schemas['BrandArchiveRequest']!.required).toEqual(['version']);
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
@@ -512,6 +525,48 @@ describe('brand routes over HTTP (integration)', () => {
           .set(editor)
           .send({ version: 3 })
           .expect(409);
+      });
+
+      it('turns a proposal down with an optional reason and refuses a bad one', async () => {
+        await boot();
+        await seeded(code);
+        const editor = adminSession(code, EDITOR, 11);
+        for (const [reason, problem] of [
+          ['x'.repeat(501), 'too-long'],
+          ['Bad\u0000reason', 'chars'],
+          ['Line one\r\nLine two', 'chars'],
+          [7, 'type'],
+        ] as const) {
+          const refused = await http()
+            .post(`${ADMIN}/${DRAFT}/archive`)
+            .set(editor)
+            .send({ version: 1, reason })
+            .expect(400);
+          expect(refused.body).toMatchObject({
+            code: 'validation.failed',
+            details: { fields: [{ path: 'reason', code: problem }] },
+          });
+        }
+        expect(brands.brands.get(DRAFT)).toMatchObject({ status: 'draft', archiveReason: null });
+
+        const archived = await http()
+          .post(`${ADMIN}/${DRAFT}/archive`)
+          .set(editor)
+          .send({ version: 1, reason: ' Already listed as Acme Tea. ' })
+          .expect(200);
+        expect(archived.body).toMatchObject({ brand: { status: 'archived', version: 2 } });
+        expect(brands.brands.get(DRAFT)).toMatchObject({
+          status: 'archived',
+          archiveReason: 'Already listed as Acme Tea.',
+        });
+
+        const blank = await http()
+          .post(`${ADMIN}/${BRAND_B}/archive`)
+          .set(editor)
+          .send({ version: 1, reason: '' })
+          .expect(200);
+        expect(blank.body).toMatchObject({ brand: { status: 'archived' } });
+        expect(brands.brands.get(BRAND_B)).toMatchObject({ archiveReason: null });
       });
 
       it('approves a proposal once, making it active', async () => {

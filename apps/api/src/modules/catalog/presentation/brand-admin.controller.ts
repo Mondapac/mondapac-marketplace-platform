@@ -57,6 +57,7 @@ import { BrandMerge } from '../application/use-cases/brand-merge.use-case';
 import { BrandMergeQueueDismiss } from '../application/use-cases/brand-merge-queue-dismiss.use-case';
 import { BrandMergeQueueList } from '../application/use-cases/brand-merge-queue-list.use-case';
 import {
+  BrandArchiveRequest,
   BrandCreateRequest,
   BrandDetailBody,
   BrandEditRequest,
@@ -92,6 +93,7 @@ export const BRAND_ADMIN_STATUS: Readonly<Record<string, number>> = Object.freez
   'brand.not-draft': 409,
   'brand.archived': 409,
   'brand.already-archived': 409,
+  'brand.archive-reason-invalid': 400,
   'brand.merge-target-not-active': 409,
   'brand.merge-source-archived': 409,
   'conflict.stale': 409,
@@ -430,11 +432,12 @@ export class BrandAdminController {
     summary: 'Archive a brand',
     description:
       'Needs catalog.brand.edit. A draft or active brand becomes archived: its public page stops ' +
-      'answering; products keep their brand. This also turns down a seller proposal.',
+      'answering; products keep their brand. This also turns down a seller proposal. An ' +
+      "optional reason is kept on the brand for the proposing seller's notice.",
   })
   @ApiParam(BRAND_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: BrandVersionRequest })
+  @ApiBody({ type: BrandArchiveRequest })
   @ApiOkResponse({ type: BrandWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -453,11 +456,15 @@ export class BrandAdminController {
     @Param('brandId') brandId: string,
     @Body() body: unknown,
   ): Promise<BrandWrapBody> {
-    const input = closedBody(request, body, ['version']);
+    const input = closedBody(request, body, ['version'], ['reason']);
     let outcome: BrandWrapBody | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
-      const result = await this.archiveBrand.execute(context, { brandId, version: input.version });
+      const result = await this.archiveBrand.execute(context, {
+        brandId,
+        version: input.version,
+        ...(input.reason === undefined ? {} : { reason: input.reason }),
+      });
       outcome = result.ok
         ? (JSON.parse(JSON.stringify(result.value)) as BrandWrapBody)
         : refusal(result.error, response, context);
