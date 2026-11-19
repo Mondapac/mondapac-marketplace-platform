@@ -83,13 +83,33 @@ describe('ServiceAreaNamesPanel', () => {
 
   it('says so when the Market has no service areas', () => {
     mount(data([]));
-    expect(screen.getByText('This Market has no service areas yet.')).toBeTruthy();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByText(/The names buyers and sellers see/)).toBeTruthy();
+    expect(screen.queryByText(/can see the names but not change/)).toBeNull();
+    expect(screen.getByText('No service areas are configured for this Market.')).toBeTruthy();
   });
 
   it('shows no menu to a viewer and says the names are read-only', () => {
     mount(data([row({ actions: [] })]));
     expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
     expect(screen.getByText(/can see the names but not change/)).toBeTruthy();
+  });
+
+  it('drops the Actions column when no row has a known action, and keeps it otherwise', () => {
+    const { unmount } = mount(data([row({ actions: [] })]));
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+    unmount();
+    mount(data());
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
+  });
+
+  it('lays each area out as a stacked card below sm with the menu trigger at the top end', () => {
+    mount(data());
+    expect(screen.getByRole('table').className).toContain('max-sm:block');
+    const tr = screen.getAllByRole('row')[1]!;
+    expect(tr.className).toContain('max-sm:relative');
+    const trigger = screen.getByRole('button', { name: /^Actions for / });
+    expect(trigger.closest('td')!.className).toMatch(/max-sm:absolute.*max-sm:end-2.*max-sm:top-2/);
   });
 
   it('ignores unknown action ids: a row with none known shows no menu', () => {
@@ -209,6 +229,33 @@ describe('ServiceAreaNamesPanel', () => {
     );
     await waitFor(() => expect(call).toHaveBeenCalledWith('GET', 'sellers/admin/service-areas'));
     await waitFor(() => expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull());
+  });
+  it('a 409 refusal keeps the dialog with its error and reads the list again', async () => {
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict' } });
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: data([row()]) });
+    mount(data());
+    openEditor();
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Brisbane' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save names' }));
+    await waitFor(() =>
+      expect(within(dialog).getByText('Something went wrong. Try again.')).toBeTruthy(),
+    );
+    await waitFor(() => expect(call).toHaveBeenCalledWith('GET', 'sellers/admin/service-areas'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('keeps the shown rows when the re-read after a refusal fails', async () => {
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict' } });
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 0, code: 'network' } });
+    mount(data());
+    openEditor();
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Brisbane' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save names' }));
+    await waitFor(() => expect(call).toHaveBeenCalledWith('GET', 'sellers/admin/service-areas'));
+    expect(screen.getByText('brisbane · QLD')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Actions for / })).toBeTruthy();
   });
 });
 

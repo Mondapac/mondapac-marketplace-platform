@@ -2,7 +2,7 @@ import { LoadError, SettingsPage } from '@mondapac/ui';
 import { NextIntlClientProvider } from 'next-intl';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
-import '../../app/globals.css';
+import './shots.css';
 import { ServiceAreaNamesPanel } from '../../src/service-area-names/service-area-names-panel.tsx';
 
 const name = (n: string, edited = false, configuredName: string | null = n) => ({

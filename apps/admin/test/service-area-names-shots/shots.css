@@ -1,0 +1,3 @@
+@import '../../app/globals.css';
+/* the worktree's own sources, in case the ui package resolves to another clone */
+@source '../../src';

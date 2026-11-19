@@ -50,7 +50,7 @@ for (const scheme of ['light', 'dark']) {
         (s) => globalThis.document.documentElement.setAttribute('data-theme', s),
         scheme,
       );
-      if (step === 'empty') await page.getByRole('table').waitFor();
+      if (step === 'empty') await page.getByText('No service areas are configured').waitFor();
       else if (step === 'error') await page.getByText('could not be loaded').waitFor();
       else await page.getByText('Greater Brisbane').first().waitFor();
       if (step === 'menu' || step === 'dialog') {

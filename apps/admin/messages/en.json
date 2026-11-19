@@ -11714,7 +11714,7 @@
       "names": "Names",
       "actions": "Actions"
     },
-    "empty": "This Market has no service areas yet.",
+    "empty": "No service areas are configured for this Market.",
     "edited": "Edited",
     "edit": "Edit names…",
     "actions-for": "Actions for {name}",
