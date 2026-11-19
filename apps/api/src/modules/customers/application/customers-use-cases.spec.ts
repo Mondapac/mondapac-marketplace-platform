@@ -133,7 +133,8 @@ describe.each([['AU'], ['ZZ']] as const)('customer address book in market %s', (
     const stored = store.rows.get(first.id)!;
     expect(stored.sealed).toMatch(/^v1\.[A-Za-z0-9_-]+$/);
     expect(stored.sealed).not.toContain('One Street');
-    expect(units.units.at(-1)?.options).toEqual({ isolation: 'serializable' });
+    // The book's advisory lock serialises writers, so the unit runs at the default isolation.
+    expect(units.units.at(-1)?.options).toEqual({});
 
     const second = await add(alice, 'Two Street');
     expect(second.isDefault).toBe(false);

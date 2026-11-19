@@ -1,18 +1,31 @@
 import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { headers } from 'next/headers';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
+import { panelHostFor } from '../../../src/server/bff.ts';
+import { panelConfig } from '../../../src/server/config.ts';
+import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
 import { SellersList } from '../../../src/sellers/sellers-list.tsx';
-import { REVIEW_PERMISSION } from '../../../src/sellers/review-types.ts';
 import { ORPHANED_VIEW_PERMISSION } from '../../../src/sellers/orphaned-types.ts';
+import { SELLER_VIEW_PERMISSION } from '../../../src/sellers/health-types.ts';
 import { LIST_PERMISSION } from '../../../src/sellers/types.ts';
+
+/** The Inbox item Seller requests opens this page on the review tab (menu design v2). */
+const REQUESTS_TAB = 'awaiting-review';
 
 export async function generateMetadata() {
   const t = await getTranslations();
   return { title: t('sellers.list.title') };
 }
 
-export default async function SellersPage() {
+export default async function SellersPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<{ readonly tab?: string | readonly string[] }>;
+}) {
+  const { tab } = await searchParams;
+  const requests = tab === REQUESTS_TAB;
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
@@ -20,10 +33,31 @@ export default async function SellersPage() {
   }
   const title = t('sellers.list.title');
   const allowed = gate.session.permissionKeys.includes(LIST_PERMISSION);
+  // List paging (settings): page numbers only when the Market says so; a value that cannot be
+  // read means Previous and next.
+  let paging: 'pages' | 'prev-next' = 'prev-next';
+  let marketId = '';
+  if (allowed) {
+    const mode = await serverGet<{ readonly listPaging: string }>('settings/admin/list-paging');
+    paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+    marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
+  }
   return (
-    <AdminShell session={gate.session} activeId="sellers" title={title}>
+    <AdminShell
+      session={gate.session}
+      activeId={requests ? 'seller-requests' : 'sellers'}
+      title={title}
+    >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <h1 className="text-2xl font-semibold">{title}</h1>
+        {gate.session.permissionKeys.includes(SELLER_VIEW_PERMISSION) ? (
+          <a
+            className="inline-flex min-h-12 items-center font-medium text-link underline"
+            href="/sellers/needs-a-look"
+          >
+            {t('sellers.health-queue.link')}
+          </a>
+        ) : null}
         {gate.session.permissionKeys.includes(ORPHANED_VIEW_PERMISSION) ? (
           <a
             className="inline-flex min-h-12 items-center font-medium text-link underline"
@@ -35,8 +69,12 @@ export default async function SellersPage() {
       </div>
       {allowed ? (
         <SellersList
+          key={requests ? 'requests' : 'all'}
+          initialTab={requests ? REQUESTS_TAB : 'all'}
           csrfToken={gate.session.csrfToken}
-          canReview={gate.session.permissionKeys.includes(REVIEW_PERMISSION)}
+          paging={paging}
+          accountId={gate.session.accountId}
+          marketId={marketId}
         />
       ) : (
         <>

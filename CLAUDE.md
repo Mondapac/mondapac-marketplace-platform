@@ -134,7 +134,7 @@ strategy implementation, not in core logic.
 - `docker compose up -d` starts Postgres, Redis, mail catcher (no object storage yet, ADR-0016). Copy `.env.example`
   to `.env` first.
 - `pnpm install` / `pnpm dev` / `pnpm build` / `pnpm lint` / `pnpm typecheck` / `pnpm format`
-- `pnpm dev` builds the shared kernel first; restart it after a kernel change. `pnpm build`
+- `pnpm dev` builds the shared kernel and `packages/platform-import` first; restart it after a change to either. `pnpm build`
   ends with `scripts/check-built-kernel.mjs`, which checks that the built API loads one build
   of the shared kernel.
 - `APP_ROLE` (api | worker) is required, no default (P 8; `.env.example` has `api`). `pnpm dev` runs the
@@ -155,8 +155,8 @@ strategy implementation, not in core logic.
   (`mondapac_migrator`, owner of the database). `pnpm db:bootstrap` re-runs
   `scripts/db/bootstrap-dev.sql` on an existing Compose volume.
 - `pnpm verify` regenerates the Prisma client, then runs typecheck, lint, boundaries, test, db:check-reversible and test:db.
-  It is what CI runs (CI splits it: `pnpm verify:without-test-db` in the Verify jobs, `pnpm test:db --shard=N/2`
-  in two Database tests jobs); run it before saying "done" (rule 3). It needs Postgres running.
+  It is what CI runs (CI splits it: `pnpm verify:static` in the Verify jobs, `pnpm test:api --shard=N/3`, `pnpm test:packages` and `pnpm test:db --shard=N/3`
+  in parallel test jobs); run it before saying "done" (rule 3). It needs Postgres running.
 (Update this section when scripts change.)
 
 ## Working rules for Claude
@@ -200,6 +200,17 @@ strategy implementation, not in core logic.
     a small PR of its own that is announced on the board first. One slice = one branch =
     one PR. Never check out a branch or write in another track's folder. At the end
     update the board and your track's status doc (project skill mondapac-track-session).
+14. Super list (owner decision 2026-11-15): "super list" («سوپر لیست») is the owner's
+    name for a list with every feature of the admin Products list
+    (apps/admin/src/catalog/products-list.tsx; shared parts in packages/ui/src/list and
+    packages/ui/src/list-views): views bar, search, filter panel with removable chips, sort
+    panel, column picker, saved filters (personal, and shared with a permission), row
+    selection including "select all matching", bulk actions, export (CSV and XLSX), page
+    numbers with a total that follow the Market's "List paging" setting, and the phone
+    layout. Every list in the admin or seller panel that is expected to show more than 50
+    rows must be a super list, whether or not a request says so. A list scoped to one
+    record (for example one customer's orders) counts too. When the Products list gains a
+    feature, the other super lists get it as well.
 
 ## Speed mode (owner decision 2026-10-09, overrides the rules it names)
 The owner approved docs/process/speed-mode.md. Until the owner lifts it:

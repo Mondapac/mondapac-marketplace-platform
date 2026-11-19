@@ -1,7 +1,17 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type {
+  ModerationFilter,
+  ModerationSort,
+  ModerationViewCounts,
+} from '../../domain/moderation-list';
 import type { QueueTab } from '../../domain/moderation';
 import type { ReviewStatus, SellerRatingReason, SellerRatingStatus } from '../../domain/rules';
 import type { SellerSummary, StarSummary } from '../../domain/summary';
+import type {
+  SellerReviewFilter,
+  SellerReviewSort,
+  SellerReviewViewCounts,
+} from '../../domain/seller-review-list';
 
 /** One product review row (`reviews.product_reviews`). */
 export interface ProductReviewRecord {
@@ -343,6 +353,27 @@ export interface ReviewRepository {
   /** How many reviews wait in each tab (held, reported, actioned). */
   countModerationQueue(market: MarketContext): Promise<Readonly<Record<QueueTab, number>>>;
 
+  /** The moderation super list: filtered and sorted reviews of the Market, `limit` rows from `offset`. */
+  queryModerationList(
+    market: MarketContext,
+    filter: ModerationFilter,
+    sort: ModerationSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly QueueRow[]>;
+
+  /** How many reviews meet the filter (its view included). */
+  countModerationListWhere(market: MarketContext, filter: ModerationFilter): Promise<number>;
+
+  /** The count of each view for the Market, whatever the other filters. */
+  moderationViewCounts(market: MarketContext): Promise<ModerationViewCounts>;
+
+  /** The reviews among `reviewIds` that are in any queue view (others are left out). */
+  findModerationRowsByIds(
+    market: MarketContext,
+    reviewIds: readonly Id<'ProductReview'>[],
+  ): Promise<readonly QueueRow[]>;
+
   /** The review by its internal id with its open reports, signals and history, or null. */
   findForModeration(
     market: MarketContext,
@@ -366,6 +397,36 @@ export interface ReviewRepository {
     market: MarketContext,
     sellerId: Id<'Seller'>,
     query: { readonly after: SellerReviewCursor | null; readonly limit: number },
+  ): Promise<readonly SellerReviewRow[]>;
+
+  /** The shop's published reviews for the super list: filtered and sorted, `limit` rows from `offset`. */
+  querySellerReviews(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerReviewFilter,
+    sort: SellerReviewSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly SellerReviewRow[]>;
+
+  /** How many of the shop's published reviews meet the filter. */
+  countSellerReviewsWhere(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: SellerReviewFilter,
+  ): Promise<number>;
+
+  /** The count of each view for the shop, whatever the filter. */
+  sellerReviewViewCounts(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<SellerReviewViewCounts>;
+
+  /** The shop's published reviews among `reviewIds` (others are left out), with their replies. */
+  findSellerReviewsByIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    reviewIds: readonly Id<'ProductReview'>[],
   ): Promise<readonly SellerReviewRow[]>;
 
   /** A review of this shop by its internal id (any status) with its reply; null if not the shop's. */

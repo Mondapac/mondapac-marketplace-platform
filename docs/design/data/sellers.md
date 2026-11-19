@@ -1592,6 +1592,23 @@ refuses, the seller `reviewer-notice` reservation is released (the Market one st
   50 ms: then keep the counters in a table updated in the same unit as the file change, or cache them
   for a few seconds.
 
+- **Super list 15 (2026-11-18; no schema change; reviewed by Mojtaba 2026-11-18).** `POST
+  /sellers/admin/sellers/list` reads the three file tabs with `ORDER BY ... OFFSET ... LIMIT` and a
+  filtered `count(*)` (`countMatching`, page-number mode only), the four identity state tabs by
+  walking `identity`'s keyset pages (at most 20 calls of 100, so 2,000 rows deep). Orders: All
+  `seller_id` (the primary key, either direction); Incomplete `(last_changed_at, seller_id)` in one
+  direction (the partial index of A4 serves both directions); Awaiting review
+  `(created_at, seller_id)` on the pending revisions (no index in that order; the pending set is
+  small); `name` = `(store_name_key, seller_id)` on `seller_files_market_id_store_name_key_idx`
+  (NULLS LAST ascending, first descending, so the index can be read either way; the `seller_id`
+  tie needs an incremental sort). OFFSET is bounded to 10,000 rows. Revisit trigger: the p95 of
+  `sellers.seller-list-query` above 200 ms, or a Market above 50,000 sellers; then a keyset per
+  sort, or an index `(market_id, store_name_key, seller_id)`. Awaiting review sorted by `name` joins
+  `seller_files` (same schema) and sorts the pending set: no index. The export reads 100-row OFFSET
+  chunks, each in its own read unit, so a file that changes between chunks can repeat or be missed
+  (known limit shared with the other super lists). The export never holds the owner's name or
+  email (Hassan M1): personal data, and no export permission or audit row exists for it.
+
 ## 24. Slice 7a-decide migration `20261010113051_sellers_review_decisions` (2026-10-10)
 - `seller_files`: `public_store_name` (set with the approved pointer, CHECK both null or both set), and the decision intent `decision_intent`, `decision_attempt_id`, `decision_revision_id`, `decision_intent_since` (all four set or all null; the revision is a foreign key to this file's revisions). Partial index `(market_id, decision_intent_since) WHERE decision_intent IS NOT NULL` for the reconciliation job.
 - `review_checks` (PK market, revision, check code; FK to the revision with cascade): only `manual-register-check` is written in this slice; `observed_register_outcome` is set exactly for it. Grants SELECT, INSERT, UPDATE.
@@ -1619,9 +1636,88 @@ has a handful of areas, so a scan of the prefix is bounded by areas times langua
 one `(market, area, language)` row. No other index is needed. Growth: at most areas times
 languages rows per Market. Reversible: `down.sql` drops the table (the edited names are lost).
 
+Row actions (super list phase 4, 2026-11-16): the list is a small list (a handful of rows), so it
+gets only the row Actions menu. Each row of `GET /sellers/admin/service-areas` carries `actions`:
+`edit-names` when the caller holds `sellers.service-area.edit` (asked once per request through the
+probe `sellers.service-area-edit-probe`), else empty. The response of
+`POST /sellers/admin/service-areas/names` always carries `edit-names` on its `area`, since its
+caller just passed the edit check. No query or table change.
+
 ## 25. Seller health tables: retention and revisit triggers (2026-11-03; Mojtaba review)
 Tables `seller_health_days` (migration `20261101070000_sellers_health_store`) and `seller_health_snapshots`. Rows are written by the hourly job `sellers.seller-health` (last 3 local days per seller, in the seller's zone) and deleted by `sellers.purge-seller-health` (every 6 hours; migration `20261103150000_sellers_health_retention` grants DELETE to the application role and nothing else may delete). Rows older than 400 days go: the longest window a Market may set is 366 days plus the 3-day recount, and the cut is made on the UTC date, so no score reads a deleted day.
 - **Future index (owner request 2026-11-03), not built.** Add `@@index([marketId, day])` on `SellersSellerHealthDay` with a later migration. Today the table has only its primary key `(market_id, seller_id, day)`; `seller_health_snapshots` already has `(market_id, day, score)`. PostgreSQL 17 has no B-tree skip scan (arrives in 18), so the purge's `DELETE ... WHERE market_id = $1 AND day < $2` reads the whole Market's rows four times a day. That is fine at launch size (sellers x 400 days, a few million rows at most; each run deletes about one day of rows in one short transaction, no batching needed).
   - **Trigger:** the table passes about **1,000,000 rows**, or a purge run takes longer than about 1 second. Then add the index (a plain `CREATE INDEX` blocks writes while it builds; on a table that size build it `CONCURRENTLY` in its own out-of-transaction step, as the orders index note in `20261102080000_ordering_seller_health_indexes` says) and update this section.
 - **Related trigger (orders feed):** the paid-orders read grows with a seller's lifetime orders. Past a p95 of about 50 ms, or a seller with about 20,000 orders, add a `paid_at` column on `ordering.seller_orders` indexed `(market_id, seller_id, paid_at)`.
 - Evidence: Mojtaba's review of PR 657 (2026-11-03): no blockers; the grant is minimal, `down.sql` reverses it exactly, the delete and the nightly upserts touch different rows.
+
+## Seller culture membership: migration `20261112120000_sellers_seller_cultures` (2026-11-12; ADR-0047, ADR-0048)
+
+`sellers.seller_cultures` (multi-culture package 2): one row per seller and culture, primary key
+`(market_id, seller_id, culture_id)`, foreign key `(market_id, seller_id)` to `seller_files`. No
+foreign key to `catalog.cultures` (cross-schema); `culture_id` and the immutable `culture_code`
+are plain values read through catalog's `culturesByIds` / `activeCultures`.
+
+- `status` is `requested`, `approved` or `rejected`. `reason` (1 to 300, trimmed) is the reviewer's
+  and is required on a rejection. `requested_by` and `decided_by` are NULL when the system acted
+  at signup (ADR-0048); a rejection is always a person's (CHECK). A requested row has no
+  `decided_at`; every other row has one.
+- `version` starts at 1 and rises on each status change; it is the aggregate version of
+  `sellers.seller-culture-status-changed.v1` (aggregate id derived from seller and culture), so a
+  consumer can order one membership's events. Every write is an `UPDATE ... WHERE status = ? AND
+  version = ?` (or `INSERT ... ON CONFLICT DO NOTHING`), so a double request or a double decision
+  ends in one winner and one event, with no explicit lock.
+- Grants to `mondapac_app`: SELECT, INSERT and a column-level UPDATE of `status`, `reason`,
+  `requested_by`, `requested_at`, `decided_by`, `decided_at`, `version`, `updated_at`. No DELETE.
+- Added in the review round: CHECKs `status <> 'requested' OR reason IS NULL`,
+  `decided_at IS NULL OR decided_at >= requested_at` and `updated_at >= requested_at`. A guarded
+  write can take an approval back to `requested` (security review M1: the culture's required type
+  changed or it was deactivated after the approval was checked); the row then has no reason, no
+  decider and no decision time, and `version` rises.
+- Index `(market_id, culture_id, status)` is kept for package 3: the review queue per culture and
+  the search re-index (and `hasApproved`, the culture-lock check of catalog). Package 2 itself
+  does not need it; package 3 reviews it with its queries.
+- The roster query of `sellers.seed-seller-cultures` lists the seller files of the Market that
+  have no membership row, as a correlated `NOT EXISTS` on `(market_id, seller_id)` (Prisma
+  `none: { marketId }`), ordered by `seller_id` and paged by a `seller_id` cursor. On the local
+  database with 20 000 seller files and 19 800 with a row it is a Hash Anti Join, 9 ms for a page
+  of 200 (plan in the PR). The job runs at most 10 batches of 200 per run.
+- `forSeller` reads at most 200 rows; a seller cannot have more memberships than the Market has
+  cultures, so the cap is far above real use. When a read returns exactly 200 rows the repository
+  logs the warning `sellers.seller-cultures.for-seller-at-limit`; raise the cap or page then.
+- `culture_code` is a copy of catalog's culture code. It is safe only because catalog never changes
+  a code after creation (immutable by ADR-0047); if that ever changed, the copy would need a
+  consumer of the change.
+- The seed cursor restarts at the first seller on every run (it is not stored). Revisit trigger:
+  persist the seed cursor if more than 2000 sellers are skipped per run (low ids that are skipped
+  every time would starve newer sellers).
+- Revisit trigger: if the roster query p95 exceeds 50 ms, or one Market holds more than about
+  100 000 memberships, replace the anti-join with a keyset over a work table or add a partial
+  index on `status = 'requested'`.
+
+### Package 3a additions (2026-11-12; no migration)
+
+- `approvedForSellers(market, sellerIds)` (at most 100 ids) reads the approved rows of a batch of
+  sellers for catalog's visibility rule, through the facade pair `sellers.seller-approved-cultures`
+  (`anonymous` / `system`). Ids only; an unknown seller, one with no approval and another
+  Market's seller are all absent; a failed read is `sellers.unavailable` (the caller fails closed).
+- Certificate re-check (ADR-0048 security review M2): `sellers.recheck-culture-certificates`
+  (system) runs on `certification.seller-certification-expired.v1` and `...-revoked.v1`, and
+  `sellers.recheck-cultures-of-issuer` (system) on `certification.issuer-deactivated.v1` with form
+  `derecognised` (security M3 of #848), for every seller of the issuer's approved certificates
+  (certification's `sellersOfIssuer`, pages of 200 in seller id order). Certification is asked
+  only about the required types (`validTypeCodes(context, sellerId, typeCodes)`); the answer is the
+  canonical `sellerCertificateValidAt`. It reads
+  the seller's approved rows, keeps those of cultures with a required type, asks certification
+  (`sellerValidCertificateTypes`) and takes each approval without a valid certificate of its type
+  back to `requested` with the guarded write and an event. A renewal of the same type keeps the
+  approval. A failed read throws, so the delivery is retried.
+- `cultureDemoteApprovals` now writes one unit per batch of 200 (at most 10 batches a call), then
+  checks in a read-only unit whether approvals remain. It is no longer on `SellersFacade`: the port
+  `SELLERS_CULTURE_DEMOTE_PORT` (`contracts/culture-demote.port.ts`) may be imported only by
+  `catalog/infrastructure/sellers-culture-members.ts` (boundaries rule
+  `culture-demote-port-is-for-catalog-adapter`, N2). The `system` twin
+  `sellers.culture-demote-approvals-system` serves the consumer of
+  `catalog.culture-approvals-invalidated.v1` (N1), which throws while approvals remain.
+- These consumers are registered in `SellerStoreProfileModule`, not in `SellersModule`, because
+  importing certification and catalog event definitions into the sellers module graph would close
+  an import cycle.

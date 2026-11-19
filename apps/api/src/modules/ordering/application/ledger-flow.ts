@@ -1,5 +1,6 @@
 import { ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import { ledgerLineAmount } from '../domain/discounts';
 import type { OrderingDependencies } from './checkout-flow';
 import type { SellerOrderRecord } from './ports/order.repository';
 import type { RefundForLedger } from './ports/refund.repository';
@@ -37,9 +38,12 @@ function paidFacts(record: SellerOrderRecord) {
     paidAt: record.confirmedAt,
     lines: record.lines.map((line) => ({
       orderLineId: line.id,
-      lineAmount: line.lineAmount,
+      // What the seller is paid for the line: after the seller's share of its discount (package
+      // T2). The platform's share comes out of the platform's commission, never the seller's pay.
+      lineAmount: ledgerLineAmount(line),
       taxInclusive: line.taxInclusive,
       commissionRateBps: line.commissionRateBps!,
+      commissionStandardRateBps: line.commissionStandardRateBps ?? null,
     })),
   };
 }

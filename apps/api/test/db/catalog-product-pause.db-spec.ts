@@ -8,7 +8,7 @@ import {
 } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import ExcelJS from 'exceljs';
-import { ExceljsSheetWriter } from '../../src/modules/catalog/infrastructure/xlsx/exceljs-sheet-writer';
+import { ExceljsSheetWriter } from '../../src/platform/list-export/exceljs-sheet-writer';
 import { ClaimQueryBuilder } from '../../src/modules/catalog/application/tags/claim-query-builder';
 import { AdminProductPause } from '../../src/modules/catalog/application/use-cases/admin-product-pause.use-case';
 import { AdminProductResume } from '../../src/modules/catalog/application/use-cases/admin-product-resume.use-case';
@@ -133,6 +133,7 @@ describe.each(TEST_MARKETS)('catalog product pause in market %s (database integr
       ...base,
       product_id: productId,
       variant_model: 'single',
+      variant_no: 1,
       state: 'published',
       created_at: T0,
       published_at: T0,
@@ -161,6 +162,7 @@ describe.each(TEST_MARKETS)('catalog product pause in market %s (database integr
       product_id: productId,
       revision_no: 1,
       revision_kind: 'submission',
+      type_code: 'simple',
       base_revision_id: null,
       reverted_from_revision_id: null,
       family_revision_id: familyRevisionId,

@@ -21,13 +21,51 @@ const DETAIL_KEYS = [
   'tags',
   'brands',
   'total',
+  'unit',
   'currentCount',
   'columns',
   'maxBytes',
   'rows',
   'detected',
   'rowNumber',
+  'typeCodes',
+  'errors',
+  'leftOut',
+  'resetZone',
+  'pendingNumber',
 ] as const;
+
+/**
+ * Refusals every catalog route shares: an action that waits for approval (Admin Inbox › System
+ * requests) while another proposal of the same subject waits (`details.pendingNumber`).
+ */
+const SHARED_STATUS: Readonly<Record<string, number>> = Object.freeze({
+  'system-requests.already-pending': 409,
+});
+
+/**
+ * The body of a use case's answer, and HTTP 202 when it is a proposal: an action that waits for a
+ * second admin's approval answers `{request: {id, number}}` and wrote nothing.
+ */
+export function answered<T>(response: Response, value: unknown): T {
+  if (onlyRequest(value)) response.status(202);
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/**
+ * Whether a use case answered a proposal: an object holding only a non-null `request` (an action
+ * that waits for another admin's approval; nothing changed). The presentation layer reads it from
+ * the answer's shape, as it imports only use cases.
+ */
+function onlyRequest(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const keys = Object.keys(value);
+  const request = (value as { request?: unknown }).request;
+  return (
+    keys.length === 1 && keys[0] === 'request' && typeof request === 'object' && request !== null
+  );
+}
+
 const logger = new Logger('CatalogHttp');
 
 /**
@@ -43,7 +81,9 @@ export function refusalWith(
   unmappedMsg = 'catalog.unmapped-refusal',
 ): HttpException {
   const status =
-    table[error.code] ?? ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS];
+    table[error.code] ??
+    SHARED_STATUS[error.code] ??
+    ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS];
   if (status === undefined) {
     logger.error({
       msg: unmappedMsg,
@@ -75,6 +115,21 @@ export function pageQuery(query: Record<string, unknown>): Record<string, unknow
     ...rest,
     limit: typeof limit === 'string' && /^\d{1,4}$/.test(limit) ? Number(limit) : -1,
   };
+}
+
+/**
+ * The query of a page-numbered list route: `page` and `pageSize` become numbers (a value that is
+ * not 1 to 4 digits becomes -1, which the list refuses).
+ */
+export function numericQuery(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...query };
+  for (const key of ['page', 'pageSize']) {
+    const value = out[key];
+    if (value !== undefined) {
+      out[key] = typeof value === 'string' && /^\d{1,4}$/.test(value) ? Number(value) : -1;
+    }
+  }
+  return out;
 }
 
 /** The JSON-only check and the closed object of a body: no unknown key, no array, no scalar. */

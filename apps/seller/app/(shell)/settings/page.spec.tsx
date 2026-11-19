@@ -71,8 +71,8 @@ describe('seller settings hub page', () => {
     ]);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Settings');
     expect(screen.getByText(messages.settings.hub.description)).toBeTruthy();
-    expect(groups()).toEqual(['Store', 'Money', 'Team']);
-    expect(screen.getAllByRole('link')).toHaveLength(4);
+    expect(groups()).toEqual(['Store', 'Team']);
+    expect(screen.getAllByRole('link')).toHaveLength(3);
     expect(screen.queryByText('View only')).toBeNull();
     expect(document.querySelector('main')?.getAttribute('data-active')).toBe('s_settings');
   });
@@ -99,7 +99,7 @@ describe('seller settings hub page', () => {
   });
 
   it('marks a view-only page with the chip', async () => {
-    await show(['payments.payout-account.view']);
+    await show(['identity.team-member.view']);
     expect(screen.getByText('View only')).toBeTruthy();
   });
 

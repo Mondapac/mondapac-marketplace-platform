@@ -338,6 +338,26 @@ describe.each([
         return Promise.resolve();
       }
 
+      /** Like the repository: the revision's request pending again, with a later `createdAt`. */
+      requestForCategoryChange(
+        _m: MarketContext,
+        request: { productId: Id<'Product'>; productRevisionId: Id<'ProductRevision'> },
+      ): Promise<void> {
+        const row = this.rows.find((r) => r.productRevisionId === request.productRevisionId);
+        if (row === undefined) return this.requestForPublish(_m, request);
+        const now = clock.now();
+        Object.assign(row, {
+          state: 'pending',
+          cursorOfferId: null,
+          counts: NO_COUNTS,
+          createdAt:
+            Temporal.Instant.compare(now, row.createdAt) > 0
+              ? now
+              : row.createdAt.add({ milliseconds: 1 }),
+        });
+        return Promise.resolve();
+      }
+
       requestForEvent(): Promise<void> {
         return Promise.resolve();
       }
@@ -358,11 +378,17 @@ describe.each([
       progress(
         _m: MarketContext,
         id: Id<'TagReevaluationRequest'>,
-        update: { cursorOfferId: Id<'Offer'> | null; counts: ReevaluationCounts },
+        update: {
+          cursorOfferId: Id<'Offer'> | null;
+          counts: ReevaluationCounts;
+          requestedAt: Temporal.Instant;
+        },
       ): Promise<boolean> {
         // Like the repository: never back; an equal cursor (or none over none) stores counts only.
         const row = this.rows.find((r) => r.id === id);
-        if (row?.state !== 'pending') return Promise.resolve(false);
+        if (row?.state !== 'pending' || !row.createdAt.equals(update.requestedAt)) {
+          return Promise.resolve(false);
+        }
         const cursor = update.cursorOfferId;
         const back =
           cursor === null
@@ -378,10 +404,17 @@ describe.each([
       close(
         _m: MarketContext,
         id: Id<'TagReevaluationRequest'>,
-        end: { state: 'settled' | 'superseded'; counts: ReevaluationCounts },
+        end: {
+          state: 'settled' | 'superseded';
+          counts: ReevaluationCounts;
+          requestedAt: Temporal.Instant;
+          now: Temporal.Instant;
+        },
       ): Promise<boolean> {
         const row = this.rows.find((r) => r.id === id);
-        if (row?.state !== 'pending') return Promise.resolve(false);
+        if (row?.state !== 'pending' || !row.createdAt.equals(end.requestedAt)) {
+          return Promise.resolve(false);
+        }
         Object.assign(row, { state: end.state, counts: end.counts });
         return Promise.resolve(true);
       }
@@ -515,18 +548,58 @@ describe.each([
     it('moves the cursor forward only, and stores counts alone at an equal cursor (F4)', async () => {
       const { requests } = rig(1);
       const id = requests.rows[0]!.id;
+      const requestedAt = requests.rows[0]!.createdAt;
       const offer = ids.next<'Offer'>();
       const counts = (unavailable: number) => ({ ...NO_COUNTS, unavailable });
-      expect(await requests.progress(market, id, { cursorOfferId: offer, counts: counts(1) })).toBe(
-        true,
-      );
-      expect(await requests.progress(market, id, { cursorOfferId: offer, counts: counts(3) })).toBe(
-        true,
-      );
+      const progress = (cursorOfferId: Id<'Offer'> | null, unavailable: number) =>
+        requests.progress(market, id, { cursorOfferId, counts: counts(unavailable), requestedAt });
+      expect(await progress(offer, 1)).toBe(true);
+      expect(await progress(offer, 3)).toBe(true);
       expect(requests.rows[0]).toMatchObject({ cursorOfferId: offer, counts: { unavailable: 3 } });
-      expect(await requests.progress(market, id, { cursorOfferId: null, counts: counts(9) })).toBe(
-        false,
-      );
+      expect(await progress(null, 9)).toBe(false);
+    });
+
+    it('a category change reopens a settled request; the job asks every Offer again (C4a)', async () => {
+      const { run, requests, evaluator } = rig(2);
+      expect(await run()).toEqual({ ok: true, value: { closed: 1, open: 0 } });
+      const asked = evaluator.calls.length;
+      const before = requests.rows[0]!.createdAt;
+      await requests.requestForCategoryChange(market, {
+        productId,
+        productRevisionId: facts.productRevisionId,
+      });
+      expect(requests.rows).toHaveLength(1);
+      expect(requests.rows[0]).toMatchObject({ state: 'pending', cursorOfferId: null });
+      expect(Temporal.Instant.compare(requests.rows[0]!.createdAt, before)).toBe(1);
+      expect(await run()).toEqual({ ok: true, value: { closed: 1, open: 0 } });
+      expect(evaluator.calls.length).toBeGreaterThan(asked);
+    });
+
+    it('a run that read the request before a category change neither moves its cursor nor closes it (C4a)', async () => {
+      const { requests } = rig(1);
+      const id = requests.rows[0]!.id;
+      const readAt = requests.rows[0]!.createdAt;
+      const offer = ids.next<'Offer'>();
+      await requests.requestForCategoryChange(market, {
+        productId,
+        productRevisionId: facts.productRevisionId,
+      });
+      expect(
+        await requests.progress(market, id, {
+          cursorOfferId: offer,
+          counts: NO_COUNTS,
+          requestedAt: readAt,
+        }),
+      ).toBe(false);
+      expect(
+        await requests.close(market, id, {
+          requestedAt: readAt,
+          state: 'settled',
+          counts: NO_COUNTS,
+          now: clock.now(),
+        }),
+      ).toBe(false);
+      expect(requests.rows[0]).toMatchObject({ state: 'pending', cursorOfferId: null });
     });
 
     it('leaves the request pending when the product moved since the ask (the lock fails)', async () => {

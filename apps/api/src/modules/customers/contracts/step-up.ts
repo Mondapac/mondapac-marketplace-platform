@@ -22,7 +22,27 @@ export const CUSTOMERS_STEP_UP_ACTIONS: readonly StepUpActionDeclaration[] = [
     locked: true,
     audience: 'admin',
   },
+  // Phase 1 (package B2): an admin exports the Customers list, a bulk copy of personal data.
+  {
+    key: 'customers.customers.export',
+    defaultRequired: true,
+    locked: true,
+    audience: 'admin',
+  },
+  // Customers admin email change (Hassan R4): an admin asks to change a customer's sign-in email,
+  // or cancels such a request. Guarded on both routes with `@RequiresStepUp` and spent by identity
+  // in the unit of the request or the cancel.
+  {
+    key: 'customers.customer-email.change',
+    defaultRequired: true,
+    locked: true,
+    audience: 'admin',
+  },
 ];
+
+export const CUSTOMER_EMAIL_CHANGE_STEP_UP = 'customers.customer-email.change';
+
+export const CUSTOMERS_EXPORT_STEP_UP = 'customers.customers.export';
 
 export const ACCOUNT_DELETION_SETTINGS_CHANGE_STEP_UP =
   'customers.account-deletion-settings.change';

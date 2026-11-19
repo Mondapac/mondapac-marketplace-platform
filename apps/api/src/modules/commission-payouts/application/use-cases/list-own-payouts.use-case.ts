@@ -1,19 +1,22 @@
 import type { CallContext } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
-import type { PayoutDependencies } from '../payout-dependencies';
 import {
-  listOwnPayouts,
-  type OwnPayoutsView,
-  type OwnPayoutView,
-  type SellerPayoutFailure,
-} from '../payout-seller-flow';
+  listOwnPayoutPage,
+  type OwnPayoutListDependencies,
+  type OwnPayoutListFailure,
+  type OwnPayoutListPage,
+} from '../own-payout-list-flow';
+import type { OwnPayoutView } from '../payout-seller-flow';
 
-export type { OwnPayoutsView, OwnPayoutView };
+export type { OwnPayoutListPage, OwnPayoutView };
 
-type Input = { readonly cursor?: unknown; readonly limit?: unknown };
+type Input = Readonly<Record<string, unknown>>;
 
-/** `commission-payouts.list-own-payouts`: the signed-in seller's payout history, newest first, voided ones hidden (own resources). */
-export class ListOwnPayouts extends UseCase<Input, OwnPayoutsView, SellerPayoutFailure> {
+/**
+ * `commission-payouts.list-own-payouts`: the signed-in seller's payout history as the Earnings
+ * super list (list 33), voided ones hidden (own resources).
+ */
+export class ListOwnPayouts extends UseCase<Input, OwnPayoutListPage, OwnPayoutListFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'commission-payouts.list-own-payouts',
     rule: { kind: 'own-resources' },
@@ -22,12 +25,12 @@ export class ListOwnPayouts extends UseCase<Input, OwnPayoutsView, SellerPayoutF
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: PayoutDependencies,
+    private readonly deps: OwnPayoutListDependencies,
   ) {
     super(gate);
   }
 
   protected handle(context: CallContext, input: Input) {
-    return listOwnPayouts(this.deps, context, input);
+    return listOwnPayoutPage(this.deps, context, input);
   }
 }

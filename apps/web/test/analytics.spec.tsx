@@ -315,13 +315,13 @@ describe('proxy', () => {
     const { proxy } = await import('../proxy.ts');
     vi.stubEnv('STOREFRONT_HOSTS', ENV.STOREFRONT_HOSTS);
     vi.stubEnv('STOREFRONT_GA4_IDS', ENV.STOREFRONT_GA4_IDS);
-    const policy = (host: string) =>
-      proxy(new NextRequest(`http://${host}/`, { headers: { host } })).headers.get(
+    const policy = async (host: string) =>
+      (await proxy(new NextRequest(`http://${host}/`, { headers: { host } }))).headers.get(
         'Content-Security-Policy',
       );
-    expect(policy('storefront.localhost:3003')).toContain('https://www.googletagmanager.com');
-    expect(policy('nz.localhost:3003')).not.toMatch(/google/);
+    expect(await policy('storefront.localhost:3003')).toContain('https://www.googletagmanager.com');
+    expect(await policy('nz.localhost:3003')).not.toMatch(/google/);
     vi.stubEnv('STOREFRONT_GA4_IDS', '');
-    expect(policy('storefront.localhost:3003')).not.toMatch(/google/);
+    expect(await policy('storefront.localhost:3003')).not.toMatch(/google/);
   });
 });

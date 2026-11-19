@@ -22,6 +22,10 @@ import type {
 } from '../ports/admin-products.reader';
 import type { SellerNamesReader } from '../ports/seller-names.reader';
 import { AdminProductsList } from './admin-products-list.use-case';
+import { ProductPauseProbe } from './product-pause-probe.use-case';
+import { ProductDeleteProbe } from './product-delete-probe.use-case';
+import { PlatformProductRetireProbe } from './platform-product-retire-probe.use-case';
+import { PlatformProductEditProbe } from './platform-product-edit-probe.use-case';
 
 // `admin-products.list` in memory (catalog design 8.2, 9.2), on both Market fixtures: the access
 // rule, the closed query, the status sets of the tabs, the counts, paging and the store names.
@@ -68,6 +72,7 @@ describe.each(['AU', 'ZZ'] as const)('admin products list in market %s', (code) 
     ownerSellerId: sellerId,
     categoryId: null,
     categoryName: null,
+    topics: [],
     typeCode: 'simple',
     status: 'published',
     offerCount: 2,
@@ -82,6 +87,8 @@ describe.each(['AU', 'ZZ'] as const)('admin products list in market %s', (code) 
       readonly counts?: readonly number[];
       readonly page?: AdminProductsPageResult;
       readonly allow?: boolean;
+      /** Permission keys the check refuses (the others are held). */
+      readonly deny?: readonly string[];
       readonly unitFails?: boolean;
       readonly names?: ReadonlyMap<Id<'Seller'>, string>;
     } = {},
@@ -90,8 +97,9 @@ describe.each(['AU', 'ZZ'] as const)('admin products list in market %s', (code) 
     const check: AuthorisationCheck = {
       check: (_context, declaration) => {
         checked.push(declaration);
+        const key = declaration.rule.kind === 'permissions' ? declaration.rule.allOf[0] : undefined;
         return Promise.resolve(
-          options.allow === false
+          options.allow === false || (key !== undefined && options.deny?.includes(key) === true)
             ? { allowed: false, denial: { code: 'access.denied' } }
             : { allowed: true },
         );
@@ -134,11 +142,16 @@ describe.each(['AU', 'ZZ'] as const)('admin products list in market %s', (code) 
         return Promise.resolve(options.names ?? new Map());
       },
     };
-    const useCase = new AdminProductsList(createUseCaseGate(markets, check), {
+    const gate = createUseCaseGate(markets, check);
+    const useCase = new AdminProductsList(gate, {
       unitOfWork,
       adminProductsReader: reader,
       policy: realPolicy,
       sellerNames,
+      pauseProbe: new ProductPauseProbe(gate),
+      deleteProbe: new ProductDeleteProbe(gate),
+      retireProbe: new PlatformProductRetireProbe(gate),
+      platformEditProbe: new PlatformProductEditProbe(gate),
     });
     return { useCase, checked, units, countCalls, listCalls, nameCalls };
   }
@@ -192,16 +205,20 @@ describe.each(['AU', 'ZZ'] as const)('admin products list in market %s', (code) 
             ownerStoreName: 'Dates & Co',
             categoryId: null,
             categoryName: null,
+            topics: [],
             typeCode: 'simple',
             status: 'published',
             offerCount: 2,
             updatedAt: T0.toString(),
             createdAt: T0.toString(),
+            actions: ['open', 'pause', 'delete'],
           },
         ],
         total: 3,
         page: 1,
         pageSize: 25,
+        paging: 'pages',
+        hasNext: false,
         counts: { active: 3, all: 5, inactive: 2 },
       },
     });
@@ -216,6 +233,86 @@ describe.each(['AU', 'ZZ'] as const)('admin products list in market %s', (code) 
     });
     // The name is read in the Market's own default locale.
     expect(listCalls[0]!.filter.locale).toBe(locale);
+  });
+
+  it('offers each row the actions the caller may run on its scope and state', async () => {
+    const rows = [
+      row({ scope: 'PLATFORM', ownerSellerId: null, status: 'published' }),
+      row({ scope: 'PLATFORM', ownerSellerId: null, status: 'paused' }),
+      row({ scope: 'SELLER', status: 'paused' }),
+      row({ scope: 'SELLER', status: 'unpublished' }),
+      row({ scope: 'PLATFORM', ownerSellerId: null, status: 'unpublished' }),
+      row({ scope: 'SELLER', status: 'retired' }),
+    ];
+    const { useCase } = setup({ rows });
+
+    const result = await useCase.execute(adminContext(), {});
+
+    expect(result.ok && result.value.items.map((item) => item.actions)).toEqual([
+      ['open', 'edit', 'pause', 'delete'],
+      ['open', 'edit', 'resume', 'delete'],
+      ['open', 'resume', 'delete'],
+      ['open', 'delete'],
+      ['open', 'edit'],
+      ['open'],
+    ]);
+  });
+
+  it('leaves out an action whose key the caller does not hold', async () => {
+    const { useCase } = setup({
+      rows: [row({ scope: 'PLATFORM', ownerSellerId: null, status: 'published' })],
+      deny: ['catalog.product.pause', 'catalog.platform-product.retire'],
+    });
+
+    const result = await useCase.execute(adminContext(), {});
+
+    expect(result.ok && result.value.items[0]!.actions).toEqual(['open', 'edit']);
+  });
+
+  it('pages with Previous and Next: one extra row, no counts, no total', async () => {
+    const rows = [row(), row(), row()];
+    const { useCase, countCalls, listCalls } = setup({ rows });
+
+    const result = await useCase.execute(adminContext(), { paging: 'prev-next', pageSize: 2 });
+
+    expect(result.ok && result.value).toMatchObject({
+      total: null,
+      counts: null,
+      paging: 'prev-next',
+      hasNext: true,
+      pageSize: 2,
+    });
+    expect(result.ok && result.value.items).toHaveLength(2);
+    expect(countCalls).toEqual([]);
+    expect(listCalls[0]!.page).toEqual({ offset: 0, limit: 3 });
+  });
+
+  it('refuses an unknown paging mode', async () => {
+    const { useCase } = setup();
+
+    const result = await useCase.execute(adminContext(), { paging: 'infinite' });
+
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'paging', code: 'value' }] },
+    });
+  });
+
+  it('passes the topics on in order with their status, so an archived one can be marked', async () => {
+    const tagged = row({
+      topics: [
+        { id: 'topic-1' as Id<'Topic'>, slug: 'eid', status: 'active', name: 'Eid' },
+        { id: 'topic-2' as Id<'Topic'>, slug: 'old', status: 'archived', name: null },
+      ],
+    });
+    const { useCase } = setup({ rows: [tagged] });
+
+    const result = await useCase.execute(adminContext(), {});
+
+    expect(result.ok && result.value.items[0]!.topics).toEqual([
+      { id: 'topic-1', slug: 'eid', status: 'active', name: 'Eid' },
+      { id: 'topic-2', slug: 'old', status: 'archived', name: null },
+    ]);
   });
 
   it('maps each tab to its states, and counts all three for the same search', async () => {

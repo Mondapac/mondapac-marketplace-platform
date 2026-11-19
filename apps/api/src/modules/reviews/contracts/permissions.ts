@@ -66,7 +66,20 @@ export const REVIEWS_SELLER_REPORT = definePermission('reviews', {
   protected: false,
 });
 
+/**
+ * See one customer's reviews (with their status and moderation state), the seller ratings they
+ * gave, their helpful votes and the reports by and about them, on the admin customer page
+ * (customers management phase 2b). Read only; a platform admin not acting as anyone. Never a
+ * seller key: a seller must not be able to tie a review to a buyer. Not seeded to the Viewer.
+ */
+export const REVIEWS_CUSTOMER_REVIEW_VIEW = definePermission('reviews', {
+  key: 'reviews.customer-review.view',
+  scope: 'platform',
+  protected: false,
+});
+
 export const REVIEWS_PERMISSIONS = declarePermissions('reviews', [
+  REVIEWS_CUSTOMER_REVIEW_VIEW,
   REVIEWS_SELLER_REPLY,
   REVIEWS_SELLER_REPORT,
   REVIEWS_SELLER_VIEW,

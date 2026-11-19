@@ -2,13 +2,19 @@ import { money, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { LedgerPage, LedgerRepository } from '../application/ports/ledger.repository';
-import { isCredit, LEDGER_KINDS, type LedgerEntry, type LedgerKind } from '../domain/ledger';
+import {
+  isCredit,
+  LEDGER_KINDS,
+  savingsOf,
+  type LedgerEntry,
+  type LedgerKind,
+} from '../domain/ledger';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 
-interface Row {
+export interface Row {
   readonly id: string;
   readonly sellerId: string;
   readonly orderId: string;
@@ -19,12 +25,15 @@ interface Row {
   readonly currency: string;
   readonly rateBps: number | null;
   readonly baseAmount: bigint | null;
+  readonly standardRateBps?: number | null;
+  readonly savedAmount?: bigint | null;
   readonly sourceId: string | null;
   readonly occurredAt: Date;
   readonly recordedAt: Date;
 }
 
-const toEntry = (row: Row): LedgerEntry => ({
+/** A stored ledger row as the domain reads it (also used by the list reader). */
+export const toEntry = (row: Row): LedgerEntry => ({
   id: row.id as Id<'LedgerEntry'>,
   sellerId: row.sellerId as Id<'Seller'>,
   orderId: row.orderId as Id<'Order'>,
@@ -34,6 +43,9 @@ const toEntry = (row: Row): LedgerEntry => ({
   amount: money(row.amount, row.currency),
   rateBps: row.rateBps,
   baseAmount: row.baseAmount,
+  ...(row.savedAmount === undefined || row.savedAmount === null
+    ? {}
+    : { standardRateBps: row.standardRateBps ?? null, savedAmount: row.savedAmount }),
   sourceId: row.sourceId as Id<'Refund'> | Id<'Dispute'> | null,
   occurredAt: toInstant(row.occurredAt),
   recordedAt: toInstant(row.recordedAt),
@@ -97,6 +109,8 @@ export class PrismaLedgerRepository implements LedgerRepository {
         currency: entry.amount.currency,
         rateBps: entry.rateBps,
         baseAmount: entry.baseAmount,
+        standardRateBps: entry.standardRateBps ?? null,
+        savedAmount: entry.savedAmount ?? null,
         sourceId: entry.sourceId,
         occurredAt: toDate(entry.occurredAt),
         recordedAt: toDate(entry.recordedAt),
@@ -113,6 +127,40 @@ export class PrismaLedgerRepository implements LedgerRepository {
       take: page.limit,
     });
     return rows.map(toEntry);
+  }
+
+  async savingsBetween(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ) {
+    // One grouped sum per window on the partial index of the rows that carry a saving, one after
+    // the other: a read-only unit opens no transaction, so parallel sums would hold one pool
+    // connection each (Mojtaba).
+    const tx = this.prisma.tx(market);
+    const answers: (readonly { readonly currency: string; readonly saved: bigint }[])[] = [];
+    for (const { from, to } of windows) {
+      const groups = await tx.commissionPayoutsLedgerEntry.groupBy({
+        by: ['currency', 'kind'],
+        where: {
+          marketId: market.marketId,
+          sellerId,
+          savedAmount: { not: null },
+          occurredAt: { gte: toDate(from), lt: toDate(to) },
+        },
+        _sum: { savedAmount: true },
+      });
+      answers.push(
+        savingsOf(
+          groups.map((group) => ({
+            currency: group.currency,
+            kind: group.kind,
+            saved: group._sum.savedAmount ?? 0n,
+          })),
+        ),
+      );
+    }
+    return answers;
   }
 
   async sums(market: MarketContext, sellerId: Id<'Seller'>) {

@@ -14,6 +14,8 @@ export interface AdminSession {
   readonly displayName: string;
   /** The holder's own IANA time zone, or null when none was chosen. */
   readonly timezone: string | null;
+  /** The Market's IANA zone: the fallback for a holder with no zone of their own (ADR-0005). */
+  readonly marketTimezone: string;
   /** The holder's panel language code, or null when none was chosen. */
   readonly locale: string | null;
   readonly csrfToken: string;

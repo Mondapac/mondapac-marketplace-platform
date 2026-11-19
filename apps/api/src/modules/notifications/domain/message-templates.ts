@@ -9,6 +9,7 @@ export type TemplateId =
   | 'seller-new-order'
   | 'seller-order-disputed'
   | 'order-shipped'
+  | 'item-unavailable-refund'
   | 'marketing-footer'
   | 'cart-reminder-first'
   | 'cart-reminder-second';
@@ -87,6 +88,28 @@ const TEMPLATES: Readonly<Record<TemplateId, TemplateSet>> = {
         '',
         'Order reference: {orderId}',
         'Carrier: {carrier}{tracking}',
+        '',
+        'View your order (you will be asked to sign in):',
+        '{orderUrl}',
+        '',
+      ),
+    },
+  },
+  // Order detail decision 6: the seller marked units unavailable before the order was ready and
+  // they were refunded at once. The amount and unit count only: no product, seller or card data.
+  'item-unavailable-refund': {
+    en: {
+      subject: 'Part of your order is unavailable',
+      body: lines(
+        'Part of your order is unavailable',
+        '',
+        'Sorry: a seller could not supply part of your order, so we have refunded it.',
+        '',
+        'Order reference: {orderId}',
+        'Items not supplied: {units}',
+        'Refunded: {amount}',
+        '',
+        'The refund goes back to the card you paid with. Your bank may take a few days to show it.',
         '',
         'View your order (you will be asked to sign in):',
         '{orderUrl}',

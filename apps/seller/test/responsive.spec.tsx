@@ -288,18 +288,30 @@ describe('payout account pages', () => {
 });
 
 describe('admin customer page', () => {
-  it('uses a fluid layout: no fixed pixel widths, a form row and actions that stack on phones', () => {
-    const text = readFileSync(
-      join(__dirname, '../../admin/src/customers/customer-lookup.tsx'),
-      'utf8',
-    );
-    expect(text).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
-    expect(text).toContain('max-w-(--mp-size-form-max)');
-    expect(text).toMatch(/flex[^"]*flex-col gap-3 sm:flex-row/);
-    expect(text).toContain('<ActionRow>');
-    // Long addresses wrap inside the value column instead of widening the page.
-    expect(text).toContain('wrap-anywhere');
-    expect(text).toContain('<Dialog');
+  // The exact-email lookup card was replaced by the Customers super list and the customer page
+  // (customers management phase 1); the same fluid-layout rules hold for every file of it.
+  const dir = '../../admin/src/customers/';
+  const read = (name: string) => readFileSync(join(__dirname, dir, name), 'utf8');
+
+  it('uses a fluid layout: no fixed pixel widths, a header and actions that stack on phones', () => {
+    for (const name of [
+      'customer-page.tsx',
+      'customer-money.tsx',
+      'customer-status.tsx',
+      'customers-list.tsx',
+      'customers-filter-panel.tsx',
+      'customers-bulk.tsx',
+    ]) {
+      expect(read(name), name).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
+    }
+    const page = read('customer-page.tsx');
+    expect(page).toMatch(/flex[^"]*flex-col gap-4 sm:flex-row/);
+    // Long names, addresses and ids wrap inside their column instead of widening the page.
+    expect(page).toContain('wrap-anywhere');
+    // The account actions are the shared confirm and dialog, which fit 375px by their own rules.
+    const status = read('customer-status.tsx');
+    expect(status).toContain('<ConfirmAction');
+    expect(status).toContain('<Dialog');
   });
 });
 
@@ -369,14 +381,15 @@ describe('team pages', () => {
     expect(page).toContain('flex-col gap-2 sm:flex-row');
     expect(page).toContain('min-h-12');
     expect(read('../src/team/role-dialog.tsx')).toContain('<Dialog');
-    expect(read('../src/team/row-actions.tsx')).toContain('<Dialog');
+    // The shared confirmation dialog (ConfirmAction) is built on the shared Dialog.
+    expect(read('../src/team/row-actions.tsx')).toContain('<ConfirmAction');
     expect(read('../src/team/invite-member-button.tsx')).toContain('w-full sm:w-auto');
     expect(read('../src/auth/accept-invitation-form.tsx')).toContain('min-h-12');
   });
 });
 
 describe('topbar', () => {
-  it('names the page on phones and shows the path to it from tablets up, without a second h1', () => {
+  it('names the page on phones and shows the path to it from desktop width up, without a second h1', () => {
     render(
       <Topbar
         pageTitle="Stock locations"
@@ -390,7 +403,7 @@ describe('topbar', () => {
     expect(screen.queryByRole('heading')).toBeNull();
     const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(nav.className).toContain('hidden');
-    expect(nav.className).toContain('md:block');
+    expect(nav.className).toContain('lg:block');
     expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe(
       '/account/security',
     );
@@ -451,20 +464,19 @@ describe('settings navigation', () => {
   const read = (file: string) => readFileSync(join(__dirname, '..', file), 'utf8');
   const shell = read('src/server/settings-shell.tsx');
 
-  it('shows the sub-navigation column from 1180px and the back link only below it', () => {
-    expect(shell).toContain('min-[1180px]:grid-cols-[12.5rem_minmax(0,1fr)]');
-    expect(shell).toMatch(/hidden[^"]*min-\[1180px\]:block/);
-    expect(shell).toMatch(/min-\[1180px\]:hidden[^]*<BackLink href="\/settings"/);
+  it('lets the page draw the pin star beside its title, so the top bar has none', () => {
+    expect(shell).toContain('pinInPage');
+    expect(read('src/server/seller-shell.tsx')).toContain('pinInPage ? undefined : <PinButton />');
   });
 
-  it('keeps the sub-navigation inside the viewport and lets the content column shrink', () => {
-    expect(shell).toContain('min-[1180px]:overflow-y-auto');
-    expect(shell).toContain('min-w-0');
+  it('has no second column: the back link shows only below the sidebar breakpoint', () => {
+    expect(shell).not.toContain('min-[1180px]');
+    expect(shell).not.toContain('SettingsSubNav');
+    expect(shell).toMatch(/md:hidden[^]*<BackLink href="\/settings"/);
   });
 
-  it('keeps every hub and sub-navigation link tall enough to touch', () => {
+  it('keeps every hub link tall enough to touch', () => {
     expect(read('../../packages/ui/src/settings/settings-hub.tsx')).toContain('min-h-12');
-    expect(read('src/settings/settings-sub-nav.tsx')).toContain('min-h-10');
   });
 
   it('puts the hub cards on one column on phones and two from 640px, never three', () => {

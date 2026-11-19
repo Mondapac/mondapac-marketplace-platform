@@ -23,5 +23,6 @@ export async function findProductsThrough(
     pageSize: first.pageSize,
     hasMore: last.hasMore,
     ...(first.total === undefined ? {} : { total: first.total }),
+    ...(first.liveFilters === undefined ? {} : { liveFilters: first.liveFilters }),
   };
 }

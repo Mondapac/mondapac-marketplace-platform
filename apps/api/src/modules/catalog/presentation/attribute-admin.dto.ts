@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { ATTRIBUTE_DATA_TYPES } from '@mondapac/shared-kernel';
+import {
+  CatalogueRequestRef,
+  CatalogueReviewBody,
+  NOTE_DESCRIPTION,
+  REQUEST_DESCRIPTION,
+} from './catalogue-review.dto';
+import { ATTRIBUTE_DATA_TYPES, MEASURE_DIMENSIONS } from '@mondapac/shared-kernel';
 
 // Answers of the admin attribute and feature-set reads (attributes plan, package A1). Codes, the
 // names and labels an administrator or the seed typed per locale, counts; never a value a seller
@@ -15,6 +21,12 @@ export class MarketLocalesBody {
   @ApiProperty({ description: 'The default locale (BCP 47).' }) default!: string;
   @ApiProperty({ type: [String], description: 'The default first, then every other locale.' })
   supported!: string[];
+}
+
+export class MarketUnitBody {
+  @ApiProperty() code!: string;
+  @ApiProperty({ enum: MEASURE_DIMENSIONS }) dimension!: string;
+  @ApiProperty(LOCALIZED) labels!: Record<string, string>;
 }
 
 export class AttributeSummaryBody {
@@ -35,6 +47,12 @@ export class AttributeSummaryBody {
 }
 
 export class AttributeListItemBody extends AttributeSummaryBody {
+  @ApiProperty({
+    type: [String],
+    description:
+      'The row actions of the Actions menu the caller may run: edit, view-links, deactivate.',
+  })
+  actions!: string[];
   @ApiProperty({ description: 'Published products whose current revision has a value for it.' })
   productCount!: number;
   @ApiProperty({ description: 'Feature sets that use it.' }) featureSetCount!: number;
@@ -47,13 +65,26 @@ export class FeatureSetRefBody {
 
 export class AttributeListBody {
   @ApiProperty({ type: [AttributeListItemBody] }) items!: AttributeListItemBody[];
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description:
+      'Whether a create, move or reorder is reviewed after and a discard, merge or archive waits ' +
+      'for approval in this Market (Admin Inbox › System requests): the dialogs then ask for a note.',
+  })
+  review!: CatalogueReviewBody;
   @ApiProperty({ nullable: true, type: String, description: 'The `afterId` of the next page.' })
   nextAfterId!: string | null;
   @ApiProperty({ description: 'Attributes that match the filters, across every page.' })
   total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty({ description: 'Whether a page after this one exists.' }) hasNext!: boolean;
   @ApiProperty({ description: 'Every attribute of the Market, whatever the filters.' })
   totalAll!: number;
   @ApiProperty({ type: MarketLocalesBody }) locales!: MarketLocalesBody;
+  @ApiProperty({ type: [MarketUnitBody], description: 'Units a measure attribute may offer.' })
+  units!: MarketUnitBody[];
   @ApiProperty({ type: [FeatureSetRefBody], description: 'The choices of the usedIn filter.' })
   featureSets!: FeatureSetRefBody[];
   @ApiProperty({ description: 'True when the Market holds more attributes than one read loads.' })
@@ -65,6 +96,12 @@ export class AttributeOptionBody {
   @ApiProperty(LOCALIZED) labels!: Record<string, string>;
   @ApiProperty() active!: boolean;
   @ApiProperty() position!: number;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'The value this one was merged into (attributes A8), or null.',
+  })
+  mergedInto!: string | null;
   @ApiProperty({ description: 'Published products whose current revision holds this value.' })
   productCount!: number;
 }
@@ -82,6 +119,7 @@ export class AttributeChangeBody {
   @ApiProperty({
     description:
       '`name.{locale}`, `material`, `isVariantOption`, `bounds.{maxLength|min|max}`, ' +
+      '`measure.{dimension|units|defaultUnit|decimals}`, ' +
       '`help.{locale}`, `showOnProductPage`, `searchable`, `canBeFilter`, `position`, ' +
       '`internalNote` (no values: only that it changed), ' +
       '`option.{code}.added`, `option.{code}.label.{locale}`, `option.{code}.active` or ' +
@@ -109,10 +147,31 @@ export class AttributeHistoryBody {
   changes!: AttributeChangeBody[];
 }
 
+export class AttributeMeasureBody {
+  @ApiProperty({ enum: MEASURE_DIMENSIONS }) dimension!: string;
+  @ApiProperty({
+    type: [String],
+    description: 'Unit codes a seller may pick; all of the dimension.',
+  })
+  units!: string[];
+  @ApiProperty() defaultUnit!: string;
+  @ApiProperty({ description: 'Decimal places a seller may type, 0 to 6.' }) decimals!: number;
+}
+
 export class AttributeBoundsBody {
   @ApiProperty({ required: false }) maxLength?: number;
-  @ApiProperty({ required: false }) min?: number;
+  @ApiProperty({
+    required: false,
+    description: 'For a measure, in the dimension base unit (g, ml, mm, count).',
+  })
+  min?: number;
   @ApiProperty({ required: false }) max?: number;
+  @ApiProperty({
+    required: false,
+    type: AttributeMeasureBody,
+    description: 'A measure attribute only: its unit settings.',
+  })
+  measure?: AttributeMeasureBody;
 }
 
 export class AttributeDisplayBody {
@@ -132,10 +191,21 @@ export class AttributeDisplayBody {
   position!: number;
 }
 
+export class AttributeMergedIntoBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+}
+
 export class AttributeDetailBody extends AttributeSummaryBody {
   @ApiProperty({ enum: ['seed', 'admin'] }) createdByKind!: string;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ description: 'The version a later change names.' }) version!: number;
+  @ApiProperty({
+    type: AttributeMergedIntoBody,
+    nullable: true,
+    description: 'The attribute this one was merged into; set only when it is archived.',
+  })
+  mergedInto!: AttributeMergedIntoBody | null;
   @ApiProperty({ type: AttributeBoundsBody }) bounds!: AttributeBoundsBody;
   @ApiProperty({ type: AttributeDisplayBody }) display!: AttributeDisplayBody;
   @ApiProperty({ type: [AttributeOptionBody], description: 'By position.' })
@@ -146,6 +216,13 @@ export class AttributeDetailBody extends AttributeSummaryBody {
   history!: AttributeHistoryBody[];
   @ApiProperty() historyTruncated!: boolean;
   @ApiProperty({ type: MarketLocalesBody }) locales!: MarketLocalesBody;
+  @ApiProperty({ type: [MarketUnitBody], description: 'Units a measure attribute may offer.' })
+  units!: MarketUnitBody[];
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description: 'Whether a save is reviewed in this Market: the form then asks for a note.',
+  })
+  review!: CatalogueReviewBody;
 }
 
 export class FeatureSetListItemBody {
@@ -163,6 +240,13 @@ export class FeatureSetListItemBody {
 
 export class FeatureSetListBody {
   @ApiProperty({ type: [FeatureSetListItemBody] }) items!: FeatureSetListItemBody[];
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description:
+      'Whether a create, move or reorder is reviewed after and a discard, merge or archive waits ' +
+      'for approval in this Market (Admin Inbox › System requests): the dialogs then ask for a note.',
+  })
+  review!: CatalogueReviewBody;
   @ApiProperty({ description: 'True when the Market has more than 500 feature sets.' })
   truncated!: boolean;
 }
@@ -239,14 +323,21 @@ export class AttributeCreateRequest extends AttributeContentRequest {
   @ApiProperty({ required: false, description: 'Left out, it comes from the default name.' })
   code?: string;
   @ApiProperty({ required: false }) localizable?: boolean;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class AttributeEditRequest extends AttributeContentRequest {
   @ApiProperty({ description: 'The version the admin saw.' }) version!: number;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class AttributeVersionRequest {
   @ApiProperty({ description: 'The version the admin saw.' }) version!: number;
+}
+
+/** Discard or archive: the version, and the note where the action waits for approval. */
+export class AttributeVersionNoteRequest extends AttributeVersionRequest {
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class AttributeWriteBody {
@@ -259,6 +350,18 @@ export class AttributeWriteBody {
 
 export class AttributeWriteWrapBody {
   @ApiProperty({ type: AttributeWriteBody }) attribute!: AttributeWriteBody;
+  @ApiProperty({
+    type: CatalogueRequestRef,
+    nullable: true,
+    required: false,
+    description: REQUEST_DESCRIPTION,
+  })
+  request?: CatalogueRequestRef | null;
+}
+
+export class AttributeEditWrapBody extends AttributeWriteWrapBody {
+  @ApiProperty({ type: CatalogueRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  override request: CatalogueRequestRef | null = null;
 }
 
 // The two-person request to clear `material` (catalog design 8.2; attributes A2 part 3).
@@ -367,6 +470,7 @@ export class FeatureSetContentRequest {
 export class FeatureSetCreateRequest extends FeatureSetContentRequest {
   @ApiProperty({ required: false, description: 'Left out, it comes from the default-locale name.' })
   code?: string;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class FeatureSetEditRequest extends FeatureSetContentRequest {
@@ -402,6 +506,7 @@ export class CategoryLinksSetRequest {
     description: 'The version the admin saw; omitted when the category has no link yet.',
   })
   version?: number;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class CategoryLinksOwnBody {
@@ -439,6 +544,11 @@ export class CategoryLinksBody {
   @ApiProperty({ format: 'uuid' }) categoryId!: string;
   @ApiProperty({ type: CategoryLinksOwnBody, nullable: true }) own!: CategoryLinksOwnBody | null;
   @ApiProperty({ type: CategoryLinksEffectiveBody }) effective!: CategoryLinksEffectiveBody;
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description: 'Whether a save is reviewed in this Market: the editor then asks for a note.',
+  })
+  review!: CatalogueReviewBody;
 }
 
 export class CategoryLinksSetBody {
@@ -451,9 +561,17 @@ export class CategoryLinksSetBody {
 
 export class CategoryLinksSetWrapBody {
   @ApiProperty({ type: CategoryLinksSetBody }) links!: CategoryLinksSetBody;
+  @ApiProperty({ type: CatalogueRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: CatalogueRequestRef | null;
 }
 
 export class MissingDetailsItemBody {
+  @ApiProperty({
+    type: [String],
+    description:
+      'The row actions of the Actions menu the caller may run: open-product, email-seller.',
+  })
+  actions!: string[];
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty() productCode!: string;
   @ApiProperty({ nullable: true, type: String, description: 'The name in the default locale.' })
@@ -468,6 +586,14 @@ export class MissingDetailsItemBody {
   @ApiProperty() featureSetCode!: string;
   @ApiProperty({ type: [String], description: 'Codes of the required attributes with no value.' })
   missing!: string[];
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'date-time',
+    description:
+      'When an "Email sellers" mail about it last went to its seller; null when never, or while a newer request waits.',
+  })
+  lastEmailedAt!: string | null;
 }
 
 export class MissingDetailsListBody {
@@ -480,4 +606,124 @@ export class MissingDetailsListBody {
     description: 'Feature sets that could not be read; their products are not judged.',
   })
   unreadableFeatureSets!: string[];
+}
+
+export class MissingDetailsEmailRequest {
+  @ApiProperty({
+    type: [String],
+    description: 'The products to ask about, 1 to 200 ids. Judged again on the server.',
+  })
+  productIds!: string[];
+  @ApiProperty({
+    required: false,
+    description: 'True: only report who would be emailed; nothing is written.',
+  })
+  dryRun?: boolean;
+}
+
+class MissingDetailsEmailProductBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty() productCode!: string;
+  @ApiProperty({ nullable: true, type: String }) name!: string | null;
+  @ApiProperty({ type: [String], description: 'English names of the missing details.' })
+  missing!: string[];
+  @ApiProperty({ enum: ['will-send', 'queued', 'recently-emailed'] }) status!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'When the seller was last asked.' })
+  lastRequestedAt!: string | null;
+}
+
+class MissingDetailsEmailSellerBody {
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ nullable: true, type: String }) sellerName!: string | null;
+  @ApiProperty({ type: [MissingDetailsEmailProductBody] })
+  products!: MissingDetailsEmailProductBody[];
+}
+
+class MissingDetailsEmailIgnoredBody {
+  @ApiProperty({ format: 'uuid' }) productId!: string;
+  @ApiProperty({ enum: ['not-published', 'platform-product', 'nothing-missing'] }) reason!: string;
+}
+
+export class MissingDetailsEmailBody {
+  @ApiProperty() dryRun!: boolean;
+  @ApiProperty({ description: 'A seller is asked about a product at most once in this many days.' })
+  throttleDays!: number;
+  @ApiProperty({ type: [MissingDetailsEmailSellerBody] })
+  sellers!: MissingDetailsEmailSellerBody[];
+  @ApiProperty({ type: [MissingDetailsEmailIgnoredBody] })
+  ignored!: MissingDetailsEmailIgnoredBody[];
+}
+
+// The restructure routes (attributes A8): the impact dialog, merging values and archiving.
+
+class ImpactCountBody {
+  @ApiProperty() count!: number;
+  @ApiProperty({ description: 'True when the real number is count or more (the read stopped).' })
+  atLeast!: boolean;
+}
+
+class ImpactFeatureSetBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty({ type: 'object', additionalProperties: { type: 'string' } })
+  names!: Record<string, string>;
+}
+
+class ImpactAttributeBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty({ enum: ['draft', 'active', 'archived'] }) status!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty() material!: boolean;
+  @ApiProperty() isVariantOption!: boolean;
+  @ApiProperty() dataType!: string;
+}
+
+class ImpactBody {
+  @ApiProperty({ type: ImpactCountBody }) publishedProducts!: ImpactCountBody;
+  @ApiProperty({ type: ImpactCountBody }) drafts!: ImpactCountBody;
+  @ApiProperty() featureSetCount!: number;
+  @ApiProperty({ type: [ImpactFeatureSetBody] }) featureSets!: ImpactFeatureSetBody[];
+  @ApiProperty({ type: ImpactCountBody }) categories!: ImpactCountBody;
+  @ApiProperty({ type: ImpactCountBody }) filters!: ImpactCountBody;
+  @ApiProperty({ type: ImpactCountBody }) liveVariantProducts!: ImpactCountBody;
+}
+
+export class AttributeImpactBody {
+  @ApiProperty({ type: ImpactAttributeBody }) attribute!: ImpactAttributeBody;
+  @ApiProperty({ type: ImpactBody }) impact!: ImpactBody;
+}
+
+export class AttributeMergeRequest {
+  @ApiProperty({ description: 'The version of the attribute that is merged away.' })
+  version!: number;
+  @ApiProperty({ description: 'The id of the active attribute of the same type it goes into.' })
+  target!: string;
+  @ApiProperty({ description: 'The version of the target the impact dialog showed.' })
+  targetVersion!: number;
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: { type: 'string' },
+    description: 'For a choice attribute: every value code of the source to a target value code.',
+  })
+  options?: Record<string, string>;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
+}
+
+export class AttributeConvertRequest {
+  @ApiProperty({ description: 'The attribute version the impact dialog showed.' })
+  version!: number;
+  @ApiProperty({
+    enum: ['decimal', 'multi-select'],
+    description: 'The new type: decimal (from integer) or multi-select (from select).',
+  })
+  to!: string;
+}
+
+export class ValuesMergeRequest {
+  @ApiProperty({ description: 'The attribute version the impact dialog showed.' })
+  version!: number;
+  @ApiProperty({ description: 'The code of the value that is merged away.' }) source!: string;
+  @ApiProperty({ description: 'The code of the active value it is merged into.' }) target!: string;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }

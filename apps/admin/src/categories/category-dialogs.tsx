@@ -3,6 +3,14 @@
 import { Banner, Button, Dialog, Tabs, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useMemo, useRef, useState, type FormEvent } from 'react';
+import {
+  ApprovalNotice,
+  ReviewNoteField,
+  trimmedNote,
+  useApprovalAction,
+  useSentForApproval,
+  useSentForReview,
+} from '../shared/review-note.tsx';
 import { CategoryProblemBanner } from './category-problem.tsx';
 import { ContentFields, SeoFields, useFieldMessage } from './category-form-parts.tsx';
 import type { Outcome } from './use-category-call.ts';
@@ -113,7 +121,15 @@ export function EditDetailsDialog({
   const [active, setActive] = useState(body.requiredLocales[0] ?? locales[0] ?? '');
   const [tab, setTab] = useState<FormTab>('content');
   const [local, setLocal] = useState<FieldErrors>({});
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
+  // The note is asked only where the view says a save is reviewed (area catalogue).
+  const reviewed = body.review?.reviewed === true;
   const errors = mergeErrors(local, call.problem?.fields ?? {});
+  // A refusal of the note alone shows on the note field, not also as a banner.
+  const refusedFields = Object.keys(call.problem?.fields ?? {});
+  const noteOnly = refusedFields.length > 0 && refusedFields.every((path) => path === 'note');
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -129,13 +145,28 @@ export function EditDetailsDialog({
       }
       return;
     }
+    const sentNote = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sentNote === null) {
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     const answer: Outcome<WriteWrap> = await call.run<WriteWrap>(
       'PATCH',
       `${API_CATEGORIES}/${body.category.id}`,
-      { version: body.category.version, ...editBody(form) },
+      {
+        version: body.category.version,
+        ...editBody(form),
+        ...(sentNote === null ? {} : { note: sentNote }),
+      },
     );
-    if (answer.ok) onSaved();
-    else if (answer.problem !== null) showFirst(answer.problem.fields, setTab, setActive);
+    if (answer.ok) {
+      sentForReview(answer.body);
+      onSaved();
+    } else if (answer.problem !== null) {
+      if (answer.problem.fields['note'] !== undefined) setNoteError('rejected');
+      showFirst(answer.problem.fields, setTab, setActive);
+    }
   }
 
   const formId = 'category-edit-form';
@@ -166,7 +197,7 @@ export function EditDetailsDialog({
         onSubmit={(event) => void submit(event)}
         noValidate
       >
-        <CategoryProblemBanner problem={problem} />
+        <CategoryProblemBanner problem={noteOnly ? null : problem} />
         <Tabbed tab={tab} onTab={setTab}>
           {tab === 'content' ? (
             <ContentFields
@@ -188,6 +219,17 @@ export function EditDetailsDialog({
             />
           )}
         </Tabbed>
+        {reviewed ? (
+          <ReviewNoteField
+            value={note}
+            onChange={(next) => {
+              setNote(next);
+              setNoteError(null);
+            }}
+            error={noteError ?? undefined}
+            disabled={call.pending}
+          />
+        ) : null}
       </form>
     </Dialog>
   );
@@ -201,10 +243,13 @@ export function CreateCategoryDialog({
   supportedLocales,
   requiredLocales,
   csrfToken,
+  reviewed = false,
   onClose,
   onCreated,
   onReload,
 }: {
+  /** Where a new category is reviewed (Admin Inbox > System requests): the form asks for a note. */
+  readonly reviewed?: boolean;
   /** The id of the parent; null for a department. */
   readonly parent: string | null;
   readonly parentName: string | null;
@@ -229,6 +274,9 @@ export function CreateCategoryDialog({
   const englishName = form.texts['en']?.name ?? form.texts[defaultLocale]?.name ?? '';
   const shownSlug = slugTouched ? slug : suggestSlug(englishName);
   const tm = useFieldMessage(errors);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -246,14 +294,26 @@ export function CreateCategoryDialog({
       }
       return;
     }
+    const sentNote = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sentNote === null) {
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     const answer = await call.run<WriteWrap>('POST', API_CATEGORIES, {
       parentId: parent,
       slug: shownSlug,
       ...editBody(form),
       treeVersion,
+      ...(sentNote === null ? {} : { note: sentNote }),
     });
-    if (answer.ok) onCreated(answer.body.category.id);
-    else if (answer.problem !== null) showFirst(answer.problem.fields, setTab, setActive);
+    if (answer.ok) {
+      sentForReview(answer.body);
+      onCreated(answer.body.category.id);
+    } else if (answer.problem !== null) {
+      if (answer.problem.fields['note'] !== undefined) setNoteError('rejected');
+      showFirst(answer.problem.fields, setTab, setActive);
+    }
   }
 
   const formId = 'category-create-form';
@@ -326,6 +386,16 @@ export function CreateCategoryDialog({
             />
           )}
         </Tabbed>
+        {reviewed ? (
+          <ReviewNoteField
+            value={note}
+            onChange={(next) => {
+              setNote(next);
+              setNoteError(null);
+            }}
+            error={noteError ?? undefined}
+          />
+        ) : null}
       </form>
     </Dialog>
   );
@@ -426,6 +496,7 @@ export function ConfirmCategoryDialog({
   onDone,
   onReload,
 }: {
+  /** Discard where it waits for approval: it asks for a note and leaves the category as it is. */
   readonly kind: ConfirmKind;
   readonly body: DetailBody;
   readonly name: string;
@@ -439,14 +510,32 @@ export function ConfirmCategoryDialog({
   const t = useTranslations('categories.confirm');
   const call = useCategoryCall(csrfToken);
   const cancel = useRef<HTMLButtonElement>(null);
+  // A discard waits for another admin's approval where the Market reviews area catalogue.
+  const approval = kind === 'discard' && body.review?.reviewed === true;
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForApproval = useSentForApproval();
+  const actionLabel = useApprovalAction();
 
   async function confirm() {
+    const sentNote = approval ? trimmedNote(note) : null;
+    if (approval && sentNote === null) {
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     const answer = await call.run<WriteWrap>(
       'POST',
       `${API_CATEGORIES}/${body.category.id}/${kind}`,
-      { treeVersion: body.treeVersion },
+      { treeVersion: body.treeVersion, ...(sentNote === null ? {} : { note: sentNote }) },
     );
-    if (answer.ok) onDone();
+    if (!answer.ok) {
+      if (answer.problem?.fields['note'] !== undefined) setNoteError('rejected');
+      return;
+    }
+    // Sent for approval: nothing changed yet, so the category stays as it is.
+    if (sentForApproval(answer.body)) onClose();
+    else onDone();
   }
 
   const problem = call.problem;
@@ -465,12 +554,12 @@ export function ConfirmCategoryDialog({
             <Button onClick={onReload}>{t('reload')}</Button>
           ) : (
             <Button
-              variant={kind === 'discard' ? 'destructive-solid' : 'primary'}
+              variant={kind === 'discard' && !approval ? 'destructive-solid' : 'primary'}
               loading={call.pending}
               disabled={call.pending}
               onClick={() => void confirm()}
             >
-              {t(`${kind}.action`)}
+              {actionLabel(t(`${kind}.action`), approval)}
             </Button>
           )}
         </>
@@ -478,11 +567,90 @@ export function ConfirmCategoryDialog({
     >
       <div className="flex flex-col gap-3">
         <CategoryProblemBanner problem={problem} />
-        <p className="m-0">{t(`${kind}.body`, { name, count: descendants })}</p>
+        <p className="m-0">
+          {approval
+            ? t('discard.approval-body', { name })
+            : t(`${kind}.body`, { name, count: descendants })}
+        </p>
+        {approval ? <ApprovalNotice /> : null}
         {kind === 'hide' && descendants > 0 ? (
           <p className="m-0">{t('hide.cascade', { count: descendants })}</p>
         ) : null}
+        {approval ? (
+          <ReviewNoteField
+            approval
+            value={note}
+            onChange={(next) => {
+              setNote(next);
+              setNoteError(null);
+            }}
+            error={noteError ?? undefined}
+          />
+        ) : null}
       </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Asks for the note of a change that has no dialog of its own (Move up, Move down) where the
+ * Market reviews area catalogue (Admin Inbox > System requests), then runs it. `onSubmit` answers
+ * `note-refused` when the server refused the note: the dialog then stays open and says so on the
+ * field, as the other dialogs do; any other answer is the owner's to show.
+ */
+export function ReviewNoteDialog({
+  title,
+  action,
+  pending,
+  onClose,
+  onSubmit,
+}: {
+  readonly title: string;
+  readonly action: string;
+  readonly pending: boolean;
+  readonly onClose: () => void;
+  readonly onSubmit: (note: string) => Promise<'done' | 'note-refused'>;
+}) {
+  const t = useTranslations('categories.confirm');
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  return (
+    <Dialog
+      open
+      title={title}
+      onClose={onClose}
+      actions={
+        <>
+          <Button variant="secondary" disabled={pending} onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          <Button
+            loading={pending}
+            disabled={pending}
+            onClick={() => {
+              const sent = trimmedNote(note);
+              if (sent === null) {
+                setNoteError('required');
+                return;
+              }
+              void onSubmit(sent).then((outcome) => {
+                if (outcome === 'note-refused') setNoteError('rejected');
+              });
+            }}
+          >
+            {action}
+          </Button>
+        </>
+      }
+    >
+      <ReviewNoteField
+        value={note}
+        onChange={(next) => {
+          setNote(next);
+          setNoteError(null);
+        }}
+        error={noteError ?? undefined}
+      />
     </Dialog>
   );
 }

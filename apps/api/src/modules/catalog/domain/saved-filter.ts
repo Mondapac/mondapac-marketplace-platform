@@ -1,11 +1,15 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { Id, Result, Temporal } from '@mondapac/shared-kernel';
 
-// Saved filters (saved views) of an admin list (catalog design 9.2d). Pure rules: the names, the
-// two visibilities, the caps and who may change a filter. The payload (the list's tab, search,
-// filters and sort) is validated by the application, which knows each list's vocabulary.
+// Saved filters (saved views) of an admin list or of the seller Products list (catalog design
+// 9.2d, 9.2e). Pure rules: the names, the two visibilities, the caps and who may change a filter.
+// The payload (the list's tab, search, filters and sort) is validated by the application, which
+// knows each list's vocabulary.
 
-/** Who can use a filter: only its owner, or every admin of the Market who can see the list. */
+/**
+ * Who can use a filter: only its owner, or everyone who can see the list (every admin of the Market;
+ * for a seller list, every member of the same store).
+ */
 export const SAVED_FILTER_VISIBILITIES = ['me', 'everyone'] as const;
 export type SavedFilterVisibility = (typeof SAVED_FILTER_VISIBILITIES)[number];
 
@@ -20,6 +24,8 @@ export interface SavedFilter {
   readonly id: Id<'SavedFilter'>;
   readonly listKey: string;
   readonly ownerAccountId: Id<'Account'>;
+  /** The store of a seller-list filter; null for an admin list (the table's CHECK ties the two). */
+  readonly sellerId: Id<'Seller'> | null;
   readonly visibility: SavedFilterVisibility;
   readonly name: string;
   /** The closed document the list validates; opaque to the rules here. */

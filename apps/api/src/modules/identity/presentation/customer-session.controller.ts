@@ -35,6 +35,7 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { clientAddressFrom } from '../../../platform/http/client-address';
 import { clientAddressOf, clientOriginOf } from '../../../platform/rate-limit/client-origin';
+import { deviceOf } from '../domain/device';
 import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import { DescribeActor } from '../application/use-cases/describe-actor.use-case';
 import { SignInCustomer } from '../application/use-cases/sign-in-customer.use-case';
@@ -197,8 +198,11 @@ export class CustomerSessionController {
       throw fail(ACCESS_DENIED_STATUS['access.denied'], 'access.denied');
     }
     response.setHeader('Cache-Control', 'no-store');
+    // The Market zone is for the admin panel only (ADR-0005); the storefront answer is unchanged.
+    const { marketTimezone: _adminOnly, ...customerSummary } = result.value;
+    void _adminOnly;
     return {
-      ...result.value,
+      ...customerSummary,
       population: 'customer',
       permissionKeys: [...result.value.permissionKeys],
       csrfToken,
@@ -225,7 +229,7 @@ export class CustomerSessionController {
     const result = await this.signInCustomer.execute(context, {
       email: fields.email,
       password: fields.password,
-      client: { origin, address },
+      client: { origin, address, device: deviceOf(request.get('user-agent')) },
     });
     if (result.ok) {
       const { token, absoluteLifetimeSeconds } = result.value;

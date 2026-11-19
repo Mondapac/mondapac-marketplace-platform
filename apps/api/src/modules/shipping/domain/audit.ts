@@ -34,12 +34,16 @@ export const FLEET_ASSIGNMENT_TARGET = 'shipping.fleet-selection-assignment';
 /** The audit target type of a fleet's reliability score in a Market (the id is the fleet). */
 export const FLEET_RELIABILITY_TARGET = 'shipping.fleet-reliability';
 
-/** An admin created a fleet-selection model. */
+/**
+ * An admin created a fleet-selection model. `requestId` names the System request whose approval
+ * created it (the create waits for approval where the Market reviews area delivery); null for a
+ * create done at once.
+ */
 export const FleetModelCreated = defineAuditAction({
   action: 'shipping.fleet-model.created',
   targetType: FLEET_MODEL_TARGET,
   actors: ['authenticated'],
-  after: MODEL_SHAPE,
+  after: { ...MODEL_SHAPE, requestId: auditField.optional(auditField.id()) },
 });
 
 /** An admin edited a model (its name, kind, weights or order). */
@@ -72,6 +76,38 @@ export const FleetReliabilitySet = defineAuditAction({
   actors: ['authenticated'],
   before: { score: auditField.optional(auditField.integer()) },
   after: { score: auditField.integer() },
+});
+
+/**
+ * A reviewer rejected, or its author withdrew, an edit of a model in Admin Inbox › System requests,
+ * and the name and rule before came back (a new version). `requestId` names the System request.
+ */
+export const FleetModelReverted = defineAuditAction({
+  action: 'shipping.fleet-model.reverted',
+  targetType: FLEET_MODEL_TARGET,
+  actors: ['authenticated'],
+  before: MODEL_SHAPE,
+  after: { ...MODEL_SHAPE, requestId: auditField.id() },
+});
+
+/** A revert put the active model of a delivery method back (`modelId` null: the default order). */
+export const FleetActivationReverted = defineAuditAction({
+  action: 'shipping.fleet-model.activation-reverted',
+  targetType: FLEET_ASSIGNMENT_TARGET,
+  targetId: auditField.enumOf(['instant', 'same-day', 'scheduled'] as const),
+  actors: ['authenticated'],
+  before: { modelId: auditField.optional(auditField.id()) },
+  after: { modelId: auditField.optional(auditField.id()), requestId: auditField.id() },
+});
+
+/** A revert put the reliability score of a fleet back. The target is the fleet. */
+export const FleetReliabilityReverted = defineAuditAction({
+  action: 'shipping.fleet-reliability.reverted',
+  targetType: FLEET_RELIABILITY_TARGET,
+  targetId: FLEET_FIELD,
+  actors: ['authenticated'],
+  before: { score: auditField.optional(auditField.integer()) },
+  after: { score: auditField.integer(), requestId: auditField.id() },
 });
 
 // Delivery settings (delivery models, package 4). `same_day` is `same-day` in an audit enum.
@@ -125,9 +161,40 @@ export const SellerDeliveryMethodsSet = defineAuditAction({
   after: { unsupported: auditField.listOf(DELIVERY_METHOD_FIELD, 4) },
 });
 
+/**
+ * A reviewer rejected, or its author withdrew, a save of the delivery settings in Admin Inbox ›
+ * System requests, and the settings before came back as a new version. `requestId` names the
+ * System request, so a revert is never mistaken for an admin's own edit.
+ */
+export const DeliverySettingsReverted = defineAuditAction({
+  action: 'shipping.delivery-settings.reverted',
+  targetType: DELIVERY_SETTINGS_TARGET,
+  targetId: auditField.enumOf(['market'] as const),
+  actors: ['authenticated'],
+  before: SETTINGS_SHAPE,
+  after: { ...SETTINGS_SHAPE, requestId: auditField.id() },
+});
+
+/** A revert put the methods a seller does not support back, naming the System request. */
+export const SellerDeliveryMethodsReverted = defineAuditAction({
+  action: 'shipping.seller-delivery-methods.reverted',
+  targetType: SELLER_DELIVERY_METHODS_TARGET,
+  actors: ['authenticated'],
+  before: { unsupported: auditField.listOf(DELIVERY_METHOD_FIELD, 4) },
+  after: {
+    unsupported: auditField.listOf(DELIVERY_METHOD_FIELD, 4),
+    requestId: auditField.id(),
+  },
+});
+
 export const SHIPPING_AUDIT_ACTIONS = [
   DeliverySettingsChanged,
   SellerDeliveryMethodsSet,
+  DeliverySettingsReverted,
+  SellerDeliveryMethodsReverted,
+  FleetModelReverted,
+  FleetActivationReverted,
+  FleetReliabilityReverted,
   FleetModelCreated,
   FleetModelEdited,
   FleetModelActivated,

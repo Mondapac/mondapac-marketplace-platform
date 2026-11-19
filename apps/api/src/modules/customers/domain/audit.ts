@@ -102,6 +102,273 @@ export const AccountDeletionCancelledByAdmin = defineAuditAction({
   },
 });
 
+/** The audit target type of a Customers list export. */
+export const CUSTOMERS_EXPORT_TARGET = 'customers.customers-export';
+
+/**
+ * An admin exported the Customers list (a bulk copy of personal data), after a fresh two-step
+ * code. No search text, no filter value, no address: the file format, how many customers it holds
+ * and whether they were picked by id or by the list's filter. The row names the step-up proof.
+ */
+export const CustomersExported = defineAuditAction({
+  action: 'customers.customers.exported',
+  targetType: CUSTOMERS_EXPORT_TARGET,
+  targetId: auditField.enumOf(['customers-export'] as const),
+  actors: ['authenticated'],
+  after: {
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rowCount: auditField.integer(),
+    selection: auditField.enumOf(['ids', 'filter'] as const),
+    stepUpSessionId: auditField.id(),
+    stepUpVerifiedAt: auditField.instant(),
+  },
+});
+
+/** The audit target type of one customer's page. */
+export const CUSTOMER_PAGE_TARGET = 'customers.customer';
+
+/**
+ * An admin opened a customer's page (or one tab of it). Target: the customer's account id. The
+ * personal data on the page is the reason this is audited; the row holds none of it: only which
+ * part was opened.
+ */
+export const CustomerPageOpened = defineAuditAction({
+  action: 'customers.customer-page.opened',
+  targetType: CUSTOMER_PAGE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    tab: auditField.enumOf(['overview', 'orders', 'money', 'activity'] as const),
+  },
+});
+
+/** The audit target type of a saved filter of the Customers list. */
+export const CUSTOMERS_SAVED_FILTER_TARGET = 'customers.saved-filter';
+
+/** The lists whose filters can be shared with everyone (see `saved-view-lists.ts`). */
+export const SAVED_FILTER_AUDIT_LISTS = [
+  'admin.customers.customers',
+  'admin.customers.seller-attributions',
+] as const;
+export type SavedFilterAuditList = (typeof SAVED_FILTER_AUDIT_LISTS)[number];
+const savedFilterList = auditField.enumOf(SAVED_FILTER_AUDIT_LISTS);
+const savedFilterVisibility = auditField.enumOf(['me', 'everyone'] as const);
+
+/** An admin saved a Customers list filter for everyone. The name is not audited: ids and codes only. */
+export const SavedFilterSharedAudit = defineAuditAction({
+  action: 'customers.saved-filter.shared',
+  targetType: CUSTOMERS_SAVED_FILTER_TARGET,
+  actors: ['authenticated'],
+  after: { listKey: savedFilterList, visibility: savedFilterVisibility },
+});
+
+/**
+ * An admin changed a filter that is, or was, shared with everyone: renamed it or moved it between
+ * "me" and "everyone". `ownedByActor` is false when an admin with the share key changed somebody
+ * else's filter.
+ */
+export const SavedFilterChangedAudit = defineAuditAction({
+  action: 'customers.saved-filter.changed',
+  targetType: CUSTOMERS_SAVED_FILTER_TARGET,
+  actors: ['authenticated'],
+  before: { visibility: savedFilterVisibility },
+  after: {
+    listKey: savedFilterList,
+    visibility: savedFilterVisibility,
+    renamed: auditField.boolean(),
+    ownedByActor: auditField.boolean(),
+  },
+});
+
+/** An admin deleted a filter that was shared with everyone. */
+export const SavedFilterRemovedAudit = defineAuditAction({
+  action: 'customers.saved-filter.removed',
+  targetType: CUSTOMERS_SAVED_FILTER_TARGET,
+  actors: ['authenticated'],
+  before: { listKey: savedFilterList, visibility: savedFilterVisibility },
+  after: { ownedByActor: auditField.boolean() },
+});
+
+/** The audit target type of a manual customer group (phase 2). */
+export const CUSTOMER_GROUP_TARGET = 'customers.customer-group';
+
+/** An admin made a manual customer group. The name is a label, not audited: ids and codes only. */
+export const CustomerGroupCreated = defineAuditAction({
+  action: 'customers.customer-group.created',
+  targetType: CUSTOMER_GROUP_TARGET,
+  actors: ['authenticated'],
+  after: { kind: auditField.enumOf(['manual'] as const), version: auditField.integer() },
+});
+
+/** An admin renamed, described, archived or restored a group. What changed, never the text. */
+export const CustomerGroupChanged = defineAuditAction({
+  action: 'customers.customer-group.changed',
+  targetType: CUSTOMER_GROUP_TARGET,
+  actors: ['authenticated'],
+  before: { version: auditField.integer(), archived: auditField.boolean() },
+  after: {
+    version: auditField.integer(),
+    archived: auditField.boolean(),
+    renamed: auditField.boolean(),
+    describedChanged: auditField.boolean(),
+    /**
+     * Phase 2b, on an archive: whether a live promotion's customer-group segment still named the
+     * group (`some`, `none`, or `unknown` when promotions could not say); `not-checked` otherwise.
+     */
+    liveSegmentUse: auditField.enumOf(['not-checked', 'none', 'some', 'unknown'] as const),
+  },
+});
+
+/**
+ * An admin added customers to a group or removed them, one by one or in bulk: how many, and
+ * whether they were picked by id or by the Customers list's filter. The account ids are in the
+ * customers' timelines, not here.
+ */
+export const CustomerGroupMembersChanged = defineAuditAction({
+  action: 'customers.customer-group.members-changed',
+  targetType: CUSTOMER_GROUP_TARGET,
+  actors: ['authenticated'],
+  after: {
+    change: auditField.enumOf(['added', 'removed'] as const),
+    count: auditField.integer(),
+    selection: auditField.enumOf(['ids', 'filter'] as const),
+  },
+});
+
+/** An admin wrote an internal note about a customer. Target: the customer; the text is sealed. */
+export const CustomerNoteAdded = defineAuditAction({
+  action: 'customers.customer-note.added',
+  targetType: CUSTOMER_PAGE_TARGET,
+  actors: ['authenticated'],
+  after: { noteId: auditField.id(), length: auditField.integer() },
+});
+
+/** An admin exported a customer's activity timeline, after a fresh two-step code. */
+export const CustomerTimelineExported = defineAuditAction({
+  action: 'customers.customer-timeline.exported',
+  targetType: CUSTOMER_PAGE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rowCount: auditField.integer(),
+    stepUpSessionId: auditField.id(),
+    stepUpVerifiedAt: auditField.instant(),
+  },
+});
+
+/**
+ * An admin revealed one of a customer's full delivery addresses (phase 2b). Target: the customer;
+ * the row names the address, never its content.
+ */
+export const CustomerAddressRevealed = defineAuditAction({
+  action: 'customers.customer-address.revealed',
+  targetType: CUSTOMER_PAGE_TARGET,
+  actors: ['authenticated'],
+  after: { addressId: auditField.id() },
+});
+
+/**
+ * The sections of the customer page that are super lists of another module's data (phase 2b),
+ * as an export's audit row names them.
+ */
+export const CUSTOMER_SECTIONS = [
+  'sign-ins',
+  'saved-items',
+  'cart-reminders',
+  'cart-additions',
+  'reviews',
+  'seller-ratings',
+  'helpful-votes',
+  'review-reports',
+  'consent-history',
+  'assistant-conversations',
+] as const;
+export type CustomerSectionName = (typeof CUSTOMER_SECTIONS)[number];
+
+/**
+ * An admin exported one section of a customer's page (phase 2b) as a file. Target: the customer;
+ * the row names the section, the format, the count and the step-up proof spent. No row content.
+ */
+export const CustomerSectionExported = defineAuditAction({
+  action: 'customers.customer-section.exported',
+  targetType: CUSTOMER_PAGE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    section: auditField.enumOf(CUSTOMER_SECTIONS),
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rowCount: auditField.integer(),
+    stepUpSessionId: auditField.id(),
+    stepUpVerifiedAt: auditField.instant(),
+  },
+});
+
+/** The audit target type of one seller's Customers list (customers management phase 3). */
+export const SELLER_CUSTOMERS_TARGET = 'customers.seller-customers';
+
+/**
+ * A seller's team member exported the shop's Customers list. Target: the seller. Codes and first
+ * names only are in the file; the row holds the format, the count and how the rows were picked,
+ * never a code, a search text or a filter value.
+ */
+export const SellerCustomersExported = defineAuditAction({
+  action: 'customers.seller-customers.exported',
+  targetType: SELLER_CUSTOMERS_TARGET,
+  actors: ['authenticated'],
+  after: {
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rowCount: auditField.integer(),
+    selection: auditField.enumOf(['codes', 'filter'] as const),
+  },
+});
+
+/** The audit target type of a seller's invite link (customers management phase 4a). */
+export const SELLER_INVITE_LINK_TARGET = 'customers.seller-invite-link';
+
+/**
+ * A seller's team member drew the shop's invite link, the first or a new one that revoked the old.
+ * Target: the new link. The token is not audited: it is public, but the link id names it.
+ */
+export const SellerInviteLinkDrawn = defineAuditAction({
+  action: 'customers.seller-invite-link.drawn',
+  targetType: SELLER_INVITE_LINK_TARGET,
+  actors: ['authenticated'],
+  after: { sellerId: auditField.id(), replacedLinkId: auditField.optional(auditField.id()) },
+});
+
+/**
+ * An admin rejected a customer's attribution to a seller, or restored it (phase 4a): it decides
+ * whether the customer counts as the seller's exclusive customer, so it changes the seller's
+ * perks. Target: the customer.
+ */
+export const SellerAttributionDecided = defineAuditAction({
+  action: 'customers.seller-attribution.decided',
+  targetType: CUSTOMER_PAGE_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['active', 'rejected'] as const) },
+  after: {
+    status: auditField.enumOf(['active', 'rejected'] as const),
+    sellerId: auditField.id(),
+    version: auditField.integer(),
+  },
+});
+
+/** The audit target type of an attributions list export. */
+export const SELLER_ATTRIBUTIONS_EXPORT_TARGET = 'customers.seller-attributions-export';
+
+/** An admin exported the attributions list (it holds sign-in addresses), after a fresh two-step code. */
+export const SellerAttributionsExported = defineAuditAction({
+  action: 'customers.seller-attributions.exported',
+  targetType: SELLER_ATTRIBUTIONS_EXPORT_TARGET,
+  targetId: auditField.enumOf(['seller-attributions-export'] as const),
+  actors: ['authenticated'],
+  after: {
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rowCount: auditField.integer(),
+    selection: auditField.enumOf(['ids', 'filter'] as const),
+    stepUpSessionId: auditField.id(),
+    stepUpVerifiedAt: auditField.instant(),
+  },
+});
+
 export const CUSTOMERS_AUDIT_ACTIONS = [
   AccountDeletionSettingsChanged,
   AccountDeletionRequested,
@@ -109,4 +376,20 @@ export const CUSTOMERS_AUDIT_ACTIONS = [
   AccountDeletionCompleted,
   AccountDeletionRequestedByAdmin,
   AccountDeletionCancelledByAdmin,
+  CustomersExported,
+  CustomerPageOpened,
+  SavedFilterSharedAudit,
+  SavedFilterChangedAudit,
+  SavedFilterRemovedAudit,
+  CustomerGroupCreated,
+  CustomerGroupChanged,
+  CustomerGroupMembersChanged,
+  CustomerNoteAdded,
+  CustomerTimelineExported,
+  CustomerAddressRevealed,
+  CustomerSectionExported,
+  SellerCustomersExported,
+  SellerInviteLinkDrawn,
+  SellerAttributionDecided,
+  SellerAttributionsExported,
 ] as const;

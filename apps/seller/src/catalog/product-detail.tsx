@@ -2,6 +2,7 @@ import { Badge } from '@mondapac/ui';
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server';
 import { FieldList } from './field-list.tsx';
 import { formatInstant, known, PRODUCT_STATUSES } from './format.ts';
+import { SUGGESTING_STATUSES } from './suggestion-fields.ts';
 import type { ProductView, RevisionView } from './types.ts';
 
 type Translate = Awaited<ReturnType<typeof getTranslations>>;
@@ -71,6 +72,14 @@ export async function ProductDetail({
             href={`/products/${product.productId}/edit`}
           >
             {t('catalog.edit.title')}
+          </a>
+        ) : null}
+        {canEdit && SUGGESTING_STATUSES.has(product.status) ? (
+          <a
+            className="font-medium text-link underline"
+            href={`/value-suggestions/new?product=${product.productId}`}
+          >
+            {t('catalog.suggestions.new.start')}
           </a>
         ) : null}
       </div>

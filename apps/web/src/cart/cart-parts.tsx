@@ -15,7 +15,7 @@ export function ItemThumb({ item }: { readonly item: CartItem }) {
   return (
     <span className="cim" aria-hidden="true">
       {item.imageUrl ? (
-        <img src={item.imageUrl} alt="" loading="lazy" decoding="async" />
+        <img src={item.imageUrl} alt="" width={64} height={64} loading="lazy" decoding="async" />
       ) : (
         <Icon name={categoryIcon(item.category)} />
       )}

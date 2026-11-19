@@ -152,9 +152,8 @@ Six types on top of the core (migration `20261031090000_promotions_phase2_types`
   generated or matched); a public code and a single-use code cannot share text (checked on both
   sides; the single-use code wins a quote); a malformed stored row is skipped in a quote and logged.
 
-Open for package T2: marking a code used on redemption (the app has SELECT and INSERT only on the codes),
-counting flash units sold, and checking a flash limit lowered below the units already sold. There is no
-re-download of generated codes.
+Package T2 (below) marks a code used on redemption and counts flash units sold. Still open: checking a
+flash limit lowered below the units already sold. There is no re-download of generated codes.
 
 ## Phase 3 discount types
 
@@ -288,6 +287,49 @@ place) and the promotions module.
   aggregate the credit rows under the promotion lock), and a per-account code version so one customer's code can
   be revoked without rotating the pepper.
 
+### Seller campaigns and payout preview (PB2)
+
+- Two seller reads: `GET /promotions/seller/campaigns` (open co-funded campaigns split into `joined` and
+  `available`; never the platform budget or spend) and `GET /promotions/seller/payout-preview` (what the shopper
+  pays and what the seller gets for one unit; optionally whether the was-price may show).
+- A seller may leave a co-funded campaign **only before it starts** (owner decision, 12 Nov 2026); after
+  `startsAt`, `PUT .../opt-in` with `optIn: false` answers `promotions.invalid-state`. Joining stays possible
+  while the campaign runs.
+- Commission rule in the preview: commission is taken on the price **after the seller-funded part of the
+  discount**; the platform-funded part never lowers the seller share. The rate comes from commission-payouts'
+  seller-only `ownCommissionOn` facade read (own rate, else the Market default); no readable rate means
+  `promotions.unavailable`, never a guess.
+- The preview is an estimate **before delivery**: tax uses the provisional rate, and the commission ledger is not
+  yet discount-aware. `minSpend` is ignored for item-layer campaigns, as the engine does. A campaign in test mode
+  is listed to sellers with `testMode: true`.
+- The preview calculates as if the campaign had no budget, so a very large price cannot reveal what is left of the platform
+  budget. For a test-mode campaign it may show platform money that a real order would not get until the tax ruling.
+- `listOpenCampaigns` is capped at 200 rows (safety). `setOptIn` still accepts a paused campaign; the list hides it.
+
+## Admin list reads (panels package PB1)
+
+- `GET /promotions/admin/promotions` (Viewer, usage counts only) and `/promotions/admin/promotions/costs` (manager) take
+  `q` (name contains, or code starts with), `type` (comma-separated), `owner` (`PLATFORM` or `SELLER`), `funding`,
+  `status` or `view` (not both), `sort` (`CREATED`, `STARTS`, `ENDS`, `NAME`, `USES`), `order`, `page` and `limit`
+  (1 to 100, default 25). The answer is `{ items, total, page, limit, counts }`; every item has a `displayStatus`.
+  Before this package the answer was `{ items }` and `status` was the stored status; `status=ACTIVE` now means live at
+  this moment.
+- Display status (`domain/display-status.ts`): the stored `PENDING_APPROVAL` and `REJECTED` show as they are. Otherwise a
+  promotion whose end has passed is `ENDED` (live or paused), a paused one is `PAUSED`, and a live one is `SCHEDULED`
+  before its start, `BUDGET_USED_UP` once its spend reaches its budget, and `ACTIVE` in between. Credit types
+  (referral, cashback) keep their spend in the credits, so they are never `BUDGET_USED_UP`.
+- `counts` holds `ALL` and every status plus `NEEDS_REVIEW` (promotions with an open review entry), for the same text,
+  type, owner and funding filters but not the tab or status, so the tabs keep their numbers while one is open.
+  The query is built in `prisma-promotion.repository.ts` and is checked against the stored rows by the database spec.
+  No raw SQL: the budget compare reads the few promotions that have a budget with their spend and compares them in code.
+- `GET /promotions/admin/promotions/:id/activity` (manager): create, edit, pause, resume and budget changes from the
+  promotion's own audit rows, newest first, with who (named as identity allows) and each term's before and after (scalars
+  and money only; a step-up proof is never shown). Keyset paging with `after` and `limit` (1 to 50, default 20).
+- `GET /promotions/admin/promotions/:id/sellers` (manager): the opt-ins of a co-funded campaign, withdrawn ones kept.
+  No seller names and no per-seller product count or cost share: sellers gives an admin no name through its facade, and
+  the engine records spend per promotion, not per seller.
+- `GET /promotions/admin/reviews/count` (manager): the number of open review entries.
+
 ## Open points
 
 - The identity role seed gains one key: the Viewer (seed version 21 on top of blog's 20, with its append-only snapshot entry
@@ -295,4 +337,192 @@ place) and the promotions module.
   keys yet; the Platform Administrator grants them in a custom role.
 - Permission keys have three segments (`promotions.promotion.manage`, `promotions.promotion.view`,
   `promotions.own-promotion.manage`, `promotions.settings.view`, `promotions.settings.manage`).
-- The first-order monthly budget is read as a ceiling here; reserving and spending it is package T2.
+- The first-order monthly budget is spent by package T2 (below).
+
+## Package T2: redemption at checkout (part A, promotions side)
+
+Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it in part B.
+
+- **`promotions.redemptions`**: one row per order and promotion (unique `(market, order, promotion_key)`). The
+  key is the promotion's id, `first-order` or `free-shipping:<zone>` (`kind` PROMOTION, FIRST_ORDER,
+  FREE_SHIPPING). Amount with its seller and platform shares, the customer, the hash of a redeemed single-use
+  code, the units of a flash sale, and for first-order rows the budget month (`YYYY-MM` in the Market zone,
+  Market config `timezone`). Status RESERVED, then CONFIRMED (paid) or RELEASED (`ORDER_CANCELLED`, or
+  `ORDER_REFUNDED` per the owner's refund rule). Never deleted; a trigger allows only RESERVED to CONFIRMED,
+  RESERVED to RELEASED and CONFIRMED to RELEASED, with every other column unchanged, for every role; a row is
+  inserted RESERVED (trigger). Each redeemed order also has a **head row** (`kind` ORDER, key `order`, zero
+  amounts). A cancellation writes that row RELEASED when the order has none, so a cancellation and a redemption
+  of one order always meet on the same unique key: whichever comes second sees the first, in either order.
+  Backstop unique indexes: one live first-order row per customer, one live row per single-use code hash.
+  Every cancelled order leaves one RELEASED head row, even without a discount (small, accepted growth); a
+  reader of a customer's redemptions (the customer page) filters out `kind = 'ORDER'`. A repeat is compared
+  with the stored rows per promotion (amount and shares); the per-line and per-shipping split is not stored
+  here, it is ordering's.
+- **`promotion_batch_codes.redeemed_order_id`**: set with `used_at` (CHECK both or neither); a trigger allows
+  only claim (unused to used) and give back (used to unused). The app may now UPDATE those two columns and the
+  `promotion_usage` counters (the core CHECK keeps them at zero or above).
+- **Facade `redeem`** (rule `system`, use case `promotions.redeem-discounts`): ordering stores the order with the
+  discounts of a `quote`, then asks to redeem them, sending the quote request and `discountSummaryOf(quote)`.
+  In one unit: the order's rows are looked up (a repeat with the same discounts answers `already-redeemed`,
+  with other discounts `validation.failed`; a released order `promotions.redemption-released`); the usage rows of the promotions the order took are locked in id order (and
+  the Market's switch row when it took the first-order discount); everything is read again under the locks and
+  the same calculation runs (`loadCart` + `priceCart`, shared with the quote). Equal to what the order holds: the
+  code is claimed in one conditional update, the rows are written RESERVED and the counters move. Not equal (a
+  budget, a total or per-customer use limit, the flash units or the code was taken meanwhile): nothing is
+  written and the answer is `promotions.quote-changed` with the fresh quote, so the buyer confirms the new total.
+  A lock that cannot be taken in time is `conflict.retry`. Off since the order was priced: `quote-changed` with
+  the bare cart. The first-order discount is once per customer: a live first-order row of the customer on any
+  order (two checkouts at once, an unpaid earlier order) prices the order as not the first. The fresh quote of a
+  `quote-changed` was made with the order's old commission: ordering quotes again before it stores anything.
+- **Subscribers**: `ordering.order-paid.v1` confirms the order's rows (`promotions.confirm-redemptions`);
+  the new `ordering.order-cancelled.v1` (defined here, emitted by ordering in part B) releases them and gives
+  back what they took: counters, budget, first-order money (the month's sum leaves the row out), the code
+  (`promotions.release-cancelled-redemptions`). Both whatever the switch says now; both idempotent through
+  the inbox. Confirm and release take the rows one at a time in key order (no deadlock between a payment and a
+  cancellation of one order); a release re-checks the status under the lock, so a row confirmed meanwhile is
+  still released and a row released already is never given back twice.
+- **Quote changes**: `maxUsesPerCustomer` is now enforced, counting the customer's rows that hold; a quote
+  without a customer gets no promotion that has the limit (fail closed), and the admin preview ignores it.
+  The first-order discount takes what is left of the month's budget. The flash-sale counter
+  (`RedemptionFlashSales`) sums the units of the rows that hold, so flash sales now apply to real orders.
+- Not here yet: ordering's side (part B: the code at checkout, the discounts stored per line, the event, tax,
+  Stripe, the ledger and refunds on the net amounts), the refund release (owner's decision pending), and a sweep
+  of reservations whose order never settles (the order is stored before the redemption, so every row has an
+  order that ordering cancels or confirms; the sweep covers a crash between them).
+
+## Customers phase 4a, PR 4a-2: the seller's exclusive-customer discount (2026-11-17)
+
+- New segment `SELLER_EXCLUSIVE` of the `CUSTOMER_GROUP` type: a seller's own discount for the
+  customers who joined through its invite link (customers 4a-1). Seller-funded, on the seller's
+  own lines (layer `SELLER_CART`), held to the Market's seller maximum like any seller promotion,
+  and reviewed after publish like the store-follower offer. No days, group or zones.
+- A seller may make `CUSTOMER_GROUP` only with this segment (any other: `segment.kind`
+  not-allowed); an admin may not use this segment.
+- The quote asks `customers.exclusiveSellerOf` (port `ExclusiveCustomers`, system actor only) once
+  per quote, only when such a discount is live; unknown or failing answers fail closed (no
+  discount). The admin preview takes `customer.exclusiveSellerId` and reads nothing.
+- Migration `20261117060000_promotions_seller_exclusive_segment`: `promotions_type_funding_check`
+  lets the seller pay a customer-group discount exactly for this segment; `promotions_phase3_check`
+  accepts the segment with no days and no group. `down.sql` refuses while such rows exist.
+
+## Customers phase 4c-1: the seller's cashback (2026-11-17)
+
+- `CASHBACK` takes the segment `SELLER_EXCLUSIVE`: seller-funded, seller-owned, for its exclusive
+  customers on its own seller orders. Market setting `promotions.cashback.sellerMinBps` (optional)
+  is the least such a cashback may credit (`reward.bps` `below-market-minimum`).
+- The order facts port now reads ordering's `deliveredSellerOrderFacts` (adapter
+  `FacadeDeliveredOrderFacts`, system actor only; failures are unknown), so cashback runs for real.
+  The facts carry the seller.
+- New port `SellerCashbackLedger` (adapter on commission-payouts' `recordSellerCashback`): after
+  the wallet grant of a seller-funded credit; `false` keeps the credit pending (retry).
+- A real cashback waits for the payout release: `credit_issuances.grant_after` (migration
+  `20261117120000_promotions_credit_grant_after`), port `PayoutAnchors` on commission-payouts,
+  job `promotions.grant-due-credits` (use case of the same name, system). The guard trigger gains
+  one move (PENDING to PENDING: end the wait, amount kept or lowered) and grants GRANTED only after
+  the wait; the app role may update `amount_minor` and `grant_after`. A cashback PENDING with no
+  wait for an hour is finished by the job as it is (its amount is final).
+- A payout hold and a lost chargeback stop the cashback (Hassan M-2): the anchor also answers
+  `onHold` (an active hold on the seller order or the whole seller) and `disputeLost` (dispute
+  debits above what was reinstated). A held credit is put back for 6 hours, one whose facts cannot
+  be read for an hour (`postpone`: the wait only grows, migration
+  `20261117140000_promotions_credit_postpone`), so a credit the job cannot finish never keeps newer
+  ones out of a run (Hassan L-4). A lost chargeback fails the credit `order-disputed`, and none is
+  reserved for a seller order already lost; a currency that no longer matches fails it
+  `currency-changed`.
+- A refund claws back unused cashback (customers phase 4c-2): `promotions.claw-back-on-refund`
+  (system) listens to `refund-succeeded.v1`. For a GRANTED cashback of that order it works out the
+  share the refund takes (the cashback the remaining goods would still earn is kept), records it in
+  `promotions_credit_clawbacks` (one row per credit and refund, and per credit and `seq`: two refunds
+  racing on one credit cannot both take the same share), asks the wallet to take it back from that
+  grant's unused lot (`wallet.claw-back-credit`, so spent credit is never taken), and for a
+  seller-funded cashback returns what was taken to the seller's ledger
+  (`refund-cashback-seller`). A row is settled DONE once, with what was actually taken. A credit
+  still waiting is lowered by the job instead; one whose wait ended but is not yet granted makes the
+  refund retry. A credit the grant job throws on is put back an hour (Hassan L-7).
+- What a cashback keeps is pro rata to what it was earned on (Hassan H-2): `reserved_minor` (the
+  amount reserved at delivery) and `goods_minor` (the goods it was earned on) are stored with the
+  cashback and never change (no UPDATE grant, and the guard refuses it for any role; migration
+  `20261117150003_promotions_credit_earned_basis`). The grant job and the clawback keep
+  `ceil(reserved × goods kept / goods)` and never read the promotion's rate or the Market's limit
+  again, so a seller who lowers its rate cannot cut or take back what was earned. A cashback with
+  no basis (made before) is granted as reserved and never clawed back. The clawback counts only
+  refunds that succeeded (`succeededRefundedGoods` from ordering, Hassan L-9); the grant job still
+  counts pending ones too (conservative: a pending refund that later fails leaves the customer
+  that part short, never the platform out of pocket).
+- Known limits, accepted for now: credit held by an open checkout when the clawback runs is not
+  taken later (Hassan L-10, small; the seller has paid it); a lasting seller-ledger failure after
+  the wallet took the credit leaves the row PENDING and the event dead-lettered with an alert, for
+  an operator to finish (L-11); a cashback PENDING with no wait that keeps failing stays at the
+  front of the grant batch (L-13; availability only). The anchor's `disputeLost` reads the
+  seller's dispute decisions and filters by seller order (L-12, fails closed). Migration
+  `20261117150002_promotions_credit_clawbacks`: insert-only identity, PENDING to DONE only, no
+  delete; `down.sql` refuses while rows exist.
+- Migration `20261117100001_promotions_seller_cashback`: `promotions_type_funding_check` makes a
+  cashback the seller's money exactly with the segment; `promotions_phase3_check` lets a cashback
+  carry no segment or this one. `down.sql` refuses while such rows exist.
+- The delivered seller order's facts come from ordering's facade, which promotions cannot import
+  (ordering imports promotions for checkout): `DELIVERED_ORDER_FACTS` is a
+  `BoundDeliveredOrderFacts` that `PromotionsOrderEventsModule` binds to ordering's facade at
+  start-up; unbound or failing, it answers unknown and the handlers retry.
+- The line "cashback X will be credited on date Y" (owner decision, 2026-11-17: credit after the
+  payout release, plus a display-only line). `promotions.view-my-upcoming-cashback` (rule
+  `own-resources`, `GET /promotions/cashback/upcoming?orderId=`, `no-store`) answers the signed-in
+  customer's PENDING cashback, newest first (at most 20), optionally of one order: amount, currency
+  and `creditOn` (the payout release; null once that has passed and it is on its way). It never
+  touches a balance; promotions off answers an empty list. The storefront's order page shows one
+  note per item under the summary. The storefront has no wallet page yet, so the wallet side of the
+  line waits for one.
+
+## Package T2: discounts at checkout (part B, ordering side)
+
+Migration `20261117040000_ordering_discounts`: `order_lines` gains `discount_amount` with its seller and platform
+shares (CHECK: shares at zero or above, they add up to the discount, the discount at most the line);
+`seller_orders` gains `discount_amount` and `shipping_discount_amount` (within the goods and the delivery; the
+total covers what is left); the cancel reason `discount-changed`. Existing rows read zero.
+
+- **Checkout** (`start-checkout`, card `pay`): takes an optional `code` (trimmed, printable, at most 64; empty is
+  none). Ordering quotes promotions under the customer's own `CallContext` (new own-session use cases
+  `promotions.quote-own-discounts` and `promotions.redeem-own-discounts`, rule `own-resources`: a customer, not
+  acting-as, only their own account, `testMode` always false; the facade picks the system or own use case by the
+  actor). The quote carries each line's product (catalog), the delivery charges with the address's ServiceArea
+  code as the zone, whether this is the customer's first paid order, and the order's commission; when the
+  platform's share moves the commission, the quote is asked again (at most 3 times). A code that does not apply
+  answers `ordering.discount-code-not-applied` (422) before anything is reserved.
+- **Prices**: the discounts are stored per line and per seller order; tax is worked out on what the buyer pays
+  (line minus discount, delivery minus its discount); the Stripe packages are the net goods, the net delivery
+  and the added tax; the commission ledger gets each line minus its seller share; refunds are per unit of the
+  net line (the shares floored cumulatively) and of the net delivery.
+- **Redeem** runs after the order is stored, up to 3 times on `conflict.retry`. Any other failure cancels the
+  order with `discount-changed` (stock released, `OrderCancelled` emitted): a changed quote or a released order
+  re-prices and answers `ordering.price-changed` with the new total; nothing is charged.
+- **`ordering.order-cancelled.v1`** is emitted whenever an unpaid order is cancelled (expiry, payment
+  failure, superseded, a failed checkout). promotions subscribes to ordering's events from `PromotionsOrderEventsModule`, a
+  binding module: ordering imports promotions, so `PromotionsModule` holds no ordering import (no file cycle).
+- **Safety sweep** `ordering.settle-stale-redemptions` (worker, every 15 minutes, rule `system`), two passes:
+  (1) ordering's own orders still waiting for payment with no money moved, whose payment page expired over an
+  hour ago, are cancelled as `expired` (never voiding or stopping a payment; an order with a payment held is
+  left to its payment events); (2) promotions lists, in pages by order id (`promotions.list-stale-redemptions`,
+  at most 100 a page, read only), the orders still holding RESERVED rows written before the payment window plus
+  one hour; confirmed confirms them, cancelled or unknown releases them (`promotions.settle-redemptions`), and an
+  order still waiting is passed over (paging by id, so it never blocks the rest) and logged as a warning. It
+  lives in ordering because promotions cannot read ordering without a cycle.
+- **Limits**: a checkout with a code is counted per account (10 per 10-minute window of the `checkout-payment`
+  counter, applied or not), so the code answer is no guessing oracle. An order the discounts make free is
+  refused (`ordering.check-unavailable`) before anything is reserved; a seller part at no cost sends no Stripe
+  line.
+- Follow-ups: orders at no cost (a 100% voucher) need an owner decision; manual-group audiences do not match under the customer's context yet (customers' group check is
+  system-only); the admin panel's cancel-reason list lacks `discount-changed` and the web checkout has no code
+  field yet (part C); the refund release waits for the owner's decision.
+- **A customer's usages** (customers management phase 2b, item e; 17 Nov 2026):
+  `GET promotions/admin/customers/:customerAccountId/usages` (`promotions.list-customer-promotion-usages`,
+  `promotions.promotion.view` and `customers.customers.view`, like every customer-page tab; admin only, refused in
+  an acting-as session). One row per discount an order of the
+  customer took (stored promotion with its name, first-order offer or zone free delivery; never an order's head
+  row), newest reservation first then id, keyset pages of 1 to 100 (default 50) through
+  `redemptions_customer_newest_idx`. A row carries the order, the discount (minor units and currency), whether a
+  single-use code was used (the code is never kept), the status (RESERVED can still be released; only CONFIRMED
+  counts as used), the release reason and the three instants; never the seller or platform share. Works while the
+  Market switch is off. No migration. `usedAt` is the reservation instant (when checkout took the discount);
+  `confirmedAt` and `releasedAt` say how it ended. There is no total: the tab pages with "Load more", like the
+  other per-customer histories. It is a plain table, not a super list (rule 14): one customer's discounts rarely
+  pass 50 rows; if the product wants a super list here, filters and a count are a follow-up.

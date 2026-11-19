@@ -7,6 +7,7 @@ import {
 } from '@mondapac/ui';
 import { sellerNav, sellerNavItems } from './nav.ts';
 import { settingEntries, settingsGroups } from './settings/settings-nav.ts';
+import { SOURCE_EDIT_PERMISSION } from './stock/types.ts';
 import { TEAM_INVITE_PERMISSION } from './team/types.ts';
 
 // The seller panel's command palette: what it can find, which pages a role starts with pinned and
@@ -50,6 +51,7 @@ const settingsPages: readonly PaletteSettingsPage[] = [
       view: link.view,
       groupLabelKey: group.labelKey,
       groupIcon: group.icon,
+      rootLabelKey: 'nav.settings',
     })),
   ),
   ...accountPages,
@@ -57,18 +59,25 @@ const settingsPages: readonly PaletteSettingsPage[] = [
 
 export const sellerActions: readonly PaletteActionSpec[] = [
   {
-    id: 'add-product',
-    labelKey: 'palette.action.add-product',
-    href: '/products/new',
-    icon: 'package',
-    anyOf: ['catalog.own-product.edit'],
-  },
-  {
     id: 'invite-member',
     labelKey: 'palette.action.invite-member',
     href: '/settings/team',
     icon: 'users',
     anyOf: [TEAM_INVITE_PERMISSION],
+  },
+  {
+    id: 'add-stock-location',
+    labelKey: 'palette.action.add-stock-location',
+    href: '/settings/stock-locations',
+    icon: 'map-pin',
+    anyOf: [SOURCE_EDIT_PERMISSION],
+  },
+  {
+    id: 'add-product',
+    labelKey: 'palette.action.add-product',
+    href: '/products/new',
+    icon: 'package',
+    anyOf: ['catalog.own-product.edit'],
   },
 ];
 

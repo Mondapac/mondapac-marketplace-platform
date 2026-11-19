@@ -86,6 +86,20 @@ describe('catalog reads with the API on', () => {
     expect(result.items.map((p) => p.name)).toEqual(['Lamb shoulder, 1 kg']);
   });
 
+  it("sends the route's own attribute and price filters (variants V8)", async () => {
+    const result = await findProducts({
+      category: 'meat',
+      page: 1,
+      pageSize: 12,
+      live: { choices: [{ attr: 'colour', values: ['red'] }], price: { min: null, max: 999 } },
+    });
+    expect(reads.paths.at(-1)).toBe(
+      `search/products?category=${MEAT}&filter=colour%3Ared&price=..999&page=1&pageSize=12`,
+    );
+    expect(result.liveFilters).toEqual([]);
+    expect(result.exactMatch).toBeUndefined();
+  });
+
   it('matches nothing for a filter the route cannot apply, without reading it', async () => {
     const result = await findProducts({
       q: 'lamb',

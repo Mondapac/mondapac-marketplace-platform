@@ -18,7 +18,7 @@ export function useSettingsChrome(): {
   return {
     leave: {
       title: t('settings.leave.title'),
-      message: t('settings.leave.message'),
+      message: (info) => t('settings.leave.message', { count: info.count, page: info.page }),
       stay: t('settings.leave.stay'),
       leave: t('settings.leave.leave'),
     },

@@ -44,9 +44,23 @@ export interface FormField {
   readonly localizable: boolean;
   readonly required: boolean;
   readonly isVariantOption: boolean;
+  /** For a `measure` field, `min` and `max` are in base units (g, ml, mm, count). */
   readonly bounds: { readonly maxLength?: number; readonly min?: number; readonly max?: number };
+  /** A `measure` field only: dimension, the unit codes offered, the default and decimal places. */
+  readonly measure?: {
+    readonly dimension: string;
+    readonly units: readonly string[];
+    readonly defaultUnit: string;
+    readonly decimals: number;
+  };
   readonly names: Readonly<Record<string, string>>;
   readonly options: readonly FormOption[];
+}
+
+/** A unit of the Market with its label per locale (apps/api OwnFormUnit). */
+export interface FormUnit {
+  readonly code: string;
+  readonly labels: Readonly<Record<string, string>>;
 }
 
 export interface FormCategory {
@@ -55,9 +69,47 @@ export interface FormCategory {
   readonly names: Readonly<Record<string, string>>;
 }
 
+/** A tag (catalog topic) as a product read names it (`GET catalog/seller/products/:id` -> `topicRefs`). */
+export interface TopicRef {
+  readonly id: string;
+  readonly slug: string;
+  readonly status: 'active' | 'archived';
+  /** The name in the Market default locale, else any locale; null when it has none. */
+  readonly name: string | null;
+  readonly names: Readonly<Record<string, string>>;
+}
+
+export type TopicGroup = 'occasion' | 'cuisine' | 'use';
+
+/** One active tag of the picker (`GET catalog/seller/topics`). */
+export interface TopicChoice {
+  readonly id: string;
+  readonly slug: string;
+  readonly group: TopicGroup;
+  readonly name: string | null;
+  readonly names: Readonly<Record<string, string>>;
+}
+
+/** `GET catalog/seller/topics`. */
+export interface TopicPage {
+  readonly items: readonly TopicChoice[];
+  readonly nextAfterId: string | null;
+  /** The most tags a product may carry. */
+  readonly maxPerProduct: number;
+}
+
+/** A tax category of the Market with the message key it is shown by (from its Market file). */
+export interface TaxCategory {
+  readonly code: string;
+  readonly labelKey: string;
+}
+
 /** What the product form is drawn from: `GET catalog/seller/products/:id` -> `form`. */
 export interface ProductForm {
-  readonly taxCategoryCodes: readonly string[];
+  /** The Market's tax categories with their label keys. */
+  readonly taxCategories: readonly TaxCategory[];
+  /** The Market's units; a measure field names the ones it offers by code. */
+  readonly units: readonly FormUnit[];
   readonly fields: readonly FormField[];
   readonly categories: readonly FormCategory[];
 }
@@ -83,8 +135,19 @@ export interface ProductView {
   /** `single`: one fixed variant; `configurable`: variants defined by option values. */
   readonly variantModel: string;
   readonly status: string;
-  readonly variants: readonly { readonly variantId: string; readonly state: string }[];
+  /** When an admin paused the product (the seller's offers are off sale); null when not paused. */
+  readonly pausedAt: string | null;
+  readonly variants: readonly {
+    readonly variantId: string;
+    readonly state: string;
+    /** `{productCode}-{nn}` (design 2, M-7). */
+    readonly variantCode: string;
+  }[];
   readonly maxVariants: number;
+  /** The Market's cap on the types a product varies on; older answers leave it out. */
+  readonly maxAxes?: number;
+  /** The product version Add sizes names; older answers leave it out. */
+  readonly version?: number;
   readonly sensitiveFields: readonly string[];
   readonly lastChangedAt: string;
   readonly createdAt: string;
@@ -99,6 +162,8 @@ export interface ProductView {
   readonly pending: RevisionView | null;
   /** Newest first. An open one keeps its field empty. */
   readonly suggestions?: readonly ValueSuggestion[];
+  /** The tags named by the draft, the published and the pending version, each once. */
+  readonly topicRefs?: readonly TopicRef[];
 }
 
 export interface OfferView {
@@ -121,6 +186,62 @@ export interface OfferView {
   readonly firstPublishedAt: string | null;
   readonly createdAt: string;
   readonly version: number;
+  /** Stored sell-unit rows (V5); a variant with no row sells and has no SKU. Single read only. */
+  readonly sellUnits?: readonly {
+    variantId: string;
+    variantSku: string | null;
+    selling: boolean;
+  }[];
+}
+
+/** The row actions the list names (`actions` of a list row); Prices and Stock are added by the panel. */
+export const OFFER_ROW_ACTIONS = ['open', 'edit', 'submit', 'delete'] as const;
+
+/** One row of the Offer list: the Offer and what the caller may run on it. */
+export interface OfferListRow extends OfferView {
+  readonly actions: readonly string[];
+}
+
+/** The seller's Offers per status for the same search and on-sale filter, and all together. */
+export interface OfferListCounts {
+  readonly draft: number;
+  readonly pendingFirstPublish: number;
+  readonly changesNeeded: number;
+  readonly published: number;
+  readonly all: number;
+}
+
+/** `GET catalog/seller/offers` in list mode. */
+export interface OfferListPage {
+  readonly items: readonly OfferListRow[];
+  /** `pages` mode only; null in `prev-next`. */
+  readonly total: number | null;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly paging: 'pages' | 'prev-next';
+  readonly hasNext: boolean;
+  readonly counts: OfferListCounts;
+}
+
+/** One sell unit (variant) of an offer: `GET catalog/seller/offers/:id/sell-units` -> `units`. */
+export interface SellUnitView {
+  readonly variantId: string;
+  readonly variantNo: number;
+  readonly variantCode: string;
+  readonly state: 'proposed' | 'published';
+  /** The published variant label in the Market's default locale, else null. */
+  readonly label: string | null;
+  readonly selling: boolean;
+  readonly variantSku: string | null;
+  /** What exports and invoices show: the variant SKU, else `{sellerSku}-{variantNo}`. */
+  readonly displaySku: string;
+}
+
+/** `GET catalog/seller/offers/:id/sell-units`. */
+export interface OfferSellUnitsView {
+  readonly productScope: 'PLATFORM' | 'SELLER';
+  readonly sellerSku: string;
+  readonly units: readonly SellUnitView[];
 }
 
 /** `GET catalog/seller/products/options`: what the create form offers. */
@@ -128,6 +249,10 @@ export interface ProductOptions {
   readonly productTypes: readonly string[];
   readonly conditions: readonly string[];
   readonly locales: { readonly default: string; readonly supported: readonly string[] };
+  /** The Market's tax categories with their label keys. */
+  readonly taxCategories: readonly TaxCategory[];
+  /** The categories a product may be filed under, as `form.categories` of a product read. */
+  readonly categories: readonly FormCategory[];
   readonly sellerCanCreateProduct: boolean;
 }
 
@@ -148,6 +273,13 @@ export interface DraftSaved {
     readonly locale: string;
     readonly code: string;
   }[];
+  /** Advice about the saved variants; never a refusal. */
+  readonly variantNotices?: readonly {
+    readonly variantId: string;
+    readonly code: 'gtin.duplicate';
+    /** The PLATFORM product that already carries the barcode, when there is one to sell on. */
+    readonly sellOnProductCode: string | null;
+  }[];
 }
 
 /** `POST catalog/seller/products/:id/submit`. */
@@ -167,4 +299,77 @@ export interface ProductPhoto {
 
 export interface PhotoList {
   readonly images: readonly ProductPhoto[];
+}
+
+/** One of the seller's value suggestions (`GET catalog/seller/attribute-suggestions` -> `items`). */
+export interface OwnSuggestion {
+  readonly id: string;
+  readonly status: 'open' | 'approved' | 'mapped' | 'rejected';
+  /** The seller's own text: shown as plain text only. */
+  readonly label: string;
+  readonly createdAt: string;
+  readonly decidedAt: string | null;
+  /** The reviewer's words, when the suggestion was rejected. Plain text. */
+  readonly rejectReason: string | null;
+  /** Null when the field can no longer be read. */
+  readonly attribute: {
+    readonly code: string;
+    readonly names: Readonly<Record<string, string>>;
+  } | null;
+  /** The value added (approved) or matched (mapped). */
+  readonly value: {
+    readonly code: string;
+    readonly labels: Readonly<Record<string, string>>;
+  } | null;
+  readonly product: {
+    readonly id: string;
+    /** Null when the product can no longer be read. */
+    readonly productCode: string | null;
+    readonly name: string | null;
+  };
+}
+
+export interface OwnSuggestionList {
+  readonly items: readonly OwnSuggestion[];
+  readonly nextAfterId: string | null;
+  /** How many wait for a decision, whatever the filter. */
+  readonly openCount: number;
+  readonly maxOpen: number;
+  readonly locales: { readonly default: string; readonly supported: readonly string[] };
+}
+
+export const SUGGESTION_STATUSES = ['open', 'approved', 'mapped', 'rejected'] as const;
+
+/** One of the seller's tag suggestions (`GET catalog/seller/topic-suggestions` -> `items`). */
+export interface OwnTopicSuggestion {
+  readonly id: string;
+  readonly status: 'open' | 'approved' | 'mapped' | 'rejected';
+  /** The seller's own text: shown as plain text only. */
+  readonly label: string;
+  readonly createdAt: string;
+  readonly decidedAt: string | null;
+  /** The reviewer's words, when the suggestion was rejected. Plain text. */
+  readonly rejectReason: string | null;
+  /** The tag created (approved) or matched (mapped). */
+  readonly topic: {
+    readonly id: string;
+    readonly slug: string;
+    readonly status: 'active' | 'archived';
+    readonly names: Readonly<Record<string, string>>;
+  } | null;
+  readonly product: {
+    readonly id: string;
+    /** Null when the product can no longer be read. */
+    readonly productCode: string | null;
+    readonly name: string | null;
+  };
+}
+
+export interface OwnTopicSuggestionList {
+  readonly items: readonly OwnTopicSuggestion[];
+  readonly nextAfterId: string | null;
+  /** How many wait for a decision, whatever the filter. */
+  readonly openCount: number;
+  readonly maxOpen: number;
+  readonly locales: { readonly default: string; readonly supported: readonly string[] };
 }

@@ -310,3 +310,88 @@ export class ProductCheckRecordedView {
   @ApiProperty() recordedAt!: string;
   @ApiProperty({ description: 'The new record version.' }) version!: number;
 }
+
+class ProductCoverageOfProductView {
+  @ApiProperty({ description: 'True: the certificate covers the whole product.' })
+  whole!: boolean;
+  @ApiProperty({
+    type: [String],
+    format: 'uuid',
+    description: 'The variants it covers when it names variants only; empty when `whole`.',
+  })
+  variantIds!: string[];
+}
+
+class ProductCertificateForProductItemView {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) typeId!: string;
+  @ApiProperty() typeCode!: string;
+  @ApiProperty({
+    nullable: true,
+    description:
+      'The English name of the type, from its published revision; null when it has none.',
+  })
+  typeName!: string | null;
+  @ApiProperty({
+    type: [String],
+    description: 'The locales the Market publishes in for which the type has no name.',
+  })
+  typeNamesMissing!: string[];
+  @ApiProperty({ enum: STATUSES }) status!: string;
+  @ApiProperty({
+    nullable: true,
+    description: 'Display name; from the approved revision, else the pending one, else the draft.',
+  })
+  issuerName!: string | null;
+  @ApiProperty({
+    nullable: true,
+    format: 'date',
+    description: 'From the same source as the issuer.',
+  })
+  expiryDate!: string | null;
+  @ApiProperty({
+    type: ProductCoverageOfProductView,
+    description: 'The coverage of this product, from the same source as the issuer.',
+  })
+  coverage!: ProductCoverageOfProductView;
+  @ApiProperty({
+    nullable: true,
+    description: 'The reason code when the latest decision of the newest revision is a rejection.',
+  })
+  rejectionReasonCode!: string | null;
+  @ApiProperty() lastChangedAt!: string;
+  @ApiProperty() version!: number;
+}
+
+export class ProductCertificatesForProductView {
+  @ApiProperty({
+    type: [ProductCertificateForProductItemView],
+    description: 'Newest first, at most 100.',
+  })
+  items!: ProductCertificateForProductItemView[];
+}
+
+class ProductCertificateOptionsIssuerView {
+  @ApiProperty({ format: 'uuid' }) issuerId!: string;
+  @ApiProperty() displayName!: string;
+}
+
+class ProductCertificateOptionsTypeView {
+  @ApiProperty({ format: 'uuid' }) typeId!: string;
+  @ApiProperty() code!: string;
+  @ApiProperty({ nullable: true, description: 'The English name; null when it has none.' })
+  name!: string | null;
+  @ApiProperty() requiresDocument!: boolean;
+  @ApiProperty() requiresExpiry!: boolean;
+  @ApiProperty() requiresIssuerRegistry!: boolean;
+  @ApiProperty({ type: [ProductCertificateOptionsIssuerView] })
+  issuers!: ProductCertificateOptionsIssuerView[];
+}
+
+export class ProductCertificateOptionsView {
+  @ApiProperty({
+    type: [ProductCertificateOptionsTypeView],
+    description: 'The active third-party document types, by code.',
+  })
+  types!: ProductCertificateOptionsTypeView[];
+}

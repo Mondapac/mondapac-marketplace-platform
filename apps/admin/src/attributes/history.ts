@@ -16,6 +16,7 @@ export type ChangeLine =
         'show-on-product-page' | 'searchable' | 'can-be-filter' | 'position' | 'internal-note';
     }
   | { readonly key: 'bound'; readonly bound: string }
+  | { readonly key: 'measure'; readonly setting: string }
   | { readonly key: 'option-added' | 'option-removed'; readonly code: string }
   | { readonly key: 'option-label'; readonly code: string; readonly language: string }
   | { readonly key: 'option-active' | 'option-position'; readonly code: string }
@@ -40,6 +41,7 @@ export function changeLineOf(
   if (field === 'canBeFilter') return { key: 'can-be-filter' };
   if (field === 'position') return { key: 'position' };
   if (field === 'internalNote') return { key: 'internal-note' };
+  if (field.startsWith('measure.')) return { key: 'measure', setting: field.slice(8) };
   if (field.startsWith('bounds.')) return { key: 'bound', bound: field.slice(7) };
   const label = OPTION_LABEL.exec(field);
   if (label !== null) {

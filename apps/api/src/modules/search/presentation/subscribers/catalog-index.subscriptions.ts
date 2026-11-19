@@ -4,10 +4,13 @@ import {
   OfferListingChanged,
   OfferMoved,
   OfferPublished,
+  OfferSellUnitChanged,
   ProductPaused,
   ProductResumed,
   ProductRevisionPublished,
 } from '../../../catalog';
+import { AvailabilityChanged } from '../../../inventory';
+import { EffectivePriceChanged } from '../../../pricing';
 import {
   subscription,
   type RegisteredSubscription,
@@ -22,6 +25,9 @@ export const INDEX_ON_REVISION_PUBLISHED_SUBSCRIBER = 'search.index-published-re
 export const INDEX_ON_LISTING_CHANGED_SUBSCRIBER = 'search.index-listing-changed-offer';
 export const INDEX_ON_PRODUCT_PAUSED_SUBSCRIBER = 'search.index-paused-product';
 export const INDEX_ON_PRODUCT_RESUMED_SUBSCRIBER = 'search.index-resumed-product';
+export const INDEX_ON_AVAILABILITY_CHANGED_SUBSCRIBER = 'search.index-availability-changed';
+export const INDEX_ON_PRICE_CHANGED_SUBSCRIBER = 'search.index-price-changed';
+export const INDEX_ON_SELL_UNIT_CHANGED_SUBSCRIBER = 'search.index-sell-unit-changed';
 
 /**
  * Search's subscriptions to catalog (speed mode): an Offer published, deleted or moved, and a
@@ -33,7 +39,11 @@ export const INDEX_ON_PRODUCT_RESUMED_SUBSCRIBER = 'search.index-resumed-product
  * An Offer put on or taken off sale (`OfferListingChanged`) and a product paused or resumed
  * (the admin pause, catalog design 4.1a) re-read the Offer, or all Offers of the product, so a
  * paused product leaves the index at once and comes back on resume.
- * Variant changes need no subscription: the document holds nothing of variants.
+ * Variants V8: a document holds its sell units' stock state and buyer price, so inventory's
+ * availability change and pricing's effective price change re-read that Offer too (the payload
+ * names the Offer only; stock and price are re-read from the facades). A seller switching one sell
+ * unit off or on (V5, `OfferSellUnitChanged`) re-reads that Offer as well. A new or retired variant comes
+ * with a revision publish. The nightly rebuild repairs anything a lost delivery left behind.
  */
 export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredSubscription[] {
   const run = async (
@@ -91,6 +101,30 @@ export function catalogIndexSubscriptions(sync: SyncOfferDocuments): RegisteredS
       handle: (event, _delivery, context) =>
         run(INDEX_ON_PRODUCT_PAUSED_SUBSCRIBER, context, {
           productId: event.payload.productId as Id<'Product'>,
+        }),
+    }),
+    subscription({
+      name: INDEX_ON_AVAILABILITY_CHANGED_SUBSCRIBER,
+      event: AvailabilityChanged,
+      handle: (event, _delivery, context) =>
+        run(INDEX_ON_AVAILABILITY_CHANGED_SUBSCRIBER, context, {
+          offerIds: [event.payload.offerId as Id<'Offer'>],
+        }),
+    }),
+    subscription({
+      name: INDEX_ON_PRICE_CHANGED_SUBSCRIBER,
+      event: EffectivePriceChanged,
+      handle: (event, _delivery, context) =>
+        run(INDEX_ON_PRICE_CHANGED_SUBSCRIBER, context, {
+          offerIds: [event.payload.offerId as Id<'Offer'>],
+        }),
+    }),
+    subscription({
+      name: INDEX_ON_SELL_UNIT_CHANGED_SUBSCRIBER,
+      event: OfferSellUnitChanged,
+      handle: (event, _delivery, context) =>
+        run(INDEX_ON_SELL_UNIT_CHANGED_SUBSCRIBER, context, {
+          offerIds: [event.payload.offerId as Id<'Offer'>],
         }),
     }),
     subscription({

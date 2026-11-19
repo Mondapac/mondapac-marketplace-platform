@@ -25,6 +25,17 @@
       }
     },
     {
+      "type": "customers.pii-reveal.bulk",
+      "owner": "customers",
+      "severity": "s2",
+      "targetType": "account",
+      "targetRequired": true,
+      "ip": false,
+      "payload": {
+        "reveals": "integer"
+      }
+    },
+    {
       "type": "identity.password.changed",
       "owner": "identity",
       "severity": "s3",
@@ -172,8 +183,16 @@
   ],
   "projected": [
     {
+      "action": "assistant.preview-token.issued",
+      "severity": "s3"
+    },
+    {
       "action": "assistant.settings.changed",
       "severity": "s3"
+    },
+    {
+      "action": "certification.retired-category.flagged-relaxing",
+      "severity": "s2"
     },
     {
       "action": "commission-payouts.commission-rate.clear",

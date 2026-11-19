@@ -21,6 +21,8 @@ export const BRAND_SLUG_MAX = 80;
 export const BRAND_SLUG_BASE_MAX = 70;
 export const BRAND_SUMMARY_MAX = 1000;
 export const BRAND_LOGO_ALT_MAX = 200;
+/** The longest archive reason, in characters (code points; the database counts the same way). */
+export const BRAND_ARCHIVE_REASON_MAX = 500;
 /** How many proposals of one seller may wait for a decision at once. */
 export const MAX_OPEN_PROPOSALS_PER_SELLER = 5;
 
@@ -28,6 +30,32 @@ const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const COUNTRY_PATTERN = /^[A-Z]{2}$/;
 /** Control, format and separator characters other than a plain space: never part of a name. */
 const HIDDEN_OR_CONTROL = /[\p{C}\p{Zl}\p{Zp}]/u;
+/**
+ * Control characters, lone surrogates and line or paragraph separators: never part of an archive
+ * reason. Format characters stay allowed (a Persian or Arabic note needs the zero-width non-joiner).
+ */
+const REASON_FORBIDDEN = /[\p{Cc}\p{Cs}\p{Zl}\p{Zp}]/u;
+
+/** Why a typed archive reason was refused, as the problem code of its field. */
+export type BrandArchiveReasonProblem = 'type' | 'too-long' | 'chars';
+
+/**
+ * An admin's optional archive reason as it is stored: trimmed, at most
+ * {@link BRAND_ARCHIVE_REASON_MAX} characters, no control character. Absent, null or empty after
+ * trimming is no reason (null). The text is shown to the proposing seller later; it is never an
+ * input to a decision.
+ */
+export function brandArchiveReasonOf(
+  raw: unknown,
+): Result<string | null, BrandArchiveReasonProblem> {
+  if (raw === undefined || raw === null) return ok(null);
+  if (typeof raw !== 'string') return err('type');
+  const reason = raw.trim();
+  if (reason === '') return ok(null);
+  if ([...reason].length > BRAND_ARCHIVE_REASON_MAX) return err('too-long');
+  if (REASON_FORBIDDEN.test(reason)) return err('chars');
+  return ok(reason);
+}
 
 /**
  * A name as it is stored: inner runs of whitespace become one space, the ends are trimmed. The
@@ -129,14 +157,17 @@ function optionalImageId(
  * Validates the content fields of a create or an edit. Every field is judged; the problems come
  * back together so a form shows them at once. A logo needs its alt text and alt text needs a logo.
  */
-export function parseBrandContent(input: {
-  readonly name?: unknown;
-  readonly summary?: unknown;
-  readonly originCountry?: unknown;
-  readonly logoImageId?: unknown;
-  readonly logoAlt?: unknown;
-  readonly headerImageId?: unknown;
-}): Result<BrandContent, readonly BrandFieldProblem[]> {
+export function parseBrandContent(
+  input: {
+    readonly name?: unknown;
+    readonly summary?: unknown;
+    readonly originCountry?: unknown;
+    readonly logoImageId?: unknown;
+    readonly logoAlt?: unknown;
+    readonly headerImageId?: unknown;
+  },
+  isBlocked: (text: string) => boolean = () => false,
+): Result<BrandContent, readonly BrandFieldProblem[]> {
   const problems: BrandFieldProblem[] = [];
   let name = '';
   if (typeof input.name !== 'string') problems.push({ path: 'name', code: 'required' });
@@ -160,6 +191,17 @@ export function parseBrandContent(input: {
   if (logoImageId !== null && logoAlt === null)
     problems.push({ path: 'logoAlt', code: 'required' });
   if (logoImageId === null && logoAlt !== null) problems.push({ path: 'logoAlt', code: 'no-logo' });
+  // The Market's content filter: the summary and the logo's alt text are public, and the alt text
+  // is read aloud. A field already refused for another reason is not judged twice.
+  for (const [path, text] of [
+    ['name', name],
+    ['summary', summary],
+    ['logoAlt', logoAlt],
+  ] as const) {
+    if (text !== null && isBlocked(text) && !problems.some((problem) => problem.path === path)) {
+      problems.push({ path, code: 'blocked-term' });
+    }
+  }
   if (problems.length > 0) return err(problems);
   return ok({ name, summary, originCountry, logoImageId, logoAlt, headerImageId });
 }
@@ -181,6 +223,12 @@ export interface BrandState {
   readonly approvedBy: Id<'Account'> | null;
   /** Set exactly when a merge archived the brand: the brand that took its products. */
   readonly mergedIntoId: Id<'Brand'> | null;
+  /**
+   * The admin's optional note when it archived the brand (a proposal turned down or a live brand
+   * retired), for the proposing seller's notice. Null otherwise, and always for a merge. Kept out of
+   * the audit log and out of every decision.
+   */
+  readonly archiveReason: string | null;
   readonly createdAt: Temporal.Instant;
   readonly updatedAt: Temporal.Instant;
   /** Optimistic version: 1 at insert, one more per change. */
@@ -194,6 +242,7 @@ export type BrandRefusal =
   | { readonly code: 'brand.not-draft' }
   | { readonly code: 'brand.archived' }
   | { readonly code: 'brand.already-archived' }
+  | { readonly code: 'brand.archive-reason-invalid' }
   | { readonly code: 'brand.merge-into-itself' }
   | { readonly code: 'brand.merge-target-not-active' }
   | { readonly code: 'brand.merge-source-archived' };
@@ -264,6 +313,7 @@ export class Brand {
           proposedBySellerId: origin.kind === 'seller' ? origin.sellerId : null,
           approvedBy: origin.kind === 'admin' ? origin.accountId : null,
           mergedIntoId: null,
+          archiveReason: null,
           createdAt: input.now,
           updatedAt: input.now,
           version: 1,
@@ -315,10 +365,20 @@ export class Brand {
     return ok(this.#next({ status: 'active', approvedBy: input.accountId, updatedAt: input.now }));
   }
 
-  /** `draft` or `active` to `archived`. A draft proposal that is turned down is archived too. */
-  archive(input: { readonly now: Temporal.Instant }): Result<Brand, BrandRefusal> {
+  /**
+   * `draft` or `active` to `archived`. A draft proposal that is turned down is archived too. The
+   * optional reason follows {@link brandArchiveReasonOf}; an invalid one refuses the command.
+   */
+  archive(input: {
+    readonly now: Temporal.Instant;
+    readonly reason?: string | null;
+  }): Result<Brand, BrandRefusal> {
     if (this.#state.status === 'archived') return err({ code: 'brand.already-archived' });
-    return ok(this.#next({ status: 'archived', updatedAt: input.now }));
+    const reason = brandArchiveReasonOf(input.reason);
+    if (!reason.ok) return err({ code: 'brand.archive-reason-invalid' });
+    return ok(
+      this.#next({ status: 'archived', archiveReason: reason.value, updatedAt: input.now }),
+    );
   }
 
   /**

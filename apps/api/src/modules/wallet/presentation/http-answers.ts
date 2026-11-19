@@ -27,6 +27,8 @@ export const WALLET_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'wallet.credit-request-decided': 409,
   'wallet.credit-request-expired': 409,
   'wallet.approver-is-requester': 403,
+  // The super list export (list 24).
+  'batch.too-large': 413,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
@@ -83,6 +85,12 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  if (error.code === 'batch.too-large') {
+    return fail(status, error.code, {
+      max: error.max,
+      ...(error.total === undefined ? {} : { total: error.total }),
+    });
+  }
   if (typeof error.actionKey === 'string') {
     return fail(status, error.code, { actionKey: error.actionKey });
   }

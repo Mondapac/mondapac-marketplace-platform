@@ -58,7 +58,10 @@ const fakeAccounts: AccountRepository = {
   unverifiedSignedUpBefore: () => Promise.reject(new Error('sign-up lists no account')),
   remove: () => Promise.reject(new Error('sign-up removes no account')),
   existsInPopulation: () => Promise.reject(new Error('sign-up asks no population question')),
+  searchCustomerIdsByName: () => Promise.reject(new Error('sign-up searches no customer')),
   customerSummaries: () => Promise.reject(new Error('sign-up reads no customer summary')),
+  customerDirectoryRows: () => Promise.reject(new Error('sign-up reads no directory')),
+  customerDirectoryPage: () => Promise.reject(new Error('sign-up reads no directory')),
   customerSharesAddressWithSellerMember: () =>
     Promise.reject(new Error('sign-up reads no seller team')),
   customerStatus: () => Promise.reject(new Error('sign-up reads no customer status')),

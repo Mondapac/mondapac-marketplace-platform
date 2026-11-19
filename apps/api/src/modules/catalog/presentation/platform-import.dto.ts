@@ -46,6 +46,11 @@ export class PlatformImportTemplateDto {
   @ApiProperty({ type: [ImportColumnDto] }) columns!: ImportColumnDto[];
   @ApiProperty({ type: [String] }) typesOffered!: string[];
   @ApiProperty({ type: Object }) limits!: { rows: number; fileBytes: number };
+  @ApiProperty({
+    type: [String],
+    description: 'The `attr[<code>]` columns added for the feature set asked for.',
+  })
+  attributeColumns!: string[];
   @ApiProperty() filename!: string;
   @ApiProperty({ description: 'The template file as CSV text.' }) csv!: string;
   @ApiProperty() xlsxFilename!: string;

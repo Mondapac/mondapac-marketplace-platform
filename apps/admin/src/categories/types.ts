@@ -3,6 +3,7 @@
 
 export const READ_PERMISSION = 'catalog.category-tree.view';
 export const EDIT_PERMISSION = 'catalog.category-tree.edit';
+export const RESTRUCTURE_PERMISSION = 'catalog.category-tree.restructure';
 export const CATEGORIES_PATH = '/catalog/categories';
 export const API_CATEGORIES = 'catalog/admin/categories';
 
@@ -36,6 +37,12 @@ export interface CategoryRow {
   readonly position: number;
   readonly version: number;
   readonly counts: CategoryCounts;
+  /** The feature set the category uses (its own or inherited), or null: none up the tree. */
+  readonly featureSetId: string | null;
+  readonly featureSetCode: string | null;
+  /** The ancestor that owns the set; null when the category has none or sets it itself. */
+  readonly featureSetFromCategoryId: string | null;
+  readonly inherited: boolean;
 }
 
 export interface ActionAnswer {
@@ -53,6 +60,8 @@ export interface TreeBody {
   /** Depth first, siblings in order. */
   readonly categories: readonly CategoryRow[];
   readonly actions: Readonly<Record<string, ActionAnswer>>;
+  /** Whether a create or reorder is reviewed (and a discard, merge or archive waits for approval). */
+  readonly review?: CatalogueReview;
 }
 
 export interface PathEntry {
@@ -90,7 +99,15 @@ export interface EditDetails {
 }
 
 /** The answer of every category write (apps/api CategoryWriteWrapBody). */
+/** Whether an edit is reviewed in this Market (Admin Inbox > System requests, area catalogue). */
+export interface CatalogueReview {
+  readonly reviewed: boolean;
+  readonly risk: string;
+}
+
 export interface WriteWrap {
+  /** The review a details save opened (Admin Inbox > System requests); absent or null when none. */
+  readonly request?: { readonly id: string; readonly number: number } | null;
   readonly category: {
     readonly id: string;
     readonly slug: string;
@@ -99,6 +116,24 @@ export interface WriteWrap {
     readonly revisionNo: number;
     readonly treeVersion: number;
   };
+}
+
+/** The answer of the image writes (apps/api CategoryImageWriteBody). */
+export interface ImageWrite extends WriteWrap {
+  readonly image: {
+    readonly imageId: string;
+    readonly width: number;
+    readonly height: number;
+  } | null;
+}
+
+/** The path of one rendition of a category's current image, through the panel's relay. */
+export function categoryImagePath(
+  categoryId: string,
+  imageId: string,
+  size: 'thumb' | 'medium',
+): string {
+  return `/api/${API_CATEGORIES}/${categoryId}/images/${imageId}/${size}`;
 }
 
 export const NAME_MAX = 120;
@@ -121,9 +156,11 @@ export interface DetailBody {
   readonly details: EditDetails;
   /** The tree version a structural change of this category must name. */
   readonly treeVersion: number;
+  /** Whether a details save is reviewed here: the form then asks for a note. */
+  readonly review?: CatalogueReview;
 }
 
-export const DETAIL_TABS = ['details', 'products', 'history'] as const;
+export const DETAIL_TABS = ['details', 'attribute-links', 'products', 'history'] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 
 export interface ImpactBody {
@@ -134,4 +171,34 @@ export interface ImpactBody {
   readonly offersWithActiveTag: number;
   readonly descendants: number;
   readonly complete: boolean;
+  /** Present when a target was named: the products whose feature set would change. */
+  readonly featureSetChanges?: number;
+}
+
+/** `POST .../move-products` (202): the job that was queued and the published products it will move. */
+export interface MoveStarted {
+  readonly jobId: string;
+  readonly products: number;
+}
+
+export type MoveJobState = 'queued' | 'running' | 'done' | 'failed';
+
+/** One job of `GET .../move-products`: ids, state and counts only (no reason, no seller). */
+export interface MoveJob {
+  readonly id: string;
+  readonly sourceCategoryId: string;
+  readonly targetCategoryId: string;
+  readonly state: MoveJobState;
+  readonly createdAt: string;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+  readonly total: number;
+  readonly moved: number;
+  readonly skipped: number;
+  readonly failed: number;
+}
+
+export interface MoveProgressBody {
+  /** The newest jobs of the category, newest first. */
+  readonly jobs: readonly MoveJob[];
 }

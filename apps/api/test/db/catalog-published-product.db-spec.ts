@@ -28,6 +28,9 @@ const uuid7 = (): string =>
   uuidV7(Date.now() + sequence++, crypto.getRandomValues(new Uint8Array(10)));
 const LOCALES = { requested: 'en-AU', fallback: 'ja-JP' };
 
+// A variant number is unique within its product; one running number is unique everywhere.
+let variantNoSeq = 0;
+
 describe.each(TEST_MARKETS)('catalog published product in market %s (database)', (code) => {
   const market = marketOf(code);
   const other = marketOf(otherMarketOf(code));
@@ -41,7 +44,11 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
     owner = new Client({ connectionString: ownerTestDatabaseUrl() });
     await owner.connect();
     products = new PrismaProductRepository(db.service);
-    reader = new PrismaPublishedProductReader(db.service);
+    const units: Array<{ code: string; labels: Record<string, string> }> = [
+      { code: 'kg', labels: { 'en-AU': 'kg', 'fa-IR': 'کیلوگرم' } },
+      { code: 'g', labels: { 'en-AU': 'g' } },
+    ];
+    reader = new PrismaPublishedProductReader(db.service, () => units);
   });
   afterAll(async () => {
     await owner.end();
@@ -138,6 +145,7 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
         ...base,
         product_id: productId,
         variant_model: 'options',
+        variant_no: ++variantNoSeq,
         state: 'proposed',
         created_at: T0.toString(),
       });
@@ -152,6 +160,7 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
         product_id: productId,
         revision_no: no,
         revision_kind: 'submission',
+        type_code: 'simple',
         base_revision_id: null,
         reverted_from_revision_id: null,
         family_revision_id: familyRevisionId,
@@ -250,8 +259,8 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       description: 'Medjool',
       categoryIds: [...a.categoryIds].reverse(),
       variants: [
-        { variantId: a.variantIds[0], position: 0, label: '500 g' },
-        { variantId: a.variantIds[1], position: 1, label: '1 kg' },
+        expect.objectContaining({ variantId: a.variantIds[0], position: 0, label: '500 g' }),
+        expect.objectContaining({ variantId: a.variantIds[1], position: 1, label: '1 kg' }),
       ],
       brand: null,
       specifications: [],
@@ -272,9 +281,13 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       status?: string;
       showOnProductPage?: boolean;
       names: Record<string, string>;
+      /** The revision's `bounds` object (a measure keeps its unit settings in `measure`). */
+      bounds?: Record<string, unknown>;
       options?: Record<string, { labels: Record<string, string>; mergedInto?: string }>;
+      /** Archives the definition at the end, merged into another (attributes A8). */
+      mergedInto?: { id: string; options: Record<string, string> };
     },
-  ): Promise<void> {
+  ): Promise<string> {
     const base = { market_id: target.marketId, tenant_id: target.tenantId };
     const definitionId = uuid7();
     const revisionId = uuid7();
@@ -296,7 +309,7 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       revision_no: 1,
       material: false,
       is_variant_option: false,
-      bounds: '{}',
+      bounds: JSON.stringify(kind.bounds ?? {}),
       names: JSON.stringify(kind.names),
       show_on_product_page: kind.showOnProductPage ?? true,
       author_kind: 'seed',
@@ -318,6 +331,22 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
          WHERE market_id = $1 AND id = $2`,
       [target.marketId, definitionId, revisionId],
     );
+    if (kind.mergedInto !== undefined) {
+      await owner.query(
+        `UPDATE catalog.attribute_definitions SET status = 'archived', merged_into_id = $3, version = 2
+           WHERE market_id = $1 AND id = $2`,
+        [target.marketId, definitionId, kind.mergedInto.id],
+      );
+      for (const [sourceCode, targetCode] of Object.entries(kind.mergedInto.options)) {
+        await insert('attribute_merge_options', {
+          ...base,
+          source_id: definitionId,
+          source_code: sourceCode,
+          target_code: targetCode,
+        });
+      }
+    }
+    return definitionId;
   }
 
   it('lists the published revision attribute values by family group, with names and labels in the asked locale', async () => {
@@ -413,6 +442,101 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
       name: 'کشور سازنده',
       value: { kind: 'text', text: 'Iran' },
     });
+  });
+
+  it('shows a measure in the seller unit with the Market unit label, from the published revision', async () => {
+    const tag = uuid7().slice(-8);
+    const weight = `weight-${tag}`;
+    const volume = `volume-${tag}`;
+    await definition(market, weight, {
+      dataType: 'measure',
+      names: { 'en-AU': 'Net weight' },
+      bounds: { measure: { dimension: 'mass', units: ['g', 'kg'], defaultUnit: 'g', decimals: 3 } },
+    });
+    // A unit the Market does not list ('l' has no label) leaves the row out; a count shows none.
+    await definition(market, volume, {
+      dataType: 'measure',
+      names: { 'en-AU': 'Volume' },
+      bounds: { measure: { dimension: 'volume', units: ['l'], defaultUnit: 'l', decimals: 2 } },
+    });
+    const entry = (code: string) => ({ code, required: false, isVariantOption: false });
+    const a = await product(market, {
+      texts: { 'en-AU': { name: 'Rice' } },
+      variants: [],
+      attributes: {
+        groups: [{ groupCode: 'details', attributes: [entry(weight), entry(volume)] }],
+        values: {
+          [weight]: { value: '500', unit: 'kg' },
+          [volume]: { value: '1500', unit: 'l' },
+        },
+      },
+    });
+    expect((await read(a.productId))?.specifications).toEqual([
+      {
+        groupCode: 'details',
+        specifications: [
+          {
+            code: weight,
+            name: 'Net weight',
+            value: { kind: 'measure', value: '0.5', unitLabel: 'kg' },
+          },
+        ],
+      },
+    ]);
+    const persian = (await read(a.productId, { requested: 'fa-IR', fallback: 'en-AU' }))
+      ?.specifications[0]?.specifications[0]?.value;
+    expect(persian).toEqual({ kind: 'measure', value: '0.5', unitLabel: 'کیلوگرم' });
+  });
+
+  it('reads a merged attribute as its target: name, label, code, and the target value wins', async () => {
+    const tag = uuid7().slice(-8);
+    const [container, pack] = [`container-${tag}`, `pack-${tag}`];
+    const targetId = await definition(market, container, {
+      dataType: 'select',
+      names: { 'en-AU': 'Container' },
+      options: { tin: { labels: { 'en-AU': 'Tin' } }, jar: { labels: { 'en-AU': 'Jar' } } },
+    });
+    await definition(market, pack, {
+      dataType: 'select',
+      names: { 'en-AU': 'Pack type' },
+      options: { can: { labels: { 'en-AU': 'Can' } } },
+      mergedInto: { id: targetId, options: { can: 'tin' } },
+    });
+    const entry = (code: string) => ({ code, required: false, isVariantOption: false });
+    // The family lists only the merged attribute: the target is read for it.
+    const alone = await product(market, {
+      texts: { 'en-AU': { name: 'Tins' } },
+      variants: [],
+      attributes: {
+        groups: [{ groupCode: 'details', attributes: [entry(pack)] }],
+        values: { [pack]: 'can' },
+      },
+    });
+    expect((await read(alone.productId))?.specifications).toEqual([
+      {
+        groupCode: 'details',
+        specifications: [
+          { code: container, name: 'Container', value: { kind: 'text', text: 'Tin' } },
+        ],
+      },
+    ]);
+    // A product that has a value of the target too shows that one, once.
+    const both = await product(market, {
+      texts: { 'en-AU': { name: 'Jars' } },
+      variants: [],
+      attributes: {
+        groups: [{ groupCode: 'details', attributes: [entry(pack), entry(container)] }],
+        values: { [pack]: 'can', [container]: 'jar' },
+      },
+    });
+    expect((await read(both.productId))?.specifications).toEqual([
+      {
+        groupCode: 'details',
+        specifications: [
+          { code: container, name: 'Container', value: { kind: 'text', text: 'Jar' } },
+        ],
+      },
+    ]);
   });
 
   it('has no specifications for a product whose family lists none', async () => {
@@ -522,9 +646,16 @@ describe.each(TEST_MARKETS)('catalog published product in market %s (database)',
 
     const answer = await read(a.productId);
 
+    // Each variant carries its number, its code `{productCode}-{nn}` and its axes (V2).
+    expect(answer?.variants.every((v) => /-\d{2,}$/.test(v.variantCode) && v.variantNo >= 1)).toBe(
+      true,
+    );
+    expect(answer?.variants.map((v) => v.variantNo)).toEqual(
+      [...(answer?.variants.map((v) => v.variantNo) ?? [])].sort((x, y) => x - y),
+    );
     expect(answer?.variants).toEqual([
-      { variantId: a.variantIds[0], position: 0, label: 'A' },
-      { variantId: a.variantIds[3], position: 3, label: null },
+      expect.objectContaining({ variantId: a.variantIds[0], position: 0, label: 'A' }),
+      expect.objectContaining({ variantId: a.variantIds[3], position: 3, label: null }),
     ]);
   });
 

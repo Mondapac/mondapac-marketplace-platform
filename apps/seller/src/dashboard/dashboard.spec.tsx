@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -18,7 +18,21 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../server/server-fetch.ts', () => ({ serverGet: mocks.get }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 
-import { loadSellerDashboard } from './load.ts';
+import { startSellerDashboard } from './load.ts';
+
+/** Every read of the dashboard, awaited. */
+async function loadSellerDashboard(session: SellerSession): Promise<SellerDashboardData> {
+  const sources = startSellerDashboard(session);
+  const [orders, offers, ledger, payout, sourcesView, lowStock] = await Promise.all([
+    sources.orders,
+    sources.offers,
+    sources.ledger,
+    sources.payout,
+    sources.sources,
+    sources.lowStock,
+  ]);
+  return { orders, offers, ledger, payout, sources: sourcesView, lowStock };
+}
 
 const wrap = (node: React.ReactNode, locale = 'en-AU') => (
   <NextIntlClientProvider locale={locale} messages={messages}>
@@ -92,6 +106,7 @@ const full: SellerDashboardData = {
       refundedCommission: '0',
       disputeDebits: '0',
       disputeReinstated: '0',
+      sellerCashback: '0',
       balance: '123450',
     },
     entries: [
@@ -217,6 +232,34 @@ describe('seller dashboard', () => {
     expect(card.textContent).toContain('Among your latest 50 paid orders');
   });
 
+  it.each(['AUD', 'JPY'])(
+    'labels a seller cashback ledger row in %s instead of calling it Other',
+    (currency) => {
+      const base = full.ledger;
+      if (base?.kind !== 'ok') throw new Error('fixture');
+      const data: SellerDashboardData = {
+        ...full,
+        ledger: ok({
+          ...base.value,
+          currency,
+          entries: [
+            {
+              entryId: ID(72),
+              orderId: ID(1),
+              kind: 'cashback-seller',
+              direction: 'debit',
+              amount: '500',
+              occurredAt: '2026-10-14T01:00:00.000Z',
+            },
+          ],
+        }),
+      };
+      render(wrap(<SellerDashboard data={data} permissionKeys={KEYS} />));
+      expect(screen.getByText('Cashback to exclusive customers')).toBeTruthy();
+      expect(screen.queryByText('Other')).toBeNull();
+    },
+  );
+
   it('formats money with the Market locale, not a fixed one', () => {
     render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />, 'de-DE'));
     expect(screen.getByRole('link', { name: /Your balance/ }).textContent).toMatch(/1\.234,50/);
@@ -261,7 +304,7 @@ describe('seller dashboard', () => {
     };
     render(wrap(<SellerDashboard data={data} permissionKeys={KEYS} />));
     expect(screen.getByRole('link', { name: 'Set up payouts' }).getAttribute('href')).toBe(
-      '/settings/payout-account',
+      '/accounting/payout-account',
     );
     expect(screen.getByRole('link', { name: 'Add a location' }).getAttribute('href')).toBe(
       '/settings/stock-locations',
@@ -381,7 +424,32 @@ const session = (permissionKeys: string[]): SellerSession => ({
   csrfToken: 'c',
 });
 
-describe('loadSellerDashboard', () => {
+describe('seller dashboard while it streams', () => {
+  it('says there is nothing to show when every read is refused after the skeletons', async () => {
+    await act(async () => {
+      render(
+        wrap(
+          <SellerDashboard
+            data={{
+              orders: Promise.resolve(null),
+              offers: Promise.resolve(null),
+              ledger: null,
+              payout: null,
+              sources: null,
+              lowStock: null,
+            }}
+            permissionKeys={['ordering.seller-order.view', 'catalog.own-product.view']}
+          />,
+        ),
+      );
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('Nothing to show here yet')).toBeTruthy();
+    expect(document.querySelector('[data-skeleton]')).toBeNull();
+  });
+});
+
+describe('startSellerDashboard', () => {
   beforeEach(() => {
     mocks.get.mockReset();
     mocks.redirect.mockClear();

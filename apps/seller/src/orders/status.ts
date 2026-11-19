@@ -4,11 +4,12 @@ import type { Fulfilment, SellerOrderView } from './types.ts';
 export const TONE: Record<Fulfilment | 'ready', BadgeTone> = {
   'to-ship': 'attention',
   ready: 'info',
-  shipped: 'info',
+  // Handed over and out of the seller's hands: neutral, so it reads apart from Ready (info).
+  shipped: 'neutral',
   delivered: 'success',
 };
 
-/** The end of an id in capitals: the order reference the seller reads out and searches for. */
+/** The end of an id in capitals: the order reference the seller reads out (a search needs the whole id). */
 export const shortId = (id: string): string => id.slice(-8).toUpperCase();
 
 /**

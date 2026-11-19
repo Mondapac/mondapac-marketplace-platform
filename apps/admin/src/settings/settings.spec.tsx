@@ -46,7 +46,8 @@ describe('SupportEmailCard', () => {
   it('shows the current address, and no form without the manage permission', () => {
     mount(contact('help@example.com'), false);
     expect(screen.getByText('help@example.com')).toBeTruthy();
-    expect(screen.getByText(/you need the "Support email: manage" permission/)).toBeTruthy();
+    expect(screen.getByText('View only')).toBeTruthy();
+    expect(screen.getByText(/^Your role can see these settings but not change them/)).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.queryByLabelText('Support email address')).toBeNull();
   });
@@ -114,7 +115,7 @@ describe('SupportEmailCard', () => {
       // Before a Save press the summary is a quiet named group, not an alert.
       expect(screen.queryByRole('alert')).toBeNull();
       const summary = screen.getByRole('group', { name: /needs? fixing/ });
-      expect(summary.textContent).toContain('1 setting needs fixing before you can save');
+      expect(summary.textContent).toContain('1 setting needs fixing');
       fireEvent.click(screen.getByRole('link', { name: 'Support email address' }));
       expect(document.activeElement).toBe(screen.getByLabelText('Support email address'));
     }
@@ -170,7 +171,7 @@ describe('SupportEmailCard', () => {
     expect(row.yours).toBe('care@example.com');
     // Text, never markup.
     expect(row.item.querySelector('b')).toBeNull();
-    const toggle = screen.getByRole('button', { name: 'Hide comparison' });
+    const toggle = screen.getByRole('button', { name: 'Hide what changed' });
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(document.getElementById(toggle.getAttribute('aria-controls')!)).toBeTruthy();
 

@@ -3,8 +3,8 @@ import type { ContentHash, Id } from '@mondapac/shared-kernel';
 import type { SensitiveReason } from './product-revision-policy';
 import type { RevisionContent } from './revision-content';
 
-/** `submission`, `revert` or `tax-override` (data design 3.7; D 4.2 rows 1 and 6, D 4.3). */
-export type RevisionKind = 'submission' | 'revert' | 'tax-override';
+/** `submission`, `revert`, `tax-override` or `category-override` (C5a) (data design 3.7; D 4.2 rows 1 and 6, D 4.3). */
+export type RevisionKind = 'submission' | 'revert' | 'tax-override' | 'category-override';
 
 /**
  * A frozen revision as the store keeps it (data design 3.7 to 3.10): the record around the
@@ -16,6 +16,12 @@ export interface StoredRevision {
   readonly productId: Id<'Product'>;
   /** Counts up from 1 per product. */
   readonly revisionNo: number;
+  /**
+   * The product type the revision was frozen with (data design 3.7; M-9). The product row's type
+   * can differ from it after Add sizes, so any reader of a revision's content takes the handler
+   * of this type, never the row's.
+   */
+  readonly typeCode: string;
   readonly kind: RevisionKind;
   /** The published revision it was built on; always set for a tax override. */
   readonly baseRevisionId: Id<'ProductRevision'> | null;

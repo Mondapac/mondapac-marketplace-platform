@@ -187,8 +187,8 @@ describe.each([
     brand: null,
     specifications: [],
     variants: [
-      { variantId: variant(1), label: '500 g' },
-      { variantId: variant(2), label: null },
+      { variantId: variant(1), label: '500 g', imageIds: [] },
+      { variantId: variant(2), label: null, imageIds: [] },
     ],
   });
   const price = (offerNo: number, variantNo: number, amount: bigint, extra = {}): void => {
@@ -304,6 +304,32 @@ describe.each([
         })),
       );
       expect(images.asked).toEqual([[PRODUCT]]);
+    });
+
+    it("lists each sold Variant's picks that are public, in pick order, and leaves others out", async () => {
+      shelves.documents = [hit(1)];
+      price(1, 1, 900n);
+      price(1, 2, 950n);
+      images.images_.set(
+        PRODUCT,
+        PHOTOS.slice(0, 2).map((imageId) => ({ imageId, width: 100, height: 100 })),
+      );
+      const [a, b, gone] = PHOTOS as [Id<'ProductImage'>, Id<'ProductImage'>, Id<'ProductImage'>];
+      sources.product_ = {
+        product: {
+          ...content(),
+          variants: [
+            { variantId: variant(1), label: '500 g', imageIds: [b, gone, a] },
+            { variantId: variant(2), label: null, imageIds: [gone] },
+          ],
+        },
+      };
+
+      const result = await run();
+
+      expect(result.ok && result.value.variantImages).toEqual([
+        { variantId: variant(1), imageIds: [b, a] },
+      ]);
     });
 
     it('has no photo for a product with none, and never more than 8', async () => {
@@ -524,7 +550,10 @@ describe.each([
   it('keeps the keys within the pricing batch by leaving the last Offers (by id) out', async () => {
     const many = Array.from({ length: 15 }, (_, i) => variant(i + 1));
     sources.product_ = {
-      product: { ...content(), variants: many.map((variantId) => ({ variantId, label: null })) },
+      product: {
+        ...content(),
+        variants: many.map((variantId) => ({ variantId, label: null, imageIds: [] })),
+      },
     };
     variants.all = many;
     shelves.documents = Array.from({ length: MAX_DETAIL_OFFERS }, (_, i) => hit(i + 1));

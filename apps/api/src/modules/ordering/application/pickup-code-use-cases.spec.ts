@@ -1,3 +1,7 @@
+import {
+  FakeOrderProducts,
+  FakePromotions,
+} from '../../../../test/support/ordering-promotions-fakes';
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, PendingEvent } from '@mondapac/shared-kernel';
 import {
@@ -33,14 +37,14 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import type { CheckoutLine } from '../../cart';
-import { ConfigOrderingPolicy } from '../infrastructure/config-ordering-policy';
+import { testOrderingPolicy } from '../../../../test/support/ordering-policy';
 import { PICKUP_MAX_FAILED_ATTEMPTS } from '../domain/pickup-code';
 import type { OrderingDependencies } from './checkout-flow';
 import { ConfirmPayment } from './use-cases/confirm-payment.use-case';
 import { RecordShipments } from './use-cases/record-shipments.use-case';
 import { RegeneratePickupCode } from './use-cases/regenerate-pickup-code.use-case';
 import { SellerConfirmPickup } from './use-cases/seller-confirm-pickup.use-case';
-import { SellerListOrders } from './use-cases/seller-list-orders.use-case';
+import { sellerListOrders } from '../../../../test/support/order-list-fakes';
 import { SellerMarkOrderReady } from './use-cases/seller-mark-order-ready.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { StartCheckout } from './use-cases/start-checkout.use-case';
@@ -147,7 +151,7 @@ describe.each([['AU'], ['ZZ']] as const)('pickup code in market %s', (code) => {
       refunds: NO_REFUNDS,
       audit: NO_AUDIT,
       gateway: new FakeGateway(),
-      policy: new ConfigOrderingPolicy(markets),
+      policy: testOrderingPolicy(markets),
       cart,
       customers,
       shipTo: new FakeShipToCipher(),
@@ -156,6 +160,8 @@ describe.each([['AU'], ['ZZ']] as const)('pickup code in market %s', (code) => {
       commission: new FakeCommission(),
       tax: new FakeTax(),
       taxCategories: new FakeTaxCategories(code === 'AU' ? 'taxable' : 'zz_standard'),
+      products: new FakeOrderProducts(),
+      promotions: new FakePromotions(),
       outbox: {
         append: (_context, events) => {
           written.push(...events);
@@ -291,7 +297,7 @@ describe.each([['AU'], ['ZZ']] as const)('pickup code in market %s', (code) => {
       const seller = await new SellerViewOrder(gate, deps).execute(sellerA, {
         sellerOrderId: pickup.id,
       });
-      const list = await new SellerListOrders(gate, deps).execute(sellerA, {});
+      const list = await sellerListOrders(gate, deps).execute(sellerA, {});
       expect(JSON.stringify(seller, bigint)).not.toContain('0427');
       expect(JSON.stringify(list, bigint)).not.toContain('0427');
       expect(seller.ok && seller.value.pickup).toEqual({ attemptsLeft: 5, locked: false });
@@ -399,6 +405,37 @@ describe.each([['AU'], ['ZZ']] as const)('pickup code in market %s', (code) => {
       const recorded = await new RecordShipments(gate, deps).execute(system, {});
       expect(recorded.ok && recorded.value.recorded).toBe(1);
       expect(inventory.shipped).toHaveLength(1);
+    });
+
+    it('withholds the address from the seller 30 days after collection (2026-11-14)', async () => {
+      const { pickup } = await readyOrder();
+      // Whether the view opened the sealed details (for the customer's note): the retention rule.
+      const shipToOf = async () => {
+        const cipher = deps.shipTo as FakeShipToCipher;
+        const before = cipher.opened;
+        const view = await new SellerViewOrder(gate, deps).execute(sellerA, {
+          sellerOrderId: pickup.id,
+        });
+        if (!view.ok) throw new Error('seller view failed');
+        expect('shipTo' in view.value).toBe(false);
+        return cipher.opened > before;
+      };
+      const collectedAt = T0.add({ hours: 3 });
+      try {
+        // A pickup order carries sealed checkout details too: opened while ready, not collected.
+        expect(await shipToOf()).toBe(true);
+        clock.set(collectedAt);
+        const done = await confirmPickup(sellerA, pickup.id, '0427');
+        expect(done.ok && done.value.deliveredAt).toEqual(collectedAt);
+        expect(done.ok && 'shipTo' in done.value).toBe(false);
+
+        clock.set(collectedAt.add({ hours: 30 * 24 - 1 }));
+        expect(await shipToOf()).toBe(true);
+        clock.set(collectedAt.add({ hours: 30 * 24 }));
+        expect(await shipToOf()).toBe(false);
+      } finally {
+        clock.set(T0);
+      }
     });
 
     it('is idempotent: a repeat on a collected order answers its state, even with another code', async () => {

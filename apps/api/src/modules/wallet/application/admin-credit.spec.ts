@@ -1,4 +1,5 @@
 import { unusedChangeTrail } from '../../../../test/support/change-trail-fakes';
+import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -15,6 +16,9 @@ import {
   MemoryWallet,
 } from '../../../../test/support/wallet-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
+import { ScriptedProbe } from '../../../../test/support/commission-payouts-list-fakes';
+import { MemoryAdminCreditList } from '../../../../test/support/wallet-credit-list-fakes';
+import { ExceljsSheetWriter } from '../../../platform/list-export';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { AccessDecision } from '../../../platform/authz';
@@ -27,15 +31,20 @@ import {
   approveAdminCredit,
   issueAdminCredit,
   journalKeyOf,
-  listAdminCredits,
   viewCustomerWallet,
 } from './admin-credit-flow';
+import {
+  CREDIT_ROW_KEYS,
+  listAdminCreditPage,
+  type AdminCreditListDependencies,
+} from './admin-credit-list-flow';
 import { ApproveAdminCredit } from './use-cases/approve-admin-credit.use-case';
 import { ExpireAdminCreditRequests } from './use-cases/expire-admin-credit-requests.use-case';
 import { GrantCredit } from './use-cases/grant-credit.use-case';
 import { IssueAdminCredit } from './use-cases/issue-admin-credit.use-case';
 import { ListAdminCreditRequests } from './use-cases/list-admin-credit-requests.use-case';
 import { RejectAdminCredit } from './use-cases/reject-admin-credit.use-case';
+import { ViewCustomerHistory } from './use-cases/view-customer-history.use-case';
 import { ViewCustomerWallet } from './use-cases/view-customer-wallet.use-case';
 import type { AdminCreditDependencies } from './wallet-dependencies';
 
@@ -93,6 +102,7 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
   let customers: FakeCustomerDirectory;
   let audit: RecordingAudit;
   let deps: AdminCreditDependencies;
+  let review = new RecordingReview();
   let seq = 0;
   let stepUpAnswer: Awaited<ReturnType<AdminCreditDependencies['stepUp']['consume']>> | null;
   let stepUpAsked: string[];
@@ -139,11 +149,13 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
     audit = new RecordingAudit();
     stepUpAnswer = null;
     stepUpAsked = [];
+    review = new RecordingReview();
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       wallet,
       settings: setting,
       policy: new ConfigWalletPolicy(markets),
+      review,
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,
@@ -688,13 +700,25 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
   });
 
   describe('reads', () => {
+    /** The Credit requests list over the same requests the flows write (one Market here). */
+    const listDeps = (): AdminCreditListDependencies => {
+      const [approveKey] = CREDIT_ROW_KEYS;
+      return {
+        unitOfWork: new FakeUnitOfWork(),
+        list: new MemoryAdminCreditList(() => [...credits.rows.values()]),
+        probes: { [approveKey]: new ScriptedProbe(true) },
+        sheetWriter: new ExceljsSheetWriter(),
+        clock,
+      };
+    };
+
     it('refuses an acting-as session on both reads (review S4)', async () => {
       const context = adminCtx(MAKER);
       const actingAsCtx = {
         ...context,
         actor: { ...context.actor, actingAs: { adminAccountId: MAKER } },
       } as unknown as CallContext;
-      expect(await listAdminCredits(deps, actingAsCtx, {})).toEqual({
+      expect(await listAdminCreditPage(listDeps(), actingAsCtx, {})).toEqual({
         ok: false,
         error: { code: 'access.denied' },
       });
@@ -705,17 +729,26 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
       expect(customers.asked).toEqual([]);
     });
 
-    it('lists pending, decided and granted requests, newest first, by page', async () => {
+    it("lists pending, decided and granted requests in the older queue's shape", async () => {
       const first = await pendingOf(issueCap + 1n);
       clock.set(T0.add({ minutes: 1 }));
       const second = await pendingOf(issueCap + 2n);
       clock.set(T0.add({ minutes: 2 }));
       await issue(1n, { by: CHECKER });
       await reject(first.id);
-      const list = new ListAdminCreditRequests(gate, deps);
-      expect(await list.execute(adminCtx(CHECKER), {})).toMatchObject({
+      const list = new ListAdminCreditRequests(gate, listDeps());
+      expect(await list.execute(adminCtx(CHECKER), { limit: 20 })).toMatchObject({
         ok: true,
-        value: { entries: [{ id: second.id }], nextCursor: null },
+        value: {
+          entries: [{ id: second.id, actions: ['open', 'approve', 'reject'] }],
+          nextCursor: null,
+          counts: { pending: 1, decided: 1, granted: 1, all: 3 },
+        },
+      });
+      // The maker sees no decision on their own request (four-eyes).
+      expect(await list.execute(adminCtx(MAKER), {})).toMatchObject({
+        ok: true,
+        value: { entries: [{ id: second.id, actions: ['open'] }], total: 1, page: 1 },
       });
       expect(await list.execute(adminCtx(CHECKER), { status: 'decided' })).toMatchObject({
         ok: true,
@@ -737,7 +770,7 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
         }),
       ).toMatchObject({ ok: true, value: { entries: [{ id: first.id }], nextCursor: null } });
       expect(
-        await list.execute(adminCtx(CHECKER), { status: 'all', limit: 0, cursor: 'x' }),
+        await list.execute(adminCtx(CHECKER), { status: 'any', limit: 0, cursor: 'x' }),
       ).toEqual({
         ok: false,
         error: {
@@ -784,6 +817,34 @@ describe.each([['AU'], ['ZZ']] as const)('admin credit issuance in market %s', (
         ok: false,
         error: { code: 'validation.failed' },
       });
+    });
+
+    it("reads a customer's wallet history for an admin, refusing an unknown customer, a bad id or paging", async () => {
+      const history = new ViewCustomerHistory(gate, deps);
+      expect(ViewCustomerHistory.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: ['wallet.credit.view'],
+      });
+      expect(await history.execute(adminCtx(MAKER), { customerAccountId: CUSTOMER })).toEqual({
+        ok: true,
+        value: { currency, entries: [], nextCursor: null },
+      });
+      await issue(issueCap);
+      const read = await history.execute(adminCtx(MAKER), { customerAccountId: CUSTOMER });
+      expect(read).toMatchObject({
+        ok: true,
+        value: { currency, entries: [{ kind: 'grant-promo', amount: issueCap }], nextCursor: null },
+      });
+      expect(await history.execute(adminCtx(MAKER), { customerAccountId: 'x' })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(
+        await history.execute(adminCtx(MAKER), { customerAccountId: CUSTOMER, limit: 0 }),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      expect(
+        await history.execute(adminCtx(MAKER), { customerAccountId: UNKNOWN_ACCOUNT }),
+      ).toEqual({ ok: false, error: { code: 'wallet.customer-not-found' } });
     });
   });
 });

@@ -22,6 +22,9 @@ import { panelHeaders, TEST_MARKETS } from './support/test-config';
 // delete with the real guards, controllers, gate and use cases, identity's database ports as
 // in-memory fakes and a fixed clock. Sessions are seeded into the fake store.
 
+/** A reviewed write's answer (Admin Inbox › System requests). */
+type Reviewed = { code: string; request: unknown; review: unknown };
+
 const START = Temporal.Instant.from('2026-10-09T10:00:00Z');
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 };
 const CANARY = 'Canary Role Name 7c41';
@@ -243,6 +246,146 @@ describe('role editor over HTTP (integration, slice 10)', () => {
       expect([platform.status, seller.status]).toEqual([201, 201]);
     });
 
+    it('platform: an edit takes a note and answers its review where people is reviewed', async () => {
+      await boot({ limit: 5 });
+      await seeded(code);
+      fakes.review.review('people', 'high');
+      const root = sessionOf(code, ROOT, 'admin');
+      // A creation is reviewed too (owner decision of 18 Nov 2026): it needs a note.
+      // The fakes keep no rollback: the refused try uses another name (test/db/people-review shows
+      // its unit keeps nothing).
+      const unnoted = await call('post', code, 'admin', 'roles', root, {
+        name: 'Unnoted',
+        permissionKeys: ['identity.platform-role.view'],
+      });
+      expect([unnoted.status, (unnoted.body as Reviewed).code]).toEqual([400, 'validation.failed']);
+      const badCreateNote = await call('post', code, 'admin', 'roles', root, {
+        name: 'Reviewed',
+        permissionKeys: ['identity.platform-role.view'],
+        note: 7,
+      });
+      expect([badCreateNote.status, (badCreateNote.body as Reviewed).code]).toEqual([
+        400,
+        'validation.failed',
+      ]);
+      const created = await call('post', code, 'admin', 'roles', root, {
+        name: 'Reviewed',
+        permissionKeys: ['identity.platform-role.view'],
+        note: 'A role for the support desk',
+      });
+      const roleId = (created.body as { roleId: string }).roleId;
+      expect([created.status, created.body]).toEqual([
+        201,
+        { code: 'role.created', roleId, request: { id: expect.any(String) as string, number: 1 } },
+      ]);
+      const listed = await call('get', code, 'admin', 'roles', root);
+      expect((listed.body as { review: unknown }).review).toEqual({ reviewed: true, risk: 'high' });
+
+      const body = {
+        name: 'Reviewed',
+        permissionKeys: ['identity.platform-role.view', 'identity.admin-account.view'],
+        expectedVersion: 1,
+      };
+      const badNote = await call('put', code, 'admin', `roles/${roleId}`, root, {
+        ...body,
+        note: ['x'],
+      });
+      expect([badNote.status, (badNote.body as Reviewed).code]).toEqual([400, 'validation.failed']);
+      const edited = await call('put', code, 'admin', `roles/${roleId}`, root, {
+        ...body,
+        note: 'Needs the team list',
+      });
+      expect([edited.status, edited.body]).toEqual([
+        200,
+        { code: 'role.updated', roleId, request: { id: expect.any(String) as string, number: 2 } },
+      ]);
+      // Without a note the edit is refused (its unit keeps nothing: test/db/people-review).
+      const noNote = await call('put', code, 'admin', `roles/${roleId}`, root, {
+        name: 'Reviewed',
+        permissionKeys: ['identity.platform-role.view'],
+        expectedVersion: 2,
+      });
+      expect([noNote.status, (noNote.body as Reviewed).code]).toEqual([400, 'validation.failed']);
+      expect(fakes.review.opened).toMatchObject([
+        {
+          area: 'people',
+          subjectKind: 'identity.platform-role-creation',
+          subjectRef: roleId,
+          before: { exists: false },
+          after: {
+            exists: true,
+            name: 'Reviewed',
+            permissionKeys: ['identity.platform-role.view'],
+          },
+          risk: 'high',
+          note: 'A role for the support desk',
+        },
+        {
+          area: 'people',
+          subjectKind: 'identity.platform-role',
+          subjectRef: roleId,
+          risk: 'high',
+          note: 'Needs the team list',
+        },
+      ]);
+      // A delete waits for approval: 202 with the request, the role stays; one waits per role.
+      const current = (
+        (await call('get', code, 'admin', 'roles', root)).body as {
+          items: { roleId: string; version: number; permissionKeys: string[] }[];
+        }
+      ).items.find((item) => item.roleId === roleId)!;
+      const unnotedDelete = await call('delete', code, 'admin', `roles/${roleId}`, root, {
+        expectedVersion: current.version,
+      });
+      expect([unnotedDelete.status, (unnotedDelete.body as Reviewed).code]).toEqual([
+        400,
+        'validation.failed',
+      ]);
+      const proposed = await call('delete', code, 'admin', `roles/${roleId}`, root, {
+        expectedVersion: current.version,
+        note: 'Support moved to the new desk',
+      });
+      expect([proposed.status, proposed.body]).toEqual([
+        202,
+        {
+          code: 'role.delete-requested',
+          roleId,
+          request: { id: expect.any(String) as string, number: 3 },
+        },
+      ]);
+      expect(fakes.review.proposed).toMatchObject([
+        {
+          area: 'people',
+          subjectKind: 'identity.platform-role-deletion',
+          subjectRef: roleId,
+          before: {
+            name: 'Reviewed',
+            permissionKeys: current.permissionKeys,
+            version: current.version,
+          },
+          after: { action: 'delete' },
+          risk: 'high',
+        },
+      ]);
+      const again = await call('delete', code, 'admin', `roles/${roleId}`, root, {
+        expectedVersion: current.version,
+        note: 'Again',
+      });
+      expect([again.status, again.body]).toMatchObject([
+        409,
+        { code: 'system-requests.already-pending', details: { pendingNumber: 3 } },
+      ]);
+      const still = await call('get', code, 'admin', 'roles', root);
+      expect(
+        (still.body as { items: { roleId: string }[] }).items.some(
+          (item) => item.roleId === roleId,
+        ),
+      ).toBe(true);
+      // Seller roles are not reviewed: their catalogue carries no review.
+      const seller = await call('get', code, 'seller', 'roles', sessionOf(code, OWNER, 'seller'));
+      expect((seller.body as { review?: unknown }).review).toBeUndefined();
+    });
+
     it('platform: creates, lists with the name, edits and deletes a custom role; logs no name', async () => {
       await boot({ limit: 5 });
       await seeded(code);
@@ -254,7 +397,7 @@ describe('role editor over HTTP (integration, slice 10)', () => {
       });
       expect(created.status).toBe(201);
       const roleId = (created.body as { roleId: string }).roleId;
-      expect(created.body).toEqual({ code: 'role.created', roleId });
+      expect(created.body).toEqual({ code: 'role.created', roleId, request: null });
 
       const listed = await call('get', code, 'admin', 'roles', root);
       const mine = (listed.body as { items: { roleId: string; name: string | null }[] }).items.find(
@@ -273,7 +416,10 @@ describe('role editor over HTTP (integration, slice 10)', () => {
         permissionKeys: ['identity.platform-role.view'],
         expectedVersion: 1,
       });
-      expect([edited.status, edited.body]).toEqual([200, { code: 'role.updated', roleId }]);
+      expect([edited.status, edited.body]).toEqual([
+        200,
+        { code: 'role.updated', roleId, request: null },
+      ]);
 
       // The tab that still holds version 1 is stale on both verbs; the read now says 2.
       const staleEdit = await call('put', code, 'admin', `roles/${roleId}`, root, {
@@ -302,7 +448,10 @@ describe('role editor over HTTP (integration, slice 10)', () => {
       const removed = await call('delete', code, 'admin', `roles/${roleId}`, root, {
         expectedVersion: 2,
       });
-      expect([removed.status, removed.body]).toEqual([200, { code: 'role.deleted', roleId }]);
+      expect([removed.status, removed.body]).toEqual([
+        200,
+        { code: 'role.deleted', roleId, request: null },
+      ]);
 
       const correlationId = created.headers['x-correlation-id'] as string;
       expect(logLines.find((l) => l.msg === 'identity.admin-create-role')).toMatchObject({

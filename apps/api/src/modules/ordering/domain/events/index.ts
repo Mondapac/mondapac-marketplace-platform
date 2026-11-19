@@ -1,5 +1,6 @@
 import { defineEvent, eventField } from '@mondapac/shared-kernel';
-import type { EventDefinition } from '@mondapac/shared-kernel';
+import type { EventDefinition, Id, PendingEvent, Temporal } from '@mondapac/shared-kernel';
+import { REFUND_LIMIT_ALERTS } from '../refund-limits';
 
 /**
  * An order became paid (Phase 6 package 1, owner decision Q10): the money is captured and the
@@ -16,6 +17,33 @@ export const OrderPaid = defineEvent({
     sellerIds: eventField.listOf(eventField.id()),
   },
 });
+
+/**
+ * An order was cancelled (promotions package T2): before payment (the page expired, the payment
+ * failed, a later checkout of the customer superseded it, the provider failed) or by an admin.
+ * Once per order, in the unit that cancels it. Ids only. `promotions` releases the discounts the
+ * order had reserved (usage counters, budgets, a single-use code).
+ */
+export const OrderCancelled = defineEvent({
+  type: 'ordering.order-cancelled.v1',
+  aggregateType: 'order',
+  payload: {
+    orderId: eventField.id(),
+  },
+});
+
+/** The {@link OrderCancelled} of an order just saved cancelled (`version` is the saved one). */
+export function orderCancelledEvent(
+  order: { readonly id: Id<'Order'>; readonly version: number },
+  occurredAt: Temporal.Instant,
+): PendingEvent {
+  return OrderCancelled.record({
+    aggregateId: order.id,
+    aggregateVersion: order.version,
+    occurredAt,
+    payload: { orderId: order.id },
+  });
+}
 
 /**
  * A seller recorded the shipment of its part of a paid order (Phase 6 package 3), once per
@@ -84,11 +112,29 @@ export const SellerOrderDelivered = defineEvent({
   },
 });
 
+/**
+ * A seller refund (units marked unavailable, order detail decision 6) was refused because it would
+ * pass the seller's cap of refunds or amount in 24 hours (Hassan F2; owner decision 2026-11-11), or
+ * because no cap is in force for the seller (`unset`: an admin must set the Market default).
+ * At most once in 24 hours per seller; the aggregate version counts the seller's alerts. Ids and
+ * the cap's kind only: no amount, order or customer. Notifications makes it an admin notice.
+ */
+export const SellerRefundLimitReached = defineEvent({
+  type: 'ordering.seller-refund-limit-reached.v1',
+  aggregateType: 'seller-refund-guard',
+  payload: {
+    sellerId: eventField.id(),
+    limit: eventField.enumOf(REFUND_LIMIT_ALERTS),
+  },
+});
+
 /** Every event type ordering publishes, registered with the event catalogue at boot. */
 export const ORDERING_EVENTS: readonly EventDefinition[] = [
   OrderPaid,
+  OrderCancelled,
   OrderShipped,
   SellerOrderReady,
   SellerOrderDelivered,
   RefundSucceeded,
+  SellerRefundLimitReached,
 ];

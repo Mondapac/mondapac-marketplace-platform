@@ -1,3 +1,4 @@
+import type { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import { err, ok } from '@mondapac/shared-kernel';
 import type {
   CallContext,
@@ -28,6 +29,8 @@ import type { CategoryEditStore } from '../ports/category-edit.store';
 import type { ClaimTermLocales } from '../ports/claim-term-locales';
 import { MAX_MATCH_TEXTS, type ClaimTextMatcher } from '../ports/claim-text-matcher';
 import type { PlatformCategoryRepository } from '../ports/platform-category.repository';
+import type { RecordedRequest } from '../../../system-requests';
+import { requestRef, type ProposedOr } from '../catalogue-review';
 import {
   categoryIdOf,
   closedInput,
@@ -46,9 +49,13 @@ export type CategoryWriteFailure =
   | { readonly code: 'claim-text.check-unavailable' }
   | { readonly code: 'category.claim-word'; readonly fields: readonly FieldIssue[] }
   | { readonly code: 'category.locale-uncheckable'; readonly fields: readonly FieldIssue[] }
+  /** The category already has an action waiting for approval (Admin Inbox › System requests). */
+  | { readonly code: 'system-requests.already-pending'; readonly pendingNumber: number }
   | ValidationFailure;
 
 export interface CategoryWriteDependencies {
+  /** The Market's content filter: category text with a blocked term is refused. */
+  readonly contentFilter: ContentFilter;
   readonly unitOfWork: UnitOfWork;
   readonly store: CategoryEditStore;
   readonly categories: PlatformCategoryRepository;
@@ -205,24 +212,89 @@ export interface TreeGuarded<T> {
  * is raised first (the row lock serialises two admins; the loser is `conflict.stale`), then
  * `work` reads the whole tree and writes. Any `StaleAggregateError` is `conflict.stale`.
  */
-export async function runStructural<T>(
-  deps: CategoryWriteDependencies,
+export async function runStructural<T, F = CategoryWriteFailure>(
+  deps: Pick<CategoryWriteDependencies, 'unitOfWork' | 'categories' | 'store'>,
   market: MarketContext,
   expectedTreeVersion: number,
-  work: (
+  work: (nodes: readonly EditableCategory[], treeVersion: number) => Promise<Result<T, NoInfer<F>>>,
+  options?: { readonly timeoutMs?: number },
+): Promise<Result<T, F | CategoryWriteFailure>> {
+  try {
+    return await deps.unitOfWork.run<T, F | CategoryWriteFailure>(
+      market,
+      async () => {
+        const tree = await deps.categories.treeVersion(market);
+        if (tree.version !== expectedTreeVersion) return err({ code: 'conflict.stale' } as const);
+        await deps.categories.bumpTreeVersion(market, tree.version);
+        const nodes = await deps.store.loadAll(market, MAX_TREE_NODES + 1);
+        if (nodes.length > MAX_TREE_NODES) return err({ code: 'access.unavailable' } as const);
+        return work(nodes, tree.version + 1);
+      },
+      options,
+    );
+  } catch (error) {
+    if (error instanceof StaleAggregateError) return err({ code: 'conflict.stale' });
+    throw error;
+  }
+}
+
+/**
+ * Inside a unit another module opened (System requests applies an approved action or undoes a
+ * reviewed one): raises the tree version as every structural write does (the row lock that
+ * serialises tree writers) and reads the tree. Null when the tree is too large to read.
+ */
+export async function lockTreeInUnit(
+  deps: Pick<CategoryWriteDependencies, 'categories' | 'store'>,
+  market: MarketContext,
+): Promise<{ readonly nodes: readonly EditableCategory[]; readonly treeVersion: number } | null> {
+  const tree = await deps.categories.treeVersion(market);
+  await deps.categories.bumpTreeVersion(market, tree.version);
+  const nodes = await deps.store.loadAll(market, MAX_TREE_NODES + 1);
+  if (nodes.length > MAX_TREE_NODES) return null;
+  return { nodes, treeVersion: tree.version + 1 };
+}
+
+/**
+ * {@link runStructural} for an action that waits for approval where the Market reviews area
+ * catalogue (Admin Inbox › System requests). When `reviewed` (the policy read before the unit),
+ * the tree version the page named is checked and `propose` validates the action on the tree and
+ * files it, writing nothing else: its request is the answer. When the area is not reviewed, or
+ * the proposer answers null (the policy changed meanwhile), the action is applied at once as
+ * before: the tree version is raised and `perform` writes.
+ */
+export async function runStructuralOrPropose<T, F = CategoryWriteFailure>(
+  deps: Pick<CategoryWriteDependencies, 'unitOfWork' | 'categories' | 'store'>,
+  market: MarketContext,
+  expectedTreeVersion: number,
+  reviewed: boolean,
+  propose: (nodes: readonly EditableCategory[]) => Promise<Result<RecordedRequest | null, F>>,
+  perform: (
     nodes: readonly EditableCategory[],
     treeVersion: number,
-  ) => Promise<Result<T, CategoryWriteFailure>>,
-): Promise<Result<T, CategoryWriteFailure>> {
+  ) => Promise<Result<T, NoInfer<F>>>,
+  options?: { readonly timeoutMs?: number },
+): Promise<Result<ProposedOr<T>, F | CategoryWriteFailure>> {
   try {
-    return await deps.unitOfWork.run<T, CategoryWriteFailure>(market, async () => {
-      const tree = await deps.categories.treeVersion(market);
-      if (tree.version !== expectedTreeVersion) return err({ code: 'conflict.stale' } as const);
-      await deps.categories.bumpTreeVersion(market, tree.version);
-      const nodes = await deps.store.loadAll(market, MAX_TREE_NODES + 1);
-      if (nodes.length > MAX_TREE_NODES) return err({ code: 'access.unavailable' } as const);
-      return work(nodes, tree.version + 1);
-    });
+    return await deps.unitOfWork.run<ProposedOr<T>, F | CategoryWriteFailure>(
+      market,
+      async () => {
+        const tree = await deps.categories.treeVersion(market);
+        if (tree.version !== expectedTreeVersion) return err({ code: 'conflict.stale' } as const);
+        if (reviewed) {
+          const seen = await deps.store.loadAll(market, MAX_TREE_NODES + 1);
+          if (seen.length > MAX_TREE_NODES) return err({ code: 'access.unavailable' } as const);
+          const proposed = await propose(seen);
+          if (!proposed.ok) return proposed;
+          const request = requestRef(proposed.value);
+          if (request !== null) return ok({ request });
+        }
+        await deps.categories.bumpTreeVersion(market, tree.version);
+        const nodes = await deps.store.loadAll(market, MAX_TREE_NODES + 1);
+        if (nodes.length > MAX_TREE_NODES) return err({ code: 'access.unavailable' } as const);
+        return perform(nodes, tree.version + 1);
+      },
+      options,
+    );
   } catch (error) {
     if (error instanceof StaleAggregateError) return err({ code: 'conflict.stale' });
     throw error;

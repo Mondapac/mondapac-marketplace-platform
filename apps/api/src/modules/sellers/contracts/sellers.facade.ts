@@ -1,6 +1,7 @@
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { SellerSummary } from '../domain/seller-summary';
+import type { PublishedStore, PublishedStoreCard } from '../domain/published-store';
 
 /** One answer per distinct requested seller (sellers design 7.2). */
 export type SellingEligibilityMap = ReadonlyMap<Id<'Seller'>, { readonly eligible: boolean }>;
@@ -68,6 +69,18 @@ export interface SellersUnavailable {
   readonly code: 'sellers.unavailable';
 }
 
+/** What `applySignupCultures` did: counts only. */
+export interface SignupCulturesAttached {
+  readonly approved: number;
+  readonly requested: number;
+  readonly unchanged: number;
+}
+
+/** The seller has no file yet (a signup step ran before the file was created); try again. */
+export interface SellerFileNotFound {
+  readonly code: 'file.not-found';
+}
+
 /**
  * The public facade of `sellers` (sellers design 7.1). Every method takes the caller's
  * `CallContext` first, unchanged, and is a thin call of one use case, so the gate runs (PF 6.4
@@ -88,6 +101,22 @@ export interface SellersFacade {
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<
     Result<readonly SellerSummary[], AccessDenied | SellersValidationFailed | SellersUnavailable>
+  >;
+
+  /**
+   * The sellers whose approved public store name contains `term` (2 to 80 characters after
+   * trimming; case insensitive), at most 200, for a list that filters by store name. `capped` is
+   * true when more matched. Only the store name the public sees: never a draft or the legal name.
+   * A failed read is `sellers.unavailable`, never an empty answer. Not exposed over HTTP.
+   */
+  searchStoreNames(
+    context: CallContext,
+    term: string,
+  ): Promise<
+    Result<
+      { readonly sellerIds: readonly Id<'Seller'>[]; readonly capped: boolean },
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
   >;
 
   /**
@@ -154,6 +183,30 @@ export interface SellersFacade {
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
 
   /**
+   * `mayProposeCategories` (sellers design 7.1; SEL-26): whether an admin allowed the seller to
+   * propose categories (default off). `catalog` asks it at every proposal command. An unknown
+   * seller, another Market's seller or a read error is `sellers.unavailable`: the caller refuses
+   * and never reads an error as allowed. Two use cases behind this method, as for
+   * `sellerSummaries`. Not exposed over HTTP.
+   */
+  mayProposeCategories(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
+
+  /**
+   * `aiAccessOf` (SEL-25; ADR-0019 decision 7): whether an admin switched AI on for the seller
+   * (default off). `platform/ai` asks it before every AI use. An unknown seller, another Market's
+   * seller or a read error is `sellers.unavailable`: the caller never reads an error as on, and
+   * `platform/ai` callers treat any error as off (ADR-0019 R8). Two use cases behind this method,
+   * as for `sellerSummaries`. Not exposed over HTTP.
+   */
+  aiAccessOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
+
+  /**
    * `activeSinceOf` (promotions T1): the instant the seller's business file was first approved in
    * the context's Market, the clock of promotions' "a seller active for fewer than N days needs
    * approval" rule. A revision approved and later superseded still counts; a rejected or
@@ -195,6 +248,37 @@ export interface SellersFacade {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, AccessDenied | SellersUnavailable>>;
+
+  /**
+   * `publishedStoreCards` (a buyer's "My stores"): the store address, public name and current logo
+   * ref of each requested seller (at most 100 ids), under the same published-store rules as
+   * `publishedStoreSlugs`. A seller that is unknown, of another Market, not approved or not selling
+   * is absent from the map, byte-identical. A request actor only (rule `anonymous`); public fields
+   * only. A fault is `sellers.unavailable`: the caller fails closed. In-process only.
+   */
+  publishedStoreCards(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<ReadonlyMap<Id<'Seller'>, PublishedStoreCard>, AccessDenied | SellersUnavailable>
+  >;
+
+  /**
+   * `publishedStore` (buyer assistant): the public store page of `slug` (allow-listed fields only),
+   * under the rules of the public store page: an approved revision, a `held` slug and the may-sell
+   * contract says yes. An unknown, retired or not-selling slug is `sellers.store-not-found`,
+   * byte-identical. A request actor only (rule `anonymous`); a fault is `sellers.unavailable`: the
+   * caller fails closed. In-process only.
+   */
+  publishedStore(
+    context: CallContext,
+    slug: string,
+  ): Promise<
+    Result<
+      PublishedStore,
+      AccessDenied | SellersUnavailable | { readonly code: 'sellers.store-not-found' }
+    >
+  >;
 
   /**
    * `reviewerBusinessDetails` (sellers design 7.1; board 13 item 3): legal name, trading name and
@@ -263,6 +347,53 @@ export interface SellersFacade {
   ): Promise<
     Result<
       ReadonlyMap<Id<'Seller'>, string>,
+      AccessDenied | SellersValidationFailed | SellersUnavailable
+    >
+  >;
+
+  /**
+   * `applySignupCultures` (multi-culture package 2; ADR-0048): attaches a new seller to the
+   * cultures it chose at signup. `cultures` is nothing or `universal` (every ACTIVE culture of the
+   * Market) or a list of culture codes (1 to 20, each an ACTIVE culture; an empty list, an unknown
+   * or an inactive code is `validation.failed` with `cultures.N`). A culture with no required
+   * certification type is approved at once (audited); one with a required type is requested and
+   * only a reviewer approves it, with the seller's valid certificate. A membership the seller
+   * already has is left as it is. Rule `system`. Not exposed over HTTP.
+   */
+  applySignupCultures(
+    context: CallContext,
+    request: { readonly sellerId: Id<'Seller'>; readonly cultures?: unknown },
+  ): Promise<
+    Result<
+      SignupCulturesAttached,
+      AccessDenied | SellersValidationFailed | SellerFileNotFound | SellersUnavailable
+    >
+  >;
+
+  /**
+   * `cultureHasApprovedMembers` (ADR-0048): whether any seller is approved in the culture. Catalog
+   * asks before it changes the culture's required certification type, and refuses on any doubt.
+   * Rule `anonymous`; in process only.
+   */
+  cultureHasApprovedMembers(
+    context: CallContext,
+    cultureId: Id<'Culture'>,
+  ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
+
+  /**
+   * `approvedCulturesOfSellers` (multi-culture package 3a; ADR-0047 decision 5): per requested
+   * seller (at most 100 distinct ids, else `validation.failed`), the ids of the cultures it is
+   * `approved` in. A seller with none, an unknown id and another Market's id are absent, alike.
+   * Catalog's visibility rule reads it; a failed read is `sellers.unavailable` and the caller
+   * treats the Offers as visible nowhere. Two use cases: `anonymous` for request actors, `system`
+   * for handlers and jobs. In process only.
+   */
+  approvedCulturesOfSellers(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Seller'>, readonly Id<'Culture'>[]>,
       AccessDenied | SellersValidationFailed | SellersUnavailable
     >
   >;

@@ -26,7 +26,7 @@ const AU_RULES: PromotionRules = {
     codeLength: 12,
     alphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789',
   },
-  cashback: { maxBps: 1000, maxCapMinor: 5000n },
+  cashback: { maxBps: 1000, maxCapMinor: 5000n, sellerMinBps: 100 },
 };
 // The synthetic Market: other limits, and the tax ruling already confirmed.
 const ZZ_RULES: PromotionRules = {
@@ -43,7 +43,7 @@ const ZZ_RULES: PromotionRules = {
     codeLength: 12,
     alphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ2345678901',
   },
-  cashback: { maxBps: 500, maxCapMinor: 3000n },
+  cashback: { maxBps: 500, maxCapMinor: 3000n, sellerMinBps: 50 },
 };
 
 const PRODUCT = '01990000-0000-7000-8000-000000001001';
@@ -771,10 +771,93 @@ describe.each([
     expect(codes(parsed(rawCashback(platformDraft({}))), platform)).toEqual([]);
     expect(codes(parsed(rawFollower()), seller)).toEqual([]);
 
-    for (const raw of [rawGroup(), rawReferral(), rawCashback()]) {
-      expect(codes(parsed({ ...raw, funding: 'SELLER' }), seller)).toContain('type:not-allowed');
-    }
+    expect(codes(parsed({ ...rawReferral(), funding: 'SELLER' }), seller)).toContain(
+      'type:not-allowed',
+    );
+    // A seller's cashback is for its exclusive customers only (customers phase 4c).
+    expect(codes(parsed({ ...rawCashback(), funding: 'SELLER' }), seller)).toContain(
+      'segment.kind:required',
+    );
+    // A seller's customer-group discount is for its exclusive customers only.
+    expect(codes(parsed({ ...rawGroup(), funding: 'SELLER' }), seller)).toContain(
+      'segment.kind:not-allowed',
+    );
     expect(codes(parsed(rawFollower()), platform)).toContain('type:not-allowed');
+  });
+
+  it('lets a seller, and only a seller, make the exclusive-customer discount (customers phase 4a)', () => {
+    const exclusive = (over: Record<string, unknown> = {}) =>
+      parsed(
+        rawGroup({
+          funding: 'SELLER',
+          budgetMinor: undefined,
+          testMode: false,
+          segment: { kind: 'SELLER_EXCLUSIVE' },
+          ...over,
+        }),
+      );
+    expect(codes(exclusive(), seller)).toEqual([]);
+    expect(layerOf('CUSTOMER_GROUP', 'seller')).toBe('SELLER_CART');
+    expect(layerOf('CUSTOMER_GROUP', platform)).toBe('PLATFORM_CART');
+    expect(codes(exclusive({ zones: ['BRIS-1'] }), seller)).toContain('zones:not-allowed');
+    expect(
+      codes(
+        exclusive({ reward: { kind: 'PERCENT', bps: rules.sellerMaxDiscountBps + 1 } }),
+        seller,
+      ),
+    ).toContain('reward.bps:exceeds-seller-maximum');
+    expect(
+      codes(parsed(rawGroup(platformDraft({ segment: { kind: 'SELLER_EXCLUSIVE' } }))), platform),
+    ).toContain('segment.kind:not-allowed');
+  });
+
+  it('lets a seller, and only a seller, give its exclusive customers cashback (customers phase 4c)', () => {
+    const maxBps = rules.cashback!.maxBps;
+    const minBps = rules.cashback!.sellerMinBps!;
+    const sellerCashback = (over: Record<string, unknown> = {}) =>
+      parsed(
+        rawCashback({
+          funding: 'SELLER',
+          budgetMinor: undefined,
+          testMode: false,
+          reward: { kind: 'PERCENT', bps: maxBps },
+          segment: { kind: 'SELLER_EXCLUSIVE' },
+          ...over,
+        }),
+      );
+    // No tax-ruling test mode for the seller's own money.
+    expect(codes(sellerCashback(), seller)).toEqual([]);
+    expect(codes(sellerCashback({ reward: { kind: 'PERCENT', bps: minBps } }), seller)).toEqual([]);
+    expect(
+      codes(sellerCashback({ reward: { kind: 'PERCENT', bps: minBps - 1 } }), seller),
+    ).toContain('reward.bps:below-market-minimum');
+    expect(
+      codes(sellerCashback({ reward: { kind: 'PERCENT', bps: maxBps + 1 } }), seller),
+    ).toContain('reward.bps:exceeds-market-limit');
+    expect(codes(sellerCashback({ capMinor: undefined }), seller)).toContain('capMinor:required');
+    // Without the exclusive segment a seller cannot make one; a platform one never has it.
+    expect(codes(sellerCashback({ segment: undefined }), seller)).toContain(
+      'segment.kind:required',
+    );
+    expect(
+      codes(
+        parsed(rawCashback(platformDraft({ segment: { kind: 'SELLER_EXCLUSIVE' } }))),
+        platform,
+      ),
+    ).toContain('segment.kind:not-allowed');
+    expect(
+      codes(
+        sellerCashback({ segment: { kind: 'RETURNING_CUSTOMER', minDaysSinceLastOrder: 30 } }),
+        seller,
+      ),
+    ).toContain('segment.kind:not-allowed');
+    // The platform's minimum for seller money does not bind the platform's own cashback.
+    expect(
+      codes(
+        parsed(rawCashback(platformDraft({ reward: { kind: 'PERCENT', bps: minBps - 1 } }))),
+        platform,
+      ),
+    ).toEqual([]);
   });
 
   it('keeps the follower offer seller-funded and the platform types platform-funded', () => {

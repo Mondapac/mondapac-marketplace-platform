@@ -68,15 +68,18 @@ export async function offersOfProduct(
   return all;
 }
 
-/** Stores an Offer's change and its events, in the open unit; nothing when it did not change. */
+/**
+ * Stores an Offer's change and its events, in the open unit; nothing when it did not change. The
+ * history actor is the admin `accountId` unless the caller names another (a seller's change).
+ */
 export async function saveOffer(
   deps: Pick<LifecycleDependencies, 'offers' | 'outbox'>,
   context: CallContext,
   offer: Offer,
   accountId: Id<'Account'>,
+  actor: OfferActor = { kind: 'admin', accountId },
 ): Promise<void> {
   if (!offer.hasChanges) return;
-  const actor: OfferActor = { kind: 'admin', accountId };
   await deps.offers.save(context.market, offer, actor);
   await deps.outbox.append(context, offer.pendingEvents);
 }

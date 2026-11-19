@@ -4,6 +4,9 @@ export const ORDER_VIEW_PERMISSION = 'ordering.seller-order.view';
 export const ORDER_READY_PERMISSION = 'ordering.seller-order.mark-ready';
 export const ORDER_CONFIRM_PICKUP_PERMISSION = 'ordering.seller-order.confirm-pickup';
 export const ORDER_DELIVER_PERMISSION = 'ordering.seller-order.mark-delivered';
+/** Protected: the call goes through the step-up code dialog. */
+export const ORDER_UNAVAILABLE_PERMISSION = 'ordering.seller-order.mark-unavailable';
+export const ORDER_NOTE_PERMISSION = 'ordering.seller-order.note';
 
 export interface Money {
   /** Minor units as a decimal string. */
@@ -36,6 +39,28 @@ export interface PickupStatus {
   readonly locked: boolean;
 }
 
+/** One refund of this seller order (oldest first; failed ones included, they count for nothing). */
+export interface SellerOrderRefund {
+  readonly refundId: string;
+  readonly requestedBy: 'admin' | 'seller';
+  readonly state: 'pending' | 'succeeded' | 'failed';
+  readonly reason: string;
+  readonly amount: Money;
+  readonly shipping: Money | null;
+  readonly lines: readonly { readonly orderLineId: string; readonly quantity: number }[];
+  readonly requestedAt: string;
+  readonly settledAt: string | null;
+}
+
+/**
+ * How the shop knows the customer of its order: their code for the shop and first name only,
+ * never the address, the full name or the phone (the platform books the delivery).
+ */
+export interface SellerOrderCustomer {
+  readonly code: string;
+  readonly firstName: string | null;
+}
+
 export interface SellerOrderView {
   readonly sellerOrderId: string;
   readonly orderId: string;
@@ -58,13 +83,113 @@ export interface SellerOrderView {
   readonly deliveryAttention: 'no-carrier' | 'carrier-unknown' | 'cancel-unknown' | null;
   /** Tries left and the lock of a ready pickup order; null for any other order. */
   readonly pickup?: PickupStatus | null;
+  /** Every refund of this order; absent on list rows. */
+  readonly refunds?: readonly SellerOrderRefund[];
+  /** Absent on list rows; null while the shop's customer code is not given yet. */
+  readonly customer?: SellerOrderCustomer | null;
+  /** The customer's note to the shop (plain text); null when none. */
+  readonly buyerNote?: string | null;
   readonly lines: readonly OrderLineView[];
 }
 
-export interface SellerOrderPage {
+/** The row actions the API names (`actions` of a list row); an id this panel does not know is ignored. */
+export const ROW_ACTIONS = [
+  'open',
+  'packing-slip',
+  'copy-number',
+  'ready',
+  'hand-over',
+  'mark-delivered',
+  'report-unavailable',
+] as const;
+export type RowAction = (typeof ROW_ACTIONS)[number];
+
+/** One row of the list: the seller order and what the caller may run on it. */
+export interface SellerOrderRow extends SellerOrderView {
+  readonly actions: readonly string[];
+}
+
+export interface SellerOrderCounts {
+  readonly toShip: number;
+  readonly shipped: number;
+  readonly delivered: number;
+}
+
+/** A cursor read (the board, the dashboard): the orders without their row actions. */
+export interface SellerOrderCursorPage {
   readonly sellerOrders: readonly SellerOrderView[];
   readonly nextCursor: string | null;
 }
 
+export interface SellerOrderPage {
+  readonly sellerOrders: readonly SellerOrderRow[];
+  readonly nextCursor: string | null;
+  /** The shop's orders per fulfilment state, whatever the filter. */
+  readonly counts?: SellerOrderCounts;
+  /** `pages` mode only: how many orders match the filter. Null in `prev-next` and cursor mode. */
+  readonly total?: number | null;
+  readonly paging?: 'pages' | 'prev-next' | null;
+  /** Whether a page after this one exists. */
+  readonly hasNext?: boolean;
+  readonly page?: number | null;
+  readonly pageSize?: number | null;
+}
+
 export const FULFILMENT_FILTERS = ['all', 'to-ship', 'shipped', 'delivered'] as const;
 export type FulfilmentFilter = (typeof FULFILMENT_FILTERS)[number];
+
+/** A note of the shop's team on one order (GET ordering/seller/orders/:id/notes, newest first). */
+export interface SellerNote {
+  readonly noteId: string;
+  /** Plain text; null when the customer's account was erased. */
+  readonly body: string | null;
+  readonly authorName: string | null;
+  readonly byYou: boolean;
+  readonly createdAt: string;
+}
+
+export const NOTE_MAX_LENGTH = 2000;
+
+export type ActivityKind =
+  | 'order-paid'
+  | 'seller-order-ready'
+  | 'seller-order-shipped'
+  | 'seller-order-delivered'
+  | 'seller-order-collected'
+  | 'refund-requested'
+  | 'refund-succeeded'
+  | 'refund-failed';
+
+/** One step of the order timeline (GET ordering/seller/orders/:id/activity, oldest first). */
+export interface ActivityEvent {
+  readonly kind: ActivityKind;
+  readonly at: string;
+  readonly refundId: string | null;
+  readonly amount: Money | null;
+  readonly reason: string | null;
+  readonly by: 'customer' | 'seller' | 'admin' | null;
+}
+
+/** Units of a line still to send: what was ordered less what refunds (not failed) took back. */
+export function remainingUnits(order: SellerOrderView, lineId: string): number {
+  const line = order.lines.find((entry) => entry.lineId === lineId);
+  if (line === undefined) return 0;
+  const refunded = (order.refunds ?? [])
+    .filter((refund) => refund.state !== 'failed')
+    .flatMap((refund) => refund.lines)
+    .filter((entry) => entry.orderLineId === lineId)
+    .reduce((sum, entry) => sum + entry.quantity, 0);
+  return Math.max(0, line.quantity - refunded);
+}
+
+/**
+ * A packing slip is for an order still to send: not shipped or delivered, with units left after
+ * refunds. Once sent or refunded in full, the customer's address is no longer printed.
+ */
+export const packingSlipAvailable = (order: SellerOrderView): boolean =>
+  order.fulfilment === 'to-ship' &&
+  order.lines.some((line) => remainingUnits(order, line.lineId) > 0);
+
+/** The count of refunds not failed: the API refuses the request if another went through meanwhile. */
+export const liveRefunds = (order: SellerOrderView): number =>
+  (order.refunds ?? []).filter((refund) => refund.state !== 'failed').length;

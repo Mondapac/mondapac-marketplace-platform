@@ -9,19 +9,33 @@ import {
   EmptyState,
   LoadError,
   SearchSelect,
-  SkeletonRows,
   Tabs,
   toast,
+  DetailSkeleton,
   type DataListRow,
   type SearchSelectOption,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
+import {
+  ApprovalNotice,
+  ReviewNoteField,
+  trimmedNote,
+  useApprovalAction,
+  useSentForApproval,
+} from '../shared/review-note.tsx';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
 import { AttributeEditForm } from './attribute-edit-form.tsx';
-import type { FieldErrors } from './editor.ts';
+import {
+  ArchiveDialog,
+  CONVERSIONS,
+  ConvertTypeDialog,
+  MergeAttributesDialog,
+  MergeValuesDialog,
+} from './restructure-dialogs.tsx';
+import { BASE_UNIT, type FieldErrors } from './editor.ts';
 import { changeLineOf } from './history.ts';
 import { useRevealWhenStacked } from './reveal.ts';
 import { useSelectLabels } from './select-labels.ts';
@@ -45,7 +59,8 @@ type Load =
   | { readonly state: 'missing' }
   | { readonly state: 'failed' };
 
-type Confirm = 'publish' | 'discard' | 'relax' | null;
+type Confirm =
+  'publish' | 'discard' | 'relax' | 'merge' | 'merge-attribute' | 'convert' | 'archive' | null;
 
 /** Refusals of publish that only an edit of the text clears. */
 const TEXT_FIX: ReadonlySet<string> = new Set(['claim-word', 'locale-uncheckable']);
@@ -61,6 +76,7 @@ export function AttributeDetailPanel({
   attributeId,
   onClose,
   canEdit = false,
+  canRestructure = false,
   csrfToken = '',
   onChanged,
   onOpenWaiting,
@@ -68,6 +84,8 @@ export function AttributeDetailPanel({
   readonly attributeId: string | null;
   readonly onClose: () => void;
   readonly canEdit?: boolean;
+  /** `catalog.attribute.restructure`: merge values and archive (attributes A8). */
+  readonly canRestructure?: boolean;
   readonly csrfToken?: string;
   /** An attribute was saved, published or discarded: the list reads it again. */
   readonly onChanged?: () => void;
@@ -132,7 +150,9 @@ export function AttributeDetailPanel({
       aria-busy={load.state === 'loading'}
       className="flex min-w-0 flex-col gap-4 rounded-lg border border-line bg-surface p-4 sm:p-5"
     >
-      {load.state === 'loading' ? <SkeletonRows label={t('loading')} rows={6} /> : null}
+      {load.state === 'loading' ? (
+        <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={6} framed={false} />
+      ) : null}
       {load.state === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3"
@@ -155,23 +175,52 @@ export function AttributeDetailPanel({
             detail={load.detail}
             onClose={onClose}
             actions={
-              canEdit && !editing && load.detail.status !== 'archived' ? (
+              !editing && load.detail.status !== 'archived' && (canEdit || canRestructure) ? (
                 <>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setEditErrors(undefined);
-                      setEditing(true);
-                    }}
-                  >
-                    {t('edit')}
-                  </Button>
-                  {load.detail.status === 'active' && load.detail.material ? (
+                  {canEdit ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setEditErrors(undefined);
+                        setEditing(true);
+                      }}
+                    >
+                      {t('edit')}
+                    </Button>
+                  ) : null}
+                  {canRestructure && load.detail.status === 'active' ? (
+                    <>
+                      {CHOICE_TYPES.has(load.detail.dataType) &&
+                      load.detail.options.filter(
+                        (option) => option.active && (option.mergedInto ?? null) === null,
+                      ).length >= 2 ? (
+                        <Button variant="secondary" onClick={() => setConfirm('merge')}>
+                          {t('merge-values')}
+                        </Button>
+                      ) : null}
+                      {load.detail.material ? null : (
+                        <Button variant="secondary" onClick={() => setConfirm('merge-attribute')}>
+                          {t('merge-attribute')}
+                        </Button>
+                      )}
+                      {CONVERSIONS[load.detail.dataType] !== undefined &&
+                      !load.detail.material &&
+                      !load.detail.isVariantOption ? (
+                        <Button variant="secondary" onClick={() => setConfirm('convert')}>
+                          {t('convert-type')}
+                        </Button>
+                      ) : null}
+                      <Button variant="secondary" onClick={() => setConfirm('archive')}>
+                        {t('archive')}
+                      </Button>
+                    </>
+                  ) : null}
+                  {canEdit && load.detail.status === 'active' && load.detail.material ? (
                     <Button variant="secondary" onClick={() => setConfirm('relax')}>
                       {t('turn-off-material')}
                     </Button>
                   ) : null}
-                  {load.detail.status === 'draft' ? (
+                  {canEdit && load.detail.status === 'draft' ? (
                     <>
                       <Button onClick={() => setConfirm('publish')}>{t('publish')}</Button>
                       <Button variant="destructive" onClick={() => setConfirm('discard')}>
@@ -184,6 +233,11 @@ export function AttributeDetailPanel({
             }
           />
           {load.detail.status === 'draft' ? <Banner tone="info">{t('draft-note')}</Banner> : null}
+          {load.detail.mergedInto === undefined || load.detail.mergedInto === null ? null : (
+            <Banner tone="info">
+              {t('merged-into-note', { code: load.detail.mergedInto.code })}
+            </Banner>
+          )}
           {confirm === 'relax' ? (
             <RelaxDialog
               detail={load.detail}
@@ -200,7 +254,65 @@ export function AttributeDetailPanel({
               onOpenWaiting={onOpenWaiting}
             />
           ) : null}
-          {confirm === null || confirm === 'relax' ? null : (
+          {confirm === 'merge' ? (
+            <MergeValuesDialog
+              detail={load.detail}
+              csrfToken={csrfToken}
+              onClose={() => setConfirm(null)}
+              onDone={() => changed(t('merged'))}
+              onReload={() => {
+                setConfirm(null);
+                void fetchDetail();
+              }}
+            />
+          ) : null}
+          {confirm === 'merge-attribute' ? (
+            <MergeAttributesDialog
+              detail={load.detail}
+              csrfToken={csrfToken}
+              onClose={() => setConfirm(null)}
+              onDone={() => changed(t('attribute-merged'))}
+              onReload={() => {
+                setConfirm(null);
+                void fetchDetail();
+              }}
+            />
+          ) : null}
+          {confirm === 'convert' ? (
+            <ConvertTypeDialog
+              detail={load.detail}
+              csrfToken={csrfToken}
+              onClose={() => setConfirm(null)}
+              onDone={() => changed(t('type-converted'))}
+              onReload={() => {
+                setConfirm(null);
+                void fetchDetail();
+              }}
+            />
+          ) : null}
+          {confirm === 'archive' ? (
+            <ArchiveDialog
+              detail={load.detail}
+              csrfToken={csrfToken}
+              onClose={() => setConfirm(null)}
+              onDone={() => changed(t('archived'))}
+              onRequested={() => {
+                toast.success(t('archive-requested'));
+                setConfirm(null);
+              }}
+              onReload={() => {
+                setConfirm(null);
+                void fetchDetail();
+              }}
+              onOpenWaiting={onOpenWaiting}
+            />
+          ) : null}
+          {confirm === null ||
+          confirm === 'relax' ||
+          confirm === 'merge' ||
+          confirm === 'merge-attribute' ||
+          confirm === 'convert' ||
+          confirm === 'archive' ? null : (
             <StatusDialog
               kind={confirm}
               detail={load.detail}
@@ -324,14 +436,32 @@ function StatusDialog({
   const call = useAttributeCall(csrfToken);
   const name = textIn(detail.names, detail.locales.default, detail.locales.default, detail.code);
   const missing = detail.missingLocales.map((tag) => languageName(tag, detail.locales.supported));
+  // A discard waits for another admin's approval where the Market reviews area catalogue.
+  const approval = kind === 'discard' && detail.review?.reviewed === true;
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForApproval = useSentForApproval();
+  const actionLabel = useApprovalAction();
 
   async function confirm() {
+    const sentNote = approval ? trimmedNote(note) : null;
+    if (approval && sentNote === null) {
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     const answer = await call.run<AttributeWrite>(
       'POST',
       `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}/${kind}`,
-      { version: detail.version },
+      { version: detail.version, ...(sentNote === null ? {} : { note: sentNote }) },
     );
-    if (answer.ok) onDone();
+    if (!answer.ok) {
+      if (answer.problem?.fields['note'] !== undefined) setNoteError('rejected');
+      return;
+    }
+    // Sent for approval: nothing changed yet, so the attribute stays as it is.
+    if (sentForApproval(answer.body)) onClose();
+    else onDone();
   }
 
   const problem = call.problem;
@@ -351,12 +481,12 @@ function StatusDialog({
             <Button onClick={() => onEdit(problem.fields)}>{t('edit-attribute')}</Button>
           ) : (
             <Button
-              variant={kind === 'discard' ? 'destructive-solid' : 'primary'}
+              variant={kind === 'discard' && !approval ? 'destructive-solid' : 'primary'}
               loading={call.pending}
               disabled={call.pending}
               onClick={() => void confirm()}
             >
-              {t(kind)}
+              {actionLabel(t(kind), approval)}
             </Button>
           )}
         </>
@@ -368,15 +498,66 @@ function StatusDialog({
             {TEXT_FIX.has(problem.key) ? t(`publish-${problem.key}`) : te(`error.${problem.key}`)}
           </Banner>
         )}
-        <p>{t(`${kind}-body`)}</p>
+        <p>{approval ? t('discard-approval-body') : t(`${kind}-body`)}</p>
+        {approval ? <ApprovalNotice /> : null}
         {kind === 'publish' && missing.length > 0 ? (
           <p className="text-sm text-fg-muted">
             {t('publish-missing', { languages: missing.join(', ') })}
           </p>
         ) : null}
+        {approval ? (
+          <ReviewNoteField
+            approval
+            value={note}
+            onChange={(next) => {
+              setNote(next);
+              setNoteError(null);
+            }}
+            error={noteError ?? undefined}
+            disabled={call.pending}
+          />
+        ) : null}
       </div>
     </Dialog>
   );
+}
+
+/** A unit's label in the Market's main language, else its code. */
+function unitLabel(detail: AttributeDetail, code: string): string {
+  return textIn(
+    detail.units.find((unit) => unit.code === code)?.labels,
+    detail.locales.default,
+    detail.locales.default,
+    code,
+  );
+}
+
+/** The base unit after a measure's lowest or highest value (they are stored in base units). */
+function baseSuffix(detail: AttributeDetail): string {
+  const measure = detail.bounds.measure;
+  const base = measure === undefined ? undefined : BASE_UNIT[measure.dimension];
+  return base === undefined ? '' : ` ${unitLabel(detail, base)}`;
+}
+
+/** The unit settings of a measure attribute (attributes A3), as rows of the Details tab. */
+function measureRows(
+  detail: AttributeDetail,
+  t: ReturnType<typeof useTranslations>,
+): DataListRow[] {
+  const measure = detail.bounds.measure;
+  if (measure === undefined) return [];
+  return [
+    {
+      label: t('field.measure-dimension'),
+      value: t(`editor.measure.dimension.${measure.dimension}`),
+    },
+    {
+      label: t('field.measure-units'),
+      value: measure.units.map((code) => unitLabel(detail, code)).join(', '),
+    },
+    { label: t('field.measure-default-unit'), value: unitLabel(detail, measure.defaultUnit) },
+    { label: t('field.measure-decimals'), value: String(measure.decimals) },
+  ];
 }
 
 /**
@@ -468,10 +649,11 @@ function DetailsTab({ detail }: { readonly detail: AttributeDetail }) {
       : [{ label: t('field.max-length'), value: String(detail.bounds.maxLength) }]),
     ...(detail.bounds.min === undefined
       ? []
-      : [{ label: t('field.min'), value: String(detail.bounds.min) }]),
+      : [{ label: t('field.min'), value: `${detail.bounds.min}${baseSuffix(detail)}` }]),
     ...(detail.bounds.max === undefined
       ? []
-      : [{ label: t('field.max'), value: String(detail.bounds.max) }]),
+      : [{ label: t('field.max'), value: `${detail.bounds.max}${baseSuffix(detail)}` }]),
+    ...measureRows(detail, t),
     { label: t('field.show-on-product-page'), value: yesNo(detail.display.showOnProductPage) },
     { label: t('field.searchable'), value: yesNo(detail.display.searchable) },
     { label: t('field.can-be-filter'), value: yesNo(detail.display.canBeFilter) },
@@ -619,6 +801,11 @@ function ValuesTab({ detail }: { readonly detail: AttributeDetail }) {
                 <Badge tone={option.active ? 'success' : 'neutral'}>
                   {option.active ? t('values.active') : t('values.inactive')}
                 </Badge>
+                {(option.mergedInto ?? null) === null ? null : (
+                  <span className="text-sm wrap-anywhere text-fg-muted">
+                    {t('values.merged-into', { code: option.mergedInto ?? '' })}
+                  </span>
+                )}
                 <span className="text-sm whitespace-nowrap text-fg-muted">
                   {t('row.products', { count: option.productCount })}
                 </span>
@@ -754,6 +941,11 @@ function ChangeText({
     case 'bound':
       what = t('history.change.bound', { bound: t(`field.${boundKey(line.bound)}`) });
       break;
+    case 'measure':
+      what = t('history.change.measure', {
+        setting: t(`field.measure-${measureKey(line.setting)}`),
+      });
+      break;
     case 'name':
       what = t('history.change.name', { language: line.language });
       break;
@@ -784,6 +976,12 @@ function ChangeText({
       })}
     </>
   );
+}
+
+function measureKey(setting: string): 'dimension' | 'units' | 'default-unit' | 'decimals' {
+  if (setting === 'defaultUnit') return 'default-unit';
+  if (setting === 'dimension' || setting === 'units' || setting === 'decimals') return setting;
+  return 'units';
 }
 
 function boundKey(bound: string): 'max-length' | 'min' | 'max' | 'limit' {

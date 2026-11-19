@@ -7,7 +7,11 @@ import type {
   RecordSellerNoticeInput,
 } from '../../application/use-cases/record-seller-notice.use-case';
 import type { RecordSellerOrderNotices } from '../../application/use-cases/record-seller-order-notices.use-case';
-import { inAppNoticeSubscriptions, SELLER_NOTICE_SUBSCRIBERS } from './in-app-notice.subscriptions';
+import {
+  ADMIN_ASSISTANT_SPEND_CAP_NOTICE_SUBSCRIBER,
+  inAppNoticeSubscriptions,
+  SELLER_NOTICE_SUBSCRIBERS,
+} from './in-app-notice.subscriptions';
 
 // The seller notice subscriptions (package 4): each event becomes one item for its seller, with
 // ids and enums only; a superseded hold and a PLATFORM product's revision make none.
@@ -85,6 +89,21 @@ describe('seller notice subscriptions', () => {
     ]);
   });
 
+  it('makes the same notice from v2 of the change request, with a product reason', async () => {
+    const { inputs, named } = subscriptions();
+    const handle = named(SELLER_NOTICE_SUBSCRIBERS.productChangesRequestedV2).handle;
+    const payload = { productId: PRODUCT, revisionId: 'r', reasonCode: 'tax-category' };
+    await handle({ payload: { ...payload, scope: 'platform' } } as never, delivery, context);
+    await handle({ payload: { ...payload, scope: 'seller' } } as never, delivery, context);
+    expect(inputs.map((input) => input.item)).toEqual([
+      {
+        kind: 'seller.product-changes-requested',
+        owner: { by: 'product', productId: PRODUCT },
+        params: { productId: PRODUCT, revisionId: 'r', reason: 'tax-category' },
+      },
+    ]);
+  });
+
   it('keeps the outcome a certificate event stands for', async () => {
     const { inputs, named } = subscriptions();
     const payload = { sellerCertificationId: 'c', sellerId: 's', submissionId: 'x' };
@@ -104,6 +123,39 @@ describe('seller notice subscriptions', () => {
     ]);
   });
 
+  it("tells a seller about its own import's end, with counts only", async () => {
+    const { inputs, named } = subscriptions();
+    await named(SELLER_NOTICE_SUBSCRIBERS.importFinished).handle(
+      {
+        payload: {
+          importId: 'imp-1',
+          sellerId: 'seller-a',
+          outcome: 'completed',
+          created: 3,
+          updated: 2,
+          failed: 1,
+          filename: 'secret.csv',
+        },
+      } as never,
+      delivery,
+      context,
+    );
+    expect(inputs.map((input) => input.item)).toEqual([
+      {
+        kind: 'seller.import-finished',
+        owner: { by: 'seller', sellerId: 'seller-a' },
+        params: {
+          importId: 'imp-1',
+          sellerId: 'seller-a',
+          outcome: 'completed',
+          created: 3,
+          updated: 2,
+          failed: 1,
+        },
+      },
+    ]);
+  });
+
   it('throws when the use case refuses', async () => {
     const all = inAppNoticeSubscriptions(
       {} as never,
@@ -120,5 +172,25 @@ describe('seller notice subscriptions', () => {
         context,
       ),
     ).rejects.toThrow(/refused/);
+  });
+});
+
+describe('the assistant spend-cap notice subscription', () => {
+  it('turns the event into one admin notice carrying the cap only', async () => {
+    const items: unknown[] = [];
+    const all = inAppNoticeSubscriptions(
+      {} as RecordSellerOrderNotices,
+      {
+        execute: (_context: unknown, input: { item: unknown }) => {
+          items.push(input.item);
+          return Promise.resolve(ok({ code: 'notices.recorded', notices: 1 }));
+        },
+      } as unknown as RecordAdminReviewNotice,
+      {} as RecordSellerNotice,
+    );
+    const found = all.filter((item) => item.name === ADMIN_ASSISTANT_SPEND_CAP_NOTICE_SUBSCRIBER);
+    expect(found).toHaveLength(1);
+    await found[0]!.handle({ payload: { cap: 'monthly' } } as never, delivery, context);
+    expect(items).toEqual([{ kind: 'admin.assistant-spend-cap-reached', cap: 'monthly' }]);
   });
 });

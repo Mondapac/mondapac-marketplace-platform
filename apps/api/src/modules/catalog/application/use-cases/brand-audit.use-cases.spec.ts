@@ -1,3 +1,4 @@
+import { ContentFilter } from '../../../../platform/content-filter/content-filter';
 import type { AuditEntry, CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
 import { Temporal } from '@mondapac/shared-kernel';
 import {
@@ -76,7 +77,7 @@ describe.each(['AU', 'ZZ'] as const)('brand audit in market %s', (code) => {
 
   const build = () => {
     const gate = createUseCaseGate(markets, check);
-    const base = { unitOfWork, brands, clock, audit };
+    const base = { unitOfWork, brands, clock, audit, contentFilter: new ContentFilter(markets) };
     return {
       create: new BrandCreate(gate, { ...base, ids }),
       edit: new BrandEdit(gate, base),
@@ -173,8 +174,67 @@ describe.each(['AU', 'ZZ'] as const)('brand audit in market %s', (code) => {
       action: 'catalog.brand.archived',
       targetId: id(3),
       before: { status: 'active' },
-      after: { status: 'archived' },
+      after: { status: 'archived', reasonGiven: false },
     });
+  });
+
+  it('keeps an archive reason on the brand and only that one was given in the audit row', async () => {
+    brands.seed(brandState(id(6), 'Kiri Tea', { status: 'draft', proposedBySellerId: SELLER }));
+
+    const answer = await build().archive.execute(context(), {
+      brandId: id(6),
+      version: 1,
+      reason: '  Spelled like an existing brand.  ',
+    });
+    if (!answer.ok) throw new Error(answer.error.code);
+
+    const stored = await brands.findById(market, id(6));
+    expect(stored!.state).toMatchObject({
+      status: 'archived',
+      archiveReason: 'Spelled like an existing brand.',
+    });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      action: 'catalog.brand.archived',
+      before: { status: 'draft' },
+      after: { status: 'archived', reasonGiven: true },
+    });
+    expect(JSON.stringify(audits)).not.toContain('Spelled');
+  });
+
+  it('treats an empty or blank archive reason as none', async () => {
+    brands.seed(brandState(id(7), 'Old Co'));
+
+    const answer = await build().archive.execute(context(), {
+      brandId: id(7),
+      version: 1,
+      reason: '   ',
+    });
+    if (!answer.ok) throw new Error(answer.error.code);
+
+    expect((await brands.findById(market, id(7)))!.state.archiveReason).toBeNull();
+    expect(audits[0]).toMatchObject({ after: { reasonGiven: false } });
+  });
+
+  it.each([
+    ['over 500 characters', 'x'.repeat(501), 'too-long'],
+    ['a control character', 'Not\u0007 ok', 'chars'],
+    ['a line break', 'Line one\nLine two', 'chars'],
+    ['a number', 42, 'type'],
+  ])('refuses an archive reason with %s and changes nothing', async (_label, reason, problem) => {
+    brands.seed(brandState(id(8), 'Old Co'));
+
+    const answer = await build().archive.execute(context(), { brandId: id(8), version: 1, reason });
+
+    expect(answer).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'reason', code: problem }] },
+    });
+    expect((await brands.findById(market, id(8)))!.state).toMatchObject({
+      status: 'active',
+      archiveReason: null,
+    });
+    expect(audits).toHaveLength(0);
   });
 
   it('records a merge on the target with counts only', async () => {

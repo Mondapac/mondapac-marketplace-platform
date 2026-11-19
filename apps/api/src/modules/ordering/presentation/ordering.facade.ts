@@ -2,12 +2,24 @@ import type { CallContext, Id, Temporal } from '@mondapac/shared-kernel';
 import type { CancelPayment } from '../application/use-cases/cancel-payment.use-case';
 import type { MyDeliveredSellerOrders } from '../application/use-cases/my-delivered-seller-orders.use-case';
 import type { OrderPaymentRefQuery } from '../application/use-cases/order-payment-ref.use-case';
+import type { DeliveredSellerOrderFactsQuery } from '../application/use-cases/delivered-seller-order-facts.use-case';
+import type { CustomerOrderAccountsQuery } from '../application/use-cases/customer-order-accounts.use-case';
+import type { CustomerOrderStatsQuery } from '../application/use-cases/customer-order-stats.use-case';
+import type { CustomerSellerStatsQuery } from '../application/use-cases/customer-seller-stats.use-case';
+import type { SellerCustomerOrdersQuery } from '../application/use-cases/seller-customer-orders.use-case';
 import type { OrderNoticeQuery } from '../application/use-cases/order-notice.use-case';
+import type { AdminCustomerOrderIds } from '../application/use-cases/admin-customer-order-ids.use-case';
+import type {
+  AdminCustomerPayments,
+  CustomerPaymentsRequest,
+} from '../application/use-cases/admin-customer-payments.use-case';
+import type { AdminOrderAccountOf } from '../application/use-cases/admin-order-account-of.use-case';
 import type { AdminOpenObligationsOfQuery } from '../application/use-cases/admin-open-obligations-of.use-case';
 import type { OpenObligationsOfQuery } from '../application/use-cases/open-obligations-of.use-case';
 import type { OwnOpenObligationsQuery } from '../application/use-cases/own-open-obligations.use-case';
 import type { SellerOrderCustomerNames } from '../application/use-cases/seller-order-customer-names.use-case';
 import type { SellerHealthCountsQuery } from '../application/use-cases/seller-health-counts.use-case';
+import type { RefundNoticeQuery } from '../application/use-cases/refund-notice.use-case';
 import type { ShipmentNoticeQuery } from '../application/use-cases/shipment-notice.use-case';
 import type { ConfirmPayment } from '../application/use-cases/confirm-payment.use-case';
 import type { AuthorisedPayment, OrderingFacade } from '../contracts';
@@ -26,7 +38,71 @@ export class OrderingFacadeImplementation implements OrderingFacade {
     private readonly paymentRef: OrderPaymentRefQuery,
     private readonly adminOpenObligations: AdminOpenObligationsOfQuery,
     private readonly healthCounts: SellerHealthCountsQuery,
+    private readonly refundNoticeQuery: RefundNoticeQuery,
+    private readonly customerStats: CustomerOrderStatsQuery,
+    private readonly customerAccounts: CustomerOrderAccountsQuery,
+    private readonly orderAccount: AdminOrderAccountOf,
+    private readonly customerPayments: AdminCustomerPayments,
+    private readonly customerOrderIds: AdminCustomerOrderIds,
+    private readonly customerSellers: CustomerSellerStatsQuery,
+    private readonly sellerCustomerOrdersQuery: SellerCustomerOrdersQuery,
+    private readonly deliveredFacts: DeliveredSellerOrderFactsQuery,
   ) {}
+
+  deliveredSellerOrderFacts(
+    context: CallContext,
+    request: { readonly orderId: string; readonly sellerOrderId: string },
+  ) {
+    return this.deliveredFacts.execute(context, request);
+  }
+
+  adminCustomerPayments(context: CallContext, request: CustomerPaymentsRequest) {
+    return this.customerPayments.execute(context, request);
+  }
+
+  adminCustomerOrderIds(
+    context: CallContext,
+    request: { readonly accountId: Id<'Account'>; readonly limit: number },
+  ) {
+    return this.customerOrderIds.execute(context, request);
+  }
+
+  adminOrderAccountOf(context: CallContext, orderId: string) {
+    return this.orderAccount.execute(context, { orderId });
+  }
+
+  customerSellerStats(context: CallContext, accountId: Id<'Account'>) {
+    return this.customerSellers.execute(context, { accountId });
+  }
+
+  sellerCustomerOrders(
+    context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly page: number;
+      readonly pageSize: number;
+    },
+  ) {
+    return this.sellerCustomerOrdersQuery.execute(context, request);
+  }
+
+  customerOrderStats(context: CallContext, accountId: Id<'Account'>) {
+    return this.customerStats.execute(context, { accountId });
+  }
+
+  customerOrderAccounts(
+    context: CallContext,
+    request: { readonly after: Id<'Account'> | null; readonly limit: number },
+  ) {
+    return this.customerAccounts.execute(context, request);
+  }
+
+  refundNotice(
+    context: CallContext,
+    request: { readonly orderId: string; readonly refundId: string },
+  ) {
+    return this.refundNoticeQuery.execute(context, request);
+  }
 
   orderPaymentRef(context: CallContext, orderId: string) {
     return this.paymentRef.execute(context, { orderId });

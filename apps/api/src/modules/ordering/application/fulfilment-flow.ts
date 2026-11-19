@@ -10,6 +10,8 @@ import {
   pickupStatusOf,
   type PickupStatus,
 } from '../domain/pickup-code';
+import { sellerOrderRefundView } from '../domain/refund-views';
+import type { Refund } from '../domain/refund';
 import {
   sellerOrderDetailView,
   type LabelledSellerOrderPageView,
@@ -20,18 +22,21 @@ import {
 } from '../domain/order-views';
 import type { OrderingDependencies } from './checkout-flow';
 import { deliveredEvent } from './delivery-event';
-import { labelSellerOrders } from './order-labels';
-import type { SellerOrderPage, SellerOrderRecord } from './ports/order.repository';
+import { labelSellerOrders, settled } from './order-labels';
+import type { SellerOrderPage, SellerOrderRecord, SellerOrderSort } from './ports/order.repository';
 import type { IssuedPickupCode } from './ports/pickup-code-vault';
 import { pickupStatusFor } from './pickup-flow';
-import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, openShipTo } from './read-flow';
+import { linesRefundedInFull, refundedInFull } from '../domain/refund';
+import { sellerMaySeeShipTo } from '../domain/ship-to-retention';
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, MAX_PAGED_ROWS, openShipTo } from './read-flow';
 
 // The seller's side of an order once it is paid: see it and tell the platform it is ready; the
 // platform books the delivery, the seller never delivers or names a carrier. The delivery is
 // recorded from the carrier's progress, or, for an order the buyer collects in person, when the
 // seller types the buyer's pickup code at the handover. The seller sees only the seller orders of its own shop. Inventory learns of a shipment
 // from the worker (`recordShipments`), not from the seller's request. One seller order's page
-// (view, ship, deliver) carries the delivery address copied at checkout; the list does not.
+// (view, ship, deliver) names the customer by their code for the shop and first name only, never
+// the delivery address (owner decision 2026-11-17); the list does not name them.
 
 const logger = new Logger('OrderingFulfilmentFlow');
 
@@ -52,6 +57,8 @@ export type FulfilmentFailure =
   | { readonly code: 'ordering.seller-order-not-found' }
   /** The seller order is not at the step the request needs (already shipped, not yet shipped). */
   | { readonly code: 'ordering.fulfilment-conflict' }
+  /** Every unit of the seller order was refunded (an admin cancelled it): nothing to prepare. */
+  | { readonly code: 'ordering.seller-order-refunded' }
   /** The pickup code typed was wrong; `attemptsLeft` tries remain before the order is locked. */
   | { readonly code: 'ordering.pickup-code-invalid'; readonly attemptsLeft: number }
   /** Too many wrong pickup codes: only the buyer asking for a new code opens the order again. */
@@ -88,6 +95,96 @@ export interface SellerListInput {
   readonly cursor?: unknown;
   /** One fulfilment step: `to-ship`, `shipped` or `delivered`. */
   readonly status?: unknown;
+  /**
+   * With `page` the list answers an offset page with its total (the page-number mode of the List
+   * paging setting); without it, the cursor page. `pageSize`, `sort` and `direction` need `page`.
+   */
+  readonly page?: unknown;
+  readonly pageSize?: unknown;
+  readonly sort?: unknown;
+  readonly direction?: unknown;
+  /** A seller order id or its order id, exact (the reference in the order emails). */
+  readonly q?: unknown;
+  /** With `page`: `pages` (default, with the total) or `prev-next` (no count; `hasNext`). */
+  readonly paging?: unknown;
+  /** ISO instants: paid at or after `from`, before `to`. */
+  readonly from?: unknown;
+  readonly to?: unknown;
+}
+
+const SORT_KEYS: readonly SellerOrderSort['key'][] = ['paid', 'total'];
+
+const instantOf = (
+  fields: { path: string; code: string }[],
+  path: 'from' | 'to',
+  value: unknown,
+): Temporal.Instant | null => {
+  if (value === undefined) return null;
+  try {
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
+      return Temporal.Instant.from(value);
+    }
+  } catch {
+    // falls through to the refusal below
+  }
+  fields.push({ path, code: 'format' });
+  return null;
+};
+
+/** The offset-page request of a seller list input, or null for the cursor page. */
+function offsetRequest(
+  input: SellerListInput,
+  fields: { path: string; code: string }[],
+): {
+  page: number;
+  pageSize: number;
+  sort: SellerOrderSort;
+  paging: 'pages' | 'prev-next';
+} | null {
+  if (input.page === undefined) {
+    for (const path of ['pageSize', 'sort', 'direction', 'paging'] as const) {
+      if (input[path] !== undefined) fields.push({ path, code: 'needs-page' });
+    }
+    return null;
+  }
+  const whole = (value: unknown, max: number): number | null =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 && value <= max
+      ? value
+      : null;
+  const page = whole(input.page, MAX_PAGED_ROWS);
+  if (page === null) fields.push({ path: 'page', code: 'range' });
+  // A page number and a cursor (or a limit) are two ways to say where to start.
+  for (const path of ['cursor', 'limit'] as const) {
+    if (input[path] !== undefined && !fields.some((field) => field.path === path)) {
+      fields.push({ path, code: 'with-page' });
+    }
+  }
+  let pageSize = DEFAULT_PAGE_SIZE;
+  if (input.pageSize !== undefined) {
+    const given = whole(input.pageSize, MAX_PAGE_SIZE);
+    if (given === null) fields.push({ path: 'pageSize', code: 'range' });
+    else pageSize = given;
+  }
+  let key: SellerOrderSort['key'] = 'paid';
+  if (input.sort !== undefined) {
+    if (SORT_KEYS.includes(input.sort as SellerOrderSort['key'])) {
+      key = input.sort as SellerOrderSort['key'];
+    } else fields.push({ path: 'sort', code: 'value' });
+  }
+  let direction: SellerOrderSort['direction'] = 'desc';
+  if (input.direction !== undefined) {
+    if (input.direction === 'asc' || input.direction === 'desc') direction = input.direction;
+    else fields.push({ path: 'direction', code: 'value' });
+  }
+  let paging: 'pages' | 'prev-next' = 'pages';
+  if (input.paging !== undefined) {
+    if (input.paging === 'pages' || input.paging === 'prev-next') paging = input.paging;
+    else fields.push({ path: 'paging', code: 'value' });
+  }
+  if (page !== null && fields.length === 0 && page * pageSize > MAX_PAGED_ROWS) {
+    fields.push({ path: 'page', code: 'too-deep' });
+  }
+  return page === null ? null : { page, pageSize, sort: { key, direction }, paging };
 }
 
 const FULFILMENTS: readonly Fulfilment[] = ['to-ship', 'shipped', 'delivered'];
@@ -123,19 +220,62 @@ export async function listSellerOrders(
     if (FULFILMENTS.includes(input.status as Fulfilment)) fulfilment = input.status as Fulfilment;
     else fields.push({ path: 'status', code: 'value' });
   }
+  const from = instantOf(fields, 'from', input?.from);
+  const to = instantOf(fields, 'to', input?.to);
+  if (from !== null && to !== null && Temporal.Instant.compare(from, to) >= 0) {
+    fields.push({ path: 'to', code: 'range' });
+  }
+  let reference: string | null = null;
+  if (input?.q !== undefined) {
+    // Any id of the right shape; a trimmed, lower-cased copy is matched, never echoed.
+    const parsed = typeof input.q === 'string' ? parseId(input.q.trim().toLowerCase()) : null;
+    if (parsed !== null && parsed.ok) reference = parsed.value;
+    else fields.push({ path: 'q', code: 'format' });
+  }
+  const request = offsetRequest(input ?? {}, fields);
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
+  const filter = { fulfilment, reference, from, to };
   const read = await deps.unitOfWork.run<
-    SellerOrderPageView & { readonly counts: SellerOrderCounts },
+    SellerOrderPageView & {
+      readonly counts: SellerOrderCounts;
+      readonly total: number | null;
+      readonly hasNext: boolean;
+    },
     FulfilmentFailure
   >(
     context.market,
     async () => {
-      const rows = await deps.orders.listForSeller(
-        context.market,
-        sellerId,
-        { fulfilment },
-        { limit: limit + 1, after },
-      );
+      if (request !== null) {
+        // Previous and Next reads one extra row and never counts.
+        const prevNext = request.paging === 'prev-next';
+        const [read, total] = await Promise.all([
+          deps.orders.pageForSeller(
+            context.market,
+            sellerId,
+            filter,
+            request.sort,
+            (request.page - 1) * request.pageSize,
+            prevNext ? request.pageSize + 1 : request.pageSize,
+          ),
+          prevNext
+            ? Promise.resolve(null)
+            : deps.orders.countMatchingForSeller(context.market, sellerId, filter),
+        ]);
+        const records = prevNext ? read.slice(0, request.pageSize) : read;
+        return ok({
+          sellerOrders: records.map(sellerOrderDetailView),
+          counts: await deps.orders.countForSeller(context.market, sellerId),
+          nextCursor: null,
+          total,
+          hasNext: prevNext
+            ? read.length > request.pageSize && request.page * request.pageSize < MAX_PAGED_ROWS
+            : request.page * request.pageSize < Math.min(total ?? 0, MAX_PAGED_ROWS),
+        });
+      }
+      const rows = await deps.orders.listForSeller(context.market, sellerId, filter, {
+        limit: limit + 1,
+        after,
+      });
       const page = rows.slice(0, limit);
       const last = page[page.length - 1];
       return ok({
@@ -145,6 +285,8 @@ export async function listSellerOrders(
           rows.length > limit && last !== undefined
             ? encodeSellerCursor(last.confirmedAt, last.sellerOrder.id)
             : null,
+        total: null,
+        hasNext: rows.length > limit,
       });
     },
     { readOnly: true },
@@ -154,6 +296,16 @@ export async function listSellerOrders(
     sellerOrders: await labelSellerOrders(deps.labels, context, read.value.sellerOrders),
     nextCursor: read.value.nextCursor,
     counts: read.value.counts,
+    paging:
+      request === null
+        ? null
+        : {
+            mode: request.paging,
+            total: read.value.total,
+            page: request.page,
+            pageSize: request.pageSize,
+            hasNext: read.value.hasNext,
+          },
   });
 }
 
@@ -270,6 +422,15 @@ export async function markSellerOrderReady(
       if (fresh !== null && fresh.sellerOrder.readyAt !== null) return already(fresh);
       outcome = 'ordering.fulfilment-conflict';
       return err({ code: 'ordering.fulfilment-conflict' } as const);
+    }
+    // The ready time holds the seller order's row lock: a refund that committed before it is
+    // seen here, and an admin cancellation that comes after it sees this ready mark (refund-flow
+    // adminCancelOrder). A seller order whose every unit is refunded (or on its way back) was
+    // cancelled: nothing is left to prepare, and the refusal rolls the ready time back.
+    const target = await deps.refunds.findTarget(context.market, ready.id, record.orderId);
+    if (target !== null && refundedInFull(target, 'not-failed')) {
+      outcome = 'ordering.seller-order-refunded';
+      return err({ code: 'ordering.seller-order-refunded' } as const);
     }
     let pickup: PickupStatus | null = null;
     if (ready.deliveryMethod === 'pickup') {
@@ -482,8 +643,11 @@ export async function confirmSellerPickup(
 }
 
 /**
- * The step's answer with the names of its lines and the opened delivery address, read after the
- * unit has closed.
+ * The step's answer with the names of its lines, the customer as the shop knows them (code and
+ * first name only) and the customer's note to the shop, read after the unit has closed. Every
+ * seller answer goes through here. The shop never gets the delivery address, the recipient's full
+ * name or phone (owner decision 2026-11-17): the platform books the delivery. The sealed details
+ * are opened only for the note, and only while {@link sellerMaySeeShipTo} allows it.
  */
 export async function labelled(
   deps: OrderingDependencies,
@@ -492,10 +656,44 @@ export async function labelled(
 ): Promise<Result<LabelledSellerOrderShipView, FulfilmentFailure>> {
   if (!result.ok) return result;
   const { view, record } = result.value;
-  const [one] = await labelSellerOrders(deps.labels, context, [view]);
+  const [[one], customerAnswer] = await Promise.all([
+    labelSellerOrders(deps.labels, context, [view]),
+    deps.labels.sellerCustomersOf(context, [record.accountId]).then(
+      (found) => ({ status: 'fulfilled', value: found }) as const,
+      (reason: unknown) => ({ status: 'rejected', reason }) as const,
+    ),
+  ]);
+  const customers = settled(context, 'seller-customers', customerAnswer);
+  const refunds = await deps.unitOfWork.run<readonly Refund[], never>(
+    context.market,
+    async () =>
+      ok(await deps.refunds.listOfSellerOrder(context.market, view.sellerOrderId, view.sellerId)),
+    { readOnly: true },
+  );
+  // The seller loses the note once nothing is left to send, 30 days after delivery or 60 days
+  // after an undelivered shipment (owner decisions 2026-11-14 and 2026-11-15); it is then not
+  // even opened. A cancelled order is never found for its seller (only paid ones are), and an
+  // admin cancelling a paid order refunds every unit, so the refunds decide here. Refunds that
+  // could not be read count as refunded in full: fail closed.
+  const shown = sellerMaySeeShipTo(
+    {
+      fulfilment: view.fulfilment,
+      shippedAt: view.shippedAt,
+      deliveredAt: view.deliveredAt,
+      cancelledOrRefundedInFull: !refunds.ok || linesRefundedInFull(view.lines, refunds.value),
+    },
+    deps.clock.now(),
+  );
+  const shipTo = shown
+    ? await openShipTo(deps, context, record.accountId, record.shipToSealed)
+    : null;
+  const customer = customers?.get(record.accountId) ?? null;
   return ok({
     ...one!,
-    shipTo: await openShipTo(deps, context, record.accountId, record.shipToSealed),
+    // Built field by field, so nothing else of the sealed details reaches the seller.
+    customer: customer === null ? null : { code: customer.code, firstName: customer.firstName },
+    buyerNote: shipTo?.sellerNotes?.[view.sellerId] ?? null,
+    refunds: refunds.ok ? refunds.value.map((r) => sellerOrderRefundView(r)) : [],
     pickup: result.value.pickup ?? null,
   });
 }

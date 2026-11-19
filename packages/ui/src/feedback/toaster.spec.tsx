@@ -41,6 +41,21 @@ describe('ToastStack', () => {
     expect(html.match(/aria-live=/g)).toHaveLength(1);
   });
 
+  it('gives every card but the loading one a close button', () => {
+    const html = stack([
+      view({ type: 'success' }),
+      view({ type: 'warning' }),
+      view({ type: 'info' }),
+      view({ type: 'error', duration: Infinity }),
+    ]);
+    expect(html.match(/aria-label="Close notification"/g)).toHaveLength(4);
+    const loading = stack([view({ type: 'loading', duration: Infinity })]);
+    expect(loading).not.toContain('Close notification');
+    // Two columns, the badge and the text, with no empty third one.
+    expect(loading).toContain('grid-cols-[auto_minmax(0,1fr)]');
+    expect(loading).not.toContain('grid-cols-[auto_minmax(0,1fr)_auto]');
+  });
+
   it('shows a still icon for the loading card under reduced motion', () => {
     const html = stack([view({ type: 'loading', duration: Infinity })]);
     expect(html).toContain('motion-reduce:hidden');

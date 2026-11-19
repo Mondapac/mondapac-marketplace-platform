@@ -4,6 +4,14 @@
 // definitions are declared in domain/events/ and re-exported here (ADR-0006 decision 6), as are
 // the audited actions of domain/audit/ (docs/design/domain/platform-audit.md 3.2).
 export {
+  AccountDisabled,
+  AccountDisplayNameChanged,
+  // Consumed by customers' read model and timeline (admin email change).
+  AccountEmailChanged,
+  AccountEmailChangeRequested,
+  AccountEmailVerified,
+  AccountEnabled,
+  CustomerAccountRegistered,
   IDENTITY_EVENTS,
   SellerAccessApproved,
   // Consumed by notifications' seller notices (package 4) and by search's index (P-D).
@@ -24,9 +32,23 @@ export {
   type CustomerAccountOfFailure,
   type CustomerAccountRef,
   type CustomerAccountSummary,
+  type CustomerDirectoryRecord,
+  type CustomerEmailChangeCancelFailure,
+  type CustomerEmailChangeFailure,
+  type CustomerPendingEmailChange,
   type CustomerShortName,
   type IdentityFacade,
   type IdentityValidationFailed,
   type SellerMembershipSummary,
+  // Customers management phase 2b: the customer page's security section.
+  CUSTOMER_SIGN_IN_RESULTS,
+  type AdminPasswordResetFailure,
+  type CustomerSecurityFailure,
+  type CustomerSessionFact,
+  type CustomerSessionsView,
+  type CustomerSignInFact,
+  type CustomerSignInResult,
+  type CustomerSignInsPage,
+  type CustomerSignInsRequest,
 } from './identity.facade';
 export { changeActorSourceOf, changeTrailProvider } from './change-actor-source';

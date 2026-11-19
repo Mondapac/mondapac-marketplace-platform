@@ -148,6 +148,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         effectiveKeys: realEffectiveKeys(),
         factors: fakes.factorRepository,
         records: fakes.recordRepository,
+        policy,
       });
     // Only describeActor is called here; the other methods have their own suites.
     const facadeOf = (describe: DescribeActor) =>
@@ -162,14 +163,27 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
         requireStepUp: undefined as never,
         customerAccountOf: undefined as never,
         customerAccountSummaries: undefined as never,
+        searchCustomerAccounts: undefined as never,
         customerShortNames: undefined as never,
         teamMemberLabels: undefined as never,
         changeActorLabels: undefined as never,
         endOtherCustomerSessions: undefined as never,
         endAllCustomerSessions: undefined as never,
         customerAccountExists: undefined as never,
+        customerDirectoryRecords: undefined as never,
+        customerDirectoryPage: undefined as never,
         ownAccountTiedToSeller: undefined as never,
         eraseCustomerAccount: undefined as never,
+        adminRequestCustomerEmailChange: undefined as never,
+        adminCancelCustomerEmailChange: undefined as never,
+        customerPendingEmailOf: undefined as never,
+        cancelCustomerEmailChangeForDeletion: undefined as never,
+        adminRenameCustomer: undefined as never,
+        adminCustomerSignIns: undefined as never,
+        adminCustomerSessions: undefined as never,
+        adminRevealCustomerSignIn: undefined as never,
+        adminSignOutCustomer: undefined as never,
+        adminSendCustomerPasswordReset: undefined as never,
       });
 
     it("answers the actor's ids, email and session times; the facade drops the email", async () => {
@@ -191,6 +205,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
           displayName: null,
           timezone: null,
           locale: null,
+          marketTimezone: markets.get(market.marketId).timezone,
           appearance: null,
           session: {
             idleTimeoutSeconds: lifetime.idleTimeoutSeconds,
@@ -209,6 +224,8 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
           permissionKeys: [],
           sellerAccessState: null,
           secondFactorActive: false,
+          // The account's own zone (customers phase 2b: an admin's day filters); none set here.
+          timezone: null,
         },
       });
       expect(JSON.stringify(facade)).not.toContain('Example.com');
@@ -227,6 +244,7 @@ describe.each(TEST_MARKETS)('session use cases in market %s', (code) => {
           address: '203.0.113.9',
           sessionId,
           correlationId: 'correlation-1',
+          device: null,
         });
       const OLDER = id<'Session'>('01990000-0000-7000-8000-00000000a002');
       await record(OLDER, 'signed-in', START.subtract({ hours: 30 }));

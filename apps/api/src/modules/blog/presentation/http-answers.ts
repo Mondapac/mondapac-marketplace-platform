@@ -9,6 +9,7 @@ import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 
 export const BLOG_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
+  'batch.too-large': 413,
   'blog.post-not-found': 404,
   'blog.not-found': 404,
   'blog.category-not-found': 404,
@@ -31,6 +32,12 @@ export const BLOG_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'conflict.stale': 409,
   'blog.checks-failed': 422,
   'blog.unavailable': 503,
+  'blog.media-not-found': 404,
+  'file.too-large': 413,
+  'file.unsupported-type': 415,
+  'file.too-many-pixels': 422,
+  'file.too-small': 422,
+  'file.unreadable': 422,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
@@ -82,6 +89,12 @@ export function refusal(
   if (error.findings !== undefined) return fail(status, error.code, { findings: error.findings });
   if (error.actionKey !== undefined)
     return fail(status, error.code, { actionKey: error.actionKey });
+  if (typeof error.max === 'number') {
+    return fail(status, error.code, {
+      max: error.max,
+      ...(typeof error.total === 'number' ? { total: error.total } : {}),
+    });
+  }
   if (typeof error.details === 'object' && error.details !== null) {
     return fail(status, error.code, error.details);
   }

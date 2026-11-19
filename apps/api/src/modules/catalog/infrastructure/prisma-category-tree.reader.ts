@@ -21,6 +21,7 @@ export class PrismaCategoryTreeReader implements CategoryTreeReader {
         status: true,
         mergedIntoId: true,
         slug: true,
+        position: true,
         publishedRevisionId: true,
       },
       orderBy: { id: 'asc' },
@@ -48,6 +49,7 @@ export class PrismaCategoryTreeReader implements CategoryTreeReader {
       status: row.status as CategoryStatus,
       mergedIntoId: row.mergedIntoId as Id<'Category'> | null,
       slug: row.slug,
+      position: row.position,
       names:
         row.status === 'active' && row.publishedRevisionId !== null
           ? (namesOf.get(row.publishedRevisionId) ?? [])

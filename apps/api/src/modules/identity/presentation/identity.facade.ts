@@ -1,15 +1,29 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
 import type { ConfirmSellerSecondFactor } from '../application/use-cases/confirm-seller-second-factor.use-case';
 import type { ContactEmailOf } from '../application/use-cases/contact-email-of.use-case';
 import type { OwnOwnerEmail } from '../application/use-cases/own-owner-email.use-case';
 import type { CustomerAccountOf } from '../application/use-cases/customer-account-of.use-case';
+import type { AdminRequestCustomerEmailChange } from '../application/use-cases/admin-request-customer-email-change.use-case';
+import type { AdminCancelCustomerEmailChange } from '../application/use-cases/admin-cancel-customer-email-change.use-case';
+import type { CustomerPendingEmailOf } from '../application/use-cases/customer-pending-email-of.use-case';
+import type { CancelCustomerEmailChangeForDeletion } from '../application/use-cases/cancel-customer-email-change-for-deletion.use-case';
+import type { SearchCustomerAccounts } from '../application/use-cases/search-customer-accounts.use-case';
 import type { CustomerAccountSummaries } from '../application/use-cases/customer-account-summaries.use-case';
 import type { CustomerShortNames } from '../application/use-cases/customer-short-names.use-case';
 import type { OwnAccountTiedToSeller } from '../application/use-cases/own-account-tied-to-seller.use-case';
+import type { CustomerDirectoryPage } from '../application/use-cases/customer-directory-page.use-case';
+import type { CustomerDirectoryRecords } from '../application/use-cases/customer-directory-records.use-case';
 import type { CustomerAccountExists } from '../application/use-cases/customer-account-exists.use-case';
 import type { AdminEndCustomerSessions } from '../application/use-cases/admin-end-customer-sessions.use-case';
+import type { AdminRenameCustomer } from '../application/use-cases/admin-rename-customer.use-case';
+import type { AdminCustomerSignIns } from '../application/use-cases/admin-customer-sign-ins.use-case';
+import type { AdminCustomerSessions } from '../application/use-cases/admin-customer-sessions.use-case';
+import type { AdminRevealCustomerSignIn } from '../application/use-cases/admin-reveal-customer-sign-in.use-case';
+import type { AdminSignOutCustomer } from '../application/use-cases/admin-sign-out-customer.use-case';
+import type { AdminSendCustomerPasswordReset } from '../application/use-cases/admin-send-customer-password-reset.use-case';
+import type { CustomerSignInsRequest } from '../contracts/customer-security';
 import type { EndAllCustomerSessions } from '../application/use-cases/end-all-customer-sessions.use-case';
 import type { EndOtherCustomerSessions } from '../application/use-cases/end-other-customer-sessions.use-case';
 import type { EraseCustomerAccount } from '../application/use-cases/erase-customer-account.use-case';
@@ -26,6 +40,9 @@ import type {
   CustomerAccountOfFailure,
   CustomerAccountRef,
   CustomerAccountSummary,
+  CustomerEmailChangeCancelFailure,
+  CustomerEmailChangeFailure,
+  CustomerPendingEmailChange,
   CustomerShortName,
   EndOtherCustomerSessionsFailure,
   IdentityFacade,
@@ -47,6 +64,7 @@ export interface IdentityFacadeUseCases {
   readonly requireStepUp: RequireStepUp;
   readonly customerAccountOf: CustomerAccountOf;
   readonly customerAccountSummaries: CustomerAccountSummaries;
+  readonly searchCustomerAccounts: SearchCustomerAccounts;
   readonly customerShortNames: CustomerShortNames;
   readonly teamMemberLabels: TeamMemberLabels;
   readonly changeActorLabels: ChangeActorLabels;
@@ -54,8 +72,20 @@ export interface IdentityFacadeUseCases {
   readonly endAllCustomerSessions: EndAllCustomerSessions;
   readonly adminEndCustomerSessions: AdminEndCustomerSessions;
   readonly customerAccountExists: CustomerAccountExists;
+  readonly customerDirectoryRecords: CustomerDirectoryRecords;
+  readonly customerDirectoryPage: CustomerDirectoryPage;
   readonly ownAccountTiedToSeller: OwnAccountTiedToSeller;
   readonly eraseCustomerAccount: EraseCustomerAccount;
+  readonly adminRequestCustomerEmailChange: AdminRequestCustomerEmailChange;
+  readonly adminCancelCustomerEmailChange: AdminCancelCustomerEmailChange;
+  readonly customerPendingEmailOf: CustomerPendingEmailOf;
+  readonly cancelCustomerEmailChangeForDeletion: CancelCustomerEmailChangeForDeletion;
+  readonly adminRenameCustomer: AdminRenameCustomer;
+  readonly adminCustomerSignIns: AdminCustomerSignIns;
+  readonly adminCustomerSessions: AdminCustomerSessions;
+  readonly adminRevealCustomerSignIn: AdminRevealCustomerSignIn;
+  readonly adminSignOutCustomer: AdminSignOutCustomer;
+  readonly adminSendCustomerPasswordReset: AdminSendCustomerPasswordReset;
 }
 
 /**
@@ -79,6 +109,7 @@ export class IdentityFacadeImplementation implements IdentityFacade {
       permissionKeys: summary.permissionKeys,
       sellerAccessState: summary.sellerAccessState,
       secondFactorActive: summary.secondFactorActive,
+      timezone: summary.timezone,
     });
   }
 
@@ -131,11 +162,62 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     return this.useCases.customerAccountOf.execute(context, { accountId });
   }
 
+  requestCustomerEmailChangeForAdmin(
+    context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly email: string;
+      readonly origin: string;
+    },
+  ): Promise<
+    Result<
+      { readonly changed: boolean; readonly requestedAt: Temporal.Instant | null },
+      CustomerEmailChangeFailure
+    >
+  > {
+    return this.useCases.adminRequestCustomerEmailChange.execute(context, request);
+  }
+
+  cancelCustomerEmailChangeForAdmin(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<
+    Result<{ readonly code: 'email-change.cancelled' }, CustomerEmailChangeCancelFailure>
+  > {
+    return this.useCases.adminCancelCustomerEmailChange.execute(context, { accountId });
+  }
+
+  customerPendingEmailOf(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<CustomerPendingEmailChange | null, CustomerAccountOfFailure>> {
+    return this.useCases.customerPendingEmailOf.execute(context, { accountId });
+  }
+
+  cancelCustomerEmailChangeForDeletion(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<{ readonly cancelled: boolean }, CustomerAccountOfFailure>> {
+    return this.useCases.cancelCustomerEmailChangeForDeletion.execute(context, { accountId });
+  }
+
   customerAccountSummaries(
     context: CallContext,
     accountIds: readonly Id<'Account'>[],
   ): Promise<Result<readonly CustomerAccountSummary[], AccessDenied | IdentityValidationFailed>> {
     return this.useCases.customerAccountSummaries.execute(context, { accountIds });
+  }
+
+  searchCustomerAccounts(
+    context: CallContext,
+    term: string,
+  ): Promise<
+    Result<
+      { readonly accountIds: readonly Id<'Account'>[]; readonly capped: boolean },
+      AccessDenied | IdentityValidationFailed
+    >
+  > {
+    return this.useCases.searchCustomerAccounts.execute(context, { term });
   }
 
   customerShortNames(
@@ -210,6 +292,17 @@ export class IdentityFacadeImplementation implements IdentityFacade {
     return result.ok ? ok(result.value) : err(result.error);
   }
 
+  customerDirectoryRecords(context: CallContext, accountIds: readonly Id<'Account'>[]) {
+    return this.useCases.customerDirectoryRecords.execute(context, { accountIds });
+  }
+
+  customerDirectoryPage(
+    context: CallContext,
+    request: { readonly after: Id<'Account'> | null; readonly limit: number },
+  ) {
+    return this.useCases.customerDirectoryPage.execute(context, request);
+  }
+
   async customerAccountExists(
     context: CallContext,
     accountId: Id<'Account'>,
@@ -228,5 +321,35 @@ export class IdentityFacadeImplementation implements IdentityFacade {
       requestId,
     });
     return result.ok ? ok({ code: result.value.code }) : err(result.error);
+  }
+
+  renameCustomerForAdmin(
+    context: CallContext,
+    input: { readonly accountId: Id<'Account'>; readonly displayName: string },
+  ) {
+    return this.useCases.adminRenameCustomer.execute(context, input);
+  }
+
+  adminCustomerSignIns(context: CallContext, request: CustomerSignInsRequest) {
+    return this.useCases.adminCustomerSignIns.execute(context, request);
+  }
+
+  adminRevealCustomerSignIn(
+    context: CallContext,
+    input: { readonly accountId: Id<'Account'>; readonly signInId: Id<'SignInRecord'> },
+  ) {
+    return this.useCases.adminRevealCustomerSignIn.execute(context, input);
+  }
+
+  adminCustomerSessions(context: CallContext, accountId: Id<'Account'>) {
+    return this.useCases.adminCustomerSessions.execute(context, { accountId });
+  }
+
+  adminSignOutCustomer(context: CallContext, accountId: Id<'Account'>) {
+    return this.useCases.adminSignOutCustomer.execute(context, { accountId });
+  }
+
+  adminSendCustomerPasswordReset(context: CallContext, accountId: Id<'Account'>) {
+    return this.useCases.adminSendCustomerPasswordReset.execute(context, { accountId });
   }
 }

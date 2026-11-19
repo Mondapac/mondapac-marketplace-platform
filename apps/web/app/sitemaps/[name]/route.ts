@@ -20,7 +20,7 @@ export async function GET(_request: Request, { params }: Props): Promise<Respons
   const host = await sitemapHost();
   if (host === undefined) return notFoundResponse();
   try {
-    const paths = await cachedChildPaths(host.origin, (await params).name);
+    const paths = await cachedChildPaths(host, (await params).name);
     return paths === null ? notFoundResponse() : xmlResponse(urlSetXml(host.origin, paths));
   } catch (error) {
     if (error instanceof SitemapReadFailed) return unavailableResponse();

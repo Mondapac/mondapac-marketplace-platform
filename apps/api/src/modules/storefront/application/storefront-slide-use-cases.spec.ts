@@ -39,6 +39,7 @@ import { UpdateStorefrontSlideDraft } from './use-cases/update-slide-draft.use-c
 import { ViewStorefrontSlide } from './use-cases/view-slide.use-case';
 import { ViewStorefrontSlideOrder } from './use-cases/view-slide-order.use-case';
 import type { SlideOrderView } from './slide-order-flow';
+import { MemorySlideImageStore } from './slide-images/memory-slide-image-store';
 
 // The slide library use cases in memory on both Market fixtures, behind a gate that grants each
 // actor only its own keys: a reader sees slides; an editor also creates, changes, restores,
@@ -153,6 +154,9 @@ describe.each([
       targets,
       slides,
       links: undefined as never,
+      slideImages: new MemorySlideImageStore(),
+      imageProcessor: undefined as never,
+      objectStore: undefined as never,
       audit,
       ids: new SequenceIdGenerator(clock),
       clock,
@@ -192,6 +196,59 @@ describe.each([
     run(CreateStorefrontSlide, context, { kind, ...body(extra) });
   const made = (context: CallContext = editor, kind = 'announcement', extra = {}) =>
     value<SlideDetailView>(create(context, kind, extra));
+
+  describe('library images', () => {
+    const IMAGE = id<'SlideImage'>(0x1a9).toString();
+    const withImage = (ref: string) => ({
+      content: {
+        title: 'Eid Mubarak',
+        image: { ref, alt: 'Eid lanterns', decorative: false },
+      },
+    });
+    const store = () => deps.slideImages as MemorySlideImageStore;
+    const known = (m: MarketContext, hasMobile = false) =>
+      store().insert(m, {
+        id: IMAGE as Id<'SlideImage'>,
+        uploaderAccountId: EDITOR,
+        hasMobile,
+        width: 1920,
+        height: 720,
+        uploadedBytes: 10,
+        createdAt: T0,
+        renditions: [],
+      });
+
+    it('accepts a ready-made key and a library image of this Market', async () => {
+      await made(editor, 'announcement', withImage('eid-banner'));
+      await known(market);
+      expect(await errorOf(create(editor, 'announcement', withImage(IMAGE)))).toBe('allowed');
+    });
+
+    it('refuses an unknown library image and one that belongs to another Market', async () => {
+      const missing = {
+        code: 'validation.failed',
+        fields: [{ path: 'content.image.ref', code: 'not-found' }],
+      };
+      expect(await errorOf(create(editor, 'announcement', withImage(IMAGE)))).toEqual(missing);
+      await known(otherMarket);
+      expect(await errorOf(create(editor, 'announcement', withImage(IMAGE)))).toEqual(missing);
+    });
+
+    it('checks the image again when a draft changes', async () => {
+      const slide = await made();
+      const result = await errorOf(
+        run(UpdateStorefrontSlideDraft, editor, { slide: slide.id, body: body(withImage(IMAGE)) }),
+      );
+      expect(result).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'content.image.ref', code: 'not-found' }],
+      });
+      await known(market);
+      await value(
+        run(UpdateStorefrontSlideDraft, editor, { slide: slide.id, body: body(withImage(IMAGE)) }),
+      );
+    });
+  });
 
   describe('create', () => {
     it('creates a draft with its first version and audits it', async () => {

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -17,7 +17,20 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../server/server-fetch.ts', () => ({ serverGet: mocks.get }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 
-import { loadAdminDashboard } from './load.ts';
+import { startAdminDashboard } from './load.ts';
+
+/** Every read of the dashboard, awaited. */
+async function loadAdminDashboard(session: AdminSession): Promise<AdminDashboardData> {
+  const sources = startAdminDashboard(session);
+  const [sellers, holds, offers, accounts, orders] = await Promise.all([
+    sources.sellers,
+    sources.holds,
+    sources.offers,
+    sources.accounts,
+    sources.orders,
+  ]);
+  return { sellers, holds, offers, accounts, orders };
+}
 
 const wrap = (node: React.ReactNode, locale = 'en-AU') => (
   <NextIntlClientProvider locale={locale} messages={messages}>
@@ -134,7 +147,7 @@ const ALL_KEYS = [
   'identity.admin-account.invite',
   'identity.platform-role.view',
   'identity.platform-role.create',
-  'identity.customer-account.view',
+  'customers.customers.view',
 ];
 
 afterEach(cleanup);
@@ -144,7 +157,7 @@ describe('admin dashboard', () => {
     render(wrap(<AdminDashboard data={full} permissionKeys={ALL_KEYS} />));
     const stats = within(screen.getByRole('list', { name: 'Needs attention' }));
     const sellersCard = stats.getByRole('link', { name: /Sellers awaiting review/ });
-    expect(sellersCard.getAttribute('href')).toBe('/sellers');
+    expect(sellersCard.getAttribute('href')).toBe('/sellers?tab=awaiting-review');
     expect(sellersCard.textContent).toContain('9');
     const holdsCard = stats.getByRole('link', { name: /Held prices to decide/ });
     expect(holdsCard.textContent).toContain('50+');
@@ -204,6 +217,36 @@ describe('admin dashboard', () => {
     expect(screen.getByRole('link', { name: /Held prices to decide/ }).textContent).toContain('0');
   });
 
+  it('counts and lists only Offers, not the product revisions in the same queue', () => {
+    const mixed: AdminDashboardData = {
+      ...none,
+      offers: ok({ items: [{ kind: 'product-revision' as const }], nextAfterId: null }),
+    };
+    render(wrap(<AdminDashboard data={mixed} permissionKeys={[]} />));
+    expect(screen.getByText('No offers are waiting for their first publication.')).toBeTruthy();
+    expect(screen.queryAllByRole('table')).toHaveLength(0);
+    expect(screen.getByRole('link', { name: /Offers to review/ }).textContent).toContain('0');
+  });
+
+  it('counts only the Offers of a full first page as a lower bound', () => {
+    const offers = full.offers?.kind === 'ok' ? full.offers.value.items : [];
+    const mixed: AdminDashboardData = {
+      ...none,
+      offers: ok({
+        items: [
+          { kind: 'product-revision' as const },
+          ...offers,
+          { kind: 'product-revision' as const },
+        ],
+        nextAfterId: 'next',
+      }),
+    };
+    render(wrap(<AdminDashboard data={mixed} permissionKeys={[]} />));
+    const figure = screen.getByRole('link', { name: /Offers to review/ });
+    expect(figure.textContent).toContain('1+');
+    expect(figure.textContent).toContain('First 50 only; more are waiting');
+  });
+
   it('fails one widget in place and still renders the others', () => {
     const partly: AdminDashboardData = {
       ...full,
@@ -225,7 +268,7 @@ describe('admin dashboard', () => {
       wrap(
         <AdminDashboard
           data={small}
-          permissionKeys={['ordering.order.view', 'identity.customer-account.view']}
+          permissionKeys={['ordering.order.view', 'customers.customers.view']}
         />,
       ),
     );
@@ -249,6 +292,84 @@ describe('admin dashboard', () => {
     expect(screen.getByText('Nothing to show here yet')).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Quick actions' })).toBeNull();
   });
+
+  it('streams each card on its own: a slow read shows its skeleton while the others render', async () => {
+    let answer!: (value: AdminDashboardData['sellers']) => void;
+    const sellersRead = new Promise<AdminDashboardData['sellers']>((resolve) => {
+      answer = resolve;
+    });
+    await act(async () => {
+      render(
+        wrap(
+          <AdminDashboard
+            data={{ ...full, sellers: sellersRead, orders: Promise.resolve(full.orders) }}
+            permissionKeys={ALL_KEYS}
+          />,
+        ),
+      );
+      await Promise.resolve();
+    });
+    // The other reads have answered.
+    expect(screen.getByRole('link', { name: /Held prices to decide/ })).toBeTruthy();
+    expect(await screen.findByRole('table', { name: 'Recent orders' })).toBeTruthy();
+    // The sellers read has not: its figure and cards are skeletons with their real labels.
+    expect(screen.getByText('Sellers awaiting review')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /Sellers awaiting review/ })).toBeNull();
+    const applications = screen.getByRole('region', { name: 'Seller applications' });
+    expect(applications.querySelector('[data-skeleton="activity"]')).not.toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Loading the dashboard');
+    await act(async () => {
+      answer(full.sellers);
+      await Promise.resolve();
+    });
+    expect(
+      (await screen.findByRole('link', { name: /Sellers awaiting review/ })).textContent,
+    ).toContain('9');
+    expect(document.querySelector('[data-skeleton]')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
+
+  it('says there is nothing to show when every read is refused after the skeletons', async () => {
+    await act(async () => {
+      render(
+        wrap(
+          <AdminDashboard
+            data={{
+              sellers: Promise.resolve(null),
+              holds: Promise.resolve(null),
+              offers: null,
+              accounts: null,
+              orders: Promise.resolve(null),
+            }}
+            permissionKeys={[
+              'sellers.seller.view',
+              'pricing.price-hold.view',
+              'ordering.order.view',
+            ]}
+          />,
+        ),
+      );
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('Nothing to show here yet')).toBeTruthy();
+    expect(document.querySelector('[data-skeleton]')).toBeNull();
+  });
+
+  it('drops a card whose read the API refuses after its skeleton showed', async () => {
+    await act(async () => {
+      render(
+        wrap(
+          <AdminDashboard
+            data={{ ...full, holds: Promise.resolve(null) }}
+            permissionKeys={ALL_KEYS}
+          />,
+        ),
+      );
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole('region', { name: 'Held prices' })).toBeNull();
+    expect(screen.queryByText('Held prices to decide')).toBeNull();
+  });
 });
 
 const session = (permissionKeys: string[]): AdminSession => ({
@@ -258,13 +379,14 @@ const session = (permissionKeys: string[]): AdminSession => ({
   secondFactorActive: true,
   lastSignInAt: null,
   timezone: null,
+  marketTimezone: 'UTC',
   locale: null,
   email: 'ada@example.test',
   displayName: 'Ada',
   csrfToken: 'csrf-1',
 });
 
-describe('loadAdminDashboard', () => {
+describe('startAdminDashboard', () => {
   beforeEach(() => {
     mocks.get.mockReset();
     mocks.redirect.mockClear();

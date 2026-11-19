@@ -29,6 +29,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
+import { PrismaSlideImageStore } from '../../src/modules/storefront/infrastructure/prisma-slide-image.store';
 
 // The slide flows against the real tables as the application role, in both Market fixtures: a
 // draft is submitted and approved (the approver is stamped on the insert-only version, the live
@@ -78,6 +79,9 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
       targets: { live: (_c, targets) => Promise.resolve(new Set(targets.map(targetKey))) },
       slides,
       links: undefined as never,
+      slideImages: new PrismaSlideImageStore(db.service),
+      imageProcessor: undefined as never,
+      objectStore: undefined as never,
       audit: {
         record: (_c, entry) => {
           recorded.push(entry.action);

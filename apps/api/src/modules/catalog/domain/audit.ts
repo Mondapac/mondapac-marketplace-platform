@@ -32,6 +32,18 @@ export const ProductResumedAudit = defineAuditAction({
   after: { paused: auditField.boolean(), scope, offerCount: auditField.integer() },
 });
 
+/**
+ * An admin deleted an unused photo from the library of a PLATFORM product (P1 admin product
+ * images). The ids only: the picture itself is never in the audit log.
+ */
+export const ProductImageDeletedAudit = defineAuditAction({
+  action: 'catalog.product.image-deleted',
+  targetType: CATALOG_PRODUCT_TARGET,
+  actors: ['authenticated'],
+  before: { imageId: auditField.id() },
+  after: { imageId: auditField.optional(auditField.id()) },
+});
+
 /** A SELLER product was withdrawn by an admin (design 4.1); its Offer was deleted. */
 export const ProductWithdrawnAudit = defineAuditAction({
   action: 'catalog.product.withdrawn',
@@ -59,6 +71,25 @@ export const ProductRetiredAudit = defineAuditAction({
   },
 });
 
+/**
+ * A Simple product became Configurable by Add sizes (design 4.2a; variants V9): ids, codes and
+ * counts only. `offerCount` is the Offers on the product when it changed, `offOfferCount` those of
+ * sellers who may not sell the new type, which went off sale with the cause `type-not-allowed`.
+ */
+export const ProductTypeChangedAudit = defineAuditAction({
+  action: 'catalog.product.type-changed',
+  targetType: CATALOG_PRODUCT_TARGET,
+  actors: ['authenticated'],
+  before: { typeCode: auditField.enumOf(['simple'] as const) },
+  after: {
+    typeCode: auditField.enumOf(['configurable'] as const),
+    scope,
+    offerCount: auditField.integer(),
+    offOfferCount: auditField.integer(),
+    axisCount: auditField.integer(),
+  },
+});
+
 /** The audit target type of a platform import job. */
 export const CATALOG_PLATFORM_IMPORT_TARGET = 'catalog.platform-import';
 
@@ -82,17 +113,47 @@ export const PlatformImportStartedAudit = defineAuditAction({
   },
 });
 
+/** The audit target type of a seller import job. */
+export const CATALOG_SELLER_IMPORT_TARGET = 'catalog.seller-import';
+
+/**
+ * A seller's member confirmed an import (design 14c): the file was checked, the choice made and the
+ * run queued. Counts and the mode only; the file's SHA-256 is on the job row (`file_sha256`), which
+ * the audit target id points to, because the audit vocabulary has no text field.
+ */
+export const OwnImportStartedAudit = defineAuditAction({
+  action: 'catalog.own-import.started',
+  targetType: CATALOG_SELLER_IMPORT_TARGET,
+  actors: ['authenticated'],
+  before: { state: auditField.enumOf(['checked'] as const) },
+  after: {
+    state: auditField.enumOf(['queued'] as const),
+    mode: auditField.enumOf(['my-products', 'sell-from-catalogue'] as const),
+    skipErrors: auditField.boolean(),
+    rows: auditField.integer(),
+    toImport: auditField.integer(),
+    errorRows: auditField.integer(),
+  },
+});
+
 /** The audit target type of a saved filter. */
 export const CATALOG_SAVED_FILTER_TARGET = 'catalog.saved-filter';
 
 const savedFilterVisibility = auditField.enumOf(['me', 'everyone'] as const);
 
 /** The lists a saved filter can belong to (the keys of `SAVED_FILTER_LISTS`). */
-export const SAVED_FILTER_AUDIT_LISTS = ['admin.catalog.products'] as const;
+export const SAVED_FILTER_AUDIT_LISTS = [
+  'admin.catalog.products',
+  'seller.catalog.products',
+  'seller.catalog.offers',
+] as const;
 export type SavedFilterAuditList = (typeof SAVED_FILTER_AUDIT_LISTS)[number];
 const savedFilterList = auditField.enumOf(SAVED_FILTER_AUDIT_LISTS);
 
-/** An admin saved a filter for everyone (design 9.2d). The name is not audited: ids and codes only. */
+/**
+ * An admin or a seller member saved a filter for everyone (design 9.2d, 9.2e). The name is not
+ * audited: ids and codes only.
+ */
 export const SavedFilterSharedAudit = defineAuditAction({
   action: 'catalog.saved-filter.shared',
   targetType: CATALOG_SAVED_FILTER_TARGET,
@@ -168,6 +229,19 @@ export const AttributeDefinitionRevisedAudit = defineAuditAction({
   },
 });
 
+/**
+ * A reviewer rejected, or its author withdrew, an attribute edit in Admin Inbox › System requests,
+ * and the content before came back as a new revision. `requestId` names the System request, so a
+ * revert is never mistaken for an admin's own edit.
+ */
+export const AttributeDefinitionRevertedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.reverted',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: definitionShape,
+  after: { ...definitionShape, requestId: auditField.id() },
+});
+
 /** An admin published a draft definition: sellers now see it where a feature set names it. */
 export const AttributeDefinitionPublishedAudit = defineAuditAction({
   action: 'catalog.attribute-definition.published',
@@ -183,7 +257,74 @@ export const AttributeDefinitionDiscardedAudit = defineAuditAction({
   targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
   actors: ['authenticated'],
   before: { status: auditField.enumOf(['draft'] as const) },
-  after: { status: auditField.enumOf(['archived'] as const) },
+  after: {
+    status: auditField.enumOf(['archived'] as const),
+    requestId: auditField.optional(auditField.id()),
+  },
+});
+
+/**
+ * An admin merged one value of a select attribute into another (A8; plan ت۶). Counts only: no
+ * label and no value code (the audit vocabulary has no free-text field). `mergedValueCount` is how
+ * many values of the new revision point at another value.
+ */
+export const AttributeValuesMergedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.values-merged',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: definitionShape,
+  after: {
+    ...definitionShape,
+    mergedValueCount: auditField.integer(),
+    requestId: auditField.optional(auditField.id()),
+  },
+});
+
+/**
+ * An admin converted the type of a published attribute (A8; plan ت۵). The two types are enum
+ * values; no name, label or value is kept.
+ */
+const CONVERTED_TYPES = ['integer', 'decimal', 'select', 'multi-select'] as const;
+export const AttributeDefinitionConvertedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.converted',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: { ...definitionShape, dataType: auditField.enumOf(CONVERTED_TYPES) },
+  after: { ...definitionShape, dataType: auditField.enumOf(CONVERTED_TYPES) },
+});
+
+/**
+ * An admin archived a published attribute (A8). For a `material` one the actor is the confirming
+ * admin and the row names the request and its requester, as the revision that clears `material`.
+ */
+export const AttributeDefinitionArchivedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.archived',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['active'] as const), material: auditField.boolean() },
+  after: {
+    status: auditField.enumOf(['archived'] as const),
+    relaxationRequestId: auditField.optional(auditField.id()),
+    requestedByAccountId: auditField.optional(auditField.id()),
+    requestId: auditField.optional(auditField.id()),
+  },
+});
+
+/**
+ * An admin merged an attribute into another (A8): the source is archived and points at the target.
+ * `mappedValueCount` is how many of its values were mapped to a value of the target.
+ */
+export const AttributeDefinitionsMergedAudit = defineAuditAction({
+  action: 'catalog.attribute-definition.merged',
+  targetType: CATALOG_ATTRIBUTE_DEFINITION_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['active'] as const), material: auditField.boolean() },
+  after: {
+    status: auditField.enumOf(['archived'] as const),
+    mergedIntoId: auditField.id(),
+    mappedValueCount: auditField.integer(),
+    requestId: auditField.optional(auditField.id()),
+  },
 });
 
 const relaxationKind = auditField.enumOf([
@@ -239,6 +380,32 @@ export const CATALOG_PLATFORM_CATEGORY_TARGET = 'catalog.platform-category';
 
 const categoryEditStatus = auditField.enumOf(['active', 'hidden', 'archived'] as const);
 
+/**
+ * The audit target type of a category tree import (categories package C7a). The target id is
+ * derived from the file's SHA-256 (see `importFileTargetId`), because the audit vocabulary has no
+ * text field and the file hash is what the entry must carry.
+ */
+export const CATALOG_CATEGORY_TREE_IMPORT_TARGET = 'catalog.category-tree-import';
+
+/**
+ * An admin applied a category tree import file: counts and the format only. The file's SHA-256 is
+ * the target id (its first 122 bits in a UUID v7 layout). No cell, name or slug is recorded; each
+ * created or changed category has its own audit entry from the editor's use cases.
+ */
+export const CategoryTreeImportedAudit = defineAuditAction({
+  action: 'catalog.category-tree.imported',
+  targetType: CATALOG_CATEGORY_TREE_IMPORT_TARGET,
+  actors: ['authenticated'],
+  after: {
+    format: auditField.enumOf(['csv', 'xlsx'] as const),
+    rows: auditField.integer(),
+    created: auditField.integer(),
+    updated: auditField.integer(),
+    unchanged: auditField.integer(),
+    treeVersion: auditField.integer(),
+  },
+});
+
 /** An admin added a category; it starts hidden (plan decision 5). Counts and flags only: no name, no slug. */
 export const PlatformCategoryCreatedAudit = defineAuditAction({
   action: 'catalog.platform-category.created',
@@ -251,6 +418,15 @@ export const PlatformCategoryCreatedAudit = defineAuditAction({
   },
 });
 
+const categoryDetailsShape = {
+  revisionNo: auditField.integer(),
+  localeCount: auditField.integer(),
+  showInMenu: auditField.boolean(),
+  noindex: auditField.boolean(),
+  seoTitleSet: auditField.boolean(),
+  seoDescriptionSet: auditField.boolean(),
+};
+
 /** An admin saved the details of a category (names, descriptions, keywords, search-result fields, menu flag). */
 export const PlatformCategoryDetailsChangedAudit = defineAuditAction({
   action: 'catalog.platform-category.details-changed',
@@ -258,22 +434,21 @@ export const PlatformCategoryDetailsChangedAudit = defineAuditAction({
   actors: ['authenticated'],
   // Flags and counts only (review amendment): whether a search-result title or description is
   // set, never its text.
-  before: {
-    revisionNo: auditField.integer(),
-    localeCount: auditField.integer(),
-    showInMenu: auditField.boolean(),
-    noindex: auditField.boolean(),
-    seoTitleSet: auditField.boolean(),
-    seoDescriptionSet: auditField.boolean(),
-  },
-  after: {
-    revisionNo: auditField.integer(),
-    localeCount: auditField.integer(),
-    showInMenu: auditField.boolean(),
-    noindex: auditField.boolean(),
-    seoTitleSet: auditField.boolean(),
-    seoDescriptionSet: auditField.boolean(),
-  },
+  before: categoryDetailsShape,
+  after: categoryDetailsShape,
+});
+
+/**
+ * A reviewer rejected, or its author withdrew, a category details edit in Admin Inbox › System
+ * requests, and the details before came back as a new revision. `requestId` names the System
+ * request.
+ */
+export const PlatformCategoryDetailsRevertedAudit = defineAuditAction({
+  action: 'catalog.platform-category.details-reverted',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: categoryDetailsShape,
+  after: { ...categoryDetailsShape, requestId: auditField.id() },
 });
 
 /** An admin moved a category up or down among its siblings. */
@@ -282,7 +457,7 @@ export const PlatformCategoryReorderedAudit = defineAuditAction({
   targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
   actors: ['authenticated'],
   before: { position: auditField.integer() },
-  after: { position: auditField.integer() },
+  after: { position: auditField.integer(), requestId: auditField.optional(auditField.id()) },
 });
 
 /** An admin hid a category; `cascaded` counts the descendants hidden with it. */
@@ -291,7 +466,11 @@ export const PlatformCategoryHiddenAudit = defineAuditAction({
   targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
   actors: ['authenticated'],
   before: { status: categoryEditStatus },
-  after: { status: categoryEditStatus, cascaded: auditField.integer() },
+  after: {
+    status: categoryEditStatus,
+    cascaded: auditField.integer(),
+    requestId: auditField.optional(auditField.id()),
+  },
 });
 
 /** An admin showed a category; `restored` counts the descendants shown again with it. */
@@ -318,7 +497,169 @@ export const PlatformCategoryDiscardedAudit = defineAuditAction({
   targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
   actors: ['authenticated'],
   before: { status: categoryEditStatus },
-  after: { status: categoryEditStatus },
+  after: { status: categoryEditStatus, requestId: auditField.optional(auditField.id()) },
+});
+
+/**
+ * An admin set, replaced or removed the image of a category (categories package C3c). The ids
+ * only: the picture itself is never in the audit log. `imageId` is absent when there is none.
+ */
+export const PlatformCategoryImageChangedAudit = defineAuditAction({
+  action: 'catalog.platform-category.image-changed',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { imageId: auditField.optional(auditField.id()) },
+  after: { imageId: auditField.optional(auditField.id()) },
+});
+
+/**
+ * An admin moved a category with its subtree under a new parent (categories C4a; catalog design
+ * 4.6, C-8: every move is an audited entry path). Ids, levels and counts only; the reason note is
+ * on the category revision (`reasonGiven`), never here.
+ */
+export const PlatformCategoryMovedAudit = defineAuditAction({
+  action: 'catalog.platform-category.moved',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { parentId: auditField.optional(auditField.id()), level: auditField.integer() },
+  after: {
+    parentId: auditField.optional(auditField.id()),
+    level: auditField.integer(),
+    subtreeSize: auditField.integer(),
+    tagsMarked: auditField.integer(),
+    reasonGiven: auditField.boolean(),
+    requestId: auditField.optional(auditField.id()),
+  },
+});
+
+/**
+ * An admin started "Move products" on a category (C5a, decision 8): every published product that
+ * names the source gets an admin revision naming the target. Ids, counts and the fact that a
+ * reason was given; the reason text stays on the job.
+ */
+export const PlatformCategoryProductsMoveStartedAudit = defineAuditAction({
+  action: 'catalog.platform-category.products-move-started',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { products: auditField.integer() },
+  after: {
+    targetCategoryId: auditField.id(),
+    jobId: auditField.id(),
+    reasonGiven: auditField.boolean(),
+    requestId: auditField.optional(auditField.id()),
+  },
+});
+
+/**
+ * The job of "Move products" published a `category-override` revision of a product (C5a). It runs
+ * as the system; `requestedBy` is the admin who started the job.
+ */
+export const ProductCategoryOverriddenAudit = defineAuditAction({
+  action: 'catalog.product.category-overridden',
+  targetType: CATALOG_PRODUCT_TARGET,
+  actors: ['system'],
+  before: { fromCategoryId: auditField.id() },
+  after: {
+    toCategoryId: auditField.id(),
+    categoryCount: auditField.integer(),
+    scope,
+    jobId: auditField.id(),
+    requestedBy: auditField.id(),
+  },
+});
+
+/** An admin merged a category into another; its children moved there (C4a). */
+export const PlatformCategoryMergedAudit = defineAuditAction({
+  action: 'catalog.platform-category.merged',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { status: categoryEditStatus },
+  after: {
+    mergedIntoId: auditField.id(),
+    childrenMoved: auditField.integer(),
+    activitiesRelinked: auditField.integer(),
+    tagsMarked: auditField.integer(),
+    reasonGiven: auditField.boolean(),
+    requestId: auditField.optional(auditField.id()),
+  },
+});
+
+/** An admin archived a category (terminal, plan decision 7) (C4a). */
+export const PlatformCategoryArchivedAudit = defineAuditAction({
+  action: 'catalog.platform-category.archived',
+  targetType: CATALOG_PLATFORM_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  before: { status: categoryEditStatus },
+  after: {
+    status: categoryEditStatus,
+    activitiesUnlinked: auditField.integer(),
+    tagsMarked: auditField.integer(),
+    reasonGiven: auditField.boolean(),
+    requestId: auditField.optional(auditField.id()),
+  },
+});
+
+/** The audit target type of a culture (multi-culture package 1; ADR-0047). */
+export const CATALOG_CULTURE_TARGET = 'catalog.culture';
+
+const cultureStatus = auditField.enumOf(['draft', 'active', 'inactive'] as const);
+/** `inherit` is a mark left to the nearest ancestor (or the default, "required"). */
+const cultureMark = auditField.enumOf(['required', 'neutral', 'inherit'] as const);
+const cultureVisible = auditField.enumOf(['shown', 'hidden', 'inherit'] as const);
+/** A row's `visible` as the audit keeps it (null = inherit; ADR-0048 security review M2). */
+export const cultureVisibleOf = (visible: boolean | null): 'shown' | 'hidden' | 'inherit' =>
+  visible === null ? 'inherit' : visible ? 'shown' : 'hidden';
+
+/** An admin defined a culture (a draft). Whether it names a required certification type, never the text. */
+export const CultureCreatedAudit = defineAuditAction({
+  action: 'catalog.culture.created',
+  targetType: CATALOG_CULTURE_TARGET,
+  actors: ['authenticated'],
+  after: { status: cultureStatus, requiresCertification: auditField.boolean() },
+});
+
+/**
+ * An admin edited a culture. Which parts changed, never the text. The required certification type
+ * decides which Offers a certified culture shows (ADR-0047 decision 12), so a change of it and a
+ * change of the default are recorded as their own flags.
+ */
+export const CultureEditedAudit = defineAuditAction({
+  action: 'catalog.culture.edited',
+  targetType: CATALOG_CULTURE_TARGET,
+  actors: ['authenticated'],
+  before: {
+    status: cultureStatus,
+    isDefault: auditField.boolean(),
+    requiresCertification: auditField.boolean(),
+  },
+  after: {
+    status: cultureStatus,
+    isDefault: auditField.boolean(),
+    requiresCertification: auditField.boolean(),
+    namesChanged: auditField.boolean(),
+    orderChanged: auditField.boolean(),
+    badgeChanged: auditField.boolean(),
+    requiredCertificationTypeChanged: auditField.boolean(),
+  },
+});
+
+/** An admin set or cleared a culture's mark on a category branch (visibility and certification mark). */
+export const CultureCategoryMarkChangedAudit = defineAuditAction({
+  action: 'catalog.culture.category-mark-changed',
+  targetType: CATALOG_CULTURE_TARGET,
+  actors: ['authenticated'],
+  before: {
+    categoryId: auditField.id(),
+    hadRow: auditField.boolean(),
+    visible: cultureVisible,
+    certificationMark: cultureMark,
+  },
+  after: {
+    categoryId: auditField.id(),
+    hasRow: auditField.boolean(),
+    visible: cultureVisible,
+    certificationMark: cultureMark,
+  },
 });
 
 /** The audit target type of a brand (catalog brand package; attributes package A5). */
@@ -368,13 +709,16 @@ export const BrandApprovedAudit = defineAuditAction({
   after: { status: auditField.enumOf(['active'] as const), proposedBySeller: auditField.boolean() },
 });
 
-/** An admin archived a brand; it keeps its row, slug and aliases. */
+/**
+ * An admin archived a brand; it keeps its row, slug and aliases. Whether a reason was given, never
+ * its text (the text is on the brand row).
+ */
 export const BrandArchivedAudit = defineAuditAction({
   action: 'catalog.brand.archived',
   targetType: CATALOG_BRAND_TARGET,
   actors: ['authenticated'],
   before: { status: brandStatus },
-  after: { status: auditField.enumOf(['archived'] as const) },
+  after: { status: auditField.enumOf(['archived'] as const), reasonGiven: auditField.boolean() },
 });
 
 /**
@@ -418,7 +762,7 @@ export const AttributeFamilyCreatedAudit = defineAuditAction({
   action: 'catalog.attribute-family.created',
   targetType: CATALOG_ATTRIBUTE_FAMILY_TARGET,
   actors: ['authenticated'],
-  after: familyShape,
+  after: { ...familyShape, requestId: auditField.optional(auditField.id()) },
 });
 
 /**
@@ -433,6 +777,31 @@ export const AttributeFamilyRevisedAudit = defineAuditAction({
   actors: ['authenticated'],
   before: familyShape,
   after: { ...familyShape, requiredRelaxed: auditField.integer() },
+});
+
+/** The audit target type of an attribute import run (attributes package A9). */
+export const CATALOG_ATTRIBUTE_IMPORT_TARGET = 'catalog.attribute-import';
+
+/**
+ * An admin ran an attribute or value import (A9) after its diff preview. One row per run, written
+ * after the rows were applied through the editor use cases (each of which also wrote its own
+ * `catalog.attribute-definition.*` row). The target is an id made for the run. Counts and the file
+ * kind only: the audit vocabulary has no text field, so no code, name or label of the file is here.
+ */
+export const AttributeImportRanAudit = defineAuditAction({
+  action: 'catalog.attribute-import.ran',
+  targetType: CATALOG_ATTRIBUTE_IMPORT_TARGET,
+  actors: ['authenticated'],
+  after: {
+    kind: auditField.enumOf(['attributes', 'values'] as const),
+    skipErrors: auditField.boolean(),
+    rows: auditField.integer(),
+    created: auditField.integer(),
+    updated: auditField.integer(),
+    unchanged: auditField.integer(),
+    failed: auditField.integer(),
+    skipped: auditField.integer(),
+  },
 });
 
 /** The audit target type of a seller's value suggestion (attributes plan, package A5). */
@@ -463,6 +832,57 @@ export const AttributeValueSuggestionDecidedAudit = defineAuditAction({
   },
 });
 
+/** The audit target type of a seller's request for a new variant (variants V7). */
+export const CATALOG_VARIANT_REQUEST_TARGET = 'catalog.variant-request';
+
+/** A seller asked for a new variant. Ids only: the option values name nothing a seller typed. */
+export const VariantRequestedAudit = defineAuditAction({
+  action: 'catalog.variant-request.requested',
+  targetType: CATALOG_VARIANT_REQUEST_TARGET,
+  actors: ['authenticated'],
+  after: { offerId: auditField.id(), productId: auditField.id() },
+});
+
+/** An admin approved, mapped or declined a request. The reason is kept on the request only. */
+export const VariantRequestDecidedAudit = defineAuditAction({
+  action: 'catalog.variant-request.decided',
+  targetType: CATALOG_VARIANT_REQUEST_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['open'] as const) },
+  after: {
+    status: auditField.enumOf(['approved', 'mapped', 'declined'] as const),
+    productId: auditField.id(),
+    sellerId: auditField.id(),
+  },
+});
+
+/** The audit target type of a seller's tag suggestion (product tags package T5). */
+export const CATALOG_TOPIC_SUGGESTION_TARGET = 'catalog.topic-suggestion';
+
+/** A seller suggested a new tag. Ids only: never the text they typed. */
+export const TopicSuggestedAudit = defineAuditAction({
+  action: 'catalog.topic-suggestion.suggested',
+  targetType: CATALOG_TOPIC_SUGGESTION_TARGET,
+  actors: ['authenticated'],
+  after: { productId: auditField.id() },
+});
+
+/**
+ * An admin approved (a topic was created from it), mapped or rejected a tag suggestion. Neither
+ * the seller's text nor the reason is kept here.
+ */
+export const TopicSuggestionDecidedAudit = defineAuditAction({
+  action: 'catalog.topic-suggestion.decided',
+  targetType: CATALOG_TOPIC_SUGGESTION_TARGET,
+  actors: ['authenticated'],
+  before: { status: auditField.enumOf(['open'] as const) },
+  after: {
+    status: auditField.enumOf(['approved', 'mapped', 'rejected'] as const),
+    topicId: auditField.optional(auditField.id()),
+    sellerId: auditField.id(),
+  },
+});
+
 /** The audit target type of a category's attribute links (A4, categories C8). */
 export const CATALOG_CATEGORY_LINKS_TARGET = 'catalog.category';
 
@@ -485,39 +905,199 @@ export const CategoryAttributesChangedAudit = defineAuditAction({
   after: linkShape,
 });
 
+/**
+ * A reviewer rejected, or its author withdrew, a change of a category's feature set or filters in
+ * Admin Inbox › System requests, and the links before came back as a new revision. `requestId`
+ * names the System request.
+ */
+export const CategoryAttributesRevertedAudit = defineAuditAction({
+  action: 'catalog.category-attributes.reverted',
+  targetType: CATALOG_CATEGORY_LINKS_TARGET,
+  actors: ['authenticated'],
+  before: linkShape,
+  after: { ...linkShape, requestId: auditField.id() },
+});
+
+/** The audit target type of an "Email sellers" request: the seller asked. */
+export const CATALOG_MISSING_DETAILS_EMAIL_TARGET = 'catalog.missing-details-email';
+
+/**
+ * An admin asked one seller, from the Missing details report, to fill in required details (A4-4).
+ * Ids and counts only: no address, no product name, no mail text. `productCount` is the products
+ * named in the mail; `skippedCount` those left out because the seller was asked about them in the
+ * last 7 days.
+ */
+export const MissingDetailsEmailRequestedAudit = defineAuditAction({
+  action: 'catalog.missing-details-email.requested',
+  targetType: CATALOG_MISSING_DETAILS_EMAIL_TARGET,
+  actors: ['authenticated'],
+  after: { productCount: auditField.integer(), skippedCount: auditField.integer() },
+});
+
+/** The audit target type of a variant type's display settings (variants V6): the definition. */
+export const CATALOG_VARIANT_TYPE_TARGET = 'catalog.variant-type';
+
+/** What the audit keeps of variant type settings: codes and counts, never a colour or a text. */
+const variantTypeShape = {
+  revisionNo: auditField.integer(),
+  displayStyle: auditField.enumOf(['buttons', 'swatches', 'dropdown'] as const),
+  optionOrder: auditField.enumOf(['manual', 'alphabetical', 'by-size'] as const),
+  swatchCount: auditField.integer(),
+  sellerHelpCount: auditField.integer(),
+};
+
+/**
+ * An admin changed how buyers choose a variant type (variants V6). `before` is the stored settings
+ * or the defaults (revision 0) when none were stored.
+ */
+export const VariantTypeSettingsChangedAudit = defineAuditAction({
+  action: 'catalog.variant-type.settings-changed',
+  targetType: CATALOG_VARIANT_TYPE_TARGET,
+  actors: ['authenticated'],
+  before: variantTypeShape,
+  after: variantTypeShape,
+});
+
+/** The audit target types of seller category proposals and shelves (categories C9a). */
+export const CATALOG_CATEGORY_PROPOSAL_TARGET = 'catalog.category-proposal';
+export const CATALOG_SELLER_CATEGORY_TARGET = 'catalog.seller-category';
+
+/** A seller proposed a shelf under a platform category. Ids and a count, never the names. */
+export const CategoryProposedAudit = defineAuditAction({
+  action: 'catalog.category-proposal.proposed',
+  targetType: CATALOG_CATEGORY_PROPOSAL_TARGET,
+  actors: ['authenticated'],
+  after: { parentId: auditField.id(), localeCount: auditField.integer() },
+});
+
+/** An admin approved a proposal: the shelf it created. Ids only, never the names. */
+export const CategoryProposalApprovedAudit = defineAuditAction({
+  action: 'catalog.category-proposal.approved',
+  targetType: CATALOG_CATEGORY_PROPOSAL_TARGET,
+  actors: ['authenticated'],
+  after: { sellerId: auditField.id(), sellerCategoryId: auditField.id() },
+});
+
+/** An admin rejected a proposal with a prepared reason (a code, never text). */
+export const CategoryProposalRejectedAudit = defineAuditAction({
+  action: 'catalog.category-proposal.rejected',
+  targetType: CATALOG_CATEGORY_PROPOSAL_TARGET,
+  actors: ['authenticated'],
+  after: {
+    sellerId: auditField.id(),
+    reasonCode: auditField.enumOf([
+      'already-exists',
+      'too-narrow',
+      'too-broad',
+      'misleading',
+      'not-sold-here',
+      'other',
+    ] as const),
+  },
+});
+
+/** A proposal was cancelled by the seller, or by the system when SEL-26 was switched off. */
+export const CategoryProposalCancelledAudit = defineAuditAction({
+  action: 'catalog.category-proposal.cancelled',
+  targetType: CATALOG_CATEGORY_PROPOSAL_TARGET,
+  actors: ['authenticated', 'system'],
+  after: {
+    sellerId: auditField.id(),
+    reasonCode: auditField.enumOf(['seller-cancelled', 'permission-revoked'] as const),
+  },
+});
+
+/** An admin promoted a shelf into the platform tree (same id, created hidden). */
+export const SellerCategoryPromotedAudit = defineAuditAction({
+  action: 'catalog.seller-category.promoted',
+  targetType: CATALOG_SELLER_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  after: {
+    sellerId: auditField.id(),
+    parentId: auditField.id(),
+    level: auditField.integer(),
+    offersCleared: auditField.integer(),
+  },
+});
+
+/** An admin merged a shelf into a platform category; the shelf left the seller's Offers. */
+export const SellerCategoryMergedAudit = defineAuditAction({
+  action: 'catalog.seller-category.merged',
+  targetType: CATALOG_SELLER_CATEGORY_TARGET,
+  actors: ['authenticated'],
+  after: {
+    sellerId: auditField.id(),
+    categoryId: auditField.id(),
+    offersCleared: auditField.integer(),
+  },
+});
+
 export const CATALOG_AUDIT_ACTIONS = [
   ProductPausedAudit,
   ProductResumedAudit,
   ProductWithdrawnAudit,
   ProductRetiredAudit,
+  ProductTypeChangedAudit,
   PlatformImportStartedAudit,
+  OwnImportStartedAudit,
   SavedFilterSharedAudit,
   SavedFilterChangedAudit,
   SavedFilterRemovedAudit,
   AttributeDefinitionCreatedAudit,
   AttributeDefinitionRevisedAudit,
+  AttributeDefinitionRevertedAudit,
   AttributeDefinitionPublishedAudit,
   AttributeDefinitionDiscardedAudit,
+  AttributeValuesMergedAudit,
+  AttributeDefinitionConvertedAudit,
+  AttributeDefinitionArchivedAudit,
+  AttributeDefinitionsMergedAudit,
   AttributeRelaxationRequestedAudit,
   AttributeRelaxationCancelledAudit,
   AttributeRelaxationExpiredAudit,
+  CategoryTreeImportedAudit,
   PlatformCategoryCreatedAudit,
   PlatformCategoryDetailsChangedAudit,
+  PlatformCategoryDetailsRevertedAudit,
   PlatformCategoryReorderedAudit,
   PlatformCategoryHiddenAudit,
   PlatformCategoryShownAudit,
   PlatformCategorySlugChangedAudit,
   PlatformCategoryDiscardedAudit,
+  PlatformCategoryImageChangedAudit,
+  ProductImageDeletedAudit,
+  PlatformCategoryMovedAudit,
+  PlatformCategoryProductsMoveStartedAudit,
+  ProductCategoryOverriddenAudit,
+  PlatformCategoryMergedAudit,
+  PlatformCategoryArchivedAudit,
   BrandCreatedAudit,
   BrandProposedAudit,
   BrandEditedAudit,
+  CultureCreatedAudit,
+  CultureEditedAudit,
+  CultureCategoryMarkChangedAudit,
   BrandApprovedAudit,
   BrandArchivedAudit,
   BrandMergedAudit,
   BrandMergeDismissedAudit,
   AttributeFamilyCreatedAudit,
   AttributeFamilyRevisedAudit,
+  AttributeImportRanAudit,
   AttributeValueSuggestedAudit,
   AttributeValueSuggestionDecidedAudit,
+  TopicSuggestedAudit,
+  TopicSuggestionDecidedAudit,
   CategoryAttributesChangedAudit,
+  CategoryAttributesRevertedAudit,
+  MissingDetailsEmailRequestedAudit,
+  VariantTypeSettingsChangedAudit,
+  VariantRequestedAudit,
+  VariantRequestDecidedAudit,
+  CategoryProposedAudit,
+  CategoryProposalApprovedAudit,
+  CategoryProposalRejectedAudit,
+  CategoryProposalCancelledAudit,
+  SellerCategoryPromotedAudit,
+  SellerCategoryMergedAudit,
 ] as const;

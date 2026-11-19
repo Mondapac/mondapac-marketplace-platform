@@ -1,0 +1,375 @@
+'use client';
+
+import { Banner, Button, CheckboxRow, Dialog, TextField } from '@mondapac/ui';
+import { useTranslations } from 'next-intl';
+import { useRef, useState } from 'react';
+import { NO_VARIANT_FIELDS, pickLabel, variantTitle, type VariantRow } from './draft-content.ts';
+import type { DraftSaved, FormField } from './types.ts';
+import {
+  activeOptionsOf,
+  axisCandidates,
+  combinationTitle,
+  combinationsOf,
+  nearLimit,
+  rowOf,
+  type Combination,
+} from './variant-grid.ts';
+import { VariantDetails } from './variant-details.tsx';
+
+/** The most axes a product varies on (decision t12); the server enforces the Market's limit. */
+const MAX_AXES = 2;
+
+type Pending =
+  | { readonly kind: 'axes'; readonly axes: readonly string[] }
+  | { readonly kind: 'drop'; readonly rows: readonly VariantRow[]; readonly then: () => void };
+
+/**
+ * The variant grid editor of a configurable product (variants V3): 1. choose what the product
+ * varies on (one or two of the feature set's variant attributes), 2. choose the active options of
+ * each, 3. tick the combinations that are sold. A partial grid is fine. A ticked combination is a
+ * variant row; the server builds its label and code. After the first publish the axes are locked.
+ */
+export function VariantGridSection({
+  rows,
+  fields,
+  axes,
+  locked,
+  defaultLocale,
+  max,
+  refused,
+  productId,
+  galleryIds,
+  notices,
+  onChange,
+}: {
+  readonly rows: readonly VariantRow[];
+  readonly fields: readonly FormField[];
+  readonly axes: readonly string[];
+  /** The product was published: its axes stay as they are (decision t3). */
+  readonly locked: boolean;
+  readonly defaultLocale: string;
+  readonly max: number;
+  readonly refused: DraftSaved['refusedFields'];
+  readonly productId: string;
+  /** The product's photos in the draft, for the photo picks of each variant. */
+  readonly galleryIds: readonly string[];
+  /** Variant ids whose barcode another product carries (advice from the last save). */
+  readonly notices: readonly string[];
+  readonly onChange: (change: { rows: VariantRow[]; axes: string[] }) => void;
+}) {
+  const t = useTranslations();
+  const added = useRef(0);
+  const candidates = axisCandidates(fields);
+  const [active, setActive] = useState<Record<string, string[]>>(() => activeOptionsOf(rows, axes));
+  const [pending, setPending] = useState<Pending | null>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+
+  const combos = combinationsOf(fields, axes, active);
+  const ticked = (combo: Combination) => rowOf(rows, combo, axes);
+  const full = rows.length >= max;
+  const nameOf = (field: FormField) => pickLabel(field.names, defaultLocale, field.code);
+  const titleOf = (options: Readonly<Record<string, string>>) =>
+    combinationTitle(fields, axes, options, defaultLocale);
+
+  function ask(dropped: readonly VariantRow[], then: () => void) {
+    // A removal of a variant the server already knows (it may hold prices and stock) is confirmed;
+    // a row only ticked in this form just goes.
+    if (dropped.some((row) => row.state !== 'new')) {
+      setPending({ kind: 'drop', rows: dropped, then });
+    } else then();
+  }
+
+  function setAxes(next: string[]) {
+    const apply = () => {
+      setActive((current) => Object.fromEntries(next.map((axis) => [axis, current[axis] ?? []])));
+      setPending(null);
+      onChange({ rows: [], axes: next });
+    };
+    if (rows.length > 0) setPending({ kind: 'axes', axes: next });
+    else apply();
+  }
+
+  function toggleAxis(code: string, on: boolean) {
+    setAxes(
+      on
+        ? candidates
+            .map((field) => field.code)
+            .filter((item) => item === code || axes.includes(item))
+        : axes.filter((item) => item !== code),
+    );
+  }
+
+  function toggleOption(axis: string, code: string, on: boolean) {
+    const list = on
+      ? [...(active[axis] ?? []), code]
+      : (active[axis] ?? []).filter((c) => c !== code);
+    const dropped = on ? [] : rows.filter((row) => row.options[axis] === code);
+    const apply = () => {
+      setActive({ ...active, [axis]: list });
+      setPending(null);
+      onChange({ rows: rows.filter((row) => !dropped.includes(row)), axes: [...axes] });
+    };
+    ask(dropped, apply);
+  }
+
+  function toggleCombo(combo: Combination, on: boolean) {
+    const found = ticked(combo);
+    if (on) {
+      if (found !== undefined || full) return;
+      added.current += 1;
+      const row: VariantRow = {
+        variantId: null,
+        key: `new-${added.current}`,
+        state: 'new',
+        options: combo.options,
+        labels: {},
+        ...NO_VARIANT_FIELDS,
+      };
+      onChange({ rows: [...rows, row], axes: [...axes] });
+    } else if (found !== undefined) {
+      ask([found], () => {
+        setPending(null);
+        onChange({ rows: rows.filter((row) => row !== found), axes: [...axes] });
+      });
+    }
+  }
+
+  const tick = (combo: Combination) => {
+    const on = ticked(combo) !== undefined;
+    return (
+      <input
+        type="checkbox"
+        className="size-4 accent-accent"
+        aria-label={titleOf(combo.options)}
+        checked={on}
+        disabled={!on && full}
+        onChange={(event) => toggleCombo(combo, event.target.checked)}
+      />
+    );
+  };
+
+  const first = axes[0] === undefined ? undefined : fields.find((field) => field.code === axes[0]);
+  const second = axes[1] === undefined ? undefined : fields.find((field) => field.code === axes[1]);
+  const optionsOf = (field: FormField) =>
+    field.options.filter((option) => (active[field.code] ?? []).includes(option.code));
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-fg-muted" aria-live="polite">
+        {t('catalog.productForm.variants-count', { count: rows.length, max })}
+      </p>
+      {nearLimit(rows.length, max) ? (
+        <Banner tone="attention">{t('catalog.productForm.grid.near-limit', { max })}</Banner>
+      ) : null}
+      {full ? (
+        <Banner tone="attention">{t('catalog.productForm.grid.at-limit', { max })}</Banner>
+      ) : null}
+
+      <section className="flex flex-col gap-2">
+        <h3 className="font-medium">{t('catalog.productForm.grid.step-axes')}</h3>
+        <p className="text-sm text-fg-muted">
+          {t(
+            locked ? 'catalog.productForm.grid.axes-locked' : 'catalog.productForm.grid.axes-help',
+          )}
+        </p>
+        {candidates.length === 0 ? (
+          <Banner tone="attention">{t('catalog.productForm.grid.no-axes')}</Banner>
+        ) : (
+          candidates.map((field) => (
+            <CheckboxRow
+              key={field.code}
+              name={`axis.${field.code}`}
+              label={nameOf(field)}
+              checked={axes.includes(field.code)}
+              disabled={locked || (!axes.includes(field.code) && axes.length >= MAX_AXES)}
+              onChange={(event) => toggleAxis(field.code, event.target.checked)}
+            />
+          ))
+        )}
+      </section>
+
+      {locked && axes.length === 0 && rows.length > 0 ? (
+        <Banner tone="attention">
+          {t('catalog.productForm.grid.locked-no-axes', { count: rows.length })}
+        </Banner>
+      ) : null}
+
+      {axes.length === 0 ? null : (
+        <section className="flex flex-col gap-3 border-t border-line pt-3">
+          <h3 className="font-medium">{t('catalog.productForm.grid.step-options')}</h3>
+          {axes.map((axis) => {
+            const field = fields.find((item) => item.code === axis);
+            if (field === undefined) return null;
+            return (
+              <fieldset key={axis} className="flex flex-col gap-2">
+                <legend className="mb-1 text-sm font-medium text-fg-secondary">
+                  {nameOf(field)}
+                </legend>
+                {field.options.map((option) => (
+                  <CheckboxRow
+                    key={option.code}
+                    name={`option.${axis}.${option.code}`}
+                    label={pickLabel(option.labels, defaultLocale, option.code)}
+                    checked={(active[axis] ?? []).includes(option.code)}
+                    onChange={(event) => toggleOption(axis, option.code, event.target.checked)}
+                  />
+                ))}
+              </fieldset>
+            );
+          })}
+        </section>
+      )}
+
+      {first === undefined ? null : (
+        <section className="flex flex-col gap-2 border-t border-line pt-3">
+          <h3 className="font-medium">{t('catalog.productForm.grid.step-grid')}</h3>
+          {combos.length === 0 ? (
+            <p className="text-sm text-fg-muted">{t('catalog.productForm.grid.empty')}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-start text-sm">
+                <caption className="sr-only">{t('catalog.productForm.grid.caption')}</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" className="p-2 text-start font-medium">
+                      {second === undefined
+                        ? nameOf(first)
+                        : `${nameOf(first)} / ${nameOf(second)}`}
+                    </th>
+                    {second === undefined ? (
+                      <th scope="col" className="p-2 text-start font-medium">
+                        {t('catalog.productForm.grid.sold')}
+                      </th>
+                    ) : (
+                      optionsOf(second).map((option) => (
+                        <th key={option.code} scope="col" className="p-2 text-start font-medium">
+                          {pickLabel(option.labels, defaultLocale, option.code)}
+                        </th>
+                      ))
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {optionsOf(first).map((rowOption) => (
+                    <tr key={rowOption.code} className="border-t border-line">
+                      <th scope="row" className="p-2 text-start font-medium">
+                        {pickLabel(rowOption.labels, defaultLocale, rowOption.code)}
+                      </th>
+                      {second === undefined ? (
+                        <td className="p-2">
+                          {tick({
+                            key: `${first.code}=${rowOption.code}`,
+                            options: { [first.code]: rowOption.code },
+                          })}
+                        </td>
+                      ) : (
+                        optionsOf(second).map((colOption) => (
+                          <td key={colOption.code} className="p-2">
+                            {tick({
+                              key: `${first.code}=${rowOption.code};${second.code}=${colOption.code}`,
+                              options: {
+                                [first.code]: rowOption.code,
+                                [second.code]: colOption.code,
+                              },
+                            })}
+                          </td>
+                        ))
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      )}
+
+      {first === undefined || rows.length === 0 ? null : (
+        <section className="flex flex-col gap-3 border-t border-line pt-3">
+          <h3 className="font-medium">{t('catalog.productForm.grid.step-labels')}</h3>
+          {rows.map((row) => (
+            <TextField
+              key={row.key}
+              name={`variant.${row.key}.label`}
+              label={variantTitle(row, fields, defaultLocale, row.key)}
+              optionalLabel={t('catalog.productForm.optional')}
+              value={row.labels[defaultLocale] ?? ''}
+              error={
+                refused.some((item) => item.ref === row.variantId)
+                  ? t('catalog.productForm.refused-field')
+                  : undefined
+              }
+              onChange={(event) =>
+                onChange({
+                  rows: rows.map((item) =>
+                    item === row
+                      ? { ...row, labels: { ...row.labels, [defaultLocale]: event.target.value } }
+                      : item,
+                  ),
+                  axes: [...axes],
+                })
+              }
+            />
+          ))}
+        </section>
+      )}
+
+      {first === undefined ? null : (
+        <VariantDetails
+          rows={rows}
+          titleOf={(row) => variantTitle(row, fields, defaultLocale, row.key)}
+          productId={productId}
+          galleryIds={galleryIds}
+          notices={notices}
+          onRow={(row, next) =>
+            onChange({ rows: rows.map((item) => (item === row ? next : item)), axes: [...axes] })
+          }
+        />
+      )}
+
+      <Dialog
+        open={pending !== null}
+        title={t(
+          pending?.kind === 'axes'
+            ? 'catalog.productForm.grid.axes-dialog'
+            : 'catalog.productForm.grid.remove-dialog',
+        )}
+        onClose={() => setPending(null)}
+        initialFocus={cancel}
+        actions={
+          <>
+            <Button ref={cancel} variant="secondary" onClick={() => setPending(null)}>
+              {t('catalog.productForm.grid.keep')}
+            </Button>
+            <Button
+              variant="destructive-solid"
+              onClick={() => {
+                if (pending?.kind === 'drop') pending.then();
+                else if (pending?.kind === 'axes') {
+                  const next = [...pending.axes];
+                  setActive((current) =>
+                    Object.fromEntries(next.map((axis) => [axis, current[axis] ?? []])),
+                  );
+                  setPending(null);
+                  onChange({ rows: [], axes: next });
+                }
+              }}
+            >
+              {t(
+                pending?.kind === 'axes'
+                  ? 'catalog.productForm.grid.axes-confirm'
+                  : 'catalog.productForm.grid.remove-confirm',
+              )}
+            </Button>
+          </>
+        }
+      >
+        {pending?.kind === 'drop' ? (
+          <p>{t('catalog.productForm.grid.remove-body', { count: pending.rows.length })}</p>
+        ) : (
+          <p>{t('catalog.productForm.grid.axes-body')}</p>
+        )}
+      </Dialog>
+    </div>
+  );
+}

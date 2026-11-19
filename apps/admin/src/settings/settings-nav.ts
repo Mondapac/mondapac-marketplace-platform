@@ -10,7 +10,26 @@ import {
 import { FLEET_MANAGE_PERMISSION, FLEET_VIEW_PERMISSION } from '../fleet-selection/types.ts';
 import { SETTINGS_MANAGE, SETTINGS_VIEW } from '../wallet/types.ts';
 import { ASSISTANT_MANAGE_PERMISSION, ASSISTANT_VIEW_PERMISSION } from './assistant-types.ts';
+import {
+  SETTINGS_MANAGE_PERMISSION as LISTS_MANAGE_PERMISSION,
+  SETTINGS_VIEW_PERMISSION as LISTS_VIEW_PERMISSION,
+} from '../lists-settings/types.ts';
 import { AREAS_EDIT_PERMISSION, AREAS_VIEW_PERMISSION } from '../service-area-names/types.ts';
+import {
+  PROMOTIONS_SETTINGS_MANAGE,
+  PROMOTIONS_SETTINGS_VIEW,
+} from '../promotions-settings/types.ts';
+import { TAX_MANAGE_PERMISSION, TAX_VIEW_PERMISSION } from '../tax/types.ts';
+import {
+  REFUND_LIMITS_MANAGE_PERMISSION,
+  REFUND_LIMITS_VIEW_PERMISSION,
+} from '../refund-limits/types.ts';
+import {
+  SHIP_TO_RETENTION_MANAGE_PERMISSION,
+  SHIP_TO_RETENTION_VIEW_PERMISSION,
+} from '../ship-to-retention/types.ts';
+import { AI_MANAGE_PERMISSION, AI_VIEW_PERMISSION } from '../ai-settings/types.ts';
+import { POLICY_MANAGE_PERMISSION, POLICY_VIEW_PERMISSION } from '../system-requests/types.ts';
 import { SUPPORT_MANAGE_PERMISSION, SUPPORT_VIEW_PERMISSION } from './types.ts';
 
 // The one map of the admin Settings pages (settings UX design, hub and roles sections). The hub,
@@ -70,6 +89,27 @@ export const settingsGroups: readonly SettingsGroup[] = [
         view: [DELETION_VIEW_PERMISSION],
         manage: [DELETION_MANAGE_PERMISSION],
       },
+      {
+        id: 'ship-to-retention',
+        labelKey: 'settings.hub.link.ship-to-retention',
+        href: '/settings/ship-to-retention',
+        view: [SHIP_TO_RETENTION_VIEW_PERMISSION],
+        manage: [SHIP_TO_RETENTION_MANAGE_PERMISSION],
+      },
+      {
+        id: 'lists',
+        labelKey: 'settings.hub.link.lists',
+        href: '/settings/lists',
+        view: [LISTS_VIEW_PERMISSION],
+        manage: [LISTS_MANAGE_PERMISSION],
+      },
+      {
+        id: 'ai',
+        labelKey: 'settings.hub.link.ai',
+        href: '/settings/ai',
+        view: [AI_VIEW_PERMISSION],
+        manage: [AI_MANAGE_PERMISSION],
+      },
     ],
   },
   {
@@ -105,6 +145,27 @@ export const settingsGroups: readonly SettingsGroup[] = [
         view: [SETTINGS_VIEW],
         manage: [SETTINGS_MANAGE],
       },
+      {
+        id: 'tax',
+        labelKey: 'settings.hub.link.tax',
+        href: '/settings/tax',
+        view: [TAX_VIEW_PERMISSION],
+        manage: [TAX_MANAGE_PERMISSION],
+      },
+      {
+        id: 'refund-limits',
+        labelKey: 'settings.hub.link.refund-limits',
+        href: '/settings/refund-limits',
+        view: [REFUND_LIMITS_VIEW_PERMISSION],
+        manage: [REFUND_LIMITS_MANAGE_PERMISSION],
+      },
+      {
+        id: 'promotions',
+        labelKey: 'settings.hub.link.promotions',
+        href: '/settings/promotions',
+        view: [PROMOTIONS_SETTINGS_VIEW],
+        manage: [PROMOTIONS_SETTINGS_MANAGE],
+      },
     ],
   },
   {
@@ -134,6 +195,13 @@ export const settingsGroups: readonly SettingsGroup[] = [
           'identity.platform-role.edit',
           'identity.platform-role.manage',
         ],
+      },
+      {
+        id: 'review-policy',
+        labelKey: 'settings.hub.link.review-policy',
+        href: '/settings/review-policy',
+        view: [POLICY_VIEW_PERMISSION],
+        manage: [POLICY_MANAGE_PERMISSION],
       },
     ],
   },
@@ -228,6 +296,12 @@ export const settingEntries: readonly PaletteSettingSpec[] = [
     pageId: 'wallet',
     labelKey: 'palette.setting.wallet-state',
     keywordsKey: 'palette.setting.wallet-state-words',
+  },
+  {
+    id: 'promotions-switch',
+    pageId: 'promotions',
+    labelKey: 'palette.setting.promotions-switch',
+    keywordsKey: 'palette.setting.promotions-switch-words',
   },
   { id: 'two-step', pageId: 'account-security', labelKey: 'palette.setting.two-step' },
 ];

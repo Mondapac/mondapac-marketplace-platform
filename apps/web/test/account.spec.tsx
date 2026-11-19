@@ -8,6 +8,7 @@ import { AccountDrawer } from '../src/account/account-drawer.tsx';
 import { AccountArea, backTarget } from '../src/account/account-area.tsx';
 import { AuthForms } from '../src/account/auth-forms.tsx';
 import { AccountAddresses } from '../src/account/addresses.tsx';
+import { writeAddressPrefill } from '../src/delivery/address-prefill.ts';
 import { AccountLists } from '../src/account/lists.tsx';
 import { LoginModal } from '../src/account/login-modal.tsx';
 import { OrderDetails, safeTrackingHref } from '../src/account/order-details.tsx';
@@ -104,6 +105,7 @@ describe('global account menu', () => {
       ['Orders', '/account/orders'],
       ['Addresses', '/account/addresses'],
       ['Saved lists', '/account/lists'],
+      ['My stores', '/account/stores'],
       ['Settings', '/account/settings'],
     ]);
     expect(within(r).getByRole('link', { name: 'Orders' }).getAttribute('aria-current')).toBe(
@@ -136,7 +138,7 @@ describe('global account menu', () => {
       within(panel)
         .getAllByRole('link')
         .map((a) => a.textContent),
-    ).toEqual(['Overview', 'Orders', 'Addresses', 'Saved lists', 'Settings']);
+    ).toEqual(['Overview', 'Orders', 'Addresses', 'Saved lists', 'My stores', 'Settings']);
     expect(within(panel).getByRole('link', { name: 'Overview' })).toBe(document.activeElement);
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(document.querySelector('.adw.open')).toBeNull();
@@ -257,7 +259,7 @@ describe('overview', () => {
     expect(within(tiles!).queryByRole('button', { name: 'Log out' })).toBeNull();
   });
 
-  it('phone and tablet: a menu list of the four sections and Log out beside the tiles (CSS switches them)', () => {
+  it('phone and tablet: a menu list of the five sections and Log out beside the tiles (CSS switches them)', () => {
     renderStore(<AccountOverview />);
     const page = main();
     const menu = within(page).getByRole('navigation', { name: 'Account' });
@@ -271,6 +273,7 @@ describe('overview', () => {
       ['Orders', '/account/orders'],
       ['Addresses2 saved', '/account/addresses'],
       ['Saved lists1 saved', '/account/lists'],
+      ['My stores', '/account/stores'],
       ['SettingsProfile, look, emails', '/account/settings'],
     ]);
     expect(within(menu).getByRole('button', { name: 'Log out' })).toBeTruthy();
@@ -479,6 +482,29 @@ describe('addresses', () => {
     const card = await within(page).findByRole('article', { name: 'Jo Citizen' });
     expect(card.textContent).toContain('1 Beach Road, Surfers Paradise QLD 4217');
     expect(within(card).getByText('Outside our delivery area')).toBeTruthy();
+  });
+
+  it('opens the Add form filled in with the address chosen in Deliver to, once', () => {
+    writeAddressPrefill({ street: '9 Real Street', suburb: 'Kedron', postcode: '4031' });
+    renderStore(<AccountAddresses />);
+    const page = main();
+    expect(within(page).getByLabelText<HTMLInputElement>('Street address and unit').value).toBe(
+      '9 Real Street',
+    );
+    expect(within(page).getByLabelText<HTMLInputElement>('Suburb').value).toBe('Kedron');
+    expect(within(page).getByLabelText<HTMLInputElement>('Postcode').value).toBe('4031');
+    // The buyer still gives the name and phone.
+    expect(within(page).getByLabelText<HTMLInputElement>('First name').value).toBe('');
+    expect(document.activeElement).toBe(within(page).getByLabelText('First name'));
+    cleanup();
+    renderStore(<AccountAddresses />);
+    expect(within(main()).queryByLabelText('Street address and unit')).toBeNull();
+  });
+
+  it('ignores a malformed hand-over', () => {
+    sessionStorage.setItem('sf-address-prefill', '{"street":1}');
+    renderStore(<AccountAddresses />);
+    expect(within(main()).queryByLabelText('Street address and unit')).toBeNull();
   });
 
   it('makes another address the default and deletes after asking', async () => {

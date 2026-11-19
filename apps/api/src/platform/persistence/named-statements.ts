@@ -61,10 +61,21 @@ export function isApprovedStatement(request: RawStatementRequest, market: Market
         CATEGORY_SLUG.test(values[2])
       );
     }
+    if (sql === LOCK_SELLER_SHELVES_TEXT) {
+      return (
+        values.length === 3 &&
+        values[0] === market.marketId &&
+        values[1] === market.tenantId &&
+        typeof values[2] === 'string' &&
+        UUID.test(values[2])
+      );
+    }
     if (
       sql === LOCK_DISPUTE_CASE_TEXT ||
       sql === LOCK_SELLER_ORDER_TEXT ||
-      sql === LOCK_REVIEWS_ACCOUNT_TEXT
+      sql === LOCK_REVIEWS_ACCOUNT_TEXT ||
+      sql === LOCK_ADDRESS_BOOK_TEXT ||
+      sql === LOCK_INVITATION_TEXT
     ) {
       return (
         values.length === 3 &&
@@ -145,8 +156,23 @@ export interface LockedReviewsAccount {
   readonly locked: true;
 }
 
+/** The answer of `customers.lock-address-book`: the lock is held until the unit ends. */
+export interface LockedAddressBook {
+  readonly locked: true;
+}
+
+/** The answer of `identity.lock-invitation`: the lock is held until the unit ends. */
+export interface LockedInvitation {
+  readonly locked: true;
+}
+
 /** The answer of `catalog.lock-category-slug`: the lock is held until the unit ends. */
 export interface LockedCategorySlug {
+  readonly locked: true;
+}
+
+/** The answer of `catalog.lock-seller-shelves`: the lock is held until the unit ends. */
+export interface LockedSellerShelves {
   readonly locked: true;
 }
 
@@ -264,6 +290,43 @@ export interface NamedStatements {
   readonly 'catalog.lock-category-slug': {
     readonly params: { readonly slug: string };
     readonly row: LockedCategorySlug;
+  };
+  /**
+   * Takes the exclusive transaction advisory lock of one seller's shelves and category proposals
+   * in the unit's Market and tenant (catalog, categories C9a), so a proposal and the pending cap,
+   * two approvals (slug probe and insert), a promote or merge and an Offer moved onto a shelf of
+   * that seller run one after the other. The key is `hashtext` of Market, tenant and seller under
+   * class 1707, which is this statement's alone; a collision only makes two sellers wait for each
+   * other. Always one row; released at COMMIT or ROLLBACK; a wait past `lock_timeout` (55P03)
+   * ends the unit as a conflict.
+   */
+  readonly 'catalog.lock-seller-shelves': {
+    readonly params: { readonly sellerId: string };
+    readonly row: LockedSellerShelves;
+  };
+  /**
+   * Takes the exclusive transaction advisory lock of one customer's address book in the unit's
+   * Market and tenant (customers), so parallel adds, changes, removals and default picks of one
+   * account run one after the other instead of conflicting under serializable isolation. The
+   * key is `hashtext` of Market, tenant and account under class 1705, which is this statement's
+   * alone; a collision only makes two accounts wait for each other. Always one row; released at
+   * COMMIT or ROLLBACK; a wait past `lock_timeout` (55P03) ends the unit as a conflict.
+   */
+  readonly 'customers.lock-address-book': {
+    readonly params: { readonly accountId: string };
+    readonly row: LockedAddressBook;
+  };
+  /**
+   * Takes the exclusive transaction advisory lock of one invitation in the unit's Market and
+   * tenant (identity), so two acceptances of one invitation run one after the other instead of
+   * both reading it pending under serializable isolation and racing to write it. The key is
+   * `hashtext` of Market, tenant and invitation under class 1706, which is this statement's
+   * alone; a collision only makes two invitations wait for each other. Always one row; released
+   * at COMMIT or ROLLBACK; a wait past `lock_timeout` (55P03) ends the unit as a conflict.
+   */
+  readonly 'identity.lock-invitation': {
+    readonly params: { readonly invitationId: string };
+    readonly row: LockedInvitation;
   };
 }
 
@@ -619,6 +682,108 @@ const LOCK_CATEGORY_SLUG_TEXT = lockCategorySlugStatement(
   '',
 ).sql;
 
+/** The advisory-lock class of `catalog.lock-seller-shelves`. */
+export const CATALOG_SELLER_SHELVES_LOCK_CLASS = 1707;
+
+/** The statement of `catalog.lock-seller-shelves`: Market, tenant, then the seller. */
+export function lockSellerShelvesStatement(market: MarketContext, sellerId: string): Prisma.Sql {
+  const key = Prisma.sql`hashtext(${market.marketId}::text || ':' || ${market.tenantId}::text || ':' || ${sellerId}::text)`;
+  return Prisma.sql`
+    SELECT true AS locked
+      FROM pg_advisory_xact_lock(${Prisma.raw(String(CATALOG_SELLER_SHELVES_LOCK_CLASS))}::int4, ${key})`;
+}
+
+async function lockSellerShelves(
+  runner: RawRunner,
+  market: MarketContext,
+  params: NamedStatementParams<'catalog.lock-seller-shelves'>,
+): Promise<LockedSellerShelves[]> {
+  const name = 'catalog.lock-seller-shelves';
+  if (typeof params.sellerId !== 'string' || !UUID.test(params.sellerId)) {
+    throw new NamedStatementRefusedError(name, 'ids-malformed');
+  }
+  const rows = (await runner.query(lockSellerShelvesStatement(market, params.sellerId))) as {
+    locked: boolean;
+  }[];
+  if (rows.length !== 1 || rows[0]!.locked !== true) {
+    throw new NamedStatementRefusedError(name, 'rows-missing');
+  }
+  return [{ locked: true }];
+}
+
+const LOCK_SELLER_SHELVES_TEXT = lockSellerShelvesStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+).sql;
+
+/** The advisory-lock class of `customers.lock-address-book`. */
+export const CUSTOMERS_ADDRESS_BOOK_LOCK_CLASS = 1705;
+
+/** The statement of `customers.lock-address-book`: Market, tenant, then the account. */
+export function lockAddressBookStatement(market: MarketContext, accountId: string): Prisma.Sql {
+  const key = Prisma.sql`hashtext(${market.marketId}::text || ':' || ${market.tenantId}::text || ':' || ${accountId}::text)`;
+  return Prisma.sql`
+    SELECT true AS locked
+      FROM pg_advisory_xact_lock(${Prisma.raw(String(CUSTOMERS_ADDRESS_BOOK_LOCK_CLASS))}::int4, ${key})`;
+}
+
+async function lockAddressBook(
+  runner: RawRunner,
+  market: MarketContext,
+  params: NamedStatementParams<'customers.lock-address-book'>,
+): Promise<LockedAddressBook[]> {
+  const name = 'customers.lock-address-book';
+  if (typeof params.accountId !== 'string' || !UUID.test(params.accountId)) {
+    throw new NamedStatementRefusedError(name, 'ids-malformed');
+  }
+  const rows = (await runner.query(lockAddressBookStatement(market, params.accountId))) as {
+    locked: boolean;
+  }[];
+  if (rows.length !== 1 || rows[0]!.locked !== true) {
+    throw new NamedStatementRefusedError(name, 'rows-missing');
+  }
+  return [{ locked: true }];
+}
+
+const LOCK_ADDRESS_BOOK_TEXT = lockAddressBookStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+).sql;
+
+/** The advisory-lock class of `identity.lock-invitation`. */
+export const IDENTITY_INVITATION_LOCK_CLASS = 1706;
+
+/** The statement of `identity.lock-invitation`: Market, tenant, then the invitation. */
+export function lockInvitationStatement(market: MarketContext, invitationId: string): Prisma.Sql {
+  const key = Prisma.sql`hashtext(${market.marketId}::text || ':' || ${market.tenantId}::text || ':' || ${invitationId}::text)`;
+  return Prisma.sql`
+    SELECT true AS locked
+      FROM pg_advisory_xact_lock(${Prisma.raw(String(IDENTITY_INVITATION_LOCK_CLASS))}::int4, ${key})`;
+}
+
+async function lockInvitation(
+  runner: RawRunner,
+  market: MarketContext,
+  params: NamedStatementParams<'identity.lock-invitation'>,
+): Promise<LockedInvitation[]> {
+  const name = 'identity.lock-invitation';
+  if (typeof params.invitationId !== 'string' || !UUID.test(params.invitationId)) {
+    throw new NamedStatementRefusedError(name, 'ids-malformed');
+  }
+  const rows = (await runner.query(lockInvitationStatement(market, params.invitationId))) as {
+    locked: boolean;
+  }[];
+  if (rows.length !== 1 || rows[0]!.locked !== true) {
+    throw new NamedStatementRefusedError(name, 'rows-missing');
+  }
+  return [{ locked: true }];
+}
+
+const LOCK_INVITATION_TEXT = lockInvitationStatement(
+  { marketId: 'XX', tenantId: 'x' } as MarketContext,
+  '',
+).sql;
+
 /** Runs one named statement on the open read-write unit's transaction. */
 export async function runNamedStatement<K extends NamedStatementName>(
   runner: RawRunner,
@@ -680,6 +845,24 @@ export async function runNamedStatement<K extends NamedStatementName>(
         runner,
         market,
         params as NamedStatementParams<'catalog.lock-category-slug'>,
+      );
+    case 'catalog.lock-seller-shelves':
+      return await lockSellerShelves(
+        runner,
+        market,
+        params as NamedStatementParams<'catalog.lock-seller-shelves'>,
+      );
+    case 'customers.lock-address-book':
+      return await lockAddressBook(
+        runner,
+        market,
+        params as NamedStatementParams<'customers.lock-address-book'>,
+      );
+    case 'identity.lock-invitation':
+      return await lockInvitation(
+        runner,
+        market,
+        params as NamedStatementParams<'identity.lock-invitation'>,
       );
     default:
       throw new Error('Unknown named statement');

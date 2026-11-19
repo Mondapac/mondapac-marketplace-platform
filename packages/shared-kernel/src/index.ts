@@ -13,6 +13,7 @@
 //
 // Named exports only. Fakes and test builders live on the `/testing` entry and are never
 // re-exported from here.
+export { foldForClaims, hasClaimWord, hasLookAlikeScripts } from './claim-words';
 export { err, ok } from './result';
 export type { Result } from './result';
 
@@ -123,6 +124,26 @@ export type {
   AuditTargetValue,
   AuditValuesOf,
 } from './audit-action';
+
+export {
+  checkMeasure,
+  decimalPlaces,
+  isMeasureValue,
+  MEASURE_BASE_UNITS,
+  MEASURE_DECIMALS_MAX,
+  MEASURE_DIMENSIONS,
+  MEASURE_UNITS,
+  measureFromBase,
+  measureToBase,
+  measureUnit,
+} from './measure';
+export type {
+  MeasureDimension,
+  MeasureProblem,
+  MeasureSettings,
+  MeasureUnit,
+  MeasureValue,
+} from './measure';
 
 export { parsePlainText } from './plain-text';
 export type { InvisibleCharacterKind, PlainText, PlainTextError } from './plain-text';

@@ -1,7 +1,14 @@
 import { parseId } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { Temporal } from '@mondapac/shared-kernel';
-import { parseRefundRequest, planRefund, priceRefund, type RefundTarget } from './refund';
+import {
+  parseRefundRequest,
+  parseUnavailableRequest,
+  planRefund,
+  priceRefund,
+  unavailableRequest,
+  type RefundTarget,
+} from './refund';
 
 const id = <T extends string>(n: number): Id<T> => {
   const parsed = parseId(`01990000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`);
@@ -20,18 +27,23 @@ const inclusive: RefundTarget = {
   orderStatus: 'confirmed',
   paymentState: 'captured',
   paymentIntentId: 'pi_test_1',
+  fulfilment: 'to-ship',
+  readyAt: null,
   shipping: 550n,
   shippingTax: 50n,
   shippingTaxRateBps: 1000,
   shippingTaxInclusive: true,
   total: 3850n,
   refunded: 0n,
+  refundCount: 0,
   pending: false,
   lines: [
     {
       id: LINE_A,
       quantity: 3,
       unitAmount: 1100n,
+      lineAmount: 3300n,
+      discountAmount: 0n,
       taxInclusive: true,
       taxRateBps: 1000,
       taxAmount: 300n,
@@ -56,6 +68,8 @@ const exclusive: RefundTarget = {
       id: LINE_B,
       quantity: 2,
       unitAmount: 1000n,
+      lineAmount: 2000n,
+      discountAmount: 0n,
       taxInclusive: false,
       taxRateBps: 1500,
       taxAmount: 301n,
@@ -210,6 +224,30 @@ describe('planRefund and priceRefund', () => {
     });
   });
 
+  it('gives back what the buyer paid for a discounted line, never its price before the discount', () => {
+    // 3 × 1100 with 300 off: the buyer paid 3000, so the three units give back 1000 each.
+    const discounted: RefundTarget = {
+      ...inclusive,
+      total: 3000n + 550n,
+      lines: [{ ...inclusive.lines[0]!, discountAmount: 300n, taxAmount: 273n }],
+    };
+    const first = price(discounted, [{ orderLineId: LINE_A, quantity: 1 }], 0n, {
+      lines: [91n],
+      charges: [],
+    });
+    expect(first.refund).toMatchObject({ gross: 1000n, lines: [{ gross: 1000n, tax: 91n }] });
+    const rest = priceRefund(
+      { ...discounted, refunded: 1000n, refundedUnits: new Map([[LINE_A, 1]]) },
+      {
+        lines: [{ line: discounted.lines[0]!, unitsBefore: 1, units: 2 }],
+        shipping: null,
+      },
+      { lines: [182n], charges: [] },
+      details,
+    );
+    expect(rest).toMatchObject({ gross: 2000n });
+  });
+
   it('adds the reversed tax to a tax-exclusive line and to tax-exclusive shipping', () => {
     const { plan, refund } = price(exclusive, [{ orderLineId: LINE_B, quantity: 2 }], 575n, {
       lines: [301n],
@@ -288,5 +326,122 @@ describe('planRefund and priceRefund', () => {
         details,
       ),
     ).toBeNull();
+  });
+});
+
+describe('a seller marks units unavailable (decision 6)', () => {
+  it('never takes the seller reason in an admin request', () => {
+    expect(
+      parseRefundRequest({
+        lines: [{ orderLineId: LINE_A, quantity: 1 }],
+        shippingAmount: null,
+        reason: 'item-unavailable',
+      }),
+    ).toEqual({ ok: false, fields: [{ path: 'reason', code: 'value' }] });
+  });
+
+  it('takes only lines with their units, never an amount or a reason', () => {
+    expect(
+      parseUnavailableRequest({
+        lines: [{ orderLineId: LINE_A, quantity: 2 }],
+        expectedRefunds: 1,
+      }),
+    ).toEqual({
+      ok: true,
+      lines: [{ orderLineId: LINE_A, quantity: 2 }],
+      expectedRefunds: 1,
+    });
+    expect(parseUnavailableRequest({ lines: [], expectedRefunds: 0 })).toEqual({
+      ok: false,
+      fields: [{ path: 'lines', code: 'required' }],
+    });
+    expect(
+      parseUnavailableRequest({
+        lines: [
+          { orderLineId: LINE_A, quantity: 1 },
+          { orderLineId: LINE_A, quantity: 0 },
+        ],
+        expectedRefunds: 0,
+      }),
+    ).toEqual({
+      ok: false,
+      fields: [
+        { path: 'lines.1.orderLineId', code: 'duplicate' },
+        { path: 'lines.1.quantity', code: 'range' },
+      ],
+    });
+    expect(parseUnavailableRequest({ lines: 'all', expectedRefunds: -1 })).toEqual({
+      ok: false,
+      fields: [
+        { path: 'lines', code: 'range' },
+        { path: 'expectedRefunds', code: 'range' },
+      ],
+    });
+    // The count the page showed is required: without it a repeat could refund twice.
+    expect(
+      parseUnavailableRequest({
+        lines: [{ orderLineId: LINE_A, quantity: 1 }],
+        expectedRefunds: undefined,
+      }),
+    ).toEqual({ ok: false, fields: [{ path: 'expectedRefunds', code: 'range' }] });
+  });
+
+  it('refunds the units borne by the seller, keeping the shipping while something is left', () => {
+    expect(unavailableRequest(inclusive, [{ orderLineId: LINE_A, quantity: 2 }])).toEqual({
+      ok: true,
+      request: {
+        lines: [{ orderLineId: LINE_A, quantity: 2 }],
+        shipping: 0n,
+        reason: 'item-unavailable',
+        lossBearer: 'seller',
+        lossReasonCode: null,
+      },
+    });
+  });
+
+  it('gives the shipping fee not yet refunded back once nothing is left to send', () => {
+    const all = unavailableRequest(inclusive, [{ orderLineId: LINE_A, quantity: 3 }]);
+    expect(all.ok && all.request.shipping).toBe(550n);
+    const rest = unavailableRequest(
+      { ...inclusive, refundedUnits: new Map([[LINE_A, 2]]), refundedShipping: 150n },
+      [{ orderLineId: LINE_A, quantity: 1 }],
+    );
+    expect(rest.ok && rest.request.shipping).toBe(400n);
+    // Tax-exclusive shipping goes back with its tax on top.
+    const zz = unavailableRequest(exclusive, [{ orderLineId: LINE_B, quantity: 2 }]);
+    expect(zz.ok && zz.request.shipping).toBe(575n);
+    // A fee placed before its tax was recorded is not guessed: the units go back alone.
+    const old = unavailableRequest({ ...inclusive, shippingTax: null }, [
+      { orderLineId: LINE_A, quantity: 3 },
+    ]);
+    expect(old.ok && old.request.shipping).toBe(0n);
+  });
+
+  it('prices the whole seller order back to exactly what it took', () => {
+    const all = unavailableRequest(inclusive, [{ orderLineId: LINE_A, quantity: 3 }]);
+    if (!all.ok) throw new Error('refused');
+    const planned = planRefund(inclusive, all.request);
+    if (!planned.ok) throw new Error('refused');
+    const refund = priceRefund(
+      inclusive,
+      planned.plan,
+      { lines: [300n], charges: [50n] },
+      {
+        ...details,
+        reason: 'item-unavailable',
+        actor: { population: 'seller', accountId: id<'Account'>(7) },
+      },
+    );
+    expect(refund?.gross).toBe(3850n);
+    expect(refund?.lossBearer).toBe('seller');
+  });
+
+  it('refuses once the seller order is ready, shipped or delivered', () => {
+    const at = Temporal.Instant.from('2026-10-19T11:00:00Z');
+    const lines = [{ orderLineId: LINE_A, quantity: 1 }];
+    const conflict = { ok: false, error: { code: 'ordering.fulfilment-conflict' } };
+    expect(unavailableRequest({ ...inclusive, readyAt: at }, lines)).toEqual(conflict);
+    expect(unavailableRequest({ ...inclusive, fulfilment: 'shipped' }, lines)).toEqual(conflict);
+    expect(unavailableRequest({ ...inclusive, fulfilment: 'delivered' }, lines)).toEqual(conflict);
   });
 });

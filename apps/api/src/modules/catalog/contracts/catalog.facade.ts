@@ -13,6 +13,14 @@ export type SellUnitState = 'proposed' | 'published';
 export interface SellUnit {
   readonly variantId: Id<'Variant'>;
   readonly state: SellUnitState;
+  /**
+   * The seller's reversible switch for this sell unit (variants V5). `false` takes the unit off
+   * sale (cart, search, product page) without retiring the variant; pricing and inventory may
+   * still hold a price and stock for it. A unit with no stored switch sells.
+   */
+  readonly selling: boolean;
+  /** The seller's optional SKU for this sell unit, or null. */
+  readonly variantSku: string | null;
 }
 
 /**
@@ -104,6 +112,20 @@ export interface OfferListing {
   readonly variantBelongs: boolean;
   readonly productName: string | null;
   readonly variantLabel: string | null;
+  /** The variant's number within its product, or null when it is not in the published revision. */
+  readonly variantNo: number | null;
+  /** `{productCode}-{nn}`, or null as `variantNo`. */
+  readonly variantCode: string | null;
+  readonly axes: readonly VariantAxisValue[];
+  /** The seller's switch for this sell unit (V5); `false` means off sale. */
+  readonly selling: boolean;
+  /** The seller's optional SKU for this sell unit, or null. */
+  readonly variantSku: string | null;
+  /**
+   * The SKU for an export or an invoice line: the variant SKU, else `{sellerSku}-{variantNo}`;
+   * null as `variantNo`.
+   */
+  readonly displaySku: string | null;
   readonly primaryImageId: Id | null;
   readonly tags: readonly OfferListingTag[];
 }
@@ -139,24 +161,58 @@ export interface OfferBadge {
  */
 export type OfferBadgesMap = ReadonlyMap<Id<'Offer'>, readonly OfferBadge[]>;
 
+/** One axis of a variant: the attribute, the option chosen and its label in the asked locale. */
+export interface VariantAxisValue {
+  readonly attributeCode: string;
+  readonly optionCode: string;
+  readonly label: string;
+}
+
 /** One Variant of a published product, as a buyer sees it. */
 export interface PublishedProductVariant {
   readonly variantId: Id<'Variant'>;
   readonly position: number;
+  /** The automatic label in the asked locale (built from the option labels), or null. */
   readonly label: string | null;
+  /** The number within the product (1, 2, 3 ...), never reused. */
+  readonly variantNo: number;
+  /** `{productCode}-{nn}`, e.g. MP-004127-02; read-only. */
+  readonly variantCode: string;
+  /** The option chosen on each axis, with its label in the asked locale. */
+  readonly axes: readonly VariantAxisValue[];
+  /** The GTIN as 14 digits, or null (variants V4). */
+  readonly gtin: string | null;
+  /**
+   * The photos this variant picked from the product gallery, in order; the first is its primary.
+   * Empty means the product's own photos. Ids only: `publishedProductImages` gives the renditions,
+   * and a photo that is no longer clean is simply absent there.
+   */
+  readonly imageIds: readonly Id<'ProductImage'>[];
+  /** What a carrier reads of this variant; a null value takes the product's own (V4). */
+  readonly shipping: VariantShipping;
+}
+
+/** Shipping weight (grams) and box (millimetres) of one variant; null = the product's value. */
+export interface VariantShipping {
+  readonly weightGrams: number | null;
+  readonly lengthMm: number | null;
+  readonly widthMm: number | null;
+  readonly heightMm: number | null;
 }
 
 /**
  * One value of a specification row, typed so the page formats it (digits, Yes/No, dates): text and
  * list entries are in the asked locale (select labels, English fallback); a number is a decimal
- * string in the attribute's own digits; a date is `YYYY-MM-DD`.
+ * string in the attribute's own digits; a date is `YYYY-MM-DD`; a measure is a decimal string in
+ * the unit the seller chose, with that unit's label in the asked locale (English fallback).
  */
 export type PublishedSpecificationValue =
   | { readonly kind: 'text'; readonly text: string }
   | { readonly kind: 'list'; readonly items: readonly string[] }
   | { readonly kind: 'number'; readonly value: string }
   | { readonly kind: 'boolean'; readonly value: boolean }
-  | { readonly kind: 'date'; readonly value: string };
+  | { readonly kind: 'date'; readonly value: string }
+  | { readonly kind: 'measure'; readonly value: string; readonly unitLabel: string };
 
 /** One attribute of a published product that its page lists. */
 export interface PublishedSpecification {

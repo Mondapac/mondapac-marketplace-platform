@@ -32,6 +32,10 @@ const PAGE = {
         height: 1200,
         alt: 'Halal sausages',
       },
+      images: [
+        { imageId: id<'ProductImage'>(0x701), width: 1600, height: 1200, alt: 'Halal sausages' },
+        { imageId: id<'ProductImage'>(0x702), width: 800, height: 800, alt: 'Halal sausages' },
+      ],
     },
   ],
   page: 1,
@@ -94,6 +98,13 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
       actor: 'anonymous',
       input: { category: CATEGORY },
     });
+  });
+
+  it('passes the direct switch of a category browse (Other {name})', async () => {
+    const response = await get(`?category=${CATEGORY}&direct=true`);
+
+    expect(response.status).toBe(200);
+    expect(calls[0]).toMatchObject({ input: { category: CATEGORY, direct: 'true' } });
   });
 
   it('passes a store address, alone or with a category, and answers the photo of each item', async () => {
@@ -194,8 +205,9 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
     expect(unavailable.body).toEqual({ statusCode: 503, code: 'search.unavailable' });
   });
 
-  it("is rate limited per origin with the Market's default limit, then 429 with our code", async () => {
-    const limit = code === 'AU' ? 300 : 200;
+  it("is rate limited per origin with the Market's public-search limit, then 429 with our code", async () => {
+    // Its own class (Hassan L-3): AU 120 and ZZ 90 a minute, not the default 300 and 200.
+    const limit = code === 'AU' ? 120 : 90;
     let last = 200;
     for (let sent = 0; sent < limit; sent += 1) last = (await get('?q=tea')).status;
     const refused = await get('?q=tea');

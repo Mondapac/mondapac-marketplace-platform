@@ -48,7 +48,7 @@ describe.each([
     productId: id<'Product'>(4),
     status: 'published',
     listed: true,
-    sellUnits: [{ variantId: VARIANT, state: 'published' }],
+    sellUnits: [{ variantId: VARIANT, state: 'published', selling: true, variantSku: null }],
   };
   const price: EffectivePrice = {
     price: money(1999n, currency),
@@ -140,14 +140,39 @@ describe.each([
     ['a draft Offer', { offer: { ...published, status: 'draft' as const } }],
     [
       'a proposed sell unit',
-      { offer: { ...published, sellUnits: [{ variantId: VARIANT, state: 'proposed' as const }] } },
+      {
+        offer: {
+          ...published,
+          sellUnits: [
+            { variantId: VARIANT, state: 'proposed' as const, selling: true, variantSku: null },
+          ],
+        },
+      },
+    ],
+    [
+      'a sell unit the seller turned off',
+      {
+        offer: {
+          ...published,
+          sellUnits: [
+            { variantId: VARIANT, state: 'published' as const, selling: false, variantSku: null },
+          ],
+        },
+      },
     ],
     [
       'another variant',
       {
         offer: {
           ...published,
-          sellUnits: [{ variantId: id<'Variant'>(9), state: 'published' as const }],
+          sellUnits: [
+            {
+              variantId: id<'Variant'>(9),
+              state: 'published' as const,
+              selling: true,
+              variantSku: null,
+            },
+          ],
         },
       },
     ],
@@ -313,6 +338,49 @@ describe.each([
       await facts.lineDisplays(context, [...many, ...many]);
 
       expect(calls.sort()).toEqual([200, 50]);
+    });
+  });
+
+  describe('offerSellUnits (assistant cart cards)', () => {
+    const OFF = id<'Variant'>(8);
+    const PROPOSED = id<'Variant'>(9);
+    const units = async (over: Parameters<typeof build>[0]) =>
+      build(over).facts.offerSellUnits(context, OFFER);
+
+    it("answers the published, selling units in catalog's order with the seller and product", async () => {
+      const offer: OfferSellUnits = {
+        ...published,
+        sellUnits: [
+          { variantId: OFF, state: 'published', selling: false, variantSku: null },
+          { variantId: VARIANT, state: 'published', selling: true, variantSku: null },
+          { variantId: PROPOSED, state: 'proposed', selling: true, variantSku: null },
+        ],
+      };
+      expect(await units({ offer })).toEqual({
+        sellerId: SELLER,
+        productId: id<'Product'>(4),
+        variantIds: [VARIANT],
+      });
+    });
+
+    it.each([
+      ['unknown or of another Market', null],
+      ['not published', { ...published, status: 'deleted' as const }],
+      ['not listed', { ...published, listed: false }],
+    ])('is absent for an Offer %s', async (_name, offer) => {
+      expect(await units({ offer })).toBe('absent');
+    });
+
+    it('is null when catalog refuses or throws (fail closed)', async () => {
+      expect(await units({ catalog: 'fail' })).toBeNull();
+      const throwing = new FacadeLineFacts(
+        { offerSellUnits: () => Promise.reject(new Error('down')) } as unknown as CatalogFacade,
+        {} as SellersFacade,
+        {} as PricingFacade,
+        {} as InventoryFacade,
+        markets,
+      );
+      expect(await throwing.offerSellUnits(context, OFFER)).toBeNull();
     });
   });
 

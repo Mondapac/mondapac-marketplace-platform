@@ -33,3 +33,14 @@ export function sellerCaller(context: CallContext): SellerCaller | null {
   if (isActingAs(context)) return null;
   return { accountId: actor.accountId, sellerId: actor.sellerId };
 }
+
+/**
+ * The signed-in customer of a checkout: a customer session that is not an acting-as session; null
+ * for anyone else (fail closed). The checkout's discounts are always this account's.
+ */
+export function checkoutCustomerOf(context: CallContext): Id<'Account'> | null {
+  const actor = context.actor;
+  if (actor.kind !== 'authenticated' || actor.population !== 'customer') return null;
+  if (isActingAs(context)) return null;
+  return actor.accountId;
+}

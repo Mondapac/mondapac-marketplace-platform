@@ -6,6 +6,8 @@ module.exports = {
   testRegex: '.*\\.spec\\.ts$',
   transform: { '^.+\\.(t|j)s$': 'ts-jest' },
   moduleNameMapper: {
+    // The shared CSV rules (catalog design 14b), from source in tests as the kernel is.
+    '^@mondapac/platform-import$': '<rootDir>/../../packages/platform-import/src/index.ts',
     '^@mondapac/shared-kernel$': '<rootDir>/../../packages/shared-kernel/src/index.ts',
     // Fakes and builders (platform-foundations 8.1). Both entries map to the kernel's sources,
     // so tests load one copy of the kernel, as the built API loads one copy of its dist/.

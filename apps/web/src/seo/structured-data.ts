@@ -231,6 +231,23 @@ export function breadcrumbStructuredData(
 }
 
 /**
+ * A category page as a schema.org CollectionPage (categories C6): its name, its canonical URL and
+ * its description, as plain text. Given only on an indexable page of a listed host.
+ */
+export function collectionPageStructuredData(page: {
+  readonly name: string;
+  readonly description: string;
+  readonly url: string;
+}): JsonLdNode {
+  return {
+    '@type': 'CollectionPage',
+    name: plainText(page.name),
+    url: page.url,
+    description: plainText(page.description).slice(0, DESCRIPTION_MAX),
+  };
+}
+
+/**
  * A product page's nodes: the Product and its BreadcrumbList. None at all when the product has
  * no Product node (no positive price).
  */

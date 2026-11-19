@@ -94,6 +94,25 @@ export class PrismaSellingFactsRepository implements SellingFactsRepository {
     return row === null ? null : row.blogEnabled;
   }
 
+  async categoryProposalsAllowed(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<boolean | null> {
+    const row = await this.prisma.tx(market).sellersSellerAdminSettings.findFirst({
+      where: { marketId: market.marketId, sellerId },
+      select: { categoryProposalsAllowed: true },
+    });
+    return row === null ? null : row.categoryProposalsAllowed;
+  }
+
+  async aiEnabled(market: MarketContext, sellerId: Id<'Seller'>): Promise<boolean | null> {
+    const row = await this.prisma.tx(market).sellersSellerAdminSettings.findFirst({
+      where: { marketId: market.marketId, sellerId },
+      select: { aiEnabled: true },
+    });
+    return row === null ? null : row.aiEnabled;
+  }
+
   async firstApprovedAt(
     market: MarketContext,
     sellerId: Id<'Seller'>,

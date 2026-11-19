@@ -1,207 +1,71 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { NextIntlClientProvider } from 'next-intl';
 import { visibleNavItems } from '@mondapac/ui';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import messages from '../../messages/en.json';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { adminNav } from '../nav.ts';
 
-vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
-import { callApi } from '../api/client.ts';
 import { OrderDetail } from './order-detail.tsx';
-import { OrdersList } from './orders-list.tsx';
-import { FILTERS } from './types.ts';
-import type { AdminOrder, AdminOrderPage, SellerPart } from './types.ts';
+import { money, order, part, DETAIL_PROPS, wrap } from './orders-test-kit.tsx';
 
-const call = vi.mocked(callApi);
-const money = (amount: string) => ({ amount, currency: 'AUD' });
-const part = (over: Partial<SellerPart> = {}): SellerPart => ({
-  sellerId: '0190a000-0000-7000-8000-0000000000a1',
-  storeName: null,
-  subtotal: money('2000'),
-  shipping: money('500'),
-  tax: money('182'),
-  total: money('2500'),
-  fulfilment: 'to-ship',
-  carrier: null,
-  trackingRef: null,
-  shippedAt: null,
-  deliveredAt: null,
-  lines: [
-    {
-      lineId: '0190a000-0000-7000-8000-0000000000b1',
-      offerId: '0190a000-0000-7000-8000-0000000000c1',
-      variantId: '0190a000-0000-7000-8000-0000000000d1',
-      quantity: 2,
-      unitPrice: money('1000'),
-      lineAmount: money('2000'),
-      taxInclusive: true,
-      taxRateBps: 1000,
-      tax: money('182'),
-      productName: null,
-      variantLabel: null,
-    },
-  ],
-  ...over,
-});
-const order = (over: Partial<AdminOrder> = {}): AdminOrder => ({
-  orderId: '0190a000-0000-7000-8000-000000000001',
-  status: 'confirmed',
-  cancelReason: null,
-  paymentState: 'captured',
-  total: money('2500'),
-  tax: money('182'),
-  createdAt: '2026-10-13T01:00:00.000Z',
-  confirmedAt: '2026-10-13T01:05:00.000Z',
-  cancelledAt: null,
-  payBy: null,
-  sellerOrders: [part()],
-  accountId: '0190a000-0000-7000-8000-0000000000e1',
-  customer: null,
-  paymentIntentId: 'pi_123',
-  taxStrategyId: null,
-  ...over,
-});
-const page = (orders: AdminOrder[], nextCursor: string | null = null) => ({
-  ok: true as const,
-  status: 200,
-  body: { orders, nextCursor } satisfies AdminOrderPage,
-});
-const wrap = (node: React.ReactNode) => (
-  <NextIntlClientProvider locale="en-AU" messages={messages}>
-    {node}
-  </NextIntlClientProvider>
-);
-
-beforeEach(() => call.mockReset());
 afterEach(cleanup);
 
-describe('orders list', () => {
-  it('lists the orders with reference, status, sellers and total', async () => {
-    call.mockResolvedValueOnce(
-      page([
-        order(),
-        order({
-          orderId: '0190a000-0000-7000-8000-000000000002',
-          status: 'pending-payment',
-          confirmedAt: null,
-          sellerOrders: [part(), part({ sellerId: '0190a000-0000-7000-8000-0000000000a2' })],
-          total: money('5000'),
-        }),
-      ]),
-    );
-    render(wrap(<OrdersList />));
-    const table = await screen.findByRole('table');
-    const link = within(table).getByRole('link', { name: 'Order 00000001' });
-    expect(link.getAttribute('href')).toBe('/orders/0190a000-0000-7000-8000-000000000001');
-    expect(within(table).getByText('Paid')).toBeTruthy();
-    expect(within(table).getByText('Awaiting payment')).toBeTruthy();
-    expect(within(table).getByText('$25.00')).toBeTruthy();
-    expect(within(table).getByText('$50.00')).toBeTruthy();
-    expect(within(table).getAllByText('000000E1')).toHaveLength(2);
-    expect(within(table).getAllByText('000000A1')).toHaveLength(2);
-    expect(call).toHaveBeenCalledWith('GET', 'ordering/admin/orders');
-  });
-
-  it('shows customer name with email, and shop names, when the API sends them', async () => {
-    const named = part({ storeName: 'Al Noor Butchery' });
-    call.mockResolvedValueOnce(
-      page([
-        order({
-          customer: { displayName: 'Amira Haddad', email: 'amira@example.com' },
-          sellerOrders: [
-            named,
-            part({ sellerId: '0190a000-0000-7000-8000-0000000000a2', storeName: null }),
-          ],
-        }),
-        order({
-          orderId: '0190a000-0000-7000-8000-000000000002',
-          customer: { displayName: null, email: 'noname@example.com' },
-        }),
-      ]),
-    );
-    render(wrap(<OrdersList />));
-    const table = await screen.findByRole('table');
-    expect(within(table).getByText('Amira Haddad')).toBeTruthy();
-    expect(within(table).getByText('amira@example.com')).toBeTruthy();
-    expect(within(table).getByText('noname@example.com')).toBeTruthy();
-    expect(within(table).getByText('Al Noor Butchery')).toBeTruthy();
-    expect(within(table).getByText('000000A2')).toBeTruthy();
-    expect(within(table).queryByText('000000E1')).toBeNull();
-  });
-
-  it('falls back to the short id without the customer fields', async () => {
-    call.mockResolvedValueOnce(page([order()]));
-    render(wrap(<OrdersList />));
-    const table = await screen.findByRole('table');
-    expect(within(table).getByText('000000E1')).toBeTruthy();
-    expect(within(table).getByText('000000A1')).toBeTruthy();
-  });
-
-  it('filters by status and asks again', async () => {
-    call.mockResolvedValue(page([order()]));
-    render(wrap(<OrdersList />));
-    await screen.findByRole('table');
-    fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
-    await waitFor(() =>
-      expect(call).toHaveBeenLastCalledWith('GET', 'ordering/admin/orders?status=cancelled'),
-    );
-  });
-
-  it('pages by cursor with Show more', async () => {
-    call.mockResolvedValueOnce(page([order()], 'next-1'));
-    render(wrap(<OrdersList />));
-    await screen.findByRole('table');
-    call.mockResolvedValueOnce(page([order({ orderId: '0190a000-0000-7000-8000-000000000003' })]));
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
-    expect(await screen.findByRole('link', { name: 'Order 00000003' })).toBeTruthy();
-    expect(call).toHaveBeenLastCalledWith('GET', 'ordering/admin/orders?cursor=next-1');
-    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
-  });
-
-  it('shows an empty state', async () => {
-    call.mockResolvedValueOnce(page([]));
-    render(wrap(<OrdersList />));
-    expect(await screen.findByText(/No orders yet/)).toBeTruthy();
-  });
-
-  it('says which status is empty on a filtered tab', async () => {
-    call.mockResolvedValue(page([]));
-    render(wrap(<OrdersList />));
-    expect(await screen.findByText('No orders yet')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
-    expect(await screen.findByText('No cancelled orders')).toBeTruthy();
-    expect(screen.getByText(/expired or failed/)).toBeTruthy();
-  });
-
-  it('shows the error with a retry that loads again', async () => {
-    call.mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
-    render(wrap(<OrdersList />));
-    expect(await screen.findByText(/couldn't load the orders/)).toBeTruthy();
-    call.mockResolvedValueOnce(page([order()]));
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByRole('table')).toBeTruthy();
-  });
-
-  it('offers exactly the statuses the admin API accepts', async () => {
-    expect(FILTERS).toEqual(['all', 'pending-payment', 'confirmed', 'cancelled']);
-    call.mockResolvedValueOnce(page([]));
-    render(wrap(<OrdersList />));
-    const tabs = within(screen.getByRole('navigation')).getAllByRole('button');
-    expect(tabs.map((tab) => tab.textContent)).toEqual([
-      'All',
-      'Awaiting payment',
-      'Paid',
-      'Cancelled',
-    ]);
-    await screen.findByText(/No orders yet/);
-  });
-});
-
 describe('order detail', () => {
+  it('lists the refunds with their state and reason, and a refused one as not refunded', () => {
+    const refund = {
+      refundId: '0190a000-0000-7000-8000-0000000000f1',
+      sellerOrderId: '0190a000-0000-7000-8000-0000000000b1',
+      reason: 'damaged',
+      lossBearer: 'seller',
+      lossReasonCode: null,
+      amount: money('1000'),
+      tax: money('91'),
+      shipping: null,
+      lines: [
+        {
+          orderLineId: '0190a000-0000-7000-8000-0000000000b1',
+          quantity: 1,
+          amount: money('1000'),
+          tax: money('91'),
+        },
+      ],
+      requestedAt: '2026-10-14T01:00:00.000Z',
+      settledAt: null,
+      creditNoteId: null,
+    };
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({
+            refundsEnabled: true,
+            refunds: [
+              { ...refund, state: 'failed' },
+              {
+                ...refund,
+                refundId: '0190a000-0000-7000-8000-0000000000f2',
+                state: 'pending',
+                reason: 'item-unavailable',
+              },
+            ],
+          })}
+        />,
+      ),
+    );
+    expect(screen.getByText('Refused by Stripe')).toBeTruthy();
+    expect(screen.getByText('Waiting for Stripe')).toBeTruthy();
+    expect(screen.getByText(/Not refunded/)).toBeTruthy();
+    // The seller's own reason (row 40) has its own label, not "Other".
+    expect(screen.getByText(/^Item unavailable ·/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Order confirmation' }).getAttribute('href')).toBe(
+      '/orders/0190a000-0000-7000-8000-000000000001/document',
+    );
+  });
+
   it('shows the summary, the seller part, its lines and totals', () => {
-    render(wrap(<OrderDetail order={order()} />));
+    render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
     expect(screen.getByRole('heading', { name: 'Order 00000001' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Back to orders' }).getAttribute('href')).toBe(
       '/orders',
@@ -223,6 +87,8 @@ describe('order detail', () => {
     render(
       wrap(
         <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
           order={order({
             customer: { displayName: 'Amira Haddad', email: 'amira@example.com' },
             sellerOrders: [
@@ -253,6 +119,8 @@ describe('order detail', () => {
     render(
       wrap(
         <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
           order={order({
             customer: { displayName: null, email: 'a@example.com' },
             sellerOrders: [
@@ -272,6 +140,8 @@ describe('order detail', () => {
     render(
       wrap(
         <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
           order={order({
             status: 'cancelled',
             cancelReason: 'payment-failed',
@@ -290,17 +160,180 @@ describe('order detail', () => {
         />,
       ),
     );
-    expect(screen.getByText('Payment failed')).toBeTruthy();
+    expect(screen.getByText(/This order was cancelled: Payment failed\./)).toBeTruthy();
     expect(screen.getByText('Australia Post')).toBeTruthy();
     expect(screen.getByText('AP123')).toBeTruthy();
-    expect(screen.getAllByText('Delivered')).toHaveLength(2);
+    expect(screen.getAllByText('Delivered')).toHaveLength(1);
     expect(screen.getByText('Voided')).toBeTruthy();
+  });
+});
+
+describe('order detail layout', () => {
+  it('shows the fulfilment steps, the delivery method and the activity from recorded times', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({
+            sellerOrders: [
+              part({
+                storeName: 'Al Noor Butchery',
+                fulfilment: 'shipped',
+                deliveryMethod: 'same_day',
+                readyAt: '2026-10-13T02:00:00.000Z',
+                shippedAt: '2026-10-13T03:00:00.000Z',
+              }),
+            ],
+          })}
+        />,
+      ),
+    );
+    const steps = screen.getByRole('list', { name: 'Progress' });
+    expect(within(steps).getByText('Waiting')).toBeTruthy();
+    expect(within(steps).getAllByText(/2026/)).toHaveLength(2);
+    expect(screen.getByText('Same-day delivery')).toBeTruthy();
+    const activity = screen.getByRole('heading', { name: 'Activity' }).parentElement!;
+    const items = within(activity).getAllByRole('listitem');
+    expect(items.map((item) => item.firstElementChild?.textContent)).toEqual([
+      'Order placed',
+      'Payment confirmed',
+      'Al Noor Butchery marked ready',
+      'Al Noor Butchery shipped',
+    ]);
+  });
+
+  it('shows a delivery problem the platform must look at', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({ sellerOrders: [part({ deliveryAttention: 'carrier-unknown' })] })}
+        />,
+      ),
+    );
+    expect(screen.getByText(/Delivery needs a look/)).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('gives a pickup part its own steps and activity wording, with no shipping', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({
+            sellerOrders: [
+              part({
+                storeName: 'Al Noor Butchery',
+                fulfilment: 'delivered',
+                deliveryMethod: 'pickup',
+                readyAt: '2026-10-13T02:00:00.000Z',
+                deliveredAt: '2026-10-13T03:00:00.000Z',
+              }),
+            ],
+          })}
+        />,
+      ),
+    );
+    const steps = screen.getByRole('list', { name: 'Progress' });
+    expect(
+      within(steps)
+        .getAllByRole('listitem')
+        .map((li) => li.firstElementChild?.textContent),
+    ).toEqual(['Ready for pickup', 'Collected']);
+    expect(within(steps).queryByText('Shipped')).toBeNull();
+    expect(screen.getByText('Al Noor Butchery handed over for pickup')).toBeTruthy();
+    expect(screen.getByText('Al Noor Butchery marked ready for pickup')).toBeTruthy();
+  });
+
+  it('shows no steps before payment or after a cancel', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({ status: 'cancelled', cancelReason: 'expired', confirmedAt: null })}
+        />,
+      ),
+    );
+    expect(screen.queryByRole('list', { name: 'Progress' })).toBeNull();
+  });
+
+  it('shows the customer window with an en dash, and Done for a step with no time', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({
+            sellerOrders: [
+              part({
+                fulfilment: 'delivered',
+                deliveryWindowStart: '2026-10-13T05:00:00.000Z',
+                deliveryWindowEnd: '2026-10-13T07:00:00.000Z',
+              }),
+            ],
+          })}
+        />,
+      ),
+    );
+    expect(screen.getByText(/ \u2013 /)).toBeTruthy();
+    expect(
+      within(screen.getByRole('list', { name: 'Progress' })).getAllByText('Done'),
+    ).toHaveLength(3);
+  });
+
+  it('shows Not recorded for an unknown delivery method', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({ sellerOrders: [part({ deliveryMethod: 'drone' })] })}
+        />,
+      ),
+    );
+    expect(screen.getByText('Not recorded')).toBeTruthy();
+  });
+
+  it('tells a failed customer lookup from hidden details', () => {
+    const { unmount } = render(
+      wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={true} order={order()} />),
+    );
+    expect(screen.getByText(/couldn't be loaded/)).toBeTruthy();
+    expect(screen.queryByText(/hidden for your role/)).toBeNull();
+    unmount();
+    render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
+    expect(screen.getByText(/hidden for your role/)).toBeTruthy();
+    expect(screen.queryByText(/couldn't be loaded/)).toBeNull();
+  });
+
+  it('says so when copying fails', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn().mockRejectedValue(new Error('no')) },
+      configurable: true,
+    });
+    render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy order ID' }));
+    await waitFor(() => expect(screen.getByText(/Couldn't copy/)).toBeTruthy());
+  });
+
+  it('says when the customer details are hidden, and copies the order id', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
+    expect(screen.getByText(/hidden for your role/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy order ID' }));
+    await waitFor(() => expect(screen.getByText('Copied')).toBeTruthy());
+    expect(writeText).toHaveBeenCalledWith('0190a000-0000-7000-8000-000000000001');
   });
 });
 
 describe('order tax', () => {
   it('shows the tax of the order, of each seller and of each line, and the strategy', () => {
-    render(wrap(<OrderDetail order={order()} />));
+    render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
     expect(screen.getByText('Tax')).toBeTruthy();
     expect(screen.getByText('Market default')).toBeTruthy();
     expect(screen.getByText('Tax in prices')).toBeTruthy();
@@ -316,6 +349,8 @@ describe('order tax', () => {
     render(
       wrap(
         <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
           order={order({
             tax: money('200'),
             taxStrategyId: '0190a000-0000-7000-8000-0000000000f1',
@@ -335,7 +370,15 @@ describe('order tax', () => {
       lines: part().lines.map((line) => ({ ...line, taxRateBps: null, tax: null })),
       tax: null,
     });
-    render(wrap(<OrderDetail order={order({ tax: null, sellerOrders: [old] })} />));
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({ tax: null, sellerOrders: [old] })}
+        />,
+      ),
+    );
     expect(screen.getAllByText('Not recorded')).toHaveLength(2);
     expect(screen.queryByText('Market default')).toBeNull();
     expect(screen.queryByText(/Tax 10%/)).toBeNull();

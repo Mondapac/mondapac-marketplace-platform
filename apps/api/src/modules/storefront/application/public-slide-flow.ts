@@ -13,6 +13,7 @@ import {
 import { positionOf, type PositionDefinition } from '../domain/slide-positions';
 import { readContent, type SlideContent } from '../domain/slides';
 import { live } from './public-flow';
+import { libraryImageOf, slideImagePath } from './slide-images/slide-image';
 import type { LiveCategoryRow } from './ports/link-targets';
 import { targetKey, type SlideTarget } from './ports/slide-targets';
 import type { StorefrontDependencies } from './storefront-dependencies';
@@ -29,17 +30,48 @@ export const MAX_PUBLIC_AGE_SECONDS = 60;
 /** Placements read for one position and Market; far above the sum of any position's caps. */
 const MAX_PLACEMENTS_READ = 200;
 
+/** A slide's image for buyers: a ready-made key as it is, a library image with its size paths. */
+function publishedImage(
+  image: { readonly ref: string; readonly alt: string; readonly decorative: boolean },
+  library: ReadonlyMap<string, { readonly hasMobile: boolean }>,
+): PublishedSlide['image'] {
+  const base = { key: image.ref, alt: image.alt, decorative: image.decorative };
+  const id = libraryImageOf(image.ref);
+  if (id === null) return base;
+  const found = library.get(id);
+  // A missing library row (never expected) shows the slide without a picture.
+  if (found === undefined) return null;
+  return {
+    ...base,
+    desktopUrl: slideImagePath(id, 'desktop'),
+    desktopSmallUrl: slideImagePath(id, 'desktop-small'),
+    ...(found.hasMobile
+      ? {
+          mobileUrl: slideImagePath(id, 'mobile'),
+          mobileSmallUrl: slideImagePath(id, 'mobile-small'),
+        }
+      : {}),
+  };
+}
+
 export interface PublishedSlide {
   readonly id: string;
   readonly kind: string;
   readonly title: string;
   readonly body: string | null;
   readonly ctaLabel: string | null;
-  /** A key of the buyer app's ready-made image set (media renditions come with the upload PR). */
+  /**
+   * Either a key of the buyer app's ready-made image set, or an uploaded library image: then the
+   * key is its id and the paths (built by code) name the stored sizes.
+   */
   readonly image: {
     readonly key: string;
     readonly alt: string;
     readonly decorative: boolean;
+    readonly desktopUrl?: string;
+    readonly desktopSmallUrl?: string;
+    readonly mobileUrl?: string;
+    readonly mobileSmallUrl?: string;
   } | null;
   readonly textPosition: SlideContent['textPosition'];
   readonly textTone: SlideContent['textTone'];
@@ -244,6 +276,30 @@ export async function viewPublishedSlides(
     pages,
   };
 
+  // Uploaded library images the shown slides name, from our own table.
+  const libraryIds = [
+    ...new Set(
+      shown.flatMap((p) => {
+        const ref = contents.get(p.slideId)?.image?.ref;
+        const id = ref === undefined ? null : libraryImageOf(ref);
+        return id === null ? [] : [id];
+      }),
+    ),
+  ];
+  const library =
+    libraryIds.length === 0
+      ? new Map<string, { readonly hasMobile: boolean }>()
+      : await deps.unitOfWork
+          .run(
+            context.market,
+            async () => ok(await deps.slideImages.existing(context.market, libraryIds)),
+            { readOnly: true },
+          )
+          .then((r) => {
+            if (!r.ok) throw new Error('the image read unit failed');
+            return r.value;
+          });
+
   // 4. Drop what cannot be shown, then cap.
   const slides: PublishedSlide[] = [];
   const kept: ServedPlacement[] = [];
@@ -261,14 +317,7 @@ export async function viewPublishedSlides(
       title: content.title,
       body: content.body,
       ctaLabel: content.ctaLabel,
-      image:
-        content.image === null
-          ? null
-          : {
-              key: content.image.ref,
-              alt: content.image.alt,
-              decorative: content.image.decorative,
-            },
+      image: content.image === null ? null : publishedImage(content.image, library),
       textPosition: content.textPosition,
       textTone: content.textTone,
       href,

@@ -4,7 +4,11 @@
 // behind a trusted edge, from the one header the edge is configured to set. The API reads sign
 // that address (src/storefront/api.ts). Node 24 strips the types of the workspace TypeScript.
 import next from 'next';
-import { createPanelServer, parseClientAddressSource } from '@mondapac/panel-server/wrapper';
+import {
+  createPanelServer,
+  parseClientAddressSource,
+  withEdgeOnlyHeaders,
+} from '@mondapac/panel-server/wrapper';
 
 const dev = process.argv.includes('--dev');
 const port = Number(process.env.PORT ?? 3003);
@@ -18,7 +22,15 @@ for (const file of ['.env.local', '.env']) {
   }
 }
 
-const source = parseClientAddressSource(process.env);
+// The CDN location headers of the first-visit area guess (src/delivery/geo-guess.ts) count only
+// when the trusted edge sent them; from any other peer they are removed here.
+const geoHeaders = ['EDGE_GEO_CITY_HEADER', 'EDGE_GEO_POSTCODE_HEADER', 'EDGE_GEO_COUNTRY_HEADER']
+  .map((name) => process.env[name]?.trim().toLowerCase() ?? '')
+  .filter((name) => name !== '');
+const source = withEdgeOnlyHeaders(parseClientAddressSource(process.env), geoHeaders);
+// The Deliver to map's worker (ADR-0048), copied into public/vendor/ from the installed mapbox-gl
+// so the map loads it from this site.
+await import('./scripts/copy-map-worker.mjs');
 // `next dev` sets TURBOPACK for its server process; the programmatic API needs to be told.
 if (dev) process.env.TURBOPACK = '1';
 const app = next({ dir: import.meta.dirname, dev, port, hostname: dev ? 'localhost' : undefined });

@@ -126,6 +126,19 @@ export const SELLERS_BUSINESS_ACTIVITY_VIEW = definePermission('sellers', {
 });
 
 /**
+ * Ask for a seller's health to be measured again now (seller health; owner decision 5 Nov 2026).
+ * The request only queues a recount of numbers the nightly run also computes; nothing happens to
+ * the seller (R2). Platform scope; unprotected: it moves no money, certification or access. The
+ * default role mapping is `identity`'s seed (Onboarding and Compliance since its version 8) and
+ * the Platform Administrator holds every key. Reading the card needs `sellers.seller.view`.
+ */
+export const SELLERS_SELLER_HEALTH_RECALCULATE = definePermission('sellers', {
+  key: 'sellers.seller-health.recalculate',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
  * Replace the business activities a seller carries, with a reason (ADR-0040 decision 4). Platform
  * scope and protected: the assignment decides what a seller may sell once the offer rule reads it,
  * so only the Platform Administrator system role holds it and no custom role can. The PUT route also
@@ -137,13 +150,41 @@ export const SELLERS_BUSINESS_ACTIVITY_MANAGE = definePermission('sellers', {
   protected: true,
 });
 
+/**
+ * Change a seller's admin settings that are not business identity (sellers design 6.1, 6.2
+ * `seller-settings.change-category-proposals`; SEL-26): today whether the seller may propose
+ * categories. Platform scope, not protected; audited in the same unit. The default role mapping
+ * (Onboarding and Compliance, Catalogue Moderator) is `identity`'s seed and joins there in its own
+ * PR; the Platform Administrator system role holds every key.
+ */
+export const SELLERS_SELLER_SETTINGS_EDIT = definePermission('sellers', {
+  key: 'sellers.seller-settings.edit',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Share a saved filter of an admin sellers list (Sellers, Needs a look) with every admin of the
+ * Market, and manage one somebody else shared (the same idea as `ordering.saved-filter.share`).
+ * Unprotected. No default role lists it yet: the Platform Administrator grants it to the roles
+ * that should (which also need `sellers.seller.view`).
+ */
+export const SELLERS_SAVED_FILTER_SHARE = definePermission('sellers', {
+  key: 'sellers.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BLOG_ACCESS_EDIT,
   SELLERS_BUSINESS_ACTIVITY_MANAGE,
   SELLERS_BUSINESS_ACTIVITY_VIEW,
   SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
+  SELLERS_SAVED_FILTER_SHARE,
   SELLERS_SELLER_FILE_REVIEW,
+  SELLERS_SELLER_HEALTH_RECALCULATE,
+  SELLERS_SELLER_SETTINGS_EDIT,
   SELLERS_SELLER_VIEW,
   SELLERS_SERVICE_AREA_EDIT,
   SELLERS_STORE_PROFILE_EDIT,

@@ -34,6 +34,7 @@ const ledger = (balance = '3050', currency = 'AUD'): Ledger => ({
     refundedCommission: '0',
     disputeDebits: '0',
     disputeReinstated: '0',
+    sellerCashback: '0',
     balance,
   },
   entries: [],
@@ -100,7 +101,7 @@ describe('next payout card', () => {
     // 23:00 UTC on 2 Nov is 10:00 on 3 Nov in Melbourne.
     expect(screen.getByText(/Scheduled for 3 Nov, 10:00 am AEDT/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Manage payout account' }).getAttribute('href')).toBe(
-      '/payout-account',
+      '/accounting/payout-account',
     );
     expect(card).toBeTruthy();
     expect(

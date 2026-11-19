@@ -1,5 +1,12 @@
 export { AppShell, type AppShellProps, type BottomTab } from './shell/app-shell.tsx';
 export { Sidebar, type SidebarProps } from './shell/sidebar.tsx';
+export {
+  buildSettingsMenuGroups,
+  filterSettingsMenu,
+  type SettingsMenu,
+  type SettingsMenuGroup,
+  type SettingsMenuLink,
+} from './shell/settings-menu.ts';
 export { Topbar, type Crumb, type TopbarProps } from './shell/topbar.tsx';
 export {
   AccountMenu,
@@ -8,10 +15,45 @@ export {
   type AccountMenuProps,
 } from './shell/account-menu.tsx';
 export { Icon, type IconName, type IconProps } from './icon/icon.tsx';
-export { Tabs, type TabItem, type TabsProps } from './shell/tabs.tsx';
+export { Tabs, tabIdOf, type TabItem, type TabsProps } from './shell/tabs.tsx';
 export { BackLink } from './shell/back-link.tsx';
 export { ShortcutGrid, type Shortcut } from './shell/shortcut-grid.tsx';
 export { RouteError, RouteLoading, type RouteErrorProps } from './shell/route-states.tsx';
+export {
+  NavigationProgress,
+  PROGRESS_DELAY_MS,
+  PROGRESS_GIVE_UP_MS,
+  navigationTarget,
+  type NavigationProgressProps,
+} from './loading/navigation-progress.tsx';
+export { Spinner } from './loading/spinner.tsx';
+export {
+  DetailSkeleton,
+  FormSkeleton,
+  TableSkeleton,
+  type DetailSkeletonProps,
+  type FormSkeletonProps,
+  type TableSkeletonColumn,
+  type TableSkeletonProps,
+} from './loading/section-skeletons.tsx';
+export {
+  SettingsSkeleton,
+  type SettingsSkeletonProps,
+  type SkeletonSection,
+} from './loading/settings-skeleton.tsx';
+export {
+  SettingsRouteLoading,
+  type SettingsRouteLoadingProps,
+} from './loading/settings-route-loading.tsx';
+export {
+  useDelayedLoading,
+  LOADING_SHOW_DELAY_MS,
+  LOADING_MIN_VISIBLE_MS,
+  LOADING_SLOW_MS,
+  LOADING_STALLED_MS,
+  type DelayedLoading,
+  type DelayedLoadingOptions,
+} from './loading/use-delayed-loading.ts';
 export {
   SIDEBAR_COOKIE,
   sidebarCollapsed,
@@ -27,12 +69,22 @@ export {
   type NavSection,
   type NavItem,
 } from './shell/nav.ts';
+export {
+  NavBadgeProvider,
+  NAV_BADGE_CAP,
+  badgeText,
+  sumBadges,
+  useNavBadges,
+  useSetNavBadge,
+  type NavBadgeValue,
+} from './shell/nav-badges.tsx';
 export { AuthLayout, type AuthLayoutProps, type AuthShowcaseCard } from './auth/auth-layout.tsx';
 export { Banner, type BannerProps, type BannerTone } from './form/banner.tsx';
 export {
   Button,
   LinkButton,
   type ButtonProps,
+  type ButtonSize,
   type ButtonVariant,
   type LinkButtonProps,
 } from './form/button.tsx';
@@ -44,6 +96,8 @@ export { FileButton, type FileButtonProps } from './form/file-button.tsx';
 export { ImageSlot, type ImageSlotProps, type ImageSlotShape } from './form/image-slot.tsx';
 export { OtpField, type OtpFieldProps } from './form/otp-field.tsx';
 export { Card, type CardProps } from './form/card.tsx';
+export { UnsavedBar, type UnsavedBarProps } from './form/unsaved-bar.tsx';
+export { Switch, type SwitchProps } from './form/switch.tsx';
 export { CheckboxRow, type CheckboxRowProps } from './form/checkbox-row.tsx';
 export { SelectBox, type SelectBoxProps } from './form/select-box.tsx';
 export { RadioGroup, type RadioGroupProps, type RadioOption } from './form/radio-group.tsx';
@@ -61,6 +115,19 @@ export {
   type SearchSelectProps,
   type SearchSelectSingleProps,
 } from './select/search-select.tsx';
+export {
+  CategoryChooser,
+  type CategoryChooserLabels,
+  type CategoryChooserProps,
+} from './select/category-chooser.tsx';
+export {
+  MAX_PRODUCT_CATEGORIES,
+  addCategory,
+  choiceLabel,
+  makePrimary,
+  removeCategory,
+  type CategoryChoice,
+} from './select/category-chooser-logic.ts';
 export { LoadError, type LoadErrorProps } from './form/load-error.tsx';
 export { Badge, type BadgeProps, type BadgeTone } from './form/badge.tsx';
 export { EmptyState, type EmptyStateProps, type EmptyStateSize } from './form/empty-state.tsx';
@@ -84,6 +151,7 @@ export {
   useUnsavedChangesGuard,
   leavesPage,
   type ClickInfo,
+  type LeaveInfo,
   type LeaveLabels,
 } from './settings/unsaved-changes-guard.tsx';
 export {
@@ -92,6 +160,7 @@ export {
   type SettingsErrorSummaryProps,
 } from './settings/error-summary.tsx';
 export { NoAccess, type NoAccessProps } from './settings/no-access.tsx';
+export { SettingsTitle } from './settings/settings-title.tsx';
 export {
   relativeTime,
   whoKind,
@@ -107,6 +176,15 @@ export {
   type SettingsHistoryItem,
   type SettingsHistoryState,
 } from './settings/settings-history.tsx';
+export {
+  SettingsDrawer,
+  type SettingsDrawerLabels,
+  type SettingsDrawerProps,
+} from './settings/settings-drawer.tsx';
+export {
+  SettingsViewOnlyBanner,
+  type SettingsViewOnlyBannerProps,
+} from './settings/view-only-banner.tsx';
 export {
   SettingsHub,
   type SettingsHubGroup,
@@ -133,7 +211,14 @@ export {
 export { useLiveErrors, type LiveErrors } from './settings/use-live-errors.ts';
 export { DataList, type DataListRow, type DataListVariant } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
-export { CARD_TABLE } from './data/card-table.ts';
+export {
+  Pagination,
+  PrevNext,
+  pageWindow,
+  type PageItem as PaginationPageItem,
+  type PaginationLabels,
+} from './data/pagination.tsx';
+export { CARD_TABLE, ROW_ACTIONS_COLUMN_ID } from './data/card-table.ts';
 export { MemberColumns } from './data/member-columns.tsx';
 export { addressLines } from './data/address.ts';
 export { EmailText } from './data/email-text.tsx';
@@ -146,6 +231,18 @@ export {
 } from './data/ledger.tsx';
 export { ActivityTable, formatCount, type ActivityColumn } from './dashboard/activity-table.tsx';
 export {
+  ActivityCardSkeleton,
+  DashboardLoading,
+  DistributionCardSkeleton,
+  StatCardSkeleton,
+  activitySkeletonColumns,
+  type ActivityCardSkeletonProps,
+  type ActivitySkeletonColumn,
+  type DistributionCardSkeletonProps,
+  type StatCardSkeletonProps,
+} from './dashboard/dashboard-loading.tsx';
+export { DashboardSlot, type DashboardSource } from './dashboard/dashboard-slot.tsx';
+export {
   DashboardCard,
   DistributionBar,
   StatCard,
@@ -156,6 +253,7 @@ export {
   type StatTone,
 } from './dashboard/dashboard.tsx';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
+export { SidePanel, type SidePanelProps } from './overlay/side-panel.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
 export {
   ActionMenu,
@@ -164,6 +262,20 @@ export {
   type ActionMenuProps,
 } from './overlay/action-menu.tsx';
 export { Popover, type PopoverProps } from './overlay/popover.tsx';
+export {
+  ColumnPickerPanel,
+  type ColumnPickerLabels,
+  type ColumnPickerPanelProps,
+} from './list-views/column-picker-panel.tsx';
+export {
+  ManageViewsDialog,
+  SAVED_VIEW_NAME_MAX,
+  SaveViewDialog,
+  type SavedViewItem,
+  type SavedViewLabels,
+  type SavedViewProblem,
+  type SavedViewVisibility,
+} from './list-views/saved-view-dialogs.tsx';
 export { FilterChip, type FilterChipProps } from './form/filter-chip.tsx';
 export { THEME_COOKIE, THEME_SCRIPT, themeChoice, type ThemeChoice } from './theme/theme.ts';
 export { ThemeMenu, applyThemeChoice, type ThemeMenuProps } from './theme/theme-menu.tsx';
@@ -241,3 +353,116 @@ export {
   type PrefsStore,
 } from './palette/panel-prefs.ts';
 export { panelToolsLabels } from './palette/palette-labels.ts';
+export {
+  ConfirmAction,
+  type ConfirmActionProps,
+  type ConfirmLevel,
+} from './overlay/confirm-action.tsx';
+export { BottomSheet, type BottomSheetProps } from './overlay/bottom-sheet.tsx';
+export { useDesktop, useMediaQuery, DESKTOP_QUERY, WIDE_QUERY } from './list/use-desktop.ts';
+export { ListThumb } from './list/list-thumb.tsx';
+export {
+  LIST_SKELETON_MAX_ROWS,
+  ListLoadingStatus,
+  ListRefreshBar,
+  ListRefreshHeadRow,
+  ListRefreshing,
+  ListSkeletonContent,
+  ListSkeletonRows,
+  listSkeletonRowCount,
+  useListLoading,
+  type ListLoading,
+  type ListSkeletonCell,
+  type ListSkeletonKind,
+} from './list/list-skeleton.tsx';
+export {
+  ListColumnsPanel,
+  type ListColumnsLabels,
+  type ListColumnsPanelProps,
+} from './list/list-columns-panel.tsx';
+export {
+  ListSortPanel,
+  type ListDirection,
+  type ListSortLabels,
+  type ListSortPanelProps,
+} from './list/list-sort-panel.tsx';
+export {
+  ListFilterPanel,
+  type ListFilterField,
+  type ListFilterLabels,
+  type ListFilterPanelProps,
+} from './list/list-filter-panel.tsx';
+export {
+  ListPagination,
+  pageItems,
+  type ListPaginationLabels,
+  type ListPaginationProps,
+  type PageItem,
+} from './list/list-pagination.tsx';
+export {
+  SaveFilterDialog,
+  ManageFiltersDialog,
+  SAVED_FILTER_NAME_MAX,
+  type ManagedFilter,
+  type ManageFiltersDialogProps,
+  type ManageFiltersLabels,
+  type SaveFilterDialogProps,
+  type SaveFilterLabels,
+  type SavedFilterFieldLabels,
+  type SavedFilterProblem,
+  type SavedFilterVisibility,
+} from './list/saved-filter-dialogs.tsx';
+export {
+  ExportDialog,
+  saveFile,
+  type ExportDialogLabels,
+  type ExportDialogProps,
+  type ExportFormat,
+} from './list/export-dialog.tsx';
+export { useRowSelection, type RowSelectionState } from './list/use-row-selection.ts';
+export { SuperList, type SuperListProps, type SuperListTool } from './list/super-list.tsx';
+export {
+  SuperTable,
+  type SuperColumn,
+  type SuperTableProps,
+  type SuperTableSelectionLabels,
+} from './list/super-table.tsx';
+export {
+  useSuperListQuery,
+  type SuperListQuery,
+  type SuperListQueryOptions,
+} from './list/use-super-list-query.ts';
+export {
+  FilterChipRow,
+  type FilterChipRowChip,
+  type FilterChipRowProps,
+} from './list/filter-chip-row.tsx';
+export { ListViewsBar, type ListViewsBarProps } from './list/list-views-bar.tsx';
+export {
+  DescriptionWriter,
+  mergeDraft,
+  type DescriptionWriterProps,
+} from './writer/description-writer.tsx';
+export {
+  AiWriterModal,
+  type AiWriterModalProps,
+  type InsertMode,
+} from './writer/ai-writer-modal.tsx';
+export {
+  loadWriterStatus,
+  requestDraft,
+  type WriterApiResult,
+  type WriterCall,
+  type WriterOutcome,
+  type WriterRequest,
+  type WriterStatus,
+} from './writer/writer-api.ts';
+export {
+  WRITER_COPY,
+  clampCategory,
+  clampDetails,
+  clampTitle,
+  leftOutLine,
+  type LeftOut,
+  type WriterDetail,
+} from './writer/writer-copy.ts';

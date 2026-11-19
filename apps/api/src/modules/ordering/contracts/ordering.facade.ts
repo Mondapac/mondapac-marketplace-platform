@@ -1,5 +1,11 @@
 import type { CallContext, Id, Money, Result, Temporal } from '@mondapac/shared-kernel';
+import type {
+  AdminCustomerPaymentsFailure,
+  CustomerPaymentsPage,
+  CustomerPaymentsRequest,
+} from '../application/use-cases/admin-customer-payments.use-case';
 import type { AccessDenied } from '../../../platform/authz';
+import type { RefundReason } from '../domain/refund';
 
 /** A payment the provider holds on a card, as the webhook receiver reports it. */
 export interface AuthorisedPayment {
@@ -71,6 +77,28 @@ export interface ShipmentNotice {
 export type ShipmentNoticeFailure = OrderNoticeFailure;
 
 /**
+ * What the customer's refund emails need from a refund Stripe confirmed (`ordering.refund-
+ * succeeded.v1`): the customer's account id (for the address lookup in `identity` only), the
+ * reason code, the amount given back and how many units it covered. No name, address or Stripe id.
+ */
+export interface RefundNotice {
+  readonly orderId: string;
+  readonly accountId: Id<'Account'>;
+  readonly refundId: Id<'Refund'>;
+  /** `SELLER_UNAVAILABLE_REASON` when the seller marked the units unavailable (decision 6). */
+  readonly reason: RefundReason;
+  readonly requestedBy: 'admin' | 'seller';
+  readonly amount: Money;
+  readonly units: number;
+}
+
+/** An unknown, foreign-Market or not succeeded refund is `ordering.refund-not-found`. */
+export type RefundNoticeFailure =
+  | AccessDenied
+  | { readonly code: 'validation.failed' }
+  | { readonly code: 'ordering.refund-not-found' };
+
+/**
  * The short customer name of one of the seller's own paid seller orders (in-app notices). PERSONAL
  * DATA for the seller member who asked: never logged, stored on a notice, cached or put in an
  * event; rendered as escaped text only.
@@ -111,6 +139,48 @@ export type SellerOrderHealthCountsFailure = AccessDenied | { readonly code: 'va
 
 export type DeliveredSellerOrdersFailure = AccessDenied | { readonly code: 'validation.failed' };
 
+/**
+ * The facts of one delivered seller order, for promotions' credits on delivery (cashback). Ids,
+ * one amount and instants: no name, address or payment detail.
+ */
+export interface DeliveredSellerOrderFacts {
+  readonly orderId: Id<'Order'>;
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly customerAccountId: Id<'Account'>;
+  readonly currency: string;
+  /**
+   * The goods of this seller order as charged (unit price × quantity of its lines), without tax
+   * and without shipping: a tax-inclusive line has its frozen tax taken out.
+   */
+  readonly goods: bigint;
+  /**
+   * The goods given back so far by this seller order's refunds that have not failed (pending ones
+   * count), without tax and without shipping; at most `goods`.
+   */
+  readonly refundedGoods: bigint;
+  /**
+   * The part of `refundedGoods` given back by refunds that succeeded (a pending one may still
+   * fail): what a cashback clawback may count (Hassan L-9). At most `refundedGoods`.
+   */
+  readonly succeededRefundedGoods: bigint;
+  /**
+   * Whether the seller was the customer's exclusive seller when the order was placed: the flag
+   * frozen on the seller order's lines at checkout (customers phase 4b).
+   */
+  readonly exclusiveSeller: boolean;
+  readonly placedAt: Temporal.Instant;
+  readonly deliveredAt: Temporal.Instant;
+}
+
+export type DeliveredSellerOrderFactsFailure =
+  | AccessDenied
+  | { readonly code: 'validation.failed' }
+  /** Unknown, another Market's, or a seller order of another order: one answer. */
+  | { readonly code: 'ordering.order-not-found' }
+  /** Not delivered (yet), or placed before its tax was recorded: no amount to give. */
+  | { readonly code: 'ordering.facts-unavailable' };
+
 /** The PaymentIntent an order holds (null before checkout created one). */
 export interface OrderPaymentRef {
   readonly orderId: string;
@@ -137,7 +207,96 @@ export type OwnOpenObligationsFailure = AccessDenied;
  * What `payments` (the Stripe webhook receiver) calls. Both methods take the system actor's
  * `CallContext` unchanged and are idempotent: a repeated event changes nothing.
  */
+/**
+ * What one customer's confirmed orders and succeeded refunds add up to, for the `customers` read
+ * model. Amounts in minor units of `currency` (null with no confirmed order). No personal data.
+ */
+export interface CustomerOrderStats {
+  readonly accountId: Id<'Account'>;
+  readonly orderCount: number;
+  readonly firstOrderAt: Temporal.Instant | null;
+  readonly lastOrderAt: Temporal.Instant | null;
+  readonly spentMinor: bigint | null;
+  readonly currency: string | null;
+  readonly refundCount: number;
+  readonly refundedMinor: bigint;
+}
+
+/** A keyset page of the accounts with a confirmed order, ascending by id. */
+export interface CustomerOrderAccounts {
+  readonly accountIds: readonly Id<'Account'>[];
+}
+
+export type CustomerOrderStatsFailure = AccessDenied | { readonly code: 'validation.failed' };
+
+/**
+ * What one customer's confirmed orders add up to with one seller (customers management phase 3).
+ * `spentMinor` is the seller orders' gross less their succeeded refunds (never below zero), in
+ * `currency`. No personal data.
+ */
+export interface CustomerSellerStats {
+  readonly sellerId: Id<'Seller'>;
+  readonly orderCount: number;
+  readonly firstOrderAt: Temporal.Instant;
+  readonly lastOrderAt: Temporal.Instant;
+  readonly spentMinor: bigint;
+  readonly currency: string;
+}
+
+/** The most seller orders one page of {@link OrderingFacade.sellerCustomerOrders} holds. */
+export const MAX_SELLER_CUSTOMER_ORDERS = 100;
+
+/** One of the seller's own paid seller orders of a customer: ids, money and fulfilment only. */
+export interface SellerCustomerOrder {
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly orderId: Id<'Order'>;
+  readonly paidAt: Temporal.Instant;
+  readonly total: Money;
+  readonly fulfilment: 'to-ship' | 'shipped' | 'delivered';
+  readonly deliveredAt: Temporal.Instant | null;
+}
+
+export interface SellerCustomerOrders {
+  readonly items: readonly SellerCustomerOrder[];
+  readonly total: number;
+}
+
+export type SellerCustomerOrdersFailure = AccessDenied | { readonly code: 'validation.failed' };
+
 export interface OrderingFacade {
+  /** Rule `system`: one customer's confirmed-order totals per seller (customers phase 3). */
+  customerSellerStats(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<readonly CustomerSellerStats[], CustomerOrderStatsFailure>>;
+
+  /**
+   * Rule `permissions [ordering.seller-order.view]`: a page of the calling seller's own paid
+   * seller orders of one customer, newest first (`pageSize` 1 to 100). The seller comes from the
+   * session. The account id is what `customers` resolved from the seller's own customer code and
+   * is never answered back.
+   */
+  sellerCustomerOrders(
+    context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly page: number;
+      readonly pageSize: number;
+    },
+  ): Promise<Result<SellerCustomerOrders, SellerCustomerOrdersFailure>>;
+
+  /** Rule `system`: the customers read model's order totals for one account. */
+  customerOrderStats(
+    context: CallContext,
+    accountId: Id<'Account'>,
+  ): Promise<Result<CustomerOrderStats, CustomerOrderStatsFailure>>;
+
+  /** Rule `system`: accounts with a confirmed order after `after` (null: from the start), at most `limit` (1 to 500). */
+  customerOrderAccounts(
+    context: CallContext,
+    request: { readonly after: Id<'Account'> | null; readonly limit: number },
+  ): Promise<Result<CustomerOrderAccounts, CustomerOrderStatsFailure>>;
+
   /**
    * The card holds the money. Commits the stock, then captures, then confirms the order; if the
    * stock is gone or the amount differs the authorisation is voided and the order cancelled.
@@ -177,6 +336,15 @@ export interface OrderingFacade {
   ): Promise<Result<ShipmentNotice, ShipmentNoticeFailure>>;
 
   /**
+   * The succeeded refund behind an `ordering.refund-succeeded.v1` event, for the customer's refund
+   * email. Rule `system`.
+   */
+  refundNotice(
+    context: CallContext,
+    request: { readonly orderId: string; readonly refundId: string },
+  ): Promise<Result<RefundNotice, RefundNoticeFailure>>;
+
+  /**
    * The PaymentIntent the order itself holds, for the dispute consumer of `commission-payouts`.
    * Rule `system`. An unknown or foreign-Market order is `ordering.order-not-found`.
    */
@@ -184,6 +352,15 @@ export interface OrderingFacade {
     context: CallContext,
     orderId: string,
   ): Promise<Result<OrderPaymentRef, OrderPaymentRefFailure>>;
+
+  /**
+   * The facts of one delivered seller order (rule `system`), for promotions' credits on delivery
+   * (customers phase 4c). See {@link DeliveredSellerOrderFacts}.
+   */
+  deliveredSellerOrderFacts(
+    context: CallContext,
+    request: { readonly orderId: string; readonly sellerOrderId: string },
+  ): Promise<Result<DeliveredSellerOrderFacts, DeliveredSellerOrderFactsFailure>>;
 
   /**
    * The short customer name of each of the seller's own paid seller orders asked for, for the
@@ -224,6 +401,43 @@ export interface OrderingFacade {
     context: CallContext,
     accountId: Id<'Account'>,
   ): Promise<Result<OwnOpenObligations, OwnOpenObligationsFailure>>;
+
+  /**
+   * The customer account that placed an order, by the order's id, for the admin Customers search
+   * (customers management phase 2b). Rule `permissions [ordering.order.view]`, a platform admin not
+   * acting as a seller. Unknown, malformed and another Market's ids are `ordering.order-not-found`.
+   */
+  adminOrderAccountOf(
+    context: CallContext,
+    orderId: string,
+  ): Promise<
+    Result<
+      { readonly accountId: Id<'Account'> },
+      | AccessDenied
+      | { readonly code: 'access.unavailable' }
+      | { readonly code: 'ordering.order-not-found' }
+    >
+  >;
+
+  /**
+   * One customer's orders as payments (state, payment state, amount, the provider's payment id,
+   * created), filtered, sorted and paged, with the captured totals per currency ("Paid"). For the
+   * customer page's Payments section in `payments` (customers management phase 2b). Rule
+   * `permissions [payments.customer-payment.view]`, a platform admin not acting as a seller.
+   */
+  adminCustomerPayments(
+    context: CallContext,
+    request: CustomerPaymentsRequest,
+  ): Promise<Result<CustomerPaymentsPage, AdminCustomerPaymentsFailure | AccessDenied>>;
+
+  /**
+   * The ids of one customer's orders, newest first, at most `limit` (1 to 10,001), for the
+   * customer page's Disputes section in `payments`. Same rule as `adminCustomerPayments`.
+   */
+  adminCustomerOrderIds(
+    context: CallContext,
+    request: { readonly accountId: Id<'Account'>; readonly limit: number },
+  ): Promise<Result<readonly Id<'Order'>[], AdminCustomerPaymentsFailure | AccessDenied>>;
 
   /**
    * The signed-in customer's own seller orders whose fulfilment is `delivered`, delivered at or

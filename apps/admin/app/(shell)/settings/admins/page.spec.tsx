@@ -37,6 +37,7 @@ const session = (permissionKeys: string[]): AdminSession => ({
   secondFactorActive: true,
   lastSignInAt: null,
   timezone: null,
+  marketTimezone: 'UTC',
   locale: null,
   email: 'ada@example.test',
   displayName: 'Ada',
@@ -92,9 +93,13 @@ describe('admin team page', () => {
     await expect(show()).rejects.toThrow('redirect:/session-ended');
   });
 
-  it('says something went wrong when the API is unavailable', async () => {
+  it('shows a titled critical banner when the API is unavailable', async () => {
     mocks.get.mockResolvedValue({ kind: 'unavailable' });
     await show();
-    expect(screen.getByText(messages.identity.error.unknown)).toBeTruthy();
+    expect(
+      screen.getByText(`${messages.settings.hub.link.admins} could not be loaded`),
+    ).toBeTruthy();
+    expect(screen.getByText(messages.settings['load-error'].body)).toBeTruthy();
+    expect(screen.getByRole('alert')).toBeTruthy();
   });
 });

@@ -101,3 +101,59 @@ export class SellerHealthQueueBody {
   @ApiProperty({ description: 'True when more sellers were unhealthy than the queue holds.' })
   truncated!: boolean;
 }
+
+export class SellerHealthQueueListItemBody extends SellerHealthQueueItemBody {
+  @ApiProperty({
+    enum: ['open'],
+    isArray: true,
+    description: 'The row actions the caller may run (Open).',
+  })
+  actions!: string[];
+}
+
+export class SellerHealthQueueListBody {
+  @ApiProperty({ type: [SellerHealthQueueListItemBody] }) items!: SellerHealthQueueListItemBody[];
+  @ApiProperty({ nullable: true, type: Number, description: 'Null with `paging=prev-next`.' })
+  total!: number | null;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+  @ApiProperty({ description: 'The sellers per view (all, or the metric), whatever the filter.' })
+  counts!: Record<string, number>;
+  @ApiProperty({ description: 'True when more sellers were unhealthy than the queue holds.' })
+  truncated!: boolean;
+}
+
+export class SellerHealthRecalculationBody {
+  @ApiProperty({
+    enum: ['queued', 'already-queued'],
+    description:
+      'queued: the request was written and the job measures the seller within about two minutes. ' +
+      'already-queued: one was already waiting; nothing was added.',
+  })
+  status!: 'queued' | 'already-queued';
+}
+
+export class OwnSellerHealthRefreshBody {
+  @ApiProperty({ description: 'A recount is waiting for the job.' })
+  pending!: boolean;
+
+  @ApiProperty({ minimum: 0, description: 'Seconds until "Refresh now" may be clicked; 0 = now.' })
+  retryAfterSeconds!: number;
+}
+
+export class OwnSellerHealthBody {
+  @ApiProperty({
+    type: SellerHealthCardBody,
+    nullable: true,
+    description: 'The latest snapshot, or null when no night has measured the seller yet.',
+  })
+  current!: SellerHealthCardBody | null;
+
+  @ApiProperty({ type: [SellerHealthTrendPointBody], description: 'Oldest first, last 90 days.' })
+  trend!: SellerHealthTrendPointBody[];
+
+  @ApiProperty({ type: OwnSellerHealthRefreshBody })
+  refresh!: OwnSellerHealthRefreshBody;
+}

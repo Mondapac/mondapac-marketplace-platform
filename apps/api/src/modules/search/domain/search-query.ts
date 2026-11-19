@@ -1,9 +1,19 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { Id, Result } from '@mondapac/shared-kernel';
-import { parseFilters, type ParsedFilters } from './search-filter';
+import { parseFilters, parsePrice, type ParsedFilters, type PriceRange } from './search-filter';
 
 export const MIN_QUERY_LENGTH = 2;
 export const MAX_QUERY_LENGTH = 100;
+/**
+ * The most terms joined by `or` in one text (Hassan L-3): each `or` of the web-search syntax adds
+ * a branch the index must evaluate, so a long chain is refused instead of run.
+ */
+export const MAX_OR_TERMS = 8;
+
+/** How many terms the text has when its standalone `or` words are the separators (web-search syntax). */
+export function orTermsOf(text: string): number {
+  return text.split(/\s+/u).filter((word) => word.toLowerCase() === 'or').length + 1;
+}
 export const DEFAULT_PAGE_SIZE = 24;
 export const MAX_PAGE_SIZE = 48;
 /** Deep pages are refused: a storefront narrows the query instead of paging far. */
@@ -37,6 +47,11 @@ export type SearchSort = (typeof SEARCH_SORTS)[number];
 export interface SearchProductsRequest {
   readonly q?: string | undefined;
   readonly category?: string | undefined;
+  /**
+   * `true`: only Offers whose product is on `category` itself, not on a category below it (the
+   * buyer site's "Other {name}" filter, categories C6). Needs a `category`.
+   */
+  readonly direct?: string | undefined;
   /** A store address: lists that store's Offers (no `q`). */
   readonly store?: string | undefined;
   /** A brand address: lists the Offers of that brand's products (no `q`, no `store`). */
@@ -46,6 +61,8 @@ export interface SearchProductsRequest {
   readonly filter?: string | readonly string[] | undefined;
   /** Number ranges (A7): `<attribute>:<min>..<max>`, either end may be left out. */
   readonly range?: string | readonly string[] | undefined;
+  /** The price filter (variants V8): `<min>..<max>` in minor units, either end may be left out. */
+  readonly price?: string | undefined;
   readonly page?: number | undefined;
   readonly pageSize?: number | undefined;
 }
@@ -58,6 +75,8 @@ export interface SearchQuery {
   /** The text to search for, or null when browsing a category. */
   readonly text: string | null;
   readonly categoryId: Id<'Category'> | null;
+  /** True: the category alone, without its subcategories. Only with a category. */
+  readonly direct: boolean;
   /** The store address to list, or null. Never with a text. */
   readonly storeSlug: string | null;
   /** The brand address to list, or null. Never with a text or a store. */
@@ -65,6 +84,8 @@ export interface SearchQuery {
   readonly sort: SearchSort;
   /** Attribute filters, checked for shape; which are filters of the category is catalog's answer. */
   readonly filters: ParsedFilters;
+  /** The price filter (V8), or null. */
+  readonly price: PriceRange | null;
   readonly page: number;
   readonly pageSize: number;
 }
@@ -104,6 +125,7 @@ export function parseSearchQuery(
       const length = [...collapsed].length;
       if (length < MIN_QUERY_LENGTH) return invalid('q', 'too-short');
       if (length > MAX_QUERY_LENGTH) return invalid('q', 'too-long');
+      if (orTermsOf(collapsed) > MAX_OR_TERMS) return invalid('q', 'too-many-terms');
       text = collapsed;
     }
   }
@@ -113,6 +135,12 @@ export function parseSearchQuery(
       typeof request.category === 'string' ? parseId<'Category'>(request.category) : null;
     if (parsed === null || !parsed.ok) return invalid('category', 'format');
     categoryId = parsed.value;
+  }
+  let direct = false;
+  if (request.direct !== undefined && request.direct !== '') {
+    if (request.direct !== 'true') return invalid('direct', 'value');
+    if (categoryId === null) return invalid('direct', 'without-category');
+    direct = true;
   }
   let storeSlug: string | null = null;
   if (request.store !== undefined && request.store !== '') {
@@ -169,6 +197,12 @@ export function parseSearchQuery(
     if (storeSlug !== null) return invalid('filter', 'with-store');
     if (brandSlug !== null) return invalid('filter', 'with-brand');
   }
+  const price = parsePrice(request.price);
+  if (!price.ok) return invalid(price.error.path, price.error.code);
+  if (price.value !== null) {
+    if (storeSlug !== null) return invalid('price', 'with-store');
+    if (brandSlug !== null) return invalid('price', 'with-brand');
+  }
 
   const page = request.page ?? 1;
   if (!Number.isInteger(page) || page < 1 || page > MAX_PAGE) return invalid('page', 'range');
@@ -179,10 +213,12 @@ export function parseSearchQuery(
   return ok({
     text,
     categoryId,
+    direct,
     storeSlug,
     brandSlug,
     sort,
     filters: filters.value,
+    price: price.value,
     page,
     pageSize,
   });

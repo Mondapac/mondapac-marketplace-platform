@@ -2,8 +2,8 @@
 
 import { ActionRow, Badge, Banner, Button, CheckboxRow, TextField } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
-import { formatInstant } from '../shared/format.ts';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { formatInstant, formatInstantInZone } from '../shared/format.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { CancelDeletionDialog, type CancelOutcome } from './cancel-dialog.tsx';
 import { blockersOf, deletionProblemOf } from './errors.ts';
@@ -15,6 +15,13 @@ import {
   type AdminDeletionRequestMade,
   type Blocker,
 } from './types.ts';
+
+/** An open request read with the customer (GET customers/admin/customers/:id). */
+export interface ExistingDeletion {
+  readonly requestId: string;
+  readonly status: 'pending' | 'executing';
+  readonly scheduledFor: string;
+}
 
 type Notice =
   | { readonly kind: 'requested'; readonly date: string }
@@ -32,11 +39,29 @@ export function BuyerDeletion({
   accountId,
   waitingPeriodDays,
   csrfToken,
+  openSignal,
+  onPendingChange,
+  existing,
+  zone,
 }: {
   readonly accountId: string;
   /** The Market's waiting period, when the admin may read the setting; else null (no number). */
   readonly waitingPeriodDays: number | null;
   readonly csrfToken: string;
+  /**
+   * The customer page opens the dialog from its own More menu: each new value opens it, and the
+   * card shows no Delete button of its own. Without it the card has its button (the lookup).
+   */
+  readonly openSignal?: number;
+  /** Told when a request made here is pending, or no longer (cancelled). */
+  readonly onPendingChange?: (pending: { readonly requestId: string } | null) => void;
+  /**
+   * The account's open request as the customer page read it: the card starts pending (a banner
+   * with the date and Cancel; none while it is being carried out) and offers no second request.
+   */
+  readonly existing?: ExistingDeletion | null;
+  /** The zone dates are shown in (the admin's); without it, the browser's. */
+  readonly zone?: string;
 }) {
   const t = useTranslations('account-deletion');
   const locale = useLocale();
@@ -49,14 +74,26 @@ export function BuyerDeletion({
   const [reasonError, setReasonError] = useState(false);
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [requestId, setRequestId] = useState<string | null>(null);
+  const [requestId, setRequestId] = useState<string | null>(existing?.requestId ?? null);
+  const [scheduledFor, setScheduledFor] = useState<string | null>(existing?.scheduledFor ?? null);
+  const executing = existing?.status === 'executing' && requestId === existing.requestId;
+  const dateOf = (iso: string) =>
+    zone === undefined ? formatInstant(iso, locale) : formatInstantInZone(iso, locale, zone);
   const [cancelling, setCancelling] = useState<string | null>(null);
   const busy = useRef(false);
   const noticeRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (notice !== null) noticeRef.current?.focus();
   }, [notice]);
+
+  useEffect(() => {
+    if (openSignal !== undefined && openSignal > 0) openDialog();
+  }, [openSignal]);
+
+  useEffect(() => {
+    onPendingChange?.(requestId === null ? null : { requestId });
+  }, [requestId, onPendingChange]);
 
   function openDialog() {
     setNotice(null);
@@ -91,7 +128,8 @@ export function BuyerDeletion({
     setPending(false);
     if (result.ok) {
       setRequestId(result.body.requestId);
-      setNotice({ kind: 'requested', date: formatInstant(result.body.scheduledFor, locale) });
+      setScheduledFor(result.body.scheduledFor);
+      setNotice({ kind: 'requested', date: dateOf(result.body.scheduledFor) });
       setTicket('');
       setReason('');
       setUnderstood(false);
@@ -167,11 +205,33 @@ export function BuyerDeletion({
         </div>
       )}
       {requestId === null ? (
-        <ActionRow>
-          <Button variant="destructive" disabled={pending} onClick={openDialog}>
-            {t('buyer.action')}
-          </Button>
-        </ActionRow>
+        openSignal !== undefined ? null : (
+          <ActionRow>
+            <Button variant="destructive" disabled={pending} onClick={openDialog}>
+              {t('buyer.action')}
+            </Button>
+          </ActionRow>
+        )
+      ) : openSignal !== undefined ? (
+        // The customer page: its header carries the badge; this is the banner with the date.
+        notice?.kind === 'requested' ? null : (
+          <Banner tone="attention" title={t('buyer.pending-badge')}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span>
+                {executing
+                  ? t('buyer.executing')
+                  : scheduledFor === null
+                    ? t('buyer.pending-undated')
+                    : t('buyer.pending-on', { date: dateOf(scheduledFor) })}
+              </span>
+              {executing ? null : (
+                <Button variant="secondary" onClick={() => setCancelling(requestId)}>
+                  {t('buyer.cancel-request')}
+                </Button>
+              )}
+            </div>
+          </Banner>
+        )
       ) : (
         <div className="flex flex-wrap items-center gap-3">
           <Badge tone="attention">{t('buyer.pending-badge')}</Badge>

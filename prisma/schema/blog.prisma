@@ -315,3 +315,47 @@ model BlogInbox {
   @@map("inbox")
   @@schema("blog")
 }
+
+/// One picture of the blog media library of a Market (blog media upload): the cover of a post or an
+/// image block names it by id. The upload is decoded and written again as metadata-free JPEG
+/// renditions; the raw upload is never stored. Inserted once and never changed. The uploader is a
+/// plain account id with no key to `identity`.
+model BlogMedia {
+  marketId          String               @map("market_id") @db.VarChar(8)
+  tenantId          String               @map("tenant_id")
+  id                String               @db.Uuid
+  uploaderAccountId String               @map("uploader_account_id") @db.Uuid
+  /// The size of the `large` rendition.
+  pixelWidth        Int                  @map("pixel_width")
+  pixelHeight       Int                  @map("pixel_height")
+  /// The size of the upload in bytes (abuse review); the upload itself is not kept.
+  byteSize          Int                  @map("byte_size")
+  createdAt         DateTime             @map("created_at") @db.Timestamptz(6)
+  renditions        BlogMediaRendition[]
+
+  @@id([marketId, id])
+  /// The library list: newest first, paged.
+  @@index([marketId, createdAt(sort: Desc), id(sort: Desc)])
+  @@map("media")
+  @@schema("blog")
+}
+
+/// One size of a blog picture: `large` or `thumb`, JPEG. The key is `blog-media/<media id>/<size>`
+/// (CHECK).
+model BlogMediaRendition {
+  marketId    String    @map("market_id") @db.VarChar(8)
+  tenantId    String    @map("tenant_id")
+  mediaId     String    @map("media_id") @db.Uuid
+  sizeCode    String    @map("size_code")
+  objectKey   String    @map("object_key")
+  sha256      Bytes
+  byteSize    Int       @map("byte_size")
+  pixelWidth  Int       @map("pixel_width")
+  pixelHeight Int       @map("pixel_height")
+  media       BlogMedia @relation(fields: [marketId, mediaId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, mediaId, sizeCode])
+  @@unique([marketId, objectKey])
+  @@map("media_renditions")
+  @@schema("blog")
+}

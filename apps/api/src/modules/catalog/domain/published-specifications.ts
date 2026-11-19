@@ -1,3 +1,4 @@
+import { isMeasureValue, measureFromBase } from '@mondapac/shared-kernel';
 import type { AttributeDataType } from '@mondapac/shared-kernel';
 import type { FamilyGroup } from './attribute-family';
 
@@ -11,7 +12,8 @@ export type PublishedSpecificationValue =
   | { readonly kind: 'list'; readonly items: readonly string[] }
   | { readonly kind: 'number'; readonly value: string }
   | { readonly kind: 'boolean'; readonly value: boolean }
-  | { readonly kind: 'date'; readonly value: string };
+  | { readonly kind: 'date'; readonly value: string }
+  | { readonly kind: 'measure'; readonly value: string; readonly unitLabel: string };
 
 export interface PublishedSpecification {
   readonly code: string;
@@ -39,7 +41,20 @@ export interface SpecificationDefinition {
   readonly showOnProductPage: boolean;
   readonly names: Readonly<Record<string, string>>;
   readonly options: ReadonlyMap<string, SpecificationOption>;
+  /**
+   * The attribute this one was merged into (attributes A8): its code, and for a choice attribute
+   * where each of its option codes goes. Read-time mapping; the product revision is not changed.
+   */
+  readonly mergedInto?: {
+    readonly code: string;
+    readonly options: ReadonlyMap<string, string>;
+  } | null;
+  /** A `measure` only: the decimal places the published revision allows (attributes A3). */
+  readonly measureDecimals?: number;
 }
+
+/** The Market's labels of its measure units ("kg", "kilogram"), by unit code. */
+export type SpecificationUnitLabels = ReadonlyMap<string, Readonly<Record<string, string>>>;
 
 export interface SpecificationLocales {
   readonly requested: string;
@@ -85,6 +100,7 @@ function valueOf(
   definition: SpecificationDefinition,
   stored: unknown,
   locales: SpecificationLocales,
+  unitLabels: SpecificationUnitLabels,
 ): PublishedSpecificationValue | null {
   let raw = stored;
   if (definition.localizable) {
@@ -117,19 +133,47 @@ function valueOf(
       return label === null ? null : { kind: 'text', text: label };
     }
     case 'multi-select': {
-      if (!Array.isArray(raw)) return null;
+      // A value stored before a select was converted is one code (attributes A8).
+      const list: unknown = typeof raw === 'string' ? [raw] : raw;
+      if (!Array.isArray(list)) return null;
       const items = new Set<string>();
-      for (const code of raw as unknown[]) {
+      for (const code of list as unknown[]) {
         const label = optionLabel(definition, code, locales);
         if (label !== null) items.add(label);
         if (items.size === MAX_SPECIFICATION_VALUES) break;
       }
       return items.size === 0 ? null : { kind: 'list', items: [...items] };
     }
+    case 'measure': {
+      // Stored in the base unit with the seller's unit; shown in that unit, never another.
+      if (!isMeasureValue(raw) || definition.measureDecimals === undefined) return null;
+      const value = measureFromBase(raw.value, raw.unit, definition.measureDecimals);
+      const labels = unitLabels.get(raw.unit);
+      const unitLabel = labels === undefined ? null : pickText(labels, locales);
+      return value === null || unitLabel === null ? null : { kind: 'measure', value, unitLabel };
+    }
     // Long text is the description; any type the page does not know is not shown.
     default:
       return null;
   }
+}
+
+/**
+ * A stored value of a merged attribute as the target holds it: an option code goes through the
+ * map (a code the map lacks cannot be told, so null), a list maps each code; any other value is
+ * the same value, as the types are equal.
+ */
+export function mergedValue(options: ReadonlyMap<string, string>, stored: unknown): unknown {
+  if (options.size === 0) return stored;
+  if (typeof stored === 'string') return options.get(stored) ?? null;
+  if (Array.isArray(stored)) {
+    const mapped = (stored as unknown[]).flatMap((code) => {
+      const goes = typeof code === 'string' ? options.get(code) : undefined;
+      return goes === undefined ? [] : [goes];
+    });
+    return mapped.length === 0 ? null : [...new Set(mapped)];
+  }
+  return null;
 }
 
 /**
@@ -145,6 +189,8 @@ export function buildPublishedSpecifications(input: {
   readonly values: Readonly<Record<string, unknown>>;
   readonly definitions: ReadonlyMap<string, SpecificationDefinition>;
   readonly locales: SpecificationLocales;
+  /** The Market's unit labels; a measure whose unit has no label in the locale is left out. */
+  readonly unitLabels: SpecificationUnitLabels;
 }): PublishedSpecificationGroup[] {
   const out: PublishedSpecificationGroup[] = [];
   let rows = 0;
@@ -153,15 +199,30 @@ export function buildPublishedSpecifications(input: {
     for (const entry of group.attributes) {
       if (rows >= MAX_PUBLISHED_SPECIFICATIONS) break;
       if (entry.isVariantOption || SHOWN_ELSEWHERE.has(entry.code)) continue;
-      const definition = input.definitions.get(entry.code);
-      if (definition === undefined || definition.status === 'draft') continue;
-      if (!definition.showOnProductPage || definition.dataType === 'long-text') continue;
-      const stored = input.values[entry.code];
+      const own = input.definitions.get(entry.code);
+      if (own === undefined || own.status === 'draft') continue;
+      let definition = own;
+      let code = entry.code;
+      let stored = input.values[entry.code];
       if (stored === undefined || stored === null) continue;
+      // A merged attribute reads as its target (attributes A8): the value is mapped, the row shows
+      // the target's name and labels. The target's own value wins when the product has both.
+      if (own.mergedInto !== undefined && own.mergedInto !== null) {
+        const target = input.definitions.get(own.mergedInto.code);
+        if (target === undefined || target.status !== 'active') continue;
+        const targetValue = input.values[own.mergedInto.code];
+        if (targetValue !== undefined && targetValue !== null) continue;
+        const mapped = mergedValue(own.mergedInto.options, stored);
+        if (mapped === null) continue;
+        definition = target;
+        code = own.mergedInto.code;
+        stored = mapped;
+      }
+      if (!definition.showOnProductPage || definition.dataType === 'long-text') continue;
       const name = pickText(definition.names, input.locales);
-      const value = valueOf(definition, stored, input.locales);
+      const value = valueOf(definition, stored, input.locales, input.unitLabels);
       if (name === null || value === null) continue;
-      specifications.push({ code: entry.code, name, value });
+      specifications.push({ code, name, value });
       rows += 1;
     }
     if (specifications.length > 0) out.push({ groupCode: group.groupCode, specifications });

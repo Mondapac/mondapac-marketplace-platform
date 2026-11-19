@@ -10,6 +10,7 @@ import {
   SettingRow,
   SettingSelect,
   SettingsErrorSummary,
+  SettingsViewOnlyBanner,
   SettingsPage,
   SettingsSection,
   toast,
@@ -22,6 +23,12 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { SettingsConflictView } from '../settings/conflict-view.tsx';
+import {
+  isNoteFailure,
+  ReviewNoteField,
+  trimmedNote,
+  useSentForReview,
+} from '../shared/review-note.tsx';
 import { useChangeHistory } from '../settings/last-changed.tsx';
 import { useSettingsChrome } from '../settings/settings-chrome.ts';
 import { deliveryProblemOf } from './errors.ts';
@@ -159,6 +166,9 @@ export function DeliverySettingsPanel({
   const chrome = useSettingsChrome();
   const [problem, setProblem] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Body | null>(null);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
   const state = useSettingsForm<DeliverySettings, SettingsForm>({
     initial,
     toDraft,
@@ -167,6 +177,8 @@ export function DeliverySettingsPanel({
     changes: (saved, draft) => changesOf(saved, draft, t, locale),
   });
   const settings = state.saved;
+  // The note is asked only where the view says a change is reviewed.
+  const reviewed = settings.review?.reviewed === true;
   const changeHistory = useChangeHistory(
     settings.lastChanged,
     'shipping/admin/delivery-settings/history',
@@ -210,6 +222,8 @@ export function DeliverySettingsPanel({
     state.discard();
     live.reset();
     setProblem(null);
+    setNote('');
+    setNoteError(null);
   }
 
   function submit() {
@@ -220,23 +234,41 @@ export function DeliverySettingsPanel({
       live.attempt();
       return;
     }
+    if (reviewed && trimmedNote(note) === null) {
+      setNoteError('required');
+      return;
+    }
     // A save that changes nothing needs no confirmation; any change is listed first.
     if (impactOf(settings, checked.body, show).length === 0) void save(checked.body);
     else setConfirm(checked.body);
   }
 
   async function save(body: Body) {
+    const sent = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sent === null) {
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     const result = await state.run(
       async (expectedVersion): Promise<SaveResult<DeliverySettings>> => {
-        const reply = await callApi<DeliverySettings>(
+        const reply = await callApi<DeliverySettings & { request?: unknown }>(
           'PUT',
           DELIVERY_SETTINGS_PATH,
-          { ...body, expectedVersion },
+          { ...body, expectedVersion, ...(sent === null ? {} : { note: sent }) },
           csrfToken,
         );
-        if (reply.ok) return { status: 'saved', saved: reply.body };
+        if (reply.ok) {
+          const { request, ...rest } = reply.body;
+          sentForReview({ request });
+          return { status: 'saved', saved: rest };
+        }
         if (reply.failure.status === 401) {
           window.location.assign('/session-ended');
+          return { status: 'failed' };
+        }
+        if (isNoteFailure(reply.failure)) {
+          setNoteError('rejected');
           return { status: 'failed' };
         }
         const key = deliveryProblemOf(reply.failure);
@@ -247,6 +279,7 @@ export function DeliverySettingsPanel({
     );
     if (result.status === 'saved') {
       live.reset();
+      setNote('');
       toast.success(t(`${P}.notice.saved`));
     }
     // The re-read failed too: the plain "reload the page" message is all that is left.
@@ -269,9 +302,9 @@ export function DeliverySettingsPanel({
         : marginLabel;
   const banners = [
     readOnly ? (
-      <Banner key="viewer-only" tone="info">
-        {t(`${P}.viewer-only`)}
-      </Banner>
+      <SettingsViewOnlyBanner key="viewer-only" title={t('settings.view-only.title')}>
+        {t('settings.view-only.body')}
+      </SettingsViewOnlyBanner>
     ) : null,
     invalid.length === 0 ? null : (
       <SettingsErrorSummary
@@ -316,6 +349,7 @@ export function DeliverySettingsPanel({
       }
       onSubmit={canManage ? submit : undefined}
       dirty={dirty}
+      dirtyCount={count}
       leave={chrome.leave}
       saveBar={
         canManage ? (
@@ -482,6 +516,21 @@ export function DeliverySettingsPanel({
           </Banner>
         </div>
       </SettingsSection>
+
+      {reviewed && canManage ? (
+        <SettingsSection title={t(`${P}.review-section`)}>
+          <div className="px-5 py-4">
+            <ReviewNoteField
+              value={note}
+              onChange={(next) => {
+                setNote(next);
+                setNoteError(null);
+              }}
+              error={noteError ?? undefined}
+            />
+          </div>
+        </SettingsSection>
+      ) : null}
 
       <Dialog
         open={confirm !== null}

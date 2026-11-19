@@ -16,6 +16,11 @@ export interface ApiFailure {
     readonly attemptsLeft?: number;
     /** The guarded action of `second-factor.required` or `second-factor.enrolment-required`. */
     readonly actionKey?: string;
+    /** A refused import file (catalog design 14c): the columns, the row counts and the size limit. */
+    readonly columns?: readonly string[];
+    readonly rows?: number;
+    readonly rowNumber?: number;
+    readonly maxBytes?: number;
   };
 }
 
@@ -28,6 +33,8 @@ export async function callApi<T>(
   path: string,
   body?: unknown,
   csrfToken?: string,
+  /** Aborts the request (a Stop button); the answer is then a `network` failure to ignore. */
+  signal?: AbortSignal,
 ): Promise<ApiResult<T>> {
   let response: Response;
   try {
@@ -41,6 +48,7 @@ export async function callApi<T>(
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       credentials: 'same-origin',
       cache: 'no-store',
+      ...(signal === undefined ? {} : { signal }),
     });
   } catch {
     return { ok: false, failure: { status: 0, code: 'network' } };

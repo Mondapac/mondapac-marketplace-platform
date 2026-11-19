@@ -1,5 +1,5 @@
 import type { IconName, PaletteSettingSpec } from '@mondapac/ui';
-import { PAYOUT_MANAGE_PERMISSION, PAYOUT_VIEW_PERMISSION } from '../payout/types.ts';
+import { INVITE_LINK_PERMISSION } from '../customers/types.ts';
 import { SOURCE_EDIT_PERMISSION, STOCK_VIEW_PERMISSION } from '../stock/types.ts';
 import {
   STORE_PROFILE_EDIT_PERMISSION,
@@ -15,7 +15,8 @@ import {
 // settings sub-navigation and the sidebar's single Settings item all read it, so they can never
 // disagree. Pages of a phase that has not shipped are absent, not disabled (Delivery & hours,
 // Roles, Order alerts). Personal account pages (profile, two-step sign-in, sessions) are not
-// settings cards: they live only in the account menu. Filtering is presentation only: the server
+// settings cards: they live only in the account menu. Payout account is under Accounting in the
+// main menu (menu design v2). Filtering is presentation only: the server
 // authorises every route.
 
 export interface SettingsLink {
@@ -59,20 +60,6 @@ export const settingsGroups: readonly SettingsGroup[] = [
     ],
   },
   {
-    id: 'money',
-    labelKey: 'settings.hub.group.money',
-    icon: 'wallet',
-    links: [
-      {
-        id: 'payout-account',
-        labelKey: 'settings.hub.link.payout-account',
-        href: '/settings/payout-account',
-        view: [PAYOUT_VIEW_PERMISSION],
-        manage: [PAYOUT_MANAGE_PERMISSION],
-      },
-    ],
-  },
-  {
     id: 'team',
     labelKey: 'settings.hub.group.team',
     icon: 'users',
@@ -83,6 +70,32 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/team',
         view: [TEAM_VIEW_PERMISSION],
         manage: [TEAM_INVITE_PERMISSION, TEAM_ASSIGN_PERMISSION],
+      },
+    ],
+  },
+  {
+    id: 'customers',
+    labelKey: 'settings.hub.group.customers',
+    icon: 'users',
+    links: [
+      {
+        id: 'invite-customers',
+        labelKey: 'settings.hub.link.invite-customers',
+        href: '/settings/invite-customers',
+        view: [INVITE_LINK_PERMISSION],
+        manage: [INVITE_LINK_PERMISSION],
+      },
+      {
+        id: 'exclusive-perks',
+        labelKey: 'settings.hub.link.exclusive-perks',
+        href: '/settings/exclusive-perks',
+        // Held by any seller role that sees or manages promotions; each card hides on its own key.
+        view: [
+          'promotions.promotion.view',
+          'promotions.promotion.manage',
+          'commission-payouts.earnings.view',
+        ],
+        manage: ['promotions.promotion.manage'],
       },
     ],
   },
@@ -142,12 +155,6 @@ export const settingEntries: readonly PaletteSettingSpec[] = [
     pageId: 'stock-locations',
     labelKey: 'palette.setting.stock-locations',
     keywordsKey: 'palette.setting.stock-locations-words',
-  },
-  {
-    id: 'payout-bank',
-    pageId: 'payout-account',
-    labelKey: 'palette.setting.payout-bank',
-    keywordsKey: 'palette.setting.payout-bank-words',
   },
   { id: 'team-members', pageId: 'team', labelKey: 'palette.setting.team-members' },
 ];

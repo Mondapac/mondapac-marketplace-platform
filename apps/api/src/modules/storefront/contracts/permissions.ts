@@ -95,6 +95,36 @@ export const STOREFRONT_SLIDE_PUBLISH = definePermission('storefront', {
   protected: true,
 });
 
+/** See the SEO settings of the Market, their history and which fields can be changed. Read only. */
+export const STOREFRONT_SEO_VIEW = definePermission('storefront', {
+  key: 'storefront.seo.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Change the texts and templates of the SEO settings: site name, title template, default
+ * description and share image, seller pages, social profiles and the page-type templates. No
+ * default role holds it; a platform admin gives it to a custom role.
+ */
+export const STOREFRONT_SEO_EDIT = definePermission('storefront', {
+  key: 'storefront.seo.edit',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Change what search engines are told about the business and whether they may index the site: the
+ * indexing switch, the logo, trading and legal names, ABN, address, contact, verification codes and
+ * the analytics id. Protected; every change also needs a fresh admin second factor and is refused
+ * in an acting-as session.
+ */
+export const STOREFRONT_SEO_MANAGE = definePermission('storefront', {
+  key: 'storefront.seo.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const STOREFRONT_PERMISSIONS = declarePermissions('storefront', [
   STOREFRONT_PAGE_READ,
   STOREFRONT_PAGE_EDIT,
@@ -108,4 +138,7 @@ export const STOREFRONT_PERMISSIONS = declarePermissions('storefront', [
   STOREFRONT_SLIDE_EDIT,
   STOREFRONT_SLIDE_PAUSE,
   STOREFRONT_SLIDE_PUBLISH,
+  STOREFRONT_SEO_VIEW,
+  STOREFRONT_SEO_EDIT,
+  STOREFRONT_SEO_MANAGE,
 ]);

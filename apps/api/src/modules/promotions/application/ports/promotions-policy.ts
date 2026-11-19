@@ -24,6 +24,8 @@ export interface BatchCodeSettings {
 export interface PromotionsSettings {
   /** The currency of every promotion and cart of the Market. */
   readonly currency: string;
+  /** The Market's price convention: shown prices include tax (AU) or not. */
+  readonly pricesIncludeTax: boolean;
   readonly rules: PromotionRules;
   /** All discounts together may take this share of a line, in basis points. */
   readonly lineDiscountCapBps: number;
@@ -36,6 +38,8 @@ export interface PromotionsSettings {
   readonly batchCodes: BatchCodeSettings | null;
   /** The first-order discount until an admin edits it; null when the Market configures none. */
   readonly firstOrderDefaults: FirstOrderSettings | null;
+  /** The Market's IANA zone: the first-order budget is per calendar month in it. */
+  readonly timeZone: string;
 }
 
 export interface PromotionsPolicy {

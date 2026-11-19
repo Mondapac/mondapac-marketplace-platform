@@ -1,5 +1,6 @@
 import type { CertificationTypeCode } from './claim-types';
 import {
+  collapseRuns,
   compactForm,
   latinContextFold,
   matchClaimTerms,
@@ -505,14 +506,22 @@ describe('claim text matcher: spans on unreliable piece counts (Hassan #380 L1)'
 
 // Timing tests compare against a baseline measured in the same process, so a busy machine slows
 // both sides: a wall-clock bound alone flakes under the parallel load of jest and CI.
-const minMs = (fn: () => void, runs = 5): number => {
-  let best = Infinity;
+// The best time of two functions, taken in alternation: a burst of load (a neighbour job, GC, a
+// CPU-frequency step) then lands on both sides instead of only the one measured during it. Run
+// back to back, a control measured in a quiet moment and a subject measured in a busy one gave a
+// ratio over the bound with nothing wrong in the code (CI 42333353789).
+const minMsPair = (a: () => void, b: () => void, runs = 9): [number, number] => {
+  let bestA = Infinity;
+  let bestB = Infinity;
   for (let i = 0; i < runs; i++) {
-    const start = performance.now();
-    fn();
-    best = Math.min(best, performance.now() - start);
+    const startA = performance.now();
+    a();
+    bestA = Math.min(bestA, performance.now() - startA);
+    const startB = performance.now();
+    b();
+    bestB = Math.min(bestB, performance.now() - startB);
   }
-  return best;
+  return [bestA, bestB];
 };
 
 describe('claim text matcher: speed (Hassan S4, #380 M1)', () => {
@@ -524,12 +533,14 @@ describe('claim text matcher: speed (Hassan S4, #380 M1)', () => {
       normaliseClaimText(text, true);
       // Control: the same length of ASCII, which takes the fast path the memo gives other characters.
       const control = 'a'.repeat(20_000);
-      const base = minMs(() => normaliseClaimText(control, true));
       // Under jest, memoised: 長 about 4x the control, ♪ about 3x; before the memo 長 ran at about
       // 15x and ♪ at 7-12x. 長 is the meaningful check (2x margin each side); ♪ is a smoke test.
       const bound = ch === '長' ? 8 : 15;
       for (const visual of [false, true]) {
-        const ms = minMs(() => normaliseClaimText(text, visual));
+        const [base, ms] = minMsPair(
+          () => normaliseClaimText(control, true),
+          () => normaliseClaimText(text, visual),
+        );
         expect([ch, visual, ms < bound * base]).toEqual([ch, visual, true]);
       }
     },
@@ -551,9 +562,103 @@ describe('claim text matcher: speed (Hassan S4, #380 M1)', () => {
     const one = vocab(1);
     const twenty = vocab(20);
     expect(matchClaimTerms(texts, twenty)[0]!).toHaveLength(20);
-    const base = minMs(() => matchClaimTerms(texts, one), 3);
-    const many = minMs(() => matchClaimTerms(texts, twenty), 3);
+    const [base, many] = minMsPair(
+      () => matchClaimTerms(texts, one),
+      () => matchClaimTerms(texts, twenty),
+      5,
+    );
     // One table per text: 20 types cost about the same as 1; per-type tables cost about 20 times.
     expect([many < 6 * base + 50]).toEqual([true]);
+  });
+});
+
+describe('claim text matcher: stretched letters', () => {
+  it('folds a run of one character to one', () => {
+    expect(collapseRuns('haaalal')).toBe('halal');
+    expect(collapseRuns('hhaallaall')).toBe('halal');
+    expect(collapseRuns('')).toBe('');
+    expect(collapseRuns('😀😀a')).toBe('😀a');
+  });
+
+  it.each([
+    'haaalal',
+    'haaaaaaaaalal',
+    'hhhaaallaaalll',
+    'HAAALLLAAALLL',
+    'h-a-a-a-l-a-l',
+    'ha aa lal',
+    'hаааlal', // Cyrillic а stretched inside a Latin word
+    'hаааlаl',
+    'ааа halal',
+    'haaa١al', // a stretch next to a look-alike digit
+    'h4444l4l',
+    'hallllal',
+    'halalllllll',
+    'xxhaaalalxx',
+  ])('flags %s as halal', (text) => {
+    expect([
+      text,
+      run(AU, text).includes('halal:compact') || run(AU, text).includes('halal:token'),
+    ]).toEqual([text, true]);
+  });
+
+  it('flags a stretched word of another type and of another Market', () => {
+    expect(run(AU, 'koooosher')).toEqual(['kosher:compact']);
+    expect(run(AU, 'veeegaaan')).toEqual(['vegan:compact']);
+    expect(run(ZZ, 'zzzedpuuure')).toEqual(['zed-pure:compact']);
+  });
+
+  it('flags a term with doubled letters when the text stretches them', () => {
+    const vocab: ClaimVocabularyEntry[] = [{ typeCode: code('cheese'), terms: ['cheese'] }];
+    expect(run(vocab, 'chhheeeese')).toEqual(['cheese:compact']);
+    expect(run(vocab, 'chese')).toEqual(['cheese:compact']);
+  });
+
+  it('does not use a term that folds to almost nothing, and leaves ordinary text alone', () => {
+    const vocab: ClaimVocabularyEntry[] = [
+      { typeCode: code('stretchy'), terms: ['aaaaaaa'] },
+      { typeCode: code('halal'), terms: ['halal'] },
+    ];
+    // "aaaaaaa" folds to "a": it keeps its plain compact match and gains no stretch match.
+    expect(run(vocab, 'a bat and a cat')).toEqual([]);
+    expect(run(vocab, 'aaaaaaa')).toEqual(['stretchy:token']);
+    expect(run(AU, 'hello world, fresh bread and milk')).toEqual([]);
+    expect(run(AU, 'hal')).toEqual([]);
+  });
+
+  it('stays linear on a long run of one letter', () => {
+    const text = 'h' + 'a'.repeat(19_000) + 'lal';
+    const started = performance.now();
+    expect(run(AU, text)).toEqual(['halal:compact']);
+    expect(performance.now() - started).toBeLessThan(2_000);
+  });
+
+  it.each([
+    'haااal', // two alefs between Latin letters
+    'haاااal',
+    'haااlal',
+    'haا\u200bاal', // zero-width space between them
+    'haاـاal', // tatweel between them
+    'kههsher', // a stretched heh
+    'haa1ا1al',
+    'ha1ا1al', // digits either side of one alef
+    'haاا-اal',
+  ])('flags a stretched Arabic-script look-alike inside a Latin word: %s', (text) => {
+    const found = run(AU, text);
+    expect([text, found.length > 0]).toEqual([text, true]);
+  });
+
+  it('still reads an Arabic word of its own as Arabic', () => {
+    expect(run(AU, 'حلااال')).toEqual(['halal:compact']);
+    expect(run(AU, 'كتاااب')).toEqual([]);
+    expect(run(AU, 'ااا')).toEqual([]);
+  });
+
+  it('is knowingly over-inclusive across a word break, as the compact pass already is', () => {
+    // Folding a doubled letter and dropping the space reads these as the term (fail closed).
+    for (const text of ['shall always', 'hall allowance', 'veg ganache']) {
+      expect([text, run(AU, text).length > 0]).toEqual([text, true]);
+    }
+    expect(run(AU, 'a hall of fame')).toEqual([]);
   });
 });

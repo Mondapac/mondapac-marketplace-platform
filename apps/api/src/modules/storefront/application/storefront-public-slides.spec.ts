@@ -20,6 +20,7 @@ import { targetKey, type SlideTargets } from './ports/slide-targets';
 import type { SlideRecord } from './ports/slide.repository';
 import type { StorefrontDependencies } from './storefront-dependencies';
 import { ViewPublishedStorefrontSlides } from './use-cases/view-published-slides.use-case';
+import { MemorySlideImageStore } from './slide-images/memory-slide-image-store';
 
 // The public slider read in memory on both Market fixtures: only live, in-window, approved
 // slides of the request's Market, with link targets alive in that Market.
@@ -159,6 +160,9 @@ describe.each([
       slides,
       targets,
       links: setLinks,
+      slideImages: new MemorySlideImageStore(),
+      imageProcessor: undefined as never,
+      objectStore: undefined as never,
       audit: undefined as never,
       ids: new SequenceIdGenerator(clock),
       clock,

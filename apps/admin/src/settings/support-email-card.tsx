@@ -6,6 +6,7 @@ import {
   SettingInput,
   SettingRow,
   SettingsErrorSummary,
+  SettingsViewOnlyBanner,
   useLiveErrors,
   SettingsPage,
   SettingsSection,
@@ -114,9 +115,9 @@ export function SupportEmailCard({
 
   const banners = [
     canManage ? null : (
-      <Banner key="read-only" tone="info">
-        {t('settings.support.read-only')}
-      </Banner>
+      <SettingsViewOnlyBanner key="read-only" title={t('settings.view-only.title')}>
+        {t('settings.view-only.body')}
+      </SettingsViewOnlyBanner>
     ),
     invalid ? (
       <SettingsErrorSummary
@@ -163,9 +164,10 @@ export function SupportEmailCard({
       banner={banner}
       onSubmit={canManage ? () => void submit() : undefined}
       dirty={dirty}
+      dirtyCount={count}
       leave={{
         title: t('settings.leave.title'),
-        message: t('settings.leave.message'),
+        message: (info) => t('settings.leave.message', { count: info.count, page: info.page }),
         stay: t('settings.leave.stay'),
         leave: t('settings.leave.leave'),
       }}

@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { SEARCH_SORTS, listingStateOf, throughOf } from '../../src/catalog/listing-state.ts';
+import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { findProductsThrough } from '../../src/catalog/through.ts';
 import {
@@ -21,6 +22,7 @@ import {
 } from '../../src/storefront/catalog.ts';
 import { pageMetadata, seoDescription } from '../../src/seo/metadata.ts';
 import { SELLER_RATINGS_SHOWN } from '../../src/storefront/features.ts';
+import { productHref } from '../../src/storefront/links.ts';
 import { loadStorefrontContent } from '../../src/storefront/source.ts';
 import type { StorefrontContent } from '../../src/storefront/types.ts';
 
@@ -90,6 +92,10 @@ async function Results({
       { ...scope, ...sorted, pageSize: LISTING_PAGE_SIZE },
       through,
     );
+    // A GTIN of a published variant opens that variant's product page (variants V8).
+    const exact = products.exactMatch;
+    if (exact !== undefined)
+      redirect(`${productHref(exact.productId)}?v=${encodeURIComponent(exact.variantId)}`);
     return (
       <LiveSearchResults
         query={q}

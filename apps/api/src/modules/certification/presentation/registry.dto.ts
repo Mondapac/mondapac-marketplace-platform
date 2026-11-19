@@ -23,6 +23,30 @@ export class ReasonedVersionRequest extends VersionRequest {
   reason?: string;
 }
 
+// The review parts of the type and claim-policy saves (Admin Inbox › System requests, area
+// certification).
+
+export const NOTE_DESCRIPTION =
+  "The admin's note for the reviewer, 1 to 500 characters; required while the Market reviews " +
+  'area certification in Admin Inbox › System requests (else 400 on note), ignored otherwise.';
+
+const REQUEST_DESCRIPTION =
+  'The review this save opened in Admin Inbox › System requests; null when the Market does ' +
+  'not review area certification or the revision waits for a second admin.';
+
+/** Whether a published save is reviewed in the Market (the page then asks for a note). */
+export class CertificationReviewView {
+  @ApiProperty({ description: 'A save is reviewed in this Market: the page asks for a note.' })
+  reviewed!: boolean;
+  @ApiProperty({ enum: ['low', 'medium', 'high'] }) risk!: string;
+}
+
+/** The System requests review a save opened. */
+export class CertificationRequestRef {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ description: 'Shown as SR-<number>.' }) number!: number;
+}
+
 export class ExpertApprovalRequest {
   @ApiProperty({ description: 'Who confirmed the issuer, 1 to 120 characters.' })
   confirmedBy!: string;
@@ -125,10 +149,12 @@ export class TypeView {
   pendingRevision!: RelaxationProposalView | null;
   @ApiProperty({ type: RelaxationProposalView, nullable: true })
   pendingReactivation!: RelaxationProposalView | null;
+  @ApiProperty({ type: CertificationReviewView }) review!: CertificationReviewView;
 }
 
 export class TypeRevisionRequest extends ReasonedVersionRequest {
   @ApiProperty(CONTENT_SCHEMA) content!: Record<string, unknown>;
+  @ApiPropertyOptional({ description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class TypeRevisionSavedView {
@@ -141,6 +167,8 @@ export class TypeRevisionSavedView {
   @ApiPropertyOptional({ format: 'uuid', description: 'Pending only.' }) proposalId?: string;
   @ApiPropertyOptional({ type: [String], description: 'Pending only: what relaxes.' })
   relaxations?: string[];
+  @ApiProperty({ type: CertificationRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: CertificationRequestRef | null;
 }
 
 export class TypeStatusView {
@@ -269,6 +297,7 @@ export class ClaimPolicyRevisionRequest extends ReasonedVersionRequest {
     description: 'The whole row set of the new revision; at most one row per selector.',
   })
   rows!: PolicyRowRequest[];
+  @ApiPropertyOptional({ description: NOTE_DESCRIPTION }) note?: string;
 }
 
 class PublishedPolicyRevisionView {
@@ -311,6 +340,7 @@ export class ClaimPolicyView {
   pendingRevision!: PendingPolicyRevisionView | null;
   @ApiProperty({ type: [PolicyHistoryEntryView], description: 'Newest first, at most 50.' })
   history!: PolicyHistoryEntryView[];
+  @ApiProperty({ type: CertificationReviewView }) review!: CertificationReviewView;
 }
 
 class PolicyRowChangeView {
@@ -329,6 +359,8 @@ export class ClaimPolicyRevisionSavedView {
   @ApiProperty({ description: 'The policy version; unchanged while pending.' }) version!: number;
   @ApiPropertyOptional({ format: 'uuid', description: 'Pending only.' }) proposalId?: string;
   @ApiProperty({ type: [PolicyRowChangeView] }) changes!: PolicyRowChangeView[];
+  @ApiProperty({ type: CertificationRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: CertificationRequestRef | null;
 }
 
 export class ClaimPolicyRelaxationApprovedView {

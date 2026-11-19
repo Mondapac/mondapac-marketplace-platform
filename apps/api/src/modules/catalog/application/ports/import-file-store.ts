@@ -6,7 +6,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
  */
 export interface ImportFileStore {
   /** The key a job's file is stored under. */
-  keyOf(market: MarketContext, id: Id<'PlatformImport'>): string;
+  keyOf(market: MarketContext, id: Id<'PlatformImport'> | Id<'SellerImport'>): string;
   put(key: string, bytes: Buffer): Promise<void>;
   get(key: string): Promise<Buffer | null>;
   delete(key: string): Promise<void>;

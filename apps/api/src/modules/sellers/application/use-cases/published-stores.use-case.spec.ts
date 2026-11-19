@@ -36,6 +36,7 @@ import { PublishedStoreImageRead } from './published-store-image-read.use-case';
 import { PublishedStoreList } from './published-store-list.use-case';
 import { PublishedStoreRead } from './published-store-read.use-case';
 import { PublishedStoreSellerId } from './published-store-seller-id.use-case';
+import { PublishedStoreCards } from './published-store-cards.use-case';
 import { PublishedStoreSlugs } from './published-store-slugs.use-case';
 
 // The public store reads (slice 12) with in-memory ports, on both Market fixtures (AU in AUD, ZZ
@@ -78,6 +79,7 @@ describe.each([
   let storeImages: InMemoryStoreImages;
   let objectStore: MapObjectStore;
   let slugs: PublishedStoreSlugs;
+  let cards: PublishedStoreCards;
 
   const addStore = (
     slug: string,
@@ -130,6 +132,8 @@ describe.each([
         ),
       allowedProductTypes: () => Promise.reject(new Error('not used')),
       blogEnabled: () => Promise.reject(new Error('not used')),
+      categoryProposalsAllowed: () => Promise.reject(new Error('not used')),
+      aiEnabled: () => Promise.reject(new Error('not used')),
       firstApprovedAt: () => Promise.reject(new Error('not used')),
     };
     const accessReader = {
@@ -193,6 +197,7 @@ describe.each([
     sellerIdRead = new PublishedStoreSellerId(gate, deps);
     imageRead = new PublishedStoreImageRead(gate, { ...deps, objectStore });
     slugs = new PublishedStoreSlugs(gate, deps);
+    cards = new PublishedStoreCards(gate, deps);
   });
 
   const page = async (input: Parameters<PublishedStoreList['execute']>[1] = {}) => {
@@ -202,8 +207,8 @@ describe.each([
   };
 
   it('lists only stores that may sell now, by name, with the allow-listed fields', async () => {
-    addStore('zeta-foods', 'Zeta Foods', '2025-03-01T00:00:00Z', { minimum: null });
-    addStore('alpha-market', 'alpha market', '2026-01-10T00:00:00Z', {
+    const zeta = addStore('zeta-foods', 'Zeta Foods', '2025-03-01T00:00:00Z', { minimum: null });
+    const alpha = addStore('alpha-market', 'alpha market', '2026-01-10T00:00:00Z', {
       minimum: { amount: 3000n, currency },
     });
     addStore('gone-store', 'Gone Store', '2026-01-10T00:00:00Z', { state: 'suspended' });
@@ -213,6 +218,7 @@ describe.each([
     expect(answer).toEqual({
       items: [
         {
+          sellerId: alpha,
           slug: 'alpha-market',
           name: 'alpha market',
           serviceAreaCode: 'area-1',
@@ -222,6 +228,7 @@ describe.each([
           logo: null,
         },
         {
+          sellerId: zeta,
           slug: 'zeta-foods',
           name: 'Zeta Foods',
           serviceAreaCode: 'area-1',
@@ -341,10 +348,13 @@ describe.each([
   });
 
   it('reads one store by its exact slug', async () => {
-    addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', {
+      minimum: null,
+    });
 
     expect(await read.execute(anonymous(), { slug: 'alpha-market' })).toEqual(
       ok({
+        sellerId,
         slug: 'alpha-market',
         name: 'Alpha',
         serviceAreaCode: 'area-1',
@@ -356,6 +366,39 @@ describe.each([
         banner: null,
       }),
     );
+  });
+
+  it('answers the seller id of the store, the one the follow routes take, and no personal field', async () => {
+    const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    const other = addStore('beta-market', 'Beta', '2026-01-11T00:00:00Z');
+
+    const answer = await read.execute(anonymous(), { slug: 'alpha-market' });
+
+    expect(answer).toMatchObject({ ok: true, value: { sellerId } });
+    expect(answer).not.toMatchObject({ value: { sellerId: other } });
+    expect(Object.keys((answer as { value: object }).value).sort()).toEqual(
+      [
+        'about',
+        'banner',
+        'logo',
+        'minimumOrder',
+        'name',
+        'sellerId',
+        'serviceAreaCode',
+        'sellingSince',
+        'slug',
+      ].sort(),
+    );
+  });
+
+  it('never answers the seller id of a store that may not sell now', async () => {
+    const sellerId = addStore('held-back', 'Held', '2026-01-10T00:00:00Z', { state: 'suspended' });
+
+    const answer = await read.execute(anonymous(), { slug: 'held-back' });
+
+    expect(
+      JSON.stringify(answer, (_k, v: unknown) => (typeof v === 'bigint' ? `${v}` : v)),
+    ).not.toContain(sellerId);
   });
 
   it.each([
@@ -634,6 +677,84 @@ describe.each([
         ok: false,
         error: { code: 'sellers.unavailable' },
       });
+    });
+
+    it('gives the address, name and logo of each requested store that may sell, and nothing of one that may not', async () => {
+      const a = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+      const logo = await setImage(a, 'logo');
+      const bare = addStore('beta-market', 'Beta', '2026-01-10T00:00:00Z');
+      const held = addStore('held-back', 'Held Secret', '2026-01-10T00:00:00Z', {
+        state: 'suspended',
+      });
+      await setImage(held, 'logo');
+      const unknown = ids.next<'Seller'>();
+
+      const result = await cards.execute(anonymous(), { sellerIds: [a, bare, held, unknown] });
+
+      expect(PublishedStoreCards.access).toEqual({
+        name: 'sellers.published-store-cards',
+        rule: { kind: 'anonymous' },
+      });
+      expect(result).toEqual(
+        ok(
+          new Map([
+            [
+              a,
+              {
+                slug: 'alpha-market',
+                name: 'Alpha',
+                logo: { id: logo.id, width: 512, height: 512 },
+              },
+            ],
+            [bare, { slug: 'beta-market', name: 'Beta', logo: null }],
+          ]),
+        ),
+      );
+      expect(
+        JSON.stringify(result, (_k, v: unknown) => (typeof v === 'bigint' ? `${v}` : v)),
+      ).not.toContain('Held Secret');
+    });
+
+    it('answers an empty map for no ids and cards of the requested stores only', async () => {
+      const a = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const other = addStore('beta-market', 'Beta', '2026-01-10T00:00:00Z');
+
+      expect(await cards.execute(anonymous(), { sellerIds: [] })).toEqual(ok(new Map()));
+      const result = await cards.execute(anonymous(), { sellerIds: [a] });
+      expect(result.ok && result.value.has(other)).toBe(false);
+    });
+
+    it('answers at most the first 100 requested ids', async () => {
+      const first = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const beyond = addStore('beta-market', 'Beta', '2026-01-10T00:00:00Z');
+      const filler = Array.from({ length: 99 }, () => ids.next<'Seller'>());
+
+      const result = await cards.execute(anonymous(), { sellerIds: [first, ...filler, beyond] });
+
+      expect(result.ok && [...result.value.keys()]).toEqual([first]);
+    });
+
+    it('answers sellers.unavailable when the store read or the logo read fails, never a partial answer', async () => {
+      const a = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      failStores = true;
+      expect(await cards.execute(anonymous(), { sellerIds: [a] })).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+      failStores = false;
+      storeImages.logosOf = () => Promise.reject(new Error('images down'));
+      expect(await cards.execute(anonymous(), { sellerIds: [a] })).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+    });
+
+    it('is not for the system actor (rule anonymous), for cards either', async () => {
+      const a = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z');
+      const result = await cards.execute(testCallContext(market(), 'system', 'store-system-abcd'), {
+        sellerIds: [a],
+      });
+      expect(result.ok).toBe(false);
     });
 
     it('is not for the system actor (rule anonymous)', async () => {

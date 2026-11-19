@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import messages from '../../messages/en.json';
 import { SettingsHub } from '@mondapac/ui';
 import { visibleSettings } from './settings-nav.ts';
-import { SettingsSubNav } from './settings-sub-nav.tsx';
 
 const text = (key: string): string =>
   key
@@ -78,43 +77,5 @@ describe('SettingsHub', () => {
   it('names each group card by its heading', () => {
     hub(['wallet.settings.view']);
     expect(screen.getByRole('region', { name: 'Money' })).toBeTruthy();
-  });
-});
-
-describe('SettingsSubNav', () => {
-  const groups = [
-    {
-      id: 'delivery',
-      label: 'Delivery',
-      links: [
-        { id: 'delivery', href: '/settings/delivery', label: 'Delivery rules' },
-        { id: 'fleets', href: '/settings/fleets', label: 'Delivery fleets' },
-      ],
-    },
-    {
-      id: 'money',
-      label: 'Money',
-      links: [{ id: 'wallet', href: '/settings/wallet', label: 'Customer wallet' }],
-    },
-  ];
-
-  it('lists the groups and links in a named landmark and marks only the current page', () => {
-    render(<SettingsSubNav label="Settings pages" groups={groups} activeId="fleets" />);
-    const nav = screen.getByRole('navigation', { name: 'Settings pages' });
-    const links = within(nav).getAllByRole('link');
-    expect(links.map((a) => a.textContent)).toEqual([
-      'Delivery rules',
-      'Delivery fleets',
-      'Customer wallet',
-    ]);
-    expect(links.map((a) => a.getAttribute('aria-current'))).toEqual([null, 'page', null]);
-    expect(within(nav).getByText('Money')).toBeTruthy();
-  });
-
-  it('draws nothing when the caller may open no page', () => {
-    const { container } = render(
-      <SettingsSubNav label="Settings pages" groups={[]} activeId="x" />,
-    );
-    expect(container.innerHTML).toBe('');
   });
 });

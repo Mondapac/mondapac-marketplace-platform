@@ -12,9 +12,15 @@ import {
 import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
+import { SHEET_WRITER } from '../../platform/list-export';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { changeTrailProvider, IDENTITY_FACADE, IdentityModule } from '../identity';
+import {
+  CREDIT_ROW_KEYS,
+  type AdminCreditListDependencies,
+} from './application/admin-credit-list-flow';
+import { ADMIN_CREDIT_LIST_READER } from './application/ports/admin-credit-list.reader';
 import { ADMIN_CREDIT_REPOSITORY } from './application/ports/admin-credit.repository';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import { WALLET_POLICY } from './application/ports/wallet-policy';
@@ -23,8 +29,11 @@ import { ApproveAdminCredit } from './application/use-cases/approve-admin-credit
 import { AdminBalanceOf } from './application/use-cases/admin-balance-of.use-case';
 import { BalanceOf } from './application/use-cases/balance-of.use-case';
 import { CaptureHold } from './application/use-cases/capture-hold.use-case';
+import { CreditApproveProbe } from './application/use-cases/credit-approve-probe.use-case';
+import { ExportAdminCreditRequests } from './application/use-cases/export-admin-credit-requests.use-case';
 import { ExpireAdminCreditRequests } from './application/use-cases/expire-admin-credit-requests.use-case';
 import { ExpireWalletCredit } from './application/use-cases/expire-wallet-credit.use-case';
+import { ClawBackCredit } from './application/use-cases/claw-back-credit.use-case';
 import { GrantCredit } from './application/use-cases/grant-credit.use-case';
 import { OwnBalanceOf } from './application/use-cases/own-balance-of.use-case';
 import { IssueAdminCredit } from './application/use-cases/issue-admin-credit.use-case';
@@ -33,6 +42,7 @@ import { PlaceHold } from './application/use-cases/place-hold.use-case';
 import { RejectAdminCredit } from './application/use-cases/reject-admin-credit.use-case';
 import { ReleaseHold } from './application/use-cases/release-hold.use-case';
 import { SetWalletStatus } from './application/use-cases/set-wallet-status.use-case';
+import { ViewCustomerHistory } from './application/use-cases/view-customer-history.use-case';
 import { ViewCustomerWallet } from './application/use-cases/view-customer-wallet.use-case';
 import { ViewMyHistory } from './application/use-cases/view-my-history.use-case';
 import { ViewMyWallet } from './application/use-cases/view-my-wallet.use-case';
@@ -51,6 +61,9 @@ import { expireWalletCreditJob } from './presentation/jobs/expire-wallet-credit.
 import { AdminWalletCreditController } from './presentation/admin-credit.controller';
 import { AdminWalletController, CustomerWalletController } from './presentation/wallet.controller';
 import { WalletFacadeImplementation } from './presentation/wallet.facade';
+import { registerSystemChangeReverter, SYSTEM_REQUEST_RECORDER } from '../system-requests';
+import { WALLET_REVIEW_AREA, WALLET_STATUS_SUBJECT_KIND } from './application/wallet-review';
+import { WalletStatusReverter } from './application/wallet-reverter';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: AdminCreditDependencies) => U;
 
@@ -66,20 +79,57 @@ const PORTS: readonly [keyof AdminCreditDependencies, InjectionToken][] = [
   ['credits', ADMIN_CREDIT_REPOSITORY],
   ['identity', IDENTITY_FACADE],
   ['trail', CHANGE_TRAIL],
+  ['review', SYSTEM_REQUEST_RECORDER],
 ];
+
+/** The reverter of the wallet switch (Admin Inbox › System requests, area money). */
+const WALLET_STATUS_REVERTER = Symbol('WALLET_STATUS_REVERTER');
+
+const dependenciesOf = (values: readonly unknown[]): AdminCreditDependencies =>
+  Object.fromEntries(
+    PORTS.map(([name], index) => [name, values[index]]),
+  ) as unknown as AdminCreditDependencies;
 
 /** Every wallet use case shares one dependency object, built from the same ports. */
 function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
     inject: [USE_CASE_GATE, ...PORTS.map(([, token]) => token)],
-    useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
-      new type(
-        gate,
-        Object.fromEntries(
-          PORTS.map(([name], index) => [name, values[index]]),
-        ) as unknown as AdminCreditDependencies,
-      ),
+    useFactory: (gate: UseCaseGate, ...values: unknown[]) => new type(gate, dependenciesOf(values)),
+  };
+}
+
+type CreditListUseCaseClass<U> = new (gate: UseCaseGate, deps: AdminCreditListDependencies) => U;
+
+/** The admin Credit requests list and its export (super list 24) share one dependency object. */
+function creditListUseCaseProvider<U>(type: CreditListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      ADMIN_CREDIT_LIST_READER,
+      CreditApproveProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AdminCreditListDependencies['unitOfWork'],
+      list: AdminCreditListDependencies['list'],
+      approve: CreditApproveProbe,
+      sheetWriter: AdminCreditListDependencies['sheetWriter'],
+      clock: AdminCreditListDependencies['clock'],
+    ) => {
+      const [approveKey] = CREDIT_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        list,
+        probes: { [approveKey]: approve },
+        sheetWriter,
+        clock,
+      });
+    },
   };
 }
 
@@ -103,9 +153,21 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerAuditActions('wallet', WALLET_AUDIT_ACTIONS),
     registerPermissions('wallet', WALLET_PERMISSIONS),
     registerStepUpActions('wallet', WALLET_STEP_UP_ACTIONS),
+    {
+      provide: WALLET_STATUS_REVERTER,
+      inject: PORTS.map(([, token]) => token),
+      useFactory: (...values: unknown[]) => new WalletStatusReverter(dependenciesOf(values)),
+    },
+    registerSystemChangeReverter(
+      'wallet',
+      WALLET_STATUS_SUBJECT_KIND,
+      WALLET_REVIEW_AREA,
+      WALLET_STATUS_REVERTER,
+    ),
     ...walletProviders,
     ...[
       GrantCredit,
+      ClawBackCredit,
       PlaceHold,
       CaptureHold,
       ReleaseHold,
@@ -121,10 +183,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       IssueAdminCredit,
       ApproveAdminCredit,
       RejectAdminCredit,
-      ListAdminCreditRequests,
       ViewCustomerWallet,
+      ViewCustomerHistory,
       ExpireAdminCreditRequests,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    ...[ListAdminCreditRequests, ExportAdminCreditRequests].map((type) =>
+      creditListUseCaseProvider(type as CreditListUseCaseClass<unknown>),
+    ),
+    {
+      provide: CreditApproveProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new CreditApproveProbe(gate),
+    },
     {
       provide: WALLET_FACADE,
       inject: [
@@ -135,6 +205,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         BalanceOf,
         OwnBalanceOf,
         AdminBalanceOf,
+        ClawBackCredit,
       ],
       useFactory: (
         grant: GrantCredit,
@@ -144,6 +215,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         balance: BalanceOf,
         ownBalance: OwnBalanceOf,
         adminBalance: AdminBalanceOf,
+        clawBack: ClawBackCredit,
       ) =>
         new WalletFacadeImplementation(
           grant,
@@ -153,6 +225,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           balance,
           ownBalance,
           adminBalance,
+          clawBack,
         ),
     },
     registerJobsFrom(

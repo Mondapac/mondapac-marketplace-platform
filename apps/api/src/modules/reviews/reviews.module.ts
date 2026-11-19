@@ -12,6 +12,7 @@ import {
   type UseCaseGate,
 } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
+import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../platform/list-export';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
@@ -22,6 +23,13 @@ import { IdentityModule } from '../identity';
 import { ORDERING_FACADE, OrderingModule } from '../ordering';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import { REVIEW_REPOSITORY } from './application/ports/review.repository';
+import { CUSTOMER_REVIEWS_READER } from './application/ports/customer-reviews.reader';
+import type { AdminCustomerReviewsDependencies } from './application/admin-customer-reviews';
+import { AdminCustomerHelpfulVotes } from './application/use-cases/admin-customer-helpful-votes.use-case';
+import { AdminCustomerReviewReports } from './application/use-cases/admin-customer-review-reports.use-case';
+import { AdminCustomerReviews } from './application/use-cases/admin-customer-reviews.use-case';
+import { AdminCustomerSellerRatings } from './application/use-cases/admin-customer-seller-ratings.use-case';
+import { ReviewAuthorOf } from './application/use-cases/review-author-of.use-case';
 import { REVIEWER_NAMES } from './application/ports/reviewer-names';
 import { REVIEWS_POLICY } from './application/ports/reviews-policy';
 import { SELLER_AFFINITY } from './application/ports/seller-affinity';
@@ -40,6 +48,22 @@ import { ListMyReviews } from './application/use-cases/list-my-reviews.use-case'
 import { ListProductRatingTotals } from './application/use-cases/list-product-rating-totals.use-case';
 import { ListProductReviews } from './application/use-cases/list-product-reviews.use-case';
 import { EditReviewReply } from './application/use-cases/edit-review-reply.use-case';
+import { ExportModerationReviews } from './application/use-cases/export-moderation-reviews.use-case';
+import { ModerationModerateProbe } from './application/use-cases/moderation-moderate-probe.use-case';
+import { ModerationRemoveProbe } from './application/use-cases/moderation-remove-probe.use-case';
+import { QueryModerationReviews } from './application/use-cases/query-moderation-reviews.use-case';
+import {
+  MODERATION_ROW_KEYS,
+  type ModerationListDependencies,
+} from './application/moderation-list-flow';
+import { ExportSellerReviews } from './application/use-cases/export-seller-reviews.use-case';
+import { QuerySellerReviews } from './application/use-cases/query-seller-reviews.use-case';
+import { SellerReviewReplyProbe } from './application/use-cases/seller-review-reply-probe.use-case';
+import { SellerReviewReportProbe } from './application/use-cases/seller-review-report-probe.use-case';
+import {
+  SELLER_REVIEW_ROW_KEYS,
+  type SellerReviewListDependencies,
+} from './application/seller-review-list-flow';
 import { ListSellerReviews } from './application/use-cases/list-seller-reviews.use-case';
 import { ReplyToReview } from './application/use-cases/reply-to-review.use-case';
 import { ReportReview } from './application/use-cases/report-review.use-case';
@@ -53,6 +77,7 @@ import { ViewProductSummary } from './application/use-cases/view-product-summary
 import { ViewReviewsSettings } from './application/use-cases/view-reviews-settings.use-case';
 import { ViewSellerSummary } from './application/use-cases/view-seller-summary.use-case';
 import {
+  CUSTOMER_REVIEWS_FACADE,
   REVIEWS_AUDIT_ACTIONS,
   REVIEWS_FACADE,
   REVIEWS_PERMISSIONS,
@@ -69,6 +94,7 @@ import {
 } from './presentation/reviews.controller';
 import { SellerReviewsController } from './presentation/seller-reviews.controller';
 import { ReviewsFacadeImplementation } from './presentation/reviews.facade';
+import { CustomerReviewsFacadeImplementation } from './presentation/customer-reviews.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: ReviewsDependencies) => U;
 
@@ -88,6 +114,21 @@ const PORTS: readonly [keyof ReviewsDependencies, InjectionToken][] = [
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
+
+type CustomerReadClass<U> = new (gate: UseCaseGate, deps: AdminCustomerReviewsDependencies) => U;
+
+/** The admin's reads of one customer (customers management phase 2b): their own, smaller deps. */
+function customerReadProvider<U>(type: CustomerReadClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, CUSTOMER_REVIEWS_READER],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AdminCustomerReviewsDependencies['unitOfWork'],
+      reader: AdminCustomerReviewsDependencies['reader'],
+    ) => new type(gate, { unitOfWork, reader }),
+  };
+}
 
 /** The repair job's interval: the smallest `reviews.summaryRebuildMinutes` of the hosted Markets. */
 function summaryRebuildEvery(markets: MarketRegistry): Temporal.Duration {
@@ -109,6 +150,84 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           PORTS.map(([name], index) => [name, values[index]]),
         ) as unknown as ReviewsDependencies,
       ),
+  };
+}
+
+type SellerListUseCaseClass<U> = new (gate: UseCaseGate, deps: SellerReviewListDependencies) => U;
+
+/** The shop's review list and its export (super list 32) share one dependency object. */
+function sellerListUseCaseProvider<U>(type: SellerListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      REVIEW_REPOSITORY,
+      MARKET_SETTING_REPOSITORY,
+      REVIEWS_POLICY,
+      SellerReviewReplyProbe,
+      SellerReviewReportProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: SellerReviewListDependencies['unitOfWork'],
+      reviews: SellerReviewListDependencies['reviews'],
+      settings: SellerReviewListDependencies['settings'],
+      policy: SellerReviewListDependencies['policy'],
+      reply: SellerReviewReplyProbe,
+      report: SellerReviewReportProbe,
+      sheetWriter: SellerReviewListDependencies['sheetWriter'],
+      clock: SellerReviewListDependencies['clock'],
+    ) => {
+      const [replyKey, reportKey] = SELLER_REVIEW_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        reviews,
+        settings,
+        policy,
+        probes: { [replyKey]: reply, [reportKey]: report },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
+type ModerationListUseCaseClass<U> = new (gate: UseCaseGate, deps: ModerationListDependencies) => U;
+
+/** The admin moderation list and its export (super list 18) share one dependency object. */
+function moderationListUseCaseProvider<U>(type: ModerationListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      REVIEW_REPOSITORY,
+      ModerationModerateProbe,
+      ModerationRemoveProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: ModerationListDependencies['unitOfWork'],
+      reviews: ModerationListDependencies['reviews'],
+      moderate: ModerationModerateProbe,
+      remove: ModerationRemoveProbe,
+      sheetWriter: ModerationListDependencies['sheetWriter'],
+      clock: ModerationListDependencies['clock'],
+    ) => {
+      const [moderateKey, removeKey] = MODERATION_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        reviews,
+        probes: { [moderateKey]: moderate, [removeKey]: remove },
+        sheetWriter,
+        clock,
+      });
+    },
   };
 }
 
@@ -163,6 +282,56 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       EditReviewReply,
       ReportReview,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
+    {
+      provide: SellerReviewReplyProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new SellerReviewReplyProbe(gate),
+    },
+    {
+      provide: SellerReviewReportProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new SellerReviewReportProbe(gate),
+    },
+    {
+      provide: ModerationModerateProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new ModerationModerateProbe(gate),
+    },
+    {
+      provide: ModerationRemoveProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new ModerationRemoveProbe(gate),
+    },
+    moderationListUseCaseProvider(QueryModerationReviews),
+    moderationListUseCaseProvider(ExportModerationReviews),
+    sellerListUseCaseProvider(QuerySellerReviews),
+    sellerListUseCaseProvider(ExportSellerReviews),
+    // Customers management phase 2b, part 3: the admin's reads of one customer's reviews.
+    ...[
+      AdminCustomerReviews,
+      AdminCustomerSellerRatings,
+      AdminCustomerHelpfulVotes,
+      AdminCustomerReviewReports,
+      ReviewAuthorOf,
+    ].map((type) => customerReadProvider(type as CustomerReadClass<unknown>)),
+    {
+      provide: CUSTOMER_REVIEWS_FACADE,
+      inject: [
+        AdminCustomerReviews,
+        AdminCustomerSellerRatings,
+        AdminCustomerHelpfulVotes,
+        AdminCustomerReviewReports,
+        ReviewAuthorOf,
+      ],
+      useFactory: (
+        reviews: AdminCustomerReviews,
+        ratings: AdminCustomerSellerRatings,
+        votes: AdminCustomerHelpfulVotes,
+        reports: AdminCustomerReviewReports,
+        author: ReviewAuthorOf,
+      ) => new CustomerReviewsFacadeImplementation(reviews, ratings, votes, reports, author),
+    },
     {
       provide: REVIEWS_FACADE,
       inject: [
@@ -188,6 +357,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ],
     ),
   ],
-  exports: [REVIEWS_FACADE],
+  exports: [REVIEWS_FACADE, CUSTOMER_REVIEWS_FACADE],
 })
 export class ReviewsModule {}

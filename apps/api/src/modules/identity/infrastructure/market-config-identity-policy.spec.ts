@@ -30,6 +30,11 @@ describe('MarketConfigIdentityPolicy (identity design 8.5)', () => {
     });
   });
 
+  it("reads each Market its own zone, the panels' fallback for local days", () => {
+    expect(policy.marketTimezone(testMarketContext('AU', 'default'))).toBe('Australia/Brisbane');
+    expect(policy.marketTimezone(testMarketContext('ZZ', 'default'))).toBe('Asia/Tokyo');
+  });
+
   it('reads each Market its own notice interval', () => {
     expect(policy.existingAccountNoticeHours(testMarketContext('AU', 'default'))).toBe(24);
     expect(policy.existingAccountNoticeHours(testMarketContext('ZZ', 'default'))).toBe(12);

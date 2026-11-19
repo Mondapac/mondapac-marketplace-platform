@@ -1,9 +1,8 @@
-import { err, money, ok, parseId, Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import { err, money, ok, parseId } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import { PayoutApproved } from '../domain/audit';
 import {
   approve,
-  PAYOUT_STATES,
   type ApprovalReason,
   type BlockReason,
   type Payout,
@@ -14,7 +13,6 @@ import type { ApprovalMode } from '../domain/payout-terms';
 import { COMMISSION_PAYOUTS_PAYOUT_APPROVE } from '../contracts/permissions';
 import type { PayoutDependencies } from './payout-dependencies';
 import { startOfMarketDay } from './payout-planning';
-import type { PayoutPage } from './ports/payout.repository';
 import { spendStepUp, type StepUpFailure } from './step-up';
 
 // What an admin does with payouts (package 6d): list them, read one with what an approver needs,
@@ -32,6 +30,8 @@ export type PayoutFailure =
   /** The amount the admin echoed is not the transfer amount now. */
   | { readonly code: 'commission-payouts.payout.amount-changed' }
   | { readonly code: 'commission-payouts.unavailable' }
+  /** The store search could not be resolved by sellers: refused, never every row. */
+  | { readonly code: 'commission-payouts.search-unavailable' }
   | StepUpFailure;
 
 export interface MoneyView {
@@ -53,11 +53,6 @@ export interface PayoutRowView {
   readonly outcomeCode: string | null;
   readonly createdAt: Temporal.Instant;
   readonly stateChangedAt: Temporal.Instant;
-}
-
-export interface PayoutListView {
-  readonly payouts: readonly PayoutRowView[];
-  readonly nextCursor: string | null;
 }
 
 export interface PayoutDetailView extends PayoutRowView {
@@ -113,99 +108,6 @@ const idOf = <K extends string>(value: unknown): Id<K> | null => {
   const parsed = typeof value === 'string' ? parseId<K>(value) : null;
   return parsed !== null && parsed.ok ? parsed.value : null;
 };
-
-export const PAYOUT_PAGE_DEFAULT = 50;
-export const PAYOUT_PAGE_MAX = 100;
-
-/** A page cursor is `<created-at ms>.<payout id>`: opaque to callers, checked on the way in. */
-export const encodePayoutCursor = (createdAt: Temporal.Instant, id: string): string =>
-  `${createdAt.epochMilliseconds}.${id}`;
-
-export function decodePayoutCursor(value: string): PayoutPage['after'] | undefined {
-  const match = /^([0-9]{1,15})\.([0-9a-f-]{36})$/.exec(value);
-  const id = match === null ? null : idOf<'Payout'>(match[2]);
-  if (match === null || id === null) return undefined;
-  return { createdAt: Temporal.Instant.fromEpochMilliseconds(Number(match[1])), id };
-}
-
-/** The page of a list request: `limit` is a number, `cursor` the last page's `nextCursor`. */
-export function pageOf(input: {
-  readonly limit?: unknown;
-  readonly cursor?: unknown;
-}): Result<PayoutPage, PayoutFailure> {
-  const fields: { path: string; code: string }[] = [];
-  let limit = PAYOUT_PAGE_DEFAULT;
-  if (input?.limit !== undefined) {
-    if (
-      typeof input.limit === 'number' &&
-      Number.isSafeInteger(input.limit) &&
-      input.limit >= 1 &&
-      input.limit <= PAYOUT_PAGE_MAX
-    ) {
-      limit = input.limit;
-    } else fields.push({ path: 'limit', code: 'range' });
-  }
-  let after: PayoutPage['after'] = null;
-  if (input?.cursor !== undefined) {
-    const decoded = typeof input.cursor === 'string' ? decodePayoutCursor(input.cursor) : undefined;
-    if (decoded === undefined) fields.push({ path: 'cursor', code: 'format' });
-    else after = decoded;
-  }
-  return fields.length > 0 ? err({ code: 'validation.failed', fields }) : ok({ limit, after });
-}
-
-/** The field errors of a refused page request. */
-export const pageFields = (failure: PayoutFailure): Fields =>
-  failure.code === 'validation.failed' ? failure.fields : [];
-
-/** `status=awaiting-approval` or `AWAITING_APPROVAL`: the state names, in either spelling. */
-function stateFilterOf(value: unknown): PayoutState | null | undefined {
-  if (value === undefined || value === null || value === '') return null;
-  if (typeof value !== 'string') return undefined;
-  const normal = value.toLowerCase().replaceAll('_', '-');
-  return (PAYOUT_STATES as readonly string[]).includes(normal)
-    ? (normal as PayoutState)
-    : undefined;
-}
-
-/** An admin lists the Market's payouts, newest first, all or one state. */
-export async function listPayouts(
-  deps: PayoutDependencies,
-  context: CallContext,
-  input: { readonly status?: unknown; readonly cursor?: unknown; readonly limit?: unknown },
-): Promise<Result<PayoutListView, PayoutFailure>> {
-  if (adminOf(context) === null) return err({ code: 'access.denied' });
-  const state = stateFilterOf(input?.status);
-  const page = pageOf(input);
-  const fields: { path: string; code: string }[] = [];
-  if (state === undefined) fields.push({ path: 'status', code: 'value' });
-  if (!page.ok) fields.push(...pageFields(page.error));
-  if (state === undefined || !page.ok) return err({ code: 'validation.failed', fields });
-
-  const rows = await deps.unitOfWork.run<readonly Payout[], PayoutFailure>(
-    context.market,
-    async () =>
-      ok(
-        await deps.payouts.list(
-          context.market,
-          { state },
-          { ...page.value, limit: page.value.limit + 1 },
-        ),
-      ),
-    { readOnly: true },
-  );
-  if (!rows.ok) return rows;
-  const shown = rows.value.slice(0, page.value.limit);
-  const names = await storeNames(deps, context, shown);
-  const last = shown[shown.length - 1];
-  return ok({
-    payouts: shown.map((payout) => rowOf(payout, names.get(payout.sellerId) ?? null)),
-    nextCursor:
-      rows.value.length > page.value.limit && last !== undefined
-        ? encodePayoutCursor(last.createdAt, last.id)
-        : null,
-  });
-}
 
 async function storeNames(
   deps: PayoutDependencies,

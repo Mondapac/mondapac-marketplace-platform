@@ -8,9 +8,9 @@ import {
   EmptyState,
   LoadError,
   Select,
-  SkeletonRows,
   TextField,
   toast,
+  TableSkeleton,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -166,7 +166,20 @@ export function BusinessActivitiesView({
           />
         </div>
       </div>
-      {load === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
+      {load === 'loading' ? (
+        <TableSkeleton
+          label={t('loading')}
+          slowLabel={tl('slow')}
+          rows={6}
+          columns={[
+            { header: t('col.name'), kind: 'title' },
+            { header: t('col.code'), kind: 'text' },
+            { header: t('col.description'), kind: 'text' },
+            { header: t('col.categories'), kind: 'number' },
+            { header: t('col.status'), kind: 'status' },
+          ]}
+        />
+      ) : null}
       {load === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
+import { expectToast } from '../../test/toast-spy.ts';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
@@ -31,6 +32,10 @@ const row = (
   position: n,
   version: 3,
   counts: { liveProducts: 0, liveProductsDirect: 0, offers: 0 },
+  featureSetId: null,
+  featureSetCode: null,
+  featureSetFromCategoryId: null,
+  inherited: false,
   ...over,
 });
 const tree = (): TreeBody => ({
@@ -80,12 +85,19 @@ const written = {
 };
 
 /** Serves the tree and the detail of any category; writes answer `writeAnswer`. */
-function serve(writeAnswer: ApiResult<unknown> = ok(written)) {
+function serve(
+  writeAnswer: ApiResult<unknown> = ok(written),
+  review?: { reviewed: boolean; risk: string },
+) {
   call.mockImplementation((method: string, path: string) => {
     if (method !== 'GET') return Promise.resolve(writeAnswer);
     if (path === 'catalog/admin/categories') return Promise.resolve(ok(tree()));
     const found = tree().categories.find((c) => path === `catalog/admin/categories/${c.id}`);
-    return Promise.resolve(found === undefined ? ok(null) : ok(detail(found)));
+    return Promise.resolve(
+      found === undefined
+        ? ok(null)
+        : ok(review === undefined ? detail(found) : { ...detail(found), review }),
+    );
   });
 }
 /** Like `serve`, but once a write has happened the tree also holds `added`. */
@@ -198,6 +210,208 @@ describe('category editor (C3b)', () => {
         en: { name: 'Pantry' },
         fa: { name: 'خشکبار', shortDescription: null, keywords: [] },
       },
+    });
+  });
+
+  describe('review note on a details save', () => {
+    const save = () => {
+      const dialog = screen.getByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
+      return dialog;
+    };
+
+    it('shows no note field and sends none when the save is not reviewed', async () => {
+      serve(ok(written), { reviewed: false, risk: 'low' });
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Pantry');
+      fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+      expect(screen.queryByLabelText('Note for reviewers')).toBeNull();
+      save();
+      await waitFor(() => expect(writes()).toHaveLength(1));
+      expect('note' in (writes()[0]![2] as object)).toBe(false);
+    });
+
+    it('requires a trimmed note when reviewed, and says the change was sent for review', async () => {
+      serve(ok({ ...written, request: { id: 'r1', number: 41 } }), {
+        reviewed: true,
+        risk: 'medium',
+      });
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Pantry');
+      fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+      save();
+      expect(writes()).toHaveLength(0);
+      fireEvent.change(screen.getByLabelText('Note for reviewers'), {
+        target: { value: '  New aisle  ' },
+      });
+      save();
+      await waitFor(() => expect(writes()).toHaveLength(1));
+      expect(writes()[0]![2]).toMatchObject({ note: 'New aisle' });
+      await expectToast('Sent for review (SR-41)', 'info');
+    });
+
+    it('shows a 400 on note on the note field', async () => {
+      serve(
+        {
+          ok: false,
+          failure: {
+            status: 400,
+            code: 'validation.failed',
+            details: { fields: [{ path: 'note', code: 'required' }] },
+          },
+        },
+        { reviewed: true, risk: 'medium' },
+      );
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Pantry');
+      fireEvent.click(screen.getByRole('button', { name: 'Edit details' }));
+      fireEvent.change(screen.getByLabelText('Note for reviewers'), { target: { value: 'Why' } });
+      const dialog = save();
+      expect(await within(dialog).findByText(/The note was refused/)).toBeTruthy();
+      // The refusal of the note alone is not also a banner above the form.
+      expect(within(dialog).queryByText(/Some fields need attention/)).toBeNull();
+    });
+  });
+
+  describe('system requests: structure changes (area catalogue)', () => {
+    const reviewed = { reviewed: true, risk: 'medium' };
+
+    it('asks for a note before Discard waits for approval, then leaves the category as it is', async () => {
+      serve({ ok: true, status: 202, body: { request: { id: 'r9', number: 12 } } }, reviewed);
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Oils');
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+      const dialog = screen.getByRole('dialog');
+      // It only files a request: the wording says so, and promises nothing final.
+      expect(
+        within(dialog).getByText(
+          'Nothing changes until another admin approves it in Admin Inbox > System requests.',
+        ),
+      ).toBeTruthy();
+      expect(within(dialog).getByText(/If another admin approves, it is archived/)).toBeTruthy();
+      expect(within(dialog).queryByText(/can not be undone/)).toBeNull();
+      expect(within(dialog).queryByRole('button', { name: 'Discard' })).toBeNull();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
+      expect(await within(dialog).findByText(/Write a note for the reviewers/)).toBeTruthy();
+      expect(writes()).toHaveLength(0);
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: ' Never used ' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
+      await waitFor(() => expect(writes()).toHaveLength(1));
+      expect(writes()[0]![2]).toEqual({ treeVersion: 7, note: 'Never used' });
+      await expectToast('Sent for approval (SR-12)', 'info');
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      // Nothing changed yet: the category is still selected and the tree was not read again.
+      expect(screen.getByRole('heading', { name: 'Oils' })).toBeTruthy();
+      expect(
+        call.mock.calls.filter(([m, path]) => m === 'GET' && path === 'catalog/admin/categories'),
+      ).toHaveLength(1);
+    });
+
+    it('asks for no note where the area is off', async () => {
+      serve({ ok: true, status: 200, body: written });
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Oils');
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+      const dialog = screen.getByRole('dialog');
+      expect(within(dialog).queryByLabelText('Note for reviewers')).toBeNull();
+      // Unreviewed: the wording is the discard's own, final one.
+      expect(within(dialog).getByText(/This can not be undone here/)).toBeTruthy();
+      expect(within(dialog).queryByText(/Nothing changes until/)).toBeNull();
+      expect(within(dialog).queryByRole('button', { name: 'Send for approval' })).toBeNull();
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Discard' }));
+      await waitFor(() => expect(writes()).toHaveLength(1));
+      expect(writes()[0]![2]).toEqual({ treeVersion: 7 });
+    });
+
+    it('names the proposal that already waits', async () => {
+      serve(
+        {
+          ok: false,
+          failure: {
+            status: 409,
+            code: 'system-requests.already-pending',
+            details: { pendingNumber: 7 },
+          },
+        },
+        reviewed,
+      );
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Oils');
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+      const dialog = screen.getByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: 'Never used' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
+      expect(
+        await screen.findByText(/already has a change waiting for approval \(SR-7\)/),
+      ).toBeTruthy();
+    });
+
+    it('asks for a note before a reviewed Move down, and says it was sent for review', async () => {
+      serve(ok({ ...written, request: { id: 'r2', number: 44 } }), reviewed);
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Rice');
+      fireEvent.click(screen.getByRole('button', { name: 'Move down' }));
+      const dialog = screen.getByRole('dialog');
+      expect(writes()).toHaveLength(0);
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Move down' }));
+      expect(await within(dialog).findByText(/Write a note for the reviewers/)).toBeTruthy();
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: 'Rice after oils' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Move down' }));
+      await waitFor(() => expect(writes()).toHaveLength(1));
+      expect(writes()[0]![2]).toEqual({
+        direction: 'down',
+        treeVersion: 7,
+        note: 'Rice after oils',
+      });
+      await expectToast('Sent for review (SR-44)', 'info');
+    });
+
+    it('keeps the Move down note dialog open and says so when the server refuses the note', async () => {
+      serve(
+        {
+          ok: false,
+          failure: {
+            status: 400,
+            code: 'validation.failed',
+            details: { fields: [{ path: 'note', code: 'too-long' }] },
+          },
+        },
+        reviewed,
+      );
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Rice');
+      fireEvent.click(screen.getByRole('button', { name: 'Move down' }));
+      const dialog = screen.getByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: 'Rice after oils' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Move down' }));
+      expect(await within(dialog).findByText(/The note was refused/)).toBeTruthy();
+      expect(writes()).toHaveLength(1);
+      expect(screen.getByRole('dialog')).toBe(dialog);
+      // The note can be written again in the same dialog.
+      expect(within(dialog).getByLabelText<HTMLTextAreaElement>('Note for reviewers').value).toBe(
+        'Rice after oils',
+      );
+    });
+
+    it('closes the Move down note dialog on any other refusal, which the page shows', async () => {
+      serve({ ok: false, failure: { status: 409, code: 'category.reorder-edge' } }, reviewed);
+      view(<CategoriesView canEdit csrfToken="tok" />);
+      await pick('Rice');
+      fireEvent.click(screen.getByRole('button', { name: 'Move down' }));
+      const dialog = screen.getByRole('dialog');
+      fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+        target: { value: 'Rice after oils' },
+      });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Move down' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     });
   });
 

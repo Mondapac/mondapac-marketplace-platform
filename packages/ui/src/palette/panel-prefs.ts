@@ -7,7 +7,34 @@
 export const PIN_LIMIT = 5;
 export const RECENT_LIMIT = 5;
 
-export type PrefsKind = 'pins' | 'recent' | 'single-key' | 'products-columns';
+export type PrefsKind =
+  | 'pins'
+  | 'recent'
+  | 'single-key'
+  | 'products-columns'
+  | 'orders-columns'
+  | 'offers-columns'
+  | 'customers-columns'
+  | 'seller-customers-columns'
+  | 'seller-attributions-columns'
+  | 'customer-orders-columns'
+  | 'shipments-columns'
+  | 'refunds-columns'
+  | 'invoices-columns'
+  | 'system-requests-columns'
+  | 'system-requests-view'
+  | 'system-requests-query'
+  | 'customer-activity-columns'
+  | 'customer-payments-columns'
+  | 'customer-disputes-columns'
+  | 'customer-refunds-columns'
+  // Customers phase 2b, part B (Account & security).
+  | 'customer-sign-ins-columns'
+  | 'customer-consent-history-columns'
+  // Customers phase 2b, part C (Shopping and Reviews).
+  | 'customer-section-columns'
+  // The column choice of any other super list, named after the list (`variants.list-columns`).
+  | `${string}-columns`;
 
 /** The storage key of one list of one account in one Market of one panel. */
 export function prefsKey(

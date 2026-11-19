@@ -1,5 +1,6 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { MarketRegistry } from '../../../platform/market-config/market-registry';
+import type { ServiceAreaDirectory } from '../../../platform/market-config/service-area-directory';
 import type { OrderingPolicy, ReturnUrls } from '../application/ports/ordering-policy';
 
 /** Stripe's minimum for a Checkout session is 30 minutes. */
@@ -13,7 +14,14 @@ const MAX_LINES = 50;
  * into either URL. A Market without a customer target has no return pages: no checkout.
  */
 export class ConfigOrderingPolicy implements OrderingPolicy {
-  constructor(private readonly markets: MarketRegistry) {}
+  constructor(
+    private readonly markets: MarketRegistry,
+    private readonly areas: ServiceAreaDirectory,
+  ) {}
+
+  deliveryZone(market: MarketContext, postcode: string): string | null {
+    return this.areas.areaFor(market.marketId, postcode)?.code ?? null;
+  }
 
   returnUrls(market: MarketContext, orderId: string): ReturnUrls | null {
     const target = this.markets.get(market.marketId).identity.links.targets.customer?.['sign-in'];
@@ -26,6 +34,10 @@ export class ConfigOrderingPolicy implements OrderingPolicy {
     };
   }
 
+  provisionalTaxBps(market: MarketContext): number | null {
+    return this.markets.get(market.marketId).commissionPayouts?.provisionalTaxRateBps ?? null;
+  }
+
   sessionTtlMs(): number {
     return SESSION_TTL_MS;
   }
@@ -36,6 +48,10 @@ export class ConfigOrderingPolicy implements OrderingPolicy {
 
   refundsEnabled(market: MarketContext): boolean {
     return this.markets.get(market.marketId).tax?.refundCredit?.enabled === true;
+  }
+
+  currency(market: MarketContext): string {
+    return this.markets.get(market.marketId).defaultCurrency;
   }
 
   invoicesEnabled(market: MarketContext): boolean {

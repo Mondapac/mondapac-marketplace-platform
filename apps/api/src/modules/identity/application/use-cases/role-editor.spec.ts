@@ -9,6 +9,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { fakeHashOf, IdentityFakes } from '../../../../../test/support/identity-fakes';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 import {
   realEffectiveKeys,
   realPermissionRegistry,
@@ -281,7 +282,11 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
         effectiveKeys,
       }),
     );
-    const deps: RoleEditorDependencies = {
+    const review = new RecordingReview();
+    const deps: RoleEditorDependencies & {
+      readonly review: RecordingReview;
+      readonly proposer: RecordingReview;
+    } = {
       unitOfWork,
       accounts: fakes.accountRepository,
       roles: fakes.roleRepository,
@@ -294,6 +299,8 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
       audit: fakes.audit,
       clock,
       ids: new SequenceIdGenerator(clock),
+      review,
+      proposer: review,
     };
     const readDeps = { ...deps };
     return {
@@ -543,7 +550,10 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
         permissionKeys: ['identity.seller-access.view', 'identity.admin-account.invite'],
       });
 
-      expect(result).toEqual({ ok: true, value: { code: 'role.updated', roleId: HIGH_ROLE } });
+      expect(result).toEqual({
+        ok: true,
+        value: { code: 'role.updated', roleId: HIGH_ROLE, request: null },
+      });
       expect(stored(HIGH_ROLE)).toMatchObject({
         name: NAME_CANARY,
         version: 2,
@@ -574,7 +584,10 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
         permissionKeys: [...role.permissionKeys],
       });
 
-      expect(result).toEqual({ ok: true, value: { code: 'role.unchanged', roleId: HIGH_ROLE } });
+      expect(result).toEqual({
+        ok: true,
+        value: { code: 'role.unchanged', roleId: HIGH_ROLE, request: null },
+      });
       expect(stored(HIGH_ROLE)!.version).toBe(1);
       expect(written()).toEqual({ events: 0, audits: 0 });
     });
@@ -688,7 +701,10 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
 
       expect(held).toEqual({ ok: false, error: { code: 'role.in-use' } });
       expect(stored(HELD_ROLE)).toBeDefined();
-      expect(free).toEqual({ ok: true, value: { code: 'role.deleted', roleId: HIGH_ROLE } });
+      expect(free).toEqual({
+        ok: true,
+        value: { code: 'role.deleted', roleId: HIGH_ROLE, request: null },
+      });
       expect(stored(HIGH_ROLE)).toBeUndefined();
       expect(fakes.events.at(-1)).toMatchObject({
         type: 'identity.role-deleted.v1',
@@ -710,7 +726,10 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
         name: 'First save',
         permissionKeys: keys,
       });
-      expect(first).toEqual({ ok: true, value: { code: 'role.updated', roleId: HIGH_ROLE } });
+      expect(first).toEqual({
+        ok: true,
+        value: { code: 'role.updated', roleId: HIGH_ROLE, request: null },
+      });
       expect(stored(HIGH_ROLE)!.version).toBe(2);
       const events = fakes.events.length;
       const afterFirst = written();
@@ -751,7 +770,7 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
 
       expect(
         await deletePlatform.execute(asAdmin(ROOT), { roleId: HIGH_ROLE, expectedVersion: 2 }),
-      ).toEqual({ ok: true, value: { code: 'role.deleted', roleId: HIGH_ROLE } });
+      ).toEqual({ ok: true, value: { code: 'role.deleted', roleId: HIGH_ROLE, request: null } });
     });
 
     it('a missing or invalid expectedVersion is validation.failed on that field and writes nothing', async () => {

@@ -40,7 +40,11 @@ import {
 } from '../../src/modules/identity/application/ports/access-reviewers';
 import {
   ACCOUNT_REPOSITORY,
+  AccountEmailTakenError,
+  EMAIL_CHANGE_STORE,
   type AccountRepository,
+  type EmailChangeNotice,
+  type EmailChangeStore,
 } from '../../src/modules/identity/application/ports/account.repository';
 import {
   PASSWORD_HASHER,
@@ -59,7 +63,9 @@ import {
   type SessionRepository,
 } from '../../src/modules/identity/application/ports/session.repository';
 import {
+  customerSignInResultOf,
   SIGN_IN_RECORD_REPOSITORY,
+  type CustomerSignInQuery,
   type SignInRecord,
   type SignInRecordRepository,
 } from '../../src/modules/identity/application/ports/sign-in-record.repository';
@@ -164,7 +170,9 @@ import {
 } from '../../src/platform/mail/mail-transport';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
+import { SYSTEM_REQUEST_RECORDER } from '../../src/platform/change-review/change-review';
 import { fakeRunOnce } from './fake-run-once';
+import { RecordingReview } from './system-request-fakes';
 
 // In-memory fakes of identity's database ports, for the HTTP suites of `pnpm test` (no
 // database). Units are not isolated: `run` calls `work` once. The fakes keep the rules the
@@ -196,6 +204,8 @@ export class IdentityFakes {
   /** Sign-in challenges by id, with the hex of their token hash (slice 7). */
   readonly challenges = new Map<string, { challenge: SignInChallenge; tokenHash: string }>();
   readonly invitations = new Map<string, InvitationState>();
+  /** The invitations whose acceptance lock was taken, in order (Hassan M2). */
+  readonly invitationLocks: string[] = [];
   /** Seller step-up rules by "market|seller|action", and proofs by "market|session|action". */
   readonly stepUpPolicies = new Map<string, { required: boolean; updatedAt: Temporal.Instant }>();
   readonly stepUpProofs = new Map<string, Temporal.Instant>();
@@ -253,11 +263,13 @@ export class IdentityFakes {
     this.provider.failure = null;
     this.provider.exchanges.length = 0;
     this.accounts.clear();
+    this.emailChangeNotices.clear();
     this.sessions.clear();
     this.throttles.clear();
     this.records.length = 0;
     this.events.length = 0;
     this.audits.length = 0;
+    this.review.reset();
     this.links.clear();
     this.sellerAccess.clear();
     this.memberships.clear();
@@ -337,6 +349,20 @@ export class IdentityFakes {
           (a) => a.marketId === market.marketId && a.population === population,
         ),
       ),
+    searchCustomerIdsByName: (market: MarketContext, term: string, limit: number) =>
+      Promise.resolve(
+        [...this.accounts.values()]
+          .filter(
+            (state) =>
+              state.marketId === market.marketId &&
+              state.population === 'customer' &&
+              state.displayName !== null &&
+              state.displayName.toLowerCase().includes(term.toLowerCase()),
+          )
+          .map((state) => state.id)
+          .sort()
+          .slice(0, limit),
+      ),
     customerSummaries: (market: MarketContext, ids: readonly Id<'Account'>[]) =>
       Promise.resolve(
         ids.flatMap((id) => {
@@ -348,6 +374,27 @@ export class IdentityFakes {
             : [{ id, displayName: state.displayName, email: state.email.typed }];
         }),
       ),
+    customerDirectoryRows: (market: MarketContext, ids: readonly Id<'Account'>[]) =>
+      Promise.resolve(
+        ids.flatMap((id) => {
+          const state = this.accounts.get(id);
+          return state === undefined ||
+            state.marketId !== market.marketId ||
+            state.population !== 'customer'
+            ? []
+            : [
+                {
+                  id,
+                  email: state.email.normalized,
+                  displayName: state.displayName,
+                  status: 'active' as const,
+                  emailVerifiedAt: null,
+                  signedUpAt: state.signedUpAt,
+                },
+              ];
+        }),
+      ),
+    customerDirectoryPage: () => Promise.resolve([]),
     customerSharesAddressWithSellerMember: () => Promise.resolve(false),
     customerStatus: (market: MarketContext, id: Id<'Account'>) => {
       const state = this.accounts.get(id);
@@ -373,6 +420,19 @@ export class IdentityFakes {
       const stored = this.accounts.get(account.state.id);
       if (stored === undefined || stored.version !== account.persistedVersion) {
         return Promise.reject(new StaleAggregateError('account', account.state.id));
+      }
+      // As the unique key on (market, population, email_normalized).
+      const { marketId, population, email } = account.state;
+      if (
+        [...this.accounts.values()].some(
+          (other) =>
+            other.id !== account.state.id &&
+            other.marketId === marketId &&
+            other.population === population &&
+            other.email.normalized === email.normalized,
+        )
+      ) {
+        return Promise.reject(new AccountEmailTakenError(account.state.id));
       }
       this.accounts.set(account.state.id, account.state);
       return Promise.resolve();
@@ -1105,6 +1165,45 @@ export class IdentityFakes {
     },
   };
 
+  /** The notices of confirmed changes, by `${accountId}|${accountVersion}` (sealed in the real store). */
+  readonly emailChangeNotices = new Map<string, EmailChangeNotice>();
+
+  readonly emailChangeStore: EmailChangeStore = {
+    recordNotice: (_market, accountId, accountVersion, notice) => {
+      const key = `${accountId}|${accountVersion}`;
+      if (this.emailChangeNotices.has(key)) {
+        return Promise.reject(new Error('email_change_notices_pkey'));
+      }
+      this.emailChangeNotices.set(key, { ...notice });
+      return Promise.resolve();
+    },
+    noticeOf: (_market, accountId, accountVersion) => {
+      const notice = this.emailChangeNotices.get(`${accountId}|${accountVersion}`);
+      if (notice === undefined) return Promise.resolve('missing' as const);
+      return Promise.resolve(
+        this.subjectKeys.get(accountId) === 'destroyed' ? ('unreadable' as const) : notice,
+      );
+    },
+    forgetNotice: (_market, accountId, accountVersion) =>
+      Promise.resolve(this.emailChangeNotices.delete(`${accountId}|${accountVersion}`)),
+    clearLapsedPendingEmails: (market, before) => {
+      let count = 0;
+      for (const [id, state] of this.accounts) {
+        const at = state.pendingEmailRequestedAt ?? null;
+        if (state.marketId !== market.marketId || at === null) continue;
+        if (Temporal.Instant.compare(at, before) > 0) continue;
+        this.accounts.set(id, {
+          ...state,
+          pendingEmail: null,
+          pendingEmailRequestedAt: null,
+          version: state.version + 1,
+        });
+        count += 1;
+      }
+      return Promise.resolve(count);
+    },
+  };
+
   readonly linkRepository: OneTimeLinkRepository = {
     findById: (market, id) => {
       const state = this.links.get(id);
@@ -1490,9 +1589,52 @@ export class IdentityFakes {
         );
       return Promise.resolve(latest);
     },
+    pageOfCustomer: (market, query, direction, window) => {
+      const sign = direction === 'asc' ? 1 : -1;
+      const rows = this.customerRecords(market.marketId, query)
+        .sort(
+          (a, b) =>
+            sign *
+            (Temporal.Instant.compare(a.occurredAt, b.occurredAt) || a.id.localeCompare(b.id)),
+        )
+        .slice(window.offset, window.offset + window.limit)
+        .map(({ id, occurredAt, outcome, device }) => ({ id, occurredAt, outcome, device }));
+      return Promise.resolve(rows);
+    },
+    countOfCustomer: (market, query) =>
+      Promise.resolve(this.customerRecords(market.marketId, query).length),
+    customerAddressOf: (market, accountId, recordId, since) => {
+      const found = this.records.find(
+        (record) =>
+          record.marketId === market.marketId &&
+          record.id === recordId &&
+          record.accountId === accountId &&
+          record.population === 'customer' &&
+          Temporal.Instant.compare(record.occurredAt, since) >= 0,
+      );
+      return Promise.resolve(
+        found === undefined ? null : { address: found.address, occurredAt: found.occurredAt },
+      );
+    },
     oldest: () => Promise.resolve(null),
     deleteBetween: () => Promise.resolve(0),
   };
+
+  /** One customer's records as `pageOfCustomer` filters them (any order). */
+  private customerRecords(
+    marketId: string,
+    query: CustomerSignInQuery,
+  ): (SignInRecord & { marketId: string })[] {
+    return this.records.filter(
+      (record) =>
+        record.marketId === marketId &&
+        record.accountId === query.accountId &&
+        record.population === 'customer' &&
+        Temporal.Instant.compare(record.occurredAt, query.from) >= 0 &&
+        (query.to === null || Temporal.Instant.compare(record.occurredAt, query.to) < 0) &&
+        (query.results === null || query.results.includes(customerSignInResultOf(record.outcome))),
+    );
+  }
 
   readonly factorRepository: SecondFactorRepository = {
     findByAccount: (market, accountId) => {
@@ -1643,6 +1785,11 @@ export class IdentityFakes {
   };
 
   readonly invitationRepository: InvitationRepository = {
+    // The in-memory store runs one unit at a time, so the lock only records that it was taken.
+    lockForAcceptance: (_market, id) => {
+      this.invitationLocks.push(id);
+      return Promise.resolve();
+    },
     findById: (market, id) => {
       const state = this.invitations.get(id);
       return Promise.resolve(
@@ -1785,6 +1932,12 @@ export class IdentityFakes {
   };
 
   /**
+   * System requests' recorder without a database (Admin Inbox › System requests): every area is
+   * off unless a test calls `review.review('people', 'high')`; the openings are kept in `opened`.
+   */
+  readonly review = new RecordingReview();
+
+  /**
    * Identity's audit writer without a database: it records what it is given (the real writer
    * needs an open unit of the persistence layer; test/db/ covers it).
    */
@@ -1846,6 +1999,8 @@ export class IdentityFakes {
       this.subjectKeys.set(subject, 'destroyed');
       return Promise.resolve();
     },
+    hasHadKey: (_market: MarketContext, subject: Id) =>
+      Promise.resolve(this.subjectKeys.has(subject)),
   };
 
   /** The second factor's secrets over the fake subject keys (the real adapter, slice 7b). */
@@ -1892,8 +2047,12 @@ export class IdentityFakes {
     return builder
       .overrideProvider(UNIT_OF_WORK)
       .useValue(this.unitOfWork)
+      .overrideProvider(SYSTEM_REQUEST_RECORDER)
+      .useValue(this.review)
       .overrideProvider(ACCOUNT_REPOSITORY)
       .useValue(this.accountRepository)
+      .overrideProvider(EMAIL_CHANGE_STORE)
+      .useValue(this.emailChangeStore)
       .overrideProvider(SESSION_REPOSITORY)
       .useValue(this.sessionRepository)
       .overrideProvider(STEP_UP_REPOSITORY)

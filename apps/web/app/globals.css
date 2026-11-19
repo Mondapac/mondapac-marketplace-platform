@@ -231,6 +231,39 @@ svg {
   background: var(--sf-white);
 }
 
+/* Navigation progress: a thin bar along the top while a soft navigation loads (shell). */
+.nav-progress {
+  position: fixed;
+  inset: env(safe-area-inset-top, 0px) 0 auto 0;
+  z-index: 60;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+}
+/* Teal: at least 4.5:1 on white in every palette (lagoon is 3:1 in palette D). No track. */
+.nav-progress-bar {
+  height: 100%;
+  background: var(--sf-teal);
+  transform-origin: left center;
+  transform: scaleX(0.9);
+}
+[dir='rtl'] .nav-progress-bar {
+  transform-origin: right center;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .nav-progress[data-motion='full'] .nav-progress-bar {
+    animation: nav-progress-grow 8s cubic-bezier(0.1, 0.7, 0.2, 1) both;
+  }
+}
+@keyframes nav-progress-grow {
+  from {
+    transform: scaleX(0.08);
+  }
+  to {
+    transform: scaleX(0.9);
+  }
+}
+
 /* Header */
 .top {
   position: sticky;
@@ -621,6 +654,199 @@ svg {
   .sview {
     display: none;
   }
+}
+
+/* Search suggestions (search package 1b): the popup under the header box and the phone view's list */
+.search {
+  position: relative;
+}
+.tapanel {
+  position: absolute;
+  inset-inline: 0;
+  top: calc(100% + 6px);
+  z-index: 60;
+  background: var(--sf-white);
+  border: 1px solid var(--sf-line);
+  border-radius: 14px;
+  box-shadow: 0 16px 36px var(--sf-shadow-panel);
+  overflow: hidden auto;
+  max-height: min(72vh, 580px);
+  padding: 4px 0;
+  color: var(--sf-ink);
+  text-align: start;
+}
+.tapanel[hidden] {
+  display: none;
+}
+.tapanel.in {
+  position: static;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  max-height: none;
+  flex: 1;
+  overflow: auto;
+  padding: 0 0 24px;
+}
+.tah {
+  padding: 12px 16px 4px;
+  font-size: calc(12px * var(--fs));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sf-slate);
+  font-weight: 700;
+}
+.tah:lang(fa),
+[dir='rtl'] .tah {
+  letter-spacing: 0;
+}
+.tarow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  min-height: 56px;
+  color: var(--sf-ink);
+  text-decoration: none;
+}
+.tarow {
+  position: relative;
+}
+.tarow:hover {
+  background: var(--sf-mist-soft);
+}
+/* The row the arrow keys are on: a stronger tint and a bar on the inline-start edge (RTL safe). */
+.tarow.on {
+  background: var(--sf-mist);
+}
+.tarow.on::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  background: var(--sf-teal);
+}
+.tath,
+.talg {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--sf-mist);
+  display: grid;
+  place-items: center;
+  flex: none;
+  position: relative;
+  color: var(--sf-teal);
+}
+.talg {
+  font-family: var(--sf-font-head);
+  font-weight: 800;
+}
+.tath .ico {
+  width: 20px;
+  height: 20px;
+}
+.tath img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.tat {
+  flex: 1;
+  min-width: 0;
+}
+.tat b {
+  display: block;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tat mark {
+  background: none;
+  color: var(--sf-teal);
+  font-weight: 800;
+}
+.tat small {
+  display: block;
+  color: var(--sf-slate);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: calc(13px * var(--fs));
+}
+.taall {
+  border-top: 1px solid var(--sf-line);
+  color: var(--sf-teal);
+  font-weight: 700;
+  margin-top: 4px;
+}
+.taall .tat b {
+  font-weight: 700;
+  color: var(--sf-teal);
+}
+.taall .ico {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+.tanote {
+  margin: 0;
+  padding: 14px 16px;
+  color: var(--sf-slate);
+}
+.tasq {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  min-height: 56px;
+}
+.tasq i {
+  display: block;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--sf-surface), var(--sf-mist), var(--sf-surface));
+  background-size: 200% 100%;
+}
+.tasq > i {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  flex: none;
+}
+.tasq span {
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+.tasq span i {
+  height: 12px;
+  width: 70%;
+}
+.tasq span i + i {
+  width: 40%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tasq i {
+    animation: tasq 1.2s linear infinite;
+  }
+}
+@keyframes tasq {
+  to {
+    background-position: -200% 0;
+  }
+}
+.tasr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /* Layout */
@@ -2399,6 +2625,21 @@ svg {
 .fchips a[aria-current='page'] {
   background: var(--sf-mist);
   color: var(--sf-teal);
+}
+.fchips a .cnt {
+  margin-inline-start: 6px;
+  color: var(--sf-slate);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+/* The category's short description under its title (categories C6). */
+.rhead .cdesc {
+  margin: 0;
+  max-width: 70ch;
+  color: var(--sf-slate);
+  font-size: calc(14px * var(--fs));
+  line-height: calc(20px * var(--fs));
+  overflow-wrap: anywhere;
 }
 .empty.rich {
   display: grid;
@@ -6033,6 +6274,10 @@ svg {
 .lmst.no {
   color: var(--sf-error-ink);
 }
+.lmkeep {
+  justify-self: start;
+  font-weight: 700;
+}
 .lmsv {
   min-width: 0;
   margin: 0;
@@ -6052,7 +6297,7 @@ svg {
 .lmpriv .lnk {
   min-height: 32px;
 }
-.lmpriv,
+/* The privacy lines stay start-aligned: justified, their long words leave wide gaps at 320px. */
 .lmsel > small,
 .lmst.no > span,
 .lmerr span,
@@ -6060,6 +6305,7 @@ svg {
   text-align: justify;
   hyphens: auto;
 }
+
 .lmmap {
   position: relative;
   min-width: 0;
@@ -6118,6 +6364,32 @@ svg {
   filter: drop-shadow(0 3px 4px var(--sf-shadow-control));
   cursor: grab;
   touch-action: none;
+}
+/* The Mapbox map (ADR-0048): the canvas fills the box; the pin is the same button, placed by the
+   map at its tip (anchor bottom); Mapbox's own logo and attribution stay visible, as its terms ask. */
+.lmmap.gl {
+  cursor: default;
+}
+.lmgl {
+  position: absolute;
+  inset: 0;
+}
+.lmpin.gl {
+  position: static;
+  margin: 0;
+}
+/* Above Mapbox's attribution, which sits in the bottom corner (Reza, PR #823). */
+.lmmap.gl .lmlegend {
+  bottom: 40px;
+}
+.lmload {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--fs));
 }
 .lmpin svg {
   display: block;
@@ -6739,9 +7011,6 @@ svg {
   height: 18px;
   margin-top: 1px;
   color: var(--sf-teal);
-}
-.skel.shop-skel-head {
-  height: clamp(240px, 32vw, 320px);
 }
 @media (min-width: 900px) {
   .shop-boxes {
@@ -9471,6 +9740,30 @@ button.login {
 .aslist li {
   display: grid;
 }
+.aslist li + li {
+  border-top: 1px solid var(--sf-line);
+  padding-top: 6px;
+}
+.aslist + .aslist {
+  margin-top: 10px;
+  border-top: 1px solid var(--sf-line);
+  padding-top: 8px;
+}
+.aslist .astag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: start;
+  color: var(--sf-slate);
+  font-size: calc(11.5px * var(--cfs));
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.aslist .astag .ico {
+  width: 13px;
+  height: 13px;
+}
 .aslist a {
   color: var(--sf-teal);
   font-weight: 700;
@@ -10009,6 +10302,10 @@ button.login {
   scroll-snap-align: start;
   scroll-snap-stop: always;
 }
+.gslide picture,
+.tile picture {
+  display: contents;
+}
 .gslide img {
   display: block;
   inline-size: 100%;
@@ -10442,4 +10739,427 @@ button.login {
   .br-body .br-mark.lg {
     margin-block-start: -48px;
   }
+}
+/* Buyer assistant: price, badges and the Preview marker of a card row (F1). */
+.aslist .asprice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.aslist .asprice b {
+  font-size: calc(15px * var(--cfs));
+  font-weight: 800;
+  color: var(--sf-ink);
+}
+.aslist .asprice b.sp {
+  color: var(--sf-error);
+}
+.aslist .asprice s {
+  color: var(--sf-slate);
+  font-size: calc(13px * var(--cfs));
+}
+.aslist .asprice .badge {
+  font-size: calc(11.5px * var(--cfs));
+  line-height: calc(16px * var(--cfs));
+}
+.aslist .asbadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+.aslist .asbadges .badge {
+  font-size: calc(11.5px * var(--cfs));
+  line-height: calc(16px * var(--cfs));
+}
+.aspreview {
+  display: inline-block;
+  margin-inline-start: 8px;
+  padding: 1px 8px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-pill);
+  background: var(--sf-mist-soft);
+  color: var(--sf-slate);
+  font-size: calc(11.5px * var(--cfs));
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+/* Assistant cart cards (S1-F1): a proposed cart change, the buyer's cart and a planned list. */
+.ascc {
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-white);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  font-size: calc(13.5px * var(--cfs));
+  color: var(--sf-ink);
+}
+.ascc small {
+  color: var(--sf-slate);
+  font-size: calc(12.5px * var(--cfs));
+}
+.ascc a:not(.btn) {
+  color: var(--sf-teal);
+  font-weight: 700;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+.ascc-h {
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+.ascc-t {
+  margin: 0;
+  font-weight: 700;
+}
+.ascc-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.ascc-price b {
+  font-size: calc(15px * var(--cfs));
+  font-weight: 800;
+}
+.ascc-units {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.ascc-units legend {
+  padding: 0;
+  font-weight: 700;
+  margin-block-end: 4px;
+}
+.ascc-unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.ascc-unit input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  accent-color: var(--sf-teal);
+}
+.ascc-unit span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ascc-qty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.ascc-qty > div {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--sf-line);
+  border-radius: 999px;
+}
+.ascc-qty button {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: none;
+  color: var(--sf-ink);
+  font-size: 20px;
+  font-family: inherit;
+  cursor: pointer;
+  border-radius: 999px;
+}
+.ascc-qty button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.ascc-qty output {
+  min-width: 28px;
+  text-align: center;
+  font-weight: 700;
+}
+.ascc-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.ascc-acts .btn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.ascc-choice {
+  display: grid;
+  gap: 8px;
+  border-inline-start: 3px solid var(--sf-saffron);
+  padding-inline-start: 10px;
+}
+.ascc-choice p {
+  margin: 0;
+}
+.ascc-ok,
+.ascc-err {
+  margin: 0;
+  font-weight: 600;
+}
+.ascc .ascc-ok {
+  color: var(--sf-teal);
+}
+.ascc .ascc-err,
+.ascc .ascc-flag {
+  color: var(--sf-error);
+}
+.ascc .num {
+  unicode-bidi: isolate;
+}
+.ascc .ascb-why {
+  color: var(--sf-ink);
+}
+.ascc-group {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--sf-line);
+  padding-top: 8px;
+}
+.ascc-gh,
+.ascc-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+.ascc-total {
+  border-top: 1px solid var(--sf-line);
+  padding-top: 8px;
+  font-weight: 800;
+}
+.ascc-lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.ascc-lines > li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  overflow-wrap: anywhere;
+}
+.ascb .ascc-lines > li {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid var(--sf-line);
+  padding-top: 8px;
+}
+.ascb .ascc-lines > li:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.ascb-main {
+  display: grid;
+  gap: 2px;
+}
+.ascb-wish {
+  color: var(--sf-slate);
+  font-size: calc(12px * var(--cfs));
+}
+.ascb-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.ascb-swap summary {
+  cursor: pointer;
+  color: var(--sf-teal);
+  font-weight: 700;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.ascb-swap ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.ascb-swap li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.ascb-nf {
+  display: grid;
+  gap: 4px;
+}
+.ascb-nf ul {
+  margin: 0;
+  padding-inline-start: 18px;
+}
+
+/* Follow a store, My stores and the invite link (customers management phases 3 and 4a). Logical
+   properties only, so Persian flips on its own. */
+.fl {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  margin-block-start: 10px;
+}
+.fl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.fl-btn .ico {
+  width: 18px;
+  height: 18px;
+}
+.fl-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.fl-spin {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+  animation: lmspin 0.8s linear infinite;
+}
+.fl-live:empty {
+  display: none;
+}
+.fl-live,
+.fl-privacy,
+.fl-help,
+.fl-gift {
+  font-size: calc(13px * var(--fs));
+  line-height: calc(19px * var(--fs));
+  color: var(--sf-slate);
+}
+.fl-gift {
+  color: var(--sf-ink);
+  font-weight: 700;
+}
+.fl-err {
+  font-size: calc(13px * var(--fs));
+  color: var(--sf-ink);
+  font-weight: 700;
+}
+.fl-card {
+  margin-block-start: 12px;
+}
+.fl-gifts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-inline-start: 18px;
+}
+.ms-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ms-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding-block: 10px;
+  border-block-end: 1px solid var(--sf-line);
+}
+.ms-row .lg {
+  flex: none;
+  width: 48px;
+  height: 48px;
+}
+.ms-id {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.ms-name {
+  overflow-wrap: anywhere;
+  font-weight: 800;
+  color: var(--sf-ink);
+}
+.ms-id small {
+  color: var(--sf-slate);
+}
+.ms-off .ms-name {
+  color: var(--sf-slate);
+}
+.ms-act {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+.ms-undo {
+  margin: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ms-skel {
+  min-height: 68px;
+  background: var(--sf-mist-soft);
+  border-radius: 10px;
+  margin-block: 4px;
+}
+@media (max-width: 699.98px) {
+  .ms-row {
+    flex-wrap: wrap;
+  }
+}
+.inv-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-block-end: 16px;
+  padding: 14px 16px;
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-mist-soft);
+}
+.inv-banner h2 {
+  font-size: calc(18px * var(--fs));
+  line-height: calc(24px * var(--fs));
+  font-weight: 800;
+}
+.inv-banner > div:first-of-type {
+  flex: 1;
+  min-width: 200px;
+}
+.inv-live:empty {
+  display: none;
+}
+.inv-invalid {
+  margin-block-end: 12px;
 }

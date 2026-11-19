@@ -6,7 +6,12 @@ import { CertificationSeal } from '../certification/certification-seal.tsx';
 import { checkLoaded } from '../icons/check-loaded.ts';
 import { CategoryArt } from '../icons/category-icon.tsx';
 import { under } from '../shell/breakpoints.ts';
+import { PhotoImage } from '../storefront/photo-image.tsx';
+import type { PhotoSet } from '../storefront/photos.ts';
 import type { CertificationBadge } from '../storefront/types.ts';
+
+/** The photo's width: the page's one column on a phone, the column beside the buy box from 1000px. */
+export const GALLERY_SIZES = '(min-width: 1000px) calc(100vw - 420px), 100vw';
 
 /**
  * The large photo with its thumbnails, the certification seal (the structured badge, never a
@@ -19,6 +24,7 @@ export function Gallery({
   category,
   photos,
   thumbs,
+  sets,
   certifications,
   special,
 }: {
@@ -27,6 +33,8 @@ export function Gallery({
   readonly photos: readonly string[];
   /** Small versions of the photos for the strip, same order; the photos themselves when absent. */
   readonly thumbs?: readonly string[] | undefined;
+  /** `srcset` and size of each photo, same order; photos without one keep a plain `src`. */
+  readonly sets?: readonly PhotoSet[] | undefined;
   readonly certifications: readonly CertificationBadge[];
   readonly special: boolean;
 }) {
@@ -36,7 +44,7 @@ export function Gallery({
   // with none left the category art shows, as for a product without photos.
   const [failed, setFailed] = useState<readonly string[]>([]);
   const shots = photos.flatMap((src, i) =>
-    failed.includes(src) ? [] : [{ src, thumb: thumbs?.[i] ?? src }],
+    failed.includes(src) ? [] : [{ src, thumb: thumbs?.[i] ?? src, set: sets?.[i] }],
   );
   const current = Math.min(index, Math.max(0, shots.length - 1));
   const track = useRef<HTMLDivElement>(null);
@@ -101,19 +109,17 @@ export function Gallery({
             {shots.map((shot, i) => (
               // A photo is the API's public photo route (a plain image, not a server-resized one).
               <div key={shot.src} className="gslide">
-                <img
+                <PhotoImage
                   src={shot.src}
-                  alt={
-                    shots.length > 1
-                      ? t('photo-alt', { name, index: i + 1, total: shots.length })
-                      : name
-                  }
-                  width={800}
-                  height={800}
+                  set={shot.set}
+                  sizes={GALLERY_SIZES}
+                  alt={i === 0 ? name : t('photo-alt', { name, index: i + 1 })}
+                  width={shot.set?.width ?? 800}
+                  height={shot.set?.height ?? 800}
                   decoding="async"
                   loading={i === 0 ? undefined : 'lazy'}
                   fetchPriority={i === 0 ? 'high' : 'auto'}
-                  ref={(el) => checkLoaded(el, () => fail(shot.src))}
+                  imgRef={(el) => checkLoaded(el, () => fail(shot.src))}
                   onError={() => fail(shot.src)}
                 />
               </div>

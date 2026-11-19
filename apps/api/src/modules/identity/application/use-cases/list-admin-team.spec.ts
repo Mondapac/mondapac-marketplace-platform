@@ -7,6 +7,7 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { fakeHashOf, IdentityFakes } from '../../../../../test/support/identity-fakes';
+import { RecordingReview } from '../../../../../test/support/system-request-fakes';
 import {
   realEffectiveKeys,
   realPermissionRegistry,
@@ -89,6 +90,7 @@ const LEAD_KEYS = [
   'catalog.brand.read',
   'catalog.category-tree.view',
   'catalog.product.view',
+  'catalog.variant.view',
   'identity.admin-account.disable',
   'identity.admin-account.invite',
   'identity.admin-account.reset-second-factor',
@@ -110,16 +112,22 @@ const LEAD_KEYS = [
   'sellers.business-activity.view',
   'shipping.fleet-selection.view',
   'shipping.delivery-settings.view',
+  'shipping.carrier-delivery.view',
   'blog.post.read',
   'promotions.promotion.view',
   'ordering.order.view',
+  'ordering.refund-limits.view',
+  'ordering.ship-to-retention.view',
   'payments.connected-account.view',
   'pricing.price-hold.view',
   'sellers.seller.view',
   'commission-payouts.settlement.view',
   'commission-payouts.payout-terms.view',
   'commission-payouts.dispute.view',
+  'settings.ai.view',
+  'settings.cart-mode.view',
   'settings.list-paging.view',
+  'storefront.seo.view',
 ];
 
 type AccountAction = keyof AdminTeamAccountRow['actions'];
@@ -264,6 +272,7 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
       effectiveKeys,
       outbox: fakes.outbox,
       audit: fakes.audit,
+      review: new RecordingReview(),
       clock,
     };
     const status = {
@@ -285,6 +294,7 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
         permissions,
         factors,
         policy,
+        review: new RecordingReview(),
         clock,
       }),
       commands: {
@@ -722,7 +732,11 @@ describe.each(TEST_MARKETS)('ListAdminTeam in market %s (slice 8c)', (code) => {
     expect(alone.items.map((row) => row.type === 'account' && row.accountId)).toEqual([ROOT]);
     expect(alone.next).toBeNull();
     for (const after of [ROOT, '01990000-0000-7000-8000-ffffffffffff']) {
-      expect(await page(list, ROOT, { after, limit: 10 })).toEqual({ items: [], next: null });
+      expect(await page(list, ROOT, { after, limit: 10 })).toEqual({
+        items: [],
+        next: null,
+        review: { reviewed: false, risk: 'low' },
+      });
     }
   });
 

@@ -38,6 +38,11 @@ export class SuggestionAttributeBody {
 }
 
 export class SuggestionItemBody {
+  @ApiProperty({
+    type: [String],
+    description: 'The row actions of the Actions menu: approve, map, reject.',
+  })
+  actions!: string[];
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ description: 'The version a decision must name.' }) version!: number;
   @ApiProperty({ description: "The seller's own words. Plain text; never render as markup." })
@@ -56,6 +61,16 @@ export class SuggestionLocalesBody {
 
 export class SuggestionListBody {
   @ApiProperty({ type: [SuggestionItemBody] }) items!: SuggestionItemBody[];
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'Open suggestions matching over all pages; null in prev-next mode.',
+  })
+  total!: number | null;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty({ description: 'Whether a page after this one exists.' }) hasNext!: boolean;
   @ApiProperty({
     type: [String],
     description: 'The locales an approval must name the value in.',
@@ -150,6 +165,16 @@ export class OwnSuggestionListBody {
   @ApiProperty({ type: [OwnSuggestionItemBody] }) items!: OwnSuggestionItemBody[];
   @ApiProperty({ nullable: true, type: String, description: 'The afterId of the next page.' })
   nextAfterId!: string | null;
+  @ApiProperty({ description: '1-based page number (1 on a cursor read).' }) page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'The suggestions the filters keep; null in `prev-next` mode and on a cursor read.',
+  })
+  total!: number | null;
   @ApiProperty({ description: "How many of the seller's suggestions wait for a decision." })
   openCount!: number;
   @ApiProperty({ description: 'How many may wait at once.' }) maxOpen!: number;

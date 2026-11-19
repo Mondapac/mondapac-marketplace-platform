@@ -13,6 +13,10 @@ import type { Id, Money, Temporal } from '@mondapac/shared-kernel';
  * `refund-shipping` (debits), `refund-commission` (credit: the platform gives the commission on the
  * refunded part back). `dispute-debit` (debit) and `dispute-reinstate` (credit) are reserved for
  * the disputes package: the database allows them, nothing writes them yet.
+ *
+ * `cashback-seller` (debit, customers phase 4c): the cashback a seller funds for its exclusive
+ * customer, credited to the customer's wallet when the seller order was delivered; its source is
+ * the promotions credit.
  */
 export type LedgerKind =
   | 'sale'
@@ -22,7 +26,9 @@ export type LedgerKind =
   | 'refund-shipping'
   | 'refund-commission'
   | 'dispute-debit'
-  | 'dispute-reinstate';
+  | 'dispute-reinstate'
+  | 'cashback-seller'
+  | 'refund-cashback-seller';
 
 export const LEDGER_KINDS: readonly LedgerKind[] = [
   'sale',
@@ -33,6 +39,8 @@ export const LEDGER_KINDS: readonly LedgerKind[] = [
   'refund-commission',
   'dispute-debit',
   'dispute-reinstate',
+  'cashback-seller',
+  'refund-cashback-seller',
 ];
 
 /** The kinds written when a seller order is paid; they carry no source id. */
@@ -43,6 +51,7 @@ const DEBITS: ReadonlySet<LedgerKind> = new Set([
   'refund-sale',
   'refund-shipping',
   'dispute-debit',
+  'cashback-seller',
 ]);
 
 /** Credits add to the seller's balance, debits take from it. */
@@ -61,8 +70,19 @@ export interface LedgerEntry {
   /** `commission` and `refund-commission` only: the frozen rate and the base it applies to. */
   readonly rateBps: number | null;
   readonly baseAmount: bigint | null;
-  /** The refund (or dispute) a reversal comes from; null for the three original kinds. */
-  readonly sourceId: Id<'Refund'> | Id<'Dispute'> | null;
+  /**
+   * `commission` and `refund-commission` of a line lowered for the buyer's exclusive seller only:
+   * the rate it would have carried and the commission not taken (a reversal: the part given back).
+   * Absent means null.
+   */
+  readonly standardRateBps?: number | null;
+  readonly savedAmount?: bigint | null;
+  /**
+   * The refund (or dispute) a reversal comes from, or the promotions credit of a seller's
+   * cashback; null for the three original kinds.
+   */
+  readonly sourceId:
+    Id<'Refund'> | Id<'Dispute'> | Id<'PromotionCredit'> | Id<'CreditClawback'> | null;
   /** When the fact happened (the payment confirmed the order; for a reversal, the refund settled). */
   readonly occurredAt: Temporal.Instant;
   readonly recordedAt: Temporal.Instant;
@@ -81,9 +101,11 @@ export interface LedgerTotals {
   readonly refundedCommission: bigint;
   readonly disputeDebits: bigint;
   readonly disputeReinstated: bigint;
+  /** Cashback the seller funded for its exclusive customers (a debit). */
+  readonly sellerCashback: bigint;
   /**
    * sales + shipping − commission − refunded sales − refunded shipping + refunded commission −
-   * dispute debits + dispute reinstated. May be negative.
+   * dispute debits + dispute reinstated − seller cashback. May be negative.
    */
   readonly balance: bigint;
 }
@@ -97,6 +119,8 @@ export function totalsOf(sums: Readonly<Partial<Record<LedgerKind, bigint>>>): L
   const refundedCommission = sums['refund-commission'] ?? 0n;
   const disputeDebits = sums['dispute-debit'] ?? 0n;
   const disputeReinstated = sums['dispute-reinstate'] ?? 0n;
+  // Net of what refunds took back from the customer and returned to the seller (phase 4c-2).
+  const sellerCashback = (sums['cashback-seller'] ?? 0n) - (sums['refund-cashback-seller'] ?? 0n);
   return {
     sales,
     shipping,
@@ -106,6 +130,7 @@ export function totalsOf(sums: Readonly<Partial<Record<LedgerKind, bigint>>>): L
     refundedCommission,
     disputeDebits,
     disputeReinstated,
+    sellerCashback,
     balance:
       sales +
       shipping -
@@ -114,7 +139,8 @@ export function totalsOf(sums: Readonly<Partial<Record<LedgerKind, bigint>>>): L
       refundedShipping +
       refundedCommission -
       disputeDebits +
-      disputeReinstated,
+      disputeReinstated -
+      sellerCashback,
   };
 }
 
@@ -134,4 +160,23 @@ export function netBySellerOrder(
     nets.set(entry.sellerOrderId, (nets.get(entry.sellerOrderId) ?? 0n) + signed);
   }
   return [...nets].map(([sellerOrderId, net]) => ({ sellerOrderId, net }));
+}
+
+/**
+ * Per currency, the savings of `commission` rows less the parts `refund-commission` rows gave
+ * back, by code. Negative when refunds in the window gave back more than the window saved (an
+ * earlier month's order refunded now, Hassan L1); a currency that nets to zero is left out.
+ */
+export function savingsOf(
+  groups: readonly { readonly currency: string; readonly kind: string; readonly saved: bigint }[],
+): readonly { readonly currency: string; readonly saved: bigint }[] {
+  const byCurrency = new Map<string, bigint>();
+  for (const group of groups) {
+    const sign = group.kind === 'commission' ? 1n : group.kind === 'refund-commission' ? -1n : 0n;
+    byCurrency.set(group.currency, (byCurrency.get(group.currency) ?? 0n) + sign * group.saved);
+  }
+  return [...byCurrency]
+    .filter(([, saved]) => saved !== 0n)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([currency, saved]) => ({ currency, saved }));
 }

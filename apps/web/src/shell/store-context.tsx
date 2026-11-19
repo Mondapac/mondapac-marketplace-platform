@@ -41,6 +41,7 @@ import type {
   DeliveryWish,
   Money,
 } from '../storefront/types.ts';
+import { clearInvite } from '../invite/invite-cookie.ts';
 import { PALETTE_COOKIE, TEXT_SIZE_COOKIE, savePreference } from '../preferences/preferences.ts';
 import { checkReachable, reachable } from './connection.ts';
 
@@ -90,6 +91,17 @@ interface StoreState {
   /** Moves a saved item back to the cart (one unit). */
   readonly moveToCart: (id: string) => void;
   readonly removeSaved: (id: string) => void;
+  /**
+   * Waits for every cart change on its way to the API, then reads the cart (and the saved list of a
+   * signed-in buyer) again, so a change made outside the cart screens (the assistant's cards) shows
+   * at once in the header, the drawer and the cart page. A no-op on sample data.
+   */
+  readonly refreshCart: () => Promise<void>;
+  /**
+   * True once the cart on screen is the real one: always on sample data, from the first render when
+   * the server read the cart, otherwise after the browser's first read answered.
+   */
+  readonly cartReady: boolean;
   readonly discount: AppliedDiscount | null;
   readonly setDiscount: (discount: AppliedDiscount | null) => void;
   /** Checkout notes to sellers, by seller id. */
@@ -140,6 +152,11 @@ interface StoreState {
   /** The confirmed delivery location; null shows the storefront's default area. */
   readonly deliverTo: DeliverTo | null;
   readonly setDeliverTo: (to: DeliverTo) => void;
+  /**
+   * The approximate area guessed from the connection (edge location headers) on a visit with no
+   * confirmed location; null when there is none. Shown as "Near …", never stored.
+   */
+  readonly deliverGuess: DeliverTo | null;
   /** The log-in dialog (header Log in, the rail's My Account, the Account tab when signed out). */
   readonly loginOpen: boolean;
   readonly setLoginOpen: (open: boolean) => void;
@@ -174,6 +191,7 @@ export function StoreProvider({
   initialLiveCart = null,
   photoBase = null,
   initialDeliverTo = null,
+  deliverGuess = null,
   initialCustomer = null,
   live = false,
   children,
@@ -189,6 +207,8 @@ export function StoreProvider({
   readonly photoBase?: PhotoBase | null;
   /** The location kept in this browser (the delivery cookie). */
   readonly initialDeliverTo?: DeliverTo | null;
+  /** The approximate area guessed from the connection (see the context's `deliverGuess`). */
+  readonly deliverGuess?: DeliverTo | null;
   /** The signed-in customer to start with (tests; the session once it is read). */
   readonly initialCustomer?: CheckoutCustomer | null;
   /** The storefront talks to the API (`API_BASE_URL` is set). */
@@ -202,6 +222,7 @@ export function StoreProvider({
   const [unavailable, setUnavailable] = useState<readonly UnavailableLine[]>(
     initialLiveCart?.unavailable ?? [],
   );
+  const [cartReady, setCartReady] = useState(!live || initialLiveCart !== null);
   const [cartOpen, setCartOpen] = useState(false);
   const [customer, setCustomer] = useState<CheckoutCustomer | null>(initialCustomer);
   const [sessionReady, setSessionReady] = useState(!live);
@@ -265,6 +286,7 @@ export function StoreProvider({
     setCart(next.cart);
     setSource({ ...next.source, items: { ...savedItems.current, ...next.source.items } });
     setUnavailable(next.unavailable);
+    setCartReady(true);
   }, []);
   const readCart = useCallback(async () => {
     const read = await api.readCart();
@@ -412,6 +434,12 @@ export function StoreProvider({
     },
     [live, source, send, change],
   );
+  const refreshCart = useCallback(async () => {
+    if (!live) return;
+    await queue.current;
+    await readCart();
+    if (customerRef.current !== null) await readSaved();
+  }, [live, readCart, readSaved]);
   const setNote = useCallback(
     (sellerId: string, note: string) => setNotes((current) => ({ ...current, [sellerId]: note })),
     [],
@@ -475,6 +503,9 @@ export function StoreProvider({
       setSaved([]);
       void readCart();
     }
+    // A store invite kept for this browser's sign-up must not carry over to the next person who
+    // signs in on it (a shared computer).
+    clearInvite();
     setCustomer(null);
     return true;
   }, [live, readCart]);
@@ -495,6 +526,8 @@ export function StoreProvider({
       saveForLater,
       moveToCart,
       removeSaved,
+      refreshCart,
+      cartReady,
       discount,
       setDiscount,
       notes,
@@ -527,6 +560,7 @@ export function StoreProvider({
       setDeliverOpen,
       deliverTo,
       setDeliverTo,
+      deliverGuess,
       loginOpen,
       setLoginOpen,
       accountOpen,
@@ -549,6 +583,8 @@ export function StoreProvider({
       saveForLater,
       moveToCart,
       removeSaved,
+      refreshCart,
+      cartReady,
       discount,
       notes,
       setNote,
@@ -569,6 +605,7 @@ export function StoreProvider({
       dialogOpen,
       deliverOpen,
       deliverTo,
+      deliverGuess,
       loginOpen,
       accountOpen,
       online,

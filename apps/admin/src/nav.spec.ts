@@ -1,25 +1,100 @@
-import { visibleNavItems } from '@mondapac/ui';
+import { navSections, visibleNavItems } from '@mondapac/ui';
 import { describe, expect, it } from 'vitest';
 import { adminNav } from './nav.ts';
 
 const ids = (keys: string[]) => visibleNavItems(adminNav, new Set(keys)).map((item) => item.id);
 
-describe('admin nav: Content', () => {
-  it('is there for storefront.slide.read, with the layout icon', () => {
-    expect(ids(['storefront.slide.read'])).toContain('content');
-    const item = adminNav.items.find((entry) => entry.id === 'content');
-    expect(item).toMatchObject({ icon: 'layout', href: '/content', labelKey: 'nav.content' });
+describe('admin nav: CMS', () => {
+  it('shows Pages for storefront.page.read, with Menus beside it', () => {
+    expect(ids(['storefront.page.read'])).toEqual(['home', 'content', 'menus']);
+    expect(adminNav.items.find((entry) => entry.id === 'content')).toMatchObject({
+      icon: 'file',
+      href: '/content',
+      labelKey: 'nav.content',
+      group: 'cms',
+    });
+    expect(adminNav.items.find((entry) => entry.id === 'menus')).toMatchObject({
+      href: '/content/navigation',
+      labelKey: 'nav.menus',
+      group: 'cms',
+    });
   });
 
-  it('is hidden without it, also for the other slide keys', () => {
-    expect(ids([])).not.toContain('content');
-    expect(ids(['storefront.slide.edit', 'storefront.slide.publish'])).not.toContain('content');
+  it('shows Slides for storefront.slide.read alone, with the layout icon', () => {
+    expect(ids(['storefront.slide.read'])).toEqual(['home', 'slides']);
+    expect(adminNav.items.find((entry) => entry.id === 'slides')).toMatchObject({
+      icon: 'layout',
+      href: '/content/slides',
+      labelKey: 'nav.slides',
+      group: 'cms',
+    });
+  });
+
+  it('is hidden without the read keys', () => {
+    expect(ids([])).toEqual(['home']);
+    expect(ids(['storefront.slide.edit', 'storefront.slide.publish'])).toEqual(['home']);
+  });
+
+  it('holds Pages, Blog, Slides and Menus in this order', () => {
+    expect(adminNav.items.filter((item) => item.group === 'cms').map((item) => item.id)).toEqual([
+      'content',
+      'blog',
+      'slides',
+      'menus',
+    ]);
+  });
+});
+
+describe('admin nav: Inbox', () => {
+  it('is the first group, holding every queue that waits on an admin, in this order', () => {
+    expect((adminNav.groups ?? [])[0]).toEqual({
+      id: 'inbox',
+      labelKey: 'nav.group.inbox',
+      icon: 'inbox',
+    });
+    expect(adminNav.items.filter((item) => item.group === 'inbox').map((item) => item.id)).toEqual([
+      'seller-requests',
+      'certificates',
+      'review-queue',
+      'price-holds',
+      'system-requests',
+    ]);
+  });
+
+  it('opens Seller requests on the review tab of the sellers list, for sellers.seller.view', () => {
+    expect(ids(['sellers.seller.view']).slice(0, 3)).toEqual([
+      'home',
+      'seller-requests',
+      'sellers',
+    ]);
+    expect(adminNav.items.find((item) => item.id === 'seller-requests')).toMatchObject({
+      href: '/sellers?tab=awaiting-review',
+      labelKey: 'nav.seller-requests',
+    });
+  });
+});
+
+describe('admin nav: Blog', () => {
+  it('is there for blog.post.read, in the CMS group, beside Pages', () => {
+    expect(ids(['blog.post.read'])).toContain('blog');
+    const item = adminNav.items.find((entry) => entry.id === 'blog');
+    expect(item).toMatchObject({
+      icon: 'file',
+      href: '/content/blog',
+      labelKey: 'nav.blog',
+      group: 'cms',
+    });
+  });
+
+  it('is hidden without it, also for the other blog keys', () => {
+    expect(ids([])).not.toContain('blog');
+    expect(ids(['blog.post.edit', 'blog.post.publish'])).not.toContain('blog');
   });
 });
 
 describe('admin nav: Catalogue', () => {
   it('shows Products for catalog.product.view, with the package icon, in the catalogue group', () => {
-    expect(ids(['catalog.product.view'])).toEqual(['home', 'products', 'offer-reviews']);
+    expect(ids(['catalog.product.view'])).toEqual(['home', 'review-queue', 'products']);
     const item = adminNav.items.find((entry) => entry.id === 'products');
     expect(item).toMatchObject({
       icon: 'package',
@@ -35,18 +110,37 @@ describe('admin nav: Catalogue', () => {
     });
   });
 
-  it('is hidden without the key, and the Offer reviews item stays in Reviews', () => {
+  it('is one group holding every catalogue page, in the menu design order', () => {
+    const everyKey = new Set(adminNav.items.flatMap((item) => item.anyOf ?? []));
+    const sections = navSections(adminNav.groups, visibleNavItems(adminNav, everyKey));
+    const catalogue = sections.filter(
+      (section) => section.kind === 'group' && section.group.icon === 'package',
+    );
+    expect(catalogue).toHaveLength(1);
+    expect(catalogue[0]?.kind === 'group' && catalogue[0].group.id).toBe('catalogue');
+    expect(catalogue[0]?.kind === 'group' && catalogue[0].items.map((item) => item.id)).toEqual([
+      'products',
+      'categories',
+      'attributes',
+      'variants',
+      'brands',
+      'tags',
+      'business-activities',
+    ]);
+  });
+
+  it('is hidden without the key, and the Review queue item stays in Inbox', () => {
     expect(ids(['catalog.product.approve'])).not.toContain('products');
-    expect(adminNav.items.find((entry) => entry.id === 'offer-reviews')?.group).toBe('reviews');
+    expect(adminNav.items.find((entry) => entry.id === 'review-queue')?.group).toBe('inbox');
   });
 });
 
 describe('admin nav: Buyer reviews', () => {
-  it('shows the queue for reviews.moderation.queue, in the Reviews group', () => {
+  it('shows the queue for reviews.moderation.queue, in the Customers group', () => {
     expect(ids(['reviews.moderation.queue'])).toEqual(['home', 'review-moderation']);
     expect(adminNav.items.find((entry) => entry.id === 'review-moderation')).toMatchObject({
       href: '/reviews/moderation',
-      group: 'reviews',
+      group: 'customers',
       anyOf: ['reviews.moderation.queue'],
     });
   });
@@ -69,11 +163,11 @@ describe('admin nav: Wallet', () => {
     );
   });
 
-  it('puts the two credit items in Money with their routes and icons', () => {
+  it('puts the two credit items in Accounting with their routes and icons', () => {
     const wallet = adminNav.items.filter((item) => item.id.startsWith('wallet-'));
     expect(wallet.map((item) => [item.id, item.href, item.icon, item.group])).toEqual([
-      ['wallet-credits', '/wallet/credits', 'receipt', 'money'],
-      ['wallet-requests', '/wallet/credit-requests', 'inbox', 'money'],
+      ['wallet-credits', '/wallet/credits', 'receipt', 'accounting'],
+      ['wallet-requests', '/wallet/credit-requests', 'inbox', 'accounting'],
     ]);
   });
 });
@@ -84,23 +178,37 @@ describe('admin nav: daily work only', () => {
       adminNav.items.filter((item) => item.placement !== 'footer').map((item) => item.id),
     ).toEqual([
       'home',
+      'seller-requests',
+      'certificates',
+      'review-queue',
+      'price-holds',
+      'system-requests',
+      'orders',
+      'shipments',
+      'refunds',
+      'invoices',
       'products',
       'categories',
-      'offer-reviews',
-      'review-moderation',
-      'price-holds',
       'attributes',
+      'variants',
       'brands',
+      'tags',
       'business-activities',
-      'content',
       'sellers',
-      'orders',
       'customers',
+      'customer-groups',
+      'customer-attributions',
+      'review-moderation',
       'payouts',
       'payout-accounts',
       'disputes',
       'wallet-credits',
       'wallet-requests',
+      'content',
+      'blog',
+      'slides',
+      'menus',
+      'security',
     ]);
   });
 
@@ -160,15 +268,17 @@ describe('admin nav: Settings', () => {
 });
 
 describe('admin nav: Disputes', () => {
-  it('is there for commission-payouts.dispute.view, in Money after the connected accounts', () => {
+  it('is there for commission-payouts.dispute.view, in Accounting after the seller accounts', () => {
     expect(ids(['commission-payouts.dispute.view'])).toEqual(['home', 'disputes']);
-    const money = adminNav.items.filter((item) => item.group === 'money').map((item) => item.id);
+    const money = adminNav.items
+      .filter((item) => item.group === 'accounting')
+      .map((item) => item.id);
     expect(money.indexOf('disputes')).toBe(money.indexOf('payout-accounts') + 1);
     expect(adminNav.items.find((item) => item.id === 'disputes')).toMatchObject({
       icon: 'shield-check',
       href: '/disputes',
       labelKey: 'nav.disputes',
-      group: 'money',
+      group: 'accounting',
     });
   });
 
@@ -179,7 +289,7 @@ describe('admin nav: Disputes', () => {
 });
 
 describe('admin nav: Payouts', () => {
-  it('sits in Money right before Connected accounts, for commission-payouts.payout.view', () => {
+  it('sits in Accounting right before Seller accounts, for commission-payouts.payout.view', () => {
     expect(ids(['commission-payouts.payout.view'])).toEqual(['home', 'payouts']);
     expect(ids(['commission-payouts.payout.approve'])).toEqual(['home']);
     const order = adminNav.items.map((item) => item.id);
@@ -187,7 +297,7 @@ describe('admin nav: Payouts', () => {
     expect(adminNav.items.find((item) => item.id === 'payouts')).toMatchObject({
       icon: 'receipt',
       href: '/payouts',
-      group: 'money',
+      group: 'accounting',
       labelKey: 'nav.payouts',
     });
   });
@@ -201,15 +311,14 @@ describe('admin nav: Settings', () => {
 });
 
 describe('admin nav: Brands', () => {
-  it('is there for catalog.brand.read, in its own Catalog group, with the tag icon', () => {
+  it('is there for catalog.brand.read, in the Catalogue group, with the tag icon', () => {
     expect(ids(['catalog.brand.read'])).toEqual(['home', 'brands']);
     expect(adminNav.items.find((item) => item.id === 'brands')).toMatchObject({
       icon: 'tag',
       href: '/catalog/brands',
       labelKey: 'nav.brands',
-      group: 'catalog',
+      group: 'catalogue',
     });
-    expect((adminNav.groups ?? []).map((group) => group.id)).toContain('catalog');
   });
 
   it('is hidden without it, also with the edit key alone', () => {
@@ -219,7 +328,7 @@ describe('admin nav: Brands', () => {
 });
 
 describe('admin nav: Attributes', () => {
-  it('is there for catalog.attribute.view, in the Catalog group before Brands', () => {
+  it('is there for catalog.attribute.view, in the Catalogue group before Brands', () => {
     expect(ids(['catalog.attribute.view'])).toEqual(['home', 'attributes']);
     expect(ids(['catalog.attribute.view', 'catalog.brand.read'])).toEqual([
       'home',
@@ -230,7 +339,7 @@ describe('admin nav: Attributes', () => {
       icon: 'sliders',
       href: '/catalog/attributes',
       labelKey: 'nav.attributes',
-      group: 'catalog',
+      group: 'catalogue',
     });
   });
 
@@ -240,18 +349,91 @@ describe('admin nav: Attributes', () => {
   });
 });
 
+describe('admin nav: Variants', () => {
+  it('is there for catalog.variant.view, in the Catalogue group', () => {
+    expect(ids(['catalog.variant.view'])).toEqual(['home', 'variants']);
+    expect(adminNav.items.find((item) => item.id === 'variants')).toMatchObject({
+      href: '/catalog/variants',
+      labelKey: 'nav.variants',
+      group: 'catalogue',
+    });
+  });
+
+  it('is hidden without it, also with the edit keys alone', () => {
+    expect(ids([])).not.toContain('variants');
+    expect(ids(['catalog.variant-type.edit', 'catalog.attribute.edit'])).not.toContain('variants');
+  });
+});
+
 describe('admin nav: Business activities', () => {
-  it('is there for catalog.business-activity.read, in the Catalog group', () => {
+  it('is there for catalog.business-activity.read, in the Catalogue group', () => {
     expect(ids(['catalog.business-activity.read'])).toEqual(['home', 'business-activities']);
     expect(adminNav.items.find((item) => item.id === 'business-activities')).toMatchObject({
       href: '/catalog/business-activities',
       labelKey: 'nav.business-activities',
-      group: 'catalog',
+      group: 'catalogue',
     });
   });
 
   it('is hidden without it, also with the edit key alone', () => {
     expect(ids([])).not.toContain('business-activities');
     expect(ids(['catalog.business-activity.edit'])).not.toContain('business-activities');
+  });
+});
+
+describe('admin nav: Tags', () => {
+  it('is there for catalog.topic.read, in the Catalogue group', () => {
+    expect(ids(['catalog.topic.read'])).toEqual(['home', 'tags']);
+    expect(adminNav.items.find((item) => item.id === 'tags')).toMatchObject({
+      href: '/catalog/tags',
+      labelKey: 'nav.tags',
+      group: 'catalogue',
+      icon: 'star',
+    });
+  });
+
+  it('is hidden without it, also with the manage key alone', () => {
+    expect(ids([])).not.toContain('tags');
+    expect(ids(['catalog.topic.manage'])).not.toContain('tags');
+  });
+});
+
+describe('admin nav: Marketing', () => {
+  it('is a group between Customers and Accounting with the tag icon, shown only once it holds an item', () => {
+    const order = (adminNav.groups ?? []).map((group) => group.id);
+    expect(order.indexOf('marketing')).toBe(order.indexOf('customers') + 1);
+    expect(order.indexOf('accounting')).toBe(order.indexOf('marketing') + 1);
+    expect(adminNav.groups).toContainEqual({
+      id: 'marketing',
+      labelKey: 'nav.group.marketing',
+      icon: 'tag',
+    });
+    const everyKey = new Set(adminNav.items.flatMap((item) => item.anyOf ?? []));
+    const sections = navSections(adminNav.groups, visibleNavItems(adminNav, everyKey));
+    expect(
+      sections.some((section) => section.kind === 'group' && section.group.id === 'marketing'),
+    ).toBe(false);
+  });
+});
+
+describe('admin nav: Audit Logs > Security', () => {
+  it('is the Security item under Audit Logs, for security.centre.view only', () => {
+    expect(ids(['security.centre.view'])).toEqual(['home', 'security']);
+    expect(ids(['security.alerts.respond'])).toEqual(['home']);
+    expect(adminNav.items.find((item) => item.id === 'security')).toMatchObject({
+      href: '/security/alerts',
+      labelKey: 'nav.security',
+      group: 'audit-logs',
+    });
+  });
+
+  it('keeps the Audit Logs header over its single item', () => {
+    const sections = navSections(
+      adminNav.groups,
+      visibleNavItems(adminNav, new Set(['security.centre.view'])),
+    );
+    expect(
+      sections.map((section) => (section.kind === 'group' ? section.group.id : section.item.id)),
+    ).toEqual(['home', 'audit-logs']);
   });
 });

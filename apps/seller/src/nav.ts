@@ -1,3 +1,5 @@
+import { CUSTOMERS_VIEW_PERMISSION } from './customers/types.ts';
+import { PAYOUT_ACCOUNT_PATH, PAYOUT_VIEW_PERMISSION } from './payout/types.ts';
 import { settingsViewKeys } from './settings/settings-nav.ts';
 import { visibleNavItems, type NavConfig, type NavItem } from '@mondapac/ui';
 
@@ -8,18 +10,54 @@ import { visibleNavItems, type NavConfig, type NavItem } from '@mondapac/ui';
 // sit under topic groups; a group with one visible item shows that item flat (navSections).
 export const sellerNav: NavConfig = {
   groups: [
-    { id: 'orders', labelKey: 'nav.group.orders', icon: 'clipboard' },
+    // Same order as the admin menu (menu design v2, 15 Nov 2026). Requests holds what the seller
+    // sent and waits on (the seller side of the admin Inbox).
+    { id: 'requests', labelKey: 'nav.group.requests', icon: 'inbox' },
+    { id: 'sales', labelKey: 'nav.group.sales', icon: 'clipboard' },
     { id: 'catalogue', labelKey: 'nav.group.catalogue', icon: 'store' },
-    { id: 'money', labelKey: 'nav.group.money', icon: 'wallet' },
+    // Customers and Reviews (two items, so the group shows as a group).
+    { id: 'customers', labelKey: 'nav.group.customers', icon: 'users' },
+    { id: 'accounting', labelKey: 'nav.group.accounting', icon: 'wallet' },
   ],
   items: [
     { id: 's_home', icon: 'home', labelKey: 'nav.home', href: '/' },
+    // Own-resources route (no permission key): shown to every approved seller (health only informs).
+    {
+      id: 's_performance',
+      icon: 'shield-check',
+      labelKey: 'nav.performance',
+      href: '/performance',
+    },
+    {
+      id: 's_categories',
+      icon: 'layout',
+      labelKey: 'nav.categories',
+      href: '/category-proposals',
+      group: 'requests',
+      anyOf: ['catalog.own-category.propose'],
+    },
+    {
+      id: 's_suggestions',
+      icon: 'inbox',
+      labelKey: 'nav.suggestions',
+      href: '/value-suggestions',
+      group: 'requests',
+      anyOf: ['catalog.own-product.view'],
+    },
+    {
+      id: 's_tag_suggestions',
+      icon: 'tag',
+      labelKey: 'nav.tagSuggestions',
+      href: '/tag-suggestions',
+      group: 'requests',
+      anyOf: ['catalog.own-product.view'],
+    },
     {
       id: 's_orders',
       icon: 'clipboard',
       labelKey: 'nav.orders',
       href: '/orders',
-      group: 'orders',
+      group: 'sales',
       anyOf: ['ordering.seller-order.view'],
     },
     {
@@ -39,11 +77,28 @@ export const sellerNav: NavConfig = {
       anyOf: ['catalog.own-product.view'],
     },
     {
+      id: 's_import',
+      icon: 'file',
+      labelKey: 'nav.import',
+      href: '/products/import',
+      group: 'catalogue',
+      // The menu takes any one key; the import needs both (see `IMPORT_KEYS`), checked in sellerNavItems.
+      anyOf: ['catalog.own-import.run'],
+    },
+    {
+      id: 's_customers',
+      icon: 'users',
+      labelKey: 'nav.customers',
+      href: '/customers',
+      group: 'customers',
+      anyOf: [CUSTOMERS_VIEW_PERMISSION],
+    },
+    {
       id: 's_reviews',
       icon: 'star',
       labelKey: 'nav.reviews',
       href: '/reviews',
-      group: 'catalogue',
+      group: 'customers',
       anyOf: ['reviews.seller.view'],
     },
     {
@@ -51,8 +106,18 @@ export const sellerNav: NavConfig = {
       icon: 'receipt',
       labelKey: 'nav.earnings',
       href: '/earnings',
-      group: 'money',
+      group: 'accounting',
       anyOf: ['commission-payouts.earnings.view'],
+    },
+    {
+      id: 's_payout',
+      icon: 'wallet',
+      labelKey: 'nav.payoutAccount',
+      // The palette found this page by these words while it was a Settings page.
+      keywordsKey: 'nav.payoutAccountWords',
+      href: PAYOUT_ACCOUNT_PATH,
+      group: 'accounting',
+      anyOf: [PAYOUT_VIEW_PERMISSION],
     },
     {
       id: 's_settings',
@@ -69,6 +134,10 @@ export const sellerNav: NavConfig = {
 
 const SETUP_ID = 's_setup';
 
+/** Importing needs both keys (catalog design 14c); the menu config only holds one, so the filter checks both. */
+const IMPORT_ID = 's_import';
+const IMPORT_KEYS = ['catalog.own-import.run', 'catalog.own-product.edit'] as const;
+
 /**
  * The items the shell shows. Every page but the setup pages sends a seller who is not approved
  * yet to `/account-setup`, so before approval the setup item is the only one (a link that can
@@ -78,7 +147,8 @@ export function sellerNavItems(
   accessState: 'pending' | 'approved' | 'rejected',
   permissionKeys: readonly string[],
 ): readonly NavItem[] {
-  return visibleNavItems(sellerNav, new Set(permissionKeys)).filter((item) =>
-    accessState === 'approved' ? item.id !== SETUP_ID : item.id === SETUP_ID,
-  );
+  const held = new Set(permissionKeys);
+  return visibleNavItems(sellerNav, held)
+    .filter((item) => (accessState === 'approved' ? item.id !== SETUP_ID : item.id === SETUP_ID))
+    .filter((item) => item.id !== IMPORT_ID || IMPORT_KEYS.every((key) => held.has(key)));
 }

@@ -10,6 +10,7 @@ import {
   SettingRow,
   SettingSelect,
   SettingsErrorSummary,
+  SettingsViewOnlyBanner,
   useLiveErrors,
   SettingsPage,
   SettingsSection,
@@ -95,6 +96,7 @@ const CHANGE_LABEL: Record<keyof AssistantForm, string> = {
   dailySpendCap: 'spend.daily',
   monthlySpendCap: 'spend.monthly',
   supportHandoff: 'support.label',
+  basketProposals: 'basket.label',
   welcomeText: 'welcome.label',
 };
 /** Fields whose value is one of a fixed set, with the message group naming each choice. */
@@ -288,9 +290,9 @@ export function AssistantSettingsPanel({
   };
   const banners = [
     canManage ? null : (
-      <Banner key="read-only" tone="info">
+      <SettingsViewOnlyBanner key="read-only" title={t('settings.view-only.title')}>
         {t(`${P}.read-only`)}
-      </Banner>
+      </SettingsViewOnlyBanner>
     ),
     invalid.length === 0 ? null : (
       <SettingsErrorSummary
@@ -355,9 +357,10 @@ export function AssistantSettingsPanel({
       {...frame}
       onSubmit={() => void submit()}
       dirty={changedKeys.length > 0}
+      dirtyCount={changedKeys.length}
       leave={{
         title: t('settings.leave.title'),
-        message: t('settings.leave.message'),
+        message: (info) => t('settings.leave.message', { count: info.count, page: info.page }),
         stay: t('settings.leave.stay'),
         leave: t('settings.leave.leave'),
       }}
@@ -440,6 +443,19 @@ export function AssistantSettingsPanel({
             options={options(SCOPES, 'scope', answer.unavailableOptions.scope)}
             value={form.scope}
             onChange={(event) => set('scope', event.target.value as AssistantForm['scope'])}
+          />
+        </SettingRow>
+        <SettingRow
+          settingId="assistant-basket-proposals"
+          label={t(`${P}.basket.label`)}
+          help={t(`${P}.basket.help`)}
+          changed={changed('basketProposals')}
+        >
+          <SettingCheckbox
+            name="basketProposals"
+            text={form.basketProposals ? t(`${P}.status.on`) : t(`${P}.status.off`)}
+            checked={form.basketProposals}
+            onChange={(event) => set('basketProposals', event.target.checked)}
           />
         </SettingRow>
         <SettingRow
@@ -668,6 +684,10 @@ function summaryRows(
           : t(`${P}.audience.${settings.audience}`),
     },
     { label: t(`${P}.scope.label`), value: t(`${P}.scope.${settings.scope}`) },
+    {
+      label: t(`${P}.basket.label`),
+      value: t(`${P}.status.${settings.basketProposals ? 'on' : 'off'}`),
+    },
     { label: t(`${P}.model.label`), value: t(`${P}.model.${settings.modelTier}`) },
     { label: t(`${P}.language.label`), value: t(`${P}.language.${settings.replyLanguage}`) },
     { label: t(`${P}.welcome.label`), value: settings.welcomeText },

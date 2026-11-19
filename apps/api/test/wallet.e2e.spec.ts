@@ -55,6 +55,7 @@ it('maps every refusal code of the wallet routes to its exact status', () => {
     'wallet.credit-request-decided': 409,
     'wallet.credit-request-expired': 409,
     'wallet.approver-is-requester': 403,
+    'batch.too-large': 413,
   });
 });
 
@@ -177,6 +178,7 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
       .get(path)
       .set({ 'x-market-id': code, ...headers });
 
+  const REQUEST = id<'SystemRequest'>(0x5e03);
   const LAST_CHANGED = { at: START, byDisplayName: 'Sara K.', byKind: 'member' } as const;
   const LAST_CHANGED_BODY = { at: START.toString(), byDisplayName: 'Sara K.', byKind: 'member' };
   const settings = {
@@ -185,6 +187,7 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
     updatedAt: START,
     version: 4,
     lastChanged: LAST_CHANGED,
+    request: null,
   };
 
   beforeEach(() => {
@@ -210,17 +213,26 @@ describe.each(TEST_MARKETS)('wallet over HTTP in market %s', (code) => {
       version: 4,
       lastChanged: LAST_CHANGED_BODY,
     });
+    // A switch also names the System requests review it opened.
+    next = ok({ ...settings, request: { id: REQUEST, number: 3 } });
     const set = await asAdmin('put', session, {
       status: 'paused',
       reasonCode: 'wind-down',
       expectedVersion: 4,
+      note: 'Wind-down notice',
     });
     expect(set.status).toBe(200);
+    expect(set.body).toMatchObject({ status: 'paused', request: { id: REQUEST, number: 3 } });
     expect(calls).toEqual([
       { name: 'view-settings', input: {} },
       {
         name: 'set-status',
-        input: { status: 'paused', reasonCode: 'wind-down', expectedVersion: 4 },
+        input: {
+          status: 'paused',
+          reasonCode: 'wind-down',
+          expectedVersion: 4,
+          note: 'Wind-down notice',
+        },
       },
     ]);
   });

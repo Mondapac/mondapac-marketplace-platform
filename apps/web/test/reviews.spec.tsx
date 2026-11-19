@@ -441,6 +441,25 @@ describe('account reviews page', () => {
     expect(within(mine).getAllByRole('listitem')).toHaveLength(1);
     expect(within(mine).getByText('Would buy again.')).toBeTruthy();
     expect(within(mine).getByRole('button', { name: 'Edit' })).toBeTruthy();
+    // The product link is the descriptive path, with the name the order holds.
+    expect(within(mine).getByRole('link', { name: 'Lamb mince' }).getAttribute('href')).toBe(
+      `/p/lamb-mince-${PRODUCT}`,
+    );
+  });
+
+  it('links a review of a product the account holds no name for by its id alone', async () => {
+    answers['GET reviews/me/to-review'] = { status: 200, body: { products: [], sellerOrders: [] } };
+    answers['GET reviews/me'] = {
+      status: 200,
+      body: {
+        reviews: [own({ offerId: '7c9e6679-7425-40de-944b-e07fc1f90ae7' })],
+        sellerRatings: [],
+      },
+    };
+    await renderPage();
+    const mine = await screen.findByRole('region', { name: 'Your reviews' });
+    const link = within(mine).getAllByRole('link')[0]!;
+    expect(link.getAttribute('href')).toBe(`/p/${PRODUCT}`);
   });
 
   it("deletes the buyer's own review after a confirmation", async () => {

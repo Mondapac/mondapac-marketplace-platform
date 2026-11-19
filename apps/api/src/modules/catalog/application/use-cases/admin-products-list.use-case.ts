@@ -16,6 +16,22 @@ import {
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { SellerNamesReader } from '../ports/seller-names.reader';
 import { invalid, type ValidationFailure } from '../own-reads/own-reads.shared';
+import {
+  heldKeys,
+  listPage,
+  pageWindow,
+  parseListQuery,
+  rowActions,
+  type ListPagingMode,
+  type PermissionProbe,
+  type RowActionRule,
+} from '../../../../platform/list-query';
+import {
+  CATALOG_PLATFORM_PRODUCT_EDIT,
+  CATALOG_PLATFORM_PRODUCT_RETIRE,
+  CATALOG_PRODUCT_DELETE,
+  CATALOG_PRODUCT_PAUSE,
+} from '../../contracts/permissions';
 
 export { ADMIN_PRODUCT_SORTS };
 
@@ -69,6 +85,8 @@ export interface AdminProductsListInput {
   readonly direction?: unknown;
   readonly page?: unknown;
   readonly pageSize?: unknown;
+  /** `pages` (default) or `prev-next`: the Market's "List paging" setting as the panel read it. */
+  readonly paging?: unknown;
 }
 
 export interface AdminProductListItem {
@@ -83,11 +101,23 @@ export interface AdminProductListItem {
   readonly ownerStoreName: string | null;
   readonly categoryId: string | null;
   readonly categoryName: string | null;
+  /** The topics of the shown revision in the order entered, named in the default locale. */
+  readonly topics: readonly {
+    readonly id: string;
+    readonly slug: string;
+    readonly status: 'active' | 'archived';
+    readonly name: string | null;
+  }[];
   readonly typeCode: string;
   readonly status: AdminProductStatus;
   readonly offerCount: number;
   readonly updatedAt: string;
   readonly createdAt: string;
+  /**
+   * The row actions the caller may run on this product, from their permissions and its state:
+   * `open`, `edit`, `pause`, `resume`, `delete`. The Actions menu shows exactly these.
+   */
+  readonly actions: readonly string[];
 }
 
 export interface AdminProductViewCounts {
@@ -98,12 +128,15 @@ export interface AdminProductViewCounts {
 
 export interface AdminProductsListOutput {
   readonly items: readonly AdminProductListItem[];
-  /** Products matching the view and the filters, over all pages. */
-  readonly total: number;
+  /** Products matching the view and the filters, over all pages; null in `prev-next` mode. */
+  readonly total: number | null;
   readonly page: number;
   readonly pageSize: number;
-  /** Per tab, for the same search and filters (the status filter included). */
-  readonly counts: AdminProductViewCounts;
+  readonly paging: ListPagingMode;
+  /** Whether a page after this one exists. */
+  readonly hasNext: boolean;
+  /** Per tab, for the same search and filters (the status filter included); null in `prev-next`. */
+  readonly counts: AdminProductViewCounts | null;
 }
 
 export type AdminProductsListFailure =
@@ -114,7 +147,46 @@ export interface AdminProductsListDependencies {
   readonly adminProductsReader: AdminProductsReader;
   readonly policy: CatalogMarketPolicy;
   readonly sellerNames: SellerNamesReader;
+  /** The gate's answer to "does the caller hold this key", for the row actions. */
+  readonly pauseProbe: PermissionProbe;
+  readonly deleteProbe: PermissionProbe;
+  readonly retireProbe: PermissionProbe;
+  readonly platformEditProbe: PermissionProbe;
 }
+
+/** What each row action needs: the key its use case checks and the state it can run on. */
+export const ADMIN_PRODUCT_ACTION_RULES: readonly RowActionRule<
+  Pick<AdminProductListItem, 'scope' | 'status'>
+>[] = [
+  { id: 'open', permission: null },
+  {
+    id: 'edit',
+    permission: CATALOG_PLATFORM_PRODUCT_EDIT.key,
+    when: (row) => row.scope === 'PLATFORM',
+  },
+  {
+    id: 'pause',
+    permission: CATALOG_PRODUCT_PAUSE.key,
+    when: (row) => row.status === 'published',
+  },
+  {
+    id: 'resume',
+    permission: CATALOG_PRODUCT_PAUSE.key,
+    when: (row) => row.status === 'paused',
+  },
+  // Delete is `retire` for a PLATFORM product (published, paused or not) and `withdraw` for a
+  // SELLER one (published or unpublished), the same guards as the bulk Delete. The list shows a
+  // paused published product as `paused`, so that status counts as published here.
+  {
+    id: 'delete',
+    permission: (row) =>
+      row.scope === 'PLATFORM' ? CATALOG_PLATFORM_PRODUCT_RETIRE.key : CATALOG_PRODUCT_DELETE.key,
+    when: (row) =>
+      row.status === 'published' ||
+      row.status === 'paused' ||
+      (row.scope === 'SELLER' && row.status === 'unpublished'),
+  },
+];
 
 const KEYS = new Set<string>([
   'view',
@@ -128,6 +200,7 @@ const KEYS = new Set<string>([
   'direction',
   'page',
   'pageSize',
+  'paging',
 ]);
 const TYPE_CODE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
@@ -147,6 +220,7 @@ interface Parsed extends ProductSelector {
   readonly direction: SortDirection;
   readonly page: number;
   readonly pageSize: number;
+  readonly paging: ListPagingMode;
 }
 
 const absent = (value: unknown): boolean => value === undefined || value === null || value === '';
@@ -170,19 +244,6 @@ function idOf<K extends string>(
   if (absent(value)) return ok(null);
   const parsed = typeof value === 'string' ? parseId<K>(value) : null;
   return parsed === null || !parsed.ok ? invalid(path, 'format') : ok(parsed.value);
-}
-
-function wholeOf(
-  path: string,
-  value: unknown,
-  fallback: number,
-  min: number,
-  max: number,
-): Result<number, ValidationFailure> {
-  if (absent(value)) return ok(fallback);
-  return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
-    ? ok(value)
-    : invalid(path, 'range');
 }
 
 /**
@@ -261,32 +322,16 @@ function parse(input: unknown): Result<Parsed, ValidationFailure> {
 
   const selector = parseSelector(record);
   if (!selector.ok) return selector;
-  const sort = oneOf('sort', record['sort'], ADMIN_PRODUCT_SORTS, 'updated');
-  if (!sort.ok) return sort;
-  const direction = oneOf(
-    'direction',
-    record['direction'],
-    ['asc', 'desc'] as const,
-    sort.value === 'name' ? 'asc' : 'desc',
-  );
-  if (!direction.ok) return direction;
-  const page = wholeOf('page', record['page'], 1, 1, MAX_ADMIN_PAGE);
-  if (!page.ok) return page;
-  const pageSize = wholeOf(
-    'pageSize',
-    record['pageSize'],
-    DEFAULT_ADMIN_PAGE_SIZE,
-    1,
-    MAX_ADMIN_PAGE_SIZE,
-  );
-  if (!pageSize.ok) return pageSize;
-  return ok({
-    ...selector.value,
-    sort: sort.value as AdminProductSort,
-    direction: direction.value as SortDirection,
-    page: page.value,
-    pageSize: pageSize.value,
+  const paged = parseListQuery(record, {
+    sorts: ADMIN_PRODUCT_SORTS,
+    defaultSort: 'updated',
+    defaultDirection: (sort) => (sort === 'name' ? 'asc' : 'desc'),
+    defaultPageSize: DEFAULT_ADMIN_PAGE_SIZE,
+    maxPageSize: MAX_ADMIN_PAGE_SIZE,
+    maxPage: MAX_ADMIN_PAGE,
   });
+  if (!paged.ok) return paged;
+  return ok({ ...selector.value, ...paged.value });
 }
 
 /**
@@ -337,25 +382,30 @@ export class AdminProductsList extends UseCase<
     // A tab shows its states; a status filter narrows them further (maybe to none).
     const filterFor = (view: AdminProductView): AdminProductsFilter =>
       filterOfSelector(q, view, locale);
+    const window = pageWindow(q);
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
         const reader = this.deps.adminProductsReader;
-        const [active = 0, all = 0, inactive = 0] = await reader.counts(
-          market,
-          ADMIN_PRODUCT_VIEWS.map(filterFor),
-        );
-        const counts: AdminProductViewCounts = { active, all, inactive };
-        const total = counts[q.view];
-        const offset = (q.page - 1) * q.pageSize;
+        // Previous and Next never counts (a count over a large list is what that mode avoids).
+        let counts: AdminProductViewCounts | null = null;
+        let total: number | null = null;
+        if (q.paging === 'pages') {
+          const [active = 0, all = 0, inactive = 0] = await reader.counts(
+            market,
+            ADMIN_PRODUCT_VIEWS.map(filterFor),
+          );
+          counts = { active, all, inactive };
+          total = counts[q.view];
+        }
         const result =
-          offset >= total
+          total !== null && window.offset >= total
             ? ({ kind: 'rows', rows: [] } as const)
             : await reader.list(
                 market,
                 filterFor(q.view),
                 { sort: q.sort, direction: q.direction },
-                { offset, limit: q.pageSize },
+                window,
               );
         return ok({ counts, total, result });
       },
@@ -365,13 +415,20 @@ export class AdminProductsList extends UseCase<
     const { counts, total, result } = read.value;
     if (result.kind === 'too-broad') return invalid('sort', 'too-broad');
 
+    const paged = listPage(result.rows, q, total);
     const owners = [
       ...new Set(
-        result.rows.flatMap((row) => (row.ownerSellerId === null ? [] : [row.ownerSellerId])),
+        paged.items.flatMap((row) => (row.ownerSellerId === null ? [] : [row.ownerSellerId])),
       ),
     ];
     const names = await this.deps.sellerNames.storeNames(context, owners);
-    const items = result.rows.map((row): AdminProductListItem => ({
+    const granted = await heldKeys(context, {
+      [CATALOG_PRODUCT_PAUSE.key]: this.deps.pauseProbe,
+      [CATALOG_PRODUCT_DELETE.key]: this.deps.deleteProbe,
+      [CATALOG_PLATFORM_PRODUCT_RETIRE.key]: this.deps.retireProbe,
+      [CATALOG_PLATFORM_PRODUCT_EDIT.key]: this.deps.platformEditProbe,
+    });
+    const items = paged.items.map((row): AdminProductListItem => ({
       productId: row.productId,
       productCode: row.productCode,
       name: row.name,
@@ -381,12 +438,27 @@ export class AdminProductsList extends UseCase<
       ownerStoreName: row.ownerSellerId === null ? null : (names.get(row.ownerSellerId) ?? null),
       categoryId: row.categoryId,
       categoryName: row.categoryName,
+      topics: row.topics.map((topic) => ({
+        id: topic.id,
+        slug: topic.slug,
+        status: topic.status,
+        name: topic.name,
+      })),
       typeCode: row.typeCode,
       status: row.status,
       offerCount: row.offerCount,
       updatedAt: row.updatedAt.toString(),
       createdAt: row.createdAt.toString(),
+      actions: rowActions(row, ADMIN_PRODUCT_ACTION_RULES, granted),
     }));
-    return ok({ items, total, page: q.page, pageSize: q.pageSize, counts });
+    return ok({
+      items,
+      total: paged.total,
+      page: paged.page,
+      pageSize: paged.pageSize,
+      paging: paged.paging,
+      hasNext: paged.hasNext,
+      counts,
+    });
   }
 }

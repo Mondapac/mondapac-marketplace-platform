@@ -1,4 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  CatalogueRequestRef,
+  CatalogueReviewBody,
+  NOTE_DESCRIPTION,
+  REQUEST_DESCRIPTION,
+} from './catalogue-review.dto';
 
 // Answers of the admin category read routes (categories package C1). Ids, slugs, names and counts;
 // never an account id of a seller or a permission key.
@@ -42,16 +48,58 @@ export class ActionAnswerBody {
   denial?: string;
 }
 
+/** A row of the admin list: the category and the feature set it ends up with (attributes A4). */
+export class CategoryTreeRowBody extends CategoryRowBody {
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description:
+      "The effective feature set: its own, else the nearest ancestor's; null when none holds one.",
+  })
+  featureSetId!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'The code of that feature set; null with no feature set or when it is not readable.',
+  })
+  featureSetCode!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description: 'The category that holds it: this one or an ancestor; null with no feature set.',
+  })
+  featureSetFromCategoryId!: string | null;
+  @ApiProperty({
+    description: 'True when the feature set comes from an ancestor; false when own or none.',
+  })
+  inherited!: boolean;
+}
+
 export class CategoryTreeBody {
   @ApiProperty({ description: 'The version of the Market tree.' }) treeVersion!: number;
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description:
+      'Whether a create, move or reorder is reviewed after and a discard, merge or archive waits ' +
+      'for approval in this Market (Admin Inbox › System requests): the dialogs then ask for a note.',
+  })
+  review!: CatalogueReviewBody;
   @ApiProperty() defaultLocale!: string;
   @ApiProperty({ type: [String] }) supportedLocales!: string[];
   @ApiProperty({ type: [String], description: 'Locales every category needs a name in.' })
   requiredLocales!: string[];
   @ApiProperty({ description: 'False when the counts hit their time bound: they are "at least".' })
   complete!: boolean;
-  @ApiProperty({ type: [CategoryRowBody], description: 'Depth first, siblings in order.' })
-  categories!: CategoryRowBody[];
+  @ApiProperty({
+    type: [CategoryTreeRowBody],
+    description:
+      'Depth first, siblings in order. With the `featureSetId` query, only the categories whose ' +
+      'effective feature set it is (parents are not added back).',
+  })
+  categories!: CategoryTreeRowBody[];
   @ApiProperty({
     type: 'object',
     additionalProperties: { type: 'object' },
@@ -130,6 +178,12 @@ export class CategoryDetailBody {
   details!: CategoryEditDetailsBody;
   @ApiProperty({ description: 'The tree version a structural change of this category must name.' })
   treeVersion!: number;
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description:
+      'Whether a details save is reviewed in this Market: the form then asks for a note.',
+  })
+  review!: CatalogueReviewBody;
 }
 
 export class CategoryImpactBody {
@@ -144,6 +198,11 @@ export class CategoryImpactBody {
   @ApiProperty({ description: 'Categories under this one, any status.' }) descendants!: number;
   @ApiProperty({ description: 'False when the time bound ran out: every count is "at least".' })
   complete!: boolean;
+  @ApiProperty({
+    required: false,
+    description: 'With `targetId`: published products whose feature set would change.',
+  })
+  featureSetChanges?: number;
 }
 
 // Requests and answers of the tree editor (categories package C3a).
@@ -184,6 +243,7 @@ export class CategoryCreateRequest {
   @ApiProperty({ required: false, type: CategorySeoRequest }) seo?: CategorySeoRequest;
   @ApiProperty({ required: false }) showInMenu?: boolean;
   @ApiProperty({ description: 'The tree version the page read.' }) treeVersion!: number;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class CategoryEditDetailsRequest {
@@ -199,9 +259,12 @@ export class CategoryEditDetailsRequest {
   @ApiProperty({
     required: false,
     nullable: true,
-    description: 'Not yet supported: must be null until the category image intake exists.',
+    description:
+      'Null or left out. The image has its own routes (`PUT :categoryId/image`, ' +
+      '`POST :categoryId/image/remove`); a details save never changes it. A value is refused.',
   })
   imageId?: string | null;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class CategoryTreeVersionRequest {
@@ -210,16 +273,51 @@ export class CategoryTreeVersionRequest {
 
 export class CategoryReorderRequest extends CategoryTreeVersionRequest {
   @ApiProperty({ enum: ['up', 'down'] }) direction!: string;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
+}
+
+export class CategoryDiscardRequest extends CategoryTreeVersionRequest {
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class CategoryChangeSlugRequest extends CategoryTreeVersionRequest {
   @ApiProperty({ description: 'The new English URL name. The old one redirects.' }) slug!: string;
 }
 
+const REASON = {
+  description: 'Why (10 to 500 characters, kept on the category revision; never audited as text).',
+  minLength: 10,
+  maxLength: 500,
+};
+
+export class CategoryArchiveRequest extends CategoryTreeVersionRequest {
+  @ApiProperty(REASON) reason!: string;
+  @ApiProperty({
+    required: false,
+    description: `${NOTE_DESCRIPTION} The reason note when left out.`,
+  })
+  note?: string;
+}
+
+export class CategoryMoveRequest extends CategoryArchiveRequest {
+  @ApiProperty({
+    format: 'uuid',
+    nullable: true,
+    type: String,
+    description: 'The new parent; null makes the category a department.',
+  })
+  parentId!: string | null;
+}
+
+export class CategoryMergeRequest extends CategoryArchiveRequest {
+  @ApiProperty({ format: 'uuid', description: 'The category this one is merged into.' })
+  targetId!: string;
+}
+
 export class CategoryWriteBody {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() slug!: string;
-  @ApiProperty({ enum: ['active', 'hidden', 'archived'] }) status!: string;
+  @ApiProperty({ enum: ['active', 'hidden', 'merged', 'archived'] }) status!: string;
   @ApiProperty() version!: number;
   @ApiProperty() revisionNo!: number;
   @ApiProperty({ description: 'The tree version after the write.' }) treeVersion!: number;
@@ -227,4 +325,90 @@ export class CategoryWriteBody {
 
 export class CategoryWriteWrapBody {
   @ApiProperty({ type: CategoryWriteBody }) category!: CategoryWriteBody;
+  @ApiProperty({
+    type: CatalogueRequestRef,
+    nullable: true,
+    required: false,
+    description: REQUEST_DESCRIPTION,
+  })
+  request?: CatalogueRequestRef | null;
+}
+
+/**
+ * The answer (202) of an action that waits for a second admin's approval (Admin Inbox › System
+ * requests): the proposal it filed; nothing was changed.
+ */
+export class CatalogueProposalBody {
+  @ApiProperty({ type: CatalogueRequestRef, description: 'The proposal, shown as SR-<number>.' })
+  request!: CatalogueRequestRef;
+}
+
+export class CategoryEditDetailsWrapBody extends CategoryWriteWrapBody {
+  @ApiProperty({ type: CatalogueRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  override request: CatalogueRequestRef | null = null;
+}
+
+export class CategoryImageSetRequest {
+  @ApiProperty({ description: 'The category version the admin saw.' }) version!: number;
+  @ApiProperty({
+    description:
+      'The picture as standard base64 text: JPEG, PNG or WebP, at most 4 MiB of bytes. The panel ' +
+      'shrinks it before sending. The type is read from the content.',
+  })
+  data!: string;
+}
+
+export class CategoryVersionRequest {
+  @ApiProperty({ description: 'The category version the admin saw.' }) version!: number;
+}
+
+export class CategoryImageBody {
+  @ApiProperty({ format: 'uuid' }) imageId!: string;
+  @ApiProperty({ description: 'The width of the largest rendition in pixels.' }) width!: number;
+  @ApiProperty({ description: 'The height of the largest rendition in pixels.' }) height!: number;
+}
+
+export class CategoryImageWriteBody {
+  @ApiProperty({ type: CategoryWriteBody }) category!: CategoryWriteBody;
+  @ApiProperty({ type: CategoryImageBody, nullable: true }) image!: CategoryImageBody | null;
+}
+
+export class CategoryMoveProductsRequest {
+  @ApiProperty({
+    format: 'uuid',
+    description:
+      'The category the products go to: level 3 up to the Market depth, active or hidden.',
+  })
+  targetId!: string;
+  @ApiProperty(REASON) reason!: string;
+  @ApiProperty({
+    required: false,
+    description: `${NOTE_DESCRIPTION} The reason note when left out.`,
+  })
+  note?: string;
+}
+
+export class CategoryMoveProductsStartedBody {
+  @ApiProperty({ format: 'uuid' }) jobId!: string;
+  @ApiProperty({ description: 'Published products the job will move (a preview).' })
+  products!: number;
+}
+
+export class CategoryMoveJobBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) sourceCategoryId!: string;
+  @ApiProperty({ format: 'uuid' }) targetCategoryId!: string;
+  @ApiProperty({ enum: ['queued', 'running', 'done', 'failed'] }) state!: string;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) startedAt!: string | null;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) finishedAt!: string | null;
+  @ApiProperty() total!: number;
+  @ApiProperty() moved!: number;
+  @ApiProperty() skipped!: number;
+  @ApiProperty() failed!: number;
+}
+
+export class CategoryMoveProductsProgressBody {
+  @ApiProperty({ type: [CategoryMoveJobBody], description: 'The newest jobs, newest first.' })
+  jobs!: CategoryMoveJobBody[];
 }

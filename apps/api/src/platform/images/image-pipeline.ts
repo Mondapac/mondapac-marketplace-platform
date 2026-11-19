@@ -38,10 +38,20 @@ export interface ImagePipelineSpec {
    * made from the output before it.
    */
   readonly renditions: readonly RenditionSpec[];
+  /**
+   * Further formats written from the same pixels of each rendition, after its JPEG. None by
+   * default (a logo or a banner stays JPEG only).
+   */
+  readonly alternateFormats?: readonly AlternateImageFormat[];
 }
+
+/** The formats written besides JPEG. */
+export type AlternateImageFormat = 'webp' | 'avif';
+export type ImageFormat = 'jpeg' | AlternateImageFormat;
 
 export interface ProcessedImageRendition {
   readonly name: string;
+  readonly format: ImageFormat;
   readonly bytes: Buffer;
   readonly width: number;
   readonly height: number;
@@ -57,6 +67,10 @@ const MAX_WAITING = 8;
 export const IMAGE_BUSY_RETRY_SECONDS = 2;
 const ALLOWED = new Set(['jpeg', 'png', 'webp']);
 const JPEG_QUALITY = 82;
+const WEBP_QUALITY = 80;
+/** AVIF holds the same look at a lower number; effort 2: measured on a 3000x2000 photo, effort 4 took 17 s for the large size and effort 2 1.5 s, at a similar size. */
+const AVIF_QUALITY = 55;
+const AVIF_EFFORT = 2;
 const WHITE = '#ffffff';
 
 sharp.concurrency(1);
@@ -91,6 +105,12 @@ async function withSlot<T>(work: () => Promise<T>): Promise<T> {
     running -= 1;
     waiting.shift()?.();
   }
+}
+
+function encode(image: sharp.Sharp, format: ImageFormat): sharp.Sharp {
+  if (format === 'webp') return image.webp({ quality: WEBP_QUALITY });
+  if (format === 'avif') return image.avif({ quality: AVIF_QUALITY, effort: AVIF_EFFORT });
+  return image.jpeg({ quality: JPEG_QUALITY });
 }
 
 const scaled = (side: number, factor: number): number => Math.max(1, Math.round(side * factor));
@@ -182,16 +202,31 @@ async function decode(
           background: WHITE,
         });
       }
-      const { data, info } = await resized
-        .flatten({ background: WHITE })
-        .jpeg({ quality: JPEG_QUALITY })
-        .toBuffer({ resolveWithObject: true });
+      const flat = resized.flatten({ background: WHITE });
+      // The alternates are cloned before the JPEG is written, so every format comes from the same
+      // pixels and the later renditions still come from the JPEG, as before.
+      const alternates = (spec.alternateFormats ?? []).map((format) => ({
+        format,
+        pipeline: flat.clone(),
+      }));
+      const { data, info } = await encode(flat, 'jpeg').toBuffer({ resolveWithObject: true });
       renditions.push({
         name: rendition.name,
+        format: 'jpeg',
         bytes: data,
         width: info.width,
         height: info.height,
       });
+      for (const { format, pipeline: alternate } of alternates) {
+        const written = await encode(alternate, format).toBuffer({ resolveWithObject: true });
+        renditions.push({
+          name: rendition.name,
+          format,
+          bytes: written.data,
+          width: written.info.width,
+          height: written.info.height,
+        });
+      }
       source = { bytes: data, width: info.width, height: info.height };
     }
     return ok(renditions);
@@ -201,4 +236,41 @@ async function decode(
     if (/unsupported image format/i.test(message)) return err({ code: 'file.unsupported-type' });
     return err({ code: 'file.unreadable' });
   }
+}
+
+/**
+ * Writes the given formats from an image this server already wrote (a stored JPEG rendition), at
+ * the same size: the reprocess of photos that were uploaded before WebP and AVIF existed. Takes
+ * a decode slot like an upload, and refuses with `file.busy` when none is free.
+ */
+export function deriveFormats(
+  stored: Buffer,
+  formats: readonly AlternateImageFormat[],
+): Promise<
+  Result<
+    readonly {
+      readonly format: AlternateImageFormat;
+      readonly bytes: Buffer;
+      readonly width: number;
+      readonly height: number;
+    }[],
+    { readonly code: ImageRefusalCode }
+  >
+> {
+  if (isSaturated()) return Promise.resolve(err({ code: 'file.busy' }));
+  return withSlot(async () => {
+    try {
+      const out = [];
+      for (const format of formats) {
+        const { data, info } = await encode(
+          sharp(stored, { limitInputPixels: MAX_PIXELS, failOn: 'error', animated: false }),
+          format,
+        ).toBuffer({ resolveWithObject: true });
+        out.push({ format, bytes: data, width: info.width, height: info.height });
+      }
+      return ok(out);
+    } catch {
+      return err({ code: 'file.unreadable' as const });
+    }
+  });
 }

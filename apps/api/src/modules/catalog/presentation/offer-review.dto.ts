@@ -70,6 +70,12 @@ export class ReviewQueueRowDto {
 
   @ApiProperty({ nullable: true, type: String, description: 'ISO instant; oldest first.' })
   submittedAt!: string | null;
+
+  @ApiProperty({
+    type: [String],
+    description: 'The row actions the caller may run: `approve`, `request-changes`.',
+  })
+  actions!: string[];
 }
 
 export class ProductRevisionRowDto {
@@ -112,8 +118,38 @@ export class ProductRevisionRowDto {
   @ApiProperty()
   hasImages!: boolean;
 
+  @ApiProperty({
+    type: [String],
+    description:
+      'Advice for the reviewer, never a block: `gtin.duplicate-platform` when a GTIN of the ' +
+      'revision is carried by a published PLATFORM product, `gtin.duplicate` when it is carried ' +
+      'by any other product.',
+  })
+  warnings!: string[];
+
   @ApiProperty({ description: 'ISO instant; oldest first.' })
   submittedAt!: string;
+
+  @ApiProperty({
+    type: [String],
+    description: 'The row actions the caller may run: `approve`, `request-changes`.',
+  })
+  actions!: string[];
+}
+
+/**
+ * The whole queue per kind, whatever the filters (also `sellerId`): the counts of the queue's tabs.
+ * The number of rows a filtered list holds is `total`.
+ */
+export class ReviewQueueTotals {
+  @ApiProperty({ name: 'product-revision', description: 'Pending product revisions.' })
+  'product-revision'!: number;
+
+  @ApiProperty({
+    name: 'offer-first-publication',
+    description: 'Offers waiting for their first publication.',
+  })
+  'offer-first-publication'!: number;
 }
 
 @ApiExtraModels(ReviewQueueRowDto, ProductRevisionRowDto)
@@ -136,10 +172,27 @@ export class ReviewQueueList {
   })
   nextAfterId!: string | null;
 
+  @ApiProperty({ description: '1-based page number (1 on a cursor read).' }) page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+
   @ApiProperty({
-    description: 'Every Offer and pending product revision in the queue, whatever the page.',
+    nullable: true,
+    type: Number,
+    description:
+      'The rows the filters keep, whatever the page; with no filter, every Offer and pending ' +
+      'product revision in the queue. Null in `prev-next` mode.',
   })
-  total!: number;
+  total!: number | null;
+
+  @ApiProperty({
+    type: () => ReviewQueueTotals,
+    description:
+      'Every row of each kind in the queue, ignoring every filter: use it for the tab badges and ' +
+      '`total` for the count of a filtered list.',
+  })
+  totals!: ReviewQueueTotals;
 }
 
 export class OfferDecided {}

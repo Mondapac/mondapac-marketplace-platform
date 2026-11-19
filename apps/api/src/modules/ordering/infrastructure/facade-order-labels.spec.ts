@@ -5,6 +5,7 @@ import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/suppo
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { sellUnitKey, type CatalogFacade, type SellUnitKey } from '../../catalog';
+import type { CustomersReadFacade } from '../../customers';
 import type { IdentityFacade } from '../../identity';
 import type { SellersFacade } from '../../sellers';
 import { orderUnitKey } from '../application/ports/order-labels';
@@ -41,7 +42,7 @@ describe.each(['AU', 'ZZ'] as const)('order label adapter in market %s', (code) 
       },
     } as unknown as CatalogFacade;
 
-    const labels = await new FacadeOrderLabels(catalog, never, never, markets).unitLabelsOf(
+    const labels = await new FacadeOrderLabels(catalog, never, never, markets, never).unitLabelsOf(
       context,
       keys,
     );
@@ -65,7 +66,7 @@ describe.each(['AU', 'ZZ'] as const)('order label adapter in market %s', (code) 
     const sellers = {
       sellerSummaries: () => Promise.resolve(err({ code: 'sellers.unavailable' as const })),
     } as unknown as SellersFacade;
-    const adapter = new FacadeOrderLabels(catalog, sellers, never, markets);
+    const adapter = new FacadeOrderLabels(catalog, sellers, never, markets, never);
     const key = { offerId: uuid(1) as Id<'Offer'>, variantId: uuid(2) as Id<'Variant'> };
 
     await expect(adapter.unitLabelsOf(context, [key])).rejects.toThrow();
@@ -85,7 +86,7 @@ describe.each(['AU', 'ZZ'] as const)('order label adapter in market %s', (code) 
         ),
     } as unknown as SellersFacade;
 
-    const names = await new FacadeOrderLabels(never, sellers, never, markets).storeNamesOf(
+    const names = await new FacadeOrderLabels(never, sellers, never, markets, never).storeNamesOf(
       context,
       [a!, b!, a!],
     );
@@ -103,18 +104,21 @@ describe.each(['AU', 'ZZ'] as const)('order label adapter in market %s', (code) 
       never,
       identityAnswering(err({ code: 'access.denied' })),
       markets,
+      never,
     );
     const invalid = new FacadeOrderLabels(
       never,
       never,
       identityAnswering(err({ code: 'validation.failed', fields: [] })),
       markets,
+      never,
     );
     const found = new FacadeOrderLabels(
       never,
       never,
       identityAnswering(ok([{ accountId: customer, displayName: null, email: 'j@example.com' }])),
       markets,
+      never,
     );
 
     expect((await denied.customersOf(context, [customer])).size).toBe(0);
@@ -122,5 +126,117 @@ describe.each(['AU', 'ZZ'] as const)('order label adapter in market %s', (code) 
     expect([...(await found.customersOf(context, [customer]))]).toEqual([
       [customer, { displayName: null, email: 'j@example.com' }],
     ]);
+  });
+
+  it('turns identity access.denied into no customer matches, and throws any other refusal', async () => {
+    const identityAnswering = (answer: unknown) =>
+      ({ searchCustomerAccounts: () => Promise.resolve(answer) }) as unknown as IdentityFacade;
+    const accountId = uuid(30) as Id<'Account'>;
+
+    const denied = new FacadeOrderLabels(
+      never,
+      never,
+      identityAnswering(err({ code: 'access.denied' })),
+      markets,
+      never,
+    );
+    const invalid = new FacadeOrderLabels(
+      never,
+      never,
+      identityAnswering(err({ code: 'validation.failed', fields: [] })),
+      markets,
+      never,
+    );
+    const found = new FacadeOrderLabels(
+      never,
+      never,
+      identityAnswering(ok({ accountIds: [accountId], capped: true })),
+      markets,
+      never,
+    );
+
+    expect(await denied.customerAccountsMatching(context, 'jane')).toEqual({
+      accountIds: [],
+      capped: false,
+      searched: false,
+    });
+    await expect(invalid.customerAccountsMatching(context, 'jane')).rejects.toThrow();
+    expect(await found.customerAccountsMatching(context, 'jane')).toEqual({
+      accountIds: [accountId],
+      capped: true,
+      searched: true,
+    });
+  });
+
+  it('passes the store matches of sellers through, with the context, and throws a refusal', async () => {
+    const sellerId = uuid(31) as Id<'Seller'>;
+    const seen: unknown[] = [];
+    const sellersAnswering = (answer: unknown) =>
+      ({
+        searchStoreNames: (c: unknown, term: string) => {
+          seen.push([c, term]);
+          return Promise.resolve(answer);
+        },
+      }) as unknown as SellersFacade;
+
+    const found = new FacadeOrderLabels(
+      never,
+      sellersAnswering(ok({ sellerIds: [sellerId], capped: false })),
+      never,
+      markets,
+      never,
+    );
+    const down = new FacadeOrderLabels(
+      never,
+      sellersAnswering(err({ code: 'sellers.unavailable' })),
+      never,
+      markets,
+      never,
+    );
+
+    expect(await found.sellersMatching(context, 'butcher')).toEqual({
+      sellerIds: [sellerId],
+      capped: false,
+    });
+    expect(seen).toEqual([[context, 'butcher']]);
+    await expect(down.sellersMatching(context, 'butcher')).rejects.toThrow();
+  });
+  it("reads the shop's code and first name through customers, only for accounts asked", async () => {
+    const a = uuid(20) as Id<'Account'>;
+    const b = uuid(21) as Id<'Account'>;
+    const seen: unknown[] = [];
+    const customersAnswering = (answer: unknown) =>
+      ({
+        sellerOrderCustomers: (c: CallContext, ids: readonly Id<'Account'>[]) => {
+          seen.push([c, ids]);
+          return Promise.resolve(answer);
+        },
+      }) as unknown as CustomersReadFacade;
+    const found = new FacadeOrderLabels(
+      never,
+      never,
+      never,
+      markets,
+      customersAnswering(
+        ok(
+          new Map([
+            [a, { code: 'K7QM-2XTR', firstName: 'Sara', email: 'leak@example.test' }],
+            [uuid(22), { code: 'ZZZZ-9999', firstName: 'Not asked' }],
+          ]),
+        ),
+      ),
+    );
+    const down = new FacadeOrderLabels(
+      never,
+      never,
+      never,
+      markets,
+      customersAnswering(err({ code: 'access.denied' })),
+    );
+
+    const answer = await found.sellerCustomersOf(context, [a, b, a]);
+    expect([...answer]).toEqual([[a, { code: 'K7QM-2XTR', firstName: 'Sara' }]]);
+    expect(seen).toEqual([[context, [a, b]]]);
+    await expect(down.sellerCustomersOf(context, [a])).rejects.toThrow();
   });
 });

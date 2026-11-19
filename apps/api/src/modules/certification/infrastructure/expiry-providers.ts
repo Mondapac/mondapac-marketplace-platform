@@ -27,6 +27,13 @@ import { SELLER_ZONES_SOURCE } from '../application/ports/tokens';
 import { ExpireSellerCertificates } from '../application/use-cases/expire-seller-certificates.use-case';
 import { SendExpiryMail } from '../application/use-cases/send-expiry-mail.use-case';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { OBJECT_STORE, type ObjectStore } from '../../../platform/storage/object-store';
+import {
+  ORPHAN_DOCUMENT_FILES_REPOSITORY,
+  type OrphanDocumentFilesRepository,
+} from '../application/ports/orphan-document-files.repository';
+import { SweepOrphanDocumentFiles } from '../application/use-cases/sweep-orphan-document-files.use-case';
+import { PrismaOrphanDocumentFilesRepository } from './prisma-orphan-document-files.repository';
 import {
   assertCertificationConfigured,
   MarketConfigExpiryPolicy,
@@ -39,6 +46,23 @@ import { PrismaSellerCertificateExpiryRepository } from './prisma-seller-certifi
  * zones, the Owner contact and the mail sender are the review's bindings.
  */
 export const expiryProviders: readonly Provider[] = [
+  {
+    provide: ORPHAN_DOCUMENT_FILES_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OrphanDocumentFilesRepository =>
+      new PrismaOrphanDocumentFilesRepository(prisma),
+  },
+  {
+    provide: SweepOrphanDocumentFiles,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, ORPHAN_DOCUMENT_FILES_REPOSITORY, OBJECT_STORE, CLOCK],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: UnitOfWork,
+      files: OrphanDocumentFilesRepository,
+      objectStore: ObjectStore,
+      clock: Clock,
+    ) => new SweepOrphanDocumentFiles(gate, { unitOfWork, files, objectStore, clock }),
+  },
   {
     provide: SELLER_CERTIFICATE_EXPIRY_REPOSITORY,
     inject: [PrismaService],

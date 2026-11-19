@@ -19,6 +19,7 @@
   "commissionPayouts": {
     "defaultRateBps": 1500,
     "provisionalTaxRateBps": 1000,
+    "exclusiveCustomer": { "reductionBps": 5000, "floorBps": 300, "months": 12 },
     "payoutTerms": {
       "weekdays": ["TUE"],
       "localTime": "10:00",
@@ -81,6 +82,41 @@
       "repeatedWordShareBps": 6000
     }
   },
+  "contentFilter": {
+    "blockedTerms": [
+      "fuck",
+      "fucking",
+      "fucker",
+      "motherfucker",
+      "shit",
+      "bullshit",
+      "cunt",
+      "bastard",
+      "asshole",
+      "bitch",
+      "whore",
+      "slut",
+      "wanker",
+      "twat",
+      "nigger",
+      "faggot",
+      "جنده",
+      "جاکش",
+      "کصکش",
+      "کسکش",
+      "کونی",
+      "کوسکش",
+      "حرامزاده",
+      "مادرجنده",
+      "کیر",
+      "کیرخر",
+      "شرموطة",
+      "منيوك",
+      "كسمك",
+      "عرص",
+      "ابن الشرموطة"
+    ]
+  },
   "promotions": {
     "lineDiscountCapBps": 8000,
     "sellerMaxDiscountBps": 7000,
@@ -105,7 +141,7 @@
       "codeLength": 12,
       "alphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     },
-    "cashback": { "maxBps": 1000, "maxCapMinor": 5000 },
+    "cashback": { "maxBps": 1000, "maxCapMinor": 5000, "sellerMinBps": 100 },
     "firstOrder": {
       "enabled": true,
       "kind": "FIXED",
@@ -123,6 +159,7 @@
     "supportEmail": "jnamazi@gmail.com",
     "customerOrderPage": "https://storefront.au.mondapac.test/account/orders",
     "unsubscribePage": "https://storefront.au.mondapac.test/email/unsubscribe",
+    "sellerMissingDetailsPage": "https://seller.au.mondapac.test/products",
     "oneClickUnsubscribeUrl": "https://api.au.mondapac.test/notifications/unsubscribe/AU",
     "cartReminders": {
       "mode": "test",
@@ -141,15 +178,22 @@
   "requestLimits": {
     "anonymousIdentityPerMinute": 20,
     "publicMediaPerMinute": 1500,
+    "publicSearchPerMinute": 120,
     "defaultPerMinute": 300
   },
   "customers": {
     "addressBookLimit": 20,
+    "adminActionLimits": {
+      "passwordResetsPerHour": 20,
+      "piiRevealsPerHour": 60,
+      "piiRevealAlertAt": 40
+    },
     "address": {
       "countryCode": "AU",
       "postcodePattern": "^[0-9]{4}$",
       "regions": ["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"]
-    }
+    },
+    "invitations": { "signUpWindowDays": 7, "burstPerDay": 50 }
   },
   "allowedOrigins": {
     "admin": [],
@@ -217,13 +261,15 @@
         "verify-email": 1440,
         "reset-password": 60,
         "enrol-second-factor": 60,
-        "confirm-second-factor-reset": 1440
+        "confirm-second-factor-reset": 1440,
+        "confirm-email-change": 1440
       },
       "targets": {
         "customer": {
           "verify-email": "https://storefront.au.mondapac.test/account/confirm-email",
           "sign-in": "https://storefront.au.mondapac.test/account/sign-in",
-          "reset-password": "https://storefront.au.mondapac.test/account/reset-password"
+          "reset-password": "https://storefront.au.mondapac.test/account/reset-password",
+          "confirm-email-change": "https://storefront.au.mondapac.test/account/confirm-email-change"
         },
         "seller": {
           "verify-email": "https://seller.au.mondapac.test/confirm-email",
@@ -437,11 +483,27 @@
       "name": true,
       "primaryImage": true,
       "anyImage": true,
-      "variantRemoved": true
+      "variantRemoved": true,
+      "gtinChanged": true,
+      "axisAdded": true
     },
     "maxVariantsPerProduct": 100,
     "maxCategoryDepth": 4,
+    "maxCategoryChangeTags": 50000,
+    "maxCategoryImportRows": 1000,
+    "maxCategoryImportBytes": 5242880,
+    "maxPendingCategoryProposals": 5,
     "maxVariantAttributes": 2,
+    "units": [
+      { "code": "g", "labels": { "en-AU": "g" } },
+      { "code": "kg", "labels": { "en-AU": "kg" } },
+      { "code": "ml", "labels": { "en-AU": "ml" } },
+      { "code": "l", "labels": { "en-AU": "L" } },
+      { "code": "mm", "labels": { "en-AU": "mm" } },
+      { "code": "cm", "labels": { "en-AU": "cm" } },
+      { "code": "m", "labels": { "en-AU": "m" } },
+      { "code": "count", "labels": { "en-AU": "each" } }
+    ],
     "approvalRequired": true,
     "productTypes": ["simple", "configurable"],
     "defaultFamily": "default",

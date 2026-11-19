@@ -1,13 +1,15 @@
 'use client';
 
-import { Banner, EmptyState, LoadError, SkeletonRows, Select, TextField } from '@mondapac/ui';
+import { Banner, EmptyState, LoadError, Select, TextField, DetailSkeleton } from '@mondapac/ui';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { API_FEATURE_SETS, type FeatureSetList } from '../attributes/types.ts';
 import { CategoryDetails } from './category-details.tsx';
 import { CreateCategoryDialog } from './category-dialogs.tsx';
 import { CategoryTree } from './category-tree.tsx';
+import { TreeFileActions } from './import/tree-file-actions.tsx';
 import { languageName } from '../business-activities/activity-form.ts';
 import { Button } from '@mondapac/ui';
 import { branchIds, indexOf, isFiltering, missingCounts, visibleRows } from './tree-model.ts';
@@ -30,9 +32,15 @@ const WIDE = '(min-width: 1024px)';
  */
 export function CategoriesView({
   canEdit,
+  canRestructure = false,
   csrfToken = '',
+  canImport = false,
 }: {
   readonly canEdit: boolean;
+  /** `catalog.category-tree.import`: Export the tree and Import from a file. */
+  readonly canImport?: boolean;
+  /** `catalog.category-tree.restructure`: Move, Merge and Archive. */
+  readonly canRestructure?: boolean;
   readonly csrfToken?: string;
 }) {
   const t = useTranslations('categories');
@@ -62,6 +70,8 @@ export function CategoriesView({
   const [q, setQ] = useState('');
   const [status, setStatus] = useState<StatusFilter>('all');
   const [missing, setMissing] = useState('');
+  const [featureSet, setFeatureSet] = useState('');
+  const [sets, setSets] = useState<FeatureSetList['items']>([]);
   const [adding, setAdding] = useState(false);
   const [version, setVersion] = useState(0);
   const latest = useRef(0);
@@ -74,6 +84,17 @@ export function CategoriesView({
     const timer = setTimeout(() => setQ(typed.trim()), 250);
     return () => clearTimeout(timer);
   }, [typed]);
+
+  // The feature sets the filter offers; if they cannot be read, the filter is left out.
+  useEffect(() => {
+    let live = true;
+    void callApi<FeatureSetList>('GET', API_FEATURE_SETS).then((r) => {
+      if (live && r.ok) setSets(r.body?.items ?? []);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const fetchTree = useCallback(async () => {
     const ticket = ++latest.current;
@@ -104,8 +125,13 @@ export function CategoriesView({
 
   const rows = tree?.categories ?? [];
   const filter = useMemo(
-    () => ({ q, status, missing: missing === '' ? null : missing }),
-    [q, status, missing],
+    () => ({
+      q,
+      status,
+      missing: missing === '' ? null : missing,
+      featureSetId: featureSet === '' ? null : featureSet,
+    }),
+    [q, status, missing, featureSet],
   );
   const missingByLocale = useMemo(
     () => missingCounts(rows, tree?.supportedLocales ?? []),
@@ -167,7 +193,9 @@ export function CategoriesView({
     });
   }
 
-  if (load === 'loading' && tree === null) return <SkeletonRows label={t('loading')} rows={6} />;
+  if (load === 'loading' && tree === null) {
+    return <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={6} title={false} />;
+  }
   if (load === 'failed' || tree === null) {
     return (
       <LoadError
@@ -183,6 +211,7 @@ export function CategoriesView({
   return (
     <div className="flex flex-col gap-4">
       <p className="max-w-prose text-fg-muted">{canEdit ? t('intro-edit') : t('intro')}</p>
+      {canImport ? <TreeFileActions /> : null}
       {canEdit ? null : <Banner tone="info">{t('view-only')}</Banner>}
       {tree.complete ? null : <Banner tone="info">{t('counts-partial')}</Banner>}
       <p role="status" className="m-0 min-h-5 text-sm text-fg-muted">
@@ -229,6 +258,19 @@ export function CategoriesView({
                 onChange={(event) => setStatus(event.target.value as StatusFilter)}
               />
             </div>
+            {sets.length === 0 ? null : (
+              <div className="w-full sm:w-48">
+                <Select
+                  label={t('feature-set-label')}
+                  value={featureSet}
+                  options={[
+                    { value: '', label: t('feature-set-all') },
+                    ...sets.map((row) => ({ value: row.id, label: row.code })),
+                  ]}
+                  onChange={(event) => setFeatureSet(event.target.value)}
+                />
+              </div>
+            )}
           </div>
           {canEdit ? (
             <div>
@@ -276,6 +318,7 @@ export function CategoriesView({
               id={selectedId}
               tree={tree}
               canEdit={canEdit}
+              canRestructure={canRestructure}
               csrfToken={csrfToken}
               onChanged={changed}
               onCreated={created}
@@ -285,6 +328,7 @@ export function CategoriesView({
       </div>
       {adding ? (
         <CreateCategoryDialog
+          reviewed={tree.review?.reviewed === true}
           parent={null}
           parentName={null}
           treeVersion={tree.treeVersion}

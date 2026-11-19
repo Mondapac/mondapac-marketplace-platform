@@ -15,6 +15,8 @@ export interface NavItem {
   readonly group?: string;
   /** Permission keys; the item shows with any one of them. Absent means always shown. */
   readonly anyOf?: readonly string[];
+  /** Message key of extra command-palette search words (comma-separated), if any. */
+  readonly keywordsKey?: string;
   /** Where the badge count comes from; the count itself is fetched by the app. */
   readonly badgeSource?: string;
   /**
@@ -30,6 +32,11 @@ export interface NavGroup {
   /** Message key of the group's label. */
   readonly labelKey: string;
   readonly icon: IconName;
+  /**
+   * Keep the header even over a single visible item: a topic that is named on purpose and grows
+   * later (Audit Logs, with Security first).
+   */
+  readonly alwaysGroup?: boolean;
 }
 
 export interface NavConfig {
@@ -77,7 +84,7 @@ export type NavSection =
  * Turns the visible items into sidebar sections. Ungrouped items keep their place; a group takes
  * the place of its first visible item and gathers all its visible items there. A group without
  * visible items is left out, and a group with one visible item shows that item flat, since a
- * header over a single link only adds a click.
+ * header over a single link only adds a click, unless the group is marked `alwaysGroup`.
  */
 export function navSections(
   groups: readonly NavGroup[] | undefined,
@@ -94,7 +101,11 @@ export function navSections(
   for (const item of items) {
     const group = item.group === undefined ? undefined : known.get(item.group);
     const inGroup = group === undefined ? undefined : members.get(group.id);
-    if (group === undefined || inGroup === undefined || inGroup.length < 2) {
+    if (
+      group === undefined ||
+      inGroup === undefined ||
+      (inGroup.length < 2 && group.alwaysGroup !== true)
+    ) {
       sections.push({ kind: 'item', item });
     } else if (!placed.has(group.id)) {
       placed.add(group.id);
@@ -145,7 +156,9 @@ export function navTrail(
   const active = items.find((candidate) => candidate.id === activeId);
   const trail: { label: string; href?: string }[] = [];
   const group = groups?.find((candidate) => candidate.id === active?.group);
-  const grouped = group !== undefined && items.filter((item) => item.group === group.id).length > 1;
+  const grouped =
+    group !== undefined &&
+    (group.alwaysGroup === true || items.filter((item) => item.group === group.id).length > 1);
   for (const item of [items[0], active]) {
     if (item === undefined || trail.some((crumb) => crumb.href === item.href)) continue;
     if (item === active && grouped && item !== items[0]) {

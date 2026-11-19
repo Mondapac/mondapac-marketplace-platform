@@ -195,6 +195,8 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
         effectiveReliability: 90,
       },
     ],
+    review: { reviewed: true, risk: 'medium' as const },
+    request: null,
   };
 
   beforeEach(() => {
@@ -220,6 +222,7 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
     expect(body.active).toEqual({ instant: MODEL, same_day: null, scheduled: null });
     expect(body.models[0]).toMatchObject({ id: MODEL, version: 1, rule: { kind: 'cheapest' } });
     expect(body.fleets[0]).toMatchObject({ fleet: 'mondapac_drive', reliability: 90 });
+    expect((res.body as { review: unknown }).review).toEqual({ reviewed: true, risk: 'medium' });
     expect(calls).toEqual([{ name: 'view', input: {} }]);
   });
 
@@ -236,23 +239,62 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
     next = ok(model);
     const created = await call('post', 'admin', `${BASE}/models`, session, { name: 'A', rule });
     expect(created.status).toBe(201);
+    expect(created.body).not.toHaveProperty('request');
+    const opened = { id: id<'SystemRequest'>(0xe1), number: 7 };
+    next = ok({ ...model, request: opened });
     const updated = await call('put', 'admin', `${BASE}/models/${MODEL}`, session, {
       name: 'B',
       rule,
       expectedVersion: 1,
+      note: 'Rename',
     });
     expect(updated.status).toBe(200);
-    next = ok({ ...selection, lastChanged: LAST_CHANGED });
-    const saved = await call('put', 'admin', BASE, session, page);
+    expect(updated.body).toMatchObject({ id: MODEL, request: opened });
+    next = ok({ ...selection, request: opened, lastChanged: LAST_CHANGED });
+    const saved = await call('put', 'admin', BASE, session, { ...page, note: 'Faster' });
     expect(saved.status).toBe(200);
     expect((saved.body as { version: number }).version).toBe(4);
+    expect(saved.body).toMatchObject({ request: opened, review: { reviewed: true } });
     expect(saved.headers['cache-control']).toBe('no-store');
 
     expect(calls).toEqual([
       { name: 'create', input: { name: 'A', rule } },
-      { name: 'update', input: { modelId: MODEL, name: 'B', rule, expectedVersion: 1 } },
-      { name: 'save', input: page },
+      {
+        name: 'update',
+        input: { modelId: MODEL, name: 'B', rule, expectedVersion: 1, note: 'Rename' },
+      },
+      { name: 'save', input: { ...page, note: 'Faster' } },
     ]);
+  });
+
+  it('answers 202 with only the proposal when a create waits for approval, and 409 while one waits', async () => {
+    await boot();
+    const session = admin();
+    const proposal = { request: { id: id<'SystemRequest'>(0xe2), number: 12 } };
+    next = ok(proposal);
+    const body = { name: 'Fast', rule: { kind: 'cheapest' }, note: 'New rule' };
+    const proposed = await call('post', 'admin', `${BASE}/models`, session, body);
+    expect(proposed.status).toBe(202);
+    expect(proposed.body).toEqual({ request: { id: proposal.request.id, number: 12 } });
+    expect(proposed.headers['cache-control']).toBe('no-store');
+    expect(calls).toEqual([{ name: 'create', input: body }]);
+
+    next = err({ code: 'system-requests.already-pending', pendingNumber: 12 });
+    const pending = await call('post', 'admin', `${BASE}/models`, session, body);
+    expect(pending.status).toBe(409);
+    expect(pending.body).toEqual({
+      statusCode: 409,
+      code: 'system-requests.already-pending',
+      details: { pendingNumber: 12 },
+    });
+    next = err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] });
+    const noNote = await call('post', 'admin', `${BASE}/models`, session, body);
+    expect(noNote.status).toBe(400);
+    expect(noNote.body).toMatchObject({ details: { fields: [{ path: 'note' }] } });
+    // The body stays closed: a stray key never reaches the use case.
+    const stray = await call('post', 'admin', `${BASE}/models`, session, { ...body, x: 1 });
+    expect(stray.status).toBe(400);
+    expect(calls).toHaveLength(3);
   });
 
   it('lists the history for an admin and passes the paging', async () => {

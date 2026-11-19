@@ -3,6 +3,9 @@
 import { BackLink, Badge, Banner, Button, Card, CARD_TABLE, DataList, toast } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState } from 'react';
+import { OrderNotes } from './order-notes.tsx';
+import { OrderTimeline } from './order-timeline.tsx';
+import { UnavailableDialog } from './unavailable-dialog.tsx';
 import { callApi } from '../api/client.ts';
 import { DisputeNotice } from '../disputes/dispute-notice.tsx';
 import type { OwnDispute } from '../disputes/types.ts';
@@ -11,7 +14,13 @@ import { formatMinor } from '../price/money.ts';
 import { orderProblemOf } from './errors.ts';
 import { PickupHandover } from './pickup-handover.tsx';
 import { shortId, statusOf, TONE } from './status.ts';
-import type { SellerOrderView } from './types.ts';
+import {
+  remainingUnits,
+  type ActivityEvent,
+  type SellerNote,
+  type SellerOrderView,
+  packingSlipAvailable,
+} from './types.ts';
 
 /**
  * One paid order on its own page: summary, its lines with product names, the totals and the
@@ -26,6 +35,11 @@ export function OrderDetail({
   canDeliver,
   canConfirmPickup = false,
   dispute = null,
+  canMarkUnavailable = false,
+  canNote = false,
+  notes = null,
+  activity = null,
+  showExtras = false,
 }: {
   readonly initial: SellerOrderView;
   readonly csrfToken: string;
@@ -34,6 +48,16 @@ export function OrderDetail({
   readonly canConfirmPickup?: boolean;
   /** The dispute that holds or held this order: a notice shows near the top. */
   readonly dispute?: OwnDispute | null;
+  /** "Mark unavailable" (a protected key: the step-up dialog may ask for a code). */
+  readonly canMarkUnavailable?: boolean;
+  /** The role holds `ordering.seller-order.note`: the note form shows. */
+  readonly canNote?: boolean;
+  /** The shop's notes on this order; null when they could not be read. */
+  readonly notes?: readonly SellerNote[] | null;
+  /** The order timeline; null when it could not be read. */
+  readonly activity?: readonly ActivityEvent[] | null;
+  /** The page loads notes and the timeline (the order page does; a bare test mount does not). */
+  readonly showExtras?: boolean;
 }) {
   const t = useTranslations('orders');
   const locale = useLocale();
@@ -42,6 +66,9 @@ export function OrderDetail({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [justMarked, setJustMarked] = useState(false);
+  const [unavailableOpen, setUnavailableOpen] = useState(false);
+  // The page is read again after a refund or a note: the new answer replaces the old order.
+  useEffect(() => setOrder(initial), [initial]);
   const busy = useRef(false);
   const hintId = useId();
   const doneRef = useRef<HTMLDivElement>(null);
@@ -79,6 +106,16 @@ export function OrderDetail({
     setProblem(orderProblemOf(result.failure));
   }
 
+  /** The reference the seller reads out to support; a failed copy is told, never silent. */
+  async function copyReference() {
+    try {
+      await navigator.clipboard.writeText(reference);
+      toast.success(t('copy-id-done'));
+    } catch {
+      toast.error(t('copy-id-failed'));
+    }
+  }
+
   const windowText =
     order.deliveryMethod === 'scheduled' &&
     order.deliveryWindowStart !== null &&
@@ -86,7 +123,16 @@ export function OrderDetail({
       ? windowRange(order.deliveryWindowStart, order.deliveryWindowEnd, locale, zone)
       : null;
   const reference = shortId(order.sellerOrderId);
+  // The card shows only when it has something to say: delivered orders and shipped orders the
+  // person cannot deliver would leave it empty.
+  const nextStepVisible =
+    order.fulfilment === 'to-ship' || (order.fulfilment === 'shipped' && canDeliver);
   const count = order.lines.reduce((sum, line) => sum + line.quantity, 0);
+  const canUnavailable =
+    canMarkUnavailable &&
+    order.fulfilment === 'to-ship' &&
+    order.readyAt === null &&
+    order.lines.some((entry) => remainingUnits(order, entry.lineId) > 0);
   const lineHead = (col: 'item' | 'quantity' | 'unit' | 'amount') => t(`line.col.${col}`);
   return (
     <div className="flex flex-col gap-6">
@@ -97,6 +143,19 @@ export function OrderDetail({
             {t('detail-title', { id: reference })}
           </h1>
           <Badge tone={TONE[statusOf(order)]}>{t(`status.${statusOf(order)}`)}</Badge>
+          <Button variant="secondary" onClick={() => void copyReference()}>
+            {t('copy-id')}
+          </Button>
+          {packingSlipAvailable(order) ? (
+            <a
+              href={`/orders/${order.sellerOrderId}/packing-slip`}
+              target="_blank"
+              rel="noopener"
+              className="inline-flex items-center rounded-md border border-line-control bg-surface px-3 py-2 text-sm font-medium text-fg hover:bg-muted"
+            >
+              {t('slip.open')}
+            </a>
+          ) : null}
         </div>
         <p className="text-sm text-fg-muted">
           {t('paid-line', { when: formatInstant(order.paidAt, locale, zone) })}
@@ -107,136 +166,8 @@ export function OrderDetail({
       <DisputeNotice dispute={dispute} />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-6">
-          <Card title={t('lines')} flush>
-            <div className="relative overflow-x-auto">
-              <table className={`${CARD_TABLE.table} lg:table-fixed`}>
-                <caption className="sr-only">{t('lines')}</caption>
-                <colgroup className="max-lg:hidden">
-                  <col />
-                  <col className="w-20" />
-                  <col className="w-28" />
-                  <col className="w-28" />
-                </colgroup>
-                <thead className={CARD_TABLE.head}>
-                  <tr>
-                    <th scope="col" className="px-5 py-3 font-medium">
-                      {lineHead('item')}
-                    </th>
-                    <th scope="col" className="px-4 py-3 text-end font-medium">
-                      {lineHead('quantity')}
-                    </th>
-                    <th scope="col" className="px-4 py-3 text-end font-medium">
-                      {lineHead('unit')}
-                    </th>
-                    <th scope="col" className="px-5 py-3 text-end font-medium">
-                      {lineHead('amount')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className={CARD_TABLE.body}>
-                  {order.lines.map((line) => {
-                    const name = line.productName?.trim() ?? '';
-                    const variant = line.variantLabel?.trim() ?? '';
-                    return (
-                      <tr key={line.lineId} className={CARD_TABLE.row}>
-                        <td className={`${CARD_TABLE.cell} break-words lg:px-5`}>
-                          <div className="font-medium text-fg">
-                            {name === '' ? t('line.fallback', { id: shortId(line.offerId) }) : name}
-                            {variant !== '' ? ` · ${variant}` : ''}
-                          </div>
-                        </td>
-                        <td className={`${CARD_TABLE.cell} tabular-nums max-lg:hidden lg:text-end`}>
-                          {line.quantity}
-                        </td>
-                        <td className={`${CARD_TABLE.cell} tabular-nums max-lg:hidden lg:text-end`}>
-                          {money(line.unitPrice)}
-                        </td>
-                        <td
-                          className={`${CARD_TABLE.corner} font-medium tabular-nums lg:px-5 lg:text-end`}
-                        >
-                          {money(line.lineAmount)}
-                        </td>
-                        {/* Phones: quantity and unit price on one line under the name. */}
-                        <td className="text-fg-muted max-lg:col-span-2 lg:hidden">
-                          {t('line.qty-price', {
-                            quantity: line.quantity,
-                            price: money(line.unitPrice),
-                          })}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-        <div className="flex min-w-0 flex-col gap-6">
-          <Card title={t('totals')}>
-            <DataList
-              variant="totals"
-              missing={t('not-given')}
-              rows={[
-                { label: t('subtotal'), value: money(order.subtotal) },
-                {
-                  label: t('delivery'),
-                  value: order.shipping.amount === '0' ? t('delivery-free') : money(order.shipping),
-                },
-                { label: t('total'), value: money(order.total), emphasis: true },
-              ]}
-            />
-          </Card>
-          <Card title={t('fulfilment')}>
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-3">
-                <div>
-                  <p className="text-xs text-fg-muted">{t('method.label')}</p>
-                  <p className="text-base font-medium text-fg">
-                    {t(`method.${order.deliveryMethod}`)}
-                  </p>
-                </div>
-                {windowText === null ? null : (
-                  <div>
-                    <p className="text-xs text-fg-muted">{t('method.window-label')}</p>
-                    <p className="text-base font-medium text-fg">{windowText}</p>
-                  </div>
-                )}
-              </div>
-              {order.fulfilment === 'to-ship' && order.deliveredAt === null ? null : (
-                <DataList
-                  variant="stacked"
-                  missing={t('not-given')}
-                  rows={[
-                    ...(order.fulfilment === 'to-ship' || order.deliveryMethod === 'pickup'
-                      ? []
-                      : [
-                          { label: t('ship.carrier'), value: order.carrier },
-                          {
-                            label: t('ship.tracking'),
-                            value:
-                              order.trackingRef === null ? null : (
-                                <span className="break-all">{order.trackingRef}</span>
-                              ),
-                          },
-                          {
-                            label: t('shipped-on'),
-                            value:
-                              order.shippedAt === null
-                                ? null
-                                : shortInstant(order.shippedAt, locale, zone),
-                          },
-                        ]),
-                    ...(order.deliveredAt === null
-                      ? []
-                      : [
-                          {
-                            label: t('delivered-on'),
-                            value: shortInstant(order.deliveredAt, locale, zone),
-                          },
-                        ]),
-                  ]}
-                />
-              )}
+          {nextStepVisible ? (
+            <Card title={t('next-step')}>
               {order.fulfilment === 'to-ship' && order.readyAt === null ? (
                 canMarkReady ? (
                   <>
@@ -313,8 +244,189 @@ export function OrderDetail({
                   </div>
                 </>
               ) : null}
+            </Card>
+          ) : null}
+          {canUnavailable ? (
+            <Card title={t('unavailable.card')}>
+              <p className="text-sm text-balance text-fg-muted">{t('unavailable.hint')}</p>
+              <div>
+                <Button variant="destructive" onClick={() => setUnavailableOpen(true)}>
+                  {t('unavailable.open')}
+                </Button>
+              </div>
+              <UnavailableDialog
+                open={unavailableOpen}
+                onClose={() => setUnavailableOpen(false)}
+                order={order}
+                csrfToken={csrfToken}
+              />
+            </Card>
+          ) : null}
+          <Card title={t('lines')} flush>
+            <div className="relative overflow-x-auto">
+              <table className={`${CARD_TABLE.table} lg:table-fixed`}>
+                <caption className="sr-only">{t('lines')}</caption>
+                <colgroup className="max-lg:hidden">
+                  <col />
+                  <col className="w-20" />
+                  <col className="w-28" />
+                  <col className="w-28" />
+                </colgroup>
+                <thead className={CARD_TABLE.head}>
+                  <tr>
+                    <th scope="col" className="px-5 py-3 font-medium">
+                      {lineHead('item')}
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-end font-medium">
+                      {lineHead('quantity')}
+                    </th>
+                    <th scope="col" className="px-4 py-3 text-end font-medium">
+                      {lineHead('unit')}
+                    </th>
+                    <th scope="col" className="px-5 py-3 text-end font-medium">
+                      {lineHead('amount')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className={CARD_TABLE.body}>
+                  {order.lines.map((line) => {
+                    const name = line.productName?.trim() ?? '';
+                    const variant = line.variantLabel?.trim() ?? '';
+                    return (
+                      <tr key={line.lineId} className={CARD_TABLE.row}>
+                        <td className={`${CARD_TABLE.cell} break-words lg:px-5`}>
+                          <div className="font-medium text-fg">
+                            {name === '' ? t('line.fallback', { id: shortId(line.offerId) }) : name}
+                            {variant !== '' ? ` · ${variant}` : ''}
+                          </div>
+                        </td>
+                        <td className={`${CARD_TABLE.cell} tabular-nums max-lg:hidden lg:text-end`}>
+                          {line.quantity}
+                        </td>
+                        <td className={`${CARD_TABLE.cell} tabular-nums max-lg:hidden lg:text-end`}>
+                          {money(line.unitPrice)}
+                        </td>
+                        <td
+                          className={`${CARD_TABLE.corner} font-medium tabular-nums lg:px-5 lg:text-end`}
+                        >
+                          {money(line.lineAmount)}
+                        </td>
+                        {/* Phones: quantity and unit price on one line under the name. */}
+                        <td className="text-fg-muted max-lg:col-span-2 lg:hidden">
+                          {t('line.qty-price', {
+                            quantity: line.quantity,
+                            price: money(line.unitPrice),
+                          })}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </Card>
+        </div>
+        <div className="flex min-w-0 flex-col gap-6">
+          {order.customer === undefined ? null : (
+            <Card title={t('customer.title')}>
+              <div className="flex flex-col gap-3">
+                {order.customer === null ? (
+                  <p className="text-sm text-fg-muted">{t('customer.pending')}</p>
+                ) : (
+                  <DataList
+                    variant="stacked"
+                    missing={t('not-given')}
+                    rows={[
+                      {
+                        label: t('customer.code'),
+                        value: <span className="font-mono">{order.customer.code}</span>,
+                      },
+                      { label: t('customer.first-name'), value: order.customer.firstName },
+                    ]}
+                  />
+                )}
+                <p className="text-xs text-fg-muted">{t('customer.hint')}</p>
+              </div>
+            </Card>
+          )}
+          <Card title={t('totals')}>
+            <DataList
+              variant="totals"
+              missing={t('not-given')}
+              rows={[
+                { label: t('subtotal'), value: money(order.subtotal) },
+                {
+                  label: t('delivery'),
+                  value: order.shipping.amount === '0' ? t('delivery-free') : money(order.shipping),
+                },
+                { label: t('total'), value: money(order.total), emphasis: true },
+              ]}
+            />
+          </Card>
+          <Card title={t('fulfilment')}>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3">
+                <div>
+                  <p className="text-xs text-fg-muted">{t('method.label')}</p>
+                  <p className="text-base font-medium text-fg">
+                    {t(`method.${order.deliveryMethod}`)}
+                  </p>
+                </div>
+                {windowText === null ? null : (
+                  <div>
+                    <p className="text-xs text-fg-muted">{t('method.window-label')}</p>
+                    <p className="text-base font-medium text-fg">{windowText}</p>
+                  </div>
+                )}
+              </div>
+              {order.fulfilment === 'to-ship' && order.deliveredAt === null ? null : (
+                <DataList
+                  variant="stacked"
+                  missing={t('not-given')}
+                  rows={[
+                    ...(order.fulfilment === 'to-ship' || order.deliveryMethod === 'pickup'
+                      ? []
+                      : [
+                          { label: t('ship.carrier'), value: order.carrier },
+                          {
+                            label: t('ship.tracking'),
+                            value:
+                              order.trackingRef === null ? null : (
+                                <span className="break-all">{order.trackingRef}</span>
+                              ),
+                          },
+                          {
+                            label: t('shipped-on'),
+                            value:
+                              order.shippedAt === null
+                                ? null
+                                : shortInstant(order.shippedAt, locale, zone),
+                          },
+                        ]),
+                    ...(order.deliveredAt === null
+                      ? []
+                      : [
+                          {
+                            label: t('delivered-on'),
+                            value: shortInstant(order.deliveredAt, locale, zone),
+                          },
+                        ]),
+                  ]}
+                />
+              )}
+            </div>
+          </Card>
+          {showExtras ? (
+            <>
+              <OrderNotes
+                sellerOrderId={order.sellerOrderId}
+                notes={notes}
+                canWrite={canNote}
+                csrfToken={csrfToken}
+              />
+              <OrderTimeline events={activity} />
+            </>
+          ) : null}
         </div>
       </div>
     </div>
