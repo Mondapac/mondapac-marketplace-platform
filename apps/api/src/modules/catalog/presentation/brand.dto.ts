@@ -101,6 +101,20 @@ export class BrandVersionRequest {
   @ApiProperty({ description: 'The version the admin saw.' }) version!: number;
 }
 
+export class BrandArchiveRequest extends BrandVersionRequest {
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    type: String,
+    maxLength: 500,
+    description:
+      'Optional: why the brand is archived (a seller proposal turned down or a live brand retired). ' +
+      'Trimmed; at most 500 characters; no control characters or line breaks; empty or null means ' +
+      "none. Kept on the brand for the proposing seller's notice, never in the audit log.",
+  })
+  reason?: string | null;
+}
+
 export class BrandMergeRequest {
   @ApiProperty({
     required: false,

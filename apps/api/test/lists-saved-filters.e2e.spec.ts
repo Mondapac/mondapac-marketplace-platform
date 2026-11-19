@@ -110,11 +110,11 @@ const PHASE3_LISTS = [
   },
 ] as const;
 
-const PHASE4 = id<'Account'>(0xa020);
+const PHASE4 = id<'Account'>(0xa030);
 const PHASE4_ROLE = id<'Role'>(0xc0f6);
-const PHASE4_SHARER = id<'Account'>(0xa021);
+const PHASE4_SHARER = id<'Account'>(0xa031);
 const PHASE4_SHARER_ROLE = id<'Role'>(0xc0f7);
-const PHASE4_SHARE_ONLY = id<'Account'>(0xa022);
+const PHASE4_SHARE_ONLY = id<'Account'>(0xa032);
 const PHASE4_SHARE_ONLY_ROLE = id<'Role'>(0xc0f8);
 
 /** The phase 4 lists (PR10): each with its view key and a document its list accepts. */
@@ -702,6 +702,128 @@ describe('generic saved filters over HTTP (integration)', () => {
         expect((await call('get', code, `?listKey=${list.listKey}`, blind)).status).toBe(403);
       }
       expect(store.rows.size).toBe(PHASE3_LISTS.length * 2);
+    });
+
+    it('keeps a filter shared on a phase 3 list under its own keys: no edit or delete without the share key, none at all without the view key', async () => {
+      await boot();
+      await seeded(code);
+      const holder = sessionOf(code, PHASE3, 6);
+      const sharer = sessionOf(code, PHASE3_SHARER, 7);
+      const blind = sessionOf(code, NO_KEY, 2);
+
+      for (const list of PHASE3_LISTS) {
+        const shared = await call('post', code, '', sharer).send({
+          listKey: list.listKey,
+          name: 'Ours',
+          visibility: 'everyone',
+          payload: list.payload,
+        });
+        expect([list.listKey, shared.status]).toEqual([list.listKey, 201]);
+        const sharedId = idOf(shared);
+
+        // A holder of the view key alone can use the filter but not change or remove it.
+        const edited = await call('put', code, `/${sharedId}`, holder).send({
+          listKey: list.listKey,
+          name: 'Taken over',
+          visibility: 'me',
+        });
+        expect([list.listKey, [403, 404].includes(edited.status)]).toEqual([list.listKey, true]);
+        const removed = await call('delete', code, `/${sharedId}?listKey=${list.listKey}`, holder);
+        expect([list.listKey, [403, 404].includes(removed.status)]).toEqual([list.listKey, true]);
+        const still = await call('get', code, `?listKey=${list.listKey}`, holder);
+        expect(
+          (still.body as { items: { id: string; name: string }[] }).items.map((i) => [
+            i.id,
+            i.name,
+          ]),
+        ).toEqual([[sharedId, 'Ours']]);
+
+        // Without the view key, none of the writes get through either.
+        expect(
+          (
+            await call('put', code, `/${sharedId}`, blind).send({
+              listKey: list.listKey,
+              name: 'Nope',
+              visibility: 'me',
+            })
+          ).status,
+        ).toBe(403);
+        expect(
+          (await call('delete', code, `/${sharedId}?listKey=${list.listKey}`, blind)).status,
+        ).toBe(403);
+        expect(
+          (await call('put', code, '/order', blind).send({ listKey: list.listKey, ids: [] }))
+            .status,
+        ).toBe(403);
+
+        // The share key manages it: rename, then remove.
+        const renamed = await call('put', code, `/${sharedId}`, sharer).send({
+          listKey: list.listKey,
+          name: 'Renamed',
+          visibility: 'everyone',
+        });
+        expect([list.listKey, renamed.status]).toEqual([list.listKey, 200]);
+        const gone = await call('delete', code, `/${sharedId}?listKey=${list.listKey}`, sharer);
+        expect([list.listKey, gone.status]).toEqual([list.listKey, 200]);
+      }
+      expect(store.rows.size).toBe(0);
+    });
+
+    it('does not let one module share key share on the other module lists', async () => {
+      await boot();
+      await seeded(code);
+      const viewKeys = [...new Set(PHASE3_LISTS.map((list) => list.viewKey))];
+      const roleWith = (n: number, keys: readonly string[]) => {
+        const roleId = id<'Role'>(0xc200 + n);
+        fakes.seedRole({
+          id: roleId,
+          marketId: code as AccountState['marketId'],
+          scope: 'platform',
+          kind: 'custom',
+          seedCode: null,
+          seedVersion: null,
+          sellerId: null,
+          name: `One module share key ${n}`,
+          permissionKeys: [...keys],
+          version: 1,
+          createdAt: START,
+        });
+        return roleId;
+      };
+      const CERT_SHARER = id<'Account'>(0xa020);
+      const SELLERS_SHARER = id<'Account'>(0xa021);
+      seedAdmin(
+        code,
+        CERT_SHARER,
+        'certsharer',
+        roleWith(1, [...viewKeys, 'certification.saved-filter.share']),
+        20,
+      );
+      seedAdmin(
+        code,
+        SELLERS_SHARER,
+        'sellerssharer',
+        roleWith(2, [...viewKeys, 'sellers.saved-filter.share']),
+        21,
+      );
+      const certSharer = sessionOf(code, CERT_SHARER, 20);
+      const sellersSharer = sessionOf(code, SELLERS_SHARER, 21);
+
+      for (const list of PHASE3_LISTS) {
+        const own = list.shareKey.startsWith('certification.') ? certSharer : sellersSharer;
+        const other = list.shareKey.startsWith('certification.') ? sellersSharer : certSharer;
+        const body = {
+          listKey: list.listKey,
+          name: 'Ours',
+          visibility: 'everyone',
+          payload: list.payload,
+        };
+        const refused = await call('post', code, '', other).send(body);
+        expect([list.listKey, refused.status]).toEqual([list.listKey, 403]);
+        const allowed = await call('post', code, '', own).send(body);
+        expect([list.listKey, allowed.status]).toEqual([list.listKey, 201]);
+      }
+      expect(store.rows.size).toBe(PHASE3_LISTS.length);
     });
 
     it('accepts each phase 4 list with its view key, and refuses it without the key', async () => {

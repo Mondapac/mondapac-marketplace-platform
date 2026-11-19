@@ -87,6 +87,14 @@ export class PrismaBrandReader implements BrandReader {
       .catalogBrand.count({ where: filters.length === 0 ? {} : { AND: filters } });
   }
 
+  async byIds(market: MarketContext, ids: readonly Id<'Brand'>[]): Promise<readonly BrandState[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma
+      .tx(market)
+      .catalogBrand.findMany({ where: { id: { in: [...ids] } } });
+    return rows.map(brandStateOf);
+  }
+
   async detail(market: MarketContext, id: Id<'Brand'>): Promise<BrandDetailRecord | null> {
     const tx = this.prisma.tx(market);
     const row = await tx.catalogBrand.findFirst({
