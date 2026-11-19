@@ -211,14 +211,20 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
     if (!first.ok) throw new Error('first page refused');
     expect(first.value.total).toBe(2);
     expect(first.value.items).toEqual([
-      { sellerId: OTHER_SHOP, slug: 'olive-house', followedAt: T0.add({ hours: 1 }) },
+      {
+        sellerId: OTHER_SHOP,
+        slug: 'olive-house',
+        name: 'Store olive-house',
+        logo: null,
+        followedAt: T0.add({ hours: 1 }),
+      },
     ]);
     expect(first.value.nextCursor).not.toBeNull();
     const second = await uc.mine.execute(alice, { limit: 1, cursor: first.value.nextCursor });
     expect(second).toEqual({
       ok: true,
       value: {
-        items: [{ sellerId: SHOP, slug: null, followedAt: T0 }],
+        items: [{ sellerId: SHOP, slug: null, name: null, logo: null, followedAt: T0 }],
         total: 2,
         nextCursor: null,
       },
@@ -230,6 +236,48 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
     expect(await uc.mine.execute(alice, { cursor: 'abc' })).toMatchObject({
       ok: false,
       error: { code: 'validation.failed' },
+    });
+  });
+
+  it('shows the name and logo of a public store, and never those of a store that is not public now', async () => {
+    const logo = { id: '0198a2c4-7d1e-7b3a-9c55-2f6e8a1b4d91', width: 512, height: 512 };
+    stores.names.set(SHOP, 'Green Valley Halal');
+    stores.logos.set(SHOP, logo);
+    stores.names.set(OTHER_SHOP, 'Olive House');
+    stores.logos.set(OTHER_SHOP, { ...logo, id: '0198a2c4-7d1e-7b3a-9c55-2f6e8a1b4d92' });
+    await uc.follow.execute(alice, { sellerId: SHOP });
+    clock.advance(Temporal.Duration.from({ hours: 1 }));
+    await uc.follow.execute(alice, { sellerId: OTHER_SHOP });
+
+    const both = await uc.mine.execute(alice, {});
+    expect(both).toMatchObject({
+      ok: true,
+      value: {
+        items: [
+          { sellerId: OTHER_SHOP, name: 'Olive House', slug: 'olive-house' },
+          { sellerId: SHOP, name: 'Green Valley Halal', slug: 'green-valley', logo },
+        ],
+      },
+    });
+
+    // The store stops being public (suspended): the name and logo disappear from the answer.
+    stores.slugs.delete(SHOP);
+    const after = await uc.mine.execute(alice, {});
+    if (!after.ok) throw new Error('refused');
+    const gone = after.value.items.find((item) => item.sellerId === SHOP);
+    expect(gone).toEqual({ sellerId: SHOP, slug: null, name: null, logo: null, followedAt: T0 });
+    expect(
+      JSON.stringify(after, (_k, v: unknown) => (typeof v === 'bigint' ? `${v}` : v)),
+    ).not.toContain('Green Valley Halal');
+  });
+
+  it('fails closed when the store names cannot be read: no partial page', async () => {
+    await uc.follow.execute(alice, { sellerId: SHOP });
+    stores.down = true;
+
+    expect(await uc.mine.execute(alice, {})).toEqual({
+      ok: false,
+      error: { code: 'engagement.unavailable' },
     });
   });
 

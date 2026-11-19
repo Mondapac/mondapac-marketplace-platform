@@ -62,6 +62,16 @@ export interface PayoutHoldRepository {
     },
   ): Promise<readonly PayoutHoldRecord[]>;
 
+  /**
+   * Whether an active hold, of any reason and origin, covers the seller order: one on the seller
+   * order itself or one on the whole seller.
+   */
+  hasActiveCovering(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    sellerOrderId: Id<'SellerOrder'>,
+  ): Promise<boolean>;
+
   /** How many holds of this reason a seller order has ever had (the version of its event). */
   countForSellerOrder(
     market: MarketContext,

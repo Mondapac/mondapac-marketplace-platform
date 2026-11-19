@@ -95,6 +95,8 @@ export interface AttributePage {
   readonly units: readonly MarketUnit[];
   readonly featureSets: readonly { readonly id: string; readonly code: string }[];
   readonly truncated: boolean;
+  /** Whether a new attribute is reviewed (and a discard, merge or archive waits for approval). */
+  readonly review?: { readonly reviewed: boolean; readonly risk: string };
 }
 
 export interface AttributeOption {
@@ -178,6 +180,8 @@ export interface FeatureSetRow {
 export interface FeatureSetList {
   readonly items: readonly FeatureSetRow[];
   readonly truncated: boolean;
+  /** Whether a new feature set waits for another admin's approval (Admin Inbox > System requests). */
+  readonly review?: { readonly reviewed: boolean; readonly risk: string };
 }
 
 export type RequirementLevel = 'required' | 'recommended' | 'optional';
