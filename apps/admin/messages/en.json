@@ -8313,35 +8313,36 @@
       "time": "Time",
       "open-approvals": "Open approvals"
     },
-    "queue": {
+    "list": {
       "title": "Credit approvals",
       "intro": "Credit above an admin's limit waits here for a second admin to approve or reject it.",
-      "tabs": "Credit request lists",
-      "tab": {
+      "views-label": "Credit request views",
+      "zone-note": "Dates are shown in {zone}.",
+      "view": {
         "pending": "Pending",
         "decided": "Decided",
-        "granted": "Granted at once"
-      },
-      "caption": {
-        "pending": "Credit requests waiting for a decision",
-        "decided": "Decided credit requests",
-        "granted": "Credit issued at once"
-      },
-      "empty": {
-        "pending": "No credit requests are waiting.",
-        "decided": "No decided requests yet.",
-        "granted": "No credit has been issued yet."
+        "granted": "Granted at once",
+        "all": "All"
       },
       "col": {
         "customer": "Customer",
         "amount": "Amount",
-        "reason": "Reason",
         "status": "Status",
-        "requested-by": "Requested by",
         "requested": "Requested",
+        "reason": "Reason",
+        "requested-by": "Requested by",
         "until": "Expires or decided",
+        "approval-reason": "Why it needed approval",
+        "decided-by": "Decided by",
+        "decision-reason": "Decision reason",
+        "note": "Note",
+        "journal": "Journal reference",
         "actions": "Actions"
       },
+      "caption": "Credit requests",
+      "row-name": "request for customer {customer}, {amount}",
+      "none": "None",
+      "you": "You",
       "status": {
         "granted": "Granted",
         "pending": "Pending",
@@ -8349,17 +8350,111 @@
         "rejected": "Rejected",
         "expired": "Expired"
       },
-      "you": "You",
-      "approve": "Approve",
-      "reject": "Reject",
-      "details": "Details",
-      "detail": {
-        "note": "Note",
-        "approval-reason": "Why it needed approval",
-        "decision-reason": "Decision reason",
-        "decided-by": "Decided by",
-        "journal": "Journal reference",
-        "none": "None"
+      "search": {
+        "label": "Search",
+        "placeholder": "Request ID or customer ID",
+        "help": "A full request ID or customer account ID.",
+        "not-id": "That is not an ID. Type a full request ID or customer account ID."
+      },
+      "chip-id": "Request or customer ID is {text}",
+      "filter": {
+        "title": "Filter credit requests",
+        "name": {
+          "status": "Status",
+          "reason": "Reason",
+          "approvalReason": "Why it needed approval",
+          "requestedBy": "Requested by",
+          "requested": "Requested"
+        },
+        "status": {
+          "granted": "Granted",
+          "pending": "Pending",
+          "approved": "Approved",
+          "rejected": "Rejected",
+          "expired": "Expired"
+        },
+        "by": {
+          "me": "Me"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "requested": "Requested",
+          "amount": "Amount",
+          "expires": "Expires",
+          "decided": "Decided"
+        },
+        "requested": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "amount": {
+          "first": "Largest first",
+          "second": "Smallest first"
+        },
+        "expires": {
+          "first": "Latest expiry first",
+          "second": "Nearest expiry first"
+        },
+        "decided": {
+          "first": "Most recent first",
+          "second": "Least recent first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# request matches} other {# requests match}}",
+      "range": "{from}–{to} of {total} requests",
+      "error": {
+        "unavailable": "The credit requests could not be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "pending": "No credit requests are waiting.",
+        "decided": "No decided requests yet.",
+        "granted": "No credit has been issued yet.",
+        "all": "No credit requests yet.",
+        "no-match": "No credit requests match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all requests on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+        "all": "{count, plural, one {The # matching request is selected} other {All # matching requests are selected}}",
+        "all-open": "All matching requests are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+        "all-open": "All matching requests selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "open": "Details…",
+        "approve": "Approve…",
+        "reject": "Reject…"
+      },
+      "approve": {
+        "title": "Approve {amount} for customer {customer}?",
+        "body": "{amount} will be added to customer {customer}'s wallet now. You cannot undo this.",
+        "type-to-confirm": "Type {id} to confirm",
+        "step-up-note": "Approving adds the credit to the customer's wallet. Next, you will be asked for your two-step code.",
+        "confirm": "Approve credit"
+      },
+      "reject": {
+        "title": "Reject {amount} for customer {customer}?",
+        "body": "No credit will be added. Your reason is recorded with the decision.",
+        "reason": "Reason",
+        "reason-placeholder": "Choose a reason",
+        "confirm": "Reject request"
       },
       "reject-reason": {
         "not-justified": "Not justified",
@@ -8368,23 +8463,21 @@
         "wrong-customer": "Wrong customer",
         "policy": "Against policy"
       },
-      "loaded-more": "{count, plural, one {# more request loaded} other {# more requests loaded}}",
-      "load-more": "Load more",
-      "approve-dialog": {
-        "title": "Approve this credit?",
-        "body": "{amount} will be added to customer {customer}'s wallet now. You cannot undo this."
-      },
-      "reject-dialog": {
-        "title": "Reject this request?",
-        "reason": "Reason",
-        "reason-placeholder": "Choose a reason",
-        "action": "Reject request"
+      "details": {
+        "title": "Credit request",
+        "title-named": "Credit request {id}",
+        "close": "Close",
+        "note": "Note",
+        "approval-reason": "Why it needed approval",
+        "decided-by": "Decided by",
+        "decided": "Decided",
+        "decision-reason": "Decision reason",
+        "journal": "Journal reference"
       },
       "notice": {
         "approved": "Credit approved. {amount} was added.",
         "rejected": "Request rejected. No credit was issued."
-      },
-      "load-more-failed": "We could not load more requests. Try again."
+      }
     },
     "error": {
       "cannot-turn-off-with-history": "The wallet cannot go back to Off because credit has already been issued. Choose Paused instead.",
