@@ -21,6 +21,9 @@ export const ADMIN_ORDER_COLUMNS: readonly string[] = [
   'total',
 ];
 
+/** The columns a seller can show in the Orders list, after the always-shown ones. */
+export const SELLER_ORDER_COLUMNS: readonly string[] = ['paid', 'delivery', 'items', 'total'];
+
 const ADMIN_LIST_KEYS = [
   'admin.ordering.orders',
   'admin.ordering.shipments',
@@ -59,6 +62,7 @@ const sellerOrders = (): ListDefinition => {
     population: 'seller',
     scope: 'account',
     viewKey: ORDERING_SELLER_ORDER_VIEW.key,
+    columns: SELLER_ORDER_COLUMNS,
     parsePayload: (raw) => SELLER_ORDERS.parsePayload(raw),
   };
 };
