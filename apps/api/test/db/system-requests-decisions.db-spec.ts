@@ -259,6 +259,7 @@ describe.each(TEST_MARKETS)('system requests decisions in market %s (database)',
         { area: 'catalogue', risk: 'medium', decided: 'approved' },
         { area: 'catalogue', risk: 'low' },
       ];
+      // These rows stay in the run's throwaway database, open and overdue ones included.
       const made: NewRequest[] = [];
       for (const [n, item] of plan.entries()) {
         const appliedAt = base.add({ hours: n });

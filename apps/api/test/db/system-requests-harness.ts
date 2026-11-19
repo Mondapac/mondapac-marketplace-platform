@@ -273,11 +273,77 @@ export const accountOf = (context: CallContext): Id<'Account'> =>
   (context.actor as { accountId: Id<'Account'> }).accountId;
 
 /**
+ * How long a race waits for its calls to queue behind the held lock before it fails. Generous, so
+ * a loaded runner does not fail the test; a call that waits past the role's lock_timeout (3 s)
+ * gives up, leaves the queue, and the wait then fails here as well rather than passing silently.
+ */
+export const QUEUE_WAIT_MS = 10_000;
+
+/**
+ * Waits until at least `waiters` sessions wait behind `pid` (directly, or behind another waiter),
+ * looking on `watch`, a connection outside any transaction so that each look is fresh. Throws
+ * once {@link QUEUE_WAIT_MS} has passed since `since`.
+ */
+async function queuedBehind(
+  watch: Client,
+  pid: number,
+  waiters: number,
+  since: number,
+): Promise<void> {
+  for (;;) {
+    const waiting = await watch.query<{ count: number }>(
+      `WITH RECURSIVE behind(pid) AS (
+         SELECT pid FROM pg_stat_activity WHERE $1 = ANY (pg_blocking_pids(pid))
+         UNION
+         SELECT a.pid FROM pg_stat_activity a JOIN behind b ON b.pid = ANY (pg_blocking_pids(a.pid))
+       )
+       SELECT count(*)::int AS count FROM behind`,
+      [pid],
+    );
+    const count = waiting.rows[0]!.count;
+    if (count >= waiters) return;
+    if (Date.now() - since > QUEUE_WAIT_MS) {
+      throw new Error(
+        `race barrier: ${count} of ${waiters} calls waited behind the lock after ${QUEUE_WAIT_MS} ms`,
+      );
+    }
+  }
+}
+
+/**
+ * Holds the row lock `lockSql` takes (as the owner, in a transaction) while `queue` runs, and lets
+ * go when `queue` returns; the transaction ends whatever happens. Answers the owner's pid.
+ */
+async function holding<T>(
+  owner: Client,
+  lockSql: string,
+  params: readonly unknown[],
+  queue: (pid: number) => Promise<T>,
+): Promise<T> {
+  await owner.query('BEGIN');
+  try {
+    const locked = await owner.query(lockSql, [...params]);
+    if (locked.rowCount !== 1) throw new Error('race barrier: the lock took no row');
+    const { rows } = await owner.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+    return await queue(rows[0]!.pid);
+  } finally {
+    await owner.query('COMMIT');
+  }
+}
+
+/** Keeps a refusal of a call that is awaited later from counting as unhandled meanwhile. */
+const started = <T>(call: () => Promise<T>): Promise<T> => {
+  const running = call();
+  running.catch(() => undefined);
+  return running;
+};
+
+/**
  * Runs `start` while the owner holds the row lock that `lockSql` takes, and lets go once at least
- * `waiters` sessions wait behind it (directly or behind another waiter), so the calls `start`
- * makes meet at the lock instead of one finishing before the other begins. The wait is read on a
- * separate connection (`watch`), outside any transaction, so each look is fresh; after 2.5 s it
- * lets go anyway (the role's lock_timeout is 3 s), and the outcome checks still hold.
+ * `waiters` sessions wait behind it, so the calls `start` makes meet at the lock instead of one
+ * finishing before the other begins. Fails if they have not all queued within
+ * {@link QUEUE_WAIT_MS}. Which call goes first is not chosen: use it where the calls are alike
+ * (and {@link inQueueOrder} where the winner matters).
  */
 export async function whileLocked<T>(
   owner: Client,
@@ -287,37 +353,74 @@ export async function whileLocked<T>(
   waiters: number,
   start: () => Promise<T>,
 ): Promise<T> {
-  await owner.query('BEGIN');
-  let running: Promise<T>;
-  try {
-    const locked = await owner.query(lockSql, [...params]);
-    if (locked.rowCount !== 1) throw new Error('whileLocked: the lock took no row');
-    const { rows } = await owner.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
-    running = start();
-    // Settled below; until then a refusal must not count as unhandled.
-    running.catch(() => undefined);
-    const deadline = Date.now() + 2_500;
-    while (Date.now() < deadline) {
-      const waiting = await watch.query<{ count: number }>(
-        `WITH RECURSIVE behind(pid) AS (
-           SELECT pid FROM pg_stat_activity WHERE $1 = ANY (pg_blocking_pids(pid))
-           UNION
-           SELECT a.pid FROM pg_stat_activity a JOIN behind b ON b.pid = ANY (pg_blocking_pids(a.pid))
-         )
-         SELECT count(*)::int AS count FROM behind`,
-        [rows[0]!.pid],
-      );
-      if (waiting.rows[0]!.count >= waiters) break;
-    }
-  } finally {
-    await owner.query('COMMIT');
-  }
-  return running;
+  let running: Promise<T> | undefined;
+  await holding(owner, lockSql, params, async (pid) => {
+    const since = Date.now();
+    running = started(start);
+    await queuedBehind(watch, pid, waiters, since);
+  });
+  return running!;
+}
+
+/**
+ * Runs two calls against one held row lock in a chosen order: `first` starts and is waited for
+ * until it waits behind the lock, then `second` starts and queues behind it, then the lock is let
+ * go. A row lock is granted in queue order, so `first` takes the row first. Fails if a call has
+ * not queued within {@link QUEUE_WAIT_MS}.
+ */
+export async function inQueueOrder<A, B>(
+  owner: Client,
+  watch: Client,
+  lockSql: string,
+  params: readonly unknown[],
+  first: () => Promise<A>,
+  second: () => Promise<B>,
+): Promise<[A, B]> {
+  let a: Promise<A> | undefined;
+  let b: Promise<B> | undefined;
+  await holding(owner, lockSql, params, async (pid) => {
+    a = started(first);
+    await queuedBehind(watch, pid, 1, Date.now());
+    b = started(second);
+    await queuedBehind(watch, pid, 2, Date.now());
+  });
+  return Promise.all([a!, b!]);
+}
+
+/**
+ * `deps` with a unit of work that counts the attempts of its read-write units, so a race can tell
+ * whether a call's unit was retried (a serialisation failure or deadlock, retried by the unit of
+ * work). Under SERIALIZABLE a unit can fail on a false positive caused by another spec's units on
+ * nearby rows; retried, it queues again behind the other call, which may then win.
+ */
+export function tracked<D extends { readonly unitOfWork: UnitOfWork }>(
+  deps: D,
+): { readonly deps: D; readonly retried: () => boolean } {
+  let attempts = 0;
+  const unitOfWork: UnitOfWork = {
+    run: (market, work, options) =>
+      deps.unitOfWork.run(
+        market,
+        options?.readOnly === true
+          ? work
+          : () => {
+              attempts += 1;
+              return work();
+            },
+        options,
+      ),
+    runOnce: (market, delivery, work, options) =>
+      deps.unitOfWork.runOnce(market, delivery, work, options),
+  };
+  return { deps: { ...deps, unitOfWork }, retried: () => attempts > 1 };
 }
 
 /** The lock a decision takes first: the request's row. */
 export const REQUEST_ROW_LOCK =
   'SELECT 1 FROM system_requests.requests WHERE market_id = $1 AND id = $2 FOR UPDATE';
+/** The lock a reverter takes when it restores a fleet-selection model: the model's row. */
+export const MODEL_ROW_LOCK =
+  'SELECT 1 FROM shipping.fleet_selection_models WHERE market_id = $1 AND id = $2 FOR UPDATE';
 /** The lock a proposal takes first: the Market's request counter. */
 export const COUNTER_ROW_LOCK =
   'SELECT 1 FROM system_requests.request_counters WHERE market_id = $1 FOR UPDATE';
