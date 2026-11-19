@@ -390,6 +390,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX special_price_records_market_id_submitted_at_id_pending_idx ON pricing.special_price_records USING btree (market_id, submitted_at, id) WHERE (status = 'pending-review'::text)",
   'pricing.special_price_records_market_id_series_id_pending_key':
     "CREATE UNIQUE INDEX special_price_records_market_id_series_id_pending_key ON pricing.special_price_records USING btree (market_id, series_id) WHERE (status = 'pending-review'::text)",
+  // Customers phase 4c: the cashback the grant job pays after its seller order's payout release.
+  'promotions.credit_issuances_pending_cashback_idx':
+    "CREATE INDEX credit_issuances_pending_cashback_idx ON promotions.credit_issuances USING btree (market_id, created_at, id) WHERE ((status = 'PENDING'::text) AND (kind = 'CASHBACK'::text))",
   // SOC package 2 (docs/design/data/security.md 2): one live alert per rule and key.
   'security.alerts_market_id_rule_key_type_key_value_live_key':
     "CREATE UNIQUE INDEX alerts_market_id_rule_key_type_key_value_live_key ON security.alerts USING btree (market_id, rule, key_type, key_value) WHERE ((state)::text <> 'resolved'::text)",

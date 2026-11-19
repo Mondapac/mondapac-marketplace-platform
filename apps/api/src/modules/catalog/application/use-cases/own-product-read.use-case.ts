@@ -11,7 +11,7 @@ import { MAX_TOPICS_PER_PRODUCT } from '../../domain/topic';
 import type { OwnCatalogReader, ProductForm } from '../ports/own-catalog.reader';
 import type { AttributeDefinitionStore } from '../ports/attribute-definition.store';
 import type { AttributeValueSuggestionStore } from '../ports/attribute-value-suggestion.store';
-import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { CatalogMarketPolicy, TaxCategoryOption } from '../ports/catalog-market-policy';
 import type { ProductRepository } from '../ports/product.repository';
 import type { TopicReader } from '../ports/topic.reader';
 import { draftTopicIds, topicRefsOf, type TopicRef } from '../topics/topic-refs';
@@ -61,6 +61,7 @@ export interface OwnProductReadOutput {
   /** What the product form is drawn from: the Market's tax categories, the family's fields and the categories. */
   readonly form: ProductForm & {
     readonly taxCategoryCodes: readonly string[];
+    readonly taxCategories: readonly TaxCategoryOption[];
     /** The Market's units with their labels per locale; a measure field names its units by code. */
     readonly units: ReturnType<CatalogMarketPolicy['units']>;
   };
@@ -173,9 +174,11 @@ export class OwnProductRead extends UseCase<
     let maxAxes: number;
     let sensitiveFields: string[];
     let taxCategoryCodes: readonly string[];
+    let taxCategories: readonly TaxCategoryOption[];
     let units: ReturnType<CatalogMarketPolicy['units']>;
     try {
       taxCategoryCodes = deps.policy.taxCategoryCodes(market);
+      taxCategories = deps.policy.taxCategories(market).map((category) => ({ ...category }));
       units = deps.policy.units(market);
       maxVariants = deps.policy.maxVariantsPerProduct(market);
       maxAxes = deps.policy.maxVariantAttributes(market);
@@ -302,7 +305,7 @@ export class OwnProductRead extends UseCase<
       lastChangedAt: state.lastChangedAt.toString(),
       createdAt: state.createdAt.toString(),
       pendingSubmittedAt: isoOf(state.pendingSubmittedAt),
-      form: { ...form, taxCategoryCodes, units },
+      form: { ...form, taxCategoryCodes, taxCategories, units },
       workingCopy:
         copy === null
           ? null

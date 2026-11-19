@@ -141,6 +141,23 @@ export class PrismaPayoutHoldRepository implements PayoutHoldRepository {
     );
   }
 
+  async hasActiveCovering(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    sellerOrderId: Id<'SellerOrder'>,
+  ) {
+    const row = await this.prisma.tx(market).commissionPayoutsPayoutHold.findFirst({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        releasedAt: null,
+        OR: [{ sellerOrderId }, { sellerOrderId: null }],
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   countForSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>, reason: HoldReason) {
     return this.prisma.tx(market).commissionPayoutsPayoutHold.count({
       where: { marketId: market.marketId, sellerOrderId, reason },

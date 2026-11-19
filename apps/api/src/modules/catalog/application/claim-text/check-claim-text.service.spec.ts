@@ -98,6 +98,7 @@ describe.each(FIXTURES)('CheckClaimText in market $code', ({ code, locales }) =>
     };
     const policy: CatalogMarketPolicy = {
       taxCategoryCodes: () => [],
+      taxCategories: () => [],
       locales: () => {
         if (options.policyThrows === true) throw new Error('policy down');
         return { default: locales.default, supported: [...locales.supported] };
