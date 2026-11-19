@@ -629,6 +629,7 @@ describe('generic saved filters over HTTP (integration)', () => {
         expect([list.listKey, refusedList.status]).toEqual([list.listKey, 403]);
       }
       expect(store.rows.size).toBe(PHASE4_LISTS.length);
+    });
 
     it('gives the System requests queue saved filters: its view key to save, its share key to share', async () => {
       await boot();
