@@ -311,6 +311,9 @@ describe('Brand creation and status transitions', () => {
   it('counts the reason length in characters and accepts a zero-width non-joiner', () => {
     expect(brandArchiveReasonOf('\u{1F600}'.repeat(BRAND_ARCHIVE_REASON_MAX)).ok).toBe(true);
     expect(brandArchiveReasonOf('می‌خواهم')).toEqual({ ok: true, value: 'می‌خواهم' });
+    expect(brandArchiveReasonOf('Note \uFFF9 here').ok).toBe(true);
+    for (const forbidden of ['\u0085', '\u007f', '\u2029', '\u001f'])
+      expect(brandArchiveReasonOf(`a${forbidden}b`)).toEqual({ ok: false, error: 'chars' });
     expect(brandArchiveReasonOf(12)).toEqual({ ok: false, error: 'type' });
     expect(brandArchiveReasonOf('x'.repeat(501))).toEqual({ ok: false, error: 'too-long' });
     expect(brandArchiveReasonOf('a\tb')).toEqual({ ok: false, error: 'chars' });

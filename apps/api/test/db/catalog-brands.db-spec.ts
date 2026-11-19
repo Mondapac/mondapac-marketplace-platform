@@ -238,6 +238,9 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
       expect(await insert({ status: 'archived', archive_reason: '' })).toBe('23514');
       expect(await insert({ status: 'archived', archive_reason: ' padded ' })).toBe('23514');
       expect(await insert({ status: 'archived', archive_reason: 'a\nb' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'a\u0085b' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'a\u2028b' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'a\u007fb' })).toBe('23514');
       expect(await insert({ status: 'archived', archive_reason: 'x'.repeat(501) })).toBe('23514');
       expect(await insert({ status: 'archived', archive_reason: 'x'.repeat(500) })).toBeNull();
       expect(await insert({})).toBeNull();
@@ -316,6 +319,22 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
         archiveReason: 'Not a real brand.',
       });
     });
+
+    it.each([
+      ['a zero-width non-joiner (U+200C)', 'می\u200Cخواهم'],
+      ['an interlinear annotation anchor (U+FFF9)', 'Note \uFFF9 here'],
+    ])(
+      'stores an archive reason with %s: the CHECK refuses only what the app refuses',
+      async (_label, reason) => {
+        const added = await addBrand(newBrand(letters(tag())));
+        const brand = (await inUnit(() => repository.findById(market, added.state.id)))!;
+        const archived = brand.archive({ now: T1, reason });
+        if (!archived.ok) throw new Error(archived.error.code);
+        expect(await inUnit(() => repository.save(market, archived.value))).toBeNull();
+        const stored = (await inUnit(() => repository.findById(market, brand.state.id)))!;
+        expect(stored.state.archiveReason).toBe(reason);
+      },
+    );
 
     it('counts the open proposals of a seller, and finds near-duplicates by key and alias', async () => {
       const unique = letters(tag());

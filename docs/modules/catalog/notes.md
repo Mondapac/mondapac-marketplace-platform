@@ -106,3 +106,6 @@ retires a live brand. The text is stored on the brand (`catalog.brands.archive_r
 only on an archived row) for the proposing seller's notice; the audit row `catalog.brand.archived`
 records only `reasonGiven` (audit rows and events carry no text, ADR-0009 decision 6). No decision
 reads it; a merge never sets it. It is not in the brand answers yet: the notice slice reads it.
+
+Any panel that shows the archive reason (the seller's notice, an admin view) must render it as plain
+text, never as HTML: no `dangerouslySetInnerHTML`, no Markdown, no auto-linking.
