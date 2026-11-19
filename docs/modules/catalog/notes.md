@@ -96,3 +96,13 @@ known.
 - **DOM order equals visual order.** The two-column layout is an explicit `lg:` grid with
   `col-start`/`row-start`/`row-span`; no `order-*` classes, so tab and screen-reader order match
   what is seen. Add a card by giving it an explicit cell, not by reordering.
+
+## Brand archive reason
+
+`POST catalog/admin/brands/:id/archive` takes an optional `reason` next to `version` (trimmed, at
+most 500 characters, no control characters or line breaks; empty or null means none; anything else
+is `validation.failed` on `reason`). It is used when an admin turns a seller's proposal down or
+retires a live brand. The text is stored on the brand (`catalog.brands.archive_reason`, CHECK:
+only on an archived row) for the proposing seller's notice; the audit row `catalog.brand.archived`
+records only `reasonGiven` (audit rows and events carry no text, ADR-0009 decision 6). No decision
+reads it; a merge never sets it. It is not in the brand answers yet: the notice slice reads it.

@@ -233,6 +233,13 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
       expect(await insert({ origin_country: 'au' })).toBe('23514');
       expect(await insert({ status: 'draft', approved_by: uuid7() })).toBe('23514');
       expect(await insert({ logo_image_id: uuid7() })).toBe('23514');
+      // An archive reason: only on an archived brand, trimmed, 1 to 500 characters, no control.
+      expect(await insert({ archive_reason: 'Duplicate' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: '' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: ' padded ' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'a\nb' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'x'.repeat(501) })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'x'.repeat(500) })).toBeNull();
       expect(await insert({})).toBeNull();
     });
 
@@ -295,6 +302,19 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
       await expect(inUnit(() => repository.save(market, stale.value))).rejects.toBeInstanceOf(
         StaleAggregateError,
       );
+    });
+
+    it('stores the archive reason with the archive and reads it back', async () => {
+      const added = await addBrand(newBrand(letters(tag())));
+      const brand = (await inUnit(() => repository.findById(market, added.state.id)))!;
+      const archived = brand.archive({ now: T1, reason: ' Not a real brand. ' });
+      if (!archived.ok) throw new Error(archived.error.code);
+      expect(await inUnit(() => repository.save(market, archived.value))).toBeNull();
+      const stored = (await inUnit(() => repository.findById(market, brand.state.id)))!;
+      expect(stored.state).toMatchObject({
+        status: 'archived',
+        archiveReason: 'Not a real brand.',
+      });
     });
 
     it('counts the open proposals of a seller, and finds near-duplicates by key and alias', async () => {

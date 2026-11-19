@@ -4,6 +4,8 @@ import {
   aliasForMergedName,
   azLetterOf,
   Brand,
+  BRAND_ARCHIVE_REASON_MAX,
+  brandArchiveReasonOf,
   brandNameKey,
   brandValueOf,
   groupBrandsAZ,
@@ -283,6 +285,37 @@ describe('Brand creation and status transitions', () => {
     }
   });
 
+  it('keeps an optional archive reason, trimmed; no reason or an empty one is none', () => {
+    const turnedDown = draft().archive({ now: T1, reason: '  Duplicate of an existing brand. ' });
+    if (!turnedDown.ok) throw new Error(turnedDown.error.code);
+    expect(turnedDown.value.state.archiveReason).toBe('Duplicate of an existing brand.');
+
+    for (const reason of [undefined, null, '', '   ']) {
+      const archived = active().archive({ now: T1, reason });
+      expect(archived.ok && archived.value.state.archiveReason).toBeNull();
+    }
+    expect(active().state.archiveReason).toBeNull();
+  });
+
+  it('refuses an archive reason over 500 characters or with a control character', () => {
+    const exact = active().archive({ now: T1, reason: 'x'.repeat(BRAND_ARCHIVE_REASON_MAX) });
+    expect(exact.ok).toBe(true);
+    for (const reason of ['x'.repeat(BRAND_ARCHIVE_REASON_MAX + 1), 'a\u0000b', 'a\nb', 'a b']) {
+      expect(active().archive({ now: T1, reason })).toEqual({
+        ok: false,
+        error: { code: 'brand.archive-reason-invalid' },
+      });
+    }
+  });
+
+  it('counts the reason length in characters and accepts a zero-width non-joiner', () => {
+    expect(brandArchiveReasonOf('\u{1F600}'.repeat(BRAND_ARCHIVE_REASON_MAX)).ok).toBe(true);
+    expect(brandArchiveReasonOf('می‌خواهم')).toEqual({ ok: true, value: 'می‌خواهم' });
+    expect(brandArchiveReasonOf(12)).toEqual({ ok: false, error: 'type' });
+    expect(brandArchiveReasonOf('x'.repeat(501))).toEqual({ ok: false, error: 'too-long' });
+    expect(brandArchiveReasonOf('a\tb')).toEqual({ ok: false, error: 'chars' });
+  });
+
   it('does not change the original when a command returns the next state', () => {
     const brand = active();
     brand.archive({ now: T1 });
@@ -333,6 +366,7 @@ describe('Brand merge rules', () => {
     expect(merged.value.state).toMatchObject({
       status: 'archived',
       mergedIntoId: brandId(2),
+      archiveReason: null,
       version: 2,
     });
   });
