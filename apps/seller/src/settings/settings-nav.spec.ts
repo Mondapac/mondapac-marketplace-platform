@@ -13,6 +13,7 @@ describe('seller settings map', () => {
       [
         ['store', ['/settings/store-profile', '/settings/stock-locations']],
         ['team', ['/settings/team']],
+        ['customers', ['/settings/invite-customers', '/settings/exclusive-perks']],
       ],
     );
   });
@@ -51,7 +52,13 @@ describe('seller settings map', () => {
       'identity.team-member.invite',
       'identity.team-member.assign-role',
     ]);
-    expect(settingsViewKeys).toHaveLength(3);
+    expect(view('invite-customers')).toEqual(['customers.seller-invite-link.manage']);
+    expect(view('exclusive-perks')).toEqual([
+      'promotions.promotion.view',
+      'promotions.promotion.manage',
+      'commission-payouts.earnings.view',
+    ]);
+    expect(settingsViewKeys).toHaveLength(7);
   });
 
   it('finds a link with its group, and nothing for an unknown id', () => {

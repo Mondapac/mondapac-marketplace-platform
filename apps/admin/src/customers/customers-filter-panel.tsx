@@ -4,6 +4,7 @@ import { Button, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useState, type FormEvent } from 'react';
 import { decimalsOf, parseAmount } from '../wallet/money.ts';
+import { SellerPicker } from './seller-names.tsx';
 import type { GroupRef } from './groups-types.ts';
 import { ORDER_NUMBER_MAX, type FilterKey, type Filters } from './list-types.ts';
 
@@ -36,6 +37,7 @@ const draftOf = (filters: Filters, currency: string | null): Draft => ({
   spentMax:
     filters.spentMax === undefined || currency === null ? '' : majorOf(filters.spentMax, currency),
   group: filters.group ?? '',
+  follows: filters.follows ?? '',
 });
 
 /**
@@ -51,6 +53,7 @@ export function CustomersFilterPanel({
   groups = null,
   orderNumber,
   onApplyOrderNumber,
+  seller,
   onApply,
   close,
 }: {
@@ -62,6 +65,15 @@ export function CustomersFilterPanel({
   readonly orderNumber?: string;
   readonly onApplyOrderNumber?: (orderNumber: string) => void;
   readonly currency: string | null;
+  /**
+   * The Store followed filter (phase 3): the picker shows when given. `name` is the chosen
+   * store's name when known; `onChosen` keeps it for the chip.
+   */
+  readonly seller?: {
+    readonly csrfToken: string;
+    readonly name: string | null;
+    readonly onChosen: (sellerId: string, name: string) => void;
+  };
   /**
    * The Market's groups for the Group filter (phase 2a); null leaves the filter out (no groups
    * read, or a group page, whose group is fixed). A group already set is kept.
@@ -75,6 +87,7 @@ export function CustomersFilterPanel({
   const [errors, setErrors] = useState<Partial<Record<FilterKey, string>>>({});
   const [order, setOrder] = useState(orderNumber ?? '');
   const [orderError, setOrderError] = useState<string | undefined>(undefined);
+  const [followsName, setFollowsName] = useState<string | null>(seller?.name ?? null);
   const withOrder = onApplyOrderNumber !== undefined;
   const set = (key: FilterKey, value: string) =>
     setDraft((current) => ({ ...current, [key]: value }));
@@ -85,6 +98,12 @@ export function CustomersFilterPanel({
     const problems: Partial<Record<FilterKey, string>> = {};
     if (draft.status !== '') next['status'] = draft.status;
     if (draft.verified !== '') next['verified'] = draft.verified;
+    if (seller === undefined) {
+      if (filters.follows !== undefined) next['follows'] = filters.follows;
+    } else if (draft.follows !== '') {
+      next['follows'] = draft.follows;
+      if (followsName !== null) seller.onChosen(draft.follows, followsName);
+    }
     if (groups === null) {
       if (filters.group !== undefined) next['group'] = filters.group;
     } else if (draft.group !== '') next['group'] = draft.group;
@@ -210,6 +229,18 @@ export function CustomersFilterPanel({
           />
         )}
       </div>
+      {seller === undefined ? null : (
+        <SellerPicker
+          label={t('name.follows')}
+          value={draft.follows}
+          name={followsName}
+          csrfToken={seller.csrfToken}
+          onChange={(id, name) => {
+            set('follows', id);
+            setFollowsName(name);
+          }}
+        />
+      )}
       {withOrder ? (
         <TextField
           label={t('name.orderNumber')}

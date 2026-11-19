@@ -1,4 +1,5 @@
 import type { IconName, PaletteSettingSpec } from '@mondapac/ui';
+import { INVITE_LINK_PERMISSION } from '../customers/types.ts';
 import { SOURCE_EDIT_PERMISSION, STOCK_VIEW_PERMISSION } from '../stock/types.ts';
 import {
   STORE_PROFILE_EDIT_PERMISSION,
@@ -69,6 +70,32 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/team',
         view: [TEAM_VIEW_PERMISSION],
         manage: [TEAM_INVITE_PERMISSION, TEAM_ASSIGN_PERMISSION],
+      },
+    ],
+  },
+  {
+    id: 'customers',
+    labelKey: 'settings.hub.group.customers',
+    icon: 'users',
+    links: [
+      {
+        id: 'invite-customers',
+        labelKey: 'settings.hub.link.invite-customers',
+        href: '/settings/invite-customers',
+        view: [INVITE_LINK_PERMISSION],
+        manage: [INVITE_LINK_PERMISSION],
+      },
+      {
+        id: 'exclusive-perks',
+        labelKey: 'settings.hub.link.exclusive-perks',
+        href: '/settings/exclusive-perks',
+        // Held by any seller role that sees or manages promotions; each card hides on its own key.
+        view: [
+          'promotions.promotion.view',
+          'promotions.promotion.manage',
+          'commission-payouts.earnings.view',
+        ],
+        manage: ['promotions.promotion.manage'],
       },
     ],
   },

@@ -63,12 +63,9 @@ describe.each(['AU', 'ZZ'] as const)('own-product.options in market %s', (code) 
       ownReader,
     }).execute(context, {});
     if (!result.ok) throw new Error('expected ok');
-    expect(result.value.taxCategoryCodes).toEqual([...policy.taxCategoryCodes(market)]);
-    expect(result.value.taxCategoryCodes.length).toBeGreaterThan(0);
+    expect(result.value.taxCategories.length).toBeGreaterThan(0);
     expect(result.value.taxCategories).toEqual(policy.taxCategories(market));
-    expect(result.value.taxCategories.map((category) => category.code)).toEqual(
-      result.value.taxCategoryCodes,
-    );
+    expect(result.value).not.toHaveProperty('taxCategoryCodes');
     expect(result.value.categories).toEqual(categories);
     expect(asked).toContain(market.marketId);
   });
@@ -85,7 +82,6 @@ describe.each(['AU', 'ZZ'] as const)('own-product.options in market %s', (code) 
     }).execute(context, {});
     if (!result.ok) throw new Error('expected ok');
     expect(result.value.categories).toEqual([]);
-    expect(result.value.taxCategoryCodes).toEqual([...policy.taxCategoryCodes(market)]);
     expect(result.value.taxCategories).toEqual(policy.taxCategories(market));
     expect(result.value.productTypes.length).toBeGreaterThan(0);
   });

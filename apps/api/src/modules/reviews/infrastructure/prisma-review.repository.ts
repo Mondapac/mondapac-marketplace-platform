@@ -23,6 +23,12 @@ import type {
   StoredStarSummary,
 } from '../application/ports/review.repository';
 import { escapeLikeTerm } from '../../../platform/text/like-escape';
+import {
+  EMPTY_MODERATION_FILTER,
+  MODERATION_LIST_VIEWS,
+  type ModerationFilter,
+  type ModerationSort,
+} from '../domain/moderation-list';
 import type { QueueTab } from '../domain/moderation';
 import {
   EMPTY_SELLER_REVIEW_FILTER,
@@ -263,6 +269,53 @@ const tabWhere = (tab: QueueTab) => {
   }
 };
 
+/** The `where` of the moderation list for a filter (the twin of `moderationMatches`). */
+function moderationWhere(market: MarketContext, filter: ModerationFilter) {
+  const and: Record<string, unknown>[] = [];
+  if (filter.view === 'all') {
+    and.push({ OR: (['held', 'reported', 'actioned'] as const).map((tab) => tabWhere(tab)) });
+  } else {
+    and.push(tabWhere(filter.view));
+  }
+  if (filter.reportReason !== null) {
+    and.push({ reports: { some: { status: 'open', reasonCode: filter.reportReason } } });
+  }
+  if (filter.text !== null) {
+    and.push({
+      OR: [
+        { title: { contains: escapeLikeTerm(filter.text), mode: 'insensitive' } },
+        { body: { contains: escapeLikeTerm(filter.text), mode: 'insensitive' } },
+      ],
+    });
+  }
+  if (filter.anyId !== null) {
+    and.push({
+      OR: [{ id: filter.anyId }, { offerId: filter.anyId }, { productId: filter.anyId }],
+    });
+  }
+  return {
+    marketId: market.marketId,
+    ...(filter.sellerId === null ? {} : { sellerId: filter.sellerId }),
+    ...(filter.minRating === null && filter.maxRating === null
+      ? {}
+      : {
+          rating: {
+            ...(filter.minRating === null ? {} : { gte: filter.minRating }),
+            ...(filter.maxRating === null ? {} : { lte: filter.maxRating }),
+          },
+        }),
+    ...(filter.from === null && filter.to === null
+      ? {}
+      : {
+          createdAt: {
+            ...(filter.from === null ? {} : { gte: toDate(filter.from) }),
+            ...(filter.to === null ? {} : { lt: toDate(filter.to) }),
+          },
+        }),
+    AND: and,
+  };
+}
+
 /** {@link ReviewRepository} on the `reviews` schema, scoped by `marketId`. */
 export class PrismaReviewRepository implements ReviewRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -389,6 +442,79 @@ export class PrismaReviewRepository implements ReviewRepository {
       openReports: open.get(row.id) ?? 0,
       signalCodes: [...new Set(signals.filter((s) => s.subjectId === row.id).map((s) => s.code))],
     }));
+  }
+
+  /** Adds the open-report count and the signal codes to review rows. */
+  private async queueRows(market: MarketContext, rows: readonly ReviewRow[]): Promise<QueueRow[]> {
+    if (rows.length === 0) return [];
+    const tx = this.prisma.tx(market);
+    const ids = rows.map((row) => row.id);
+    const [reports, signals] = await Promise.all([
+      tx.reviewsReport.groupBy({
+        by: ['reviewId'],
+        where: { marketId: market.marketId, reviewId: { in: ids }, status: 'open' },
+        _count: { _all: true },
+      }),
+      tx.reviewsSignal.findMany({
+        where: { marketId: market.marketId, subjectKind: 'product-review', subjectId: { in: ids } },
+        select: { subjectId: true, code: true },
+        orderBy: [{ at: 'asc' }, { id: 'asc' }],
+      }),
+    ]);
+    const open = new Map(reports.map((r) => [r.reviewId, r._count._all]));
+    return rows.map((row) => ({
+      review: toReview(row),
+      openReports: open.get(row.id) ?? 0,
+      signalCodes: [...new Set(signals.filter((s) => s.subjectId === row.id).map((s) => s.code))],
+    }));
+  }
+
+  async queryModerationList(
+    market: MarketContext,
+    filter: ModerationFilter,
+    sort: ModerationSort,
+    offset: number,
+    limit: number,
+  ) {
+    const rows = await this.prisma.tx(market).reviewsProductReview.findMany({
+      where: moderationWhere(market, filter),
+      orderBy:
+        sort.key === 'submitted'
+          ? [{ createdAt: sort.direction }, { id: sort.direction }]
+          : [{ rating: sort.direction }, { id: sort.direction }],
+      skip: offset,
+      take: limit,
+    });
+    return this.queueRows(market, rows);
+  }
+
+  countModerationListWhere(market: MarketContext, filter: ModerationFilter) {
+    return this.prisma
+      .tx(market)
+      .reviewsProductReview.count({ where: moderationWhere(market, filter) });
+  }
+
+  async moderationViewCounts(market: MarketContext) {
+    const tx = this.prisma.tx(market);
+    const counts = await Promise.all(
+      MODERATION_LIST_VIEWS.map((view) =>
+        tx.reviewsProductReview.count({
+          where: moderationWhere(market, { ...EMPTY_MODERATION_FILTER, view }),
+        }),
+      ),
+    );
+    return { all: counts[0]!, held: counts[1]!, reported: counts[2]!, actioned: counts[3]! };
+  }
+
+  async findModerationRowsByIds(market: MarketContext, reviewIds: readonly Id<'ProductReview'>[]) {
+    if (reviewIds.length === 0) return [];
+    const rows = await this.prisma.tx(market).reviewsProductReview.findMany({
+      where: {
+        ...moderationWhere(market, EMPTY_MODERATION_FILTER),
+        id: { in: [...reviewIds] },
+      },
+    });
+    return this.queueRows(market, rows);
   }
 
   async countModerationQueue(market: MarketContext) {

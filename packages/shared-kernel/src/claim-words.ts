@@ -194,6 +194,24 @@ const STEM_SOURCES = [
   'glutin',
   'vejetaryen',
   'vejeteryan',
+  // Nordic and Finnish eco, free-from and diet wording; Malay, Turkish and German phrases.
+  'luomu',
+  '(?:laktoosi|maido)ton',
+  'gluteenit',
+  'alkoholit',
+  'vegaani',
+  'kasvisruok',
+  'krav[\\s-]*markt',
+  'svane[\\s-]*m(?:ae|a)rke',
+  'mengikut[\\s-]+syarak',
+  'sayuran[\\s-]+sahaja',
+  'vegetaal',
+  'vejetaryan',
+  'organiese',
+  'hechsher|hekhsher',
+  'xalaal',
+  'tierisch(?:e|en)[\\s-]+(?:bestandteil|inhaltsstoff|produkt)',
+  'origen[\\s-]+animal',
   '(?:fleisch|schweine?|milch)los',
   'kosjer|kasjer',
   'belgeli',
@@ -207,6 +225,9 @@ const STRICT_STEMS = STEM_SOURCES.map((stem) => `${START}(?:${stem})(?:s|es)?${E
 
 const WORDS = [
   'bio',
+  'eko',
+  'oko',
+  'tacc',
   'pflanzlich',
   'plantaardig',
   'био',
@@ -221,7 +242,7 @@ const WORDS = [
 const FOODS = String.raw`(?:pork|swine|alcohol|lard|gelatin|nuts?|dairy|lactose|meat|milk|eggs?|gluten|wheat|sesame|shellfish)`;
 // Food words of the "free of" patterns in other languages. Open endings are bounded, so a long run
 // of letters cannot make the patterns backtrack far.
-const OTHER_FOODS = String.raw`(?:(?:porc|porco|cerdo|maiale|suino|schwein|varken|babi|khinzir|domuz|svin|alcool|alcohol|alkohol|alkol|alcol|gelatin|laktos|lactos|laktoz|lattos|glutin|gluten|fleisch|vlees|viande|carne|daging|kacang|nuss|nusse|nuts|noten|laitier|arachide|nott|milch|leche|lait|oeuf|huevo|flask|tenusu|susu)\p{L}{0,30}|ei|eier|telur|melk|latte|nuezes|produits[\s-]+laitiers)`;
+const OTHER_FOODS = String.raw`(?:(?:porc|porco|cerdo|maiale|suino|schwein|varken|babi|khinzir|domuz|svin|alcool|alcohol|alkohol|alkol|alcol|gelatin|laktos|lactos|laktoz|lattos|glutin|gluten|fleisch|vlees|viande|carne|daging|kacang|nuss|nusse|nuts|noten|laitier|arachide|nott|milch|leche|lait|oeuf|huevo|sianliha|gluteeni|laktoosi|maito|flask|tenusu|susu)\p{L}{0,30}|ei|eier|telur|sut(?:u|lu|e)?|melk|latte|nuezes|produits[\s-]+laitiers)`;
 const FREE_FROM = [
   String.raw`(?:pork|alcohol|lard|gelatin|lactose|dairy|nut|egg|soy|meat|milk|wheat|sesame|shellfish|sugar|fat|msg|gmo)[\s-]*free${END}`,
   String.raw`${START}(?:no|without|free\s+from)[\s-]+(?:lactose|dairy|nuts?|pork|alcohol|lard|gelatin|sugar|meat|milk|eggs?)${END}`,
@@ -233,7 +254,7 @@ const FREE_FROM = [
   String.raw`allerg`,
   String.raw`sertifi`,
   // "Free of" in other languages: "ohne Schweinefleisch", "sans porc", "bebas babi", "senza alcol".
-  String.raw`${START}(?:sans|sin|senza|ohne|zonder|tanpa|bebas|uden|uten|utan|sem|geen|kein\p{L}{0,2}|pas[\s-]+de|bukan|non|tiada|tidak[\s-]+ada|tidak[\s-]+mengandung(?:i)?|bebas[\s-]+daripada|ne[\s-]+contient[\s-]+pas[\s-]+de|enth[aä]lt[\s-]+kein\p{L}{0,2}|frei[\s-]+von|libre[\s-]+de|vrij[\s-]+van|fri[\s-]+(?:fr[aå]n|f[oö]r)|(?<![\p{N},.])0[,.]?0?%)[\s-]+(?:(?:lemak|bahan|unsur|dna|daripada)[\s-]+){0,2}${OTHER_FOODS}${END}`,
+  String.raw`${START}(?:sans|sin|senza|ohne|zonder|tanpa|bebas|uden|uten|utan|ilman|ohne[\s-]+zusatz[\s-]+von|sem|geen|kein\p{L}{0,2}|pas[\s-]+de|bukan|non|tiada|tidak[\s-]+ada|tidak[\s-]+mengandung(?:i)?|bebas[\s-]+daripada|ne[\s-]+contient[\s-]+pas[\s-]+de|enth[aä]lt[\s-]+kein\p{L}{0,2}|frei[\s-]+von|libre[\s-]+de|vrij[\s-]+van|fri[\s-]+(?:fr[aå]n|f[oö]r)|(?<![\p{N},.])0[,.]?0?%)[\s-]+(?:(?:lemak|bahan|unsur|dna|daripada)[\s-]+){0,2}${OTHER_FOODS}${END}`,
   String.raw`${START}(?:uden|uten|utan)[\s-]+gris\p{L}{0,30}${END}`,
   String.raw`${START}(?:ne[\s-]+contient[\s-]+pas|pas)[\s-]+d'${OTHER_FOODS}${END}`,
   // Suffix forms ("alkoholfrei", "alcoholvrije", "alkolsuz"), also declined, and "içermez".
@@ -417,6 +438,7 @@ export function hasClaimWord(text: string): boolean {
     carriesClaim(folded) ||
     carriesClaim(folded.replace(L_READING, 'l')) ||
     carriesClaim(foldForClaims(text.replace(/[\u0153\u0152]/gu, 'o'))) ||
+    carriesClaim(foldForClaims(replaceLeet(prepare(text.replace(/[\u0153\u0152]/gu, 'o'))))) ||
     carriesClaim(foldForClaims(replaceLeet(prepare(text)))) ||
     carriesClaim(foldForClaims(replaceLeet(prepare(text).replaceAll('1', 'i')))) ||
     carriesClaim(foldForClaims(replaceLeet(prepare(text)).replaceAll('a', 'e'))) ||

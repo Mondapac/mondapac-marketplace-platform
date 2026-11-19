@@ -34,24 +34,31 @@ export function Topbar({
   return (
     <header className="flex h-(--mp-size-topbar-phone) items-center justify-between gap-3 bg-surface pe-4 md:h-(--mp-size-topbar) md:px-6">
       {/* The page name, not a heading: each page has its own h1, so a page has one h1. On phones
-       * the bar names the page; from tablets up the h1 is in view, so the bar shows the path. */}
-      <div className="flex min-w-0 items-center">
+       * the bar names the page; on tablets the h1 is in view and the actions fill the bar, so the path
+       * waits for desktop width, where it truncates before it can reach the actions. */}
+      <div className="flex min-w-0 flex-1 items-center">
         <p className="min-w-0 truncate text-lg font-semibold text-fg md:hidden">
           {phoneTitle ?? pageTitle}
         </p>
         <div className="md:hidden">{titleAction}</div>
-        <nav aria-label={trailLabel} className="hidden min-w-0 md:block">
+        <nav aria-label={trailLabel} className="hidden min-w-0 flex-1 overflow-hidden lg:block">
           <ol className="flex min-w-0 items-center gap-2 text-sm">
             {trail.map((crumb) => (
-              <li key={crumb.href ?? crumb.label} className="flex shrink-0 items-center gap-2">
+              <li
+                key={crumb.href ?? crumb.label}
+                className="flex min-w-0 max-w-40 items-center gap-2"
+              >
                 {crumb.href === undefined ? (
-                  <span className="text-fg-muted">{crumb.label}</span>
+                  <span className="min-w-0 truncate text-fg-muted">{crumb.label}</span>
                 ) : (
-                  <a href={crumb.href} className="text-fg-muted hover:text-fg hover:underline">
+                  <a
+                    href={crumb.href}
+                    className="min-w-0 truncate text-fg-muted hover:text-fg hover:underline"
+                  >
                     {crumb.label}
                   </a>
                 )}
-                <span aria-hidden="true" className="text-fg-muted">
+                <span aria-hidden="true" className="shrink-0 text-fg-muted">
                   /
                 </span>
               </li>

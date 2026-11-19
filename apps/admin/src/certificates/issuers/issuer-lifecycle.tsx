@@ -56,7 +56,9 @@ function FormDialog({
     <Dialog
       open
       title={title}
-      onClose={onClose}
+      onClose={() => {
+        if (!pending) onClose();
+      }}
       initialFocus={cancel}
       actions={
         <>
@@ -314,10 +316,10 @@ export function ProposalCard({
   }
 
   const { approve, reject, withdraw } = proposal.actions;
-  const buttons: readonly [Answer, boolean, 'primary' | 'secondary'][] = [
+  const buttons: readonly [Answer, boolean, 'primary' | 'secondary' | 'destructive'][] = [
     ['approve', approve.allowed, 'primary'],
-    ['reject', reject.allowed, 'secondary'],
-    ['withdraw', withdraw.allowed, 'secondary'],
+    ['reject', reject.allowed, 'destructive'],
+    ['withdraw', withdraw.allowed, 'destructive'],
   ];
   const open = buttons.filter(([, allowed]) => allowed);
   const note = approve.allowed
@@ -362,7 +364,9 @@ export function ProposalCard({
         <Dialog
           open
           title={t(`confirm.${asking}.title`)}
-          onClose={() => setAsking(null)}
+          onClose={() => {
+            if (!call.pending) setAsking(null);
+          }}
           initialFocus={cancel}
           actions={
             <>
@@ -380,6 +384,7 @@ export function ProposalCard({
                 </Button>
               ) : (
                 <Button
+                  variant={asking === 'approve' ? 'primary' : 'destructive-solid'}
                   loading={call.pending}
                   disabled={call.pending}
                   onClick={() => void answer(asking)}

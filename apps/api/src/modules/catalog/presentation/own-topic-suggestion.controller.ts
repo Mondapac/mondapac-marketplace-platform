@@ -45,7 +45,7 @@ import {
   SuggestionOpenedBody,
   SuggestTopicRequest,
 } from './topic-suggestion.dto';
-import { closedBody, pageQuery, refusalWith } from './http-answers';
+import { closedBody, numericQuery, pageQuery, refusalWith } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 
 /** The HTTP status of each refusal of the seller suggestion route (product tags T5). */
@@ -180,6 +180,27 @@ export class OwnTopicSuggestionsController {
   @ApiQuery({ name: 'status', required: false, enum: ['open', 'approved', 'mapped', 'rejected'] })
   @ApiQuery({ name: 'afterId', required: false, description: 'The last id of the previous page.' })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 50, default 25.' })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description:
+      'Search in the label (contains), up to 120 characters; `search` is an older alias.',
+  })
+  @ApiQuery({ name: 'sort', required: false, enum: ['created', 'status', 'label'] })
+  @ApiQuery({
+    name: 'direction',
+    required: false,
+    enum: ['asc', 'desc'],
+    description: 'Default newest first for `created`.',
+  })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number, 1 to 100.' })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 50, default 25.' })
+  @ApiQuery({
+    name: 'paging',
+    required: false,
+    enum: ['pages', 'prev-next'],
+    description: 'The Market "List paging" setting; `prev-next` gives no total.',
+  })
   @ApiOkResponse({ type: OwnSuggestionListBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -190,7 +211,7 @@ export class OwnTopicSuggestionsController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<OwnSuggestionListBody> {
-    const result = await this.listSuggestions.execute(context, pageQuery(query));
+    const result = await this.listSuggestions.execute(context, numericQuery(pageQuery(query)));
     const outcome: OwnSuggestionListBody | HttpException = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as OwnSuggestionListBody)
       : refusalWith(
