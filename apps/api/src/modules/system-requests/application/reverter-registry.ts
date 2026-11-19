@@ -1,5 +1,6 @@
 import {
   isSystemChangeRegistrar,
+  systemChangeRegistrarSite,
   type SystemChangeApplier,
   type SystemChangeRegistrar,
   type SystemChangeReverter,
@@ -23,6 +24,8 @@ export type SubjectHooks = Pick<SystemChangeReverter, 'isInterested' | 'describe
 export type RegisteredKind =
   | {
       readonly mode: 'review';
+      /** The module whose registrar registered the kind. */
+      readonly module: string;
       readonly area: ReviewArea;
       readonly reverter: SystemChangeReverter;
       readonly applier: null;
@@ -30,6 +33,7 @@ export type RegisteredKind =
     }
   | {
       readonly mode: 'approval';
+      readonly module: string;
       readonly area: ReviewArea;
       readonly reverter: null;
       readonly applier: SystemChangeApplier;
@@ -42,6 +46,9 @@ export type RegisteredKind =
 export interface ReverterLookup {
   find(subjectKind: string): RegisteredKind | null;
 }
+
+/** The registry itself (lookup and seal), kept inside the module; others get its facade. */
+export const REVERTER_REGISTRY = Symbol('SYSTEM_REQUESTS_REVERTER_REGISTRY');
 
 /**
  * A registration refused at boot: no registrar, a second registrar of one module, a malformed
@@ -113,7 +120,14 @@ export class ReverterRegistry implements ReverterLookup {
     }
     this.#reverters.set(
       subjectKind,
-      Object.freeze({ mode: 'review', area, reverter, applier: null, hooks: reverter }),
+      Object.freeze({
+        mode: 'review',
+        module: registrar.module,
+        area,
+        reverter,
+        applier: null,
+        hooks: reverter,
+      }),
     );
   }
 
@@ -151,6 +165,7 @@ export class ReverterRegistry implements ReverterLookup {
       subjectKind,
       Object.freeze({
         mode: 'approval',
+        module: registrar.module,
         area,
         reverter: null,
         applier,
@@ -171,7 +186,9 @@ export class ReverterRegistry implements ReverterLookup {
     const holder = this.#registrars.get(module);
     if (holder !== undefined && holder !== registrar) {
       throw new ReverterRegistryError(
-        `Module "${module}" has a second registrar: a module creates its registrar once`,
+        `Module "${module}" has a second registrar: a module creates its registrar once ` +
+          `(first created at ${systemChangeRegistrarSite(holder)}, ` +
+          `second at ${systemChangeRegistrarSite(registrar)})`,
       );
     }
     if (!isSubjectKind(subjectKind)) {

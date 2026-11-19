@@ -81,7 +81,10 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
    certification; marketplace settings; review-policy system-requests; content none yet. A module
    that hooks a new area adds itself there in the same change. The contract spec
    `test/contracts/system-change-registrars.contract.spec.ts` checks that each registrar is created
-   once, in its own module's folder, and that no barrel exports one.
+   once, in its own module's folder, imported under its own name and called only with a literal
+   module name, and that no barrel exports one. It also pins every kind the booted application
+   registers (module, area, mode, permission keys): a new kind or a changed key updates that table
+   in the same change. A refused second registrar names where both were created.
 2. In the use case that saves the change: lock and write the subject, then call `openReview` in
    the same unit with the values before and after (plain JSON, depth 3, 10 KB at most, no control
    characters, never a secret). An `err` answer is the use case's own refusal.

@@ -599,9 +599,10 @@ import { AdminVariantsList } from './application/use-cases/admin-variants-list.u
 import { VariantTypeSettingsEdit } from './application/use-cases/variant-type-settings-edit.use-case';
 import { VariantAdminController } from './presentation/variant-admin.controller';
 
-/** The three key probes the category reads use for their allowed actions (categories C1). */
 /** This module's own registrar for System requests (never exported from the barrel). */
 const CATALOG_SYSTEM_CHANGES = createSystemChangeRegistrar('catalog');
+
+/** The three key probes the category reads use for their allowed actions (categories C1). */
 const CATEGORY_ACTION_PROBES = Symbol('CATEGORY_ACTION_PROBES');
 
 /**

@@ -40,7 +40,7 @@ import {
   PolicyReverter,
   SYSTEM_REQUESTS_SYSTEM_CHANGES,
 } from './application/policy-flow';
-import { ReverterRegistry } from './application/reverter-registry';
+import { REVERTER_REGISTRY, ReverterRegistry } from './application/reverter-registry';
 import { SystemRequestRecorderImplementation } from './application/system-request-recorder';
 import type { SystemRequestsDependencies } from './application/system-requests-dependencies';
 import { ApproveMatchingSystemRequests } from './application/use-cases/approve-matching-system-requests.use-case';
@@ -77,8 +77,6 @@ type UseCaseClass<U> = new (gate: UseCaseGate, deps: SystemRequestsDependencies)
 const DEPENDENCIES = Symbol('SYSTEM_REQUESTS_DEPENDENCIES');
 const POLICY_AREA_REVERTER = Symbol('SYSTEM_REQUESTS_POLICY_AREA_REVERTER');
 const DUE_DAYS_REVERTER = Symbol('SYSTEM_REQUESTS_DUE_DAYS_REVERTER');
-/** The registry itself (lookup and seal), kept inside the module; others get its facade. */
-const REVERTER_REGISTRY = Symbol('SYSTEM_REQUESTS_REVERTER_REGISTRY');
 /** What the overdue reminder run needs (a smaller set than the admin use cases'). */
 const REMINDER_DEPENDENCIES = Symbol('SYSTEM_REQUESTS_REMINDER_DEPENDENCIES');
 

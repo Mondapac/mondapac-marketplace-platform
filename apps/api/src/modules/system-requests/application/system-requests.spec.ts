@@ -2114,6 +2114,7 @@ describe('the reverter registry', () => {
     );
     expect(registry.find('settings.market-setting')).toEqual({
       mode: 'review',
+      module: 'settings',
       reverter,
       applier: null,
       hooks: reverter,
@@ -2161,6 +2162,12 @@ describe('the reverter registry', () => {
     expect(() =>
       registry.facade.register(impostor, 'settings.other-setting', 'marketplace', reverter),
     ).toThrow(/second registrar/);
+    // The error names where each registrar was created.
+    expect(() =>
+      registry.facade.register(impostor, 'settings.other-setting', 'marketplace', reverter),
+    ).toThrow(
+      /first created at .*system-requests\.spec\.ts:\d+.*second at .*system-requests\.spec\.ts:\d+/,
+    );
     expect(registry.find('settings.other-setting')).toBeNull();
     // The real registrar keeps working.
     registry.facade.register(SETTINGS_REGISTRAR, 'settings.listing', 'marketplace', reverter);

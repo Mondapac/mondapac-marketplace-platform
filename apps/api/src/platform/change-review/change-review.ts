@@ -329,8 +329,18 @@ export interface SystemChangeRegistrar {
 /** A module name: the first segment of its kinds. */
 const MODULE_NAME = /^[a-z][a-z0-9-]{0,63}$/;
 
-/** The registrars {@link createSystemChangeRegistrar} made: a copy or a hand-made object is none. */
-const registrars = new WeakSet<SystemChangeRegistrar>();
+/**
+ * The registrars {@link createSystemChangeRegistrar} made, each with the place it was created (a
+ * stack line), so a refused second registrar names both: a copy or a hand-made object is none.
+ */
+const registrars = new WeakMap<SystemChangeRegistrar, string>();
+
+/** The caller of `createSystemChangeRegistrar`: the stack line after this file's own frames. */
+function creationSite(): string {
+  const lines = (new Error().stack ?? '').split('\n').slice(1);
+  const outside = lines.find((line) => !line.includes('change-review'));
+  return outside?.trim().replace(/^at\s+/, '') ?? 'unknown';
+}
 
 /** A registrar refused while the module files load: a bad module name or another module's kind. */
 export class SystemChangeRegistrarError extends Error {
@@ -384,7 +394,7 @@ export function createSystemChangeRegistrar(module: string): SystemChangeRegistr
       };
     },
   });
-  registrars.add(registrar);
+  registrars.set(registrar, creationSite());
   return registrar;
 }
 
@@ -393,4 +403,9 @@ export function isSystemChangeRegistrar(value: unknown): value is SystemChangeRe
   return (
     typeof value === 'object' && value !== null && registrars.has(value as SystemChangeRegistrar)
   );
+}
+
+/** Where a registrar was created (a stack line), for a boot error; `unknown` for anything else. */
+export function systemChangeRegistrarSite(registrar: SystemChangeRegistrar): string {
+  return registrars.get(registrar) ?? 'unknown';
 }
