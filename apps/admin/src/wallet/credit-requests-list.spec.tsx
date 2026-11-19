@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { Toaster } from '@mondapac/ui';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -111,6 +112,7 @@ function mount(
         zone={BRISBANE}
         initialView={options.view ?? 'pending'}
       />
+      <Toaster labels={{ region: messages.toast.region, close: messages.toast.close }} />
     </NextIntlClientProvider>,
   );
 }
@@ -581,7 +583,7 @@ describe('Credit requests list: Approve', () => {
       name: 'Approve credit',
     });
     expect(confirm.disabled).toBe(true);
-    const field = within(dialog).getByLabelText('Type 00000001 to confirm');
+    const field = within(dialog).getByLabelText('Type the request ID 00000001 to confirm');
     for (const wrong of ['0000000', '000000011', '00000002', 'approve']) {
       fireEvent.change(field, { target: { value: wrong } });
       expect(confirm.disabled).toBe(true);
@@ -594,7 +596,7 @@ describe('Credit requests list: Approve', () => {
 
   it('approves through the guarded call with no body, says so, reads the list again and focuses it', async () => {
     const dialog = await openApprove();
-    fireEvent.change(within(dialog).getByLabelText('Type 00000001 to confirm'), {
+    fireEvent.change(within(dialog).getByLabelText('Type the request ID 00000001 to confirm'), {
       target: { value: '00000001' },
     });
     post = () => ok(row(1, { status: 'approved' }));
@@ -613,7 +615,7 @@ describe('Credit requests list: Approve', () => {
 
   it('leaves the dialog as it was when the code dialog is cancelled', async () => {
     const dialog = await openApprove();
-    fireEvent.change(within(dialog).getByLabelText('Type 00000001 to confirm'), {
+    fireEvent.change(within(dialog).getByLabelText('Type the request ID 00000001 to confirm'), {
       target: { value: '00000001' },
     });
     post = () => failure(0, STEP_UP_CANCELLED);
@@ -621,9 +623,10 @@ describe('Credit requests list: Approve', () => {
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(screen.queryByRole('alert')).toBeNull();
     expect(dialog.hasAttribute('open')).toBe(true);
-    expect(within(dialog).getByLabelText<HTMLInputElement>('Type 00000001 to confirm').value).toBe(
-      '00000001',
-    );
+    expect(
+      within(dialog).getByLabelText<HTMLInputElement>('Type the request ID 00000001 to confirm')
+        .value,
+    ).toBe('00000001');
   });
 
   it.each([
@@ -653,32 +656,30 @@ describe('Credit requests list: Approve', () => {
     ['wallet.account-not-active', 409, "This customer's wallet cannot receive credit.", false],
     ['access.denied', 403, 'You do not have permission to decide credit requests.', false],
     ['wallet.unavailable', 503, 'We could not complete this. Try again.', false],
-  ])(
-    'answers %s with a banner, and reads again only when the row is out of date',
-    async (code, status, text, stale) => {
-      const dialog = await openApprove();
-      fireEvent.change(within(dialog).getByLabelText('Type 00000001 to confirm'), {
-        target: { value: '00000001' },
-      });
-      post = () => failure(status, code);
-      const reads = listUrls().length;
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Approve credit' }));
-      const alert = await screen.findByRole('alert');
-      expect(alert.textContent).toBe(text);
-      expect(dialog.hasAttribute('open')).toBe(false);
-      // The focus goes to the message, after the closed dialog has given it back to its opener.
-      await new Promise((done) => setTimeout(done, 20));
-      expect(document.activeElement).toBe(alert.parentElement);
-      if (stale) await waitFor(() => expect(listUrls().length).toBe(reads + 1));
-      else expect(listUrls().length).toBe(reads);
-    },
-  );
+    // No answer at all: the approval may have gone through, so the list is read again too.
+    ['network.unreachable', 0, 'We could not complete this. Try again.', false],
+  ])('answers %s with a banner and reads the list again', async (code, status, text) => {
+    const dialog = await openApprove();
+    fireEvent.change(within(dialog).getByLabelText('Type the request ID 00000001 to confirm'), {
+      target: { value: '00000001' },
+    });
+    post = () => failure(status, code);
+    const reads = listUrls().length;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve credit' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(text);
+    expect(dialog.hasAttribute('open')).toBe(false);
+    // The focus goes to the message, after the closed dialog has given it back to its opener.
+    await new Promise((done) => setTimeout(done, 20));
+    expect(document.activeElement).toBe(alert.parentElement);
+    await waitFor(() => expect(listUrls().length).toBe(reads + 1));
+  });
 
   it('sends a signed-out admin away', async () => {
     const assign = vi.fn();
     vi.stubGlobal('location', { assign, href: 'http://admin.localhost/wallet/credit-requests' });
     const dialog = await openApprove();
-    fireEvent.change(within(dialog).getByLabelText('Type 00000001 to confirm'), {
+    fireEvent.change(within(dialog).getByLabelText('Type the request ID 00000001 to confirm'), {
       target: { value: '00000001' },
     });
     post = () => failure(401, 'session.invalid');
@@ -753,5 +754,155 @@ describe('Credit requests list: Reject', () => {
       name: 'Reject $900.00 for customer 0000C001?',
     });
     expect(within(again).getByLabelText<HTMLSelectElement>('Reason').value).toBe('');
+  });
+});
+
+describe('Credit requests list: review follow-ups', () => {
+  const tick = async () => {
+    fireEvent.click(await screen.findByRole('checkbox', { name: `Select ${NAME}` }));
+    expect(screen.getByText('1 request selected')).toBeTruthy();
+  };
+  const cleared = () => waitFor(() => expect(screen.queryByText('1 request selected')).toBeNull());
+
+  it('drops the ticked rows when the sort or a filter changes', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await customerLink();
+    await tick();
+    fireEvent.click(screen.getByRole('button', { name: /^Sort/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'Amount' }));
+    await waitFor(() => expect(lastParams()['sort']).toBe('amount'));
+    await cleared();
+    await tick();
+    fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    fireEvent.change(within(panel).getByLabelText('Field'), { target: { value: 'reason' } });
+    fireEvent.change(within(panel).getByLabelText('Value'), { target: { value: 'promotion' } });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(lastParams()['reason']).toBe('promotion'));
+    await cleared();
+  });
+
+  it('lists the nearest expiry first in the order of the expiry sort', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await customerLink();
+    fireEvent.click(screen.getByRole('button', { name: /^Sort/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'Expires' }));
+    await waitFor(() => expect(lastParams()['direction']).toBe('asc'));
+    const nearest = screen.getByRole('radio', { name: 'Nearest expiry first' });
+    expect((nearest as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: 'Latest expiry first' }));
+    await waitFor(() => expect(lastParams()['direction']).toBe('desc'));
+  });
+
+  it('selects all matching requests, exports them by the selector, and drops them for another view', async () => {
+    const fetched: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        fetched.push(url);
+        return Promise.resolve(
+          new Response('id\n1\n', { headers: { 'content-type': 'text/csv' } }),
+        );
+      }),
+    );
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} }),
+    );
+    serve(() => pageOf([row()], { total: 30 }));
+    mount();
+    await customerLink();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all requests on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all 30 matching' }));
+    expect(screen.getByText('All 30 matching requests are selected')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(
+      within(await screen.findByRole('menu', { name: 'Bulk action' })).getByRole('menuitem', {
+        name: /^Export/,
+      }),
+    );
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByLabelText(/XLSX/));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(fetched).toHaveLength(1));
+    const params = Object.fromEntries(new URL(fetched[0]!, 'http://x').searchParams);
+    expect(params['ids']).toBeUndefined();
+    expect(params).toMatchObject({
+      view: 'pending',
+      sort: 'requested',
+      direction: 'desc',
+      format: 'xlsx',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Decided (12)' }));
+    await waitFor(() =>
+      expect(screen.queryByText('All 30 matching requests are selected')).toBeNull(),
+    );
+  });
+
+  async function exportWith(response: Response) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(response)),
+    );
+    serve(() => pageOf([row()]));
+    mount();
+    await customerLink();
+    fireEvent.click(screen.getByRole('checkbox', { name: `Select ${NAME}` }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(
+      within(await screen.findByRole('menu', { name: 'Bulk action' })).getByRole('menuitem', {
+        name: /^Export/,
+      }),
+    );
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Export' }),
+    );
+  }
+  const json = (status: number, body: object) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  it('says when the file would be too large', async () => {
+    await exportWith(json(413, { code: 'batch.too-large', details: { max: 10000, total: 12000 } }));
+    expect(await screen.findByText(/Too many rows to export/)).toBeTruthy();
+  });
+
+  it('says when the export filters are refused', async () => {
+    await exportWith(
+      json(400, { code: 'validation.failed', details: { fields: [{ path: 'from' }] } }),
+    );
+    expect(await screen.findByText(/can't be exported with its current filters/)).toBeTruthy();
+  });
+
+  it('keeps the column choice for this viewer in storage, and drops an unknown stored id', async () => {
+    window.localStorage.setItem(
+      'mp:admin:AU:' + ME + ':credit-requests-columns',
+      JSON.stringify(['note', 'nope']),
+    );
+    serve(() => pageOf([row(1, { note: 'Late delivery' })]));
+    mount();
+    await customerLink();
+    expect(within(screen.getByRole('table')).getByText('Late delivery')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Note' }));
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(within(screen.getByRole('table')).queryByText('Late delivery')).toBeNull(),
+    );
+    expect(
+      JSON.parse(window.localStorage.getItem('mp:admin:AU:' + ME + ':credit-requests-columns')!),
+    ).toEqual([]);
+  });
+
+  it('shows the amount in the currency of the request', async () => {
+    serve(() => pageOf([row(1, { amount: '125050', currency: 'NZD' })]));
+    mount();
+    await customerLink();
+    expect(within(screen.getByRole('table')).getByText(/NZD\s1,250\.50/)).toBeTruthy();
   });
 });

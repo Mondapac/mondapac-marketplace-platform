@@ -23,11 +23,7 @@ import type { ListPagingMode } from '../sales/cursor-paging.ts';
 import { stepStack } from '../sales/cursor-paging.ts';
 import { SelectionBar } from '../sales/selection-bar.tsx';
 import { numberFormat } from '../shared/intl.ts';
-import {
-  STALE_PROBLEMS,
-  CreditDecideDialogs,
-  CreditDetailsDialog,
-} from './list/credit-requests-dialogs.tsx';
+import { CreditDecideDialogs, CreditDetailsDialog } from './list/credit-requests-dialogs.tsx';
 import type { DecideAsk } from './list/credit-requests-dialogs.tsx';
 import {
   DEFAULT_COLUMNS,
@@ -613,8 +609,9 @@ export function CreditRequestsList({
         onFailed={(key) => {
           setDecide(null);
           setNotice(tw(`error.${key}` as 'error.unknown'));
-          // The row on screen is out of date (decided, expired or gone): read the list again.
-          if (STALE_PROBLEMS.includes(key)) readAgain(false);
+          // Any refusal may mean the row on screen is out of date (decided, expired, gone, or
+          // approved before the answer was lost): read the list again so it shows the truth.
+          readAgain(false);
         }}
       />
     </>

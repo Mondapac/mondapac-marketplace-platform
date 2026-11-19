@@ -16,13 +16,6 @@ export type DecideAsk = {
   readonly row: AdminCredit;
 } | null;
 
-/** Refusals that mean the row on screen is out of date: the list reads its rows again. */
-export const STALE_PROBLEMS: readonly string[] = [
-  'request-expired',
-  'request-decided',
-  'request-not-found',
-];
-
 /**
  * Approve and Reject of a credit request. Approving is a money action of level 3: the dialog names
  * the amount and the customer, and the admin types the request's short id before the red button

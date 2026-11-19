@@ -8395,8 +8395,8 @@
           "second": "Smallest first"
         },
         "expires": {
-          "first": "Latest expiry first",
-          "second": "Nearest expiry first"
+          "first": "Nearest expiry first",
+          "second": "Latest expiry first"
         },
         "decided": {
           "first": "Most recent first",
@@ -8445,7 +8445,7 @@
       "approve": {
         "title": "Approve {amount} for customer {customer}?",
         "body": "{amount} will be added to customer {customer}'s wallet now. You cannot undo this.",
-        "type-to-confirm": "Type {id} to confirm",
+        "type-to-confirm": "Type the request ID {id} to confirm",
         "step-up-note": "Approving adds the credit to the customer's wallet. Next, you will be asked for your two-step code.",
         "confirm": "Approve credit"
       },
