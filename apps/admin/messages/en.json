@@ -10983,7 +10983,7 @@
       "rate-invalid": "Enter a rate from 0 to 50 with up to 2 decimals.",
       "default-rate": "Default rate (%)",
       "default-rate-help": "Used for a line in none of the categories below.",
-      "category-rate": "Rate for {code} (%)",
+      "category-rate": "Rate for {category} (%)",
       "no-categories": "No tax categories are defined, so every line uses the default rate.",
       "cancel": "Cancel",
       "save": "Save strategy",
@@ -11152,36 +11152,14 @@
       "waiting": "Waiting for you"
     },
     "requests": {
-      "title": "Size requests from sellers",
-      "list-label": "Size requests",
-      "loading": "Loading size requests",
-      "load-failed": "The size requests could not be loaded.",
-      "denied-title": "No access",
-      "denied-body": "You cannot answer size requests.",
-      "empty": "Nothing is waiting for you.",
-      "empty-body": "Sizes that sellers ask for on a platform product will show here.",
-      "open": "Waiting",
-      "asked": "Requested on product {product} by {seller}.",
       "no-product-code": "without a code",
       "unnamed-seller": "a seller",
       "already-exists": "The product already has this variant. Map the request to it.",
-      "has-sizes": "The product has: {sizes}.",
-      "approve": "Approve",
-      "map": "Map to existing",
-      "decline": "Decline",
       "cancel": "Cancel",
-      "approve-for": "Approve {asked}",
-      "map-for": "Map to existing: {asked}",
-      "decline-for": "Decline {asked}",
-      "approve-note": "Approving adds the variant to the product's draft. It still goes through the normal review before any seller can sell it.",
-      "approve-confirm": "Approve request",
-      "map-none": "This product has no variants to map to.",
       "map-to": "Existing variant",
       "map-choose": "Choose a variant",
-      "map-confirm": "Map to this variant",
       "reason": "Reason for the seller",
       "reason-help": "The seller reads this in an email.",
-      "decline-confirm": "Decline request",
       "decided": {
         "approved": "Variant added to the draft. The seller will get an email.",
         "mapped": "Mapped to an existing variant. The seller will get an email.",
@@ -11201,6 +11179,98 @@
         "unavailable": "The service is not reachable. Try again.",
         "unknown": "The decision could not be saved.",
         "reload-failed": "The list could not be refreshed and may be out of date. Reload the page."
+      },
+      "actions": {
+        "approve": "Approve…",
+        "map": "Map to existing…",
+        "decline": "Decline…"
+      },
+      "already-exists-short": "The product already has this size. Map the request to it.",
+      "dialog": {
+        "approve": {
+          "title": "Approve size request",
+          "confirm": "Approve request",
+          "body": "Approve {asked}? The variant is added to the product's draft and still goes through the normal review before any seller can sell it. The seller gets an email."
+        },
+        "map": {
+          "title": "Map to an existing variant",
+          "confirm": "Map to this variant",
+          "body": "Map {asked} to a variant the product already has? The seller gets an email."
+        },
+        "decline": {
+          "title": "Decline size request",
+          "confirm": "Decline request",
+          "body": "Decline {asked}? The seller reads your reason in an email."
+        }
+      },
+      "list": {
+        "title": "Size requests from sellers",
+        "intro": "Sizes that sellers asked for on a platform product. Approve, map or decline each one from its Actions menu.",
+        "tabs": "Size request views",
+        "tab": {
+          "open": "Waiting for you"
+        },
+        "search": {
+          "label": "Search size requests",
+          "placeholder": "Product code"
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "created": "Date requested"
+          },
+          "created": {
+            "first": "Oldest first",
+            "second": "Newest first"
+          }
+        },
+        "sorted": "Sorted by {field}, {order}",
+        "col": {
+          "request": "Requested size",
+          "product": "Product",
+          "seller": "Seller",
+          "requested": "Requested",
+          "existing": "Product has"
+        },
+        "chip-search": "Product code: {text}",
+        "loading": "Loading size requests",
+        "match": "{count, plural, one {# request matches} other {# requests match}}",
+        "range": "{from}–{to} of {total}",
+        "too-many": "More than {limit} requests match. Add a search to see the rest.",
+        "no-access": "You cannot answer size requests.",
+        "error": {
+          "unavailable": "The size requests could not be loaded.",
+          "refused": "The search cannot be used. Change it and try again."
+        },
+        "empty": {
+          "title": "Nothing is waiting for you.",
+          "body": "Sizes that sellers ask for on a platform product will show here.",
+          "no-match": "No requests match",
+          "no-match-help": "Change the search or clear it."
+        },
+        "select": {
+          "page": "Select all requests on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+          "all": "{count, plural, one {The # matching request is selected} other {All # matching requests are selected}}",
+          "all-open": "All matching requests are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "actions": {
+          "header": "Actions",
+          "for": "Actions for {name}"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+          "all-open": "All matching requests selected"
+        }
       }
     },
     "view-only": {

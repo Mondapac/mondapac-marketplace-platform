@@ -720,6 +720,7 @@ export async function placeOrder<T>(
         reservationLineId,
         commissionRateBps: rate.rateBps,
         commissionRateReason: rate.reason,
+        commissionStandardRateBps: rate.reason === 'exclusive' ? rate.standardRateBps : null,
         exclusiveSeller: exclusive !== null && exclusive.sellerId === seller.sellerId,
         taxRateBps: tax.rateBps,
         taxAmount: tax.tax,

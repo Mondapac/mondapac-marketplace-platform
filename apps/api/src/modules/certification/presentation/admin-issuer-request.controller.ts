@@ -40,11 +40,21 @@ import { IssuerRequestAnswer } from '../application/use-cases/issuer-request-ans
 import { IssuerRequestDocumentRead } from '../application/use-cases/issuer-request-document-read.use-case';
 import { IssuerRequestRead } from '../application/use-cases/issuer-request-read.use-case';
 import { IssuerRequestsQueue } from '../application/use-cases/issuer-requests-queue.use-case';
+import { IssuerRequestsExport } from '../application/use-cases/issuer-requests-export.use-case';
+import { IssuerRequestsQuery } from '../application/use-cases/issuer-requests-query.use-case';
+import {
+  ISSUER_REQUEST_EXPORT_COLUMNS,
+  ISSUER_REQUEST_LIST_VIEWS,
+  ISSUER_REQUEST_SORT_KEYS,
+} from '../domain/issuer-request-list';
+import { EXPORT_FORMATS, writeChunks } from '../../../platform/list-export';
+import { ApiPayloadTooLargeResponse, ApiQuery } from '@nestjs/swagger';
 import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
 import {
   IssuerQueueView,
   IssuerRequestAnswerRequest,
   IssuerRequestAnsweredView,
+  IssuerRequestListView,
   IssuerRequestPageView,
 } from './issuer-request.dto';
 import { CertificationErrorBody } from './own-certificate.dto';
@@ -58,6 +68,7 @@ import { CertificationErrorBody } from './own-certificate.dto';
 export const ADMIN_ISSUER_REQUEST_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
   'issuer-request.not-found': 404,
+  'batch.too-large': 413,
   'document.not-found': 404,
   'document.download-disabled': 403,
   'issuer-request.already-answered': 409,
@@ -85,6 +96,8 @@ export class AdminIssuerRequestController {
 
   constructor(
     private readonly queue: IssuerRequestsQueue,
+    private readonly listRequests: IssuerRequestsQuery,
+    private readonly exportRequests: IssuerRequestsExport,
     private readonly read: IssuerRequestRead,
     private readonly documentRead: IssuerRequestDocumentRead,
     private readonly answer: IssuerRequestAnswer,
@@ -117,6 +130,121 @@ export class AdminIssuerRequestController {
       ? (result.value as unknown as IssuerQueueView)
       : this.refusal(result.error, response, context);
     return this.settle('certification.issuer-requests-queue', context, outcome);
+  }
+
+  // Before `:issuerRequestId`, so `list` and `export` are never read as a request id.
+  @Get('list')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'The open issuer requests as a super list',
+    description:
+      'Needs certification.issuer.view. Filters (`type` = a certification type code, `q` = a ' +
+      'request id, `sellerId`, `from`/`to` submitted), sort (submitted or type, with direction; ' +
+      'oldest first by default), page numbers with a total (`paging=pages`, default) or ' +
+      'Previous/Next without one (`paging=prev-next`), the count and each row\u2019s actions. ' +
+      'The list reads at most 500 open requests. No typed name in the list. The older queue ' +
+      'route keeps its cursor answer.',
+  })
+  @ApiQuery({ name: 'view', required: false, enum: ISSUER_REQUEST_LIST_VIEWS })
+  @ApiQuery({ name: 'type', required: false })
+  @ApiQuery({ name: 'q', required: false, description: 'A request id, exact.' })
+  @ApiQuery({ name: 'sellerId', required: false })
+  @ApiQuery({ name: 'from', required: false, description: 'Submitted at or after (ISO instant).' })
+  @ApiQuery({ name: 'to', required: false, description: 'Submitted before (ISO instant).' })
+  @ApiQuery({ name: 'sort', required: false, enum: ISSUER_REQUEST_SORT_KEYS })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
+  @ApiQuery({ name: 'page', required: false, description: 'From 1.' })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 100; default 25.' })
+  @ApiOkResponse({ type: IssuerRequestListView })
+  @ApiBadRequestResponse({ type: CertificationErrorBody, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: CertificationErrorBody, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({
+    type: CertificationErrorBody,
+    description: 'access.unavailable',
+  })
+  async getList(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<IssuerRequestListView> {
+    const result = await this.listRequests.execute(context, numbersOf(query));
+    const outcome = result.ok
+      ? ({
+          ...result.value,
+          items: result.value.items.map((row) => ({ ...row, actions: [...row.actions] })),
+        } as IssuerRequestListView)
+      : this.refusal(result.error, response, context);
+    return this.settle('certification.issuer-requests-list', context, outcome);
+  }
+
+  @Get('export')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Export the open issuer requests of the list as a file',
+    description:
+      'Needs certification.issuer.view. `format` is csv (default) or xlsx. `columns` is the ' +
+      `comma-separated optional columns in the order shown (${ISSUER_REQUEST_EXPORT_COLUMNS.join(', ')}); ` +
+      'type, store and submitted are always there. The requests are `ids` (comma-separated, at ' +
+      'most 200; an id that is not an open request of the Market refuses the whole file as not ' +
+      'found) or the selector keys of the list (refused with batch.too-large when 500 or more ' +
+      'requests are open, because the read stops there; pick the rows by id). No typed name, no file. CSV: a text cell that ' +
+      'starts with = + - @ gets a leading quote. XLSX: every cell is a string value.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({ name: 'columns', required: false })
+  @ApiQuery({ name: 'ids', required: false })
+  @ApiOkResponse({
+    description: 'issuer-requests-<date>.csv or issuer-requests-<date>.xlsx, as an attachment',
+  })
+  @ApiBadRequestResponse({ type: CertificationErrorBody, description: 'validation.failed' })
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: CertificationErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: CertificationErrorBody, description: 'issuer-request.not-found' })
+  @ApiPayloadTooLargeResponse({
+    type: CertificationErrorBody,
+    description: 'batch.too-large (max, total)',
+  })
+  async download(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportRequests.execute(context, { ...query });
+    this.#logger.log({
+      msg: 'certification.issuer-requests-export',
+      outcome: result.ok ? 'export' : result.error.code,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (!result.ok) {
+      const error = this.refusal(result.error, response, context);
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      await writeChunks(response, chunks);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logger.warn({
+        msg: 'certification.issuer-requests-export',
+        code: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+    }
   }
 
   @Get(':issuerRequestId')
@@ -276,4 +404,16 @@ export class AdminIssuerRequestController {
     if (outcome instanceof HttpException) throw outcome;
     return outcome;
   }
+}
+
+/** `page` and `pageSize` become numbers (or -1, which the use case refuses). */
+function numbersOf(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...query };
+  for (const key of ['page', 'pageSize']) {
+    const value = out[key];
+    if (value !== undefined) {
+      out[key] = typeof value === 'string' && /^[0-9]{1,6}$/.test(value) ? Number(value) : -1;
+    }
+  }
+  return out;
 }
