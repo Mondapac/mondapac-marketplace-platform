@@ -2505,17 +2505,36 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
  * Query keys that narrow a read to one owner: a malformed value is refused (400), never dropped,
  * so a read meant for one customer can never come back as the whole Market's.
  */
-const SCOPE_KEYS: ReadonlySet<string> = new Set(['ordering/admin/orders:accountId']);
+const SCOPE_KEYS: ReadonlySet<string> = new Set([
+  'ordering/admin/orders:accountId',
+  // The seller page's lists (27, 28) are one seller's by their path (a malformed id there is not
+  // a route at all); these keys narrow them to one order, and are refused, never dropped.
+  'commission-payouts/admin/sellers/:id/ledger:q',
+  'commission-payouts/admin/sellers/:id/ledger/export:q',
+  'commission-payouts/admin/sellers/:id/payout-holds:sellerOrderId',
+  'commission-payouts/admin/sellers/:id/payout-holds/export:sellerOrderId',
+]);
+
+/** The path with each UUID segment named `:id`, the way the route tables are keyed. */
+const templateOf = (target: string): string =>
+  target
+    .split('/')
+    .map((part) => (UUID.test(part) ? ':id' : part))
+    .join('/');
 
 /** Whether the request names a scope key whose value has the wrong shape. */
 function badScope(method: string, target: string, requestUrl: string): boolean {
   if (method !== 'GET') return false;
   const source = new URL(requestUrl).searchParams;
   for (const entry of SCOPE_KEYS) {
-    const [path, key] = entry.split(':') as [string, string];
-    if (path !== target) continue;
+    // The path may hold `:id`, so the key is what follows the last colon.
+    const at = entry.lastIndexOf(':');
+    const path = entry.slice(0, at);
+    const key = entry.slice(at + 1);
+    if (path !== target && path !== templateOf(target)) continue;
     const value = source.get(key);
-    if (value !== null && QUERY_SHAPES[target]?.[key]?.test(value) !== true) return true;
+    const shapes = QUERY_SHAPES[target] ?? QUERY_SHAPES[path];
+    if (value !== null && shapes?.[key]?.test(value) !== true) return true;
   }
   return false;
 }
@@ -2529,18 +2548,28 @@ const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
   'security/admin/alerts/export',
   'reviews/admin/moderation/export',
+  // The seller page's ledger and payout holds exports (lists 27, 28); the seller is in the path.
+  'commission-payouts/admin/sellers/:id/ledger/export',
+  'commission-payouts/admin/sellers/:id/payout-holds/export',
 ]);
 
 /** The first known key of a strict target whose value cannot cross, or null. */
 function strictQueryRefusal(method: string, target: string, requestUrl: string): string | null {
-  if (method !== 'GET' || !STRICT_QUERY_TARGETS.has(target)) return null;
-  const shapes = QUERY_SHAPES[target] ?? {};
+  const template = templateOf(target);
+  const strict = STRICT_QUERY_TARGETS.has(target)
+    ? target
+    : STRICT_QUERY_TARGETS.has(template)
+      ? template
+      : null;
+  if (method !== 'GET' || strict === null) return null;
+  const shapes = QUERY_SHAPES[strict] ?? {};
   const source = new URL(requestUrl).searchParams;
-  for (const key of QUERY_KEYS[target] ?? []) {
-    const value = source.get(key);
-    if (value === null) continue;
-    const max = QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX;
-    if (value.length > max || shapes[key]?.test(value) === false) return key;
+  for (const key of QUERY_KEYS[strict] ?? QUERY_KEYS_WITH_ID[strict] ?? []) {
+    const values = source.getAll(key);
+    const value = values[0];
+    if (value === undefined) continue;
+    const max = QUERY_VALUE_MAX_FOR[`${strict}:${key}`] ?? QUERY_VALUE_MAX;
+    if (values.length > 1 || value.length > max || shapes[key]?.test(value) === false) return key;
   }
   return null;
 }

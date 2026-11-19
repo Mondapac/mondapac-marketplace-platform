@@ -32,6 +32,14 @@ const files = [
   ...readdirSync(path.join(src, 'payouts'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'payouts', name)),
+  // The seller page's payout holds list (28) and commission ledger list (27).
+  ...readdirSync(path.join(src, 'payouts', 'holds'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'payouts', 'holds', name)),
+  path.join(src, 'commission', 'ledger-card.tsx'),
+  ...readdirSync(path.join(src, 'commission', 'ledger'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'commission', 'ledger', name)),
   ...readdirSync(path.join(src, 'account-deletion'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'account-deletion', name)),
@@ -87,7 +95,7 @@ function calls(): { method: string; target: string }[] {
   return found;
 }
 
-describe('every path the wallet, dispute, review moderation, account deletion, shipments, refunds, invoices and step-up client code calls passes the relay allowlist', () => {
+describe('every path the wallet, dispute, review moderation, account deletion, seller ledger and holds, shipments, refunds, invoices and step-up client code calls passes the relay allowlist', () => {
   const found = calls();
 
   it('finds the calls it is meant to check', () => {
@@ -122,6 +130,7 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'GET commission-payouts/admin/sellers/:id/payout-holds',
         'POST commission-payouts/admin/sellers/:id/payout-holds',
         'POST commission-payouts/admin/payout-holds/:id/release',
+        'GET commission-payouts/admin/sellers/:id/ledger',
         'POST identity/admin/step-up/verify',
         'POST ordering/admin/orders/:id/cancel',
         'POST ordering/admin/orders/:id/notes',
