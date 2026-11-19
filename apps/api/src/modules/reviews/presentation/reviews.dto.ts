@@ -1,3 +1,4 @@
+import type { ModerationListPage } from '../application/use-cases/query-moderation-reviews.use-case';
 import { ApiProperty } from '@nestjs/swagger';
 import { REVIEWS_STATUSES } from '../domain/market-status';
 import { REVIEW_STATUSES, SELLER_RATING_REASONS } from '../domain/rules';
@@ -393,7 +394,7 @@ export class ModerateRequest {
   reasonCode!: string;
 }
 
-const moderationReviewBody = (view: ModerationReviewView): ModerationReviewBody => ({
+export const moderationReviewBody = (view: ModerationReviewView): ModerationReviewBody => ({
   id: view.id,
   productId: view.productId,
   offerId: view.offerId,
@@ -428,4 +429,39 @@ export const moderationDetailBody = (view: ModerationDetailView): ModerationDeta
     at: iso(h.at),
   })),
   allowedActions: [...view.allowedActions],
+});
+
+export class ModerationRowBody extends ModerationReviewBody {
+  @ApiProperty({
+    enum: ['open', 'publish', 'hide', 'restore', 'dismiss-reports', 'remove'],
+    isArray: true,
+  })
+  actions!: string[];
+}
+
+export class ModerationViewCountsBody {
+  @ApiProperty() all!: number;
+  @ApiProperty() held!: number;
+  @ApiProperty() reported!: number;
+  @ApiProperty() actioned!: number;
+}
+
+export class ModerationListBody {
+  @ApiProperty({ type: [ModerationRowBody] }) items!: ModerationRowBody[];
+  @ApiProperty({ type: ModerationViewCountsBody }) counts!: ModerationViewCountsBody;
+  @ApiProperty({ nullable: true, type: Number }) total!: number | null;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+}
+
+export const moderationListBody = (page: ModerationListPage): ModerationListBody => ({
+  items: page.items.map((row) => ({ ...moderationReviewBody(row), actions: [...row.actions] })),
+  counts: { ...page.counts },
+  total: page.total,
+  page: page.page,
+  pageSize: page.pageSize,
+  paging: page.paging,
+  hasNext: page.hasNext,
 });

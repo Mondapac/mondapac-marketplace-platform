@@ -48,6 +48,14 @@ import { ListMyReviews } from './application/use-cases/list-my-reviews.use-case'
 import { ListProductRatingTotals } from './application/use-cases/list-product-rating-totals.use-case';
 import { ListProductReviews } from './application/use-cases/list-product-reviews.use-case';
 import { EditReviewReply } from './application/use-cases/edit-review-reply.use-case';
+import { ExportModerationReviews } from './application/use-cases/export-moderation-reviews.use-case';
+import { ModerationModerateProbe } from './application/use-cases/moderation-moderate-probe.use-case';
+import { ModerationRemoveProbe } from './application/use-cases/moderation-remove-probe.use-case';
+import { QueryModerationReviews } from './application/use-cases/query-moderation-reviews.use-case';
+import {
+  MODERATION_ROW_KEYS,
+  type ModerationListDependencies,
+} from './application/moderation-list-flow';
 import { ExportSellerReviews } from './application/use-cases/export-seller-reviews.use-case';
 import { QuerySellerReviews } from './application/use-cases/query-seller-reviews.use-case';
 import { SellerReviewReplyProbe } from './application/use-cases/seller-review-reply-probe.use-case';
@@ -187,6 +195,42 @@ function sellerListUseCaseProvider<U>(type: SellerListUseCaseClass<U>): FactoryP
   };
 }
 
+type ModerationListUseCaseClass<U> = new (gate: UseCaseGate, deps: ModerationListDependencies) => U;
+
+/** The admin moderation list and its export (super list 18) share one dependency object. */
+function moderationListUseCaseProvider<U>(type: ModerationListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      REVIEW_REPOSITORY,
+      ModerationModerateProbe,
+      ModerationRemoveProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: ModerationListDependencies['unitOfWork'],
+      reviews: ModerationListDependencies['reviews'],
+      moderate: ModerationModerateProbe,
+      remove: ModerationRemoveProbe,
+      sheetWriter: ModerationListDependencies['sheetWriter'],
+      clock: ModerationListDependencies['clock'],
+    ) => {
+      const [moderateKey, removeKey] = MODERATION_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        reviews,
+        probes: { [moderateKey]: moderate, [removeKey]: remove },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
 /**
  * Reviews (buyer reviews and ratings, package 1): product reviews, seller ratings, the automatic
  * checks, the insert-only moderation log and rebuilt rating summaries, in the `reviews` schema.
@@ -249,6 +293,18 @@ function sellerListUseCaseProvider<U>(type: SellerListUseCaseClass<U>): FactoryP
       inject: [USE_CASE_GATE],
       useFactory: (gate: UseCaseGate) => new SellerReviewReportProbe(gate),
     },
+    {
+      provide: ModerationModerateProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new ModerationModerateProbe(gate),
+    },
+    {
+      provide: ModerationRemoveProbe,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new ModerationRemoveProbe(gate),
+    },
+    moderationListUseCaseProvider(QueryModerationReviews),
+    moderationListUseCaseProvider(ExportModerationReviews),
     sellerListUseCaseProvider(QuerySellerReviews),
     sellerListUseCaseProvider(ExportSellerReviews),
     // Customers management phase 2b, part 3: the admin's reads of one customer's reviews.

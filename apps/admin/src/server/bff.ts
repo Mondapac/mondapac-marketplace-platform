@@ -113,6 +113,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The buyer-review moderation queue (reviews), read-only list (query: `tab`, `cursor`,
     // `limit`); one review is read by its dialog and again after an action.
     'reviews/admin/moderation',
+    // The moderation queue as a super list (reviews; query: `view`, `minRating`, `maxRating`,
+    // `sellerId`, `reportReason`, `q`, `from`, `to`, `sort`, `direction`, `paging`, `page`,
+    // `pageSize`) and its export as a file (the chosen ids or the list's own query).
+    'reviews/admin/moderation/list',
+    'reviews/admin/moderation/export',
     // The seller payouts (commission-payouts, package 6d; the Payouts super list), read-only list
     // (query: `view`, `status`, `q`, `search`, the filters, `sort`, `direction`, `page`,
     // `pageSize`, or `cursor` and `limit`); one payout is read by the page server and again by the
@@ -1279,6 +1284,36 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'direction',
   ],
   'reviews/admin/moderation': ['tab', 'cursor', 'limit'],
+  'reviews/admin/moderation/list': [
+    'view',
+    'minRating',
+    'maxRating',
+    'sellerId',
+    'reportReason',
+    'q',
+    'from',
+    'to',
+    'sort',
+    'direction',
+    'paging',
+    'page',
+    'pageSize',
+  ],
+  'reviews/admin/moderation/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'minRating',
+    'maxRating',
+    'sellerId',
+    'reportReason',
+    'q',
+    'from',
+    'to',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/products': [
     'view',
     'q',
@@ -1757,6 +1792,40 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     pageSize: /^([1-9][0-9]?|100)$/,
     limit: /^[0-9]{1,3}$/,
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+  },
+  'reviews/admin/moderation/list': {
+    view: /^(all|held|reported|actioned)$/,
+    minRating: /^[1-5]$/,
+    maxRating: /^[1-5]$/,
+    sellerId: UUID,
+    reportReason: /^[a-z][a-z-]{0,39}$/,
+    // Free text up to the API's 100 characters, or a review, Offer or product id.
+    q: /^[\s\S]{1,100}$/,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(submitted|rating)$/,
+    direction: /^(asc|desc)$/,
+    paging: /^(pages|prev-next)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'reviews/admin/moderation/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(review-id|product-id|offer-id|seller-id|locale|edited|signals)(,(review-id|product-id|offer-id|seller-id|locale|edited|signals)){0,6}$/,
+    // At most 200 review ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(all|held|reported|actioned)$/,
+    minRating: /^[1-5]$/,
+    maxRating: /^[1-5]$/,
+    sellerId: UUID,
+    reportReason: /^[a-z][a-z-]{0,39}$/,
+    // Free text up to the API's 100 characters, or a review, Offer or product id.
+    q: /^[\s\S]{1,100}$/,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(submitted|rating)$/,
+    direction: /^(asc|desc)$/,
   },
   'wallet/admin/credit-requests/export': {
     format: /^(csv|xlsx)$/,
@@ -2325,6 +2394,7 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'commission-payouts/admin/sellers/:id/payout-holds/export:ids': 7400,
   'payments/admin/connected-accounts/export:ids': 7400,
   'security/admin/alerts/export:ids': 7400,
+  'reviews/admin/moderation/export:ids': 7400,
   'catalog/admin/attributes:search': 120,
 };
 
@@ -2355,6 +2425,7 @@ function badScope(method: string, target: string, requestUrl: string): boolean {
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
   'security/admin/alerts/export',
+  'reviews/admin/moderation/export',
 ]);
 
 /** The first known key of a strict target whose value cannot cross, or null. */
