@@ -1052,12 +1052,12 @@ describe('relay of the brands list', () => {
     const upstream = upstreamOk();
     await relay(
       config,
-      get('?status=draft&q=Halal%20Co&sort=name&direction=asc&page=2&pageSize=50&paging=pages&x=1'),
+      get('?status=draft&originCountry=NZ&q=Halal%20Co&sort=name&direction=asc&page=2&pageSize=50&paging=pages&x=1'),
       path,
       upstream,
     );
     expect(upstream.mock.calls[0]?.[0]).toBe(
-      'http://api.test/catalog/admin/brands?status=draft&q=Halal+Co&page=2&pageSize=50&paging=pages&sort=name&direction=asc',
+      'http://api.test/catalog/admin/brands?status=draft&originCountry=NZ&q=Halal+Co&page=2&pageSize=50&paging=pages&sort=name&direction=asc',
     );
     const refused = upstreamOk();
     await relay(config, get(`?q=a%0Ab&search=${'x'.repeat(101)}&status=active`), path, refused);

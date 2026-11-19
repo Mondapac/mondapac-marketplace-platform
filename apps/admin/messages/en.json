@@ -9263,7 +9263,10 @@
         "placeholder": "Name, web address or alias"
       },
       "filter": {
-        "title": "Filter brands"
+        "title": "Filter brands",
+        "name": {
+          "originCountry": "Origin country"
+        }
       },
       "sort": {
         "by": "Sort by",

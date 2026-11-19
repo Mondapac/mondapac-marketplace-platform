@@ -5,9 +5,15 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useMemo } from 'react';
 import { callApi } from '../api/client.ts';
 import { PagedSuperList } from '../shared/paged-list/paged-super-list.tsx';
-import type { ListPagingMode, PagedAnswer, PagedListConfig } from '../shared/paged-list/types.ts';
+import type {
+  ListPagingMode,
+  PagedAnswer,
+  PagedFilterField,
+  PagedListConfig,
+} from '../shared/paged-list/types.ts';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
+import { COUNTRY_CODES } from './country-codes.ts';
 import {
   API_BRANDS,
   STATUS_OF,
@@ -178,6 +184,20 @@ export function BrandsList({
     [t],
   );
 
+  // Origin country: the names are the browser's, in English (the panel is English); the value is the code.
+  const fields: readonly PagedFilterField[] = useMemo(() => {
+    const names = new Intl.DisplayNames(['en'], { type: 'region' });
+    return [
+      {
+        id: 'originCountry',
+        label: tl('filter.name.originCountry'),
+        options: COUNTRY_CODES.map((code) => ({ value: code, label: names.of(code) ?? code })).sort(
+          (a, b) => a.label.localeCompare(b.label, 'en'),
+        ),
+      },
+    ];
+  }, [tl]);
+
   const config: PagedListConfig<BrandListRow> = useMemo(
     () => ({
       ns: 'brands.list',
@@ -239,6 +259,7 @@ export function BrandsList({
       paging={paging}
       accountId={accountId}
       marketId={marketId}
+      fields={fields}
       loadCounts={loadCounts}
       refreshKey={refreshKey}
       heading={headerAction}

@@ -139,6 +139,25 @@ describe('admin brands', () => {
     expect(first.get('direction')).toBe('asc');
   });
 
+  it('filters by origin country, shows the chip and takes it off again', async () => {
+    serve(lists([brand(1, { name: 'Saffron & Co' })], []));
+    mount();
+    await screen.findByText('Saffron & Co');
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), {
+      target: { value: 'originCountry' },
+    });
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'NZ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    const asked = () =>
+      calls('GET', 'catalog/admin/brands?').map(
+        ([, path]) => new URLSearchParams(path.split('?')[1]),
+      );
+    await waitFor(() => expect(asked().some((p) => p.get('originCountry') === 'NZ')).toBe(true));
+    fireEvent.click(await screen.findByRole('button', { name: /Remove filter Origin country is/ }));
+    await waitFor(() => expect(asked().at(-1)?.get('originCountry')).toBeNull());
+  });
+
   it('shows a dash that screen readers read as "Not set" for an empty origin', async () => {
     serve(lists([brand(1, { originCountry: null })]));
     mount();
