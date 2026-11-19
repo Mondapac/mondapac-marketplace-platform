@@ -138,6 +138,7 @@ promotions credits a seller-funded cashback. The seller order must be in the led
 that seller (`ledger-inconsistent` otherwise). Totals gain `sellerCashback`, subtracted from the
 balance. The cashback must not exceed the seller order's sales and must name its order.
 `commission-payouts.seller-order-payout-anchor` (system) answers the eligibility anchor of a seller
-order the ledger holds, for promotions' waiting cashback. Migration
+order the ledger holds, for promotions' waiting cashback, with whether an active payout hold covers
+it (`PayoutHoldRepository.hasActiveCovering`) and whether a chargeback took its money. Migration
 `20261117100000_ledger_seller_cashback` widens the kind, source and line
 CHECKs; `down.sql` refuses while such rows exist.

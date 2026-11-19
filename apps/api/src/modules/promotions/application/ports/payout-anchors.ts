@@ -9,10 +9,16 @@ import type { Known } from './customer-facts';
  * only.
  */
 export interface PayoutAnchors {
-  anchorOf(
-    context: CallContext,
-    sellerOrderId: Id<'SellerOrder'>,
-  ): Promise<Known<{ readonly sellerId: Id<'Seller'>; readonly eligibleAt: Temporal.Instant }>>;
+  anchorOf(context: CallContext, sellerOrderId: Id<'SellerOrder'>): Promise<Known<PayoutAnchor>>;
+}
+
+export interface PayoutAnchor {
+  readonly sellerId: Id<'Seller'>;
+  readonly eligibleAt: Temporal.Instant;
+  /** A payout hold covers the seller order now (a dispute, a suspension): the credit waits. */
+  readonly onHold: boolean;
+  /** A chargeback took the seller order's money: the credit is cancelled (Hassan M-2). */
+  readonly disputeLost: boolean;
 }
 
 export const PAYOUT_ANCHORS = Symbol('PROMOTIONS_PAYOUT_ANCHORS');

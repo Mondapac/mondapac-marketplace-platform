@@ -99,6 +99,7 @@ const row = (
   sellers,
   issues,
   missingLocales: [],
+  actions: ['open-product', 'copy-code'],
 });
 const page = {
   items: [
@@ -112,7 +113,11 @@ const page = {
     row(5, 'MP-001954', 'Chickpeas, dried', '2 kg', '09300633099995', 4, [], 'paused'),
     row(6, 'MP-001020', 'Saffron threads', '1 g', null, 0, ['no-seller-selling', 'missing-gtin']),
   ],
-  nextAfter: id(206),
+  total: 61,
+  page: 1,
+  pageSize: 25,
+  paging: 'pages',
+  hasNext: true,
 };
 const counts = {
   counts: {
@@ -181,6 +186,9 @@ createRoot(document.getElementById('root')!).render(
         csrfToken="tok"
         initialTab={tab}
         initialId={tab === 'types' ? id(Number(q.get('id') ?? '1')) : null}
+        paging="pages"
+        accountId={id(99)}
+        marketId="AU"
       />
     </main>
   </NextIntlClientProvider>,

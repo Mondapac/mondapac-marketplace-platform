@@ -73,7 +73,8 @@ export function StatusCard({
         />
       )}
       <Button
-        disabled={pending || !canSubmit}
+        disabled={pending}
+        softDisabled={!canSubmit}
         aria-describedby={blockers === null ? undefined : blockersId}
         onClick={onSubmit}
       >
