@@ -23,6 +23,11 @@ export interface PanelConfig {
   readonly supportEmail: string;
   /** The storefront address shown before the shop slug, for example `mondapac.com.au/shop/`. */
   readonly storefrontAddress: string | null;
+  /**
+   * The storefront's origin (`scheme://host[:port]`), which the invite link and its QR code are
+   * built on. Null when it is not set: the Invite customers page then says so and shows no link.
+   */
+  readonly storefrontOrigin: string | null;
   /** This panel's key for the signed client address (ADR-0037); null when it is not set. */
   readonly clientAddressKey: ClientAddressKey | null;
 }
@@ -108,6 +113,24 @@ export function parseLocale(raw: string | undefined): string {
   return canonical;
 }
 
+/** An origin with no path, or null when unset. Anything else fails start-up, so a typo never ships a wrong link. */
+function parseStorefrontOrigin(raw: string | undefined): string | null {
+  const value = raw?.trim() ?? '';
+  if (value === '') return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`PANEL_STOREFRONT_ORIGIN: '${value}' is not an origin`);
+  }
+  if (url.origin !== value || (url.protocol !== 'https:' && url.protocol !== 'http:')) {
+    throw new Error(
+      `PANEL_STOREFRONT_ORIGIN: '${value}' must be scheme://host[:port] with no path`,
+    );
+  }
+  return url.origin;
+}
+
 export function parsePanelConfig(env: Readonly<Record<string, string | undefined>>): PanelConfig {
   const [passwordMinLength, passwordMaxLength] = parsePasswordRules(env['PANEL_PASSWORD_LENGTH']);
   return {
@@ -119,6 +142,7 @@ export function parsePanelConfig(env: Readonly<Record<string, string | undefined
     locale: parseLocale(env['PANEL_LOCALE']),
     supportEmail: required(env, 'PANEL_SUPPORT_EMAIL'),
     storefrontAddress: env['PANEL_STOREFRONT_ADDRESS']?.trim() || null,
+    storefrontOrigin: parseStorefrontOrigin(env['PANEL_STOREFRONT_ORIGIN']),
     clientAddressKey: parseClientAddressKey(env),
   };
 }

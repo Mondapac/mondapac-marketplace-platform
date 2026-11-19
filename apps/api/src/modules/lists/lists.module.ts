@@ -20,6 +20,10 @@ import { COLUMN_PREFERENCE_STORE, LIST_REGISTRATION, SAVED_FILTER_STORE } from '
 import { LISTS_AUDIT_ACTIONS } from './domain/audit';
 import { listsProviders } from './infrastructure/lists-providers';
 import { AdminColumnPreferenceController } from './presentation/column-preference.controller';
+import { ListsSellerColumnPreferenceController } from './presentation/seller-column-preference.controller';
+import { SellerColumnPreferenceGet } from './application/use-cases/seller-column-preference-get.use-case';
+import { SellerColumnPreferenceReset } from './application/use-cases/seller-column-preference-reset.use-case';
+import { SellerColumnPreferenceSave } from './application/use-cases/seller-column-preference-save.use-case';
 import { AdminSavedFilterController } from './presentation/saved-filter.controller';
 import { ListsSellerSavedFilterController } from './presentation/seller-saved-filter.controller';
 import { SellerSavedFilterCreate } from './application/use-cases/seller-saved-filter-create.use-case';
@@ -83,6 +87,7 @@ function columnUseCase<D, U>(
     AdminSavedFilterController,
     ListsSellerSavedFilterController,
     AdminColumnPreferenceController,
+    ListsSellerColumnPreferenceController,
   ],
   providers: [
     PersistenceModule.auditWriterFor('lists'),
@@ -150,6 +155,9 @@ function columnUseCase<D, U>(
     columnUseCase(ColumnPreferenceGet, []),
     columnUseCase(ColumnPreferenceSave, ['clock', 'ids']),
     columnUseCase(ColumnPreferenceReset, []),
+    columnUseCase(SellerColumnPreferenceGet, []),
+    columnUseCase(SellerColumnPreferenceSave, ['clock', 'ids']),
+    columnUseCase(SellerColumnPreferenceReset, []),
   ],
   exports: [SAVED_FILTER_STORE, COLUMN_PREFERENCE_STORE, LIST_REGISTRATION],
 })
