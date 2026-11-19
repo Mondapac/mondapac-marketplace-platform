@@ -203,6 +203,7 @@ export class BrandExport extends UseCase<BrandExportInput, BrandExportOutput, Br
           offset: 0,
           limit: BRAND_EXPORT_MAX_ROWS + 1,
         });
+        // page and count share no snapshot (READ COMMITTED), so the batch.too-large total may be slightly off.
         const total =
           rows.length > BRAND_EXPORT_MAX_ROWS
             ? await deps.brandReader.count(market, filter)

@@ -59,7 +59,7 @@ const product = (categoryIds: string[] = []): ProductView => ({
   createdAt: '2026-10-01T00:00:00Z',
   pendingSubmittedAt: null,
   form: {
-    taxCategoryCodes: ['standard'],
+    taxCategories: [{ code: 'standard', labelKey: 'catalog.tax.standard' }],
     units: [],
     fields: [],
     categories: [

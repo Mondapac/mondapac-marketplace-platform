@@ -45,11 +45,11 @@ const RICE = {
 const options: ProductOptions = {
   productTypes: ['grocery', 'dry-goods'],
   conditions: ['new', 'used'],
-  taxCategoryCodes: ['gst', 'gst-free-food', 'no-label', 'unknown-key'],
   taxCategories: [
     { code: 'gst', labelKey: 'catalog.tax.taxable' },
     { code: 'gst-free-food', labelKey: 'catalog.tax.gst-free' },
-    // A key the message catalogue lacks falls back to the code; a code without an entry too.
+    // A key the message catalogue lacks falls back to the code shown as words.
+    { code: 'no-label', labelKey: 'catalog.tax.no-label' },
     { code: 'unknown-key', labelKey: 'catalog.tax.nothing-here' },
   ],
   categories: [

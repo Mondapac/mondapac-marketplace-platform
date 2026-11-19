@@ -256,11 +256,14 @@ export class MemoryBrands implements BrandRepository, BrandReader {
   }
 
   byIds(_market: MarketContext, ids: readonly Id<'Brand'>[]): Promise<readonly BrandState[]> {
+    // Reversed on purpose: the port promises no order, so the use case must re-order the rows.
     return Promise.resolve(
-      ids.flatMap((id) => {
-        const state = this.brands.get(id);
-        return state === undefined ? [] : [state];
-      }),
+      ids
+        .flatMap((id) => {
+          const state = this.brands.get(id);
+          return state === undefined ? [] : [state];
+        })
+        .reverse(),
     );
   }
 

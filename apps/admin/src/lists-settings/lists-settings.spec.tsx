@@ -108,7 +108,7 @@ describe('ListsSettingsPanel', () => {
         },
       });
       save();
-      await expectToast('Sent for review as SR-9', 'info');
+      await expectToast('Sent for review (SR-9)', 'info');
       expect(call).toHaveBeenCalledWith(
         'PUT',
         'settings/admin/market-settings',

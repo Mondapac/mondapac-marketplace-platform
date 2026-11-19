@@ -6,6 +6,7 @@ import { adminOfCall, invalid, isRecord } from '../seller-customers-flow';
 import {
   ATTRIBUTION_MAX_SELECTED,
   attributionSelectorOf,
+  zonedSelectorOf,
   type InvitationDependencies,
   type InvitationFailure,
 } from '../seller-invitations-flow';
@@ -50,20 +51,21 @@ export class AdminSellerAttributionsIds extends UseCase<
     for (const key of Object.keys(input)) {
       if (key !== 'view' && key !== 'q' && key !== 'filters') return invalid(key, 'unknown');
     }
-    const selector = attributionSelectorOf(input);
-    if (!selector.ok) return selector;
+    const parsed = attributionSelectorOf(input);
+    if (!parsed.ok) return parsed;
     const { deps } = this;
+    const selector = await zonedSelectorOf(deps, context, parsed.value);
     const { market } = context;
     const read = await deps.unitOfWork.run<AttributionIdsOutput, AttributionIdsFailure>(
       market,
       async () => {
         const ids = await deps.attributions.accountIds(
           market,
-          selector.value,
+          selector,
           ATTRIBUTION_MAX_SELECTED + 1,
         );
         if (ids.length > ATTRIBUTION_MAX_SELECTED) {
-          const total = await deps.attributions.count(market, selector.value);
+          const total = await deps.attributions.count(market, selector);
           return err({ code: 'batch.too-large', max: ATTRIBUTION_MAX_SELECTED, total });
         }
         return ok({ ids, total: ids.length });

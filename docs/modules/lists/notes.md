@@ -41,6 +41,25 @@ closed (`v: 1`; date filters are relative presets, never dates; search text is n
 - `admin.ordering.documents` (the Invoices page): tab `order-confirmation|credit-note`; filter
   `issued`; sort `issued|amount`.
 
+## Certification and sellers lists (phase 3)
+
+`certification` and `sellers` register four admin lists; no migration (the `list_key` CHECK is a
+pattern). Each `viewKey` is the key its list route checks; each `shareKey` is the module's new
+unprotected `<module>.saved-filter.share` (no default role lists it yet, like
+`ordering.saved-filter.share`). The payload is one closed shape, `closedListPayloadParser`
+(`contracts/closed-list-payload.ts`): `{v: 1, view, filters?, sort?, direction?}`; date filters
+are the Sales lists' relative presets; search text, the seller link and paging are never saved.
+
+- `admin.certification.issuer-requests` (36; `certification.issuer.view`): view `all`; filters
+  `type` (a type code), `submitted` (preset); sort `submitted|type`.
+- `admin.certification.review-queue` (17; `certification.seller-certificate.view`): view
+  `all|initial|resubmission|renewal`; filters `type`, `submitted`; sort `queue|submitted|type`.
+- `admin.sellers.health-queue` (16; `sellers.seller.view`): view `all` or a health measure;
+  filters `minScore`, `maxScore` (digits 0 to 100, min not above max); sort `score|name|day`.
+- `admin.sellers.list` (15; `sellers.seller.view`): view one of the seven tabs; filters `kind`
+  (Awaiting review only), `outsideArea: true` (Incomplete only), `areaCode` (not on a state tab);
+  sort `queue|name`, and a state tab takes only `queue`, `desc` (as the list route).
+
 ## System requests queue (system-requests)
 
 `system-requests` registers `admin.system-requests.requests`, guarded by the queue's own view key
@@ -69,7 +88,16 @@ true`), `sort`, `direction`. Search text and the deep-link subject are never sav
 - An acting-as (Login as Seller) session is refused with `access.acting-as-refused` (403) in every
   use case; admin and seller lists never answer each other's routes.
 
+## B0-2 (seller)
+
+- Routes: `GET/PUT/DELETE /lists/seller/column-preferences`, same bodies as the admin ones. The
+  handler functions (`handleColumnPreference*`) are shared; the seller classes declare their own
+  access (`own-resources`, open while the store is onboarding). A store-scoped list keeps one choice
+  per member and store, an account-scoped list one per account (`seller_id` null).
+- `seller.catalog.products` offers `code, updated, created, offers, type` and
+  `seller.ordering.orders` offers `paid, delivery, items, total`; `panel-columns.spec.ts` pins both to
+  the seller panel's `OPTIONAL_COLUMNS`.
+
 ## Not here yet
 
-- Seller column preferences (the seller panels' column vocabulary) and the switch of the panels to
-  the generic routes.
+- The switch of the panels to the generic `/lists/*` routes.

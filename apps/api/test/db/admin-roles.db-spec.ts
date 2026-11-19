@@ -233,6 +233,7 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
     const role = await app.get(CreatePlatformRole).execute(as(one), {
       name: `People reviewers ${randomUUID().slice(0, 8)}`,
       permissionKeys: ['system-requests.request.view', 'system-requests.people.review'],
+      note: 'People reviewers',
     });
     if (!role.ok) throw new Error(JSON.stringify(role.error));
     const reviewer = await admin('viewer');
@@ -523,9 +524,12 @@ describe.each(TEST_MARKETS)('admin roles and statuses in market %s (database, HF
     const root = await admin('platform-administrator');
     const email = `Invitee.${randomUUID()}@Admin.example`;
 
-    const issued = await app
-      .get(InviteAdmin)
-      .execute(as(root), { email, roleId: await roleId('viewer'), origin: '203.0.113.9' });
+    const issued = await app.get(InviteAdmin).execute(as(root), {
+      email,
+      roleId: await roleId('viewer'),
+      origin: '203.0.113.9',
+      note: 'Joins the team',
+    });
     if (!issued.ok) throw new Error(issued.error.code);
     const invitationId = issued.value.invitationId;
     const row = async () =>

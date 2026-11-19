@@ -11,6 +11,7 @@ import {
   ATTRIBUTION_MAX_SELECTED,
   attributionRowView,
   attributionSelectorOf,
+  zonedSelectorOf,
   type AttributionRowView,
   type InvitationDependencies,
 } from '../seller-invitations-flow';
@@ -111,9 +112,10 @@ export class AdminSellerAttributionsExport extends UseCase<
       }
       named = [...ids];
     }
-    const selector = attributionSelectorOf(input);
-    if (!selector.ok) return selector;
+    const parsed = attributionSelectorOf(input);
+    if (!parsed.ok) return parsed;
     const { deps } = this;
+    const selector = await zonedSelectorOf(deps, context, parsed.value);
     const { market } = context;
 
     const picked = await deps.unitOfWork.run<readonly Id<'Account'>[], AttributionsExportFailure>(
@@ -137,13 +139,9 @@ export class AdminSellerAttributionsExport extends UseCase<
         if (named !== null) {
           ids = (await deps.attributions.findListed(market, named)).map((row) => row.accountId);
         } else {
-          ids = await deps.attributions.accountIds(
-            market,
-            selector.value,
-            ATTRIBUTION_MAX_SELECTED + 1,
-          );
+          ids = await deps.attributions.accountIds(market, selector, ATTRIBUTION_MAX_SELECTED + 1);
           if (ids.length > ATTRIBUTION_MAX_SELECTED) {
-            const total = await deps.attributions.count(market, selector.value);
+            const total = await deps.attributions.count(market, selector);
             return err({ code: 'batch.too-large', max: ATTRIBUTION_MAX_SELECTED, total });
           }
         }
