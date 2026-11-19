@@ -99,6 +99,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // its export as a file (the chosen ids or the list's own query). The decisions are POSTs below.
     'pricing/admin/price-holds/list',
     'pricing/admin/price-holds/export',
+    // The sellers that need a look as a super list (sellers; query: `view`, `metric`, `q`,
+    // `sellerId`, `minScore`, `maxScore`, `sort`, `direction`, `paging`, `page`, `pageSize`) and its
+    // export as a file (the chosen ids or the list's own query).
+    'sellers/admin/health-queue/list',
+    'sellers/admin/health-queue/export',
     // The open issuer requests as a super list (certification; query: `view`, `type`, `q`,
     // `sellerId`, `from`, `to`, `sort`, `direction`, `paging`, `page`, `pageSize`) and its export
     // as a file (the chosen ids or the list's own query). One request is read by its page server.
@@ -1266,6 +1271,33 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
+  // The view, filters, sort and page mode of the "Needs a look" super list (the API validates).
+  'sellers/admin/health-queue/list': [
+    'view',
+    'metric',
+    'q',
+    'sellerId',
+    'minScore',
+    'maxScore',
+    'sort',
+    'direction',
+    'paging',
+    'page',
+    'pageSize',
+  ],
+  'sellers/admin/health-queue/export': [
+    'format',
+    'columns',
+    'ids',
+    'view',
+    'metric',
+    'q',
+    'sellerId',
+    'minScore',
+    'maxScore',
+    'sort',
+    'direction',
+  ],
   // The view, filters, sort and page mode of the issuer-request super list (the API validates).
   'certification/admin/issuer-requests/list': [
     'view',
@@ -1984,6 +2016,33 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^(queue|submitted|type)$/,
     direction: /^(asc|desc)$/,
   },
+  'sellers/admin/health-queue/list': {
+    view: /^(all|seller-cancellations|late-ready|customer-rating|lost-disputes|reports)$/,
+    metric: /^(seller-cancellations|late-ready|customer-rating|lost-disputes|reports)$/,
+    // A store name or slug prefix: 2 to 100 characters.
+    q: /^[\s\S]{2,100}$/,
+    sellerId: UUID,
+    minScore: /^(100|[1-9]?[0-9])$/,
+    maxScore: /^(100|[1-9]?[0-9])$/,
+    sort: /^(score|name|day)$/,
+    direction: /^(asc|desc)$/,
+    paging: /^(pages|prev-next)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'sellers/admin/health-queue/export': {
+    format: /^(csv|xlsx)$/,
+    columns: /^(seller-id|day)(,(seller-id|day)){0,1}$/,
+    ids: UUID_LIST_200,
+    view: /^(all|seller-cancellations|late-ready|customer-rating|lost-disputes|reports)$/,
+    metric: /^(seller-cancellations|late-ready|customer-rating|lost-disputes|reports)$/,
+    q: /^[\s\S]{2,100}$/,
+    sellerId: UUID,
+    minScore: /^(100|[1-9]?[0-9])$/,
+    maxScore: /^(100|[1-9]?[0-9])$/,
+    sort: /^(score|name|day)$/,
+    direction: /^(asc|desc)$/,
+  },
   'certification/admin/issuer-requests/list': {
     view: /^all$/,
     type: /^[a-z0-9][a-z0-9_-]{0,63}$/,
@@ -2398,6 +2457,7 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'commission-payouts/admin/disputes/export:ids': 7400,
   'system-requests/admin/requests/export:ids': 3700,
   'pricing/admin/price-holds/export:ids': 7400,
+  'sellers/admin/health-queue/export:ids': 7400,
   'certification/admin/issuer-requests/export:ids': 7400,
   'certification/admin/seller-certificates/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
