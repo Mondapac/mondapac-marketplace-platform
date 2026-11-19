@@ -2,7 +2,10 @@ import type { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, IdGenerator, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
-import type { SystemRequestRecorder } from '../../../../platform/change-review/change-review';
+import type {
+  SystemActionProposer,
+  SystemRequestRecorder,
+} from '../../../../platform/change-review/change-review';
 import type { SealedPermissionCatalogue } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
@@ -15,8 +18,12 @@ import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { RoleAssignmentRepository, RoleRepository } from '../ports/seller-team.repository';
 import {
+  NOTHING_BEFORE,
   openPeopleReview,
+  PLATFORM_ROLE_CREATION_SUBJECT_KIND,
+  PLATFORM_ROLE_DELETION_SUBJECT_KIND,
   PLATFORM_ROLE_SUBJECT_KIND,
+  proposePeopleAction,
   type ReviewRef,
 } from '../people/people-review';
 import { isActingAsSession } from '../sellers/access-decision-reads';
@@ -62,12 +69,6 @@ export interface RoleEditorDependencies {
 export interface CreateRoleInput {
   readonly name: string;
   readonly permissionKeys: readonly string[];
-}
-
-export interface EditRoleInput extends CreateRoleInput {
-  readonly roleId: Id<'Role'>;
-  /** The `version` the editor read (required): a different stored version answers `conflict.stale`. */
-  readonly expectedVersion: number;
   /**
    * The admin's note for the reviewer (Admin Inbox › System requests, area people): read only by
    * the platform editor, and needed only where the Market reviews the area.
@@ -75,10 +76,18 @@ export interface EditRoleInput extends CreateRoleInput {
   readonly note?: unknown;
 }
 
+export interface EditRoleInput extends CreateRoleInput {
+  readonly roleId: Id<'Role'>;
+  /** The `version` the editor read (required): a different stored version answers `conflict.stale`. */
+  readonly expectedVersion: number;
+}
+
 export interface DeleteRoleInput {
   readonly roleId: Id<'Role'>;
   /** The `version` the editor read (required): a different stored version answers `conflict.stale`. */
   readonly expectedVersion: number;
+  /** As {@link CreateRoleInput.note}: the platform delete waits for approval where reviewed. */
+  readonly note?: unknown;
 }
 
 /** A missing or non-positive-integer version is a validation failure, not a stale write. */
@@ -98,19 +107,34 @@ export type RoleEditorFailure =
   | { readonly code: 'role.not-grantable' }
   | { readonly code: 'role.in-use' }
   | { readonly code: 'role.name-taken' }
-  | { readonly code: 'role.limit' };
+  | { readonly code: 'role.limit' }
+  /** The platform delete: the role already has a delete waiting for approval (SR-<pendingNumber>). */
+  | { readonly code: 'system-requests.already-pending'; readonly pendingNumber: number };
 
 export interface RoleWritten {
   readonly code: 'role.created' | 'role.updated' | 'role.unchanged' | 'role.deleted';
   readonly roleId: Id<'Role'>;
   /**
-   * Only on the platform editor's edit: the review it opened (Admin Inbox › System requests, area
-   * people), or null when the area is off or nothing changed.
+   * Only on the platform editor: the review a create or an edit opened, or the request a delete
+   * waits on (Admin Inbox › System requests, area people); null when the area is off or nothing
+   * changed.
    */
   readonly request?: ReviewRef | null;
 }
 
 type Outcome = Result<RoleWritten, RoleEditorFailure>;
+
+/**
+ * The platform delete waits for another admin's approval (Admin Inbox › System requests): nothing
+ * was deleted yet; `request` is the request it waits on.
+ */
+export interface RoleDeleteRequested {
+  readonly code: 'role.delete-requested';
+  readonly roleId: Id<'Role'>;
+  readonly request: ReviewRef;
+}
+
+type DeleteOutcome = Result<RoleWritten | RoleDeleteRequested, RoleEditorFailure>;
 
 /** The actor as a grant subject, or null: only the scope's population, and never acting-as. */
 function subjectOf(context: CallContext, editor: RoleEditorScope): GrantSubject | null {
@@ -163,13 +187,19 @@ function log(
   });
 }
 
-/** Create a custom role (`.role.create`). */
+/**
+ * Create a custom role (`.role.create`). With `review` (the platform editor only), the creation
+ * opens its review in Admin Inbox › System requests in the same unit (owner decision of 18 Nov
+ * 2026: a create goes live at once and is reviewed after), with the admin's `note`; a refusal (a
+ * missing note) rolls the creation back.
+ */
 export async function createCustomRole(
   deps: RoleEditorDependencies,
   editor: RoleEditorScope,
   logger: Logger,
   context: CallContext,
   input: CreateRoleInput,
+  review?: SystemRequestRecorder,
 ): Promise<Outcome> {
   const { market } = context;
   const self = subjectOf(context, editor);
@@ -227,7 +257,16 @@ export async function createCustomRole(
             after: { scope: editor.scope, sellerId: owner, addedKeys: [...keys.value] },
           }),
         );
-        return ok({ code: 'role.created', roleId: id });
+        if (review === undefined) return ok({ code: 'role.created', roleId: id });
+        const opened = await openPeopleReview(review, context, {
+          subjectKind: PLATFORM_ROLE_CREATION_SUBJECT_KIND,
+          subjectRef: id,
+          before: NOTHING_BEFORE,
+          after: { exists: true, name: name.value, permissionKeys: [...keys.value] },
+          note: input.note,
+        });
+        if (!opened.ok) return err(opened.error);
+        return ok({ code: 'role.created', roleId: id, request: opened.value });
       },
       { isolation: 'serializable' },
     ),
@@ -365,7 +404,7 @@ export async function editCustomRole(
   );
 }
 
-/** Delete a custom role nobody holds (`.role.delete`). */
+/** Delete a custom role nobody holds (`.role.delete`), at once (the seller editor). */
 export async function deleteCustomRole(
   deps: RoleEditorDependencies,
   editor: RoleEditorScope,
@@ -373,9 +412,29 @@ export async function deleteCustomRole(
   context: CallContext,
   input: DeleteRoleInput,
 ): Promise<Outcome> {
+  // Without a proposer nothing waits for approval: the answer is always a RoleWritten.
+  return (await deleteOrProposeCustomRole(deps, editor, logger, context, input)) as Outcome;
+}
+
+/**
+ * Delete a custom role nobody holds (`.role.delete`). With `proposer` (the platform editor only),
+ * where the Market reviews area people the delete waits for another admin's approval (owner
+ * decision of 18 Nov 2026): after every check of the delete, the unit files the proposal with the
+ * role as it stands and the admin's `note`, and writes nothing else (`role.delete-requested`);
+ * the approval runs the deletion applier (people-creations.ts). Where the area is off, the role is
+ * deleted at once as before.
+ */
+export async function deleteOrProposeCustomRole(
+  deps: RoleEditorDependencies,
+  editor: RoleEditorScope,
+  logger: Logger,
+  context: CallContext,
+  input: DeleteRoleInput,
+  proposer?: SystemActionProposer,
+): Promise<DeleteOutcome> {
   const { market } = context;
   const self = subjectOf(context, editor);
-  const finish = (result: Outcome): Outcome => {
+  const finish = (result: DeleteOutcome): DeleteOutcome => {
     log(logger, `identity.delete-${editor.scope}-role`, context, {
       outcome: result.ok ? result.value.code : result.error.code,
     });
@@ -391,7 +450,7 @@ export async function deleteCustomRole(
       context,
       deps.unitOfWork.run(
         market,
-        async (): Promise<Outcome> => {
+        async (): Promise<DeleteOutcome> => {
           const acting = await readActingGrants(deps, market, self, [], [editor.deleteKey]);
           if (acting === null) return err({ code: 'access.denied' });
           const role = await deps.roles.findById(market, input.roleId);
@@ -412,6 +471,23 @@ export async function deleteCustomRole(
             }
             return err({ code: deletable.error.code });
           }
+          if (proposer !== undefined) {
+            const proposed = await proposePeopleAction(proposer, context, {
+              subjectKind: PLATFORM_ROLE_DELETION_SUBJECT_KIND,
+              subjectRef: role.state.id,
+              before: deletionBefore(role),
+              after: { action: 'delete' },
+              note: input.note,
+            });
+            if (!proposed.ok) return err(proposed.error);
+            if (proposed.value !== null) {
+              return ok({
+                code: 'role.delete-requested',
+                roleId: role.state.id,
+                request: proposed.value,
+              });
+            }
+          }
           const removed = role.remove({ isDeclared, now: deps.clock.now() });
           await deps.roles.deleteCustom(market, removed);
           await deps.outbox.append(context, removed.pendingEvents);
@@ -425,10 +501,30 @@ export async function deleteCustomRole(
               },
             }),
           );
-          return ok({ code: 'role.deleted', roleId: role.state.id });
+          return ok({
+            code: 'role.deleted',
+            roleId: role.state.id,
+            ...(proposer === undefined ? {} : { request: null }),
+          });
         },
         { isolation: 'serializable' },
       ),
     ),
   );
+}
+
+/**
+ * The values before of a platform role's delete proposal: the role as it stands when asked. The
+ * applier deletes only a role that still holds exactly these (its name, keys and version).
+ */
+export function deletionBefore(role: Role): {
+  readonly name: string | null;
+  readonly permissionKeys: string[];
+  readonly version: number;
+} {
+  return {
+    name: role.state.name ?? null,
+    permissionKeys: [...role.state.permissionKeys],
+    version: role.state.version,
+  };
 }

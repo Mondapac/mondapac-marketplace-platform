@@ -17,9 +17,15 @@ import type {
  * is off unless `review(area)` switches it on; an opening in a reviewed area checks the note as
  * the real recorder does (1 to 500 characters) and keeps the change in `opened`. `failNext`
  * makes the next opening answer `access.denied`, to show the caller rolls its own change back.
+ *
+ * It is also the proposer of actions that wait for approval: a proposal in a reviewed area checks
+ * the note the same way, is kept in `proposed`, and a second one for the same subject (until
+ * `settle` clears it) answers `system-requests.already-pending`, as the real one does.
  */
-export class RecordingReview implements SystemRequestRecorder {
+export class RecordingReview implements SystemRequestRecorder, SystemActionProposer {
   readonly opened: AppliedChange[] = [];
+  readonly proposed: ProposedChange[] = [];
+  private readonly waiting = new Map<string, number>();
   readonly asked: PolicyArea[] = [];
   failNext = false;
   private readonly reviewed = new Map<PolicyArea, Risk>();
@@ -34,6 +40,8 @@ export class RecordingReview implements SystemRequestRecorder {
   reset(): void {
     this.reviewed.clear();
     this.opened.length = 0;
+    this.proposed.length = 0;
+    this.waiting.clear();
     this.asked.length = 0;
     this.failNext = false;
     this.counter = 0;
@@ -51,6 +59,43 @@ export class RecordingReview implements SystemRequestRecorder {
     this.asked.push(area);
     const risk = this.reviewed.get(area);
     return Promise.resolve({ enabled: risk !== undefined, risk: risk ?? 'low' });
+  }
+
+  /** The proposal of this subject is decided: another may be filed. */
+  settle(subjectKind: string, subjectRef: string): void {
+    this.waiting.delete(`${subjectKind}/${subjectRef}`);
+  }
+
+  proposeChange(
+    _context: CallContext,
+    change: ProposedChange,
+  ): Promise<Result<RecordedRequest | null, ProposeFailure>> {
+    const risk = this.reviewed.get(change.area);
+    if (risk === undefined) return Promise.resolve(ok(null));
+    const note = typeof change.note === 'string' ? change.note.trim() : '';
+    if (note.length === 0 || note.length > 500) {
+      return Promise.resolve(
+        err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] }),
+      );
+    }
+    const subject = `${change.subjectKind}/${change.subjectRef}`;
+    const pending = this.waiting.get(subject);
+    if (pending !== undefined) {
+      return Promise.resolve(
+        err({ code: 'system-requests.already-pending', pendingNumber: pending }),
+      );
+    }
+    this.proposed.push(change);
+    this.counter += 1;
+    this.waiting.set(subject, this.counter);
+    return Promise.resolve(
+      ok({
+        id: requestId(this.counter),
+        number: this.counter,
+        risk: change.risk ?? risk,
+        reviewDueAt: Temporal.Instant.from('2026-11-08T10:00:00Z'),
+      }),
+    );
   }
 
   openReview(

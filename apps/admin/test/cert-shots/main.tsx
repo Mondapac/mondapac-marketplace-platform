@@ -37,7 +37,7 @@ const product = {
   lastChangedAt: '2026-11-05T01:00:00.000Z',
   createdAt: '2026-11-05T01:00:00.000Z',
   form: {
-    taxCategoryCodes: ['gst'],
+    taxCategories: [{ code: 'gst', labelKey: 'catalog.tax.gst' }],
     fields: [
       axis('grain', 'Grain', [
         ['white', 'White'],

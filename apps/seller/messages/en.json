@@ -219,6 +219,7 @@
         "refund-commission": "Commission returned",
         "dispute-debit": "Dispute debit",
         "dispute-reinstate": "Dispute reinstated",
+        "cashback-seller": "Cashback to exclusive customers",
         "unknown": "Other"
       }
     },
@@ -1220,7 +1221,7 @@
         },
         "search": {
           "label": "Search offers",
-          "placeholder": "Search by SKU, product code or name"
+          "placeholder": "Search SKU, code or name"
         },
         "filter": {
           "button": "Filter",
@@ -3142,7 +3143,8 @@
       "balance": "Balance",
       "refunds": "Refunds",
       "refunded-commission": "Commission returned",
-      "disputes": "Disputes"
+      "disputes": "Disputes",
+      "seller-cashback": "Cashback to exclusive customers"
     },
     "col": {
       "when": "Date",
@@ -3158,7 +3160,8 @@
       "refund-shipping": "Refund of shipping",
       "refund-commission": "Commission returned",
       "dispute-debit": "Dispute: amount recovered",
-      "dispute-reinstate": "Dispute: amount returned"
+      "dispute-reinstate": "Dispute: amount returned",
+      "cashback-seller": "Cashback to exclusive customers"
     },
     "more": "Load more",
     "more-failed": "More rows could not be loaded. Try again.",

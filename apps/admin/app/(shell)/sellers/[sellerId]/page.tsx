@@ -271,6 +271,17 @@ export default async function SellerReviewPage({
     return shell(
       <div className="flex flex-col gap-6">
         <ReviewView review={result.body} decide={decide} />
+        {permissionKeys.includes('customers.customers.view') ? (
+          // The seller's Customers tab (customers management phase 3): its own page.
+          <nav aria-label={t('customers.seller-tab.nav')}>
+            <a
+              href={`/sellers/${sellerId}/customers`}
+              className="font-medium text-link underline focus-visible:outline-2 focus-visible:outline-focus"
+            >
+              {t('customers.seller-tab.link')}
+            </a>
+          </nav>
+        ) : null}
         {health === null ? null : (
           <SellerHealthCard
             sellerId={sellerId}

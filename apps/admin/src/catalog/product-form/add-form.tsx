@@ -24,7 +24,6 @@ function blankProduct(options: ProductOptions): ProductView {
     lastChangedAt: '',
     createdAt: '',
     form: {
-      taxCategoryCodes: options.taxCategoryCodes,
       taxCategories: options.taxCategories,
       fields: [],
       categories: options.categories,

@@ -292,7 +292,16 @@ export class PrismaInvitationRepository implements InvitationRepository {
         marketId: market.marketId,
         OR: [
           { state: 'pending', expiresAt: { lt: toDate(now) } },
-          { state: { in: ['accepted', 'revoked'] }, decidedAt: { lt: toDate(decidedBefore) } },
+          { state: 'revoked', decidedAt: { lt: toDate(decidedBefore) } },
+          // An accepted admin invitation is kept (Hassan M1 on PR #1058): it is the only link from
+          // an invitation's System request to the account it created, so a reject can still
+          // disable that admin. It holds ids only (the address went with the acceptance), and
+          // there is one per admin ever invited.
+          {
+            state: 'accepted',
+            kind: { not: 'admin' },
+            decidedAt: { lt: toDate(decidedBefore) },
+          },
           ...undispatched,
         ],
       },
