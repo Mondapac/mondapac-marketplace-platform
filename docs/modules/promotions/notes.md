@@ -429,6 +429,34 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   ones out of a run (Hassan L-4). A lost chargeback fails the credit `order-disputed`, and none is
   reserved for a seller order already lost; a currency that no longer matches fails it
   `currency-changed`.
+- A refund claws back unused cashback (customers phase 4c-2): `promotions.claw-back-on-refund`
+  (system) listens to `refund-succeeded.v1`. For a GRANTED cashback of that order it works out the
+  share the refund takes (the cashback the remaining goods would still earn is kept), records it in
+  `promotions_credit_clawbacks` (one row per credit and refund, and per credit and `seq`: two refunds
+  racing on one credit cannot both take the same share), asks the wallet to take it back from that
+  grant's unused lot (`wallet.claw-back-credit`, so spent credit is never taken), and for a
+  seller-funded cashback returns what was taken to the seller's ledger
+  (`refund-cashback-seller`). A row is settled DONE once, with what was actually taken. A credit
+  still waiting is lowered by the job instead; one whose wait ended but is not yet granted makes the
+  refund retry. A credit the grant job throws on is put back an hour (Hassan L-7).
+- What a cashback keeps is pro rata to what it was earned on (Hassan H-2): `reserved_minor` (the
+  amount reserved at delivery) and `goods_minor` (the goods it was earned on) are stored with the
+  cashback and never change (no UPDATE grant, and the guard refuses it for any role; migration
+  `20261117150003_promotions_credit_earned_basis`). The grant job and the clawback keep
+  `ceil(reserved × goods kept / goods)` and never read the promotion's rate or the Market's limit
+  again, so a seller who lowers its rate cannot cut or take back what was earned. A cashback with
+  no basis (made before) is granted as reserved and never clawed back. The clawback counts only
+  refunds that succeeded (`succeededRefundedGoods` from ordering, Hassan L-9); the grant job still
+  counts pending ones too (conservative: a pending refund that later fails leaves the customer
+  that part short, never the platform out of pocket).
+- Known limits, accepted for now: credit held by an open checkout when the clawback runs is not
+  taken later (Hassan L-10, small; the seller has paid it); a lasting seller-ledger failure after
+  the wallet took the credit leaves the row PENDING and the event dead-lettered with an alert, for
+  an operator to finish (L-11); a cashback PENDING with no wait that keeps failing stays at the
+  front of the grant batch (L-13; availability only). The anchor's `disputeLost` reads the
+  seller's dispute decisions and filters by seller order (L-12, fails closed). Migration
+  `20261117150002_promotions_credit_clawbacks`: insert-only identity, PENDING to DONE only, no
+  delete; `down.sql` refuses while rows exist.
 - Migration `20261117100001_promotions_seller_cashback`: `promotions_type_funding_check` makes a
   cashback the seller's money exactly with the segment; `promotions_phase3_check` lets a cashback
   carry no segment or this one. `down.sql` refuses while such rows exist.

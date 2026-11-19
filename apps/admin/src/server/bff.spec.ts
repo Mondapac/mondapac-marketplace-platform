@@ -2901,6 +2901,33 @@ describe('relay of the wallet and step-up routes', () => {
     );
   });
 
+  it('passes the issuer-request super list query and its export in shape, dropping the rest', async () => {
+    const list = await run(
+      'GET',
+      `certification/admin/issuer-requests/list?view=all&type=halal&q=${id}&sellerId=${id}&sort=type&direction=desc&paging=prev-next&page=2&pageSize=50&x=1`,
+      readHeaders,
+    );
+    expect(list.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/certification/admin/issuer-requests/list?view=all&type=halal&q=${id}&sellerId=${id}&sort=type&direction=desc&paging=prev-next&page=2&pageSize=50`,
+    );
+    const dropped = await run(
+      'GET',
+      'certification/admin/issuer-requests/list?view=open&type=Bad%20Code&q=abc&pageSize=500',
+      readHeaders,
+    );
+    expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/certification/admin/issuer-requests/list',
+    );
+    const file = await run(
+      'GET',
+      `certification/admin/issuer-requests/export?format=xlsx&columns=request-id,documents&ids=${id}&page=2`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/certification/admin/issuer-requests/export?format=xlsx&columns=request-id%2Cdocuments&ids=${id}`,
+    );
+  });
+
   it.each([
     ['GET', 'commission-payouts/admin/payouts'],
     ['GET', `commission-payouts/admin/payouts/${id}`],

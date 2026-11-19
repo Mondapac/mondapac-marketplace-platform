@@ -56,7 +56,7 @@ import {
 } from './side-cards.tsx';
 import { hasProblems, problemsOfRows } from './variant-fields.ts';
 import { axesOf } from './variant-grid.ts';
-import { useTaxCategoryOptions } from './tax-category-options.ts';
+import { useTaxCategoryOptions } from '../../shared/tax-category-options.ts';
 import { VariantsSection } from './variants-section.tsx';
 import {
   BASE,

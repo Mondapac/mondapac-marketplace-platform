@@ -5,7 +5,14 @@ export type InternalAccountKind =
   'promo_expense' | 'refund_clearing' | 'order_clearing' | 'holds' | 'breakage_income';
 
 export type JournalKind =
-  'grant-promo' | 'grant-refund' | 'hold' | 'capture' | 'release' | 'expire' | 'reverse';
+  | 'grant-promo'
+  | 'grant-refund'
+  | 'hold'
+  | 'capture'
+  | 'release'
+  | 'expire'
+  | 'clawback'
+  | 'reverse';
 
 export interface WalletAccountRecord {
   readonly id: Id<'WalletAccount'>;
@@ -31,7 +38,7 @@ export interface NewJournal {
   readonly kind: JournalKind;
   /** The hold of a hold, capture or release journal; null otherwise. */
   readonly holdId: Id<'WalletHold'> | null;
-  /** The lot an `expire` journal expires; null for every other kind. */
+  /** The lot an `expire` or `clawback` journal takes credit from; null for every other kind. */
   readonly lotId: Id<'WalletLot'> | null;
   readonly idempotencyKey: string;
   readonly fingerprint: string;
@@ -170,6 +177,14 @@ export interface WalletRepository {
     remainingMinor: bigint,
   ): Promise<void>;
   findLot(market: MarketContext, lotId: Id<'WalletLot'>): Promise<Lot | null>;
+  /** The lot a grant journal made, with its wallet; null when the journal made none. */
+  findLotOfJournal(
+    market: MarketContext,
+    journalId: Id<'WalletJournal'>,
+  ): Promise<{
+    readonly lotId: Id<'WalletLot'>;
+    readonly walletAccountId: Id<'WalletAccount'>;
+  } | null>;
 
   findHold(
     market: MarketContext,
