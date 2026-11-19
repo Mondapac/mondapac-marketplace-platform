@@ -477,7 +477,8 @@ export function SellersList({
   // What a saved filter holds, in words (the save dialog shows it).
   const summary = [
     t(`tab.${query.view}`),
-    ...chips.map((chip) => chip.label),
+    // The search text is never saved, so its chip is not in the summary.
+    ...chips.filter((chip) => chip.key !== 'search').map((chip) => chip.label),
     ...(query.sort !== DEFAULT_QUERY.sort ||
     query.direction !== defaultDirection(query.sort, query.view)
       ? [ts('saved.summary-sort', { field: `${t(`sort.field.${query.sort}`)}, ${sortOrder}` })]

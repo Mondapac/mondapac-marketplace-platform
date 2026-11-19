@@ -750,6 +750,40 @@ describe('Sellers list: saved filter tabs', () => {
     expect(await screen.findByRole('button', { name: 'Brisbane reviews' })).toBeTruthy();
   });
 
+  it('clears the search when a saved tab opens, and leaves it out of the save summary', async () => {
+    serve(() => pageOf([row(1)]), savedWith([item('awaiting-review')], true));
+    mount();
+    await screen.findByText('Store 1');
+    fireEvent.click(screen.getByRole('button', { name: /^Awaiting review/ }));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'abc' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText(/abc/)).toBeNull();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Brisbane reviews' }));
+    await waitFor(() => expect(screen.getByRole<HTMLInputElement>('searchbox').value).toBe(''));
+  });
+
+  it('falls back to the built-in view when the active saved tab is deleted', async () => {
+    let items: unknown[] = [item('awaiting-review')];
+    serve(
+      () => pageOf([row(1)]),
+      (method, path) =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          body: path.startsWith(SAVED) && method === 'GET' ? { items, canShare: false } : {},
+        } as never),
+    );
+    mount();
+    await screen.findByText('Store 1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Brisbane reviews' }));
+    await waitFor(() => expect(lastBody()).toMatchObject({ view: 'awaiting-review' }));
+    items = [];
+    fireEvent.click(screen.getByRole('button', { name: 'Manage filters' }));
+    await screen.findByRole('dialog');
+  });
+
   it('works in a synthetic market too', async () => {
     serve(() => pageOf([row(1)]), savedWith([item('awaiting-review')]));
     render(
