@@ -5,6 +5,7 @@ import type { RecordSellerOrderDelivered } from '../application/use-cases/record
 import type { RecordRefund } from '../application/use-cases/record-refund.use-case';
 import type { RecordSellerOrderPaid } from '../application/use-cases/record-seller-order-paid.use-case';
 import type { RecordSellerCashback } from '../application/use-cases/record-seller-cashback.use-case';
+import type { RecordSellerCashbackReturn } from '../application/use-cases/record-seller-cashback-return.use-case';
 import type { SellerOrderPayoutAnchorQuery } from '../application/use-cases/seller-order-payout-anchor.use-case';
 import type { SellerLostDisputes } from '../application/use-cases/seller-lost-disputes.use-case';
 import type {
@@ -13,6 +14,7 @@ import type {
   PaidSellerOrder,
   RefundedSellerOrder,
   SellerCashback,
+  SellerCashbackReturn,
   SellerOrderDelivered,
 } from '../contracts';
 
@@ -27,7 +29,12 @@ export class CommissionPayoutsFacadeImplementation implements CommissionPayoutsF
     private readonly ownCommission: OwnCommissionOn,
     private readonly recordCashback: RecordSellerCashback,
     private readonly payoutAnchor: SellerOrderPayoutAnchorQuery,
+    private readonly recordCashbackReturn: RecordSellerCashbackReturn,
   ) {}
+
+  recordSellerCashbackReturn(context: CallContext, returned: SellerCashbackReturn) {
+    return this.recordCashbackReturn.execute(context, returned);
+  }
 
   sellerOrderPayoutAnchor(context: CallContext, sellerOrderId: Id<'SellerOrder'>) {
     return this.payoutAnchor.execute(context, sellerOrderId);

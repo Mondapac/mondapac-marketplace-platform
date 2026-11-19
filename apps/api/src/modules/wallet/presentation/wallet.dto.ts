@@ -25,7 +25,16 @@ export class MyWalletBody {
 class HistoryEntryBody {
   @ApiProperty({ format: 'uuid' }) journalId!: string;
   @ApiProperty({
-    enum: ['grant-promo', 'grant-refund', 'hold', 'capture', 'release', 'expire', 'reverse'],
+    enum: [
+      'grant-promo',
+      'grant-refund',
+      'hold',
+      'capture',
+      'release',
+      'expire',
+      'clawback',
+      'reverse',
+    ],
   })
   kind!: string;
   @ApiProperty({ description: 'Minor units, signed: credit positive, spend negative.' })
