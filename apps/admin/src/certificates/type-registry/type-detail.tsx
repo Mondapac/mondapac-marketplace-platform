@@ -28,12 +28,15 @@ export function TypeDetailView({
   type,
   name,
   canEdit,
+  canViewPolicy = false,
   csrfToken,
   done = null,
 }: {
   readonly type: TypeDetail;
   readonly name: string;
   readonly canEdit: boolean;
+  /** The admin may read the claim basis policy of this type. */
+  readonly canViewPolicy?: boolean;
   readonly csrfToken: string;
   /** The notice after a change (`?done=`). */
   readonly done?: string | null;
@@ -66,6 +69,14 @@ export function TypeDetailView({
               href={`/certificates/types/${type.typeId}/edit`}
             >
               {t('revise')}
+            </a>
+          ) : null}
+          {canViewPolicy ? (
+            <a
+              className="inline-flex items-center font-medium text-link underline"
+              href={`/certificates/types/${type.typeId}/policy`}
+            >
+              {t('policy')}
             </a>
           ) : null}
           {canEdit ? (

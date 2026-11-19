@@ -46,8 +46,10 @@ mode from the design; no separate brief.
 | marketplace   | off, low   | `system-requests.marketplace.review`   |
 | content       | off, low   | `system-requests.content.review`       |
 
-The queue needs `system-requests.request.view`; the policy page needs `policy.view` and
-`policy.manage`. All keys are protected.
+The queue needs `system-requests.request.view` (its export too); the policy page needs
+`policy.view` and `policy.manage`. Sharing a saved filter of the queue with every admin, or
+managing one another admin shared, needs `system-requests.saved-filter.share`. All keys are
+protected.
 
 ## For a module that adds a reviewed area
 
@@ -110,10 +112,38 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
   and publish rules of an active attribute, and that the decider holds the subject's edit key
   (`catalog.category-tree.edit` or `catalog.attribute.edit`); any refusal, or a check that cannot
   be answered, is `not-permitted` with nothing written and the request left open.
-  Left out (owner decision): create, delete, merge, move, import, seller-scoped content and
-  ClaimBasisPolicy. Slug change, image set or remove, and feature-set edits are not hooked either:
-  a slug change and an image carry redirect and storage effects a revert cannot undo cleanly.
-  Imports run unreviewed.
+  Structure changes (owner decision of 18 Nov 2026, "mixed"), with the subject's id as subject:
+  - Reviewed after (reverter): `catalog.category-create` (values `{exists, slug, parentId}`; a
+    reject discards the category when it never went live, else hides it, and a category hidden
+    since is left as it is), `catalog.category-move` (`{parentId}` before and after; a reject moves
+    it back, last among its old siblings, when it is still under the new parent; certification's
+    retirement check runs in `check`), `catalog.category-reorder` (`{position, neighbourId,
+    neighbourPosition}`; a reject swaps the two back when both still hold their places) and
+    `catalog.attribute-create` (`{exists, code, status}`; a reject discards a draft, and a
+    published attribute is `not-permitted`: it can only be approved). The create, move and reorder
+    routes take `note` (a move uses its reason when no note is given).
+  - Wait for approval (applier, HTTP 202 `{request}`, nothing written in catalog): kinds
+    `catalog.category-discard` (key `catalog.category-tree.edit`),
+    `catalog.category-restructure` (merge and archive, `catalog.category-tree.restructure`),
+    `catalog.category-products-move` (`catalog.category-tree.restructure`),
+    `catalog.attribute-discard` (`catalog.attribute.edit`), `catalog.attribute-restructure`
+    (archive, merge and merge of values, `catalog.attribute.restructure`) and
+    `catalog.feature-set-create` (`catalog.attribute.edit`; a feature set has no delete, so its
+    create waits for approval; subject = the code asked for or made from the name). `before` is the
+    subject's state (`{status, version, parentId}` for a category, `{code, status, version,
+    material}` for an attribute); `after` is the action (`{action: 'merge', targetId, reason}`,
+    ...). A restructure uses its reason as the note when no note is given. The archive of a
+    `material` attribute keeps its own two-person request and files no proposal. The applier's
+    `check` also checks the decider's key through the authorisation port, and runs certification's
+    retirement check (merge, archive) or the claim-text check (feature set) before the unit; its
+    `apply` writes through the same in-unit function as the route, naming the request in the audit
+    row (`requestId`). The tree and attribute admin reads carry `review`.
+  - Left out: the category-tree import and the attribute file import (a file does not fit a
+    request's values, at most 10 KB and three levels; keeping it needs a staged-import store, a
+    schema change; the attribute import also runs row by row in units of its own and cannot run in
+    one decision unit); seller-scoped content, ClaimBasisPolicy, slug change, image set or remove,
+    and feature-set edits (a slug change and an image carry redirect and storage effects a revert
+    cannot undo cleanly). Imports run unreviewed.
 
 - **shipping** (area delivery, medium risk by default, on by default): only changes that can be
   put back are reviewed; creating, deleting, merging, moving and importing are not.
@@ -180,6 +210,18 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
 - A request that turned the AI description writer off cannot be withdrawn into a revert that turns
   it back on: the reverter answers `not-permitted`, because a permission check cannot run inside
   the decision unit. The author changes the setting again instead.
+- Catalogue approvals run in the decision's unit with its default timeout, shorter than the 30 s a
+  route's restructure may take: the approval of a merge or archive that marks very many products
+  can time out and is then not applied (the request stays open). The check of a merge or archive
+  hands the categories it cleared to the apply in memory, on the same instance; a missing hand-over
+  is `not-permitted` (fail closed). The approval of a products move compares only the source
+  category's status; the job reads the products again when it runs. A feature set proposed with no
+  code gets a free code at approval (as the route does); one with a code taken since is
+  `changed-since`. A merge proposal keeps at most 100 value pairs (`too-large-for-review` above).
+- Catalogue: a restructure appends `platform-category-changed` and the action's own event
+  (`moved`, `merged`, `archived`) for the same category version, which the catalog outbox's
+  unique (market, aggregate id, version) index refuses on PostgreSQL; the route has the same
+  problem and the DB specs keep a recording outbox for it. Reported as a follow-up.
 - Catalogue: a revert of an attribute edit keeps the options the edit added (revisions never
   remove an option) and switches them off; cancelling an open relaxation request that the edit
   triggered is not undone; a revert that would clear `material` on a published attribute is
@@ -212,6 +254,47 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
   they are the cheapest way around the people review (create a wide role and invite into it
   instead of widening an existing one). A follow-up to review them, or to require an approved
   request before the new admin's first sign-in, is tracked.
+
+## Actions that wait for approval (approval mode)
+
+Owner decision of 18 Nov 2026 ("mixed"): a create or a move goes live at once and is reviewed
+after, as every change so far (a reject undoes it: discard, hide, revoke or move back). A delete,
+a merge or an import cannot be undone cleanly, so it waits for another admin's approval instead.
+
+- Port: `SYSTEM_ACTION_PROPOSER` (`SystemActionProposer.proposeChange`, same implementation as the
+  recorder). The owning module checks the admin's permission and validates the action as it would
+  before applying it, then calls `proposeChange` in its open unit with `before` (what the subject
+  holds now) and `after` (the action, e.g. `{action: 'delete'}`). It writes nothing else. The
+  answer is `null` when the area is not reviewed in the Market (the module applies the action at
+  once, in the same unit, as before), the new request, or `system-requests.already-pending`
+  (`pendingNumber`): one open proposal per subject (also a partial unique index).
+- The kind registers an applier (`registerSystemChangeApplier(module, kind, area, permission,
+  token)`): the permission key the action needs (an array when its use case declares several; all
+  are required), which system-requests checks itself (Hassan M1:
+  a module `check` that answers `ok` for anyone cannot let a reviewer run an action they may not
+  run); `apply` (in the approval's serializable unit: compares the subject with `before`, runs the
+  module's own checks, writes the action as the approving admin naming the request; answers
+  `applied`, `changed-since`, `gone` or `not-permitted`) and `check` (before the unit, fail closed:
+  the module's further rules and the checks that open a unit of their own). `isInterested` and
+  `describe` work as for a reverter. A kind is either reviewed after (reverter) or approved first
+  (applier), never both. Every module that registers an applier gets its own security review.
+- The request: `mode: 'approval'`, first activity `proposed`. Approve checks the registered key,
+  runs `check`, then checks the area's review key and the action's key once more as the last step
+  before the unit (Hassan L2; the authorisation check never runs inside the caller's unit), then
+  `apply` with the decision; anything but `applied` leaves it open and writes nothing. Reject and
+  withdraw change nothing and ask the module nothing (status `reverted`, decision `rejected` or
+  `withdrawn`); they need no registered kind, so a retired kind never leaves a proposal stuck
+  (Hassan L3). Two concurrent proposals of one subject: `findPendingProposal` takes the Market's
+  counter lock first, so the second sees the first and answers `already-pending` (Mojtaba). A proposal is never superseded and supersedes nothing (CHECK), so reject and
+  withdraw never need it to be the subject's latest. High risk spends the step-up proof as usual.
+- Bulk approve and "select all matching" never take a proposal (`system-requests.one-by-one`; the
+  matching filter leaves proposals out): each is applied on its own approval.
+- Migration `20261118100000_system_requests_approval_mode`: `requests.mode` (no update grant), the
+  CHECK and partial unique index above, activity kind `proposed`. Its `down.sql` refuses to run
+  while any proposal exists.
+- Which actions use it, per module, and their panel pages: catalog (see "Hooked areas"); the
+  other modules are follow-up PRs (plan in the project files,
+  `handoffs/system-requests/deferred-hooks-plan.md`).
 
 ## Supersession and locks
 
@@ -273,6 +356,31 @@ count failed after the approvals had committed (the route never fails after a co
 treats null as "stop" and reloads the list. Refused in an acting-as session;
 needs `system-requests.request.view`.
 
+### Saved filters and export (rule 14)
+
+- **Saved filters** go through the generic routes of `lists` (`lists/admin/saved-filters`, list key
+  `admin.system-requests.requests`, registered with `registerLists`; view key
+  `system-requests.request.view`, share key `system-requests.saved-filter.share`). No migration
+  (the `list_key` CHECK is a pattern). The document is closed (`application/saved-filter-list.ts`):
+  `v: 1`, `view`, optional `filters` (`area`, `risk`, `status` as lists of words in the
+  vocabulary's order; `from` and `to` as calendar days on the admin's clock, `to` not before
+  `from`; `overdue: true`), `sort`, `direction`. The search text, the deep-link subject and the
+  Requested by / Decided by ids are never saved.
+- **Export**: `GET requests/export` (`ExportSystemRequests`, key `system-requests.request.view`)
+  writes CSV or XLSX through the shared list export. The rows are the chosen `ids` (at most 100,
+  the selection's cap, in that order; an id that is not a request of the Market refuses the whole
+  file with 404 `system-requests.not-found`) or what the list's own keys match, parsed by the
+  list's parser and narrowed by the same view filter (so Needs my review is the caller's review
+  areas and never their own requests), in the list's sort, at most 10,000 (more: 413
+  `batch.too-large` with `details.max` and `details.total`). Any other key is refused (paging
+  included). Fixed columns: Request, Note, Area, Risk, Status; optional, as the column picker
+  names them: `subject` (type, label, id), `requestedBy` (name, id), `applied`, `due` (with an
+  Overdue flag), `decidedBy` (name, id), `decided` (time, decision), `comments`. Times are ISO
+  8601 with the offset of `zone` (the Market's zone when absent). The values before and after a
+  change are never written: the list keeps them for the author and the area's reviewers only.
+  The rows stream 100 at a time by keyset; names and subject labels are read per page after the
+  read, as on the list.
+
 ### Confirmed behaviour
 
 - **Approve works on a gone subject.** Approving keeps the change and asks no reverter, so it
@@ -308,11 +416,10 @@ or the values.
 
 ## Not in this package
 
-- Saved filters, column picker and CSV/XLSX export come with the shared super-list kit (phase 0,
-  handoffs in `super-list/`).
+- The column choice stays in the browser (the queue does not use `lists` column preferences yet).
 - The area hooks in the other owning modules (roles, payouts, delivery, catalogue, ...) are
-  follow-ups, one per module, for changes that can be reverted only (owner decision of 15 Nov
-  2026: creating, deleting, merging, moving and importing get their own design later).
+  follow-ups, one per module. Creating and moving are reviewed after; deleting, merging and
+  importing wait for approval (owner decision of 18 Nov 2026, "Actions that wait for approval").
 - An impact count per request, and email reminders (the reminder is an in-app admin notice).
 - Excluding the author from their own request's reminder: notices are Market-wide and shown by
   permission (below), so an author who also holds the area's review key sees it too.
@@ -322,8 +429,16 @@ or the values.
 
 The admin panel pages (queue, detail, review policy, menu badge) are built. Left out for now:
 
-- Saved filters and CSV/XLSX export: the queue shows Export disabled with the hint "Export comes
-  with saved filters" until the shared kit has System requests routes for them.
+- Saved filters and CSV/XLSX export are built: saved filters are tabs after the views (Save
+  filter… in the chips row, Manage filters in the views bar); Export in the toolbar writes the
+  ticked rows, or with none ticked (or after "Select all matching") every row the view, search
+  and filters match, in the list's order, with the columns shown.
 - Requested by and Decided by pickers: the team list is not relayed to the browser and needs a
   different permission, so those two filters work from ids in the address only.
-- Phone layout: built (bottom sheets, sticky action bar) but not yet checked by hand on a phone.
+- Phone layout: checked on a 390x844 phone emulation, at 768 and 1280, in light and dark (queue,
+  detail, review policy, menu badge in the drawer; loaded, empty and error states). Fixed: the
+  detail facts overflowed on an unbroken name or reason, the status badges sat under the row menu,
+  the reject sheet cut its title, the card note was squeezed beside the badges and cut, the
+  outcome line repeated the facts, and the card number link, the unchanged-fields button and the view
+  tabs were under 44 px. Remaining: the row checkbox hit area is 40 px (shared `SelectBox`), and the
+  policy page Switch and "Awaiting review" link are 24 px tall (shared `Switch`).
