@@ -89,11 +89,8 @@ export interface VariantRow {
   readonly sellers: number;
   readonly issues: readonly Issue[];
   readonly missingLocales: readonly string[];
-}
-
-export interface VariantPage {
-  readonly items: readonly VariantRow[];
-  readonly nextAfter: string | null;
+  /** The row actions of the Actions menu the caller may use: `open-product`, `copy-code`. */
+  readonly actions: readonly string[];
 }
 
 export interface IssueCounts {

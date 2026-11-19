@@ -525,6 +525,46 @@ describe('signed client address (ADR-0037)', () => {
   });
 });
 
+describe('relay of the Sellers super list (list 15)', () => {
+  it.each(['sellers/admin/sellers/list', 'sellers/admin/sellers/export'])(
+    'relays %s as a same-origin POST with its body, and nothing else',
+    async (path) => {
+      const fetchImpl = upstreamOk();
+      const body = JSON.stringify({ view: 'awaiting-review', q: 'al', page: 2, pageSize: 50 });
+      const relayed = await relay(config, post(path, sameOrigin, body), path.split('/'), fetchImpl);
+      expect(relayed.status).toBe(200);
+      expect(fetchImpl.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+      expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
+
+      const refused = upstreamOk();
+      const get = new Request(`http://admin.localhost:3002/api/${path}?view=all`, {
+        method: 'GET',
+        headers: sameOrigin,
+      });
+      expect((await relay(config, get, path.split('/'), refused)).status).toBe(404);
+      const crossSite = post(path, { ...sameOrigin, 'sec-fetch-site': 'cross-site' });
+      expect((await relay(config, crossSite, path.split('/'), refused)).status).toBe(403);
+      const near = `${path}/x`;
+      expect((await relay(config, post(near), near.split('/'), refused)).status).toBe(404);
+      expect(refused).not.toHaveBeenCalled();
+    },
+  );
+
+  it('carries an export of 200 ticked ids under the body cap', async () => {
+    const fetchImpl = upstreamOk();
+    const ids = Array.from(
+      { length: 200 },
+      (_, i) => `01990000-0000-7000-8000-${String(i).padStart(12, '0')}`,
+    ).join(',');
+    const path = 'sellers/admin/sellers/export';
+    const body = JSON.stringify({ format: 'xlsx', columns: 'seller-id', ids });
+    expect(
+      (await relay(config, post(path, sameOrigin, body), path.split('/'), fetchImpl)).status,
+    ).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('relay allowlist for seller decisions', () => {
   const ID = '0190a000-0000-7000-8000-0000000000a1';
   const call = (method: string, path: string) =>
@@ -1334,6 +1374,8 @@ describe('relay of the customers list and customer page', () => {
       ['POST', `customers/admin/customers/${ID}/activity`],
       ['POST', `customers/admin/customers/${ID}/activity/export`],
       ['PUT', `customers/admin/customers/${ID}/display-name`],
+      ['PUT', `customers/admin/customers/${ID}/email`],
+      ['DELETE', `customers/admin/customers/${ID}/email-change`],
     ])('relays %s %s', async (method, target) => {
       const upstream = upstreamOk();
       const response = await relay(config, send(method, target), pathOf(target), upstream);
@@ -1346,11 +1388,37 @@ describe('relay of the customers list and customer page', () => {
       ['POST', `customers/admin/groups/${G}/members/purge`],
       ['GET', `customers/admin/customers/${ID}/activity`],
       ['DELETE', `customers/admin/customers/${ID}/notes`],
+      ['POST', `customers/admin/customers/${ID}/email`],
+      ['GET', `customers/admin/customers/${ID}/email`],
+      ['PATCH', `customers/admin/customers/${ID}/email`],
+      ['PUT', `customers/admin/customers/${ID}/email-change`],
+      ['POST', `customers/admin/customers/${ID}/email-change`],
+      ['DELETE', `customers/admin/customers/${ID}/email`],
+      ['PUT', 'customers/admin/customers/not-a-uuid/email'],
     ])('refuses %s %s', async (method, target) => {
       const upstream = upstreamOk();
       const response = await relay(config, send(method, target), pathOf(target), upstream);
       expect(response.status).toBe(404);
       expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('caps the email change body at 1 KB, and only on that path', async () => {
+      const upstream = upstreamOk();
+      const email = `customers/admin/customers/${ID}/email`;
+      const small = JSON.stringify({ email: 'new@example.com' });
+      expect((await relay(config, send('PUT', email, small), pathOf(email), upstream)).status).toBe(
+        200,
+      );
+      const big = JSON.stringify({ email: `${'a'.repeat(1100)}@example.com` });
+      expect((await relay(config, send('PUT', email, big), pathOf(email), upstream)).status).toBe(
+        413,
+      );
+      // Another PUT of the same customer keeps the usual 16 KB cap.
+      const name = `customers/admin/customers/${ID}/display-name`;
+      const longer = JSON.stringify({ displayName: 'a'.repeat(1100) });
+      expect((await relay(config, send('PUT', name, longer), pathOf(name), upstream)).status).toBe(
+        200,
+      );
     });
 
     it('forwards only the notes paging keys', async () => {

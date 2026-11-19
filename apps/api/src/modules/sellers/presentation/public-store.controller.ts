@@ -38,6 +38,13 @@ export class PublicStoreImageBody {
 }
 
 export class PublishedStoreBody {
+  @ApiProperty({
+    format: 'uuid',
+    description:
+      'The seller id of the store: the id of `customers/me/followed-stores/:sellerId` and of ' +
+      '`promotions/stores/:sellerId/follow-gift`.',
+  })
+  sellerId!: string;
   @ApiProperty({ description: 'The store address part (`/s/<slug>` on the buyer site).' })
   slug!: string;
   @ApiProperty({ description: 'The public store name of the approved revision.' }) name!: string;
@@ -128,6 +135,7 @@ const imageOf = (image: StoreImageRef | null): PublicStoreImageBody | null =>
 /** The allow-listed body of one store, field by field (AC 25); Money as a string amount. */
 const bodyOf = (store: PublishedStore): PublishedStoreBody => {
   const body: PublishedStoreBody = {
+    sellerId: store.sellerId,
     slug: store.slug,
     name: store.name,
     serviceAreaCode: store.serviceAreaCode,

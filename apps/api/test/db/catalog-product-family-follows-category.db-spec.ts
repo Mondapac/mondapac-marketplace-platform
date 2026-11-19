@@ -72,6 +72,7 @@ describe.each(TEST_MARKETS)(
     const defaults = () => familyA.code;
     const policy: CatalogMarketPolicy = {
       taxCategoryCodes: () => ['t1'],
+      taxCategories: () => ['t1'].map((code) => ({ code, labelKey: `catalog.tax.${code}` })),
       locales: () => ({ default: 'en', supported: ['en'] }),
       sensitiveChanges: () => ({
         platformCategories: true,
