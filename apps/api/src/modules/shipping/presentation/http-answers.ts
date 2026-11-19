@@ -13,6 +13,8 @@ export const SHIPPING_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'shipping.fleet-model-not-found': 404,
   'shipping.fleet-model-name-taken': 409,
   'shipping.fleet-model-conflict': 409,
+  // Another proposal of the same subject waits for approval (Admin Inbox › System requests).
+  'system-requests.already-pending': 409,
   'shipping.fleet-selection-conflict': 409,
   'shipping.delivery-settings-conflict': 409,
   'shipping.unavailable': 503,
@@ -50,6 +52,22 @@ export const moneyBody = (value: Money) => ({
   currency: value.currency,
 });
 
+/**
+ * Whether a use case answered a proposal: an object holding only a non-null `request` (an action
+ * that waits for another admin's approval; nothing changed). Read from the answer's shape, as the
+ * presentation layer imports only use cases.
+ */
+export function isProposalAnswer(
+  value: unknown,
+): value is { readonly request: { readonly id: string; readonly number: number } } {
+  if (typeof value !== 'object' || value === null) return false;
+  const keys = Object.keys(value);
+  const request = (value as { request?: unknown }).request;
+  return (
+    keys.length === 1 && keys[0] === 'request' && typeof request === 'object' && request !== null
+  );
+}
+
 /** Turns a use case's refusal into the HTTP error; an unmapped code is a 500 and is logged. */
 export function refusal(
   error: { readonly code: string } & Record<string, unknown>,
@@ -71,6 +89,9 @@ export function refusal(
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
   if (typeof error.currency === 'string')
     return fail(status, error.code, { currency: error.currency });
+  if (typeof error.pendingNumber === 'number') {
+    return fail(status, error.code, { pendingNumber: error.pendingNumber });
+  }
   const conflict = conflictDetails(error);
   if (conflict !== undefined) return fail(status, error.code, conflict);
   return fail(status, error.code);

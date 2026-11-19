@@ -23,6 +23,8 @@ import {
   isNoteFailure,
   ReviewNoteField,
   trimmedNote,
+  useAlreadyPending,
+  useSentForApproval,
   useSentForReview,
 } from '../shared/review-note.tsx';
 import { useChangeHistory, useWinnerTitle } from '../settings/last-changed.tsx';
@@ -84,6 +86,8 @@ export function FleetSelectionPanel({
   const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
   const [modelNoteRejected, setModelNoteRejected] = useState(false);
   const sentForReview = useSentForReview();
+  const sentForApproval = useSentForApproval();
+  const alreadyPending = useAlreadyPending();
   const noticeRef = useRef<HTMLDivElement>(null);
   // Where focus goes after a saved model: its row heading, or "New model" after a create. The
   // form and its buttons are gone by then, and the toast never takes focus.
@@ -108,8 +112,9 @@ export function FleetSelectionPanel({
     'shipping/admin/fleet-selection/history',
   );
   const winnerTitle = useWinnerTitle();
-  // The note is asked only where the view says a change is reviewed; the model edit uses the
-  // page's flag, as it has none of its own.
+  // The note is asked only where the view says a change is reviewed; the model edit and create
+  // use the page's flag, as they have none of their own. A create then waits for another admin's
+  // approval (a model has no delete), so nothing is added until it is approved.
   const reviewed = selection.review?.reviewed === true;
   const nameOf = (fleet: FleetCode) =>
     selection.fleets.find((row) => row.fleet === fleet)?.displayName ?? fleet;
@@ -268,7 +273,12 @@ export function FleetSelectionPanel({
     setModelNoteRejected(false);
     const creating = editing.kind === 'new';
     const result = creating
-      ? await callApi<Model>('POST', `${FLEET_SELECTION_PATH}/models`, body, csrfToken)
+      ? await callApi<Model | { request: unknown }>(
+          'POST',
+          `${FLEET_SELECTION_PATH}/models`,
+          { ...body, ...(sent === null ? {} : { note: sent }) },
+          csrfToken,
+        )
       : await callApi<Model & { request?: unknown }>(
           'PUT',
           `${FLEET_SELECTION_PATH}/models/${editing.model.id}`,
@@ -279,7 +289,11 @@ export function FleetSelectionPanel({
           },
           csrfToken,
         );
-    if (result.ok) {
+    if (result.ok && creating && sentForApproval(result.body)) {
+      // Sent for approval: nothing was created, so the list stays as it is.
+      setEditing(null);
+      focusNext.current = { kind: 'add' };
+    } else if (result.ok) {
       sentForReview(result.body);
       const fresh = await callApi<Selection>('GET', FLEET_SELECTION_PATH);
       if (fresh.ok) refresh(fresh.body);
@@ -293,9 +307,10 @@ export function FleetSelectionPanel({
         setPending(null);
         return;
       }
+      const pendingText = alreadyPending(result.failure);
       const key = fleetProblemOf(result.failure);
-      setFormProblem(key);
-      if (key === 'conflict') {
+      setFormProblem(pendingText ?? t(`${P}.error.${key}`));
+      if (pendingText === null && key === 'conflict') {
         // Someone saved first: show what is stored now, so the admin decides again on that.
         const fresh = await callApi<Selection>('GET', FLEET_SELECTION_PATH);
         if (fresh.ok) {
@@ -530,7 +545,8 @@ export function FleetSelectionPanel({
                   .join(', ')
               : null
           }
-          reviewed={reviewed && editing.kind === 'edit'}
+          reviewed={reviewed}
+          approval={reviewed && editing.kind === 'new'}
           noteRejected={modelNoteRejected}
           onSubmit={(body, sent) => {
             if (editing.kind === 'edit' && methodsOf(editing.model).length > 0) {

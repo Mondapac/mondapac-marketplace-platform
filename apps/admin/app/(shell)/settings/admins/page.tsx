@@ -68,7 +68,11 @@ export default async function TeamPageRoute({
         description={t('settings.admins.description')}
         actions={
           result.kind === 'ok' && canInvite && roles !== undefined ? (
-            <InviteAdminButton roles={roles} csrfToken={gate.session.csrfToken} />
+            <InviteAdminButton
+              roles={roles}
+              csrfToken={gate.session.csrfToken}
+              reviewed={result.body.review?.reviewed === true}
+            />
           ) : null
         }
       >

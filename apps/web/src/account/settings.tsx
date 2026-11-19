@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Icon } from '../icons/icon.tsx';
 import { PalettePicker } from '../preferences/palette-picker.tsx';
 import type { Palette, TextSize } from '../preferences/preferences.ts';
@@ -14,6 +14,7 @@ import { useAccount, type PasswordOutcome, type Profile } from './account-state.
 import { DeletionEntry, useDeletion } from './account-deletion.tsx';
 import { saveLanguage } from './customer-api.ts';
 import { AcField, PasswordField } from './fields.tsx';
+import { readOwnInvitation, readStoreName } from './follow-api.ts';
 
 /**
  * Settings: Profile, Password (always open), Appearance (saved to the account, john 19 Oct; the
@@ -450,7 +451,44 @@ function PrivacyCard() {
           </p>
         ) : null}
       </div>
+      <JoinedThroughLine live={source.live} />
       <DeletionEntry deletion={deletion} />
     </section>
+  );
+}
+
+/**
+ * "You joined through {store}": the store whose invite link the buyer used, and what it sees. Only
+ * with a store; a refused or failed read shows nothing.
+ */
+function JoinedThroughLine({ live }: { readonly live: boolean }) {
+  const t = useTranslations('account.settings');
+  const [joined, setJoined] = useState<{ slug: string | null; name: string | null } | null>(null);
+  useEffect(() => {
+    if (!live) return;
+    let current = true;
+    void readOwnInvitation().then(async (read) => {
+      if (!current || read.kind !== 'ok' || read.value === null) return;
+      const { slug } = read.value;
+      const named = slug === null ? null : await readStoreName(slug);
+      if (current) setJoined({ slug, name: named?.kind === 'ok' ? named.value.name : null });
+    });
+    return () => {
+      current = false;
+    };
+  }, [live]);
+  if (joined === null) return null;
+  const store = joined.name ?? t('joined-store-fallback');
+  return (
+    <p className="ac-note" id="settings-joined">
+      <Icon name="store" />
+      <span>
+        {t.rich('joined-through', {
+          name: store,
+          store: (chunks) =>
+            joined.slug === null ? chunks : <Link href={`/s/${joined.slug}`}>{chunks}</Link>,
+        })}
+      </span>
+    </p>
   );
 }

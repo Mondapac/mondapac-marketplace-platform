@@ -219,6 +219,7 @@
         "refund-commission": "Commission returned",
         "dispute-debit": "Dispute debit",
         "dispute-reinstate": "Dispute reinstated",
+        "cashback-seller": "Cashback to exclusive customers",
         "unknown": "Other"
       }
     },
@@ -1220,7 +1221,7 @@
         },
         "search": {
           "label": "Search offers",
-          "placeholder": "Search by SKU, product code or name"
+          "placeholder": "Search SKU, code or name"
         },
         "filter": {
           "button": "Filter",
@@ -2880,13 +2881,28 @@
     },
     "range": "{from} to {to} of {total}",
     "export": {
-      "button": "Export CSV",
-      "busy": "Preparing the file…",
-      "done": "The file of the orders on this list was downloaded.",
-      "too-large": "{matching} orders match, and one file holds at most {max}. Narrow the filters and export again.",
-      "too-large-plain": "Too many orders match for one file. Narrow the filters and export again.",
-      "invalid": "These filters cannot be exported. Change them and try again.",
-      "unavailable": "The file could not be created. Try again."
+      "title": "Export {count, plural, one {# order} other {# orders}}",
+      "title-all": "Export all matching orders",
+      "body": "One row for each order, with its amounts, delivery method and tracking. The file has the columns shown in the list, and names no buyer.",
+      "legend": "File format",
+      "csv": "CSV",
+      "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+      "xlsx": "XLSX",
+      "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+      "confirm": "Export",
+      "cancel": "Cancel",
+      "pending": "Preparing your file…",
+      "done": "{count, plural, one {Exported # order.} other {Exported # orders.}}",
+      "done-unknown": "Your file is ready.",
+      "error": {
+        "unavailable": "The export didn’t work. Try again.",
+        "denied": "You don’t have access to export orders.",
+        "too-large": "Too many orders to export: {total} match, and one file holds up to {max}. Narrow the filters and try again.",
+        "too-large-plain": "Too many orders to export. Narrow the filters and try again.",
+        "too-many-selected": "You can export up to {max} selected orders at a time.",
+        "not-found": "Some of the selected orders are no longer in your list. Reload and try again.",
+        "invalid": "That export can’t be done. Change the filters or reload the page and try again."
+      }
     },
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the dates to reach the rest, or ask your platform admin to switch List paging to Previous and next.",
     "slip": {
@@ -3108,9 +3124,9 @@
       "selected": "{count, plural, one {# order selected} other {# orders selected}}",
       "all-open": "All matching orders selected",
       "none-selected": "Tick orders to print slips, or export the whole list.",
-      "export": "Export all matching as CSV",
-      "export-help": "Every order the tab and paid dates match, not only the ticked ones.",
-      "export-searching": "A search cannot be exported. Clear it to export.",
+      "export": "Export…",
+      "export-help": "CSV or XLSX: the ticked orders, or the whole list (the tab and paid dates).",
+      "export-searching": "Export can’t cover a search. Clear it, or tick the orders you want.",
       "print-slips": "Print packing slips",
       "print-slips-help": "Opens one page with a slip for each selected order (up to {max}).",
       "print-slips-all": "Tick the orders you want slips for. Slips can't be printed for every matching order at once."
@@ -3127,7 +3143,8 @@
       "balance": "Balance",
       "refunds": "Refunds",
       "refunded-commission": "Commission returned",
-      "disputes": "Disputes"
+      "disputes": "Disputes",
+      "seller-cashback": "Cashback to exclusive customers"
     },
     "col": {
       "when": "Date",
@@ -3143,7 +3160,8 @@
       "refund-shipping": "Refund of shipping",
       "refund-commission": "Commission returned",
       "dispute-debit": "Dispute: amount recovered",
-      "dispute-reinstate": "Dispute: amount returned"
+      "dispute-reinstate": "Dispute: amount returned",
+      "cashback-seller": "Cashback to exclusive customers"
     },
     "more": "Load more",
     "more-failed": "More rows could not be loaded. Try again.",

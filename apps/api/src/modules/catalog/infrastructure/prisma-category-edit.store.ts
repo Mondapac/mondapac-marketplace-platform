@@ -207,7 +207,7 @@ export class PrismaCategoryEditStore implements CategoryEditStore, CategoryRestr
     const { category, patch } = change;
     const tx = this.prisma.tx(market);
     const revisionNo = category.revisionNo + 1;
-    const version = category.version + 1;
+    const version = category.version + eventsOf(change);
     // The guarded update comes first: it takes the row lock, so a second admin with the same
     // version waits here and then loses with a stale error, instead of meeting the unique
     // (category, revision_no) of the revision the first one wrote.
@@ -454,4 +454,13 @@ export class PrismaCategoryEditStore implements CategoryEditStore, CategoryRestr
       })),
     });
   }
+}
+
+/** The version steps of a change: one per outbox event the unit writes for it (Q-K3). */
+function eventsOf(change: CategoryChange): number {
+  const events = change.events ?? 1;
+  if (!Number.isInteger(events) || events < 1) {
+    throw new RangeError(`A category change writes at least one event, not ${events}`);
+  }
+  return events;
 }

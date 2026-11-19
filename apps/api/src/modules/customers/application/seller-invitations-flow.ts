@@ -6,6 +6,7 @@ import type { OutboxWriter } from '../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import { SellerAttributionDecided, SellerInviteLinkDrawn } from '../domain/audit';
 import { CUSTOMER_MAX_PAGED_ROWS } from '../domain/customer-list';
+import { isLocalDay } from '../domain/local-day';
 import { SellerAttributionChangedEvent } from '../domain/events';
 import {
   ATTRIBUTION_FLAGS,
@@ -20,6 +21,7 @@ import {
   type InviteLink,
   type SellerAttribution,
 } from '../domain/seller-invitations';
+import type { AdminDayZone } from './ports/admin-day-zone';
 import type { CustomerReadModelRepository } from './ports/customer-read-models.repository';
 import type { InvitationPeers } from './ports/invitation-peers';
 import type { SheetWriter } from './ports/sheet-writer';
@@ -31,6 +33,7 @@ import {
   type InviteLinkRepository,
   type InviteTokens,
   type SellerAttributionRepository,
+  type ZonedAttributionSelector,
 } from './ports/seller-invitations.repository';
 import { adminOfCall, invalid, isRecord, sellerOfCall } from './seller-customers-flow';
 
@@ -64,6 +67,8 @@ export interface InvitationDependencies {
   /** The admin export's step-up proof and its XLSX writer. */
   readonly stepUp: StepUpProofConsumer;
   readonly sheetWriter: SheetWriter;
+  /** The zone the admin list's day filters are read in: the admin's own, else the Market's. */
+  readonly dayZone: AdminDayZone;
 }
 
 export type InvitationFailure =
@@ -427,9 +432,6 @@ const FILTER_KEYS = [
   'attributedFrom',
   'attributedTo',
 ] as const;
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const isDay = (value: unknown): value is string =>
-  typeof value === 'string' && DAY.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 const present = (value: unknown): boolean => value !== undefined && value !== null && value !== '';
 
 /** Reads `view`, `q` and `filters` of an admin request. Every other key is the caller's to refuse. */
@@ -490,7 +492,7 @@ export function attributionSelectorOf(
     selector.flag = flag;
     for (const key of ['attributedFrom', 'attributedTo'] as const) {
       if (!present(filters[key])) continue;
-      if (!isDay(filters[key])) return invalid(`filters.${key}`, 'format');
+      if (!isLocalDay(filters[key])) return invalid(`filters.${key}`, 'format');
       selector[key] = filters[key];
     }
     if (
@@ -502,6 +504,15 @@ export function attributionSelectorOf(
     }
   }
   return ok(selector);
+}
+
+/** The selector with the zone its days are read in (ADR-0005): the admin's own, else the Market's. */
+export async function zonedSelectorOf(
+  deps: Pick<InvitationDependencies, 'dayZone'>,
+  context: CallContext,
+  selector: AttributionSelector,
+): Promise<ZonedAttributionSelector> {
+  return { ...selector, dayZone: await deps.dayZone.zoneOf(context) };
 }
 
 const LIST_KEYS = new Set([
@@ -626,16 +637,17 @@ export async function listAttributions(
   if (adminOfCall(context) === null) return err({ code: 'access.denied' });
   const { market } = context;
   const paged = request.page !== null;
+  const selector = await zonedSelectorOf(deps, context, request.selector);
   const read = await deps.unitOfWork.run(
     market,
     async () => {
       const [rows, counts, total] = await Promise.all([
-        deps.attributions.page(market, request.selector, request.direction, {
+        deps.attributions.page(market, selector, request.direction, {
           offset: request.offset,
           limit: paged ? request.limit : request.limit + 1,
         }),
         deps.attributions.viewCounts(market),
-        paged ? deps.attributions.count(market, request.selector) : Promise.resolve(null),
+        paged ? deps.attributions.count(market, selector) : Promise.resolve(null),
       ]);
       return ok({ rows, counts, total });
     },

@@ -151,6 +151,7 @@ const asked = (n: number, product: string, seller: string, label: string, exists
     options: [sizeOption(size)],
   })),
   alreadyExists: exists,
+  actions: ['approve', 'map', 'decline'],
 });
 const requests = {
   items: [
@@ -158,7 +159,11 @@ const requests = {
     asked(4, 'MP-003310', 'Brisbane Halal Meats', 'M', true),
     asked(6, 'MP-002208', 'Sunrise Dates', 'XXL'),
   ],
-  locales: { default: 'en-AU', supported: ['en-AU'] },
+  total: 3,
+  page: 1,
+  pageSize: 25,
+  paging: 'pages',
+  hasNext: false,
 };
 window.fetch = ((input: string) => {
   const path = input.replace(/^\/api\//, '').split('?')[0]!;
@@ -169,7 +174,7 @@ window.fetch = ((input: string) => {
   else if (path === 'catalog/admin/variants') body = page;
   else if (path === 'catalog/admin/variants/issue-counts') body = counts;
   else if (path === 'catalog/admin/variant-requests')
-    body = q.get('empty') === '1' ? { ...requests, items: [] } : requests;
+    body = q.get('empty') === '1' ? { ...requests, items: [], total: 0 } : requests;
   return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
 }) as typeof fetch;
 

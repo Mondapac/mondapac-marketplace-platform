@@ -100,6 +100,8 @@ export function PagedSuperList<Row>({
   fields = [],
   loadCounts,
   heading,
+  dialogs,
+  refreshKey = 0,
 }: {
   readonly config: PagedListConfig<Row>;
   /** The Market's "List paging" setting; Previous and next when it could not be read. */
@@ -112,6 +114,10 @@ export function PagedSuperList<Row>({
     filters: Readonly<Record<string, string>>,
   ) => Promise<Readonly<Record<string, number>> | null>;
   readonly heading?: React.ReactNode;
+  /** Dialogs the row actions open (a decision, a merge); the page owns them. */
+  readonly dialogs?: React.ReactNode;
+  /** Changes when the page changed rows (a decision was made): the list is read again. */
+  readonly refreshKey?: number;
 }) {
   const t = useTranslations(config.ns);
   const ts = useTranslations('sales-lists');
@@ -178,7 +184,7 @@ export function PagedSuperList<Row>({
   const queryKey = JSON.stringify(query);
   useEffect(() => {
     void load(queryNow.current);
-  }, [load, queryKey]);
+  }, [load, queryKey, refreshKey]);
 
   // The tab counts follow the filters (not the tab, search or page).
   const filtersKey = JSON.stringify(query.filters);
@@ -488,7 +494,7 @@ export function PagedSuperList<Row>({
               ),
             },
           })}
-      {...(paging === 'pages' && config.sorts.length > 1
+      {...(paging === 'pages' && config.sorts.length > 0
         ? {
             sort: {
               label: ts('sort.button'),
@@ -613,23 +619,28 @@ export function PagedSuperList<Row>({
           : null
       }
       dialogs={
-        <ExportDialog
-          open={dialog === 'export'}
-          onClose={() => setDialog(null)}
-          busy={exporting}
-          labels={{
-            title: t('export.title'),
-            body: t('export.body'),
-            legend: t('export.legend'),
-            csv: t('export.csv'),
-            csvHelp: t('export.csv-help'),
-            xlsx: t('export.xlsx'),
-            xlsxHelp: t('export.xlsx-help'),
-            confirm: t('export.confirm'),
-            cancel: t('export.cancel'),
-          }}
-          onConfirm={(format) => void exportFile(format)}
-        />
+        <>
+          {dialogs}
+          {config.exportEndpoint === undefined ? null : (
+            <ExportDialog
+              open={dialog === 'export'}
+              onClose={() => setDialog(null)}
+              busy={exporting}
+              labels={{
+                title: t('export.title'),
+                body: t('export.body'),
+                legend: t('export.legend'),
+                csv: t('export.csv'),
+                csvHelp: t('export.csv-help'),
+                xlsx: t('export.xlsx'),
+                xlsxHelp: t('export.xlsx-help'),
+                confirm: t('export.confirm'),
+                cancel: t('export.cancel'),
+              }}
+              onConfirm={(format) => void exportFile(format)}
+            />
+          )}
+        </>
       }
     />
   );

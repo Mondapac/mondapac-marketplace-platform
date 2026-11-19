@@ -7,7 +7,7 @@ import { useStore } from '../shell/store-context.tsx';
 
 /** The account pages, in menu order (the rail and the phone and tablet account panel). */
 export const ACCOUNT_NAV: readonly {
-  readonly key: 'overview' | 'orders' | 'addresses' | 'lists' | 'settings';
+  readonly key: 'overview' | 'orders' | 'addresses' | 'lists' | 'stores' | 'settings';
   readonly href: string;
   readonly icon: IconName;
 }[] = [
@@ -15,6 +15,7 @@ export const ACCOUNT_NAV: readonly {
   { key: 'orders', href: '/account/orders', icon: 'receipt' },
   { key: 'addresses', href: '/account/addresses', icon: 'pin' },
   { key: 'lists', href: '/account/lists', icon: 'heart' },
+  { key: 'stores', href: '/account/stores', icon: 'store' },
   { key: 'settings', href: '/account/settings', icon: 'gear' },
 ];
 

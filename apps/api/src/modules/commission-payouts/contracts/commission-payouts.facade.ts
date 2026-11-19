@@ -31,6 +31,11 @@ export type CommissionRateReason = 'standard' | 'exclusive';
  */
 export interface CommissionRate {
   readonly rateBps: number;
+  /**
+   * The rate in force before the exclusive-customer lowering: equal to `rateBps` when `reason` is
+   * `standard`. Checkout freezes it on a lowered line, so the ledger can show the seller's saving.
+   */
+  readonly standardRateBps: number;
   readonly source: 'seller' | 'market';
   readonly reason: CommissionRateReason;
 }
@@ -62,6 +67,11 @@ export interface PaidLine {
   readonly lineAmount: bigint;
   readonly taxInclusive: boolean;
   readonly commissionRateBps: number;
+  /**
+   * A line whose rate was lowered for the buyer's exclusive seller: the rate it would have carried
+   * (never below `commissionRateBps`). Absent or null on every other line.
+   */
+  readonly commissionStandardRateBps?: number | null;
 }
 
 /** The facts of one paid seller order, as ordering stored them. */
@@ -93,6 +103,24 @@ export interface SellerCashback {
 }
 
 /**
+ * What a refund took back of a seller's cashback from the customer's wallet (customers phase
+ * 4c-2): returned to the seller on the payout of the same seller order.
+ */
+export interface SellerCashbackReturn {
+  /** The promotions clawback (the ledger row's source: one row per clawback). */
+  readonly clawbackId: Id<'CreditClawback'>;
+  /** The cashback credit it takes back from (its `cashback-seller` row must exist). */
+  readonly creditId: Id<'PromotionCredit'>;
+  readonly orderId: Id<'Order'>;
+  readonly sellerOrderId: Id<'SellerOrder'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly amount: bigint;
+  readonly currency: string;
+  /** When the customer's wallet gave it back. */
+  readonly returnedAt: Temporal.Instant;
+}
+
+/**
  * When a delivered seller order's money is released to the seller (its eligibility anchor), for
  * promotions' cashback (customers phase 4c): the credit waits for it, so a refund or a dispute
  * inside the hold can still lower or cancel it. Answered only for a seller order the ledger holds.
@@ -107,7 +135,10 @@ export interface SellerOrderPayoutAnchor {
    * or on the whole seller): the seller's money is frozen, so a cashback waits too (Hassan M-2).
    */
   readonly onHold: boolean;
-  /** A chargeback took the seller order's money: dispute debits exceed what was reinstated. */
+  /**
+   * A chargeback was lost on the seller order: a dispute decision names it (whoever bears the
+   * loss), or its dispute debits exceed what was reinstated.
+   */
   readonly disputeLost: boolean;
 }
 
@@ -225,6 +256,18 @@ export interface CommissionPayoutsFacade {
   recordSellerCashback(
     context: CallContext,
     cashback: SellerCashback,
+  ): Promise<Result<'recorded' | 'already-recorded', CommissionPayoutsFailure>>;
+
+  /**
+   * Credits back to the seller what a refund took back of its cashback (system actor only;
+   * promotions' refund handler, phase 4c-2). Idempotent per clawback: `already-recorded`. The
+   * cashback's own row must exist for that seller order, seller and order, and what is returned in
+   * all is at most the cashback (otherwise `commission-payouts.ledger-inconsistent`, nothing
+   * written).
+   */
+  recordSellerCashbackReturn(
+    context: CallContext,
+    returned: SellerCashbackReturn,
   ): Promise<Result<'recorded' | 'already-recorded', CommissionPayoutsFailure>>;
 
   /**
