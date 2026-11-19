@@ -456,6 +456,7 @@ const KIND_LABELS: Readonly<Record<LedgerKind, string>> = Object.freeze({
   'dispute-debit': 'Dispute debit',
   'dispute-reinstate': 'Dispute reinstated',
   'cashback-seller': 'Cashback for your customer',
+  'refund-cashback-seller': 'Cashback returned',
 });
 
 const LEDGER_BASE_HEADERS = [

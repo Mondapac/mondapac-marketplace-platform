@@ -358,6 +358,16 @@ without one). The answer adds `request: {id, number}`. A rejected or withdrawn r
 by `WalletStatusReverter`, audited as `wallet.market-status.reverted` (part of the switch's
 history); going back to `off` once the Market has journals is refused as `changed-since`.
 
+## Clawback of a promo grant (customers phase 4c-2)
+
+`wallet.claw-back-credit` (system) takes back up to the asked amount from the unused remainder of
+the promo lot a grant journal created, as a `clawback` journal carrying that lot (wallet debit,
+promo expense credit). Spent credit is never taken: the answer says what was taken, 0 with no
+journal when nothing is left. It is allowed while the wallet is active, paused or frozen, and the
+idempotency key replays. Migration `20261117150000_wallet_clawback` widens the kind and lot checks,
+indexes lots by journal, and teaches the lot ledger and status fences the new kind; `down.sql`
+refuses while clawback journals exist.
+
 ## Saved filters (super list phase 4, PR10)
 
 The admin Credit requests list (`admin.wallet.credit-requests`, key `wallet.credit.view`) has
